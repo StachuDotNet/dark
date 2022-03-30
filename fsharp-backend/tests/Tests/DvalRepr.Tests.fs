@@ -162,6 +162,7 @@ module ToHashableRepr =
       "toHashableRepr string"
       [ t (DHttpResponse(Redirect "")) "302 \nnull"
         t (DFloat 0.0) "0."
+        t (DObj(Map.ofList [ ("𣏕", DNull); ("", DNull) ])) ""
         t
           (DObj(
             Map.ofList [ ("", DNull)

@@ -47,10 +47,11 @@ module Properties =
     | Flag _ -> true
 
 
-let tests =
-  testList
-    "widgets"
-    [ testProperty
-        typeof<Generators.WidgetGood>
-        "don't have negative ints"
-        Properties.doNotHaveNegativeInts ]
+let tests config =
+  [ testList
+      "widgets"
+      [ testProperty
+          config
+          typeof<Generators.WidgetGood>
+          "don't have negative ints"
+          Properties.doNotHaveNegativeInts ] ]

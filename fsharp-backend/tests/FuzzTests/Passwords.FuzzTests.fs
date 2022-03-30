@@ -21,7 +21,7 @@ module RT = LibExecution.RuntimeTypes
 module G = Generators
 
 type Generator =
-  static member SafeString() : Arbitrary<string> = Arb.fromGen (G.ocamlSafeString)
+  static member String() : Arbitrary<string> = Arb.fromGen (G.ocamlSafeString)
 
 /// We should be able to successfully 'check' a
 /// password against a hash of the same password
@@ -41,7 +41,7 @@ let hashCheckRoundtrip (rawPassword : string) : bool =
     }
   t.Result
 
-let tests =
+let tests config =
   testList
     "password"
-    [ testProperty typeof<Generator> "hash/check roundtrip" hashCheckRoundtrip ]
+    [ testProperty config typeof<Generator> "hash/check roundtrip" hashCheckRoundtrip ]

@@ -741,7 +741,7 @@ module Package =
 /// their results saved.
 /// In addition, some functions can be run without side-effects; to give
 /// the user a good experience, we can run them as soon as they are added.
-/// this includes Date::now and Int::random.
+/// These includes `Date::now` and `Int::random`.
 /// </remarks>
 type Previewable =
   /// Do not need to be saved, can be recalculated in JS

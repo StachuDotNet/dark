@@ -23,7 +23,7 @@ type Generator =
   inherit G.NodaTime.All
   // can we instead make the SafeString usage explicit?
   // as is, I think this will generate "full strings" as DChars, which isn't helpful
-  static member SafeString() : Arbitrary<string> = G.safeOCamlString
+  static member String() : Arbitrary<string> = G.safeOCamlString
 
   static member Dval() : Arbitrary<RT.Dval> =
     Arb.Default.Derive()
@@ -32,10 +32,6 @@ type Generator =
       | _ -> true)
 
 type QueryStringGenerator =
-  // which of the below is winning?
-  static member SafeString() : Arbitrary<string> =
-    Arb.Default.String() |> Arb.filter G.isSafeOCamlString
-
   static member String() : Arbitrary<string> =
     Gen.listOf (Gen.listOf (G.ocamlSafeString))
     |> Gen.map (List.map (String.concat "="))
@@ -76,18 +72,23 @@ let queryToEncodedString (q : List<string * List<string>>) : bool =
   DvalReprExternal.queryToEncodedString q
   .=. (OCamlInterop.paramsToQueryString q).Result
 
-let tests =
-  // name, property, generator (option), config override (option)
+// FSTODO replace with simple `let tests = ...` once issues resolved
+module Tests =
+  let knownGood config =
+    let test name fn = testProperty config typeof<Generator> name fn
+    testList
+      "HttpClient, known good"
+      [ test "dvalToUrlStringExn" dvalToUrlStringExn
+        test "dvalToQuery" dvalToQuery
+        test "dvalToFormEncoding" dvalToFormEncoding
+        test "queryToDval" queryToDval
+        test "queryToEncodedString" queryToEncodedString ]
 
-  let test name fn = testProperty typeof<Generator> name fn
-  testList
-    "HttpClient"
-    [ test "dvalToUrlStringExn" dvalToUrlStringExn
-      test "dvalToQuery" dvalToQuery
-      test "dvalToFormEncoding" dvalToFormEncoding
-      testProperty
-        typeof<QueryStringGenerator>
-        "queryStringToParams"
-        queryStringToParams // only &=& fails
-      test "queryToDval" queryToDval
-      test "queryToEncodedString" queryToEncodedString ]
+  let knownBad config =
+    testList
+      "HttpClient, known bad"
+      [ testProperty
+          config
+          typeof<QueryStringGenerator>
+          "queryStringToParams"
+          queryStringToParams ] // only &=& fails

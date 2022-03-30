@@ -15,7 +15,7 @@ module OCamlInterop = LibBackend.OCamlInterop
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 
 type Generator =
-  static member SafeString() : Arbitrary<string> =
+  static member Safe() : Arbitrary<string> =
     Generators.ocamlSafeString |> Arb.fromGen
 
 /// Checks that `toString` on a `byte[]` produces
@@ -34,9 +34,10 @@ let toStringTest (bytes : byte []) : bool =
       LibExecution.Execution.executeExpr state symtable (PT2RT.Expr.toRT ast)
 
     if Expect.dvalEquality actual expected then return true else return false
-  } |> result
+  }
+  |> result
 
-let tests =
+let tests config =
   testList
     "bytesToString"
-    [ testProperty typeof<Generator> "comparing bytesToString" toStringTest ]
+    [ testProperty config typeof<Generator> "comparing bytesToString" toStringTest ]

@@ -1003,6 +1003,40 @@ that's already taken, returns an error."
       deprecated = NotDeprecated }
 
 
+    { name = fn "DarkInternal" "allFunctions" 1
+      parameters = []
+      returnType = TList varA
+      description =
+        "Returns a list of objects, representing the functions available in the standard library. Does not return DarkInternal functions"
+      fn =
+        internalFn (function
+          | state, [] ->
+            state.libraries.stdlib
+            |> Map.toList
+            |> List.filter (fun (key, data) ->
+              (not (FQFnName.isInternalFn key)))
+            |> List.map (fun (key, data) ->
+              let alist =
+                let returnType = DvalReprExternal.typeToBCTypeName data.returnType
+                let parameters =
+                  data.parameters
+                  |> List.map (fun p ->
+                    Dval.obj [ ("name", DStr p.name)
+                               ("type", DStr(DvalReprExternal.typeToBCTypeName p.typ)) ])
+                [ ("name", DStr(FQFnName.toString key))
+                  ("documentation", DStr data.description)
+                  ("parameters", DList parameters)
+                  ("returnType", DStr returnType)
+                  ("previewable", DStr <| data.previewable.ToString())]
+              Dval.obj alist)
+            |> DList
+            |> Ply
+          | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
     { name = fn "DarkInternal" "clearStaticAssets" 0
       parameters = [ Param.make "host" TStr "" ]
       returnType = TNull

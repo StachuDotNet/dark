@@ -21,7 +21,8 @@ module OCamlInterop = LibBackend.OCamlInterop
 module DvalReprExternal = LibExecution.DvalReprExternal
 module DvalReprInternal = LibExecution.DvalReprInternal
 
-let isSafeOCamlString (s : string) : bool = s <> null && not (s.Contains('\u0000'))
+let isSafeOCamlString (s : string) : bool =
+  s <> null && not (s.Contains('\u0000'))
 
 /// We disallow `\u0000` in OCaml because Postgres doesn't like it; see `of_utf8_encoded_string.ml`
 /// FSTODO: add in unicode
@@ -76,9 +77,8 @@ module NodaTime =
     |> Gen.map (fun dt -> dt.ToUniversalTime())
     |> Gen.map (fun dt -> Instant.FromDateTimeUtc dt)
 
-  let localDateTime: Gen<NodaTime.LocalDateTime> =
-    Arb.generate<System.DateTime>
-    |> Gen.map NodaTime.LocalDateTime.FromDateTime
+  let localDateTime : Gen<NodaTime.LocalDateTime> =
+    Arb.generate<System.DateTime> |> Gen.map NodaTime.LocalDateTime.FromDateTime
 
   type All =
     static member Instant() = instant |> Arb.fromGen

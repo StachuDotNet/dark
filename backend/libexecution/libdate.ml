@@ -138,7 +138,7 @@ let fns : fn list =
               |> DDate
           | args ->
               fail args)
-    ; preview_safety = Safe
+    ; preview_safety = Unsafe
     ; deprecated = false }
   ; { prefix_names = ["Date::add"]
     ; infix_names = []

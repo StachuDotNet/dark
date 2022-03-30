@@ -144,7 +144,6 @@ let initializeTestCanvas (name : string) : Task<Canvas.Meta> =
     return! initializeCanvasForOwner owner name
   }
 
-
 // Same as initializeTestCanvas, for tests that don't need to hit the DB
 let createCanvasForOwner
   (owner : Account.UserInfo)

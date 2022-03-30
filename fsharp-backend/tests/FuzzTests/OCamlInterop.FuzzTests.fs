@@ -66,7 +66,7 @@ let isInteroperableWithOCamlBackend
 type Generator =
   inherit Generators.NodaTime.All
 
-  static member SafeString() : Arbitrary<string> = Arb.fromGen (G.ocamlSafeString)
+  static member String() : Arbitrary<string> = Arb.fromGen (G.ocamlSafeString)
 
   static member Expr() =
     Arb.Default.Derive()
@@ -124,8 +124,8 @@ let binaryExprRoundtrip (pair : PT.Expr * tlid) : bool =
   |> result
   .=. pair
 
-let tests =
-  let tp f = testProperty typeof<Generator> f
+let tests config =
+  let tp f = testProperty config typeof<Generator> f
 
   testList
     "OcamlInterop"
@@ -177,11 +177,12 @@ module Roundtrippable =
         Expect.dvalEquality
         dv
 
-  let tests =
+  let tests config =
     testList
       "roundtrippable"
-      [ testProperty typeof<Generator> "roundtripping works properly" canRoundtrip
+      [ testProperty config typeof<Generator> "roundtripping works properly" canRoundtrip
         testProperty
+          config
           typeof<GeneratorWithBugs>
           "roundtrippable is interoperable"
           isInteroperableV0 ]
@@ -191,7 +192,7 @@ module Queryable =
   type Generator =
     inherit Generators.NodaTime.All
 
-    static member SafeString() : Arbitrary<string> = Arb.fromGen (G.ocamlSafeString)
+    static member String() : Arbitrary<string> = Arb.fromGen (G.ocamlSafeString)
 
     static member DvalSource() : Arbitrary<RT.DvalSource> =
       Arb.Default.Derive() |> Arb.filter (fun dvs -> dvs = RT.SourceNone)
@@ -224,10 +225,9 @@ module Queryable =
         Expect.dvalEquality
         (RT.DObj dvm)
 
-  let tests =
-    let tp f = testProperty typeof<Generator> f
+  let tests config =
+    let tp f = testProperty config typeof<Generator> f
 
     testList
       "InternalQueryable"
-      [ tp "roundtripping v1" v1Roundtrip
-        tp "interoperable v1" isInteroperableV1 ]
+      [ tp "roundtripping v1" v1Roundtrip; tp "interoperable v1" isInteroperableV1 ]

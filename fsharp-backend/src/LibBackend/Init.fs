@@ -75,9 +75,9 @@ let init (shouldWaitForDB : WaitForDB) (serviceName : string) : Task<unit> =
       EventQueue.WorkerStates.JsonConverter.WorkerStateConverter()
     )
 
-    Json.Vanilla.registerConverter (
-      EventQueue.WorkerStates.STJJsonConverter.WorkerStateConverter()
-    )
+    // Json.Vanilla.registerConverter (
+    //   EventQueue.WorkerStates.STJJsonConverter.WorkerStateConverter()
+    // )
 
     match shouldWaitForDB with
     | WaitForDB -> do! _waitForDB ()

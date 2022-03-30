@@ -23,7 +23,7 @@ module OCamlInterop = LibBackend.OCamlInterop
 module G = Generators
 
 /// Ensure we only work with OCaml-friendly floats
-let filterFloat (f : float) : bool =
+let isValidOCamlFloat (f : float) : bool =
   match f with
   | System.Double.PositiveInfinity -> false
   | System.Double.NegativeInfinity -> false
@@ -58,10 +58,8 @@ let allowedErrors = AllowedFuzzerErrors.readAllowedErrors ()
 
 type Generator =
   inherit G.NodaTime.All
-  
-  // static member NodaTimeInstant() : Arbitrary<NodaTime.Instant> = G.NodaTime.instant |> Arb.fromGen
-  // static member NodaTimeLocalDateTime() : Arbitrary<NodaTime.LocalDateTime> = G.NodaTime.localDateTime |> Arb.fromGen
-  static member SafeString() : Arbitrary<string> = G.ocamlSafeString |> Arb.fromGen
+
+  static member String() : Arbitrary<string> = G.ocamlSafeString |> Arb.fromGen
 
   static member Float() : Arbitrary<float> =
     Arb.fromGenShrink (
@@ -69,12 +67,12 @@ type Generator =
         let specials =
           interestingFloats
           |> List.map Tuple2.second
-          |> List.filter filterFloat
+          |> List.filter isValidOCamlFloat
           |> List.map Gen.constant
           |> Gen.oneof
 
         let v = Gen.frequency [ (5, specials); (5, Arb.generate<float>) ]
-        return! Gen.filter filterFloat v
+        return! Gen.filter isValidOCamlFloat v
       },
       Arb.shrinkNumber
     )
@@ -101,12 +99,12 @@ type Generator =
       // These all break the serialization to OCaml
       | RT.DPassword _ -> false
       | RT.DFnVal _ -> false
-      | RT.DFloat f -> filterFloat f
+      | RT.DFloat f -> isValidOCamlFloat f
       | _ -> true)
 
   static member DType() : Arbitrary<RT.DType> =
     let rec isSupportedType =
-      (function
+      function
       | RT.TInt
       | RT.TStr
       | RT.TVariable _
@@ -122,6 +120,8 @@ type Generator =
       | RT.TDB (RT.TUserType _)
       | RT.TDB (RT.TRecord _)
       | RT.TUserType _ -> true
+
+      // FSTODO: support all types
       | RT.TList t
       | RT.TDict t
       | RT.TOption t
@@ -130,7 +130,11 @@ type Generator =
       | RT.TFn (ts, rt) -> isSupportedType rt && List.all isSupportedType ts
       | RT.TRecord (pairs) ->
         pairs |> List.map Tuple2.second |> List.all isSupportedType
-      | _ -> false) // FSTODO: expand list and support all types
+
+      | RT.TDB _ -> false
+      | RT.TErrorRail -> false
+      | RT.TIncomplete -> false
+      | RT.TPassword -> false
 
     Arb.Default.Derive() |> Arb.filter isSupportedType
 
@@ -389,7 +393,7 @@ type Generator =
       Gen.sized (genDval' typ')
 
     { new Arbitrary<RT.FQFnName.StdlibFnName * List<RT.Dval>>() with
-        member x.Generator =
+        member _.Generator =
           gen {
             let fns =
               LibRealExecution.RealExecution.stdlibFns
@@ -712,7 +716,7 @@ let equalsOCaml ((fn, args) : (PT.FQFnName.StdlibFnName * List<RT.Dval>)) : bool
   Task.WaitAll [| t :> Task |]
   t.Result
 
-let tests =
+let tests config =
   testList
     "executePureFunctions"
-    [ testProperty typeof<Generator> "equalsOCaml" equalsOCaml ]
+    [ testProperty config typeof<Generator> "equalsOCaml" equalsOCaml ]

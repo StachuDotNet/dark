@@ -22,10 +22,11 @@ module Properties =
 
     roundTripped = date
 
-let tests =
+let tests config =
   testList
     "NodaTime"
     [ testProperty
+        config
         typeof<Generators.NodaTime.All>
         "roundtrips to/from isoString"
         Properties.roundtrip ]
