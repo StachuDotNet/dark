@@ -836,6 +836,7 @@ module Json =
 
     open System.Text.Json
     open System.Text.Json.Serialization
+    open NodaTime.Serialization.SystemTextJson
 
     type TLIDConverter() =
       inherit JsonConverter<tlid>()
@@ -891,6 +892,7 @@ module Json =
       options.Converters.Add(TLIDConverter())
       options.Converters.Add(PasswordConverter())
       options.Converters.Add(RawBytesConverter())
+      options.Converters.Add(NodaConverters.InstantConverter)
       options.Converters.Add(fsharpConverter)
 
       options
@@ -902,7 +904,12 @@ module Json =
       // supports the type, not the best one
       _options.Converters.Insert(0, c)
 
-    let serialize (data : 'a) : string = JsonSerializer.Serialize(data, _options)
+    let serialize (data : 'a) : string =
+      printfn "Serializing %A" data
+      let start = System.DateTime.Now
+      let serialized = JsonSerializer.Serialize(data, _options)
+      printfn "Serialized in %A" (System.DateTime.Now - start)
+      serialized
 
     let deserialize<'a> (json : string) : 'a =
       JsonSerializer.Deserialize<'a>(json, _options)
@@ -1243,7 +1250,12 @@ module Json =
       JsonConvert.SerializeObject(data, settings)
 
     /// Serialize to JSON
-    let serialize (data : 'a) : string = JsonConvert.SerializeObject(data, _settings)
+    let serialize (data : 'a) : string =
+      printfn "Serializing %A" data
+      let start = System.DateTime.Now
+      let serialized = JsonConvert.SerializeObject(data, _settings)
+      printfn "Serialized in %A" (System.DateTime.Now - start)
+      serialized
 
     /// Serialize WITHOUT redacting passwords. Only used for communicating to the
     /// legacy server, where passwords in Dvals not be redacted because we want to

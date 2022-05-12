@@ -5,14 +5,28 @@
     <TargetFramework>net6.0</TargetFramework>
     <LangVersion>6.0</LangVersion>
     <OtherFlags>--warnaserror</OtherFlags>
-    <!-- in the compile script, we compile this in debug mode anyway, so changing
-    this doesn't change what we actually deliver. However, it does change how long it
-    takes to compile, so disable until we can actually ship AOT builds -->
-    <RunAOTCompilation>false</RunAOTCompilation>
-    <!-- <PublishTrimmed>false</PublishTrimmed> -->
+
+    <RunAOTCompilation>true</RunAOTCompilation>
+
+    <!--
+      Some combination of these is required to get the AOT build to work.
+
+      Specifically, PackAsTool = true is needed to get Paket to include NuGet
+      packages (namely ``) to be included in the `publish` build. (and the
+      `publish` build/folder is the only place where AOT seems to take effect).
+
+      PackAsTool doesn't seem to work without OutputType = Exe
+
+      I forget why we need AutoGenerateBindingRedirects
+    -->
+    <OutputType>Exe</OutputType>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <PackAsTool>true</PackAsTool>
+    <PublishTrimmed>false</PublishTrimmed>
+
     <!-- <EmccCompileOptimizationFlag>-O0 -s ASSERTIONS=2 -s STACK_OVERFLOW_CHECK=2 -s SAFE_HEAP=1</EmccCompileOptimizationFlag> -->
     <!-- <EmccLinkOptimizationFlag>-O0 -s ASSERTIONS=2 -s STACK_OVERFLOW_CHECK=2 -s SAFE_HEAP=1</EmccLinkOptimizationFlag> -->
-    <BlazorEnableCompression>false</BlazorEnableCompression>
+    <!-- <BlazorEnableCompression>false</BlazorEnableCompression> -->
     <!-- <WasmNativeStrip>false</WasmNativeStrip> -->
     <!-- <WasmLinkIcalls>true</WasmLinkIcalls> -->
     <!-- <WasmDebugLevel>1</WasmDebugLevel> -->
@@ -28,7 +42,9 @@
     <ProjectReference Include="../LibExecutionStdLib/LibExecutionStdLib.fsproj" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Wasm.fs" />
+    <Compile Include="Eval.fs" />
+    <Compile Include="EvalWorker.fs" />
+    <Compile Include="Program.fs" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

@@ -6,6 +6,137 @@ const mousewheel = function (callback) {
   });
 };
 
+// WIP...
+window.twoPlusThree = `[
+      "AnalyzeHandler",
+      {
+          "handler": {
+              "tlid": "163992584",
+              "spec": {
+                  "name": [ "Filled", "173388941", "violentTamarin" ],
+                  "module": [ "Filled", "2107282711", "REPL" ],
+                  "modifier": [ "Filled", "2133308295", "_" ],
+                  "types": {
+                      "input": [ "Blank", "848577556" ],
+                      "output": [ "Blank", "1904777602" ]
+                  }
+              },
+              "ast": [
+                  "EBinOp",
+                  "133960504",
+                  "+",
+                  [ "EInteger", "36273220", "2" ],
+                  [ "EInteger", "196615730", "3" ],
+                  ["NoRail" ]
+              ]
+          },
+          "trace_id": "7d495105-946f-5ad8-8db9-4fd70e6eff67",
+          "trace_data": {
+              "input": [],
+              "timestamp": "1970-01-01T00:00:00Z",
+              "function_results": []
+          },
+          "dbs": [],
+          "user_fns": [],
+          "user_tipes": [],
+          "secrets": []
+      }
+    ]`;
+window.listRepeatLengthRoundtrip = `[
+    "AnalyzeHandler",
+    {
+        "handler": {
+          "tlid": "1354237328",
+          "spec": {
+              "name": [ "Filled", "1486155560", "sinisterMonkey" ],
+              "module": [ "Filled", "830372985", "REPL" ],
+              "modifier": [ "Filled", "1642623623", "_" ],
+              "types": {
+                  "input": [ "Blank", "1454144599" ],
+                  "output": [ "Blank", "357833775" ]
+              }
+          },
+          "ast": [
+              "EPipe",
+              "2048653664",
+              [
+                  [
+                      "EFnCall",
+                      "180682653",
+                      "List::repeat",
+                      [
+                          [ "EInteger", "1214060656", "10000" ],
+                          [ "EInteger", "893215982", "1" ]
+                      ],
+                      [ "NoRail" ]
+                  ],
+                  [
+                      "EFnCall",
+                      "416359115",
+                      "List::length",
+                      [ [ "EPipeTarget", "923435829" ] ],
+                      [ "NoRail" ]
+                  ]
+              ]
+          ]
+        },
+        "trace_id": "7d495105-946f-5ad8-8db9-4fd70e6eff67",
+        "trace_data": {
+            "input": [],
+            "timestamp": "1970-01-01T00:00:00Z",
+            "function_results": []
+        },
+        "dbs": [],
+        "user_fns": [],
+        "user_tipes": [],
+        "secrets": []
+    }
+]`;
+let appRoot = `${window.location.protocol}//${staticUrl}`;
+function toDarklangSetupUri(file) {
+  file = file.replace(/_framework\//, "");
+  file = "/blazor/" + file;
+  return `${appRoot}/${file}`;
+}
+const loadBootResource = (resourceType, file, _incomingUrl, _hash) => {
+  const url = toDarklangSetupUri(file);
+  if (resourceType == "dotnetjs") {
+    return url;
+  } else {
+    return fetch(url, { method: "GET", cache: "no-cache" });
+  }
+};
+window.startBlazor = () =>
+  Blazor.start({ loadBootResource })
+    .catch(error => {
+      if (typeof Module !== "undefined" && Module.printErr) {
+        // Logs it, and causes the error UI to appear
+        Module.printErr(error);
+      } else {
+        // The error must have happened so early we didn't yet set up the error UI, so just log to console
+        console.error(error);
+      }
+    })
+    .then(() => {
+      console.log("WASM-compiled backend has been loaded");
+
+      window.testMessageHandler = Module.mono_bind_static_method(
+        "[Wasm]Wasm.EvalWorker:SanityCheck",
+      );
+      console.log("made a simple message handler; pinging .NET from js now...");
+      window.testMessageHandler("ping, from js");
+
+      // note: this actually yields a Promise that can be chained with a .then
+      window.evalMessageHandler = Module.mono_bind_static_method(
+        "[Wasm]Wasm.EvalWorker:HandleEvalRequestAndPostBack",
+      );
+      console.log("Making an eval call of `2 + 3` to wasm-compiled backend");
+      window.evalMessageHandler(window.twoPlusThree);
+
+      // console.log('and now the slow thing')
+      // window.evalMessageHandler(window.listRepeatLengthRoundtrip);
+    });
+
 // ---------------------------
 // Check unsupported browser
 // ---------------------------
@@ -323,7 +454,7 @@ window.Dark = {
   analysis: {
     useBlazor: (function () {
       const urlParams = new URLSearchParams(window.location.search);
-      return urlParams.get("use-blazor");
+      return urlParams.get("use-blazor") == "true";
     })(),
     requestAnalysis: function (params) {
       if (window.Dark.analysis.useBlazor) {

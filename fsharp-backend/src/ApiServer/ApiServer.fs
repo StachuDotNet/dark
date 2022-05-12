@@ -68,6 +68,19 @@ let addRoutes
   let std = standardMiddleware
   let html = htmlMiddleware
 
+  // dotnet.js loads dotnet.wasm without respecting our custom resource-loader
+  // this is a _rough_ hack to deal with such. TODO: remove this hack
+  let loadDotnetWasm : HttpHandler =
+    (fun (ctx : HttpContext) ->
+      task {
+        return
+          ctx.Response.Redirect(
+            "http://static.darklang.localhost:9000//blazor/dotnet.wasm",
+            false
+          )
+      })
+  addRoute "GET" "/a/dotnet.wasm" std None loadDotnetWasm
+
   let api name perm f =
     let handler = jsonHandler f
     let route = $"/api/{{canvasName}}/{name}"
