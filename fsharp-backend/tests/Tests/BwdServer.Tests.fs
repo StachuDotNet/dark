@@ -257,6 +257,7 @@ let normalizeActualHeaders (hs : (string * string) list) : (string * string) lis
   hs
   |> List.filterMap (fun (k, v) ->
     match k, v with
+    // CLEANUP can probably remove dupe 'age' and 'expires'
     | "Date", _ -> Some(k, "xxx, xx xxx xxxx xx:xx:xx xxx")
     | "expires", _
     | "Expires", _ -> Some(k, "xxx, xx xxx xxxx xx:xx:xx xxx")
@@ -267,7 +268,7 @@ let normalizeActualHeaders (hs : (string * string) list) : (string * string) lis
     | "x-guploader-uploadid", _ -> Some(k, "xxxx")
     | "x-goog-generation", _ -> Some(k, "xxxx")
     | _other -> Some(k, v))
-  |> List.sortBy Tuple2.first // CLEANUP ocaml headers are sorted, inexplicably
+  |> List.sortBy Tuple2.first // CLEANUP ocaml headers are sorted, inexplicably. do this.
 
 let normalizeExpectedHeaders
   (headers : (string * string) list)

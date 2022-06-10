@@ -168,6 +168,7 @@ let processNotification
 
 
                 // CLEANUP switch events and scheduling rules to use TLIDs instead of eventDescs
+                // This would unblock some other work
                 let h =
                   c.handlers
                   |> Map.values

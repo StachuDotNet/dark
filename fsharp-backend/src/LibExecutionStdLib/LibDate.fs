@@ -482,7 +482,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, [ DDate d ] ->
-          // CLEANUP - this was made bug-for-bug compatible
+          // CLEANUP - this was made bug-for-bug compatible.
           let s = if d.Year < 1970 then d.Hour - 23 else d.Hour
           Ply(Dval.int s)
         | _ -> incorrectArgs ())

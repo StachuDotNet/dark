@@ -11,8 +11,9 @@ open Tablecloth
 /// Execute a function in the backgorund,
 /// ignoring any results and forwarding exceptions to Rollbar
 let fireAndForgetTask (name : string) (f : unit -> Task<'b>) : unit =
-  // CLEANUP: this should be a backgroundTask, but that doesn't work due to
+  // this should be a backgroundTask, but that doesn't work due to
   // https://github.com/dotnet/fsharp/issues/12761
+  // write a thing in dark that pings us when that's resolved
   task {
     use _ = Telemetry.child $"fireAndForget: {name}" [ "task_name", name ]
     try

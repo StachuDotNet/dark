@@ -211,7 +211,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, [ DStr s ] ->
           try
-            // CLEANUP: These constants represent how high the OCaml parsers would go
+            // CLEANUP: These constants represent how high the OCaml parsers would go. needs new version
             let int = s |> parseInt64
 
             if int < -4611686018427387904L then
@@ -279,8 +279,7 @@ let fns : List<BuiltInFn> =
       parameters = [ Param.make "s" TStr "" ]
       returnType = TStr
       description =
-        // CLEANUP "Returns the string, uppercased (only ASCII characters are uppercased)"
-        "Returns the string, uppercased"
+        "Returns the string, uppercased (only ASCII characters are uppercased)"
       fn =
         (function
         | _, [ DStr s ] ->
@@ -313,8 +312,7 @@ let fns : List<BuiltInFn> =
       parameters = [ Param.make "s" TStr "" ]
       returnType = TStr
       description =
-        // CLEANUP "Returns the string, lowercased (only ASCII characters are lowercased)"
-        "Returns the string, lowercased"
+        "Returns the string, lowercased (only ASCII characters are lowercased)"
       fn =
         (function
         | _, [ DStr s ] ->
@@ -539,7 +537,7 @@ let fns : List<BuiltInFn> =
           if sep = "" then
             s |> String.toEgcSeq |> Seq.toList |> List.map DStr |> DList |> Ply
           else
-            // CLEANUP
+            // CLEANUP. needs new version
             // This behaviour is the worst. This mimics what OCaml did: There
             // should be (n-1) empty strings returned for each sequence of n
             // strings matching the separator (eg: split "aaaa" "a" = ["",
@@ -582,6 +580,7 @@ let fns : List<BuiltInFn> =
               l
 
           // CLEANUP: The OCaml doesn't normalize after concat, so we don't either
+          // needs ner version
           Ply(DStr((String.concat sep strs)))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplementedTODO
@@ -903,7 +902,7 @@ let fns : List<BuiltInFn> =
           Ply(DStr(htmlEscape s))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplementedTODO
-      // CLEANUP mark as Pure
+      // CLEANUP mark as Pure. do this
       previewable = Impure
       deprecated = NotDeprecated }
 

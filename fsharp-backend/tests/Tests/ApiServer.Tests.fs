@@ -772,6 +772,7 @@ let testInitialLoadReturnsTheSame (client : C) (canvasName : CanvasName.T) =
                           tipe =
                             match p.tipe with
                             // CLEANUP can't believe this is still here
+                            // TODO verify it's actually still there
                             | OT.Filled (id, OT.TDeprecated4 _) ->
                               OT.Filled(id, OT.TAny)
                             | other -> other

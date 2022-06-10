@@ -20,6 +20,8 @@ let incorrectArgs = Errors.incorrectArgs
 let varA = TVariable "a"
 let varB = TVariable "b"
 
+// TODO: delete this file, after extracting commentary into an Issue. include sha of removal or something.
+
 // Middlewares are based on Ring: https://github.com/mmcgrana/ring/blob/master/SPEC
 
 // Middlewares are typed functions that contribute a small, composible part of

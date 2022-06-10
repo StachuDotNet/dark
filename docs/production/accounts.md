@@ -4,64 +4,69 @@ List of accounts used by Dark as part of running Dark
 
 # Developing
 
-- github.com
-  - docs are hosted on github pages
-  - dark, docs, dark-cli repos
-- darklang.com
-  - ops account
+- [github.com]()
+  - [docs]()
+    hosted on github pages
+  - [dark]()
+  - [docs]()
+  - [dark-cli]()
+- [darklang.com]()
+  - [ops account]()
 - Slack (dark community)
 
 # Deploying
 
-- circleci.com
-- launchdarkly.com
+- [CircleCI](circleci.com)
+- [LaunchDarkly](launchdarkly.com) for feature flags
 
 # Hosting
 
-- cloud.google.com
+- [Google Cloud](cloud.google.com)
   - GKE
   - Cloud SQL
   - Load Balancers
-  - PubSub
-  - CDN
+  - CDN for static assets (both ours and users')
   - DNS
   - Google Domains
+  - PubSub for queues/crons
   - support
-- auth0
-- pusher.com
-- algolia (docs)
-- cloudflare.com
+- [auth0]()
+- [pusher.com]()
+- [algolia]() (docs)
+- [CloudFlare](cloudflare.com)
   - not really used, some DNS
 - positivessl/sectigo
   - certs for darksa.com
-- let's encrypt
+- [let's encrypt]()
   - cert manager
   - customdomains
-- brex
+- [brex]()
   - how we pay for everything
-- name.com
-- ghost.org
-  - blog.darklang.com
-- todesktop.com
+- [name.com]()
+  what do we use this for?
+- [Ghost.org](https://ghost.org)
+  - used to power [the blog](https://blog.darklang.com)
+- [](https://todesktop.com)
   - desktop client
-- ngrok.com
+- [ngrok](https://ngrok.com)
 
 # Monitoring
 
-- honeycomb.io
-- rollbar.com
-- betteruptime.com
-- pagerduty.com
+- [Honeycomb](honeycomb.io)
+- [Rollbar](rollbar.com)
+- [Better UpTime](betteruptime.com)
+- [PagerDuty](pagerduty.com)
   - triggers from rollbar, pingdom and honeycomb
-- pingdom.com
-- sslmate.com
-- drlinkcheck.com
+- [Pingdom](pingdom.com)
+- [sslmate](sslmate.com)
+- [Dr. Link Check](drlinkcheck.com)
+  where do we use this?
 
-# User comms, analytics
+# User communications, analytics
 
-- mailchimp
-- mandrill (automated emails)
-- heap analytics
+- [mailchimp]()
+- [mandrill]() (automated emails)
+- [heap analytics]()
   - not really used
-- full story
+- [full story]()
   - not really used

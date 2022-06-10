@@ -84,6 +84,7 @@ let pushAddOpEvent (canvasID : CanvasID) (event : Op.AddOpEvent) =
     // have to add support to the client before enabling this. The client would
     // reload after this.
     // push canvasID "addOpTooBig" tooBigPayload
+    // CLEANUP: when a push is received but no handler present, just log (don't fail)
     ()
   else
     push canvasID "add_op" payload

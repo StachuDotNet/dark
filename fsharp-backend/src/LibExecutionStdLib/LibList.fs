@@ -300,7 +300,7 @@ let fns : List<BuiltInFn> =
           Param.makeWithArgs "f" (TFn([ varA ], TBool)) "" [ "val" ] ]
       returnType = varA
       description =
-        // CLEANUP: returns null, not Nothing
+        // CLEANUP: returns null, not Nothing. needs new version
         "Returns the first value of `list` for which `f val` returns `true`. Returns `Nothing` if no such value exists."
       fn =
         (function
@@ -476,10 +476,16 @@ let fns : List<BuiltInFn> =
               uply {
                 let! accum = accum
 
+                let fakeId =
+                  // CLEANUP should use real id here so DErrors allow proper navigation to source
+                  // safe to do without new version of fn
+                  // Likely needs to be added to `state`
+                  (id 0)
+
                 return!
                   Interpreter.applyFnVal
                     state
-                    (id 0) // CLEANUP should use real id here
+                    fakeId
                     b
                     [ accum; item ]
                     NotInPipe
@@ -746,7 +752,7 @@ let fns : List<BuiltInFn> =
       sqlSpec = NotYetImplementedTODO
       previewable = Pure
       deprecated = ReplacedBy(fn "List" "filter" 1) }
-    // { name = fn "List" "all" 0 // CLEANUP: not in the ocaml version, add it back
+    // { name = fn "List" "all" 0 // CLEANUP: not in the ocaml version, add it back. do it.
     //   parameters =
     //     [ Param.make "list" (TList varA) ""
     //       Param.make
@@ -1085,8 +1091,7 @@ let fns : List<BuiltInFn> =
     { name = fn "List" "foreach" 0
       parameters =
         [ Param.make "list" (TList varA) ""
-          // CLEANUP rename these args to "fn"
-          Param.makeWithArgs "f" (TFn([ varA ], varB)) "" [ "val" ] ]
+          Param.makeWithArgs "fn" (TFn([ varA ], varB)) "" [ "val" ] ]
       returnType = TList varB
       description =
         "Call `f` on every `val` in the list, returning a list of the results of

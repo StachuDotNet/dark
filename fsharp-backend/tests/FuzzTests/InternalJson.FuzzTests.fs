@@ -32,19 +32,17 @@ type Generator =
 
   static member Expr() =
     Arb.Default.Derive()
+    // remove this whole filter
     |> Arb.filter (fun expr ->
       match expr with
-      // characters are not supported in OCaml
-      // CLEANUP can be removed once OCaml gone
       | PT.ECharacter _ -> false
       | _ -> true)
 
   static member Pattern() =
     Arb.Default.Derive()
+    // remove this whole filter
     |> Arb.filter (fun pattern ->
       match pattern with
-      // characters are not supported in OCaml
-      // CLEANUP can be removed once OCaml gone
       | PT.PCharacter _ -> false
       | _ -> true)
 

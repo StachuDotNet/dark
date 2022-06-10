@@ -147,11 +147,13 @@ let fns : List<BuiltInFn> =
       parameters = []
       returnType = TStr
       description = "Return the baseUrl for the latest deploy"
+      // annotation: super-safe fn, won't error. some fns
       fn =
         (function
         | state, [] ->
           uply {
             // CLEANUP calling this with no deploy hash generates an error
+            // (should be Option<TStr>)
             match! SA.latestDeployHash state.program.canvasID with
             | None -> return Dval.errStr "No deploy hash found"
             | Some deployHash ->

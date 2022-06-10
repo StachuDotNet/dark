@@ -258,7 +258,7 @@ let fetchActiveCrons () : Task<List<CronScheduleData>> =
                   toplevel_oplists.account_id,
                   canvases.name as canvas_name
        FROM toplevel_oplists
-       JOIN canvases ON toplevel_oplists.canvas_id = canvases.id
+       JOIN canvases ON toplevel_oplistqus.canvas_id = canvases.id
       WHERE module = 'CRON'
         AND modifier IS NOT NULL
         AND modifier <> ''

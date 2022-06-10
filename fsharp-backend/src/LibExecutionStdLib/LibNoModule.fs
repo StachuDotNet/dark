@@ -104,13 +104,13 @@ let fns : List<BuiltInFn> =
       deprecated = DeprecatedBecause "It is just a demo function" }
 
 
-    { name = fn "Error" "toString" 0 // CLEANUP can’t actually call this
+    { name = fn "Error" "toString" 0 // CLEANUP can’t actually call this. can probably delete
       parameters = [ Param.make "err" TError "" ]
       returnType = TStr
       description = "Return a string representing the error"
       fn =
         (function
-        | _, [ DError (_, err) ] -> Ply(DStr err)
+        | _, [ DError (_, err) ] -> Ply(DStr err) // can't ever actually get here since we can't use a DError as an arg.
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplementedTODO
       previewable = Pure
