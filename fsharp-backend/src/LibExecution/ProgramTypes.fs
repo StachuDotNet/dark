@@ -176,14 +176,19 @@ module Handler =
   type ids = { moduleID : id; nameID : id; modifierID : id }
 
   type Spec =
-    | HTTP of route : string * method : string * ids : ids
+    | HTTPLegacyJson of route : string * method : string * ids : ids
+    | HTTPBytes of route : string * method : string * ids : ids
+
     | Worker of name : string * ids : ids
     // Deprecated but still supported form
     // CLEANUP: convert these into regular workers (change module name to WORKER,
     // check if they're unique first though)
     | OldWorker of modulename : string * name : string * ids : ids
+
     | Cron of name : string * interval : Option<CronInterval> * ids : ids
+
     | REPL of name : string * ids : ids
+
     // If there's no module
     // CLEANUP: convert these into repl and get rid of this case
     | UnknownHandler of string * string * ids

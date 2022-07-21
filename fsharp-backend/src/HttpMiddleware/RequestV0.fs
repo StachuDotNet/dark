@@ -20,7 +20,7 @@ type T = RT.Dval
 // Internal
 // -------------------------
 
-let parse (p : Option<MediaType.T>) (body : byte array) : RT.Dval =
+let private parse (p : Option<MediaType.T>) (body : byte array) : RT.Dval =
   match p with
   | Some (MediaType.Json _) ->
     (try
@@ -44,7 +44,7 @@ let parse (p : Option<MediaType.T>) (body : byte array) : RT.Dval =
          "Unknown Content-type -- we assumed application/json but invalid JSON was sent")
 
 
-let parseBody (headers : List<string * string>) (reqbody : byte array) =
+let private parseBody (headers : List<string * string>) (reqbody : byte array) =
   if reqbody.Length = 0 then
     RT.DNull
   else
@@ -52,18 +52,18 @@ let parseBody (headers : List<string * string>) (reqbody : byte array) =
     parse mt reqbody
 
 
-let parseQueryString (query : string) : RT.Dval =
+let private parseQueryString (query : string) : RT.Dval =
   // Drop leading ?
   let query = if query.Length > 0 then String.dropLeft 1 query else query
   BackendOnlyStdLib.HttpQueryEncoding.ofFormEncoding query
 
-let parseHeaders (headers : (string * string) list) =
+let private parseHeaders (headers : (string * string) list) =
   headers
   |> List.map (fun (k, v) -> (String.toLowercase k, RT.DStr v))
   |> Map
   |> RT.Dval.DObj
 
-let parseUsing
+let private parseUsing
   (fmt : MediaType.T)
   (headers : HttpHeaders.T)
   (body : byte array)
@@ -74,10 +74,10 @@ let parseUsing
     parse (Some fmt) body
 
 
-let parseJsonBody headers body = parseUsing MediaType.Json headers body
-let parseFormBody headers body = parseUsing MediaType.Form headers body
+let private parseJsonBody headers body = parseUsing MediaType.Json headers body
+let private parseFormBody headers body = parseUsing MediaType.Form headers body
 
-let parseCookies (cookies : string) : RT.Dval =
+let private parseCookies (cookies : string) : RT.Dval =
   let decode = System.Web.HttpUtility.UrlDecode
   cookies
   |> String.split ";"
@@ -90,22 +90,25 @@ let parseCookies (cookies : string) : RT.Dval =
     | k :: v :: _ -> (decode k, RT.DStr(decode v)))
   |> RT.Dval.obj
 
-let cookies (headers : HttpHeaders.T) : RT.Dval =
+let private cookies (headers : HttpHeaders.T) : RT.Dval =
   HttpHeaders.get "cookie" headers
   |> Option.map parseCookies
   |> Option.defaultValue (RT.DObj Map.empty)
 
 
-let url (headers : List<string * string>) (uri : string) =
+let private url (headers : List<string * string>) (uri : string) =
   // .NET doesn't url-encode the query like we expect, so we're going to do it
   let parsed = System.UriBuilder(uri)
+
   // FSTODO test this somehow (probably fuzz against old)
   parsed.Query <- urlEncodeExcept "*$@!:()~?/.,&-_=\\" parsed.Query
+
   // Set the scheme if it's passed by the load balancer
   headers
   |> List.find (fun (k, _) -> String.toLowercase k = "x-forwarded-proto")
   |> Option.map (fun (_, v) -> parsed.Scheme <- v)
   |> ignore<Option<unit>>
+
   // Use .Uri or it will slip in a port number
   RT.DStr(string parsed.Uri)
 
@@ -128,30 +131,36 @@ let fromRequest
       parseBody headers body
     with
     | _ -> if allowUnparseable then RT.DNull else reraise ()
+
   let jsonBody =
     try
       parseJsonBody headers body
     with
     | _ -> if allowUnparseable then RT.DNull else reraise ()
+
   let formBody =
     try
       parseFormBody headers body
     with
     | _ -> if allowUnparseable then RT.DNull else reraise ()
+
   let fullBody =
     try
       UTF8.ofBytesUnsafe body |> RT.DStr
     with
     | _ -> RT.DError(RT.SourceNone, "Invalid UTF8 input")
+
   let parts =
     [ "body", parseBody
       "jsonBody", jsonBody
       "formBody", formBody
+      "fullBody", fullBody
+
       "queryParams", parseQueryString query
       "headers", parseHeaders headers
-      "fullBody", fullBody
       "cookies", cookies headers
       "url", url headers uri ]
+
   RT.Dval.obj parts
 
 let toDval (self : T) : RT.Dval = self

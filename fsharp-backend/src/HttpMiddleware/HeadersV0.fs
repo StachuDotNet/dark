@@ -6,7 +6,7 @@
 /// Deliberately kept separate from HttpClientHeaders,
 /// which may need to work differently at some point
 /// </remarks>
-module HttpMiddleware.HeadersV0
+module internal HttpMiddleware.HeadersV0
 
 open Prelude
 open LibExecution.VendoredTablecloth

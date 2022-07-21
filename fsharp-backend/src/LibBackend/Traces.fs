@@ -16,31 +16,38 @@ module PTParser = LibExecution.ProgramTypesParser
 // -------------------------
 let incomplete = RT.DIncomplete RT.SourceNone
 
-let sampleRequest : RT.Dval =
-  ([ ("body", incomplete)
-     ("jsonBody", incomplete)
-     ("formBody", incomplete)
-     ("queryParams", incomplete)
-     ("headers", incomplete)
-     ("fullBody", incomplete)
-     ("url", incomplete) ])
-  |> Map
-  |> RT.Dval.DObj
+// MIDDLEWARETODO
+let private sampleHttpRequestInputVars : AT.InputVars =
+  let sampleRequest : RT.Dval =
+    [ ("body", incomplete)
+      ("jsonBody", incomplete)
+      ("formBody", incomplete)
+      ("queryParams", incomplete)
+      ("headers", incomplete)
+      ("fullBody", incomplete)
+      ("url", incomplete) ]
+    |> Map
+    |> RT.Dval.DObj
+  [ ("request", sampleRequest) ]
 
-let sampleRequestInputVars : AT.InputVars = [ ("request", sampleRequest) ]
+let private sampleEventInputVars : AT.InputVars = [ ("event", RT.DIncomplete RT.SourceNone) ]
 
-let sampleEventInputVars : AT.InputVars = [ ("event", RT.DIncomplete RT.SourceNone) ]
-
-let sampleModuleInputVars (h : PT.Handler.T) : AT.InputVars =
+// MIDDLEWARETODO
+let private sampleModuleInputVars (h : PT.Handler.T) : AT.InputVars =
   match h.spec with
-  | PT.Handler.HTTP _ -> sampleRequestInputVars
   | PT.Handler.Cron _ -> []
   | PT.Handler.REPL _ -> []
-  | PT.Handler.UnknownHandler _ -> sampleRequestInputVars @ sampleEventInputVars
+  | PT.Handler.HTTP _ -> sampleHttpRequestInputVars
   | PT.Handler.Worker _
   | PT.Handler.OldWorker _ -> sampleEventInputVars
 
-let sampleRouteInputVars (h : PT.Handler.T) : AT.InputVars =
+  // not sure what it is, but at most it has all of the possible input vars
+  | PT.Handler.UnknownHandler _ ->
+    // basically "all"
+    sampleHttpRequestInputVars @ sampleEventInputVars
+
+// MIDDLEWARETODO
+let private sampleRouteInputVars (h : PT.Handler.T) : AT.InputVars =
   match h.spec with
   | PT.Handler.HTTP (route, _, _) ->
     route
@@ -48,32 +55,35 @@ let sampleRouteInputVars (h : PT.Handler.T) : AT.InputVars =
     |> List.map (fun k -> (k, RT.DIncomplete RT.SourceNone))
   | _ -> []
 
-let sampleInputVars (h : PT.Handler.T) : AT.InputVars =
+let private sampleInputVars (h : PT.Handler.T) : AT.InputVars =
   sampleModuleInputVars h @ sampleRouteInputVars h
 
-let sampleFunctionInputVars (f : PT.UserFunction.T) : AT.InputVars =
+let private sampleFunctionInputVars (f : PT.UserFunction.T) : AT.InputVars =
   f.parameters |> List.map (fun p -> (p.name, incomplete))
 
 
-let savedInputVars
+let private savedInputVars
   (h : PT.Handler.T)
   (requestPath : string)
   (event : RT.Dval)
   : AT.InputVars =
   match h.spec with
-  | PT.Handler.HTTP (route, method, _) ->
+  // this is likely the point where we need to do one thing or another,
+  // based on the handler _type_/version
+  | PT.Handler.HTTP (route, _method, _) ->
     let withR = [ ("request", event) ]
 
     let bound =
       if route <> "" then
-        // Check the trace actually matches the route, if not the client
+        // Check the trace actually matches the route. If not, the client
         // has made a mistake in matching the traceid to this handler, but
         // that might happen due to a race condition. If it does, carry
         // on, if it doesn't -- just don't do any bindings and inject the
         // sample variables. Communicating to the frontend that this
         // trace doesn't match the handler should be done in the future
-        // somehow.
+        // somehow. CLEANUP
         if Routing.requestPathMatchesRoute route requestPath then
+          // hmm, why don't we also see sampleRouteInputVars here, like concat'd?
           Routing.routeInputVars route requestPath
           |> Exception.unwrapOptionInternal
                "invalid routeInputVars"
@@ -110,6 +120,8 @@ let handlerTrace
         (savedInputVars h requestPath event, timestamp)
       | None -> (sampleInputVars h, NodaTime.Instant.UnixEpoch)
 
+    // is this always relevant? 'function' feels like 'userfn' but maybe I'm
+    // conflating where I shouldn't
     let! functionResults = TraceFunctionResults.load canvasID traceID h.tlid
 
     return

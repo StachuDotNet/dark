@@ -56,6 +56,9 @@ module TraceData =
       t.next "load-trace"
       let handler = c.handlers |> Map.get p.tlid
 
+      // MIDDLEWARETODO The .handlerTrace call below should reach out to the
+      // specific relevant middleware in order to populate the `request` object
+      // that's availed to the user.
       let! trace =
         match handler with
         | Some h -> Traces.handlerTrace c.meta.id p.trace_id h |> Task.map Some

@@ -37,9 +37,7 @@ module Routing = LibBackend.Routing
 module Pusher = LibBackend.Pusher
 module TI = LibBackend.TraceInputs
 
-module Resp = HttpMiddleware.ResponseV0
-module Req = HttpMiddleware.RequestV0
-module Cors = HttpMiddleware.Cors
+//module Middleware = HttpMiddleware
 module RealExe = LibRealExecution.RealExecution
 
 module FireAndForget = LibService.FireAndForget
@@ -72,6 +70,7 @@ let getQuery (ctx : HttpContext) : string = ctx.Request.QueryString.ToString()
 let getBody (ctx : HttpContext) : Task<byte array> =
   task {
     try
+      // actually do this. like now? some tests will probably fail, so just fix them.
       // CLEANUP: this was to match ocaml - we certainly should provide a body if one is provided
       if ctx.Request.Method = "GET" then
         return [||]
@@ -81,15 +80,19 @@ let getBody (ctx : HttpContext) : Task<byte array> =
         do! ctx.Request.Body.CopyToAsync(ms)
         return ms.ToArray()
     with
-    | e ->
-      // Let's try to get a good error message to the user, but don't include .NET specific hints
+    | e -> // TODO: shouldn't we only do this on a specific Exception type?
+      // Let's try to get a good error message to the user, but don't include a
+      // .NET-specific error message
       let tooSlowlyMessage =
         "Reading the request body timed out due to data arriving too slowly"
+
       let message =
         if String.startsWith tooSlowlyMessage e.Message then
+          printfn "Here - actual exception is %A" e
           tooSlowlyMessage
         else
           e.Message
+
       return Exception.raiseGrandUser $"Invalid request body: {message}"
   }
 
@@ -108,7 +111,7 @@ let favicon : Lazy<ReadOnlyMemory<byte>> =
     (LibBackend.File.readfileBytes LibBackend.Config.Webroot "favicon-32x32.png"
      |> ReadOnlyMemory)
 
-/// Handles a request for favicon.ico, returning static Dark icon
+/// Handles a request for favicon.ico, returning the static Dark icon
 let faviconResponse (ctx : HttpContext) : Task<HttpContext> =
   task {
     // NB: we're sending back a png, not an ico - this is deliberate,
@@ -125,9 +128,6 @@ let faviconResponse (ctx : HttpContext) : Task<HttpContext> =
   }
 
 
-let textPlain = Some "text/plain; charset=utf-8"
-
-
 type System.IO.Pipelines.PipeWriter with
 
   [<System.Runtime.CompilerServices.Extension>]
@@ -137,18 +137,6 @@ type System.IO.Pipelines.PipeWriter with
       return ()
     }
 
-let writeResponseToContext
-  (ctx : HttpContext)
-  (response : Resp.HttpResponse)
-  : Task<unit> =
-  task {
-    ctx.Response.StatusCode <- response.statusCode
-    response.headers |> List.iter (fun (k, v) -> setHeader ctx k v)
-    ctx.Response.ContentLength <- int64 response.body.Length
-    if ctx.Request.Method <> "HEAD" then
-      // TODO: benchmark - this is apparently faster than streams
-      do! ctx.Response.BodyWriter.WriteAsync(response.body)
-  }
 
 let standardResponse
   (ctx : HttpContext)
@@ -187,6 +175,7 @@ let errorResponse
   }
 
 
+let textPlain = Some "text/plain; charset=utf-8"
 
 let noHandlerResponse (ctx : HttpContext) : Task<HttpContext> =
   // CLEANUP: use errorResponse
@@ -204,7 +193,6 @@ let internalErrorResponse (ctx : HttpContext) : Task<HttpContext> =
   // CLEANUP: use errorResponse
   Telemetry.addTag "http.completion_reason" "internalError"
   standardResponse ctx msg textPlain 500
-
 
 let moreThanOneHandlerResponse (ctx : HttpContext) : Task<HttpContext> =
   let path = ctx.Request.Path.Value
@@ -286,6 +274,21 @@ let canvasMetadataFromHost (host : string) : Task<Option<Canvas.Meta>> =
       return! Canvas.getMetaForCustomDomain customDomain
   }
 
+// should be in middleware world?
+// or should accept something that isn't specific to one middleware version
+let writeResponseToContext
+  (ctx : HttpContext)
+  (response : HttpMiddleware.ResponseV0.HttpResponse)
+  : Task<unit> =
+  task {
+    ctx.Response.StatusCode <- response.statusCode
+    response.headers |> List.iter (fun (k, v) -> setHeader ctx k v)
+    ctx.Response.ContentLength <- int64 response.body.Length
+    if ctx.Request.Method <> "HEAD" then
+      // TODO: benchmark - this is apparently faster than streams
+      do! ctx.Response.BodyWriter.WriteAsync(response.body)
+  }
+
 /// ---------------
 /// Handle builtwithdark request
 /// ---------------
@@ -299,7 +302,6 @@ let runDarkHandler (ctx : HttpContext) : Task<HttpContext> =
 
     match canvasMeta with
     | Some meta ->
-
       ctx.Items[ "canvasName" ] <- meta.name // store for exception tracking
       ctx.Items[ "canvasOwnerID" ] <- meta.owner // store for exception tracking
 
@@ -329,8 +331,10 @@ let runDarkHandler (ctx : HttpContext) : Task<HttpContext> =
 
       match pages with
       // matching handler found - process normally
-      | [ { spec = PT.Handler.HTTP (route = route); ast = expr; tlid = tlid } as handler ] ->
+      | [ { spec = PT.Handler.HTTP (route = route); tlid = tlid } as handler ] ->
         Telemetry.addTags [ "handler.route", route; "handler.tlid", tlid ]
+
+        // MIDDLEWARETODO: somewhere around here, get context of the correct middleware to use. Use it here!
 
         // TODO: I think we could put this into the middleware
         let routeVars = Routing.routeInputVars route requestPath
@@ -343,12 +347,15 @@ let runDarkHandler (ctx : HttpContext) : Task<HttpContext> =
         | Some routeVars ->
           Telemetry.addTag "handler.routeVars" routeVars
 
-          // Do request
+          // Parse the response
           use _ = Telemetry.child "executeHandler" []
 
-          let request = Req.fromRequest false url reqHeaders reqQuery reqBody
+          let request = HttpMiddleware.RequestV0.fromRequest false url reqHeaders reqQuery reqBody
           let inputVars = routeVars |> Map |> Map.add "request" request
+
+          // Execute handler
           let! (result, _) =
+            // can this just be a StdLib function that we expose?
             RealExe.executeHandler
               canvas.meta
               (PT2RT.Handler.toRT handler)
@@ -357,9 +364,10 @@ let runDarkHandler (ctx : HttpContext) : Task<HttpContext> =
               inputVars
               (RealExe.InitialExecution(desc, request))
 
-          // Execute - note that these are outside the handler
-          let result = Resp.toHttpResponse result
-          let result = Cors.addCorsHeaders reqHeaders meta.name result
+          // Transform the Dval response to a .NET HTTP response
+          // note that these happen after the handler does its thing
+          let result = HttpMiddleware.ResponseV0.toHttpResponse result
+          let result = HttpMiddleware.Cors.addCorsHeaders reqHeaders meta.name result
 
           do! writeResponseToContext ctx result
           Telemetry.addTag "http.completion_reason" "success"
@@ -367,8 +375,10 @@ let runDarkHandler (ctx : HttpContext) : Task<HttpContext> =
           return ctx
 
         | None -> // vars didnt parse
+          // when does this happen? why doesn't `filterMatchingHandlers` exclude these?
+
           FireAndForget.fireAndForgetTask "store-event" (fun () ->
-            let request = Req.fromRequest false url reqHeaders reqQuery reqBody
+            let request = HttpMiddleware.RequestV0.fromRequest false url reqHeaders reqQuery reqBody
             TI.storeEvent meta.id traceID desc request)
 
           return! unmatchedRouteResponse ctx requestPath route
@@ -378,7 +388,7 @@ let runDarkHandler (ctx : HttpContext) : Task<HttpContext> =
 
       | [] when ctx.Request.Method = "OPTIONS" ->
         let reqHeaders = getHeaders ctx
-        match Cors.optionsResponse reqHeaders meta.name with
+        match HttpMiddleware.Cors.optionsResponse reqHeaders meta.name with
         | Some response ->
           Telemetry.addTag "http.completion_reason" "options response"
           do! writeResponseToContext ctx response
@@ -390,7 +400,7 @@ let runDarkHandler (ctx : HttpContext) : Task<HttpContext> =
         let! reqBody = getBody ctx
         let reqHeaders = getHeaders ctx
         let reqQuery = getQuery ctx
-        let event = Req.fromRequest true url reqHeaders reqQuery reqBody
+        let event = HttpMiddleware.RequestV0.fromRequest true url reqHeaders reqQuery reqBody
         let! timestamp = TI.storeEvent meta.id traceID desc event
 
         // CLEANUP: move pusher into storeEvent

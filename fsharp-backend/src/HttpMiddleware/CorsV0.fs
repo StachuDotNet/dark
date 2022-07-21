@@ -19,6 +19,8 @@ type CorsSetting =
   | AllOrigins
   | Origins of List<string>
 
+/// Many tests have the cors feature enabled. This module exists so that test
+/// code may add their canvases to the list of ones with the corsSetting set.
 module Test =
   type ConcurrentDictionary<'k, 'v> =
     System.Collections.Concurrent.ConcurrentDictionary<'k, 'v>
@@ -36,7 +38,7 @@ module Test =
 /// We used to have a feature where we'd set the cors setting on the canvas. It's
 /// much better to do this in middleware. These canvases are the remaining user
 /// canvases while we had a setting. We can remove all this once this is gone.
-let corsSettingForCanvas (canvasName : CanvasName.T) : Option<CorsSetting> =
+let private corsSettingForCanvas (canvasName : CanvasName.T) : Option<CorsSetting> =
   match string canvasName with
   | "ops-presence" ->
     Some(Origins [ "localhost"; "darklang.localhost"; "https://darklang.com" ])
@@ -64,7 +66,7 @@ let corsSettingForCanvas (canvasName : CanvasName.T) : Option<CorsSetting> =
 // ---------------
 // CORS
 // ---------------
-let inferCorsOriginHeader
+let private inferCorsOriginHeader
   (canvasName : CanvasName.T)
   (headers : HttpHeaders.T)
   : string option =
@@ -130,10 +132,11 @@ let optionsResponse
   // without an OPTIONS).
 
   // Our strategy here is: if it's from an allowed origin (i.e., in the canvas
-  // cors_setting) to return an Access-Control-Allow-Origin header for that
-  // origin, to return Access-Control-Allow-Headers with the requested headers,
-  // and Access-Control-Allow-Methods for all of the methods we think might
-  // be useful.
+  // cors_setting) to:
+  // - return an Access-Control-Allow-Origin header for that origin
+  // - return Access-Control-Allow-Headers with the requested headers
+  // - return Access-Control-Allow-Methods for all of the methods we think
+  //   might be useful.
 
   let acReqHeaders = HttpHeaders.get "access-control-request-headers" reqHeaders
   let allowHeaders = Option.defaultValue "*" acReqHeaders

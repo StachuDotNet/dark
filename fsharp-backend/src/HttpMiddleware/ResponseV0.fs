@@ -12,12 +12,11 @@ module DvalReprLegacyExternal = LibExecution.DvalReprLegacyExternal
 module Telemetry = LibService.Telemetry
 
 
-let inferContentTypeHeader (dv : RT.Dval) : ContentType.T =
+let private inferContentTypeHeader (dv : RT.Dval) : ContentType.T =
   match dv with
   | RT.DObj _
   | RT.DList _ -> ContentType.json
   | _ -> ContentType.text
-
 
 let toHttpResponse (result : RT.Dval) : HttpResponse =
   match result with
@@ -98,8 +97,8 @@ let toHttpResponse (result : RT.Dval) : HttpResponse =
 
   | dv ->
     Telemetry.addTags [ "response-type", "user value" ]
-    // for demonstrations sake, let's return 200 Okay when
-    // no HTTP response object is returned
+    // Return 200 OK when no explicit error or HTTP response object is returned
+    // i.e. "everything else is just serialized to JSON with a 200 OK"
     { statusCode = 200
       headers = [ ContentType.toHttpHeader (inferContentTypeHeader dv) ]
       body = dv |> DvalReprLegacyExternal.toPrettyMachineJsonStringV1 |> UTF8.toBytes }
