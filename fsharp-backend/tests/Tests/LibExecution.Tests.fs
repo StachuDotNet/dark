@@ -279,7 +279,7 @@ let parseExtras (annotation : string) (dbs : Map<string, PT.DB.T>) : TestExtras 
 
 // Read all test files. The test file format is described in README.md
 let fileTests () : Test =
-  let dir = "tests/testfiles/"
+  let dir = "testfiles/execution/"
 
   System.IO.Directory.GetFiles(dir, "*.tests")
   |> Array.filter ((<>) "README.md")
