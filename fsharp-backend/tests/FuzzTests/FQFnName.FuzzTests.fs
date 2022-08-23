@@ -15,21 +15,10 @@ module PTParser = LibExecution.ProgramTypesParser
 module RT = LibExecution.RuntimeTypes
 module G = FuzzTests.Generators
 
-/// Helper function to generate allowed function name parts
-let nameGenerator (first : char list) (other : char list) : Gen<string> =
-  gen {
-    let! tailLength = Gen.choose (0, 20)
-    let! head = Gen.elements first
-    let! tail = Gen.arrayOfLength tailLength (Gen.elements other)
-    return System.String(Array.append [| head |] tail)
-  }
-
-let ownerName : Gen<string> =
-  nameGenerator [ 'a' .. 'z' ] (List.concat [ [ 'a' .. 'z' ]; [ '0' .. '9' ] ])
-
-let packageName = ownerName
-let modName : Gen<string> = nameGenerator [ 'A' .. 'Z' ] G.alphaNumericCharacters
-let fnName : Gen<string> = nameGenerator [ 'a' .. 'z' ] G.alphaNumericCharacters
+let ownerName = G.FQFnName.ownerName
+let packageName = G.FQFnName.packageName
+let modName = G.FQFnName.modName
+let fnName = G.FQFnName.fnName
 
 type Generator =
   static member String() : Arbitrary<string> = G.SafeUnicodeString
