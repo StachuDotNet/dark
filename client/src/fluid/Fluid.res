@@ -5314,11 +5314,49 @@ let getExpressionRangeAtCaret = (astInfo: ASTInfo.t): option<(int, int)> =>
   })
   |> Option.map(~f=((eStartPos, eEndPos)) => (eStartPos, eEndPos))
 
+// simplify tokens to make them homogenous, easier to parse
+let tokensInRangeNormalized = (startPos, endPos, astInfo) =>
+  tokensInRange(startPos, endPos, astInfo) |> List.map(~f=(ti: T.tokenInfo) => {
+    let t = ti.token
+
+    let text =
+      // trim tokens if they're on the edge of the range
+      T.toText(t)
+      |> String.dropLeft(
+        ~count=if ti.startPos < startPos {
+          startPos - ti.startPos
+        } else {
+          0
+        },
+      )
+      |> String.dropRight(
+        ~count=if ti.endPos > endPos {
+          ti.endPos - endPos
+        } else {
+          0
+        },
+      )
+      |> (
+        text =>
+          // if string, do extra trim to account for quotes, then re-append quotes
+          if T.toTypeName(ti.token) == "string" {
+            "\"" ++ (Util.trimQuotes(text) ++ "\"")
+          } else {
+            text
+          }
+      )
+
+    open T
+    (tid(t), text, toTypeName(t))
+  })
+
+@ocaml.doc("Given the current selection, clone the selected expr
+
+  Aims to include only what's in the selection.
+  i.e. if you select `[1,|2,3,4|,5]`, the expr [2,3,4] will be the result.")
 let reconstructExprFromRange = (range: (int, int), astInfo: ASTInfo.t): option<
   FluidExpression.t,
 > => {
-  // prevent duplicates
-  let astInfo = ASTInfo.setAST(FluidAST.clone(astInfo.ast), astInfo)
   // a few helpers
   let toBool_ = s =>
     if s == "true" {
@@ -5334,10 +5372,14 @@ let reconstructExprFromRange = (range: (int, int), astInfo: ASTInfo.t): option<
       tID == tID' && typeName == typeName'
     ) |> Option.map(~f=Tuple3.second)
 
+  // prevent duplicates
+  let astInfo = ASTInfo.setAST(FluidAST.clone(astInfo.ast), astInfo)
+
   let (startPos, endPos) = orderRangeFromSmallToBig(range)
+
   // main recursive algorithm
   // algo:
-  // - find topmost expression by ID and
+  // - find topmost expression by ID
   // - reconstruct full/subset of expression
   // - recurse into children (that remain in subset) to reconstruct those too
   let rec reconstruct = (~topmostID, (startPos, endPos)): option<E.t> => {
@@ -5345,40 +5387,6 @@ let reconstructExprFromRange = (range: (int, int), astInfo: ASTInfo.t): option<
       topmostID
       |> Option.andThen(~f=id => FluidAST.find(id, astInfo.ast))
       |> Option.unwrap(~default=EBlank(gid()))
-
-    let tokens = // simplify tokens to make them homogenous, easier to parse
-    tokensInRange(startPos, endPos, astInfo) |> List.map(~f=(ti: T.tokenInfo) => {
-      let t = ti.token
-      let text =
-        // trim tokens if they're on the edge of the range
-        T.toText(t)
-        |> String.dropLeft(
-          ~count=if ti.startPos < startPos {
-            startPos - ti.startPos
-          } else {
-            0
-          },
-        )
-        |> String.dropRight(
-          ~count=if ti.endPos > endPos {
-            ti.endPos - endPos
-          } else {
-            0
-          },
-        )
-        |> (
-          text =>
-            // if string, do extra trim to account for quotes, then re-append quotes
-            if T.toTypeName(ti.token) == "string" {
-              "\"" ++ (Util.trimQuotes(text) ++ "\"")
-            } else {
-              text
-            }
-        )
-
-      open T
-      (tid(t), text, toTypeName(t))
-    })
 
     // Reconstructs an expression, returning an Option.
     // If it's not within range of the selection, returns None.
@@ -5403,6 +5411,13 @@ let reconstructExprFromRange = (range: (int, int), astInfo: ASTInfo.t): option<
     let orDefaultExpr: option<E.t> => E.t = Option.unwrap(~default=EBlank(gid()))
 
     let id = gid()
+
+    // Note: these are only the tokens within range
+    let tokens = tokensInRangeNormalized(startPos, endPos, astInfo)
+
+    // It's intentional that we do not simply use the topmostExpr as-is:
+    // its internals may be outside of the selection range. So, we favor
+    // using `findTokenValue`
     switch topmostExpr {
     | _ if tokens == list{} => None
     // basic, single/fixed-token expressions
@@ -5639,23 +5654,23 @@ let reconstructExprFromRange = (range: (int, int), astInfo: ASTInfo.t): option<
       | list{fst, snd, ...tail} => Some(ETuple(id, fst, snd, tail))
       }
     | ERecord(id, entries) =>
-      let newEntries =
-        /* looping through original set of tokens (before transforming them into tuples)
-         * so we can get the index field */
-        tokensInRange(startPos, endPos, astInfo) |> List.filterMap(~f=(ti: T.tokenInfo) =>
-          switch ti.token {
-          | TRecordFieldname({recordID, index, fieldName: newKey, exprID: _, parentBlockID: _})
-            if recordID == id /* watch out for nested records */ =>
-            List.getAt(~index, entries) |> Option.map(
-              ~f=Tuple2.mapEach(
-                ~f=/* replace key */ _ => newKey,
-                ~g=\">>"(reconstructExpr, orDefaultExpr),
-                // reconstruct value expression
-              ),
-            )
-          | _ => None
-          }
-        )
+      let newEntries = // TODO: consider using tokensInRangeNormalized here
+      /* looping through original set of tokens (before transforming them into tuples)
+       * so we can get the index field */
+      tokensInRange(startPos, endPos, astInfo) |> List.filterMap(~f=(ti: T.tokenInfo) =>
+        switch ti.token {
+        | TRecordFieldname({recordID, index, fieldName: newKey, exprID: _, parentBlockID: _})
+          if recordID == id /* watch out for nested records */ =>
+          List.getAt(~index, entries) |> Option.map(
+            ~f=Tuple2.mapEach(
+              ~f=/* replace key */ _ => newKey,
+              ~g=\">>"(reconstructExpr, orDefaultExpr),
+              // reconstruct value expression
+            ),
+          )
+        | _ => None
+        }
+      )
 
       Some(ERecord(id, newEntries))
     | EPipe(_, e1, e2, exprs) =>
@@ -5683,58 +5698,134 @@ let reconstructExprFromRange = (range: (int, int), astInfo: ASTInfo.t): option<
       } else {
         Some(e)
       }
-    | EMatch(_, cond, patternsAndExprs) =>
-      let newPatternAndExprs = List.map(patternsAndExprs, ~f=((pattern, expr)) => {
-        let toksToPattern = (tokens, pID) =>
-          switch tokens |> List.filter(~f=((pID', _, _)) => pID == pID') {
-          | list{(id, _, "pattern-blank")} => PBlank(id)
-          | list{(id, value, "pattern-integer")} => PInteger(id, Util.coerceStringTo64BitInt(value))
-          | list{(id, value, "pattern-variable")} => PVariable(id, value)
-          | list{(id, value, "pattern-constructor-name"), ..._subPatternTokens} =>
-            // temporarily assuming that PConstructor's sub-pattern tokens are always copied as well
-            PConstructor(
-              id,
-              value,
-              switch pattern {
-              | PConstructor(_, _, ps) => ps
-              | _ => list{}
-              },
-            )
-          | list{(id, value, "pattern-string")} => PString(id, Util.trimQuotes(value))
-          | list{(id, value, "pattern-true")} | list{(id, value, "pattern-false")} =>
-            PBool(id, toBool_(value))
-          | list{(id, _, "pattern-null")} => PNull(id)
+    | EMatch(_, cond, cases) =>
+      let rec toksToPattern = (pattern, patternTokens) => {
+        switch patternTokens {
+        | list{(id, _, "pattern-blank")} => PBlank(id)
+        | list{(id, value, "pattern-integer")} => PInteger(id, Util.coerceStringTo64BitInt(value))
+        | list{(id, value, "pattern-variable")} => PVariable(id, value)
+        | list{(id, value, "pattern-constructor-name"), ..._subPatternTokens} =>
+          // Note: this assumes that PConstructor's sub-pattern tokens are always copied as well
+          //
+          // i.e. if you highlight the following, starting at `match`` and
+          // ending after `Ok`, the "test" value is included in the reconstructed expr
+          //
+          // «match Ok "test"
+          //    Ok» "test" ->
+          //
+          // CLEANUP rethink this decision - we should likely instead use the
+          // subPatternTokens, excluding whatever is outside the selection
+          PConstructor(
+            id,
+            value,
+            switch pattern {
+            | PConstructor(_, _, ps) => ps
+            | _ => list{}
+            },
+          )
+        | list{(id, value, "pattern-string")} => PString(id, Util.trimQuotes(value))
+        | list{(id, value, "pattern-true")} | list{(id, value, "pattern-false")} =>
+          PBool(id, toBool_(value))
+        | list{(id, _, "pattern-null")} => PNull(id)
+        | list{
+            (id, whole, "pattern-float-whole"),
+            (_, _, "pattern-float-point"),
+            (_, fraction, "pattern-float-fractional"),
+          } =>
+          let (sign, whole) = Sign.split(whole)
+          PFloat(id, sign, whole, fraction)
+        | list{(id, value, "pattern-float-whole"), (_, _, "pattern-float-point")}
+        | list{(id, value, "pattern-float-whole")} =>
+          PInteger(id, Util.coerceStringTo64BitInt(value))
+        | list{(_, _, "pattern-float-point"), (id, value, "pattern-float-fractional")}
+        | list{(id, value, "pattern-float-fractional")} =>
+          PInteger(id, Util.coerceStringTo64BitInt(value))
 
-          | list{
-              (id, whole, "pattern-float-whole"),
-              (_, _, "pattern-float-point"),
-              (_, fraction, "pattern-float-fractional"),
-            } =>
-            let (sign, whole) = Sign.split(whole)
-            PFloat(id, sign, whole, fraction)
-          | list{(id, value, "pattern-float-whole"), (_, _, "pattern-float-point")}
-          | list{(id, value, "pattern-float-whole")} =>
-            PInteger(id, Util.coerceStringTo64BitInt(value))
-          | list{(_, _, "pattern-float-point"), (id, value, "pattern-float-fractional")}
-          | list{(id, value, "pattern-float-fractional")} =>
-            PInteger(id, Util.coerceStringTo64BitInt(value))
+        | list{(id, _, "pattern-tuple-open"), ...subPatternTokens} =>
+          let tupleParts: ref<list<P.t>> = ref(list{})
 
-          | list{(id, value, "pattern-tuple-open"), ...subPatternTokens} =>
-            Debug.loG("at a patter-tuple-open and not sure what to do", ())
-            Debug.loG("value", value)
-            Debug.loG("subPatternTokens", subPatternTokens)
+          // These are the tokens in between the tokens relevant to the pattern
+          //
+          //
+          // `Some` indicates that there should be a pattern created
+          // If there are tokens in the list, those determine the subpattern
+          //
+          // `None` indicates that no tokens past a ) or , have been selected,
+          // so just use a blank pattern
+          let wipSubPatternTokens: ref<option<list<(ID.t, string, string)>>> = ref(Some(list{}))
 
-            // TUPLETODO finish this. (it's for copy/paste, reconstruction, I believe.)
-            PTuple(id, PBlank(gid()), PBlank(gid()), list{})
 
-          | _ => PBlank(gid())
+          let handleBufferedSubtokens = () =>
+            switch wipSubPatternTokens.contents {
+            | None => ()
+            | Some(subtokens) =>
+              let pat = toksToPattern(pattern, subtokens)
+              tupleParts := List.append(tupleParts.contents, list{pat})
+            }
+
+          let _ = List.map(subPatternTokens, ~f=token => {
+            switch token {
+            | (id', _, "pattern-tuple-comma") if id == id' =>
+              // TODO: recurse on this fn with wipSubPatternTokens to determine
+              // the sub-pattern
+              // TODO: push that pattern to `tupleParts`
+              // TODO: clear the wipSubPatternTokens
+              handleBufferedSubtokens()
+
+            | (id', _, "pattern-tuple-close") if id == id' => handleBufferedSubtokens()
+
+            | _ =>
+              //Debug.loG("other token. TODO: recurse or something", token)
+              wipSubPatternTokens :=
+                switch wipSubPatternTokens.contents {
+                | None => Some(list{token})
+                | Some(tokens) => Some(List.append(tokens, list{token}))
+                }
+            }
+          })
+
+          switch tupleParts.contents {
+          | list{} => PTuple(id, PBlank(gid()), PBlank(gid()), list{})
+          | list{one} => PTuple(id, one, PBlank(gid()), list{})
+          | list{first, second, ...theRest} => PTuple(id, first, second, theRest)
           }
+        | _ =>
+          // TODO: recover thing here
+          PBlank(gid())
+        }
+      }
 
-        let newPattern = toksToPattern(tokens, P.toID(pattern))
-        (newPattern, reconstructExpr(expr) |> orDefaultExpr)
+      // new (pattern, expr) pairs for the new `match`
+      let newCases = List.filterMap(cases, ~f=((pattern, expr)) => {
+        let pID = P.toID(pattern)
+
+        let isPartOfPattern = ((pID', _, _)) => pID' == pID
+        let isNotPartOfPattern = ((pID', _, _)) => pID' !== pID
+
+        // what patterns within the selection are of that pattern ID?
+        // note: this maintains order, so the first token of a pattern is first
+        // TODO: it'd be even better to grab all of the tokens between the first and last matching token
+        let _patternTokens = tokens |> List.filter(~f=isPartOfPattern)
+
+        let patternTokens =
+          // ah this works for tuples but not for constructors, since there's no 'end' token
+          tokens
+          |> List.dropWhile(~f=isNotPartOfPattern)
+          |> List.reverse
+          |> List.dropWhile(~f=isNotPartOfPattern)
+          |> List.reverse
+
+        // `match` pattern entirely out of range don't need to be reconstructed
+        switch patternTokens {
+        | list{} => None
+        | patternTokens =>
+          let newPattern = toksToPattern(pattern, patternTokens)
+          let newExpr = reconstructExpr(expr) |> orDefaultExpr
+          Some(newPattern, newExpr)
+        }
       })
 
-      Some(EMatch(id, reconstructExpr(cond) |> orDefaultExpr, newPatternAndExprs))
+      Some(EMatch(id, reconstructExpr(cond) |> orDefaultExpr, newCases))
     | EFeatureFlag(_, name, cond, disabled, enabled) =>
       // since we don't have any tokens associated with feature flags yet
       Some(
