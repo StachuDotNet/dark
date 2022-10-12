@@ -9,7 +9,8 @@ open Prelude
 open Tablecloth
 open Http
 
-module PT = LibExecution.ProgramTypes
+// todo: reference ClientTypes instead
+
 module PTParser = LibExecution.ProgramTypesParser
 module CRT = ClientTypes.Runtime
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes

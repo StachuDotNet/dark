@@ -9,14 +9,12 @@ open Prelude
 open Tablecloth
 open Http
 
-module PT = LibExecution.ProgramTypes
-module AT = LibExecution.AnalysisTypes
-
 module Stats = LibBackend.Stats
 module EQ = LibBackend.EventQueueV2
 module Telemetry = LibService.Telemetry
 
 module SchedulingRules = LibBackend.QueueSchedulingRules
+module Pusher = LibBackend.Pusher
 
 module WorkerStats =
 
@@ -40,6 +38,7 @@ module WorkerStats =
 module Scheduler =
   type Params = { name : string; schedule : string }
 
+  // todo: this should probably be in client types? (don't reference internal type directly)
   type T = SchedulingRules.WorkerStates.T
 
   /// API endpoint to update the Schedule of a Worker
@@ -63,7 +62,7 @@ module Scheduler =
       t.next "update-pusher"
       // TODO: perhaps this update should go closer where it happens, in
       // case it doesn't happen in an API call.
-      LibBackend.Pusher.pushWorkerStates canvasInfo.id ws
+      Pusher.push canvasInfo.id (Pusher.Event.UpdateWorkerStates ws) None
 
       return ws
     }

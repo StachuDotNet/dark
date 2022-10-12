@@ -9,13 +9,10 @@ open Prelude
 open Tablecloth
 open Http
 
-module PT = LibExecution.ProgramTypes
-module AT = LibExecution.AnalysisTypes
 module CRT = ClientTypes.Runtime
 
 module Stats = LibBackend.Stats
 module Canvas = LibBackend.Canvas
-module RT = LibExecution.RuntimeTypes
 module TI = LibBackend.TraceInputs
 module Telemetry = LibService.Telemetry
 

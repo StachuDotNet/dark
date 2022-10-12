@@ -29,6 +29,83 @@ let pusherClient : Lazy<PusherServer.Pusher> =
 type EventTooBigEvent = { eventName : string }
 
 
+module Payload = ClientTypes.Pusher.Payloads
+
+// todo: move this to ClientTypes, and only reference client types
+module Event =
+  type T =
+    | NewTraceID of traceID : AT.TraceID * tlids : List<tlid>
+
+    | New404 of
+      space : string *
+      name : string *
+      modifier : string *
+      timestamp : NodaTime.Instant *
+      traceID : AT.TraceID
+
+    | NewStaticDeploy of
+      deployHash : string *
+      url : string *
+      lastUpdate : NodaTime.Instant *
+      status : StaticAssets.DeployStatus
+
+    | UpdateWorkerStates of QueueSchedulingRules.WorkerStates.T
+
+    | AddOpV1 of Op.AddOpParamsV1.T * Op.AddOpResultV1.T
+
+    | AddOpTooBig of List<tlid>
+
+    // do we really need this for anything? reconsider.
+    | Custom of eventName : string * payload : string
+
+  let toEventNameAndPayload (e : T) : string * string =
+    match e with
+    | NewTraceID (traceId, tlids) ->
+      let payload : Payload.NewTraceID = (traceId, tlids)
+      "new_trace", Json.Vanilla.serialize payload
+
+    | New404 (space, name, modifier, timestamp, traceID) ->
+      let payload = Payload.F404(space, name, modifier, timestamp, traceID)
+      "new_404", Json.Vanilla.serialize payload
+
+    | NewStaticDeploy (deployHash, url, lastUpdate, status) ->
+      let payload : Payload.NewStaticDeploy.T =
+        { deployHash = deployHash
+          url = url
+          lastUpdate = lastUpdate
+          status =
+            match status with
+            | StaticAssets.Deploying -> Payload.NewStaticDeploy.Deploying
+            | StaticAssets.Deployed -> Payload.NewStaticDeploy.Deployed }
+      "new_static_deploy", Json.Vanilla.serialize payload
+
+    | UpdateWorkerStates (states) ->
+      let payload : Payload.UpdateWorkerStates.T =
+        states
+        |> Map.map (fun state ->
+          match state with
+          | QueueSchedulingRules.WorkerStates.Blocked ->
+            Payload.UpdateWorkerStates.Blocked
+          | QueueSchedulingRules.WorkerStates.Running ->
+            Payload.UpdateWorkerStates.Running
+          | QueueSchedulingRules.WorkerStates.Paused ->
+            Payload.UpdateWorkerStates.Paused)
+      "worker_state", Json.Vanilla.serialize payload
+
+    | AddOpV1 (p, r) ->
+      let payload : Payload.AddOpEventV1 =
+        { result = r |> Op.AddOpResultV1.toClientType
+          ``params`` = p |> Op.AddOpParamsV1.toClientType }
+
+      "v1/add_op", Json.Vanilla.serialize payload
+
+    | AddOpTooBig tlids ->
+      let payload : Payload.AddOpEventTooBigPayload = { tlids = tlids }
+      "addOpTooBig", Json.Vanilla.serialize payload
+
+    | Custom (eventName, payload) -> (eventName, payload)
+
+
 /// <summary>Send an event to Pusher.com.</summary>
 ///
 /// <remarks>
@@ -39,11 +116,17 @@ type EventTooBigEvent = { eventName : string }
 /// and send a different push if appropriate (eg, instead of sending
 /// `TraceData hugePayload`, send `TraceDataTooBig traceID`
 /// </remarks>
-let push
-  (canvasID : CanvasID)
-  (eventName : string)
-  (payload : string) // The raw string is sent, it's the job of the caller to have it as appropriate json
-  : unit =
+let push (canvasID) (evt : Event.T) (fallback : Option<Event.T>) : unit =
+  let (eventName, payload) = Event.toEventNameAndPayload evt
+
+  let (eventName, payload) =
+    if String.length payload > 10240 then
+      match fallback with
+      | Some fallback -> Event.toEventNameAndPayload fallback // TODO: maybe log here?
+      | None -> failwithf "TODO: something"
+    else
+      (eventName, payload)
+
   FireAndForget.fireAndForgetTask $"pusher: {eventName}" (fun () ->
     task {
       // TODO: make channels private and end-to-end encrypted in order to add public canvases
@@ -56,57 +139,9 @@ let push
       return ()
     })
 
-type NewTraceID = AT.TraceID * List<tlid>
-
-let pushNewTraceID
-  (canvasID : CanvasID)
-  (traceID : AT.TraceID)
-  (tlids : tlid list)
-  : unit =
-  push canvasID "new_trace" (Json.Vanilla.serialize (traceID, tlids))
-
-
-let pushNew404 (canvasID : CanvasID) (f404 : TraceInputs.F404) =
-  push canvasID "new_404" (Json.Vanilla.serialize f404)
-
-
-let pushNewStaticDeploy (canvasID : CanvasID) (asset : StaticAssets.StaticDeploy) =
-  push canvasID "new_static_deploy" (Json.Vanilla.serialize asset)
-
-type AddOpEventTooBigPayload = { tlids : List<tlid> }
-
-// For exposure as a DarkInternal function
-let pushAddOpEventV1 (canvasID : CanvasID) (event : Op.AddOpEventV1) =
-  let payload = Json.Vanilla.serialize event
-  if String.length payload > 10240 then
-    let tlids = List.map Op.tlidOf event.``params``.ops
-    let tooBigPayload = { tlids = tlids } |> Json.Vanilla.serialize
-    // CLEANUP: when changes are too big, notify the client to reload them. We'll
-    // have to add support to the client before enabling this. The client would
-    // reload after this.
-    // push canvasID "addOpTooBig" tooBigPayload
-    ()
-  else
-    push canvasID "v1/add_op" payload
-
-
-
-let pushWorkerStates
-  (canvasID : CanvasID)
-  (ws : QueueSchedulingRules.WorkerStates.T)
-  : unit =
-  push canvasID "worker_state" (Json.Vanilla.serialize ws)
 
 type JsConfig = { enabled : bool; key : string; cluster : string }
 
 let jsConfigString =
   // CLEANUP use JSON serialization
   $"{{enabled: true, key: '{Config.pusherKey}', cluster: '{Config.pusherCluster}'}}"
-
-let init () =
-  do Json.Vanilla.allow<Op.AddOpEventV1> "LibBackend.Pusher"
-  do Json.Vanilla.allow<TraceInputs.F404> "LibBackend.Pusher"
-  do Json.Vanilla.allow<AddOpEventTooBigPayload> "LibBackend.Pusher"
-  do Json.Vanilla.allow<NewTraceID> "LibBackend.Pusher"
-  do Json.Vanilla.allow<StaticAssets.StaticDeploy> "LibBackend.Pusher"
-  do Json.Vanilla.allow<QueueSchedulingRules.WorkerStates.T> "LibBackend.Pusher"

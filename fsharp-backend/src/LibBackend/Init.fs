@@ -61,7 +61,6 @@ let init (shouldWaitForDB : WaitForDB) (serviceName : string) : Task<unit> =
     | DontWaitForDB -> ()
 
     do! EventQueueV2.init ()
-    do Pusher.init ()
     do Session.init ()
     do PackageManager.init ()
     do Analytics.init ()

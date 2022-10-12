@@ -14,6 +14,8 @@ module Telemetry = LibService.Telemetry
 
 module List =
 
+  // todo: should TI really be exposed here?
+  // (i.e. should we rather clone this into ClientTypes, and translate?)
   type T = { f404s : List<TI.F404> }
 
   /// Endpoint to fetch a list of recent 404s

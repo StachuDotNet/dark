@@ -10,6 +10,7 @@ open TestUtils.TestUtils
 module File = LibBackend.File
 module Config = LibBackend.Config
 module CRT = ClientTypes.Runtime
+module CPT = ClientTypes.Program
 module CAT = ClientTypes.Analysis
 module PT = LibExecution.ProgramTypes
 module RT = LibExecution.RuntimeTypes
@@ -481,8 +482,8 @@ module Values =
       status = LibBackend.StaticAssets.Deployed
       lastUpdate = testInstant }
 
-  let testAddOpResultV1 : LibBackend.Op.AddOpResultV1 =
-    { handlers = testHandlers
+  let testAddOpResultV1 : LibBackend.Op.AddOpResultV1.T =
+    { handlers = testHandlers //|> List.map ClientTypes.Program.Handler.fromPT
       deletedHandlers = testHandlers
       dbs = testDBs
       deletedDBs = testDBs
@@ -491,10 +492,11 @@ module Values =
       userTypes = testUserTypes
       deletedUserTypes = testUserTypes }
 
-  let testAddOpEventV1 : LibBackend.Op.AddOpEventV1 =
-    { ``params`` =
+  let testAddOpEventV1 : ClientTypes.Pusher.Payloads.AddOpEventV1 =
+    { LibBackend.Op.AddOpEventV1.``params`` =
         { ops = testOplist; opCtr = 0; clientOpCtrID = testUuid.ToString() }
-      result = testAddOpResultV1 }
+      LibBackend.Op.AddOpEventV1.result = testAddOpResultV1 }
+    |> LibBackend.Op.AddOpEventV1.toClientType
 
 
   let testWorkerStates : LibBackend.QueueSchedulingRules.WorkerStates.T =
@@ -641,10 +643,12 @@ module GenericSerializersTests =
       v<PT.Position> "simple" { x = 10; y = -16 }
 
       // Used by Pusher
-      v<LibBackend.Pusher.AddOpEventTooBigPayload> "simple" { tlids = testTLIDs }
-      v<LibBackend.Op.AddOpEventV1> "simple" testAddOpEventV1
+      v<ClientTypes.Pusher.Payloads.AddOpEventTooBigPayload>
+        "simple"
+        { tlids = testTLIDs }
+      v<ClientTypes.Pusher.Payloads.AddOpEventV1> "simple" testAddOpEventV1
       v<LibBackend.StaticAssets.StaticDeploy> "simple" testStaticDeploy
-      v<LibBackend.Pusher.NewTraceID> "simple" (testUuid, testTLIDs)
+      v<ClientTypes.Pusher.Payloads.NewTraceID> "simple" (testUuid, testTLIDs)
       v<LibBackend.TraceInputs.F404>
         "simple"
         ("HTTP", "/", "GET", testInstant, testUuid)
@@ -659,8 +663,12 @@ module GenericSerializersTests =
       // AddOps
       v<ApiServer.AddOps.V1.Params>
         "simple"
-        { ops = testOplist; opCtr = 0; clientOpCtrID = testUuid.ToString() }
-      v<ApiServer.AddOps.V1.T> "simple" testAddOpResultV1
+        { ops = testOplist |> List.map ClientTypes.Program.Op.fromPT
+          opCtr = 0
+          clientOpCtrID = testUuid.ToString() }
+      v<ApiServer.AddOps.V1.T>
+        "simple"
+        (LibBackend.Op.AddOpResultV1.toClientType testAddOpResultV1)
 
 
       // DBs

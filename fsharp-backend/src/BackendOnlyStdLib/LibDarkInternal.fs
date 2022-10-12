@@ -65,7 +65,7 @@ let modifySchedule (fn : CanvasID -> string -> Task<unit>) =
       uply {
         do! fn canvasID handlerName
         let! s = SchedulingRules.getWorkerSchedules canvasID
-        Pusher.pushWorkerStates canvasID s
+        Pusher.push canvasID (Pusher.Event.UpdateWorkerStates s) None
         return DNull
       }
     | _ -> incorrectArgs ())
@@ -322,8 +322,11 @@ that's already taken, returns an error."
             (try
               Pusher.push
                 (canvasID |> System.Guid.Parse)
-                event
-                (payload |> DvalReprInternalDeprecated.toInternalRoundtrippableV0)
+                (LibBackend.Pusher.Event.Custom(
+                  event,
+                  payload |> DvalReprInternalDeprecated.toInternalRoundtrippableV0
+                ))
+                None
               Ply(DResult(Ok payload))
              with
              | e -> Ply(DResult(Error(e |> string |> DStr))))

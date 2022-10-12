@@ -14,6 +14,7 @@
     <ProjectReference Include="../LibExecution/LibExecution.fsproj" />
     <ProjectReference Include="../LibBinarySerialization/LibBinarySerialization.fsproj" />
     <ProjectReference Include="../LibService/LibService.fsproj" />
+    <ProjectReference Include="../ClientTypes/ClientTypes.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="paket.references" />

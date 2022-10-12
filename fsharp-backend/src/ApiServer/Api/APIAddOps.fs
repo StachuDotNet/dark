@@ -12,15 +12,13 @@ open Http
 module Telemetry = LibService.Telemetry
 module Span = Telemetry.Span
 
+// todo: reference ClientTypes instead of all of these 'internal' types; then, translate
 module C = LibBackend.Canvas
 module Serialize = LibBackend.Serialize
 module Op = LibBackend.Op
 module PT = LibExecution.ProgramTypes
 module AT = LibExecution.AnalysisTypes
-
-open Npgsql.FSharp
-open Npgsql
-open LibBackend.Db
+module CPT = ClientTypes.Program
 
 // Toplevel deletion:
 // * The server announces that a toplevel is deleted by it appearing in
@@ -30,19 +28,9 @@ open LibBackend.Db
 module V1 =
 
   // A subset of responses to be merged in
-  type T = Op.AddOpResultV1
+  type T = ClientTypes.Ops.AddOpResultV1.T
 
-  type Params = Op.AddOpParamsV1
-
-  let empty : Op.AddOpResultV1 =
-    { handlers = []
-      deletedHandlers = []
-      dbs = []
-      deletedDBs = []
-      userFunctions = []
-      deletedUserFunctions = []
-      userTypes = []
-      deletedUserTypes = [] }
+  type Params = ClientTypes.Ops.AddOpParamsV1.T
 
   let causesAnyChanges (ops : PT.Oplist) : bool = List.any Op.hasEffect ops
 
@@ -55,7 +43,10 @@ module V1 =
       use t = startTimer "read-api" ctx
       let canvasInfo = loadCanvasInfo ctx
 
-      let! p = ctx.ReadVanillaJsonAsync<Params>()
+      let! apiParams = ctx.ReadVanillaJsonAsync<Params>()
+
+      let p = Op.AddOpParamsV1.fromClientType apiParams
+
       let canvasID = canvasInfo.id
 
       let! isLatest =
@@ -90,7 +81,7 @@ module V1 =
 
       t.next "to-frontend"
 
-      let result : Op.AddOpResultV1 =
+      let result : LibBackend.Op.AddOpResultV1.T =
         { handlers = Map.values c.handlers
           deletedHandlers = Map.values c.deletedHandlers
           dbs = Map.values c.dbs
@@ -128,9 +119,13 @@ module V1 =
       // To make this work with prodclone, we might want to have it specify
       // more ... else people's prodclones will stomp on each other ...
       if causesAnyChanges newOps then
-        LibBackend.Pusher.pushAddOpEventV1
+        let fallbackIfPayloadTooBig =
+          LibBackend.Pusher.Event.AddOpTooBig(List.map Op.tlidOf p.ops)
+
+        LibBackend.Pusher.push
           canvasID
-          { result = result; ``params`` = p }
+          (LibBackend.Pusher.Event.AddOpV1(p, result))
+          (Some fallbackIfPayloadTooBig)
 
       t.next "send-event-to-heapio"
       // NB: I believe we only send one op at a time, but the type is op list
@@ -149,5 +144,5 @@ module V1 =
           (Op.eventNameOfOp op)
           Map.empty)
 
-      return result
+      return Op.AddOpResultV1.toClientType result
     }

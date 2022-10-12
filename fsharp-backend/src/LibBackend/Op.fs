@@ -196,16 +196,54 @@ let filterOpsReceivedOutOfOrder (ops : PT.Oplist) : PT.Oplist =
     | PT.CreateDBWithBlankOr _
     | PT.DeleteType _ -> true)
 
-type AddOpResultV1 =
-  { handlers : List<PT.Handler.T> // replace
-    deletedHandlers : List<PT.Handler.T> // replace, see note above
-    dbs : List<PT.DB.T> // replace
-    deletedDBs : List<PT.DB.T> // replace, see note above
-    userFunctions : List<PT.UserFunction.T> // replace
-    deletedUserFunctions : List<PT.UserFunction.T>
-    userTypes : List<PT.UserType.T>
-    deletedUserTypes : List<PT.UserType.T> } // replace, see deleted_toplevels
 
-type AddOpParamsV1 = { ops : List<PT.Op>; opCtr : int; clientOpCtrID : string }
 
-type AddOpEventV1 = { result : AddOpResultV1; ``params`` : AddOpParamsV1 }
+module AddOpResultV1 =
+  type T =
+    { handlers : List<PT.Handler.T> // replace
+      deletedHandlers : List<PT.Handler.T> // replace, see note above
+      dbs : List<PT.DB.T> // replace
+      deletedDBs : List<PT.DB.T> // replace, see note above
+      userFunctions : List<PT.UserFunction.T> // replace
+      deletedUserFunctions : List<PT.UserFunction.T>
+      userTypes : List<PT.UserType.T>
+      deletedUserTypes : List<PT.UserType.T> } // replace, see deleted_toplevels
+
+  let toClientType (r : T) : ClientTypes.Ops.AddOpResultV1.T =
+    { handlers = r.handlers |> List.map ClientTypes.Program.Handler.fromPT
+      deletedHandlers =
+        r.deletedHandlers |> List.map ClientTypes.Program.Handler.fromPT
+      dbs = r.dbs |> List.map ClientTypes.Program.DB.fromPT
+      deletedDBs = r.deletedDBs |> List.map ClientTypes.Program.DB.fromPT
+      userFunctions =
+        r.userFunctions |> List.map ClientTypes.Program.UserFunction.fromPT
+      deletedUserFunctions =
+        r.deletedUserFunctions |> List.map ClientTypes.Program.UserFunction.fromPT
+      userTypes = r.userTypes |> List.map ClientTypes.Program.UserType.fromPT
+      deletedUserTypes =
+        r.deletedUserTypes |> List.map ClientTypes.Program.UserType.fromPT }
+
+
+
+module AddOpParamsV1 =
+  type T = { ops : List<PT.Op>; opCtr : int; clientOpCtrID : string }
+
+  let toClientType (p : T) : ClientTypes.Ops.AddOpParamsV1.T =
+    { ops = p.ops |> List.map ClientTypes.Program.Op.fromPT
+      opCtr = p.opCtr
+      clientOpCtrID = p.clientOpCtrID }
+
+  let fromClientType (p : ClientTypes.Ops.AddOpParamsV1.T) : T =
+    { ops = p.ops |> List.map ClientTypes.Program.Op.toPT
+      opCtr = p.opCtr
+      clientOpCtrID = p.clientOpCtrID }
+
+
+// do we really need this? I'm not sure why we would.
+// rather, can we just define a 'make' fn in the client type def module?
+module AddOpEventV1 =
+  type T = { result : AddOpResultV1.T; ``params`` : AddOpParamsV1.T }
+
+  let toClientType (e : T) : ClientTypes.Pusher.Payloads.AddOpEventV1 =
+    { ``params`` = AddOpParamsV1.toClientType e.``params``
+      result = AddOpResultV1.toClientType e.result }
