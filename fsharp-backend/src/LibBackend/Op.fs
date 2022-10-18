@@ -244,6 +244,6 @@ module AddOpParamsV1 =
 module AddOpEventV1 =
   type T = { result : AddOpResultV1.T; ``params`` : AddOpParamsV1.T }
 
-  let toClientType (e : T) : ClientTypes.Pusher.Payloads.AddOpEventV1 =
-    { ``params`` = AddOpParamsV1.toClientType e.``params``
-      result = AddOpResultV1.toClientType e.result }
+  // let toClientType (e : T) : ClientTypes.Pusher.Payloads.AddOpEventV1 =
+  //   { ``params`` = AddOpParamsV1.toClientType e.``params``
+  //     result = AddOpResultV1.toClientType e.result }

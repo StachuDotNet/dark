@@ -22,6 +22,7 @@ module SA = LibBackend.StaticAssets
 module SchedulingRules = LibBackend.QueueSchedulingRules
 
 module V1 =
+  // TODO: move these to ClientTypes
   type ApiUserInfo =
     { username : string // as opposed to UserName.T
       name : string

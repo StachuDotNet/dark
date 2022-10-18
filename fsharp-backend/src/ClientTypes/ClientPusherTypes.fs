@@ -8,7 +8,7 @@ module AT = LibExecution.AnalysisTypes // todo: the clienttypes variant of this?
 module COT = ClientTypes.Ops
 
 /// Payloads that we send to the client via Pusher.com
-module Payloads =
+module Event =
   type NewTraceID = AT.TraceID * tlid list
 
   type AddOpEventV1 =
@@ -19,27 +19,48 @@ module Payloads =
 
   type F404 = string * string * string * NodaTime.Instant * AT.TraceID
 
-  module NewStaticDeploy =
-    type DeployStatus =
-      | Deploying
-      | Deployed
+  type DeployStatus =
+    | Deploying
+    | Deployed
 
-    type T =
-      { deployHash : string
-        url : string
-        lastUpdate : NodaTime.Instant
-        status : DeployStatus }
+  type NewStaticDeploy =
 
-  module UpdateWorkerStates =
-    type WorkerState =
-      | Running
-      | Blocked
-      | Paused
 
-      override this.ToString() : string =
-        match this with
-        | Running -> "run"
-        | Blocked -> "block"
-        | Paused -> "pause"
+    { deployHash : string
+      url : string
+      lastUpdate : NodaTime.Instant
+      status : DeployStatus }
 
-    type T = Map<string, WorkerState>
+
+  type WorkerState =
+    | Running
+    | Blocked
+    | Paused
+
+    override this.ToString() : string =
+      match this with
+      | Running -> "run"
+      | Blocked -> "block"
+      | Paused -> "pause"
+
+  type UpdateWorkerStates = Map<string, WorkerState>
+
+  type T =
+    | NewTraceID of NewTraceID
+    | New404 of F404
+    | NewStaticDeploy of NewStaticDeploy
+    | UpdateWorkerStates of UpdateWorkerStates
+    | AddOpV1 of AddOpEventV1
+    | AddOpTooBig of AddOpEventTooBigPayload
+    // TODO: remove this once DarkInternal::pushStrollerEvent is ... removed?
+    | Custom of eventName : string * payload : string
+
+  let toEventNameAndPayload (e : T) : string * string =
+    match e with
+    | NewTraceID payload -> "new_trace", Json.Vanilla.serialize payload
+    | New404 payload -> "new_404", Json.Vanilla.serialize payload
+    | NewStaticDeploy payload -> "new_static_deploy", Json.Vanilla.serialize payload
+    | UpdateWorkerStates payload -> "worker_state", Json.Vanilla.serialize payload
+    | AddOpV1 payload -> "v1/add_op", Json.Vanilla.serialize payload
+    | AddOpTooBig payload -> "addOpTooBig", Json.Vanilla.serialize payload
+    | Custom (eventName, payload) -> (eventName, payload)

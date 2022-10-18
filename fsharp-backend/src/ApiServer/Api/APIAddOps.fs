@@ -120,11 +120,11 @@ module V1 =
       // more ... else people's prodclones will stomp on each other ...
       if causesAnyChanges newOps then
         let fallbackIfPayloadTooBig =
-          LibBackend.Pusher.Event.AddOpTooBig(List.map Op.tlidOf p.ops)
+          LibBackend.Pusher.Event.addOpTooBig (List.map Op.tlidOf p.ops)
 
         LibBackend.Pusher.push
           canvasID
-          (LibBackend.Pusher.Event.AddOpV1(p, result))
+          (LibBackend.Pusher.Event.addOpV1 p result)
           (Some fallbackIfPayloadTooBig)
 
       t.next "send-event-to-heapio"

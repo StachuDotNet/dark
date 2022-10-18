@@ -482,6 +482,15 @@ module Values =
       status = LibBackend.StaticAssets.Deployed
       lastUpdate = testInstant }
 
+  let testPusherEventStaticNewDeploy : ClientTypes.Pusher.Event.NewStaticDeploy =
+    { deployHash = "zf2ttsgwln"
+      url = "https://paul.darksa.com/nwtf5qhdku2untsc17quotrhffa/zf2ttsgwln"
+      status = ClientTypes.Pusher.Event.DeployStatus.Deployed
+      lastUpdate = testInstant }
+
+  let testPusherEvent404 : ClientTypes.Pusher.Event.F404 =
+    ("HTTP", "/", "GET", testInstant, testUuid)
+
   let testAddOpResultV1 : LibBackend.Op.AddOpResultV1.T =
     { handlers = testHandlers //|> List.map ClientTypes.Program.Handler.fromPT
       deletedHandlers = testHandlers
@@ -492,12 +501,21 @@ module Values =
       userTypes = testUserTypes
       deletedUserTypes = testUserTypes }
 
-  let testAddOpEventV1 : ClientTypes.Pusher.Payloads.AddOpEventV1 =
-    { LibBackend.Op.AddOpEventV1.``params`` =
-        { ops = testOplist; opCtr = 0; clientOpCtrID = testUuid.ToString() }
-      LibBackend.Op.AddOpEventV1.result = testAddOpResultV1 }
-    |> LibBackend.Op.AddOpEventV1.toClientType
+  let testPusherEventAddOpV1 : ClientTypes.Pusher.Event.AddOpEventV1 =
+    { ``params`` =
+        { LibBackend.Op.AddOpParamsV1.ops = testOplist
+          LibBackend.Op.AddOpParamsV1.opCtr = 0
+          LibBackend.Op.AddOpParamsV1.clientOpCtrID = testUuid.ToString() }
+        |> LibBackend.Op.AddOpParamsV1.toClientType
+      result = testAddOpResultV1 |> LibBackend.Op.AddOpResultV1.toClientType }
 
+  let testPusherEventNewTrace : ClientTypes.Pusher.Event.NewTraceID =
+    (testUuid, testTLIDs)
+
+  let testPusherEventNewWorkerStates : ClientTypes.Pusher.Event.UpdateWorkerStates =
+    (Map.ofList [ "run", ClientTypes.Pusher.Event.WorkerState.Running
+                  "blocked", ClientTypes.Pusher.Event.WorkerState.Blocked
+                  "paused", ClientTypes.Pusher.Event.WorkerState.Paused ])
 
   let testWorkerStates : LibBackend.QueueSchedulingRules.WorkerStates.T =
     (Map.ofList [ "run", LibBackend.QueueSchedulingRules.WorkerStates.Running
@@ -643,16 +661,18 @@ module GenericSerializersTests =
       v<PT.Position> "simple" { x = 10; y = -16 }
 
       // Used by Pusher
-      v<ClientTypes.Pusher.Payloads.AddOpEventTooBigPayload>
+      v<ClientTypes.Pusher.Event.AddOpEventTooBigPayload>
         "simple"
         { tlids = testTLIDs }
-      v<ClientTypes.Pusher.Payloads.AddOpEventV1> "simple" testAddOpEventV1
-      v<LibBackend.StaticAssets.StaticDeploy> "simple" testStaticDeploy
-      v<ClientTypes.Pusher.Payloads.NewTraceID> "simple" (testUuid, testTLIDs)
-      v<LibBackend.TraceInputs.F404>
+      v<ClientTypes.Pusher.Event.AddOpEventV1> "simple" testPusherEventAddOpV1
+      v<ClientTypes.Pusher.Event.NewStaticDeploy>
         "simple"
-        ("HTTP", "/", "GET", testInstant, testUuid)
-      v<LibBackend.QueueSchedulingRules.WorkerStates.T> "simple" testWorkerStates
+        testPusherEventStaticNewDeploy
+      v<ClientTypes.Pusher.Event.NewTraceID> "simple" testPusherEventNewTrace
+      v<ClientTypes.Pusher.Event.F404> "simple" testPusherEvent404
+      v<ClientTypes.Pusher.Event.UpdateWorkerStates>
+        "simple"
+        testPusherEventNewWorkerStates
 
 
 

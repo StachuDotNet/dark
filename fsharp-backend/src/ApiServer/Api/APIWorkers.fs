@@ -62,7 +62,7 @@ module Scheduler =
       t.next "update-pusher"
       // TODO: perhaps this update should go closer where it happens, in
       // case it doesn't happen in an API call.
-      Pusher.push canvasInfo.id (Pusher.Event.UpdateWorkerStates ws) None
+      Pusher.push canvasInfo.id (Pusher.Event.updateWorkerStates ws) None
 
       return ws
     }

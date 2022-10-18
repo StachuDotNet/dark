@@ -117,7 +117,10 @@ let executeHandler
     | InitialExecution _ ->
       if tracing.enabled then
         let tlids = HashSet.toList tracing.results.tlids
-        Pusher.push meta.id (Pusher.Event.NewTraceID(traceID, tlids)) None
+        Pusher.push
+          meta.id
+          (ClientTypes.Pusher.Event.NewTraceID(traceID, tlids))
+          None
 
     return (result, tracing.results)
   }

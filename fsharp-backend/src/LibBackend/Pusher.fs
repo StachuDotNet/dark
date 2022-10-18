@@ -29,81 +29,40 @@ let pusherClient : Lazy<PusherServer.Pusher> =
 type EventTooBigEvent = { eventName : string }
 
 
-module Payload = ClientTypes.Pusher.Payloads
+module ClientEvent = ClientTypes.Pusher.Event
 
-// todo: move this to ClientTypes, and only reference client types
+
 module Event =
-  type T =
-    | NewTraceID of traceID : AT.TraceID * tlids : List<tlid>
+  let new404 space name modifier timestamp traceID : ClientEvent.T =
+    ClientEvent.New404(space, name, modifier, timestamp, traceID)
 
-    | New404 of
-      space : string *
-      name : string *
-      modifier : string *
-      timestamp : NodaTime.Instant *
-      traceID : AT.TraceID
+  let newStaticDeploy deployHash url lastUpdate status : ClientEvent.T =
+    ClientEvent.NewStaticDeploy
+      { deployHash = deployHash
+        url = url
+        lastUpdate = lastUpdate
+        status =
+          match status with
+          | StaticAssets.Deploying -> ClientEvent.DeployStatus.Deploying
+          | StaticAssets.Deployed -> ClientEvent.DeployStatus.Deployed }
 
-    | NewStaticDeploy of
-      deployHash : string *
-      url : string *
-      lastUpdate : NodaTime.Instant *
-      status : StaticAssets.DeployStatus
 
-    | UpdateWorkerStates of QueueSchedulingRules.WorkerStates.T
+  let updateWorkerStates workerStates =
+    workerStates
+    |> Map.map (fun state ->
+      match state with
+      | QueueSchedulingRules.WorkerStates.Blocked -> ClientEvent.WorkerState.Blocked
+      | QueueSchedulingRules.WorkerStates.Running -> ClientEvent.WorkerState.Running
+      | QueueSchedulingRules.WorkerStates.Paused -> ClientEvent.WorkerState.Paused)
+    |> ClientEvent.UpdateWorkerStates
 
-    | AddOpV1 of Op.AddOpParamsV1.T * Op.AddOpResultV1.T
+  let addOpV1 p r =
+    ClientEvent.AddOpV1
+      { result = r |> Op.AddOpResultV1.toClientType
+        ``params`` = p |> Op.AddOpParamsV1.toClientType }
 
-    | AddOpTooBig of List<tlid>
 
-    // do we really need this for anything? reconsider.
-    | Custom of eventName : string * payload : string
-
-  let toEventNameAndPayload (e : T) : string * string =
-    match e with
-    | NewTraceID (traceId, tlids) ->
-      let payload : Payload.NewTraceID = (traceId, tlids)
-      "new_trace", Json.Vanilla.serialize payload
-
-    | New404 (space, name, modifier, timestamp, traceID) ->
-      let payload = Payload.F404(space, name, modifier, timestamp, traceID)
-      "new_404", Json.Vanilla.serialize payload
-
-    | NewStaticDeploy (deployHash, url, lastUpdate, status) ->
-      let payload : Payload.NewStaticDeploy.T =
-        { deployHash = deployHash
-          url = url
-          lastUpdate = lastUpdate
-          status =
-            match status with
-            | StaticAssets.Deploying -> Payload.NewStaticDeploy.Deploying
-            | StaticAssets.Deployed -> Payload.NewStaticDeploy.Deployed }
-      "new_static_deploy", Json.Vanilla.serialize payload
-
-    | UpdateWorkerStates (states) ->
-      let payload : Payload.UpdateWorkerStates.T =
-        states
-        |> Map.map (fun state ->
-          match state with
-          | QueueSchedulingRules.WorkerStates.Blocked ->
-            Payload.UpdateWorkerStates.Blocked
-          | QueueSchedulingRules.WorkerStates.Running ->
-            Payload.UpdateWorkerStates.Running
-          | QueueSchedulingRules.WorkerStates.Paused ->
-            Payload.UpdateWorkerStates.Paused)
-      "worker_state", Json.Vanilla.serialize payload
-
-    | AddOpV1 (p, r) ->
-      let payload : Payload.AddOpEventV1 =
-        { result = r |> Op.AddOpResultV1.toClientType
-          ``params`` = p |> Op.AddOpParamsV1.toClientType }
-
-      "v1/add_op", Json.Vanilla.serialize payload
-
-    | AddOpTooBig tlids ->
-      let payload : Payload.AddOpEventTooBigPayload = { tlids = tlids }
-      "addOpTooBig", Json.Vanilla.serialize payload
-
-    | Custom (eventName, payload) -> (eventName, payload)
+  let addOpTooBig tlids = ClientEvent.AddOpTooBig { tlids = tlids }
 
 
 /// <summary>Send an event to Pusher.com.</summary>
@@ -116,13 +75,13 @@ module Event =
 /// and send a different push if appropriate (eg, instead of sending
 /// `TraceData hugePayload`, send `TraceDataTooBig traceID`
 /// </remarks>
-let push (canvasID) (evt : Event.T) (fallback : Option<Event.T>) : unit =
-  let (eventName, payload) = Event.toEventNameAndPayload evt
+let push (canvasID) (evt : ClientEvent.T) (fallback : Option<ClientEvent.T>) : unit =
+  let (eventName, payload) = ClientEvent.toEventNameAndPayload evt
 
   let (eventName, payload) =
     if String.length payload > 10240 then
       match fallback with
-      | Some fallback -> Event.toEventNameAndPayload fallback // TODO: maybe log here?
+      | Some fallback -> ClientEvent.toEventNameAndPayload fallback // TODO: maybe log here?
       | None -> failwithf "TODO: something"
     else
       (eventName, payload)

@@ -492,13 +492,7 @@ let runDarkHandler (ctx : HttpContext) : Task<HttpContext> =
         // Send to pusher - do not resolve task, send this into the ether
         Pusher.push
           meta.id
-          (Pusher.Event.New404(
-            "HTTP",
-            requestPath,
-            requestMethod,
-            timestamp,
-            traceID
-          ))
+          (Pusher.Event.new404 "HTTP" requestPath requestMethod timestamp traceID)
           None
 
 

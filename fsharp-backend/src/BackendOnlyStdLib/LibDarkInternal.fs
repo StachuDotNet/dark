@@ -65,7 +65,7 @@ let modifySchedule (fn : CanvasID -> string -> Task<unit>) =
       uply {
         do! fn canvasID handlerName
         let! s = SchedulingRules.getWorkerSchedules canvasID
-        Pusher.push canvasID (Pusher.Event.UpdateWorkerStates s) None
+        Pusher.push canvasID (Pusher.Event.updateWorkerStates s) None
         return DNull
       }
     | _ -> incorrectArgs ())
@@ -309,6 +309,8 @@ that's already taken, returns an error."
       deprecated = NotDeprecated }
 
 
+    // todo: research usage; potentially deprecate?
+    // find what canvases use this via honeycomb
     { name = fn "DarkInternal" "pushStrollerEvent" 1
       parameters =
         [ Param.make "canvasID" TStr ""
@@ -322,7 +324,7 @@ that's already taken, returns an error."
             (try
               Pusher.push
                 (canvasID |> System.Guid.Parse)
-                (LibBackend.Pusher.Event.Custom(
+                (ClientTypes.Pusher.Event.Custom(
                   event,
                   payload |> DvalReprInternalDeprecated.toInternalRoundtrippableV0
                 ))

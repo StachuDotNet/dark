@@ -185,13 +185,12 @@ let processNotification
                   let! timestamp = TI.storeEvent c.meta.id traceID desc event.value
                   Pusher.push
                     c.meta.id
-                    (Pusher.Event.New404(
-                      event.module',
-                      event.name,
-                      event.modifier,
-                      timestamp,
-                      traceID
-                    ))
+                    (Pusher.Event.new404
+                      event.module'
+                      event.name
+                      event.modifier
+                      timestamp
+                      traceID)
                     None
 
                   do! EQ.deleteEvent event
