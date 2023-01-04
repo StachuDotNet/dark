@@ -107,7 +107,9 @@ let fns : List<BuiltInFn> =
         (function
         | _, [ DStr s ] ->
           match ocamlCompatibleDateParser s with
-          | Error () -> Ply(DError(SourceNone, "Invalid date format"))
+          | Error () ->
+            // TODO_USE_A_SOURCE_ID
+            Ply(DError(SourceNone, "Invalid date format"))
           | Ok d -> Ply(DDate d)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

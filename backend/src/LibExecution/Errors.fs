@@ -116,6 +116,7 @@ let incorrectArgsToDError (source : DvalSource) (fn : Fn) (argList : List<Dval>)
 /// When a function has been removed (rarely happens but does happen occasionally)
 let removedFunction (state : ExecutionState) (fnName : string) : DvalTask =
   state.notify state "function removed" [ "fnName", fnName ]
+  // TODO_USE_A_SOURCE_ID It seems reasonable this could take the fn reference ID
   Ply(DError(SourceNone, $"{fnName} was removed from Dark"))
 
 /// When you have a fakeval, you typically just want to return it.

@@ -330,6 +330,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, [ DFloat v; DFloat a; DFloat b ] ->
           if System.Double.IsNaN a || System.Double.IsNaN b then
+            // TODO_USE_A_SOURCE_ID
             Ply(DError(SourceNone, "clamp requires arguments to be valid numbers"))
           else
             let min, max = if a < b then (a, b) else (b, a)

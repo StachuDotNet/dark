@@ -618,6 +618,7 @@ module Dval =
         | DObj _, _, v when isFake v -> v
         // Error if the key appears twice
         | DObj m, k, v when Map.containsKey k m ->
+          // TODO_USE_A_SOURCE_ID ?
           DError(SourceNone, $"Duplicate key: {k}")
         // Otherwise add it
         | DObj m, k, v -> DObj(Map.add k v m)
@@ -643,6 +644,7 @@ module Dval =
         | DObj _, _, (DErrorRail _ as v) -> v
         // Error if the key appears twice
         | DObj m, k, v when Map.containsKey k m ->
+          // TODO_USE_A_SOURCE_ID ?
           DError(SourceNone, $"Duplicate key: {k}")
         // Otherwise add it
         | DObj m, k, v -> DObj(Map.add k v m)
@@ -670,6 +672,7 @@ module Dval =
     | Some dv -> optionJust dv // checks isFake
     | None -> DOption None
 
+  // TODO_USE_A_SOURCE_ID
   let errStr (s : string) : Dval = DError(SourceNone, s)
 
   let errSStr (source : DvalSource) (s : string) : Dval = DError(source, s)

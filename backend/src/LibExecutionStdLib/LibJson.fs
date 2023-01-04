@@ -59,7 +59,9 @@ let fns : List<BuiltInFn> =
         | _, [ DStr json ] ->
           match DvalReprLegacyExternal.ofUnknownJsonV1 json with
           | Ok dv -> Ply dv
-          | Error msg -> Ply(DError(SourceNone, msg))
+          | Error msg ->
+            // TODO_USE_A_SOURCE_ID
+            Ply(DError(SourceNone, msg))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplementedTODO
       previewable = Pure
