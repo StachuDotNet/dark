@@ -210,7 +210,7 @@ and MatchPattern =
   | MPBlank of id
   | MPTuple of id * MatchPattern * MatchPattern * List<MatchPattern>
 
-type DvalMap = Map<string, Dval>
+type DvalMap = Map<string, id * Dval>
 
 and LambdaImpl = { parameters : List<id * string>; symtable : Symtable; body : Expr }
 
@@ -473,7 +473,7 @@ module Dval =
     | DErrorRail dv -> dv
     | other -> other
 
-  let toPairs (dv : Dval) : Result<List<string * Dval>, string> =
+  let toPairs (dv : Dval) : Result<List<string * id * Dval>, string> =
     match dv with
     | DObj obj -> Ok(Map.toList obj)
     | _ -> Error "expecting str"
@@ -876,7 +876,7 @@ and Fn =
     /// </remarks>
     fn : FnImpl }
 
-and BuiltInFnSig = (ExecutionState * List<Dval>) -> DvalTask
+and BuiltInFnSig = (ExecutionState * List<id * Dval>) -> DvalTask
 
 and FnImpl =
   | StdLib of BuiltInFnSig

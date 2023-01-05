@@ -23,7 +23,8 @@ let fns : List<BuiltInFn> =
       description = "Insert <param val> into <param table>"
       fn =
         function
-        | state, [ v; table ] -> removedFunction state "DB::insert"
+        | state, [ v; table ] ->
+          removedFunction state "DB::insert"
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
