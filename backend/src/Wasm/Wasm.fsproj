@@ -21,6 +21,9 @@
     <!-- should optimize the download slightly -->
     <!-- <BlazorEnableTimeZoneSupport>false</BlazorEnableTimeZoneSupport> -->
   </PropertyGroup>
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../LibAnalysis/LibAnalysis.fsproj" />
   </ItemGroup>

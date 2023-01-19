@@ -20,6 +20,7 @@ module CTPusher = ClientTypes.Pusher
 let runMigrations () : unit =
   print $"Running migrations"
   LibBackend.Migrations.run ()
+  print "Migrations have run"
 
 let listMigrations () : unit =
   print "Migrations needed:\n"
@@ -222,7 +223,9 @@ let main (args : string []) : int =
     if usesDB options then
       (LibBackend.Init.init LibBackend.Init.WaitForDB name).Result
     let result = (run options).Result
+    print "trying to shut down LibService"
     LibService.Init.shutdown name
+    print "LibService has been shut down"
     result
   with
   | e ->

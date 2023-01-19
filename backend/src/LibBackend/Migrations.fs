@@ -93,3 +93,4 @@ let run () : unit =
   |> List.iter (fun name ->
     let sql = File.readfile Config.Migrations name
     runSystemMigration name sql)
+

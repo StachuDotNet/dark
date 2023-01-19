@@ -118,6 +118,74 @@
       src="//{{STATIC}}/app.js"
       crossorigin="anonymous"
     ></script>
+
+    <!-- <script
+      type="text/javascript"
+      src="//{{STATIC}}/blazor/blazor.webassembly.js"
+      autostart="false"
+    ></script> -->
+    <script>
+      let appRoot = `${window.location.protocol}//${staticUrl}`;
+
+      function toDarklangSetupUri(file) {
+        file = file.replace(/_framework\//, "");
+        file = "/blazor/" + file;
+        let hashed = hashReplacements[file];
+        if (hashed) {
+          // Remove the starting slash
+          hashed = hashed.substring(1);
+        } else {
+          hashed = file;
+        }
+        return `${appRoot}/${hashed}`;
+      }
+
+      function startBlazor() {
+        Blazor.start({
+          loadBootResource: function (type, name, defaultUri, integrity) {
+            let url = toDarklangSetupUri(defaultUri);
+            switch (type) {
+              case 'dotnetjs':
+                return url;
+              case 'dotnetwasm':
+              case 'timezonedata':
+              default:
+                let response = fetch(url, {
+                  cache: "no-cache",
+                  integrity: integrity//undefined//bootConfig.cacheBootResources ? contentHash : undefined,
+                });
+                return response
+            }
+          }
+        })
+      }
+
+      function maybeCallback(arg) {
+        console.log("maybeCallback", arg)
+      }
+
+      function tryUsingBlazorStuff() {
+        DotNet.invokeMethod("Wasm", "InitializeDarkRuntime")
+        DotNet.invokeMethod("Wasm", "OnMessage", '["AnalyzeHandler",{"requestID":0,"requestTime":"2023-01-19T17:22:00Z","handler":{"tlid":924103396,"pos":{"x":0,"y":0},"ast":["EInfix",83939007,["InfixFnCall",{"module_":null,"function_":"+"},["NoRail"]],["EInteger",544083728,2],["EInteger",1532953851,3]],"spec":["REPL","violentTamarin",{"moduleID":1140285041,"nameID":1133375669,"modifierID":102736908}]},"traceID":"7d495105-946f-5ad8-8db9-4fd70e6eff67","traceData":{"input":[],"timestamp":"1970-01-01T00:00:00Z","functionResults":[]},"dbs":[],"userFns":[],"userTypes":[],"packageFns":[],"secrets":[]}]')
+
+        // const initFn = Module.mono_bind_static_method(
+        //   "[Wasm]Wasm.Analysis.EvalWorker:InitializeDarkRuntime",
+        // );
+        // initFn();
+
+        // // Setup the onmessage handler to call F#
+        // const messageHandler = Module.mono_bind_static_method(
+        //   "[Wasm]Wasm.Analysis.EvalWorker:OnMessage",
+        // );
+
+        // // set up listener for response - likely broken
+        // self.onmessage = msg => {
+        //   console.log("got message", msg)
+        // }
+
+        //messageHandler('["AnalyzeHandler",{"requestID":0,"requestTime":"2023-01-19T17:22:00Z","handler":{"tlid":924103396,"pos":{"x":0,"y":0},"ast":["EInfix",83939007,["InfixFnCall",{"module_":null,"function_":"+"},["NoRail"]],["EInteger",544083728,2],["EInteger",1532953851,3]],"spec":["REPL","violentTamarin",{"moduleID":1140285041,"nameID":1133375669,"modifierID":102736908}]},"traceID":"7d495105-946f-5ad8-8db9-4fd70e6eff67","traceData":{"input":[],"timestamp":"1970-01-01T00:00:00Z","functionResults":[]},"dbs":[],"userFns":[],"userTypes":[],"packageFns":[],"secrets":[]}]');
+      }
+    </script>
   </head>
   <body onKeyDown="stopKeys(event)" onKeyUp="stopKeys(event)"></body>
 </html>
