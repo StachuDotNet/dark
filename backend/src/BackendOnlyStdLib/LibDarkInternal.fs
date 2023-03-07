@@ -571,7 +571,7 @@ that's already taken, returns an error."
           | TUuid -> "uuid"
           | TOption _ -> "option"
           | TResult _ -> "result"
-          | TUserType (name, _) -> name.ToLower()
+          | TUserType t -> t.type_
           | TBytes -> "bytes"
 
         internalFn (function

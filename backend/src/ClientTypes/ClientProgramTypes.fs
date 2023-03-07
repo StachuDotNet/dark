@@ -12,6 +12,15 @@ type id = Prelude.id
 type tlid = Prelude.tlid
 type Sign = Prelude.Sign
 
+
+/// A Fully-Qualified Type Name
+/// Includes package, module, and version information where relevant.
+module FQTypeName =
+  /// A UserType is a type written by a Developer in their canvas
+  type UserTypeName = { type_ : string; version : int }
+
+  type T = User of UserTypeName
+
 module FQFnName =
   type StdlibFnName = { module_ : string; function_ : string; version : int }
 
@@ -96,7 +105,7 @@ type DType =
   | TPassword
   | TUuid
   | TOption of DType
-  | TUserType of string * int
+  | TUserType of FQTypeName.UserTypeName
   | TBytes
   | TResult of DType * DType
   | TVariable of string
@@ -142,12 +151,7 @@ module UserType =
 
   type Definition = Record of List<RecordField>
 
-  type T =
-    { tlid : tlid
-      name : string
-      nameID : id
-      version : int
-      definition : Definition }
+  type T = { tlid : tlid; name : FQTypeName.UserTypeName; definition : Definition }
 
 
 module UserFunction =
