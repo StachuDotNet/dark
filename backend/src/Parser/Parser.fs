@@ -534,17 +534,9 @@ let parseTestFile (filename : string) : Module =
     match pat with
     | SynPat.Paren (pat, _) -> parseArgPat pat
     | SynPat.Const (SynConst.Unit, _) ->
-      { name = "unit"
-        nameID = gid ()
-        typ = PT.TUnit
-        typeID = gid ()
-        description = "" }
+      { id = gid (); name = "unit"; typ = PT.TUnit; description = "" }
     | SynPat.Typed (SynPat.Named (SynIdent (id, _), _, _, _), typ, _) ->
-      { name = id.idText
-        nameID = gid ()
-        typ = convertType typ
-        typeID = gid ()
-        description = "" }
+      { id = gid (); name = id.idText; typ = convertType typ; description = "" }
     | _ -> Exception.raiseInternal "Unsupported argPat" [ "pat", pat ]
 
   let parseSignature (pat : SynPat) : string * List<PT.UserFunction.Parameter> =
@@ -565,10 +557,8 @@ let parseTestFile (filename : string) : Module =
       let (name, parameters) = parseSignature pat
       { tlid = gid ()
         name = name
-        nameID = gid ()
         parameters = parameters
         returnType = PT.TVariable "a"
-        returnTypeID = gid ()
         description = ""
         infix = false
         body = convertToExpr expr }
@@ -599,7 +589,7 @@ let parseTestFile (filename : string) : Module =
   let parseRecordField (field : SynField) : PT.UserType.RecordField =
     match field with
     | SynField (_, _, Some id, typ, _, _, _, _, _) ->
-      { name = id.idText; nameID = gid (); typ = convertType typ; typeID = gid () }
+      { id = gid (); name = id.idText; typ = convertType typ }
     | _ -> Exception.raiseInternal $"Unsupported field" [ "field", field ]
 
   let parseType (typeDef : SynTypeDefn) : PT.UserType.T =

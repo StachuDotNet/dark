@@ -665,11 +665,10 @@
     {
       "tlid": 0,
       "name": "myFunc",
-      "nameID": 1828332,
       "parameters": [
         {
+          "id": 23824935,
           "name": "myparam1",
-          "nameID": 23824935,
           "typ": [
             "TRecord",
             [
@@ -900,7 +899,6 @@
               ]
             ]
           ],
-          "typeID": 38284244,
           "description": "param1"
         }
       ],
@@ -1134,7 +1132,6 @@
           ]
         ]
       ],
-      "returnTypeID": 23923423,
       "description": "function description",
       "infix": false,
       "body": [
@@ -2434,6 +2431,7 @@
         "Record",
         [
           {
+            "id": 698978,
             "name": "prop1",
             "typ": [
               "TRecord",
@@ -2664,9 +2662,7 @@
                   ]
                 ]
               ]
-            ],
-            "nameID": 698978,
-            "typeID": 93494534
+            ]
           }
         ]
       ]
