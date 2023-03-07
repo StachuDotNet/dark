@@ -350,14 +350,29 @@ let rec convertToExpr (ast : SynExpr) : PT.Expr =
       (convertPattern pat, c expr)
     PT.EMatch(id, c cond, List.map convertClause clauses)
 
+  | SynExpr.AnonRecd (_, _, fields, _) ->
+    let fields =
+      fields |> List.map (fun (name, _, expr) -> nameOrBlank name.idText, c expr)
+
+    PT.EAnonRecord(id, fields)
+
   | SynExpr.Record (_, _, fields, _) ->
+    // when I think I'm done, uncomment this to find any remaining { a = 1 }-style (non-anonymous) records
+    //
+    // // TODO: need context of user types (and later, stdlib and package types) in
+    // // order to asses if some F# record is legal Dark code (matches the shape of exactly 1 record)
+    // // (as another follow up onto that, we'll need to handle multiple records with the same shape
+    // Exception.raiseInternal
+    //   "Temporarily not supporting non-anonymous records"
+    //   [ "fields", fields ]
+
     fields
     |> List.map (fun field ->
       match field with
       | SynExprRecordField ((SynLongIdent ([ name ], _, _), _), _, Some expr, _) ->
         (nameOrBlank name.idText, c expr)
       | f -> Exception.raiseInternal "Not an expected field" [ "field", f ])
-    |> fun rows -> PT.EAnonRecord(id, rows)
+    |> fun fields -> PT.EAnonRecord(id, fields)
 
   | SynExpr.Paren (expr, _, _, _) -> c expr // just unwrap
 
@@ -586,7 +601,7 @@ let parseTestFile (filename : string) : Module =
       body = userFn.body }
 
 
-  let parsEAnonRecordField (field : SynField) : PT.UserType.RecordField =
+  let parseUserRecordField (field : SynField) : PT.UserType.RecordField =
     match field with
     | SynField (_, _, Some id, typ, _, _, _, _, _) ->
       { id = gid (); name = id.idText; typ = convertType typ }
@@ -618,7 +633,7 @@ let parseTestFile (filename : string) : Module =
                    _) ->
       { tlid = gid ()
         name = { type_ = id.idText; version = 0 }
-        definition = PT.UserType.Record(List.map parsEAnonRecordField fields) }
+        definition = PT.UserType.Record(List.map parseUserRecordField fields) }
     | SynTypeDefn (SynComponentInfo (_, _params, _, [ id ], _, _, _, _),
                    SynTypeDefnRepr.Simple (SynTypeDefnSimpleRepr.Union (_, cases, _),
                                            _),

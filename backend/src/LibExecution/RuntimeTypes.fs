@@ -227,6 +227,8 @@ and Dval =
   // compound types
   | DList of List<Dval>
   | DTuple of Dval * Dval * List<Dval>
+
+  // TODO: remove, replacing with 
   | DAnonRecord of DvalMap
   | DFnVal of FnValImpl
 
