@@ -59,6 +59,7 @@ let dvalToSql (dval : Dval) : SqlValue =
   | DOption _
   | DResult _
   | DBytes _
+  | DUserEnum _ // TODO: revisit
   | DTuple _ ->
     error2 "This value is not yet supported" (DvalReprDeveloper.toRepr dval)
   | DDateTime date -> date |> DarkDateTime.toDateTimeUtc |> Sql.timestamptz
@@ -416,6 +417,7 @@ let partiallyEvaluate
             | EFQFnValue _
             | EBool _
             | EUnit _
+            | EUserEnum _ // EUserEnumTODO: revisit
             | EFloat _ -> return expr
             | ELet (id, name, rhs, next) ->
               let! rhs = r rhs
