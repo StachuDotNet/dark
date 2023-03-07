@@ -101,7 +101,7 @@ let rec private toJsonV0 (w : Utf8JsonWriter) (dv : Dval) : unit =
   | DUnit -> w.WriteNullValue()
   | DStr s -> w.WriteStringValue s
   | DList l -> w.writeArray (fun () -> List.iter writeDval l)
-  | DObj o ->
+  | DAnonRecord o ->
     w.writeObject (fun () ->
       Map.iter
         (fun k v ->
@@ -166,7 +166,7 @@ let parseJsonV0 (str : string) : Dval =
       | [ ("type", DStr "password"); ("value", DStr v) ] ->
         v |> Base64.decodeFromString |> Password |> DPassword
       | [ ("type", DStr "uuid"); ("value", DStr v) ] -> DUuid(System.Guid v)
-      | _ -> fields |> Map.ofList |> DObj
+      | _ -> fields |> Map.ofList |> DAnonRecord
     | _ ->
       Exception.raiseInternal
         "Invalid type in internalQueryableV1 json"
@@ -188,7 +188,7 @@ module Test =
     | DUuid _ -> true
     | DFloat f -> System.Double.IsFinite f // See comment above
     | DList dvals -> List.all isQueryableDval dvals
-    | DObj map -> map |> Map.values |> List.all isQueryableDval
+    | DAnonRecord map -> map |> Map.values |> List.all isQueryableDval
     | DUserEnum (_typeName, _caseName, fields) ->
       // TODO: check the fields in `typeName.caseName`? Not sure if needed, rethink later.
       fields |> List.all isQueryableDval

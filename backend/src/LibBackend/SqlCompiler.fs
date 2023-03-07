@@ -49,7 +49,7 @@ let dvalToSql (dval : Dval) : SqlValue =
   match dval with
   | DError _
   | DIncomplete _ -> Errors.foundFakeDval dval
-  | DObj _
+  | DAnonRecord _
   | DList _
   | DHttpResponse _
   | DFnVal _
@@ -367,7 +367,7 @@ let partiallyEvaluate
         match expr with
         | EFieldAccess (_, EVariable (_, name), _) when name <> paramName ->
           return! exec expr
-        | EFieldAccess (_, ERecord _, _) ->
+        | EFieldAccess (_, EAnonRecord _, _) ->
           // inlining can create these situations
           return! exec expr
         | EAnd (_, EBool _, EBool _)
@@ -458,7 +458,7 @@ let partiallyEvaluate
                   pairs
 
               return EMatch(id, mexpr, pairs)
-            | ERecord (id, fields) ->
+            | EAnonRecord (id, fields) ->
               let! fields =
                 Ply.List.mapSequentially
                   (fun (name, expr) ->
@@ -468,7 +468,7 @@ let partiallyEvaluate
                     })
                   fields
 
-              return ERecord(id, fields)
+              return EAnonRecord(id, fields)
             | EConstructor (id, name, exprs) ->
               let! exprs = Ply.List.mapSequentially r exprs
               return EConstructor(id, name, exprs)

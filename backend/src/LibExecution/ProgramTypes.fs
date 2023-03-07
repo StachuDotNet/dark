@@ -91,7 +91,7 @@ type Expr =
   | EFnCall of id * FQFnName.T * List<Expr>
   | EList of id * List<Expr>
   | ETuple of id * Expr * Expr * List<Expr>
-  | ERecord of id * List<string * Expr>
+  | EAnonRecord of id * List<string * Expr>
   | EPipe of id * Expr * Expr * List<Expr>
 
   // Constructors include `Just`, `Nothing`, `Error`, `Ok`.  In practice the
@@ -126,7 +126,7 @@ type Expr =
 
   // TODO:
   // - define EUser
-  // migrate existing ERecords to EUserRecords and
+  // migrate existing EAnonRecords to EUserRecords and
   // /// Given a User type of:
   // ///   `type MyRecord = { A: int;  B: int * MyRecord }`
   // /// , this is the expression
@@ -135,7 +135,7 @@ type Expr =
 
 
   // TODO one of these:
-  // - implement EStdlibEnum and EStdlibRecord, then EPackageEnum and EPackageRecord
+  // - implement EStdlibEnum and EStdlibRecord, then EPackageEnum and EPackagEAnonRecordcord
   // - implement a more generic EDefinedEnum and EDefinedRecord
   //   that reference awith `User`, `Stdlib`, and `Package` cases
 
@@ -173,7 +173,6 @@ type DType =
   | TPassword
   | TUuid
   | TOption of DType
-  // split into
   | TUserType of UserTypeName
   | TBytes
   | TResult of DType * DType

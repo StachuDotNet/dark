@@ -87,8 +87,8 @@ let rec unify
   // TODO: support Tuple type-checking.
   // See https://github.com/darklang/dark/issues/4239#issuecomment-1175182695
   | TDateTime, DDateTime _ -> Ok()
-  | TDict _, DObj _ -> Ok()
-  | TRecord _, DObj _ -> Ok()
+  | TDict _, DAnonRecord _ -> Ok()
+  | TRecord _, DAnonRecord _ -> Ok()
   | TFn _, DFnVal _ -> Ok()
   | TPassword, DPassword _ -> Ok()
   | TUuid, DUuid _ -> Ok()
@@ -98,7 +98,7 @@ let rec unify
   | TDB _, DDB _ -> Ok()
   | THttpResponse _, DHttpResponse _ -> Ok()
   | TBytes, DBytes _ -> Ok()
-  | TUserType typeName, DObj dmap ->
+  | TUserType typeName, DAnonRecord dmap ->
     (match Map.tryFind typeName userTypes with
      | None -> Error [ TypeLookupFailure typeName ]
      | Some ut ->

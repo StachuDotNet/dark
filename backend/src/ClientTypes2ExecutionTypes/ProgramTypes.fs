@@ -152,8 +152,8 @@ module Expr =
     | CTPT.Expr.EList (id, exprs) -> PT.EList(id, List.map fromCT exprs)
     | CTPT.Expr.ETuple (id, first, second, theRest) ->
       PT.ETuple(id, fromCT first, fromCT second, List.map fromCT theRest)
-    | CTPT.Expr.ERecord (id, pairs) ->
-      PT.ERecord(id, pairs |> List.map (fun (name, expr) -> (name, fromCT expr)))
+    | CTPT.Expr.EAnonRecord (id, pairs) ->
+      PT.EAnonRecord(id, pairs |> List.map (fun (name, expr) -> (name, fromCT expr)))
     | CTPT.Expr.EPipe (id, expr1, expr2, exprs) ->
       PT.EPipe(id, fromCT expr1, fromCT expr2, List.map fromCT exprs)
     | CTPT.Expr.EConstructor (id, name, args) ->
@@ -210,8 +210,8 @@ module Expr =
     | PT.EList (id, exprs) -> CTPT.Expr.EList(id, List.map toCT exprs)
     | PT.ETuple (id, first, second, theRest) ->
       CTPT.Expr.ETuple(id, toCT first, toCT second, List.map toCT theRest)
-    | PT.ERecord (id, pairs) ->
-      CTPT.Expr.ERecord(
+    | PT.EAnonRecord (id, pairs) ->
+      CTPT.Expr.EAnonRecord(
         id,
         pairs |> List.map (fun (name, expr) -> (name, toCT expr))
       )

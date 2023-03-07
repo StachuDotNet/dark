@@ -392,7 +392,7 @@ that's already taken, returns an error."
                         ("email", DStr userInfo.email)
                         ("name", DStr userInfo.name)
                         ("admin", DBool userInfo.admin) ]
-                  |> DObj
+                  |> DAnonRecord
                   |> Some
                   |> DOption
             }
@@ -460,7 +460,7 @@ that's already taken, returns an error."
                 |> List.map (fun (user, perm) ->
                   (string user, perm |> string |> DStr))
                 |> Map
-                |> DObj
+                |> DAnonRecord
             }
           | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -482,7 +482,7 @@ that's already taken, returns an error."
                 orgs
                 |> List.map (fun (org, perm) -> (string org, perm |> string |> DStr))
                 |> Map
-                |> DObj
+                |> DAnonRecord
             }
           | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -526,7 +526,7 @@ that's already taken, returns an error."
         "Write the log object to a honeycomb log, along with whatever enrichment the backend provides. Returns its input"
       fn =
         internalFn (function
-          | _, [ DStr level; DStr name; DObj log as result ] ->
+          | _, [ DStr level; DStr name; DAnonRecord log as result ] ->
             let args =
               log
               |> Map.toList
@@ -654,9 +654,9 @@ human-readable data."
                      ("disk_human", DStr ts.diskHuman)
                      ("rows_human", DStr ts.rowsHuman) ]
                    |> Map
-                   |> DObj))
+                   |> DAnonRecord))
                 |> Map
-                |> DObj
+                |> DAnonRecord
             }
           | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -748,7 +748,7 @@ human-readable data."
                     "traceID",
                     DUuid(LibExecution.AnalysisTypes.TraceID.toUUID traceID) ]
                   |> Map
-                  |> DObj)
+                  |> DAnonRecord)
                 |> DList
             }
           | _ -> incorrectArgs ())
@@ -770,7 +770,10 @@ human-readable data."
             uply {
               let! secrets = Secret.getCanvasSecrets canvasID
               return
-                secrets |> List.map (fun s -> (s.name, DStr s.value)) |> Map |> DObj
+                secrets
+                |> List.map (fun s -> (s.name, DStr s.value))
+                |> Map
+                |> DAnonRecord
             }
           | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -1047,7 +1050,7 @@ human-readable data."
                 [ "id", DUuid(state.program.canvasID)
                   "name", DStr(state.program.canvasName.ToString()) ]
                 |> Map
-                |> DObj // TODO: DRecord
+                |> DAnonRecord // TODO: DRecord
             }
           | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -1076,7 +1079,7 @@ human-readable data."
                 |> List.map (fun db ->
                   [ "tlid", DStr(db.tlid.ToString()); "name", DStr db.name ]
                   |> Map
-                  |> DObj)
+                  |> DAnonRecord)
                 |> DList
 
               let httpHandlers =
@@ -1092,12 +1095,14 @@ human-readable data."
                       "method", DStr method
                       "route", DStr route ]
                     |> Map
-                    |> DObj
+                    |> DAnonRecord
                     |> Some)
                 |> DList
 
               return
-                DResult(Ok(DObj(Map [ "dbs", dbs; "httpHandlers", httpHandlers ])))
+                DResult(
+                  Ok(DAnonRecord(Map [ "dbs", dbs; "httpHandlers", httpHandlers ]))
+                )
             }
           | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

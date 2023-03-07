@@ -101,8 +101,8 @@ module Expr =
     | ST.EList (id, exprs) -> PT.EList(id, List.map toPT exprs)
     | ST.ETuple (id, first, second, theRest) ->
       PT.ETuple(id, toPT first, toPT second, List.map toPT theRest)
-    | ST.ERecord (id, pairs) ->
-      PT.ERecord(id, List.map (Tuple2.mapSecond toPT) pairs)
+    | ST.EAnonRecord (id, pairs) ->
+      PT.EAnonRecord(id, List.map (Tuple2.mapSecond toPT) pairs)
     | ST.EPipe (pipeID, expr1, expr2, rest) ->
       PT.EPipe(pipeID, toPT expr1, toPT expr2, List.map toPT rest)
     | ST.EConstructor (id, name, exprs) ->

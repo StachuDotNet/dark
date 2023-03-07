@@ -309,7 +309,7 @@ module RuntimeTypes =
           }
           |> Gen.listOf
 
-        return RT.ERecord(gid (), pairs)
+        return RT.EAnonRecord(gid (), pairs)
       }
 
     let genMatch genPattern genSubExpr s =
@@ -531,7 +531,7 @@ module ProgramTypes =
           }
           |> Gen.listOf
 
-        return PT.ERecord(gid (), pairs)
+        return PT.EAnonRecord(gid (), pairs)
       }
 
     let genMatch genPattern genSubExpr s =

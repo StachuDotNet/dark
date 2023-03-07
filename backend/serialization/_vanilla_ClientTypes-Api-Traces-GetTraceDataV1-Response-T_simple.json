@@ -6,7 +6,7 @@
         [
           "var",
           [
-            "DObj",
+            "DAnonRecord",
             {
               "-infinity \u002B 0": ["DFloat", "-Infinity"],
               "-infinity \u002B 1": ["DFloat", "-Infinity"],
@@ -151,7 +151,7 @@
               "errorrail with float": [
                 "DErrorRail",
                 [
-                  "DObj",
+                  "DAnonRecord",
                   {
                     "": ["DFloat", "NaN"],
                     "\u007F": ["DUnit"]
@@ -1870,39 +1870,39 @@
               "negative zero \u002B 1": ["DFloat", 1],
               "null": ["DUnit"],
               "obj": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "foo": ["DInt", 5]
                 }
               ],
               "obj with error": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "v": ["DError", ["SourceNone"], "some error string"]
                 }
               ],
               "obj2": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "type": ["DStr", "weird"],
                   "value": ["DUnit"]
                 }
               ],
               "obj3": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "type": ["DStr", "weird"],
                   "value": ["DStr", "x"]
                 }
               ],
               "obj4": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "foo\\\\bar": ["DInt", 5]
                 }
               ],
               "obj5": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "$type": ["DInt", 5]
                 }
@@ -1968,7 +1968,7 @@
           "hash",
           0,
           [
-            "DObj",
+            "DAnonRecord",
             {
               "-infinity \u002B 0": ["DFloat", "-Infinity"],
               "-infinity \u002B 1": ["DFloat", "-Infinity"],
@@ -2113,7 +2113,7 @@
               "errorrail with float": [
                 "DErrorRail",
                 [
-                  "DObj",
+                  "DAnonRecord",
                   {
                     "": ["DFloat", "NaN"],
                     "\u007F": ["DUnit"]
@@ -3832,39 +3832,39 @@
               "negative zero \u002B 1": ["DFloat", 1],
               "null": ["DUnit"],
               "obj": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "foo": ["DInt", 5]
                 }
               ],
               "obj with error": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "v": ["DError", ["SourceNone"], "some error string"]
                 }
               ],
               "obj2": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "type": ["DStr", "weird"],
                   "value": ["DUnit"]
                 }
               ],
               "obj3": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "type": ["DStr", "weird"],
                   "value": ["DStr", "x"]
                 }
               ],
               "obj4": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "foo\\\\bar": ["DInt", 5]
                 }
               ],
               "obj5": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "$type": ["DInt", 5]
                 }

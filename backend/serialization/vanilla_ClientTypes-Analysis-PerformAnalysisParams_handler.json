@@ -271,7 +271,7 @@
                           831830073,
                           "r",
                           [
-                            "ERecord",
+                            "EAnonRecord",
                             109539183,
                             [
                               [
@@ -639,7 +639,7 @@
         [
           "var",
           [
-            "DObj",
+            "DAnonRecord",
             {
               "-infinity \u002B 0": [
                 "DFloat",
@@ -3660,7 +3660,7 @@
                 "DUnit"
               ],
               "obj": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "foo": [
                     "DInt",
@@ -3669,7 +3669,7 @@
                 }
               ],
               "obj with error": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "v": [
                     "DError",
@@ -3681,7 +3681,7 @@
                 }
               ],
               "obj2": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "type": [
                     "DStr",
@@ -3693,7 +3693,7 @@
                 }
               ],
               "obj3": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "type": [
                     "DStr",
@@ -3706,7 +3706,7 @@
                 }
               ],
               "obj4": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "foo\\\\bar": [
                     "DInt",
@@ -3715,7 +3715,7 @@
                 }
               ],
               "obj5": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "$type": [
                     "DInt",
@@ -3907,7 +3907,7 @@
           "hash",
           0,
           [
-            "DObj",
+            "DAnonRecord",
             {
               "-infinity \u002B 0": [
                 "DFloat",
@@ -6928,7 +6928,7 @@
                 "DUnit"
               ],
               "obj": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "foo": [
                     "DInt",
@@ -6937,7 +6937,7 @@
                 }
               ],
               "obj with error": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "v": [
                     "DError",
@@ -6949,7 +6949,7 @@
                 }
               ],
               "obj2": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "type": [
                     "DStr",
@@ -6961,7 +6961,7 @@
                 }
               ],
               "obj3": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "type": [
                     "DStr",
@@ -6974,7 +6974,7 @@
                 }
               ],
               "obj4": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "foo\\\\bar": [
                     "DInt",
@@ -6983,7 +6983,7 @@
                 }
               ],
               "obj5": [
-                "DObj",
+                "DAnonRecord",
                 {
                   "$type": [
                     "DInt",
@@ -7925,7 +7925,7 @@
                             831830073,
                             "r",
                             [
-                              "ERecord",
+                              "EAnonRecord",
                               109539183,
                               [
                                 [
@@ -9058,7 +9058,7 @@
                             831830073,
                             "r",
                             [
-                              "ERecord",
+                              "EAnonRecord",
                               109539183,
                               [
                                 [

@@ -138,7 +138,7 @@ type Expr =
   | EVariable of id * string
   | EFnCall of id * FQFnName.T * List<Expr>
   | EList of id * List<Expr>
-  | ERecord of id * List<string * Expr>
+  | EAnonRecord of id * List<string * Expr>
   | EPipe of id * Expr * Expr * List<Expr>
   | EConstructor of id * string * List<Expr>
   | EMatch of id * Expr * List<MatchPattern * Expr>

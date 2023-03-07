@@ -31,8 +31,8 @@ let rec preTraversal (f : Expr -> Expr) (expr : Expr) : Expr =
     ETuple(id, r first, r second, List.map r theRest)
   | EMatch (id, mexpr, pairs) ->
     EMatch(id, r mexpr, List.map (fun (name, expr) -> (name, r expr)) pairs)
-  | ERecord (id, fields) ->
-    ERecord(id, List.map (fun (name, expr) -> (name, r expr)) fields)
+  | EAnonRecord (id, fields) ->
+    EAnonRecord(id, List.map (fun (name, expr) -> (name, r expr)) fields)
   | EConstructor (id, name, exprs) -> EConstructor(id, name, List.map r exprs)
   | EFeatureFlag (id, cond, casea, caseb) ->
     EFeatureFlag(id, r cond, r casea, r caseb)
@@ -65,8 +65,8 @@ let rec postTraversal (f : Expr -> Expr) (expr : Expr) : Expr =
       ETuple(id, r first, r second, List.map r theRest)
     | EMatch (id, mexpr, pairs) ->
       EMatch(id, r mexpr, List.map (fun (name, expr) -> (name, r expr)) pairs)
-    | ERecord (id, fields) ->
-      ERecord(id, List.map (fun (name, expr) -> (name, r expr)) fields)
+    | EAnonRecord (id, fields) ->
+      EAnonRecord(id, List.map (fun (name, expr) -> (name, r expr)) fields)
     | EConstructor (id, name, exprs) -> EConstructor(id, name, List.map r exprs)
     | EFeatureFlag (id, cond, casea, caseb) ->
       EFeatureFlag(id, r cond, r casea, r caseb)

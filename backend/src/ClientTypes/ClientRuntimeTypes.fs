@@ -83,7 +83,7 @@ module Expr =
     | EFQFnValue of id * FQFnName.T
     | EList of id * List<T>
     | ETuple of id * T * T * List<T>
-    | ERecord of id * List<string * T>
+    | EAnonRecord of id * List<string * T>
     | EConstructor of id * string * List<T>
     | EMatch of id * T * List<MatchPattern * T>
     | EFeatureFlag of id * T * T * T
@@ -126,7 +126,7 @@ module Dval =
     | DList of List<T>
     | DTuple of T * T * List<T>
     | DFnVal of FnValImpl // See docs/dblock-serialization.md
-    | DObj of Map<string, T>
+    | DAnonRecord of Map<string, T>
     | DError of DvalSource * string
     | DIncomplete of DvalSource
     | DHttpResponse of int64 * List<string * string> * T

@@ -29,8 +29,8 @@ let traverse (f : Expr -> Expr) (expr : Expr) : Expr =
     ETuple(id, f first, f second, List.map f theRest)
   | EMatch (id, mexpr, pairs) ->
     EMatch(id, f mexpr, List.map (fun (name, expr) -> (name, f expr)) pairs)
-  | ERecord (id, fields) ->
-    ERecord(id, List.map (fun (name, expr) -> (name, f expr)) fields)
+  | EAnonRecord (id, fields) ->
+    EAnonRecord(id, List.map (fun (name, expr) -> (name, f expr)) fields)
   | EConstructor (id, name, exprs) -> EConstructor(id, name, List.map f exprs)
   | EFeatureFlag (id, name, cond, casea, caseb) ->
     EFeatureFlag(id, name, f cond, f casea, f caseb)

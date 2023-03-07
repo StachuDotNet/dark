@@ -66,10 +66,11 @@ let rec queryExactFields
 and toObj (db : RT.DB.T) (obj : string) : RT.Dval =
   let pObj =
     match DvalReprInternalQueryable.parseJsonV0 obj with
-    | RT.DObj o -> o
-    | _ -> Exception.raiseInternal "failed format, expected DObj" [ "actual", obj ]
+    | RT.DAnonRecord o -> o
+    | _ ->
+      Exception.raiseInternal "failed format, expected DAnonRecord" [ "actual", obj ]
   let typeChecked = typeCheck db pObj
-  RT.DObj typeChecked
+  RT.DAnonRecord typeChecked
 
 
 // TODO: Unify with TypeChecker.fs
@@ -98,8 +99,8 @@ and typeCheck (db : RT.DB.T) (obj : RT.DvalMap) : RT.DvalMap =
         | RT.TList _, RT.DList _ -> value
         | RT.TPassword, RT.DPassword _ -> value
         | RT.TUuid, RT.DUuid _ -> value
-        | RT.TDict _, RT.DObj _ -> value
-        | RT.TRecord _, RT.DObj _ -> value
+        | RT.TDict _, RT.DAnonRecord _ -> value
+        | RT.TRecord _, RT.DAnonRecord _ -> value
         | _, RT.DUnit -> value // allow nulls for now
         | expectedType, valueOfActualType ->
           Exception.raiseCode (

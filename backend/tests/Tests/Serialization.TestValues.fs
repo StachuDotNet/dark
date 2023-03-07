@@ -97,7 +97,7 @@ module RuntimeTypes =
         RT.EUnit(84718341UL),
         [ RT.EUnit(7167384UL) ]
       )
-      RT.ERecord(8167384UL, [ "a9df8", RT.EUnit(71631UL) ])
+      RT.EAnonRecord(8167384UL, [ "a9df8", RT.EUnit(71631UL) ])
       RT.EConstructor(64617UL, "Just", [ RT.EUnit(8173UL) ])
       RT.EMatch(
         712743UL,
@@ -141,7 +141,7 @@ module RuntimeTypes =
     sampleDvals
     |> List.filter (fun (name, _dv) -> name <> "password")
     |> Map
-    |> RT.DObj
+    |> RT.DAnonRecord
 
 module ProgramTypes =
   let fqFnNames : List<PT.FQFnName.T> =
@@ -272,7 +272,7 @@ module ProgramTypes =
                       PT.ELet(
                         831830073UL,
                         "r",
-                        PT.ERecord(
+                        PT.EAnonRecord(
                           109539183UL,
                           [ ("field",
                              PT.EPipe(

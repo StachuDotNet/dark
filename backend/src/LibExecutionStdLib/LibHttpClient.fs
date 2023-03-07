@@ -31,7 +31,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, [] ->
           Ply(
-            DObj(
+            DAnonRecord(
               Map.ofList [ "Content-Type", DStr "application/x-www-form-urlencoded" ]
             )
           )
@@ -51,7 +51,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, [] ->
           Ply(
-            DObj(
+            DAnonRecord(
               Map.ofList [ "Content-Type", DStr "application/json; charset=utf-8" ]
             )
           )
@@ -70,7 +70,11 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, [] ->
-          Ply(DObj(Map.ofList [ "Content-Type", DStr "text/plain; charset=utf-8" ]))
+          Ply(
+            DAnonRecord(
+              Map.ofList [ "Content-Type", DStr "text/plain; charset=utf-8" ]
+            )
+          )
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -86,7 +90,11 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, [] ->
-          Ply(DObj(Map.ofList [ "Content-Type", DStr "text/html; charset=utf-8" ]))
+          Ply(
+            DAnonRecord(
+              Map.ofList [ "Content-Type", DStr "text/html; charset=utf-8" ]
+            )
+          )
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -102,7 +110,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, [ DStr token ] ->
           let authString = "Bearer " + token
-          Ply(DObj(Map.ofList [ "Authorization", DStr authString ]))
+          Ply(DAnonRecord(Map.ofList [ "Authorization", DStr authString ]))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

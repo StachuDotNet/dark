@@ -25,7 +25,9 @@ let testDvalRoundtrippableRoundtrips =
   testMany
     "special roundtrippable dvals roundtrip"
     FuzzTests.InternalJson.Roundtrippable.roundtripsSuccessfully
-    [ RT.DObj(Map.ofList [ ("", RT.DFloat 1.797693135e+308); ("a", RT.DFloat nan) ]),
+    [ RT.DAnonRecord(
+        Map.ofList [ ("", RT.DFloat 1.797693135e+308); ("a", RT.DFloat nan) ]
+      ),
       true ]
 
 
@@ -39,7 +41,7 @@ let testToDeveloperRepr =
           RT.DFloat(-0.0), "-0.0"
           RT.DFloat(infinity), "Infinity"
           RT.DTuple(RT.DInt 1, RT.DInt 2, [ RT.DInt 3 ]), "(\n  1, 2, 3\n)"
-          RT.DObj(Map.ofList [ "", RT.DUnit ]), "{\n  : unit\n}"
+          RT.DAnonRecord(Map.ofList [ "", RT.DUnit ]), "{\n  : unit\n}"
           RT.DList [ RT.DUnit ], "[\n  unit\n]" ] ]
 
 // We used a System.Text.Json converter supplied by a NuGet package for a bit,
@@ -191,13 +193,14 @@ module Password =
     test "serialization in object" {
       let roundtrips name serialize deserialize =
         let bytes = UTF8.toBytes "encryptedbytes"
-        let password = RT.DObj(Map.ofList [ "x", RT.DPassword(Password bytes) ])
+        let password =
+          RT.DAnonRecord(Map.ofList [ "x", RT.DPassword(Password bytes) ])
 
         let wrappedSerialize dval =
           dval
           |> (fun dval ->
             match dval with
-            | RT.DObj dvalMap -> dvalMap
+            | RT.DAnonRecord dvalMap -> dvalMap
             | _ -> Exception.raiseInternal "dobj only here" [])
           |> serialize
 

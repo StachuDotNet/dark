@@ -96,7 +96,7 @@ module Queryable =
     dvm
     |> DvalReprInternalQueryable.toJsonStringV0
     |> DvalReprInternalQueryable.parseJsonV0
-    |> Expect.dvalEquality (RT.DObj dvm)
+    |> Expect.dvalEquality (RT.DAnonRecord dvm)
 
   let tests config =
     let tp f = testProperty config typeof<Generator> f

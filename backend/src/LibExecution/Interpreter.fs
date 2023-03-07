@@ -132,7 +132,7 @@ let rec eval' (state : ExecutionState) (st : Symtable) (e : Expr) : DvalTask =
       | Some other -> return other
 
 
-    | ERecord (id, pairs) ->
+    | EAnonRecord (id, pairs) ->
       return!
         Ply.List.foldSequentially
           (fun r (k, expr) ->
@@ -142,11 +142,11 @@ let rec eval' (state : ExecutionState) (st : Symtable) (e : Expr) : DvalTask =
               | r, _, _ when Dval.isFake r -> return r
               | _, _, v when Dval.isFake v -> return v
               | _, "", _ -> return DError(sourceID id, "Record key is empty")
-              | DObj m, k, v -> return (DObj(Map.add k v m))
-              // If we haven't got a DObj we're propagating an error so let it go
+              | DAnonRecord m, k, v -> return (DAnonRecord(Map.add k v m))
+              // If we haven't got a DAnonRecord we're propagating an error so let it go
               | r, _, v -> return r
             })
-          (DObj(Map.empty))
+          (DAnonRecord(Map.empty))
           pairs
 
 
@@ -177,7 +177,7 @@ let rec eval' (state : ExecutionState) (st : Symtable) (e : Expr) : DvalTask =
         return DError(sourceID id, "Field name is empty")
       else
         match obj with
-        | DObj o ->
+        | DAnonRecord o ->
           match Map.tryFind field o with
           | Some v -> return v
           | None -> return DError(sourceID id, $"No field named {field} in record")
@@ -592,7 +592,7 @@ and callFn
                   |> (fun (db : DB.T) -> db.cols)
                   |> List.map (fun (field, _) -> (field, DIncomplete SourceNone))
                   |> Map.ofList
-                  |> DObj
+                  |> DAnonRecord
 
               let! (_ : Dval) = executeLambda state b [ sample ]
               ()

@@ -47,11 +47,11 @@ let fns : List<BuiltInFn> =
         "Upsert <param val> into <param table>, accessible by <param key>"
       fn =
         (function
-        | state, [ DObj value; DStr key; DDB dbname ] ->
+        | state, [ DAnonRecord value; DStr key; DDB dbname ] ->
           uply {
             let db = state.program.dbs[dbname]
             let! _id = UserDB.set state true db key value
-            return DObj value
+            return DAnonRecord value
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -154,7 +154,7 @@ let fns : List<BuiltInFn> =
                 keys
 
             let! result = UserDB.getManyWithKeys state db skeys
-            return result |> Map.ofList |> DObj
+            return result |> Map.ofList |> DAnonRecord
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -205,7 +205,7 @@ let fns : List<BuiltInFn> =
         "Fetch all the values from <param table> which have the same fields and values that <param spec> has, returning a list of values. Previously called DB::query_v3"
       fn =
         (function
-        | state, [ (DObj fields); DDB dbname ] ->
+        | state, [ (DAnonRecord fields); DDB dbname ] ->
           uply {
             let db = state.program.dbs[dbname]
             let! results = UserDB.queryExactFields state db fields
@@ -225,11 +225,11 @@ let fns : List<BuiltInFn> =
         , returning {key : value} as an object. Previous called DB::queryWithKey_v2"
       fn =
         (function
-        | state, [ DObj fields; DDB dbname ] ->
+        | state, [ DAnonRecord fields; DDB dbname ] ->
           uply {
             let db = state.program.dbs[dbname]
             let! result = UserDB.queryExactFields state db fields
-            return result |> Map.ofList |> DObj
+            return result |> Map.ofList |> DAnonRecord
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -244,7 +244,7 @@ let fns : List<BuiltInFn> =
         "Fetch exactly one value from <param table> which have the same fields and values that <param spec> has. If there is exactly one value, it returns Just value and if there is none or more than 1 found, it returns Nothing. Previously called DB::queryOne_v2"
       fn =
         (function
-        | state, [ (DObj fields); DDB dbname ] ->
+        | state, [ (DAnonRecord fields); DDB dbname ] ->
           uply {
             let db = state.program.dbs[dbname]
             let! results = UserDB.queryExactFields state db fields
@@ -266,13 +266,13 @@ let fns : List<BuiltInFn> =
         "Fetch exactly one value from <param table> which have the same fields and values that <param spec> has. If there is exactly one key/value pair, it returns Just {key: value} and if there is none or more than 1 found, it returns Nothing. Previously called DB::queryOnewithKey_v2"
       fn =
         (function
-        | state, [ (DObj fields); DDB dbname ] ->
+        | state, [ (DAnonRecord fields); DDB dbname ] ->
           uply {
             let db = state.program.dbs[dbname]
             let! results = UserDB.queryExactFields state db fields
 
             match results with
-            | [ (k, v) ] -> return DOption(Some(DObj(Map.ofList [ (k, v) ])))
+            | [ (k, v) ] -> return DOption(Some(DAnonRecord(Map.ofList [ (k, v) ])))
             | _ -> return DOption None
           }
         | _ -> incorrectArgs ())
@@ -310,7 +310,7 @@ let fns : List<BuiltInFn> =
           uply {
             let db = state.program.dbs[dbname]
             let! result = UserDB.getAll state db
-            return result |> Map.ofList |> DObj
+            return result |> Map.ofList |> DAnonRecord
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -444,7 +444,7 @@ let fns : List<BuiltInFn> =
             try
               let db = state.program.dbs[dbname]
               let! results = UserDB.query state db b
-              return results |> Map.ofList |> DObj
+              return results |> Map.ofList |> DAnonRecord
             with
             | e -> return handleUnexpectedExceptionDuringQuery state dbname b e
           }
@@ -493,7 +493,7 @@ let fns : List<BuiltInFn> =
               let! results = UserDB.query state db b
 
               match results with
-              | [ _ ] -> return Dval.optionJust (DObj(Map.ofList results))
+              | [ _ ] -> return Dval.optionJust (DAnonRecord(Map.ofList results))
               | _ -> return DOption None
             with
             | e -> return handleUnexpectedExceptionDuringQuery state dbname b e

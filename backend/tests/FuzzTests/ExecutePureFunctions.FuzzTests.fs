@@ -87,7 +87,7 @@ module Generators =
 
           return!
             Gen.map
-              (fun l -> RT.ERecord(gid (), l))
+              (fun l -> RT.EAnonRecord(gid (), l))
               (Gen.listOfLength
                 size
                 (Gen.zip G.safeUnicodeString (genExpr' typ (size / 2))))
@@ -97,7 +97,7 @@ module Generators =
 
           return!
             Gen.map
-              (fun l -> RT.ERecord(gid (), l))
+              (fun l -> RT.EAnonRecord(gid (), l))
               (Gen.listOfLength
                 size
                 (Gen.zip G.safeUnicodeString (genExpr' typ (size / 2))))
@@ -115,7 +115,7 @@ module Generators =
               pairs
             |> Gen.map List.reverse
 
-          return RT.ERecord(gid (), entries)
+          return RT.EAnonRecord(gid (), entries)
         | RT.TOption typ ->
           match! Gen.optionOf (genExpr' typ size) with
           | Some v -> return RT.EConstructor(gid (), "Just", [ v ])
@@ -231,7 +231,7 @@ module Generators =
 
           return!
             Gen.map
-              (fun l -> RT.DObj(Map.ofList l))
+              (fun l -> RT.DAnonRecord(Map.ofList l))
               (Gen.listOfLength
                 s
                 (Gen.zip (G.safeUnicodeString) (genDval' typ (s / 2))))
@@ -281,7 +281,7 @@ module Generators =
           let! list =
             Gen.listOfLength s (Gen.zip (G.safeUnicodeString) (genDval' typ (s / 2)))
 
-          return RT.DObj(Map list)
+          return RT.DAnonRecord(Map list)
         | RT.TRecord (pairs) ->
           let map =
             List.fold
@@ -294,7 +294,7 @@ module Generators =
                 })
               pairs
 
-          return! Gen.map RT.DObj map
+          return! Gen.map RT.DAnonRecord map
         | RT.THttpResponse typ ->
           let! url = Arb.generate<string>
           let! code = Arb.generate<int64>

@@ -357,7 +357,7 @@ let rec convertToExpr (ast : SynExpr) : PT.Expr =
       | SynExprRecordField ((SynLongIdent ([ name ], _, _), _), _, Some expr, _) ->
         (nameOrBlank name.idText, c expr)
       | f -> Exception.raiseInternal "Not an expected field" [ "field", f ])
-    |> fun rows -> PT.ERecord(id, rows)
+    |> fun rows -> PT.EAnonRecord(id, rows)
 
   | SynExpr.Paren (expr, _, _, _) -> c expr // just unwrap
 
@@ -586,7 +586,7 @@ let parseTestFile (filename : string) : Module =
       body = userFn.body }
 
 
-  let parseRecordField (field : SynField) : PT.UserType.RecordField =
+  let parsEAnonRecordField (field : SynField) : PT.UserType.RecordField =
     match field with
     | SynField (_, _, Some id, typ, _, _, _, _, _) ->
       { id = gid (); name = id.idText; typ = convertType typ }
@@ -618,7 +618,7 @@ let parseTestFile (filename : string) : Module =
                    _) ->
       { tlid = gid ()
         name = { type_ = id.idText; version = 0 }
-        definition = PT.UserType.Record(List.map parseRecordField fields) }
+        definition = PT.UserType.Record(List.map parsEAnonRecordField fields) }
     | SynTypeDefn (SynComponentInfo (_, _params, _, [ id ], _, _, _, _),
                    SynTypeDefnRepr.Simple (SynTypeDefnSimpleRepr.Union (_, cases, _),
                                            _),

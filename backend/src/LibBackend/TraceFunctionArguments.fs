@@ -39,7 +39,9 @@ let store
                         "tlid", Sql.tlid tlid
                         ("args",
                          Sql.string (
-                           DvalReprInternalRoundtrippable.toJsonV0 (RT.DObj args)
+                           DvalReprInternalRoundtrippable.toJsonV0 (
+                             RT.DAnonRecord args
+                           )
                          )) ]
     |> Sql.executeStatementAsync
 
@@ -59,7 +61,7 @@ let storeMany
           "tlid", Sql.tlid tlid
           "timestamp", Sql.instantWithTimeZone timestamp
           ("args",
-           Sql.string (DvalReprInternalRoundtrippable.toJsonV0 (RT.DObj args))) ])
+           Sql.string (DvalReprInternalRoundtrippable.toJsonV0 (RT.DAnonRecord args))) ])
       |> ResizeArray.toList
 
     LibService.DBConnection.connect ()

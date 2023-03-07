@@ -182,7 +182,8 @@ module Expr =
     | Expr.EList (id, exprs) -> RT.EList(id, List.map r exprs)
     | Expr.ETuple (id, first, second, theRest) ->
       RT.ETuple(id, r first, r second, List.map r theRest)
-    | Expr.ERecord (id, pairs) -> RT.ERecord(id, List.map (Tuple2.mapSecond r) pairs)
+    | Expr.EAnonRecord (id, pairs) ->
+      RT.EAnonRecord(id, List.map (Tuple2.mapSecond r) pairs)
     | Expr.EConstructor (id, name, exprs) ->
       RT.EConstructor(id, name, List.map r exprs)
     | Expr.EMatch (id, mexpr, pairs) ->
@@ -227,7 +228,8 @@ module Expr =
     | RT.EList (id, exprs) -> Expr.EList(id, List.map r exprs)
     | RT.ETuple (id, first, second, theRest) ->
       Expr.ETuple(id, r first, r second, List.map r theRest)
-    | RT.ERecord (id, pairs) -> Expr.ERecord(id, List.map (Tuple2.mapSecond r) pairs)
+    | RT.EAnonRecord (id, pairs) ->
+      Expr.EAnonRecord(id, List.map (Tuple2.mapSecond r) pairs)
     | RT.EConstructor (id, name, exprs) ->
       Expr.EConstructor(id, name, List.map r exprs)
     | RT.EMatch (id, mexpr, pairs) ->
@@ -290,7 +292,7 @@ module Dval =
     | Dval.DList list -> RT.DList(List.map r list)
     | Dval.DTuple (first, second, theRest) ->
       RT.DTuple(r first, r second, List.map r theRest)
-    | Dval.DObj o -> RT.DObj(Map.map r o)
+    | Dval.DAnonRecord o -> RT.DAnonRecord(Map.map r o)
     | Dval.DOption None -> RT.DOption None
     | Dval.DOption (Some dv) -> RT.DOption(Some(r dv))
     | Dval.DResult (Ok dv) -> RT.DResult(Ok(r dv))
@@ -329,7 +331,7 @@ module Dval =
     | RT.DList l -> Dval.DList(List.map r l)
     | RT.DTuple (first, second, theRest) ->
       Dval.DTuple(r first, r second, List.map r theRest)
-    | RT.DObj o -> Dval.DObj(Map.map r o)
+    | RT.DAnonRecord o -> Dval.DAnonRecord(Map.map r o)
     | RT.DOption None -> Dval.DOption None
     | RT.DOption (Some dv) -> Dval.DOption(Some(r dv))
     | RT.DResult (Ok dv) -> Dval.DResult(Ok(r dv))

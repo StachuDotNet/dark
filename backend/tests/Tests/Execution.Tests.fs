@@ -107,7 +107,9 @@ let testOtherDbQueryFunctionsHaveAnalysis : Test =
 
     Expect.equal
       (Dictionary.get varID results)
-      (Some(AT.ExecutedResult(DObj(Map.ofList [ "age", DIncomplete SourceNone ]))))
+      (Some(
+        AT.ExecutedResult(DAnonRecord(Map.ofList [ "age", DIncomplete SourceNone ]))
+      ))
       "Has an age field"
   }
 

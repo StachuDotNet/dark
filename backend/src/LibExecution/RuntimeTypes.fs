@@ -176,7 +176,7 @@ type Expr =
 
   | EList of id * List<Expr>
   | ETuple of id * Expr * Expr * List<Expr>
-  | ERecord of id * List<string * Expr>
+  | EAnonRecord of id * List<string * Expr>
   | EConstructor of id * string * List<Expr>
   | EMatch of id * Expr * List<MatchPattern * Expr>
   | EFeatureFlag of id * Expr * Expr * Expr
@@ -227,7 +227,7 @@ and Dval =
   // compound types
   | DList of List<Dval>
   | DTuple of Dval * Dval * List<Dval>
-  | DObj of DvalMap
+  | DAnonRecord of DvalMap
   | DFnVal of FnValImpl
 
   /// Represents something that shouldn't have happened in the engine,
@@ -278,6 +278,7 @@ and Dval =
   | DOption of Option<Dval>
   | DResult of Result<Dval, Dval>
   | DBytes of byte array
+  // TODO: DUserRecord
   | DUserEnum of typeName : UserTypeName * caseName : string * fields : List<Dval>
 
 and DvalTask = Ply<Dval>
@@ -393,7 +394,7 @@ module Expr =
     | EApply (id, _, _, _)
     | EList (id, _)
     | ETuple (id, _, _, _)
-    | ERecord (id, _)
+    | EAnonRecord (id, _)
     | EFQFnValue (id, _)
     | EConstructor (id, _, _)
     | EFeatureFlag (id, _, _, _)
@@ -440,7 +441,7 @@ module Dval =
 
   let toPairs (dv : Dval) : Result<List<string * Dval>, string> =
     match dv with
-    | DObj obj -> Ok(Map.toList obj)
+    | DAnonRecord obj -> Ok(Map.toList obj)
     | _ -> Error "expecting str"
 
   /// Gets the Dark runtime type from a runtime value
@@ -458,7 +459,7 @@ module Dval =
     | DList [] -> TList any
     | DTuple (first, second, theRest) ->
       TTuple(toType first, toType second, List.map toType theRest)
-    | DObj map ->
+    | DAnonRecord map ->
       map |> Map.toList |> List.map (fun (k, v) -> (k, toType v)) |> TRecord
     | DFnVal _ -> TFn([], any) // CLEANUP: can do better here
     | DError _ -> TError
@@ -508,8 +509,8 @@ module Dval =
 
       pairs |> List.all (fun (v, subtype) -> typeMatches subtype v)
     | DList l, TList t -> List.all (typeMatches t) l
-    | DObj m, TDict t -> Map.all (typeMatches t) m
-    | DObj m, TRecord pairs ->
+    | DAnonRecord m, TDict t -> Map.all (typeMatches t) m
+    | DAnonRecord m, TRecord pairs ->
       let actual = Map.toList m |> List.sortBy Tuple2.first
       let expected = pairs |> List.sortBy Tuple2.first
 
@@ -519,7 +520,7 @@ module Dval =
         List.zip actual expected
         |> List.all (fun ((aField, aVal), (eField, eType)) ->
           aField = eField && typeMatches eType aVal)
-    | DObj _, TUserType _ -> false // not used TODO revisit
+    | DAnonRecord _, TUserType _ -> false // not used TODO revisit
     | DUserEnum _, TUserType _ -> false // TODO revisit
     | DFnVal (Lambda l), TFn (parameters, _) ->
       List.length parameters = List.length l.parameters
@@ -546,13 +547,13 @@ module Dval =
     | DBytes _, _
     | DList _, _
     | DTuple _, _
-    | DObj _, _
-    | DObj _, _
+    | DAnonRecord _, _
+    | DAnonRecord _, _
     | DFnVal _, _
     | DOption _, _
     | DResult _, _
     | DHttpResponse _, _
-    | DObj _, _
+    | DAnonRecord _, _
     | DUserEnum _, _ -> false
 
 
@@ -572,7 +573,7 @@ module Dval =
   let obj (fields : List<string * Dval>) : Dval =
     // Give a warning for duplicate keys
     List.fold
-      (DObj Map.empty)
+      (DAnonRecord Map.empty)
       (fun m (k, v) ->
         match m, k, v with
         // If we're propagating a fakeval keep doing it. We handle it without this line but let's be certain
@@ -581,13 +582,13 @@ module Dval =
         | _, "", _ -> m
         | _, _, DIncomplete _ -> m
         // Errors should propagate (but only if we're not already propagating an error)
-        | DObj _, _, v when isFake v -> v
+        | DAnonRecord _, _, v when isFake v -> v
         // Error if the key appears twice
-        | DObj m, k, _v when Map.containsKey k m ->
+        | DAnonRecord m, k, _v when Map.containsKey k m ->
           DError(SourceNone, $"Duplicate key: {k}")
         // Otherwise add it
-        | DObj m, k, v -> DObj(Map.add k v m)
-        // If we haven't got a DObj we're propagating an error so let it go
+        | DAnonRecord m, k, v -> DAnonRecord(Map.add k v m)
+        // If we haven't got a DAnonRecord we're propagating an error so let it go
         | m, _, _ -> m)
       fields
 
