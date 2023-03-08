@@ -8,12 +8,12 @@
 
 module RoundtripUnit =
   // CLEANUP () should have been removed and shouldn't work here
-  (let _ = DB.set_v1 { x = () } "hello" X in
-   DB.get_v2 "hello" X) = Just { x = () }
+  (let _ = DB.set_v1 {| x = () |} "hello" X
+   DB.get_v2 "hello" X) = Just {| x = () |}
 
 module RoundtripCaseInsensitive =
-  [<DB>] type Insensitive = { cOlUmNnAmE : string }
-  (let _ = DB.set_v1 { cOlUmNnAmE = "some value" } "hello" Insensitive in
+  [<DB>] type Insensitive = {| cOlUmNnAmE : string |}
+  (let _ = DB.set_v1 { cOlUmNnAmE = "some value" } "hello" Insensitive
    DB.get_v2 "hello" Insensitive) = Just { cOlUmNnAmE = "some value" }
 
 module RoundtripPassword =
@@ -29,7 +29,7 @@ module RoundtripLists =
 
 
 module ValueMissingColumnGivesGoodError =
-  (DB.set_v1 { x = "x"; col = "v" } "i" X) = Test.typeError_v0 "Found but did not expect: [col]"
+  (DB.set_v1 {| x = "x"; col = "v" } "i" X) = Test.typeError_v0 "Found but did not expect: [col]"
 
 
 
