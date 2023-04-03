@@ -713,6 +713,39 @@ human-readable data."
       deprecated = NotDeprecated }
 
 
+    { name = fn "DarkInternal" "parseAndSerializeExpr" 0
+      typeParams = []
+      parameters = [ Param.make "expr" TStr "" ]
+      returnType = TStr // TODO: should be custom type of Dark.Expr. nah, just use Dark.exprToCodeStr
+      description =
+        "Parses a string as F#, maps to a Dark Expr, then calls Dark.exprToCodeStr"
+      fn =
+        internalFn (function
+          | state, _, [ DStr expr ] ->
+            let expr = Parser.parsePTExpr expr |> sprintf "%A"
+            // then, serialize it lol
+            // call Dark.exprToCodeStr or whatever
+            uply { return expr |> DStr }
+          | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    { name = fn "DarkInternal" "canvasToSingleFileModule" 0
+      typeParams = []
+      parameters = [ Param.make "canvasId" TStr "" ]
+      returnType = TStr
+      description = "TODO"
+      fn =
+        internalFn (function
+          | state, _, [ DStr canvasId ] -> uply { return "TODO" |> DStr }
+          | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
     // TODO: this name is bad?
     { name = fn "DarkInternal" "canvasProgram" 0
       typeParams = []

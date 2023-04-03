@@ -13,6 +13,9 @@
   </PropertyGroup>
   <ItemGroup>
     <None Include="paket.references" />
+    <Compile Include="SingleFileCanvasParser.fs" />
+    <Compile Include="ParseCanvas.fs" />
+    <Compile Include="ParsePackage.fs" />
     <Compile Include="Main.fs" />
   </ItemGroup>
   <ItemGroup>

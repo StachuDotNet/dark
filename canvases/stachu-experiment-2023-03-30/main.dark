@@ -1,0 +1,57 @@
+module StachuExperiment20230330
+
+(*
+  TODOs:
+  - update CanvasHack to parse single-file canvas definitions
+*)
+
+type Model = ...
+let blankModel = ...
+
+type Msg =
+  | ShowThing of Dark.Thing
+  | Undo
+  | Prompt of string
+  | HandlePromptSuggestions of ...
+
+[<DB("MsgHistory")>]
+let MsgHistory: List<Msg> = []
+
+let update (state: Model, msg: Msg): Model =
+  match msg with
+  | ShowThing thing ->
+
+let currentState(): Model =
+  List.fold
+    (fun (state, msg) -> update(state, msg))
+    blankModel
+    MsgHistory
+
+let view(model: Model, emit: Msg0~ -> unit): string =
+  let body = Json.serialize<Model> model
+  """<html>
+  <head></head>
+  <body>
+  <div>${body}</div>
+  <script>(refresh self sometimes)</script>
+  </body>
+  </html>"""
+
+// TODO: "if there are new messages, refresh"
+
+[<HttpHandler.Endpoint("POST", "/", "???")>]
+let updateEndpoint(req: HttpHandler.Req): HttpHandler.Resp =
+  let msg = Json.parse<Msg>(req.body)
+  // add to list
+  // make editor refresh?? (or just have editor refresh itself every
+  // second)
+
+[<HttpHandler.Endpoint("GET", "/", "??")>]
+let editor(request: HttpHandler.Req): HttpHandler.Resp =
+  let state = currentState()
+  let html = view(model)
+
+  HttpHandler.Resp
+    { statusCode = 200
+      headers = [ ("content-type", "application/html") ]
+      body = html |> String.toBytes }

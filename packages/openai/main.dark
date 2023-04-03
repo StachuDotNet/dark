@@ -1,0 +1,313 @@
+// this is pretty much ported directly from the `openai-fsharp` repo
+// TODO: better attribution/thanks/credit
+
+module HttpRequester =
+  let postRequest<'T, 'R> (apiKey: string) (endpoint: string) (data: 'T): 'R =
+    http {
+        POST endpoint
+        AuthorizationBearer apiKey
+        Accept "application/json"
+        CacheControl "no-cache"
+        body
+        ContentType "application/json"
+        jsonSerialize data
+    }
+    |> Request.send
+    |> Response.deserializeJson<'R>
+
+  let postRequestEmpty<'R> (apiKey: string) (endpoint: string): 'R =
+    http {
+        POST endpoint
+        AuthorizationBearer apiKey
+        Accept "application/json"
+        CacheControl "no-cache"
+    }
+    |> Request.send
+    |> Response.deserializeJson<'R>
+
+  let getRequest<'R> (apiKey: string) (endpoint: string): 'R =
+      http {
+          GET endpoint
+          AuthorizationBearer apiKey
+          Accept "application/json"
+          CacheControl "no-cache"
+      }
+      |> Request.send
+      |> Response.deserializeJson<'R>
+
+  let getRequestString (apiKey: string) (endpoint: string): string =
+      http {
+          GET endpoint
+          AuthorizationBearer apiKey
+          Accept "application/json"
+          CacheControl "no-cache"
+      }
+      |> Request.send
+      |> Response.toText
+
+  let deleteRequest<'R> (apiKey: string) (endpoint: string) : 'R =
+      http {
+          DELETE endpoint
+          AuthorizationBearer apiKey
+          Accept "application/json"
+          CacheControl "no-cache"
+      }
+      |> Request.send
+      |> Response.deserializeJson<'R>
+
+
+/// Represents the models available for use
+/// e.g. GPT-3, GPT-3.5, etc.
+module Models =
+  type ModelPermission =
+    { id: string
+      object: string
+      created: int
+      allow_create_engine: bool
+      allow_sampling: bool
+      allow_logprobs: bool
+      allow_search_indices: bool
+      allow_view: bool
+      allow_fine_tuning: bool
+      organization: string
+      group: string option
+      isBlocking: bool }
+
+  type ModelResponse =
+      { id: string
+        object: string
+        created: int
+        owned_by: string
+        permission: ModelPermission[]
+        root: string
+        parent: string option }
+
+  type ListModelsResponse =
+      { object: string
+        data: ModelResponse[] }
+
+  type DeleteModelResponse =
+      { id: string
+        object: string
+        deleted: bool }
+
+  let endpoint = "/models"
+  let models (config: Config) : ConfigWithModelContext =
+      ConfigWithModelContext(
+          { config.ApiConfig with
+              Endpoint = Url.combine config.ApiConfig.Endpoint "/models" },
+          config.HttpRequester
+      )
+
+  let list (config: ConfigWithModelContext) : ListModelsResponse =
+      config.HttpRequester.getRequest<ListModelsResponse> config.ApiConfig
+
+  let retrieve (modelName: string) (config: ConfigWithModelContext) : ModelResponse =
+      { config.ApiConfig with
+          Endpoint = Url.combine config.ApiConfig.Endpoint modelName }
+      |> config.HttpRequester.getRequest<ModelResponse>
+
+  let delete (modelId: string) (config: ConfigWithModelContext) : DeleteModelResponse =
+      { config.ApiConfig with
+          Endpoint = Url.combine config.ApiConfig.Endpoint modelId }
+      |> config.HttpRequester.deleteRequest<DeleteModelResponse>
+
+
+(* Completions *)
+module Completions =
+    type CreateRequest =
+        { Model: string
+          Prompt: string
+          Temperature: float
+          Stop: string }
+
+    type ChoiceLogProbs =
+        { Tokens: string list
+          token_logprobs: float list
+          top_logprobs: (int * string) list option
+          text_offset: int list }
+
+    type Choice =
+        { Text: string
+          Index: int
+          LogProbs: ChoiceLogProbs option
+          finish_reason: string option }
+
+    type Usage =
+          prompt_tokens: int
+          completion_tokens: int option
+          total_tokens: int }
+
+    type CreateResponse =
+        { Id: string
+          Object: string
+          Created: int
+          Model: string
+          Choices: Choice[]
+          Usage: Usage }
+
+    let completions (config: Config) : ConfigWithCompletionContext =
+        ConfigWithCompletionContext(
+            { config.ApiConfig with
+                Endpoint = Url.combine config.ApiConfig.Endpoint "/completions" },
+            config.HttpRequester
+        )
+
+    let create (request: CreateRequest) (config: ConfigWithCompletionContext) : CreateResponse =
+        config.HttpRequester.postRequest<CreateRequest, CreateResponse> config.ApiConfig request
+
+
+module Chat =
+    type RequestMessage = { Role: string; Content: string }
+
+    type CreateRequest =
+        { Model: string
+          Messages: RequestMessage[] }
+
+    type ResponseMessage = { Role: string; Content: string }
+
+    type Choice =
+        { message: ResponseMessage
+          index: int
+          finish_reason: string option }
+
+    type Usage =
+        { prompt_tokens: int
+          completion_tokens: int option
+          total_tokens: int }
+
+    type CreateResponse =
+        { id: string
+          object: string
+          Created: int
+          Model: string
+          Choices: Choice[]
+          Usage: Usage }
+
+    let chat (config: Config) : ConfigWithChatContext =
+        ConfigWithChatContext(
+            { config.ApiConfig with
+                Endpoint = Url.combine config.ApiConfig.Endpoint "/chat" },
+            config.HttpRequester
+        )
+
+    let create (request: CreateRequest) (config: ConfigWithChatContext) : CreateResponse =
+        let apiConfig =
+            { config.ApiConfig with
+                Endpoint = Url.combine config.ApiConfig.Endpoint "/completions" }
+
+        config.HttpRequester.postRequest<CreateRequest, CreateResponse> apiConfig request
+
+
+module Edits =
+    type CreateRequest =
+        { Model: string
+          Input: string
+          Instruction: string }
+
+    type Choice = { Text: string; Index: int }
+
+    type Usage =
+          prompt_tokens: int
+          completion_tokens: int option
+          total_tokens: int }
+
+    type CreateResponse =
+        { Object: string
+          Created: int
+          Choices: Choice[]
+          Usage: Usage }
+
+    let edits (config: Config) : ConfigWithEditContext =
+        ConfigWithEditContext(
+            { config.ApiConfig with
+                Endpoint = Url.combine config.ApiConfig.Endpoint "/edits" },
+            config.HttpRequester
+        )
+
+    let create (request: CreateRequest) (config: ConfigWithEditContext) : CreateResponse =
+        config.HttpRequester.postRequest<CreateRequest, CreateResponse> config.ApiConfig request
+
+
+(* OpenAI *)
+type OpenAIComputed() =
+    // Required - creates default "starting" values
+    member _.Yield _ =
+        Config({ Endpoint = ""; ApiKey = "" }, HttpRequester())
+
+    [<CustomOperation "endPoint">]
+    // Sets OpenAI end point
+    member _.EndPoint(config: Config, endPoint: string) =
+        Config(
+            { Endpoint = endPoint
+              ApiKey = config.ApiConfig.ApiKey },
+            config.HttpRequester
+        )
+
+    [<CustomOperation "apiKey">]
+    // Sets OpenAI API Key
+    member _.ApiKey(config: Config, apiKey: string) =
+        Config(
+            { Endpoint = config.ApiConfig.Endpoint
+              ApiKey = apiKey },
+            config.HttpRequester
+        )
+
+    [<CustomOperation "models">]
+    // Start OpenAI Models resource handling
+    member _.Models(config: Config) = models config
+
+    [<CustomOperation "list">]
+    // Models List Endpoint
+    member _.List(config: ConfigWithModelContext) : Models.ListModelsResponse = Models.list config
+
+    [<CustomOperation "retrieve">]
+    // Models List Endpoint
+    member _.Retrieve(config: ConfigWithModelContext, modelName: string) : Models.ModelResponse =
+        Models.retrieve modelName config
+
+    [<CustomOperation "delete">]
+    // Models Delete Endpoint
+    member _.Delete(config: ConfigWithModelContext, modelId: string) : Models.DeleteModelResponse =
+        Models.delete modelId config
+
+
+    [<CustomOperation "completions">]
+    // Start OpenAI Completions resource handling
+    member _.Completions(config: Config) = completions config
+
+    [<CustomOperation "create">]
+    // Completions Create Endpoint
+    member _.Create
+        (
+            config: ConfigWithCompletionContext,
+            request: Completions.CreateRequest
+        ) : Completions.CreateResponse =
+        Completions.create request config
+
+
+    [<CustomOperation "chat">]
+    // Start OpenAI Chat resource handling
+    member _.Chat(config: Config) = chat config
+
+    [<CustomOperation "create">]
+    // Chat Create Endpoint
+    member _.Create(config: ConfigWithChatContext, request: Chat.CreateRequest) : Chat.CreateResponse =
+        Chat.create request config
+
+
+    [<CustomOperation "edits">]
+    // Start OpenAI Edits resource handling
+    member _.Edits(config: Config) = edits config
+
+    [<CustomOperation "create">]
+    // Edits Create Endpoint
+    member _.Create(config: ConfigWithEditContext, request: Edits.CreateRequest) : Edits.CreateResponse =
+        Edits.create request config
+
+
+module Client =
+    let sendRequest (config: Config) (data: (string * string) list) =
+        config.HttpRequester.postRequest config.ApiConfig data
+
+    let openAI = OpenAIComputed()

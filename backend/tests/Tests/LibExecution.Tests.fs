@@ -28,6 +28,8 @@ module Canvas = LibBackend.Canvas
 
 open TestUtils.TestUtils
 
+module Parser = TestUtils.TestFileParser
+
 let setupWorkers (canvasID : CanvasID) (workers : List<string>) : Task<unit> =
   task {
     let workersWithIDs = workers |> List.map (fun w -> w, (gid ()))
@@ -180,7 +182,7 @@ let fileTests () : Test =
     let initializeCanvas = testName = "internal"
     let shouldSkip = String.startsWith "_" filename
 
-    let rec moduleToTests (moduleName : string) (module' : Parser.TestModule) =
+    let rec moduleToTests (moduleName : string) (module' : Parser.TestModule.T) =
 
       let nestedModules =
         List.map (fun (name, m) -> moduleToTests name m) module'.modules
@@ -212,8 +214,10 @@ let fileTests () : Test =
         @ BackendOnlyStdLib.StdLib.types @ TestUtils.LibMaybe.types
         |> List.map (fun typ -> PT.FQTypeName.Stdlib typ.name, typ.definition)
 
-      (baseDir + filename)
-      |> Parser.parseTestFile stdlibTypes
+      let sourceFile = baseDir + filename
+      let sourceCode = System.IO.File.ReadAllText sourceFile
+
+      Parser.parseTestFile stdlibTypes sourceFile sourceCode
       |> moduleToTests testName)
   |> Array.toList
   |> testList "All"

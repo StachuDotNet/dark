@@ -155,8 +155,9 @@ let makeTest versionName filename =
         // CLEANUP: this doesn't use the correct length, as it might be latin1 or
         // compressed
         |> String.replace "LENGTH" (string response.body.Length)
-        |> Parser.parseAsFSharpSourceFile
-        |> Parser.convertToTest userTypes
+        |> Parser.parseFSharpModule
+        |> Parser.synExprFromModule
+        |> TestUtils.TestFileParser.Test.fromSynExpr userTypes
 
       // Run the handler (call the HTTP client)
       // Note: this will update the corresponding value in `testCases` with the
