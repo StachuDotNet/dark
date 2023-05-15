@@ -1,0 +1,45 @@
+let rUnwrap (result: Result<'a, 'b>): 'a =
+  match result with
+  | Ok s -> s
+  | Error e ->
+    log e // TODO: this won't work if non-string
+    alert "Expected OK, got Error - see log"
+
+[<HttpHandler("GET", "/.well-known/ai-plugin.json")>]
+let _handler _request =
+  let json = (Experiments.readFromCanvases "dark-gpt-plugin/ai-plugin.json") |> rUnwrap
+  Http.response json 200
+
+// [<HttpHandler("GET", "/.yml")>]
+// let _handler _request =
+//   let json = """{
+//     "schema_version": "v1",
+//     "name_for_human": "TODO Plugin (no auth)",
+//     "name_for_model": "todo",
+//     "description_for_human": "Plugin for managing a TODO list, you can add, remove and view your TODOs.",
+//     "description_for_model": "Plugin for managing a TODO list, you can add, remove and view your TODOs.",
+//     "auth": {
+//       "type": "none"
+//     },
+//     "api": {
+//       "type": "openapi",
+//       "url": "http://localhost:5003/openapi.yaml",
+//       "is_user_authenticated": false
+//     },
+//     "logo_url": "http://localhost:5003/logo.png",
+//     "contact_email": "legal@example.com",
+//     "legal_info_url": "http://example.com/legal"
+//   }"""
+
+[<HttpHandler("GET", "/handle-prompt")>]
+let _handler _request =
+  // TODO: actually use the prompt provided in the request body
+
+  // TODO: parse commands
+  // based on the command, potentially add new http endpoints
+  let codeFromOpenAI = "let x = 1 + 1"
+  
+
+  Meta.createHttpEndpoint "GET" "/hello"
+
+  Http.respond (String.toBytes "hello") 200
