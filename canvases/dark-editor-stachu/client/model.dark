@@ -1,0 +1,16 @@
+
+type BotResponseItem =
+  | Text of text: String
+  | CodeSnippet of id: String
+
+type ChatHistoryItem =
+  | UserPrompt of id: String * prompt: String
+  | BotResponse of id: String * items: List<BotResponseItem> // todo: add promptId to tie together with relevant UserPrompt
+
+type CodeSnippet =
+  { id: String; code: String; eval: Option<String> }
+
+type Model =
+  { systemPrompt: String
+    chatHistory: List<ChatHistoryItem>
+    codeSnippets: List<CodeSnippet> }
