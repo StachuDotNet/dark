@@ -1,0 +1,28 @@
+// TODO: let ignore (z: ): Unit
+
+let alert (s: String): Unit =
+  let _ = WASM.Editor.callJSFunction "alert" [s]
+  ()
+
+let log (s: String): Unit =
+  let _ = WASM.Editor.callJSFunction "console.log" [s]
+  ()
+
+let rUnwrap (result: Result<'a, 'b>): 'a =
+  match result with
+  | Ok s -> s
+  | Error e ->
+    log e // TODO: this won't work if non-string
+    alert "Expected OK, got Error - see log"
+
+
+// TODO: remove this eventually, in favor of an actual "local" parser
+let parseAndSerializeProgram (userProgram: String): String =
+  let response =
+    WASM.HttpClient.request
+      "POST"
+      "http://dark-editor.dlio.localhost:11003/get-program-json"
+      []
+      (String.toBytes userProgram)
+
+  response |> rUnwrap |> (fun r -> r.body) |> String.fromBytes

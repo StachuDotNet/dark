@@ -1,0 +1,101 @@
+
+type Msg =
+  | UserGavePrompt of prompt: String
+  | UserRequestedCodeEval of id: String * codeSnippet: String
+
+
+let update (model: Model) (msg: Msg) : Model =
+  match msg with
+  | UserGavePrompt userPrompt ->
+    // I guess, until we have cmds or something,
+    // we have to deal with http calls and such in-line, like here
+    let fullPrompt = model.systemPrompt ++ userPrompt
+
+    match openAIcompletion fullPrompt with
+    | Ok apiResponse ->
+      let (newCodeSnippets, botResponseParts) =
+        (String.split_v1 (" " ++ apiResponse) "```")
+        |> List.indexedMap (fun i text -> (i, text))
+        |> List.fold ([], []) (fun acc curr ->
+          let (codeSnippets, responseParts) = acc
+          let (i, text) = curr
+          let text = String.trim text
+
+          if text == "" then
+            acc
+          else
+            if i % 2 == 1 then
+              let snippetId = rUnwrap(String.random_v2 5)
+              let updatedCodeSnippets = List.append codeSnippets [CodeSnippet { id = snippetId; code = text; eval = Nothing }]
+              let updatedResponseParts = List.append responseParts [BotResponseItem.CodeSnippet snippetId]
+              (updatedCodeSnippets, updatedResponseParts)
+            else
+              codeSnippets, (List.append responseParts [BotResponseItem.Text text])
+          )
+
+      let newChatItemsItems = [
+        ChatHistoryItem.UserPrompt (rUnwrap(String.random_v2 5)) userPrompt
+        ChatHistoryItem.BotResponse (rUnwrap(String.random_v2 5)) botResponseParts
+      ]
+
+      Model
+        { systemPrompt = model.systemPrompt
+          chatHistory = List.append model.chatHistory newChatItemsItems
+          codeSnippets = List.append model.codeSnippets newCodeSnippets }
+
+    | Error err -> alert err
+
+  | UserRequestedCodeEval id codeSnippet ->
+    // split this into 2 groups - the one we're updating, and the rest
+    let (snippetToUpdate, otherSnippets) =
+      model.codeSnippets |> List.partition (fun cs -> cs.id == id)
+
+    match List.head snippetToUpdate with
+    | Nothing -> alert "couldn't find snippet"
+    | Just snippetToUpdate ->
+      let parsedAndSerialized = parseAndSerializeProgram codeSnippet
+
+      let evalResult = (WASM.Editor.evalUserProgram parsedAndSerialized) |> rUnwrap
+
+      let updatedCodeSnippets =
+        List.append
+          [CodeSnippet { id = snippetToUpdate.id; code = codeSnippet; eval = Just evalResult }]
+          otherSnippets
+
+      Model
+        { systemPrompt = model.systemPrompt
+          chatHistory = model.chatHistory
+          codeSnippets = updatedCodeSnippets }
+
+
+/// Single point of communicating to JS host
+///
+/// Let the JS host know that the state has been updated,
+/// so that it can update the UI accordingly.
+let updateStateInJS (newState: Model): Result<Unit, String> =
+  match Json.serialize<Model> newState with
+  | Ok serialized ->
+    let _ = WASM.Editor.callJSFunction "window.stateUpdated" [serialized]
+    Ok ()
+  | Error err ->
+    let _ = WASM.Editor.callJSFunction "console.warn" ["Couldn't serialize - " ++ err]
+    Error "Couldn't serialize updated state"
+
+
+/// Single point of communication from JS host
+///
+/// Listen for events from the JS host, and update the state accordingly.
+let handleEvent (evt: String): Result<String, String> =
+  match Json.parse<Msg> evt with
+  | Ok msg ->
+    match WASM.Editor.getState<Model> with
+    | Ok currentState ->
+      let newState = update currentState msg
+
+      // returns result, but let's assume it worked...
+      let _ = WASM.Editor.setState<Model> newState
+
+      updateStateInJS newState
+
+    | Error err -> Error "Couldn't get current state"
+  | Error err -> Error "Couldn't parse raw msg"

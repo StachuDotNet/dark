@@ -1,0 +1,43 @@
+// TODO: in the prompt, include something like
+// "all code snippets returned must be executable without any other context needed"
+
+
+// Init
+let systemPrompt =
+  WASM.HttpClient.request "get" "http://dark-editor.dlio.localhost:11003/system-prompt" [] Bytes.empty
+
+let initState =
+  match systemPrompt with
+  | Ok response ->
+    let demoSnippet =
+      CodeSnippet
+        { id = (String.random_v2 5) |> rUnwrap
+          code = "let incr (i: Int): Int = i + 1\n\nincr 5"
+          eval = Nothing }
+
+    let chatHistory = [
+      ChatHistoryItem.UserPrompt
+        (rUnwrap(String.random_v2 5))
+        "Hello, I want a function that increments an integer!"
+
+      ChatHistoryItem.BotResponse
+        (rUnwrap(String.random_v2 5))
+        [
+          BotResponseItem.Text "OK - here's some code:"
+          BotResponseItem.CodeSnippet demoSnippet.id
+        ]
+    ]
+
+    Model
+      { systemPrompt = String.fromBytes response.body
+        chatHistory = chatHistory
+        codeSnippets = [demoSnippet] }
+
+  | Error err ->
+    Model
+      { systemPrompt = String.fromBytes "nope"
+        chatHistory = [ ] }
+
+updateStateInJS initState
+
+initState
