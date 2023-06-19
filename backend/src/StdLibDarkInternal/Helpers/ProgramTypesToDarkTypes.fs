@@ -511,7 +511,7 @@ module UserFunction =
 
   let toDT (userFn : PT.UserFunction.T) : Dval =
     DRecord(
-      ptTyp [] "UserFunction" 0,
+      ptTyp [ "UserFunction" ] "T" 0,
       Map
         [ "tlid", DInt(int64 userFn.tlid)
           "name", FQFnName.UserFnName.toDT userFn.name

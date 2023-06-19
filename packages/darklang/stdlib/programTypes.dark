@@ -12,9 +12,11 @@ module Darklang =
             version: Int }
 
         /// A type in the package manager
+        ///
+        /// CLEANUP the modules list is a nonemptylist internally
         type PackageTypeName =
           { owner: String
-            modules: List<String> // CLEANUP this is a nonemptylist internally
+            modules: List<String>
             typ: String
             version: Int }
 

@@ -38,10 +38,10 @@ let fns : List<BuiltInFn> =
         | _, _, [ DUnit ] ->
           uply {
             let! packages = LibBackend.PackageManager.allTypes ()
-            let packages = List.map PT2DT.PackageType.toDT packages
+            let packages: List<Dval> = List.map PT2DT.PackageType.toDT packages
 
             let! fns = LibBackend.PackageManager.allFunctions ()
-            let fns = List.map PT2DT.PackageFn.toDT fns
+            let fns: List<Dval> = List.map PT2DT.PackageFn.toDT fns
 
             return
               DRecord(

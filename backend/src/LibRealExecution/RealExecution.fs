@@ -26,8 +26,7 @@ let contents : LibExecution.StdLib.Contents =
     []
     []
 
-let packageFns : Lazy<Task<Map<RT.FQFnName.PackageFnName, RT.PackageFn.T>>> =
-  lazy
+let packageFns : Task<Map<RT.FQFnName.PackageFnName, RT.PackageFn.T>> =
     (task {
       let! packages = PackageManager.allFunctions ()
 
@@ -38,8 +37,8 @@ let packageFns : Lazy<Task<Map<RT.FQFnName.PackageFnName, RT.PackageFn.T>>> =
         |> Map.ofList
     })
 
-let packageTypes : Lazy<Task<Map<RT.FQTypeName.PackageTypeName, RT.PackageType.T>>> =
-  lazy
+let packageTypes : Task<Map<RT.FQTypeName.PackageTypeName, RT.PackageType.T>> =
+  //lazy
     (task {
       let! packages = PackageManager.allTypes ()
 
@@ -50,11 +49,11 @@ let packageTypes : Lazy<Task<Map<RT.FQTypeName.PackageTypeName, RT.PackageType.T
         |> Map.ofList
     })
 
-let libraries : Lazy<Task<RT.Libraries>> =
-  lazy
+let libraries : Task<RT.Libraries> =
+  //lazy
     (task {
-      let! packageFns = Lazy.force packageFns
-      let! packageTypes = Lazy.force packageTypes
+      let! packageFns =  packageFns
+      let! packageTypes =  packageTypes
 
       let fns = contents |> Tuple2.first |> Map.fromListBy (fun fn -> fn.name)
       let types = contents |> Tuple2.second |> Map.fromListBy (fun typ -> typ.name)
@@ -76,7 +75,7 @@ let createState
   (tracing : RT.Tracing)
   : Task<RT.ExecutionState> =
   task {
-    let! libraries = Lazy.force libraries
+    let! libraries = libraries
 
     let extraMetadata (state : RT.ExecutionState) : Metadata =
       [ "tlid", tlid
@@ -165,6 +164,6 @@ let reexecuteFunction
 /// Ensure library is ready to be called. Throws if it cannot initialize.
 let init () : Task<unit> =
   task {
-    let! (_ : RT.Libraries) = Lazy.force libraries
+    let! (_ : RT.Libraries) = libraries
     return ()
   }

@@ -65,7 +65,7 @@ let execute
   task {
     let program : RT.ProgramContext =
       { canvasID = System.Guid.NewGuid()
-        internalFnsAllowed = false
+        internalFnsAllowed = true // TODO: only allow this for internal Dark scripts
         allowLocalHttpAccess = true
         userFns =
           mod'.fns
@@ -106,11 +106,13 @@ let main (args : string[]) =
     initSerializers ()
     let mainFile = "/home/dark/app/backend/experiments/cli/cli.dark"
     let mod' = Parser.CanvasV2.parseFromFile mainFile
-    // debuG "mod" mod'
+
     let args = args |> Array.toList |> List.map RT.DString |> RT.DList
     let result = execute mod' (Map [ "args", args ])
     let result = result.Result
+
     NonBlockingConsole.wait ()
+
     match result with
     | RT.DError(RT.SourceNone, msg) ->
       System.Console.WriteLine $"Error: {msg}"

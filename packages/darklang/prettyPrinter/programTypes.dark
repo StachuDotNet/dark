@@ -151,6 +151,9 @@ module Darklang =
           let fullForReference
             (u: PACKAGE.Darklang.Stdlib.ProgramTypes.FQFnName.UserFnName)
             : String =
+
+            // TODO: print modules
+
             let versionPart =
               if u.version == 0 then "" else $"_v{Int.toString u.version}"
 
@@ -759,7 +762,7 @@ module Darklang =
         (userType: PACKAGE.Darklang.Stdlib.ProgramTypes.UserType)
         : String =
         let namePart =
-          PACKAGE.Darklang.PrettyPrinter.ProgramTypes.FQTypeName.userTypeName
+          PACKAGE.Darklang.PrettyPrinter.ProgramTypes.FQTypeName.UserTypeName.atDefinition
             userType.name
 
         let typeParamPart =
@@ -793,15 +796,15 @@ module Darklang =
         // TODO: do something with description and deprecated
         // TODO: shouldn't there be modules here somewhere?
         let namePart =
-          PACKAGE.Darklang.PrettyPrinter.ProgramTypes.FQFnName.userFnName u.name
+          PACKAGE.Darklang.PrettyPrinter.ProgramTypes.FQFnName.UserFnName.atDefinition
+            u.name
 
         let typeParamsPart = String.join u.typeParams " "
 
         let paramsPart =
           String.join
-            (List.map
-              PACKAGE.Darklang.PrettyPrinter.ProgramTypes.UserFunction.parameter
-              u.parameters)
+            (List.map u.parameters (fun p ->
+              PACKAGE.Darklang.PrettyPrinter.ProgramTypes.UserFunction.parameter p))
             " "
 
         let retPart =

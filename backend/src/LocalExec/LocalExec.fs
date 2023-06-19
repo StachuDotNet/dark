@@ -36,7 +36,7 @@ let execute
   task {
     let program : RT.ProgramContext =
       { canvasID = System.Guid.NewGuid()
-        internalFnsAllowed = false
+        internalFnsAllowed = true // TODO: allow internal fns, sometimes
         allowLocalHttpAccess = true
         userFns =
           mod'.fns
@@ -123,7 +123,9 @@ let main (args : string[]) : int =
     let modul = Parser.CanvasV2.parseFromFile mainFile
     let args = args |> Array.toList |> List.map RT.DString |> RT.DList
     let result = execute modul (Map [ "args", args ])
+
     NonBlockingConsole.wait ()
+
     match result.Result with
     | RT.DError(RT.SourceID(tlid, id), msg) ->
       System.Console.WriteLine $"Error: {msg}"

@@ -18,42 +18,19 @@ let modul = [ "DarkInternal"; "Canvas" ]
 let typ (name : string) (version : int) : FQTypeName.StdlibTypeName =
   FQTypeName.stdlibTypeName' modul name version
 
-let ptTyp
+let stdlibPackageTyp
   (submodules : List<string>)
   (name : string)
   (version : int)
   : FQTypeName.T =
-  pkgTyp
-    "Darklang"
-    (NonEmptyList.ofList ([ "Stdlib"; "ProgramTypes" ] @ submodules))
-    name
-    version
+  pkgTyp "Darklang" (NonEmptyList.ofList ([ "Stdlib" ] @ submodules)) name version
+
 
 let fn (name : string) (version : int) : FQFnName.StdlibFnName =
   FQFnName.stdlibFnName' modul name version
 
 
-let types : List<BuiltInType> =
-  [ { name = typ "Program" 0
-      typeParams = []
-      definition =
-        CustomType.Record(
-          { name = "id"; typ = TUuid; description = "" },
-          [ { name = "types"
-              typ = TList(TCustomType(ptTyp [] "UserType" 0, []))
-              description = "All typed defined within this canvas" }
-
-            // { name = "dbs"
-            //   typ = TList(TCustomType(FQTypeName.Stdlib(typ "DB" 0), []))
-            //   description = "" }
-
-            // { name = "httpHandlers"
-            //   typ = TList(TCustomType(FQTypeName.Stdlib(typ "HttpHandler" 0), []))
-            //   description = "" }
-            ]
-        )
-      deprecated = NotDeprecated
-      description = "A program on a canvas" } ]
+let types : List<BuiltInType> = []
 
 
 let fns : List<BuiltInFn> =
@@ -187,8 +164,7 @@ let fns : List<BuiltInFn> =
     { name = fn "fullProgram" 0
       typeParams = []
       parameters = [ Param.make "canvasID" TUuid "" ]
-      returnType =
-        TResult(TCustomType(FQTypeName.Stdlib(typ "Program" 0), []), TString)
+      returnType = TResult(TCustomType(stdlibPackageTyp [ "Canvas" ] "Program" 0, []), TString)
       description =
         "Returns a list of toplevel ids of http handlers in canvas <param canvasId>"
       fn =
@@ -202,6 +178,13 @@ let fns : List<BuiltInFn> =
               |> Map.values
               |> Seq.toList
               |> List.map PT2DT.UserType.toDT
+              |> DList
+
+            let fns =
+              canvas.userFunctions
+              |> Map.values
+              |> Seq.toList
+              |> List.map PT2DT.UserFunction.toDT
               |> DList
 
             // let dbs =
@@ -231,13 +214,58 @@ let fns : List<BuiltInFn> =
             //   |> DList
 
             return
-              DRecord(FQTypeName.Stdlib(typ "Program" 0), Map [ "types", types ])
+              DRecord(
+                stdlibPackageTyp [ "Canvas" ] "Program" 0,
+                Map([ "types", types; "fns", fns ])
+              )
               |> Ok
               |> DResult
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
-      deprecated = NotDeprecated } ]
+      deprecated = NotDeprecated }
+
+
+
+    { name = fn "parseAndSetFunction" 0
+      typeParams = []
+      parameters = [ Param.make "canvasID" TUuid ""; Param.make "fnID" TUuid ""; Param.make "fnCode" TString "" ]
+      returnType = TResult(TUnit, TString)
+      description =
+        "Returns a list of toplevel ids of http handlers in canvas <param canvasId>"
+      fn =
+        (function
+        | _, _, [ DUuid canvasID; DUuid functionId; DString fnCode ] ->
+          uply {
+            // make sure canvas exists
+            let! canvas = Canvas.loadAll canvasID
+
+            // TODO: make sure function exists
+
+            // parse the function code
+            let parsedFn =
+              let fakeCanvas = Parser.CanvasV2.parse "yolo" fnCode
+
+              match fakeCanvas.fns with
+              | [exactlyOneFunction] -> exactlyOneFunction
+              | _ -> Exception.raiseInternal "Expected exactly one function" []
+
+
+            // update the function
+            //let updatedCanvas = Canvas.setFunction ...
+
+            // TODO: actually persist
+
+            return
+              DUnit
+              |> Ok
+              |> DResult
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+       ]
 
 let contents = (fns, types)

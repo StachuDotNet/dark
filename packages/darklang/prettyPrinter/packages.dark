@@ -322,7 +322,7 @@ module Darklang =
 
 
 
-    let packages (p: PACKAGE.Darklang.Stdlib.Packages) : String =
+    let packages (p: PACKAGE.Darklang.Stdlib.AllPackages) : String =
       let withOwnerStuffRepresentedAsRootLevelModule =
         PACKAGE.Darklang.Stdlib.Packages
           { types =

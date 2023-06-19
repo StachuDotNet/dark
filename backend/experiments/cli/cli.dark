@@ -22,6 +22,10 @@ let executeCommand (command: Command) : Int =
     | Ok script ->
       let script = String.fromBytes script
 
+      match Json.serialize<List<String>> args with
+      | Error e -> print "could not serialize args to print"
+      | Ok args -> print $"args: {args}"
+
       match Cli.parseAndExecuteScript scriptPath script (Dict { args = args }) with
       | Ok i -> i
       | Error e ->
