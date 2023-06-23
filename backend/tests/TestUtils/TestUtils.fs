@@ -120,11 +120,10 @@ let testDB (name : string) (typ : PT.TypeReference) : PT.DB.T =
 let libraries : Lazy<Task<RT.Libraries>> =
   lazy
     task {
-
       let (fns, types) =
         LibExecution.StdLib.combine
           [ LibTest.contents
-            LibRealExecution.RealExecution.contents
+            LibRealExecution.RealExecution.stdlib ()
             StdLibCli.StdLib.contents ]
           []
           []

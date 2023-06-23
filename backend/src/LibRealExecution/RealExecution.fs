@@ -18,56 +18,57 @@ module Interpreter = LibExecution.Interpreter
 
 open LibBackend
 
-let contents : LibExecution.StdLib.Contents =
+let mutable additionalStdlib : LibExecution.StdLib.Contents = [], []
+
+let stdlib () : LibExecution.StdLib.Contents =
   LibExecution.StdLib.combine
     [ StdLibExecution.StdLib.contents
       StdLibCloudExecution.StdLib.contents
-      StdLibDarkInternal.StdLib.contents ]
+      additionalStdlib ]
     []
     []
 
-let packageFns : Lazy<Task<Map<RT.FQFnName.PackageFnName, RT.PackageFn.T>>> =
-  lazy
-    (task {
-      let! packages = PackageManager.allFunctions ()
+let packageFns () : Task<Map<RT.FQFnName.PackageFnName, RT.PackageFn.T>> =
+  task {
+    let! packages = PackageManager.allFunctions ()
 
-      return
-        packages
-        |> List.map (fun (f : PT.PackageFn.T) ->
-          (f.name |> PT2RT.FQFnName.PackageFnName.toRT, PT2RT.PackageFn.toRT f))
-        |> Map.ofList
-    })
+    return
+      packages
+      |> List.map (fun (f : PT.PackageFn.T) ->
+        (f.name |> PT2RT.FQFnName.PackageFnName.toRT, PT2RT.PackageFn.toRT f))
+      |> Map.ofList
+  }
 
-let packageTypes : Lazy<Task<Map<RT.FQTypeName.PackageTypeName, RT.PackageType.T>>> =
-  lazy
-    (task {
-      let! packages = PackageManager.allTypes ()
+let packageTypes () : Task<Map<RT.FQTypeName.PackageTypeName, RT.PackageType.T>> =
+  task {
+    let! packages = PackageManager.allTypes ()
 
-      return
-        packages
-        |> List.map (fun (t : PT.PackageType.T) ->
-          (t.name |> PT2RT.FQTypeName.PackageTypeName.toRT, PT2RT.PackageType.toRT t))
-        |> Map.ofList
-    })
+    return
+      packages
+      |> List.map (fun (t : PT.PackageType.T) ->
+        (t.name |> PT2RT.FQTypeName.PackageTypeName.toRT, PT2RT.PackageType.toRT t))
+      |> Map.ofList
+  }
 
-let libraries : Lazy<Task<RT.Libraries>> =
-  lazy
-    (task {
-      let! packageFns = Lazy.force packageFns
-      let! packageTypes = Lazy.force packageTypes
+let gatherLibraries () : Task<RT.Libraries> =
+  task {
+    let! packageFns = packageFns ()
+    let! packageTypes = packageTypes ()
 
-      let fns = contents |> Tuple2.first |> Map.fromListBy (fun fn -> fn.name)
-      let types = contents |> Tuple2.second |> Map.fromListBy (fun typ -> typ.name)
+    let fns = (stdlib ()) |> Tuple2.first |> Map.fromListBy (fun fn -> fn.name)
+    let types = (stdlib ()) |> Tuple2.second |> Map.fromListBy (fun typ -> typ.name)
 
-      // TODO: this keeps a cached version so we're not loading them all the time.
-      // Of course, this won't be up to date if we add more functions. This should be
-      // some sort of LRU cache.
-      return
-        { stdlibTypes = types
-          stdlibFns = fns
-          packageFns = packageFns
-          packageTypes = packageTypes }
-    })
+    // TODO: this keeps a cached version so we're not loading them all the time.
+    // Of course, this won't be up to date if we add more functions. This should be
+    // some sort of LRU cache.
+    return
+      { stdlibTypes = types
+        stdlibFns = fns
+        packageFns = packageFns
+        packageTypes = packageTypes }
+  }
+
+let libraries : Lazy<Task<RT.Libraries>> = lazy gatherLibraries ()
 
 let createState
   (traceID : AT.TraceID.T)
@@ -165,6 +166,6 @@ let reexecuteFunction
 /// Ensure library is ready to be called. Throws if it cannot initialize.
 let init () : Task<unit> =
   task {
-    let! (_ : RT.Libraries) = Lazy.force libraries
+    let! (_ : RT.Libraries) = gatherLibraries ()
     return ()
   }
