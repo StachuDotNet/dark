@@ -1,6 +1,3 @@
-// todo: put darklang-internal header on it
-// todo: actually avail darklang-internal as executable within container
-
 let listDirectoryRecursive (dir: String) : List<String> =
   let contents = Directory.list dir
   let (files, dirs) = contents |> List.partition (fun x -> File.isNormal x)
@@ -26,7 +23,7 @@ type CliOptions =
   | ListPackages
 
 let usage () : String =
-  "Usage: InternalCLI [options]
+  "Usage: dark-internal ./scripts/import-packages.dark load-packages [options]
 
     Options:
       -h, --help     Show this help message and exit
