@@ -25,16 +25,16 @@ type DarkCLIConfig =
     /// In some cases (i.e. for our "internal" use) additional stdlib may be availed.
     extraStdlibForUserPrograms : StdLib.Contents
 
-    /// All
+    /// Should `DarkInternal.[x]` functions be callable?
     allowInternalDarkFunctions : bool
   }
 
-let libraries (extraStdlibForUserPrograms : StdLib.Contents) : RT.Libraries =
+let libraries (config : DarkCLIConfig) : RT.Libraries =
   let (stdlibFns, stdlibTypes) =
     LibExecution.StdLib.combine
       [ StdLibExecution.StdLib.contents
         StdLibCLI.StdLib.contents
-        StdLibCLIHost.StdLib.contents extraStdlibForUserPrograms ]
+        StdLibCLIHost.StdLib.contents config.extraStdlibForUserPrograms config.allowInternalDarkFunctions ]
       []
       []
 
@@ -44,7 +44,7 @@ let libraries (extraStdlibForUserPrograms : StdLib.Contents) : RT.Libraries =
     packageTypes = Map.empty }
 
 let execute
-  (extraStdlibForUserPrograms : StdLib.Contents)
+  (config : DarkCLIConfig)
   (mod' : Parser.CanvasV2.CanvasModule)
   (symtable : Map<string, RT.Dval>)
   : Task<RT.Dval> =
@@ -87,7 +87,7 @@ let execute
 
     let state =
       Exe.createState
-        (libraries extraStdlibForUserPrograms)
+        (libraries config)
         tracing
         sendException
         notify
@@ -101,6 +101,7 @@ let execute
     else // mod'.exprs.Length > 1
       return RT.DError(RT.SourceNone, "Multiple expressions to execute")
   }
+
 let sourceOf
   (tlid : tlid)
   (id : id)
@@ -150,8 +151,7 @@ let main (config : DarkCLIConfig) (args : string[]) =
     let args = args |> Array.toList |> List.map RT.DString |> RT.DList
 
     // eval
-    let result =
-      execute config.extraStdlibForUserPrograms mod' (Map [ "args", args ])
+    let result = execute config mod' (Map [ "args", args ])
     let result = result.Result
 
     NonBlockingConsole.wait ()
