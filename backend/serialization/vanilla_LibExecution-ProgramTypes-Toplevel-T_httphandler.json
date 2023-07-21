@@ -33,7 +33,6 @@
                 ]
               },
               [
-<<<<<<< HEAD
                 {
                   "LPTuple": [
                     189273,
@@ -113,80 +112,6 @@
                             "LPVariable": [
                               1856712,
                               "str"
-=======
-                "ELet",
-                537517627,
-                [
-                  "LPVariable",
-                  567161,
-                  "char"
-                ],
-                [
-                  "EChar",
-                  1031176330,
-                  "a"
-                ],
-                [
-                  "ELet",
-                  399526184,
-                  [
-                    "LPVariable",
-                    578164,
-                    "float"
-                  ],
-                  [
-                    "EFloat",
-                    770715427,
-                    [
-                      "Negative"
-                    ],
-                    "6",
-                    "5"
-                  ],
-                  [
-                    "ELet",
-                    975263310,
-                    [
-                      "LPVariable",
-                      55573,
-                      "n"
-                    ],
-                    [
-                      "EUnit",
-                      923644248
-                    ],
-                    [
-                      "ELet",
-                      43886336,
-                      [
-                        "LPVariable",
-                        44124,
-                        "i"
-                      ],
-                      [
-                        "EIf",
-                        46231874,
-                        [
-                          "EApply",
-                          898531080,
-                          [
-                            "FnTargetName",
-                            [
-                              "Ok",
-                              [
-                                "BuiltIn",
-                                {
-                                  "modules": [
-                                    "Int"
-                                  ],
-                                  "name": [
-                                    "FnName",
-                                    "toString"
-                                  ],
-                                  "version": 0
-                                }
-                              ]
->>>>>>> 29b437e4b (Run tests (they were blocked for a bit))
                             ]
                           },
                           {
@@ -210,7 +135,6 @@
                                 }
                               ]
                             ]
-<<<<<<< HEAD
                           },
                           {
                             "ELet": [
@@ -219,58 +143,6 @@
                                 "LPVariable": [
                                   567161,
                                   "char"
-=======
-                          ]
-                        ],
-                        [
-                          "EInfix",
-                          265463935,
-                          [
-                            "InfixFnCall",
-                            [
-                              "ArithmeticPlus"
-                            ]
-                          ],
-                          [
-                            "EInfix",
-                            312092282,
-                            [
-                              "InfixFnCall",
-                              [
-                                "ArithmeticPlus"
-                              ]
-                            ],
-                            [
-                              "EFieldAccess",
-                              974664608,
-                              [
-                                "EVariable",
-                                1002893266,
-                                "x"
-                              ],
-                              "y"
-                            ],
-                            [
-                              "EApply",
-                              173079901,
-                              [
-                                "FnTargetName",
-                                [
-                                  "Ok",
-                                  [
-                                    "BuiltIn",
-                                    {
-                                      "modules": [
-                                        "Int"
-                                      ],
-                                      "name": [
-                                        "FnName",
-                                        "add"
-                                      ],
-                                      "version": 0
-                                    }
-                                  ]
->>>>>>> 29b437e4b (Run tests (they were blocked for a bit))
                                 ]
                               },
                               {
@@ -278,7 +150,6 @@
                                   1031176330,
                                   "a"
                                 ]
-<<<<<<< HEAD
                               },
                               {
                                 "ELet": [
@@ -306,354 +177,6 @@
                                         "LPVariable": [
                                           55573,
                                           "n"
-=======
-                              ]
-                            ]
-                          ],
-                          [
-                            "EList",
-                            539797095,
-                            [
-                              [
-                                "EInt",
-                                267797631,
-                                5
-                              ],
-                              [
-                                "EInt",
-                                352138743,
-                                6
-                              ],
-                              [
-                                "EInt",
-                                430871955,
-                                7
-                              ]
-                            ]
-                          ]
-                        ]
-                      ],
-                      [
-                        "ELet",
-                        831830073,
-                        [
-                          "LPVariable",
-                          7567123,
-                          "r"
-                        ],
-                        [
-                          "ERecord",
-                          109539183,
-                          [
-                            "Ok",
-                            [
-                              "UserProgram",
-                              {
-                                "modules": [
-                                  "dark",
-                                  "stdlib"
-                                ],
-                                "name": [
-                                  "TypeName",
-                                  "NonEmptyList"
-                                ],
-                                "version": 0
-                              }
-                            ]
-                          ],
-                          [
-                            [
-                              "field",
-                              [
-                                "EPipe",
-                                786862131,
-                                [
-                                  "EInt",
-                                  555880460,
-                                  5
-                                ],
-                                [
-                                  "EPipeInfix",
-                                  1021880969,
-                                  [
-                                    "InfixFnCall",
-                                    [
-                                      "ArithmeticPlus"
-                                    ]
-                                  ],
-                                  [
-                                    "EInt",
-                                    962393769,
-                                    2
-                                  ]
-                                ],
-                                []
-                              ]
-                            ],
-                            [
-                              "enum",
-                              [
-                                "EEnum",
-                                567764301,
-                                [
-                                  "Ok",
-                                  [
-                                    "BuiltIn",
-                                    {
-                                      "modules": [],
-                                      "name": [
-                                        "TypeName",
-                                        "Result"
-                                      ],
-                                      "version": 0
-                                    }
-                                  ]
-                                ],
-                                "Ok",
-                                [
-                                  [
-                                    "EEnum",
-                                    646107057,
-                                    [
-                                      "Ok",
-                                      [
-                                        "Package",
-                                        {
-                                          "owner": "Darklang",
-                                          "modules": {
-                                            "Head": "Stdlib",
-                                            "Tail": [
-                                              "Result"
-                                            ]
-                                          },
-                                          "name": [
-                                            "TypeName",
-                                            "Result"
-                                          ],
-                                          "version": 0
-                                        }
-                                      ]
-                                    ],
-                                    "Error",
-                                    [
-                                      [
-                                        "EEnum",
-                                        689802831,
-                                        [
-                                          "Ok",
-                                          [
-                                            "BuiltIn",
-                                            {
-                                              "modules": [],
-                                              "name": [
-                                                "TypeName",
-                                                "Option"
-                                              ],
-                                              "version": 0
-                                            }
-                                          ]
-                                        ],
-                                        "Just",
-                                        [
-                                          [
-                                            "EEnum",
-                                            957916875,
-                                            [
-                                              "Ok",
-                                              [
-                                                "BuiltIn",
-                                                {
-                                                  "modules": [],
-                                                  "name": [
-                                                    "TypeName",
-                                                    "Option"
-                                                  ],
-                                                  "version": 0
-                                                }
-                                              ]
-                                            ],
-                                            "Nothing",
-                                            []
-                                          ]
-                                        ]
-                                      ]
-                                    ]
-                                  ]
-                                ]
-                              ]
-                            ]
-                          ]
-                        ],
-                        [
-                          "ELet",
-                          1039625813,
-                          [
-                            "LPVariable",
-                            169324087,
-                            "updatedR"
-                          ],
-                          [
-                            "ERecordUpdate",
-                            619623640,
-                            [
-                              "EVariable",
-                              81036610,
-                              "r"
-                            ],
-                            [
-                              [
-                                "field",
-                                [
-                                  "EInt",
-                                  401690270,
-                                  42
-                                ]
-                              ]
-                            ]
-                          ],
-                          [
-                            "ELet",
-                            745304029,
-                            [
-                              "LPVariable",
-                              17461,
-                              "m"
-                            ],
-                            [
-                              "EMatch",
-                              889712088,
-                              [
-                                "EApply",
-                                203239466,
-                                [
-                                  "FnTargetName",
-                                  [
-                                    "Ok",
-                                    [
-                                      "BuiltIn",
-                                      {
-                                        "modules": [
-                                          "Mod"
-                                        ],
-                                        "name": [
-                                          "FnName",
-                                          "function"
-                                        ],
-                                        "version": 2
-                                      }
-                                    ]
-                                  ]
-                                ],
-                                [],
-                                []
-                              ],
-                              [
-                                [
-                                  [
-                                    "MPEnum",
-                                    1015986188,
-                                    "Ok",
-                                    [
-                                      [
-                                        "MPVariable",
-                                        334386852,
-                                        "x"
-                                      ]
-                                    ]
-                                  ],
-                                  [
-                                    "EVariable",
-                                    863810169,
-                                    "v"
-                                  ]
-                                ],
-                                [
-                                  [
-                                    "MPInt",
-                                    928253813,
-                                    5
-                                  ],
-                                  [
-                                    "EInt",
-                                    342670561,
-                                    "-9223372036854775808"
-                                  ]
-                                ],
-                                [
-                                  [
-                                    "MPBool",
-                                    435227293,
-                                    true
-                                  ],
-                                  [
-                                    "EInt",
-                                    232748650,
-                                    7
-                                  ]
-                                ],
-                                [
-                                  [
-                                    "MPChar",
-                                    387662539,
-                                    "c"
-                                  ],
-                                  [
-                                    "EChar",
-                                    657848009,
-                                    "c"
-                                  ]
-                                ],
-                                [
-                                  [
-                                    "MPList",
-                                    387662539,
-                                    [
-                                      [
-                                        "MPBool",
-                                        435227293,
-                                        true
-                                      ]
-                                    ]
-                                  ],
-                                  [
-                                    "EList",
-                                    657848009,
-                                    [
-                                      [
-                                        "EBool",
-                                        435227293,
-                                        true
-                                      ]
-                                    ]
-                                  ]
-                                ],
-                                [
-                                  [
-                                    "MPListCons",
-                                    596996239,
-                                    [
-                                      "MPString",
-                                      949735651,
-                                      "val1"
-                                    ],
-                                    [
-                                      "MPListCons",
-                                      580612639,
-                                      [
-                                        "MPString",
-                                        191110189,
-                                        "val2"
-                                      ],
-                                      [
-                                        "MPList",
-                                        448252771,
-                                        [
-                                          [
-                                            "MPString",
-                                            98945887,
-                                            "val3"
-                                          ]
->>>>>>> 29b437e4b (Run tests (they were blocked for a bit))
                                         ]
                                       },
                                       {
@@ -679,17 +202,21 @@
                                                   {
                                                     "FnTargetName": [
                                                       {
-                                                        "BuiltIn": [
+                                                        "Ok": [
                                                           {
-                                                            "modules": [
-                                                              "Int"
-                                                            ],
-                                                            "name": {
-                                                              "FnName": [
-                                                                "toString"
-                                                              ]
-                                                            },
-                                                            "version": 0
+                                                            "BuiltIn": [
+                                                              {
+                                                                "modules": [
+                                                                  "Int"
+                                                                ],
+                                                                "name": {
+                                                                  "FnName": [
+                                                                    "toString"
+                                                                  ]
+                                                                },
+                                                                "version": 0
+                                                              }
+                                                            ]
                                                           }
                                                         ]
                                                       }
@@ -978,17 +505,21 @@
                                                           {
                                                             "FnTargetName": [
                                                               {
-                                                                "BuiltIn": [
+                                                                "Ok": [
                                                                   {
-                                                                    "modules": [
-                                                                      "Int"
-                                                                    ],
-                                                                    "name": {
-                                                                      "FnName": [
-                                                                        "add"
-                                                                      ]
-                                                                    },
-                                                                    "version": 0
+                                                                    "BuiltIn": [
+                                                                      {
+                                                                        "modules": [
+                                                                          "Int"
+                                                                        ],
+                                                                        "name": {
+                                                                          "FnName": [
+                                                                            "add"
+                                                                          ]
+                                                                        },
+                                                                        "version": 0
+                                                                      }
+                                                                    ]
                                                                   }
                                                                 ]
                                                               }
@@ -1055,18 +586,22 @@
                                                 "ERecord": [
                                                   109539183,
                                                   {
-                                                    "UserProgram": [
+                                                    "Ok": [
                                                       {
-                                                        "modules": [
-                                                          "dark",
-                                                          "stdlib"
-                                                        ],
-                                                        "name": {
-                                                          "TypeName": [
-                                                            "NonEmptyList"
-                                                          ]
-                                                        },
-                                                        "version": 0
+                                                        "UserProgram": [
+                                                          {
+                                                            "modules": [
+                                                              "dark",
+                                                              "stdlib"
+                                                            ],
+                                                            "name": {
+                                                              "TypeName": [
+                                                                "NonEmptyList"
+                                                              ]
+                                                            },
+                                                            "version": 0
+                                                          }
+                                                        ]
                                                       }
                                                     ]
                                                   },
@@ -1110,15 +645,19 @@
                                                         "EEnum": [
                                                           567764301,
                                                           {
-                                                            "BuiltIn": [
+                                                            "Ok": [
                                                               {
-                                                                "modules": [],
-                                                                "name": {
-                                                                  "TypeName": [
-                                                                    "Result"
-                                                                  ]
-                                                                },
-                                                                "version": 0
+                                                                "BuiltIn": [
+                                                                  {
+                                                                    "modules": [],
+                                                                    "name": {
+                                                                      "TypeName": [
+                                                                        "Result"
+                                                                      ]
+                                                                    },
+                                                                    "version": 0
+                                                                  }
+                                                                ]
                                                               }
                                                             ]
                                                           },
@@ -1128,19 +667,23 @@
                                                               "EEnum": [
                                                                 646107057,
                                                                 {
-                                                                  "Package": [
+                                                                  "Ok": [
                                                                     {
-                                                                      "owner": "Darklang",
-                                                                      "modules": [
-                                                                        "Stdlib",
-                                                                        "Result"
-                                                                      ],
-                                                                      "name": {
-                                                                        "TypeName": [
-                                                                          "Result"
-                                                                        ]
-                                                                      },
-                                                                      "version": 0
+                                                                      "Package": [
+                                                                        {
+                                                                          "owner": "Darklang",
+                                                                          "modules": [
+                                                                            "Stdlib",
+                                                                            "Result"
+                                                                          ],
+                                                                          "name": {
+                                                                            "TypeName": [
+                                                                              "Result"
+                                                                            ]
+                                                                          },
+                                                                          "version": 0
+                                                                        }
+                                                                      ]
                                                                     }
                                                                   ]
                                                                 },
@@ -1150,15 +693,19 @@
                                                                     "EEnum": [
                                                                       689802831,
                                                                       {
-                                                                        "BuiltIn": [
+                                                                        "Ok": [
                                                                           {
-                                                                            "modules": [],
-                                                                            "name": {
-                                                                              "TypeName": [
-                                                                                "Option"
-                                                                              ]
-                                                                            },
-                                                                            "version": 0
+                                                                            "BuiltIn": [
+                                                                              {
+                                                                                "modules": [],
+                                                                                "name": {
+                                                                                  "TypeName": [
+                                                                                    "Option"
+                                                                                  ]
+                                                                                },
+                                                                                "version": 0
+                                                                              }
+                                                                            ]
                                                                           }
                                                                         ]
                                                                       },
@@ -1168,15 +715,19 @@
                                                                           "EEnum": [
                                                                             957916875,
                                                                             {
-                                                                              "BuiltIn": [
+                                                                              "Ok": [
                                                                                 {
-                                                                                  "modules": [],
-                                                                                  "name": {
-                                                                                    "TypeName": [
-                                                                                      "Option"
-                                                                                    ]
-                                                                                  },
-                                                                                  "version": 0
+                                                                                  "BuiltIn": [
+                                                                                    {
+                                                                                      "modules": [],
+                                                                                      "name": {
+                                                                                        "TypeName": [
+                                                                                          "Option"
+                                                                                        ]
+                                                                                      },
+                                                                                      "version": 0
+                                                                                    }
+                                                                                  ]
                                                                                 }
                                                                               ]
                                                                             },
@@ -1246,17 +797,21 @@
                                                               {
                                                                 "FnTargetName": [
                                                                   {
-                                                                    "BuiltIn": [
+                                                                    "Ok": [
                                                                       {
-                                                                        "modules": [
-                                                                          "Mod"
-                                                                        ],
-                                                                        "name": {
-                                                                          "FnName": [
-                                                                            "function"
-                                                                          ]
-                                                                        },
-                                                                        "version": 2
+                                                                        "BuiltIn": [
+                                                                          {
+                                                                            "modules": [
+                                                                              "Mod"
+                                                                            ],
+                                                                            "name": {
+                                                                              "FnName": [
+                                                                                "function"
+                                                                              ]
+                                                                            },
+                                                                            "version": 2
+                                                                          }
+                                                                        ]
                                                                       }
                                                                     ]
                                                                   }
