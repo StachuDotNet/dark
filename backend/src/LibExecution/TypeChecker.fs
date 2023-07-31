@@ -83,6 +83,13 @@ let rec unify
   (value : Dval)
   : Ply<Result<unit, Error>> =
   uply {
+    // declaration: all type-checks are O(1)
+    // suppose we have type A = { b: B } and type B = { c: C } and C = Int
+    // when we construct a C we should check its type
+    // when we put the C into the B, we should check that C is a C (but not that C is an Int)
+    // when we put the B into the A, we should check that B is a B (but not anything internal inside B)
+    
+
     let! resolvedType = getTypeReferenceFromAlias types expected
 
     match (resolvedType, value) with
@@ -110,12 +117,38 @@ let rec unify
     | TBytes, DBytes _ -> return Ok()
     | TDB _, DDB _ -> return Ok() // TODO: check DB type
     | TList nested, DList dvs ->
-      let! results =
-        dvs
-        |> Ply.List.mapSequentiallyWithIndex (fun i v ->
-          let context = ListIndex(i, nested, context)
-          unify context types typeArgSymbolTable nested v)
-      return combineErrorsUnit results
+      // potentially, DList would contain a type reference to the type of the list,
+      // and we'd only have to check tNested v dNested
+      // , in that scenario, in this context, wse'd know that if the DList was formed with that TR and vals,
+      // then ...
+
+      // let! results =
+      //   dvs
+      //   |> Ply.List.mapSequentiallyWithIndex (fun i v ->
+      //     let context = ListIndex(i, nested, context)
+      //     unify context types typeArgSymbolTable nested v)
+      // return combineErrorsUnit results
+
+      // ^ slow.
+      // -> _optional_ full type-checking (probably not)
+      // (?? cache results of type-checking)
+      // (compile-time type-checking? less exhaustive..)
+      // benchmark just typechecking w/ various inputs
+      // verify we aren't over-fetching types/etc (or any other dumb things)
+      // potentially dumb this down (i.e. only check first ele in a list)
+      // misc: can we run type-=checking in the background so that we can report on it later but not block the results?
+      //   from traces?
+      // type-check only in preview?
+      // -> WT2PT typechecking?
+
+      // OK to back-pedal on exhaustive runtime type-checking
+      // (but first make sure we aren't doing anything perf dumb)
+      // dial back to
+      // TODO: do analysis on which types of type-checking are hurting us the most (by context)
+      // we store something's type when we create it
+      //  when you create a record,
+      return Ok()
+
     | TDict valueType, DDict dmap ->
       let! results =
         dmap
@@ -142,6 +175,9 @@ let rec unify
 
     // TYPESCLEANUP: handle typeArgs
     | TCustomType(typeName, _typeArgs), value ->
+      // misc: if we've already typechecked when we created the reocrd, then this is duplicate work
+
+      // we should only need type and type args. we're passing in seemingly more than that?
 
       match! Types.find typeName types with
       | None -> return Error(TypeDoesntExist(typeName, context))
@@ -163,14 +199,15 @@ let rec unify
                 getTypeReferenceFromAlias types (TCustomType(typeName, []))
               return Error(ValueNotExpectedType(value, expected, context))
             else
-              return!
-                unifyRecordFields
-                  concreteTn
-                  context
-                  types
-                  typeArgSymbolTable
-                  (firstField :: additionalFields)
-                  dmap
+              // return!
+              //   unifyRecordFields
+              //     concreteTn
+              //     context
+              //     types
+              //     typeArgSymbolTable
+              //     (firstField :: additionalFields)
+              //     dmap
+              return Ok()
           | _ -> return err
 
         | { definition = TypeDeclaration.Enum(firstCase, additionalCases) },
@@ -186,21 +223,22 @@ let rec unify
             | None -> return err
             | Some case ->
               if List.length case.fields = List.length valFields then
-                let! unified =
-                  List.zip case.fields valFields
-                  |> List.mapi (fun i (expected, actual) ->
-                    let context =
-                      EnumField(
-                        tn,
-                        expected,
-                        case.name,
-                        i,
-                        Context.toLocation context
-                      )
-                    unify context types typeArgSymbolTable expected.typ actual)
-                  |> Ply.List.mapSequentially identity
+                // let! unified =
+                //   List.zip case.fields valFields
+                //   |> List.mapi (fun i (expected, actual) ->
+                //     let context =
+                //       EnumField(
+                //         tn,
+                //         expected,
+                //         case.name,
+                //         i,
+                //         Context.toLocation context
+                //       )
+                //     unify context types typeArgSymbolTable expected.typ actual)
+                //   |> Ply.List.mapSequentially identity
 
-                return combineErrorsUnit unified
+                // return combineErrorsUnit unified
+                return Ok()
               else
                 return err
         | _, _ -> return err

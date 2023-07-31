@@ -546,6 +546,11 @@ and [<NoComparison>] Dval =
   | DRecord of TypeName.T * DvalMap
   | DEnum of TypeName.T * caseName : string * List<Dval>
 
+  // Dvals might need type args, and DList mi;ght need type refernece
+  // need O(1) type-checking for type refs (well, O(n) for lists...)
+
+  // no nested type-checks 
+
 
 and DvalTask = Ply<Dval>
 
