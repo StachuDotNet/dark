@@ -304,8 +304,7 @@ module Darklang =
           | Ok i -> i
           | Error e ->
             print $"Error executing script {scriptPath}"
-            print e.msg
-            e.metadata |> Dict.iter (fun (k, v) -> print $"  {k}: {v}")
+            print (PACKAGE.Darklang.LanguageTools.RuntimeErrors.Error.toString e)
             1
 
 

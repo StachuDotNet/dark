@@ -1,0 +1,39 @@
+(let formattedDate = "Aug 31, 2023 (Thu)" // TODO
+
+ print $"Running daily print script for {formattedDate}"
+
+ let md =
+   $"# {formattedDate}
+
+- morning
+  - up: _____
+  - bathroom: teeth [ ], shower [ ], shave [ ] face [ ], pills [ ]
+  - kitchen: dishes [ ], tidy [ ], coffee [ ], breakfast [ ]
+- Dark: check emails [ ], ... (PRs, issues, etc.)
+- fitness
+    walk: _____, pushups: _____, situps: _____, squats: _____
+- evening
+  - dinner: _____
+  - screens off: _____, in bed: _____
+"
+
+ // TODO: probably a bunch of Result.maps
+
+ let _mdCreationResponse = File.write (String.toBytes md) "./daily-print.md"
+
+ let pdfCreationResponse = Process.Linux.run "mdpdf ./daily-print.md"
+
+ match pdfCreationResponse with
+ | Ok _ -> ()
+ | Error err -> print $"Error creating PDF: {err}"
+
+ let _ =
+   Process.Linux.run
+     "lp -d Brother_MFC_J5330DW -o media=letter -o outputorder=reverse -o sides=one-sided ./daily-print.pdf"
+
+ // TODO: move to cleanup fn and run even if we error
+ // (but what if there's an uncaught exception?)
+ let _ = File.delete "./daily-print.md"
+ let _ = File.delete "./daily-print.pdf"
+
+ 0)

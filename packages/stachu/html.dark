@@ -1,0 +1,111 @@
+module Stachu =
+  module Html =
+    let document (children: List<String>) : String =
+      let htmlDoc = "<!DOCTYPE html>"
+      let theRest = String.join "" nodes
+      htmlDoc ++ theRest
+
+    let tag
+      (name: String)
+      (attributes: List<String * String>)
+      (children: List<String>)
+      : String =
+      let attributesText =
+        attributes
+        |> List.map (fun v ->
+          let (key, value) = v
+          $"{key}=\"{value}\"")
+        |> String.join " "
+
+      $"<{tag} {attributesText}>{childHtml}</{tag}>"
+
+
+
+    // structures
+    let div (attributes: List<String * String>) (children: List<String>) : String =
+      tag "div" attributes children
+
+    let span (attributes: List<String * String>) (children: List<String>) : String =
+      tag "span" attributes children
+
+
+    // text
+    let p (attributes: List<String * String>) (children: List<String>) : String =
+      tag "p" attributes children
+
+    let h1 (attributes: List<String * String>) (children: List<String>) : String =
+      tag "h1" attributes children
+
+    let h2 (attributes: List<String * String>) (children: List<String>) : String =
+      tag "h2" attributes children
+
+    let h3 (attributes: List<String * String>) (children: List<String>) : String =
+      tag "h3" attributes children
+
+    let h4 (attributes: List<String * String>) (children: List<String>) : String =
+      tag "h4" attributes children
+
+    let h5 (attributes: List<String * String>) (children: List<String>) : String =
+      tag "h5" attributes children
+
+    let h6 (attributes: List<String * String>) (children: List<String>) : String =
+      tag "h6" attributes children
+
+
+
+    // lists
+    let ul (attributes: List<String * String>) (children: List<String>) : String =
+      tag "ul" attributes children
+
+    let ol (attributes: List<String * String>) (children: List<String>) : String =
+      tag "ol" attributes children
+
+    let li (attributes: List<String * String>) (children: List<String>) : String =
+      tag "li" attributes children
+
+
+    // tables
+    let table (attributes: List<String * String>) (children: List<String>) : String =
+      tag "table" attributes children
+
+    let tr (attributes: List<String * String>) (children: List<String>) : String =
+      tag "tr" attributes children
+
+    let td (attributes: List<String * String>) (children: List<String>) : String =
+      tag "td" attributes children
+
+    let th (attributes: List<String * String>) (children: List<String>) : String =
+      tag "th" attributes children
+
+    let tbody (attributes: List<String * String>) (children: List<String>) : String =
+      tag "tbody" attributes children
+
+    let thead (attributes: List<String * String>) (children: List<String>) : String =
+      tag "thead" attributes children
+
+    let tfoot (attributes: List<String * String>) (children: List<String>) : String =
+      tag "tfoot" attributes children
+
+
+    // misc
+
+    let comment (s: String) : String = $"<!-- {s} -->"
+
+    let a (attributes: List<String * String>) (children: List<String>) : String =
+      tag "a" attributes children
+
+    let caption
+      (attributes: List<String * String>)
+      (children: List<String>)
+      : String =
+      tag "caption" attributes children
+
+
+    let colgroup
+      (attributes: List<String * String>)
+      (children: List<String>)
+      : String =
+      tag "colgroup" attributes children
+
+    let col (attributes: List<String * String>) (children: List<String>) : String =
+      tag "col" attributes children
