@@ -866,27 +866,10 @@ module Dval =
     | DEnum _, _ -> false
 
 
-
-  // VTTODO: this name is bad
-  // VTTODO: this should either be a TypeCheckerError in RTE, or another type of RTE
-  // VTTODO: as such, the toString-ing should be done in Dark, not here
-  module KnownTypeConflictError =
-    type KnownTypeConflictError =
-      | Conflict of left : KnownType * right : KnownType * msg : Option<string>
-
-    let toRTE (Conflict(left, right, msg) : KnownTypeConflictError) : RuntimeError =
-      let msgPart =
-        match msg with
-        | Some msg -> $": {msg}"
-        | None -> ""
-
-      RuntimeError.oldError ($"Could not merge types {left} and {right}{msgPart}")
-
-
   let rec mergeKnownTypes
     (left : KnownType)
     (right : KnownType)
-    : Result<KnownType, RuntimeError> =
+    : Result<KnownType, unit> =
     match left, right with
     | KTUnit, KTUnit -> KTUnit |> Ok
     | KTBool, KTBool -> KTBool |> Ok
@@ -908,20 +891,13 @@ module Dval =
 
       match firstMerged, secondMerged, restMerged with
       | Ok first, Ok second, Ok rest -> Ok(KTTuple(first, second, rest))
-      | _ ->
-        KnownTypeConflictError.Conflict(left, right, None)
-        |> KnownTypeConflictError.toRTE
-        |> Error
+      | _ -> Error()
 
     | KTCustomType(lName, lArgs), KTCustomType(rName, rArgs) ->
       if lName <> rName then
-        KnownTypeConflictError.Conflict(left, right, Some "type names did not match")
-        |> KnownTypeConflictError.toRTE
-        |> Error
+        Error()
       else if List.length lArgs <> List.length rArgs then
-        KnownTypeConflictError.Conflict(left, right, Some "type args did not match")
-        |> KnownTypeConflictError.toRTE
-        |> Error
+        Error()
       else
         List.map2 mergeValueTypes lArgs rArgs
         |> Result.collect
@@ -933,23 +909,17 @@ module Dval =
 
       match argsMerged, retMerged with
       | Ok args, Ok ret -> Ok(KTFn(args, ret))
-      | _ ->
-        KnownTypeConflictError.Conflict(left, right, None)
-        |> KnownTypeConflictError.toRTE
-        |> Error
+      | _ -> Error()
 
 
     | KTPassword, KTPassword -> KTPassword |> Ok
 
-    | _ ->
-      KnownTypeConflictError.Conflict(left, right, None)
-      |> KnownTypeConflictError.toRTE
-      |> Error
+    | _ -> Error()
 
   and mergeValueTypes
     (left : ValueType)
     (right : ValueType)
-    : Result<ValueType, RuntimeError> =
+    : Result<ValueType, unit> =
     match left, right with
     | ValueType.Unknown, v
     | v, ValueType.Unknown -> Ok v
@@ -1046,7 +1016,10 @@ module Dval =
 
     match newType with
     | Ok newType -> Ok(newType, dv :: list)
-    | Error e -> Error e
+    | Error() ->
+      RuntimeError.oldError
+        $"Could not merge types List<{listType}> and List<{dvalType}>"
+      |> Error
 
   let list (initialType : ValueType) (list : List<Dval>) : Dval =
     match List.find isFake list with
