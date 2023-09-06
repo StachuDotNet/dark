@@ -20,6 +20,9 @@ type InputVars = List<string * RT.Dval>
 type FunctionArgHash = string
 type HashVersion = int
 type FnName = string
+
+// TODO: when DErrors are removed from the Dval type,
+// this should be updated to represent error fn results as well
 type FunctionResult = FnName * id * FunctionArgHash * HashVersion * RT.Dval
 
 /// TraceIDs are a UUID with a very specific structure, that is designed so that when
@@ -105,16 +108,22 @@ type AnalysisRequest =
   { requestID : int
     requestTime : NodaTime.Instant
     tlid : tlid
+
     traceID : TraceID.T
     traceData : TraceData
+
+    // expr to run analysis against
+    expr : RT.Expr
+
+    // user code that may be needed to run analysis
     userFns : List<RT.UserFunction.T>
     userTypes : List<RT.UserType.T>
     userConstants : List<RT.UserConstant.T>
     dbs : List<RT.DB.T>
-    expr : RT.Expr
-    packageFns : List<RT.PackageFn.T>
-    packageTypes : List<RT.PackageType.T>
-    packageConstants : List<RT.PackageConstant.T>
+    packageManager : RT.PackageManager
+    // packageFns : List<RT.PackageFn.T>
+    // packageTypes : List<RT.PackageType.T>
+    // packageConstants : List<RT.PackageConstant.T>
     secrets : List<RT.Secret.T> }
 
 type AnalysisResults = System.Collections.Generic.Dictionary<id, ExecutionResult>
