@@ -51,6 +51,8 @@
     <ProjectReference Include="../LibExecution/LibExecution.fsproj" />
     <ProjectReference Include="../LibCliExecution/LibCliExecution.fsproj" />
     <ProjectReference Include="../BuiltinCliHost/BuiltinCliHost.fsproj" />
+
+    <ProjectReference Include="../LibCloud/LibCloud.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Cli.fs" />

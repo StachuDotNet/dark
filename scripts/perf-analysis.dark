@@ -1,0 +1,76 @@
+// things to bring up:
+// - parsing TestInput<Int> yields an error "Record should not have type args" - why?
+//
+// - canvases can't currently be passed with root-level modules - OK to fix?
+//   (this affects scripts since those are parsed as canvases)
+//   (we've probably avoided this so no one tries to put an http handler in a submodule)
+//
+// - should we update parsing to allow for `fun () -> ...`
+//   currently we require `fun _ -> ...`,
+//   but I think it might be ok to interpret () as an expected unit arg?
+//   (wait for dmitry's PR)
+//
+// - (how) should timing fns be presented to end users? (e.g. `timeFn` in `Builtin`)
+//
+// - would it be useful to keep pursuing this?
+//   maybe store the results once in a while, and track them over time?
+// - timespan?
+// - extend datetime fns to include ms stuff
+
+type TestInput<'a> =
+  { label: String
+    fn: (Unit -> 'a)
+    expected: 'a }
+
+// type OptionRecordWrapper<'a> =
+//   { opt: Option<'a> }
+
+//OptionRecordWrapper { opt = Option.Option<Int>.None }
+
+// type TestResult<'a> = { inputLabel: String; actual: 'a; durationInMs: Float }
+
+let runTests<'a> (tests: List<TestInput<'a>>) : Unit =
+  tests
+  |> PACKAGE.Darklang.Stdlib.List.iter (fun t ->
+    let (_actual, duration) = Builtin.timeUnitFn<'a> fn
+    // TODO: yell if actual <> expected
+    Builtin.print $"{input.label}: {Builtin.Float.toString duration}ms")
+
+
+// -- Int --
+let runIntAddTests () : Unit =
+  runTests<Int> // is this requried if there's an explicit type param at fn decl?
+    [ TestInput
+        { label = "1 + 2"
+          fn = fun _ -> Builtin.Int.add 1 2
+          expected = 3 }
+      TestInput
+        { label = "0 + 0"
+          fn = fun _ -> Builtin.Int.add 0 0
+          expected = 0 } ]
+
+let runIntTests () : Unit = runIntAddTests ()
+
+
+// -- Float --
+//   let runAddTests (): Unit =
+//     [ { label = "1.0 + 2.5"; fn = (fun _ -> Builtin.Float.add 1.0 2.5); expected = 3.5 }
+//       { label = "0.0 + 0.0"; fn = (fun _ -> Builtin.Float.add 0.0 0.0); expected = 0.0 } ]
+//     |> runTests<Float>
+
+let runFloatTests () : Unit =
+  // runAddTests()
+  ()
+
+let runAll () =
+  runIntTests ()
+  runFloatTests ()
+
+
+
+
+// TODO: ensure all functions are covered? (fetch them all, compare against ones tested, etc.)
+// TODO: test failures
+(runAll ()
+ Builtin.print "tests have been run!"
+ 0)

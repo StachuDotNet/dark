@@ -171,6 +171,7 @@ let fns : List<BuiltInFn> =
             try
               match parsedScript with
               | Ok mod' ->
+                debuG "parsed" mod'
                 match! execute state mod' symtable with
                 | DInt i -> return Dval.resultOk (DInt i)
                 | DError(_, e) -> return e |> RuntimeError.toDT |> Dval.resultError
