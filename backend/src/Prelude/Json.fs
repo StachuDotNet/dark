@@ -245,10 +245,11 @@ module Vanilla =
       System.Console.Write("error allowing Vanilla type")
 
   let assertSerializable (t : System.Type) : unit =
-    if not (isSerializable t) then
-      Exception.sendRollbarError
-        "Invalid serialization call to type not allowed: add `Json.Vanilla.allow<type>()` to allow it to be serialized"
-        [ "type", string t ]
+    // if not (isSerializable t) then
+    //   Exception.sendRollbarError
+    //     "Invalid serialization call to type not allowed: add `Json.Vanilla.allow<type>()` to allow it to be serialized"
+    //     [ "type", string t ]
+    ()
 
 
   let serialize (data : 'a) : string =

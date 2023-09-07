@@ -53,7 +53,7 @@ let builtIns : RT.BuiltIns =
     fns = fns |> Map.fromListBy (fun fn -> fn.name)
     constants = constants |> Map.fromListBy (fun c -> c.name) }
 
-let packageManager = LibCliExecution.PackageManager.packageManager
+let packageManager = LibCloud.PackageManager.packageManager
 
 let state () =
   let program : RT.Program =
@@ -106,6 +106,11 @@ let main (args : string[]) =
     initSerializers ()
 
     packageManager.init.Result
+    LibService.Init.init "Cli"
+    LibService.Telemetry.Console.loadTelemetry
+      "Cli"
+      LibService.Telemetry.DontTraceDBQueries
+    (LibCloud.Init.waitForDB ()).Result
 
     let result = execute (Array.toList args)
     let result = result.Result
@@ -119,6 +124,7 @@ let main (args : string[]) =
         match source with
         | RT.SourceID(tlid, id) -> $"(source: {tlid}, {id})"
         | RT.SourceNone -> "(source unknown)"
+
       match (LibExecution.Execution.runtimeErrorToString state rte).Result with
       | RT.DString s -> System.Console.WriteLine $"Error {source}:\n  {s}"
       | newErr ->

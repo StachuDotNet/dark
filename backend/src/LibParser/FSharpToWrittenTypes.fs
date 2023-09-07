@@ -551,7 +551,11 @@ module Expr =
                   (SynExpr.Record _ as expr),
                   _) ->
       if List.length typeArgs <> 0 then
-        Exception.raiseInternal "Record should not have type args" [ "expr", expr ]
+        debuG "name" name
+        // why not?
+        Exception.raiseInternal
+          "Record should not have type args"
+          [ "expr", expr; "name", name ]
 
       match c expr with
       | WT.ERecord(id, typeName, fields) -> WT.ERecord(id, typeName, fields)

@@ -290,7 +290,7 @@ let rec eval'
 
       match List.tryFind Dval.isFake results with
       | Some fakeDval -> return fakeDval
-      | None -> return Dval.list valueTypeTODO results
+      | None -> return Dval.list ValueType.Unknown results
 
 
     | ETuple(_id, first, second, theRest) ->

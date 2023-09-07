@@ -55,6 +55,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, [ DFloat a ] -> a |> Math.Floor |> int64 |> DInt |> Ply
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure

@@ -269,6 +269,7 @@ and equalsMatchPattern (pattern1 : MatchPattern) (pattern2 : MatchPattern) : boo
 
 
 let varA = TVariable "a"
+let varB = TVariable "b"
 
 let types : List<BuiltInType> = []
 let constants : List<BuiltInConstant> = []
@@ -301,6 +302,94 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "<>"
       previewable = Pure
+      deprecated = NotDeprecated }
+
+
+    { name = fn "timeUnitFn" 0
+      typeParams = [ "resultType" ]
+      parameters = [
+        Param.makeWithArgs
+            "fn"
+            (TFn(NEList.singleton TUnit, varA))
+            ""
+            [ ] ]
+      returnType = TTuple(varA, TInt, [])
+      description = "Times a function that takes no args; returns the result and the duration"
+      fn =
+        (function
+        | state, _, [ DFnVal fn ] ->
+          uply {
+            // using System;
+            // using System.Diagnostics;
+            // using System.Threading;
+            let stopwatch = new System.Diagnostics.Stopwatch()
+            stopwatch.Start()
+            let! result = LibExecution.Interpreter.applyFnVal state 0UL fn [] (NEList.singleton DUnit)
+            stopwatch.Stop()
+            let duration = stopwatch.ElapsedMilliseconds
+            return DTuple(result, DInt duration, [])
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    { name = fn "timeUnitFnIgnoringResult" 0
+      typeParams = [ "resultTypeToIgnore" ]
+      parameters = [
+        Param.makeWithArgs
+            "fn"
+            (TFn(NEList.singleton TUnit, varA))
+            ""
+            [ ] ]
+      returnType = TInt
+      description = "Times a function that takes no args; returns the result and the duration"
+      fn =
+        (function
+        | state, _, [ DFnVal fn ] ->
+          uply {
+            // using System;
+            // using System.Diagnostics;
+            // using System.Threading;
+            let stopwatch = new System.Diagnostics.Stopwatch()
+            stopwatch.Start()
+            let! _result = LibExecution.Interpreter.applyFnVal state 0UL fn [] (NEList.singleton DUnit)
+            stopwatch.Stop()
+            let duration = stopwatch.ElapsedMilliseconds
+            return DInt duration
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    { name = fn "timeFn" 0
+      typeParams = [ ]
+      parameters = [
+        Param.makeWithArgs
+            "fn"
+            (TFn(NEList.singleton varA, varB))
+            ""
+            [ ]
+        Param.make "args" (TList varA) "" ]
+      returnType = TInt
+      description = "Times a function that takes no args; returns the result and the duration"
+      fn =
+        (function
+        | state, _, [ DFnVal fn; DList (_, firstArg :: additionalArgs) ] ->
+          uply {
+            let stopwatch = new System.Diagnostics.Stopwatch()
+            stopwatch.Start()
+            let! _result = LibExecution.Interpreter.applyFnVal state 0UL fn [] (NEList.ofList firstArg additionalArgs)
+            stopwatch.Stop()
+            let duration = stopwatch.ElapsedMilliseconds
+            return DInt duration
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
       deprecated = NotDeprecated }
 
 
