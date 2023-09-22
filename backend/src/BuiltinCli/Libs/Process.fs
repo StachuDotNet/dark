@@ -35,14 +35,18 @@ let fns : List<BuiltInFn> =
       returnType = stdlibTypeRef [ "Process" ] "Result" 0
       fn =
         (function
-        | _, _, [ DString command ] ->
+        | _, _, [ DString command; DString input ] ->
           let psi =
-            System.Diagnostics.ProcessStartInfo(command)
+            System.Diagnostics.ProcessStartInfo()
             |> fun psi ->
-              psi.UseShellExecute <- false
+              psi.FileName <- command
+              psi.UseShellExecute <- true
               psi.RedirectStandardOutput <- true
               psi.RedirectStandardError <- true
               psi.CreateNoWindow <- true
+              //psi.Arguments <- input
+
+              psi.Arguments <- "-c \" " + input + " \""
               psi
 
           let p = System.Diagnostics.Process.Start(psi)
@@ -53,7 +57,45 @@ let fns : List<BuiltInFn> =
           p.WaitForExit()
 
           Dval.record
-            (TypeName.fqBuiltIn [ "Process" ] "Error" 0)
+            (TypeName.fqBuiltIn [ "Process" ] "Result" 0)
+            [ ("exitCode", DInt(p.ExitCode))
+              ("stdout", DString(stdout))
+              ("stderr", DString(stderr)) ]
+          |> Ply
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    { name = fn [ "Process" ] "run" 0
+      description = "Runs a process in Linux - return exitCode, stdout, and stderr"
+      typeParams = []
+      parameters = [ Param.make "command" TString "The command to run" ]
+      returnType = stdlibTypeRef [ "Process" ] "Result" 0
+      fn =
+        (function
+        | _, _, [ DString input ] ->
+          let psi =
+            System.Diagnostics.ProcessStartInfo()
+            |> fun psi ->
+              //psi.FileName <- "/bin/bash"
+              psi.UseShellExecute <- true
+              psi.RedirectStandardOutput <- true
+              psi.RedirectStandardError <- true
+              psi.CreateNoWindow <- true
+              psi.Arguments <- "-c \" " + input + " \""
+              psi
+
+          let p = System.Diagnostics.Process.Start(psi)
+
+          let stdout = p.StandardOutput.ReadToEnd()
+          let stderr = p.StandardError.ReadToEnd()
+
+          p.WaitForExit()
+
+          Dval.record
+            (TypeName.fqBuiltIn [ "Process" ] "Result" 0)
             [ ("exitCode", DInt(p.ExitCode))
               ("stdout", DString(stdout))
               ("stderr", DString(stderr)) ]

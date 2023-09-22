@@ -1,0 +1,7 @@
+module Stachu =
+  module Elmish =
+    type Component_v0<'model, 'msg> =
+      { name: String
+        description: String
+        version: String
+        render: Unit -> String }

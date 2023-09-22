@@ -1,0 +1,70 @@
+(let formattedDate = "Aug 31, 2023 (Thu)" // TODO
+
+ Builtin.print $"Running daily print script for {formattedDate}"
+
+ let md =
+   $"# {formattedDate}
+
+- morning
+  - up: _____
+  - bathroom: teeth [ ], shower [ ], shave [ ] face [ ], pills [ ]
+  - kitchen: dishes [ ], tidy [ ], coffee [ ], breakfast [ ]
+- Dark: check emails [ ], ... (PRs, issues, etc.)
+- fitness
+    walk: _____, pushups: _____, situps: _____, squats: _____
+- evening
+  - dinner: _____
+  - screens off: _____, in bed: _____
+"
+
+let html =
+  $"<!DOCTYPE html>
+<html>
+	<head>
+		<title>Stachu's Daily Print</title>
+	</head>
+	<body>
+		<h1>{formattedDate}</h1>
+		<ul>
+			<li>morning<ul>
+				<li>up: <strong>_</strong></li>
+				<li>bathroom: teeth [ ] | shower [ ] | shave [ ] face [ ] | pills [ ]</li>
+				<li>kitchen: dishes [ ] | tidy [ ] | coffee [ ] | breakfast [ ]</li>
+			</ul>
+		</li>
+		<li>Dark: check emails [ ], ... (PRs, issues, etc.)</li>
+		<li>fitness: walk ______ | pushups ______ | situps _____ | squats _____ </li>
+		<li>evening
+			<ul>
+				<li>dinner _____</li>
+				<li>screens off _____ | in bed: _____</li>
+			</ul>
+		</li>
+	</ul>
+</body>
+</html>"
+
+
+ // TODO: probably a bunch of Result.maps, or unwraps
+
+ let _mdCreationResponse =
+   Builtin.File.write (PACKAGE.Darklang.Stdlib.String.toBytes md) "./daily-print.md"
+
+ let pdfCreationResponse = Builtin.Process.Linux.run "mdpdf ./daily-print.md"
+
+ match pdfCreationResponse.exitCode with
+ | 0 -> ()
+ | _ ->
+   Builtin.print
+     $"Error creating PDF: \n{pdfCreationResponse.stdout}\n{pdfCreationResponse.stderr}"
+
+ let _ =
+   Builtin.Process.Linux.run
+     "lp -d Brother_MFC_J5330DW -o media=letter -o outputorder=reverse -o sides=one-sided ./daily-print.pdf"
+
+ // TODO: move to cleanup fn and run even if we error
+ // (but what if there's an uncaught exception?)
+ let _ = Builtin.File.delete "./daily-print.md"
+ let _ = Builtin.File.delete "./daily-print.pdf"
+
+ 0)
