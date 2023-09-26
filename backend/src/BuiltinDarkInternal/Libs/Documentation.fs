@@ -58,6 +58,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ DUnit ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             let typeNameToStr = LibExecution.DvalReprDeveloper.typeName
 
@@ -75,6 +76,7 @@ let fns : List<BuiltInFn> =
                     data.parameters
                     |> Ply.List.mapSequentially (fun p ->
                       Dval.record
+                        types
                         fnParamTypeName
                         (Some [])
                         [ ("name", DString p.name)
@@ -83,6 +85,7 @@ let fns : List<BuiltInFn> =
 
                   return!
                     Dval.record
+                      types
                       fnTypeName
                       (Some [])
                       [ ("name", DString(FnName.builtinToString key))

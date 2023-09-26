@@ -76,7 +76,8 @@ via the backend; its primary purpose is to send data to Honeycomb, but also give
 human-readable data."
       fn =
         (function
-        | _, _, [ DUnit ] ->
+        | state, _, [ DUnit ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             let! tableStats = LibCloud.Db.tableStats ()
 
@@ -111,7 +112,7 @@ human-readable data."
                       ("rows", DInt(ts.rows))
                       ("diskHuman", DString ts.diskHuman)
                       ("rowsHuman", DString ts.rowsHuman) ]
-                    |> Dval.record typeName (Some [])
+                    |> Dval.record types typeName (Some [])
 
                   return (ts.relation, v)
                 })

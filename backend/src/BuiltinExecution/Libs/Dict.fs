@@ -145,10 +145,14 @@ let fns : List<BuiltInFn> =
          Otherwise, returns {{None}} (use <fn Dict.fromListOverwritingDuplicates>
          if you want to overwrite duplicate keys)."
       fn =
-        let dictType = VT.unknownTODO
-        let optType = VT.dict dictType
         (function
-        | _, _, [ DList(_vtTODO, l) ] ->
+        | state, _, [ DList(_vtTODO, l) ] ->
+          let types = ExecutionState.availableTypes state
+          let dictType = VT.unknownTODO
+          let optType = VT.dict dictType
+          let optionSome = Dval.optionSome types optType
+          let optionNone = Dval.optionNone types optType
+
           let f acc dv =
             match acc, dv with
             | None, _ -> None
@@ -161,9 +165,8 @@ let fns : List<BuiltInFn> =
           let result = List.fold f (Some Map.empty) l
 
           match result with
-          | Some map ->
-            map |> Map.toList |> Dval.dict dictType |> Dval.optionSome optType
-          | None -> Dval.optionNone optType
+          | Some map -> map |> Map.toList |> Dval.dict dictType |> optionSome
+          | None -> optionNone
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -179,8 +182,10 @@ let fns : List<BuiltInFn> =
          wrapped in an <type Option>: {{Some value}}. Otherwise, returns {{None}}."
       fn =
         (function
-        | _, _, [ DDict(_vtTODO, o); DString s ] ->
-          Map.find s o |> Dval.option VT.unknownTODO
+        | state, _, [ DDict(_vtTODO, o); DString s ] ->
+          let types = ExecutionState.availableTypes state
+
+          Map.find s o |> Dval.option types VT.unknownTODO
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -255,6 +260,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ DDict(_, o); DFnVal b ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             do!
               Map.toList o
@@ -266,6 +272,7 @@ let fns : List<BuiltInFn> =
                   | dv ->
                     return!
                       TypeChecker.raiseFnValResultNotExpectedType
+                        types
                         SourceNone
                         dv
                         TUnit
@@ -295,6 +302,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ DDict(_vtTODO, o); DFnVal b ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             let f (key : string) (data : Dval) : Ply<bool> =
               uply {
@@ -303,7 +311,11 @@ let fns : List<BuiltInFn> =
                 | DBool v -> return v
                 | v ->
                   return!
-                    TypeChecker.raiseFnValResultNotExpectedType SourceNone v TBool
+                    TypeChecker.raiseFnValResultNotExpectedType
+                      types
+                      SourceNone
+                      v
+                      TBool
               }
             let! result = Ply.Map.filterSequentially f o
             return Dval.dictFromMap VT.unknownTODO result
@@ -332,6 +344,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ DDict(_vtTODO, o); DFnVal b ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             let f (key : string) (data : Dval) : Ply<Option<Dval>> =
               uply {
@@ -359,6 +372,7 @@ let fns : List<BuiltInFn> =
                   let expectedType = TypeReference.option varB
                   return!
                     TypeChecker.raiseFnValResultNotExpectedType
+                      types
                       SourceNone
                       v
                       expectedType

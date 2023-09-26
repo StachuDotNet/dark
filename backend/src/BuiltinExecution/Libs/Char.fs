@@ -56,12 +56,16 @@ let fns : List<BuiltInFn> =
         "Return {{Some <var code>}} if <param c> is a valid ASCII character, otherwise {{None}}"
       fn =
         function
-        | _, _, [ DChar c ] ->
+        | state, _, [ DChar c ] ->
+          let types = ExecutionState.availableTypes state
+          let optionSome = Dval.optionSome types VT.int
+          let optionNone = Dval.optionNone types VT.int
+
           let charValue = int c.[0]
           if charValue >= 0 && charValue < 256 then
-            Dval.optionSome VT.int (DInt charValue)
+            optionSome (DInt charValue)
           else
-            Dval.optionNone VT.int
+            optionNone
         | _ -> incorrectArgs ()
       sqlSpec = NotYetImplemented
       previewable = Pure

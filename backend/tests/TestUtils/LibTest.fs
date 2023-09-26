@@ -57,9 +57,11 @@ let fns : List<BuiltInFn> =
       description = "Return a value representing a runtime type error"
       fn =
         (function
-        | _, _, [ DString error ] ->
+        | state, _, [ DString error ] ->
+          let types = ExecutionState.availableTypes state
+
           let typeName = RuntimeError.name [ "Error" ] "ErrorMessage" 0
-          Dval.enum typeName typeName (Some []) "ErrorString" [ DString error ]
+          Dval.enum types typeName (Some []) "ErrorString" [ DString error ]
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -88,10 +90,12 @@ let fns : List<BuiltInFn> =
       description = "Return a value that matches errors thrown by the SqlCompiler"
       fn =
         (function
-        | _, _, [ DString errorString ] ->
+        | state, _, [ DString errorString ] ->
+          let types = ExecutionState.availableTypes state
+
           let msg = LibCloud.SqlCompiler.errorTemplate + errorString
           let typeName = RuntimeError.name [ "Error" ] "ErrorMessage" 0
-          Dval.enum typeName typeName (Some []) "ErrorString" [ DString msg ]
+          Dval.enum types typeName (Some []) "ErrorString" [ DString msg ]
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -104,15 +108,17 @@ let fns : List<BuiltInFn> =
       description = "Turns a string of length 1 into a character"
       fn =
         (function
-        | _, _, [ DString s ] ->
+        | state, _, [ DString s ] ->
+          let types = ExecutionState.availableTypes state
+
           let chars = String.toEgcSeq s
 
           if Seq.length chars = 1 then
             chars
             |> Seq.toList
-            |> (fun l -> l[0] |> DChar |> Dval.optionSome VT.char)
+            |> (fun l -> l[0] |> DChar |> Dval.optionSome types VT.char)
           else
-            Dval.optionNone VT.char
+            Dval.optionNone types VT.char
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

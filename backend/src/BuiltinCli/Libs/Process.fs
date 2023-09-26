@@ -10,6 +10,7 @@ open LibExecution.RuntimeTypes
 module Dval = LibExecution.Dval
 module Builtin = LibExecution.Builtin
 open Builtin.Shortcuts
+open System.Runtime.InteropServices
 
 let types : List<BuiltInType> =
   [ { name = typ [ "Process" ] "Result" 0
@@ -29,23 +30,36 @@ let fns : List<BuiltInFn> =
   [ { name = fn [ "Process" ] "run" 0
       description = "Runs a process, return exitCode, stdout and stderr"
       typeParams = []
-      parameters =
-        [ Param.make "command" TString "The command to run"
-          Param.make "input" TString "The input to the command" ]
+      parameters = [ Param.make "command" TString "The command to run" ]
       returnType = stdlibTypeRef [ "Process" ] "Result" 0
       fn =
         (function
-        | _, _, [ DString command ] ->
+        | state, _, [ DString command ] ->
+          let types = ExecutionState.availableTypes state
+
+          let (commandName, args) =
+            if RuntimeInformation.IsOSPlatform OSPlatform.Windows then
+              "cmd.exe", $"/c {command}"
+            elif
+              RuntimeInformation.IsOSPlatform OSPlatform.Linux
+              || RuntimeInformation.IsOSPlatform OSPlatform.OSX
+            then
+              "/bin/bash", $"-c \"{command}\""
+            else
+              raiseUntargetedRTE (RuntimeError.oldError "Unsupported OS")
+
           let psi =
-            System.Diagnostics.ProcessStartInfo(command)
+            System.Diagnostics.ProcessStartInfo()
             |> fun psi ->
+              psi.FileName <- commandName
               psi.UseShellExecute <- false
               psi.RedirectStandardOutput <- true
               psi.RedirectStandardError <- true
               psi.CreateNoWindow <- true
+              psi.Arguments <- args
               psi
 
-          let p = System.Diagnostics.Process.Start(psi)
+          let p = System.Diagnostics.Process.Start psi
 
           let stdout = p.StandardOutput.ReadToEnd()
           let stderr = p.StandardError.ReadToEnd()
@@ -53,11 +67,12 @@ let fns : List<BuiltInFn> =
           p.WaitForExit()
 
           Dval.record
-            (TypeName.fqBuiltIn [ "Process" ] "Error" 0)
+            types
+            (TypeName.fqBuiltIn [ "Process" ] "Result" 0)
             (Some [])
-            [ ("exitCode", DInt(p.ExitCode))
-              ("stdout", DString(stdout))
-              ("stderr", DString(stderr)) ]
+            [ ("exitCode", DInt p.ExitCode)
+              ("stdout", DString stdout)
+              ("stderr", DString stderr) ]
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

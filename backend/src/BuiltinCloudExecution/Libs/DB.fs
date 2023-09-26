@@ -77,10 +77,11 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ DString key; DDB dbname ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             let db = state.program.dbs[dbname]
             let! result = UserDB.getOption state db key
-            return! Dval.option VT.unknownDbTODO result
+            return! Dval.option types VT.unknownDbTODO result
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -95,10 +96,13 @@ let fns : List<BuiltInFn> =
       description =
         "Finds many values in <param table> by <param keys>. If all <param keys> are found, returns Some a list of [values], otherwise returns None (to ignore missing keys, use DB.etExisting)"
       fn =
-        let valueType = VT.unknownDbTODO
-        let optType = VT.list valueType
         (function
         | state, _, [ DList(_, keys); DDB dbname ] ->
+          let valueType = VT.unknownDbTODO
+          let optType = VT.list valueType
+          let types = ExecutionState.availableTypes state
+          let optionSome = Dval.optionSome types optType
+          let optionNone = Dval.optionNone types optType
           uply {
             let db = state.program.dbs[dbname]
 
@@ -110,9 +114,9 @@ let fns : List<BuiltInFn> =
               |> UserDB.getMany state db
 
             if List.length items = List.length keys then
-              return! items |> Dval.list valueType |> Dval.optionSome optType
+              return! items |> Dval.list valueType |> optionSome
             else
-              return! Dval.optionNone optType
+              return! optionNone
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -359,17 +363,21 @@ let fns : List<BuiltInFn> =
       description =
         "Fetch exactly one value from <param table> for which filter returns true. Note that this does not check every value in <param table>, but rather is optimized to find data with indexes.  If there is exactly one value, it returns Some value and if there is none or more than 1 found, it returns None. Errors at compile-time if Dark's compiler does not support the code in question."
       fn =
-        let optType = VT.unknownDbTODO
+
         (function
         | state, _, [ DDB dbname; DFnVal(Lambda b) ] ->
+          let optType = VT.unknownDbTODO
+          let types = ExecutionState.availableTypes state
+          let optionSome = Dval.optionSome types optType
+          let optionNone = Dval.optionNone types optType
           uply {
             try
               let db = state.program.dbs[dbname]
               let! results = UserDB.query state db b
 
               match results with
-              | Ok [ (_, v) ] -> return! Dval.optionSome optType v
-              | Ok _ -> return! Dval.optionNone optType
+              | Ok [ (_, v) ] -> return! optionSome v
+              | Ok _ -> return! optionNone
               | Error rte -> return raiseUntargetedRTE rte
             with e ->
               return handleUnexpectedExceptionDuringQuery state dbname b e
@@ -387,18 +395,20 @@ let fns : List<BuiltInFn> =
       description =
         "Fetch exactly one value from <param table> for which filter returns true. Note that this does not check every value in <param table>, but rather is optimized to find data with indexes. If there is exactly one key/value pair, it returns Some {key: value} and if there is none or more than 1 found, it returns None. Errors at compile-time if Dark's compiler does not support the code in question."
       fn =
-        let optType = VT.tuple VT.string VT.unknownTODO []
         (function
         | state, _, [ DDB dbname; DFnVal(Lambda b) ] ->
+          let types = ExecutionState.availableTypes state
+          let optType = VT.tuple VT.string VT.unknownTODO []
+          let optionSome = Dval.optionSome types optType
+          let optionNone = Dval.optionNone types optType
           uply {
             try
               let db = state.program.dbs[dbname]
               let! results = UserDB.query state db b
 
               match results with
-              | Ok [ (key, dv) ] ->
-                return! Dval.optionSome optType (DTuple(DString key, dv, []))
-              | Ok _ -> return! Dval.optionNone optType
+              | Ok [ (key, dv) ] -> return! optionSome (DTuple(DString key, dv, []))
+              | Ok _ -> return! optionNone
               | Error rte -> return raiseUntargetedRTE rte
             with e ->
               return handleUnexpectedExceptionDuringQuery state dbname b e

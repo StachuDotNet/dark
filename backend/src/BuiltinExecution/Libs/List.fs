@@ -383,12 +383,14 @@ let fns : List<BuiltInFn> =
          Consider <fn List.sort> or <fn List.sortBy> if you don't need this level
          of control."
       fn =
-        let okType = VT.unknownTODO
-        let resultOk = Dval.resultOk okType VT.string
-        let resultError = Dval.resultError okType VT.string
 
         (function
         | state, _, [ DList(vt, list); DFnVal f ] ->
+          let types = ExecutionState.availableTypes state
+          let okType = VT.unknownTODO
+          let resultOk = Dval.resultOk types okType VT.string
+          let resultError = Dval.resultError types okType VT.string
+
           let fn (dv1 : Dval) (dv2 : Dval) : Ply<int> =
             uply {
               let args = NEList.doubleton dv1 dv2
@@ -398,7 +400,8 @@ let fns : List<BuiltInFn> =
               | DInt i when i = 1L || i = 0L || i = -1L -> return int i
               | DInt i -> return raise (Sort.InvalidSortComparatorInt i)
               | v ->
-                return! TypeChecker.raiseFnValResultNotExpectedType SourceNone v TInt
+                return!
+                  TypeChecker.raiseFnValResultNotExpectedType types SourceNone v TInt
             }
 
           uply {
@@ -452,6 +455,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ DList(vt, l); DFnVal fn ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             let f (dv : Dval) : Ply<bool> =
               uply {
@@ -462,7 +466,11 @@ let fns : List<BuiltInFn> =
                 | DBool b -> return b
                 | v ->
                   return!
-                    TypeChecker.raiseFnValResultNotExpectedType SourceNone v TBool
+                    TypeChecker.raiseFnValResultNotExpectedType
+                      types
+                      SourceNone
+                      v
+                      TBool
               }
 
             let! result = Ply.List.filterSequentially f l
@@ -498,6 +506,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ DList(_, l); DFnVal b ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             let f (dv : Dval) : Ply<Option<Dval>> =
               uply {
@@ -524,6 +533,7 @@ let fns : List<BuiltInFn> =
                 | v ->
                   return!
                     TypeChecker.raiseFnValResultNotExpectedType
+                      types
                       SourceNone
                       v
                       (TypeReference.option varB)
@@ -645,23 +655,26 @@ let fns : List<BuiltInFn> =
          List.map2shortest> if you want to drop values from the longer list
          instead)."
       fn =
-        let optType = VT.unknownTODO
         (function
         | state, _, [ DList(_vtTODO1, l1); DList(_vtTODO2, l2); DFnVal b ] ->
+          let types = ExecutionState.availableTypes state
+          let optType = VT.unknownTODO
+          let optionSome = Dval.optionSome types optType
+          let optionNone = Dval.optionNone types optType
           uply {
             if List.length l1 <> List.length l2 then
-              return! Dval.optionNone optType
+              return! optionNone
             else
               let list = List.zip l1 l2
-
               let! result =
                 Ply.List.mapSequentially
                   (fun ((dv1, dv2) : Dval * Dval) ->
+
                     let args = NEList.doubleton dv1 dv2
                     Interpreter.applyFnVal state 0UL b [] args)
                   list
 
-              return! Dval.optionSome optType (Dval.list VT.unknownTODO result)
+              return! optionSome (Dval.list VT.unknownTODO result)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
@@ -678,16 +691,22 @@ let fns : List<BuiltInFn> =
          selected value in <param list>. Returns {{None}} if <param list> is
          empty."
       fn =
-        let optType = VT.unknownTODO
         (function
-        | _, _, [ DList(_, []) ] -> Dval.optionNone optType
-        | _, _, [ DList(_, l) ] ->
-          // Will return <= (length - 1)
-          // Maximum value is Int64.MaxValue which is half of UInt64.MaxValue, but
-          // that won't affect this as we won't have a list that big for a long long
-          // long time.
-          let index = RNG.GetInt32(l.Length)
-          (List.tryItem index l) |> Dval.option optType
+        | state, _, [ DList(_, l) ] ->
+          let types = ExecutionState.availableTypes state
+          let optType = VT.unknownTODO
+          let option = Dval.option types optType
+          let optionNone = Dval.optionNone types optType
+
+          match l with
+          | [] -> optionNone
+          | l ->
+            // Will return <= (length - 1)
+            // Maximum value is Int64.MaxValue which is half of UInt64.MaxValue, but
+            // that won't affect this as we won't have a list that big for a long long
+            // long time.
+            let index = RNG.GetInt32(l.Length)
+            (List.tryItem index l) |> option
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure

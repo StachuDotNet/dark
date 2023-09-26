@@ -40,7 +40,8 @@ let fns : List<BuiltInFn> =
       description = "Get all secrets in the canvas"
       fn =
         (function
-        | _, _, [ DUuid canvasID ] ->
+        | state, _, [ DUuid canvasID ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             let! secrets = Secret.getCanvasSecrets canvasID
             let typeName = FQName.BuiltIn(typ "Secret" 0)
@@ -49,6 +50,7 @@ let fns : List<BuiltInFn> =
               secrets
               |> Ply.List.mapSequentially (fun s ->
                 Dval.record
+                  types
                   typeName
                   (Some [])
                   [ "name", DString s.name
@@ -93,10 +95,11 @@ let fns : List<BuiltInFn> =
       returnType = TypeReference.result TUnit TString
       description = "Add a secret"
       fn =
-        let resultOk = Dval.resultOk VT.unit VT.string
-        let resultError = Dval.resultError VT.unit VT.string
         (function
-        | _, _, [ DUuid canvasID; DString name; DString value; DInt version ] ->
+        | state, _, [ DUuid canvasID; DString name; DString value; DInt version ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.unit VT.string
+          let resultError = Dval.resultError types VT.unit VT.string
           uply {
             try
               do! Secret.insert canvasID name value (int version)

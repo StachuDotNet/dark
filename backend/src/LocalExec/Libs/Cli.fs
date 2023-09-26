@@ -35,19 +35,20 @@ let execute
   (mod' : LibParser.Canvas.PTCanvasModule)
   (symtable : Map<string, RT.Dval>)
   : Ply<RT.ExecutionResult> =
+  let darkTypes = ExecutionState.availableTypes parentState
 
   uply {
     let! fns =
       mod'.fns
-      |> Ply.List.mapSequentially (fun fn -> PT2RT.UserFunction.toRT fn)
+      |> Ply.List.mapSequentially (fun fn -> PT2RT.UserFunction.toRT darkTypes fn)
       |> Ply.map (Map.fromListBy (fun fn -> fn.name))
     let! types =
       mod'.types
-      |> Ply.List.mapSequentially (fun typ -> PT2RT.UserType.toRT typ)
+      |> Ply.List.mapSequentially (fun typ -> PT2RT.UserType.toRT darkTypes typ)
       |> Ply.map (Map.fromListBy (fun typ -> typ.name))
     let! constants =
       mod'.constants
-      |> Ply.List.mapSequentially (fun c -> PT2RT.UserConstant.toRT c)
+      |> Ply.List.mapSequentially (fun c -> PT2RT.UserConstant.toRT darkTypes c)
       |> Ply.map (Map.fromListBy (fun c -> c.name))
 
     let program : Program =
@@ -73,7 +74,7 @@ let execute
         program
 
     if mod'.exprs.Length = 1 then
-      let! expr = PT2RT.Expr.toRT mod'.exprs[0]
+      let! expr = PT2RT.Expr.toRT darkTypes mod'.exprs[0]
       return! Exe.executeExpr state symtable expr
     else if mod'.exprs.Length = 0 then
       return Error(SourceNone, RuntimeError.oldError "No expressions to execute")

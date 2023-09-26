@@ -19,6 +19,7 @@ module Request =
   let typ = RT.TypeName.fqPackage "Darklang" [ "Stdlib"; "Http" ] "Request" 0
 
   let fromRequest
+    (types : RT.Types)
     (uri : string)
     (headers : List<string * string>)
     (body : byte array)
@@ -38,7 +39,7 @@ module Request =
       )
 
     [ "body", RT.DBytes body; "headers", headers; "url", RT.DString uri ]
-    |> Dval.record typ (Some [])
+    |> Dval.record types typ (Some [])
 
 
 module Response =

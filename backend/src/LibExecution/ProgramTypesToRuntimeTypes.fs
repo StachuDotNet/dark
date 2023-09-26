@@ -56,17 +56,22 @@ module TypeName =
 
 
 module NameResolution =
-  let toRT (f : 'a -> 'b) (nr : PT.NameResolution<'a>) : Ply<RT.NameResolution<'b>> =
+  let toRT
+    (types : RT.Types)
+    (f : 'a -> 'b)
+    (nr : PT.NameResolution<'a>)
+    : Ply<RT.NameResolution<'b>> =
     uply {
       match nr with
       | Ok x -> return Ok(f x)
       | Error e ->
-        let! rte = NameResolutionError.RTE.toRuntimeError e
+        let! rte = NameResolutionError.RTE.toRuntimeError types e
         return Error rte
     }
 
 module TypeReference =
-  let rec toRT (t : PT.TypeReference) : Ply<RT.TypeReference> =
+  let rec toRT (types : RT.Types) (t : PT.TypeReference) : Ply<RT.TypeReference> =
+    let toRT = toRT types
     uply {
       match t with
       | PT.TInt -> return RT.TInt
@@ -92,7 +97,7 @@ module TypeReference =
       | PT.TChar -> return RT.TChar
       | PT.TUuid -> return RT.TUuid
       | PT.TCustomType(typeName, typeArgs) ->
-        let! typeName = NameResolution.toRT TypeName.toRT typeName
+        let! typeName = NameResolution.toRT types TypeName.toRT typeName
         let! typeArgs = Ply.List.mapSequentially toRT typeArgs
         return RT.TCustomType(typeName, typeArgs)
       | PT.TBytes -> return RT.TBytes
@@ -242,14 +247,15 @@ module MatchPattern =
     | PT.MPListCons(id, head, tail) -> RT.MPListCons(id, toRT head, toRT tail)
 
 module Expr =
-  let rec toRT (e : PT.Expr) : Ply<RT.Expr> =
+  let rec toRT (types : RT.Types) (e : PT.Expr) : Ply<RT.Expr> =
+    let toRT = toRT types
     uply {
       match e with
       | PT.EChar(id, char) -> return RT.EChar(id, char)
       | PT.EInt(id, num) -> return RT.EInt(id, num)
 
       | PT.EString(id, segments) ->
-        let! segments = Ply.List.mapSequentially stringSegmentToRT segments
+        let! segments = Ply.List.mapSequentially (stringSegmentToRT types) segments
         return RT.EString(id, segments)
 
       | PT.EFloat(id, sign, whole, fraction) ->
@@ -261,7 +267,7 @@ module Expr =
 
       | PT.EConstant(id, Ok name) -> return RT.EConstant(id, ConstantName.toRT name)
       | PT.EConstant(id, Error err) ->
-        let! err = NameResolutionError.RTE.toRuntimeError err
+        let! err = NameResolutionError.RTE.toRuntimeError types err
         return RT.EError(id, err, [])
 
       | PT.EVariable(id, var) -> return RT.EVariable(id, var)
@@ -272,13 +278,13 @@ module Expr =
 
       | PT.EApply(id, fnName, typeArgs, args) ->
         let! fnName = toRT fnName
-        let! typeArgs = Ply.List.mapSequentially TypeReference.toRT typeArgs
+        let! typeArgs = Ply.List.mapSequentially (TypeReference.toRT types) typeArgs
         let! args = Ply.NEList.mapSequentially toRT args
         return RT.EApply(id, fnName, typeArgs, args)
 
       | PT.EFnName(id, Ok name) -> return RT.EFnName(id, FnName.toRT name)
       | PT.EFnName(id, Error err) ->
-        let! err = NameResolutionError.RTE.toRuntimeError err
+        let! err = NameResolutionError.RTE.toRuntimeError types err
         return RT.EError(id, err, [])
 
       // CLEANUP tidy infix stuff - extract to another fn?
@@ -359,7 +365,7 @@ module Expr =
               return RT.ERecord(id, TypeName.toRT typeName, fields)
           }
       | PT.ERecord(id, Error err, fields) ->
-        let! err = NameResolutionError.RTE.toRuntimeError err
+        let! err = NameResolutionError.RTE.toRuntimeError types err
         let! fields =
           fields |> List.map Tuple2.second |> Ply.List.mapSequentially toRT
         return RT.EError(id, err, fields)
@@ -386,11 +392,12 @@ module Expr =
           uply {
             match next with
             | PT.EPipeFnCall(id, Error err, _typeArgs, exprs) ->
-              let! err = NameResolutionError.RTE.toRuntimeError err
+              let! err = NameResolutionError.RTE.toRuntimeError types err
               let! addlExprs = Ply.List.mapSequentially toRT exprs
               return RT.EError(id, err, prev :: addlExprs)
             | PT.EPipeFnCall(id, Ok fnName, typeArgs, exprs) ->
-              let! typeArgs = Ply.List.mapSequentially TypeReference.toRT typeArgs
+              let! typeArgs =
+                Ply.List.mapSequentially (TypeReference.toRT types) typeArgs
               let! exprs =
                 exprs
                 |> Ply.List.mapSequentially toRT
@@ -428,7 +435,7 @@ module Expr =
               return
                 RT.EEnum(id, TypeName.toRT typeName, caseName, prev :: addlFields)
             | PT.EPipeEnum(id, Error err, _caseName, fields) ->
-              let! err = NameResolutionError.RTE.toRuntimeError err
+              let! err = NameResolutionError.RTE.toRuntimeError types err
               let! addlFields = Ply.List.mapSequentially toRT fields
               return RT.EError(id, err, prev :: addlFields)
             | PT.EPipeVariable(id, name, exprs) ->
@@ -467,7 +474,7 @@ module Expr =
         let! fields = Ply.List.mapSequentially toRT fields
         return RT.EEnum(id, TypeName.toRT typeName, caseName, fields)
       | PT.EEnum(id, Error err, _caseName, fields) ->
-        let! err = NameResolutionError.RTE.toRuntimeError err
+        let! err = NameResolutionError.RTE.toRuntimeError types err
         let! fields = Ply.List.mapSequentially toRT fields
         return RT.EError(id, err, fields)
 
@@ -483,18 +490,22 @@ module Expr =
     }
 
 
-  and stringSegmentToRT (segment : PT.StringSegment) : Ply<RT.StringSegment> =
+  and stringSegmentToRT
+    (types : RT.Types)
+    (segment : PT.StringSegment)
+    : Ply<RT.StringSegment> =
     match segment with
     | PT.StringText text -> Ply(RT.StringText text)
     | PT.StringInterpolation expr ->
       uply {
-        let! expr = toRT expr
+        let! expr = toRT types expr
         return RT.StringInterpolation expr
       }
 
 module Const =
 
-  let rec toRT (c : PT.Const) : Ply<RT.Const> =
+  let rec toRT (types : RT.Types) (c : PT.Const) : Ply<RT.Const> =
+    let toRT = toRT types
     uply {
       match c with
       | PT.Const.CInt i -> return RT.CInt i
@@ -509,7 +520,7 @@ module Const =
         let! rest = Ply.List.mapSequentially toRT rest
         return RT.CTuple(first, second, rest)
       | PT.Const.CEnum(typeName, caseName, fields) ->
-        let! typeName = NameResolution.toRT TypeName.toRT typeName
+        let! typeName = NameResolution.toRT types TypeName.toRT typeName
         let! fields = Ply.List.mapSequentially toRT fields
         return RT.CEnum(typeName, caseName, fields)
       | PT.Const.CList items ->
@@ -529,44 +540,55 @@ module Const =
 module TypeDeclaration =
   module RecordField =
     let toRT
+      (types : RT.Types)
       (f : PT.TypeDeclaration.RecordField)
       : Ply<RT.TypeDeclaration.RecordField> =
       uply {
-        let! typ = TypeReference.toRT f.typ
+        let! typ = TypeReference.toRT types f.typ
         return { name = f.name; typ = typ }
       }
 
   module EnumField =
-    let toRT (f : PT.TypeDeclaration.EnumField) : Ply<RT.TypeReference> =
-      TypeReference.toRT f.typ
+    let toRT
+      (types : RT.Types)
+      (f : PT.TypeDeclaration.EnumField)
+      : Ply<RT.TypeReference> =
+      TypeReference.toRT types f.typ
 
   module EnumCase =
-    let toRT (c : PT.TypeDeclaration.EnumCase) : Ply<RT.TypeDeclaration.EnumCase> =
+    let toRT
+      (types : RT.Types)
+      (c : PT.TypeDeclaration.EnumCase)
+      : Ply<RT.TypeDeclaration.EnumCase> =
       uply {
-        let! fields = Ply.List.mapSequentially EnumField.toRT c.fields
+        let! fields = Ply.List.mapSequentially (EnumField.toRT types) c.fields
         return { name = c.name; fields = fields }
       }
 
   module Definition =
     let toRT
+      (types : RT.Types)
       (d : PT.TypeDeclaration.Definition)
       : Ply<RT.TypeDeclaration.Definition> =
       uply {
         match d with
         | PT.TypeDeclaration.Definition.Alias(typ) ->
-          let! typ = TypeReference.toRT typ
+          let! typ = TypeReference.toRT types typ
           return RT.TypeDeclaration.Alias typ
         | PT.TypeDeclaration.Record fields ->
-          let! fields = Ply.NEList.mapSequentially RecordField.toRT fields
+          let! fields = Ply.NEList.mapSequentially (RecordField.toRT types) fields
           return RT.TypeDeclaration.Record fields
         | PT.TypeDeclaration.Enum cases ->
-          let! cases = Ply.NEList.mapSequentially EnumCase.toRT cases
+          let! cases = Ply.NEList.mapSequentially (EnumCase.toRT types) cases
           return RT.TypeDeclaration.Enum cases
       }
 
-  let toRT (t : PT.TypeDeclaration.T) : Ply<RT.TypeDeclaration.T> =
+  let toRT
+    (types : RT.Types)
+    (t : PT.TypeDeclaration.T)
+    : Ply<RT.TypeDeclaration.T> =
     uply {
-      let! def = Definition.toRT t.definition
+      let! def = Definition.toRT types t.definition
       return { typeParams = t.typeParams; definition = def }
     }
 
@@ -591,23 +613,23 @@ module Handler =
         RT.Handler.Cron(name, CronInterval.toRT interval)
       | PT.Handler.REPL name -> RT.Handler.REPL name
 
-  let toRT (h : PT.Handler.T) : Ply<RT.Handler.T> =
+  let toRT (types : RT.Types) (h : PT.Handler.T) : Ply<RT.Handler.T> =
     uply {
-      let! ast = Expr.toRT h.ast
+      let! ast = Expr.toRT types h.ast
       return { tlid = h.tlid; ast = ast; spec = Spec.toRT h.spec }
     }
 
 module DB =
-  let toRT (db : PT.DB.T) : Ply<RT.DB.T> =
+  let toRT (types : RT.Types) (db : PT.DB.T) : Ply<RT.DB.T> =
     uply {
-      let! typ = TypeReference.toRT db.typ
+      let! typ = TypeReference.toRT types db.typ
       return { tlid = db.tlid; name = db.name; version = db.version; typ = typ }
     }
 
 module UserType =
-  let toRT (t : PT.UserType.T) : Ply<RT.UserType.T> =
+  let toRT (types : RT.Types) (t : PT.UserType.T) : Ply<RT.UserType.T> =
     uply {
-      let! decl = TypeDeclaration.toRT t.declaration
+      let! decl = TypeDeclaration.toRT types t.declaration
       return
         { tlid = t.tlid
           name = TypeName.UserProgram.toRT t.name
@@ -615,26 +637,30 @@ module UserType =
     }
 
 module UserConstant =
-  let toRT (c : PT.UserConstant.T) : Ply<RT.UserConstant.T> =
+  let toRT (types : RT.Types) (c : PT.UserConstant.T) : Ply<RT.UserConstant.T> =
     uply {
-      let! body = Const.toRT c.body
+      let! body = Const.toRT types c.body
       return
         { tlid = c.tlid; name = ConstantName.UserProgram.toRT c.name; body = body }
     }
 
 module UserFunction =
   module Parameter =
-    let toRT (p : PT.UserFunction.Parameter) : Ply<RT.UserFunction.Parameter> =
+    let toRT
+      (types : RT.Types)
+      (p : PT.UserFunction.Parameter)
+      : Ply<RT.UserFunction.Parameter> =
       uply {
-        let! typ = TypeReference.toRT p.typ
+        let! typ = TypeReference.toRT types p.typ
         return { name = p.name; typ = typ }
       }
 
-  let toRT (f : PT.UserFunction.T) : Ply<RT.UserFunction.T> =
+  let toRT (types : RT.Types) (f : PT.UserFunction.T) : Ply<RT.UserFunction.T> =
     uply {
-      let! parameters = Ply.NEList.mapSequentially Parameter.toRT f.parameters
-      let! returnType = TypeReference.toRT f.returnType
-      let! body = Expr.toRT f.body
+      let! parameters =
+        Ply.NEList.mapSequentially (Parameter.toRT types) f.parameters
+      let! returnType = TypeReference.toRT types f.returnType
+      let! body = Expr.toRT types f.body
       return
         { tlid = f.tlid
           name = FnName.UserProgram.toRT f.name
@@ -645,27 +671,27 @@ module UserFunction =
     }
 
 module Toplevel =
-  let toRT (tl : PT.Toplevel.T) : Ply<RT.Toplevel.T> =
+  let toRT (types : RT.Types) (tl : PT.Toplevel.T) : Ply<RT.Toplevel.T> =
     uply {
       match tl with
       | PT.Toplevel.TLHandler h ->
-        let! h = Handler.toRT h
+        let! h = Handler.toRT types h
         return RT.Toplevel.TLHandler h
 
       | PT.Toplevel.TLDB db ->
-        let! db = DB.toRT db
+        let! db = DB.toRT types db
         return RT.Toplevel.TLDB db
 
       | PT.Toplevel.TLFunction f ->
-        let! f = UserFunction.toRT f
+        let! f = UserFunction.toRT types f
         return RT.Toplevel.TLFunction f
 
       | PT.Toplevel.TLType t ->
-        let! t = UserType.toRT t
+        let! t = UserType.toRT types t
         return RT.Toplevel.TLType t
 
       | PT.Toplevel.TLConstant c ->
-        let! c = UserConstant.toRT c
+        let! c = UserConstant.toRT types c
         return RT.Toplevel.TLConstant c
     }
 
@@ -675,17 +701,21 @@ module Secret =
 
 module PackageFn =
   module Parameter =
-    let toRT (p : PT.PackageFn.Parameter) : Ply<RT.PackageFn.Parameter> =
+    let toRT
+      (types : RT.Types)
+      (p : PT.PackageFn.Parameter)
+      : Ply<RT.PackageFn.Parameter> =
       uply {
-        let! typ = TypeReference.toRT p.typ
+        let! typ = TypeReference.toRT types p.typ
         return { name = p.name; typ = typ }
       }
 
-  let toRT (f : PT.PackageFn.T) : Ply<RT.PackageFn.T> =
+  let toRT (types : RT.Types) (f : PT.PackageFn.T) : Ply<RT.PackageFn.T> =
     uply {
-      let! body = Expr.toRT f.body
-      let! parameters = Ply.NEList.mapSequentially Parameter.toRT f.parameters
-      let! returnType = TypeReference.toRT f.returnType
+      let! body = Expr.toRT types f.body
+      let! parameters =
+        Ply.NEList.mapSequentially (Parameter.toRT types) f.parameters
+      let! returnType = TypeReference.toRT types f.returnType
       return
         { name = FnName.Package.toRT f.name
           tlid = f.tlid
@@ -696,15 +726,18 @@ module PackageFn =
     }
 
 module PackageType =
-  let toRT (t : PT.PackageType.T) : Ply<RT.PackageType.T> =
+  let toRT (types : RT.Types) (t : PT.PackageType.T) : Ply<RT.PackageType.T> =
     uply {
-      let! decl = TypeDeclaration.toRT t.declaration
+      let! decl = TypeDeclaration.toRT types t.declaration
       return { name = TypeName.Package.toRT t.name; declaration = decl }
     }
 
 module PackageConstant =
-  let toRT (c : PT.PackageConstant.T) : Ply<RT.PackageConstant.T> =
+  let toRT
+    (types : RT.Types)
+    (c : PT.PackageConstant.T)
+    : Ply<RT.PackageConstant.T> =
     uply {
-      let! body = Const.toRT c.body
+      let! body = Const.toRT types c.body
       return { name = ConstantName.Package.toRT c.name; body = body }
     }

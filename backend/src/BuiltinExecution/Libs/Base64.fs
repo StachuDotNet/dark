@@ -29,10 +29,12 @@ let fns : List<BuiltInFn> =
          sections [4](https://www.rfc-editor.org/rfc/rfc4648.html#section-4) and
          [5](https://www.rfc-editor.org/rfc/rfc4648.html#section-5)."
       fn =
-        let resultOk = Dval.resultOk VT.bytes VT.string
-        let resultError = Dval.resultError VT.bytes VT.string
         (function
-        | _, _, [ DString s ] ->
+        | state, _, [ DString s ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.bytes VT.string
+          let resultError = Dval.resultError types VT.bytes VT.string
+
           let base64FromUrlEncoded (str : string) : string =
             let initial = str.Replace('-', '+').Replace('_', '/')
             let length = initial.Length

@@ -24,10 +24,12 @@ let fns : List<BuiltInFn> =
       description =
         "Extract the public key from a PEM encoded certificate and return the key in PEM format."
       fn =
-        let resultOk = Dval.resultOk VT.string VT.string
-        let resultError = Dval.resultError VT.string VT.string
         (function
-        | _, _, [ DString certString ] ->
+        | state, _, [ DString certString ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.string VT.string
+          let resultError = Dval.resultError types VT.string VT.string
+
           try
             let cert = new X509Certificates.X509Certificate2(UTF8.toBytes certString)
             // Workaround to support ECC certs

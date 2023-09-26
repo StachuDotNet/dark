@@ -41,6 +41,8 @@ type ShouldRetry =
 let processNotification
   (notification : EQ.Notification)
   : Task<Result<EQ.T * EQ.Notification, string * EQ.Notification>> =
+  let types = RT.typesTODO
+
   task {
     use _span = Telemetry.createRoot "process"
     Telemetry.addTags
@@ -200,8 +202,8 @@ let processNotification
 
                   // CLEANUP Set a time limit of 3m
                   try
-                    let! handler = PT2RT.Handler.toRT h
-                    let! program = Canvas.toProgram c
+                    let! handler = PT2RT.Handler.toRT types h
+                    let! program = Canvas.toProgram types c
                     let! (result, traceResults) =
                       CloudExecution.executeHandler
                         LibClientTypesToCloudTypes.Pusher.eventSerializer

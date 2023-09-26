@@ -7,6 +7,8 @@ module FS2WT = FSharpToWrittenTypes
 module WT = WrittenTypes
 module WT2PT = WrittenTypesToProgramTypes
 module PT = LibExecution.ProgramTypes
+module RT = LibExecution.RuntimeTypes
+module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 
 // Parse the program, returning a WrittenTypes expression which doesn't have any names resolved. Call `WT2PT.toPT resolver`
 let initialParse (filename : string) (code : string) : WT.Expr =
@@ -28,13 +30,12 @@ let parseSimple (filename : string) (code : string) : Ply<PT.Expr> =
 
 
 let parseRTExpr
+  (types : RT.Types)
   (resolver : NameResolver.NameResolver)
   (filename : string)
   (code : string)
-  : Ply<LibExecution.RuntimeTypes.Expr> =
-  code
-  |> parsePTExpr resolver filename
-  |> Ply.bind LibExecution.ProgramTypesToRuntimeTypes.Expr.toRT
+  : Ply<RT.Expr> =
+  code |> parsePTExpr resolver filename |> Ply.bind (PT2RT.Expr.toRT types)
 
 type Packages =
   List<PT.PackageFn.T> * List<PT.PackageType.T> * List<PT.PackageConstant.T>

@@ -259,6 +259,7 @@ let parseTestFile
   }
 
 let parseSingleTestFromFile
+  (darkTypes : RT.Types)
   (resolver : NameResolver.NameResolver)
   (filename : string)
   (testSource : string)
@@ -271,9 +272,13 @@ let parseSingleTestFromFile
       |> parseTest
 
     let! actual =
-      wtTest.actual |> WT2PT.Expr.toPT resolver [] |> Ply.bind PT2RT.Expr.toRT
+      wtTest.actual
+      |> WT2PT.Expr.toPT resolver []
+      |> Ply.bind (PT2RT.Expr.toRT darkTypes)
     let! expected =
-      wtTest.expected |> WT2PT.Expr.toPT resolver [] |> Ply.bind PT2RT.Expr.toRT
+      wtTest.expected
+      |> WT2PT.Expr.toPT resolver []
+      |> Ply.bind (PT2RT.Expr.toRT darkTypes)
     return
       { actual = actual
         expected = expected

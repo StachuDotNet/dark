@@ -88,20 +88,22 @@ let fns : List<BuiltInFn> =
       description =
         "Parses Dark code and serializes the result to JSON. Expects only types, fns, and exprs."
       fn =
-        let okType = VT.dict VT.string
-        let resultOk = Dval.resultOk okType VT.string
-        let resultError = Dval.resultError okType VT.string
         function
-        | _, _, [ DString code; DString filename ] ->
+        | state, _, [ DString code; DString filename ] ->
+          let darkTypes = ExecutionState.availableTypes state
+          let okType = VT.dict VT.string
+          let resultOk = Dval.resultOk darkTypes okType VT.string
+          let resultError = Dval.resultError darkTypes okType VT.string
+
           uply {
             try
               // TODO: this needs builtins and packages
               let! canvas =
                 LibParser.Canvas.parse LibParser.NameResolver.empty filename code
 
-              let types = List.map PT2RT.UserType.toRT canvas.types
-              let fns = List.map PT2RT.UserFunction.toRT canvas.fns
-              let exprs = List.map PT2RT.Expr.toRT canvas.exprs
+              let types = List.map (PT2RT.UserType.toRT darkTypes) canvas.types
+              let fns = List.map (PT2RT.UserFunction.toRT darkTypes) canvas.fns
+              let exprs = List.map (PT2RT.Expr.toRT darkTypes) canvas.exprs
 
               return!
                 [ "types", DString(Json.Vanilla.serialize types)
@@ -129,10 +131,11 @@ let fns : List<BuiltInFn> =
       description =
         "Reads a file at backend/static/<param path>, and returns its contents as Bytes wrapped in a Result"
       fn =
-        let resultOk = Dval.resultOk VT.bytes VT.string
-        let resultError = Dval.resultError VT.bytes VT.string
         (function
-        | _, _, [ DString path ] ->
+        | state, _, [ DString path ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.bytes VT.string
+          let resultError = Dval.resultError types VT.bytes VT.string
           uply {
             try
               let contents =
@@ -156,10 +159,11 @@ let fns : List<BuiltInFn> =
       description =
         "Reads a file at canvases/<param path>, and returns its contents as Bytes wrapped in a Result"
       fn =
-        let resultOk = Dval.resultOk VT.bytes VT.string
-        let resultError = Dval.resultError VT.bytes VT.string
         (function
-        | _, _, [ DString path ] ->
+        | state, _, [ DString path ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.bytes VT.string
+          let resultError = Dval.resultError types VT.bytes VT.string
           uply {
             try
               let contents =

@@ -41,11 +41,13 @@ let fns : List<BuiltInFn> =
         + "}} (for example: 2019-09-07T22:44:25Z) and returns the {{Date}} wrapped in a {{Result}}."
       fn =
         (function
-        | _, _, [ DString s ] ->
+        | state, _, [ DString s ] ->
+          let types = ExecutionState.availableTypes state
+
           ISO8601DateParser s
           |> Result.map DDateTime
           |> Result.mapError (fun () -> DString "Invalid date format")
-          |> Dval.result VT.dateTime VT.string
+          |> Dval.result types VT.dateTime VT.string
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

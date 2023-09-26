@@ -97,6 +97,7 @@ let executeHandler
     let! state = createState traceID h.tlid program tracing.executionTracing
     HashSet.add h.tlid tracing.results.tlids
     let! result = Exe.executeExpr state inputVars h.ast
+    let darkTypes = RT.ExecutionState.availableTypes state
 
     let findUserBody (tlid : tlid) : Option<string * RT.Expr> =
       program.fns
@@ -154,6 +155,7 @@ let executeHandler
             version = 0 }
 
       Dval.record
+        darkTypes
         typeName
         (Some [])
         [ "statusCode", RT.DInt 500

@@ -103,10 +103,11 @@ let fns : List<BuiltInFn> =
 
          Returns an {{Error}} if <param divisor> is {{0}}."
       fn =
-        let resultOk = Dval.resultOk VT.int VT.string
-        let resultError = Dval.resultError VT.int VT.string
         (function
-        | _, _, [ DInt v; DInt d ] ->
+        | state, _, [ DInt v; DInt d ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.int VT.string
+          let resultError = Dval.resultError types VT.int VT.string
           (try
             v % d |> DInt |> resultOk
            with e ->
@@ -174,10 +175,12 @@ let fns : List<BuiltInFn> =
         <param exponent> must to be positive.
         Return value wrapped in a {{Result}} "
       fn =
-        let resultOk = Dval.resultOk VT.int VT.string
-        let resultError = Dval.resultError VT.int VT.string
         (function
-        | _, _, [ DInt number; DInt exp as expdv ] ->
+        | state, _, [ DInt number; DInt exp as expdv ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.int VT.string
+          let resultError = Dval.resultError types VT.int VT.string
+
           let okPipe r = r |> DInt |> resultOk
           let errPipe e = e |> DString |> resultError
           (try
@@ -342,10 +345,12 @@ let fns : List<BuiltInFn> =
       returnType = TypeReference.result TInt TString
       description = "Returns the <type Int> value of a <type String>"
       fn =
-        let resultOk = Dval.resultOk VT.int VT.string
-        let resultError = Dval.resultError VT.int VT.string
         (function
-        | _, _, [ DString s ] ->
+        | state, _, [ DString s ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.int VT.string
+          let resultError = Dval.resultError types VT.int VT.string
+
           (try
             s |> System.Convert.ToInt64 |> DInt |> resultOk
            with _e ->

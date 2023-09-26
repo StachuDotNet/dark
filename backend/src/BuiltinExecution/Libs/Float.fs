@@ -273,10 +273,11 @@ let fns : List<BuiltInFn> =
       description =
         "Returns the <type Float> value wrapped in a {{Result}} of the <type String>"
       fn =
-        let resultOk = Dval.resultOk VT.float VT.string
-        let resultError = Dval.resultError VT.float VT.string
         (function
-        | _, _, [ DString s ] ->
+        | state, _, [ DString s ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.float VT.string
+          let resultError = Dval.resultError types VT.float VT.string
           (try
             float (s) |> DFloat |> resultOk
            with e ->

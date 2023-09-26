@@ -24,10 +24,11 @@ let fns : List<BuiltInFn> =
       description =
         "Reads the contents of a file specified by <param path> asynchronously and returns its contents as Bytes wrapped in a Result"
       fn =
-        let resultOk = Dval.resultOk VT.bytes VT.string
-        let resultError = Dval.resultError VT.bytes VT.string
         (function
-        | _, _, [ DString path ] ->
+        | state, _, [ DString path ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.bytes VT.string
+          let resultError = Dval.resultError types VT.bytes VT.string
           uply {
             try
               let! contents = System.IO.File.ReadAllBytesAsync path
@@ -48,10 +49,11 @@ let fns : List<BuiltInFn> =
       description =
         "Writes the specified byte array <param contents> to the file specified by <param path> asynchronously"
       fn =
-        let resultOk = Dval.resultOk VT.unit VT.string
-        let resultError = Dval.resultError VT.unit VT.string
         (function
-        | _, _, [ DBytes contents; DString path ] ->
+        | state, _, [ DBytes contents; DString path ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.unit VT.string
+          let resultError = Dval.resultError types VT.unit VT.string
           uply {
             try
               do! System.IO.File.WriteAllBytesAsync(path, contents)
@@ -72,10 +74,11 @@ let fns : List<BuiltInFn> =
       description =
         "Appends the given <param content> to the file at the specified <param path>. If the file does not exist, a new file is created with the content. Returns a Result type indicating success or failure."
       fn =
-        let resultOk = Dval.resultOk VT.unit VT.string
-        let resultError = Dval.resultError VT.unit VT.string
         (function
-        | _, _, [ DBytes content; DString path ] ->
+        | state, _, [ DBytes content; DString path ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.unit VT.string
+          let resultError = Dval.resultError types VT.unit VT.string
           uply {
             try
               do! System.IO.File.WriteAllBytesAsync(path, content)
@@ -96,10 +99,11 @@ let fns : List<BuiltInFn> =
       description =
         "Creates a new temporary file with a unique name in the system's temporary directory. Returns a Result type containing the temporary file path or an error if the creation fails."
       fn =
-        let resultOk = Dval.resultOk VT.string VT.string
-        let resultError = Dval.resultError VT.string VT.string
         (function
-        | _, _, [ DUnit ] ->
+        | state, _, [ DUnit ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.string VT.string
+          let resultError = Dval.resultError types VT.string VT.string
           uply {
             try
               let tempPath = System.IO.Path.GetTempFileName()
@@ -191,10 +195,11 @@ let fns : List<BuiltInFn> =
       description =
         "Returns the size of the file at the specified <param path> in bytes, or an error if the file does not exist or an error occurs"
       fn =
-        let resultOk = Dval.resultOk VT.int VT.string
-        let resultError = Dval.resultError VT.int VT.string
         (function
-        | _, _, [ DString path ] ->
+        | state, _, [ DString path ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.int VT.string
+          let resultError = Dval.resultError types VT.int VT.string
           uply {
             try
               let fileInfo = System.IO.FileInfo(path)

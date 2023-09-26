@@ -15,6 +15,7 @@ open Prelude
 module Telemetry = LibService.Telemetry
 module Rollbar = LibService.Rollbar
 module CTPusher = LibClientTypes.Pusher
+module RT = LibExecution.RuntimeTypes
 
 
 let runMigrations () : unit =
@@ -93,14 +94,14 @@ let usesDB (options : Options) =
   | ConvertST2RTAll
   | Help -> false
 
-let convertToRT (canvasID : CanvasID) : Task<unit> =
+let convertToRT (types : RT.Types) (canvasID : CanvasID) : Task<unit> =
   task {
     let! canvas = LibCloud.Canvas.loadAll canvasID
-    let _program = LibCloud.Canvas.toProgram canvas
+    let _program = LibCloud.Canvas.toProgram types canvas
     let _handlers =
       canvas.handlers
       |> Map.values
-      |> List.map (fun h -> LibExecution.ProgramTypesToRuntimeTypes.Handler.toRT h)
+      |> List.map (LibExecution.ProgramTypesToRuntimeTypes.Handler.toRT types)
     return ()
   }
 
@@ -108,7 +109,7 @@ let convertToRT (canvasID : CanvasID) : Task<unit> =
 
 
 
-let run (options : Options) : Task<int> =
+let run (types : RT.Types) (options : Options) : Task<int> =
   task {
     // Track calls to this
     use _ = Telemetry.createRoot "ProdExec run"
@@ -135,12 +136,12 @@ let run (options : Options) : Task<int> =
     | TriggerPagingRollbar -> return triggerPagingRollbar ()
 
     | ConvertST2RT canvasID ->
-      do! convertToRT canvasID
+      do! convertToRT types canvasID
       return 0
 
     | ConvertST2RTAll ->
       let! allIDs = LibCloud.Canvas.allCanvasIDs ()
-      do! Task.iterWithConcurrency 25 convertToRT allIDs
+      do! Task.iterWithConcurrency 25 (convertToRT types) allIDs
       return 0
 
 
@@ -185,7 +186,8 @@ let main (args : string[]) : int =
     Telemetry.Console.loadTelemetry name Telemetry.TraceDBQueries
     let options = parse args
     if usesDB options then (LibCloud.Init.init LibCloud.Init.WaitForDB name).Result
-    let result = (run options).Result
+    let types = RT.typesTODO
+    let result = (run types options).Result
     LibService.Init.shutdown name
     printTime "Finished ProdExec"
     result

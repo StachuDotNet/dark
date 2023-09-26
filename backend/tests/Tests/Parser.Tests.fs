@@ -15,11 +15,12 @@ let parserTests =
   let t name testStr expectedExpr =
     testTask name {
       let! actual =
-        LibParser.Parser.parseRTExpr nameResolver "parser.tests.fs" testStr
+        LibParser.Parser.parseRTExpr darkTypes nameResolver "parser.tests.fs" testStr
         |> Ply.toTask
-      let! expectedExpr = PT2RT.Expr.toRT expectedExpr |> Ply.toTask
+      let! expectedExpr = PT2RT.Expr.toRT darkTypes expectedExpr |> Ply.toTask
       return Expect.equalExprIgnoringIDs actual expectedExpr
     }
+
   let id = 0UL // since we're ignoring IDs, just use the same one everywhere
   testList
     "Parser tests"

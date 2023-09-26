@@ -472,7 +472,7 @@ let parse
                   convert typ pathSoFar j) // TODO revisit if we need to do anything with path
                 |> Ply.List.flatten
 
-              return! Dval.enum typeName typeName VT.typeArgsTODO' caseName fields
+              return! Dval.enum types typeName VT.typeArgsTODO' caseName fields
 
             | _ -> return Exception.raiseInternal "TODO" []
 
@@ -512,7 +512,7 @@ let parse
                 })
               |> Ply.List.flatten
 
-            return! Dval.record typeName VT.typeArgsTODO' fields
+            return! Dval.record types typeName VT.typeArgsTODO' fields
       }
 
 
@@ -587,7 +587,7 @@ let fns : List<BuiltInFn> =
             let types = ExecutionState.availableTypes state
             let! response =
               writeJson (fun w -> serialize types w typeToSerializeAs arg)
-            return! Dval.resultOk VT.string VT.string (DString response)
+            return! Dval.resultOk types VT.string VT.string (DString response)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -602,11 +602,11 @@ let fns : List<BuiltInFn> =
       description =
         "Parses a JSON string <param json> as a Dark value, matching the type <typeParam a>"
       fn =
-        let resultOk = Dval.resultOk VT.unknownTODO VT.string
-        let resultError = Dval.resultError VT.unknownTODO VT.string
         (function
         | state, [ typeArg ], [ DString arg ] ->
           let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.unknownTODO VT.string
+          let resultError = Dval.resultError types VT.unknownTODO VT.string
           uply {
             match! parse types typeArg arg with
             | Ok v -> return! resultOk v

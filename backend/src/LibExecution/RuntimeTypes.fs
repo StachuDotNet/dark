@@ -1415,7 +1415,7 @@ module Types =
       TCustomType(typeName, List.map substitute typeArgs)
     | TDict t -> TDict(substitute t)
 
-
+let typesTODO = Types.empty // TODO: get rid of all of these ASAP -- before merging.
 
 let rec getTypeReferenceFromAlias
   (types : Types)

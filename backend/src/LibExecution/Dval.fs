@@ -33,6 +33,24 @@ open LibExecution.RuntimeTypes
 module VT = ValueType
 
 
+// <wip -- thinking out loud>
+type DvalCreationConfig =
+  /// - for DLists, ensure items are consistent and fill in ValueType if Unknown provided
+  /// - for DDicts, ensure values are consistent and fill in ValueType if Unknown provided
+  /// - for DEnums,
+  ///   - look up type and resolve any aliases
+  ///   - ensure fields are consistent with the source type's name
+  ///   - fill in the runtimeTypeName and runtimeTypeArgs appropriately, resolving aliases
+  /// - for DRecords, (see DEnums - pretty similar)
+  | TypecheckOnConstruction of typesForLookup : Types * tst : TypeSymbolTable // * context: TypeChecker.Context
+
+  /// Don't look up any types or do type-checking
+  /// Useful for the package manager itself, maybe some other things we know to be stable
+  /// i.e.
+  /// - Dval.enum should
+  | DoNotTypecheckOnConstruction
+// </wip>
+
 let int (i : int) = DInt(int64 i)
 
 
@@ -230,16 +248,15 @@ let ignoreAndUseEmpty (_ignoredForNow : List<ValueType>) = []
 ///
 /// note: if provided, the typeArgs must match the # of typeArgs expected by the type
 let record
-  (sourceTypeName : TypeName.TypeName)
-  (sourceTypeArgs : Option<List<ValueType>>)
+  (types : Types)
+  (typeName : TypeName.TypeName)
+  (typeArgs : Option<List<ValueType>>)
   // CLEANUP consider Ply<List<string * Dval>> for the sake of the consumers of this
   // It would make for much cleaner code, but I'm not sure if it's more right or more
   // wrong than the current set-up. Seems like it'd yield RTEs
   // at a higher level of Dvals than the current setup.
   (fields : List<string * Dval>)
   : Ply<Dval> =
-  let resolvedTypeName = sourceTypeName // TODO: alias lookup
-
   let fields =
     List.fold
       (fun fields (k, v) ->
@@ -256,31 +273,10 @@ let record
       Map.empty
       fields
 
+  let resolvedTypeName = typeName // TODO: alias lookup
+
   // TODO:
-  // - pass in a (types: Types) arg
-  // - use it to determine type args of resultant Dval
-  // - ensure fields match the expected shape (defined by type args and field defs)
-  //   - this process should also effect the type args of the resultant Dval
-  let typeArgs =
-    match sourceTypeArgs with
-    | Some typeArgs -> ignoreAndUseEmpty typeArgs
-    | None -> VT.typeArgsTODO
-
-  DRecord(resolvedTypeName, sourceTypeName, typeArgs, fields) |> Ply
-
-
-
-let enum
-  // CLEANUP nitpick: reorder these typeName params (i.e. source first)
-  (resolvedTypeName : TypeName.TypeName)
-  (sourceTypeName : TypeName.TypeName) // TODO: maybe just pass in sourceTypeName
-  (typeArgs : Option<List<ValueType>>) // note: must match the count expected by the typeName
-  (caseName : string)
-  (fields : List<Dval>)
-  : Ply<Dval> =
-  // TODO:
-  // - pass in a (types: Types) arg
-  // - use it to determine type args of resultant Dval
+  // - use the Types arg to determine type args of resultant Dval
   // - ensure fields match the expected shape (defined by type args and field defs)
   //   - this process should also effect the type args of the resultant Dval
   let typeArgs =
@@ -288,45 +284,75 @@ let enum
     | Some typeArgs -> ignoreAndUseEmpty typeArgs
     | None -> VT.typeArgsTODO
 
-  DEnum(resolvedTypeName, sourceTypeName, typeArgs, caseName, fields) |> Ply
+  // TODO I think we need a resolvedTypeArgs too...
+
+  DRecord(resolvedTypeName, typeName, typeArgs, fields) |> Ply
+
+
+
+let enum
+  (types : Types)
+  (typeName : TypeName.TypeName)
+  (typeArgs : Option<List<ValueType>>) // note: must match the count expected by the typeName
+  (caseName : string)
+  (fields : List<Dval>)
+  : Ply<Dval> =
+  let resolvedTypeName = typeName
+  // TODO:
+  // - use the Types arg to determine type args of resultant Dval
+  // - ensure fields match the expected shape (defined by type args and field defs)
+  //   - this process should also effect the type args of the resultant Dval
+  let typeArgs =
+    match typeArgs with
+    | Some typeArgs -> ignoreAndUseEmpty typeArgs
+    | None -> VT.typeArgsTODO
+
+  DEnum(resolvedTypeName, typeName, typeArgs, caseName, fields) |> Ply
 
 
 
 let optionType = TypeName.fqPackage "Darklang" [ "Stdlib"; "Option" ] "Option" 0
 
-let optionSome (innerType : ValueType) (dv : Dval) : Ply<Dval> =
-  enum optionType optionType (Some [ innerType ]) "Some" [ dv ]
+let optionSome (types : Types) (innerType : ValueType) (dv : Dval) : Ply<Dval> =
+  enum types optionType (Some [ innerType ]) "Some" [ dv ]
 
-let optionNone (innerType : ValueType) : Ply<Dval> =
-  enum optionType optionType (Some [ innerType ]) "None" []
+let optionNone (types : Types) (innerType : ValueType) : Ply<Dval> =
+  enum types optionType (Some [ innerType ]) "None" []
 
-let option (innerType : ValueType) (dv : Option<Dval>) : Ply<Dval> =
+let option (types : Types) (innerType : ValueType) (dv : Option<Dval>) : Ply<Dval> =
   match dv with
-  | Some dv -> optionSome innerType dv
-  | None -> optionNone innerType
+  | Some dv -> optionSome types innerType dv
+  | None -> optionNone types innerType
 
 
 
 let resultType = TypeName.fqPackage "Darklang" [ "Stdlib"; "Result" ] "Result" 0
 
-let resultOk (okType : ValueType) (errorType : ValueType) (dv : Dval) : Ply<Dval> =
-  enum resultType resultType (Some [ okType; errorType ]) "Ok" [ dv ]
-
-let resultError
+let resultOk
+  (types : Types)
   (okType : ValueType)
   (errorType : ValueType)
   (dv : Dval)
   : Ply<Dval> =
-  enum resultType resultType (Some [ okType; errorType ]) "Error" [ dv ]
+  enum types resultType (Some [ okType; errorType ]) "Ok" [ dv ]
+
+let resultError
+  (types : Types)
+  (okType : ValueType)
+  (errorType : ValueType)
+  (dv : Dval)
+  : Ply<Dval> =
+  enum types resultType (Some [ okType; errorType ]) "Error" [ dv ]
 
 let result
+  (types : Types)
   (okType : ValueType)
   (errorType : ValueType)
   (dv : Result<Dval, Dval>)
   : Ply<Dval> =
   match dv with
-  | Ok dv -> resultOk okType errorType dv
-  | Error dv -> resultError okType errorType dv
+  | Ok dv -> resultOk types okType errorType dv
+  | Error dv -> resultError types okType errorType dv
 
 
 

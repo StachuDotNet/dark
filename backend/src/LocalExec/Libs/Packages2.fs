@@ -66,7 +66,8 @@ let fns : List<BuiltInFn> =
       description = "Parse a package"
       fn =
         function
-        | _, _, [ DString contents; DString path ] ->
+        | state, _, [ DString contents; DString path ] ->
+          let darkTypes = ExecutionState.availableTypes state
           uply {
             let resolver = { resolver with allowError = false }
 
@@ -74,20 +75,24 @@ let fns : List<BuiltInFn> =
               LibParser.Parser.parsePackageFile resolver path contents
 
             let! packagesFns =
-              fns |> Ply.List.mapSequentially (fun fn -> PT2DT.PackageFn.toDT fn)
+              fns
+              |> Ply.List.mapSequentially (fun fn ->
+                PT2DT.PackageFn.toDT darkTypes fn)
             let! packagesTypes =
-              types |> Ply.List.mapSequentially PT2DT.PackageType.toDT
+              types |> Ply.List.mapSequentially (PT2DT.PackageType.toDT darkTypes)
             let! packagesConstants =
-              constants |> Ply.List.mapSequentially PT2DT.PackageConstant.toDT
+              constants
+              |> Ply.List.mapSequentially (PT2DT.PackageConstant.toDT darkTypes)
 
             return!
               Dval.record
+                darkTypes
                 (FQName.BuiltIn(typ [ "LocalExec"; "Packages" ] "Package" 0))
                 (Some [])
                 [ ("fns", Dval.list VT.unknownTODO packagesFns)
                   ("types", Dval.list VT.unknownTODO packagesTypes)
                   ("constants", Dval.list VT.unknownTODO packagesConstants) ]
-              |> Ply.bind (Dval.resultOk VT.unknownTODO VT.string)
+              |> Ply.bind (Dval.resultOk darkTypes VT.unknownTODO VT.string)
 
           }
         | _ -> incorrectArgs ()

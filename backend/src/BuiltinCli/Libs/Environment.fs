@@ -26,13 +26,14 @@ let fns : List<BuiltInFn> =
         "Gets the value of the environment variable with the given <param varName> if it exists."
       fn =
         (function
-        | _, _, [ DString varName ] ->
+        | state, _, [ DString varName ] ->
+          let types = ExecutionState.availableTypes state
+          let optionNone = Dval.optionNone types VT.string
+          let optionSome = Dval.optionSome types VT.string
+
           let envValue = System.Environment.GetEnvironmentVariable(varName)
 
-          if isNull envValue then
-            Dval.optionNone VT.string
-          else
-            Dval.optionSome VT.string (DString envValue)
+          if isNull envValue then optionNone else optionSome (DString envValue)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

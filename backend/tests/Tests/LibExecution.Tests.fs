@@ -73,17 +73,21 @@ let t
         types
         |> Ply.List.mapSequentially (fun typ ->
           uply {
-            let! typRT = PT2RT.UserType.toRT typ
+            let! typRT = PT2RT.UserType.toRT darkTypes typ
             return (PT2RT.TypeName.UserProgram.toRT typ.name, typRT)
           })
         |> Ply.map Map.ofList
         |> Ply.toTask
 
+      // update `darkTypes` to include those^ types,
+      // otherwise some PT2RT calls below will fail based on missing types
+      let darkTypes = { darkTypes with userProgram = rtTypes }
+
       let! rtDBs =
         dbs
         |> Ply.List.mapSequentially (fun db ->
           uply {
-            let! dbRT = PT2RT.DB.toRT db
+            let! dbRT = PT2RT.DB.toRT darkTypes db
             return (db.name, dbRT)
           })
         |> Ply.map Map.ofList
@@ -93,7 +97,7 @@ let t
         functions
         |> Ply.List.mapSequentially (fun fn ->
           uply {
-            let! fn = PT2RT.UserFunction.toRT fn
+            let! fn = PT2RT.UserFunction.toRT darkTypes fn
             return (fn.name, fn)
           })
         |> Ply.map Map.ofList
@@ -103,7 +107,7 @@ let t
         constants
         |> Ply.List.mapSequentially (fun c ->
           uply {
-            let! c = PT2RT.UserConstant.toRT c
+            let! c = PT2RT.UserConstant.toRT darkTypes c
             return (c.name, c)
           })
         |> Ply.map Map.ofList
@@ -133,7 +137,7 @@ let t
       let msg =
         $"\n\n{rhsMsg}\n\n{lhsMsg}\n\nTest location: {bold}{underline}{filename}:{lineNumber}{reset}"
 
-      let! expectedExpr = PT2RT.Expr.toRT expectedExpr |> Ply.toTask
+      let! expectedExpr = PT2RT.Expr.toRT darkTypes expectedExpr |> Ply.toTask
       let! expected = Exe.executeExpr state Map.empty expectedExpr
 
       // Initialize
@@ -148,7 +152,7 @@ let t
           state
 
       // Run the actual program (left-hand-side of the =)
-      let! actualExpr = PT2RT.Expr.toRT actualExpr |> Ply.toTask
+      let! actualExpr = PT2RT.Expr.toRT darkTypes actualExpr |> Ply.toTask
       let! actual = Exe.executeExpr state Map.empty actualExpr
 
       if System.Environment.GetEnvironmentVariable "DEBUG" <> null then

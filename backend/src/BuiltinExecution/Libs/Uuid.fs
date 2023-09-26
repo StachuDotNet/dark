@@ -39,10 +39,12 @@ let fns : List<BuiltInFn> =
       description =
         "Parse a <type Uuid> of form {{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}}"
       fn =
-        let resultOk = Dval.resultOk VT.uuid VT.string
-        let resultError = Dval.resultError VT.uuid VT.string
         (function
-        | _, _, [ DString s ] ->
+        | state, _, [ DString s ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.uuid VT.string
+          let resultError = Dval.resultError types VT.uuid VT.string
+
           match System.Guid.TryParse s with
           | true, x -> x |> DUuid |> resultOk
           | _ ->

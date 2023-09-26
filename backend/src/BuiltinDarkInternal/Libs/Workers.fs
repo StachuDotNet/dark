@@ -35,12 +35,16 @@ let schedulingRuleTypeName = typ [ "DarkInternal"; "SchedulingRule" ] "Rule" 0
 let schedulingRuleTypeRef =
   TCustomType(Ok(FQName.BuiltIn(schedulingRuleTypeName)), [])
 
-let rulesToDval (rules : List<SchedulingRules.SchedulingRule.T>) : Ply<Dval> =
+let rulesToDval
+  (types : Types)
+  (rules : List<SchedulingRules.SchedulingRule.T>)
+  : Ply<Dval> =
   let typeName = FQName.BuiltIn schedulingRuleTypeName
 
   rules
   |> Ply.List.mapSequentially (fun r ->
     Dval.record
+      types
       typeName
       (Some [])
       [ ("id", Dval.int r.id)
@@ -96,10 +100,11 @@ let fns : List<BuiltInFn> =
         "Returns a list of all queue scheduling rules for the specified canvasID"
       fn =
         (function
-        | _, _, [ DUuid canvasID ] ->
+        | state, _, [ DUuid canvasID ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             let! rules = SchedulingRules.getSchedulingRules canvasID
-            return! rulesToDval rules
+            return! rulesToDval types rules
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -140,10 +145,11 @@ let fns : List<BuiltInFn> =
       description = "Returns a list of all queue scheduling rules"
       fn =
         (function
-        | _, _, [ DUnit ] ->
+        | state, _, [ DUnit ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             let! rules = SchedulingRules.getAllSchedulingRules ()
-            return! rulesToDval rules
+            return! rulesToDval types rules
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

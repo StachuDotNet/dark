@@ -131,7 +131,8 @@ let fns : List<BuiltInFn> =
       description = "List all package functions"
       fn =
         function
-        | _, _, [ DUnit ] ->
+        | state, _, [ DUnit ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             let! fns =
               Sql.query
@@ -146,6 +147,7 @@ let fns : List<BuiltInFn> =
               fns
               |> Ply.List.mapSequentially (fun (owner, fnname, modules, version) ->
                 Dval.record
+                  types
                   (FQName.BuiltIn(typ [ "LocalExec"; "Packages" ] "Function" 0))
                   (Some [])
                   [ ("owner", DString owner)
@@ -178,7 +180,8 @@ let fns : List<BuiltInFn> =
       description = "List all package types"
       fn =
         function
-        | _, _, [ DUnit ] ->
+        | state, _, [ DUnit ] ->
+          let darkTypes = ExecutionState.availableTypes state
           uply {
             let! types =
               Sql.query
@@ -194,6 +197,7 @@ let fns : List<BuiltInFn> =
               |> Ply.List.mapSequentially
                 (fun (owner, typename, modules, version) ->
                   Dval.record
+                    darkTypes
                     (FQName.BuiltIn(typ [ "LocalExec"; "Packages" ] "Type" 0))
                     (Some [])
                     [ ("owner", DString owner)
@@ -226,7 +230,8 @@ let fns : List<BuiltInFn> =
       description = "List all package constants"
       fn =
         function
-        | _, _, [ DUnit ] ->
+        | state, _, [ DUnit ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             let! consts =
               Sql.query
@@ -241,6 +246,7 @@ let fns : List<BuiltInFn> =
               consts
               |> Ply.List.mapSequentially (fun (owner, fnname, modules, version) ->
                 Dval.record
+                  types
                   (FQName.BuiltIn(typ [ "LocalExec"; "Packages" ] "Constant" 0))
                   (Some [])
                   [ ("owner", DString owner)

@@ -44,6 +44,8 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ DString s; DFnVal b ] ->
+          let types = ExecutionState.availableTypes state
+
           (String.toEgcSeq s
            |> Seq.toList
            |> Ply.List.mapSequentially (fun te ->
@@ -54,7 +56,11 @@ let fns : List<BuiltInFn> =
              |> Ply.List.mapSequentially (function
                | DChar c -> Ply c
                | dv ->
-                 TypeChecker.raiseFnValResultNotExpectedType SourceNone dv TChar)
+                 TypeChecker.raiseFnValResultNotExpectedType
+                   types
+                   SourceNone
+                   dv
+                   TChar)
              |> Ply.map (fun parts ->
                parts |> String.concat "" |> String.normalize |> DString)))
         | _ -> incorrectArgs ())
@@ -413,12 +419,16 @@ let fns : List<BuiltInFn> =
         "Converts the UTF8-encoded byte sequence into a string. Errors will be ignored by replacing invalid characters"
       fn =
         (function
-        | _, _, [ DBytes bytes ] ->
+        | state, _, [ DBytes bytes ] ->
+          let types = ExecutionState.availableTypes state
+          let optionSome = Dval.optionSome types VT.string
+          let optionNone = Dval.optionNone types VT.string
+
           try
             let str = System.Text.UTF8Encoding(false, true).GetString bytes
-            Dval.optionSome VT.string (DString str)
+            optionSome (DString str)
           with e ->
-            Dval.optionNone VT.string
+            optionNone
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -455,12 +465,16 @@ let fns : List<BuiltInFn> =
         "Returns {{Some char}} of the first character of <param str>, or returns {{None}} if <param str> is empty."
       fn =
         (function
-        | _, _, [ DString str ] ->
+        | state, _, [ DString str ] ->
+          let types = ExecutionState.availableTypes state
+          let optionSome = Dval.optionSome types VT.char
+          let optionNone = Dval.optionNone types VT.char
+
           if str = "" then
-            Dval.optionNone VT.char
+            optionNone
           else
             let head = String.toEgcSeq str |> Seq.head
-            Dval.optionSome VT.char (DChar head)
+            optionSome (DChar head)
         | _ -> incorrectArgs ())
 
       sqlSpec = NotYetImplemented

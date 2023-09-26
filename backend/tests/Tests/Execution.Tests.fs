@@ -71,9 +71,15 @@ let testExecFunctionTLIDs : Test =
     let! meta = initializeTestCanvas "exec-function-tlids"
     let name = "testFunction"
     let ps = NEList.singleton "param"
+
+    // TODO this might fail based on `darkTypes` (referenced below)
+    // not having context of the user function `testFunction` that we're calling
+    // (the PT2RT will fail)
+    // we might be able to avoid this issue by just writing the RT equivalent here directly?
+
     let! (fn : UserFunction.T) =
       testUserFn name [] ps (PT.TVariable "a") (PT.EInt(gid (), 5))
-      |> PT2RT.UserFunction.toRT
+      |> PT2RT.UserFunction.toRT darkTypes
       |> Ply.toTask
     let fns = Map.ofList [ (fn.name, fn) ]
     let! state = executionStateFor meta false false Map.empty Map.empty fns Map.empty

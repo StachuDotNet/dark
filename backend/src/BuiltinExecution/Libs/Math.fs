@@ -94,13 +94,14 @@ let fns : List<BuiltInFn> =
          This function is the inverse of <fn Math.cos>."
       fn =
         (function
-        | _, _, [ DFloat r ] ->
-          let res = System.Math.Acos r in
+        | state, _, [ DFloat r ] ->
+          let types = ExecutionState.availableTypes state
+          let optionNone = Dval.optionNone types VT.float
+          let optionSome = Dval.optionSome types VT.float
 
-          if System.Double.IsNaN res then
-            Dval.optionNone VT.float
-          else
-            Dval.optionSome VT.float (DFloat res)
+          let res = System.Math.Acos r
+
+          if System.Double.IsNaN res then optionNone else optionSome (DFloat res)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -121,13 +122,14 @@ let fns : List<BuiltInFn> =
          This function is the inverse of <fn Math.sin>."
       fn =
         (function
-        | _, _, [ DFloat r ] ->
-          let res = System.Math.Asin r in
+        | state, _, [ DFloat r ] ->
+          let types = ExecutionState.availableTypes state
+          let optionNone = Dval.optionNone types VT.float
+          let optionSome = Dval.optionSome types VT.float
 
-          if System.Double.IsNaN res then
-            Dval.optionNone VT.float
-          else
-            Dval.optionSome VT.float (DFloat res)
+          let res = System.Math.Asin r
+
+          if System.Double.IsNaN res then optionNone else optionSome (DFloat res)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure

@@ -35,6 +35,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ DList(_vtTODO, l); DFnVal b ] ->
+          let types = ExecutionState.availableTypes state
           uply {
             do!
               l
@@ -47,6 +48,7 @@ let fns : List<BuiltInFn> =
                     let context = TypeChecker.Context.FnValResult(TUnit, None)
                     return!
                       TypeChecker.raiseValueNotExpectedType
+                        types
                         SourceNone
                         v
                         TUnit

@@ -158,6 +158,10 @@ let nameResolver =
     ) with
       packageManager = Some packageManager }
 
+let darkTypes : RT.Types =
+  { builtIn = localBuiltIns.types
+    package = packageManager.getType
+    userProgram = Map.empty }
 
 let executionStateFor
   (canvasID : CanvasID)

@@ -366,11 +366,16 @@ let fns (config : Configuration) : List<BuiltInFn> =
         the response is wrapped in {{ Ok }} if a response was successfully
         received and parsed, and is wrapped in {{ Error }} otherwise"
       fn =
-        let resultOk = Dval.resultOk VT.unknownTODO VT.string
-        let resultErrorStr str =
-          Dval.resultError VT.unknownTODO VT.string (DString str)
         (function
-        | _, _, [ DString method; DString uri; DList(_, reqHeaders); DBytes reqBody ] ->
+        | state,
+          _,
+          [ DString method; DString uri; DList(_, reqHeaders); DBytes reqBody ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.unknownTODO VT.string
+          let resultErrorStr str =
+            Dval.resultError types VT.unknownTODO VT.string (DString str)
+
+
           let reqHeaders : Result<List<string * string>, HeaderError> =
             reqHeaders
             |> List.fold
@@ -429,7 +434,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
                   [ ("statusCode", DInt(int64 response.statusCode))
                     ("headers", responseHeaders)
                     ("body", DBytes response.body) ]
-                  |> Dval.record typ (Some [])
+                  |> Dval.record types typ (Some [])
                   |> Ply.bind resultOk
 
               // TODO: include a DvalSource rather than SourceNone

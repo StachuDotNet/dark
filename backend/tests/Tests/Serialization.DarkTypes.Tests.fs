@@ -27,11 +27,6 @@ module RoundtripTests =
   // most of the time, it should end up being the same as the source.
   // if there are known exceptions, break down individual mappings as separate tests
 
-  let types : RT.Types =
-    { builtIn = localBuiltIns.types
-      package = packageManager.getType
-      userProgram = Map.empty }
-
   let testRoundtrip
     (testName : string)
     (typeName : RT.TypeName.TypeName)
@@ -58,7 +53,7 @@ module RoundtripTests =
       let! typeChecked =
         LibExecution.TypeChecker.unify
           context
-          types
+          darkTypes
           Map.empty
           (RT.TCustomType(Ok typeName, []))
           firstDT
@@ -112,7 +107,7 @@ module RoundtripTests =
           "RT.TypeName"
           (pkg [ "TypeName" ] "TypeName" 0)
           V.RuntimeTypes.fqTypeNames
-          RT2DT.TypeName.toDT
+          (RT2DT.TypeName.toDT darkTypes)
           RT2DT.TypeName.fromDT
           None
 
@@ -120,7 +115,7 @@ module RoundtripTests =
           "RT.FnName"
           (pkg [ "FnName" ] "FnName" 0)
           V.RuntimeTypes.fqFnNames
-          RT2DT.FnName.toDT
+          (RT2DT.FnName.toDT darkTypes)
           RT2DT.FnName.fromDT
           None
 
@@ -128,7 +123,7 @@ module RoundtripTests =
           "RT.ConstantName"
           (pkg [ "ConstantName" ] "ConstantName" 0)
           V.RuntimeTypes.fqConstantNames
-          RT2DT.ConstantName.toDT
+          (RT2DT.ConstantName.toDT darkTypes)
           RT2DT.ConstantName.fromDT
           None
 
@@ -136,7 +131,7 @@ module RoundtripTests =
           "RT.TypeReference"
           (pkg [] "TypeReference" 0)
           V.RuntimeTypes.typeReferences
-          RT2DT.TypeReference.toDT
+          (RT2DT.TypeReference.toDT darkTypes)
           RT2DT.TypeReference.fromDT
           None
 
@@ -144,7 +139,7 @@ module RoundtripTests =
           "RT.Expr"
           (pkg [] "Expr" 0)
           V.RuntimeTypes.exprs
-          RT2DT.Expr.toDT
+          (RT2DT.Expr.toDT darkTypes)
           RT2DT.Expr.fromDT
           None
 
@@ -152,7 +147,7 @@ module RoundtripTests =
           "RT.ValueType"
           (pkg [] "ValueType" 0)
           V.RuntimeTypes.valueTypes
-          RT2DT.Dval.ValueType.toDT
+          (RT2DT.Dval.ValueType.toDT darkTypes)
           RT2DT.Dval.ValueType.fromDT
           None
 
@@ -160,7 +155,7 @@ module RoundtripTests =
           "RT.Dval"
           (pkg [ "Dval" ] "Dval" 0)
           V.RuntimeTypes.dvals
-          RT2DT.Dval.toDT
+          (RT2DT.Dval.toDT darkTypes)
           RT2DT.Dval.fromDT
           (Some Expect.equalDval)
 
@@ -185,7 +180,7 @@ module RoundtripTests =
           "PT.PackageFn"
           (pkg [ "PackageFn" ] "PackageFn" 0)
           V.ProgramTypes.packageFns
-          PT2DT.PackageFn.toDT
+          (PT2DT.PackageFn.toDT darkTypes)
           PT2DT.PackageFn.fromDT
           None
 
@@ -193,7 +188,7 @@ module RoundtripTests =
           "PT.PackageType"
           (pkg [] "PackageType" 0)
           V.ProgramTypes.packageTypes
-          PT2DT.PackageType.toDT
+          (PT2DT.PackageType.toDT darkTypes)
           PT2DT.PackageType.fromDT
           None
 
@@ -201,7 +196,7 @@ module RoundtripTests =
           "PT.PackageConstant"
           (pkg [] "PackageConstant" 0)
           V.ProgramTypes.packageConstants
-          PT2DT.PackageConstant.toDT
+          (PT2DT.PackageConstant.toDT darkTypes)
           PT2DT.PackageConstant.fromDT
           None
 
@@ -209,7 +204,7 @@ module RoundtripTests =
           "PT.UserFunction"
           (pkg [ "UserFunction" ] "UserFunction" 0)
           V.ProgramTypes.userFunctions
-          PT2DT.UserFunction.toDT
+          (PT2DT.UserFunction.toDT darkTypes)
           PT2DT.UserFunction.fromDT
           None
 
@@ -217,7 +212,7 @@ module RoundtripTests =
           "PT.UserTypes"
           (pkg [] "UserType" 0)
           V.ProgramTypes.userTypes
-          PT2DT.UserType.toDT
+          (PT2DT.UserType.toDT darkTypes)
           PT2DT.UserType.fromDT
           None
 
@@ -225,7 +220,7 @@ module RoundtripTests =
           "PT.UserConstants"
           (pkg [] "UserConstant" 0)
           V.ProgramTypes.userConstants
-          PT2DT.UserConstant.toDT
+          (PT2DT.UserConstant.toDT darkTypes)
           PT2DT.UserConstant.fromDT
           None
 
@@ -233,7 +228,7 @@ module RoundtripTests =
           "PT.Secret"
           (pkg [] "Secret" 0)
           V.ProgramTypes.userSecrets
-          PT2DT.Secret.toDT
+          (PT2DT.Secret.toDT darkTypes)
           PT2DT.Secret.fromDT
           None
 
@@ -241,7 +236,7 @@ module RoundtripTests =
           "PT.DB"
           (pkg [] "DB" 0)
           V.ProgramTypes.userDBs
-          PT2DT.DB.toDT
+          (PT2DT.DB.toDT darkTypes)
           PT2DT.DB.fromDT
           None
 
@@ -249,7 +244,7 @@ module RoundtripTests =
           "PT.Handler"
           (pkg [ "Handler" ] "Handler" 0)
           V.ProgramTypes.Handler.handlers
-          PT2DT.Handler.toDT
+          (PT2DT.Handler.toDT darkTypes)
           PT2DT.Handler.fromDT
           None
 

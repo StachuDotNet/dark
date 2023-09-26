@@ -73,21 +73,22 @@ let state () =
 
 
 let execute
+  (darkTypes : RT.Types)
   (mod' : LibParser.Canvas.PTCanvasModule)
   (symtable : Map<string, RT.Dval>)
   : Ply<RT.ExecutionResult> =
   uply {
     let! fns =
       mod'.fns
-      |> Ply.List.mapSequentially PT2RT.UserFunction.toRT
+      |> Ply.List.mapSequentially (PT2RT.UserFunction.toRT darkTypes)
       |> Ply.map (Map.fromListBy (fun fn -> fn.name))
     let! types =
       mod'.types
-      |> Ply.List.mapSequentially PT2RT.UserType.toRT
+      |> Ply.List.mapSequentially (PT2RT.UserType.toRT darkTypes)
       |> Ply.map (Map.fromListBy (fun typ -> typ.name))
     let! constants =
       mod'.constants
-      |> Ply.List.mapSequentially PT2RT.UserConstant.toRT
+      |> Ply.List.mapSequentially (PT2RT.UserConstant.toRT darkTypes)
       |> Ply.map (Map.fromListBy (fun c -> c.name))
 
     let program : RT.Program =
@@ -100,7 +101,7 @@ let execute
         secrets = [] }
 
     let state = { state () with program = program }
-    let! expr = PT2RT.Expr.toRT mod'.exprs[0]
+    let! expr = PT2RT.Expr.toRT darkTypes mod'.exprs[0]
     return! Exe.executeExpr state symtable expr
   }
 
@@ -234,11 +235,15 @@ module PackageBootstrapping =
       // (any package references that may have been unresolved a second ago should now be OK)
       let (fns, types, consts) = packagesParsedWithUnresolvedNamesAllowed
 
+      let darkTypes = RT.typesTODO
+
       let! (inMemPackageManager : RT.PackageManager) =
         uply {
-          let! types = types |> Ply.List.mapSequentially PT2RT.PackageType.toRT
-          let! fns = fns |> Ply.List.mapSequentially PT2RT.PackageFn.toRT
-          let! consts = consts |> Ply.List.mapSequentially PT2RT.PackageConstant.toRT
+          let! types =
+            types |> Ply.List.mapSequentially (PT2RT.PackageType.toRT darkTypes)
+          let! fns = fns |> Ply.List.mapSequentially (PT2RT.PackageFn.toRT darkTypes)
+          let! consts =
+            consts |> Ply.List.mapSequentially (PT2RT.PackageConstant.toRT darkTypes)
 
           let pm : RT.PackageManager =
             { getType =
@@ -289,13 +294,15 @@ let runLocalExecScript (args : string[]) : Ply<int> =
           packageManager = Some LibCloud.PackageManager.packageManager }
     let! modul = LibParser.Canvas.parseFromFile nameResolver mainFile
 
+    let darkTypes = RT.typesTODO
+
     let args =
       args
       |> Array.toList
       |> List.map RT.DString
       |> Dval.list (RT.ValueType.Known RT.KTString)
 
-    let result = execute modul (Map [ "args", args ])
+    let result = execute darkTypes modul (Map [ "args", args ])
 
     NonBlockingConsole.wait ()
 

@@ -538,14 +538,14 @@ let healthCheck : LibService.Kubernetes.HealthCheck =
     probeTypes = [ LibService.Kubernetes.Startup ] }
 
 
-let toProgram (c : T) : Ply<RT.Program> =
+let toProgram (types : RT.Types) (c : T) : Ply<RT.Program> =
   uply {
     let! dbs =
       c.dbs
       |> Map.values
       |> Ply.List.mapSequentially (fun db ->
         uply {
-          let! dbRT = PT2RT.DB.toRT db
+          let! dbRT = PT2RT.DB.toRT types db
           return (db.name, dbRT)
         })
       |> Ply.map Map.ofList
@@ -555,7 +555,7 @@ let toProgram (c : T) : Ply<RT.Program> =
       |> Map.values
       |> Ply.List.mapSequentially (fun f ->
         uply {
-          let! fn = PT2RT.UserFunction.toRT f
+          let! fn = PT2RT.UserFunction.toRT types f
           return (PT2RT.FnName.UserProgram.toRT f.name, fn)
         })
       |> Ply.map Map.ofList
@@ -565,7 +565,7 @@ let toProgram (c : T) : Ply<RT.Program> =
       |> Map.values
       |> Ply.List.mapSequentially (fun t ->
         uply {
-          let! typ = PT2RT.UserType.toRT t
+          let! typ = PT2RT.UserType.toRT types t
           return (PT2RT.TypeName.UserProgram.toRT t.name, typ)
         })
       |> Ply.map Map.ofList
@@ -575,7 +575,7 @@ let toProgram (c : T) : Ply<RT.Program> =
       |> Map.values
       |> Ply.List.mapSequentially (fun c ->
         uply {
-          let! constant = PT2RT.UserConstant.toRT c
+          let! constant = PT2RT.UserConstant.toRT types c
           return (PT2RT.ConstantName.UserProgram.toRT c.name, constant)
         })
       |> Ply.map Map.ofList

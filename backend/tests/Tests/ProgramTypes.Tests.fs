@@ -23,7 +23,7 @@ let testPipesToRuntimeTypes =
   testTask "pipes to runtime types" {
     let! actual =
       "value.age |> (-) 2 |> (+) value.age |> (<) 3"
-      |> LibParser.Parser.parseRTExpr nameResolver "programTypes.tests.fs"
+      |> LibParser.Parser.parseRTExpr darkTypes nameResolver "programTypes.tests.fs"
       |> Ply.toTask
 
     let expected =
@@ -55,7 +55,7 @@ let testProgramTypesToRuntimeTypes =
 
   testManyPly
     "program types to runtime types"
-    PT2RT.Expr.toRT
+    (PT2RT.Expr.toRT darkTypes)
     [ PT.EFloat(7UL, Positive, "", "0"), RT.EFloat(7UL, 0.0)
       PT.EFloat(7UL, Positive, "0", ""), RT.EFloat(7UL, 0.0)
       PT.EFloat(7UL, Positive, "", ""), RT.EFloat(7UL, 0.0)

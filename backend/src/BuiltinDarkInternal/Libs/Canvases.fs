@@ -171,7 +171,8 @@ let fns : List<BuiltInFn> =
         "Returns a list of toplevel ids of http handlers in canvas <param canvasId>"
       fn =
         (function
-        | _, _, [ DUuid canvasID ] ->
+        | state, _, [ DUuid canvasID ] ->
+          let darkTypes = ExecutionState.availableTypes state
           uply {
             let! canvas = Canvas.loadAll canvasID
 
@@ -179,14 +180,14 @@ let fns : List<BuiltInFn> =
               canvas.userTypes
               |> Map.values
               |> Seq.toList
-              |> Ply.List.mapSequentially PT2DT.UserType.toDT
+              |> Ply.List.mapSequentially (PT2DT.UserType.toDT darkTypes)
               |> Ply.map (Dval.list VT.unknownTODO)
 
             let! fns =
               canvas.userFunctions
               |> Map.values
               |> Seq.toList
-              |> Ply.List.mapSequentially PT2DT.UserFunction.toDT
+              |> Ply.List.mapSequentially (PT2DT.UserFunction.toDT darkTypes)
               |> Ply.map (Dval.list VT.unknownTODO)
 
             // let dbs =
@@ -215,10 +216,11 @@ let fns : List<BuiltInFn> =
 
             return!
               Dval.record
+                darkTypes
                 (FQName.BuiltIn(typ "Program" 0))
                 (Some [])
                 [ "types", types; "fns", fns ]
-              |> Ply.bind (Dval.resultOk VT.unknownTODO VT.string)
+              |> Ply.bind (Dval.resultOk darkTypes VT.unknownTODO VT.string)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

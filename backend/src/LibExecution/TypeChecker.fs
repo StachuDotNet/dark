@@ -80,45 +80,46 @@ module Error =
   module RT2DT = RuntimeTypesToDarkTypes
 
   module Location =
-    let toDT (location : Location) : Ply<Dval> =
+    let toDT (types : Types) (location : Location) : Ply<Dval> =
       let optType = VT.unknownTODO
       match location with
-      | None -> Dval.optionNone optType
+      | None -> Dval.optionNone types optType
       | Some(tlid, id) ->
         let tlid = DInt(int64 tlid)
         let id = DInt(int64 id)
-        Dval.optionSome optType (DTuple(tlid, id, []))
+        Dval.optionSome types optType (DTuple(tlid, id, []))
 
 
   module Context =
-    let rec toDT (context : Context) : Ply<Dval> =
+    let rec toDT (types : Types) (context : Context) : Ply<Dval> =
+      let toDT = toDT types
       uply {
         let! (caseName, fields) =
           uply {
             match context with
             | FunctionCallParameter(fnName, param, paramIndex, location) ->
-              let! fnName = RT2DT.FnName.toDT fnName
-              let! param = RT2DT.Param.toDT param
-              let! location = Location.toDT location
+              let! fnName = RT2DT.FnName.toDT types fnName
+              let! param = RT2DT.Param.toDT types param
+              let! location = Location.toDT types location
               return
                 "FunctionCallParameter", [ fnName; param; DInt paramIndex; location ]
 
             | FunctionCallResult(fnName, returnType, location) ->
-              let! fnName = RT2DT.FnName.toDT fnName
-              let! returnType = RT2DT.TypeReference.toDT returnType
-              let! location = Location.toDT location
+              let! fnName = RT2DT.FnName.toDT types fnName
+              let! returnType = RT2DT.TypeReference.toDT types returnType
+              let! location = Location.toDT types location
               return "FunctionCallResult", [ fnName; returnType; location ]
 
             | RecordField(recordTypeName, fieldName, fieldType, location) ->
-              let! typeName = RT2DT.TypeName.toDT recordTypeName
-              let! fieldType = RT2DT.TypeReference.toDT fieldType
-              let! location = Location.toDT location
+              let! typeName = RT2DT.TypeName.toDT types recordTypeName
+              let! fieldType = RT2DT.TypeReference.toDT types fieldType
+              let! location = Location.toDT types location
               return
                 "RecordField", [ typeName; DString fieldName; fieldType; location ]
 
             | DictKey(key, typ, location) ->
-              let! typ = RT2DT.TypeReference.toDT typ
-              let! location = Location.toDT location
+              let! typ = RT2DT.TypeReference.toDT types typ
+              let! location = Location.toDT types location
               return "DictKey", [ DString key; typ; location ]
 
             | EnumField(enumTypeName,
@@ -127,9 +128,9 @@ module Error =
                         fieldCount,
                         fieldType,
                         location) ->
-              let! typeName = RT2DT.TypeName.toDT enumTypeName
-              let! fieldType = RT2DT.TypeReference.toDT fieldType
-              let! location = Location.toDT location
+              let! typeName = RT2DT.TypeName.toDT types enumTypeName
+              let! fieldType = RT2DT.TypeReference.toDT types fieldType
+              let! location = Location.toDT types location
               return
                 "EnumField",
                 [ typeName
@@ -140,70 +141,72 @@ module Error =
                   location ]
 
             | DBQueryVariable(varName, expected, location) ->
-              let! expected = RT2DT.TypeReference.toDT expected
-              let! location = Location.toDT location
+              let! expected = RT2DT.TypeReference.toDT types expected
+              let! location = Location.toDT types location
               return "DBQueryVariable", [ DString varName; expected; location ]
 
             | DBSchemaType(name, expectedType, location) ->
-              let! expectedType = RT2DT.TypeReference.toDT expectedType
-              let! location = Location.toDT location
+              let! expectedType = RT2DT.TypeReference.toDT types expectedType
+              let! location = Location.toDT types location
               return "DBSchemaType", [ DString name; expectedType; location ]
 
             | ListIndex(index, listTyp, parent) ->
-              let! listType = RT2DT.TypeReference.toDT listTyp
+              let! listType = RT2DT.TypeReference.toDT types listTyp
               let! parent = toDT parent
               return "ListIndex", [ DInt index; listType; parent ]
 
             | TupleIndex(index, elementType, parent) ->
-              let! elType = RT2DT.TypeReference.toDT elementType
+              let! elType = RT2DT.TypeReference.toDT types elementType
               let! parent = toDT parent
               return "TupleIndex", [ DInt index; elType; parent ]
 
             | FnValResult(returnType, location) ->
-              let! returnType = RT2DT.TypeReference.toDT returnType
-              let! location = Location.toDT location
+              let! returnType = RT2DT.TypeReference.toDT types returnType
+              let! location = Location.toDT types location
               return "FnValResult", [ returnType; location ]
           }
 
         let typeName = RuntimeError.name [ "TypeChecker" ] "Context" 0
-        return! Dval.enum typeName typeName (Some []) caseName fields
+        return! Dval.enum types typeName (Some []) caseName fields
       }
 
 
-  let toRuntimeError (e : Error) : Ply<RuntimeError> =
+  let toRuntimeError (types : Types) (e : Error) : Ply<RuntimeError> =
     uply {
       let! (caseName, fields) =
         uply {
           match e with
           | ValueNotExpectedType(actualValue, expectedType, context) ->
-            let! actualValue = actualValue |> RT2DT.Dval.toDT
-            let! expectedType = expectedType |> RT2DT.TypeReference.toDT
-            let! context = Context.toDT context
+            let! actualValue = actualValue |> RT2DT.Dval.toDT types
+            let! expectedType = expectedType |> RT2DT.TypeReference.toDT types
+            let! context = Context.toDT types context
             return "ValueNotExpectedType", [ actualValue; expectedType; context ]
 
           | TypeDoesntExist(typeName, context) ->
-            let! typeName = RT2DT.TypeName.toDT typeName
-            let! context = Context.toDT context
+            let! typeName = RT2DT.TypeName.toDT types typeName
+            let! context = Context.toDT types context
             return "TypeDoesntExist", [ typeName; context ]
         }
 
       let typeName = RuntimeError.name [ "TypeChecker" ] "Error" 0
       return!
-        Dval.enum typeName typeName (Some []) caseName fields
+        Dval.enum types typeName (Some []) caseName fields
         |> Ply.map RuntimeError.typeCheckerError
     }
 
 let raiseValueNotExpectedType
+  (types : Types)
   (source : DvalSource)
   (dv : Dval)
   (typ : TypeReference)
   (context : Context)
   : Ply<'a> =
   ValueNotExpectedType(dv, typ, context)
-  |> Error.toRuntimeError
+  |> Error.toRuntimeError types
   |> Ply.map (raiseRTE source)
 
 let raiseFnValResultNotExpectedType
+  (types : Types)
   (source : DvalSource)
   (dv : Dval)
   (typ : TypeReference)
@@ -214,7 +217,7 @@ let raiseFnValResultNotExpectedType
     | SourceID(tlid, id) -> Some(tlid, id)
   let context = FnValResult(typ, location)
   ValueNotExpectedType(dv, typ, context)
-  |> Error.toRuntimeError
+  |> Error.toRuntimeError types
   |> Ply.map (raiseRTE source)
 
 
@@ -335,7 +338,7 @@ let rec unify
         | false ->
           return!
             ValueNotExpectedType(value, TList expected, context)
-            |> Error.toRuntimeError
+            |> Error.toRuntimeError types
             |> Ply.map Error
 
         | true -> return! Ply()
@@ -359,7 +362,7 @@ let rec unify
         if List.length ts <> List.length vs then
           return!
             ValueNotExpectedType(value, expected, context)
-            |> Error.toRuntimeError
+            |> Error.toRuntimeError types
             |> Ply.map Error
         else
           // let! results =
@@ -384,12 +387,12 @@ let rec unify
           | None ->
             return!
               TypeDoesntExist(typeName, context)
-              |> Error.toRuntimeError
+              |> Error.toRuntimeError types
               |> Ply.map Error
           | Some ut ->
             let err =
               ValueNotExpectedType(value, expected, context)
-              |> Error.toRuntimeError
+              |> Error.toRuntimeError types
               |> Ply.map Error
 
             match ut, value with
@@ -412,7 +415,7 @@ let rec unify
                 if concreteTn <> typeName then
                   return!
                     ValueNotExpectedType(value, expected, context)
-                    |> Error.toRuntimeError
+                    |> Error.toRuntimeError types
                     |> Ply.map Error
                 else
                   // CLEANUP DRecord should include a TypeReference, in which case
@@ -428,7 +431,7 @@ let rec unify
               if tn <> typeName then
                 return!
                   ValueNotExpectedType(value, expected, context)
-                  |> Error.toRuntimeError
+                  |> Error.toRuntimeError types
                   |> Ply.map Error
               else
                 let matchingCase : Option<TypeDeclaration.EnumCase> =
@@ -482,7 +485,7 @@ let rec unify
       | TBytes, _ ->
         return!
           ValueNotExpectedType(value, expected, context)
-          |> Error.toRuntimeError
+          |> Error.toRuntimeError types
           |> Ply.map Error
   }
 

@@ -711,16 +711,18 @@ let packageManager : RT.PackageManager =
             e
     }
 
+  let types = RT.typesTODO
+
   { getType =
       withCache (fun ({ name = RT.TypeName.TypeName typeName } as name) ->
         let conversionFn (parsed : EPT.PackageType) : Ply<RT.PackageType.T> =
-          parsed |> ET2PT.PackageType.toPT |> PT2RT.PackageType.toRT
+          parsed |> ET2PT.PackageType.toPT |> PT2RT.PackageType.toRT types
         fetch "type" name.owner name.modules typeName name.version conversionFn)
 
     getFn =
       withCache (fun ({ name = RT.FnName.FnName fnName } as name) ->
         let conversionFn (parsed : EPT.PackageFn.PackageFn) : Ply<RT.PackageFn.T> =
-          parsed |> ET2PT.PackageFn.toPT |> PT2RT.PackageFn.toRT
+          parsed |> ET2PT.PackageFn.toPT |> PT2RT.PackageFn.toRT types
         fetch "function" name.owner name.modules fnName name.version conversionFn)
 
     getFnByTLID =
@@ -732,7 +734,7 @@ let packageManager : RT.PackageManager =
         let conversionFn
           (parsed : EPT.PackageConstant)
           : Ply<RT.PackageConstant.T> =
-          parsed |> ET2PT.PackageConstant.toPT |> PT2RT.PackageConstant.toRT
+          parsed |> ET2PT.PackageConstant.toPT |> PT2RT.PackageConstant.toRT types
         fetch "constant" name.owner name.modules constName name.version conversionFn)
 
     init = uply { return () } }

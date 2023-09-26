@@ -45,10 +45,11 @@ let fns : List<BuiltInFn> =
       returnType = TypeReference.result TUuid TString
       description = "Returns the canvasID for a domain if it exists"
       fn =
-        let resultOk = Dval.resultOk VT.uuid VT.string
-        let resultError = Dval.resultError VT.uuid VT.string
         (function
-        | _, _, [ DString domain ] ->
+        | state, _, [ DString domain ] ->
+          let types = ExecutionState.availableTypes state
+          let resultOk = Dval.resultOk types VT.uuid VT.string
+          let resultError = Dval.resultError types VT.uuid VT.string
           uply {
             let! name = Canvas.canvasIDForDomain domain
             match name with

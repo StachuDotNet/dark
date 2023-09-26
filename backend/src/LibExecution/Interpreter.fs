@@ -36,7 +36,7 @@ module ExecutionError =
     | NonStringInStringInterpolation of Dval
     | ConstDoesntExist of ConstantName.ConstantName
 
-  let toDT (e : Error) : Ply<RuntimeError> =
+  let toDT (types : Types) (e : Error) : Ply<RuntimeError> =
     uply {
       let typeName =
         TypeName.fqPackage
@@ -46,7 +46,7 @@ module ExecutionError =
           0
 
       let case (caseName : string) (fields : List<Dval>) : Ply<RuntimeError> =
-        Dval.enum typeName typeName (Some []) caseName fields
+        Dval.enum types typeName (Some []) caseName fields
         |> Ply.map RuntimeError.executionError
 
       let! (caseName, fields) =
@@ -57,24 +57,24 @@ module ExecutionError =
               "MatchExprEnumPatternWrongCount",
               [ DString caseName; DInt expected; DInt actual ]
           | MatchExprPatternWrongType(expected, actual) ->
-            let! actual = RT2DT.Dval.toDT actual
+            let! actual = RT2DT.Dval.toDT types actual
             return "MatchExprPatternWrongType", [ DString expected; actual ]
           | MatchExprUnmatched dv ->
-            let! dv = RT2DT.Dval.toDT dv
+            let! dv = RT2DT.Dval.toDT types dv
             return "MatchExprUnmatched", [ dv ]
           | NonStringInStringInterpolation dv ->
-            let! dv = RT2DT.Dval.toDT dv
+            let! dv = RT2DT.Dval.toDT types dv
             return "NonStringInStringInterpolation", [ dv ]
           | ConstDoesntExist name ->
-            let! name = RT2DT.ConstantName.toDT name
+            let! name = RT2DT.ConstantName.toDT types name
             return "ConstDoesntExist", [ name ]
         }
 
       return! case caseName fields
     }
 
-  let raise (source : DvalSource) (e : Error) : Ply<'a> =
-    toDT e |> Ply.map (raiseRTE source)
+  let raise (types : Types) (source : DvalSource) (e : Error) : Ply<'a> =
+    toDT types e |> Ply.map (raiseRTE source)
 
 
 let rec evalConst (source : DvalSource) (c : Const) : Dval =
@@ -108,11 +108,12 @@ let rec eval
   (st : Symtable)
   (e : Expr)
   : DvalTask =
+  let types = ExecutionState.availableTypes state
   let sourceID id = SourceID(state.tlid, id)
   let errStr id msg : 'a = raiseRTE (sourceID id) (RuntimeError.oldError msg)
   let err id rte : 'a = raiseRTE (sourceID id) rte
   let raiseExeRTE id (e : ExecutionError.Error) : Ply<'a> =
-    ExecutionError.raise (sourceID id) e
+    ExecutionError.raise types (sourceID id) e
 
   let typeResolutionError
     (errorType : NameResolutionError.ErrorType)
@@ -122,7 +123,9 @@ let rec eval
       { errorType = errorType
         nameType = NameResolutionError.Type
         names = [ TypeName.toString typeName ] }
-    error |> NameResolutionError.RTE.toRuntimeError |> Ply.map (raiseRTE SourceNone)
+    error
+    |> NameResolutionError.RTE.toRuntimeError types
+    |> Ply.map (raiseRTE SourceNone)
 
   let recordMaybe
     (types : Types)
@@ -251,21 +254,21 @@ let rec eval
     | EChar(_id, s) -> return DChar s
     | EConstant(id, name) ->
       let source = sourceID id
+      let raiseExecutionError (err : ExecutionError.Error) =
+        ExecutionError.raise types source err
+
       match name with
       | FQName.UserProgram c ->
         match Map.find c state.program.constants with
-        | None ->
-          return! ExecutionError.raise source (ExecutionError.ConstDoesntExist name)
+        | None -> return! raiseExecutionError (ExecutionError.ConstDoesntExist name)
         | Some constant -> return evalConst source constant.body
       | FQName.BuiltIn c ->
         match Map.find c state.builtIns.constants with
-        | None ->
-          return! ExecutionError.raise source (ExecutionError.ConstDoesntExist name)
+        | None -> return! raiseExecutionError (ExecutionError.ConstDoesntExist name)
         | Some constant -> return constant.body
       | FQName.Package c ->
         match! state.packageManager.getConstant c with
-        | None ->
-          return! ExecutionError.raise source (ExecutionError.ConstDoesntExist name)
+        | None -> return! raiseExecutionError (ExecutionError.ConstDoesntExist name)
         | Some constant -> return evalConst source constant.body
 
 
@@ -324,6 +327,7 @@ let rec eval
 
 
     | ERecord(id, typeName, fields) ->
+      // TODO: most of this logic should be migrated to Dval.record
       let typeStr = TypeName.toString typeName
       let types = ExecutionState.availableTypes state
 
@@ -672,6 +676,7 @@ let rec eval
 
 
     | EEnum(id, sourceTypeName, caseName, fields) ->
+      // TODO: most/all of this logic should be migrated to Dval.enum
       let typeStr = TypeName.toString sourceTypeName
       let types = ExecutionState.availableTypes state
 
@@ -715,13 +720,8 @@ let rec eval
               []
               (List.zip case.fields fields)
 
-          return!
-            Dval.enum
-              resolvedTypeName
-              sourceTypeName
-              VT.typeArgsTODO'
-              caseName
-              fields
+          // TODO resolvedTypeName used to be used here, but no longer is - mistake? or maybe we shouyldn't be resolving in this context^^
+          return! Dval.enum types sourceTypeName VT.typeArgsTODO' caseName fields
 
     | EError(id, rte, exprs) ->
       let! (_ : List<Dval>) = Ply.List.mapSequentially (eval state tst st) exprs

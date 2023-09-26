@@ -183,32 +183,34 @@ let getConstant
 // CLEANUP this package manager should be removed, and all usages replaced with the
 // one that fetches things from the `dark-packages` canvas' http endpoints
 let packageManager : RT.PackageManager =
+  let types = RT.typesTODO
+
   { getType =
       fun name ->
         uply {
           let! typ = name |> PT2RT.TypeName.Package.fromRT |> getType
-          return! Ply.Option.map PT2RT.PackageType.toRT typ
+          return! Ply.Option.map (PT2RT.PackageType.toRT types) typ
         }
 
     getFn =
       fun name ->
         uply {
           let! typ = name |> PT2RT.FnName.Package.fromRT |> getFn
-          return! Ply.Option.map PT2RT.PackageFn.toRT typ
+          return! Ply.Option.map (PT2RT.PackageFn.toRT types) typ
         }
 
     getFnByTLID =
       fun tlid ->
         uply {
           let! typ = tlid |> getFnByTLID
-          return! Ply.Option.map PT2RT.PackageFn.toRT typ
+          return! Ply.Option.map (PT2RT.PackageFn.toRT types) typ
         }
 
     getConstant =
       fun name ->
         uply {
           let! typ = name |> PT2RT.ConstantName.Package.fromRT |> getConstant
-          return! Ply.Option.map PT2RT.PackageConstant.toRT typ
+          return! Ply.Option.map (PT2RT.PackageConstant.toRT types) typ
         }
 
     init = uply { return () } }
