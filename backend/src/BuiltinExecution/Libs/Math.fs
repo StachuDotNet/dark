@@ -21,8 +21,6 @@ let constant = constant modules
 
 let constants : List<BuiltInConstant> = []
 
-let types : List<BuiltInType> = []
-
 let fns : List<BuiltInFn> =
   [ { name = fn "cos" 0
       typeParams = []
@@ -215,4 +213,4 @@ let fns : List<BuiltInFn> =
       previewable = Pure
       deprecated = NotDeprecated } ]
 
-let contents = (fns, types, constants)
+let contents = (fns, constants)

@@ -62,13 +62,11 @@ let libExecutionContents =
   BuiltinExecution.Builtin.contents BuiltinExecution.Libs.HttpClient.defaultConfig
 
 let builtIns : RT.BuiltIns =
-  let (fns, types, constants) =
+  let (fns, constants) =
     LibExecution.Builtin.combine
       [ libExecutionContents; BuiltinCli.Builtin.contents ]
       []
-      []
-  { types = types |> Map.fromListBy (fun typ -> typ.name)
-    fns = fns |> Map.fromListBy (fun fn -> fn.name)
+  { fns = fns |> Map.fromListBy (fun fn -> fn.name)
     constants = constants |> Map.fromListBy (fun c -> c.name) }
 
 let packageManager = LibCliExecution.PackageManager.packageManager
@@ -123,7 +121,10 @@ let execute
       return Error((None, rte))
   }
 
-let types : List<BuiltInType> = []
+let constants : List<BuiltInConstant> = []
+
+// TODO: does this type even actually exist?
+let executionErrorType = TypeName.fqPackage "Darklang" [ "Cli" ] "ExecutionError" 0
 
 let fns : List<BuiltInFn> =
   [ { name = fn [ "Cli" ] "parseAndExecuteScript" 0
@@ -132,14 +133,10 @@ let fns : List<BuiltInFn> =
         [ Param.make "filename" TString ""
           Param.make "code" TString ""
           Param.make "symtable" (TDict TString) "" ]
-      returnType =
-        TypeReference.result
-          TInt
-          (TCustomType(Ok(FQName.BuiltIn(typ [ "Cli" ] "ExecutionError" 0)), []))
+      returnType = TypeReference.result TInt (TCustomType(Ok executionErrorType, []))
       description = "Parses and executes arbitrary Dark code"
       fn =
-        let errType =
-          KTCustomType(FQName.BuiltIn(typ [ "Cli" ] "ExecutionError" 0), [])
+        let errType = KTCustomType(executionErrorType, [])
         let resultOk = Dval.resultOk KTInt errType
         let resultError = Dval.resultError KTInt errType
         (function
@@ -191,13 +188,10 @@ let fns : List<BuiltInFn> =
         [ Param.make "functionName" TString ""
           Param.make "args" (TList TString) "" ]
       returnType =
-        TypeReference.result
-          TString
-          (TCustomType(Ok(FQName.BuiltIn(typ [ "Cli" ] "ExecutionError" 0)), []))
+        TypeReference.result TString (TCustomType(Ok(executionErrorType), []))
       description = "Executes an arbitrary Dark function"
       fn =
-        let errType =
-          KTCustomType(FQName.BuiltIn(typ [ "Cli" ] "ExecutionError" 0), [])
+        let errType = KTCustomType(executionErrorType, [])
         let resultOk = Dval.resultOk KTString errType
         let resultError = Dval.resultError KTString errType
 
@@ -213,7 +207,7 @@ let fns : List<BuiltInFn> =
                      metadata |> List.map (Tuple2.mapSecond DString) |> Map
                    )) ]
 
-              let typeName = FQName.BuiltIn(typ [ "Cli" ] "ExecutionError" 0)
+              let typeName = executionErrorType
               DRecord(typeName, typeName, [], Map fields) |> resultError
 
             let exnError (e : exn) : Dval =
@@ -310,5 +304,4 @@ let fns : List<BuiltInFn> =
       previewable = Impure
       deprecated = NotDeprecated } ]
 
-let constants : List<BuiltInConstant> = []
-let contents = (fns, types, constants)
+let contents = (fns, constants)

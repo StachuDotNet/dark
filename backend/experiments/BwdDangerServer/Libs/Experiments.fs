@@ -76,8 +76,8 @@ module RestrictedFileIO =
       None
 
 
-let types : List<BuiltInType> = []
 let constants : List<BuiltInConstant> = []
+
 let fn = fn [ "Experiments" ]
 
 let fns : List<BuiltInFn> =
@@ -173,4 +173,4 @@ let fns : List<BuiltInFn> =
       previewable = Impure
       deprecated = NotDeprecated } ]
 
-let contents : LibExecution.Builtin.Contents = (fns, types, constants)
+let contents : LibExecution.Builtin.Contents = (fns, constants)

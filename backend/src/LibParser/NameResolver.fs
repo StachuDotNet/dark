@@ -12,7 +12,6 @@ module NRE = LibExecution.NameResolutionError
 
 type NameResolver =
   {
-    builtinTypes : Set<PT.TypeName.BuiltIn>
     builtinFns : Set<PT.FnName.BuiltIn>
     builtinConstants : Set<PT.ConstantName.BuiltIn>
 
@@ -37,8 +36,7 @@ type NameResolver =
 
 
 let empty : NameResolver =
-  { builtinTypes = Set.empty
-    builtinFns = Set.empty
+  { builtinFns = Set.empty
     builtinConstants = Set.empty
 
     userTypes = Set.empty
@@ -52,7 +50,6 @@ let empty : NameResolver =
 
 
 let create
-  (builtinTypes : List<PT.TypeName.BuiltIn>)
   (builtinFns : List<PT.FnName.BuiltIn>)
   (builtinConstants : List<PT.ConstantName.BuiltIn>)
   (userTypes : List<PT.TypeName.UserProgram>)
@@ -61,8 +58,7 @@ let create
   (allowError : bool)
   (packageManager : Option<RT.PackageManager>)
   : NameResolver =
-  { builtinTypes = Set.ofList builtinTypes
-    builtinFns = Set.ofList builtinFns
+  { builtinFns = Set.ofList builtinFns
     builtinConstants = Set.ofList builtinConstants
 
     userTypes = Set.ofList userTypes
@@ -79,8 +75,7 @@ let merge
   (b : NameResolver)
   (packageManager : Option<RT.PackageManager>)
   : NameResolver =
-  { builtinTypes = Set.union a.builtinTypes b.builtinTypes
-    builtinFns = Set.union a.builtinFns b.builtinFns
+  { builtinFns = Set.union a.builtinFns b.builtinFns
     builtinConstants = Set.union a.builtinConstants b.builtinConstants
 
     userTypes = Set.union a.userTypes b.userTypes
@@ -92,14 +87,8 @@ let merge
     packageManager = packageManager }
 
 
-let fromBuiltins
-  ((fns, types, constants) : LibExecution.Builtin.Contents)
-  : NameResolver =
-  { builtinTypes =
-      types
-      |> List.map (fun typ -> PT2RT.TypeName.BuiltIn.fromRT typ.name)
-      |> Set.ofList
-    builtinFns =
+let fromBuiltins ((fns, constants) : LibExecution.Builtin.Contents) : NameResolver =
+  { builtinFns =
       fns |> List.map (fun fn -> PT2RT.FnName.BuiltIn.fromRT fn.name) |> Set.ofList
 
     builtinConstants =
@@ -117,12 +106,7 @@ let fromBuiltins
 
 
 let fromExecutionState (state : RT.ExecutionState) : NameResolver =
-  { builtinTypes =
-      state.builtIns.types
-      |> Map.keys
-      |> List.map PT2RT.TypeName.BuiltIn.fromRT
-      |> Set.ofList
-    builtinFns =
+  { builtinFns =
       state.builtIns.fns
       |> Map.keys
       |> List.map PT2RT.FnName.BuiltIn.fromRT
@@ -332,7 +316,7 @@ module TypeName =
       PT.TypeName.TypeName
       // TODO: move parsing fn into PT or WT
       FS2WT.Expr.parseTypeName
-      resolver.builtinTypes
+      Set.empty // no builtin types
       resolver.userTypes
       (packageTypeExists resolver.packageManager)
       PT2RT.TypeName.Package.toRT
@@ -351,7 +335,7 @@ module TypeName =
       PT.TypeName.TypeName
       // TODO: move parsing fn into PT or WT
       FS2WT.Expr.parseTypeName
-      resolver.builtinTypes
+      Set.empty // no builtin types
       resolver.userTypes
       (packageTypeExists resolver.packageManager)
       PT2RT.TypeName.Package.toRT

@@ -148,18 +148,12 @@ module FQName =
 module TypeName =
   type Name = TypeName of string
   type TypeName = FQName.FQName<Name>
-  type BuiltIn = FQName.BuiltIn<Name>
   type UserProgram = FQName.UserProgram<Name>
   type Package = FQName.Package<Name>
 
   let pattern = @"^[A-Z][a-z0-9A-Z_]*$"
   let assert' (TypeName name : Name) : unit =
     assertRe "type name must match" pattern name
-  let builtIn (modules : List<string>) (name : string) (version : int) : BuiltIn =
-    FQName.builtin assert' modules (TypeName name) version
-
-  let fqBuiltIn (modules : List<string>) (name : string) (version : int) : TypeName =
-    FQName.fqBuiltIn assert' modules (TypeName name) version
 
   let userProgram
     (modules : List<string>)
@@ -190,9 +184,6 @@ module TypeName =
     (version : int)
     : TypeName =
     FQName.fqPackage assert' owner modules (TypeName name) version
-
-  let builtinToString (s : BuiltIn) : string =
-    FQName.builtinToString s (fun (TypeName name) -> name)
 
   let userProgramToString (s : UserProgram) : string =
     FQName.userProgramToString s (fun (TypeName name) -> name)
@@ -1246,15 +1237,6 @@ type SqlSpec =
     | SqlFunctionWithSuffixArgs _
     | SqlCallback2 _ -> true
 
-// A built-in standard library type
-type BuiltInType =
-  { name : TypeName.BuiltIn
-    declaration : TypeDeclaration.T
-    // description and deprecated are here because they're not needed in
-    // TypeDeclaration for Package and UserProgram types, where we have them in
-    // ProgramTypes and don't propagate them to RuntimeTypes
-    description : string
-    deprecated : Deprecation<TypeName.TypeName> }
 
 type BuiltInConstant =
   { name : ConstantName.BuiltIn
@@ -1344,8 +1326,7 @@ and TestContext =
 
 // Functionally written in F# and shipped with the executable
 and BuiltIns =
-  { types : Map<TypeName.BuiltIn, BuiltInType>
-    constants : Map<ConstantName.BuiltIn, BuiltInConstant>
+  { constants : Map<ConstantName.BuiltIn, BuiltInConstant>
     fns : Map<FnName.BuiltIn, BuiltInFn> }
 
 // Functionality written in Dark stored and managed outside of user space
@@ -1414,7 +1395,6 @@ and Constants =
 and Types =
   { typeSymbolTable : TypeSymbolTable
 
-    builtIn : Map<TypeName.BuiltIn, BuiltInType>
     package : TypeName.Package -> Ply<Option<PackageType.T>>
     userProgram : Map<TypeName.UserProgram, UserType.T> }
 
@@ -1423,7 +1403,6 @@ module ExecutionState =
   let availableTypes (state : ExecutionState) : Types =
     { typeSymbolTable = state.typeSymbolTable
 
-      builtIn = state.builtIns.types
       package = state.packageManager.getType
       userProgram = state.program.types }
 
@@ -1442,7 +1421,6 @@ module Types =
   let empty =
     { typeSymbolTable = Map.empty
 
-      builtIn = Map.empty
       package = (fun _ -> Ply None)
       userProgram = Map.empty }
 
@@ -1451,8 +1429,7 @@ module Types =
     (types : Types)
     : Ply<Option<TypeDeclaration.T>> =
     match name with
-    | FQName.BuiltIn b ->
-      Map.find b types.builtIn |> Option.map (fun t -> t.declaration) |> Ply
+    | FQName.BuiltIn _b -> Ply None // TODO: should this error or something?
 
     | FQName.UserProgram user ->
       Map.find user types.userProgram |> Option.map (fun t -> t.declaration) |> Ply

@@ -24,11 +24,9 @@ let builtins : LibExecution.Builtin.Contents =
       BuiltinCloudExecution.Builtin.contents
       BuiltinDarkInternal.Builtin.contents ]
     []
-    []
 let builtIns : RT.BuiltIns =
-  let (fns, types, constants) = builtins
-  { types = types |> Map.fromListBy (fun typ -> typ.name)
-    fns = fns |> Map.fromListBy (fun fn -> fn.name)
+  let (fns, constants) = builtins
+  { fns = fns |> Map.fromListBy (fun fn -> fn.name)
     constants = constants |> Map.fromListBy (fun c -> c.name) }
 
 let packageManager = PackageManager.packageManager

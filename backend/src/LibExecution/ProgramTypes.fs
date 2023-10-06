@@ -120,15 +120,12 @@ module FQName =
 module TypeName =
   type Name = TypeName of string
   type TypeName = FQName.FQName<Name>
-  type BuiltIn = FQName.BuiltIn<Name>
   type UserProgram = FQName.UserProgram<Name>
   type Package = FQName.Package<Name>
 
   let pattern = @"^[A-Z][a-z0-9A-Z_']*$"
   let assert' (TypeName name : Name) : unit =
     assertRe "type name must match" pattern name
-  let builtIn (modules : List<string>) (name : string) (version : int) : BuiltIn =
-    FQName.builtin assert' modules (TypeName name) version
 
   let fqBuiltIn (modules : List<string>) (name : string) (version : int) : TypeName =
     FQName.fqBuiltIn assert' modules (TypeName name) version

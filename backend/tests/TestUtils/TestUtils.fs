@@ -124,7 +124,7 @@ let testDB (name : string) (typ : PT.TypeReference) : PT.DB.T =
 let builtIns
   (httpConfig : BuiltinExecution.Libs.HttpClient.Configuration)
   : RT.BuiltIns =
-  let (fns, types, constants) =
+  let (fns, constants) =
     LibExecution.Builtin.combine
       [ LibTest.contents
         BuiltinExecution.Builtin.contents httpConfig
@@ -132,9 +132,7 @@ let builtIns
         BuiltinDarkInternal.Builtin.contents
         BuiltinCli.Builtin.contents ]
       []
-      []
-  { types = types |> Map.fromListBy (fun typ -> typ.name)
-    fns = fns |> Map.fromListBy (fun fn -> fn.name)
+  { fns = fns |> Map.fromListBy (fun fn -> fn.name)
     constants = constants |> Map.fromListBy (fun c -> c.name) }
 
 let cloudBuiltIns =
@@ -153,7 +151,6 @@ let packageManager = LibCloud.PackageManager.packageManager
 let nameResolver =
   { LibParser.NameResolver.fromBuiltins (
       Map.values localBuiltIns.fns,
-      Map.values localBuiltIns.types,
       Map.values localBuiltIns.constants
     ) with
       packageManager = Some packageManager }

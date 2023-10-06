@@ -30,7 +30,6 @@ module RoundtripTests =
   let types : RT.Types =
     { typeSymbolTable = Map.empty
 
-      builtIn = localBuiltIns.types
       package = packageManager.getType
       userProgram = Map.empty }
 

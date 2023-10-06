@@ -384,7 +384,7 @@ let headersType = TList(TTuple(TString, TString, []))
 
 open LibExecution.Builtin.Shortcuts
 
-let types : List<BuiltInType> = []
+let constants : List<BuiltInConstant> = []
 
 let fns (config : Configuration) : List<BuiltInFn> =
   let httpClient = BaseClient.create config
@@ -423,7 +423,14 @@ let fns (config : Configuration) : List<BuiltInFn> =
         received and parsed, and is wrapped in {{ Error }} otherwise"
       fn =
         let responseType =
-          KTCustomType(FQName.BuiltIn(typ [ "HttpClient" ] "Response" 0), [])
+          KTCustomType(
+            FQName.Package
+              { owner = "Darklang"
+                modules = [ "Stdlib"; "HttpClient" ]
+                name = TypeName.TypeName "RequestError"
+                version = 0 },
+            []
+          )
         let resultOk = Dval.resultOk responseType KTString
         let typeName = RuntimeError.name [ "HttpClient" ] "RequestError" 0
         let resultError = Dval.resultError responseType (KTCustomType(typeName, []))
@@ -530,6 +537,4 @@ let fns (config : Configuration) : List<BuiltInFn> =
       previewable = Impure
       deprecated = NotDeprecated } ]
 
-let constants : List<BuiltInConstant> = []
-
-let contents config = (fns config, types, constants)
+let contents config = (fns config, constants)

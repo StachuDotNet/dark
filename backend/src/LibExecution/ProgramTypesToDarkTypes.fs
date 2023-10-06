@@ -184,11 +184,6 @@ module TypeName =
       | DEnum(_, _, [], "TypeName", [ DString name ]) -> PT.TypeName.TypeName(name)
       | _ -> Exception.raiseInternal "Invalid TypeName" []
 
-  module BuiltIn =
-    let toDT (u : PT.TypeName.BuiltIn) : Dval =
-      FQName.BuiltIn.toDT Name.knownType Name.toDT u
-    let fromDT (d : Dval) : PT.TypeName.BuiltIn = FQName.BuiltIn.fromDT Name.fromDT d
-
   module UserProgram =
     let toDT (u : PT.TypeName.UserProgram) : Dval =
       FQName.UserProgram.toDT Name.knownType Name.toDT u

@@ -11,10 +11,6 @@ let fnRenames : Builtin.FnRenames =
   // eg: fn "Http" "respond" 0, fn "Http" "response" 0
   []
 
-let typeRenames : Builtin.TypeRenames =
-  // old names, new names
-  // eg: typ "Http" "Response" 0, typ "Http" "Response" 1
-  []
 
 let contents =
   Builtin.combine
@@ -25,4 +21,3 @@ let contents =
       Libs.Output.contents
       Libs.Time.contents ]
     fnRenames
-    typeRenames

@@ -33,7 +33,6 @@ let packageCanvasType (addlModules : List<string>) (name : string) (version : in
   TypeName.fqPackage "Darklang" ("Internal" :: "Canvas" :: addlModules) name version
 
 
-let types : List<BuiltInType> = []
 let constants : List<BuiltInConstant> = []
 
 let fns : List<BuiltInFn> =
@@ -203,4 +202,4 @@ let fns : List<BuiltInFn> =
       previewable = Impure
       deprecated = NotDeprecated } ]
 
-let contents = (fns, types, constants)
+let contents = (fns, constants)

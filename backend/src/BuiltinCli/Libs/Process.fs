@@ -11,7 +11,7 @@ module Dval = LibExecution.Dval
 module Builtin = LibExecution.Builtin
 open Builtin.Shortcuts
 
-let types : List<BuiltInType> = []
+let constants : List<BuiltInConstant> = []
 
 let fns : List<BuiltInFn> =
   [ { name = fn [ "Process" ] "run" 0
@@ -56,5 +56,4 @@ let fns : List<BuiltInFn> =
       previewable = Impure
       deprecated = NotDeprecated } ]
 
-let constants : List<BuiltInConstant> = []
-let contents : Builtin.Contents = (fns, types, constants)
+let contents : Builtin.Contents = (fns, constants)

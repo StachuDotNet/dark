@@ -8,16 +8,6 @@ module RT = RuntimeTypes
 module PT = ProgramTypes
 
 module TypeName =
-
-  module BuiltIn =
-    let toRT (s : PT.TypeName.BuiltIn) : RT.TypeName.BuiltIn =
-      let (PT.TypeName.TypeName name) = s.name
-      { modules = s.modules; name = RT.TypeName.TypeName name; version = s.version }
-
-    let fromRT (s : RT.TypeName.BuiltIn) : PT.TypeName.BuiltIn =
-      let (RT.TypeName.TypeName name) = s.name
-      { modules = s.modules; name = PT.TypeName.TypeName name; version = s.version }
-
   module UserProgram =
     let toRT (u : PT.TypeName.UserProgram) : RT.TypeName.UserProgram =
       let (PT.TypeName.TypeName name) = u.name
@@ -44,13 +34,15 @@ module TypeName =
 
   let toRT (fqtn : PT.TypeName.TypeName) : RT.TypeName.TypeName =
     match fqtn with
-    | PT.FQName.BuiltIn s -> RT.FQName.BuiltIn(BuiltIn.toRT s)
+    | PT.FQName.BuiltIn _s ->
+      RT.raiseString "Not sure what to do here - builtin types are no longer a thing"
     | PT.FQName.UserProgram u -> RT.FQName.UserProgram(UserProgram.toRT u)
     | PT.FQName.Package p -> RT.FQName.Package(Package.toRT p)
 
   let fromRT (fqtn : RT.TypeName.TypeName) : Option<PT.TypeName.TypeName> =
     match fqtn with
-    | RT.FQName.BuiltIn s -> PT.FQName.BuiltIn(BuiltIn.fromRT s) |> Some
+    | RT.FQName.BuiltIn _s ->
+      RT.raiseString "Not sure what to do here - builtin types are no longer a thing"
     | RT.FQName.UserProgram u -> PT.FQName.UserProgram(UserProgram.fromRT u) |> Some
     | RT.FQName.Package p -> PT.FQName.Package(Package.fromRT p) |> Some
 

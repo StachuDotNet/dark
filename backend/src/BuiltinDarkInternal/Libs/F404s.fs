@@ -11,9 +11,9 @@ module Telemetry = LibService.Telemetry
 
 let fn = fn [ "DarkInternal"; "Canvas"; "F404" ]
 
-let types : List<BuiltInType> = []
 
 let constants : List<BuiltInConstant> = []
+
 let fns : List<BuiltInFn> = []
 // [ { name = fn "delete" 0
 //     typeParams = []
@@ -66,4 +66,4 @@ let fns : List<BuiltInFn> = []
 //     previewable = Impure
 //     deprecated = NotDeprecated } ]
 
-let contents = (fns, types, constants)
+let contents = (fns, constants)

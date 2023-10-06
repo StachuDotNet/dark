@@ -18,7 +18,7 @@ let packageInfraType (addlModules : List<string>) (name : string) (version : int
   TypeName.fqPackage "Darklang" ("Internal" :: "Infra" :: addlModules) name version
 
 
-let types : List<BuiltInType> = []
+let constants : List<BuiltInConstant> = []
 
 let fns : List<BuiltInFn> =
   [ { name = fn "log" 0
@@ -135,5 +135,4 @@ human-readable data."
       previewable = Impure
       deprecated = NotDeprecated } ]
 
-let constants : List<BuiltInConstant> = []
-let contents = (fns, types, constants)
+let contents = (fns, constants)

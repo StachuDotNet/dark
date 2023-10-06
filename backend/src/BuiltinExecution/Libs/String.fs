@@ -23,9 +23,7 @@ let modules = [ "String" ]
 let fn = fn modules
 let constant = constant modules
 
-let types : List<BuiltInType> = []
 let constants : List<BuiltInConstant> = []
-
 
 let fns : List<BuiltInFn> =
   [ { name = fn "map" 0
@@ -467,4 +465,4 @@ let fns : List<BuiltInFn> =
       previewable = Pure
       deprecated = NotDeprecated } ]
 
-let contents = (fns, types, constants)
+let contents = (fns, constants)

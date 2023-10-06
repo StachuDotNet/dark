@@ -59,7 +59,7 @@ let rulesToDval (rules : List<SchedulingRules.SchedulingRule.T>) : Dval =
   |> Dval.list (KTCustomType(typeName, []))
 
 
-let types : List<BuiltInType> = []
+let constants : List<BuiltInConstant> = []
 
 let fns : List<BuiltInFn> =
   [ { name = fn [ "DarkInternal"; "Canvas"; "Queue" ] "count" 0
@@ -143,5 +143,4 @@ let fns : List<BuiltInFn> =
       previewable = Impure
       deprecated = NotDeprecated } ]
 
-let constants : List<BuiltInConstant> = []
-let contents = (fns, types, constants)
+let contents = (fns, constants)

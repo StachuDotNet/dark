@@ -13,7 +13,6 @@ open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
 
-let types : List<BuiltInType> = []
 let constants : List<BuiltInConstant> = []
 
 let fn = fn [ "Crypto" ]
@@ -97,4 +96,4 @@ let fns : List<BuiltInFn> =
       previewable = ImpurePreviewable
       deprecated = NotDeprecated } ]
 
-let contents = (fns, types, constants)
+let contents = (fns, constants)

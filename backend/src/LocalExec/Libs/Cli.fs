@@ -14,7 +14,7 @@ module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module Exe = LibExecution.Execution
 
 let builtIns : RT.BuiltIns =
-  let (fns, types, constants) =
+  let (fns, constants) =
     LibExecution.Builtin.combine
       [ BuiltinExecution.Builtin.contents
           BuiltinExecution.Libs.HttpClient.defaultConfig
@@ -22,9 +22,7 @@ let builtIns : RT.BuiltIns =
         BuiltinDarkInternal.Builtin.contents
         BuiltinCliHost.Builtin.contents ]
       []
-      []
-  { types = types |> Map.fromListBy (fun typ -> typ.name)
-    fns = fns |> Map.fromListBy (fun fn -> fn.name)
+  { fns = fns |> Map.fromListBy (fun fn -> fn.name)
     constants = constants |> Map.fromListBy (fun c -> c.name) }
 
 let packageManager : RT.PackageManager = RT.PackageManager.Empty
@@ -77,9 +75,6 @@ let execute
 
 let constants : List<BuiltInConstant> = []
 
-let types : List<BuiltInType> = []
-
-
 let fns : List<BuiltInFn> =
   [ { name = fn [ "LocalExec"; "File" ] "read" 0
       typeParams = []
@@ -105,4 +100,4 @@ let fns : List<BuiltInFn> =
       previewable = Impure
       deprecated = NotDeprecated } ]
 
-let contents = (fns, types, constants)
+let contents = (fns, constants)

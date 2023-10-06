@@ -20,7 +20,7 @@ module Interpreter = LibExecution.Interpreter
 open LibCloud
 
 let builtIns : RT.BuiltIns =
-  let (fns, types, constants) =
+  let (fns, constants) =
     LibExecution.Builtin.combine
       [ BuiltinExecution.Builtin.contents
           BuiltinExecution.Libs.HttpClient.defaultConfig
@@ -28,9 +28,7 @@ let builtIns : RT.BuiltIns =
         BwdDangerServer.Builtin.contents
         BuiltinDarkInternal.Builtin.contents ]
       []
-      []
-  { types = types |> Map.fromListBy (fun typ -> typ.name)
-    fns = fns |> Map.fromListBy (fun fn -> fn.name)
+  { fns = fns |> Map.fromListBy (fun fn -> fn.name)
     constants = constants |> Map.fromListBy (fun c -> c.name) }
 
 let packageManager = PackageManager.packageManager

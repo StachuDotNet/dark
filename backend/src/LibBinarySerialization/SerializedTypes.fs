@@ -87,7 +87,6 @@ module TypeName =
 
   [<MessagePack.MessagePackObject>]
   type TypeName =
-    | BuiltIn of BuiltIn
     | UserProgram of UserProgram
     | Package of Package
 

@@ -14,17 +14,6 @@ module NEList =
   let toPT (l : ST.NEList<'a>) : NEList<'a> = { head = l.head; tail = l.tail }
 
 module TypeName =
-
-  module BuiltIn =
-    let toST (b : PT.TypeName.BuiltIn) : ST.TypeName.BuiltIn =
-      let (PT.TypeName.TypeName name) = b.name
-      { modules = b.modules; name = name; version = b.version }
-
-    let toPT (b : ST.TypeName.BuiltIn) : PT.TypeName.BuiltIn =
-      { modules = b.modules
-        name = PT.TypeName.TypeName b.name
-        version = b.version }
-
   module UserProgram =
     let toST (u : PT.TypeName.UserProgram) : ST.TypeName.UserProgram =
       let (PT.TypeName.TypeName name) = u.name
@@ -48,13 +37,13 @@ module TypeName =
 
   let toST (fqtn : PT.TypeName.TypeName) : ST.TypeName.TypeName =
     match fqtn with
-    | PT.FQName.BuiltIn s -> ST.TypeName.BuiltIn(BuiltIn.toST s)
+    | PT.FQName.BuiltIn _s ->
+      LibExecution.RuntimeTypes.raiseString "BuiltIn types not supported"
     | PT.FQName.UserProgram u -> ST.TypeName.UserProgram(UserProgram.toST u)
     | PT.FQName.Package p -> ST.TypeName.Package(Package.toST p)
 
   let toPT (fqfn : ST.TypeName.TypeName) : PT.TypeName.TypeName =
     match fqfn with
-    | ST.TypeName.BuiltIn s -> PT.FQName.BuiltIn(BuiltIn.toPT s)
     | ST.TypeName.UserProgram u -> PT.FQName.UserProgram(UserProgram.toPT u)
     | ST.TypeName.Package p -> PT.FQName.Package(Package.toPT p)
 

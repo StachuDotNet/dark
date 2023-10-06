@@ -24,8 +24,7 @@ let packagePackagesType
     name
     version
 
-
-let types : List<BuiltInType> = []
+let constants : List<BuiltInConstant> = []
 
 let fns : List<BuiltInFn> =
   [ { name = fn [ "LocalExec"; "Packages" ] "listFunctions" 0
@@ -156,5 +155,4 @@ let fns : List<BuiltInFn> =
       previewable = Impure
       deprecated = NotDeprecated } ]
 
-let constants : List<BuiltInConstant> = []
-let contents : LibExecution.Builtin.Contents = (fns, types, constants)
+let contents : LibExecution.Builtin.Contents = (fns, constants)

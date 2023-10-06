@@ -305,14 +305,6 @@ module ExternalTypesToProgramTypes =
       | Negative -> Prelude.Negative
 
   module TypeName =
-    module BuiltIn =
-      let toPT (b : EPT.TypeName.BuiltIn) : PT.TypeName.BuiltIn =
-        { modules = b.modules
-          name =
-            match b.name with
-            | EPT.TypeName.Name.TypeName name -> PT.TypeName.TypeName name
-          version = b.version }
-
     module Package =
       let toPT (p : EPT.TypeName.Package) : PT.TypeName.Package =
         { owner = p.owner
@@ -324,7 +316,7 @@ module ExternalTypesToProgramTypes =
 
     let toPT (fqfn : EPT.TypeName.TypeName) : PT.TypeName.TypeName =
       match fqfn with
-      | EPT.FQName.BuiltIn s -> PT.FQName.BuiltIn(BuiltIn.toPT s)
+      | EPT.FQName.BuiltIn _s -> RT.raiseString "BuiltIn types not supported"
       | EPT.FQName.Package p -> PT.FQName.Package(Package.toPT p)
 
 

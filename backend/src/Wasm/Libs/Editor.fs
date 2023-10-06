@@ -13,9 +13,6 @@ module VT = ValueType
 module Dval = LibExecution.Dval
 module TypeChecker = LibExecution.TypeChecker
 
-let types : List<BuiltInType> = []
-let constants : List<BuiltInConstant> = []
-
 
 type Editor =
   { Types : List<UserType.T>
@@ -35,6 +32,11 @@ type UserProgramSource =
 // this is client.dark, loaded and live, along with some current state
 let mutable editor : Editor =
   { Types = []; Functions = []; Constants = []; CurrentState = DUnit }
+
+
+
+let constants : List<BuiltInConstant> = []
+
 
 let fn = fn [ "WASM"; "Editor" ]
 
@@ -152,7 +154,6 @@ let fns : List<BuiltInFn> =
               LibExecution.Builtin.combine
                 [ BuiltinExecution.Builtin.contents httpConfig ]
                 []
-                []
 
             let! result =
               let expr = exprsCollapsedIntoOne source.exprs
@@ -176,4 +177,4 @@ let fns : List<BuiltInFn> =
 
     ]
 
-let contents = (fns, types, constants)
+let contents = (fns, constants)

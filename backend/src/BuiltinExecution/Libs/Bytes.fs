@@ -10,8 +10,6 @@ open LibExecution.Builtin.Shortcuts
 
 module Dval = LibExecution.Dval
 
-let types : List<BuiltInType> = []
-
 let modules = [ "Bytes" ]
 let fn = fn modules
 let constant = constant modules
@@ -105,4 +103,4 @@ let fns : List<BuiltInFn> =
       previewable = Pure
       deprecated = NotDeprecated } ]
 
-let contents = (fns, types, constants)
+let contents = (fns, constants)
