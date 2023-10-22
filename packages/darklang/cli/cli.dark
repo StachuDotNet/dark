@@ -233,6 +233,12 @@ module Darklang =
 
 
     let runFunction (fnName: String) (args: List<String>) : Int =
+      // Builtin.print
+      //   $"eval-ing {fnName} with {args |> Stdlib.List.length |> Stdlib.Int.toString} args"
+
+      // Stdlib.List.iter args (fun arg -> Builtin.print arg)
+      // Builtin.print "test"
+
       match Builtin.Cli.executeFunction fnName args with
       | Ok result ->
         Builtin.print result

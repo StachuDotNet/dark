@@ -17,6 +17,8 @@ import {
 } from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
 
+const Parser = require("web-tree-sitter");
+
 import { ComputeDiagnosticsInput, ComputeDiagnosticsOutput } from "./darkTypes";
 import * as DT2LT from "./darkTypesToLspTypes";
 
@@ -87,8 +89,22 @@ async function gatherAndReportDiagnostics(
   }
 }
 
-connection.onInitialize((params: InitializeParams) => {
+connection.onInitialize(async (params: InitializeParams) => {
   const capabilities = params.capabilities;
+
+  console.log("plz");
+  await Parser.init();
+  const parser = new Parser();
+
+  const DarklangParser = await Parser.Language.load(
+    "/home/dark/app/vscode-extension/static/tree-sitter/tree-sitter-darklang.wasm",
+  );
+  console.log("parser", DarklangParser);
+  parser.setLanguage(DarklangParser);
+  const parsed = parser.parse(
+    "let add (a: Int) (b: Int): Int =\n  let sum = a + b\n  sum",
+  );
+  console.log("parsed", parsed.rootNode.toString());
 
   // Does the client support the `workspace/configuration` request?
   // If not, we fall back using global settings.
