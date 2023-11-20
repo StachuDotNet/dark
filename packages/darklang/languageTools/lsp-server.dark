@@ -11,6 +11,11 @@ module Darklang =
     ///
     /// TODO: some day, abstract out general LSP support in a separate module
     module LspServer =
+      // <aliases>
+      type Json = Stdlib.AltJson.Json
+      // </aliases>
+
+
       let logFilePath = "/home/dark/app/rundir/logs/lsp-server.log"
 
       let log (input: String) : Unit =
@@ -45,31 +50,68 @@ module Darklang =
       /// maybe we should instead return some DU here, with "Shutdown" as a case?
       /// or a list of DUs - like actions, including returning responses?
       let handleRequest (r: JsonRPC.Request.Request) : Bool =
-        match r.method, r.id with
+        match (r.method, r.id, r.params) with
         // -- Lifecycle and general support
-        | ("initialized", None) ->
-          log "(ignore)"
-          false
-
-        | ("initialize", None) ->
+        | ("initialize", None, _) ->
           log "TODO: fail - we shouldn't be seeing a second one of these"
           false
 
-        | ("$/setTrace", None) ->
+        | ("initialized", None, None) ->
+          log "(ignore)"
+          false
+
+        | ("$/setTrace", None, _) ->
           log "TODO we should do something with this"
           false
 
-        | ("shutdown", None) ->
+        | ("shutdown", None, _) ->
           log "shutting down"
           true
 
 
         // -- textDocument
-        | ("textDocument/didOpen", None) ->
+        | ("textDocument/didOpen", None, _) ->
           log "TODO we should do something with this - like report problems"
           false
-        | ("textDocument/didSave", None) ->
+        | ("textDocument/didSave", None, _) ->
           log "TODO we should do something with this - like report problems"
+          false
+
+
+        // -- autocomplete
+        | ("textDocument/completion", Some id, Some p) ->
+          match p with
+          | Array p ->
+            let p = (Json.Array p) |> Stdlib.AltJson.format
+            log $"Some Array-based params: {p}"
+          | Object p ->
+            let p = (Json.Object p) |> Stdlib.AltJson.format
+            log $"Some Object-based params: {p}"
+
+          (*[
+            { label: "TypeScript", kind: CompletionItemKind.Text, data: 1 },
+            { label: "JavaScript", kind: CompletionItemKind.Text, data: 2 },
+          ]*)
+
+          log "TODO: return a response with some completions"
+          false
+
+        | ("completionItem/resolve", Some id) ->
+          (*
+            // once you hover over some completion, this fills in some details (I think)
+            connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
+              if (item.data === 1) {
+                item.detail = "TypeScript details";
+                item.documentation = "TypeScript documentation";
+              } else if (item.data === 2) {
+                item.detail = "JavaScript details";
+                item.documentation = "JavaScript documentation";
+              }
+              return item;
+            });
+          *)
+          // TODO: use r.params
+          log "TODO: deal with completion item resolution"
           false
 
 
@@ -77,6 +119,7 @@ module Darklang =
         | (other, _) ->
           log $"TODO: we don't yet support this method: {other}"
           false
+
 
 
 
@@ -200,7 +243,6 @@ module Darklang =
 
 
 
-
 (* Some handy types
 
 export type Position = { line: number; character: number };
@@ -281,39 +323,7 @@ documents.onDidChangeContent(change => {
 
 
 
-(* Future: completions (autocomplete)
 
-include this in 'capabilities' configuration:
-
-      completionProvider: {
-        resolveProvider: true,
-      },
-
-
-// (how) should we autocomplete?
-// (currently this just provides 2 bogus autocompletes)
-connection.onCompletion(
-  (_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
-    return [
-      { label: "TypeScript", kind: CompletionItemKind.Text, data: 1 },
-      { label: "JavaScript", kind: CompletionItemKind.Text, data: 2 },
-    ];
-  },
-);
-
-// once you hover over some completion, this fills in some details (I think)
-connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
-  if (item.data === 1) {
-    item.detail = "TypeScript details";
-    item.documentation = "TypeScript documentation";
-  } else if (item.data === 2) {
-    item.detail = "JavaScript details";
-    item.documentation = "JavaScript documentation";
-  }
-  return item;
-});
-
-*)
 
 
 

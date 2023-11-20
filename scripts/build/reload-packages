@@ -44,7 +44,7 @@ echo -e "Loading packages into DB ${grey}($LOG_DB)${reset}"
 "${LOCALEXEC_EXE}" load-packages > $LOG_DB 2>&1
 
 
-if [[ "$TEST" != "true" ]]; then
+if [[ "$TEST" == "true" ]]; then
 
   echo "Waiting for BwdDangerServer to be ready"
   for i in {1..100}; do
