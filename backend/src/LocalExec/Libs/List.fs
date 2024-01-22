@@ -14,23 +14,20 @@ module Interpreter = LibExecution.Interpreter
 module TypeChecker = LibExecution.TypeChecker
 
 let varA = TVariable "a"
+let varB = TVariable "b"
 
 let constants : List<BuiltInConstant> = []
 
 
 let fns : List<BuiltInFn> =
-  [ { name = fn "localExecBuiltInsListIter" 0
+  [ { name = fn "localExecListMapParallel" 0
       typeParams = []
       parameters =
         [ Param.make "list" (TList varA) ""
-          Param.makeWithArgs
-            "fn"
-            (TFn(NEList.singleton varA, TUnit))
-            ""
-            [ "element" ] ]
-      returnType = TUnit
+          Param.makeWithArgs "fn" (TFn(NEList.singleton varA, varB)) "" [ "element" ] ]
+      returnType = TList varB
       description =
-        "Applies the given function <param fn> to each element of the <param list>."
+        "Maps the given function <param fn> to each element of the <param list>."
       fn =
         (function
         | state, _, [ DList(_vtTODO, l); DFnVal b ] ->
@@ -56,30 +53,6 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
-      deprecated = NotDeprecated }
-
-
-    { name = fn "localExecBuiltInsListFlatten" 0
-      typeParams = []
-      parameters = [ Param.make "list" (TList(TList varA)) "" ]
-      returnType = TList varA
-      description =
-        "Returns a single list containing the values of every list directly in <param
-         list> (does not recursively flatten nested lists)"
-      fn =
-        (function
-        | _, _, [ DList(_vtTODO, l) ] ->
-          let f acc i =
-            match i with
-            | DList(_vtTODO, l) -> List.append acc l
-            | _ -> Exception.raiseInternal "flatten: expected list of lists" []
-
-          List.fold f [] l |> TypeChecker.DvalCreator.list VT.unknownTODO |> Ply
-        | _ -> incorrectArgs ())
-      sqlSpec = NotYetImplemented
-      previewable = Pure
-      deprecated = NotDeprecated }
-
-    ]
+      deprecated = NotDeprecated } ]
 
 let contents = (fns, constants)

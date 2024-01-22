@@ -46,19 +46,19 @@ let resolver : LibParser.NameResolver.NameResolver =
 
 let typ =
   FQTypeName.Package
-    { owner = "Darklang"
-      modules = [ "LocalExec"; "Packages" ]
-      name = "Packages"
-      version = 0 }
+    { owner = "Darklang"; modules = [ "Stdlib" ]; name = "Packages"; version = 0 }
 
 let fns : List<BuiltInFn> =
-  [ { name = fn "localExecPackagesParse" 0
+  [ { name = fn "parseLocalPackageSourceFile" 0
       typeParams = []
       parameters =
         [ Param.make "package source" TString "The source code of the package"
-          Param.make "filename" TString "Used for error message" ]
+          Param.make
+            "filename"
+            TString
+            "Name of the local file we're parsing (used for error reporting)" ]
       returnType = TypeReference.result (TCustomType(Ok typ, [])) TString
-      description = "Parse a package"
+      description = "Parse a package source file"
       fn =
         function
         | _, _, [ DString contents; DString path ] ->
@@ -66,18 +66,24 @@ let fns : List<BuiltInFn> =
             let! (fns, types, constants) =
               LibParser.Parser.parsePackageFile resolver path contents
 
-            let packagesFns = fns |> List.map PT2DT.PackageFn.toDT
-            let packagesTypes = types |> List.map PT2DT.PackageType.toDT
-            let packagesConstants = constants |> List.map PT2DT.PackageConstant.toDT
+            let packagesFns =
+              fns
+              |> List.map PT2DT.PackageFn.toDT
+              |> Dval.list (KTCustomType(PT2DT.PackageFn.typeName, []))
+            let packagesTypes =
+              types
+              |> List.map PT2DT.PackageType.toDT
+              |> Dval.list (KTCustomType(PT2DT.PackageType.typeName, []))
+            let packagesConstants =
+              constants
+              |> List.map PT2DT.PackageConstant.toDT
+              |> Dval.list (KTCustomType(PT2DT.PackageConstant.typeName, []))
+
             let fields =
-              [ "fns", DList(VT.customType PT2DT.PackageFn.typeName [], packagesFns)
-                "types",
-                DList(VT.customType PT2DT.PackageType.typeName [], packagesTypes)
-                "constants",
-                DList(
-                  VT.customType PT2DT.PackageConstant.typeName [],
-                  packagesConstants
-                ) ]
+              [ "fns", packagesFns
+                "types", packagesTypes
+                "constants", packagesConstants ]
+
             return
               DRecord(typ, typ, [], Map fields)
               |> Dval.resultOk (KTCustomType(typ, [])) KTString
