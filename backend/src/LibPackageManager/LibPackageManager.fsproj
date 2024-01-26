@@ -17,6 +17,9 @@
     <ProjectReference Include="../BuiltinExecution/BuiltinExecution.fsproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Types.fs" />
+    <Compile Include="ExternalTypesToProgramTypes.fs" />
+    <Compile Include="JsonDeserialization.fs" />
     <Compile Include="PackageManager.fs" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />

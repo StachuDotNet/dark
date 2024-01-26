@@ -24,8 +24,8 @@ module Darklang =
         type ParseError =
           /// The json string can't be parsed as the given type.
           | CantMatchWithType of
-            PACKAGE.Darklang.LanguageTools.RuntimeTypes.TypeReference *
-            String *
+            typ: PACKAGE.Darklang.LanguageTools.RuntimeTypes.TypeReference *
+            json: String *
             JsonPath.JsonPath
           | EnumExtraField of rawJson: String * JsonPath.JsonPath
           | EnumMissingField of

@@ -13,7 +13,8 @@ nuget FSharp.Core = 8.0.100
 nuget FSharp.SystemTextJson = 1.2.42
 nuget NodaTime = 3.1.9
 nuget NodaTime.Serialization.SystemTextJson = 1.1.2
-nuget System.IO.Hashing 8.0.0
+nuget System.IO.Hashing = 8.0.0
+nuget Thoth.Json = 10.2.0
 
 // Binary Serialization
 nuget MessagePack = 2.5.129
