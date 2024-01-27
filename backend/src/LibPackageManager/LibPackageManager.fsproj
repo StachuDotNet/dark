@@ -21,6 +21,7 @@
     <ProjectReference Include="../LibPackageManager.GeneratedSerialization/LibPackageManager.GeneratedSerialization.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="JsonDeserialization.fs" />
     <Compile Include="ExternalTypesToProgramTypes.fs" />
     <Compile Include="PackageManager.fs" />
   </ItemGroup>
