@@ -50,7 +50,7 @@ let packageManager (baseUrl : string) : RT.PackageManager =
 
   let fetch
     (url : string)
-    (f : 'serverType -> 'cachedType)
+    (_f : 'serverType -> 'cachedType)
     : Ply<Option<'cachedType>> =
     uply {
       let! response = url |> httpClient.GetAsync
@@ -58,13 +58,14 @@ let packageManager (baseUrl : string) : RT.PackageManager =
       let! responseStr = response.Content.ReadAsStringAsync()
       try
         if response.StatusCode = System.Net.HttpStatusCode.OK then
-          let deserialized =
-            responseStr
-            |> Json.Vanilla.deserializeWithGeneratedContext<'serverType>
-              LibPackageManager.GeneratedSerialization.PackageManagerSourceGenerators.Default
+          // let deserialized =
+          //   responseStr
+          //   |> Json.Vanilla.deserializeWithGeneratedContext<'serverType>
+          //     LibPackageManager.GeneratedSerialization.PackageManagerSourceGenerators.Default
 
-          let cached = f deserialized
-          return Some cached
+          // let cached = f deserialized
+          // return Some cached
+          return None // TODO^^
         else if response.StatusCode = System.Net.HttpStatusCode.NotFound then
           return None
         else

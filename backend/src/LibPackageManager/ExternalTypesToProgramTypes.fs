@@ -11,7 +11,7 @@ module PT = LibExecution.ProgramTypes
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module PT2DT = LibExecution.ProgramTypesToDarkTypes
 
-open LibPackageManager.Types
+open Types
 
 module EPT = ProgramTypes
 

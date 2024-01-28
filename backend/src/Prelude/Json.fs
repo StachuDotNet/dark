@@ -256,6 +256,7 @@ module Vanilla =
     with _ ->
       System.Console.Write("error allowing Vanilla type")
 
+
   let assertSerializable (t : System.Type) : unit =
     if not (isSerializable t) then
       Exception.sendRollbarError
@@ -275,14 +276,6 @@ module Vanilla =
 
   let deserialize<'a> (json : string) : 'a =
     assertSerializable typeof<'a>
-    JsonSerializer.Deserialize<'a>(json, _options)
-
-  let deserializeWithGeneratedContext<'a>
-    (context : JsonSerializerContext)
-    (json : string)
-    : 'a =
-    assertSerializable typeof<'a>
-    _options.TypeInfoResolver <- context
     JsonSerializer.Deserialize<'a>(json, _options)
 
   let deserializeWithComments<'a> (json : string) : 'a =
