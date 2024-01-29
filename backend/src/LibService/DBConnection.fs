@@ -19,6 +19,10 @@ let connectionString () : string =
   sb.SslMode <- if Config.pgSslRequired then SslMode.VerifyFull else SslMode.Allow
   sb.LoadBalanceHosts <- true
 
+  debuG "Host" Config.pgHost
+  debuG "Database" Config.pgDBName
+  debuG "User" Config.pgUser
+
   match Config.pgRootCertPath with
   | Some rootCert -> sb.RootCertificate <- rootCert
   | None -> ()
