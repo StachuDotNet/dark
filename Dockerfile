@@ -85,6 +85,7 @@ RUN echo "deb https://apt.releases.hashicorp.com $(lsb_release -cs) main" > /etc
 # - replace <HASH> with a recent hash from the docker build output.
 # - just use the package name, not the version.
 
+
 # Deps:
 # - apt-transport-https for npm
 # - net-tools for netstat
@@ -104,9 +105,9 @@ RUN DEBIAN_FRONTEND=noninteractive \
       postgresql-contrib-14 \
       git-restore-mtime \
       nodejs \
-      google-cloud-sdk \
-      google-cloud-sdk-pubsub-emulator \
-      google-cloud-sdk-gke-gcloud-auth-plugin \
+      google-cloud-sdk=462.0.0-0 \
+      google-cloud-sdk-pubsub-emulator=462.0.0-0 \
+      google-cloud-sdk-gke-gcloud-auth-plugin=462.0.0-0 \
       jq \
       # yugabyte
       ntp \
