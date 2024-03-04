@@ -156,3 +156,11 @@ Pub/Sub has a dashboard.
 - user signup happen on the `ops-adduser` canvas (accounts.darklang.com)
 - user signin happens via login.darklang.com
 - presence notifications are on the `dark-editor` canvas (editor.darklang.com)
+
+TODO:
+
+- go over better uptime
+- #status channel
+- #opertions channel
+- how to use rollbar (and find the right stuff)
+- honeycomb
