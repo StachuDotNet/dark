@@ -25,7 +25,10 @@ let getStateForEval
     }
 
   { builtins = builtins
-    tracing = LibExecution.Execution.noTracing
+    tracing =
+      LibExecution.Execution.noTracing (
+        CallStack.fromEntryPoint ExecutionPoint.Script
+      )
     test = LibExecution.Execution.noTestContext
     reportException = consoleReporter
     notify = consoleNotifier
@@ -33,6 +36,7 @@ let getStateForEval
     program = program
 
     packageManager = packageManager
+    symbolTable = Map.empty
     typeSymbolTable = Map.empty }
 
 /// Any 'loose' exprs in the source are mapped without context of previous/later exprs

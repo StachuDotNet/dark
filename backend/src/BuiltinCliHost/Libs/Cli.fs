@@ -89,8 +89,7 @@ let execute
   (parentState : RT.ExecutionState)
   (mod' : LibParser.Canvas.PTCanvasModule)
   (symtable : Map<string, RT.Dval>)
-  : Ply<Result<RT.Dval, Source * RuntimeError>> =
-
+  : Ply<Result<RT.Dval, Option<CallStack> * RuntimeError>> =
   uply {
     let (program : Program) =
       { canvasID = System.Guid.NewGuid()
@@ -105,18 +104,20 @@ let execute
         (mod'.constants |> List.map PT2RT.PackageConstant.toRT)
         (mod'.fns |> List.map PT2RT.PackageFn.toRT)
 
+    let tracing = Exe.noTracing (CallStack.fromEntryPoint Script)
+
     let state =
       Exe.createState
         builtinsToUse
         packageManager
-        Exe.noTracing
+        tracing
         parentState.reportException
         parentState.notify
         program
 
     if mod'.exprs.Length = 1 then
       let expr = PT2RT.Expr.toRT mod'.exprs[0]
-      return! Exe.executeExpr state 7777779489234UL symtable expr
+      return! Exe.executeExpr state symtable expr
     else if mod'.exprs.Length = 0 then
       let rte =
         CliRuntimeError.NoExpressionsToExecute |> CliRuntimeError.RTE.toRuntimeError
@@ -290,7 +291,9 @@ let fns : List<BuiltInFn> =
                             else
                               str
 
-                          match! Json.parse types typ str with
+                          match!
+                            Json.parse state.tracing.callStack types typ str
+                          with
                           | Ok v -> return v
                           | Error e -> return Json.ParseError.toDT e
                         })
@@ -299,7 +302,6 @@ let fns : List<BuiltInFn> =
                   let! result =
                     Exe.executeFunction
                       state
-                      None
                       f.name
                       []
                       (NEList.ofList args.Head args.Tail)
@@ -413,7 +415,6 @@ let fns : List<BuiltInFn> =
                   let! result =
                     Exe.executeFunction
                       state
-                      None
                       f.name
                       []
                       (NEList.ofList newArgs.Head newArgs.Tail)

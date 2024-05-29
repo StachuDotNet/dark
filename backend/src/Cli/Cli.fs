@@ -69,7 +69,7 @@ let state () =
       dbs = Map.empty
       secrets = [] }
 
-  let tracing = Exe.noTracing
+  let tracing = Exe.noTracing (RT.CallStack.fromEntryPoint RT.Script)
 
   let notify (_state : RT.ExecutionState) (_msg : string) (_metadata : Metadata) =
     // let metadata = extraMetadata state @ metadata
@@ -86,13 +86,13 @@ let state () =
 
 let execute
   (args : List<string>)
-  : Task<Result<RT.Dval, RT.Source * RT.RuntimeError>> =
+  : Task<Result<RT.Dval, Option<RT.CallStack> * RT.RuntimeError>> =
   task {
     let state = state ()
     let fnName = RT.FQFnName.fqPackage "Darklang" [ "Cli" ] "executeCliCommand"
     let args =
       args |> List.map RT.DString |> Dval.list RT.KTString |> NEList.singleton
-    return! Exe.executeFunction state None fnName [] args
+    return! Exe.executeFunction state fnName [] args
   }
 
 let initSerializers () =
@@ -165,6 +165,7 @@ let main (args : string[]) =
       System.Console.WriteLine
         $"Error: main function must return an int (returned {output})"
       1
+
   with e ->
     printException "Error starting Darklang CLI" [] e
     1

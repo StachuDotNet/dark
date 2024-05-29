@@ -8,17 +8,12 @@ open Prelude
 module RT = RuntimeTypes
 module AT = AnalysisTypes
 
-let traceNoDvals : RT.TraceDval = fun _ _ -> ()
-let traceNoTLIDs : RT.TraceTLID = fun _ -> ()
-let loadNoFnResults : RT.LoadFnResult = fun _ _ -> None
-let storeNoFnResults : RT.StoreFnResult = fun _ _ _ -> ()
-
-let noTracing : RT.Tracing =
-  { traceDval = traceNoDvals
-    traceTLID = traceNoTLIDs
-    loadFnResult = loadNoFnResults
-    storeFnResult = storeNoFnResults
-    caller = None }
+let noTracing (callStack : RT.CallStack) : RT.Tracing =
+  { traceDval = fun _ _ -> ()
+    traceExecutionPoint = fun _ -> ()
+    loadFnResult = fun _ _ -> None
+    storeFnResult = fun _ _ _ -> ()
+    callStack = callStack }
 
 let noTestContext : RT.TestContext =
   { sideEffectCount = 0
@@ -44,20 +39,20 @@ let createState
     program = program
 
     packageManager = packageManager
+    symbolTable = Map.empty
     typeSymbolTable = Map.empty }
 
 let executeExpr
   (state : RT.ExecutionState)
-  (tlid : tlid)
   (inputVars : RT.Symtable)
   (expr : RT.Expr)
   : Task<RT.ExecutionResult> =
   task {
     try
       try
-        let symtable = Interpreter.withGlobals state inputVars
-        let typeSymbolTable = Map.empty
-        let! result = Interpreter.eval state tlid typeSymbolTable symtable expr
+        let state =
+          { state with symbolTable = Interpreter.withGlobals state inputVars }
+        let! result = Interpreter.eval state expr
         return Ok result
       with RT.RuntimeErrorException(source, rte) ->
         return Error(source, rte)
@@ -69,7 +64,6 @@ let executeExpr
 
 let executeFunction
   (state : RT.ExecutionState)
-  (caller : RT.Source)
   (name : RT.FQFnName.FQFnName)
   (typeArgs : List<RT.TypeReference>)
   (args : NEList<RT.Dval>)
@@ -77,9 +71,10 @@ let executeFunction
   task {
     try
       try
-        let typeSymbolTable = Map.empty
-        let! result =
-          Interpreter.callFn state typeSymbolTable caller name typeArgs args
+        let state =
+          { state with
+              tracing.callStack.entrypoint = RT.ExecutionPoint.Function name }
+        let! result = Interpreter.callFn state name typeArgs args
         return Ok result
       with RT.RuntimeErrorException(source, rte) ->
         return Error(source, rte)
@@ -91,7 +86,7 @@ let executeFunction
 let runtimeErrorToString
   (state : RT.ExecutionState)
   (rte : RT.RuntimeError)
-  : Task<Result<RT.Dval, RT.Source * RT.RuntimeError>> =
+  : Task<Result<RT.Dval, Option<RT.CallStack> * RT.RuntimeError>> =
   task {
     let fnName =
       RT.FQFnName.fqPackage
@@ -99,16 +94,17 @@ let runtimeErrorToString
         [ "LanguageTools"; "RuntimeErrors"; "Error" ]
         "toString"
     let args = NEList.singleton (RT.RuntimeError.toDT rte)
-    return! executeFunction state None fnName [] args
+    return! executeFunction state fnName [] args
   }
 
-/// Return a function to trace TLIDs (add it to state via
-/// state.tracing.traceTLID), and a mutable set which updates when the
-/// traceFn is used
-let traceTLIDs () : HashSet.HashSet<tlid> * RT.TraceTLID =
-  let touchedTLIDs = HashSet.empty ()
-  let traceTLID tlid : unit = HashSet.add tlid touchedTLIDs
-  (touchedTLIDs, traceTLID)
+// /// Return a function to trace TLIDs (add it to state via
+// /// state.tracing.traceExecutionPoint), and a mutable set which updates when the
+// /// traceFn is used
+// /// TRACINGTODO
+// let traceTLIDs () : HashSet.HashSet<tlid> * RT.TraceExecutionPoint =
+//   let touchedTLIDs = HashSet.empty ()
+//   let traceExecutionPoint tlid : unit = HashSet.add tlid touchedTLIDs
+//   (touchedTLIDs, traceExecutionPoint)
 
 /// Return a function to trace Dvals (add it to state via
 /// state.tracing.traceDval), and a mutable dictionary which updates when the
