@@ -117,47 +117,51 @@ let main (args : string[]) =
     NonBlockingConsole.wait ()
 
     match result with
-    | Error(source, rte) ->
-      let state = state ()
+    | Error(callStack, _rte) ->
+
+      //let state = state ()
 
       // Ideally, this would be done in Dark rather than F#
       //
-      // TODO: pretty-print the source the expr.
-      let errorSourceStr =
-        match source with
-        | Some(tlid, id) ->
-          let foundPackageTL =
-            state.packageManager.getFnByTLID tlid
-            // TODO don't do this hacky stuff
-            |> Ply.toTask
-            |> Async.AwaitTask
-            |> Async.RunSynchronously
+      // TODO: pretty-print the call stack the expr.
+      let _errorCallStackStr =
+        match callStack with
+        | Some _callStack ->
+          // let foundPackageTL =
+          //   state.packageManager.getFnByID id
+          //   // TODO don't do this hacky stuff
+          //   |> Ply.toTask
+          //   |> Async.AwaitTask
+          //   |> Async.RunSynchronously
 
-          match foundPackageTL with
-          | Some packageFn ->
-            $"package fn {RT.FQFnName.packageToString packageFn.name}, expr {id}"
+          // match foundPackageTL with
+          // | Some packageFn ->
 
-          | None -> $"tlid {tlid}, expr {id}"
+          //   $"package fn {RT.FQFnName.packageToString packageFn.name}, expr {id}"
 
-        | None -> "(unknown)"
+          // | None -> $"tlid {tlid}, expr {id}"
+          "TODO"
+
+        | None -> "(no call stack)"
 
 
-      match (LibExecution.Execution.runtimeErrorToString state rte).Result with
-      | Ok(RT.DString s) ->
-        System.Console.WriteLine $"Error source: {errorSourceStr}\n  {s}"
+      //   match (LibExecution.Execution.runtimeErrorToString state rte).Result with
+      //   | Ok(RT.DString s) ->
+      //     System.Console.WriteLine $"Error source: {errorCallStackStr}\n  {s}"
 
-      | Ok otherVal ->
-        System.Console.WriteLine
-          $"Unexpected value while stringifying error.\nSource: {errorSourceStr}\n"
-        System.Console.WriteLine $"Original Error: {rte}"
-        System.Console.WriteLine $"Value is:\n{otherVal}"
+      //   | Ok otherVal ->
+      //     System.Console.WriteLine
+      //       $"Unexpected value while stringifying error.\nCallStack: {errorCallStackStr}\n"
+      //     System.Console.WriteLine $"Original Error: {rte}"
+      //     System.Console.WriteLine $"Value is:\n{otherVal}"
 
-      | Error(_, newErr) ->
-        System.Console.WriteLine
-          $"Error while stringifying error.\n Source: {errorSourceStr}\n"
-        System.Console.WriteLine $"Original Error: {rte}"
-        System.Console.WriteLine $"New Error is:\n{newErr}"
+      //   | Error(_, newErr) ->
+      //     System.Console.WriteLine
+      //       $"Error while stringifying error.\n CallStack: {errorCallStackStr}\n"
+      //     System.Console.WriteLine $"Original Error: {rte}"
+      //     System.Console.WriteLine $"New Error is:\n{newErr}"
 
+      System.Console.WriteLine "Error"
       1
     | Ok(RT.DInt64 i) -> (int i)
     | Ok dval ->
