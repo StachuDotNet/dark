@@ -285,7 +285,7 @@ module Darklang =
 
         | EVariable of Range * String
 
-        | EFieldAccess of
+        | ERecordFieldAccess of
           Range *
           Expr *
           fieldName: (Range * String) *
