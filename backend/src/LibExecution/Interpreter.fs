@@ -7,6 +7,7 @@ open FSharp.Control.Tasks.Affine.Unsafe
 
 open Prelude
 open RuntimeTypes
+module RTE = RuntimeError
 module VT = ValueType
 
 
@@ -120,9 +121,14 @@ let rec private execute
     let mutable counter = 0 // what instruction (by index) we're on
 
     // if we encounter a runtime error, we store it here and then `raise` it at the end
-    let mutable rte : Option<RuntimeError> = None
+    //let mutable rte : Option<RuntimeError.Error> = None
+    let mutable keepGoing = true
 
-    while counter < vmState.instructions.Length && Option.isNone rte do
+    let raiseRTE rte =
+      keepGoing <- false
+      raiseRTE exeState.tracing.callStack rte
+
+    while counter < vmState.instructions.Length && keepGoing do
       let instruction = vmState.instructions[counter]
 
       match instruction with
@@ -144,22 +150,22 @@ let rec private execute
         | Some value ->
           vmState.registers[loadTo] <- value
           counter <- counter + 1
-        | None ->
-          rte <- Some(RuntimeError.oldError ("Variable not found: " + varName))
+        | None -> raiseRTE (RTE.Error.VariableNotFound varName)
+      //rte <- Some()
 
 
-      // `add (increment 1L) (3L)` and store results in `putResultIn`
-      // At this point, the 'increment' has already been evaluated.
-      // But maybe that's something we should change, (CLEANUP)
-      // so that we don't execute things until they're needed
-      | Apply(putResultIn, thingToCallReg, typeArgs, argRegs) ->
-        // should we instead pass in register indices? probably...
-        let args = argRegs |> NEList.map (fun r -> vmState.registers[r])
-        //debuG "args" (NEList.length args)
-        let thingToCall = vmState.registers[thingToCallReg]
-        let! result = call exeState vmState thingToCall typeArgs args
-        vmState.registers[putResultIn] <- result
-        counter <- counter + 1
+      // // `add (increment 1L) (3L)` and store results in `putResultIn`
+      // // At this point, the 'increment' has already been evaluated.
+      // // But maybe that's something we should change, (CLEANUP)
+      // // so that we don't execute things until they're needed
+      // | Apply(putResultIn, thingToCallReg, typeArgs, argRegs) ->
+      //   // should we instead pass in register indices? probably...
+      //   let args = argRegs |> NEList.map (fun r -> vmState.registers[r])
+      //   //debuG "args" (NEList.length args)
+      //   let thingToCall = vmState.registers[thingToCallReg]
+      //   let! result = call exeState vmState thingToCall typeArgs args
+      //   vmState.registers[putResultIn] <- result
+      //   counter <- counter + 1
 
       | CreateList(listReg, itemsToAddRegs) ->
         // CLEANUP reference registers directly in DvalCreator.list,
@@ -178,7 +184,8 @@ let rec private execute
         let entries =
           entries
           |> List.map (fun (key, valueReg) -> (key, vmState.registers[valueReg]))
-        vmState.registers[dictReg] <- TypeChecker.DvalCreator.dict VT.unknown entries
+        vmState.registers[dictReg] <-
+          TypeChecker.DvalCreator.dict exeState.tracing.callStack VT.unknown entries
         counter <- counter + 1
 
       | CreateTuple(tupleReg, firstReg, secondReg, theRestRegs) ->
@@ -186,6 +193,23 @@ let rec private execute
         let second = vmState.registers[secondReg]
         let theRest = theRestRegs |> List.map (fun r -> vmState.registers[r])
         vmState.registers[tupleReg] <- DTuple(first, second, theRest)
+        counter <- counter + 1
+
+      | CreateRecord(recordReg, typeName, _typeArgs, fields) ->
+        // TODO: safe dval creation
+        // TODO: do something with typeArgs
+        let fields =
+          fields
+          |> List.map (fun (fieldName, valueReg) ->
+            (fieldName, vmState.registers[valueReg]))
+        vmState.registers[recordReg] <- DRecord(typeName, typeName, [], Map fields)
+        counter <- counter + 1
+
+      | CreateEnum(enumReg, typeName, _typeArgs, caseName, fields) ->
+        // TODO: safe dval creation
+        let fields =
+          fields |> List.map (fun (valueReg) -> vmState.registers[valueReg])
+        vmState.registers[enumReg] <- DEnum(typeName, typeName, [], caseName, fields)
         counter <- counter + 1
 
 
@@ -209,19 +233,16 @@ let rec private execute
         | DString target, DString source ->
           vmState.registers[targetReg] <- DString(target + source)
           counter <- counter + 1
-        | _, _ ->
-          // TODO
-          rte <- Some(RuntimeError.oldError "Error: Invalid string-append attempt")
+        | _, _ -> raiseRTE (RTE.String(RTE.Strings.Error.InvalidStringAppend))
 
 
       | JumpByIfFalse(jumpBy, condReg) ->
         match vmState.registers[condReg] with
         | DBool false -> counter <- counter + jumpBy + 1
         | DBool true -> counter <- counter + 1
-        | _ ->
-          // TODO
-          rte <-
-            Some(RuntimeError.oldError "Error: Jump condition must be a boolean")
+        | dv ->
+          let vt = Dval.toValueType dv
+          raiseRTE (RTE.Bool(RTE.Bools.ConditionRequiresBool(vt, dv)))
 
       | JumpBy jumpBy -> counter <- counter + jumpBy + 1
 
@@ -248,7 +269,8 @@ let rec private execute
 
 
       | CheckLetPatternAndExtractVars(valueReg, pat) ->
-        let matches, vars = checkAndExtractLetPattern pat vmState.registers[valueReg]
+        let dv = vmState.registers[valueReg]
+        let matches, vars = checkAndExtractLetPattern pat dv
 
         if matches then
           vmState <-
@@ -260,188 +282,187 @@ let rec private execute
               vmState
           counter <- counter + 1
         else
-          rte <- Some(RuntimeError.oldError "Let Pattern did not match")
+          raiseRTE (RTE.Let(RTE.Lets.PatternDoesNotMatch(dv, pat)))
 
-      | Fail _rte -> rte <- Some(RuntimeError.oldError "TODO")
+      // enh...
+      | RaiseNRE nre -> raiseRTE (RTE.NameResolution nre)
 
-      | MatchUnmatched -> rte <- Some(RuntimeError.oldError "match not matched")
+      | MatchUnmatched -> raiseRTE RTE.MatchUnmatched
 
 
     // If we've reached the end of the instructions, return the result
-    match rte with
-    | None -> return vmState.registers[vmState.resultReg]
-    | Some rte -> return raiseRTE exeState.tracing.callStack rte
+    return vmState.registers[vmState.resultReg]
   }
 
 
-and call
-  (exeState : ExecutionState)
-  (vmState : VMState)
-  (thingToCall : Dval)
-  (typeArgs : List<TypeReference>)
-  (args : NEList<Dval>)
-  : Ply<Dval> =
-  uply {
-    match thingToCall with
-    | DFnVal(NamedFn fnName) ->
-      let! fn =
-        match fnName with
-        | FQFnName.Builtin std ->
-          Map.find std exeState.fns.builtIn |> Option.map builtInFnToFn |> Ply
+// and call
+//   (exeState : ExecutionState)
+//   (vmState : VMState)
+//   (thingToCall : Dval)
+//   (typeArgs : List<TypeReference>)
+//   (args : NEList<Dval>)
+//   : Ply<Dval> =
+//   uply {
+//     match thingToCall with
+//     | DFnVal(NamedFn fnName) ->
+//       let! fn =
+//         match fnName with
+//         | FQFnName.Builtin std ->
+//           Map.find std exeState.fns.builtIn |> Option.map builtInFnToFn |> Ply
 
-        | FQFnName.Package pkg ->
-          uply {
-            let! fn = exeState.fns.package pkg
-            return Option.map packageFnToFn fn
-          }
+//         | FQFnName.Package pkg ->
+//           uply {
+//             let! fn = exeState.fns.package pkg
+//             return Option.map packageFnToFn fn
+//           }
 
-      match fn with
-      | Some fn ->
-        // let expectedTypeParams = List.length fn.typeParams
-        // let expectedArgs = NEList.length fn.parameters
+//       match fn with
+//       | Some fn ->
+//         // let expectedTypeParams = List.length fn.typeParams
+//         // let expectedArgs = NEList.length fn.parameters
 
-        // let actualTypeArgs = List.length typeArgs
-        // let actualArgs = NEList.length args
+//         // let actualTypeArgs = List.length typeArgs
+//         // let actualArgs = NEList.length args
 
-        // if expectedTypeParams <> actualTypeArgs || expectedArgs <> actualArgs then
-        //   ExecutionError.raise
-        //     state.tracing.callStack
-        //     (ExecutionError.WrongNumberOfFnArgs(
-        //       fnToCall,
-        //       expectedTypeParams,
-        //       expectedArgs,
-        //       actualTypeArgs,
-        //       actualArgs
-        //     ))
+//         // if expectedTypeParams <> actualTypeArgs || expectedArgs <> actualArgs then
+//         //   ExecutionError.raise
+//         //     state.tracing.callStack
+//         //     (ExecutionError.WrongNumberOfFnArgs(
+//         //       fnToCall,
+//         //       expectedTypeParams,
+//         //       expectedArgs,
+//         //       actualTypeArgs,
+//         //       actualArgs
+//         //     ))
 
-        let vmState =
-          let boundArgs =
-            NEList.map2
-              (fun (p : Param) actual -> (p.name, actual))
-              fn.parameters
-              args
-            |> NEList.toList
-            |> Map
-          { vmState with
-              symbolTable = Map.mergeFavoringRight vmState.symbolTable boundArgs }
+//         let vmState =
+//           let boundArgs =
+//             NEList.map2
+//               (fun (p : Param) actual -> (p.name, actual))
+//               fn.parameters
+//               args
+//             |> NEList.toList
+//             |> Map
+//           { vmState with
+//               symbolTable = Map.mergeFavoringRight vmState.symbolTable boundArgs }
 
-        let vmState =
-          let newlyBoundTypeArgs = List.zip fn.typeParams typeArgs |> Map
-          { vmState with
-              typeSymbolTable =
-                Map.mergeFavoringRight vmState.typeSymbolTable newlyBoundTypeArgs }
+//         let vmState =
+//           let newlyBoundTypeArgs = List.zip fn.typeParams typeArgs |> Map
+//           { vmState with
+//               typeSymbolTable =
+//                 Map.mergeFavoringRight vmState.typeSymbolTable newlyBoundTypeArgs }
 
-        return! execFn exeState vmState fnName fn typeArgs args
+//         return! execFn exeState vmState fnName fn typeArgs args
 
-      | None ->
-        // Functions which aren't available in the runtime (for whatever reason)
-        // may have results available in traces. (use case: inspecting a cloud-run trace locally)
-        let fnResult =
-          exeState.tracing.loadFnResult
-            (exeState.tracing.callStack.lastCalled, fnName)
-            args
+//       | None ->
+//         // Functions which aren't available in the runtime (for whatever reason)
+//         // may have results available in traces. (use case: inspecting a cloud-run trace locally)
+//         let fnResult =
+//           exeState.tracing.loadFnResult
+//             (exeState.tracing.callStack.lastCalled, fnName)
+//             args
 
-        match fnResult with
-        | Some(result, _ts) -> return result
-        | None ->
-          return
-            raiseRTE
-              exeState.tracing.callStack
-              (RuntimeError.oldError
-                $"Function {FQFnName.toString fnName} is not found")
+//         match fnResult with
+//         | Some(result, _ts) -> return result
+//         | None ->
+//           return
+//             raiseRTE
+//               exeState.tracing.callStack
+//               (RuntimeError.oldError
+//                 $"Function {FQFnName.toString fnName} is not found")
 
-    | _ ->
-      debuG "thingToCall" thingToCall
-      return DUnit // TODO
-  }
+//     | _ ->
+//       debuG "thingToCall" thingToCall
+//       return DUnit // TODO
+//   }
 
-and execFn
-  (exeState : ExecutionState)
-  (vmState : VMState)
-  (fnDesc : FQFnName.FQFnName)
-  (fn : Fn)
-  (typeArgs : List<TypeReference>)
-  (args : NEList<Dval>)
-  : DvalTask =
-  uply {
-    let typeArgsResolvedInFn = List.zip fn.typeParams typeArgs |> Map
-    let typeSymbolTable =
-      Map.mergeFavoringRight vmState.typeSymbolTable typeArgsResolvedInFn
+// and execFn
+//   (exeState : ExecutionState)
+//   (vmState : VMState)
+//   (fnDesc : FQFnName.FQFnName)
+//   (fn : Fn)
+//   (typeArgs : List<TypeReference>)
+//   (args : NEList<Dval>)
+//   : DvalTask =
+//   uply {
+//     let typeArgsResolvedInFn = List.zip fn.typeParams typeArgs |> Map
+//     let typeSymbolTable =
+//       Map.mergeFavoringRight vmState.typeSymbolTable typeArgsResolvedInFn
 
-    match! TypeChecker.checkFunctionCall exeState.types typeSymbolTable fn args with
-    | Error rte -> return raiseRTE exeState.tracing.callStack rte
-    | Ok() ->
-      let! result =
-        match fn.fn with
-        | BuiltInFunction f ->
-          let executionPoint = ExecutionPoint.Function fn.name
+//     match! TypeChecker.checkFunctionCall exeState.types typeSymbolTable fn args with
+//     | Error rte -> return raiseRTE exeState.tracing.callStack rte
+//     | Ok() ->
+//       let! result =
+//         match fn.fn with
+//         | BuiltInFunction f ->
+//           let executionPoint = ExecutionPoint.Function fn.name
 
-          exeState.tracing.traceExecutionPoint executionPoint
+//           exeState.tracing.traceExecutionPoint executionPoint
 
-          let exeState =
-            { exeState with tracing.callStack.lastCalled = (executionPoint, None) }
+//           let exeState =
+//             { exeState with tracing.callStack.lastCalled = (executionPoint, None) }
 
-          uply {
-            let! result =
-              uply {
-                try
-                  return! f (exeState, vmState, typeArgs, NEList.toList args)
-                with e ->
-                  match e with
-                  | RuntimeErrorException(None, rte) ->
-                    // Sometimes it's awkward, in a Builtin fn impl, to pass around the callStack
-                    // So we catch the exception here and add the callStack to it so it's handy in error-reporting
-                    return raiseRTE exeState.tracing.callStack rte
+//           uply {
+//             let! result =
+//               uply {
+//                 try
+//                   return! f (exeState, vmState, typeArgs, NEList.toList args)
+//                 with e ->
+//                   match e with
+//                   | RuntimeErrorException(None, rte) ->
+//                     // Sometimes it's awkward, in a Builtin fn impl, to pass around the callStack
+//                     // So we catch the exception here and add the callStack to it so it's handy in error-reporting
+//                     return raiseRTE exeState.tracing.callStack rte
 
-                  | RuntimeErrorException _ -> return Exception.reraise e
+//                   | RuntimeErrorException _ -> return Exception.reraise e
 
-                  | e ->
-                    let context : Metadata =
-                      [ "fn", fnDesc; "args", args; "typeArgs", typeArgs; "id", id ]
-                    exeState.reportException exeState context e
-                    // These are arbitrary errors, and could include sensitive
-                    // information, so best not to show it to the user. If we'd
-                    // like to show it to the user, we should catch it where it happens
-                    // and give them a known safe error via a RuntimeError
-                    return
-                      raiseRTE
-                        exeState.tracing.callStack
-                        (RuntimeError.oldError "Unknown error")
-              }
+//                   | e ->
+//                     let context : Metadata =
+//                       [ "fn", fnDesc; "args", args; "typeArgs", typeArgs; "id", id ]
+//                     exeState.reportException exeState context e
+//                     // These are arbitrary errors, and could include sensitive
+//                     // information, so best not to show it to the user. If we'd
+//                     // like to show it to the user, we should catch it where it happens
+//                     // and give them a known safe error via a RuntimeError
+//                     return
+//                       raiseRTE
+//                         exeState.tracing.callStack
+//                         (RuntimeError.oldError "Unknown error")
+//               }
 
-            if fn.previewable <> Pure then
-              // TODO same thing here -- shouldn't require ourselves to pass in lastCalled - `tracing` should just get access to it underneath
-              exeState.tracing.storeFnResult
-                (exeState.tracing.callStack.lastCalled, fnDesc)
-                args
-                result
+//             if fn.previewable <> Pure then
+//               // TODO same thing here -- shouldn't require ourselves to pass in lastCalled - `tracing` should just get access to it underneath
+//               exeState.tracing.storeFnResult
+//                 (exeState.tracing.callStack.lastCalled, fnDesc)
+//                 args
+//                 result
 
-            return result
-          }
+//             return result
+//           }
 
-        | PackageFunction(_id, _instructionsWithContext) ->
-          //let _registersNeeded, instructions, resultReg = _instructionsWithContext
-          // // maybe this should instead be something like `state.tracing.tracePackageFnCall tlid`?
-          // // and the `caller` would be updated by that function? (maybe `caller` is a read-only thing.)
-          // let executionPoint = ExecutionPoint.Function(FQFnName.Package id)
+//         | PackageFunction(_id, _instructionsWithContext) ->
+//           //let _registersNeeded, instructions, resultReg = _instructionsWithContext
+//           // // maybe this should instead be something like `state.tracing.tracePackageFnCall tlid`?
+//           // // and the `caller` would be updated by that function? (maybe `caller` is a read-only thing.)
+//           // let executionPoint = ExecutionPoint.Function(FQFnName.Package id)
 
-          // state.tracing.traceExecutionPoint executionPoint
+//           // state.tracing.traceExecutionPoint executionPoint
 
-          // // let state =
-          // //   { state with
-          // //       tracing.callStack.lastCalled = (executionPoint, Some(Expr.toID body)) }
+//           // // let state =
+//           // //   { state with
+//           // //       tracing.callStack.lastCalled = (executionPoint, Some(Expr.toID body)) }
 
-          // and how can we pass the args in?
-          // maybe fns need some LoadVal instructions frontloaded or something? hmm.
-          //eval state instructions resultReg
-          Ply DUnit // TODO
+//           // and how can we pass the args in?
+//           // maybe fns need some LoadVal instructions frontloaded or something? hmm.
+//           //eval state instructions resultReg
+//           Ply DUnit // TODO
 
-      match!
-        TypeChecker.checkFunctionReturnType exeState.types typeSymbolTable fn result
-      with
-      | Error rte -> return raiseRTE exeState.tracing.callStack rte
-      | Ok() -> return result
-  }
+//       match!
+//         TypeChecker.checkFunctionReturnType exeState.types typeSymbolTable fn result
+//       with
+//       | Error rte -> return raiseRTE exeState.tracing.callStack rte
+//       | Ok() -> return result
+//   }
 
 
 

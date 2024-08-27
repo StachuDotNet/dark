@@ -91,13 +91,13 @@ let eMatch (expr : Expr) (cases : List<MatchCase>) : Expr =
 //   eFn' function_ version typeArgs args
 
 
-let eApply
-  (target : Expr)
-  (typeArgs : List<TypeReference>)
-  (args : List<Expr>)
-  : Expr =
-  let args = NEList.ofListUnsafe "eApply" [] args
-  EApply(gid (), target, typeArgs, args)
+// let eApply
+//   (target : Expr)
+//   (typeArgs : List<TypeReference>)
+//   (args : List<Expr>)
+//   : Expr =
+//   let args = NEList.ofListUnsafe "eApply" [] args
+//   EApply(gid (), target, typeArgs, args)
 
 
 

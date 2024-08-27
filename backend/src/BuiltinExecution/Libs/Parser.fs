@@ -10,7 +10,7 @@ open LibExecution.Builtin.Shortcuts
 
 open LibTreeSitter
 
-module VT = ValueType
+module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
 module IDs = LibExecution.PackageIDs.Type.LanguageTools.Parser
 

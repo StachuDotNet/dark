@@ -9,10 +9,10 @@ open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
 
-module VT = ValueType
+module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
 module PackageIDs = LibExecution.PackageIDs
-module IntRuntimeError = BuiltinExecution.IntRuntimeError
+module RTE = RuntimeError
 
 module ParseError =
   type ParseError =
@@ -44,21 +44,17 @@ let fns : List<BuiltInFn> =
         a different behavior for negative numbers."
       fn =
         (function
-        | state, _, [ DInt16 v; DInt16 m ] ->
+        | exeState, _, _, [ DInt16 v; DInt16 m ] ->
           if m = 0s then
-            IntRuntimeError.Error.ZeroModulus
-            |> IntRuntimeError.RTE.toRuntimeError
-            |> raiseRTE state.tracing.callStack
-            |> Ply
+            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE exeState.tracing.callStack
           else if m < 0s then
-            IntRuntimeError.Error.NegativeModulus
-            |> IntRuntimeError.RTE.toRuntimeError
-            |> raiseRTE state.tracing.callStack
-            |> Ply
+            RTE.Ints.NegativeModulus
+            |> RTE.Int
+            |> raiseRTE exeState.tracing.callStack
           else
             let result = v % m
             let result = if result < 0s then m + result else result
-            Ply(DInt16(result))
+            Ply(DInt16 result)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -82,15 +78,14 @@ let fns : List<BuiltInFn> =
       fn =
         let resultOk r = Dval.resultOk KTInt16 KTString r |> Ply
         (function
-        | state, _, [ DInt16 v; DInt16 d ] ->
+        | exeState, _, _, [ DInt16 v; DInt16 d ] ->
           (try
             v % d |> DInt16 |> resultOk
            with e ->
              if d = 0s then
-               IntRuntimeError.Error.DivideByZeroError
-               |> IntRuntimeError.RTE.toRuntimeError
-               |> raiseRTE state.tracing.callStack
-               |> Ply
+               RTE.Ints.DivideByZeroError
+               |> RTE.Int
+               |> raiseRTE exeState.tracing.callStack
              else
                Exception.raiseInternal
                  "unexpected failure case in Int16.remainder"
@@ -109,16 +104,12 @@ let fns : List<BuiltInFn> =
       description = "Adds two 16-bit signed integers together"
       fn =
         (function
-        | state, _, [ DInt16 a; DInt16 b ] ->
+        | exeState, _, _, [ DInt16 a; DInt16 b ] ->
           try
             let result = Checked.(+) a b
             Ply(DInt16(result))
           with :? System.OverflowException ->
-            IntRuntimeError.Error.OutOfRange
-            |> IntRuntimeError.RTE.toRuntimeError
-            |> raiseRTE state.tracing.callStack
-            |> Ply
-
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -132,16 +123,12 @@ let fns : List<BuiltInFn> =
       description = "Subtracts two 16-bit signed integers"
       fn =
         (function
-        | state, _, [ DInt16 a; DInt16 b ] ->
+        | exeState, _, _, [ DInt16 a; DInt16 b ] ->
           try
             let result = Checked.(-) a b
             Ply(DInt16(result))
           with :? System.OverflowException ->
-            IntRuntimeError.Error.OutOfRange
-            |> IntRuntimeError.RTE.toRuntimeError
-            |> raiseRTE state.tracing.callStack
-            |> Ply
-
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -155,16 +142,12 @@ let fns : List<BuiltInFn> =
       description = "multiplies two 16-bit signed integers"
       fn =
         (function
-        | state, _, [ DInt16 a; DInt16 b ] ->
+        | exeState, _, _, [ DInt16 a; DInt16 b ] ->
           try
             let result = Checked.(*) a b
             Ply(DInt16(result))
           with :? System.OverflowException ->
-            IntRuntimeError.Error.OutOfRange
-            |> IntRuntimeError.RTE.toRuntimeError
-            |> raiseRTE state.tracing.callStack
-            |> Ply
-
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -181,20 +164,16 @@ let fns : List<BuiltInFn> =
         Return value wrapped in a {{Result}} "
       fn =
         (function
-        | state, _, [ DInt16 number; DInt16 exp ] ->
+        | exeState, _, _, [ DInt16 number; DInt16 exp ] ->
           (try
             if exp < 0s then
-              IntRuntimeError.Error.NegativeExponent
-              |> IntRuntimeError.RTE.toRuntimeError
-              |> raiseRTE state.tracing.callStack
-              |> Ply
+              RTE.Ints.NegativeExponent
+              |> RTE.Int
+              |> raiseRTE exeState.tracing.callStack
             else
               (bigint number) ** (int exp) |> int16 |> DInt16 |> Ply
            with :? System.OverflowException ->
-             IntRuntimeError.Error.OutOfRange
-             |> IntRuntimeError.RTE.toRuntimeError
-             |> raiseRTE state.tracing.callStack
-             |> Ply)
+             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -208,24 +187,17 @@ let fns : List<BuiltInFn> =
       description = "Divides two 16-bit signed integers"
       fn =
         (function
-        | state, _, [ DInt16 a; DInt16 b ] ->
+        | exeState, _, _, [ DInt16 a; DInt16 b ] ->
           if b = 0s then
-            IntRuntimeError.Error.DivideByZeroError
-            |> IntRuntimeError.RTE.toRuntimeError
-            |> raiseRTE state.tracing.callStack
-            |> Ply
+            RTE.Ints.DivideByZeroError
+            |> RTE.Int
+            |> raiseRTE exeState.tracing.callStack
           else if a = int16 System.Int16.MinValue && b = -1s then
-            IntRuntimeError.Error.OutOfRange
-            |> IntRuntimeError.RTE.toRuntimeError
-            |> raiseRTE state.tracing.callStack
-            |> Ply
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
           else
             let result = a / b
             if result < System.Int16.MinValue || result > System.Int16.MaxValue then
-              IntRuntimeError.Error.OutOfRange
-              |> IntRuntimeError.RTE.toRuntimeError
-              |> raiseRTE state.tracing.callStack
-              |> Ply
+              RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
             else
               Ply(DInt16(int16 result))
 
@@ -242,15 +214,12 @@ let fns : List<BuiltInFn> =
       description = "Returns the negation of <param a>, {{-a}}"
       fn =
         (function
-        | state, _, [ DInt16 a ] ->
+        | exeState, _, _, [ DInt16 a ] ->
           if a = System.Int16.MinValue then
-            IntRuntimeError.Error.OutOfRange
-            |> IntRuntimeError.RTE.toRuntimeError
-            |> raiseRTE state.tracing.callStack
-            |> Ply
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
           else
             let result = -a
-            Ply(DInt16(result))
+            Ply(DInt16 result)
 
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
@@ -265,7 +234,7 @@ let fns : List<BuiltInFn> =
       description = "Returns {{true}} if <param a> is greater than <param b>"
       fn =
         (function
-        | _, _, [ DInt16 a; DInt16 b ] -> Ply(DBool(a > b))
+        | _, _, _, [ DInt16 a; DInt16 b ] -> Ply(DBool(a > b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -280,7 +249,7 @@ let fns : List<BuiltInFn> =
         "Returns {{true}} if <param a> is greater than or equal to <param b>"
       fn =
         (function
-        | _, _, [ DInt16 a; DInt16 b ] -> Ply(DBool(a >= b))
+        | _, _, _, [ DInt16 a; DInt16 b ] -> Ply(DBool(a >= b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -294,7 +263,7 @@ let fns : List<BuiltInFn> =
       description = "Returns {{true}} if <param a> is less than <param b>"
       fn =
         (function
-        | _, _, [ DInt16 a; DInt16 b ] -> Ply(DBool(a < b))
+        | _, _, _, [ DInt16 a; DInt16 b ] -> Ply(DBool(a < b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -309,7 +278,7 @@ let fns : List<BuiltInFn> =
         "Returns {{true}} if <param a> is less than or equal to <param b>"
       fn =
         (function
-        | _, _, [ DInt16 a; DInt16 b ] -> Ply(DBool(a <= b))
+        | _, _, _, [ DInt16 a; DInt16 b ] -> Ply(DBool(a <= b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -323,7 +292,7 @@ let fns : List<BuiltInFn> =
       description = "Stringify <param int16>"
       fn =
         (function
-        | _, _, [ DInt16 a ] -> Ply(DString(string a))
+        | _, _, _, [ DInt16 a ] -> Ply(DString(string a))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -337,7 +306,7 @@ let fns : List<BuiltInFn> =
       description = "Converts an <type Int16> to a <type Float>"
       fn =
         (function
-        | _, _, [ DInt16 a ] -> Ply(DFloat(float a))
+        | _, _, _, [ DInt16 a ] -> Ply(DFloat(float a))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -352,7 +321,7 @@ let fns : List<BuiltInFn> =
         "Returns a random integer16 between <param start> and <param end> (inclusive)"
       fn =
         (function
-        | _, _, [ DInt16 a; DInt16 b ] ->
+        | _, _, _, [ DInt16 a; DInt16 b ] ->
           let lower, upper = if a > b then (b, a) else (a, b)
 
           let correctRange = 1
@@ -380,7 +349,7 @@ let fns : List<BuiltInFn> =
         let typeName = FQTypeName.fqPackage PackageIDs.Type.Stdlib.int16ParseError
         let resultError = Dval.resultError KTInt16 (KTCustomType(typeName, []))
         (function
-        | _, _, [ DString s ] ->
+        | _, _, _, [ DString s ] ->
           try
             s |> System.Convert.ToInt16 |> DInt16 |> resultOk |> Ply
           with
@@ -403,7 +372,7 @@ let fns : List<BuiltInFn> =
       description = "Converts an Int8 to a 16-bit signed integer."
       fn =
         (function
-        | _, _, [ DInt8 a ] -> DInt16(int16 a) |> Ply
+        | _, _, _, [ DInt8 a ] -> DInt16(int16 a) |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -417,7 +386,7 @@ let fns : List<BuiltInFn> =
       description = "Converts a UInt8 to a 16-bit signed integer."
       fn =
         (function
-        | _, _, [ DUInt8 a ] -> DInt16(int16 a) |> Ply
+        | _, _, _, [ DUInt8 a ] -> DInt16(int16 a) |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -432,7 +401,7 @@ let fns : List<BuiltInFn> =
         "Converts a UInt16 to a 16-bit signed integer. Returns {{None}} if the value is greater than 32767"
       fn =
         (function
-        | _, _, [ DUInt16 a ] ->
+        | _, _, _, [ DUInt16 a ] ->
           if a > uint16 System.Int16.MaxValue then
             Dval.optionNone KTInt16 |> Ply
           else
@@ -451,7 +420,7 @@ let fns : List<BuiltInFn> =
         "Converts an Int32 to a 16-bit signed integer. Returns {{None}} if the value is less than -32768 or greater than 32767"
       fn =
         (function
-        | _, _, [ DInt32 a ] ->
+        | _, _, _, [ DInt32 a ] ->
           if a < int32 System.Int16.MinValue || a > int32 System.Int16.MaxValue then
             Dval.optionNone KTInt16 |> Ply
           else
@@ -470,7 +439,7 @@ let fns : List<BuiltInFn> =
         "Converts a UInt32 to a 16-bit signed integer. Returns {{None}} if the value is greater than 32767"
       fn =
         (function
-        | _, _, [ DUInt32 a ] ->
+        | _, _, _, [ DUInt32 a ] ->
           if a > uint32 System.Int16.MaxValue then
             Dval.optionNone KTInt16 |> Ply
           else
@@ -489,7 +458,7 @@ let fns : List<BuiltInFn> =
         "Converts an Int64 to a 16-bit signed integer. Returns {{None}} if the value is less than -32768 or greater than 32767"
       fn =
         (function
-        | _, _, [ DInt64 a ] ->
+        | _, _, _, [ DInt64 a ] ->
           if a < int64 System.Int16.MinValue || a > int64 System.Int16.MaxValue then
             Dval.optionNone KTInt16 |> Ply
           else
@@ -508,7 +477,7 @@ let fns : List<BuiltInFn> =
         "Converts a UInt64 to a 16-bit signed integer. Returns {{None}} if the value is greater than 32767"
       fn =
         (function
-        | _, _, [ DUInt64 a ] ->
+        | _, _, _, [ DUInt64 a ] ->
           if a > uint64 System.Int16.MaxValue then
             Dval.optionNone KTInt16 |> Ply
           else
@@ -527,7 +496,7 @@ let fns : List<BuiltInFn> =
         "Converts an Int128 to a 16-bit signed integer. Returns {{None}} if the value is less than -32768 or greater than 32767"
       fn =
         (function
-        | _, _, [ DInt128 a ] ->
+        | _, _, _, [ DInt128 a ] ->
           if
             a < System.Int128.op_Implicit System.Int16.MinValue
             || a > System.Int128.op_Implicit System.Int16.MaxValue
@@ -549,7 +518,7 @@ let fns : List<BuiltInFn> =
         "Converts an UInt128 to a 16-bit signed integer. Returns {{None}} if the value is greater than 32767"
       fn =
         (function
-        | _, _, [ DUInt128 a ] ->
+        | _, _, _, [ DUInt128 a ] ->
           if a > 32767Z then
             Dval.optionNone KTInt16 |> Ply
           else

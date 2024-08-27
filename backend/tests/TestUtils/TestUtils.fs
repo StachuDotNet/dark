@@ -14,7 +14,7 @@ open Prelude
 
 module DarkDateTime = LibExecution.DarkDateTime
 module RT = LibExecution.RuntimeTypes
-module VT = RT.ValueType
+module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
 module PT = LibExecution.ProgramTypes
 module AT = LibExecution.AnalysisTypes
@@ -116,12 +116,12 @@ let nameToTestDomain (name : string) : string =
 
 
 let builtins
-  //(httpConfig : BuiltinExecution.Libs.HttpClient.Configuration)
+  (httpConfig : BuiltinExecution.Libs.HttpClient.Configuration)
   (_pm : PT.PackageManager)
   : RT.Builtins =
   LibExecution.Builtin.combine
     [ LibTest.builtins
-      BuiltinExecution.Builtin.builtins //httpConfig pm
+      BuiltinExecution.Builtin.builtins httpConfig // pm
       // BuiltinCloudExecution.Builtin.builtins
       // BuiltinDarkInternal.Builtin.builtins
       // BuiltinCli.Builtin.builtins
@@ -136,10 +136,9 @@ let builtins
 //   builtins httpConfig pm
 
 let localBuiltIns (pm : PT.PackageManager) =
-  // let httpConfig =
-  //   { BuiltinExecution.Libs.HttpClient.defaultConfig with timeoutInMs = 5000 }
-  // builtins httpConfig pm
-  builtins pm
+  let httpConfig =
+    { BuiltinExecution.Libs.HttpClient.defaultConfig with timeoutInMs = 5000 }
+  builtins httpConfig pm
 
 
 
@@ -389,8 +388,8 @@ module Expect =
     | DTuple(first, second, rest) -> List.all r ([ first; second ] @ rest)
     | DDict(_, entries) -> entries |> Map.values |> List.all r
 
-  // | DRecord(_, _, _, fields) -> fields |> Map.values |> List.all r
-  // | DEnum(_, _, _, _, fields) -> fields |> List.all r
+    | DRecord(_, _, _, fields) -> fields |> Map.values |> List.all r
+    | DEnum(_, _, _, _, fields) -> fields |> List.all r
 
   type Path = string list
 
@@ -431,16 +430,16 @@ module Expect =
   //   | LPTuple _, _ -> errorFn path (string actual) (string expected)
 
 
-  // let rec userTypeNameEqualityBaseFn
-  //   (path : Path)
-  //   (actual : FQTypeName.FQTypeName)
-  //   (expected : FQTypeName.FQTypeName)
-  //   (errorFn : Path -> string -> string -> unit)
-  //   : unit =
-  //   let err () = errorFn path (string actual) (string expected)
+  let rec userTypeNameEqualityBaseFn
+    (path : Path)
+    (actual : FQTypeName.FQTypeName)
+    (expected : FQTypeName.FQTypeName)
+    (errorFn : Path -> string -> string -> unit)
+    : unit =
+    let err () = errorFn path (string actual) (string expected)
 
-  //   match actual, expected with
-  //   | FQTypeName.Package a, FQTypeName.Package e -> if a <> e then err ()
+    match actual, expected with
+    | FQTypeName.Package a, FQTypeName.Package e -> if a <> e then err ()
 
   // let rec matchPatternEqualityBaseFn
   //   (checkIDs : bool)
@@ -807,48 +806,48 @@ module Expect =
         rs
 
 
-    // | DRecord(ltn, _, ltypeArgs, ls), DRecord(rtn, _, rtypeArgs, rs) ->
-    //   // check type name
-    //   userTypeNameEqualityBaseFn path ltn rtn errorFn
+    | DRecord(ltn, _, ltypeArgs, ls), DRecord(rtn, _, rtypeArgs, rs) ->
+      // check type name
+      userTypeNameEqualityBaseFn path ltn rtn errorFn
 
-    //   // check type args
-    //   check
-    //     ("TypeArgsLength" :: path)
-    //     (List.length ltypeArgs)
-    //     (List.length rtypeArgs)
-    //   List.iteri2 (fun i -> checkValueType (string i :: path)) ltypeArgs rtypeArgs
+      // check type args
+      check
+        ("TypeArgsLength" :: path)
+        (List.length ltypeArgs)
+        (List.length rtypeArgs)
+      List.iteri2 (fun i -> checkValueType (string i :: path)) ltypeArgs rtypeArgs
 
-    //   check ("Length" :: path) (Map.count ls) (Map.count rs)
+      check ("Length" :: path) (Map.count ls) (Map.count rs)
 
-    //   // check keys
-    //   // -- keys from ls are in both, check matching values
-    //   Map.iterWithIndex
-    //     (fun key v1 ->
-    //       match Map.find key rs with
-    //       | Some v2 -> de (key :: path) v1 v2
-    //       | None -> check (key :: path) ls rs)
-    //     ls
+      // check keys
+      // -- keys from ls are in both, check matching values
+      Map.iterWithIndex
+        (fun key v1 ->
+          match Map.find key rs with
+          | Some v2 -> de (key :: path) v1 v2
+          | None -> check (key :: path) ls rs)
+        ls
 
-    //   // -- keys from rs are in both
-    //   Map.iterWithIndex
-    //     (fun key _ ->
-    //       match Map.find key rs with
-    //       | Some _ -> () // already checked
-    //       | None -> check (key :: path) ls rs)
-    //     rs
+      // -- keys from rs are in both
+      Map.iterWithIndex
+        (fun key _ ->
+          match Map.find key rs with
+          | Some _ -> () // already checked
+          | None -> check (key :: path) ls rs)
+        rs
 
 
-    // | DEnum(typeName, _, typeArgs, caseName, fields),
-    //   DEnum(typeName', _, typeArgs', caseName', fields') ->
-    //   userTypeNameEqualityBaseFn path typeName typeName' errorFn
-    //   check ("caseName" :: path) caseName caseName'
+    | DEnum(_, typeName, typeArgs, caseName, fields),
+      DEnum(_, typeName', typeArgs', caseName', fields') ->
+      userTypeNameEqualityBaseFn path typeName typeName' errorFn
+      check ("caseName" :: path) caseName caseName'
 
-    //   check ("TypeArgsLength" :: path) (List.length typeArgs) (List.length typeArgs')
-    //   List.iteri2 (fun i -> checkValueType (string i :: path)) typeArgs typeArgs'
+      check ("TypeArgsLength" :: path) (List.length typeArgs) (List.length typeArgs')
+      List.iteri2 (fun i -> checkValueType (string i :: path)) typeArgs typeArgs'
 
-    //   check ("fields.Length" :: path) (List.length fields) (List.length fields)
-    //   List.iteri2 (fun i -> de ($"[{i}]" :: path)) fields fields'
-    //   ()
+      check ("fields.Length" :: path) (List.length fields) (List.length fields)
+      List.iteri2 (fun i -> de ($"[{i}]" :: path)) fields fields'
+      ()
 
     // | DFnVal(Lambda l1), DFnVal(Lambda l2) ->
     //   NEList.iter2
@@ -881,8 +880,8 @@ module Expect =
     | DList _, _
     | DTuple _, _
     | DDict _, _
-    // | DRecord _, _
-    // | DEnum _, _
+    | DRecord _, _
+    | DEnum _, _
     | DFnVal _, _
     // | DDB _, _
      -> check path actual expected
@@ -933,10 +932,10 @@ let visitDval (f : Dval -> 'a) (dv : Dval) : List<'a> =
     | DTuple(first, second, theRest) ->
       List.map visit ([ first; second ] @ theRest) |> ignore<List<unit>>
 
-    // | DRecord(_, _, _, fields) ->
-    //   Map.values fields |> List.map visit |> ignore<List<unit>>
+    | DRecord(_, _, _, fields) ->
+      Map.values fields |> List.map visit |> ignore<List<unit>>
 
-    // | DEnum(_, _, _, _, fields) -> fields |> List.map visit |> ignore<List<unit>>
+    | DEnum(_, _, _, _, fields) -> fields |> List.map visit |> ignore<List<unit>>
 
     // Keep for exhaustiveness checking
     | DUnit
@@ -1203,7 +1202,7 @@ let interestingInts : List<string * int64> =
 //      DEnum(
 //        Dval.optionType,
 //        Dval.optionType,
-//        Dval.ignoreAndUseEmpty [ VT.int64 ],
+//        [ VT.int64 ],
 //        "None",
 //        []
 //      ),
@@ -1212,7 +1211,7 @@ let interestingInts : List<string * int64> =
 //      DEnum(
 //        Dval.optionType,
 //        Dval.optionType,
-//        Dval.ignoreAndUseEmpty [ VT.int64 ],
+//        [ VT.int64 ],
 //        "Some",
 //        [ Dval.int64 15 ]
 //      ),
@@ -1221,7 +1220,7 @@ let interestingInts : List<string * int64> =
 //      DEnum(
 //        Dval.optionType,
 //        Dval.optionType,
-//        Dval.ignoreAndUseEmpty [ VT.string ],
+//        [ VT.string ],
 //        "Some",
 //        [ DString "a string" ]
 //      ),
@@ -1230,7 +1229,7 @@ let interestingInts : List<string * int64> =
 //      DEnum(
 //        Dval.optionType,
 //        Dval.optionType,
-//        Dval.ignoreAndUseEmpty [ VT.int8 ],
+//        [ VT.int8 ],
 //        "Some",
 //        [ Dval.int8 15y ]
 //      ),
@@ -1239,7 +1238,7 @@ let interestingInts : List<string * int64> =
 //      DEnum(
 //        Dval.optionType,
 //        Dval.optionType,
-//        Dval.ignoreAndUseEmpty [ VT.uint8 ],
+//        [ VT.uint8 ],
 //        "Some",
 //        [ Dval.uint8 15uy ]
 //      ),
@@ -1248,7 +1247,7 @@ let interestingInts : List<string * int64> =
 //      DEnum(
 //        Dval.optionType,
 //        Dval.optionType,
-//        Dval.ignoreAndUseEmpty [ VT.int16 ],
+//        [ VT.int16 ],
 //        "Some",
 //        [ Dval.int16 16s ]
 //      ),
@@ -1257,7 +1256,7 @@ let interestingInts : List<string * int64> =
 //      DEnum(
 //        Dval.optionType,
 //        Dval.optionType,
-//        Dval.ignoreAndUseEmpty [ VT.uint16 ],
+//        [ VT.uint16 ],
 //        "Some",
 //        [ Dval.uint16 16us ]
 //      ),
@@ -1266,7 +1265,7 @@ let interestingInts : List<string * int64> =
 //      DEnum(
 //        Dval.optionType,
 //        Dval.optionType,
-//        Dval.ignoreAndUseEmpty [ VT.int32 ],
+//        [ VT.int32 ],
 //        "Some",
 //        [ Dval.int32 32l ]
 //      ),
@@ -1275,7 +1274,7 @@ let interestingInts : List<string * int64> =
 //      DEnum(
 //        Dval.optionType,
 //        Dval.optionType,
-//        Dval.ignoreAndUseEmpty [ VT.uint32 ],
+//        [ VT.uint32 ],
 //        "Some",
 //        [ Dval.uint32 32ul ]
 //      ),
@@ -1284,7 +1283,7 @@ let interestingInts : List<string * int64> =
 //      DEnum(
 //        Dval.optionType,
 //        Dval.optionType,
-//        Dval.ignoreAndUseEmpty [ VT.int128 ],
+//        [ VT.int128 ],
 //        "Some",
 //        [ Dval.int128 128Q ]
 //      ),
@@ -1293,7 +1292,7 @@ let interestingInts : List<string * int64> =
 //      DEnum(
 //        Dval.optionType,
 //        Dval.optionType,
-//        Dval.ignoreAndUseEmpty [ VT.uint128 ],
+//        [ VT.uint128 ],
 //        "Some",
 //        [ Dval.uint128 128Z ]
 //      ),
@@ -1302,7 +1301,7 @@ let interestingInts : List<string * int64> =
 //      DEnum(
 //        Dval.optionType,
 //        Dval.optionType,
-//        Dval.ignoreAndUseEmpty [ VT.uint64 ],
+//        [ VT.uint64 ],
 //        "Some",
 //        [ Dval.uint64 64UL ]
 //      ),
@@ -1332,7 +1331,7 @@ let interestingInts : List<string * int64> =
 //        DEnum(
 //          Dval.resultType,
 //          Dval.resultType,
-//          Dval.ignoreAndUseEmpty [ VT.unknown; VT.string ],
+//          [ VT.unknown; VT.string ],
 //          "Error",
 //          [ DString "error" ]
 //        ),
@@ -1506,7 +1505,7 @@ let interestingInts : List<string * int64> =
 //       match d with
 //       | DRecord(_, _, _, fields) ->
 //         { name = fields |> D.stringField "name"
-//           lineNumber = fields |> D.intField "lineNumber"
+//           lineNumber = fields |> D.int32Field "lineNumber"
 //           actual = fields |> D.field "actual" |> PT2DT.Expr.fromDT
 //           expected = fields |> D.field "expected" |> PT2DT.Expr.fromDT }
 //       | _ -> Exception.raiseInternal "Invalid Test" []

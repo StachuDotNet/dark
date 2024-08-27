@@ -6,6 +6,7 @@ open FSharp.Control.Tasks
 open Prelude
 
 module RT = RuntimeTypes
+module RTE = RT.RuntimeError
 
 let noTracing (callStack : RT.CallStack) : RT.Tracing =
   { traceDval = fun _ _ -> ()
@@ -36,8 +37,10 @@ let createState
 
     program = program
 
-    types = { typeSymbolTable = Map.empty }
-    fns = { builtIn = builtins.fns; package = packageManager.getFn } }
+    types = { typeSymbolTable = Map.empty; package = packageManager.getType }
+    fns = { builtIn = builtins.fns; package = packageManager.getFn }
+    constants =
+      { builtIn = builtins.constants; package = packageManager.getConstant } }
 
 
 
@@ -72,51 +75,51 @@ let executeExpr
           //[ "fn", fnDesc; "args", args; "typeArgs", typeArgs; "id", id ]
           []
         exeState.reportException exeState context ex
-        return
-          RT.raiseRTE
-            exeState.tracing.callStack
-            (RT.RuntimeError.oldError "Unknown error")
+        let id = System.Guid.NewGuid()
+        // TODO: log the error and details or something
+        return (RTE.UncaughtException id) |> RT.raiseRTE exeState.tracing.callStack
+
     finally
       // Does nothing in non-tests
       exeState.test.postTestExecutionHook exeState.test
   }
 
 
-let executeFunction
-  (exeState : RT.ExecutionState)
-  (name : RT.FQFnName.FQFnName)
-  (typeArgs : List<RT.TypeReference>)
-  (args : NEList<RT.Dval>)
-  : Task<RT.ExecutionResult> =
-  task {
-    try
-      try
-        let exeState =
-          { exeState with
-              tracing.callStack.entrypoint = RT.ExecutionPoint.Function name }
-        let! result =
-          Interpreter.call
-            exeState
-            RT.VMState.empty // ok?
-            (RT.DFnVal(RT.NamedFn name))
-            typeArgs
-            args
-        return Ok result
-      with
-      | RT.RuntimeErrorException(source, rte) -> return Error(source, rte)
-      | ex ->
-        let context : Metadata =
-          //[ "fn", fnDesc; "args", args; "typeArgs", typeArgs; "id", id ]
-          []
-        exeState.reportException exeState context ex
-        return
-          RT.raiseRTE
-            exeState.tracing.callStack
-            (RT.RuntimeError.oldError "Unknown error")
-    finally
-      // Does nothing in non-tests
-      exeState.test.postTestExecutionHook exeState.test
-  }
+// let executeFunction
+//   (exeState : RT.ExecutionState)
+//   (name : RT.FQFnName.FQFnName)
+//   (typeArgs : List<RT.TypeReference>)
+//   (args : NEList<RT.Dval>)
+//   : Task<RT.ExecutionResult> =
+//   task {
+//     try
+//       try
+//         let exeState =
+//           { exeState with
+//               tracing.callStack.entrypoint = RT.ExecutionPoint.Function name }
+//         let! result =
+//           Interpreter.call
+//             exeState
+//             RT.VMState.empty // ok?
+//             (RT.DFnVal(RT.NamedFn name))
+//             typeArgs
+//             args
+//         return Ok result
+//       with
+//       | RT.RuntimeErrorException(source, rte) -> return Error(source, rte)
+//       | ex ->
+//         let context : Metadata =
+//           //[ "fn", fnDesc; "args", args; "typeArgs", typeArgs; "id", id ]
+//           []
+//         exeState.reportException exeState context ex
+//         return
+//           RT.raiseRTE
+//             exeState.tracing.callStack
+//             (RT.RuntimeError.oldError "Unknown error")
+//     finally
+//       // Does nothing in non-tests
+//       exeState.test.postTestExecutionHook exeState.test
+//   }
 
 
 // let runtimeErrorToString

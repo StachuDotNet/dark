@@ -15,11 +15,11 @@ module Expressions =
   module Basic =
     let one = eInt64 1
 
-    let onePlusTwo =
-      eApply
-        (PT.EFnName(gid (), Ok(PT.FQFnName.fqBuiltIn "int64Add" 0)))
-        []
-        [ eInt64 1; eInt64 2 ]
+  // let onePlusTwo =
+  //   eApply
+  //     (PT.EFnName(gid (), Ok(PT.FQFnName.fqBuiltIn "int64Add" 0)))
+  //     []
+  //     [ eInt64 1; eInt64 2 ]
 
 
   module Let =
@@ -131,29 +131,29 @@ module Expressions =
         (eBool true)
         [ { pat = PT.MPVariable(gid (), "x"); whenCondition = None; rhs = eVar "x" } ]
 
-    /// match 4 with
-    /// | 1 -> "first branch"
-    /// | x when x % 2 == 0 -> "second branch"
-    let withVarAndWhenCondition =
-      eMatch
-        (eInt64 4)
-        [ { pat = PT.MPInt64(gid (), 1)
-            whenCondition = None
-            rhs = eStr [ strText "first branch" ] }
-          { pat = PT.MPVariable(gid (), "x")
-            // "is even"
-            whenCondition =
-              Some(
-                eApply
-                  (PT.EFnName(gid (), Ok(PT.FQFnName.fqBuiltIn "equals" 0)))
-                  []
-                  [ eApply
-                      (PT.EFnName(gid (), Ok(PT.FQFnName.fqBuiltIn "int64Mod" 0)))
-                      []
-                      [ eVar "x" ]
-                    eInt64 2 ]
-              )
-            rhs = eStr [ strText "second branch" ] } ]
+    // /// match 4 with
+    // /// | 1 -> "first branch"
+    // /// | x when x % 2 == 0 -> "second branch"
+    // let withVarAndWhenCondition =
+    //   eMatch
+    //     (eInt64 4)
+    //     [ { pat = PT.MPInt64(gid (), 1)
+    //         whenCondition = None
+    //         rhs = eStr [ strText "first branch" ] }
+    //       { pat = PT.MPVariable(gid (), "x")
+    //         // "is even"
+    //         whenCondition =
+    //           Some(
+    //             eApply
+    //               (PT.EFnName(gid (), Ok(PT.FQFnName.fqBuiltIn "equals" 0)))
+    //               []
+    //               [ eApply
+    //                   (PT.EFnName(gid (), Ok(PT.FQFnName.fqBuiltIn "int64Mod" 0)))
+    //                   []
+    //                   [ eVar "x" ]
+    //                 eInt64 2 ]
+    //           )
+    //         rhs = eStr [ strText "second branch" ] } ]
 
     let list =
       eMatch

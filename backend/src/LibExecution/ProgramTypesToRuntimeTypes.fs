@@ -5,22 +5,22 @@ open Prelude
 
 // Used for conversion functions
 module RT = RuntimeTypes
-module VT = RT.ValueType
+module VT = ValueType
 module PT = ProgramTypes
 
-// module FQTypeName =
-//   module Package =
-//     let toRT (p : PT.FQTypeName.Package) : RT.FQTypeName.Package = p
+module FQTypeName =
+  module Package =
+    let toRT (p : PT.FQTypeName.Package) : RT.FQTypeName.Package = p
 
-//     let fromRT (p : RT.FQTypeName.Package) : PT.FQTypeName.Package = p
+  //let fromRT (p : RT.FQTypeName.Package) : PT.FQTypeName.Package = p
 
-//   let toRT (fqtn : PT.FQTypeName.FQTypeName) : RT.FQTypeName.FQTypeName =
-//     match fqtn with
-//     | PT.FQTypeName.Package p -> RT.FQTypeName.Package(Package.toRT p)
+  let toRT (fqtn : PT.FQTypeName.FQTypeName) : RT.FQTypeName.FQTypeName =
+    match fqtn with
+    | PT.FQTypeName.Package p -> RT.FQTypeName.Package(Package.toRT p)
 
-//   let fromRT (fqtn : RT.FQTypeName.FQTypeName) : Option<PT.FQTypeName.FQTypeName> =
-//     match fqtn with
-//     | RT.FQTypeName.Package p -> PT.FQTypeName.Package(Package.fromRT p) |> Some
+// let fromRT (fqtn : RT.FQTypeName.FQTypeName) : Option<PT.FQTypeName.FQTypeName> =
+//   match fqtn with
+//   | RT.FQTypeName.Package p -> PT.FQTypeName.Package(Package.fromRT p) |> Some
 
 
 // module FQConstantName =
@@ -63,11 +63,18 @@ module FQFnName =
     | PT.FQFnName.Package p -> RT.FQFnName.Package(Package.toRT p)
 
 
+module NameResolutionError =
+  let toRT (e : PT.NameResolutionError) : RT.NameResolutionError =
+    match e with
+    | PT.NameResolutionError.NotFound names -> RT.NameResolutionError.NotFound names
+    | PT.NameResolutionError.InvalidName names ->
+      RT.NameResolutionError.InvalidName names
+
 module NameResolution =
   let toRT (f : 'a -> 'b) (nr : PT.NameResolution<'a>) : RT.NameResolution<'b> =
     match nr with
     | Ok x -> Ok(f x)
-    | Error e -> Error(NameResolutionError.RTE.toRuntimeError e)
+    | Error e -> Error(NameResolutionError.toRT e)
 
 
 module TypeReference =
@@ -405,42 +412,42 @@ module Expr =
       let reg = rc
       (rc + 1, [ RT.LoadVal(reg, RT.DFnVal(RT.NamedFn(FQFnName.toRT name))) ], reg)
 
-    | PT.EFnName(_, Error _err) ->
+    | PT.EFnName(_, Error nre) ->
       // TODO improve
       // hmm maybe we shouldn't fail yet here.
       // It's ok to _reference_ a bad name, so long as we don't try to `apply` it.
       // maybe the 'value' here is (still) some unresolved name?
       // (which should fail when we apply it)
-      (rc, [ RT.Fail(RT.RuntimeError.oldError "Couldn't find fn") ], rc)
+      (rc, [ RT.RaiseNRE(NameResolutionError.toRT nre) ], rc)
 
 
-    | PT.EApply(_id, thingToApplyExpr, typeArgs, args) ->
-      let (regCounter, thingToApplyInstrs, thingToApplyReg) =
-        // (usually, a fn name)
-        toRT rc thingToApplyExpr
-      // TODO: maybe one or both of these lists should be an `NEList`?
+    // | PT.EApply(_id, thingToApplyExpr, typeArgs, args) ->
+    //   let (regCounter, thingToApplyInstrs, thingToApplyReg) =
+    //     // (usually, a fn name)
+    //     toRT rc thingToApplyExpr
+    //   // TODO: maybe one or both of these lists should be an `NEList`?
 
-      // CLEANUP find a way to get rid of silly NEList stuff
-      let (regCounter, argInstrs, argRegs) =
-        let init = (regCounter, [], [])
+    //   // CLEANUP find a way to get rid of silly NEList stuff
+    //   let (regCounter, argInstrs, argRegs) =
+    //     let init = (regCounter, [], [])
 
-        args
-        |> NEList.fold
-          (fun (rc, instrs, argResultRegs) arg ->
-            let (newRc, newInstrs, argResultReg) = toRT rc arg
-            (newRc, instrs @ newInstrs, argResultRegs @ [ argResultReg ]))
-          init
+    //     args
+    //     |> NEList.fold
+    //       (fun (rc, instrs, argResultRegs) arg ->
+    //         let (newRc, newInstrs, argResultReg) = toRT rc arg
+    //         (newRc, instrs @ newInstrs, argResultRegs @ [ argResultReg ]))
+    //       init
 
-      let putResultIn = regCounter
-      let callInstr =
-        RT.Apply(
-          putResultIn,
-          thingToApplyReg,
-          List.map TypeReference.toRT typeArgs,
-          NEList.ofListUnsafe "" [] argRegs
-        )
+    //   let putResultIn = regCounter
+    //   let callInstr =
+    //     RT.Apply(
+    //       putResultIn,
+    //       thingToApplyReg,
+    //       List.map TypeReference.toRT typeArgs,
+    //       NEList.ofListUnsafe "" [] argRegs
+    //     )
 
-      (regCounter + 1, thingToApplyInstrs @ argInstrs @ [ callInstr ], putResultIn)
+    //   (regCounter + 1, thingToApplyInstrs @ argInstrs @ [ callInstr ], putResultIn)
 
 
     | PT.EMatch(_id, expr, cases) ->
@@ -504,7 +511,6 @@ module Expr =
           ([], 0)
       let cases = List.rev cases
 
-
       let caseInstrs =
         cases
         |> List.fold
@@ -529,12 +535,70 @@ module Expr =
             instrs @ caseInstrs)
           []
 
-
       let instrs = exprInstrs @ caseInstrs @ [ RT.MatchUnmatched ]
 
       let rcAtEnd = casesAfterFirstPhase |> List.map _.rc |> List.max
 
       (rcAtEnd, instrs, resultReg)
+
+
+    // -- Records --
+    | PT.ERecord(_id, Error nre, _typeArgs, _fields) ->
+      let returnReg = 0 // TODO - not sure what to do here
+      (rc, [ RT.RaiseNRE(NameResolutionError.toRT nre) ], returnReg)
+
+    | PT.ERecord(_id, Ok typeName, typeArgs, fields) ->
+      // fields : List<string * Expr>
+      let recordReg, rc = rc, rc + 1
+
+      // CLEANUP: complain if there are no fields -- or maybe that should happen during interpretation?
+      // - actually- is there anything _wrong_ with a fieldless record?
+      let (rcAfterFields, instrs, fields) =
+        fields
+        |> List.fold
+          (fun (rc, instrs, fieldRegs) (fieldName, fieldExpr) ->
+            let (newRc, newInstrs, fieldReg) = toRT rc fieldExpr
+            (newRc, instrs @ newInstrs, fieldRegs @ [ (fieldName, fieldReg) ]))
+          (rc, [], [])
+
+      (rcAfterFields,
+       instrs
+       @ [ RT.CreateRecord(
+             recordReg,
+             FQTypeName.toRT typeName,
+             List.map TypeReference.toRT typeArgs,
+             fields
+           ) ],
+       recordReg)
+
+
+    // -- Enums --
+    | PT.EEnum(_id, Error nre, _caseName, _typeArgs, _fields) ->
+      let returnReg = 0 // TODO - not sure what to do here
+      (rc, [ RT.RaiseNRE(NameResolutionError.toRT nre) ], returnReg)
+
+    | PT.EEnum(_id, Ok typeName, typeArgs, caseName, fields) ->
+      // fields : List<string * Expr>
+      let enumReg, rc = rc, rc + 1
+
+      let (rcAfterFields, instrs, fields) =
+        fields
+        |> List.fold
+          (fun (rc, instrs, fieldRegs) fieldExpr ->
+            let (newRc, newInstrs, fieldReg) = toRT rc fieldExpr
+            (newRc, instrs @ newInstrs, fieldRegs @ [ fieldReg ]))
+          (rc, [], [])
+
+      (rcAfterFields,
+       instrs
+       @ [ RT.CreateEnum(
+             enumReg,
+             FQTypeName.toRT typeName,
+             List.map TypeReference.toRT typeArgs,
+             caseName,
+             fields
+           ) ],
+       enumReg)
 
 
 // let rec toRT (e : PT.Expr) : RT.Instructions =
@@ -695,77 +759,77 @@ module Expr =
 //   //   RT.EDict(id, entries |> List.map (Tuple2.mapSecond toRT))
 
 
-// module Const =
-//   let rec toRT (c : PT.Const) : RT.Const =
-//     match c with
-//     | PT.Const.CInt64 i -> RT.CInt64 i
-//     | PT.Const.CUInt64 i -> RT.CUInt64 i
-//     | PT.Const.CInt8 i -> RT.CInt8 i
-//     | PT.Const.CUInt8 i -> RT.CUInt8 i
-//     | PT.Const.CInt16 i -> RT.CInt16 i
-//     | PT.Const.CUInt16 i -> RT.CUInt16 i
-//     | PT.Const.CInt32 i -> RT.CInt32 i
-//     | PT.Const.CUInt32 i -> RT.CUInt32 i
-//     | PT.Const.CInt128 i -> RT.CInt128 i
-//     | PT.Const.CUInt128 i -> RT.CUInt128 i
-//     | PT.Const.CBool b -> RT.CBool b
-//     | PT.Const.CString s -> RT.CString s
-//     | PT.Const.CChar c -> RT.CChar c
-//     | PT.Const.CFloat(sign, w, f) -> RT.CFloat(sign, w, f)
-//     | PT.Const.CUnit -> RT.CUnit
-//     | PT.Const.CTuple(first, second, rest) ->
-//       RT.CTuple(toRT first, toRT second, List.map toRT rest)
-//     | PT.Const.CEnum(typeName, caseName, fields) ->
-//       RT.CEnum(
-//         NameResolution.toRT FQTypeName.toRT typeName,
-//         caseName,
-//         List.map toRT fields
-//       )
-//     | PT.Const.CList items -> RT.CList(List.map toRT items)
-//     | PT.Const.CDict entries -> RT.CDict(entries |> List.map (Tuple2.mapSecond toRT))
+module Const =
+  let rec toRT (c : PT.Const) : RT.Const =
+    match c with
+    | PT.Const.CInt64 i -> RT.CInt64 i
+    | PT.Const.CUInt64 i -> RT.CUInt64 i
+    | PT.Const.CInt8 i -> RT.CInt8 i
+    | PT.Const.CUInt8 i -> RT.CUInt8 i
+    | PT.Const.CInt16 i -> RT.CInt16 i
+    | PT.Const.CUInt16 i -> RT.CUInt16 i
+    | PT.Const.CInt32 i -> RT.CInt32 i
+    | PT.Const.CUInt32 i -> RT.CUInt32 i
+    | PT.Const.CInt128 i -> RT.CInt128 i
+    | PT.Const.CUInt128 i -> RT.CUInt128 i
+    | PT.Const.CBool b -> RT.CBool b
+    | PT.Const.CString s -> RT.CString s
+    | PT.Const.CChar c -> RT.CChar c
+    | PT.Const.CFloat(sign, w, f) -> RT.CFloat(sign, w, f)
+    | PT.Const.CUnit -> RT.CUnit
+    | PT.Const.CTuple(first, second, rest) ->
+      RT.CTuple(toRT first, toRT second, List.map toRT rest)
+    | PT.Const.CEnum(typeName, caseName, fields) ->
+      RT.CEnum(
+        NameResolution.toRT FQTypeName.toRT typeName,
+        caseName,
+        List.map toRT fields
+      )
+    | PT.Const.CList items -> RT.CList(List.map toRT items)
+    | PT.Const.CDict entries -> RT.CDict(entries |> List.map (Tuple2.mapSecond toRT))
 
 
-// module TypeDeclaration =
-//   module RecordField =
-//     let toRT (f : PT.TypeDeclaration.RecordField) : RT.TypeDeclaration.RecordField =
-//       { name = f.name; typ = TypeReference.toRT f.typ }
+module TypeDeclaration =
+  module RecordField =
+    let toRT (f : PT.TypeDeclaration.RecordField) : RT.TypeDeclaration.RecordField =
+      { name = f.name; typ = TypeReference.toRT f.typ }
 
-//   module EnumField =
-//     let toRT (f : PT.TypeDeclaration.EnumField) : RT.TypeReference =
-//       TypeReference.toRT f.typ
+  // module EnumField =
+  //   let toRT (f : PT.TypeDeclaration.EnumField) : RT.TypeReference =
+  //     TypeReference.toRT f.typ
 
-//   module EnumCase =
-//     let toRT (c : PT.TypeDeclaration.EnumCase) : RT.TypeDeclaration.EnumCase =
-//       { name = c.name; fields = List.map EnumField.toRT c.fields }
+  // module EnumCase =
+  //   let toRT (c : PT.TypeDeclaration.EnumCase) : RT.TypeDeclaration.EnumCase =
+  //     { name = c.name; fields = List.map EnumField.toRT c.fields }
 
-//   module Definition =
-//     let toRT (d : PT.TypeDeclaration.Definition) : RT.TypeDeclaration.Definition =
-//       match d with
-//       | PT.TypeDeclaration.Definition.Alias(typ) ->
-//         RT.TypeDeclaration.Alias(TypeReference.toRT typ)
+  module Definition =
+    let toRT (d : PT.TypeDeclaration.Definition) : RT.TypeDeclaration.Definition =
+      match d with
+      | PT.TypeDeclaration.Definition.Alias(typ) ->
+        RT.TypeDeclaration.Alias(TypeReference.toRT typ)
 
-//       | PT.TypeDeclaration.Record fields ->
-//         RT.TypeDeclaration.Record(NEList.map RecordField.toRT fields)
+      | PT.TypeDeclaration.Record fields ->
+        RT.TypeDeclaration.Record(NEList.map RecordField.toRT fields)
 
-//       | PT.TypeDeclaration.Enum cases ->
-//         RT.TypeDeclaration.Enum(NEList.map EnumCase.toRT cases)
+  // | PT.TypeDeclaration.Enum cases ->
+  //   RT.TypeDeclaration.Enum(NEList.map EnumCase.toRT cases)
 
-//   let toRT (t : PT.TypeDeclaration.T) : RT.TypeDeclaration.T =
-//     { typeParams = t.typeParams; definition = Definition.toRT t.definition }
+  let toRT (t : PT.TypeDeclaration.T) : RT.TypeDeclaration.T =
+    { typeParams = t.typeParams; definition = Definition.toRT t.definition }
 
 
 // --
 // Package stuff
 // --
-// module PackageType =
-//   let toRT (t : PT.PackageType.PackageType) : RT.PackageType.PackageType =
-//     { id = t.id; declaration = TypeDeclaration.toRT t.declaration }
+module PackageType =
+  let toRT (t : PT.PackageType.PackageType) : RT.PackageType.PackageType =
+    { id = t.id; declaration = TypeDeclaration.toRT t.declaration }
 
-// module PackageConstant =
-//   let toRT
-//     (c : PT.PackageConstant.PackageConstant)
-//     : RT.PackageConstant.PackageConstant =
-//     { id = c.id; body = Const.toRT c.body }
+module PackageConstant =
+  let toRT
+    (c : PT.PackageConstant.PackageConstant)
+    : RT.PackageConstant.PackageConstant =
+    { id = c.id; body = Const.toRT c.body }
 
 module PackageFn =
   module Parameter =
@@ -826,9 +890,9 @@ module PackageFn =
 
 module PackageManager =
   let toRT (pm : PT.PackageManager) : RT.PackageManager =
-    { //getType = fun id -> pm.getType id |> Ply.map (Option.map PackageType.toRT)
-      //getConstant =
-      //  fun id -> pm.getConstant id |> Ply.map (Option.map PackageConstant.toRT)
+    { getType = fun id -> pm.getType id |> Ply.map (Option.map PackageType.toRT)
+      getConstant =
+        fun id -> pm.getConstant id |> Ply.map (Option.map PackageConstant.toRT)
       getFn = fun id -> pm.getFn id |> Ply.map (Option.map PackageFn.toRT)
 
       init = pm.init }
