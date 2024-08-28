@@ -28,7 +28,7 @@ let fns : List<BuiltInFn> =
       description = "Parses some Darklang code"
       fn =
         (function
-        | _, _, [ DString sourceCode ] ->
+        | _, _, _, [ DString sourceCode ] ->
           let rec mapNodeAtCursor (cursor : TreeCursor) : Dval =
             let mutable children = []
 

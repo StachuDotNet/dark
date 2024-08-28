@@ -408,6 +408,11 @@ and Instruction =
     typeArgs : List<TypeReference> *
     fields : List<string * Register>
 
+  | GetRecordField of
+    targetReg : Register *
+    recordReg : Register *
+    fieldName : string
+
   | CreateEnum of
     enumReg : Register *
     typeName : FQTypeName.FQTypeName *
@@ -728,6 +733,11 @@ module RuntimeError =
         actualType : ValueType *
         actualValue : Dval
 
+  module Records =
+    type Error =
+      | RecordExpectedForFieldAccess of actualType : ValueType
+      | FieldNotFound of fieldName : string
+
 
   /// RuntimeError is the major way of representing errors in the runtime. These are
   /// primarily used for things where the user made an error, such as a type error,
@@ -750,7 +760,7 @@ module RuntimeError =
     | String of Strings.Error
     | List of Lists.Error
     | Dict of Dicts.Error
-    // | Record of Record.Error
+    | Record of Records.Error
     | Let of Lets.Error
     // | Enum of Enum.Error
 

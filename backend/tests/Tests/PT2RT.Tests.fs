@@ -11,6 +11,7 @@ module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module PackageIDs = LibExecution.PackageIDs
 
 module E = TestValues.Expressions
+module PM = TestValues.PM
 
 // TODO: consider adding an Expect.equalInstructions,
 // which better points out the diffs in the lists
@@ -508,6 +509,63 @@ module Match =
         tuple ]
 
 
+module Records =
+  let simple =
+    t
+      "Test.Test { key = true }"
+      E.Records.simple
+      (2,
+       [ RT.LoadVal(1, RT.DBool true)
+         RT.CreateRecord(
+           0,
+           RT.FQTypeName.fqPackage PM.Types.Records.singleField,
+           [],
+           [ ("key", 1) ]
+         ) ],
+       0)
+
+  let tests = testList "Records" [ simple ]
+
+
+module RecordFieldAccess =
+  let simple =
+    t
+      "let r = Test.Test { key = true }\nr.key"
+      E.RecordFieldAccess.simple
+      (3,
+       [ RT.LoadVal(1, RT.DBool true)
+         RT.CreateRecord(
+           0,
+           RT.FQTypeName.fqPackage PM.Types.Records.singleField,
+           [],
+           [ ("key", 1) ]
+         )
+         RT.GetRecordField(2, 0, "key") ],
+       2)
+
+  let notRecord =
+    t
+      "1.key"
+      E.RecordFieldAccess.notRecord
+      (2, [ RT.LoadVal(0, RT.DInt64 1L); RT.GetRecordField(1, 0, "key") ], 1)
+
+  let missingField =
+    t
+      "Test.Test { key = true }.missing"
+      E.RecordFieldAccess.missingField
+      (3,
+       [ RT.LoadVal(1, RT.DBool true)
+         RT.CreateRecord(
+           0,
+           RT.FQTypeName.fqPackage PM.Types.Records.singleField,
+           [],
+           [ ("key", 1) ]
+         )
+         RT.GetRecordField(2, 0, "missing") ],
+       2)
+
+  let tests = testList "RecordFieldAccess" [ simple; notRecord; missingField ]
+
 let tests =
   testList
     "PT2RT"
@@ -518,4 +576,6 @@ let tests =
       Dict.tests
       If.tests
       Tuples.tests
-      Match.tests ]
+      Match.tests
+      Records.tests
+      RecordFieldAccess.tests ]

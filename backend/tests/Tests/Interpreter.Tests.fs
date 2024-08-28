@@ -11,6 +11,7 @@ module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module RTE = RT.RuntimeError
 
 module E = TestValues.Expressions
+module PM = TestValues.PM
 
 let t name ptExpr expectedInsts =
   testTask name {
@@ -241,6 +242,17 @@ module Match =
         tuple ]
 
 
+module Records =
+  let simple =
+    let typeName = RT.FQTypeName.fqPackage PM.Types.Records.singleField
+    t
+      "Test.Test { key = true }"
+      E.Records.simple
+      (RT.DRecord(typeName, typeName, [], Map [ "key", RT.DBool true ]))
+
+  let tests = testList "Records" [ simple ]
+
+
 let tests =
   testList
     "Interpreter"
@@ -251,4 +263,5 @@ let tests =
       Dict.tests
       If.tests
       Tuples.tests
-      Match.tests ]
+      Match.tests
+      Records.tests ]

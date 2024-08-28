@@ -1348,71 +1348,71 @@ let interestingInts : List<string * int64> =
 //       interestingDvals ]
 //   |> List.map (fun (k, v, t) -> k, (v, t))
 
-// // Utilties shared among tests
-// module Http =
-//   type T = { status : string; headers : (string * string) list; body : byte array }
+// Utilties shared among tests
+module Http =
+  type T = { status : string; headers : (string * string) list; body : byte array }
 
-//   let setHeadersToCRLF (text : byte array) : byte array =
-//     // We keep our test files with an LF line ending, but the HTTP spec
-//     // requires headers (but not the body, nor the first line) to have CRLF
-//     // line endings
-//     let mutable justSawNewline = false
-//     let mutable inBody = false
+// let setHeadersToCRLF (text : byte array) : byte array =
+//   // We keep our test files with an LF line ending, but the HTTP spec
+//   // requires headers (but not the body, nor the first line) to have CRLF
+//   // line endings
+//   let mutable justSawNewline = false
+//   let mutable inBody = false
 
-//     text
-//     |> Array.toList
-//     |> List.collect (fun b ->
-//       if not inBody && b = byte '\n' then
-//         if justSawNewline then inBody <- true
-//         justSawNewline <- true
-//         [ byte '\r'; b ]
-//       else
-//         justSawNewline <- false
-//         [ b ])
-//     |> List.toArray
+//   text
+//   |> Array.toList
+//   |> List.collect (fun b ->
+//     if not inBody && b = byte '\n' then
+//       if justSawNewline then inBody <- true
+//       justSawNewline <- true
+//       [ byte '\r'; b ]
+//     else
+//       justSawNewline <- false
+//       [ b ])
+//   |> List.toArray
 
-//   let split (response : byte array) : T =
-//     // read a single line of bytes (a line ends with \r\n)
-//     let rec consume (existing : byte list) (l : byte list) : byte list * byte list =
-//       match l with
-//       | [] -> [], []
-//       | 13uy :: 10uy :: tail -> existing, tail
-//       | head :: tail -> consume (existing @ [ head ]) tail
+// let split (response : byte array) : T =
+//   // read a single line of bytes (a line ends with \r\n)
+//   let rec consume (existing : byte list) (l : byte list) : byte list * byte list =
+//     match l with
+//     | [] -> [], []
+//     | 13uy :: 10uy :: tail -> existing, tail
+//     | head :: tail -> consume (existing @ [ head ]) tail
 
-//     // read all headers (ends when we get two \r\n in a row), return headers
-//     // and remaining byte string (the body). Assumes the status line is not
-//     // present. Headers are returned reversed
-//     let rec consumeHeaders
-//       (headers : string list)
-//       (l : byte list)
-//       : string list * byte list =
-//       let (line, remaining) = consume [] l
+//   // read all headers (ends when we get two \r\n in a row), return headers
+//   // and remaining byte string (the body). Assumes the status line is not
+//   // present. Headers are returned reversed
+//   let rec consumeHeaders
+//     (headers : string list)
+//     (l : byte list)
+//     : string list * byte list =
+//     let (line, remaining) = consume [] l
 
-//       if line = [] then
-//         (headers, remaining)
-//       else
-//         let str = line |> Array.ofList |> UTF8.ofBytesUnsafe
-//         consumeHeaders (str :: headers) remaining
+//     if line = [] then
+//       (headers, remaining)
+//     else
+//       let str = line |> Array.ofList |> UTF8.ofBytesUnsafe
+//       consumeHeaders (str :: headers) remaining
 
-//     let bytes = Array.toList response
+//   let bytes = Array.toList response
 
-//     // read the status like (eg HTTP 200 OK)
-//     let status, bytes = consume [] bytes
+//   // read the status like (eg HTTP 200 OK)
+//   let status, bytes = consume [] bytes
 
-//     let headers, body = consumeHeaders [] bytes
+//   let headers, body = consumeHeaders [] bytes
 
-//     let headers =
-//       headers
-//       |> List.reverse
-//       |> List.map (fun s ->
-//         match String.split ":" s with
-//         | k :: vs -> (k, vs |> String.concat ":" |> String.trimLeft)
-//         | _ -> Exception.raiseInternal $"not a valid header" [ "header", s ])
+//   let headers =
+//     headers
+//     |> List.reverse
+//     |> List.map (fun s ->
+//       match String.split ":" s with
+//       | k :: vs -> (k, vs |> String.concat ":" |> String.trimLeft)
+//       | _ -> Exception.raiseInternal $"not a valid header" [ "header", s ])
 
 
-//     { status = status |> List.toArray |> UTF8.ofBytesUnsafe
-//       headers = headers
-//       body = List.toArray body }
+//   { status = status |> List.toArray |> UTF8.ofBytesUnsafe
+//     headers = headers
+//     body = List.toArray body }
 
 // // For an ASP.NET http server, remove the default loggers and add a file logger that
 // // saves the output in rundir/logs

@@ -34,6 +34,8 @@ module FQTypeName =
 
   let package (id : uuid) : Package = id
 
+  let fqPackage (id : uuid) : FQTypeName = Package id
+
 
 
 /// A Fully-Qualified Constant Name
@@ -178,17 +180,17 @@ type BinaryOperation =
 type InfixFnName =
   | ArithmeticPlus
   | ArithmeticMinus
-//   | ArithmeticMultiply
-//   | ArithmeticDivide
-//   | ArithmeticModulo
-//   | ArithmeticPower
-//   | ComparisonGreaterThan
-//   | ComparisonGreaterThanOrEqual
-//   | ComparisonLessThan
-//   | ComparisonLessThanOrEqual
-//   | ComparisonEquals
-//   | ComparisonNotEquals
-//   | StringConcat
+  | ArithmeticMultiply
+  | ArithmeticDivide
+  | ArithmeticModulo
+  | ArithmeticPower
+  | ComparisonGreaterThan
+  | ComparisonGreaterThanOrEqual
+  | ComparisonLessThan
+  | ComparisonLessThanOrEqual
+  | ComparisonEquals
+  | ComparisonNotEquals
+  | StringConcat
 
 type Infix =
   | InfixFnCall of InfixFnName
@@ -227,20 +229,20 @@ type TypeReference =
   | TTuple of TypeReference * TypeReference * List<TypeReference>
   | TDict of TypeReference
 
-//| TFn of arguments : NEList<TypeReference> * ret : TypeReference
+  /// A type defined by a standard library module, a canvas/user, or a package
+  /// e.g. `Result<Int64, String>` is represented as `TCustomType("Result", [TInt64, TString])`
+  /// `typeArgs` is the list of type arguments, if any
+  | TCustomType of
+    // TODO: this reference should be by-hash
+    NameResolution<FQTypeName.FQTypeName> *
+    typeArgs : List<TypeReference>
+
+  | TFn of arguments : NEList<TypeReference> * ret : TypeReference
+
+  | TVariable of string
 
 //| TDB of TypeReference
 // A named variable, eg `a` in `List<a>`, matches anything
-
-// /// A type defined by a standard library module, a canvas/user, or a package
-// /// e.g. `Result<Int64, String>` is represented as `TCustomType("Result", [TInt64, TString])`
-// /// `typeArgs` is the list of type arguments, if any
-// | TCustomType of
-//   // TODO: this reference should be by-hash
-//   NameResolution<FQTypeName.FQTypeName> *
-//   typeArgs : List<TypeReference>
-
-//| TVariable of string
 
 /// Expressions - the main part of the language.
 type Expr =
@@ -342,8 +344,8 @@ type Expr =
 
   // | ERecordUpdate of id * record : Expr * updates : NEList<string * Expr>
 
-  // /// Access a field of some record (e.g. `someExpr.fieldName`)
-  // | ERecordFieldAccess of id * record: Expr * fieldName: string
+  /// Access a field of some record (e.g. `someExpr.fieldName`)
+  | ERecordFieldAccess of id * record : Expr * fieldName : string
 
 
   // Enums include `Some`, `None`, `Error`, `Ok`, as well
@@ -415,7 +417,7 @@ module Expr =
     //| EInfix(id, _, _, _)
     // | ELambda(id, _, _)
     | EFnName(id, _)
-    // | ERecordFieldAccess(id, _, _)
+    | ERecordFieldAccess(id, _, _)
     | EVariable(id, _)
     //| EApply(id, _, _, _)
     | EList(id, _)
@@ -664,48 +666,48 @@ type PackageManager =
 
 
 
-// // --
-// // User things
-// // --
-// module DB =
-//   type T = { tlid : tlid; name : string; version : int; typ : TypeReference }
+// --
+// User things
+// --
+module DB =
+  type T = { tlid : tlid; name : string; version : int; typ : TypeReference }
 
-// module Secret =
-//   type T = { name : string; value : string; version : int }
+module Secret =
+  type T = { name : string; value : string; version : int }
 
-// module Handler =
-//   type CronInterval =
-//     | EveryDay
-//     | EveryWeek
-//     | EveryFortnight
-//     | EveryHour
-//     | Every12Hours
-//     | EveryMinute
+module Handler =
+  type CronInterval =
+    | EveryDay
+    | EveryWeek
+    | EveryFortnight
+    | EveryHour
+    | Every12Hours
+    | EveryMinute
 
-//   /// User to represent handlers in their lowest-level form: a triple of space * name * modifier
-//   /// "Space" is "HTTP", "WORKER", "REPL", etc.
-//   ///
-//   /// "Modifier" options differ based on space.
-//   /// e.g. HTTP handler may have "GET" modifier.
-//   ///
-//   /// Handlers which don't have modifiers (e.g. repl, worker) nearly
-//   /// always (but not actually always) have `_` as their modifier.
-//   type HandlerDesc = (string * string * string)
+  /// User to represent handlers in their lowest-level form: a triple of space * name * modifier
+  /// "Space" is "HTTP", "WORKER", "REPL", etc.
+  ///
+  /// "Modifier" options differ based on space.
+  /// e.g. HTTP handler may have "GET" modifier.
+  ///
+  /// Handlers which don't have modifiers (e.g. repl, worker) nearly
+  /// always (but not actually always) have `_` as their modifier.
+  type HandlerDesc = (string * string * string)
 
-//   type Spec =
-//     | HTTP of route : string * method : string
-//     | Worker of name : string
-//     | Cron of name : string * interval : CronInterval
-//     | REPL of name : string
+  type Spec =
+    | HTTP of route : string * method : string
+    | Worker of name : string
+    | Cron of name : string * interval : CronInterval
+    | REPL of name : string
 
-//   type T = { tlid : tlid; ast : Expr; spec : Spec }
+  type T = { tlid : tlid; ast : Expr; spec : Spec }
 
-// module Toplevel =
-//   type T =
-//     | TLDB of DB.T
-//     | TLHandler of Handler.T
+module Toplevel =
+  type T =
+    | TLDB of DB.T
+    | TLHandler of Handler.T
 
-//   let toTLID (tl : T) : tlid =
-//     match tl with
-//     | TLDB db -> db.tlid
-//     | TLHandler h -> h.tlid
+  let toTLID (tl : T) : tlid =
+    match tl with
+    | TLDB db -> db.tlid
+    | TLHandler h -> h.tlid

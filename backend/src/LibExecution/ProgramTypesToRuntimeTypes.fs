@@ -100,21 +100,25 @@ module TypeReference =
     | PT.TChar -> RT.TChar
     | PT.TString -> RT.TString
 
+    | PT.TDateTime -> RT.TDateTime
+    | PT.TUuid -> RT.TUuid
+
     | PT.TList inner -> RT.TList(toRT inner)
     | PT.TTuple(first, second, theRest) ->
       RT.TTuple(toRT first, toRT second, theRest |> List.map toRT)
     | PT.TDict typ -> RT.TDict(toRT typ)
 
-    | PT.TDateTime -> RT.TDateTime
-    | PT.TUuid -> RT.TUuid
-// | PT.TCustomType(typeName, typeArgs) ->
-//   RT.TCustomType(
-//     NameResolution.toRT FQTypeName.toRT typeName,
-//     List.map toRT typeArgs
-//   )
-// | PT.TVariable(name) -> RT.TVariable(name)
-// | PT.TFn(paramTypes, returnType) ->
-//   RT.TFn(NEList.map toRT paramTypes, toRT returnType)
+    | PT.TCustomType(typeName, typeArgs) ->
+      RT.TCustomType(
+        NameResolution.toRT FQTypeName.toRT typeName,
+        List.map toRT typeArgs
+      )
+
+    | PT.TVariable(name) -> RT.TVariable(name)
+
+    | PT.TFn(paramTypes, returnType) ->
+      RT.TFn(NEList.map toRT paramTypes, toRT returnType)
+
 //| PT.TDB typ -> RT.TDB(toRT typ)
 
 
@@ -570,6 +574,12 @@ module Expr =
              fields
            ) ],
        recordReg)
+
+    | PT.ERecordFieldAccess(_id, expr, fieldName) ->
+      let (rcAfterExpr, exprInstrs, exprReg) = toRT rc expr
+      (rcAfterExpr + 1,
+       exprInstrs @ [ RT.GetRecordField(rcAfterExpr, exprReg, fieldName) ],
+       rcAfterExpr)
 
 
     // -- Enums --

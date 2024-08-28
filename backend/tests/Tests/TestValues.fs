@@ -11,6 +11,47 @@ open TestUtils.PTShortcuts
 // TODO: consider adding an Expect.equalInstructions,
 // which better points out the diffs in the lists
 
+module PM =
+  module Types =
+    let make id name definition : PT.PackageType.PackageType =
+      { id = id
+        name = name
+        declaration = { typeParams = []; definition = definition }
+        description = "TODO"
+        deprecated = PT.NotDeprecated }
+
+    module Records =
+      let make id name fields =
+        make id name (PT.TypeDeclaration.Record(NEList.ofListUnsafe "" [] fields))
+
+      let singleField = System.Guid.NewGuid()
+
+      let all : List<PT.PackageType.PackageType> =
+        [ make
+            singleField
+            (PT.PackageType.name "Test" [] "Test")
+            [ { name = "key"; typ = PT.TBool; description = "TODO" } ] ]
+
+    module Enums =
+      let all = []
+
+    let all = Records.all @ Enums.all
+
+  module Constants =
+    let all = []
+
+  module Functions =
+    let all = []
+
+
+  // TODO
+  let fake : PT.PackageManager =
+    PT.PackageManager.withExtras
+      PT.PackageManager.empty
+      Types.all
+      Constants.all
+      Functions.all
+
 module Expressions =
   module Basic =
     let one = eInt64 1
@@ -181,3 +222,13 @@ module Expressions =
               PT.MPTuple(gid (), PT.MPInt64(gid (), 1), PT.MPInt64(gid (), 2), [])
             whenCondition = None
             rhs = eStr [ strText "first branch" ] } ]
+
+
+  module Records =
+    let simple =
+      eRecord (typeNamePkg PM.Types.Records.singleField) [] [ "key", eBool true ]
+
+  module RecordFieldAccess =
+    let simple = eFieldAccess Records.simple "key"
+    let notRecord = eFieldAccess (eInt64 1) "key"
+    let missingField = eFieldAccess Records.simple "missing"

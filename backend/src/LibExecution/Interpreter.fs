@@ -205,6 +205,20 @@ let rec private execute
         vmState.registers[recordReg] <- DRecord(typeName, typeName, [], Map fields)
         counter <- counter + 1
 
+      | GetRecordField(targetReg, recordReg, fieldName) ->
+        match vmState.registers[recordReg] with
+        | DRecord(_, _, _, fields) ->
+          match Map.find fieldName fields with
+          | Some value ->
+            vmState.registers[targetReg] <- value
+            counter <- counter + 1
+          | None ->
+            RTE.Records.Error.FieldNotFound fieldName |> RTE.Record |> raiseRTE
+        | dv ->
+          RTE.Records.Error.RecordExpectedForFieldAccess(Dval.toValueType dv)
+          |> RTE.Record
+          |> raiseRTE
+
       | CreateEnum(enumReg, typeName, _typeArgs, caseName, fields) ->
         // TODO: safe dval creation
         let fields =

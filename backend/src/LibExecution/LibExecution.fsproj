@@ -30,7 +30,7 @@
     <Compile Include="Builtin.fs" />
     <Compile Include="ProgramTypes.fs" />
     <Compile Include="ProgramTypesToDarkTypes.fs" />
-    <!--Compile Include="ProgramTypesParser.fs" /-->
+    <Compile Include="ProgramTypesParser.fs" />
     <Compile Include="ProgramTypesToRuntimeTypes.fs" />
   </ItemGroup>
   <ItemGroup>
