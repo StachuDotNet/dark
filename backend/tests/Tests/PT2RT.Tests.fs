@@ -524,7 +524,31 @@ module Records =
          ) ],
        0)
 
-  let tests = testList "Records" [ simple ]
+  let nested =
+    t
+      "Test.Test2 { outer = (Test.Test { key = true }) }"
+      E.Records.nested
+      (3,
+       [ RT.LoadVal(2, RT.DBool true)
+
+         // inner record
+         RT.CreateRecord(
+           1,
+           RT.FQTypeName.fqPackage PM.Types.Records.singleField,
+           [],
+           [ ("key", 2) ]
+         )
+
+         // outer record
+         RT.CreateRecord(
+           0,
+           RT.FQTypeName.fqPackage PM.Types.Records.nested,
+           [],
+           [ ("outer", 1) ]
+         ) ],
+       0)
+
+  let tests = testList "Records" [ simple; nested ]
 
 
 module RecordFieldAccess =
@@ -551,7 +575,7 @@ module RecordFieldAccess =
 
   let missingField =
     t
-      "Test.Test { key = true }.missing"
+      "(Test.Test { key = true }).missing"
       E.RecordFieldAccess.missingField
       (3,
        [ RT.LoadVal(1, RT.DBool true)
@@ -564,7 +588,39 @@ module RecordFieldAccess =
          RT.GetRecordField(2, 0, "missing") ],
        2)
 
-  let tests = testList "RecordFieldAccess" [ simple; notRecord; missingField ]
+  let nested =
+    t
+      "(Test.Test2 { outer = Test.Test { key = true } }).outer.key"
+      E.RecordFieldAccess.nested
+      (5,
+       [ RT.LoadVal(2, RT.DBool true)
+         RT.CreateRecord(
+           1,
+           RT.FQTypeName.fqPackage PM.Types.Records.singleField,
+           [],
+           [ ("key", 2) ]
+         )
+
+         RT.CreateRecord(
+           0,
+           RT.FQTypeName.fqPackage PM.Types.Records.nested,
+           [],
+           [ ("outer", 1) ]
+         )
+         RT.GetRecordField(3, 0, "outer")
+         RT.GetRecordField(4, 3, "key") ],
+       4)
+
+
+  let tests =
+    testList "RecordFieldAccess" [ simple; notRecord; missingField; nested ]
+
+
+module RecordUpdate =
+  // TODO
+
+  let tests = testList "RecordUpdate" []
+
 
 let tests =
   testList
@@ -578,4 +634,5 @@ let tests =
       Tuples.tests
       Match.tests
       Records.tests
-      RecordFieldAccess.tests ]
+      RecordFieldAccess.tests
+      RecordUpdate.tests ]

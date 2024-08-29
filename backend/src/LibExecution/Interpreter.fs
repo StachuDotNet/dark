@@ -112,12 +112,8 @@ let rec checkAndExtractMatchPattern
 /// , like ExecutionContext or Execution
 ///
 /// TODO potentially make this a loop instead of recursive
-let rec private execute
-  (exeState : ExecutionState)
-  (initialVmState : VMState)
-  : Ply<Dval> =
+let rec private execute (exeState : ExecutionState) (vmState : VMState) : Ply<Dval> =
   uply {
-    let mutable vmState = initialVmState
     let mutable counter = 0 // what instruction (by index) we're on
 
     // if we encounter a runtime error, we store it here and then `raise` it at the end
@@ -126,7 +122,7 @@ let rec private execute
 
     let raiseRTE rte =
       keepGoing <- false
-      raiseRTE exeState.tracing.callStack rte
+      raiseRTE vmState.callStack rte
 
     while counter < vmState.instructions.Length && keepGoing do
       let instruction = vmState.instructions[counter]
@@ -140,8 +136,7 @@ let rec private execute
       // `let x = 1`
       | SetVar(varName, loadFrom) ->
         let value = vmState.registers[loadFrom]
-        vmState <-
-          { vmState with symbolTable = Map.add varName value vmState.symbolTable }
+        vmState.symbolTable <- Map.add varName value vmState.symbolTable
         counter <- counter + 1
 
       // later, `x`
@@ -172,10 +167,7 @@ let rec private execute
         // so we don't have to copy things
         let itemsToAdd = itemsToAddRegs |> List.map (fun r -> vmState.registers[r])
         vmState.registers[listReg] <-
-          TypeChecker.DvalCreator.list
-            exeState.tracing.callStack
-            VT.unknown
-            itemsToAdd
+          TypeChecker.DvalCreator.list vmState.callStack VT.unknown itemsToAdd
         counter <- counter + 1
 
       | CreateDict(dictReg, entries) ->
@@ -185,7 +177,7 @@ let rec private execute
           entries
           |> List.map (fun (key, valueReg) -> (key, vmState.registers[valueReg]))
         vmState.registers[dictReg] <-
-          TypeChecker.DvalCreator.dict exeState.tracing.callStack VT.unknown entries
+          TypeChecker.DvalCreator.dict vmState.callStack VT.unknown entries
         counter <- counter + 1
 
       | CreateTuple(tupleReg, firstReg, secondReg, theRestRegs) ->
@@ -195,15 +187,38 @@ let rec private execute
         vmState.registers[tupleReg] <- DTuple(first, second, theRest)
         counter <- counter + 1
 
-      | CreateRecord(recordReg, typeName, _typeArgs, fields) ->
-        // TODO: safe dval creation
-        // TODO: do something with typeArgs
+      | CreateRecord(recordReg, typeName, typeArgs, fields) ->
         let fields =
           fields
           |> List.map (fun (fieldName, valueReg) ->
             (fieldName, vmState.registers[valueReg]))
-        vmState.registers[recordReg] <- DRecord(typeName, typeName, [], Map fields)
+
+        let! record =
+          TypeChecker.DvalCreator.record
+            vmState.callStack
+            exeState.types
+            typeName
+            typeArgs
+            fields
+
+        vmState.registers[recordReg] <- record
         counter <- counter + 1
+
+      // | CloneRecordWithUpdates(targetReg, originalRecordReg, updates) ->
+      //   let originalRecord = vmState.registers[originalRecordReg]
+      //   let updates =
+      //     updates
+      //     |> List.map (fun (fieldName, valueReg) ->
+      //       (fieldName, vmState.registers[valueReg]))
+      //   let updatedRecord =
+      //     TypeChecker.DvalCreator.record
+      //       exeState.tracing.callStack
+      //       typeName
+      //       typeArgs
+      //       updates
+
+      //   vmState.registers[targetReg] <- updatedRecord
+      //   counter <- counter + 1
 
       | GetRecordField(targetReg, recordReg, fieldName) ->
         match vmState.registers[recordReg] with
@@ -213,9 +228,9 @@ let rec private execute
             vmState.registers[targetReg] <- value
             counter <- counter + 1
           | None ->
-            RTE.Records.Error.FieldNotFound fieldName |> RTE.Record |> raiseRTE
+            RTE.Records.FieldAccessFieldNotFound fieldName |> RTE.Record |> raiseRTE
         | dv ->
-          RTE.Records.Error.RecordExpectedForFieldAccess(Dval.toValueType dv)
+          RTE.Records.FieldAccessNotRecord(Dval.toValueType dv)
           |> RTE.Record
           |> raiseRTE
 
@@ -270,13 +285,11 @@ let rec private execute
           checkAndExtractMatchPattern pat vmState.registers[valueReg]
 
         if matches then
-          vmState <-
-            vars
-            |> List.fold
-              (fun vmState (varName, value) ->
-                { vmState with
-                    symbolTable = Map.add varName value vmState.symbolTable })
-              vmState
+          vmState.symbolTable <-
+            List.fold
+              (fun symbolTable (varName, value) -> Map.add varName value symbolTable)
+              vmState.symbolTable
+              vars
           counter <- counter + 1
         else
           counter <- counter + failJump + 1
@@ -287,13 +300,11 @@ let rec private execute
         let matches, vars = checkAndExtractLetPattern pat dv
 
         if matches then
-          vmState <-
-            vars
-            |> List.fold
-              (fun vmState (varName, value) ->
-                { vmState with
-                    symbolTable = Map.add varName value vmState.symbolTable })
-              vmState
+          vmState.symbolTable <-
+            List.fold
+              (fun symbolTable (varName, value) -> Map.add varName value symbolTable)
+              vmState.symbolTable
+              vars
           counter <- counter + 1
         else
           raiseRTE (RTE.Let(RTE.Lets.PatternDoesNotMatch(dv, pat)))

@@ -44,9 +44,9 @@ let fns : List<BuiltInFn> =
         a different behavior for negative numbers."
       fn =
         (function
-        | exeState, _, _, [ DUInt128 v; DUInt128 m ] ->
+        | _, vm, _, [ DUInt128 v; DUInt128 m ] ->
           if m = System.UInt128.Zero then
-            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE vm.callStack
           else
             let result = v % m
             let result = if result < System.UInt128.Zero then m + result else result
@@ -64,12 +64,12 @@ let fns : List<BuiltInFn> =
       description = "Adds two 128-bit unsigned integers together"
       fn =
         (function
-        | exeState, _, _, [ DUInt128 a; DUInt128 b ] ->
+        | _, vm, _, [ DUInt128 a; DUInt128 b ] ->
           try
             let result = System.UInt128.op_CheckedAddition (a, b)
             Ply(DUInt128(result))
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -83,12 +83,12 @@ let fns : List<BuiltInFn> =
       description = "Subtracts two 128-bit unsigned integers"
       fn =
         (function
-        | exeState, _, _, [ DUInt128 a; DUInt128 b ] ->
+        | _, vm, _, [ DUInt128 a; DUInt128 b ] ->
           try
             let result = System.UInt128.op_CheckedSubtraction (a, b)
             Ply(DUInt128(result))
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -103,12 +103,12 @@ let fns : List<BuiltInFn> =
       description = "Multiplies two 128-bit unsigned integers"
       fn =
         (function
-        | exeState, _, _, [ DUInt128 a; DUInt128 b ] ->
+        | _, vm, _, [ DUInt128 a; DUInt128 b ] ->
           try
             let result = System.UInt128.op_CheckedMultiply (a, b)
             Ply(DUInt128(result))
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -125,7 +125,7 @@ let fns : List<BuiltInFn> =
       description = "Divides two 128-bit unsigned integers"
       fn =
         (function
-        | exeState, _, _, [ DUInt128 a; DUInt128 b ] ->
+        | _, vm, _, [ DUInt128 a; DUInt128 b ] ->
           try
             let result = System.UInt128.op_Division (a, b)
             Ply(DUInt128(result))
@@ -133,9 +133,9 @@ let fns : List<BuiltInFn> =
           | :? System.DivideByZeroException ->
             RTE.Ints.DivideByZeroError
             |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
+            |> raiseRTE vm.callStack
           | :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure

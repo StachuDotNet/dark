@@ -25,12 +25,20 @@ module PM =
         make id name (PT.TypeDeclaration.Record(NEList.ofListUnsafe "" [] fields))
 
       let singleField = System.Guid.NewGuid()
+      let nested = System.Guid.NewGuid()
 
       let all : List<PT.PackageType.PackageType> =
         [ make
             singleField
             (PT.PackageType.name "Test" [] "Test")
-            [ { name = "key"; typ = PT.TBool; description = "TODO" } ] ]
+            [ { name = "key"; typ = PT.TBool; description = "TODO" } ]
+
+          make
+            nested
+            (PT.PackageType.name "Test" [] "Test2")
+            [ { name = "outer"
+                typ = PT.TCustomType(Ok(PT.FQTypeName.fqPackage singleField), [])
+                description = "TODO" } ] ]
 
     module Enums =
       let all = []
@@ -228,7 +236,10 @@ module Expressions =
     let simple =
       eRecord (typeNamePkg PM.Types.Records.singleField) [] [ "key", eBool true ]
 
+    let nested = eRecord (typeNamePkg PM.Types.Records.nested) [] [ "outer", simple ]
+
   module RecordFieldAccess =
     let simple = eFieldAccess Records.simple "key"
     let notRecord = eFieldAccess (eInt64 1) "key"
     let missingField = eFieldAccess Records.simple "missing"
+    let nested = eFieldAccess (eFieldAccess Records.nested "outer") "key"

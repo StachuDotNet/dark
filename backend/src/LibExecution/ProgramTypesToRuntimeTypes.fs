@@ -575,6 +575,26 @@ module Expr =
            ) ],
        recordReg)
 
+    // | PT.ERecordUpdate(_id, expr, updates) ->
+    //   let (rcAfterOriginalRecord, originalRecordInstrs, originalRecordReg) =
+    //     toRT rc expr
+
+    //   let (rcAfterUpdates, updatesInstrs, updates) =
+    //     updates
+    //     |> NEList.fold
+    //       (fun (rc, instrs, regs) (fieldName, fieldExpr) ->
+    //         let (newRc, newInstrs, newReg) = toRT rc fieldExpr
+    //         (newRc, instrs @ newInstrs, regs @ [ (fieldName, newReg) ]))
+    //       (rcAfterOriginalRecord, [], [])
+
+    //   let targetReg, rc = rcAfterUpdates, rcAfterUpdates + 1
+    //   let instrs =
+    //     originalRecordInstrs
+    //     @ updatesInstrs
+    //     @ [ RT.CloneRecordWithUpdates(targetReg, originalRecordReg, updates) ]
+
+    //   (rc, instrs, targetReg)
+
     | PT.ERecordFieldAccess(_id, expr, fieldName) ->
       let (rcAfterExpr, exprInstrs, exprReg) = toRT rc expr
       (rcAfterExpr + 1,
@@ -862,29 +882,6 @@ module PackageFn =
 // // --
 // // User stuff
 // // --
-// module Handler =
-//   module CronInterval =
-//     let toRT (ci : PT.Handler.CronInterval) : RT.Handler.CronInterval =
-//       match ci with
-//       | PT.Handler.EveryDay -> RT.Handler.EveryDay
-//       | PT.Handler.EveryWeek -> RT.Handler.EveryWeek
-//       | PT.Handler.EveryFortnight -> RT.Handler.EveryFortnight
-//       | PT.Handler.EveryHour -> RT.Handler.EveryHour
-//       | PT.Handler.Every12Hours -> RT.Handler.Every12Hours
-//       | PT.Handler.EveryMinute -> RT.Handler.EveryMinute
-
-//   module Spec =
-//     let toRT (s : PT.Handler.Spec) : RT.Handler.Spec =
-//       match s with
-//       | PT.Handler.HTTP(route, method) -> RT.Handler.HTTP(route, method)
-//       | PT.Handler.Worker name -> RT.Handler.Worker name
-//       | PT.Handler.Cron(name, interval) ->
-//         RT.Handler.Cron(name, CronInterval.toRT interval)
-//       | PT.Handler.REPL name -> RT.Handler.REPL name
-
-//   let toRT (h : PT.Handler.T) : RT.Handler.T =
-//     { tlid = h.tlid; ast = Expr.toRT h.ast; spec = Spec.toRT h.spec }
-
 // module DB =
 //   let toRT (db : PT.DB.T) : RT.DB.T =
 //     { tlid = db.tlid

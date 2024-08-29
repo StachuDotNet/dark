@@ -136,7 +136,7 @@ let fns : List<BuiltInFn> =
         let dictType = VT.unknownTODO
         let optType = VT.dict dictType
         (function
-        | exeState, _, _, [ DList(_vtTODO, l) ] ->
+        | _, vmState, _, [ DList(_vtTODO, l) ] ->
           let f acc dv =
             match acc, dv with
             | None, _ -> None
@@ -151,7 +151,7 @@ let fns : List<BuiltInFn> =
           match result with
           | Some entries ->
             DDict(dictType, entries)
-            |> TypeChecker.DvalCreator.optionSome exeState.tracing.callStack optType
+            |> TypeChecker.DvalCreator.optionSome vmState.callStack optType
             |> Ply
           | None -> TypeChecker.DvalCreator.optionNone optType |> Ply
         | _ -> incorrectArgs ())
@@ -171,7 +171,7 @@ let fns : List<BuiltInFn> =
     //     (function
     //     | state, _, [ DDict(_vtTODO, o); DString s ] ->
     //       Map.find s o
-    //       |> TypeChecker.DvalCreator.option state.tracing.callStack VT.unknownTODO
+    //       |> TypeChecker.DvalCreator.option vmState.callStack VT.unknownTODO
     //       |> Ply
     //     | _ -> incorrectArgs ())
     //   sqlSpec = NotYetImplemented
@@ -258,7 +258,7 @@ let fns : List<BuiltInFn> =
     //               | dv ->
     //                 return!
     //                   TypeChecker.raiseFnValResultNotExpectedType
-    //                     state.tracing.callStack
+    //                     vmState.callStack
     //                     dv
     //                     TUnit
     //             })
@@ -296,7 +296,7 @@ let fns : List<BuiltInFn> =
     //             | v ->
     //               return!
     //                 TypeChecker.raiseFnValResultNotExpectedType
-    //                   state.tracing.callStack
+    //                   vmState.callStack
     //                   v
     //                   TBool
     //           }
@@ -348,7 +348,7 @@ let fns : List<BuiltInFn> =
     //               let expectedType = TypeReference.option varB
     //               return!
     //                 TypeChecker.raiseFnValResultNotExpectedType
-    //                   state.tracing.callStack
+    //                   vmState.callStack
     //                   v
     //                   expectedType
     //           }

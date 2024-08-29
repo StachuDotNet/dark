@@ -45,12 +45,9 @@ let fns : List<BuiltInFn> =
         a different behavior for negative numbers."
       fn =
         (function
-        | exeState, _, _, [ DUInt16 v; DUInt16 m ] ->
+        | _, vm, _, [ DUInt16 v; DUInt16 m ] ->
           if m = 0us then
-            RTE.Ints.ZeroModulus
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
-            |> Ply
+            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE vm.callStack |> Ply
           else
             let result = v % m
             let result = if result < 0us then m + result else result
@@ -68,15 +65,12 @@ let fns : List<BuiltInFn> =
       description = "Adds two 16-bit unsigned integers together"
       fn =
         (function
-        | exeState, _, _, [ DUInt16 a; DUInt16 b ] ->
+        | _, vm, _, [ DUInt16 a; DUInt16 b ] ->
           try
             let result = Checked.(+) a b
             Ply(DUInt16(result))
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
-            |> Ply
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack |> Ply
 
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
@@ -91,15 +85,12 @@ let fns : List<BuiltInFn> =
       description = "Subtracts two 16-bit unsigned integers"
       fn =
         (function
-        | exeState, _, _, [ DUInt16 a; DUInt16 b ] ->
+        | _, vm, _, [ DUInt16 a; DUInt16 b ] ->
           try
             let result = Checked.(-) a b
             Ply(DUInt16(result))
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
-            |> Ply
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack |> Ply
 
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
@@ -114,15 +105,12 @@ let fns : List<BuiltInFn> =
       description = "Multiplies two 16-bit unsigned integers"
       fn =
         (function
-        | exeState, _, _, [ DUInt16 a; DUInt16 b ] ->
+        | _, vm, _, [ DUInt16 a; DUInt16 b ] ->
           try
             let result = Checked.(*) a b
             Ply(DUInt16(result))
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
-            |> Ply
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack |> Ply
 
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
@@ -140,14 +128,11 @@ let fns : List<BuiltInFn> =
         Return value wrapped in a {{Result}} "
       fn =
         (function
-        | exeState, _, _, [ DUInt16 number; DUInt16 exp ] ->
+        | _, vm, _, [ DUInt16 number; DUInt16 exp ] ->
           (try
             (bigint number) ** (int exp) |> uint16 |> DUInt16 |> Ply
            with :? System.OverflowException ->
-             RTE.Ints.OutOfRange
-             |> RTE.Int
-             |> raiseRTE exeState.tracing.callStack
-             |> Ply)
+             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack |> Ply)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -161,21 +146,15 @@ let fns : List<BuiltInFn> =
       description = "Divides two 16-bit unsigned integers"
       fn =
         (function
-        | exeState, _, _, [ DUInt16 a; DUInt16 b ] ->
+        | _, vm, _, [ DUInt16 a; DUInt16 b ] ->
           if b = 0us then
-            RTE.Ints.DivideByZeroError
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
-            |> Ply
+            RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.callStack |> Ply
           else
             let result = a / b
             if
               result < System.UInt16.MinValue || result > System.UInt16.MaxValue
             then
-              RTE.Ints.OutOfRange
-              |> RTE.Int
-              |> raiseRTE exeState.tracing.callStack
-              |> Ply
+              RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack |> Ply
             else
               Ply(DUInt16(uint16 result))
 

@@ -44,13 +44,11 @@ let fns : List<BuiltInFn> =
         a different behavior for negative numbers."
       fn =
         (function
-        | exeState, _, _, [ DInt128 v; DInt128 m ] ->
+        | _, vm, _, [ DInt128 v; DInt128 m ] ->
           if m = System.Int128.Zero then
-            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE vm.callStack
           else if m < System.Int128.Zero then
-            RTE.Ints.NegativeModulus
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.NegativeModulus |> RTE.Int |> raiseRTE vm.callStack
           else
             let result = v % m
             let result = if result < System.Int128.Zero then m + result else result
@@ -78,14 +76,12 @@ let fns : List<BuiltInFn> =
       fn =
         let resultOk r = Dval.resultOk KTInt128 KTString r |> Ply
         (function
-        | exeState, _, _, [ DInt128 v; DInt128 d ] ->
+        | _, vm, _, [ DInt128 v; DInt128 d ] ->
           (try
             v % d |> DInt128 |> resultOk
            with e ->
              if d = System.Int128.Zero then
-               RTE.Ints.DivideByZeroError
-               |> RTE.Int
-               |> raiseRTE exeState.tracing.callStack
+               RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.callStack
              else
                Exception.raiseInternal
                  "unexpected failure case in Int128.remainder"
@@ -104,12 +100,12 @@ let fns : List<BuiltInFn> =
       description = "Adds two 128-bit signed integers together"
       fn =
         (function
-        | exeState, _, _, [ DInt128 a; DInt128 b ] ->
+        | _, vm, _, [ DInt128 a; DInt128 b ] ->
           try
             let result = System.Int128.op_CheckedAddition (a, b)
             Ply(DInt128(result))
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -123,12 +119,12 @@ let fns : List<BuiltInFn> =
       description = "Subtracts two 128-bit signed integers"
       fn =
         (function
-        | exeState, _, _, [ DInt128 a; DInt128 b ] ->
+        | _, vm, _, [ DInt128 a; DInt128 b ] ->
           try
             let result = System.Int128.op_CheckedSubtraction (a, b)
             Ply(DInt128(result))
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -143,12 +139,12 @@ let fns : List<BuiltInFn> =
       description = "Multiplies two 128-bit signed integers"
       fn =
         (function
-        | exeState, _, _, [ DInt128 a; DInt128 b ] ->
+        | _, vm, _, [ DInt128 a; DInt128 b ] ->
           try
             let result = System.Int128.op_CheckedMultiply (a, b)
             Ply(DInt128(result))
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -165,17 +161,15 @@ let fns : List<BuiltInFn> =
       description = "Divides two 128-bit signed integers"
       fn =
         (function
-        | exeState, _, _, [ DInt128 a; DInt128 b ] ->
+        | _, vm, _, [ DInt128 a; DInt128 b ] ->
           try
             let result = System.Int128.op_Division (a, b)
             Ply(DInt128(result))
           with
           | :? System.DivideByZeroException ->
-            RTE.Ints.DivideByZeroError
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.callStack
           | :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -189,12 +183,12 @@ let fns : List<BuiltInFn> =
       description = "Returns the negation of <param a>, {{-a}}"
       fn =
         (function
-        | exeState, _, _, [ DInt128 a ] ->
+        | _, vm, _, [ DInt128 a ] ->
           try
             let result = System.Int128.op_CheckedUnaryNegation a
             Ply(DInt128(result))
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure

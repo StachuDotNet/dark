@@ -44,13 +44,11 @@ let fns : List<BuiltInFn> =
         a different behavior for negative numbers."
       fn =
         (function
-        | exeState, _, _, [ DInt16 v; DInt16 m ] ->
+        | _, vm, _, [ DInt16 v; DInt16 m ] ->
           if m = 0s then
-            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE vm.callStack
           else if m < 0s then
-            RTE.Ints.NegativeModulus
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.NegativeModulus |> RTE.Int |> raiseRTE vm.callStack
           else
             let result = v % m
             let result = if result < 0s then m + result else result
@@ -78,14 +76,12 @@ let fns : List<BuiltInFn> =
       fn =
         let resultOk r = Dval.resultOk KTInt16 KTString r |> Ply
         (function
-        | exeState, _, _, [ DInt16 v; DInt16 d ] ->
+        | _, vm, _, [ DInt16 v; DInt16 d ] ->
           (try
             v % d |> DInt16 |> resultOk
            with e ->
              if d = 0s then
-               RTE.Ints.DivideByZeroError
-               |> RTE.Int
-               |> raiseRTE exeState.tracing.callStack
+               RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.callStack
              else
                Exception.raiseInternal
                  "unexpected failure case in Int16.remainder"
@@ -104,12 +100,12 @@ let fns : List<BuiltInFn> =
       description = "Adds two 16-bit signed integers together"
       fn =
         (function
-        | exeState, _, _, [ DInt16 a; DInt16 b ] ->
+        | _, vm, _, [ DInt16 a; DInt16 b ] ->
           try
             let result = Checked.(+) a b
             Ply(DInt16(result))
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -123,12 +119,12 @@ let fns : List<BuiltInFn> =
       description = "Subtracts two 16-bit signed integers"
       fn =
         (function
-        | exeState, _, _, [ DInt16 a; DInt16 b ] ->
+        | _, vm, _, [ DInt16 a; DInt16 b ] ->
           try
             let result = Checked.(-) a b
             Ply(DInt16(result))
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -142,12 +138,12 @@ let fns : List<BuiltInFn> =
       description = "multiplies two 16-bit signed integers"
       fn =
         (function
-        | exeState, _, _, [ DInt16 a; DInt16 b ] ->
+        | _, vm, _, [ DInt16 a; DInt16 b ] ->
           try
             let result = Checked.(*) a b
             Ply(DInt16(result))
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -164,16 +160,14 @@ let fns : List<BuiltInFn> =
         Return value wrapped in a {{Result}} "
       fn =
         (function
-        | exeState, _, _, [ DInt16 number; DInt16 exp ] ->
+        | _, vm, _, [ DInt16 number; DInt16 exp ] ->
           (try
             if exp < 0s then
-              RTE.Ints.NegativeExponent
-              |> RTE.Int
-              |> raiseRTE exeState.tracing.callStack
+              RTE.Ints.NegativeExponent |> RTE.Int |> raiseRTE vm.callStack
             else
               (bigint number) ** (int exp) |> int16 |> DInt16 |> Ply
            with :? System.OverflowException ->
-             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack)
+             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -187,17 +181,15 @@ let fns : List<BuiltInFn> =
       description = "Divides two 16-bit signed integers"
       fn =
         (function
-        | exeState, _, _, [ DInt16 a; DInt16 b ] ->
+        | _, vm, _, [ DInt16 a; DInt16 b ] ->
           if b = 0s then
-            RTE.Ints.DivideByZeroError
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.callStack
           else if a = int16 System.Int16.MinValue && b = -1s then
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
           else
             let result = a / b
             if result < System.Int16.MinValue || result > System.Int16.MaxValue then
-              RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+              RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
             else
               Ply(DInt16(int16 result))
 
@@ -214,9 +206,9 @@ let fns : List<BuiltInFn> =
       description = "Returns the negation of <param a>, {{-a}}"
       fn =
         (function
-        | exeState, _, _, [ DInt16 a ] ->
+        | _, vm, _, [ DInt16 a ] ->
           if a = System.Int16.MinValue then
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
           else
             let result = -a
             Ply(DInt16 result)

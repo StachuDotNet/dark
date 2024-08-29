@@ -15,7 +15,10 @@ module PM = TestValues.PM
 
 let t name ptExpr expectedInsts =
   testTask name {
-    let vmState = ptExpr |> PT2RT.Expr.toRT 0 |> RT.VMState.fromInstructions
+    let vmState =
+      ptExpr
+      |> PT2RT.Expr.toRT 0
+      |> RT.VMState.fromInstructions RT.ExecutionPoint.Script
 
     let! exeState =
       executionStateFor PT.PackageManager.empty (System.Guid.NewGuid()) false false
@@ -250,7 +253,41 @@ module Records =
       E.Records.simple
       (RT.DRecord(typeName, typeName, [], Map [ "key", RT.DBool true ]))
 
-  let tests = testList "Records" [ simple ]
+  let nested =
+    let outerTypeName = RT.FQTypeName.fqPackage PM.Types.Records.nested
+    let innerTypeName = RT.FQTypeName.fqPackage PM.Types.Records.singleField
+    t
+      "Test.Test2 { outer = (Test.Test { key = true }) }"
+      E.Records.nested
+      (RT.DRecord(
+        outerTypeName,
+        outerTypeName,
+        [],
+        Map
+          [ "outer",
+            RT.DRecord(
+              innerTypeName,
+              innerTypeName,
+              [],
+              Map [ "key", RT.DBool true ]
+            ) ]
+      ))
+
+
+  let tests = testList "Records" [ simple; nested ]
+
+
+module RecordFieldAccess =
+  let simple =
+    t "Test.Test { key = true }" E.RecordFieldAccess.simple (RT.DBool true)
+
+  let nested =
+    t
+      "Test.Test2 { outer = (Test.Test { key = true }) }"
+      E.RecordFieldAccess.nested
+      (RT.DBool true)
+
+  let tests = testList "RecordFieldAccess" [ simple; nested ]
 
 
 let tests =
@@ -264,4 +301,5 @@ let tests =
       If.tests
       Tuples.tests
       Match.tests
-      Records.tests ]
+      Records.tests
+      RecordFieldAccess.tests ]

@@ -415,8 +415,8 @@ let fns (config : Configuration) : List<BuiltInFn> =
           FQTypeName.fqPackage PackageIDs.Type.Stdlib.HttpClient.requestError
         let resultError = Dval.resultError responseType (KTCustomType(typeName, []))
         (function
-        | exeState,
-          _,
+        | _,
+          vmState,
           _,
           [ DString method; DString uri; DList(_, reqHeaders); DList(_, reqBody) ] ->
           uply {
@@ -444,7 +444,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
                           2
                         )
                       )
-                      |> raiseRTE exeState.tracing.callStack
+                      |> raiseRTE vmState.callStack
 
                 })
               |> Ply.map (Result.collect)

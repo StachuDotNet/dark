@@ -44,13 +44,11 @@ let fns : List<BuiltInFn> =
         a different behavior for negative numbers."
       fn =
         (function
-        | exeState, _, _, [ DInt8 v; DInt8 m ] ->
+        | _, vm, _, [ DInt8 v; DInt8 m ] ->
           if m = 0y then
-            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE vm.callStack
           else if m < 0y then
-            RTE.Ints.NegativeModulus
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.NegativeModulus |> RTE.Int |> raiseRTE vm.callStack
           else
             let result = v % m
             let result = if result < 0y then m + result else result
@@ -78,14 +76,12 @@ let fns : List<BuiltInFn> =
       fn =
         let resultOk r = Dval.resultOk KTInt8 KTString r |> Ply
         (function
-        | exeState, _, _, [ DInt8 v; DInt8 d ] ->
+        | _, vm, _, [ DInt8 v; DInt8 d ] ->
           (try
             v % d |> DInt8 |> resultOk
            with e ->
              if d = 0y then
-               RTE.Ints.DivideByZeroError
-               |> RTE.Int
-               |> raiseRTE exeState.tracing.callStack
+               RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.callStack
              else
                Exception.raiseInternal
                  "unexpected failure case in Int8.remainder"
@@ -104,11 +100,11 @@ let fns : List<BuiltInFn> =
       description = "Adds two 8-bit signed integers together"
       fn =
         (function
-        | exeState, _, _, [ DInt8 a; DInt8 b ] ->
+        | _, vm, _, [ DInt8 a; DInt8 b ] ->
           try
             DInt8(Checked.(+) a b) |> Ply
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -122,11 +118,11 @@ let fns : List<BuiltInFn> =
       description = "Subtracts two 8-bit signed integers"
       fn =
         (function
-        | exeState, _, _, [ DInt8 a; DInt8 b ] ->
+        | _, vm, _, [ DInt8 a; DInt8 b ] ->
           try
             DInt8(Checked.(-) a b) |> Ply
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -140,11 +136,11 @@ let fns : List<BuiltInFn> =
       description = "Multiplies two 8-bit signed integers"
       fn =
         (function
-        | exeState, _, _, [ DInt8 a; DInt8 b ] ->
+        | _, vm, _, [ DInt8 a; DInt8 b ] ->
           try
             DInt8(Checked.(*) a b) |> Ply
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -161,16 +157,14 @@ let fns : List<BuiltInFn> =
         Return value wrapped in a {{Result}} "
       fn =
         (function
-        | exeState, _, _, [ DInt8 number; DInt8 exp ] ->
+        | _, vm, _, [ DInt8 number; DInt8 exp ] ->
           (try
             if exp < 0y then
-              RTE.Ints.NegativeExponent
-              |> RTE.Int
-              |> raiseRTE exeState.tracing.callStack
+              RTE.Ints.NegativeExponent |> RTE.Int |> raiseRTE vm.callStack
             else
               (bigint number) ** (int exp) |> int8 |> DInt8 |> Ply
            with :? System.OverflowException ->
-             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack)
+             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -184,15 +178,13 @@ let fns : List<BuiltInFn> =
       description = "Divides two 8-bit signed integers"
       fn =
         (function
-        | exeState, _, _, [ DInt8 a; DInt8 b ] ->
+        | _, vm, _, [ DInt8 a; DInt8 b ] ->
           if b = int8 0 then
-            RTE.Ints.DivideByZeroError
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.callStack
           else
             let result = int a / int b
             if result < -128 || result > 127 then
-              RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+              RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
             else
               Ply(DInt8(int8 result))
         | _ -> incorrectArgs ())
@@ -208,10 +200,10 @@ let fns : List<BuiltInFn> =
       description = "Returns the negation of <param a>, {{-a}}"
       fn =
         (function
-        | exeState, _, _, [ DInt8 a ] ->
+        | _, vm, _, [ DInt8 a ] ->
           let result = -(int a)
           if result < -128 || result > 127 then
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
           else
             Ply(DInt8(int8 result))
         | _ -> incorrectArgs ())

@@ -203,8 +203,7 @@ let executionStateFor
       localBuiltIns pmPT
     let state =
       let pmRT = PT2RT.PackageManager.toRT pmPT
-      let tracing = Exe.noTracing (RT.CallStack.fromEntryPoint RT.Script)
-      Exe.createState builtins pmRT tracing exceptionReporter notifier program
+      Exe.createState builtins pmRT Exe.noTracing exceptionReporter notifier program
     let state = { state with test = testContext }
     return state
   }

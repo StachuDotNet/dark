@@ -45,9 +45,9 @@ let fns : List<BuiltInFn> =
          a different behavior for negative numbers."
       fn =
         (function
-        | exeState, _, _, [ DUInt64 v; DUInt64 m ] ->
+        | _, vm, _, [ DUInt64 v; DUInt64 m ] ->
           if m = 0UL then
-            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE vm.callStack
           else
             let result = v % m
             let result = if result < 0UL then m + result else result
@@ -65,11 +65,11 @@ let fns : List<BuiltInFn> =
       description = "Adds 64-bit unsigned integers together"
       fn =
         (function
-        | exeState, _, _, [ DUInt64 a; DUInt64 b ] ->
+        | _, vm, _, [ DUInt64 a; DUInt64 b ] ->
           try
             DUInt64(Checked.(+) a b) |> Ply
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -83,11 +83,11 @@ let fns : List<BuiltInFn> =
       description = "Subtracts 64-bit unsigned integers"
       fn =
         (function
-        | exeState, _, _, [ DUInt64 a; DUInt64 b ] ->
+        | _, vm, _, [ DUInt64 a; DUInt64 b ] ->
           try
             DUInt64(Checked.(-) a b) |> Ply
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -101,11 +101,11 @@ let fns : List<BuiltInFn> =
       description = "Multiplies 64-bit unsigned integers"
       fn =
         (function
-        | exeState, _, _, [ DUInt64 a; DUInt64 b ] ->
+        | _, vm, _, [ DUInt64 a; DUInt64 b ] ->
           try
             DUInt64(Checked.(*) a b) |> Ply
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -122,11 +122,11 @@ let fns : List<BuiltInFn> =
         Return value wrapped in a {{Result}} "
       fn =
         (function
-        | exeState, _, _, [ DUInt64 number; DUInt64 exp ] ->
+        | _, vm, _, [ DUInt64 number; DUInt64 exp ] ->
           (try
             (bigint number) ** (int exp) |> uint64 |> DUInt64 |> Ply
            with :? System.OverflowException ->
-             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack)
+             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -140,17 +140,15 @@ let fns : List<BuiltInFn> =
       description = "Divides 64-bit unsigned integers"
       fn =
         (function
-        | exeState, _, _, [ DUInt64 a; DUInt64 b ] ->
+        | _, vm, _, [ DUInt64 a; DUInt64 b ] ->
           if b = 0UL then
-            RTE.Ints.DivideByZeroError
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.callStack
           else
             let result = a / b
             if
               result < System.UInt64.MinValue || result > System.UInt64.MaxValue
             then
-              RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack
+              RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
             else
               Ply(DUInt64(result))
         | _ -> incorrectArgs ())

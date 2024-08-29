@@ -354,12 +354,12 @@ let fns : List<BuiltInFn> =
       description = "Returns true if the two value are equal"
       fn =
         (function
-        | exeState, _, _, [ a; b ] ->
+        | _, vm, _, [ a; b ] ->
           let (vtA, vtB) = (Dval.toValueType a, Dval.toValueType b)
           match ValueType.merge vtA vtB with
           | Error _ ->
             raiseRTE
-              exeState.tracing.callStack
+              vm.callStack
               (RTE.EqualityCheckOnIncompatibleTypes(vtA, vtB))
           | Ok _ -> equals a b |> DBool |> Ply
         | _ -> incorrectArgs ())
@@ -375,12 +375,12 @@ let fns : List<BuiltInFn> =
       description = "Returns true if the two value are not equal"
       fn =
         (function
-        | exeState, _, _, [ a; b ] ->
+        | _, vm, _, [ a; b ] ->
           let (vtA, vtB) = (Dval.toValueType a, Dval.toValueType b)
           match ValueType.merge vtA vtB with
           | Error _ ->
             raiseRTE
-              exeState.tracing.callStack
+              vm.callStack
               (RTE.EqualityCheckOnIncompatibleTypes(vtA, vtB))
           | Ok _ -> equals a b |> not |> DBool |> Ply
         | _ -> incorrectArgs ())

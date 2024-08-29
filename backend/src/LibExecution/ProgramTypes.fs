@@ -342,10 +342,12 @@ type Expr =
     // User is allowed type `Name {}` even if that's an error
     fields : List<string * Expr>
 
-  // | ERecordUpdate of id * record : Expr * updates : NEList<string * Expr>
-
   /// Access a field of some record (e.g. `someExpr.fieldName`)
   | ERecordFieldAccess of id * record : Expr * fieldName : string
+
+  // /// Clone a record, and update some of its values
+  // /// `{ r with key = value }`
+  // | ERecordUpdate of id * record : Expr * updates : NEList<string * Expr>
 
 
   // Enums include `Some`, `None`, `Error`, `Ok`, as well

@@ -8,12 +8,11 @@ open Prelude
 module RT = RuntimeTypes
 module RTE = RT.RuntimeError
 
-let noTracing (callStack : RT.CallStack) : RT.Tracing =
+let noTracing : RT.Tracing =
   { traceDval = fun _ _ -> ()
     traceExecutionPoint = fun _ -> ()
     loadFnResult = fun _ _ -> None
-    storeFnResult = fun _ _ _ -> ()
-    callStack = callStack }
+    storeFnResult = fun _ _ _ -> () }
 
 let noTestContext : RT.TestContext =
   { sideEffectCount = 0
@@ -51,25 +50,28 @@ let executeExpr
   : Task<RT.ExecutionResult> =
   task {
     let registersNeeded, instructions, resultReg = instructionsWithContext
+    let vmState : RT.VMState =
+      { pc = 0
+        instructions = List.toArray instructions
+        registers = Array.zeroCreate registersNeeded
+        resultReg = resultReg
+
+        callStack = RT.CallStack.fromEntryPoint RT.ExecutionPoint.Script // TODO
+
+        symbolTable = inputVars
+        typeSymbolTable = Map.empty }
     try
       try
-        let vmState : RT.VMState =
-          { instructions = List.toArray instructions
-            registers = Array.zeroCreate registersNeeded
-            resultReg = resultReg
-
-            symbolTable = inputVars
-            typeSymbolTable = Map.empty }
-
-        let vmState =
-          //{ state with symbolTable = Interpreter.withGlobals state inputVars }
-          { vmState with symbolTable = inputVars }
+        vmState.symbolTable <-
+          // todo
+          //Interpreter.withGlobals state inputVars
+          inputVars
 
         let! result = Interpreter.eval exeState vmState
         return Ok result
 
       with
-      | RT.RuntimeErrorException(source, rte) -> return Error(source, rte)
+      | RT.RuntimeErrorException(callStack, rte) -> return Error(callStack, rte)
       | ex ->
         let context : Metadata =
           //[ "fn", fnDesc; "args", args; "typeArgs", typeArgs; "id", id ]
@@ -77,7 +79,7 @@ let executeExpr
         exeState.reportException exeState context ex
         let id = System.Guid.NewGuid()
         // TODO: log the error and details or something
-        return (RTE.UncaughtException id) |> RT.raiseRTE exeState.tracing.callStack
+        return (RTE.UncaughtException id) |> RT.raiseRTE vmState.callStack
 
     finally
       // Does nothing in non-tests

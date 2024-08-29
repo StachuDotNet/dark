@@ -44,13 +44,11 @@ let fns : List<BuiltInFn> =
          a different behavior for negative numbers."
       fn =
         (function
-        | exeState, _, _, [ DInt32 v; DInt32 m ] ->
+        | _, vm, _, [ DInt32 v; DInt32 m ] ->
           if m = 0 then
-            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE vm.callStack
           else if m < 0 then
-            RTE.Ints.NegativeModulus
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.NegativeModulus |> RTE.Int |> raiseRTE vm.callStack
           else
             let result = v % m
             let result = if result < 0 then m + result else result
@@ -78,14 +76,12 @@ let fns : List<BuiltInFn> =
       fn =
         let resultOk r = Dval.resultOk KTInt32 KTString r |> Ply
         (function
-        | exeState, _, _, [ DInt32 v; DInt32 d ] ->
+        | _, vm, _, [ DInt32 v; DInt32 d ] ->
           (try
             v % d |> DInt32 |> resultOk
            with e ->
              if d = 0 then
-               RTE.Ints.DivideByZeroError
-               |> RTE.Int
-               |> raiseRTE exeState.tracing.callStack
+               RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.callStack
              else
                Exception.raiseInternal
                  "unexpected failure case in Int32.remainder"
@@ -149,16 +145,14 @@ let fns : List<BuiltInFn> =
         Return value wrapped in a {{Result}} "
       fn =
         (function
-        | exeState, _, _, [ DInt32 number; DInt32 exp ] ->
+        | _, vm, _, [ DInt32 number; DInt32 exp ] ->
           (try
             if exp < 0 then
-              RTE.Ints.NegativeExponent
-              |> RTE.Int
-              |> raiseRTE exeState.tracing.callStack
+              RTE.Ints.NegativeExponent |> RTE.Int |> raiseRTE vm.callStack
             else
               (bigint number) ** (int exp) |> int32 |> DInt32 |> Ply
            with :? System.OverflowException ->
-             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE exeState.tracing.callStack)
+             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -172,11 +166,9 @@ let fns : List<BuiltInFn> =
       description = "Divides two 32-bit signed integers"
       fn =
         (function
-        | exeState, _, _, [ DInt32 a; DInt32 b ] ->
+        | _, vm, _, [ DInt32 a; DInt32 b ] ->
           if b = 0 then
-            RTE.Ints.DivideByZeroError
-            |> RTE.Int
-            |> raiseRTE exeState.tracing.callStack
+            RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.callStack
           else
             Ply(DInt32(a / b))
         | _ -> incorrectArgs ())

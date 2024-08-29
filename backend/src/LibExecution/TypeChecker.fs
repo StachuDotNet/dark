@@ -417,10 +417,10 @@ module RTE = RuntimeError
 /// (lists, records, enums, etc.)
 ///
 /// Dvals should be created carefully:
-/// - to have the correct valueTypes, where appropriate
-///  i.e. we should not have DList(Known KTInt64, [ DString("hi") ])
+/// - to have the correct `ValueType`s, where appropriate
+///  i.e. we should not have `DList(Known KTInt64, [ DString("hi") ])`
 ///
-/// - similarly, we should fail when trying to merge Dvals with conflicting valueTypes
+/// - similarly, we should fail when trying to merge `Dval`s with conflicting `ValueType`s
 ///   i.e. `List.append [1] ["hi"]` should fail
 ///   because we can't merge `Known KTInt64` and `Known KTString`
 ///
@@ -428,13 +428,11 @@ module RTE = RuntimeError
 /// the functions in Dval.fs are insufficient (i.e. we don't know the Dark sub-types
 /// of a Dval in some F# code).
 ///
-/// TODO: review _all_ usages of these functions
-///
 /// TODO: ideally we don't require a callStack to be input here -- too much data-passing
 /// (Ideally, upon error, we'd "fill in" the callstack in the Interpreter somewhere?)
 module DvalCreator =
   let list (cs : CallStack) (typ : ValueType) (items : List<Dval>) : Dval =
-    let (typ, dvs) =
+    let (typ, items) =
       items
       |> List.fold
         (fun (typ, list) dv ->
@@ -448,7 +446,7 @@ module DvalCreator =
             |> raiseRTE cs)
         (typ, [])
 
-    DList(typ, List.rev dvs)
+    DList(typ, List.rev items)
 
 
 
@@ -507,91 +505,102 @@ module DvalCreator =
 
 
 
-//   let resultOk
-//     (callStack : CallStack)
-//     (okType : ValueType)
-//     (errorType : ValueType)
-//     (dvOk : Dval)
-//     : Dval =
-//     let dvalType = Dval.toValueType dvOk
-//     match VT.merge okType dvalType with
-//     | Ok typ ->
-//       DEnum(
-//         Dval.resultType,
-//         Dval.resultType,
-//          [ typ; errorType ],
-//         "Ok",
-//         [ dvOk ]
-//       )
-//     | Error() ->
-//       RuntimeError.oldError
-//         $"Could not merge types {ValueType.toString (VT.customType Dval.resultType [ okType; errorType ])} and {ValueType.toString (VT.customType Dval.resultType [ dvalType; errorType ])}"
-//       |> raiseRTE callStack
+  //   let resultOk
+  //     (callStack : CallStack)
+  //     (okType : ValueType)
+  //     (errorType : ValueType)
+  //     (dvOk : Dval)
+  //     : Dval =
+  //     let dvalType = Dval.toValueType dvOk
+  //     match VT.merge okType dvalType with
+  //     | Ok typ ->
+  //       DEnum(
+  //         Dval.resultType,
+  //         Dval.resultType,
+  //          [ typ; errorType ],
+  //         "Ok",
+  //         [ dvOk ]
+  //       )
+  //     | Error() ->
+  //       RuntimeError.oldError
+  //         $"Could not merge types {ValueType.toString (VT.customType Dval.resultType [ okType; errorType ])} and {ValueType.toString (VT.customType Dval.resultType [ dvalType; errorType ])}"
+  //       |> raiseRTE callStack
 
-//   let resultError
-//     (callStack : CallStack)
-//     (okType : ValueType)
-//     (errorType : ValueType)
-//     (dvError : Dval)
-//     : Dval =
-//     let dvalType = Dval.toValueType dvError
-//     match VT.merge errorType dvalType with
-//     | Ok typ ->
-//       DEnum(
-//         Dval.resultType,
-//         Dval.resultType,
-//          [ okType; typ ],
-//         "Error",
-//         [ dvError ]
-//       )
-//     | Error() ->
-//       RuntimeError.oldError
-//         $"Could not merge types {ValueType.toString (VT.customType Dval.resultType [ okType; errorType ])} and {ValueType.toString (VT.customType Dval.resultType [ okType; dvalType ])}"
-//       |> raiseRTE callStack
+  //   let resultError
+  //     (callStack : CallStack)
+  //     (okType : ValueType)
+  //     (errorType : ValueType)
+  //     (dvError : Dval)
+  //     : Dval =
+  //     let dvalType = Dval.toValueType dvError
+  //     match VT.merge errorType dvalType with
+  //     | Ok typ ->
+  //       DEnum(
+  //         Dval.resultType,
+  //         Dval.resultType,
+  //          [ okType; typ ],
+  //         "Error",
+  //         [ dvError ]
+  //       )
+  //     | Error() ->
+  //       RuntimeError.oldError
+  //         $"Could not merge types {ValueType.toString (VT.customType Dval.resultType [ okType; errorType ])} and {ValueType.toString (VT.customType Dval.resultType [ okType; dvalType ])}"
+  //       |> raiseRTE callStack
 
-//   let result
-//     (callStack : CallStack)
-//     (okType : ValueType)
-//     (errorType : ValueType)
-//     (dv : Result<Dval, Dval>)
-//     : Dval =
-//     match dv with
-//     | Ok dv -> resultOk callStack okType errorType dv
-//     | Error dv -> resultError callStack okType errorType dv
+  //   let result
+  //     (callStack : CallStack)
+  //     (okType : ValueType)
+  //     (errorType : ValueType)
+  //     (dv : Result<Dval, Dval>)
+  //     : Dval =
+  //     match dv with
+  //     | Ok dv -> resultOk callStack okType errorType dv
+  //     | Error dv -> resultError callStack okType errorType dv
 
 
-//   /// Constructs a Dval.DRecord, ensuring that the fields match the expected shape
-//   ///
-//   /// note: if provided, the typeArgs must match the # of typeArgs expected by the type
-//   let record
-//     (callStack : CallStack)
-//     (typeName : FQTypeName.FQTypeName)
-//     (fields : List<string * Dval>)
-//     : Ply<Dval> =
-//     let resolvedTypeName = typeName // TODO: alias lookup, etc.
+  /// Constructs a Dval.DRecord, ensuring that the fields match the expected shape
+  ///
+  /// note: if provided, the typeArgs must match the # of typeArgs expected by the type
+  let record
+    (callStack : CallStack)
+    (_types : Types)
+    (typeName : FQTypeName.FQTypeName)
+    (_typeArgs : List<TypeReference>)
+    (fields : List<string * Dval>)
+    : Ply<Dval> =
 
-//     let fields =
-//       List.fold
-//         (fun fields (k, v) ->
-//           match fields, k, v with
-//           // skip empty rows
-//           | _, "", _ -> raiseRTE callStack (RuntimeError.oldError "Empty key")
+    // hmm we need to know what fields the type expects, so we can raise the right errors
+    // should that happen here, or in the interpreter?
+    // Besides the interpreter, the only usage (so far) is Json.fs
 
-//           // error if the key appears twice
-//           | fields, k, _v when Map.containsKey k fields ->
-//             raiseRTE callStack (RuntimeError.oldError $"Duplicate key: {k}")
+    let resolvedTypeName = typeName // TODO: alias lookup, etc.
 
-//           // otherwise add it
-//           | fields, k, v -> Map.add k v fields)
-//         Map.empty
-//         fields
+    let fields =
+      List.fold
+        (fun fields (k, v) ->
+          match fields, k, v with
+          // skip empty rows
+          | _, "", _ ->
+            RTE.Records.CreationEmptyKey |> RTE.Record |> raiseRTE callStack
 
-//     // TODO:
-//     // - pass in a (types: Types) arg
-//     // - use it to determine type args of resultant Dval
-//     // - ensure fields match the expected shape (defined by type args and field defs)
-//     //   - this process should also effect the type args of the resultant Dval
-//     DRecord(resolvedTypeName, typeName, VT.typeArgsTODO, fields) |> Ply
+          // error if the key appears twice
+          | fields, k, _v when Map.containsKey k fields ->
+            RTE.Records.CreationDuplicateField k |> RTE.Record |> raiseRTE callStack
+
+          // otherwise add it
+          | fields, k, v ->
+            // TODO CreationMissingField
+            // TODO CreationFieldOfWrongType
+            Map.add k v fields)
+        Map.empty
+        fields
+
+    // TODO:
+    // - pass in a (types: Types) arg
+    // - use it to determine type args of resultant Dval
+    // - ensure fields match the expected shape (defined by type args and field defs)
+    //   - this process should also effect the type args of the resultant Dval
+    DRecord(resolvedTypeName, typeName, VT.typeArgsTODO, fields) |> Ply
 
 
 //   let enum

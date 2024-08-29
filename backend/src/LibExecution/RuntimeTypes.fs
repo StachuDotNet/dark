@@ -408,6 +408,11 @@ and Instruction =
     typeArgs : List<TypeReference> *
     fields : List<string * Register>
 
+  // | CloneRecordWithUpdates of
+  //   targetReg : Register *
+  //   originalRecordReg : Register *
+  //   updates : List<string * Register>
+
   | GetRecordField of
     targetReg : Register *
     recordReg : Register *
@@ -495,7 +500,7 @@ and [<NoComparison>] Dval =
   | DTuple of first : Dval * second : Dval * theRest : List<Dval>
   | DDict of
     // This is the type of the _values_, not the keys. Once users can specify the
-    // key type, we likely will need to add a `keyType: ValueType` field here.
+    // key type, we likely will need to add a `keyType: ValueType` field here. TODO
     valueType : ValueType *
     entries : DvalMap
 
@@ -507,14 +512,20 @@ and [<NoComparison>] Dval =
     // CLEANUP we may need a sourceTypeArgs here as well
     sourceTypeName : FQTypeName.FQTypeName *
     runtimeTypeName : FQTypeName.FQTypeName *
+    // do we need to split this into sourceTypeArgs and runtimeTypeArgs?
+    // What are we even using the source stuff for? error-reporting?
     typeArgs : List<ValueType> *
-    fields : DvalMap
+    fields : DvalMap // would a list be better? We can do the type-check fun _after_
+  // field access would be a tad slower, but there usually aren't that many fields
+  // and it's probably more convenient?
+  // Hmm for dicts, we could consider the same thing, but field-access perf is
+  // more important there.
 
   | DEnum of
     // CLEANUP we may need a sourceTypeArgs here as well
     sourceTypeName : FQTypeName.FQTypeName *
     runtimeTypeName : FQTypeName.FQTypeName *
-    typeArgs : List<ValueType> *
+    typeArgs : List<ValueType> *  // same q here - split into sourceTypeArgs and runtimeTypeArgs?
     caseName : string *
     fields : List<Dval>
 
@@ -735,8 +746,17 @@ module RuntimeError =
 
   module Records =
     type Error =
-      | RecordExpectedForFieldAccess of actualType : ValueType
-      | FieldNotFound of fieldName : string
+      | CreationEmptyKey
+      | CreationMissingField of fieldName : string
+      | CreationDuplicateField of fieldName : string
+      | CreationFieldOfWrongType of
+        fieldName : string *
+        expectedType : TypeReference *
+        actualType : ValueType
+
+      | FieldAccessFieldNotFound of fieldName : string
+      | FieldAccessNotRecord of actualType : ValueType
+
 
 
   /// RuntimeError is the major way of representing errors in the runtime. These are
@@ -1171,33 +1191,6 @@ module PackageFn =
 // module Secret =
 //   type T = { name : string; value : string; version : int }
 
-// module Handler =
-//   type CronInterval =
-//     | EveryDay
-//     | EveryWeek
-//     | EveryFortnight
-//     | EveryHour
-//     | Every12Hours
-//     | EveryMinute
-
-//   type Spec =
-//     | HTTP of path : string * method : string
-//     | Worker of name : string
-//     | Cron of name : string * interval : CronInterval
-//     | REPL of name : string
-
-//   type T = { tlid : tlid; ast : Expr; spec : Spec }
-
-// module Toplevel =
-//   type T =
-//     | TLHandler of Handler.T
-//     | TLDB of DB.T
-
-//   let toTLID (tl : T) : tlid =
-//     match tl with
-//     | TLHandler h -> h.tlid
-//     | TLDB db -> db.tlid
-
 
 
 // ------------
@@ -1349,9 +1342,7 @@ and Tracing =
   { traceDval : TraceDval
     traceExecutionPoint : TraceExecutionPoint
     loadFnResult : LoadFnResult
-    storeFnResult : StoreFnResult
-
-    callStack : CallStack }
+    storeFnResult : StoreFnResult }
 
 // Used for testing
 // TODO: maybe this belongs in Execution rather than RuntimeTypes?
@@ -1456,27 +1447,40 @@ and ExecutionState =
 and Registers = Dval array
 
 and VMState =
-  { // /// Program counter -- what instruction index are we pointing at?
-    //pc: int
+  {
+    /// Program counter -- what instruction index are we pointing at?
+    mutable pc : int
 
     instructions : Instruction array
-    registers : Registers
+    registers : Registers // mutable because array?
     resultReg : Register
 
-    symbolTable : Symtable
-    typeSymbolTable : TypeSymbolTable }
+    mutable callStack : CallStack
 
-  static member empty =
-    { instructions = Array.empty
-      registers = Array.empty
-      resultReg = 0
+    mutable symbolTable : Symtable
+    mutable typeSymbolTable : TypeSymbolTable
+  }
 
-      symbolTable = Map.empty
-      typeSymbolTable = Map.empty }
+  // static member empty =
+  //   { pc = 0
+  //     callStack = CallStack.fromEntryPoint(ExecutionPoint.BuiltIn)
 
-  static member fromInstructions(instructions : InstructionsWithContext) : VMState =
+  //     instructions = Array.empty
+  //     registers = Array.empty
+  //     resultReg = 0
+
+  //     symbolTable = Map.empty
+  //     typeSymbolTable = Map.empty }
+
+  static member fromInstructions
+    (entrypoint)
+    (instructions : InstructionsWithContext)
+    : VMState =
     let registersNeeded, instructions, resultReg = instructions
-    { instructions = List.toArray instructions
+    { pc = 0
+      callStack = CallStack.fromEntryPoint entrypoint
+
+      instructions = List.toArray instructions
       registers = Array.zeroCreate registersNeeded
       resultReg = resultReg
 

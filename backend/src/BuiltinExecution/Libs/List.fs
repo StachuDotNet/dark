@@ -497,15 +497,10 @@ let fns : List<BuiltInFn> =
          preserving the order."
       fn =
         (function
-        | state, _, _, [ DList(vt1, l1); DList(_vt2, l2) ] ->
+        | _, vm, _, [ DList(vt1, l1); DList(_vt2, l2) ] ->
           // VTTODO should fail here in the case of vt1 conflicting with vt2?
           // (or is this handled by the interpreter?)
-          Ply(
-            TypeChecker.DvalCreator.list
-              state.tracing.callStack
-              vt1
-              (List.append l1 l2)
-          )
+          Ply(TypeChecker.DvalCreator.list vm.callStack vt1 (List.append l1 l2))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -668,14 +663,14 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DList(_, []) ] ->
           TypeChecker.DvalCreator.optionNone optType |> Ply
-        | state, _, _, [ DList(_, l) ] ->
+        | _, vm, _, [ DList(_, l) ] ->
           // Will return <= (length - 1)
           // Maximum value is Int64.MaxValue which is half of UInt64.MaxValue, but
           // that won't affect this as we won't have a list that big for a long long
           // long time.
           let index = RNG.GetInt32(l.Length)
           (List.tryItem index l)
-          |> TypeChecker.DvalCreator.option state.tracing.callStack optType
+          |> TypeChecker.DvalCreator.option vm.callStack optType
           |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
