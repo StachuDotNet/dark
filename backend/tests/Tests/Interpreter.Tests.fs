@@ -279,15 +279,27 @@ module Records =
 
 module RecordFieldAccess =
   let simple =
-    t "Test.Test { key = true }" E.RecordFieldAccess.simple (RT.DBool true)
+    t "(Test.Test { key = true }).key" E.RecordFieldAccess.simple (RT.DBool true)
+  let notRecord =
+    tFail
+      "1.key"
+      E.RecordFieldAccess.notRecord
+      (RTE.Record(RTE.Records.FieldAccessNotRecord VT.int64))
+
+  let missingField =
+    tFail
+      "(Test.Test { key = true }).missing"
+      E.RecordFieldAccess.missingField
+      (RTE.Record(RTE.Records.FieldAccessFieldNotFound "missing"))
 
   let nested =
     t
-      "Test.Test2 { outer = (Test.Test { key = true }) }"
+      "(Test.Test2 { outer = (Test.Test { key = true }) }).outer.key"
       E.RecordFieldAccess.nested
       (RT.DBool true)
 
-  let tests = testList "RecordFieldAccess" [ simple; nested ]
+  let tests =
+    testList "RecordFieldAccess" [ simple; notRecord; missingField; nested ]
 
 
 let tests =

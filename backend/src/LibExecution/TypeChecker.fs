@@ -15,28 +15,6 @@ module RTE = RuntimeError
 
 
 
-
-// let raiseValueNotExpectedType
-//   (callStack : CallStack)
-//   (dv : Dval)
-//   (typ : TypeReference)
-//   (context : Context)
-//   : 'a =
-//   { errorType = ValueNotExpectedType(dv, typ); context = context }
-//   |> Error.toRuntimeError
-//   |> raiseRTE callStack
-
-// let raiseFnValResultNotExpectedType
-//   (callStack : CallStack)
-//   (dv : Dval)
-//   (typ : TypeReference)
-//   : 'a =
-//   { errorType = ValueNotExpectedType(dv, typ); context = FnValResult(typ) }
-//   |> Error.toRuntimeError
-//   |> raiseRTE callStack
-
-
-
 // let rec getTypeReferenceFromAlias
 //   (_types : Types)
 //   (typ : TypeReference)
@@ -431,6 +409,7 @@ module RTE = RuntimeError
 /// TODO: ideally we don't require a callStack to be input here -- too much data-passing
 /// (Ideally, upon error, we'd "fill in" the callstack in the Interpreter somewhere?)
 module DvalCreator =
+
   let list (cs : CallStack) (typ : ValueType) (items : List<Dval>) : Dval =
     let (typ, items) =
       items
@@ -447,7 +426,6 @@ module DvalCreator =
         (typ, [])
 
     DList(typ, List.rev items)
-
 
 
   let dict
@@ -479,33 +457,40 @@ module DvalCreator =
 
 
 
-  let optionSome (callStack : CallStack) (innerType : ValueType) (dv : Dval) : Dval =
-    let typeName = Dval.optionType
-
-    let dvalType = Dval.toValueType dv
-
-    match VT.merge innerType dvalType with
-    | Ok typ -> DEnum(typeName, typeName, [ typ ], "Some", [ dv ])
-    | Error() ->
-      RuntimeError.CannotMergeValues(innerType, dvalType)
-      //$"Could not merge types {ValueType.toString (VT.customType typeName [ innerType ])} and {ValueType.toString (VT.customType typeName [ dvalType ])}"
-      |> raiseRTE callStack
 
   let optionNone (innerType : ValueType) : Dval =
     DEnum(Dval.optionType, Dval.optionType, [ innerType ], "None", [])
 
+  let optionSome
+    (callStack : CallStack)
+    (expectedType : ValueType)
+    (dv : Dval)
+    : Dval =
+    let typeName = Dval.optionType
+
+    let vt = Dval.toValueType dv
+
+    match VT.merge expectedType vt with
+    | Ok typ -> DEnum(typeName, typeName, [ typ ], "Some", [ dv ])
+    | Error() ->
+      // TODO this should be a more general Enum RTE
+      // (and make sure you include the Option wrapper type -- this loses that)
+      RuntimeError.CannotMergeValues(expectedType, vt) |> raiseRTE callStack
+
   let option
     (callStack : CallStack)
-    (innerType : ValueType)
+    (expectedType : ValueType)
     (dv : Option<Dval>)
     : Dval =
     match dv with
-    | Some dv -> optionSome callStack innerType dv
-    | None -> optionNone innerType
+    | Some dv -> optionSome callStack expectedType dv
+    | None -> optionNone expectedType
 
 
+  // module Result =
+  //   let typeName = Dval.resultType
 
-  //   let resultOk
+  //   let ok
   //     (callStack : CallStack)
   //     (okType : ValueType)
   //     (errorType : ValueType)
@@ -514,19 +499,13 @@ module DvalCreator =
   //     let dvalType = Dval.toValueType dvOk
   //     match VT.merge okType dvalType with
   //     | Ok typ ->
-  //       DEnum(
-  //         Dval.resultType,
-  //         Dval.resultType,
-  //          [ typ; errorType ],
-  //         "Ok",
-  //         [ dvOk ]
-  //       )
+  //       DEnum(typeName, typeName, [ typ; errorType ], "Ok", [ dvOk ])
   //     | Error() ->
-  //       RuntimeError.oldError
-  //         $"Could not merge types {ValueType.toString (VT.customType Dval.resultType [ okType; errorType ])} and {ValueType.toString (VT.customType Dval.resultType [ dvalType; errorType ])}"
+  //       // RuntimeError.oldError
+  //       //   $"Could not merge types {ValueType.toString (VT.customType typeName [ okType; errorType ])} and {ValueType.toString (VT.customType typeName [ dvalType; errorType ])}"
   //       |> raiseRTE callStack
 
-  //   let resultError
+  //   let error
   //     (callStack : CallStack)
   //     (okType : ValueType)
   //     (errorType : ValueType)
@@ -534,14 +513,7 @@ module DvalCreator =
   //     : Dval =
   //     let dvalType = Dval.toValueType dvError
   //     match VT.merge errorType dvalType with
-  //     | Ok typ ->
-  //       DEnum(
-  //         Dval.resultType,
-  //         Dval.resultType,
-  //          [ okType; typ ],
-  //         "Error",
-  //         [ dvError ]
-  //       )
+  //     | Ok typ -> DEnum(typeName, typeName, [ okType; typ ], "Error", [ dvError ])
   //     | Error() ->
   //       RuntimeError.oldError
   //         $"Could not merge types {ValueType.toString (VT.customType Dval.resultType [ okType; errorType ])} and {ValueType.toString (VT.customType Dval.resultType [ okType; dvalType ])}"
@@ -554,16 +526,19 @@ module DvalCreator =
   //     (dv : Result<Dval, Dval>)
   //     : Dval =
   //     match dv with
-  //     | Ok dv -> resultOk callStack okType errorType dv
-  //     | Error dv -> resultError callStack okType errorType dv
+  //     | Ok dv -> ok callStack okType errorType dv
+  //     | Error dv -> error callStack okType errorType dv
 
 
   /// Constructs a Dval.DRecord, ensuring that the fields match the expected shape
   ///
   /// note: if provided, the typeArgs must match the # of typeArgs expected by the type
+  ///
+  /// TODO this probably needs to both _take in_ and _return_ the typeSymbolTable
+  /// (just pass it in as a ref -- but if this is happening concurrently with something else, ...)
   let record
     (callStack : CallStack)
-    (_types : Types)
+    (_types : Types) // is this Types thing what we want, or should we split tst and types?
     (typeName : FQTypeName.FQTypeName)
     (_typeArgs : List<TypeReference>)
     (fields : List<string * Dval>)

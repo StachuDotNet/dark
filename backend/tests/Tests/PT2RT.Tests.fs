@@ -150,32 +150,18 @@ module List =
 
 module String =
   let simple =
-    t
-      "[\"hello\"]"
-      E.String.simple
-      (2,
-       [ RT.LoadVal(0, RT.DString "")
-         RT.LoadVal(1, RT.DString "hello")
-         RT.AppendString(0, 1) ],
-       0)
+    t "[\"hello\"]" E.String.simple (1, [ RT.LoadVal(0, RT.DString "hello") ], 0)
 
   let withInterpolation =
     t
       "[let x = \"world\"\n$\"hello {x}\"]"
       E.String.withInterpolation
-      (5,
-       [ RT.LoadVal(0, RT.DString "")
-         RT.LoadVal(1, RT.DString ", world")
-         RT.AppendString(0, 1)
-
+      (3,
+       [ RT.LoadVal(0, RT.DString ", world")
          RT.CheckLetPatternAndExtractVars(0, RT.LPVariable "x")
 
-         RT.LoadVal(2, RT.DString "")
-         RT.LoadVal(3, RT.DString "hello")
-         RT.AppendString(2, 3)
-
-         RT.GetVar(4, "x")
-         RT.AppendString(2, 4) ],
+         RT.GetVar(1, "x")
+         RT.CreateString(2, [ RT.Text "hello"; RT.Interpolated 1 ]) ],
        2)
 
   let tests = testList "String" [ simple; withInterpolation ]
@@ -325,25 +311,21 @@ module Match =
     t
       "match true with\n| false -> \"first branch\"\n| true -> \"second branch\""
       E.Match.simple
-      (4,
+      (3,
        [ // handle the value we're matching on
          RT.LoadVal(0, RT.DBool true)
 
          // FIRST BRANCH
-         RT.CheckMatchPatternAndExtractVars(0, RT.MPBool false, 5)
+         RT.CheckMatchPatternAndExtractVars(0, RT.MPBool false, 3)
          // rhs
-         RT.LoadVal(2, RT.DString "")
-         RT.LoadVal(3, RT.DString "first branch")
-         RT.AppendString(2, 3)
+         RT.LoadVal(2, RT.DString "first branch")
          RT.CopyVal(1, 2)
-         RT.JumpBy 7
+         RT.JumpBy 5
 
          // SECOND BRANCH
-         RT.CheckMatchPatternAndExtractVars(0, RT.MPBool true, 5)
+         RT.CheckMatchPatternAndExtractVars(0, RT.MPBool true, 3)
          // rhs
-         RT.LoadVal(2, RT.DString "")
-         RT.LoadVal(3, RT.DString "second branch")
-         RT.AppendString(2, 3)
+         RT.LoadVal(2, RT.DString "second branch")
          RT.CopyVal(1, 2)
          RT.JumpBy 1
 
@@ -355,16 +337,14 @@ module Match =
     t
       "match true with\n| false -> \"first branch\""
       E.Match.notMatched
-      (4,
+      (3,
        [ // handle the value we're matching on
          RT.LoadVal(0, RT.DBool true)
 
          // FIRST BRANCH
-         RT.CheckMatchPatternAndExtractVars(0, RT.MPBool false, 5)
+         RT.CheckMatchPatternAndExtractVars(0, RT.MPBool false, 3)
          // rhs
-         RT.LoadVal(2, RT.DString "")
-         RT.LoadVal(3, RT.DString "first branch")
-         RT.AppendString(2, 3)
+         RT.LoadVal(2, RT.DString "first branch")
          RT.CopyVal(1, 2)
          RT.JumpBy 1
 
@@ -425,7 +405,7 @@ module Match =
     t
       "match [1, 2] with\n| [1, 2] -> \"first branch\""
       E.Match.list
-      (6,
+      (5,
        [ // expr, whose result we store in 0
          RT.LoadVal(1, RT.DInt64 1L)
          RT.LoadVal(2, RT.DInt64 2L)
@@ -435,11 +415,9 @@ module Match =
          RT.CheckMatchPatternAndExtractVars(
            0,
            RT.MPList [ RT.MPInt64 1L; RT.MPInt64 2L ],
-           5
+           3
          )
-         RT.LoadVal(4, RT.DString "")
-         RT.LoadVal(5, RT.DString "first branch")
-         RT.AppendString(4, 5)
+         RT.LoadVal(4, RT.DString "first branch")
          RT.CopyVal(3, 4)
          RT.JumpBy 1
 
@@ -475,7 +453,7 @@ module Match =
     t
       "match (1, 2) with\n| (1, 2) -> \"first branch\""
       E.Match.tuple
-      (6,
+      (5,
        [ // expr, whose result we store in 0
          RT.LoadVal(1, RT.DInt64 1L)
          RT.LoadVal(2, RT.DInt64 2L)
@@ -485,11 +463,9 @@ module Match =
          RT.CheckMatchPatternAndExtractVars(
            0,
            RT.MPTuple(RT.MPInt64 1L, RT.MPInt64 2L, []),
-           5
+           3
          )
-         RT.LoadVal(4, RT.DString "")
-         RT.LoadVal(5, RT.DString "first branch")
-         RT.AppendString(4, 5)
+         RT.LoadVal(4, RT.DString "first branch")
          RT.CopyVal(3, 4)
          RT.JumpBy 1
 

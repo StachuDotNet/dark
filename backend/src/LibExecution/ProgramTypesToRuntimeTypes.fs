@@ -236,35 +236,7 @@ module MatchCase =
 
 
 module Expr =
-  // CLEANUP clearly not the most efficient to do this, but probably fine for now
-  // TODO ok this is actually really wasteful. a single text string segment could be a single instruction
-  let rec compileString
-    (rc : int)
-    (segments : List<PT.StringSegment>)
-    : (int * RT.Instructions * RT.Register) =
-    let stringReg = rc
-    let init = (rc + 1, [ RT.LoadVal(stringReg, RT.DString "") ], stringReg)
-
-    segments
-    |> List.fold
-      (fun (rc, instrs, _) segment ->
-        match segment with
-        | PT.StringText text ->
-          let textReg = rc
-          let newRc = rc + 1
-          (newRc,
-           instrs
-           @ [ RT.LoadVal(textReg, RT.DString text)
-               RT.AppendString(stringReg, textReg) ],
-           stringReg)
-        | PT.StringInterpolation expr ->
-          let (newRc, exprInstrs, exprReg) = toRT rc expr
-          (newRc,
-           instrs @ exprInstrs @ [ RT.AppendString(stringReg, exprReg) ],
-           stringReg))
-      init
-
-  and toRT (rc : int) (e : PT.Expr) : (int * RT.Instructions * RT.Register) =
+  let rec toRT (rc : int) (e : PT.Expr) : (int * RT.Instructions * RT.Register) =
     match e with
     | PT.EUnit _id -> (rc + 1, [ RT.LoadVal(rc, RT.DUnit) ], rc)
 
@@ -288,7 +260,31 @@ module Expr =
 
     | PT.EChar(_id, c) -> (rc + 1, [ RT.LoadVal(rc, RT.DChar c) ], rc)
 
-    | PT.EString(_id, segments) -> compileString rc segments
+    | PT.EString(_id, segments) ->
+      match segments with
+      // if there's only one segment, just load it directly
+      | [ PT.StringText text ] ->
+        (rc + 1, [ RT.LoadVal(rc, RT.DString text) ], rc)
+
+      // otherwise, handle each segment separately
+      // and then create a string from the parts
+      | segments ->
+        let (rc, instrs, segments) =
+          List.fold
+            (fun (rc, instrs, segments) segment ->
+              match segment with
+              | PT.StringText text ->
+                (rc, instrs, segments @ [ RT.StringSegment.Text text ])
+
+              | PT.StringInterpolation expr ->
+                let (rcAfterExpr, exprInstrs, exprReg) = toRT rc expr
+                (rcAfterExpr,
+                 instrs @ exprInstrs,
+                 segments @ [ RT.Interpolated exprReg ]))
+            (rc, [], [])
+            segments
+
+        (rc + 1, instrs @ [ RT.CreateString(rc, segments) ], rc)
 
 
     | PT.EList(_id, items) ->
@@ -631,192 +627,41 @@ module Expr =
        enumReg)
 
 
-// let rec toRT (e : PT.Expr) : RT.Instructions =
-//   match e with
-//   // | PT.EConstant(id, Ok name) -> RT.EConstant(id, FQConstantName.toRT name)
-//   // | PT.EConstant(id, Error err) ->
-//   //   RT.EError(id, NameResolutionError.RTE.toRuntimeError err, [])
-
-//   // | PT.EVariable(id, var) -> RT.EVariable(id, var)
-
-//   // | PT.ERecordFieldAccess(id, obj, fieldname) -> RT.ERecordFieldAccess(id, toRT obj, fieldname)
-
-//   | PT.EApply(id, fnName, typeArgs, args) ->
-//     // RT.EApply(
-//     //   id,
-//     //   toRT fnName,
-//     //   List.map TypeReference.toRT typeArgs,
-//     //   NEList.map toRT args
-//     // )
-//     let fnInstr =
-//       match fnName with
-//       | PT.EFnName(_, Ok name) -> RT.Call(id, FQFnName.toRT name, List.map TypeReference.toRT typeArgs, NEList.map (fun a -> 0) args)
-//       | _ -> failwith "Unsupported function name resolution"
-//     fnInstr :: (args |> NEList.toList |> List.map toRT |> List.concat)
-
-//   | PT.EFnName(id, Ok name) -> RT.EFnName(id, FQFnName.toRT name)
-//   | PT.EFnName(id, Error err) ->
-//     RT.EError(id, NameResolutionError.RTE.toRuntimeError err, [])
-
-//   // // CLEANUP tidy infix stuff - extract to another fn?
-//   // | PT.EInfix(id, PT.InfixFnCall fnName, left, right) ->
-//   //   let (fn, version) = InfixFnName.toFnName fnName
-//   //   let name = RT.FQFnName.Builtin({ name = fn; version = version })
-//   //   RT.EApply(
-//   //     id,
-//   //     RT.EFnName(id, name),
-//   //     [],
-//   //     NEList.ofList (toRT left) [ toRT right ]
-//   //   )
-//   // | PT.EInfix(id, PT.BinOp PT.BinOpAnd, left, right) ->
-//   //   RT.EAnd(id, toRT left, toRT right)
-//   // | PT.EInfix(id, PT.BinOp PT.BinOpOr, left, right) ->
-//   //   RT.EOr(id, toRT left, toRT right)
-
-//   // | PT.ELambda(id, pats, body) ->
-//   //   RT.ELambda(id, NEList.map LetPattern.toRT pats, toRT body)
-
-//   // | PT.ERecord(id, Ok typeName, fields) ->
-//   //   match fields with
-//   //   | [] ->
-//   //     let fields = fields |> List.map Tuple2.second |> List.map toRT
-//   //     RT.EError(
-//   //       id,
-//   //       RT.RuntimeError.oldError "Record must have at least one field",
-//   //       fields
-//   //     )
-//   //   | head :: tail ->
-//   //     let fields =
-//   //       NEList.ofList head tail
-//   //       |> NEList.map (fun (name, expr) -> (name, toRT expr))
-//   //     RT.ERecord(id, FQTypeName.toRT typeName, fields)
-//   // | PT.ERecord(id, Error err, fields) ->
-//   //   RT.EError(
-//   //     id,
-//   //     err |> NameResolutionError.RTE.toRuntimeError,
-//   //     fields |> List.map Tuple2.second |> List.map toRT
-//   //   )
-
-//   // | PT.ERecordUpdate(id, record, updates) ->
-//   //   RT.ERecordUpdate(
-//   //     id,
-//   //     toRT record,
-//   //     updates |> NEList.map (fun (fieldName, update) -> (fieldName, toRT update))
-//   //   )
-
-//   // | PT.EPipe(pipeID, expr1, rest) ->
-//   //   // Convert v |> fn1 a |> fn2 |> fn3 b c
-//   //   // into fn3 (fn2 (fn1 v a)) b c
-//   //   let folder (prev : RT.Expr) (next : PT.PipeExpr) : RT.Expr =
-//   //     let applyFn (expr : RT.Expr) (args : List<RT.Expr>) =
-//   //       let typeArgs = []
-//   //       RT.EApply(pipeID, expr, typeArgs, NEList.ofList prev args)
-
-//   //     match next with
-//   //     | PT.EPipeFnCall(id, Error err, _typeArgs, exprs) ->
-//   //       let err = NameResolutionError.RTE.toRuntimeError err
-//   //       let addlExprs = List.map toRT exprs
-//   //       RT.EError(id, err, prev :: addlExprs)
-//   //     | PT.EPipeFnCall(id, Ok fnName, typeArgs, exprs) ->
-//   //       RT.EApply(
-//   //         id,
-//   //         RT.EFnName(id, FQFnName.toRT fnName),
-//   //         List.map TypeReference.toRT typeArgs,
-//   //         exprs |> List.map toRT |> NEList.ofList prev
-//   //       )
-//   //     | PT.EPipeInfix(id, PT.InfixFnCall fnName, expr) ->
-//   //       let (fn, version) = InfixFnName.toFnName fnName
-//   //       let name = PT.FQFnName.Builtin({ name = fn; version = version })
-//   //       RT.EApply(
-//   //         id,
-//   //         RT.EFnName(id, FQFnName.toRT name),
-//   //         [],
-//   //         NEList.doubleton prev (toRT expr)
-//   //       )
-//   //     // Binops work pretty naturally here
-//   //     | PT.EPipeInfix(id, PT.BinOp op, expr) ->
-//   //       match op with
-//   //       | PT.BinOpAnd -> RT.EAnd(id, prev, toRT expr)
-//   //       | PT.BinOpOr -> RT.EOr(id, prev, toRT expr)
-//   //     | PT.EPipeEnum(id, Ok typeName, caseName, fields) ->
-//   //       RT.EEnum(
-//   //         id,
-//   //         FQTypeName.toRT typeName,
-//   //         caseName,
-//   //         prev :: (List.map toRT fields)
-//   //       )
-//   //     | PT.EPipeEnum(id, Error err, _caseName, fields) ->
-//   //       RT.EError(
-//   //         id,
-//   //         NameResolutionError.RTE.toRuntimeError err,
-//   //         prev :: (List.map toRT fields)
-//   //       )
-//   //     | PT.EPipeVariable(id, name, exprs) ->
-//   //       applyFn (RT.EVariable(id, name)) (List.map toRT exprs)
-//   //     | PT.EPipeLambda(id, pats, body) ->
-//   //       applyFn (RT.ELambda(id, NEList.map LetPattern.toRT pats, toRT body)) []
-
-//   //   let init = toRT expr1
-//   //   List.fold folder init rest
-
-//   // | PT.EMatch(id, mexpr, cases) ->
-//   //   match cases with
-//   //   | [] ->
-//   //     RT.EError(
-//   //       id,
-//   //       RT.RuntimeError.oldError "Match must have at least one case",
-//   //       [ toRT mexpr ]
-//   //     )
-//   //   | head :: tail ->
-//   //     let cases =
-//   //       NEList.ofList head tail
-//   //       |> NEList.map (fun case ->
-//   //         let pattern = MatchPattern.toRT case.pat
-//   //         let whenCondition = Option.map toRT case.whenCondition
-//   //         let expr = toRT case.rhs
-//   //         let result : RT.MatchCase =
-//   //           { pat = pattern; whenCondition = whenCondition; rhs = expr }
-//   //         result)
-
-//   //     RT.EMatch(id, toRT mexpr, cases)
-
-//   // | PT.EEnum(id, Ok typeName, caseName, fields) ->
-//   //   RT.EEnum(id, FQTypeName.toRT typeName, caseName, List.map toRT fields)
-//   // | PT.EEnum(id, Error err, _caseName, fields) ->
-//   //   RT.EError(id, NameResolutionError.RTE.toRuntimeError err, List.map toRT fields)
-
-//   // | PT.EDict(id, entries) ->
-//   //   RT.EDict(id, entries |> List.map (Tuple2.mapSecond toRT))
-
 
 module Const =
   let rec toRT (c : PT.Const) : RT.Const =
     match c with
-    | PT.Const.CInt64 i -> RT.CInt64 i
-    | PT.Const.CUInt64 i -> RT.CUInt64 i
+    | PT.Const.CUnit -> RT.CUnit
+
+    | PT.Const.CBool b -> RT.CBool b
+
     | PT.Const.CInt8 i -> RT.CInt8 i
     | PT.Const.CUInt8 i -> RT.CUInt8 i
     | PT.Const.CInt16 i -> RT.CInt16 i
     | PT.Const.CUInt16 i -> RT.CUInt16 i
     | PT.Const.CInt32 i -> RT.CInt32 i
     | PT.Const.CUInt32 i -> RT.CUInt32 i
+    | PT.Const.CInt64 i -> RT.CInt64 i
+    | PT.Const.CUInt64 i -> RT.CUInt64 i
     | PT.Const.CInt128 i -> RT.CInt128 i
     | PT.Const.CUInt128 i -> RT.CUInt128 i
-    | PT.Const.CBool b -> RT.CBool b
-    | PT.Const.CString s -> RT.CString s
-    | PT.Const.CChar c -> RT.CChar c
+
     | PT.Const.CFloat(sign, w, f) -> RT.CFloat(sign, w, f)
-    | PT.Const.CUnit -> RT.CUnit
+
+    | PT.Const.CChar c -> RT.CChar c
+    | PT.Const.CString s -> RT.CString s
+
     | PT.Const.CTuple(first, second, rest) ->
       RT.CTuple(toRT first, toRT second, List.map toRT rest)
+    | PT.Const.CList items -> RT.CList(List.map toRT items)
+    | PT.Const.CDict entries -> RT.CDict(entries |> List.map (Tuple2.mapSecond toRT))
+
     | PT.Const.CEnum(typeName, caseName, fields) ->
       RT.CEnum(
         NameResolution.toRT FQTypeName.toRT typeName,
         caseName,
         List.map toRT fields
       )
-    | PT.Const.CList items -> RT.CList(List.map toRT items)
-    | PT.Const.CDict entries -> RT.CDict(entries |> List.map (Tuple2.mapSecond toRT))
 
 
 module TypeDeclaration =

@@ -131,9 +131,7 @@ let fns : List<BuiltInFn> =
             Ply(DUInt128(result))
           with
           | :? System.DivideByZeroException ->
-            RTE.Ints.DivideByZeroError
-            |> RTE.Int
-            |> raiseRTE vm.callStack
+            RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.callStack
           | :? System.OverflowException ->
             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.callStack
         | _ -> incorrectArgs ())

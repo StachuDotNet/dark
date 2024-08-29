@@ -348,6 +348,10 @@ and MatchPattern =
     theRest : List<MatchPattern>
   | MPVariable of string
 
+and StringSegment =
+  | Text of string
+  | Interpolated of Register
+
 /// TODO: consider if each of these should include the Expr ID that they came from
 ///
 /// Would Expr ID be enough?
@@ -357,51 +361,69 @@ and MatchPattern =
 /// and only load it when needed.
 /// That way, the Interpreter could be lighter-weight.
 and Instruction =
+  // == Simple register operations ==
   /// Push a ("constant") value into a register
   | LoadVal of loadTo : Register * Dval
 
-  | AppendString of targetReg : Register * sourceReg : Register
+  | CopyVal of copyTo : Register * copyFrom : Register
 
 
-  /// Loads the value of a register into a variable
-  | SetVar of varName : string * loadFrom : Register
+  // == Working with Variables ==
+  /// Extract values in a Register to 0 or more variables, per the pattern.
+  /// (e.g. `let (x, y) = (1, 2)`)
+  ///
+  /// Errors if the pattern doesn't match the value.
+  | CheckLetPatternAndExtractVars of valueReg : Register * pat : LetPattern
 
   /// Stores the value of a variable to a register
   | GetVar of loadTo : Register * varName : string
 
 
-  /// Create a list, and type-check to ensure the items are of a consistent type
-  | CreateList of listRegister : Register * itemsToAdd : List<Register>
+  // == Working with Basic Types ==
+  | CreateString of targetReg : Register * segments : List<StringSegment>
 
+
+  // == Flow Control ==
+
+  // -- Jumps --
+  /// Go `n` instructions forward, if the value in the register is `false`
+  | JumpByIfFalse of instrsToJump : int * conditionReg : Register
+
+  /// Go `n` instructions forward, unconditionally
+  | JumpBy of instrsToJump : int
+
+  // -- Match --
+  /// Check if the value in the noted register the noted pattern,
+  /// and extract vars per MPVariable as relevant.
+  | CheckMatchPatternAndExtractVars of
+    // what we're matching against
+    valueReg : Register *
+    pat : MatchPattern *
+    // jump here if it doesn't match (to the next case, or to the "unmatched" instruction)
+    failJump : int
+
+  /// Could not find matching case in a match expression
+  /// CLEANUP we probably need a way to reference back to PT so we can get useful RTEs
+  /// TODO maybe make this a special case of Fail
+  | MatchUnmatched
+
+
+  // == Working with Collections ==
   | CreateTuple of
     createTo : Register *
     first : Register *
     second : Register *
     theRest : List<Register>
 
+  /// Create a list, and type-check to ensure the items are of a consistent type
+  | CreateList of listRegister : Register * itemsToAdd : List<Register>
+
   /// Create a dict, and type-check to ensure the entries are of a consistent type
   | CreateDict of dictRegister : Register * entries : List<string * Register>
 
-  | CopyVal of copyTo : Register * copyFrom : Register
 
-  /// Go n instructions forward, if the value in the register is false
-  | JumpByIfFalse of instrsToJump : int * conditionReg : Register
-
-  /// Go n instructions forward, unconditionally
-  | JumpBy of instrsToJump : int
-
-  | CheckLetPatternAndExtractVars of valueReg : Register * pat : LetPattern
-
-  // /// Apply some args (and maybe type args) to something
-  // /// (a named function, or lambda, etc)
-  // | Apply of
-  //   putResultIn : Register *
-  //   thingToApply : Register *
-  //   typeArgs : List<TypeReference> *
-  //   args : NEList<Register>
-
-  | RaiseNRE of NameResolutionError
-
+  // == Working with Custom Data ==
+  // -- Records --
   | CreateRecord of
     recordReg : Register *
     typeName : FQTypeName.FQTypeName *
@@ -418,6 +440,7 @@ and Instruction =
     recordReg : Register *
     fieldName : string
 
+  // -- Enums --
   | CreateEnum of
     enumReg : Register *
     typeName : FQTypeName.FQTypeName *
@@ -425,27 +448,26 @@ and Instruction =
     caseName : string *
     fields : List<Register>
 
-  /// Check if the value in the noted register the noted pattern,
-  /// and extract vars per MPVariable as relevant.
-  | CheckMatchPatternAndExtractVars of
-    // what we're matching against
-    valueReg : Register *
-    pat : MatchPattern *
-    // jump here if it doesn't match (to the next case, or to the "unmatched" instruction)
-    failJump : int
 
-  /// Could not find matching case in a match expression
-  /// CLEANUP we probably need a way to reference back to PT so we can get useful RTEs
-  /// TODO maybe make this a special case of Fail
-  | MatchUnmatched
+  // == Working with things that Apply ==
+
+  // /// Apply some args (and maybe type args) to something
+  // /// (a named function, or lambda, etc)
+  // | Apply of
+  //   putResultIn : Register *
+  //   thingToApply : Register *
+  //   typeArgs : List<TypeReference> *
+  //   args : NEList<Register>
+
+  // == Errors ==
+  | RaiseNRE of NameResolutionError
+
 
 
 and Instructions = List<Instruction>
-and InstructionsWithContext =
-  // (rc, instructions, result register)
-  (int * Instructions * Register)
 
-
+/// (rc, instructions, result register)
+and InstructionsWithContext = (int * Instructions * Register)
 
 
 and DvalMap = Map<string, Dval>
@@ -855,6 +877,8 @@ module RuntimeError =
 
 
     // backend/src/LibExecution/TypeChecker.fs:
+
+    //$"Could not merge types {ValueType.toString (VT.customType typeName [ innerType ])} and {ValueType.toString (VT.customType typeName [ dvalType ])}"
     | CannotMergeValues of left : ValueType * right : ValueType
     // - $"Could not merge types {ValueType.toString (VT.list typ)} and {ValueType.toString (VT.list dvalType)}"
     // - $"Could not merge types {ValueType.toString (VT.customType typeName [ innerType ])} and {ValueType.toString (VT.customType typeName [ dvalType ])}"
@@ -935,18 +959,15 @@ let raiseRTE (callStack : CallStack) (rte : RuntimeError.Error) : 'a =
 //   raise (RuntimeErrorException(None, rte))
 
 
-// // TODO remove all usages of this in favor of better error cases
-// let raiseUntargetedString (s : string) : 'a =
-//   raiseUntargetedRTE (RuntimeError.oldError s)
-
 /// Internally in the runtime, we allow throwing RuntimeErrorExceptions. At the
-/// boundary, typically in Execution.fs, we will catch the exception, and return this
-/// type.
+/// boundary, typically in Execution.fs, we will catch the exception, and return
+/// this type.
 type ExecutionResult = Result<Dval, Option<CallStack> * RuntimeError.Error>
 
 /// IncorrectArgs should never happen, as all functions are type-checked before
 /// calling. If it does happen, it means that the type parameters in the Fn structure
 /// do not match the args expected in the F# function definition.
+/// CLEANUP should this take more args, so we can find the error? Maybe just the fn name?
 let incorrectArgs () = Exception.raiseInternal "IncorrectArgs" []
 
 

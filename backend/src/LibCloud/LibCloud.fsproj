@@ -18,6 +18,10 @@
     <ProjectReference Include="../LibService/LibService.fsproj" />
   </ItemGroup>
   <ItemGroup>
+    <!--Compile Include="DvalReprInternalRoundtrippable.fs" /-->
+    <!--Compile Include="DvalReprInternalHash.fs" /-->
+    <!--Compile Include="DvalReprInternalQueryable.fs" /-->
+
     <Compile Include="Config.fs" />
     <Compile Include="File.fs" />
     <Compile Include="Db.fs" />
