@@ -213,7 +213,7 @@ module Match =
     tFail
       "match true with\n| false -> \"first branch\""
       E.Match.notMatched
-      RTE.MatchUnmatched
+      (RTE.Match RTE.Matches.MatchUnmatched)
 
   let withVar = t "match true with\n| x -> x" E.Match.withVar (RT.DBool true)
 
@@ -417,7 +417,10 @@ module Lambdas =
         E.Lambdas.Identity.unapplied
         (RT.DApplicable(
           RT.AppLambda
-            { exprId = E.Lambdas.Identity.id; closedRegisters = []; argsSoFar = [] }
+            { exprId = E.Lambdas.Identity.id
+              closedRegisters = []
+              argsSoFar = []
+              typeSymbolTable = Map.empty }
         ))
         (fun vm ->
           Expect.isFalse (Map.isEmpty vm.lambdaInstrCache) "no lambdas in VMState")
@@ -433,7 +436,10 @@ module Lambdas =
         E.Lambdas.Add.unapplied
         (RT.DApplicable(
           RT.AppLambda
-            { exprId = E.Lambdas.Add.id; closedRegisters = []; argsSoFar = [] }
+            { exprId = E.Lambdas.Add.id
+              closedRegisters = []
+              argsSoFar = []
+              typeSymbolTable = Map.empty }
         ))
         (fun vm ->
           Expect.isFalse (Map.isEmpty vm.lambdaInstrCache) "no lambdas in VMState")
@@ -446,7 +452,8 @@ module Lambdas =
           RT.AppLambda
             { exprId = E.Lambdas.Add.id
               closedRegisters = []
-              argsSoFar = [ RT.DInt64 1L ] }
+              argsSoFar = [ RT.DInt64 1L ]
+              typeSymbolTable = Map.empty }
         ))
 
     let fullyApplied =
@@ -463,7 +470,8 @@ module Lambdas =
           RT.AppLambda
             { exprId = E.Lambdas.AddToClosedVars.id
               closedRegisters = [ (1, RT.DInt64 5); (2, RT.DInt64 10) ]
-              argsSoFar = [] }
+              argsSoFar = []
+              typeSymbolTable = Map.empty }
         ))
         (fun vm ->
           Expect.isFalse (Map.isEmpty vm.lambdaInstrCache) "no lambdas in VMState")

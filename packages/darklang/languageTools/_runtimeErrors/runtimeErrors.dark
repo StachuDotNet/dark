@@ -26,7 +26,7 @@ module Darklang =
           | TypeName of LanguageTools.RuntimeTypes.FQTypeName.FQTypeName
           | ShortTypeName of LanguageTools.RuntimeTypes.FQTypeName.FQTypeName
           | TypeReference of LanguageTools.RuntimeTypes.TypeReference
-          | TypeOfValue of LanguageTools.RuntimeTypes.Dval.Dval // CLEANUP should these all just be ValueTypes?
+          | TypeOfValue of LanguageTools.RuntimeTypes.Dval // CLEANUP should these all just be ValueTypes?
           | ValueType of LanguageTools.RuntimeTypes.ValueType
           | FieldName of String // records and enums
           | InlineFieldName of String // records and enums
@@ -40,8 +40,8 @@ module Darklang =
           | InlineVarName of String
 
           // -- Dvals
-          | InlineValue of LanguageTools.RuntimeTypes.Dval.Dval // possibly shortened to be shown inline
-          | FullValue of LanguageTools.RuntimeTypes.Dval.Dval
+          | InlineValue of LanguageTools.RuntimeTypes.Dval // possibly shortened to be shown inline
+          | FullValue of LanguageTools.RuntimeTypes.Dval
 
         let toString (list: List<ErrorSegment>) : String =
           let reversed = Stdlib.List.reverse list

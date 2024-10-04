@@ -163,7 +163,7 @@ let rec evalConst (threadID : ThreadID) (c : Const) : Dval =
 
   | CEnum(Error nre, _caseName, _fields) ->
     // TODO: ConstNotFound or something
-    raiseRTE threadID (RuntimeError.NameResolution nre)
+    raiseRTE threadID (RuntimeError.ParseTimeNameResolution nre)
 
 
 let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
@@ -316,7 +316,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
           else
             counter <- counter + failJump
 
-        | MatchUnmatched -> raiseRTE RTE.MatchUnmatched
+        | MatchUnmatched -> raiseRTE (RTE.Match RTE.Matches.MatchUnmatched)
 
 
         // == Working with Collections ==
@@ -432,6 +432,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
                 impl.registersToCloseOver
                 |> List.map (fun (parentReg, childReg) ->
                   childReg, registers[parentReg])
+              typeSymbolTable = currentFrame.typeSymbolTable // copy when lambda created
               argsSoFar = [] }
             |> AppLambda
             |> DApplicable
@@ -466,10 +467,9 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
 
           match applicable with
           | AppLambda applicableLambda ->
+            let exprId = applicableLambda.exprId
             let foundLambda =
-              Map.findUnsafe
-                (currentFrame.context, applicableLambda.exprId)
-                vm.lambdaInstrCache
+              Map.findUnsafe (currentFrame.context, exprId) vm.lambdaInstrCache
 
             let allArgs = applicableLambda.argsSoFar @ newArgDvals
 
@@ -493,12 +493,12 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
                     |> List.iter (fun (reg, value) -> r[reg] <- value)
 
                     r
+                  typeSymbolTable = applicableLambda.typeSymbolTable // TODO do we need to merge any into this?
                   context = Lambda(currentFrame.context, applicableLambda.exprId) }
                 |> Some
 
             else if argCount > paramCount then
-              // TODO
-              RTE.MatchUnmatched |> raiseRTE
+              RTE.TooManyArgsForLambda(exprId, paramCount, argCount) |> raiseRTE
             else
               registers[putResultIn] <-
                 { applicableLambda with argsSoFar = allArgs }
@@ -524,17 +524,23 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
 
                 let! result =
                   uply {
-                    if argCount = paramCount then
+                    if argCount = paramCount && typeArgCount = typeParamCount then
                       let! result = fn.fn (exeState, vm, [], allArgs)
                       return result
                     else if argCount > paramCount then
                       return
-                        RTE.TooManyArgs(
+                        RTE.TooManyArgsForFn(
                           FQFnName.Builtin fn.name,
-                          typeParamCount,
-                          typeArgCount,
                           paramCount,
                           argCount
+                        )
+                        |> raiseRTE
+                    else if typeArgCount <> typeParamCount then
+                      return
+                        RTE.WrongNumberOfTypeArgsForFn(
+                          FQFnName.Builtin fn.name,
+                          typeParamCount,
+                          typeArgCount
                         )
                         |> raiseRTE
                     else
@@ -559,7 +565,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
                 let typeArgCount = List.length typeArgs
                 // TODO: error on these not matching^, too.
 
-                if argCount = paramCount then
+                if argCount = paramCount && typeArgCount = typeParamCount then
                   frameToPush <-
                     { id = guuid ()
                       parent = Some(vm.currentFrameID, putResultIn, counter + 1)
@@ -568,16 +574,18 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
                         let r = Array.zeroCreate fn.body.registerCount
                         allArgs |> List.iteri (fun i arg -> r[i] <- arg)
                         r
+                      typeSymbolTable = currentFrame.typeSymbolTable // copy. probably also need to _extend_ here.
                       context = PackageFn fn.id }
                     |> Some
 
                 else if argCount > paramCount then
-                  RTE.TooManyArgs(
+                  RTE.TooManyArgsForFn(FQFnName.Package fn.id, paramCount, argCount)
+                  |> raiseRTE
+                else if typeArgCount <> typeParamCount then
+                  RTE.WrongNumberOfTypeArgsForFn(
                     FQFnName.Package fn.id,
                     typeParamCount,
-                    typeArgCount,
-                    paramCount,
-                    argCount
+                    typeArgCount
                   )
                   |> raiseRTE
                 else
@@ -586,7 +594,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
                     |> AppNamedFn
                     |> DApplicable
 
-        | RaiseNRE nre -> raiseRTE (RTE.NameResolution nre)
+        | RaiseNRE nre -> raiseRTE (RTE.ParseTimeNameResolution nre)
 
         counter <- counter + 1
 
@@ -615,5 +623,5 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
     // If we've reached the end of the instructions, return the result
     match finalResult with
     | Some dv -> return dv
-    | None -> return raiseRTE RTE.MatchUnmatched // TODO better error
+    | None -> return raiseRTE (RTE.UncaughtException System.Guid.Empty) // TODO better error
   }

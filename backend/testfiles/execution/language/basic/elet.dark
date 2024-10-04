@@ -61,32 +61,32 @@ module Shadowing =
    | Ok x -> x) = 6L
 
 
-  // (let x = 35L in Stdlib.List.map_v0 [ 1L; 2L; 3L; 4L ] (fun x -> x + 2L)) = [ 3L
-  //                                                                              4L
-  //                                                                              5L
-  //                                                                              6L ]
+// (let x = 35L in Stdlib.List.map_v0 [ 1L; 2L; 3L; 4L ] (fun x -> x + 2L)) = [ 3L
+//                                                                              4L
+//                                                                              5L
+//                                                                              6L ]
 
 
-  // (let x = 35L
+// (let x = 35L
 
-  //  match Stdlib.Result.Result.Ok 6L with
-  //  | Ok x -> (Stdlib.List.map_v0 [ 1L; 2L; 3L; 4L ] (fun x -> x + 2L))) = [ 3L
-  //                                                                           4L
-  //                                                                           5L
-  //                                                                           6L ]
-
-
-  // (Stdlib.List.map_v0 [ 1L; 2L; 3L; 4L ] (fun x ->
-  //   (let x = 35L
-
-  //    match Stdlib.Result.Result.Ok 6L with
-  //    | Ok x -> x + 2L))) = [ 8L; 8L; 8L; 8L ]
+//  match Stdlib.Result.Result.Ok 6L with
+//  | Ok x -> (Stdlib.List.map_v0 [ 1L; 2L; 3L; 4L ] (fun x -> x + 2L))) = [ 3L
+//                                                                           4L
+//                                                                           5L
+//                                                                           6L ]
 
 
-  // (Stdlib.List.map_v0 [ 1L; 2L; 3L; 4L ] (fun x ->
-  //   match Stdlib.Result.Result.Ok 6L with
-  //   | Ok x -> let x = 9L in x + 2L)) = [ 11L; 11L; 11L; 11L ]
+// (Stdlib.List.map_v0 [ 1L; 2L; 3L; 4L ] (fun x ->
+//   (let x = 35L
 
-  // (Stdlib.List.map_v0 [ 1L; 2L; 3L; 4L ] (fun x ->
-  //   (match Stdlib.Result.Result.Ok(Stdlib.Result.Result.Ok 6L) with
-  //    | Ok(Ok x) -> let x = 9L in x + 2L))) = [ 11L; 11L; 11L; 11L ]
+//    match Stdlib.Result.Result.Ok 6L with
+//    | Ok x -> x + 2L))) = [ 8L; 8L; 8L; 8L ]
+
+
+// (Stdlib.List.map_v0 [ 1L; 2L; 3L; 4L ] (fun x ->
+//   match Stdlib.Result.Result.Ok 6L with
+//   | Ok x -> let x = 9L in x + 2L)) = [ 11L; 11L; 11L; 11L ]
+
+// (Stdlib.List.map_v0 [ 1L; 2L; 3L; 4L ] (fun x ->
+//   (match Stdlib.Result.Result.Ok(Stdlib.Result.Result.Ok 6L) with
+//    | Ok(Ok x) -> let x = 9L in x + 2L))) = [ 11L; 11L; 11L; 11L ]

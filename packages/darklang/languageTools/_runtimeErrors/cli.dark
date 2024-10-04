@@ -5,4 +5,4 @@ module Darklang =
         type Error =
           | NoExpressionsToExecute
           | UncaughtException of String * List<String * String>
-          | NonIntReturned of actuallyReturned: LanguageTools.RuntimeTypes.Dval.Dval
+          | NonIntReturned of actuallyReturned: LanguageTools.RuntimeTypes.Dval

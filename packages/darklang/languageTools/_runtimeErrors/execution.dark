@@ -3,14 +3,14 @@ module Darklang =
     module RuntimeErrors =
       module Execution =
         type Error =
-          | MatchExprUnmatched of RuntimeTypes.Dval.Dval
-          | MatchExprPatternWrongType of String * RuntimeTypes.Dval.Dval
+          | MatchExprUnmatched of RuntimeTypes.Dval
+          | MatchExprPatternWrongType of String * RuntimeTypes.Dval
           | MatchExprEnumPatternWrongCount of
             String *
             expected: Int64 *
             actual: Int64
 
-          | NonStringInStringInterpolation of RuntimeTypes.Dval.Dval
+          | NonStringInStringInterpolation of RuntimeTypes.Dval
 
           | ConstDoesntExist of RuntimeTypes.FQConstantName.FQConstantName
 

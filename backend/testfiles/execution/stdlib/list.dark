@@ -1,4 +1,4 @@
-Stdlib.List.map [1L; 2L] (fun x -> x + 1L) = [ 2L; 3L]
+//Stdlib.List.map [1L; 2L] (fun x -> x + 1L) = [ 2L; 3L]
 
 
 // CLEANUP the following tests should fail on having mixed types

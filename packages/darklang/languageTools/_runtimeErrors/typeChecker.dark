@@ -9,7 +9,7 @@ module Darklang =
       // language
       type RTTypeReference = LanguageTools.RuntimeTypes.TypeReference
 
-      type RTDval = LanguageTools.RuntimeTypes.Dval.Dval
+      type RTDval = LanguageTools.RuntimeTypes.Dval
 
       type RTTypeName = LanguageTools.RuntimeTypes.FQTypeName.FQTypeName
 
@@ -161,7 +161,7 @@ module Darklang =
 
 
           let rec contextAsActualExpected
-            (argument: RuntimeTypes.Dval.Dval)
+            (argument: RuntimeTypes.Dval)
             (context: Context)
             : List<ErrorSegment.ErrorSegment> * List<ErrorSegment.ErrorSegment> =
 

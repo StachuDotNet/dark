@@ -435,15 +435,17 @@ let fns (config : Configuration) : List<BuiltInFn> =
 
                   | notAPair ->
                     return!
-                      RuntimeError.ValueNotExpectedType(
-                        notAPair,
-                        TList(TTuple(TString, TString, [])),
-                        RTE.TypeChecker.Context.FunctionCallParameter(
-                          FQFnName.fqPackage PackageIDs.Fn.Stdlib.HttpClient.request,
-                          ({ name = "headers"; typ = headersType }),
-                          2
-                        )
+                      RTE.TypeCheckers.ValueNotExpectedType(
+                        [ RTE.TypeCheckers.PathPart.FunctionCallParameter(
+                            FQFnName.fqPackage
+                              PackageIDs.Fn.Stdlib.HttpClient.request,
+                            "headers",
+                            2
+                          ) ],
+                        headersType,
+                        notAPair
                       )
+                      |> RTE.TypeChecker
                       |> raiseRTE vm.threadID
 
                 })

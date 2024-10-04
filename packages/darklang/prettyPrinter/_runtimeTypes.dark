@@ -210,7 +210,7 @@ module Darklang =
 
 
       module Dval =
-        let valueTypeName (dv: LanguageTools.RuntimeTypes.Dval.Dval) : String =
+        let valueTypeName (dv: LanguageTools.RuntimeTypes.Dval) : String =
           dv |> LanguageTools.RuntimeTypes.Dval.toValueType |> valueType
 
         let makeSpaces (len: Int64) : String =
@@ -218,7 +218,7 @@ module Darklang =
 
         let withIndent
           (indent: Int64)
-          (dv: LanguageTools.RuntimeTypes.Dval.Dval)
+          (dv: LanguageTools.RuntimeTypes.Dval)
           : String =
           let nl = "\n" ++ (makeSpaces indent)
           let inl = "\n" ++ (makeSpaces (indent + 2L))
@@ -370,5 +370,4 @@ module Darklang =
 
 
 
-      let dval (dv: LanguageTools.RuntimeTypes.Dval.Dval) : String =
-        Dval.withIndent 0L dv
+      let dval (dv: LanguageTools.RuntimeTypes.Dval) : String = Dval.withIndent 0L dv
