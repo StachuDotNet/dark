@@ -190,14 +190,6 @@ module Darklang =
       // References
       //| DDB of String
 
-
-      module RuntimeError =
-        // TODO: migrate this to another file
-        type Error = Unit
-
-
-
-
       type BuiltInParam =
         { name: String
           typ: TypeReference
