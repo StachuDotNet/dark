@@ -227,7 +227,11 @@ let fileTests () : Test =
       NR.OnMissing.Allow
       fileName
 
-  System.IO.Directory.GetDirectories(baseDir, "*", System.IO.SearchOption.AllDirectories)
+  System.IO.Directory.GetDirectories(
+    baseDir,
+    "*",
+    System.IO.SearchOption.AllDirectories
+  )
   |> Array.map (fun dir ->
     System.IO.Directory.GetFiles(dir, "*.dark")
     |> Array.toList

@@ -219,19 +219,13 @@ let rec serialize
                     Types.substitute decl.typeParams typeArgs matchingFieldDef.typ
                   r typ dval))
           | _ ->
-            //TODO
-            // Exception.raiseInternal
-            //   "Expected a DRecord but got something else"
-            //   [ "actualDval", dval
-            //     "actualType", LibExecution.DvalReprDeveloper.toTypeName dval
-            //     "expectedType", typeName
-            //     "expectedFields", fields ]
-
-            RTE.MatchUnmatched |> raiseRTE threadId
+            RTE.Records.CreationFieldTypeNotRecord typeName
+            |> RTE.Record
+            |> raiseRTE threadId
 
 
     | TCustomType(Error err, _typeArgs), _dval ->
-      raiseRTE threadId (RTE.NameResolution err)
+      raiseRTE threadId (RTE.ParseTimeNameResolution err)
 
 
     // Not supported

@@ -83,43 +83,43 @@ module MixedCases =
   (EnumOfMixedCases.W == (EnumOfMixedCases.Y 1L)) = false
   (EnumOfMixedCases.Y 1L == EnumOfMixedCases.Y 1L) = true
 
-  // EnumOfMixedCases.X 1L = Builtin.testDerrorMessage
-  //   "MixedCases.EnumOfMixedCases.X's 1st argument should be a String. However, an Int64 (1) was passed instead.\n\nExpected: MixedCases.EnumOfMixedCases.X (String)\nActual: MixedCases.EnumOfMixedCases.X (Int64)"
+// EnumOfMixedCases.X 1L = Builtin.testDerrorMessage
+//   "MixedCases.EnumOfMixedCases.X's 1st argument should be a String. However, an Int64 (1) was passed instead.\n\nExpected: MixedCases.EnumOfMixedCases.X (String)\nActual: MixedCases.EnumOfMixedCases.X (Int64)"
 
-  // EnumOfMixedCases.Y "test" = Builtin.testDerrorMessage
-  //   "MixedCases.EnumOfMixedCases.Y's 1st argument should be an Int64. However, a String (\"test\") was passed instead.\n\nExpected: MixedCases.EnumOfMixedCases.Y (Int64)\nActual: MixedCases.EnumOfMixedCases.Y (String)"
+// EnumOfMixedCases.Y "test" = Builtin.testDerrorMessage
+//   "MixedCases.EnumOfMixedCases.Y's 1st argument should be an Int64. However, a String (\"test\") was passed instead.\n\nExpected: MixedCases.EnumOfMixedCases.Y (Int64)\nActual: MixedCases.EnumOfMixedCases.Y (String)"
 
-  // EnumOfMixedCases.Z 1L = Builtin.testDerrorMessage
-  //   "Case `Z` expected 2 fields but got 1"
-  // // Test ordering of evaluation
-  // EnumOfMixedCases.Z(Builtin.testRuntimeError "1", Builtin.testRuntimeError "2") = Builtin.testDerrorMessage
-  //   "1"
+// EnumOfMixedCases.Z 1L = Builtin.testDerrorMessage
+//   "Case `Z` expected 2 fields but got 1"
+// // Test ordering of evaluation
+// EnumOfMixedCases.Z(Builtin.testRuntimeError "1", Builtin.testRuntimeError "2") = Builtin.testDerrorMessage
+//   "1"
 
-  // (let values =
-  //   [ EnumOfMixedCases.W
-  //     EnumOfMixedCases.X "testX"
-  //     EnumOfMixedCases.Y(5L)
-  //     EnumOfMixedCases.Z("testZ", 2L) ]
+// (let values =
+//   [ EnumOfMixedCases.W
+//     EnumOfMixedCases.X "testX"
+//     EnumOfMixedCases.Y(5L)
+//     EnumOfMixedCases.Z("testZ", 2L) ]
 
-  //  match Stdlib.List.getAt values 3L with
-  //  | Some z -> Stdlib.Result.Result.Ok z
-  //  | None -> Stdlib.Result.Result.Error "Failure") = PACKAGE
-  //   .Darklang
-  //   .Stdlib
-  //   .Result
-  //   .Result
-  //   .Ok(EnumOfMixedCases.Z("testZ", 2L))
+//  match Stdlib.List.getAt values 3L with
+//  | Some z -> Stdlib.Result.Result.Ok z
+//  | None -> Stdlib.Result.Result.Error "Failure") = PACKAGE
+//   .Darklang
+//   .Stdlib
+//   .Result
+//   .Result
+//   .Ok(EnumOfMixedCases.Z("testZ", 2L))
 
-  // ([ EnumOfMixedCases.W
-  //    EnumOfMixedCases.X "testX"
-  //    EnumOfMixedCases.Y(5L)
-  //    EnumOfMixedCases.Z("testZ", 2L) ]
-  //  |> Stdlib.List.map_v0 (fun v ->
-  //    match v with
-  //    | X s -> "X " ++ s
-  //    | Z(s, _i) -> "Z " ++ s
-  //    | Y y -> "Y " ++ (Stdlib.Int64.toString_v0 y)
-  //    | W -> "a simple W")) = [ "a simple W"; "X testX"; "Y 5"; "Z testZ" ]
+// ([ EnumOfMixedCases.W
+//    EnumOfMixedCases.X "testX"
+//    EnumOfMixedCases.Y(5L)
+//    EnumOfMixedCases.Z("testZ", 2L) ]
+//  |> Stdlib.List.map_v0 (fun v ->
+//    match v with
+//    | X s -> "X " ++ s
+//    | Z(s, _i) -> "Z " ++ s
+//    | Y y -> "Y " ++ (Stdlib.Int64.toString_v0 y)
+//    | W -> "a simple W")) = [ "a simple W"; "X testX"; "Y 5"; "Z testZ" ]
 
 module TuplesVsNonTuples =
   type Tuples =
@@ -135,8 +135,8 @@ module TuplesVsNonTuples =
   (match Tuples.Tuple(("printer broke", 7L)) with
    | Tuple((reason, 7L)) -> reason) = "printer broke"
 
-  // Tuples.Tuple("printer broke", 7L) = Builtin.testDerrorMessage
-  //   "Case `Tuple` expected 1 fields but got 2"
+// Tuples.Tuple("printer broke", 7L) = Builtin.testDerrorMessage
+//   "Case `Tuple` expected 1 fields but got 2"
 
 
 module Recursive =
@@ -191,15 +191,15 @@ module Polymorphism =
 
   let toList (tree: RBTree<'a>) : List<'a> = toList' tree []
 
-  // // CLEANUP: we should support tuple destructuring in lambdas
-  // // i.e. update to `fun (x, y) -> ...`
-  // (let intCmp =
-  //   fun pair ->
-  //     let (x, y) = pair
+// // CLEANUP: we should support tuple destructuring in lambdas
+// // i.e. update to `fun (x, y) -> ...`
+// (let intCmp =
+//   fun pair ->
+//     let (x, y) = pair
 
-  //     if x < y then -1L
-  //     elif x > y then 1L
-  //     else 0L
+//     if x < y then -1L
+//     elif x > y then 1L
+//     else 0L
 
-  //  ([ 1L; -2L; 5L; 3L ] |> ofList intCmp |> toList)
-  //  == ([ 3L; 5L; -2L; 1L ] |> ofList intCmp |> toList)) = true
+//  ([ 1L; -2L; 5L; 3L ] |> ofList intCmp |> toList)
+//  == ([ 3L; 5L; -2L; 1L ] |> ofList intCmp |> toList)) = true

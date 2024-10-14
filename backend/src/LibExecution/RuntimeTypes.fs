@@ -1,9 +1,11 @@
 /// The core types and functions used by the Dark language's runtime.
 ///
-/// If you need to save data of this format, create a set of new
-/// types and convert this type into them. (even if they are identical).
+/// This format is lossy, relative to the ProgramTypes; use IDs to refer back.
+/// CLEANUP we could realistically expand upon this a bit,
+///   excluding things like enum field names, fn param names, etc.
+///   (referring back to PT by index or something)
 ///
-/// This format is lossy, relative to the serialized types; use IDs to refer back.
+/// CLEANUP there's some useful "reference things by hash" work to be done.
 module LibExecution.RuntimeTypes
 
 open System.Threading.Tasks
@@ -94,6 +96,7 @@ module FQFnName =
   let isInternalFn (fnName : Builtin) : bool = fnName.name.Contains "darkInternal"
 
 
+/// TODO include "ParseTime" in name (requires a lot of boring work in many files)
 type NameResolutionError =
   | NotFound of List<string>
   | InvalidName of List<string>
@@ -235,13 +238,16 @@ type TypeReference =
       | TUuid
       | TDateTime -> true
 
-      | TList t -> isConcrete t
       | TTuple(t1, t2, ts) ->
         isConcrete t1 && isConcrete t2 && List.forall isConcrete ts
-      | TFn(ts, t) -> NEList.forall isConcrete ts && isConcrete t
-      // | TDB t -> isConcrete t
-      | TCustomType(_, ts) -> List.forall isConcrete ts
+      | TList t -> isConcrete t
       | TDict t -> isConcrete t
+
+      | TCustomType(_, ts) -> List.forall isConcrete ts
+
+      | TFn(ts, t) -> NEList.forall isConcrete ts && isConcrete t
+
+      // | TDB t -> isConcrete t
 
       | TVariable _ -> false
 
@@ -360,7 +366,7 @@ type Instruction =
 
   /// Could not find matching case in a match expression
   /// CLEANUP we probably need a way to reference back to PT so we can get useful RTEs
-  /// TODO maybe make this a special case of Fail
+  /// TODO probably better as a usage of a broader "Fail" error case.
   | MatchUnmatched
 
 
@@ -507,7 +513,17 @@ and ApplicableLambda =
     /// (even though, at time of writing, this seems impossible.)
     closedRegisters : List<Register * Dval>
 
-    // TODO: typeSymbolTable : TypeSymbolTable
+    /// A cache/copy of the type symbol table[1] when the lambda was created.
+    ///
+    /// [1] the `name: String -> Type` lookup of resolved generics
+    /// for e.g. `Option<'a>`
+    ///
+    /// CLEANUP I'm not totally convinced we need this
+    ///   Maybe it'd be fine to fill this in when the callframe is created.
+    ///   hmm, but if the lambda is returned by something, the TST
+    ///   _at that point_ might be needed. Maybe we'll need to merge this
+    ///   with the 'parent' TST when the callframe is created.
+    typeSymbolTable : TypeSymbolTable
 
     argsSoFar : List<Dval>
   }
@@ -592,29 +608,6 @@ and [<NoComparison>] Dval =
 
 and DvalTask = Ply<Dval>
 
-// TODO mayube kill this? in favor of CallFrameContext
-and ExecutionPoint =
-  /// User is executing some "arbitrary" expression, passed in by a user.
-  ///
-  /// This should only be at the `entrypoint` of a CallStack.
-  ///   (CLEANUP consider enforcing this via types)
-  | Script //TODO of name: string
-
-  /// Executing some top-level handler,
-  /// such as a saved Script, an HTTP handler, or a Cron
-  | Toplevel of tlid
-
-  // Executing some function
-  | Function of FQFnName.FQFnName
-
-// Executing some lambda
-//| Lambda of parent: ExecutionPoint * exprId: id
-
-
-/// Record the source expression of an error.
-/// This is to show the code that was responsible for it.
-/// TODO maybe rename to ExprLocation
-and Source = ExecutionPoint * Option<id>
 
 
 and ThreadID = uuid
@@ -645,83 +638,102 @@ and BuiltInParam =
 and Param = { name : string; typ : TypeReference }
 
 
-// TODO really consider making this extensible without requiring a rebuild
-// (maybe reframe this as an `Exception`, maybe some new TL that users can add to)
 module RuntimeError =
-  module TypeChecker =
-    // TODO: move this somewhere..
-    type Context =
-      | FunctionCallParameter of
-        fnName : FQFnName.FQFnName *
-        parameter : Param *
-        paramIndex : int
-      | FunctionCallResult of fnName : FQFnName.FQFnName * returnType : TypeReference
-      | RecordField of
-        recordTypeName : FQTypeName.FQTypeName *
-        fieldName : string *
-        fieldType : TypeReference
-      | DictKey of key : string * typ : TypeReference
+  module TypeCheckers =
+    type PathPart =
+      | TuplePart of index : int
+
+      | ListItem of index : int
+
+      | DictEntry of key : string
+
+      | RecordField of typeName : FQTypeName.FQTypeName * fieldName : string
+
       | EnumField of
-        enumTypeName : FQTypeName.FQTypeName *
+        typeName : FQTypeName.FQTypeName *
         caseName : string *
         fieldIndex : int *
-        fieldCount : int *
-        fieldType : TypeReference
-      | DBQueryVariable of varName : string * expected : TypeReference
-      | DBSchemaType of name : string * expectedType : TypeReference
-      | ListIndex of index : int * listTyp : TypeReference * parent : Context
-      | TupleIndex of index : int * elementType : TypeReference * parent : Context
-      | FnValResult of returnType : TypeReference
+        fieldName : Option<string> *
+        // why would we need this? edit: seems, to provide a pretty error.
+        fieldCount : int
 
+      | FunctionCallParameter of
+        fnName : FQFnName.FQFnName *
+        paramName : string *
+        paramIndex : int
+      | FunctionCallResult of fnName : FQFnName.FQFnName
 
-  // module Cli =
-  //   type Error =
-  //     | NoExpressionsToExecute
-  //     | UncaughtException of String * List<String * String>
-  //     | NonIntReturned of actuallyReturned: Dval.Dval
+    // | DBQueryVariable of varName : string
+    // | DBSchemaType of name : string
 
+    // NEList?
+    type Path = List<PathPart>
 
-  module Jsons =
+    // CLEANUP There's a general question still in the air, of
+    // "when should we use/extend this error, as opposed to a case
+    // in a specific submodule." I don't yet have a good answer here.
     type Error =
-      | UnsupportedType of TypeReference
-      | CannotSerializeTypeValueCombo of Dval * TypeReference
+      | ValueNotExpectedType of
+        path : Path *
+        expected : TypeReference *
+        actual : Dval
 
+
+  module Bools =
+    type Error =
+      | AndOnlySupportsBooleans of gotLeft : ValueType * gotRight : ValueType
+      | OrOnlySupportsBooleans of gotRight : ValueType * gotLeft : ValueType
+      | ConditionRequiresBool of actualValueType : ValueType * actualValue : Dval
 
   module Ints =
     type Error =
+      /// Cannot divide by 0
       | DivideByZeroError
-      | OutOfRange
+
+      /// Encountered out-of-range value for type of Int
+      | OutOfRange // TODO: include value?
+
+      /// Cannot raise integer to a negative exponent
       | NegativeExponent
+
+      /// Cannot evaluatie modulus against a negative number
       | NegativeModulus
+
+      /// Cannot evaluate modulus against 0
       | ZeroModulus
 
-
-
-  // module Execution =
-  //   type Error =
-  //     | MatchExprUnmatched of RuntimeTypes.Dval.Dval
-  //     | NonStringInStringInterpolation of RuntimeTypes.Dval.Dval
-  //     | ConstDoesntExist of RuntimeTypes.FQConstantName.FQConstantName
-  //     | EnumConstructionCaseNotFound of typeName: RuntimeTypes.FQTypeName * caseName: String
-  //
-
-  //     // TODO: Record submodule
-  //     | RecordConstructionFieldDoesntExist of typeName: RuntimeTypes.FQTypeName * fieldName: String
-  //     | RecordConstructionMissingField of RuntimeTypes.FQTypeName * missingFieldName: String
-  //     | RecordConstructionDuplicateField of RuntimeTypes.FQTypeName * duplicateFieldName: String
-  //     | FieldAccessFieldDoesntExist of typeName: RuntimeTypes.FQTypeName * invalidFieldName: String
-  //     | FieldAccessNotRecord of RuntimeTypes.ValueType * String
-
-  module Unwraps =
+  module Strings =
     type Error =
-      | GotNone
-      | GotError of Dval
-      | NonOptionOrResult of Dval
-      | MultipleArgs of List<Dval>
+      /// Cannot include non-string ({vt}) in string interpolation.
+      | NonStringInInterpolation of vt : ValueType * dv : Dval
+
+      // "Error: Invalid string-append attempt"
+      | InvalidStringAppend
+
+
+  module Lists =
+    type Error =
+      /// Cannot add a {} ({}) to a list of {}
+      | TriedToAddMismatchedData of
+        expectedType : ValueType *
+        actualType : ValueType *
+        actualValue : Dval
+
+  module Dicts =
+    type Error =
+      /// Cannot add two dictionary entries with the same key "{key}".
+      | TriedToAddKeyAfterAlreadyPresent of key : string
+
+      /// Cannot include a {} ({}) in a dictionary of {}
+      | TriedToAddMismatchedData of
+        expectedType : ValueType *
+        actualType : ValueType *
+        actualValue : Dval
 
 
   module Lets =
-    // CLEANUP consider some kinda _path_ thing like with JSON errors
+    // TODO consider some kinda _path_ thing like with JSON errors
+    // , and these "Details":
     // type Details =
     //   /// Unit pattern does not match
     //   | UnitPatternDoesNotMatch
@@ -736,57 +748,65 @@ module RuntimeError =
       /// Could not decompose `{someFn dval}` with pattern `{someFn pat}` in `let` expression
       | PatternDoesNotMatch of dval : Dval * pat : LetPattern
 
-  // module Enum =
-  //   type Error =
-  //     /// $"When constructing enum value `typeName`.`{caseName}`,
-  //     /// expected {expectedFieldCount} fields but got {actualFieldCount}"
-  //     | WrongNumberOfFields of typeName * FQTypeName * caseName: String * expectedFieldCount: Int * actualFieldCount: Int
-
-  module Bools =
+  module Matches =
+    //TODO "When condition should be a boolean" -- this _could_ warn _or_ error. which?
+    //TODO "Match must have at least one case"
     type Error =
-      | AndOnlySupportsBooleans of gotLeft : ValueType * gotRight : ValueType
-      | OrOnlySupportsBooleans of gotRight : ValueType * gotLeft : ValueType
-      | ConditionRequiresBool of actualValueType : ValueType * actualValue : Dval
+      /// CLEANUP probably need the value -- though if the trace contains
+      /// enough info, this may be enough? enh.
+      | MatchUnmatched
 
-  module Strings =
+  module Enums =
     type Error =
-      // "Error: Invalid string-append attempt"
-      | InvalidStringAppend
+      /// $"When constructing enum value `typeName`.`{caseName}`,
+      /// expected {expectedFieldCount} fields but got {actualFieldCount}"
+      | ConstructionWrongNumberOfFields of
+        typeName : FQTypeName.FQTypeName *
+        caseName : string *
+        expectedFieldCount : int64 *
+        actualFieldCount : int64
 
+      | ConstructionCaseNotFound of
+        typeName : FQTypeName.FQTypeName *
+        caseName : string
 
-  module Lists =
-    type Error =
-      /// Cannot add a {} ({}) to a list of {}
-      | TriedToAddMismatchedData of
-        expectedType : ValueType *
+      // TODO: could/should this be a 'simple' type error?
+      // what about in the cases where we're constructing Options?
+      // what about the builtins that construct Options/Results?
+      | ConstructionFieldOfWrongType of
+        caseName : string *
+        fieldName : string *
+        fieldIndex : int64 *
+        expectedType : TypeReference *
         actualType : ValueType *
         actualValue : Dval
 
-  // CLEANUP same here^
-  module Dicts =
-    type Error =
-      | TriedToAddKeyAfterAlreadyPresent of key : string
-
-      /// Cannot add a {} ({}) to a dict of {}
-      | TriedToAddMismatchedData of
-        expectedType : ValueType *
-        actualType : ValueType *
-        actualValue : Dval
 
   module Records =
+    // TODO _maybe_ "Record must have at least one field" (Q: for defs, or instances?)
+    // I'm not totally convinced, though - `type WIP = {}` seems useful.
+
     type Error =
+      /// $"Empty key for value `{dv}`"
+      /// CLEANUP remove this -- dicts should be of variable type,
+      /// and even in the meantime an empty string seems a
+      /// reasonable key
       | CreationEmptyKey
       | CreationMissingField of fieldName : string
       | CreationDuplicateField of fieldName : string
+      /// $"Expected a record but {x} is something else (e.g. an Enum)"
+      | CreationFieldTypeNotRecord of name : FQTypeName.FQTypeName
       | CreationFieldNotExpected of fieldName : string
       | CreationFieldOfWrongType of
         fieldName : string *
         expectedType : TypeReference *
         actualType : ValueType
 
+      // TODO "Field name is empty"
       | FieldAccessFieldNotFound of fieldName : string
       | FieldAccessNotRecord of actualType : ValueType
 
+      /// "Expected a record in record update, but found {x}"
       | UpdateNotRecord of actualType : ValueType
       | UpdateFieldOfWrongType of
         fieldName : string *
@@ -794,153 +814,117 @@ module RuntimeError =
         actualType : ValueType
       | UpdateFieldNotExpected of fieldName : string
 
+  module Unwraps =
+    type Error =
+      | GotNone
+      | GotError of err : Dval
+      | NonOptionOrResult of actual : Dval
+      | MultipleArgs of args : List<Dval>
 
+  module Jsons =
+    type Error =
+      | UnsupportedType of TypeReference
+      | CannotSerializeTypeValueCombo of Dval * TypeReference
 
-  /// RuntimeError is the major way of representing errors in the runtime. These are
-  /// primarily used for things where the user made an error, such as a type error,
-  /// as opposed to a place where the runtime is flawed (use Exception.raiseInternal
-  /// for those). See docs/errors.md for detailed discussion.
-  /// CLEANUP rewrite this^
+  module CLIs =
+    type Error =
+      | NoExpressionsToExecute
+      | NonIntReturned of actuallyReturned : Dval
+
+  /// RuntimeError is the major way of representing errors that occur at runtime.
+  /// Most are focused on user errors, such as trying to put an Int in a list of Bools.
+  /// Some cases represent internal failures, not at the fault of a user.
   ///
+  /// These are not to be confused with Results, which should be used
+  /// in functions to represent _expected_ cases of failure.
   ///
-  /// TODO: this needs a way to be extensible
-  /// users should have _some_ way to add their own RuntimeErrors
-  /// and we don't want to have to rebuild everything to add a new RTE
+  /// See `docs/errors.md` for more discussion.
   type Error =
-    | TypeDoesntExist of FQTypeName.FQTypeName
-
-    | NameResolution of NameResolutionError
-
     | Bool of Bools.Error
     | Int of Ints.Error
-    | Json of Jsons.Error
     | String of Strings.Error
+
     | List of Lists.Error
     | Dict of Dicts.Error
-    | Record of Records.Error
+
     | Let of Lets.Error
-    // | Enum of Enum.Error
-
-    | MatchUnmatched
-
-    // TODO consider currying instead, at which point a `Int.add 0 1 2` would result in "can't apply 2 to 1"
-    | TooManyArgs of
-      fn : FQFnName.FQFnName *  // maybe this should expect either a named fn _or_ a lambda?
-      expectedTypeArgs : int64 *
-      expectedArgs : int64 *
-      actualTypeArgs : int64 *
-      actualArgs : int64
-
-
-    // /// "The condition for an `if` expression must be a `Bool`,
-    // /// but is here a `{someFn actualValueType}` (`{someFn actualValue}`)"
-    // | IfConditionNotBool of actualValue: Dval * actualValueType: ValueType
-
-    | Unwrap of Unwraps.Error
+    | VariableNotFound of attemptedVarName : string
 
     | EqualityCheckOnIncompatibleTypes of left : ValueType * right : ValueType
 
-    | ValueNotExpectedType of
-      actualValue : Dval *
-      expectedType : TypeReference *
-      context : TypeChecker.Context
+    /// "The condition for an `if` expression must be a `Bool`,
+    /// but is here a `{someFn actualValueType}` (`{someFn actualValue}`)"
+    | IfConditionNotBool of actualValue : Dval * actualValueType : ValueType
 
-    // | ExpectedBoolInCondition of Dval
-    | VariableNotFound of attemptedVarName : string
+    | Match of Matches.Error
 
+    | ParseTimeNameResolution of NameResolutionError
 
-    // //| SqlCompiler of SqlCompiler.Error // -- or maybe this should happen during PT2RT? hmm.
-
-    // // lol aren't they all execution errors?
-    // // remove this level...
-    // | Execution of Execution.Error
-
-
-    // /// || only supports Booleans
-    // | OrOnlySupportsBooleans of gotInstead: Dval
-
-    // /// && only supports Booleans
-    // | AndOnlySupportsBooleans of gotInstead: Dval
+    /// $"Type {name} was not found"
+    | TypeNotFound of name : FQTypeName.FQTypeName
+    /// $"Function {name} was not found"
+    | FnNotFound of name : FQFnName.FQFnName
+    /// $"Function {name} was not found"
+    | ConstNotFound of name : FQConstantName.FQConstantName
 
 
-    // //| Cli of Cli.Error
+    // TODO not sure where this should live
+    | WrongNumberOfTypeArgsForType of
+      fn : FQTypeName.FQTypeName *
+      expected : int64 *
+      actual : int64
 
 
-    // TODO
+    | Record of Records.Error
 
-    // backend/src/BuiltinExecution/Libs/NoModule.fs:
-    // - $"unwrap called with multiple arguments: {multipleArgs}"
+    | Enum of Enums.Error
 
-
-    // backend/src/LibCloud/SqlCompiler.fs:
-    // 1223: | SqlCompilerException errStr -> return Error(RuntimeError.oldError errStr)
-    // 1224: // return Error(RuntimeError.oldError (errStr + $"\n\nIn body: {body}"))
+    | Unwrap of Unwraps.Error
 
 
-    // backend/src/LibExecution/Interpreter.fs:
-    // - "TODO"
+    // TODO: put this in some Applying or Fn-Calling submodule
+    | WrongNumberOfTypeArgsForFn of
+      fn : FQFnName.FQFnName *
+      expected : int64 *
+      actual : int64
 
-    /// $"Function {FQFnName.toString fnName} is not found"
-    | FnNotFound of fnName : FQFnName.FQFnName
+    | TooManyArgsForFn of fn : FQFnName.FQFnName * expected : int64 * actual : int64
 
-    /// $"Invalid const name: {msg}"
-    | ConstNotFound of constName : FQConstantName.FQConstantName
-
-    // backend/src/LibExecution/Interpreter.Old.fs:
-    // - "TODO"
-
-    // - $"Expected {expectedLength} arguments, got {actualLength}"
-    // - $"Function {FQFnName.toString fnToCall} is not found")
-    // - "Unknown error"
+    | TooManyArgsForLambda of lambdaExprId : id * expected : int64 * actual : int64
 
 
-    // backend/src/LibExecution/NameResolutionError.fs:
-    // - "TODO"
+    /// "Expected something we could 'apply' (fn, lambda),
+    /// but got a {type} ({value})."
+    | ExpectedApplicableButNot of actualTyp : ValueType * actualValue : Dval
+
+    | Json of Jsons.Error
+
+    | CLI of CLIs.Error
 
 
-    // backend/src/LibExecution/ProgramTypesToRuntimeTypes.fs:
-    // - "Couldn't find fn"
-    // - "Record must have at least one field"
-    // - "Match must have at least one case"
-
-
-    // backend/src/LibExecution/TypeChecker.fs:
-
-    //$"Could not merge types {ValueType.toString (VT.customType typeName [ innerType ])} and {ValueType.toString (VT.customType typeName [ dvalType ])}"
+    // TODO: these really should be better,
+    // likely squashed into a specific Enum or general TypeChecker case
+    //$"Could not merge types {left} and {right}"
     | CannotMergeValues of left : ValueType * right : ValueType
-    // - $"Could not merge types {ValueType.toString (VT.list typ)} and {ValueType.toString (VT.list dvalType)}"
-    // - $"Could not merge types {ValueType.toString (VT.customType typeName [ innerType ])} and {ValueType.toString (VT.customType typeName [ dvalType ])}"
-    // - $"Could not merge types {ValueType.toString (VT.customType Dval.resultType [ okType; errorType ])} and {ValueType.toString (VT.customType Dval.resultType [ dvalType; errorType ])}"
-    // - $"Could not merge types {ValueType.toString (VT.customType Dval.resultType [ okType; errorType ])} and {ValueType.toString (VT.customType Dval.resultType [ okType; dvalType ])}"
-    // - "Empty key"
-    // - $"Duplicate key: {k}"
+
+    | TypeChecker of err : TypeCheckers.Error
 
 
+
+
+    // soon, but not quite yet
     // backend/tests/TestUtils/LibTest.fs:
     // - update `Builtin.testRuntimeError` to take an `RTE` value instead of a string
     // - update all usages
 
 
+    // punting these until DBs are supported again
+    // - "Attempting to access field '{fieldName}' of a Datastore
+    // (use `DB.*` standard library functions to interact with Datastores. Field access only work with records)"
     // backend/src/LibCloud/SqlCompiler.fs:
     // 1223: | SqlCompilerException errStr -> return Error(RuntimeError.oldError errStr)
     // 1224: // return Error(RuntimeError.oldError (errStr + $"\n\nIn body: {body}"))
-
-
-    // /home/dark/app/backend/src/LibExecution/Interpreter.Old.fs
-    // - $"Empty key for value `{dv}`"
-    // - "Expected a record in record update"
-    // - "Field name is empty"
-    // - "When condition should be a boolean" -- this _could_ warn _or_ error. which?
-    // - $"Expected a record but {typeStr} is something else"
-
-    /// "Expected a function value, got something else: {DvalReprDeveloper.toRepr other}"
-    | ExpectedApplicableButNot of actualTyp : ValueType * actualValue : Dval
-
-    // - "Attempting to access field '{fieldName}' of a Datastore
-    // (use `DB.*` standard library functions to interact with Datastores. Field access only work with records)"
-
-    // incorrectArgs
-
+    // //| SqlCompiler of SqlCompiler.Error // -- or maybe this should happen during PT2RT? hmm.
 
 
     /// Sometimes, very-unexpected things happen. This is a catch-all for those.
@@ -1073,6 +1057,7 @@ module Dval =
         ValueType.Unknown
 
       // VTTODO look up type, etc
+      // (probably forces us to make this fn async?)
       | AppNamedFn _named -> ValueType.Unknown
 
 // // CLEANUP follow up when DDB has a typeReference
@@ -1273,6 +1258,28 @@ type SqlSpec =
 
 
 module Tracing =
+  type ExecutionPoint =
+    /// User is executing some "arbitrary" expression, passed in by a user.
+    /// This should only be at the `entrypoint` of a CallStack.
+    | Script //TODO of name: string
+
+    /// Executing some top-level handler,
+    /// such as a saved Script, an HTTP handler, or a Cron
+    | Toplevel of tlid
+
+    // Executing some function
+    | Function of FQFnName.FQFnName
+
+    /// Executing some lambda
+    | Lambda of parent : ExecutionPoint * lambdaExprId : id
+
+
+  /// Record the source expression of an error.
+  /// This is to show the code that was responsible for it.
+  /// TODO maybe rename to ExprLocation
+  type Source = ExecutionPoint * Option<id>
+
+
   type FunctionRecord = Source * FQFnName.FQFnName
 
   type TraceDval = id -> Dval -> unit
@@ -1320,7 +1327,11 @@ type CallFrame =
 
     registers : Registers
 
-  // TODO: typeSymbolTable (or some version of it) probably belongs here
+    // CLEANUP is it more efficient to copy the 'whole' TST
+    //, or just what's 'new' to this call frame?
+    // Do we even expect to need to 'look up' in above call frames for type symbols?
+    // actually, probably, for nested fn calls or something. (unless we copy all, of course)
+    typeSymbolTable : TypeSymbolTable
   }
 
 type InstrData =
@@ -1351,6 +1362,7 @@ type VMState =
         context = Source
         programCounter = 0
         registers = Array.zeroCreate expr.registerCount
+        typeSymbolTable = Map.empty
         parent = None }
 
     { threadID = System.Guid.NewGuid()

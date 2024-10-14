@@ -94,18 +94,18 @@ module Update =
    { myRec with z = 3L; x = 42L; y = 11L }) = RecordForUpdateMultipe
     { x = 42L; y = 11L; z = 3L }
 
-  // module Invalid =
-  //   (let myRec = RecordForUpdateMultipe { x = 4L; y = 1L; z = 0L }
+// module Invalid =
+//   (let myRec = RecordForUpdateMultipe { x = 4L; y = 1L; z = 0L }
 
-  //    { myRec with
-  //        z = 3L
-  //        x = 42L
-  //        y = 11L
-  //        p = 10L }) = Builtin.testDerrorMessage
-  //     "Unexpected field `p` in Update.RecordForUpdateMultipe"
+//    { myRec with
+//        z = 3L
+//        x = 42L
+//        y = 11L
+//        p = 10L }) = Builtin.testDerrorMessage
+//     "Unexpected field `p` in Update.RecordForUpdateMultipe"
 
-  //   (let myRec = RecordForUpdate { x = 4L; y = 1L } in { myRec with other = 2L }) = Builtin.testDerrorMessage
-  //     "Unexpected field `other` in Update.RecordForUpdate"
+//   (let myRec = RecordForUpdate { x = 4L; y = 1L } in { myRec with other = 2L }) = Builtin.testDerrorMessage
+//     "Unexpected field `other` in Update.RecordForUpdate"
 
-  //   (let myRec = RecordForUpdate { x = 4L; y = 1L } in { myRec with y = "2" }) = Builtin.testDerrorMessage
-  //     "Update.RecordForUpdate's `y` field should be an Int64. However, a String (\"2\") was passed instead.\n\nExpected: ({ y: Int64; ... })\nActual: a String: \"2\""
+//   (let myRec = RecordForUpdate { x = 4L; y = 1L } in { myRec with y = "2" }) = Builtin.testDerrorMessage
+//     "Update.RecordForUpdate's `y` field should be an Int64. However, a String (\"2\") was passed instead.\n\nExpected: ({ y: Int64; ... })\nActual: a String: \"2\""

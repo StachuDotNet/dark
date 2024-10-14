@@ -132,22 +132,43 @@ module FQFnName =
 
 
 
+module NameResolutionError =
+  let typeName =
+    FQTypeName.Package PackageIDs.Type.LanguageTools.RuntimeError.nameResolutionError
+
+  let toDT (nre : NameResolutionError) : Dval =
+    let (caseName, fields) =
+      match nre with
+      | NotFound names -> "NotFound", [ DList(VT.string, List.map DString names) ]
+      | InvalidName names ->
+        "InvalidName", [ DList(VT.string, List.map DString names) ]
+
+    DEnum(typeName, typeName, [], caseName, fields)
+
+  let fromDT (d : Dval) : NameResolutionError =
+    match d with
+    | DEnum(_, _, [], "NotFound", [ names ]) -> names |> D.list D.string |> NotFound
+    | DEnum(_, _, [], "InvalidName", [ names ]) ->
+      names |> D.list D.string |> InvalidName
+    | _ -> Exception.raiseInternal "Invalid NameResolutionError" []
+
+
+
 
 module NameResolution =
   let typeName =
-    FQTypeName.Package
-      PackageIDs.Type.LanguageTools.RuntimeError.NameResolution.error
+    FQTypeName.Package PackageIDs.Type.LanguageTools.RuntimeError.nameResolution
 
-// let toDT
-//   (nameValueType : KnownType)
-//   (f : 'p -> Dval)
-//   (result : NameResolution<'p>)
-//   : Dval =
-//   let errType = KTCustomType(typeName, [])
-//   C2DT.Result.toDT nameValueType errType result f RuntimeError.toDT
+  let toDT
+    (nameValueType : KnownType)
+    (f : 'p -> Dval)
+    (result : NameResolution<'p>)
+    : Dval =
+    let errType = KTCustomType(typeName, [])
+    C2DT.Result.toDT nameValueType errType result f NameResolutionError.toDT
 
-// let fromDT (f : Dval -> 'a) (d : Dval) : NameResolution<'a> =
-//   C2DT.Result.fromDT f d RuntimeError.fromDT
+  let fromDT (f : Dval -> 'a) (d : Dval) : NameResolution<'a> =
+    C2DT.Result.fromDT f d NameResolutionError.fromDT
 
 
 module TypeReference =
@@ -162,14 +183,14 @@ module TypeReference =
 
       | TUnit -> "TUnit", []
       | TBool -> "TBool", []
-      | TInt64 -> "TInt64", []
-      | TUInt64 -> "TUInt64", []
       | TInt8 -> "TInt8", []
       | TUInt8 -> "TUInt8", []
       | TInt16 -> "TInt16", []
       | TUInt16 -> "TUInt16", []
       | TInt32 -> "TInt32", []
       | TUInt32 -> "TUInt32", []
+      | TInt64 -> "TInt64", []
+      | TUInt64 -> "TUInt64", []
       | TInt128 -> "TInt128", []
       | TUInt128 -> "TUInt128", []
       | TFloat -> "TFloat", []
@@ -186,18 +207,17 @@ module TypeReference =
 
       | TDict inner -> "TDict", [ toDT inner ]
 
-      // | TCustomType(typeName, typeArgs) ->
-      //   "TCustomType",
-      //   [ NameResolution.toDT FQTypeName.knownType FQTypeName.toDT typeName
-      //     DList(VT.known knownType, List.map toDT typeArgs) ]
+      | TCustomType(typeName, typeArgs) ->
+        "TCustomType",
+        [ NameResolution.toDT FQTypeName.knownType FQTypeName.toDT typeName
+          DList(VT.known knownType, List.map toDT typeArgs) ]
 
-      // | TDB inner -> "TDB", [ toDT inner ]
       | TFn(args, ret) ->
         let args = args |> NEList.toList |> List.map toDT |> Dval.list knownType
         "TFn", [ args; toDT ret ]
 
-      // TODO: remove this
-      | _ -> Exception.raiseInternal "Invalid TypeReference" []
+    // | TDB inner -> "TDB", [ toDT inner ]
+
 
     DEnum(typeName, typeName, [], caseName, fields)
 
@@ -207,14 +227,14 @@ module TypeReference =
 
     | DEnum(_, _, [], "TUnit", []) -> TUnit
     | DEnum(_, _, [], "TBool", []) -> TBool
-    | DEnum(_, _, [], "TInt64", []) -> TInt64
-    | DEnum(_, _, [], "TUInt64", []) -> TUInt64
     | DEnum(_, _, [], "TInt8", []) -> TInt8
     | DEnum(_, _, [], "TUInt8", []) -> TUInt8
     | DEnum(_, _, [], "TInt16", []) -> TInt16
     | DEnum(_, _, [], "TUInt16", []) -> TUInt16
     | DEnum(_, _, [], "TInt32", []) -> TInt32
     | DEnum(_, _, [], "TUInt32", []) -> TUInt32
+    | DEnum(_, _, [], "TInt64", []) -> TInt64
+    | DEnum(_, _, [], "TUInt64", []) -> TUInt64
     | DEnum(_, _, [], "TInt128", []) -> TInt128
     | DEnum(_, _, [], "TUInt128", []) -> TUInt128
     | DEnum(_, _, [], "TFloat", []) -> TFloat
@@ -223,22 +243,24 @@ module TypeReference =
     | DEnum(_, _, [], "TDateTime", []) -> TDateTime
     | DEnum(_, _, [], "TUuid", []) -> TUuid
 
-    | DEnum(_, _, [], "TList", [ inner ]) -> TList(fromDT inner)
-
     | DEnum(_, _, [], "TTuple", [ first; second; DList(_vtTODO, theRest) ]) ->
       TTuple(fromDT first, fromDT second, List.map fromDT theRest)
 
+    | DEnum(_, _, [], "TList", [ inner ]) -> TList(fromDT inner)
+
     | DEnum(_, _, [], "TDict", [ inner ]) -> TDict(fromDT inner)
 
-    // | DEnum(_, _, [], "TCustomType", [ typeName; DList(_vtTODO, typeArgs) ]) ->
-    //   TCustomType(
-    //     NameResolution.fromDT FQTypeName.fromDT typeName,
-    //     List.map fromDT typeArgs
-    //   )
+    | DEnum(_, _, [], "TCustomType", [ typeName; DList(_vtTODO, typeArgs) ]) ->
+      TCustomType(
+        NameResolution.fromDT FQTypeName.fromDT typeName,
+        List.map fromDT typeArgs
+      )
 
-    // | DEnum(_, _, [], "TDB", [ inner ]) -> TDB(fromDT inner)
     | DEnum(_, _, [], "TFn", [ DList(_vtTODO, firstArg :: otherArgs); ret ]) ->
       TFn(NEList.ofList (fromDT firstArg) (List.map fromDT otherArgs), fromDT ret)
+
+    // | DEnum(_, _, [], "TDB", [ inner ]) -> TDB(fromDT inner)
+
     | _ -> Exception.raiseInternal "Invalid TypeReference" [ "typeRef", d ]
 
 
@@ -301,12 +323,12 @@ module MatchPattern =
       | MPChar c -> "MPChar", [ DString c ]
       | MPString s -> "MPString", [ DString s ]
 
-      | MPList inner -> "MPList", [ DList(VT.known knownType, List.map toDT inner) ]
-      | MPListCons(head, tail) -> "MPListCons", [ toDT head; toDT tail ]
-
       | MPTuple(first, second, theRest) ->
         "MPTuple",
         [ toDT first; toDT second; DList(VT.known knownType, List.map toDT theRest) ]
+
+      | MPList inner -> "MPList", [ DList(VT.known knownType, List.map toDT inner) ]
+      | MPListCons(head, tail) -> "MPListCons", [ toDT head; toDT tail ]
 
       | MPEnum(caseName, fieldPats) ->
         "MPEnum",
@@ -334,13 +356,13 @@ module MatchPattern =
     | DEnum(_, _, [], "MPChar", [ DString c ]) -> MPChar c
     | DEnum(_, _, [], "MPString", [ DString s ]) -> MPString s
 
+    | DEnum(_, _, [], "MPTuple", [ first; second; DList(_vtTODO, theRest) ]) ->
+      MPTuple(fromDT first, fromDT second, List.map fromDT theRest)
+
     | DEnum(_, _, [], "MPList", [ DList(_vtTODO, inner) ]) ->
       MPList(List.map fromDT inner)
     | DEnum(_, _, [], "MPListCons", [ head; tail ]) ->
       MPListCons(fromDT head, fromDT tail)
-
-    | DEnum(_, _, [], "MPTuple", [ first; second; DList(_vtTODO, theRest) ]) ->
-      MPTuple(fromDT first, fromDT second, List.map fromDT theRest)
 
     | DEnum(_, _, [], "MPEnum", [ DString caseName; DList(_vtTODO, fieldPats) ]) ->
       MPEnum(caseName, List.map fromDT fieldPats)
@@ -367,12 +389,6 @@ module StringSegment =
     | _ -> Exception.raiseInternal "Invalid StringSegment" []
 
 
-// module RuntimeError =
-//   let toDT (e : RuntimeError.Error) : Dval =
-//     e |> RuntimeTypes.RuntimeError.toDT |> Dval.toDT
-
-//   let fromDT (d : Dval) : RuntimeError.Error =
-//     d |> Dval.fromDT |> RuntimeTypes.RuntimeError.fromDT
 
 
 module KnownType =
@@ -384,14 +400,14 @@ module KnownType =
       match kt with
       | KTUnit -> "KTUnit", []
       | KTBool -> "KTBool", []
-      | KTInt64 -> "KTInt64", []
-      | KTUInt64 -> "KTUInt64", []
       | KTInt8 -> "KTInt8", []
       | KTUInt8 -> "KTUInt8", []
       | KTInt16 -> "KTInt16", []
       | KTUInt16 -> "KTUInt16", []
       | KTInt32 -> "KTInt32", []
       | KTUInt32 -> "KTUInt32", []
+      | KTInt64 -> "KTInt64", []
+      | KTUInt64 -> "KTUInt64", []
       | KTInt128 -> "KTInt128", []
       | KTUInt128 -> "KTUInt128", []
       | KTFloat -> "KTFloat", []
@@ -400,12 +416,12 @@ module KnownType =
       | KTUuid -> "KTUuid", []
       | KTDateTime -> "KTDateTime", []
 
-      | KTList inner -> "KTList", [ ValueType.toDT inner ]
       | KTTuple(first, second, theRest) ->
         "KTTuple",
         [ ValueType.toDT first
           ValueType.toDT second
           DList(VT.known ValueType.knownType, List.map ValueType.toDT theRest) ]
+      | KTList inner -> "KTList", [ ValueType.toDT inner ]
       | KTDict inner -> "KTDict", [ ValueType.toDT inner ]
 
       | KTCustomType(typeName, typeArgs) ->
@@ -429,14 +445,14 @@ module KnownType =
     match d with
     | DEnum(_, _, [], "KTUnit", []) -> KTUnit
     | DEnum(_, _, [], "KTBool", []) -> KTBool
-    | DEnum(_, _, [], "KTInt64", []) -> KTInt64
-    | DEnum(_, _, [], "KTUInt64", []) -> KTUInt64
     | DEnum(_, _, [], "KTInt8", []) -> KTInt8
     | DEnum(_, _, [], "KTUInt8", []) -> KTUInt8
     | DEnum(_, _, [], "KTInt16", []) -> KTInt16
     | DEnum(_, _, [], "KTUInt16", []) -> KTUInt16
     | DEnum(_, _, [], "KTInt32", []) -> KTInt32
     | DEnum(_, _, [], "KTUInt32", []) -> KTUInt32
+    | DEnum(_, _, [], "KTInt64", []) -> KTInt64
+    | DEnum(_, _, [], "KTUInt64", []) -> KTUInt64
     | DEnum(_, _, [], "KTInt128", []) -> KTInt128
     | DEnum(_, _, [], "KTUInt128", []) -> KTUInt128
     | DEnum(_, _, [], "KTFloat", []) -> KTFloat
@@ -445,13 +461,13 @@ module KnownType =
     | DEnum(_, _, [], "KTUuid", []) -> KTUuid
     | DEnum(_, _, [], "KTDateTime", []) -> KTDateTime
 
-    | DEnum(_, _, [], "KTList", [ inner ]) -> KTList(ValueType.fromDT inner)
     | DEnum(_, _, [], "KTTuple", [ first; second; DList(_vtTODO, theRest) ]) ->
       KTTuple(
         ValueType.fromDT first,
         ValueType.fromDT second,
         List.map ValueType.fromDT theRest
       )
+    | DEnum(_, _, [], "KTList", [ inner ]) -> KTList(ValueType.fromDT inner)
     | DEnum(_, _, [], "KTDict", [ inner ]) -> KTDict(ValueType.fromDT inner)
 
     | DEnum(_, _, [], "KTCustomType", [ typeName; DList(_vtTODO, typeArgs) ]) ->
@@ -488,6 +504,8 @@ module ValueType =
     | DEnum(_, _, [], "Unknown", []) -> ValueType.Unknown
     | DEnum(_, _, [], "Known", [ kt ]) -> ValueType.Known(KnownType.fromDT kt)
     | _ -> Exception.raiseInternal "Invalid ValueType" []
+
+
 
 
 // module LambdaImpl =
@@ -566,14 +584,14 @@ module Dval =
       match dv with
       | DUnit -> "DUnit", []
       | DBool b -> "DBool", [ DBool b ]
-      | DInt64 i -> "DInt64", [ DInt64 i ]
-      | DUInt64 i -> "DUInt64", [ DUInt64 i ]
       | DInt8 i -> "DInt8", [ DInt8 i ]
       | DUInt8 i -> "DUInt8", [ DUInt8 i ]
       | DInt16 i -> "DInt16", [ DInt16 i ]
       | DUInt16 i -> "DUInt16", [ DUInt16 i ]
       | DInt32 i -> "DInt32", [ DInt32 i ]
       | DUInt32 i -> "DUInt32", [ DUInt32 i ]
+      | DInt64 i -> "DInt64", [ DInt64 i ]
+      | DUInt64 i -> "DUInt64", [ DUInt64 i ]
       | DInt128 i -> "DInt128", [ DInt128 i ]
       | DUInt128 i -> "DUInt128", [ DUInt128 i ]
       | DFloat f -> "DFloat", [ DFloat f ]
@@ -582,21 +600,18 @@ module Dval =
       | DUuid u -> "DUuid", [ DUuid u ]
       | DDateTime d -> "DDateTime", [ DDateTime d ]
 
-      | DList(vt, items) ->
-        "DList",
-        [ ValueType.toDT vt; DList(VT.known knownType, List.map toDT items) ]
-
       | DTuple(first, second, theRest) ->
         "DTuple",
         [ toDT first; toDT second; DList(VT.known knownType, List.map toDT theRest) ]
 
-      // | DDB name -> "DDB", [ DString name ]
-
-      | DApplicable applicable -> "DApplicable", [ Applicable.toDT applicable ]
+      | DList(vt, items) ->
+        "DList",
+        [ ValueType.toDT vt; DList(VT.known knownType, List.map toDT items) ]
 
       | DDict(vt, entries) ->
         "DDict",
         [ ValueType.toDT vt; DDict(VT.known knownType, Map.map toDT entries) ]
+
 
       | DRecord(runtimeTypeName, sourceTypeName, typeArgs, fields) ->
         "DRecord",
@@ -613,38 +628,38 @@ module Dval =
           DString caseName
           DList(VT.known knownType, List.map toDT fields) ]
 
+      | DApplicable applicable -> "DApplicable", [ Applicable.toDT applicable ]
+
+    // | DDB name -> "DDB", [ DString name ]
+
     DEnum(typeName, typeName, [], caseName, fields)
 
 
   let fromDT (d : Dval) : Dval =
     match d with
-    | DEnum(_, _, [], "DInt64", [ DInt64 i ]) -> DInt64 i
-    | DEnum(_, _, [], "DUInt64", [ DUInt64 i ]) -> DUInt64 i
+    | DEnum(_, _, [], "DUnit", []) -> DUnit
+    | DEnum(_, _, [], "DBool", [ DBool b ]) -> DBool b
     | DEnum(_, _, [], "DInt8", [ DInt8 i ]) -> DInt8 i
     | DEnum(_, _, [], "DUInt8", [ DUInt8 i ]) -> DUInt8 i
     | DEnum(_, _, [], "DInt16", [ DInt16 i ]) -> DInt16 i
     | DEnum(_, _, [], "DUInt16", [ DUInt16 i ]) -> DUInt16 i
     | DEnum(_, _, [], "DInt32", [ DInt32 i ]) -> DInt32 i
     | DEnum(_, _, [], "DUInt32", [ DUInt32 i ]) -> DUInt32 i
+    | DEnum(_, _, [], "DInt64", [ DInt64 i ]) -> DInt64 i
+    | DEnum(_, _, [], "DUInt64", [ DUInt64 i ]) -> DUInt64 i
     | DEnum(_, _, [], "DInt128", [ DInt128 i ]) -> DInt128 i
     | DEnum(_, _, [], "DUInt128", [ DUInt128 i ]) -> DUInt128 i
     | DEnum(_, _, [], "DFloat", [ DFloat f ]) -> DFloat f
-    | DEnum(_, _, [], "DBool", [ DBool b ]) -> DBool b
-    | DEnum(_, _, [], "DUnit", []) -> DUnit
-    | DEnum(_, _, [], "DString", [ DString s ]) -> DString s
     | DEnum(_, _, [], "DChar", [ DChar c ]) -> DChar c
+    | DEnum(_, _, [], "DString", [ DString s ]) -> DString s
+    | DEnum(_, _, [], "DDateTime", [ DDateTime d ]) -> DDateTime d
+    | DEnum(_, _, [], "DUuid", [ DUuid u ]) -> DUuid u
 
-    | DEnum(_, _, [], "DList", [ vt; DList(_vtTODO, l) ]) ->
-      DList(ValueType.fromDT vt, List.map fromDT l)
     | DEnum(_, _, [], "DTuple", [ first; second; DList(_vtTODO, theRest) ]) ->
       DTuple(fromDT first, fromDT second, List.map fromDT theRest)
 
-    // | DEnum(_, _, [], "DDB", [ DString name ]) -> DDB name
-
-    // | DEnum(_, _, [], "DApplicable", [ applicable ]) -> DApplicable(Applicable.fromDT applicable)
-
-    | DEnum(_, _, [], "DDateTime", [ DDateTime d ]) -> DDateTime d
-    | DEnum(_, _, [], "DUuid", [ DUuid u ]) -> DUuid u
+    | DEnum(_, _, [], "DList", [ vt; DList(_vtTODO, l) ]) ->
+      DList(ValueType.fromDT vt, List.map fromDT l)
 
     | DEnum(_, _, [], "DDict", [ vt; DDict(_vtTODO, map) ]) ->
       DDict(ValueType.fromDT vt, Map.map fromDT map)
@@ -653,32 +668,42 @@ module Dval =
             _,
             [],
             "DRecord",
-            [ runtimeTypeName; sourceTypeName; DList(_, typeArgs); DDict(_, entries) ]) ->
+            [ runtimeTypeName; sourceTypeName; typeArgs; entries ]) ->
       DRecord(
         FQTypeName.fromDT runtimeTypeName,
         FQTypeName.fromDT sourceTypeName,
-        List.map ValueType.fromDT typeArgs,
-        Map.map fromDT entries
+        typeArgs |> D.list ValueType.fromDT,
+        entries |> D.dict |> Map.map fromDT
       )
+
     | DEnum(_,
             _,
             [],
             "DEnum",
-            [ runtimeTypeName
-              sourceTypeName
-              DList(_vtTODO1, typeArgs)
-              DString caseName
-              DList(_vtTODO2, fields) ]) ->
+            [ runtimeTypeName; sourceTypeName; typeArgs; caseName; fields ]) ->
       DEnum(
         FQTypeName.fromDT runtimeTypeName,
         FQTypeName.fromDT sourceTypeName,
-        List.map ValueType.fromDT typeArgs,
-        caseName,
-        List.map fromDT fields
+        typeArgs |> D.list ValueType.fromDT,
+        D.string caseName,
+        fields |> D.list fromDT
       )
+
+    //| DEnum(_, _, [], "DApplicable", [ applicable ]) -> DApplicable(Applicable.fromDT applicable)
+
+    // | DEnum(_, _, [], "DDB", [ DString name ]) -> DDB name
 
     | _ -> Exception.raiseInternal "Invalid Dval" []
 
+
+
+
+// module RuntimeError =
+//   let toDT (e : RuntimeError.Error) : Dval =
+//     e |> RuntimeTypes.RuntimeError.toDT |> Dval.toDT
+
+//   let fromDT (d : Dval) : RuntimeError.Error =
+//     d |> Dval.fromDT |> RuntimeTypes.RuntimeError.fromDT
 
 
 // module RuntimeError =

@@ -131,11 +131,11 @@ module Type =
         let errorMessage =
           p [ "Error" ] "ErrorMessage" "3e526964-304f-46a8-919c-6d65bb6ff167"
 
-      module NameResolution =
-        let private p addl = p ("NameResolution" :: addl)
-        let errorType = p [] "ErrorType" "ada30799-1227-4902-b580-76bca80c9e92"
-        let nameType = p [] "NameType" "aafe54e1-d970-4ce0-81a1-1569af86671f"
-        let error = p [] "Error" "85dea116-469e-41ca-a166-dc97f5e4fb1d"
+
+      let nameResolutionError =
+        p [] "NameResolutionError" "ada30799-1227-4902-b580-76bca80c9e92"
+      let nameResolution =
+        p [] "NameResolution" "aafe54e1-d970-4ce0-81a1-1569af86671f"
 
       // module TypeChecker =
       //   let private p addl = p ("TypeChecker" :: addl)
@@ -186,7 +186,7 @@ module Type =
       let stringSegment = p [] "StringSegment" "ccadbf5b-1802-4db7-a30b-7b9073db78cd"
       //let expr = p [] "Expr" "1f19e838-81f2-4a94-94b8-bad2ce7f7cf7"
 
-      let dval = p [ "Dval" ] "Dval" "528b682c-a249-4a50-bd93-85e1e8cb529e"
+      let dval = p [] "Dval" "528b682c-a249-4a50-bd93-85e1e8cb529e"
       let knownType = p [] "KnownType" "50940368-5c6b-4f0b-9966-48b9e9443f5d"
       let valueType = p [] "ValueType" "eeb27326-120b-4a71-bd13-a6dc545e5ade"
     //let lambdaImpl = p [] "LambdaImpl" "51a98562-4c44-4999-8673-ce7a370e2cb8"

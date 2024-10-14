@@ -14,7 +14,7 @@ module RTE = RuntimeError
 
 
 
-
+// // CLEANUP Consider renaming to something like 'unwrapAlias'/'resolveAlias'
 // let rec getTypeReferenceFromAlias
 //   (_types : Types)
 //   (typ : TypeReference)
@@ -77,8 +77,8 @@ module RTE = RuntimeError
 //     | TChar, ValueType.Known KTChar -> return true
 //     | TString, ValueType.Known KTString -> return true
 
-//     // | TUuid, ValueType.Known KTUuid -> return true
-//     // | TDateTime, ValueType.Known KTDateTime -> return true
+//     | TUuid, ValueType.Known KTUuid -> return true
+//     | TDateTime, ValueType.Known KTDateTime -> return true
 
 //     | TList innerT, ValueType.Known(KTList innerV) -> return! r innerT innerV
 
@@ -114,22 +114,23 @@ module RTE = RuntimeError
 //     //   // return! rMult expected actual
 //     //   return true
 
-//     //| TDB innerT, ValueType.Known(KTDB innerV) -> return! r innerT innerV
-
 //     | TVariable name, _ ->
 //       match Map.get name tst with
 //       | None -> return true
 //       | Some t -> return! r t actual
 
+//     //| TDB innerT, ValueType.Known(KTDB innerV) -> return! r innerT innerV
+
 //     | _, _ -> return false
 //   }
 
 // let rec unify
-//   (context : RTE.TypeChecker.Context)
+//   (context : RTE.TypeChecker.Context) // TODO: 'path' instead?
 //   (types : Types)
 //   (tst : TypeSymbolTable)
 //   (expected : TypeReference)
 //   (value : Dval)
+// // maybe this needs to return (updates to some TST), not just unit?
 //   : Ply<Result<unit, RTE.Error>> =
 //   uply {
 //     match! getTypeReferenceFromAlias types expected with
@@ -326,11 +327,11 @@ module RTE = RuntimeError
 //       | TDateTime, _
 //       | TUuid, _
 
+//       | TTuple _, _
 //       | TList _, _
 //       | TDict _, _
-//       | TTuple _, _
 
-//       // | TCustomType _, _
+//       | TCustomType _, _
 
 //       | TVariable _, _
 
@@ -367,13 +368,17 @@ module RTE = RuntimeError
 // let checkFunctionCall
 //   (types : Types)
 //   (tst : TypeSymbolTable)
-//   (fn : Fn)
+//   (fn : Fn) // -- aha, generic thing here, beware
 //   (args : NEList<Dval>)
 //   : Ply<Result<unit, RuntimeError>> =
 //   // The interpreter checks these are the same length
 //   fn.parameters
 //   |> NEList.map2WithIndex
 //     (fun i value param ->
+//       // probably, this 'context' thing isn't really what we want any more?
+//       //, ah this is maybe a 'path' thing tho?
+//       // OK so - we should create and pass in an 'empty' path
+//       // and upon failure, here yield the correct 'fancier' error.
 //       let context = FunctionCallParameter(fn.name, param, i)
 //       unify context types tst param.typ value)
 //     args
@@ -388,6 +393,7 @@ module RTE = RuntimeError
 //   (result : Dval)
 //   : Ply<Result<unit, RTE.Error>> =
 //   let context = FunctionCallResult(fn.name, fn.returnType)
+//   // see notes above - just pass in empty path, and return special RTE
 //   unify context types tst fn.returnType result
 
 
@@ -402,14 +408,10 @@ module RTE = RuntimeError
 ///   i.e. `List.append [1] ["hi"]` should fail
 ///   because we can't merge `Known KTInt64` and `Known KTString`
 ///
-/// These functions are intended to help with both of these, in cases where
-/// the functions in Dval.fs are insufficient (i.e. we don't know the Dark sub-types
-/// of a Dval in some F# code).
-///
-/// TODO: ideally we don't require a callStack to be input here -- too much data-passing
-/// (Ideally, upon error, we'd "fill in" the callstack in the Interpreter somewhere?)
+/// These functions are intended to help with both of these,
+/// in cases where the functions in `Dval.fs` are insufficient
+/// (i.e. we don't know the Dark sub-types of a Dval in some F# code).
 module DvalCreator =
-
   let list (threadID : ThreadID) (typ : ValueType) (items : List<Dval>) : Dval =
     let (typ, items) =
       items
@@ -420,6 +422,8 @@ module DvalCreator =
           match VT.merge typ dvalType with
           | Ok newType -> newType, dv :: list
           | Error() ->
+            // This _could_ be a generic typeChecker error, with the 'path'
+            // , and the index here passed in... might make sense CLEANUP
             RTE.Lists.Error.TriedToAddMismatchedData(typ, dvalType, dv)
             |> RTE.Error.List
             |> raiseRTE threadID)
@@ -502,6 +506,7 @@ module DvalCreator =
         RuntimeError.CannotMergeValues(okType, dvalType) |> raiseRTE threadID
 
     let error
+      // maybe this needs some 'path' or something?
       (threadID : ThreadID)
       (okType : ValueType)
       (errorType : ValueType)
