@@ -1,0 +1,9 @@
+module Darklang =
+  module Cli =
+    let getAvailableCommands (state: State): List<Command> =
+      // i.e. hide a lot of things if in the middle of a `let`
+      []
+
+    // let getAllCommands (): List<Command> =
+    //   //TODO: reflection? lol
+    //   []

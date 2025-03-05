@@ -1,0 +1,11 @@
+module Darklang =
+  module Cli =
+    let update (state: State) (msg: Msg): State =
+      match msg with
+      | Quit -> state // TODO
+      //| GoToApp id -> state
+      | Status ->
+        // CLEANUP could use some kinda 'markdown -> fancy CLI text' functionality?
+        //ClearPrompt
+        Builtin.printLine "version, location, auth stuff, help info"
+        state

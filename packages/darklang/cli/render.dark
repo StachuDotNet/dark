@@ -1,0 +1,16 @@
+module Darklang =
+  module Cli =
+    // TODO: something else, if not a tty
+    // TODO: dispatch: Msg -> Unit (?)
+    let render (state: State): String =
+      let promptPart = $"Prompt: {state.mainPrompt}"
+
+      let currentLocation =
+        match state.currentPage with
+        | Root -> "$"
+
+      let availableCommandsPart = "Available commands:\n- status"
+
+      [ currentLocation ++ "> " ++ state.mainPrompt ]
+      |> Stdlib.String.join "\n\n"
+

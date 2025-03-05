@@ -1,0 +1,42 @@
+module Darklang =
+  module Cli =
+    module REPL =
+      let replInternal (state: State): Int64 =
+        Builtin.stdoutClear()
+        Builtin.print (render state)
+
+        let keyRead = Stdlib.Cli.Stdin.readKey ()
+
+        match keyRead.key with
+        | Escape ->
+          //command.Quit
+          1L
+
+        | Enter ->
+          // command.SubmitPrompt
+          match state.mainPrompt |> Stdlib.String.toLowercase with
+          | "status" ->
+            { state with mainPrompt = ""; thingToPrint = "uhh the status is" }
+            |> replInternal
+          | other ->
+            { state with thingToPrint = "unknown command" }
+            |> replInternal
+
+        | Backspace ->
+          { state with mainPrompt = Stdlib.String.dropLast state.mainPrompt 1L }
+          |> replInternal
+
+        | other ->
+          //if holding anything (alt, ctrl, etc), ignore
+          //otherwise,
+          //add the letter to the prompt
+          { state with mainPrompt = state.mainPrompt ++ (Stdlib.Cli.Stdin.Key.toString other) }
+          |> replInternal
+
+        // | UpArrow ->
+        // | DownArrow ->
+
+
+      let repl () : Int64 =
+        let state, _ = init ()
+        replInternal state

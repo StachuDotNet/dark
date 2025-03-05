@@ -6,9 +6,10 @@ module Darklang =
       | RunScript of String * List<String>
       | RunInstallOrUpdate
       | Uninstall
-      | WIP
+      | REPL
       | Invalid of List<String>
 
+    // TODO migrate this to some ParseAndExecuteScript submodule
     type ExecutionError =
       { msg: String; metadata: Dict<String> }
 
@@ -56,7 +57,7 @@ module Darklang =
 
       | [ "install" ] | [ "update" ]  -> Command.RunInstallOrUpdate
 
-      | [ "wip" ] -> Command.WIP
+      | [ "repl" ] -> Command.REPL
 
       | thingToRun :: args ->
         if Stdlib.String.startsWith thingToRun "@" then
@@ -188,8 +189,8 @@ dark update                                   Update the darklang CLI to the lat
           Builtin.printLine "Uninstall cancelled"
           0L
 
-      | WIP ->
-        wip ()
+      | REPL ->
+        REPL.repl ()
 
       | Invalid args ->
         let args = args |> Stdlib.String.join " "
@@ -198,18 +199,6 @@ dark update                                   Update the darklang CLI to the lat
           $"Invalid command {args}. Use `dark help` for more information."
 
         1L
-
-
-    let wip () : Int64 =
-      let keyRead = Stdlib.Cli.Stdin.readKey ()
-
-      match keyRead.key with
-      | Escape -> 1L
-      // | UpArrow ->
-      // | DownArrow ->
-      | _ ->
-        Builtin.printLine ("You pressed: " ++ (Stdlib.Cli.Stdin.KeyRead.toString keyRead))
-        wip()
 
 
     let processNormally (args: List<String>) : Int64 =

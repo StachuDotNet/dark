@@ -442,6 +442,10 @@ module Darklang =
           let toString (k: Key): String =
             match k with
             // CLEANUP there's some tidying to be done here
+            // TODO actually, quite a bit:
+            // probably need to split this into a few fns, for a few use cases
+            // 'a' shouldn't be "A" unless with a Shift -- things like that.
+            // TODO somewhere need to record/maintain which keys are action keys vs textual, or whatever.
             | None -> "None"
             | Backspace -> "BACKSPACE"
             | Tab -> "TAB"
