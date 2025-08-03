@@ -87,15 +87,15 @@ module LetPattern =
       w.Write 0uy
       w.Write id
       String.write w name
-    | LPUnit id ->
-      w.Write 1uy
-      w.Write id
     | LPTuple(id, first, second, rest) ->
-      w.Write 2uy
+      w.Write 1uy
       w.Write id
       write w first
       write w second
       List.write w write rest
+    | LPUnit id ->
+      w.Write 2uy
+      w.Write id
 
   let rec read (r : BinaryReader) : LetPattern =
     match r.ReadByte() with
@@ -105,13 +105,13 @@ module LetPattern =
       LPVariable(id, name)
     | 1uy ->
       let id = r.ReadUInt64()
-      LPUnit id
-    | 2uy ->
-      let id = r.ReadUInt64()
       let first = read r
       let second = read r
       let rest = List.read r read
       LPTuple(id, first, second, rest)
+    | 2uy ->
+      let id = r.ReadUInt64()
+      LPUnit id
     | b ->
       raise (BinaryFormatException(CorruptedData $"Invalid LetPattern tag: {b}"))
 
@@ -119,44 +119,42 @@ module LetPattern =
 module MatchPattern =
   let rec write (w : BinaryWriter) (pattern : MatchPattern) =
     match pattern with
-    | MPVariable(id, name) ->
+    | MPUnit id ->
       w.Write 0uy
       w.Write id
-      String.write w name
-    | MPEnum(id, caseName, fieldPats) ->
+    | MPBool(id, value) ->
       w.Write 1uy
-      w.Write id
-      String.write w caseName
-      List.write w write fieldPats
-    | MPInt64(id, value) ->
-      w.Write 2uy
-      w.Write id
-      w.Write value
-    | MPUInt64(id, value) ->
-      w.Write 3uy
       w.Write id
       w.Write value
     | MPInt8(id, value) ->
-      w.Write 4uy
+      w.Write 2uy
       w.Write id
       w.Write value
     | MPUInt8(id, value) ->
-      w.Write 5uy
+      w.Write 3uy
       w.Write id
       w.Write value
     | MPInt16(id, value) ->
-      w.Write 6uy
+      w.Write 4uy
       w.Write id
       w.Write value
     | MPUInt16(id, value) ->
-      w.Write 7uy
+      w.Write 5uy
       w.Write id
       w.Write value
     | MPInt32(id, value) ->
-      w.Write 8uy
+      w.Write 6uy
       w.Write id
       w.Write value
     | MPUInt32(id, value) ->
+      w.Write 7uy
+      w.Write id
+      w.Write value
+    | MPInt64(id, value) ->
+      w.Write 8uy
+      w.Write id
+      w.Write value
+    | MPUInt64(id, value) ->
       w.Write 9uy
       w.Write id
       w.Write value
@@ -168,10 +166,12 @@ module MatchPattern =
       w.Write 11uy
       w.Write id
       String.write w (string value)
-    | MPBool(id, value) ->
+    | MPFloat(id, sign, whole, fractional) ->
       w.Write 12uy
       w.Write id
-      w.Write value
+      Sign.write w sign
+      String.write w whole
+      String.write w fractional
     | MPChar(id, value) ->
       w.Write 13uy
       w.Write id
@@ -180,30 +180,30 @@ module MatchPattern =
       w.Write 14uy
       w.Write id
       String.write w value
-    | MPFloat(id, sign, whole, fractional) ->
+    | MPList(id, patterns) ->
       w.Write 15uy
       w.Write id
-      Sign.write w sign
-      String.write w whole
-      String.write w fractional
-    | MPUnit id ->
+      List.write w write patterns
+    | MPListCons(id, head, tail) ->
       w.Write 16uy
       w.Write id
+      write w head
+      write w tail
     | MPTuple(id, first, second, rest) ->
       w.Write 17uy
       w.Write id
       write w first
       write w second
       List.write w write rest
-    | MPList(id, patterns) ->
+    | MPEnum(id, caseName, fieldPats) ->
       w.Write 18uy
       w.Write id
-      List.write w write patterns
-    | MPListCons(id, head, tail) ->
+      String.write w caseName
+      List.write w write fieldPats
+    | MPVariable(id, name) ->
       w.Write 19uy
       w.Write id
-      write w head
-      write w tail
+      String.write w name
     | MPOr(id, patterns) ->
       w.Write 20uy
       w.Write id
@@ -213,45 +213,43 @@ module MatchPattern =
     match r.ReadByte() with
     | 0uy ->
       let id = r.ReadUInt64()
-      let name = String.read r
-      MPVariable(id, name)
+      MPUnit id
     | 1uy ->
       let id = r.ReadUInt64()
-      let caseName = String.read r
-      let fieldPats = List.read r read
-      MPEnum(id, caseName, fieldPats)
+      let value = r.ReadBoolean()
+      MPBool(id, value)
     | 2uy ->
-      let id = r.ReadUInt64()
-      let value = r.ReadInt64()
-      MPInt64(id, value)
-    | 3uy ->
-      let id = r.ReadUInt64()
-      let value = r.ReadUInt64()
-      MPUInt64(id, value)
-    | 4uy ->
       let id = r.ReadUInt64()
       let value = r.ReadSByte()
       MPInt8(id, value)
-    | 5uy ->
+    | 3uy ->
       let id = r.ReadUInt64()
       let value = r.ReadByte()
       MPUInt8(id, value)
-    | 6uy ->
+    | 4uy ->
       let id = r.ReadUInt64()
       let value = r.ReadInt16()
       MPInt16(id, value)
-    | 7uy ->
+    | 5uy ->
       let id = r.ReadUInt64()
       let value = r.ReadUInt16()
       MPUInt16(id, value)
-    | 8uy ->
+    | 6uy ->
       let id = r.ReadUInt64()
       let value = r.ReadInt32()
       MPInt32(id, value)
-    | 9uy ->
+    | 7uy ->
       let id = r.ReadUInt64()
       let value = r.ReadUInt32()
       MPUInt32(id, value)
+    | 8uy ->
+      let id = r.ReadUInt64()
+      let value = r.ReadInt64()
+      MPInt64(id, value)
+    | 9uy ->
+      let id = r.ReadUInt64()
+      let value = r.ReadUInt64()
+      MPUInt64(id, value)
     | 10uy ->
       let id = r.ReadUInt64()
       let value = String.read r |> System.Int128.Parse
@@ -262,8 +260,10 @@ module MatchPattern =
       MPUInt128(id, value)
     | 12uy ->
       let id = r.ReadUInt64()
-      let value = r.ReadBoolean()
-      MPBool(id, value)
+      let sign = Sign.read r
+      let whole = String.read r
+      let fractional = String.read r
+      MPFloat(id, sign, whole, fractional)
     | 13uy ->
       let id = r.ReadUInt64()
       let value = String.read r
@@ -274,13 +274,13 @@ module MatchPattern =
       MPString(id, value)
     | 15uy ->
       let id = r.ReadUInt64()
-      let sign = Sign.read r
-      let whole = String.read r
-      let fractional = String.read r
-      MPFloat(id, sign, whole, fractional)
+      let patterns = List.read r read
+      MPList(id, patterns)
     | 16uy ->
       let id = r.ReadUInt64()
-      MPUnit id
+      let head = read r
+      let tail = read r
+      MPListCons(id, head, tail)
     | 17uy ->
       let id = r.ReadUInt64()
       let first = read r
@@ -289,13 +289,13 @@ module MatchPattern =
       MPTuple(id, first, second, rest)
     | 18uy ->
       let id = r.ReadUInt64()
-      let patterns = List.read r read
-      MPList(id, patterns)
+      let caseName = String.read r
+      let fieldPats = List.read r read
+      MPEnum(id, caseName, fieldPats)
     | 19uy ->
       let id = r.ReadUInt64()
-      let head = read r
-      let tail = read r
-      MPListCons(id, head, tail)
+      let name = String.read r
+      MPVariable(id, name)
     | 20uy ->
       let id = r.ReadUInt64()
       let patterns = NEList.read read r
@@ -401,11 +401,10 @@ module PipeExpr =
 module Expr =
   let rec write (w : BinaryWriter) (expr : Expr) =
     match expr with
-    | EInt64(id, value) ->
+    | EUnit id ->
       w.Write 0uy
       w.Write id
-      w.Write value
-    | EUInt64(id, value) ->
+    | EBool(id, value) ->
       w.Write 1uy
       w.Write id
       w.Write value
@@ -433,77 +432,104 @@ module Expr =
       w.Write 7uy
       w.Write id
       w.Write value
-    | EInt128(id, value) ->
+    | EInt64(id, value) ->
       w.Write 8uy
+      w.Write id
+      w.Write value
+    | EUInt64(id, value) ->
+      w.Write 9uy
+      w.Write id
+      w.Write value
+    | EInt128(id, value) ->
+      w.Write 10uy
       w.Write id
       String.write w (string value)
     | EUInt128(id, value) ->
-      w.Write 9uy
-      w.Write id
-      String.write w (string value)
-    | EBool(id, value) ->
-      w.Write 10uy
-      w.Write id
-      w.Write value
-    | EString(id, segments) ->
       w.Write 11uy
       w.Write id
-      List.write w StringSegment.write segments
-    | EChar(id, value) ->
-      w.Write 12uy
-      w.Write id
-      String.write w value
+      String.write w (string value)
     | EFloat(id, sign, whole, fractional) ->
-      w.Write 13uy
+      w.Write 12uy
       w.Write id
       Sign.write w sign
       String.write w whole
       String.write w fractional
-    | EUnit id ->
+    | EChar(id, value) ->
+      w.Write 13uy
+      w.Write id
+      String.write w value
+    | EString(id, segments) ->
       w.Write 14uy
       w.Write id
-    | EConstant(id, nameRes) ->
-      w.Write 15uy
-      w.Write id
-      NameResolution.write FQConstantName.write w nameRes
-    | ELet(id, pattern, rhs, body) ->
-      w.Write 16uy
-      w.Write id
-      LetPattern.write w pattern
-      write w rhs
-      write w body
+      List.write w StringSegment.write segments
     | EIf(id, cond, thenExpr, elseExpr) ->
-      w.Write 17uy
+      w.Write 15uy
       w.Write id
       write w cond
       write w thenExpr
       Option.write w write elseExpr
-    | ELambda(id, pats, body) ->
-      w.Write 18uy
-      w.Write id
-      NEList.write LetPattern.write w pats
-      write w body
-    | ERecordFieldAccess(id, expr, field) ->
-      w.Write 19uy
+    | EPipe(id, expr, pipes) ->
+      w.Write 16uy
       w.Write id
       write w expr
-      String.write w field
+      List.write w PipeExpr.write pipes
+    | EMatch(id, expr, cases) ->
+      w.Write 17uy
+      w.Write id
+      write w expr
+      List.write w MatchCase.write cases
+    | ELet(id, pattern, rhs, body) ->
+      w.Write 18uy
+      w.Write id
+      LetPattern.write w pattern
+      write w rhs
+      write w body
     | EVariable(id, name) ->
-      w.Write 20uy
+      w.Write 19uy
       w.Write id
       String.write w name
-    | EApply(id, fn, typeArgs, args) ->
+    | EList(id, exprs) ->
+      w.Write 20uy
+      w.Write id
+      List.write w write exprs
+    | EDict(id, pairs) ->
       w.Write 21uy
+      w.Write id
+      List.write
+        w
+        (fun w (key, value) ->
+          String.write w key
+          write w value)
+        pairs
+    | ETuple(id, first, second, rest) ->
+      w.Write 22uy
+      w.Write id
+      write w first
+      write w second
+      List.write w write rest
+    | EApply(id, fn, typeArgs, args) ->
+      w.Write 23uy
       w.Write id
       write w fn
       List.write w TypeReference.write typeArgs
       NEList.write write w args
-    | EList(id, exprs) ->
-      w.Write 22uy
+    | EFnName(id, nameRes) ->
+      w.Write 24uy
       w.Write id
-      List.write w write exprs
+      NameResolution.write FQFnName.write w nameRes
+    | ELambda(id, pats, body) ->
+      w.Write 25uy
+      w.Write id
+      NEList.write LetPattern.write w pats
+      write w body
+    | EInfix(id, op, left, right) ->
+      w.Write 26uy
+      w.Write id
+      Infix.write w op
+      write w left
+      write w right
     | ERecord(id, typeName, typeArgs, fields) ->
-      w.Write 23uy
+      w.Write 27uy
       w.Write id
       NameResolution.write FQTypeName.write w typeName
       List.write w TypeReference.write typeArgs
@@ -513,8 +539,13 @@ module Expr =
           String.write w name
           write w expr)
         fields
+    | ERecordFieldAccess(id, expr, field) ->
+      w.Write 28uy
+      w.Write id
+      write w expr
+      String.write w field
     | ERecordUpdate(id, record, updates) ->
-      w.Write 24uy
+      w.Write 29uy
       w.Write id
       write w record
       NEList.write
@@ -523,48 +554,17 @@ module Expr =
           write w expr)
         w
         updates
-    | EPipe(id, expr, pipes) ->
-      w.Write 25uy
-      w.Write id
-      write w expr
-      List.write w PipeExpr.write pipes
     | EEnum(id, typeName, typeArgs, caseName, fields) ->
-      w.Write 26uy
+      w.Write 30uy
       w.Write id
       NameResolution.write FQTypeName.write w typeName
       List.write w TypeReference.write typeArgs
       String.write w caseName
       List.write w write fields
-    | EMatch(id, expr, cases) ->
-      w.Write 27uy
-      w.Write id
-      write w expr
-      List.write w MatchCase.write cases
-    | ETuple(id, first, second, rest) ->
-      w.Write 28uy
-      w.Write id
-      write w first
-      write w second
-      List.write w write rest
-    | EInfix(id, op, left, right) ->
-      w.Write 29uy
-      w.Write id
-      Infix.write w op
-      write w left
-      write w right
-    | EDict(id, pairs) ->
-      w.Write 30uy
-      w.Write id
-      List.write
-        w
-        (fun w (key, value) ->
-          String.write w key
-          write w value)
-        pairs
-    | EFnName(id, nameRes) ->
+    | EConstant(id, nameRes) ->
       w.Write 31uy
       w.Write id
-      NameResolution.write FQFnName.write w nameRes
+      NameResolution.write FQConstantName.write w nameRes
     | EStatement(id, first, next) ->
       w.Write 32uy
       w.Write id
@@ -575,12 +575,11 @@ module Expr =
     match r.ReadByte() with
     | 0uy ->
       let id = r.ReadUInt64()
-      let value = r.ReadInt64()
-      EInt64(id, value)
+      EUnit id
     | 1uy ->
       let id = r.ReadUInt64()
-      let value = r.ReadUInt64()
-      EUInt64(id, value)
+      let value = r.ReadBoolean()
+      EBool(id, value)
     | 2uy ->
       let id = r.ReadUInt64()
       let value = r.ReadSByte()
@@ -607,135 +606,131 @@ module Expr =
       EUInt32(id, value)
     | 8uy ->
       let id = r.ReadUInt64()
+      let value = r.ReadInt64()
+      EInt64(id, value)
+    | 9uy ->
+      let id = r.ReadUInt64()
+      let value = r.ReadUInt64()
+      EUInt64(id, value)
+    | 10uy ->
+      let id = r.ReadUInt64()
       let value = String.read r |> System.Int128.Parse
       EInt128(id, value)
-    | 9uy ->
+    | 11uy ->
       let id = r.ReadUInt64()
       let value = String.read r |> System.UInt128.Parse
       EUInt128(id, value)
-    | 10uy ->
-      let id = r.ReadUInt64()
-      let value = r.ReadBoolean()
-      EBool(id, value)
-    | 11uy ->
-      let id = r.ReadUInt64()
-      let segments = List.read r StringSegment.read
-      EString(id, segments)
     | 12uy ->
-      let id = r.ReadUInt64()
-      let value = String.read r
-      EChar(id, value)
-    | 13uy ->
       let id = r.ReadUInt64()
       let sign = Sign.read r
       let whole = String.read r
       let fractional = String.read r
       EFloat(id, sign, whole, fractional)
+    | 13uy ->
+      let id = r.ReadUInt64()
+      let value = String.read r
+      EChar(id, value)
     | 14uy ->
       let id = r.ReadUInt64()
-      EUnit id
+      let segments = List.read r StringSegment.read
+      EString(id, segments)
     | 15uy ->
-      let id = r.ReadUInt64()
-      let nameRes = NameResolution.read FQConstantName.read r
-      EConstant(id, nameRes)
-    | 16uy ->
-      let id = r.ReadUInt64()
-      let pattern = LetPattern.read r
-      let rhs = read r
-      let body = read r
-      ELet(id, pattern, rhs, body)
-    | 17uy ->
       let id = r.ReadUInt64()
       let cond = read r
       let thenExpr = read r
       let elseExpr = Option.read r read
       EIf(id, cond, thenExpr, elseExpr)
-    | 18uy ->
-      let id = r.ReadUInt64()
-      let pats = NEList.read LetPattern.read r
-      let body = read r
-      ELambda(id, pats, body)
-    | 19uy ->
+    | 16uy ->
       let id = r.ReadUInt64()
       let expr = read r
-      let field = String.read r
-      ERecordFieldAccess(id, expr, field)
-    | 20uy ->
+      let pipes = List.read r PipeExpr.read
+      EPipe(id, expr, pipes)
+    | 17uy ->
+      let id = r.ReadUInt64()
+      let expr = read r
+      let cases = List.read r MatchCase.read
+      EMatch(id, expr, cases)
+    | 18uy ->
+      let id = r.ReadUInt64()
+      let pattern = LetPattern.read r
+      let rhs = read r
+      let body = read r
+      ELet(id, pattern, rhs, body)
+    | 19uy ->
       let id = r.ReadUInt64()
       let name = String.read r
       EVariable(id, name)
+    | 20uy ->
+      let id = r.ReadUInt64()
+      let exprs = List.read r read
+      EList(id, exprs)
     | 21uy ->
+      let id = r.ReadUInt64()
+      let pairs = List.read r (fun r ->
+        let key = String.read r
+        let value = read r
+        (key, value))
+      EDict(id, pairs)
+    | 22uy ->
+      let id = r.ReadUInt64()
+      let first = read r
+      let second = read r
+      let rest = List.read r read
+      ETuple(id, first, second, rest)
+    | 23uy ->
       let id = r.ReadUInt64()
       let fn = read r
       let typeArgs = List.read r TypeReference.read
       let args = NEList.read read r
       EApply(id, fn, typeArgs, args)
-    | 22uy ->
+    | 24uy ->
       let id = r.ReadUInt64()
-      let exprs = List.read r read
-      EList(id, exprs)
-    | 23uy ->
+      let nameRes = NameResolution.read FQFnName.read r
+      EFnName(id, nameRes)
+    | 25uy ->
+      let id = r.ReadUInt64()
+      let pats = NEList.read LetPattern.read r
+      let body = read r
+      ELambda(id, pats, body)
+    | 26uy ->
+      let id = r.ReadUInt64()
+      let op = Infix.read r
+      let left = read r
+      let right = read r
+      EInfix(id, op, left, right)
+    | 27uy ->
       let id = r.ReadUInt64()
       let typeName = NameResolution.read FQTypeName.read r
       let typeArgs = List.read r TypeReference.read
-      let fields =
-        List.read r (fun r ->
-          let name = String.read r
-          let expr = read r
-          (name, expr))
+      let fields = List.read r (fun r ->
+        let name = String.read r
+        let expr = read r
+        (name, expr))
       ERecord(id, typeName, typeArgs, fields)
-    | 24uy ->
-      let id = r.ReadUInt64()
-      let record = read r
-      let updates =
-        NEList.read
-          (fun r ->
-            let name = String.read r
-            let expr = read r
-            (name, expr))
-          r
-      ERecordUpdate(id, record, updates)
-    | 25uy ->
+    | 28uy ->
       let id = r.ReadUInt64()
       let expr = read r
-      let pipes = List.read r PipeExpr.read
-      EPipe(id, expr, pipes)
-    | 26uy ->
+      let field = String.read r
+      ERecordFieldAccess(id, expr, field)
+    | 29uy ->
+      let id = r.ReadUInt64()
+      let record = read r
+      let updates = NEList.read (fun r ->
+        let name = String.read r
+        let expr = read r
+        (name, expr)) r
+      ERecordUpdate(id, record, updates)
+    | 30uy ->
       let id = r.ReadUInt64()
       let typeName = NameResolution.read FQTypeName.read r
       let typeArgs = List.read r TypeReference.read
       let caseName = String.read r
       let fields = List.read r read
       EEnum(id, typeName, typeArgs, caseName, fields)
-    | 27uy ->
-      let id = r.ReadUInt64()
-      let expr = read r
-      let cases = List.read r MatchCase.read
-      EMatch(id, expr, cases)
-    | 28uy ->
-      let id = r.ReadUInt64()
-      let first = read r
-      let second = read r
-      let rest = List.read r read
-      ETuple(id, first, second, rest)
-    | 29uy ->
-      let id = r.ReadUInt64()
-      let op = Infix.read r
-      let left = read r
-      let right = read r
-      EInfix(id, op, left, right)
-    | 30uy ->
-      let id = r.ReadUInt64()
-      let pairs =
-        List.read r (fun r ->
-          let key = String.read r
-          let value = read r
-          (key, value))
-      EDict(id, pairs)
     | 31uy ->
       let id = r.ReadUInt64()
-      let nameRes = NameResolution.read FQFnName.read r
-      EFnName(id, nameRes)
+      let nameRes = NameResolution.read FQConstantName.read r
+      EConstant(id, nameRes)
     | 32uy ->
       let id = r.ReadUInt64()
       let first = read r

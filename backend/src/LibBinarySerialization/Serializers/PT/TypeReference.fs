@@ -12,87 +12,86 @@ open LibBinarySerialization.Serializers.PT.Common
 
 let rec write (w : BinaryWriter) (t : TypeReference) : unit =
   match t with
-  // CLEANUP reorder these
-  | TInt64 -> w.Write 0uy
-  | TUInt64 -> w.Write 1uy
+  | TUnit -> w.Write 0uy
+  | TBool -> w.Write 1uy
   | TInt8 -> w.Write 2uy
   | TUInt8 -> w.Write 3uy
   | TInt16 -> w.Write 4uy
   | TUInt16 -> w.Write 5uy
   | TInt32 -> w.Write 6uy
   | TUInt32 -> w.Write 7uy
-  | TInt128 -> w.Write 8uy
-  | TUInt128 -> w.Write 9uy
-  | TFloat -> w.Write 10uy
-  | TBool -> w.Write 11uy
-  | TUnit -> w.Write 12uy
-  | TString -> w.Write 13uy
+  | TInt64 -> w.Write 8uy
+  | TUInt64 -> w.Write 9uy
+  | TInt128 -> w.Write 10uy
+  | TUInt128 -> w.Write 11uy
+  | TFloat -> w.Write 12uy
+  | TChar -> w.Write 13uy
+  | TString -> w.Write 14uy
+  | TUuid -> w.Write 15uy
+  | TDateTime -> w.Write 16uy
   | TList inner ->
-    w.Write 14uy
+    w.Write 17uy
     write w inner
-  | TDict inner ->
-    w.Write 15uy
-    write w inner
-  | TDB inner ->
-    w.Write 16uy
-    write w inner
-  | TDateTime -> w.Write 17uy
-  | TChar -> w.Write 18uy
-  | TUuid -> w.Write 19uy
-  | TCustomType(typeName, typeArgs) ->
-    w.Write 20uy
-    NameResolution.write FQTypeName.write w typeName
-    List.write w write typeArgs
-  | TVariable name ->
-    w.Write 21uy
-    String.write w name
-  | TFn(paramTypes, returnType) ->
-    w.Write 22uy
-    NEList.write write w paramTypes
-    write w returnType
   | TTuple(first, second, rest) ->
-    w.Write 23uy
+    w.Write 18uy
     write w first
     write w second
     List.write w write rest
+  | TDict inner ->
+    w.Write 19uy
+    write w inner
+  | TFn(paramTypes, returnType) ->
+    w.Write 20uy
+    NEList.write write w paramTypes
+    write w returnType
+  | TCustomType(typeName, typeArgs) ->
+    w.Write 21uy
+    NameResolution.write FQTypeName.write w typeName
+    List.write w write typeArgs
+  | TVariable name ->
+    w.Write 22uy
+    String.write w name
+  | TDB inner ->
+    w.Write 23uy
+    write w inner
 
 let rec read (r : BinaryReader) : TypeReference =
   match r.ReadByte() with
-  | 0uy -> TInt64
-  | 1uy -> TUInt64
+  | 0uy -> TUnit
+  | 1uy -> TBool
   | 2uy -> TInt8
   | 3uy -> TUInt8
   | 4uy -> TInt16
   | 5uy -> TUInt16
   | 6uy -> TInt32
   | 7uy -> TUInt32
-  | 8uy -> TInt128
-  | 9uy -> TUInt128
-  | 10uy -> TFloat
-  | 11uy -> TBool
-  | 12uy -> TUnit
-  | 13uy -> TString
-  | 14uy -> TList(read r)
-  | 15uy -> TDict(read r)
-  | 16uy -> TDB(read r)
-  | 17uy -> TDateTime
-  | 18uy -> TChar
-  | 19uy -> TUuid
-  | 20uy ->
-    let typeName = NameResolution.read FQTypeName.read r
-    let typeArgs = List.read r read
-    TCustomType(typeName, typeArgs)
-  | 21uy ->
-    let name = String.read r
-    TVariable name
-  | 22uy ->
-    let paramTypes = NEList.read read r
-    let returnType = read r
-    TFn(paramTypes, returnType)
-  | 23uy ->
+  | 8uy -> TInt64
+  | 9uy -> TUInt64
+  | 10uy -> TInt128
+  | 11uy -> TUInt128
+  | 12uy -> TFloat
+  | 13uy -> TChar
+  | 14uy -> TString
+  | 15uy -> TUuid
+  | 16uy -> TDateTime
+  | 17uy -> TList(read r)
+  | 18uy ->
     let first = read r
     let second = read r
     let rest = List.read r read
     TTuple(first, second, rest)
+  | 19uy -> TDict(read r)
+  | 20uy ->
+    let paramTypes = NEList.read read r
+    let returnType = read r
+    TFn(paramTypes, returnType)
+  | 21uy ->
+    let typeName = NameResolution.read FQTypeName.read r
+    let typeArgs = List.read r read
+    TCustomType(typeName, typeArgs)
+  | 22uy ->
+    let name = String.read r
+    TVariable name
+  | 23uy -> TDB(read r)
   | b ->
     raise (BinaryFormatException(CorruptedData $"Invalid TypeReference tag: {b}"))

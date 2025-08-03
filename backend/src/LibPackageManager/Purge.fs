@@ -18,4 +18,14 @@ let purge () : Task<unit> =
     |> List.map (fun sql -> (sql, [ [] ]))
     |> Sql.executeTransactionSync
     |> ignore<List<int>>
+    
+    // Force WAL checkpoint to flush changes and clean up WAL files
+    // If this fails, it's not critical - the main deletes already succeeded
+    try
+      Sql.query "PRAGMA wal_checkpoint(TRUNCATE)"
+      |> Sql.executeNonQuery
+      |> Result.unwrap
+      |> ignore<int>
+    with
+    | _ -> () // Ignore WAL checkpoint errors
   }

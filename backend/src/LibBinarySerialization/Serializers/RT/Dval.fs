@@ -131,10 +131,10 @@ and writeDvalImpl (w : BinaryWriter) (dval : Dval) =
     w.Write value
   | DInt128 value ->
     w.Write 10uy
-    String.write w (string value)
+    Int128.write w value
   | DUInt128 value ->
     w.Write 11uy
-    String.write w (string value)
+    UInt128.write w value
   | DFloat value ->
     w.Write 12uy
     Float.write w value
@@ -144,12 +144,12 @@ and writeDvalImpl (w : BinaryWriter) (dval : Dval) =
   | DString value ->
     w.Write 14uy
     String.write w value
-  | DUuid value ->
-    w.Write 15uy
-    Guid.write w value
   | DDateTime value ->
-    w.Write 16uy
+    w.Write 15uy
     DarkDateTime.write w value
+  | DUuid value ->
+    w.Write 16uy
+    Guid.write w value
   | DList(valueType, items) ->
     w.Write 17uy
     writeValueType w valueType
@@ -279,13 +279,13 @@ and readDvalImpl (r : BinaryReader) : Dval =
   | 7uy -> DUInt32(r.ReadUInt32())
   | 8uy -> DInt64(r.ReadInt64())
   | 9uy -> DUInt64(r.ReadUInt64())
-  | 10uy -> DInt128(System.Int128.Parse(String.read r))
-  | 11uy -> DUInt128(System.UInt128.Parse(String.read r))
+  | 10uy -> DInt128(Int128.read r)
+  | 11uy -> DUInt128(UInt128.read r)
   | 12uy -> DFloat(Float.read r)
   | 13uy -> DChar(String.read r)
   | 14uy -> DString(String.read r)
-  | 15uy -> DUuid(Guid.read r)
-  | 16uy -> DDateTime(DarkDateTime.read r)
+  | 15uy -> DDateTime(DarkDateTime.read r)
+  | 16uy -> DUuid(Guid.read r)
   | 17uy ->
     let valueType = readValueType r
     let items = List.read r readDval

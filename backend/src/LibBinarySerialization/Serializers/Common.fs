@@ -102,23 +102,11 @@ module UInt64 =
 
 module Float =
   let write (w : BinaryWriter) (value : float) =
-    if System.Double.IsNaN(value) then
-      w.Write(0uy) // NaN tag
-    elif System.Double.IsPositiveInfinity(value) then
-      w.Write(1uy) // +Infinity tag
-    elif System.Double.IsNegativeInfinity(value) then
-      w.Write(2uy) // -Infinity tag
-    else
-      w.Write(3uy) // Regular float tag
-      w.Write(value)
+    // Write the double directly - IEEE 754 already has special bit patterns for NaN/Infinity
+    w.Write(value)
 
   let read (r : BinaryReader) : float =
-    match r.ReadByte() with
-    | 0uy -> System.Double.NaN
-    | 1uy -> System.Double.PositiveInfinity
-    | 2uy -> System.Double.NegativeInfinity
-    | 3uy -> r.ReadDouble()
-    | b -> raise (BinaryFormatException(CorruptedData $"Invalid float tag: {b}"))
+    r.ReadDouble()
 
 module DateTime =
   let write (w : BinaryWriter) (value : NodaTime.Instant) =
@@ -127,27 +115,38 @@ module DateTime =
   let read (r : BinaryReader) : NodaTime.Instant =
     NodaTime.Instant.FromUnixTimeTicks(r.ReadInt64())
 
-// Read/write from/to string for now - simpler than byte manipulation
-// TODO - what, why?
+// Efficient binary serialization for 128-bit integers  
 module Int128 =
-  let read (r : BinaryReader) : System.Int128 =
-    let str = String.read r
-    System.Int128.Parse(str)
-
   let write (w : BinaryWriter) (value : System.Int128) =
-    let str = string value
-    String.write w str
+    // Write as two 64-bit values (low, high)
+    let low = uint64 value
+    let high = uint64 (value >>> 64)
+    w.Write(low)
+    w.Write(high)
 
-// As string for now - simpler than byte manipulation
-// TODO: what?
+  let read (r : BinaryReader) : System.Int128 =
+    let low = r.ReadUInt64()
+    let high = r.ReadUInt64()
+    // Reconstruct Int128 from two UInt64 values
+    let lowPart = System.Int128.op_Implicit(low)
+    let highPart = System.Int128.op_Implicit(high) <<< 64
+    lowPart ||| highPart
+
 module UInt128 =
   let write (w : BinaryWriter) (value : System.UInt128) =
-    let str = string value
-    String.write w str
+    // Write as two 64-bit values (low, high)
+    let low = uint64 value
+    let high = uint64 (value >>> 64)
+    w.Write(low)
+    w.Write(high)
 
   let read (r : BinaryReader) : System.UInt128 =
-    let str = String.read r
-    System.UInt128.Parse str
+    let low = r.ReadUInt64()
+    let high = r.ReadUInt64()
+    // Reconstruct UInt128 from two UInt64 values
+    let lowPart = System.UInt128.op_Implicit(low)
+    let highPart = System.UInt128.op_Implicit(high) <<< 64
+    lowPart ||| highPart
 
 
 

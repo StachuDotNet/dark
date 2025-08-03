@@ -49,11 +49,11 @@ grey="\033[1;30m"
 reset="\033[0m"
 
 
-# Delete the database file before running tests
+# Delete the database file and WAL files before running tests
 export DARK_CONFIG_DB_NAME=test-data.db
 DB_PATH="${DARK_CONFIG_RUNDIR}/${DARK_CONFIG_DB_NAME}"
 echo -e "Deleting database file ${grey}(${DB_PATH})${reset}"
-rm -f "$DB_PATH"
+rm -f "$DB_PATH" "$DB_PATH-wal" "$DB_PATH-shm"
 
 # Run the migrations before the other servers start
 echo -e "Running migrations ${grey}($LOGS/test-migrations.log)${reset}"
