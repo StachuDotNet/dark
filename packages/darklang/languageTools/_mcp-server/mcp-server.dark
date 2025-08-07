@@ -39,7 +39,19 @@ module Darklang =
         // so the client knows which requests it can make.
         let incomingMessageRaw = readMessageFromClient ()
         logIncomingRequest incomingMessageRaw
-        let initialState = handleInitializeRequest ()
+        
+        let initialState = 
+          match JsonRPC.IncomingMessage.parse incomingMessageRaw with
+          | SingleRequest(Ok jsonRpcRequest) ->
+            match ModelContextProtocol.parseIncomingMessage jsonRpcRequest with
+            | InitializeRequest requestId ->
+              handleInitializeRequest requestId
+            | _ ->
+              log "Error: Expected initialize request but got something else"
+              handleInitializeRequest (JsonRPC.RequestId.Int 0L)
+          | _ ->
+            log "Error: Failed to parse initialize request"
+            handleInitializeRequest (JsonRPC.RequestId.Int 0L)
 
 
         // now that _that_ is out of the way, we can start responding to normal requests
@@ -186,6 +198,9 @@ module Darklang =
           match Stdlib.Int64.parse lengthStr with
           | Ok length -> tryReadHeader (Stdlib.Option.Option.Some length)
           | Error _ -> Stdlib.Result.Result.Error "Invalid Content-Length value"
+        else
+          // Skip unknown header lines and continue reading
+          tryReadHeader contentLength
 
 
       // TODO maybe this should return a Result eventually,

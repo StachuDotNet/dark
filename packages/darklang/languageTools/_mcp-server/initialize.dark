@@ -3,7 +3,7 @@ module Darklang =
     module McpServer =
       let handleInitializeRequest
         // TODO: (ModelContextProtocol.Lifecycle.InitializeRequest.InitializeParams)
-        ()
+        (requestId: JsonRPC.RequestId)
         : McpState =
         let hardcodedInitializeResult =
           ModelContextProtocol.Lifecycle.InitializeRequest.InitializeResult
@@ -35,7 +35,7 @@ module Darklang =
           |> ModelContextProtocol.Lifecycle.InitializeRequest.toJson
           |> (fun r ->
             JsonRPC.Response.Ok.make
-              (Stdlib.Option.Option.Some(JsonRPC.RequestId.Int 0L))
+              (Stdlib.Option.Option.Some requestId)
               r)
           |> Stdlib.AltJson.format
 
