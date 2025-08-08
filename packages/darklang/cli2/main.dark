@@ -1,0 +1,8 @@
+module Darklang =
+  module Cli2 =
+    /// Entry point for the reorganized CLI2
+    /// For now, just delegate back to CLI1 while we set up the foundation
+    let executeCliCommand (args: List<String>) : Int64 =
+      // TODO: In future phases, implement organized command structure here
+      // For now, delegate back to the original CLI to ensure stability
+      Darklang.Cli.executeCliCommand args

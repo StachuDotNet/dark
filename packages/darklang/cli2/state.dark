@@ -1,0 +1,10 @@
+module Darklang =
+  module Cli2 =
+    // Re-export the types from the original CLI for now
+    // Later we can modify these as needed for CLI2
+    
+    type Page = Darklang.Cli.Page
+    type CommandResult = Darklang.Cli.CommandResult  
+    type InteractionMode = Darklang.Cli.InteractionMode
+    type CompletionState = Darklang.Cli.CompletionState
+    type State = Darklang.Cli.State
