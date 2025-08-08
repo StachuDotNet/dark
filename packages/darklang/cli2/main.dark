@@ -3,6 +3,8 @@ module Darklang =
     /// Entry point for the reorganized CLI2
     /// For now, just delegate back to CLI1 while we set up the foundation
     let executeCliCommand (args: List<String>) : Int64 =
-      // TODO: In future phases, implement organized command structure here
-      // For now, delegate back to the original CLI to ensure stability
-      Darklang.Cli.executeCliCommand args
+      // TODO: Implement organized command structure here
+      // For now, delegate to original CLI implementation to maintain functionality
+      let (state, initialMsgs) = Darklang.Cli.init args
+      let state = Darklang.Cli.processMessages state initialMsgs
+      Darklang.Cli.runInternalLoop state

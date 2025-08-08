@@ -19,7 +19,10 @@
       "Bash(/home/stachu/code/dark/scripts/build/build-release-cli-exes.sh:*)",
       "Bash(scripts/run-backend-tests:*)",
       "Bash(timeout:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(DARK_USE_CLI2=true ./scripts/run-cli version)",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli version)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }

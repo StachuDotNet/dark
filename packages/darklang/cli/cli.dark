@@ -75,16 +75,8 @@ module Darklang =
 
     /// Starts the REPL with the initial state
     let executeCliCommand (args: List<String>) : Int64 =
-      // Check if CLI2 is enabled via environment variable
-      match Builtin.environmentGet "DARK_USE_CLI2" with
-      | Some "true" ->
-        // Use the new organized CLI2
-        Darklang.Cli2.executeCliCommand args
-      | _ ->
-        // Use the original CLI (default behavior)
-        let (state, initialMsgs) = init args
-        let state = processMessages state initialMsgs
-        runInternalLoop state
+      // Switch to CLI2 for development - parallel development approach
+      Darklang.Cli2.executeCliCommand args
 
 
     module ExecutionError =
