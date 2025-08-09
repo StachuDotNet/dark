@@ -4,16 +4,31 @@ module Darklang =
       /// System commands that are always available (help, version, status, quit, clear)
       
       let help (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
-        // Delegate to CLI1 for now - will implement organized version later
-        Darklang.Cli.executeCommand state "help" args
+        // Check if asking for help on a specific command
+        if args == "" then
+          // Show organized help overview
+          let helpText = Darklang.Cli2.UI.getOrganizedHelpText ()
+          Darklang.Cli.CommandResult { output = helpText; nextState = state }
+        else
+          // Delegate to CLI1 for specific command help
+          Darklang.Cli.executeCommand state "help" args
       
       let version (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
-        // Delegate to CLI1 for now
-        Darklang.Cli.executeCommand state "version" args
+        // Show enhanced version information
+        let versionText = 
+          "Darklang CLI v2 - Organized & Powerful\n" ++
+          "=====================================\n" ++
+          "• Enhanced command organization\n" ++
+          "• Improved user experience\n" ++
+          "• MVU/FRP architecture\n" ++
+          "• TUI mode support\n\n" ++
+          "Built on the reliable Darklang CLI foundation"
+        Darklang.Cli.CommandResult { output = versionText; nextState = state }
       
       let status (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
-        // Delegate to CLI1 for now
-        Darklang.Cli.executeCommand state "status" args
+        // Use enhanced status display from UI module
+        let statusText = Darklang.Cli2.UI.formatStatus state
+        Darklang.Cli.CommandResult { output = statusText; nextState = state }
       
       let quit (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
         // Delegate to CLI1 for now

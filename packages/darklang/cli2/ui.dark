@@ -1,0 +1,35 @@
+module Darklang =
+  module Cli2 =
+    module UI =
+      /// UI components for CLI2 - better organized help and display
+      
+      let formatCommandCategory (categoryName: String) (commands: List<String>) : String =
+        let commandList = Stdlib.List.fold commands "" (fun acc cmd ->
+          acc ++ "  " ++ cmd ++ "\n")
+        "\n" ++ categoryName ++ ":\n" ++ commandList
+      
+      let getOrganizedHelpText () : String =
+        let systemCommands = ["help", "version", "status", "quit", "clear"]
+        let navigationCommands = ["back", "cd", "ls", "view"]  
+        let developmentCommands = ["run", "scripts", "eval"]
+        let installationCommands = ["install", "update", "uninstall"]
+        
+        "Darklang CLI - Organized Command Reference\n" ++
+        "==========================================" ++
+        formatCommandCategory "System Commands" systemCommands ++
+        formatCommandCategory "Navigation Commands" navigationCommands ++
+        formatCommandCategory "Development Commands" developmentCommands ++
+        formatCommandCategory "Installation Commands" installationCommands ++
+        "\nUse 'help <command>' for detailed information about a specific command."
+      
+      let formatWelcome () : String =
+        "Welcome to Darklang CLI v2 - Organized & Powerful\n" ++
+        "Type 'help' to see organized command categories."
+      
+      /// Simple status display without complex pattern matching
+      let formatStatus (state: Darklang.Cli.State) : String =
+        "CLI Status\n" ++
+        "=========\n" ++
+        "Current CLI: Darklang CLI v2\n" ++
+        "Features: Enhanced organization, Better UX, MVU architecture\n" ++
+        "Suggestions: help (commands), version (info), status (current)"
