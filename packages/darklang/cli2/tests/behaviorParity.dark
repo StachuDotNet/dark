@@ -23,14 +23,24 @@ module Darklang =
             failedTests: Int64
             results: List<ParityTestResult> }
 
-        /// Simple CLI test that ensures CLI2 can be called
-        let testCli2Accessibility (): ParityTestResult =
-          // For now, just verify that CLI2 has been set up correctly
-          // In a real implementation, this would execute commands
+        /// Test that CLI2 enhanced help system works
+        let testCli2EnhancedHelp (): ParityTestResult =
+          let testState = createTestState ()
+          let helpCmd = Darklang.Cli2.Commands.System.helpCommand
+          let (newState, msgs) = helpCmd.execute testState ""
+
+          let hasEnhancedHelp = 
+            match newState.commandResult with
+            | CommandResult.Info helpText ->
+              Stdlib.String.contains helpText "System Commands" &&
+              Stdlib.String.contains helpText "Navigation Commands" &&
+              Stdlib.String.contains helpText "Development Commands"
+            | _ -> false
+
           ParityTestResult
-            { testName = "CLI2 Accessibility"
-              passed = true
-              message = "CLI2 modules are accessible and parseable" }
+            { testName = "CLI2 Enhanced Help System"
+              passed = hasEnhancedHelp
+              message = if hasEnhancedHelp then "CLI2 enhanced help system working" else "CLI2 enhanced help system not working" }
 
         /// Test that system commands are available in both CLI1 and CLI2
         let testSystemCommandsAvailability (): ParityTestResult =
@@ -67,11 +77,65 @@ module Darklang =
               passed = true
               message = $"Test framework set up for: {test.description}" }
 
+        /// Test CLI2 command organization vs CLI1
+        let testCli2CommandOrganization (): ParityTestResult =
+          let testState = createTestState ()
+          
+          // Get CLI2 commands
+          let systemCommands = Darklang.Cli2.Commands.System.getEnhancedCommands testState
+          let navigationCommands = Darklang.Cli2.Commands.Navigation.getEnhancedCommands testState
+          let developmentCommands = Darklang.Cli2.Commands.Development.getEnhancedCommands testState
+          
+          let totalCli2Commands = 
+            (Stdlib.List.length systemCommands) +
+            (Stdlib.List.length navigationCommands) +
+            (Stdlib.List.length developmentCommands)
+
+          // CLI2 should have organized the major commands from CLI1
+          let hasExpectedCommands = totalCli2Commands >= 10L  // At least 10 major commands organized
+
+          ParityTestResult
+            { testName = "CLI2 Command Organization"
+              passed = hasExpectedCommands
+              message = if hasExpectedCommands then $"CLI2 has {totalCli2Commands} organized commands" else $"CLI2 only has {totalCli2Commands} commands, expected more"
+            }
+
+        /// Test enhanced command features (categories, examples)
+        let testEnhancedCommandFeatures (): ParityTestResult =
+          let testState = createTestState ()
+          let allCommands = [
+            Darklang.Cli2.Commands.System.getEnhancedCommands testState
+            Darklang.Cli2.Commands.Navigation.getEnhancedCommands testState
+            Darklang.Cli2.Commands.Development.getEnhancedCommands testState
+          ] |> Stdlib.List.flatten
+
+          let allHaveCategories = 
+            allCommands |> Stdlib.List.forall (fun cmd -> 
+              match cmd.category with
+              | CommandCategory.System -> true
+              | CommandCategory.Navigation -> true  
+              | CommandCategory.Development -> true
+              | CommandCategory.Installation -> true)
+
+          let allHaveExamples = 
+            allCommands |> Stdlib.List.forall (fun cmd -> 
+              Stdlib.Bool.not (Stdlib.List.isEmpty cmd.examples))
+
+          let enhancedFeaturesWork = allHaveCategories && allHaveExamples
+
+          ParityTestResult
+            { testName = "Enhanced Command Features"
+              passed = enhancedFeaturesWork
+              message = if enhancedFeaturesWork then "All CLI2 commands have categories and examples" else "Some CLI2 commands missing categories or examples"
+            }
+
         /// Run all parity tests
         let runParityTestSuite (): ParityTestSuite =
           let structuralTests = [
-            testCli2Accessibility ()
+            testCli2EnhancedHelp ()
             testSystemCommandsAvailability ()
+            testCli2CommandOrganization ()
+            testEnhancedCommandFeatures ()
           ]
 
           let commandTests = 

@@ -1,0 +1,141 @@
+module Darklang =
+  module Cli2 =
+    module Tests =
+      module TestRunner =
+        /// Master test runner for all CLI2 test suites
+        /// Runs comprehensive tests and validates CLI2 quality
+
+        /// Combined test results from all test suites
+        type MasterTestResults =
+          { systemCommandResults: List<CommandTestResult>
+            navigationCommandResults: List<CommandTestResult>
+            developmentCommandResults: List<CommandTestResult>
+            parityTestResults: ParityTestSuite
+            totalTests: Int64
+            totalPassed: Int64
+            totalFailed: Int64 }
+
+        /// Run all CLI2 test suites
+        let runAllTests (): MasterTestResults =
+          Builtin.printLine "🧪 Running comprehensive CLI2 test suite..."
+          Builtin.printLine ""
+
+          // Run all command module tests
+          let systemResults = Darklang.Cli2.Tests.SystemCommands.runSystemCommandTests ()
+          let navigationResults = Darklang.Cli2.Tests.NavigationCommands.runNavigationCommandTests ()
+          let developmentResults = Darklang.Cli2.Tests.DevelopmentCommands.runDevelopmentCommandTests ()
+
+          // Run parity tests
+          let parityResults = Darklang.Cli2.Tests.BehaviorParity.runParityTestSuite ()
+
+          // Calculate totals
+          let systemPassed = systemResults |> Stdlib.List.filter (fun r -> r.passed) |> Stdlib.List.length
+          let navigationPassed = navigationResults |> Stdlib.List.filter (fun r -> r.passed) |> Stdlib.List.length
+          let developmentPassed = developmentResults |> Stdlib.List.filter (fun r -> r.passed) |> Stdlib.List.length
+
+          let totalCommandTests = 
+            (Stdlib.List.length systemResults) + 
+            (Stdlib.List.length navigationResults) + 
+            (Stdlib.List.length developmentResults)
+
+          let totalCommandPassed = systemPassed + navigationPassed + developmentPassed
+
+          let totalTests = totalCommandTests + parityResults.totalTests
+          let totalPassed = totalCommandPassed + parityResults.passedTests
+          let totalFailed = totalTests - totalPassed
+
+          MasterTestResults
+            { systemCommandResults = systemResults
+              navigationCommandResults = navigationResults
+              developmentCommandResults = developmentResults
+              parityTestResults = parityResults
+              totalTests = totalTests
+              totalPassed = totalPassed
+              totalFailed = totalFailed }
+
+        /// Print comprehensive test results summary
+        let printMasterTestResults (results: MasterTestResults): Unit =
+          // Print individual test suite results
+          Darklang.Cli2.Tests.SystemCommands.printSystemCommandResults results.systemCommandResults
+          Darklang.Cli2.Tests.NavigationCommands.printNavigationCommandResults results.navigationCommandResults
+          Darklang.Cli2.Tests.DevelopmentCommands.printDevelopmentCommandResults results.developmentCommandResults
+          Darklang.Cli2.Tests.BehaviorParity.printParityResults results.parityTestResults
+
+          // Print master summary
+          Builtin.printLine ""
+          Builtin.printLine "======================================================"
+          Builtin.printLine "🏆 MASTER CLI2 TEST RESULTS SUMMARY"
+          Builtin.printLine "======================================================"
+          
+          let passRate = if results.totalTests > 0L then 
+            (results.totalPassed * 100L) / results.totalTests 
+          else 0L
+
+          Builtin.printLine $"📊 Total Tests: {results.totalTests}"
+          Builtin.printLine $"✅ Passed: {results.totalPassed}"
+          Builtin.printLine $"❌ Failed: {results.totalFailed}"
+          Builtin.printLine $"📈 Pass Rate: {passRate}%"
+          Builtin.printLine ""
+
+          // Break down by test category
+          let systemPassed = results.systemCommandResults |> Stdlib.List.filter (fun r -> r.passed) |> Stdlib.List.length
+          let systemTotal = Stdlib.List.length results.systemCommandResults
+          
+          let navigationPassed = results.navigationCommandResults |> Stdlib.List.filter (fun r -> r.passed) |> Stdlib.List.length
+          let navigationTotal = Stdlib.List.length results.navigationCommandResults
+
+          let developmentPassed = results.developmentCommandResults |> Stdlib.List.filter (fun r -> r.passed) |> Stdlib.List.length
+          let developmentTotal = Stdlib.List.length results.developmentCommandResults
+
+          Builtin.printLine "📋 Test Category Breakdown:"
+          Builtin.printLine $"   🔧 System Commands: {systemPassed}/{systemTotal}"
+          Builtin.printLine $"   📁 Navigation Commands: {navigationPassed}/{navigationTotal}"
+          Builtin.printLine $"   💻 Development Commands: {developmentPassed}/{developmentTotal}"
+          Builtin.printLine $"   🔄 Parity Tests: {results.parityTestResults.passedTests}/{results.parityTestResults.totalTests}"
+          Builtin.printLine ""
+
+          // Quality assessment
+          let overallQuality = 
+            if passRate >= 95L then "🌟 EXCELLENT"
+            elif passRate >= 85L then "✅ GOOD"
+            elif passRate >= 70L then "⚠️  NEEDS IMPROVEMENT"
+            else "❌ POOR"
+
+          Builtin.printLine $"🎯 CLI2 Quality Assessment: {overallQuality}"
+          
+          if results.totalFailed > 0L then
+            Builtin.printLine ""
+            Builtin.printLine "⚠️  Some tests failed. Review individual test results above."
+            Builtin.printLine "   CLI2 may need fixes before cutover to production."
+          else
+            Builtin.printLine ""
+            Builtin.printLine "🎉 All tests passed! CLI2 is ready for production cutover."
+
+          Builtin.printLine "======================================================"
+
+        /// Validate CLI2 readiness for production cutover
+        let validateCli2Readiness (results: MasterTestResults): Bool =
+          let passRate = if results.totalTests > 0L then 
+            (results.totalPassed * 100L) / results.totalTests 
+          else 0L
+
+          // Require 95% pass rate for production readiness
+          let readyForProduction = passRate >= 95L && results.totalFailed <= 1L
+
+          if readyForProduction then
+            Builtin.printLine "✅ CLI2 VALIDATION PASSED - Ready for production cutover!"
+          else
+            Builtin.printLine "❌ CLI2 VALIDATION FAILED - Needs more work before cutover"
+            Builtin.printLine $"   Current pass rate: {passRate}% (need ≥95%)"
+            Builtin.printLine $"   Failed tests: {results.totalFailed} (need ≤1)"
+
+          readyForProduction
+
+        /// Main entry point for CLI2 testing
+        let runCli2TestSuite (): Int64 =
+          let results = runAllTests ()
+          printMasterTestResults results
+          let isReady = validateCli2Readiness results
+
+          // Return exit code: 0 if ready for production, 1 if not
+          if isReady then 0L else 1L
