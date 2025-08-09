@@ -9,30 +9,24 @@ module Darklang =
         "\n" ++ categoryName ++ ":\n" ++ commandList
       
       let getContextualHelpText (state: Darklang.Cli.State) : String =
-        // Show only relevant commands for current context, like CLI1
+        // Create beautiful help with logo exactly like CLI1
         let allCommands = [
           ("help", "Show help information");
-          ("version", "Show version information");
-          ("status", "Show current status");
+          ("version", "Show CLI version");
+          ("status", "Show system status");
+          ("mode", "Change the interaction mode (non-interactive, regular, refresh-screen)");
           ("quit", "Exit the CLI");
           ("clear", "Clear the screen");
-          ("test", "Run CLI2 tests");
-          ("back", "Go back to previous location");
+          ("back", "Go back to the previous page");
           ("cd", "Change directory");
-          ("ls", "List contents");
-          ("tree", "Show directory tree");
-          ("view", "View item details");
-          ("toplevels", "Show all toplevel categories");
-          ("http", "Show HTTP handlers");
-          ("scripts-tl", "Show script toplevels");
-          ("tests-tl", "Show test toplevels");
-          ("docs", "Show documentation");
-          ("run", "Run a script");
-          ("scripts", "List available scripts");
-          ("eval", "Evaluate expression");
-          ("install", "Install packages");
-          ("update", "Update packages");
-          ("uninstall", "Uninstall packages")
+          ("ls", "List items in current directory");
+          ("view", "View modules, types, functions, or constants");
+          ("run", "Run a function from the package manager or execute a script");
+          ("scripts", "Store, manage, and run Dark scripts");
+          ("eval", "Evaluate a Dark expression");
+          ("install", "Install the darklang CLI globally");
+          ("update", "Update the darklang CLI to the latest version");
+          ("uninstall", "Uninstall the darklang CLI")
         ]
         
         let maxNameLength =
@@ -44,26 +38,48 @@ module Darklang =
           allCommands
           |> Stdlib.List.map (fun (name, desc) ->
               let paddedName = name ++ Stdlib.String.repeat " " (maxNameLength - Stdlib.String.length name)
-              $"{paddedName}   {desc}")
+              $"{Darklang.Cli.CliColors.purple}{paddedName}{Darklang.Cli.CliColors.reset}   {desc}")
           |> Stdlib.String.join "\n"
         
-        "Available commands:\n" ++ commandList
+        let helpText = [
+          "Darklang CLI";
+          "============";
+          "";
+          "Available commands:";
+          commandList;
+          "";
+          "Tips:";
+          "  • Use 'help --full' for organized command categories";
+          "  • Use 'help <command>' for specific command details";
+          "  • Use 'tree' to explore the codebase structure";
+          "  • Use 'toplevels' to see HTTP handlers, scripts, etc."
+        ]
+        
+        // Use CLI1's beautiful logo system  
+        Darklang.Cli.combineLogoAndText Darklang.Cli.logo helpText Darklang.Cli.CliColors.darkGray
       
       let getOrganizedHelpText () : String =
-        let systemCommands = [ "help"; "version"; "status"; "quit"; "clear"; "test" ]
+        let systemCommands = [ "help"; "version"; "status"; "quit"; "clear"; "cli-test" ]
         let navigationCommands = [ "back"; "cd"; "ls"; "tree"; "view" ]
-        let toplevelCommands = [ "toplevels"; "http"; "scripts-tl"; "tests-tl"; "docs" ]
-        let developmentCommands = [ "run"; "scripts"; "eval" ]
+        let toplevelCommands = [ "toplevels"; "http"; "scripts"; "test"; "docs"; "cron"; "views" ]
+        let developmentCommands = [ "run"; "eval" ]
         let installationCommands = [ "install"; "update"; "uninstall" ]
         
-        "Darklang CLI - Organized Command Reference\n" ++
-        "==========================================" ++
-        formatCommandCategory "System Commands" systemCommands ++
-        formatCommandCategory "Navigation Commands" navigationCommands ++
-        formatCommandCategory "Toplevel Commands" toplevelCommands ++
-        formatCommandCategory "Development Commands" developmentCommands ++
-        formatCommandCategory "Installation Commands" installationCommands ++
-        "\nUse 'help <command>' for detailed information about a specific command."
+        let helpText = [
+          "Darklang CLI - Command Reference";
+          "================================";
+          "";
+          formatCommandCategory "System Commands" systemCommands;
+          formatCommandCategory "Navigation Commands" navigationCommands;
+          formatCommandCategory "Toplevel Commands" toplevelCommands;
+          formatCommandCategory "Development Commands" developmentCommands;
+          formatCommandCategory "Installation Commands" installationCommands;
+          "";
+          "Use 'help <command>' for detailed information about a specific command."
+        ]
+        
+        // Use CLI1's beautiful logo system with a different color
+        Darklang.Cli.combineLogoAndText Darklang.Cli.logo helpText Darklang.Cli.CliColors.lightBlue
       
       let formatWelcome () : String =
         "Welcome to Darklang CLI v2 - Organized & Powerful\n" ++
@@ -98,17 +114,34 @@ module Darklang =
       let formatTreeView (page: Darklang.Cli.Page) : String =
         match page with
         | Root -> 
-          "Package Structure:\n" ++
+          "Package Structure (from codebase):\n" ++
           "├── darklang/\n" ++
-          "│   ├── cli/\n" ++
-          "│   ├── cli2/\n" ++
-          "│   ├── stdlib/\n" ++
-          "│   └── languageTools/\n" ++
-          "├── stachu/\n" ++
+          "│   ├── cli/              (Original CLI implementation)\n" ++
+          "│   ├── cli2/             (Enhanced CLI v2 - current)\n" ++
+          "│   ├── stdlib/           (Standard library modules)\n" ++
+          "│   │   ├── cli/\n" ++
+          "│   │   ├── alt-json.dark\n" ++
+          "│   │   ├── base64.dark\n" ++
+          "│   │   ├── http.dark\n" ++
+          "│   │   └── ...and more\n" ++
+          "│   ├── languageTools/    (Language server & parser)\n" ++
+          "│   │   ├── lsp-server/\n" ++
+          "│   │   ├── parser/\n" ++
+          "│   │   └── ...more tools\n" ++
+          "│   ├── languageServerProtocol/\n" ++
+          "│   ├── prettyPrinter/\n" ++
+          "│   ├── test/\n" ++
+          "│   └── vscode/\n" ++
+          "├── stachu/               (User modules)\n" ++
+          "│   ├── extensions.dark\n" ++
           "│   ├── timespan.dark\n" ++
           "│   └── json.dark\n" ++
-          "└── internal/\n" ++
-          "    └── tests.dark"
+          "└── internal/             (Internal tools)\n" ++
+          "    ├── cli/integrationTests/\n" ++
+          "    └── tests.dark\n" ++
+          "\n" ++
+          "Also found:\n" ++
+          "└── canvases/dark-packages/main.dark (HTTP handlers)"
         | Module(owner, subPath) ->
           $"Tree view for {owner}:\n" ++
           "├── functions/\n" ++

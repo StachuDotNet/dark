@@ -4,30 +4,31 @@ module Darklang =
       /// System commands that are always available (help, version, status, quit, clear)
       
       let help (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // CLI2 native help - show contextual help by default, organized help on request
-        let helpText = 
-          let trimmedArgs = Stdlib.String.trim args
-          if trimmedArgs == "--full" || trimmedArgs == "menu" then
-            Darklang.Cli2.UI.getOrganizedHelpText ()
-          else
-            Darklang.Cli2.UI.getContextualHelpText state
-        Darklang.Cli2.CommandResult { output = helpText; nextState = state }
+        // Use CLI1's beautiful help system with logo
+        let helpText = Darklang.Cli2.UI.getContextualHelpText state
+        let helpContent = Darklang.Cli.combineLogoAndText Darklang.Cli.logo helpText Darklang.Cli.CliColors.darkGray
+        Darklang.Cli2.CommandResult { output = helpContent; nextState = state }
       
       let version (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // Show enhanced version information
-        let versionText = 
-          "Darklang CLI v2 - Organized & Powerful\n" ++
-          "=====================================\n" ++
-          "• Enhanced command organization\n" ++
-          "• Improved user experience\n" ++
-          "• MVU/FRP architecture\n" ++
-          "• TUI mode support\n\n" ++
-          "Built on the reliable Darklang CLI foundation"
+        // Use CLI1's version logic with update checking
+        let versionText = Darklang.Cli.Command.getVersionInfo ()
         Darklang.Cli2.CommandResult { output = versionText; nextState = state }
       
       let status (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // Use enhanced status display from UI module
-        let statusText = Darklang.Cli2.UI.formatStatus state
+        // Use CLI1's beautiful status display - delegate to CLI1 for consistency
+        let version = Darklang.Cli.Command.getVersionInfo ()
+        let currentLocation = Darklang.Cli.getPathDisplay state.currentPage
+        let modeDisplay =
+          match state.interactionMode with
+          | NonInteractive -> "Non-interactive" 
+          | RefreshScreen -> "Refresh screen"
+          | Regular -> "Regular"
+        let currentMode = Darklang.Cli.Installation.getInstallationMode ()
+        let installationMessage = 
+          match currentMode with
+          | Installed -> "Globally installed and ready to use"
+          | Portable -> "Running in portable mode (run 'install' for global access)"
+        let statusText = $"{version}\nLocation: {currentLocation}\nMode: {modeDisplay}\nStatus: {installationMessage}\n\nType 'help' for available commands"
         Darklang.Cli2.CommandResult { output = statusText; nextState = state }
       
       let quit (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
@@ -45,3 +46,42 @@ module Darklang =
         // CLI2 test runner - runs built-in unit tests
         let testResults = Darklang.Cli2.Tests.runAllTests ()
         Darklang.Cli2.CommandResult { output = testResults; nextState = state }
+
+      let mode (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // Switch between interaction modes (matching CLI1 exactly)
+        let args = Stdlib.String.trim args
+        
+        if Stdlib.String.isEmpty args then
+          // No arguments, show current mode
+          let modeDisplay =
+            match state.interactionMode with
+            | NonInteractive -> "non-interactive"
+            | RefreshScreen -> "refresh-screen"  
+            | Regular -> "regular"
+          
+          let output = $"Current interaction mode: {modeDisplay}\nAvailable modes: non-interactive, regular, refresh-screen"
+          Darklang.Cli2.CommandResult { output = output; nextState = state }
+        else
+          // Set the mode based on the argument
+          match Stdlib.String.toLowercase args with
+          | "non-interactive" ->
+            let newState = 
+              { state with 
+                  interactionMode = NonInteractive
+                  needsFullRedraw = true }
+            Darklang.Cli2.CommandResult { output = "Switched to non-interactive mode"; nextState = newState }
+          | "regular" ->
+            let newState = 
+              { state with 
+                  interactionMode = Regular
+                  needsFullRedraw = true }
+            Darklang.Cli2.CommandResult { output = "Switched to regular mode"; nextState = newState }
+          | "refresh-screen" ->
+            let newState = 
+              { state with 
+                  interactionMode = RefreshScreen
+                  needsFullRedraw = true }
+            Darklang.Cli2.CommandResult { output = "Switched to refresh-screen mode"; nextState = newState }
+          | _ ->
+            let output = $"Unknown mode: {args}\nAvailable modes: non-interactive, regular, refresh-screen"
+            Darklang.Cli2.CommandResult { output = output; nextState = state }
