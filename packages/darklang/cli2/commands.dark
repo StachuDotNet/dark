@@ -1,8 +1,10 @@
 module Darklang =
   module Cli2 =
-    /// System commands that are always available
+    /// Command organization module for CLI2
+    /// This provides a cleaner command structure while delegating to CLI1 implementation
     module Commands =
-      /// System commands module containing help, version, status, quit, mode, clear
-      module System =
-        /// Placeholder for system commands - will implement incrementally
-        let systemCommandsPlaceholder = "System commands module created for CLI2 refactoring"
+      /// Execute a command with organized dispatch
+      let executeCommand (state: Darklang.Cli.State) (command: String) (args: String) : Darklang.Cli.CommandResult =
+        // For now, just delegate to the original CLI implementation
+        // Later we can add organized command routing here
+        Darklang.Cli.executeCommand state command args
