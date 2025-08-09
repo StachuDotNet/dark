@@ -78,3 +78,9 @@ module Darklang =
             printlnColored Cli.Colors.yellow $"| {safePadEnd message " " contentWidth} |"
             printlnColored Cli.Colors.yellow $"| {safePadEnd command " " contentWidth} |"
             printlnColored Cli.Colors.yellow border
+
+          let ensureDirectoryExists (dirPath: String) : Stdlib.Result.Result<Unit, String> =
+            Stdlib.Cli.Unix.ensureDirectoryExists dirPath
+
+          let generateTimestamp () : String =
+            (Stdlib.DateTime.now()) |> Stdlib.DateTime.toString

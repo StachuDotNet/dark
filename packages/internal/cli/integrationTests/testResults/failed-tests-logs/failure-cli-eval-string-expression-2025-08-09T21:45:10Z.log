@@ -1,0 +1,5 @@
+Test Failure Report
+==================
+Test Name: CLI Eval String Expression
+Command: ./scripts/run-cli eval '"hello" ++ " world"'
+Timestamp: 2025-08-09T21:45:10Z

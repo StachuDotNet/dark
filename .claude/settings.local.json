@@ -45,7 +45,10 @@
       "Bash(env DARK_USE_CLI2=true ./scripts/run-cli \"run Darklang.Internal.Cli.IntegrationTests.runIntegrationTests\")",
       "Bash(env DARK_USE_CLI2=true ./scripts/run-cli \"run @Darklang.Stdlib.Bool.and true false\")",
       "Bash(env DARK_USE_CLI2=true ./scripts/run-cli run \"@Darklang.Stdlib.Bool.and true false\")",
-      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli run @Darklang.Stdlib.Bool.and true false)"
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli run @Darklang.Stdlib.Bool.and true false)",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli run @Darklang.Stdlib.Int64.add 5L 3L)",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli eval \"2L + 3L\")",
+      "Bash(cp:*)"
     ],
     "deny": []
   }

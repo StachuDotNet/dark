@@ -3,6 +3,16 @@ module Darklang =
     module NavigationCommands =
       /// Navigation commands for moving through CLI contexts (back, cd, ls, view)
       
+      /// Display a page path in a readable format
+      let getPathDisplay (page: Darklang.Cli.Types.Page) : String =
+        match page with
+        | Root -> "/"
+        | Module(owner, []) -> $"/{owner}"
+        | Module(owner, subPath) -> $"/{owner}/{Stdlib.String.join subPath "/"}"
+        | Type name -> $"Type: {Darklang.LanguageTools.ProgramTypes.PackageType.nameToString name}"
+        | Fn name -> $"Function: {Darklang.LanguageTools.ProgramTypes.PackageFn.nameToString name}"
+        | Constant name -> $"Constant: {Darklang.LanguageTools.ProgramTypes.PackageConstant.nameToString name}"
+      
       let back (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
         // CLI2 native back navigation - completely independent
         match state.pageHistory with
@@ -10,7 +20,7 @@ module Darklang =
           Darklang.Cli.CommandResult { output = "Already at the root. No history to go back to."; nextState = state }
         | prevPage :: remainingHistory ->
           let newState = { state with currentPage = prevPage; pageHistory = remainingHistory }
-          let pathDisplay = Darklang.Cli.getPathDisplay prevPage
+          let pathDisplay = getPathDisplay prevPage
           Darklang.Cli.CommandResult { output = $"Navigated back to {pathDisplay}"; nextState = newState }
       
       let changeDirectory (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
@@ -32,7 +42,7 @@ module Darklang =
             | _ -> Darklang.Cli.Page.Module(path, [])
         let newHistory = Stdlib.List.push state.pageHistory state.currentPage
         let newState = { state with currentPage = newPage; pageHistory = newHistory }
-        let pathDisplay = Darklang.Cli.getPathDisplay newPage
+        let pathDisplay = getPathDisplay newPage
         Darklang.Cli.CommandResult { output = $"Changed directory to {pathDisplay}"; nextState = newState }
       
       let listItems (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =

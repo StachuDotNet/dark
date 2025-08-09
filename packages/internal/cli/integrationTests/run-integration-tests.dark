@@ -23,7 +23,7 @@ module Darklang =
           if IntegrationTests.FailureRecorder.recordFailureForTest testName command interactiveSteps then
             ()
           else
-            TestUtils.printlnWarning "Failed to record failure GIF"
+            TestUtils.printlnWarning "Failed to record failure log"
 
 
         let interactiveStepToString (step: TestFramework.InteractiveStep) : String =
@@ -93,7 +93,7 @@ module Darklang =
                 TestUtils.printlnError testName)
 
             TestUtils.printlnInfo
-              $"Check failure recordings in {TestConfig.testDir}/failed-tests-gifs/"
+              $"Check failure logs in {TestConfig.testDir}/failed-tests-logs/"
 
 
         // Main test runner function

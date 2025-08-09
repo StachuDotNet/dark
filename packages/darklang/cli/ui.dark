@@ -31,6 +31,7 @@ module Darklang =
           $"  {cmdColor}ls{resetColor}         List directory contents {descColor}(try 'ls Darklang.Stdlib'){resetColor}";
           $"  {cmdColor}cd{resetColor}         Change directory {descColor}(supports .., /, module paths){resetColor}";
           $"  {cmdColor}back{resetColor}       Navigate back through history";
+          $"  {cmdColor}tree{resetColor}       Show hierarchical package tree view";
           $"  {cmdColor}view{resetColor}       View functions, types, constants with syntax highlighting";
           "";
           $"{sectionHeader} Development Tools";
@@ -161,6 +162,24 @@ module Darklang =
             $"  {exampleColor}back{resetColor}                Return to previous directory";
             "";
             "SEE ALSO: cd, ls"
+          ]
+        
+        | "tree" ->
+          [
+            $"{headerColor}tree{resetColor} - Show hierarchical package tree view";
+            "=========================================";
+            "";
+            "USAGE:";
+            $"  {cmdColor}tree{resetColor}                    Display hierarchical tree view of packages";
+            "";
+            "DESCRIPTION:";
+            "  Show a visual tree representation of the package structure,";
+            "  including all modules, submodules and their organization.";
+            "";
+            "EXAMPLES:";
+            $"  {exampleColor}tree{resetColor}                Display tree view from current location";
+            "";
+            "SEE ALSO: ls, cd, back"
           ]
         
         | "eval" ->
@@ -354,7 +373,7 @@ module Darklang =
             "";
             "Available commands:";
             "  System:       help, version, status, mode, quit, clear";
-            "  Navigation:   ls, cd, back, view";
+            "  Navigation:   ls, cd, back, tree, view";
             "  Development:  eval, run, scripts";
             "  Installation: install, update, uninstall";
             "";
@@ -409,6 +428,9 @@ module Darklang =
             $"{cmdColor}back{resetColor}       Navigate back through directory history";
             $"             {exampleColor}Returns to previous location in navigation stack{resetColor}";
             "";
+            $"{cmdColor}tree{resetColor}       Show hierarchical package tree view";
+            $"             {exampleColor}Display visual tree representation of package structure{resetColor}";
+            "";
             $"{cmdColor}view{resetColor}       View detailed information about functions, types, constants";
             $"             {exampleColor}Examples: view Darklang.Stdlib.List.head, view Option.Option{resetColor}"
           ]
@@ -451,7 +473,7 @@ module Darklang =
             "";
             "Available categories:";
             "  • system       - help, version, status, mode, quit, clear";
-            "  • navigation   - ls, cd, back, view";  
+            "  • navigation   - ls, cd, back, tree, view";  
             "  • development  - eval, run, scripts";
             "  • installation - install, update, uninstall";
             "";

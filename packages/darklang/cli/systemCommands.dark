@@ -39,7 +39,7 @@ module Darklang =
       let status (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
         // Use the real version and path display systems - not fake
         let version = Darklang.Cli.Commands.getVersionInfo ()
-        let currentLocation = Darklang.Cli.getPathDisplay state.currentPage
+        let currentLocation = Darklang.Cli.NavigationCommands.getPathDisplay state.currentPage
         let modeDisplay =
           match state.interactionMode with
           | NonInteractive -> "Non-interactive" 

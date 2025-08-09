@@ -1,0 +1,5 @@
+Test Failure Report
+==================
+Test Name: CLI Run Function Command - List.length
+Command: ./scripts/run-cli run @Darklang.Stdlib.List.length "[1L; 2L; 3L]"
+Timestamp: 2025-08-09T21:45:05Z
