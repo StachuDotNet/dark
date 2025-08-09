@@ -1,32 +1,74 @@
 module Darklang =
   module Cli2 =
     module InstallationCommands =
-      /// Installation and update commands (install, update, uninstall)
+      /// Installation commands matching CLI1 functionality exactly
       
       let install (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // CLI2 native package installation - completely independent
-        let packageName = Stdlib.String.trim args
-        if Stdlib.String.isEmpty packageName then
-          Darklang.Cli2.CommandResult { output = "Usage: install <package-name>\nExample: install mypackage"; nextState = state }
-        else
-          let installResult = Darklang.Cli2.UI.installPackage packageName
-          Darklang.Cli2.CommandResult { output = installResult; nextState = state }
+        // Use CLI1's real installation system
+        let currentMode = Darklang.Cli.Installation.getInstallationMode ()
+        match currentMode with
+        | Darklang.Cli.Installation.InstallationMode.Installed ->
+          Darklang.Cli2.CommandResult { output = "Already installed globally"; nextState = state }
+        | Darklang.Cli.Installation.InstallationMode.Portable ->
+          let host = (Stdlib.Cli.Host.getRuntimeHost ()) |> Builtin.unwrap
+          let currentDir = Builtin.directoryCurrent ()
+          if Darklang.Cli.Installation.globalInstallationExists host then
+            let homeDir =
+              match host.os with
+              | Stdlib.Cli.Host.RuntimeHost.OperatingSystem.Windows ->
+                match Stdlib.Cli.PowerShell.getHomeDirectory () with
+                | Ok dir -> $"{dir}\\.darklang"
+                | Error _ -> "~/.darklang"
+              | _ ->
+                match Stdlib.Cli.Unix.getHomeDirectory () with
+                | Ok dir -> $"{dir}/.darklang"
+                | Error _ -> "~/.darklang"
+            let message = $"Detected portable mode - you're running from {currentDir}/.darklang\nFound existing global installation at {homeDir}\n\nIf you'd like to update your global installation, please run `dark` rather than this portable executable."
+            Darklang.Cli2.CommandResult { output = message; nextState = state }
+          else
+            Builtin.printLine "Choose installation method:"
+            Builtin.printLine "1. Copy this binary (for testing local changes)"
+            Builtin.printLine "2. Download latest release from GitHub"
+            Builtin.printLine "Choose option (1 or 2, default: 2): "
+            let choice = (Builtin.stdinReadLine ()) |> Stdlib.String.trim
+            if choice == "1" then
+              match Darklang.Cli.Installation.installFromCurrentBinary host with
+              | Ok message ->
+                Darklang.Cli2.CommandResult { output = message; nextState = state }
+              | Error e ->
+                Darklang.Cli2.CommandResult { output = e; nextState = state }
+            else
+              Builtin.printLine "Installing globally..."
+              match Darklang.Cli.Installation.install host with
+              | Ok message ->
+                Darklang.Cli2.CommandResult { output = message; nextState = state }
+              | Error e ->
+                Darklang.Cli2.CommandResult { output = e; nextState = state }
       
       let update (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // CLI2 native package update - completely independent
-        let packageName = Stdlib.String.trim args
-        if Stdlib.String.isEmpty packageName then
-          let updateResult = Darklang.Cli2.UI.updateAllPackages ()
-          Darklang.Cli2.CommandResult { output = updateResult; nextState = state }
-        else
-          let updateResult = Darklang.Cli2.UI.updatePackage packageName
-          Darklang.Cli2.CommandResult { output = updateResult; nextState = state }
+        // Use CLI1's real update system
+        let currentVersion = Darklang.Cli.Command.cliVersion ()
+        let currentMode = Darklang.Cli.Installation.getInstallationMode ()
+        match currentMode with
+        | Darklang.Cli.Installation.InstallationMode.Installed ->
+          Builtin.printLine $"Checking for updates from Darklang CLI {currentVersion}..."
+          let host = (Stdlib.Cli.Host.getRuntimeHost ()) |> Builtin.unwrap
+          match Darklang.Cli.Installation.updateIfAvailable currentVersion host with
+          | Ok message ->
+            Darklang.Cli2.CommandResult { output = message; nextState = state }
+          | Error e ->
+            Darklang.Cli2.CommandResult { output = e; nextState = state }
+        | Darklang.Cli.Installation.InstallationMode.Portable ->
+          let message = $"Running in portable mode from {Builtin.directoryCurrent ()}/.darklang\n\nTo update this portable executable, please download the latest release manually from:\nhttps://github.com/darklang/dark/releases\n\nFor automatic updates, consider running 'install' to set up global installation."
+          Darklang.Cli2.CommandResult { output = message; nextState = state }
       
       let uninstall (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // CLI2 native package uninstallation - completely independent
-        let packageName = Stdlib.String.trim args
-        if Stdlib.String.isEmpty packageName then
-          Darklang.Cli2.CommandResult { output = "Usage: uninstall <package-name>\nExample: uninstall mypackage"; nextState = state }
-        else
-          let uninstallResult = Darklang.Cli2.UI.uninstallPackage packageName
-          Darklang.Cli2.CommandResult { output = uninstallResult; nextState = state }
+        // Use CLI1's real uninstallation system
+        let host = (Stdlib.Cli.Host.getRuntimeHost ()) |> Builtin.unwrap
+        match Darklang.Cli.Installation.uninstallWithConfirmation host with
+        | Ok message ->
+          // Exit after successful uninstall since the executable is being removed
+          let newState = { state with isExiting = true }
+          Darklang.Cli2.CommandResult { output = message; nextState = newState }
+        | Error e ->
+          Darklang.Cli2.CommandResult { output = e; nextState = state }

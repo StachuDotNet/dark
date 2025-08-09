@@ -1,13 +1,13 @@
 module Darklang =
   module Cli2 =
-    /// Command organization module for CLI2
-    /// Provides organized command dispatch using categorized command modules
+    /// Command organization module for CLI2 
+    /// Matches CLI1 commands exactly for feature parity
     module Commands =
-      /// Execute a command with organized dispatch to categorized modules
+      /// Execute a command with CLI1-compatible dispatch  
       let executeCommand (state: Darklang.Cli.State) (command: String) (args: String) : Darklang.Cli2.CommandResult =
         let lowerCommand = Stdlib.String.toLowercase command
         
-        // Route commands to appropriate category modules
+        // System Commands (match CLI1 exactly)
         if lowerCommand == "help" then
           Darklang.Cli2.SystemCommands.help state args
         else if lowerCommand == "version" then
@@ -19,16 +19,17 @@ module Darklang =
         else if lowerCommand == "quit" then
           Darklang.Cli2.SystemCommands.quit state args
         else if lowerCommand == "exit" then
-          Darklang.Cli2.SystemCommands.quit state args
+          Darklang.Cli2.SystemCommands.quit state args  
         else if lowerCommand == "q" then
           Darklang.Cli2.SystemCommands.quit state args
         else if lowerCommand == "clear" then
           Darklang.Cli2.SystemCommands.clear state args
         else if lowerCommand == "cls" then
           Darklang.Cli2.SystemCommands.clear state args
-        else if lowerCommand == "test" then
-          Darklang.Cli2.SystemCommands.test state args
+        else if lowerCommand == "mode" then
+          Darklang.Cli2.SystemCommands.mode state args
           
+        // Navigation Commands (match CLI1 exactly)  
         else if lowerCommand == "back" then
           Darklang.Cli2.NavigationCommands.back state args
         else if lowerCommand == "cd" then
@@ -43,44 +44,18 @@ module Darklang =
           Darklang.Cli2.NavigationCommands.listItems state args
         else if lowerCommand == "view" then
           Darklang.Cli2.NavigationCommands.viewItem state args
-        else if lowerCommand == "tree" then
-          Darklang.Cli2.NavigationCommands.showTree state args
           
-        else if lowerCommand == "menu" then
-          // Show organized help menu
-          let menuText = Darklang.Cli2.UI.getOrganizedHelpText ()
-          Darklang.Cli2.CommandResult { output = menuText; nextState = state }
-          
-        else if lowerCommand == "toplevels" then
-          // Show all toplevel categories
-          let toplevelText = Darklang.Cli2.Toplevels.formatToplevelListing "all"
-          Darklang.Cli2.CommandResult { output = toplevelText; nextState = state }
-        else if lowerCommand == "http" then
-          // Show HttpHandler toplevels
-          let toplevelText = Darklang.Cli2.Toplevels.formatToplevelListing "HttpHandler"
-          Darklang.Cli2.CommandResult { output = toplevelText; nextState = state }
-        else if lowerCommand == "scripts-tl" then
-          // Show Script toplevels (different from 'scripts' command)
-          let toplevelText = Darklang.Cli2.Toplevels.formatToplevelListing "Script"
-          Darklang.Cli2.CommandResult { output = toplevelText; nextState = state }
-        else if lowerCommand == "tests-tl" then
-          // Show Test toplevels
-          let toplevelText = Darklang.Cli2.Toplevels.formatToplevelListing "Test"
-          Darklang.Cli2.CommandResult { output = toplevelText; nextState = state }
-        else if lowerCommand == "docs" then
-          // Show Markdown toplevels
-          let toplevelText = Darklang.Cli2.Toplevels.formatToplevelListing "Markdown"
-          Darklang.Cli2.CommandResult { output = toplevelText; nextState = state }
-          
+        // Development Commands (match CLI1 exactly)
         else if lowerCommand == "run" then
           Darklang.Cli2.DevelopmentCommands.runScript state args
         else if lowerCommand == "scripts" then
-          Darklang.Cli2.DevelopmentCommands.manageScripts state args
+          Darklang.Cli2.DevelopmentCommands.listScripts state args
         else if lowerCommand == "eval" then
           Darklang.Cli2.DevelopmentCommands.evaluateExpression state args
         else if lowerCommand == "e" then
           Darklang.Cli2.DevelopmentCommands.evaluateExpression state args
           
+        // Installation Commands (match CLI1 exactly)
         else if lowerCommand == "install" then
           Darklang.Cli2.InstallationCommands.install state args
         else if lowerCommand == "update" then

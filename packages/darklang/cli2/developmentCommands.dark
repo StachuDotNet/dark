@@ -1,27 +1,79 @@
 module Darklang =
   module Cli2 =
     module DevelopmentCommands =
-      /// Development commands for working with code (run, scripts, eval)
+      /// Development commands matching CLI1 functionality exactly
       
       let runScript (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // CLI2 native script execution - completely independent
-        let scriptName = Stdlib.String.trim args
-        if Stdlib.String.isEmpty scriptName then
-          Darklang.Cli2.CommandResult { output = "Usage: run <script-name>\nAvailable scripts can be listed with 'scripts' command"; nextState = state }
-        else
-          let runResult = Darklang.Cli2.UI.executeScript scriptName
-          Darklang.Cli2.CommandResult { output = runResult; nextState = state }
+        // Use CLI1's real script execution system
+        let argsList = args |> Stdlib.String.split " "
+        match argsList with
+        | [] ->
+          Darklang.Cli2.CommandResult { output = "Please specify a function name (starting with @) or script path"; nextState = state }
+        | thingToRun :: restArgs ->
+          if Stdlib.String.startsWith thingToRun "@" then
+            // Function execution using CLI1's runFunction logic
+            let fnName = thingToRun |> Stdlib.String.dropFirst 1L
+            let onMissing = LanguageTools.NameResolver.OnMissing.Allow
+            let pm = LanguageTools.PackageManager.pm ()
+            let (parsedArgs, _unres) =
+              restArgs
+              |> Stdlib.List.map (fun arg ->
+                arg
+                |> LanguageTools.Parser.parseToSimplifiedTree
+                |> LanguageTools.Parser.parseFromTree
+                |> Builtin.unwrap
+                |> fun parsedFile ->
+                    match parsedFile with
+                    | SourceFile source -> source.exprsToEval)
+              |> Stdlib.List.flatten
+              |> Stdlib.List.map (fun arg ->
+                LanguageTools.WrittenTypesToProgramTypes.Expr.toPT onMissing pm "" [] arg)
+              |> Stdlib.List.unzip
+            match Builtin.cliExecuteFunction fnName parsedArgs with
+            | Ok result ->
+              Darklang.Cli2.CommandResult { output = result; nextState = state }
+            | Error err ->
+              Darklang.Cli2.CommandResult { output = $"\n{err}"; nextState = state }
+          else
+            // Script execution using CLI1's runScript logic
+            match Builtin.fileRead thingToRun with
+            | Ok script ->
+              let scriptSourceCode = Stdlib.String.fromBytesWithReplacement script
+              let result = Builtin.cliParseAndExecuteScript thingToRun scriptSourceCode restArgs
+              match result with
+              | Ok exitCode ->
+                Darklang.Cli2.CommandResult { output = $"Script executed with exit code: {exitCode |> Stdlib.Int64.toString}"; nextState = state }
+              | Error e ->
+                let prettyError = PrettyPrinter.RuntimeTypes.RuntimeError.toString e
+                Darklang.Cli2.CommandResult { output = prettyError; nextState = state }
+            | Error e ->
+              Darklang.Cli2.CommandResult { output = e; nextState = state }
       
-      let manageScripts (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // CLI2 native script management - completely independent
-        let scriptsListing = Darklang.Cli2.UI.formatScriptsListing ()
-        Darklang.Cli2.CommandResult { output = scriptsListing; nextState = state }
+      let listScripts (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // Use CLI1's real script listing system
+        match Darklang.Cli.Scripts.list () with
+        | Ok scripts ->
+          let output =
+            if Stdlib.List.isEmpty scripts then
+              "No scripts found"
+            else
+              scripts
+              |> Stdlib.List.map (fun s -> $"  {s.name}")
+              |> Stdlib.String.join "\n"
+              |> fun names -> $"Scripts:\n{names}"
+          Darklang.Cli2.CommandResult { output = output; nextState = state }
+        | Error err ->
+          Darklang.Cli2.CommandResult { output = err; nextState = state }
       
       let evaluateExpression (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // CLI2 native expression evaluation - completely independent
-        let expression = Stdlib.String.trim args
-        if Stdlib.String.isEmpty expression then
-          Darklang.Cli2.CommandResult { output = "Usage: eval <expression>\nExample: eval '2 + 2' or eval 'Stdlib.String.length \"hello\"'"; nextState = state }
+        // Use CLI1's real expression evaluation system
+        if Stdlib.String.isEmpty args then
+          Darklang.Cli2.CommandResult { output = "Please provide an expression to evaluate. Example: eval 1L + 2L"; nextState = state }
         else
-          let evalResult = Darklang.Cli2.UI.evaluateExpression expression
-          Darklang.Cli2.CommandResult { output = evalResult; nextState = state }
+          let expr = args
+          match Builtin.cliEvaluateExpression expr with
+          | Ok result ->
+            Darklang.Cli2.CommandResult { output = result; nextState = state }
+          | Error err ->
+            let prettyError = PrettyPrinter.RuntimeTypes.RuntimeError.toString err
+            Darklang.Cli2.CommandResult { output = prettyError; nextState = state }
