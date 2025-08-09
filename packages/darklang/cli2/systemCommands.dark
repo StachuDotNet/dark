@@ -10,7 +10,7 @@ module Darklang =
         if Stdlib.String.isEmpty trimmedArgs then
           // Show general categorized help with logo
           let helpTextLines = Darklang.Cli2.UI.getContextualHelpText state
-          let helpContent = Darklang.Cli.combineLogoAndText Darklang.Cli.logo helpTextLines Darklang.Cli.CliColors.darkGray
+          let helpContent = Darklang.CliInfrastructure.Logo.combineLogoAndText Darklang.CliInfrastructure.Logo.logo helpTextLines Darklang.CliInfrastructure.Colors.darkGray
           Darklang.Cli2.CommandResult { output = helpContent; nextState = state }
         else
           // Check if it's a category or individual command

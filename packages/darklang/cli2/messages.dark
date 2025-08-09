@@ -1,4 +1,4 @@
 module Darklang =
   module Cli2 =
-    // Re-export the message types from the original CLI for now
-    type Msg = Darklang.Cli.Msg
+    // Re-export the message types from shared infrastructure
+    type Msg = Darklang.CliInfrastructure.Messages.Msg

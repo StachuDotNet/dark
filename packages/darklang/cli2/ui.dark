@@ -9,11 +9,11 @@ module Darklang =
         "\n" ++ categoryName ++ ":\n" ++ commandList
       
       /// Generate categorized help text with icons and better organization
-      let getContextualHelpText (state: Darklang.Cli.State) : List<String> =
-        let sectionHeader = $"{Darklang.Cli.CliColors.magenta}●{Darklang.Cli.CliColors.reset}"
-        let cmdColor = Darklang.Cli.CliColors.purple
-        let resetColor = Darklang.Cli.CliColors.reset
-        let descColor = Darklang.Cli.CliColors.darkGray
+      let getContextualHelpText (state: Darklang.CliInfrastructure.Types.State) : List<String> =
+        let sectionHeader = $"{Darklang.CliInfrastructure.Colors.magenta}●{Darklang.CliInfrastructure.Colors.reset}"
+        let cmdColor = Darklang.CliInfrastructure.Colors.purple
+        let resetColor = Darklang.CliInfrastructure.Colors.reset
+        let descColor = Darklang.CliInfrastructure.Colors.darkGray
         
         [
           "Darklang CLI v2 - Enhanced & Organized";
@@ -52,10 +52,10 @@ module Darklang =
       
       /// Generate help for specific commands
       let getCommandHelpText (command: String) : List<String> =
-        let cmdColor = Darklang.Cli.CliColors.purple
-        let resetColor = Darklang.Cli.CliColors.reset
-        let exampleColor = Darklang.Cli.CliColors.darkGray
-        let headerColor = Darklang.Cli.CliColors.magenta
+        let cmdColor = Darklang.CliInfrastructure.Colors.purple
+        let resetColor = Darklang.CliInfrastructure.Colors.reset
+        let exampleColor = Darklang.CliInfrastructure.Colors.darkGray
+        let headerColor = Darklang.CliInfrastructure.Colors.magenta
         
         match command with
         | "help" ->
@@ -365,10 +365,10 @@ module Darklang =
       
       /// Generate help for specific command categories
       let getCategoryHelpText (category: String) : List<String> =
-        let cmdColor = Darklang.Cli.CliColors.purple
-        let resetColor = Darklang.Cli.CliColors.reset
-        let exampleColor = Darklang.Cli.CliColors.darkGray
-        let headerColor = Darklang.Cli.CliColors.magenta
+        let cmdColor = Darklang.CliInfrastructure.Colors.purple
+        let resetColor = Darklang.CliInfrastructure.Colors.reset
+        let exampleColor = Darklang.CliInfrastructure.Colors.darkGray
+        let headerColor = Darklang.CliInfrastructure.Colors.magenta
         
         match category with
         | "system" ->
@@ -463,7 +463,7 @@ module Darklang =
         "Type 'help' to see organized command categories."
       
       /// Simple status display without complex pattern matching
-      let formatStatus (state: Darklang.Cli.State) : String =
+      let formatStatus (state: Darklang.CliInfrastructure.Types.State) : String =
         "CLI Status\n" ++
         "=========\n" ++
         "Current CLI: Darklang CLI v2\n" ++
@@ -471,7 +471,7 @@ module Darklang =
         "Suggestions: help (commands), version (info), status (current)"
       
       /// Format directory listing for navigation
-      let formatDirectoryListing (page: Darklang.Cli.Page) : String =
+      let formatDirectoryListing (page: Darklang.CliInfrastructure.Types.Page) : String =
         match page with
         | Root -> 
           "Available modules:\n" ++
@@ -488,7 +488,7 @@ module Darklang =
           "Directory listing not available for this location"
       
       /// Format tree view for navigation
-      let formatTreeView (page: Darklang.Cli.Page) : String =
+      let formatTreeView (page: Darklang.CliInfrastructure.Types.Page) : String =
         match page with
         | Root -> 
           "Package Structure (from codebase):\n" ++
@@ -528,7 +528,7 @@ module Darklang =
           "Tree view not available for this location"
       
       /// Format item view for navigation
-      let formatItemView (page: Darklang.Cli.Page) (itemName: String) : String =
+      let formatItemView (page: Darklang.CliInfrastructure.Types.Page) (itemName: String) : String =
         match page with
         | Root ->
           if itemName == "darklang" then
