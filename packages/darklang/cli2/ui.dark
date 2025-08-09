@@ -34,26 +34,14 @@ module Darklang =
           |> Stdlib.List.map (fun (name, _) -> Stdlib.String.length name)
           |> Stdlib.List.fold 0L Stdlib.Int64.max
         
-        let commandList =
+        let commandLines =
           allCommands
           |> Stdlib.List.map (fun (name, desc) ->
               let paddedName = name ++ Stdlib.String.repeat " " (maxNameLength - Stdlib.String.length name)
               $"{Darklang.Cli.CliColors.purple}{paddedName}{Darklang.Cli.CliColors.reset}   {desc}")
-          |> Stdlib.String.join "\n"
         
-        let helpText = [
-          "Darklang CLI";
-          "============";
-          "";
-          "Available commands:";
-          commandList;
-          "";
-          "Tips:";
-          "  • Use 'help --full' for organized command categories";
-          "  • Use 'help <command>' for specific command details";
-          "  • Use 'tree' to explore the codebase structure";
-          "  • Use 'toplevels' to see HTTP handlers, scripts, etc."
-        ]
+        let helpText = 
+          [ "Darklang CLI"; "============"; ""; "Available commands:" ] ++ commandLines
         
         // Use CLI1's beautiful logo system  
         Darklang.Cli.combineLogoAndText Darklang.Cli.logo helpText Darklang.Cli.CliColors.darkGray
