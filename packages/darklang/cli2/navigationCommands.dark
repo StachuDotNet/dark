@@ -49,3 +49,8 @@ module Darklang =
         else
           let viewText = Darklang.Cli2.UI.formatItemView state.currentPage itemName
           Darklang.Cli2.CommandResult { output = viewText; nextState = state }
+      
+      let showTree (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // CLI2 native tree view - shows hierarchical structure
+        let treeView = Darklang.Cli2.UI.formatTreeView state.currentPage
+        Darklang.Cli2.CommandResult { output = treeView; nextState = state }

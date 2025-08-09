@@ -4,8 +4,13 @@ module Darklang =
       /// System commands that are always available (help, version, status, quit, clear)
       
       let help (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // CLI2 native help - completely independent
-        let helpText = Darklang.Cli2.UI.getOrganizedHelpText ()
+        // CLI2 native help - show contextual help by default, organized help on request
+        let helpText = 
+          let trimmedArgs = Stdlib.String.trim args
+          if trimmedArgs == "--full" || trimmedArgs == "menu" then
+            Darklang.Cli2.UI.getOrganizedHelpText ()
+          else
+            Darklang.Cli2.UI.getContextualHelpText state
         Darklang.Cli2.CommandResult { output = helpText; nextState = state }
       
       let version (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
@@ -35,3 +40,8 @@ module Darklang =
         let clearOutput = "\u001b[2J\u001b[H"  // ANSI codes to clear screen and move cursor to top
         let newState = { state with needsFullRedraw = true }
         Darklang.Cli2.CommandResult { output = clearOutput; nextState = newState }
+      
+      let test (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // CLI2 test runner - runs built-in unit tests
+        let testResults = Darklang.Cli2.Tests.runAllTests ()
+        Darklang.Cli2.CommandResult { output = testResults; nextState = state }

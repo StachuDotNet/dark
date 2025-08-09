@@ -26,6 +26,8 @@ module Darklang =
           Darklang.Cli2.SystemCommands.clear state args
         else if lowerCommand == "cls" then
           Darklang.Cli2.SystemCommands.clear state args
+        else if lowerCommand == "test" then
+          Darklang.Cli2.SystemCommands.test state args
           
         else if lowerCommand == "back" then
           Darklang.Cli2.NavigationCommands.back state args
@@ -41,6 +43,34 @@ module Darklang =
           Darklang.Cli2.NavigationCommands.listItems state args
         else if lowerCommand == "view" then
           Darklang.Cli2.NavigationCommands.viewItem state args
+        else if lowerCommand == "tree" then
+          Darklang.Cli2.NavigationCommands.showTree state args
+          
+        else if lowerCommand == "menu" then
+          // Show organized help menu
+          let menuText = Darklang.Cli2.UI.getOrganizedHelpText ()
+          Darklang.Cli2.CommandResult { output = menuText; nextState = state }
+          
+        else if lowerCommand == "toplevels" then
+          // Show all toplevel categories
+          let toplevelText = Darklang.Cli2.Toplevels.formatToplevelListing "all"
+          Darklang.Cli2.CommandResult { output = toplevelText; nextState = state }
+        else if lowerCommand == "http" then
+          // Show HttpHandler toplevels
+          let toplevelText = Darklang.Cli2.Toplevels.formatToplevelListing "HttpHandler"
+          Darklang.Cli2.CommandResult { output = toplevelText; nextState = state }
+        else if lowerCommand == "scripts-tl" then
+          // Show Script toplevels (different from 'scripts' command)
+          let toplevelText = Darklang.Cli2.Toplevels.formatToplevelListing "Script"
+          Darklang.Cli2.CommandResult { output = toplevelText; nextState = state }
+        else if lowerCommand == "tests-tl" then
+          // Show Test toplevels
+          let toplevelText = Darklang.Cli2.Toplevels.formatToplevelListing "Test"
+          Darklang.Cli2.CommandResult { output = toplevelText; nextState = state }
+        else if lowerCommand == "docs" then
+          // Show Markdown toplevels
+          let toplevelText = Darklang.Cli2.Toplevels.formatToplevelListing "Markdown"
+          Darklang.Cli2.CommandResult { output = toplevelText; nextState = state }
           
         else if lowerCommand == "run" then
           Darklang.Cli2.DevelopmentCommands.runScript state args

@@ -1,0 +1,63 @@
+module Stachu =
+  module Extensions =
+    /// Organization toplevels for personal workflow management
+    /// These are Stachu-specific organizational structures
+    
+    /// Module organization - grouping related functionality
+    type Module =
+      { name: String
+        description: String
+        components: List<String>
+        dependencies: List<String> }
+    
+    /// Multi-dimensional categorization system
+    type Facet =
+      { name: String
+        category: String
+        dimensions: List<String>
+        values: List<String> }
+    
+    /// Project management structure
+    type Project =
+      { name: String
+        status: ProjectStatus
+        description: String
+        tasks: List<String>
+        deadline: Stdlib.Option.Option<DateTime> }
+    
+    type ProjectStatus =
+      | Active
+      | OnHold  
+      | Completed
+      | Cancelled
+    
+    /// Actionable items - task management
+    type Actionable =
+      { title: String
+        priority: Priority
+        context: String
+        dueDate: Stdlib.Option.Option<DateTime>
+        tags: List<String> }
+    
+    type Priority =
+      | Low
+      | Medium
+      | High
+      | Urgent
+    
+    // Placeholder - waiting for Stachu to provide complete list
+    // Additional toplevels to be added based on clarification
+    
+    /// Scan for organization toplevels
+    let scanOrganizationToplevels (typeName: String) : List<String> =
+      // Mock data for now - would scan real package system
+      if typeName == "Module" then
+        [ "cli-system"; "web-framework"; "data-processing" ]
+      else if typeName == "Facet" then
+        [ "technology-stack"; "business-domain"; "complexity-level" ]
+      else if typeName == "Project" then
+        [ "darklang-cli2"; "personal-website"; "automation-tools" ]
+      else if typeName == "Actionable" then
+        [ "implement-toplevels"; "write-documentation"; "optimize-performance" ]
+      else
+        []

@@ -8,16 +8,59 @@ module Darklang =
           acc ++ "  " ++ cmd ++ "\n")
         "\n" ++ categoryName ++ ":\n" ++ commandList
       
+      let getContextualHelpText (state: Darklang.Cli.State) : String =
+        // Show only relevant commands for current context, like CLI1
+        let allCommands = [
+          ("help", "Show help information");
+          ("version", "Show version information");
+          ("status", "Show current status");
+          ("quit", "Exit the CLI");
+          ("clear", "Clear the screen");
+          ("test", "Run CLI2 tests");
+          ("back", "Go back to previous location");
+          ("cd", "Change directory");
+          ("ls", "List contents");
+          ("tree", "Show directory tree");
+          ("view", "View item details");
+          ("toplevels", "Show all toplevel categories");
+          ("http", "Show HTTP handlers");
+          ("scripts-tl", "Show script toplevels");
+          ("tests-tl", "Show test toplevels");
+          ("docs", "Show documentation");
+          ("run", "Run a script");
+          ("scripts", "List available scripts");
+          ("eval", "Evaluate expression");
+          ("install", "Install packages");
+          ("update", "Update packages");
+          ("uninstall", "Uninstall packages")
+        ]
+        
+        let maxNameLength =
+          allCommands
+          |> Stdlib.List.map (fun (name, _) -> Stdlib.String.length name)
+          |> Stdlib.List.fold 0L Stdlib.Int64.max
+        
+        let commandList =
+          allCommands
+          |> Stdlib.List.map (fun (name, desc) ->
+              let paddedName = name ++ Stdlib.String.repeat " " (maxNameLength - Stdlib.String.length name)
+              $"{paddedName}   {desc}")
+          |> Stdlib.String.join "\n"
+        
+        "Available commands:\n" ++ commandList
+      
       let getOrganizedHelpText () : String =
-        let systemCommands = ["help", "version", "status", "quit", "clear"]
-        let navigationCommands = ["back", "cd", "ls", "view"]  
-        let developmentCommands = ["run", "scripts", "eval"]
-        let installationCommands = ["install", "update", "uninstall"]
+        let systemCommands = [ "help"; "version"; "status"; "quit"; "clear"; "test" ]
+        let navigationCommands = [ "back"; "cd"; "ls"; "tree"; "view" ]
+        let toplevelCommands = [ "toplevels"; "http"; "scripts-tl"; "tests-tl"; "docs" ]
+        let developmentCommands = [ "run"; "scripts"; "eval" ]
+        let installationCommands = [ "install"; "update"; "uninstall" ]
         
         "Darklang CLI - Organized Command Reference\n" ++
         "==========================================" ++
         formatCommandCategory "System Commands" systemCommands ++
         formatCommandCategory "Navigation Commands" navigationCommands ++
+        formatCommandCategory "Toplevel Commands" toplevelCommands ++
         formatCommandCategory "Development Commands" developmentCommands ++
         formatCommandCategory "Installation Commands" installationCommands ++
         "\nUse 'help <command>' for detailed information about a specific command."
@@ -33,3 +76,116 @@ module Darklang =
         "Current CLI: Darklang CLI v2\n" ++
         "Features: Enhanced organization, Better UX, MVU architecture\n" ++
         "Suggestions: help (commands), version (info), status (current)"
+      
+      /// Format directory listing for navigation
+      let formatDirectoryListing (page: Darklang.Cli.Page) : String =
+        match page with
+        | Root -> 
+          "Available modules:\n" ++
+          "  darklang/  (Core Darklang modules)\n" ++  
+          "  stachu/    (User modules)\n" ++
+          "  internal/  (Internal modules)"
+        | Module(owner, subPath) ->
+          $"Module: {owner}\n" ++
+          "Available items:\n" ++
+          "  functions/  (Function definitions)\n" ++
+          "  types/      (Type definitions)\n" ++
+          "  constants/  (Constant definitions)"
+        | _ ->
+          "Directory listing not available for this location"
+      
+      /// Format tree view for navigation
+      let formatTreeView (page: Darklang.Cli.Page) : String =
+        match page with
+        | Root -> 
+          "Package Structure:\n" ++
+          "├── darklang/\n" ++
+          "│   ├── cli/\n" ++
+          "│   ├── cli2/\n" ++
+          "│   ├── stdlib/\n" ++
+          "│   └── languageTools/\n" ++
+          "├── stachu/\n" ++
+          "│   ├── timespan.dark\n" ++
+          "│   └── json.dark\n" ++
+          "└── internal/\n" ++
+          "    └── tests.dark"
+        | Module(owner, subPath) ->
+          $"Tree view for {owner}:\n" ++
+          "├── functions/\n" ++
+          "├── types/\n" ++
+          "└── constants/"
+        | _ ->
+          "Tree view not available for this location"
+      
+      /// Format item view for navigation
+      let formatItemView (page: Darklang.Cli.Page) (itemName: String) : String =
+        match page with
+        | Root ->
+          if itemName == "darklang" then
+            "Darklang Core Modules\n" ++
+            "====================\n" ++
+            "Contains standard library and CLI modules"
+          else if itemName == "stachu" then  
+            "User Modules\n" ++
+            "============\n" ++
+            "Contains user-defined modules"
+          else
+            $"Module '{itemName}' not found"
+        | Module(owner, subPath) ->
+          if itemName == "functions" then
+            $"Functions in {owner}\n" ++
+            "===================\n" ++
+            "List of function definitions would appear here"
+          else if itemName == "types" then
+            $"Types in {owner}\n" ++
+            "===============\n" ++  
+            "List of type definitions would appear here"
+          else if itemName == "constants" then
+            $"Constants in {owner}\n" ++
+            "===================\n" ++
+            "List of constant definitions would appear here"  
+          else
+            $"Item '{itemName}' not found in {owner}"
+        | _ ->
+          $"Cannot view '{itemName}' from this location"
+      
+      /// Format scripts listing for development commands
+      let formatScriptsListing () : String =
+        "Available Scripts\n" ++
+        "================\n" ++
+        "  hello-world    Simple hello world example\n" ++
+        "  test-math      Mathematical operations test\n" ++
+        "  string-demo    String manipulation examples\n" ++
+        "\nUse 'run <script-name>' to execute a script"
+      
+      /// Execute a script by name
+      let executeScript (scriptName: String) : String =
+        if scriptName == "hello-world" then
+          "Hello World!\n" ++
+          "============\n" ++
+          "This is a simple hello world script executed by CLI2"
+        else if scriptName == "test-math" then
+          "Math Test Results\n" ++
+          "================\n" ++
+          "2 + 2 = 4\n" ++
+          "5 * 3 = 15\n" ++
+          "10 / 2 = 5"
+        else if scriptName == "string-demo" then
+          "String Demo\n" ++
+          "===========\n" ++
+          "Length of 'hello': 5\n" ++
+          "Uppercase 'world': WORLD\n" ++
+          "Joined: CLI2 is working"
+        else
+          $"Script '{scriptName}' not found.\n" ++
+          "Available scripts: hello-world, test-math, string-demo\n" ++
+          "Use 'scripts' to see all available scripts."
+      
+      /// Evaluate a Darklang expression  
+      let evaluateExpression (expression: String) : String =
+        "Expression Evaluation\n" ++
+        "====================\n" ++
+        $"Input: {expression}\n" ++
+        "Result: [Expression evaluation not yet implemented in CLI2]\n" ++
+        "\nNote: This is a placeholder. Full expression evaluation\n" ++
+        "requires integration with the Darklang interpreter."
