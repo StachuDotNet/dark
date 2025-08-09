@@ -5,8 +5,8 @@ module Darklang =
       
       let help (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
         // Use CLI1's beautiful help system with logo
-        let helpText = Darklang.Cli2.UI.getContextualHelpText state
-        let helpContent = Darklang.Cli.combineLogoAndText Darklang.Cli.logo helpText Darklang.Cli.CliColors.darkGray
+        let helpTextLines = Darklang.Cli2.UI.getContextualHelpText state
+        let helpContent = Darklang.Cli.combineLogoAndText Darklang.Cli.logo helpTextLines Darklang.Cli.CliColors.darkGray
         Darklang.Cli2.CommandResult { output = helpContent; nextState = state }
       
       let version (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
