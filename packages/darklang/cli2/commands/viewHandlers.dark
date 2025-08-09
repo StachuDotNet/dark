@@ -1,0 +1,140 @@
+module Darklang =
+  module Cli2 =
+    module Commands =
+      module ViewHandlers =
+        /// Context-specific view handlers extracted from the monolithic view command
+        /// Each handler is now independently testable and focused on a single context
+
+        /// Handle view command when current page is Root
+        let viewInRoot (state: State) (entityName: String) : (State * List<Msg>) =
+          let query = Darklang.Cli.createSearchQuery (entityName |> Stdlib.String.split ".") ""
+          
+          let moduleContent = LanguageTools.PackageManager.Search.search query
+
+          // If all entities are empty, it means we are looking for a specific entity or the entity is not found
+          if Stdlib.List.isEmpty moduleContent.fns &&
+             Stdlib.List.isEmpty moduleContent.types &&
+             Stdlib.List.isEmpty moduleContent.constants then
+            
+            Darklang.Cli.viewEntityByName state entityName
+            
+          else
+            let moduleView = Darklang.Cli.formatModuleContent entityName moduleContent
+            let newState = { state with commandResult = CommandResult.Success moduleView }
+            (newState, [])
+
+        /// Handle view command when current page is Module(owner, submodules)
+        let viewInModule (state: State) (owner: String) (submodules: List<String>) (entityName: String) : (State * List<Msg>) =
+          // Construct the fully qualified entity name
+          let modulePrefix = Darklang.Cli.constructModulePrefix owner submodules
+          let fullyQualifiedName = modulePrefix ++ "." ++ entityName
+
+          // Check if the entity is a submodule
+          let moduleQuery = Darklang.Cli.createSearchQuery (fullyQualifiedName |> Stdlib.String.split ".") ""
+          
+          let moduleContent = LanguageTools.PackageManager.Search.search moduleQuery
+
+          if Stdlib.List.isEmpty moduleContent.fns &&
+             Stdlib.List.isEmpty moduleContent.types &&
+             Stdlib.List.isEmpty moduleContent.constants then
+            // check if the entity is a function, type, or constant
+            Darklang.Cli.viewEntityByName state fullyQualifiedName
+          else
+            let moduleView = Darklang.Cli.formatModuleContent fullyQualifiedName moduleContent
+            let newState = { state with commandResult = CommandResult.Success moduleView }
+            (newState, [])
+
+        /// Handle view command when current page is Type(name)
+        let viewInType (state: State) (typeName: LanguageTools.ProgramTypes.PackageType.Name) (args: String) : (State * List<Msg>) =
+          if Stdlib.String.isEmpty args then
+            // No arguments, show details of the current type
+            let typeNameStr = LanguageTools.ProgramTypes.PackageType.nameToString typeName
+            match LanguageTools.PackageManager.Type.find typeNameStr with
+            | Some typeId ->
+              match LanguageTools.PackageManager.Type.get typeId with
+              | Some packageType ->
+                // Pretty print the type details
+                let prettyPrinted = PrettyPrinter.ProgramTypes.packageType packageType
+                let newState = { state with commandResult = CommandResult.Success $"Type: {typeNameStr}\n\n{prettyPrinted}" }
+                (newState, [])
+              | None ->
+                let newState = { state with commandResult = CommandResult.Error "Type details could not be retrieved" }
+                (newState, [])
+            | None ->
+              let newState = { state with commandResult = CommandResult.Error "Type not found" }
+              (newState, [])
+          else
+            // Arguments provided, handle entity lookup within type context
+            let newState = { state with commandResult = CommandResult.Info "View with arguments in Type context not yet implemented in CLI2" }
+            (newState, [])
+
+        /// Handle view command when current page is Fn(name)
+        let viewInFn (state: State) (fnName: LanguageTools.ProgramTypes.PackageFn.Name) (args: String) : (State * List<Msg>) =
+          if Stdlib.String.isEmpty args then
+            // No arguments, show details of the current function
+            let fnNameStr = LanguageTools.ProgramTypes.PackageFn.nameToString fnName
+            match LanguageTools.PackageManager.Function.find fnNameStr with
+            | Some fnId ->
+              match LanguageTools.PackageManager.Function.get fnId with
+              | Some packageFn ->
+                // Pretty print the function details
+                let prettyPrinted = PrettyPrinter.ProgramTypes.packageFn packageFn
+                let newState = { state with commandResult = CommandResult.Success $"Function: {fnNameStr}\n\n{prettyPrinted}" }
+                (newState, [])
+              | None ->
+                let newState = { state with commandResult = CommandResult.Error "Function details could not be retrieved" }
+                (newState, [])
+            | None ->
+              let newState = { state with commandResult = CommandResult.Error "Function not found" }
+              (newState, [])
+          else
+            // Arguments provided, handle entity lookup within function context
+            let newState = { state with commandResult = CommandResult.Info "View with arguments in Fn context not yet implemented in CLI2" }
+            (newState, [])
+
+        /// Handle view command when current page is Constant(name)  
+        let viewInConstant (state: State) (constName: LanguageTools.ProgramTypes.PackageConstant.Name) (args: String) : (State * List<Msg>) =
+          if Stdlib.String.isEmpty args then
+            // No arguments, show details of the current constant
+            let constNameStr = LanguageTools.ProgramTypes.PackageConstant.nameToString constName
+            match LanguageTools.PackageManager.Constant.find constNameStr with
+            | Some constId ->
+              match LanguageTools.PackageManager.Constant.get constId with
+              | Some packageConst ->
+                // Pretty print the constant details
+                let prettyPrinted = PrettyPrinter.ProgramTypes.packageConstant packageConst
+                let newState = { state with commandResult = CommandResult.Success $"Constant: {constNameStr}\n\n{prettyPrinted}" }
+                (newState, [])
+              | None ->
+                let newState = { state with commandResult = CommandResult.Error "Constant details could not be retrieved" }
+                (newState, [])
+            | None ->
+              let newState = { state with commandResult = CommandResult.Error "Constant not found" }
+              (newState, [])
+          else
+            // Arguments provided, handle entity lookup within constant context
+            let newState = { state with commandResult = CommandResult.Info "View with arguments in Constant context not yet implemented in CLI2" }
+            (newState, [])
+
+        /// Main view command dispatcher that delegates to context-specific handlers
+        let executeViewCommand (state: State) (args: String) : (State * List<Msg>) =
+          if Stdlib.String.isEmpty args then
+            let newState =
+              { state with
+                  commandResult = CommandResult.Info "Please specify an entity name or use 'module <moduleName>' to view a module"
+                  needsFullRedraw = true }
+            (newState, [])
+          else
+            let entityName = args
+
+            match state.currentPage with
+            | Root ->
+              viewInRoot state entityName
+            | Module(owner, submodules) ->
+              viewInModule state owner submodules entityName
+            | Type(name) ->
+              viewInType state name args
+            | Fn(name) ->
+              viewInFn state name args
+            | Constant(name) ->
+              viewInConstant state name args

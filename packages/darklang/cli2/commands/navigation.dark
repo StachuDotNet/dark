@@ -60,7 +60,7 @@ module Darklang =
               execute = fun state _ -> (state, [Msg.NavigateBack])
             }
 
-        /// View entity command - placeholder for now, will be extracted in Phase 2.3
+        /// View entity command - now using organized context handlers
         let viewCommand: CommandDetails =
           CommandDetails
             { name = "view"
@@ -68,10 +68,8 @@ module Darklang =
               aliases = []
               arguments = ["[<moduleName> | <entityName>]"]
               execute = fun state args ->
-                // TODO: This will be broken down into context handlers in Phase 2.3
-                // For now, return a placeholder message indicating CLI2 structure
-                let newState = { state with commandResult = CommandResult.Info "CLI2 view command placeholder - will be implemented in Phase 2.3" }
-                (newState, [])
+                // Use the new context-specific view handlers
+                Darklang.Cli2.Commands.ViewHandlers.executeViewCommand state args
             }
 
         /// Get all navigation commands for CLI2
