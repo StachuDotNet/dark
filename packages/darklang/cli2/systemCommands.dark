@@ -4,7 +4,7 @@ module Darklang =
       /// System commands that are always available (help, version, status, quit, clear)
       
       let help (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // Enhanced help system with category support
+        // Enhanced help system with category and per-command support
         let trimmedArgs = Stdlib.String.trim args
         
         if Stdlib.String.isEmpty trimmedArgs then
@@ -13,10 +13,23 @@ module Darklang =
           let helpContent = Darklang.Cli.combineLogoAndText Darklang.Cli.logo helpTextLines Darklang.Cli.CliColors.darkGray
           Darklang.Cli2.CommandResult { output = helpContent; nextState = state }
         else
-          // Show category-specific detailed help
-          let categoryHelpLines = Darklang.Cli2.UI.getCategoryHelpText trimmedArgs
-          let categoryContent = Stdlib.String.join categoryHelpLines "\n"
-          Darklang.Cli2.CommandResult { output = categoryContent; nextState = state }
+          // Check if it's a category or individual command
+          let isCategory = 
+            (trimmedArgs == "system") ||
+            (trimmedArgs == "navigation") ||
+            (trimmedArgs == "development") ||
+            (trimmedArgs == "installation")
+          
+          if isCategory then
+            // Show category-specific detailed help
+            let categoryHelpLines = Darklang.Cli2.UI.getCategoryHelpText trimmedArgs
+            let categoryContent = Stdlib.String.join categoryHelpLines "\n"
+            Darklang.Cli2.CommandResult { output = categoryContent; nextState = state }
+          else
+            // Show individual command help
+            let commandHelpLines = Darklang.Cli2.UI.getCommandHelpText trimmedArgs
+            let commandContent = Stdlib.String.join commandHelpLines "\n"
+            Darklang.Cli2.CommandResult { output = commandContent; nextState = state }
       
       let version (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
         // Use the real version system from CLI1 - not fake
