@@ -1,7 +1,7 @@
-# Darklang CLI2 Comprehensive Specification
+# Darklang CLI2 Specification
 
 ## Overview
-CLI2 is a modern, organized command-line interface for Darklang with enhanced UX, toplevel support, and MVU/FRP architecture. It provides a hierarchical navigation system and toplevel-aware commands.
+CLI2 achieves complete feature parity with CLI1 while providing enhanced UX and maintainability. The primary goal is to match CLI1's functionality exactly, then extend beyond it.
 
 ## Current Command Architecture
 
@@ -190,92 +190,71 @@ config list
 config reset
 ```
 
-## Real vs Fake Command Analysis
+## CLI1 Parity Analysis
 
-### ✅ REAL Commands (Fully Implemented)
-- **help**: Logo display, contextual and organized help using CLI1's system
-- **version**: Build hash, GitHub update checking using `Builtin.getBuildHash()`
-- **status**: Real CLI status formatting
-- **quit/exit/q**: Proper state management for CLI exit
-- **clear/cls**: Real ANSI screen clearing
-- **cli-test**: Actual test runner execution
-- **back**: Real navigation using page history
-- **cd**: Real directory navigation with state management
-- **ls/list/dir/pwd**: Real directory listing from current page
-- **tree**: Real package structure display
-- **view**: Real item viewing with context awareness
-- **toplevels**: Real toplevel category display
-- **scripts list**: Integration with CLI1's Scripts.list() for real database scripts
+### ✅ CLI1 Commands Implemented in CLI2
+- **help**: ✅ Complete with logo (matches CLI1)
+- **version**: ✅ Complete with build hash and update checking (matches CLI1)
+- **status**: ✅ Complete (matches CLI1) 
+- **quit**: ✅ Complete (matches CLI1)
+- **clear**: ✅ Complete (matches CLI1)
+- **back**: ✅ Complete with page history (matches CLI1)
+- **cd**: ✅ Complete with state management (matches CLI1)
+- **ls**: ✅ Complete with directory listing (matches CLI1)
+- **view**: ✅ Complete with item viewing (matches CLI1)
 
-### 🔴 FAKE Commands (Need Real Implementation)
-- **http routes**: Hardcoded fake route tree
-- **http list**: Hardcoded fake HTTP handlers
-- **run**: Completely fake script outputs
-- **eval/e**: Placeholder text only
-- **install**: Calls non-existent functions (would error)
-- **update**: Calls non-existent functions (would error) 
-- **uninstall**: Calls non-existent functions (would error)
-- **test list**: Returns fake sample data
-- **docs list**: Returns fake markdown names
-- **cron list**: Returns fake cron jobs
-- **views list**: Returns fake UI components
+### 🔴 CLI1 Commands Missing/Broken in CLI2
+- **mode**: ❌ Missing - CLI1 has mode switching functionality
+- **run**: 🔴 Fake implementation - CLI2 has placeholder outputs, CLI1 has real script execution
+- **scripts**: 🟡 Partially real - CLI2 shows real script list but fake execution 
+- **eval**: 🔴 Fake implementation - CLI2 placeholder, CLI1 has real expression evaluation
+- **install**: 🔴 Broken - CLI2 calls non-existent functions, CLI1 works
+- **update**: 🔴 Broken - CLI2 calls non-existent functions, CLI1 works  
+- **uninstall**: 🔴 Broken - CLI2 calls non-existent functions, CLI1 works
 
-### 🟡 PARTIALLY REAL Commands (Mixed Implementation)
-- **Navigation commands**: Real logic but some hardcoded directory contents
-- **Tree command**: Real structure but some fake data mixed in
-- **Scripts scanning**: Real CLI1 integration for scripts but fake data for other toplevels
+### ➕ CLI2 Extra Commands (Should be removed for parity)
+- **http, toplevels, cron, views, docs, test, tree**: These are new features, not CLI1 parity
 
-## Implementation Priority Roadmap
+## CLI1 Parity Roadmap
 
-### Phase 1: Core Infrastructure ✅ COMPLETE
-- [x] Basic command routing with organized dispatch
-- [x] MVU/FRP architecture using CLI1's state system
-- [x] Beautiful help system with CLI1's logo integration
-- [x] Real version command with build hash and update checking
-- [x] Navigation commands with real state management
-- [x] Parser compatibility fixes (parentheses for pipes, etc.)
+### Phase 1: Infrastructure ✅ COMPLETE
+- [x] Basic command routing matching CLI1's structure
+- [x] Clean MVU/FRP architecture using CLI1's state system (foundation for TUI)
+- [x] Help system with CLI1's logo and formatting
+- [x] Version command with real build hash and update checking
+- [x] Navigation commands (cd, ls, back, view) matching CLI1
+- [x] TUI-ready state management and rendering pipeline
 
-### Phase 2: Make Fake Commands Real (CURRENT FOCUS)
+### Phase 2: Fix Broken CLI1 Commands (CURRENT FOCUS)
 
-#### Priority 1: HTTP Handler Integration (Easiest)
-**Based on ProgramTypes.fs Handler.Spec patterns:**
-- [ ] Integrate with real Handler.Spec types (HTTP, Worker, Cron, REPL)
-- [ ] Use real tlid-based lookups
-- [ ] Display actual route/method combinations from Handler.Spec.HTTP
-- [ ] Show real handler counts and listings
+#### Priority 1: Add Missing CLI1 Commands
+- [ ] **mode**: Implement CLI1's mode switching (Installed vs Portable)
 
-#### Priority 2: Script Execution (Medium)
-**Already has CLI1 integration, needs real execution:**
-- [ ] Remove fake script outputs ("hello-world", "test-math", etc.)
-- [ ] Use CLI1's real script execution system
-- [ ] Integrate with Builtin.cliExecuteFunction for real script running
-- [ ] Show real script results and error handling
+#### Priority 2: Fix Broken Implementation Commands
+- [ ] **run**: Replace fake outputs with CLI1's real script execution system
+- [ ] **eval**: Replace placeholder with CLI1's real expression evaluation
+- [ ] **install/update/uninstall**: Fix broken function calls, use CLI1's installation system
 
-#### Priority 3: Expression Evaluation (Medium)
-**Integrate with real Darklang interpreter:**
-- [ ] Remove "not yet implemented" placeholder
-- [ ] Use CLI1's parser and execution system
-- [ ] Integrate with LanguageTools.Parser.parseToSimplifiedTree
-- [ ] Real expression parsing and evaluation
+#### Priority 3: Clean Up Extra Commands
+- [ ] Remove all non-CLI1 commands (http, toplevels, cron, views, docs, test, tree)
+- [ ] Update help to show only CLI1 commands
+- [ ] Simplify command routing to match CLI1 exactly
 
-#### Priority 4: Package Management (Harder)
-**Requires integration with real package system:**
-- [ ] Remove non-existent function calls
-- [ ] Research current package management system
-- [ ] Implement real install/update/uninstall functionality
+### Phase 3: Testing & Validation
+- [ ] Write tests comparing CLI1 vs CLI2 output exactly
+- [ ] Validate every CLI1 command works identically in CLI2
+- [ ] Performance testing to ensure CLI2 isn't slower than CLI1
+- [ ] Integration testing with real scripts and expressions
 
-### Phase 3: Toplevel System Enhancement
-**Based on real ProgramTypes.fs Toplevel.T patterns:**
-- [ ] Integrate with real TLDB and TLHandler types
-- [ ] Use real tlid-based toplevel identification
-- [ ] Implement real package scanning with proper user access control
-- [ ] Real-time toplevel discovery and caching
+### Phase 4: Transition Planning
+- [ ] Document exact behavioral differences (if any)
+- [ ] Create migration plan to switch from CLI1 to CLI2
+- [ ] Ensure CLI2 can be drop-in replacement for CLI1
 
-### Phase 4: Advanced Features & Polish
-- [ ] Context-aware help and commands
-- [ ] Interactive mode with context switching
-- [ ] Performance optimizations
-- [ ] Comprehensive integration testing
+### Future: Extensions (After Parity)
+- [ ] Then and only then: Add new organized command structure
+- [ ] Then and only then: Add toplevel-aware features
+- [ ] Then and only then: Add enhanced navigation
 
 ## Technical Architecture
 
