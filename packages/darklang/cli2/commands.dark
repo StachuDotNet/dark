@@ -1,0 +1,8 @@
+module Darklang =
+  module Cli2 =
+    /// System commands that are always available
+    module Commands =
+      /// System commands module containing help, version, status, quit, mode, clear
+      module System =
+        /// Placeholder for system commands - will implement incrementally
+        let systemCommandsPlaceholder = "System commands module created for CLI2 refactoring"
