@@ -7,15 +7,15 @@ module Darklang =
         // Use CLI1's real installation system
         let currentMode = Darklang.Cli.Installation.getInstallationMode ()
         match currentMode with
-        | Darklang.Cli.Installation.InstallationMode.Installed ->
+        | Installed ->
           Darklang.Cli2.CommandResult { output = "Already installed globally"; nextState = state }
-        | Darklang.Cli.Installation.InstallationMode.Portable ->
+        | Portable ->
           let host = (Stdlib.Cli.Host.getRuntimeHost ()) |> Builtin.unwrap
           let currentDir = Builtin.directoryCurrent ()
           if Darklang.Cli.Installation.globalInstallationExists host then
             let homeDir =
               match host.os with
-              | Stdlib.Cli.Host.RuntimeHost.OperatingSystem.Windows ->
+              | Windows ->
                 match Stdlib.Cli.PowerShell.getHomeDirectory () with
                 | Ok dir -> $"{dir}\\.darklang"
                 | Error _ -> "~/.darklang"
@@ -50,7 +50,7 @@ module Darklang =
         let currentVersion = Darklang.Cli.Command.cliVersion ()
         let currentMode = Darklang.Cli.Installation.getInstallationMode ()
         match currentMode with
-        | Darklang.Cli.Installation.InstallationMode.Installed ->
+        | Installed ->
           Builtin.printLine $"Checking for updates from Darklang CLI {currentVersion}..."
           let host = (Stdlib.Cli.Host.getRuntimeHost ()) |> Builtin.unwrap
           match Darklang.Cli.Installation.updateIfAvailable currentVersion host with
@@ -58,7 +58,7 @@ module Darklang =
             Darklang.Cli2.CommandResult { output = message; nextState = state }
           | Error e ->
             Darklang.Cli2.CommandResult { output = e; nextState = state }
-        | Darklang.Cli.Installation.InstallationMode.Portable ->
+        | Portable ->
           let message = $"Running in portable mode from {Builtin.directoryCurrent ()}/.darklang\n\nTo update this portable executable, please download the latest release manually from:\nhttps://github.com/darklang/dark/releases\n\nFor automatic updates, consider running 'install' to set up global installation."
           Darklang.Cli2.CommandResult { output = message; nextState = state }
       
