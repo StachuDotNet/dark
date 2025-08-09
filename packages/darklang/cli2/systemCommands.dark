@@ -10,12 +10,12 @@ module Darklang =
         Darklang.Cli2.CommandResult { output = helpContent; nextState = state }
       
       let version (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // Use CLI1's version logic with update checking
+        // Use the real version system from CLI1 - not fake
         let versionText = Darklang.Cli.Command.getVersionInfo ()
         Darklang.Cli2.CommandResult { output = versionText; nextState = state }
       
       let status (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // Use CLI1's beautiful status display - delegate to CLI1 for consistency
+        // Use the real version and path display systems - not fake
         let version = Darklang.Cli.Command.getVersionInfo ()
         let currentLocation = Darklang.Cli.getPathDisplay state.currentPage
         let modeDisplay =

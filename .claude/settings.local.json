@@ -22,7 +22,12 @@
       "Bash(git pull:*)",
       "Bash(DARK_USE_CLI2=true ./scripts/run-cli version)",
       "Bash(env DARK_USE_CLI2=true ./scripts/run-cli version)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli quit)",
+      "Bash(sed:*)",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli help)",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli status)",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli mode)"
     ],
     "deny": []
   }
