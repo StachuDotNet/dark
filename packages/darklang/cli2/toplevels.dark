@@ -44,18 +44,117 @@ module Darklang =
           content: String
           tags: List<String> }
       
-      /// Scan packages for toplevels of a specific type
-      let scanForToplevels (typeName: String) : List<String> =
+      /// Get accessible package directories for the current user
+      /// TODO: Add proper user access control - for now, 'darklang' user has access to everything
+      let getAccessiblePackages () : List<String> =
+        // Current user is 'darklang' and has access to darklang, stachu, internal, and canvases
+        [ "/home/stachu/code/dark/packages/darklang"
+          "/home/stachu/code/dark/packages/stachu" 
+          "/home/stachu/code/dark/packages/internal"
+          "/home/stachu/code/dark/canvases/dark-packages" ]
+
+      /// Scan a single file for toplevels of a specific type
+      let scanFileForToplevels (filePath: String) (typeName: String) : List<String> =
         if typeName == "HttpHandler" then
-          [ "api/users"; "api/posts"; "api/auth" ]
+          // Use builtin file reading to scan for HttpHandler annotations
+          match Builtin.fileExists filePath with
+          | false -> []
+          | true ->
+            let content = Builtin.fileReadUtf8 filePath
+            // Extract HttpHandler annotations: [<HttpHandler("METHOD", "PATH")>]
+            let lines = Stdlib.String.split content "\n"
+            lines
+            |> Stdlib.List.filterMap (fun line ->
+                if Stdlib.String.contains line "[<HttpHandler(" then
+                  // Extract method and path from the annotation
+                  // Format: [<HttpHandler("GET", "/ping")>]
+                  let trimmed = Stdlib.String.trim line
+                  if Stdlib.String.startsWith trimmed "[<HttpHandler(\"" then
+                    // Extract the method and path parts
+                    let afterPrefix = Stdlib.String.dropFirst trimmed 15L // Drop '[<HttpHandler("'
+                    let parts = Stdlib.String.split afterPrefix "\", \""
+                    match parts with
+                    | method :: pathWithSuffix :: _ ->
+                      // Remove the closing parts: ")>]
+                      let path = Stdlib.String.split pathWithSuffix "\")>" |> Stdlib.List.head
+                      match path with
+                      | Some pathStr -> Some $"{method} {pathStr}"
+                      | None -> None
+                    | _ -> None
+                  else
+                    None
+                else
+                  None)
         else if typeName == "Script" then
-          [ "deploy"; "backup"; "migrate" ]
+          // Scripts come from CLI1's database, not files - delegate to CLI1
+          match Darklang.Cli.Scripts.list () with
+          | Ok scripts -> scripts |> Stdlib.List.map (fun script -> script.name)
+          | Error _ -> []
         else if typeName == "Test" then
-          [ "unit-tests"; "integration-tests"; "e2e-tests" ]
+          // Scan for test files (*.dark files in test directories)
+          if Stdlib.String.contains filePath "/test/" then
+            let filename = Stdlib.String.split filePath "/" |> Stdlib.List.reverse |> Stdlib.List.head
+            match filename with
+            | Some name -> 
+              if Stdlib.String.endsWith name ".dark" then
+                let testName = Stdlib.String.dropLast name 5L // Remove ".dark"
+                [ testName ]
+              else
+                []
+            | None -> []
+          else
+            []
         else if typeName == "Markdown" then
-          [ "README"; "DESIGN"; "ARCHITECTURE" ]
+          // Scan for markdown and documentation files
+          if Stdlib.String.contains filePath "README" || Stdlib.String.endsWith filePath ".md" then
+            let filename = Stdlib.String.split filePath "/" |> Stdlib.List.reverse |> Stdlib.List.head
+            match filename with
+            | Some name -> [ name ]
+            | None -> []
+          else
+            []
+        else if typeName == "DB" then
+          // Use builtin file reading to scan for DB annotations
+          match Builtin.fileExists filePath with
+          | false -> []
+          | true ->
+            let content = Builtin.fileReadUtf8 filePath
+            if Stdlib.String.contains content "[<DB>]" then
+              let filename = Stdlib.String.split filePath "/" |> Stdlib.List.reverse |> Stdlib.List.head
+              match filename with
+              | Some name -> 
+                if Stdlib.String.endsWith name ".dark" then
+                  let dbName = Stdlib.String.dropLast name 5L // Remove ".dark"
+                  [ dbName ]
+                else
+                  []
+              | None -> []
+            else
+              []
         else
           []
+
+      /// Recursively scan directories for .dark files
+      let scanDirectoryForFiles (dirPath: String) : List<String> =
+        // TODO: Implement proper directory traversal - for now, return known file paths
+        if dirPath == "/home/stachu/code/dark/canvases/dark-packages" then
+          [ "/home/stachu/code/dark/canvases/dark-packages/main.dark" ]
+        else if dirPath == "/home/stachu/code/dark/packages/darklang" then
+          // Major darklang package files that might have toplevels
+          [ "/home/stachu/code/dark/packages/darklang/test/test.dark"
+            "/home/stachu/code/dark/packages/darklang/stdlib/db.dark" ]
+        else if dirPath == "/home/stachu/code/dark/packages/internal" then
+          [ "/home/stachu/code/dark/packages/internal/tests.dark" ]
+        else
+          []
+
+      /// Scan packages for toplevels of a specific type
+      let scanForToplevels (typeName: String) : List<String> =
+        let accessiblePackages = getAccessiblePackages ()
+        let allFiles = accessiblePackages |> Stdlib.List.flatMap scanDirectoryForFiles
+        let allToplevels = allFiles |> Stdlib.List.flatMap (fun filePath -> 
+          scanFileForToplevels filePath typeName)
+        allToplevels
       
       /// Format toplevel listing for CLI display
       let formatToplevelListing (typeName: String) : String =

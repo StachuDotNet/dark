@@ -62,8 +62,8 @@ module Darklang =
         let msg = Darklang.Cli.Msg.KeyPressed(keyRead.key, keyRead.modifiers, keyRead.keyChar)
         let (newState, messages) = updateCli2 stateAfterRender msg
 
-        // Process all messages
-        let stateAfterMessages = Darklang.Cli.processMessages newState messages
+        // Process all messages using CLI2's message processor
+        let stateAfterMessages = processCli2Messages newState messages
 
         // Check if we should exit
         if keyRead.key == Stdlib.Cli.Stdin.Key.Key.Escape || stateAfterMessages.isExiting then
