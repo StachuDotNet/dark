@@ -1,0 +1,84 @@
+module Darklang =
+  module Cli2 =
+    module Commands =
+      module Navigation =
+        /// Navigation commands for CLI2: cd, ls, back, view
+        /// These commands handle directory traversal and entity viewing within the package manager
+
+        /// Change directory command - delegates to existing navigation logic
+        let cdCommand: CommandDetails =
+          CommandDetails
+            { name = "cd"
+              description = "Change directory"
+              aliases = []
+              arguments = ["path"]
+              execute = fun state args ->
+                // Use the existing changeDirectory function from navigation.dark
+                Darklang.Cli.Navigation.changeDirectory state args
+            }
+
+        /// List directory contents command
+        let lsCommand: CommandDetails =
+          CommandDetails
+            { name = "ls"
+              description = "List items in current directory"
+              aliases = ["list"; "dir"; "pwd"]
+              arguments = []
+              execute = fun state _args ->
+                // List items based on the current page (extracted from original command.dark)
+                match state.currentPage with
+                | Root ->
+                  // At root, just show categories
+                  let items = ["modules"; "types"; "functions"; "constants"]
+                  let listText = "Items in current directory:\n" ++ (Stdlib.String.join items "\n")
+                  let newState = { state with commandResult = CommandResult.Success listText }
+                  (newState, [])
+
+                | Module(owner, submodules) ->
+                  // In a module, show all functions, types, and constants
+                  // Construct the module prefix
+                  let modulePrefix = Darklang.Cli.constructModulePrefix owner submodules
+                  let query = Darklang.Cli.createSearchQuery (modulePrefix |> Stdlib.String.split ".") ""
+                  let moduleContent = LanguageTools.PackageManager.Search.search query
+                  let moduleView = Darklang.Cli.formatModuleContent modulePrefix moduleContent
+                  let newState = { state with commandResult = CommandResult.Success moduleView }
+                  (newState, [])
+
+                | _ ->
+                  // For other pages, show a message
+                  let newState = { state with commandResult = CommandResult.Info "No items to display in this context" }
+                  (newState, [])
+            }
+
+        /// Go back to previous page command
+        let backCommand: CommandDetails =
+          CommandDetails
+            { name = "back"
+              description = "Go back to the previous page"
+              aliases = []
+              arguments = []
+              execute = fun state _ -> (state, [Msg.NavigateBack])
+            }
+
+        /// View entity command - placeholder for now, will be extracted in Phase 2.3
+        let viewCommand: CommandDetails =
+          CommandDetails
+            { name = "view"
+              description = "View modules, types, functions, or constants"
+              aliases = []
+              arguments = ["[<moduleName> | <entityName>]"]
+              execute = fun state args ->
+                // TODO: This will be broken down into context handlers in Phase 2.3
+                // For now, return a placeholder message indicating CLI2 structure
+                let newState = { state with commandResult = CommandResult.Info "CLI2 view command placeholder - will be implemented in Phase 2.3" }
+                (newState, [])
+            }
+
+        /// Get all navigation commands for CLI2
+        let getCommands (state: State): List<CommandDetails> =
+          [
+            cdCommand
+            lsCommand
+            backCommand
+            viewCommand
+          ]

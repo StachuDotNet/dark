@@ -1,0 +1,79 @@
+module Darklang =
+  module Cli2 =
+    module Commands =
+      module Development =
+        /// Development commands for CLI2: run, eval, scripts
+        /// These commands handle code execution and development workflows
+
+        /// Run function or script command
+        let runCommand: CommandDetails =
+          CommandDetails
+            { name = "run"
+              description = "Run a function from the package manager or execute a script"
+              aliases = []
+              arguments = ["<@function_name args...> | <script_path args...>"]
+              execute = fun state args ->
+                let argsList = args |> Stdlib.String.split " "
+
+                match argsList with
+                | [] ->
+                  let newState = { state with commandResult = CommandResult.Error "Please specify a function name (starting with @) or script path" }
+                  (newState, [])
+
+                | thingToRun :: restArgs ->
+                  if Stdlib.String.startsWith thingToRun "@" then
+                    // Function execution
+                    let fnName = thingToRun |> Stdlib.String.dropFirst 1L
+                    Darklang.Cli.runFunction state fnName restArgs
+                  else
+                    // Script execution
+                    Darklang.Cli.runScript state thingToRun restArgs
+            }
+
+        /// Evaluate expression command
+        let evalCommand: CommandDetails =
+          CommandDetails
+            { name = "eval"
+              description = "Evaluate a Dark expression"
+              aliases = ["e"]
+              arguments = ["<expression>"]
+              execute = fun state args ->
+                if Stdlib.String.isEmpty args then
+                  let newState = { state with commandResult = CommandResult.Error "Please provide an expression to evaluate. Example: eval 1L + 2L" }
+                  (newState, [])
+                else
+                  let expr = args
+                  match Builtin.cliEvaluateExpression expr with
+                  | Ok result ->
+                    let newState = { state with commandResult = CommandResult.Success result }
+                    (newState, [])
+                  | Error err ->
+                    let prettyError = PrettyPrinter.RuntimeTypes.RuntimeError.toString err
+                    let newState = { state with commandResult = CommandResult.Error $"Error: {prettyError}" }
+                    (newState, [])
+            }
+
+        /// Scripts management command
+        let scriptsCommand: CommandDetails =
+          CommandDetails
+            { name = "scripts"
+              description = "Store, manage, and run Dark scripts"
+              aliases = []
+              arguments = ["[list|view|add|edit|delete|run]"; "<args>"]
+              execute = fun state args ->
+                // For now, delegate to existing scripts logic
+                // TODO: This could be further organized in a future phase
+                let parts = args |> Stdlib.String.split " " |> Stdlib.List.filter (fun s -> Stdlib.Bool.not (Stdlib.String.isEmpty s))
+                
+                // Placeholder implementation - delegate to existing CLI logic
+                let newState = { state with commandResult = CommandResult.Info "CLI2 scripts command placeholder - delegating to CLI1 implementation" }
+                (newState, [])
+            }
+
+        /// Get all development commands for CLI2
+        let getCommands (state: State): List<CommandDetails> =
+          [
+            runCommand
+            evalCommand
+            scriptsCommand
+          ]
