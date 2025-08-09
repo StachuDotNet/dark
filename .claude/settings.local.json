@@ -27,7 +27,8 @@
       "Bash(sed:*)",
       "Bash(env DARK_USE_CLI2=true ./scripts/run-cli help)",
       "Bash(env DARK_USE_CLI2=true ./scripts/run-cli status)",
-      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli mode)"
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli mode)",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli ls)"
     ],
     "deny": []
   }

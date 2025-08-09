@@ -36,19 +36,171 @@ module Darklang =
         Darklang.Cli2.CommandResult { output = $"Changed directory to {pathDisplay}"; nextState = newState }
       
       let listItems (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // CLI2 native listing - completely independent
-        let currentPath = Darklang.Cli.getPathDisplay state.currentPage
-        let listingText = Darklang.Cli2.UI.formatDirectoryListing state.currentPage
-        Darklang.Cli2.CommandResult { output = $"Contents of {currentPath}:\n{listingText}"; nextState = state }
+        // Use REAL PackageManager data like CLI1 does - not fake!
+        match state.currentPage with
+        | Root ->
+          // At root, show the actual module owners from PackageManager
+          let pm = Darklang.LanguageTools.PackageManager.pm ()
+          let owners = 
+            pm.contents
+            |> Stdlib.Dict.keys
+            |> Stdlib.List.sort
+          
+          let ownerList =
+            owners
+            |> Stdlib.List.map (fun owner -> $"  {owner}/")
+            |> Stdlib.String.join "\n"
+          
+          let output = 
+            if Stdlib.List.isEmpty owners then
+              "No modules found in package manager"
+            else
+              $"Available modules:\n{ownerList}"
+          
+          Darklang.Cli2.CommandResult { output = output; nextState = state }
+        
+        | Module(owner, submodules) ->
+          // In a module, show REAL functions, types, constants using PackageManager.Search
+          let modulePrefix = 
+            match submodules with
+            | [] -> owner
+            | _ -> owner ++ "." ++ (Stdlib.String.join submodules ".")
+          
+          let currentModuleList = Stdlib.List.append [owner] submodules
+          let searchDepth = Darklang.LanguageTools.ProgramTypes.Search.SearchDepth.OnlyDirectDescendants
+          let entityTypeModule = Darklang.LanguageTools.ProgramTypes.Search.EntityType.Module
+          let entityTypeType = Darklang.LanguageTools.ProgramTypes.Search.EntityType.Type
+          let entityTypeFn = Darklang.LanguageTools.ProgramTypes.Search.EntityType.Fn
+          let entityTypeConstant = Darklang.LanguageTools.ProgramTypes.Search.EntityType.Constant
+          let entityTypesList = [ entityTypeModule; entityTypeType; entityTypeFn; entityTypeConstant ]
+          
+          let query = Darklang.LanguageTools.ProgramTypes.Search.SearchQuery
+            { currentModule = currentModuleList
+              text = ""
+              searchDepth = searchDepth
+              entityTypes = entityTypesList }
+          
+          let searchResults = Darklang.LanguageTools.PackageManager.Search.search query
+          
+          // Format the results beautifully
+          let formatSection (title: String) (items: List<String>) : String =
+            if Stdlib.List.isEmpty items then
+              ""
+            else
+              let itemList = items |> Stdlib.List.map (fun item -> $"  {item}") |> Stdlib.String.join "\n"
+              $"\n{title}:\n{itemList}"
+          
+          let functions = 
+            searchResults.fns
+            |> Stdlib.List.map (fun fn -> Darklang.LanguageTools.ProgramTypes.PackageFn.nameToString fn.name)
+          
+          let types = 
+            searchResults.types
+            |> Stdlib.List.map (fun typ -> Darklang.LanguageTools.ProgramTypes.PackageType.nameToString typ.name)
+          
+          let constants = 
+            searchResults.constants
+            |> Stdlib.List.map (fun c -> Darklang.LanguageTools.ProgramTypes.PackageConstant.nameToString c.name)
+          
+          let submodulesList = 
+            searchResults.submodules
+            |> Stdlib.List.map (fun m -> (m |> Stdlib.List.map (fun s -> s |> Stdlib.String.join ".")))
+            |> Stdlib.List.flatten
+          
+          let output = 
+            $"Module: {modulePrefix}" ++
+            (formatSection "Functions" functions) ++
+            (formatSection "Types" types) ++
+            (formatSection "Constants" constants) ++
+            (formatSection "Submodules" submodulesList)
+          
+          Darklang.Cli2.CommandResult { output = output; nextState = state }
+        
+        | _ ->
+          Darklang.Cli2.CommandResult { output = "No items to display in this context"; nextState = state }
       
       let viewItem (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
-        // CLI2 native item viewing - completely independent
+        // Use REAL PackageManager to view actual types, functions, constants - not fake!
         let itemName = Stdlib.String.trim args
+        
         if Stdlib.String.isEmpty itemName then
-          Darklang.Cli2.CommandResult { output = "Usage: view <item-name>"; nextState = state }
+          // No argument - show current page details if applicable
+          match state.currentPage with
+          | Type name ->
+            let typeName = Darklang.LanguageTools.ProgramTypes.PackageType.nameToString name
+            match Darklang.LanguageTools.PackageManager.Type.find typeName with
+            | Some typeId ->
+              match Darklang.LanguageTools.PackageManager.Type.get typeId with
+              | Some packageType ->
+                let prettyPrinted = Darklang.PrettyPrinter.ProgramTypes.packageType packageType
+                Darklang.Cli2.CommandResult { output = $"Type: {typeName}\n\n{prettyPrinted}"; nextState = state }
+              | None ->
+                Darklang.Cli2.CommandResult { output = "Type details could not be retrieved"; nextState = state }
+            | None ->
+              Darklang.Cli2.CommandResult { output = "Type not found"; nextState = state }
+          
+          | Fn name ->
+            let fnName = Darklang.LanguageTools.ProgramTypes.PackageFn.nameToString name
+            match Darklang.LanguageTools.PackageManager.Function.find fnName with
+            | Some fnId ->
+              match Darklang.LanguageTools.PackageManager.Function.get fnId with
+              | Some packageFn ->
+                let prettyPrinted = Darklang.PrettyPrinter.ProgramTypes.packageFn packageFn
+                Darklang.Cli2.CommandResult { output = $"Function: {fnName}\n\n{prettyPrinted}"; nextState = state }
+              | None ->
+                Darklang.Cli2.CommandResult { output = "Function details could not be retrieved"; nextState = state }
+            | None ->
+              Darklang.Cli2.CommandResult { output = "Function not found"; nextState = state }
+          
+          | Constant name ->
+            let constName = Darklang.LanguageTools.ProgramTypes.PackageConstant.nameToString name
+            match Darklang.LanguageTools.PackageManager.Constant.find constName with
+            | Some constId ->
+              match Darklang.LanguageTools.PackageManager.Constant.get constId with
+              | Some packageConst ->
+                let prettyPrinted = Darklang.PrettyPrinter.ProgramTypes.packageConstant packageConst
+                Darklang.Cli2.CommandResult { output = $"Constant: {constName}\n\n{prettyPrinted}"; nextState = state }
+              | None ->
+                Darklang.Cli2.CommandResult { output = "Constant details could not be retrieved"; nextState = state }
+            | None ->
+              Darklang.Cli2.CommandResult { output = "Constant not found"; nextState = state }
+          
+          | _ ->
+            Darklang.Cli2.CommandResult { output = "Usage: view <item-name>"; nextState = state }
+        
         else
-          let viewText = Darklang.Cli2.UI.formatItemView state.currentPage itemName
-          Darklang.Cli2.CommandResult { output = viewText; nextState = state }
+          // Argument provided - search for and view the specific item
+          // Try to find as function first
+          match Darklang.LanguageTools.PackageManager.Function.find itemName with
+          | Some fnId ->
+            match Darklang.LanguageTools.PackageManager.Function.get fnId with
+            | Some packageFn ->
+              let prettyPrinted = Darklang.PrettyPrinter.ProgramTypes.packageFn packageFn
+              Darklang.Cli2.CommandResult { output = $"Function: {itemName}\n\n{prettyPrinted}"; nextState = state }
+            | None ->
+              Darklang.Cli2.CommandResult { output = "Function details could not be retrieved"; nextState = state }
+          | None ->
+            // Try as type
+            match Darklang.LanguageTools.PackageManager.Type.find itemName with
+            | Some typeId ->
+              match Darklang.LanguageTools.PackageManager.Type.get typeId with
+              | Some packageType ->
+                let prettyPrinted = Darklang.PrettyPrinter.ProgramTypes.packageType packageType
+                Darklang.Cli2.CommandResult { output = $"Type: {itemName}\n\n{prettyPrinted}"; nextState = state }
+              | None ->
+                Darklang.Cli2.CommandResult { output = "Type details could not be retrieved"; nextState = state }
+            | None ->
+              // Try as constant
+              match Darklang.LanguageTools.PackageManager.Constant.find itemName with
+              | Some constId ->
+                match Darklang.LanguageTools.PackageManager.Constant.get constId with
+                | Some packageConst ->
+                  let prettyPrinted = Darklang.PrettyPrinter.ProgramTypes.packageConstant packageConst
+                  Darklang.Cli2.CommandResult { output = $"Constant: {itemName}\n\n{prettyPrinted}"; nextState = state }
+                | None ->
+                  Darklang.Cli2.CommandResult { output = "Constant details could not be retrieved"; nextState = state }
+              | None ->
+                Darklang.Cli2.CommandResult { output = $"'{itemName}' not found as a function, type, or constant"; nextState = state }
       
       let showTree (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
         // CLI2 native tree view - shows hierarchical structure
