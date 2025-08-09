@@ -1,152 +1,93 @@
 module Darklang =
   module Cli2 =
-    /// Entry point for the reorganized CLI2
-    /// Provides organized command structure while maintaining CLI1 functionality
-    let executeCliCommand (args: List<String>) : Int64 =
-      // Initialize state using shared infrastructure types
-      let (cli1State, initialMsgs) = Darklang.Cli.init args
+    /// Read input line character by character
+    let readInputLine (currentLine: String) : String =
+      let keyRead = Stdlib.Cli.Stdin.readKey ()
       
-      // Convert CLI1 state to shared infrastructure state format
-      let state = convertCli1StateToShared cli1State
-      
-      // Process initial messages using CLI2's update logic instead of CLI1's
-      let state = processCli2Messages state (convertCli1MsgsToShared initialMsgs)
-      
-      // CLI2 uses its own update loop with organized command dispatch
-      runCli2Loop state
-      
-    /// Process messages using CLI2's update logic
-    let processCli2Messages (state: Darklang.CliInfrastructure.Types.State) (msgs: List<Darklang.Cli.Msg>) : Darklang.CliInfrastructure.Types.State =
-      match msgs with
-      | [] -> state
-      | msg :: remainingMsgs ->
-        let (updatedState, newMsgs) = updateCli2 state msg
-        let stateAfterNewMsgs =
-          if Stdlib.List.isEmpty newMsgs then
-            updatedState
-          else
-            processCli2Messages updatedState newMsgs
-        processCli2Messages stateAfterNewMsgs remainingMsgs
-      
-    /// CLI2's main loop - uses CLI2's organized command dispatch
-    let runCli2Loop (state: Darklang.CliInfrastructure.Types.State): Int64 =
-      // Handle rendering based on the interaction mode
-      let stateAfterRender =
-        match state.interactionMode with
-        // In NonInteractive mode, just render and exit
-        | NonInteractive ->
-          Builtin.print (Darklang.Cli.render state)
-          { state with isExiting = true }
-        // In Regular mode, don't clear the screen, just print the prompt
-        | Regular ->
-          if state.needsFullRedraw then
-            Builtin.print (Darklang.Cli.render state)
-            { state with needsFullRedraw = false }
-          else
-            Builtin.print "\r\u001b[K"
-            Builtin.print (Darklang.Cli.renderPromptOnly state)
-            state
-        // In RefreshScreen mode, clear the screen and redraw everything
-        | RefreshScreen ->
-          if state.needsFullRedraw then
-            Builtin.stdoutClear()
-            Builtin.print (Darklang.Cli.render state)
-            { state with needsFullRedraw = false }
-          else
-            Builtin.print "\r\u001b[K"
-            Builtin.print (Darklang.Cli.renderPromptOnly state)
-            state
+      if keyRead.key == Stdlib.Cli.Stdin.Key.Key.Enter then
+        currentLine
+      else if keyRead.key == Stdlib.Cli.Stdin.Key.Key.Backspace then
+        if Stdlib.String.length currentLine > 0L then
+          let newLine = Stdlib.String.dropLast currentLine 1L
+          Builtin.print "\b \b"  // Backspace, space, backspace to erase
+          readInputLine newLine
+        else
+          readInputLine currentLine
+      else if keyRead.keyChar != "" then
+        Builtin.print keyRead.keyChar
+        readInputLine (currentLine ++ keyRead.keyChar)
+      else
+        readInputLine currentLine
 
-      // Check if we should exit before reading input
-      if stateAfterRender.isExiting then
+    /// CLI2's independent main entry point
+    let executeCliCommand (args: List<String>) : Int64 =
+      // Initialize CLI2 state directly using shared infrastructure
+      let initialState = 
+        Darklang.CliInfrastructure.Types.State {
+          currentPage = Darklang.CliInfrastructure.Types.Page.Root
+          pageHistory = []
+          mainPrompt = ""
+          cursorPosition = 0L
+          commandHistory = []
+          historyPosition = -1L
+          draftPrompt = ""
+          commandResult = Darklang.CliInfrastructure.Types.CommandResult.None
+          interactionMode = Darklang.CliInfrastructure.Types.InteractionMode.Regular
+          needsFullRedraw = true
+          isExiting = false
+          completionState = Stdlib.Option.Option.None
+        }
+      
+      // Show welcome message
+      Builtin.print "Welcome to Dark CLI v2!\n"
+      Builtin.print "Type 'help' to see available commands.\n"
+      Builtin.print "\n"
+      
+      // Run CLI2's main loop
+      mainLoop initialState
+
+    /// CLI2's main REPL loop
+    let mainLoop (state: Darklang.CliInfrastructure.Types.State) : Int64 =
+      // Check if we should exit
+      if state.isExiting then
         0L
       else
-        let keyRead = Stdlib.Cli.Stdin.readKey ()
-        let msg = Darklang.Cli.Msg.KeyPressed(keyRead.key, keyRead.modifiers, keyRead.keyChar)
-        let (newState, messages) = updateCli2 stateAfterRender msg
-
-        // Process all messages using CLI2's message processor
-        let stateAfterMessages = processCli2Messages newState messages
-
-        // Check if we should exit
-        if keyRead.key == Stdlib.Cli.Stdin.Key.Key.Escape || stateAfterMessages.isExiting then
-          0L
+        // Show prompt
+        let prompt = "> "
+        Builtin.print prompt
+        
+        // Read input line character by character
+        let input = readInputLine ""
+        
+        // Parse and execute command
+        let trimmedInput = Stdlib.String.trim input
+        
+        if trimmedInput == "" then
+          // Empty input, continue loop
+          mainLoop state
         else
-          // Continue the REPL loop with the updated state
-          runCli2Loop stateAfterMessages
+          // Parse command and arguments
+          let parts = Stdlib.String.split trimmedInput " "
+          let command = Stdlib.List.head parts
+          let argsString = 
+            match command with
+            | Some(cmd) ->
+              let remainingParts = Stdlib.List.drop parts 1L
+              Stdlib.String.join remainingParts " "
+            | None -> ""
           
-    /// CLI2's update function - uses CLI2's organized command dispatch
-    let updateCli2 (state: Darklang.CliInfrastructure.Types.State) (msg: Darklang.Cli.Msg): (Darklang.CliInfrastructure.Types.State * List<Darklang.Cli.Msg>) =
-      match msg with
-      | SubmitCommand commandStr ->
-        // Parse the command into name and arguments
-        let (name, args) = Darklang.Cli.Command.parseCommand commandStr
-        
-        // Use CLI2's organized command dispatch instead of CLI1's findCommand
-        let result = Darklang.Cli2.Commands.executeCommand state name args
-        let newState = { result.nextState with needsFullRedraw = true }
-        
-        // Convert result to CLI1's expected format
-        match result.output with
-        | "" -> (newState, [])
-        | output -> 
-          let newStateWithResult = { newState with commandResult = Darklang.Cli.CommandResult.Success output }
-          (newStateWithResult, [])
-      | _ ->
-        // For all other messages, delegate to CLI1's update logic
-        Darklang.Cli.update state msg
-        
-    /// Convert CLI1 state to shared infrastructure state format
-    let convertCli1StateToShared (cli1State: Darklang.Cli.State) : Darklang.CliInfrastructure.Types.State =
-      { currentPage = convertCli1PageToShared cli1State.currentPage
-        pageHistory = Stdlib.List.map cli1State.pageHistory convertCli1PageToShared
-        mainPrompt = cli1State.mainPrompt
-        cursorPosition = cli1State.cursorPosition
-        draftPrompt = cli1State.draftPrompt
-        commandHistory = cli1State.commandHistory
-        historyPosition = cli1State.historyPosition
-        interactionMode = convertCli1InteractionModeToShared cli1State.interactionMode
-        commandResult = convertCli1CommandResultToShared cli1State.commandResult
-        completionState = convertCli1CompletionStateToShared cli1State.completionState
-        needsFullRedraw = cli1State.needsFullRedraw
-        isExiting = cli1State.isExiting }
-        
-    /// Convert CLI1 page to shared infrastructure page format
-    let convertCli1PageToShared (cli1Page: Darklang.Cli.Page) : Darklang.CliInfrastructure.Types.Page =
-      match cli1Page with
-      | Root -> Darklang.CliInfrastructure.Types.Page.Root
-      | Module(owner, submodulePath) -> Darklang.CliInfrastructure.Types.Page.Module(owner, submodulePath)
-      | Type(name) -> Darklang.CliInfrastructure.Types.Page.Type(name)
-      | Fn(name) -> Darklang.CliInfrastructure.Types.Page.Fn(name)
-      | Constant(name) -> Darklang.CliInfrastructure.Types.Page.Constant(name)
-      
-    /// Convert CLI1 interaction mode to shared infrastructure format
-    let convertCli1InteractionModeToShared (mode: Darklang.Cli.InteractionMode) : Darklang.CliInfrastructure.Types.InteractionMode =
-      match mode with
-      | NonInteractive -> Darklang.CliInfrastructure.Types.InteractionMode.NonInteractive
-      | Regular -> Darklang.CliInfrastructure.Types.InteractionMode.Regular  
-      | RefreshScreen -> Darklang.CliInfrastructure.Types.InteractionMode.RefreshScreen
-      
-    /// Convert CLI1 command result to shared infrastructure format
-    let convertCli1CommandResultToShared (result: Darklang.Cli.CommandResult) : Darklang.CliInfrastructure.Types.CommandResult =
-      match result with
-      | None -> Darklang.CliInfrastructure.Types.CommandResult.None
-      | Success(output) -> Darklang.CliInfrastructure.Types.CommandResult.Success(output)
-      | Failure(error) -> Darklang.CliInfrastructure.Types.CommandResult.Failure(error)
-      
-    /// Convert CLI1 completion state to shared infrastructure format
-    let convertCli1CompletionStateToShared (state: Stdlib.Option.Option<Darklang.Cli.CompletionState>) : Stdlib.Option.Option<Darklang.CliInfrastructure.Types.CompletionState> =
-      match state with
-      | None -> Stdlib.Option.Option.None
-      | Some(completionState) -> 
-        Stdlib.Option.Option.Some({ 
-          originalPrompt = completionState.originalPrompt
-          currentCompletionText = completionState.currentCompletionText
-          availableCompletions = completionState.availableCompletions
-          selectedIndex = completionState.selectedIndex
-        })
-        
-    /// Convert CLI1 messages to shared infrastructure messages (placeholder)
-    let convertCli1MsgsToShared (msgs: List<Darklang.Cli.Msg>) : List<Darklang.CliInfrastructure.Messages.Msg> =
-      // For now, return empty list as shared messages will be handled differently
-      []
+          let commandName = 
+            match command with
+            | Some(cmd) -> cmd
+            | None -> ""
+            
+          // Execute the command using CLI2's command system
+          let result = Darklang.Cli2.Commands.executeCommand state commandName argsString
+          
+          // Display output if any
+          if result.output != "" then
+            Builtin.print result.output
+            Builtin.print "\n"
+          
+          // Continue with updated state
+          mainLoop result.nextState
