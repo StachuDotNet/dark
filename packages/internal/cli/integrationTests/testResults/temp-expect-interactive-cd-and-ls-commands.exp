@@ -1,0 +1,31 @@
+#!/usr/bin/expect -f
+set timeout 20
+spawn ./scripts/run-cli
+sleep 1
+expect {
+  -re "Available commands:" {}
+  timeout { puts "TIMEOUT: Expected 'Available commands:'"; exit 1 }
+  eof { puts "EOF: Process ended waiting for 'Available commands:'"; exit 1 }
+}
+after 1000
+send "cd Stdlib.List\r"
+after 2000
+expect {
+  -re "✓ Changed directory to" {}
+  timeout { puts "TIMEOUT: Expected '✓ Changed directory to'"; exit 1 }
+  eof { puts "EOF: Process ended waiting for '✓ Changed directory to'"; exit 1 }
+}
+send "ls\r"
+after 2000
+expect {
+  -re "✓ Module: Stdlib.List" {}
+  timeout { puts "TIMEOUT: Expected '✓ Module: Stdlib.List'"; exit 1 }
+  eof { puts "EOF: Process ended waiting for '✓ Module: Stdlib.List'"; exit 1 }
+}
+expect {
+  -re "functions:" {}
+  timeout { puts "TIMEOUT: Expected 'functions:'"; exit 1 }
+  eof { puts "EOF: Process ended waiting for 'functions:'"; exit 1 }
+}
+send "\033"
+expect eof

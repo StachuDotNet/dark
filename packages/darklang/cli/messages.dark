@@ -1,5 +1,5 @@
 module Darklang =
-  module CliInfrastructure =
+  module Cli =
     module Messages =
       // Shared message types for CLI event handling
       
@@ -22,8 +22,8 @@ module Darklang =
         | AcceptCompletion
 
         // -- Navigation
-        | NavigateTo of page: Darklang.CliInfrastructure.Types.Page
+        | NavigateTo of page: Darklang.Cli.Types.Page
         | NavigateBack
 
         // -- Command results
-        | SetCommandResult of result: Darklang.CliInfrastructure.Types.CommandResult
+        | SetCommandResult of result: Darklang.Cli.Types.CommandResult

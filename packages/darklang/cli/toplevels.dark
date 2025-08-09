@@ -1,5 +1,5 @@
 module Darklang =
-  module Cli2 =
+  module Cli =
     module Toplevels =
       /// Global toplevel types that are recognized system-wide
       /// These types are scanned across all packages and presented in CLI2

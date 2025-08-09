@@ -1,19 +1,19 @@
 module Darklang =
-  module Cli2 =
+  module Cli =
     module NavigationCommands =
       /// Navigation commands for moving through CLI contexts (back, cd, ls, view)
       
-      let back (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
+      let back (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
         // CLI2 native back navigation - completely independent
         match state.pageHistory with
         | [] ->
-          Darklang.Cli2.CommandResult { output = "Already at the root. No history to go back to."; nextState = state }
+          Darklang.Cli.CommandResult { output = "Already at the root. No history to go back to."; nextState = state }
         | prevPage :: remainingHistory ->
           let newState = { state with currentPage = prevPage; pageHistory = remainingHistory }
           let pathDisplay = Darklang.Cli.getPathDisplay prevPage
-          Darklang.Cli2.CommandResult { output = $"Navigated back to {pathDisplay}"; nextState = newState }
+          Darklang.Cli.CommandResult { output = $"Navigated back to {pathDisplay}"; nextState = newState }
       
-      let changeDirectory (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
+      let changeDirectory (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
         // CLI2 native directory change - completely independent
         let path = Stdlib.String.trim args
         let newPage = 
@@ -33,9 +33,9 @@ module Darklang =
         let newHistory = Stdlib.List.push state.pageHistory state.currentPage
         let newState = { state with currentPage = newPage; pageHistory = newHistory }
         let pathDisplay = Darklang.Cli.getPathDisplay newPage
-        Darklang.Cli2.CommandResult { output = $"Changed directory to {pathDisplay}"; nextState = newState }
+        Darklang.Cli.CommandResult { output = $"Changed directory to {pathDisplay}"; nextState = newState }
       
-      let listItems (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
+      let listItems (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
         // Use REAL PackageManager data like CLI1 does - not fake!
         let trimmedArgs = Stdlib.String.trim args
         
@@ -46,33 +46,33 @@ module Darklang =
             // At root, just show categories like CLI1 does
             let items = ["modules"; "types"; "functions"; "constants"]
             let listText = "Items in current directory:\n" ++ (Stdlib.String.join items "\n")
-            Darklang.Cli2.CommandResult { output = listText; nextState = state }
+            Darklang.Cli.CommandResult { output = listText; nextState = state }
           
           | Module(owner, submodules) ->
             // In a module, show all functions, types, and constants - use CLI1's exact approach
-            let modulePrefix = Darklang.Cli.Command.constructModulePrefix owner submodules
+            let modulePrefix = Darklang.Cli.Commands.constructModulePrefix owner submodules
             
-            let query = Darklang.Cli.Command.createSearchQuery (modulePrefix |> Stdlib.String.split ".") ""
+            let query = Darklang.Cli.Commands.createSearchQuery (modulePrefix |> Stdlib.String.split ".") ""
             let moduleContent = Darklang.LanguageTools.PackageManager.Search.search query
             
-            let moduleView = Darklang.Cli.Command.formatModuleContent modulePrefix moduleContent
+            let moduleView = Darklang.Cli.Commands.formatModuleContent modulePrefix moduleContent
             
-            Darklang.Cli2.CommandResult { output = moduleView; nextState = state }
+            Darklang.Cli.CommandResult { output = moduleView; nextState = state }
           
           | _ ->
-            Darklang.Cli2.CommandResult { output = "No items to display in this context"; nextState = state }
+            Darklang.Cli.CommandResult { output = "No items to display in this context"; nextState = state }
         
         else
           // Arguments provided - list specific module path
           let modulePath = trimmedArgs
-          let query = Darklang.Cli.Command.createSearchQuery (modulePath |> Stdlib.String.split ".") ""
+          let query = Darklang.Cli.Commands.createSearchQuery (modulePath |> Stdlib.String.split ".") ""
           let moduleContent = Darklang.LanguageTools.PackageManager.Search.search query
           
-          let moduleView = Darklang.Cli.Command.formatModuleContent modulePath moduleContent
+          let moduleView = Darklang.Cli.Commands.formatModuleContent modulePath moduleContent
           
-          Darklang.Cli2.CommandResult { output = moduleView; nextState = state }
+          Darklang.Cli.CommandResult { output = moduleView; nextState = state }
       
-      let viewItem (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
+      let viewItem (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
         // Use REAL PackageManager to view actual types, functions, constants - not fake!
         let itemName = Stdlib.String.trim args
         
@@ -86,11 +86,11 @@ module Darklang =
               match Darklang.LanguageTools.PackageManager.Type.get typeId with
               | Some packageType ->
                 let prettyPrinted = Darklang.PrettyPrinter.ProgramTypes.packageType packageType
-                Darklang.Cli2.CommandResult { output = $"Type: {typeName}\n\n{prettyPrinted}"; nextState = state }
+                Darklang.Cli.CommandResult { output = $"Type: {typeName}\n\n{prettyPrinted}"; nextState = state }
               | None ->
-                Darklang.Cli2.CommandResult { output = "Type details could not be retrieved"; nextState = state }
+                Darklang.Cli.CommandResult { output = "Type details could not be retrieved"; nextState = state }
             | None ->
-              Darklang.Cli2.CommandResult { output = "Type not found"; nextState = state }
+              Darklang.Cli.CommandResult { output = "Type not found"; nextState = state }
           
           | Fn name ->
             let fnName = Darklang.LanguageTools.ProgramTypes.PackageFn.nameToString name
@@ -99,11 +99,11 @@ module Darklang =
               match Darklang.LanguageTools.PackageManager.Function.get fnId with
               | Some packageFn ->
                 let prettyPrinted = Darklang.PrettyPrinter.ProgramTypes.packageFn packageFn
-                Darklang.Cli2.CommandResult { output = $"Function: {fnName}\n\n{prettyPrinted}"; nextState = state }
+                Darklang.Cli.CommandResult { output = $"Function: {fnName}\n\n{prettyPrinted}"; nextState = state }
               | None ->
-                Darklang.Cli2.CommandResult { output = "Function details could not be retrieved"; nextState = state }
+                Darklang.Cli.CommandResult { output = "Function details could not be retrieved"; nextState = state }
             | None ->
-              Darklang.Cli2.CommandResult { output = "Function not found"; nextState = state }
+              Darklang.Cli.CommandResult { output = "Function not found"; nextState = state }
           
           | Constant name ->
             let constName = Darklang.LanguageTools.ProgramTypes.PackageConstant.nameToString name
@@ -112,14 +112,14 @@ module Darklang =
               match Darklang.LanguageTools.PackageManager.Constant.get constId with
               | Some packageConst ->
                 let prettyPrinted = Darklang.PrettyPrinter.ProgramTypes.packageConstant packageConst
-                Darklang.Cli2.CommandResult { output = $"Constant: {constName}\n\n{prettyPrinted}"; nextState = state }
+                Darklang.Cli.CommandResult { output = $"Constant: {constName}\n\n{prettyPrinted}"; nextState = state }
               | None ->
-                Darklang.Cli2.CommandResult { output = "Constant details could not be retrieved"; nextState = state }
+                Darklang.Cli.CommandResult { output = "Constant details could not be retrieved"; nextState = state }
             | None ->
-              Darklang.Cli2.CommandResult { output = "Constant not found"; nextState = state }
+              Darklang.Cli.CommandResult { output = "Constant not found"; nextState = state }
           
           | _ ->
-            Darklang.Cli2.CommandResult { output = "Usage: view <item-name>"; nextState = state }
+            Darklang.Cli.CommandResult { output = "Usage: view <item-name>"; nextState = state }
         
         else
           // Argument provided - search for and view the specific item
@@ -129,9 +129,9 @@ module Darklang =
             match Darklang.LanguageTools.PackageManager.Function.get fnId with
             | Some packageFn ->
               let prettyPrinted = Darklang.PrettyPrinter.ProgramTypes.packageFn packageFn
-              Darklang.Cli2.CommandResult { output = $"Function: {itemName}\n\n{prettyPrinted}"; nextState = state }
+              Darklang.Cli.CommandResult { output = $"Function: {itemName}\n\n{prettyPrinted}"; nextState = state }
             | None ->
-              Darklang.Cli2.CommandResult { output = "Function details could not be retrieved"; nextState = state }
+              Darklang.Cli.CommandResult { output = "Function details could not be retrieved"; nextState = state }
           | None ->
             // Try as type
             match Darklang.LanguageTools.PackageManager.Type.find itemName with
@@ -139,9 +139,9 @@ module Darklang =
               match Darklang.LanguageTools.PackageManager.Type.get typeId with
               | Some packageType ->
                 let prettyPrinted = Darklang.PrettyPrinter.ProgramTypes.packageType packageType
-                Darklang.Cli2.CommandResult { output = $"Type: {itemName}\n\n{prettyPrinted}"; nextState = state }
+                Darklang.Cli.CommandResult { output = $"Type: {itemName}\n\n{prettyPrinted}"; nextState = state }
               | None ->
-                Darklang.Cli2.CommandResult { output = "Type details could not be retrieved"; nextState = state }
+                Darklang.Cli.CommandResult { output = "Type details could not be retrieved"; nextState = state }
             | None ->
               // Try as constant
               match Darklang.LanguageTools.PackageManager.Constant.find itemName with
@@ -149,13 +149,13 @@ module Darklang =
                 match Darklang.LanguageTools.PackageManager.Constant.get constId with
                 | Some packageConst ->
                   let prettyPrinted = Darklang.PrettyPrinter.ProgramTypes.packageConstant packageConst
-                  Darklang.Cli2.CommandResult { output = $"Constant: {itemName}\n\n{prettyPrinted}"; nextState = state }
+                  Darklang.Cli.CommandResult { output = $"Constant: {itemName}\n\n{prettyPrinted}"; nextState = state }
                 | None ->
-                  Darklang.Cli2.CommandResult { output = "Constant details could not be retrieved"; nextState = state }
+                  Darklang.Cli.CommandResult { output = "Constant details could not be retrieved"; nextState = state }
               | None ->
-                Darklang.Cli2.CommandResult { output = $"'{itemName}' not found as a function, type, or constant"; nextState = state }
+                Darklang.Cli.CommandResult { output = $"'{itemName}' not found as a function, type, or constant"; nextState = state }
       
-      let showTree (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
+      let showTree (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
         // CLI2 native tree view - shows hierarchical structure
-        let treeView = Darklang.Cli2.UI.formatTreeView state.currentPage
-        Darklang.Cli2.CommandResult { output = treeView; nextState = state }
+        let treeView = Darklang.Cli.UI.formatTreeView state.currentPage
+        Darklang.Cli.CommandResult { output = treeView; nextState = state }

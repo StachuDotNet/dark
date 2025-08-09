@@ -37,7 +37,15 @@
       "Bash(env DARK_USE_CLI2=true ./scripts/run-cli help ls)",
       "Bash(env DARK_USE_CLI2=true ./scripts/run-cli help help)",
       "Bash(env DARK_USE_CLI2=true ./scripts/run-cli help mode)",
-      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli help invalidcommand)"
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli help invalidcommand)",
+      "Bash(mv:*)",
+      "Bash(for:*)",
+      "Bash(do sed -i 's/module Cli2 =/module Cli =/g' \"$file\")",
+      "Bash(do sed -i 's/Darklang\\.Cli2\\./Darklang.Cli./g' \"$file\")",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli \"run Darklang.Internal.Cli.IntegrationTests.runIntegrationTests\")",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli \"run @Darklang.Stdlib.Bool.and true false\")",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli run \"@Darklang.Stdlib.Bool.and true false\")",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli run @Darklang.Stdlib.Bool.and true false)"
     ],
     "deny": []
   }

@@ -1,9 +1,0 @@
-module Darklang =
-  module Cli2 =
-    // Re-export the types from the shared CLI infrastructure
-    
-    type Page = Darklang.CliInfrastructure.Types.Page
-    type CommandResult = { output: String; nextState: Darklang.CliInfrastructure.Types.State }  
-    type InteractionMode = Darklang.CliInfrastructure.Types.InteractionMode
-    type CompletionState = Darklang.CliInfrastructure.Types.CompletionState
-    type State = Darklang.CliInfrastructure.Types.State

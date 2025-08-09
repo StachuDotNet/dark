@@ -1,14 +1,14 @@
 module Darklang =
-  module Cli2 =
+  module Cli =
     module DevelopmentCommands =
       /// Development commands matching CLI1 functionality exactly
       
-      let runScript (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
+      let runScript (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
         // Use CLI1's real script execution system
         let argsList = args |> Stdlib.String.split " "
         match argsList with
         | [] ->
-          Darklang.Cli2.CommandResult { output = "Please specify a function name (starting with @) or script path"; nextState = state }
+          Darklang.Cli.CommandResult { output = "Please specify a function name (starting with @) or script path"; nextState = state }
         | thingToRun :: restArgs ->
           if Stdlib.String.startsWith thingToRun "@" then
             // Function execution using CLI1's runFunction logic
@@ -31,9 +31,9 @@ module Darklang =
               |> Stdlib.List.unzip
             match Builtin.cliExecuteFunction fnName parsedArgs with
             | Ok result ->
-              Darklang.Cli2.CommandResult { output = result; nextState = state }
+              Darklang.Cli.CommandResult { output = result; nextState = state }
             | Error err ->
-              Darklang.Cli2.CommandResult { output = $"\n{err}"; nextState = state }
+              Darklang.Cli.CommandResult { output = $"\n{err}"; nextState = state }
           else
             // Script execution using CLI1's runScript logic
             match Builtin.fileRead thingToRun with
@@ -42,14 +42,14 @@ module Darklang =
               let result = Builtin.cliParseAndExecuteScript thingToRun scriptSourceCode restArgs
               match result with
               | Ok exitCode ->
-                Darklang.Cli2.CommandResult { output = $"Script executed with exit code: {exitCode |> Stdlib.Int64.toString}"; nextState = state }
+                Darklang.Cli.CommandResult { output = $"Script executed with exit code: {exitCode |> Stdlib.Int64.toString}"; nextState = state }
               | Error e ->
                 let prettyError = PrettyPrinter.RuntimeTypes.RuntimeError.toString e
-                Darklang.Cli2.CommandResult { output = prettyError; nextState = state }
+                Darklang.Cli.CommandResult { output = prettyError; nextState = state }
             | Error e ->
-              Darklang.Cli2.CommandResult { output = e; nextState = state }
+              Darklang.Cli.CommandResult { output = e; nextState = state }
       
-      let listScripts (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
+      let listScripts (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
         // Use CLI1's real script listing system
         match Darklang.Cli.Scripts.list () with
         | Ok scripts ->
@@ -61,19 +61,19 @@ module Darklang =
               |> Stdlib.List.map (fun s -> $"  {s.name}")
               |> Stdlib.String.join "\n"
               |> fun names -> $"Scripts:\n{names}"
-          Darklang.Cli2.CommandResult { output = output; nextState = state }
+          Darklang.Cli.CommandResult { output = output; nextState = state }
         | Error err ->
-          Darklang.Cli2.CommandResult { output = err; nextState = state }
+          Darklang.Cli.CommandResult { output = err; nextState = state }
       
-      let evaluateExpression (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
+      let evaluateExpression (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
         // Use CLI1's real expression evaluation system
         if Stdlib.String.isEmpty args then
-          Darklang.Cli2.CommandResult { output = "Please provide an expression to evaluate. Example: eval 1L + 2L"; nextState = state }
+          Darklang.Cli.CommandResult { output = "Please provide an expression to evaluate. Example: eval 1L + 2L"; nextState = state }
         else
           let expr = args
           match Builtin.cliEvaluateExpression expr with
           | Ok result ->
-            Darklang.Cli2.CommandResult { output = result; nextState = state }
+            Darklang.Cli.CommandResult { output = result; nextState = state }
           | Error err ->
             let prettyError = PrettyPrinter.RuntimeTypes.RuntimeError.toString err
-            Darklang.Cli2.CommandResult { output = prettyError; nextState = state }
+            Darklang.Cli.CommandResult { output = prettyError; nextState = state }

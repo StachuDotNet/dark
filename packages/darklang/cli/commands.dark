@@ -1,0 +1,109 @@
+module Darklang =
+  module Cli =
+    module Commands =
+      // Shared command utilities used by both CLI implementations
+      
+      /// Get the CLI version string  
+      let cliVersion (): String =
+        let hash = Builtin.getBuildHash ()
+        $"alpha-{hash}"
+
+      /// Get version information with latest release comparison
+      let getVersionInfo () : String =
+        let currentVersion = cliVersion ()
+        match GitHub.Releases.getLatestReleaseBuildHash () with
+        | Ok latestVersion ->
+          if currentVersion == latestVersion then
+            $"Darklang CLI {currentVersion} (up to date)"
+          else
+            $"Darklang CLI {currentVersion} (latest: {latestVersion} - update available!)"
+        | Error _ ->
+          $"Darklang CLI {currentVersion} (unable to check for updates)"
+
+      /// Constructs a module prefix from owner and submodules
+      let constructModulePrefix (owner: String) (submodules: List<String>) : String =
+        match submodules with
+        | [] -> owner
+        | _ -> owner ++ "." ++ (Stdlib.String.join submodules ".")
+
+      /// Extracts the module prefix from a fully qualified name
+      let extractModulePrefix (fullyQualifiedName: String) : Stdlib.Option.Option<String> =
+        match Stdlib.String.lastIndexOf fullyQualifiedName "." with
+        | Some idx -> Stdlib.Option.Option.Some (Stdlib.String.slice fullyQualifiedName 0L idx)
+        | None -> Stdlib.Option.Option.None
+
+      /// Formats a section of entities for display
+      let formatEntitySection (sectionName: String) (entities: List<String>) : String =
+        if Stdlib.List.isEmpty entities then
+          $"{sectionName}:\n\n(none)\n"
+        else
+          $"{sectionName}:\n\n" ++ (Stdlib.String.join entities "\n") ++ "\n"
+
+      /// Execute a command and return result
+      let executeCommand (state: Darklang.Cli.Types.State) (command: String) (args: String) : Darklang.Cli.CommandResult =
+        match Stdlib.String.toLowercase command with
+        | "help" -> Darklang.Cli.SystemCommands.help state args
+        | "version" -> Darklang.Cli.SystemCommands.version state args  
+        | "status" -> Darklang.Cli.SystemCommands.status state args
+        | "quit" -> Darklang.Cli.SystemCommands.quit state args
+        | "clear" -> Darklang.Cli.SystemCommands.clear state args
+        | "test" -> Darklang.Cli.SystemCommands.test state args
+        | "mode" -> Darklang.Cli.SystemCommands.mode state args
+        | "run" -> Darklang.Cli.DevelopmentCommands.runScript state args
+        | "ls" -> Darklang.Cli.NavigationCommands.listItems state args
+        | "cd" -> Darklang.Cli.NavigationCommands.changeDirectory state args
+        | "view" -> Darklang.Cli.NavigationCommands.viewItem state args
+        | "back" -> Darklang.Cli.NavigationCommands.back state args
+        | "home" -> Darklang.Cli.NavigationCommands.goHome state args
+        | "install" -> Darklang.Cli.InstallationCommands.install state args
+        | "update" -> Darklang.Cli.InstallationCommands.update state args
+        | "scripts" -> Darklang.Cli.DevelopmentCommands.listScripts state args
+        | _ ->
+          let errorOutput = $"Unknown command: {command}\nType 'help' for available commands."
+          Darklang.Cli.CommandResult { output = errorOutput; nextState = state }
+
+      /// Format module content for display
+      let formatModuleContent (entityName: String) (moduleContent: LanguageTools.ProgramTypes.Search.SearchResults) : String =
+        let functionsSection =
+          formatEntitySection
+            "functions"
+            (moduleContent.fns
+              |> Stdlib.List.map (fun fn -> LanguageTools.ProgramTypes.PackageFn.nameToString fn.name))
+
+        let typesSection =
+          formatEntitySection
+            "types"
+            (moduleContent.types
+              |> Stdlib.List.map (fun typ -> LanguageTools.ProgramTypes.PackageType.nameToString typ.name))
+
+        let constantsSection =
+          formatEntitySection
+            "constants"
+            (moduleContent.constants
+              |> Stdlib.List.map (fun c -> LanguageTools.ProgramTypes.PackageConstant.nameToString c.name))
+
+        let submodulesSection =
+          formatEntitySection
+            "submodules"
+            ((moduleContent.submodules
+              |> Stdlib.List.map (fun m ->
+                m
+                |> Stdlib.List.map (fun s -> s |> Stdlib.String.join ".")))
+              |> Stdlib.List.flatten)
+
+        $"Module: {entityName}\n\n" ++
+        functionsSection ++ "\n" ++
+        typesSection ++ "\n" ++
+        constantsSection ++ "\n" ++
+        submodulesSection
+
+      /// Create a search query for the PackageManager
+      let createSearchQuery (currentModule: List<String>) (text: String) : LanguageTools.ProgramTypes.Search.SearchQuery =
+        LanguageTools.ProgramTypes.Search.SearchQuery
+          { currentModule = currentModule
+            text = text
+            searchDepth = LanguageTools.ProgramTypes.Search.SearchDepth.OnlyDirectDescendants
+            entityTypes = [ LanguageTools.ProgramTypes.Search.EntityType.Module
+                           LanguageTools.ProgramTypes.Search.EntityType.Function
+                           LanguageTools.ProgramTypes.Search.EntityType.Type
+                           LanguageTools.ProgramTypes.Search.EntityType.Constant ] }

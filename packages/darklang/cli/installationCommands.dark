@@ -1,14 +1,14 @@
 module Darklang =
-  module Cli2 =
+  module Cli =
     module InstallationCommands =
       /// Installation commands matching CLI1 functionality exactly
       
-      let install (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
+      let install (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
         // Use CLI1's real installation system
         let currentMode = Darklang.Cli.Installation.getInstallationMode ()
         match currentMode with
         | Installed ->
-          Darklang.Cli2.CommandResult { output = "Already installed globally"; nextState = state }
+          Darklang.Cli.CommandResult { output = "Already installed globally"; nextState = state }
         | Portable ->
           let host = (Stdlib.Cli.Host.getRuntimeHost ()) |> Builtin.unwrap
           let currentDir = Builtin.directoryCurrent ()
@@ -24,7 +24,7 @@ module Darklang =
                 | Ok dir -> $"{dir}/.darklang"
                 | Error _ -> "~/.darklang"
             let message = $"Detected portable mode - you're running from {currentDir}/.darklang\nFound existing global installation at {homeDir}\n\nIf you'd like to update your global installation, please run `dark` rather than this portable executable."
-            Darklang.Cli2.CommandResult { output = message; nextState = state }
+            Darklang.Cli.CommandResult { output = message; nextState = state }
           else
             Builtin.printLine "Choose installation method:"
             Builtin.printLine "1. Copy this binary (for testing local changes)"
@@ -34,20 +34,20 @@ module Darklang =
             if choice == "1" then
               match Darklang.Cli.Installation.installFromCurrentBinary host with
               | Ok message ->
-                Darklang.Cli2.CommandResult { output = message; nextState = state }
+                Darklang.Cli.CommandResult { output = message; nextState = state }
               | Error e ->
-                Darklang.Cli2.CommandResult { output = e; nextState = state }
+                Darklang.Cli.CommandResult { output = e; nextState = state }
             else
               Builtin.printLine "Installing globally..."
               match Darklang.Cli.Installation.install host with
               | Ok message ->
-                Darklang.Cli2.CommandResult { output = message; nextState = state }
+                Darklang.Cli.CommandResult { output = message; nextState = state }
               | Error e ->
-                Darklang.Cli2.CommandResult { output = e; nextState = state }
+                Darklang.Cli.CommandResult { output = e; nextState = state }
       
-      let update (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
+      let update (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
         // Use CLI1's real update system
-        let currentVersion = Darklang.Cli.Command.cliVersion ()
+        let currentVersion = Darklang.Cli.Commands.cliVersion ()
         let currentMode = Darklang.Cli.Installation.getInstallationMode ()
         match currentMode with
         | Installed ->
@@ -55,20 +55,20 @@ module Darklang =
           let host = (Stdlib.Cli.Host.getRuntimeHost ()) |> Builtin.unwrap
           match Darklang.Cli.Installation.updateIfAvailable currentVersion host with
           | Ok message ->
-            Darklang.Cli2.CommandResult { output = message; nextState = state }
+            Darklang.Cli.CommandResult { output = message; nextState = state }
           | Error e ->
-            Darklang.Cli2.CommandResult { output = e; nextState = state }
+            Darklang.Cli.CommandResult { output = e; nextState = state }
         | Portable ->
           let message = $"Running in portable mode from {Builtin.directoryCurrent ()}/.darklang\n\nTo update this portable executable, please download the latest release manually from:\nhttps://github.com/darklang/dark/releases\n\nFor automatic updates, consider running 'install' to set up global installation."
-          Darklang.Cli2.CommandResult { output = message; nextState = state }
+          Darklang.Cli.CommandResult { output = message; nextState = state }
       
-      let uninstall (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
+      let uninstall (state: Darklang.Cli.Types.State) (args: String) : Darklang.Cli.CommandResult =
         // Use CLI1's real uninstallation system
         let host = (Stdlib.Cli.Host.getRuntimeHost ()) |> Builtin.unwrap
         match Darklang.Cli.Installation.uninstallWithConfirmation host with
         | Ok message ->
           // Exit after successful uninstall since the executable is being removed
           let newState = { state with isExiting = true }
-          Darklang.Cli2.CommandResult { output = message; nextState = newState }
+          Darklang.Cli.CommandResult { output = message; nextState = newState }
         | Error e ->
-          Darklang.Cli2.CommandResult { output = e; nextState = state }
+          Darklang.Cli.CommandResult { output = e; nextState = state }

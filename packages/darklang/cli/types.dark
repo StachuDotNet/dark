@@ -1,54 +1,15 @@
 module Darklang =
   module Cli =
-    // aka. Url
-    type Page =
-      | Root
-      //| Meta
-
-      //| ConfigHome
-
-      // | Account
-      // | OtherUser of username: String
-
-      // Matter
-      | Module of owner: String * submodulePath: List<String>
-      | Type of name: LanguageTools.ProgramTypes.PackageType.Name
-      | Fn of name: LanguageTools.ProgramTypes.PackageFn.Name
-      | Constant of name: LanguageTools.ProgramTypes.PackageConstant.Name
-
-      // app
-      //| App of Uuid
-      //| HttpHandler of name: FQName // hmm
-      // | Script of name: FQName
-      // | KV of name
-      // | Sql of name
-
-      // TODO: | "InTheMiddleOfALet" or things like that
-
-
-    // type App =
-    //   | Cli of
-    //   | Cloud of // http and stuff all in here? hmmm, do the details _need_ to be h
-
-      // type AppMetadata =
-      //   { name: String
-      //     owner: String
-      //     created: DateTime
-      //     lastEdited: DateTime
-      //     // accessibility: public/private
-      //   }
-
-      // type App =
-      //   { id: UUID
-      //     metadata: AppMetadata
-      //     scripts: ...
-      //     handlers: ...
-      //     dbs: ...
-      //     // secrets: ...
-      //     // traces: ...
-      //     // 404s: ...
-      //     }
-
+    module Types =
+      // Shared types used by both CLI implementations
+      
+      // aka. Url
+      type Page =
+        | Root
+        | Module of owner: String * submodulePath: List<String>
+        | Type of name: LanguageTools.ProgramTypes.PackageType.Name
+        | Fn of name: LanguageTools.ProgramTypes.PackageFn.Name
+        | Constant of name: LanguageTools.ProgramTypes.PackageConstant.Name
 
       /// The result of a command execution
       type CommandResult =
@@ -112,13 +73,4 @@ module Darklang =
 
           /// The current state of tab completion
           completionState: Stdlib.Option.Option<CompletionState>
-
-          //accounts: [("stachu", "uhcats"); ("ocean": "oak"); ("paul", "biggar")]
-          //currentAccount: "stachu"
-
-          //cloudApps: ["darklang.com"; "stachu.net"; "dark-cli"]
-          //httpHandlers: List<HttpHandler>
-          //cliApps = []
-          //scripts: []
-          //crons: []
         }

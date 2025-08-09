@@ -1,5 +1,5 @@
 module Darklang =
-  module Cli2 =
+  module Cli =
     module Tests =
       /// Simple unit tests for CLI2 - no external dependencies
       /// Tests core command dispatch and basic functionality
@@ -12,8 +12,8 @@ module Darklang =
         { name: String
           test: Unit -> TestResult }
       
-      let createMockState () : Darklang.CliInfrastructure.Types.State =
-        Darklang.CliInfrastructure.Types.State
+      let createMockState () : Darklang.Cli.Types.State =
+        Darklang.Cli.Types.State
           { currentPage = Darklang.Cli.Page.Root
             pageHistory = []
             mainPrompt = ""
@@ -36,9 +36,9 @@ module Darklang =
       /// Simple test runner - just run a few basic tests manually 
       let runBasicTest () : String =
         let state = createMockState ()
-        let versionResult = Darklang.Cli2.Commands.executeCommand state "version" ""
-        let helpResult = Darklang.Cli2.Commands.executeCommand state "help" ""
-        let unknownResult = Darklang.Cli2.Commands.executeCommand state "unknown" ""
+        let versionResult = Darklang.Cli.Commands.executeCommand state "version" ""
+        let helpResult = Darklang.Cli.Commands.executeCommand state "help" ""
+        let unknownResult = Darklang.Cli.Commands.executeCommand state "unknown" ""
         
         "CLI2 Basic Test Results\n" ++
         "========================\n" ++
