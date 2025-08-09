@@ -12,8 +12,8 @@ module Darklang =
         { name: String
           test: Unit -> TestResult }
       
-      let createMockState () : Darklang.Cli.State =
-        Darklang.Cli.State
+      let createMockState () : Darklang.CliInfrastructure.Types.State =
+        Darklang.CliInfrastructure.Types.State
           { currentPage = Darklang.Cli.Page.Root
             pageHistory = []
             mainPrompt = ""

@@ -3,7 +3,7 @@ module Darklang =
     module DevelopmentCommands =
       /// Development commands matching CLI1 functionality exactly
       
-      let runScript (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let runScript (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // Use CLI1's real script execution system
         let argsList = args |> Stdlib.String.split " "
         match argsList with
@@ -49,7 +49,7 @@ module Darklang =
             | Error e ->
               Darklang.Cli2.CommandResult { output = e; nextState = state }
       
-      let listScripts (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let listScripts (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // Use CLI1's real script listing system
         match Darklang.Cli.Scripts.list () with
         | Ok scripts ->
@@ -65,7 +65,7 @@ module Darklang =
         | Error err ->
           Darklang.Cli2.CommandResult { output = err; nextState = state }
       
-      let evaluateExpression (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let evaluateExpression (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // Use CLI1's real expression evaluation system
         if Stdlib.String.isEmpty args then
           Darklang.Cli2.CommandResult { output = "Please provide an expression to evaluate. Example: eval 1L + 2L"; nextState = state }

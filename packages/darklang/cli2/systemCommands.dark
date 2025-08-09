@@ -3,7 +3,7 @@ module Darklang =
     module SystemCommands =
       /// System commands that are always available (help, version, status, quit, clear)
       
-      let help (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let help (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // Enhanced help system with category and per-command support
         let trimmedArgs = Stdlib.String.trim args
         
@@ -31,12 +31,12 @@ module Darklang =
             let commandContent = Stdlib.String.join commandHelpLines "\n"
             Darklang.Cli2.CommandResult { output = commandContent; nextState = state }
       
-      let version (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let version (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // Use the real version system from CLI1 - not fake
         let versionText = Darklang.Cli.Command.getVersionInfo ()
         Darklang.Cli2.CommandResult { output = versionText; nextState = state }
       
-      let status (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let status (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // Use the real version and path display systems - not fake
         let version = Darklang.Cli.Command.getVersionInfo ()
         let currentLocation = Darklang.Cli.getPathDisplay state.currentPage
@@ -53,23 +53,23 @@ module Darklang =
         let statusText = $"{version}\nLocation: {currentLocation}\nMode: {modeDisplay}\nStatus: {installationMessage}\n\nType 'help' for available commands"
         Darklang.Cli2.CommandResult { output = statusText; nextState = state }
       
-      let quit (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let quit (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // CLI2 native quit - completely independent
         let newState = { state with isExiting = true }
         Darklang.Cli2.CommandResult { output = "Goodbye! 👋"; nextState = newState }
       
-      let clear (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let clear (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // CLI2 native clear - completely independent
         let clearOutput = "\u001b[2J\u001b[H"  // ANSI codes to clear screen and move cursor to top
         let newState = { state with needsFullRedraw = true }
         Darklang.Cli2.CommandResult { output = clearOutput; nextState = newState }
       
-      let test (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let test (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // CLI2 test runner - runs built-in unit tests
         let testResults = Darklang.Cli2.Tests.runAllTests ()
         Darklang.Cli2.CommandResult { output = testResults; nextState = state }
 
-      let mode (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let mode (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // Switch between interaction modes (matching CLI1 exactly)
         let args = Stdlib.String.trim args
         

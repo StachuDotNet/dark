@@ -4,7 +4,7 @@ module Darklang =
     /// Matches CLI1 commands exactly for feature parity
     module Commands =
       /// Execute a command with CLI1-compatible dispatch  
-      let executeCommand (state: Darklang.Cli.State) (command: String) (args: String) : Darklang.Cli2.CommandResult =
+      let executeCommand (state: Darklang.CliInfrastructure.Types.State) (command: String) (args: String) : Darklang.Cli2.CommandResult =
         let lowerCommand = Stdlib.String.toLowercase command
         
         // System Commands (match CLI1 exactly)

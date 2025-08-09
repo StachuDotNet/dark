@@ -3,7 +3,7 @@ module Darklang =
     module NavigationCommands =
       /// Navigation commands for moving through CLI contexts (back, cd, ls, view)
       
-      let back (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let back (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // CLI2 native back navigation - completely independent
         match state.pageHistory with
         | [] ->
@@ -13,7 +13,7 @@ module Darklang =
           let pathDisplay = Darklang.Cli.getPathDisplay prevPage
           Darklang.Cli2.CommandResult { output = $"Navigated back to {pathDisplay}"; nextState = newState }
       
-      let changeDirectory (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let changeDirectory (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // CLI2 native directory change - completely independent
         let path = Stdlib.String.trim args
         let newPage = 
@@ -35,7 +35,7 @@ module Darklang =
         let pathDisplay = Darklang.Cli.getPathDisplay newPage
         Darklang.Cli2.CommandResult { output = $"Changed directory to {pathDisplay}"; nextState = newState }
       
-      let listItems (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let listItems (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // Use REAL PackageManager data like CLI1 does - not fake!
         let trimmedArgs = Stdlib.String.trim args
         
@@ -72,7 +72,7 @@ module Darklang =
           
           Darklang.Cli2.CommandResult { output = moduleView; nextState = state }
       
-      let viewItem (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let viewItem (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // Use REAL PackageManager to view actual types, functions, constants - not fake!
         let itemName = Stdlib.String.trim args
         
@@ -155,7 +155,7 @@ module Darklang =
               | None ->
                 Darklang.Cli2.CommandResult { output = $"'{itemName}' not found as a function, type, or constant"; nextState = state }
       
-      let showTree (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+      let showTree (state: Darklang.CliInfrastructure.Types.State) (args: String) : Darklang.Cli2.CommandResult =
         // CLI2 native tree view - shows hierarchical structure
         let treeView = Darklang.Cli2.UI.formatTreeView state.currentPage
         Darklang.Cli2.CommandResult { output = treeView; nextState = state }

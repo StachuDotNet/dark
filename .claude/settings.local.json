@@ -28,7 +28,16 @@
       "Bash(env DARK_USE_CLI2=true ./scripts/run-cli help)",
       "Bash(env DARK_USE_CLI2=true ./scripts/run-cli status)",
       "Bash(env DARK_USE_CLI2=true ./scripts/run-cli mode)",
-      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli ls)"
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli ls)",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli \"ls Darklang.Stdlib.List\")",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli \"view Darklang.Stdlib.List.head\")",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli \"view Darklang.Stdlib.Option.Option\")",
+      "Bash(rm:*)",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli \"help system\")",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli help ls)",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli help help)",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli help mode)",
+      "Bash(env DARK_USE_CLI2=true ./scripts/run-cli help invalidcommand)"
     ],
     "deny": []
   }
