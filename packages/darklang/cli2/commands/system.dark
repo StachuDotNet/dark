@@ -1,0 +1,157 @@
+module Darklang =
+  module Cli2 =
+    module Commands =
+      module System =
+        /// System commands for CLI2: help, version, status, quit, mode, clear
+        /// These commands handle basic CLI system operations
+
+        /// Enhanced help command with categorized display
+        let helpCommand: EnhancedCommandDetails =
+          { name = "help"
+            description = "Show help information"
+            aliases = ["h"]
+            arguments = ["[<category> | <command>]"]
+            category = CommandCategory.System
+            examples = [
+              "help                    # Show all commands by category"
+              "help system             # Show system commands"
+              "help navigation         # Show navigation commands"
+              "help cd                 # Show help for cd command"
+            ]
+            execute = fun state args ->
+              // Get all CLI2 commands from all modules
+              let allCommands = [
+                Darklang.Cli2.Commands.System.getEnhancedCommands state
+                Darklang.Cli2.Commands.Navigation.getEnhancedCommands state
+                Darklang.Cli2.Commands.Development.getEnhancedCommands state
+              ] |> Stdlib.List.flatten
+
+              let helpType = Darklang.Cli2.UI.Help.parseHelpArgs args
+
+              let helpText = 
+                match helpType with
+                | "all" ->
+                  Darklang.Cli2.UI.Help.renderCategorizedHelp allCommands
+                
+                | "category:system" ->
+                  Darklang.Cli2.UI.Help.renderCategoryHelp allCommands CommandCategory.System
+                
+                | "category:navigation" ->
+                  Darklang.Cli2.UI.Help.renderCategoryHelp allCommands CommandCategory.Navigation
+                
+                | "category:development" ->
+                  Darklang.Cli2.UI.Help.renderCategoryHelp allCommands CommandCategory.Development
+                
+                | "category:installation" ->
+                  Darklang.Cli2.UI.Help.renderCategoryHelp allCommands CommandCategory.Installation
+                
+                | helpArg when Stdlib.String.startsWith helpArg "command:" ->
+                  let commandName = helpArg |> Stdlib.String.dropFirst 8L
+                  Darklang.Cli2.UI.Help.renderSpecificCommandHelp allCommands commandName
+                
+                | _ ->
+                  "Invalid help argument. Use: help, help <category>, or help <command>"
+
+              let newState = { state with commandResult = CommandResult.Info helpText }
+              (newState, [])
+          }
+
+        /// Version command with examples
+        let versionCommand: EnhancedCommandDetails =
+          { name = "version"
+            description = "Show CLI version information"
+            aliases = ["v"]
+            arguments = []
+            category = CommandCategory.System
+            examples = [
+              "version                 # Show current CLI version"
+              "v                       # Short alias for version"
+            ]
+            execute = fun state _args ->
+              // Delegate to existing version logic
+              let versionInfo = Darklang.Cli.getVersionInfo ()
+              let newState = { state with commandResult = CommandResult.Info versionInfo }
+              (newState, [])
+          }
+
+        /// Status command
+        let statusCommand: EnhancedCommandDetails =
+          { name = "status"
+            description = "Show system status and current context"
+            aliases = []
+            arguments = []
+            category = CommandCategory.System
+            examples = [
+              "status                  # Show current page and system status"
+            ]
+            execute = fun state _args ->
+              let currentPath = Darklang.Cli.getPathDisplay state.currentPage
+              let statusInfo = $"Current location: {currentPath}\nInteraction mode: {state.interactionMode}"
+              let newState = { state with commandResult = CommandResult.Info statusInfo }
+              (newState, [])
+          }
+
+        /// Quit command
+        let quitCommand: EnhancedCommandDetails =
+          { name = "quit"
+            description = "Exit the CLI"
+            aliases = ["exit"; "q"]
+            arguments = []
+            category = CommandCategory.System
+            examples = [
+              "quit                    # Exit the CLI"
+              "exit                    # Alternative exit command"
+              "q                       # Quick exit"
+            ]
+            execute = fun state _args -> (state, [Msg.Quit])
+          }
+
+        /// Mode command for switching interaction modes
+        let modeCommand: EnhancedCommandDetails =
+          { name = "mode"
+            description = "Change the interaction mode"
+            aliases = []
+            arguments = ["[non-interactive|regular|refresh-screen]"]
+            category = CommandCategory.System
+            examples = [
+              "mode                    # Show current interaction mode"
+              "mode regular            # Switch to regular mode"
+              "mode refresh-screen     # Switch to refresh-screen mode"
+            ]
+            execute = fun state args ->
+              // Delegate to existing mode switching logic
+              let newState = { state with commandResult = CommandResult.Info "CLI2 mode command - will delegate to existing logic" }
+              (newState, [])
+          }
+
+        /// Clear command
+        let clearCommand: EnhancedCommandDetails =
+          { name = "clear"
+            description = "Clear the screen"
+            aliases = ["cls"]
+            arguments = []
+            category = CommandCategory.System
+            examples = [
+              "clear                   # Clear the screen"
+              "cls                     # Windows-style clear"
+            ]
+            execute = fun state _args ->
+              let newState = { state with needsFullRedraw = true }
+              (newState, [Msg.ClearScreen])
+          }
+
+        /// Get all system commands for CLI2
+        let getEnhancedCommands (state: State): List<EnhancedCommandDetails> =
+          [
+            helpCommand
+            versionCommand
+            statusCommand
+            quitCommand
+            modeCommand
+            clearCommand
+          ]
+
+        /// Get system commands as original CommandDetails for compatibility
+        let getCommands (state: State): List<CommandDetails> =
+          getEnhancedCommands state
+          |> Stdlib.List.map toCommandDetails

@@ -1,0 +1,45 @@
+module Darklang =
+  module Cli2 =
+    /// Enhanced types for CLI2 with better organization and categorization
+    
+    /// Command categories for better organization and help display
+    type CommandCategory = 
+      | System        // help, version, status, quit, mode, clear
+      | Navigation    // cd, ls, back, view
+      | Development   // run, eval, scripts
+      | Installation  // install, update, uninstall
+
+    /// Enhanced command details with categorization and examples
+    type EnhancedCommandDetails =
+      { name: String
+        description: String
+        aliases: List<String>
+        arguments: List<String>
+        category: CommandCategory
+        examples: List<String>
+        execute: State -> String -> (State * List<Msg>) }
+
+    /// Convert enhanced command details to original CommandDetails for compatibility
+    let toCommandDetails (enhanced: EnhancedCommandDetails) : CommandDetails =
+      CommandDetails
+        { name = enhanced.name
+          description = enhanced.description
+          aliases = enhanced.aliases
+          arguments = enhanced.arguments
+          execute = enhanced.execute }
+
+    /// Get category display name for help rendering
+    let getCategoryDisplayName (category: CommandCategory) : String =
+      match category with
+      | System -> "System Commands"
+      | Navigation -> "Navigation Commands"
+      | Development -> "Development Commands"
+      | Installation -> "Installation Commands"
+
+    /// Get category icon for help rendering
+    let getCategoryIcon (category: CommandCategory) : String =
+      match category with
+      | System -> "🔧"
+      | Navigation -> "📁"
+      | Development -> "💻"
+      | Installation -> "⚙️"

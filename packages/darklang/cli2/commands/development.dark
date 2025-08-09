@@ -6,74 +6,97 @@ module Darklang =
         /// These commands handle code execution and development workflows
 
         /// Run function or script command
-        let runCommand: CommandDetails =
-          CommandDetails
-            { name = "run"
-              description = "Run a function from the package manager or execute a script"
-              aliases = []
-              arguments = ["<@function_name args...> | <script_path args...>"]
-              execute = fun state args ->
-                let argsList = args |> Stdlib.String.split " "
+        let runCommand: EnhancedCommandDetails =
+          { name = "run"
+            description = "Run a function from the package manager or execute a script"
+            aliases = []
+            arguments = ["<@function_name args...> | <script_path args...>"]
+            category = CommandCategory.Development
+            examples = [
+              "run @String.append \"hello\" \" world\"  # Run String.append function"
+              "run @List.map (fun x -> x + 1L) [1L; 2L; 3L] # Run List.map with lambda"
+              "run ./script.dark arg1 arg2            # Execute Dark script file"
+            ]
+            execute = fun state args ->
+              let argsList = args |> Stdlib.String.split " "
 
-                match argsList with
-                | [] ->
-                  let newState = { state with commandResult = CommandResult.Error "Please specify a function name (starting with @) or script path" }
-                  (newState, [])
+              match argsList with
+              | [] ->
+                let newState = { state with commandResult = CommandResult.Error "Please specify a function name (starting with @) or script path" }
+                (newState, [])
 
-                | thingToRun :: restArgs ->
-                  if Stdlib.String.startsWith thingToRun "@" then
-                    // Function execution
-                    let fnName = thingToRun |> Stdlib.String.dropFirst 1L
-                    Darklang.Cli.runFunction state fnName restArgs
-                  else
-                    // Script execution
-                    Darklang.Cli.runScript state thingToRun restArgs
-            }
+              | thingToRun :: restArgs ->
+                if Stdlib.String.startsWith thingToRun "@" then
+                  // Function execution
+                  let fnName = thingToRun |> Stdlib.String.dropFirst 1L
+                  Darklang.Cli.runFunction state fnName restArgs
+                else
+                  // Script execution
+                  Darklang.Cli.runScript state thingToRun restArgs
+          }
 
         /// Evaluate expression command
-        let evalCommand: CommandDetails =
-          CommandDetails
-            { name = "eval"
-              description = "Evaluate a Dark expression"
-              aliases = ["e"]
-              arguments = ["<expression>"]
-              execute = fun state args ->
-                if Stdlib.String.isEmpty args then
-                  let newState = { state with commandResult = CommandResult.Error "Please provide an expression to evaluate. Example: eval 1L + 2L" }
+        let evalCommand: EnhancedCommandDetails =
+          { name = "eval"
+            description = "Evaluate a Dark expression"
+            aliases = ["e"]
+            arguments = ["<expression>"]
+            category = CommandCategory.Development
+            examples = [
+              "eval 1L + 2L            # Simple arithmetic"
+              "eval \"hello\" ++ \" world\"   # String concatenation"
+              "eval List.map (fun x -> x * 2L) [1L; 2L; 3L] # Higher-order function"
+              "e 2L + 3L               # Using short alias"
+            ]
+            execute = fun state args ->
+              if Stdlib.String.isEmpty args then
+                let newState = { state with commandResult = CommandResult.Error "Please provide an expression to evaluate. Example: eval 1L + 2L" }
+                (newState, [])
+              else
+                let expr = args
+                match Builtin.cliEvaluateExpression expr with
+                | Ok result ->
+                  let newState = { state with commandResult = CommandResult.Success result }
                   (newState, [])
-                else
-                  let expr = args
-                  match Builtin.cliEvaluateExpression expr with
-                  | Ok result ->
-                    let newState = { state with commandResult = CommandResult.Success result }
-                    (newState, [])
-                  | Error err ->
-                    let prettyError = PrettyPrinter.RuntimeTypes.RuntimeError.toString err
-                    let newState = { state with commandResult = CommandResult.Error $"Error: {prettyError}" }
-                    (newState, [])
-            }
+                | Error err ->
+                  let prettyError = PrettyPrinter.RuntimeTypes.RuntimeError.toString err
+                  let newState = { state with commandResult = CommandResult.Error $"Error: {prettyError}" }
+                  (newState, [])
+          }
 
         /// Scripts management command
-        let scriptsCommand: CommandDetails =
-          CommandDetails
-            { name = "scripts"
-              description = "Store, manage, and run Dark scripts"
-              aliases = []
-              arguments = ["[list|view|add|edit|delete|run]"; "<args>"]
-              execute = fun state args ->
-                // For now, delegate to existing scripts logic
-                // TODO: This could be further organized in a future phase
-                let parts = args |> Stdlib.String.split " " |> Stdlib.List.filter (fun s -> Stdlib.Bool.not (Stdlib.String.isEmpty s))
-                
-                // Placeholder implementation - delegate to existing CLI logic
-                let newState = { state with commandResult = CommandResult.Info "CLI2 scripts command placeholder - delegating to CLI1 implementation" }
-                (newState, [])
-            }
+        let scriptsCommand: EnhancedCommandDetails =
+          { name = "scripts"
+            description = "Store, manage, and run Dark scripts"
+            aliases = []
+            arguments = ["[list|view|add|edit|delete|run]"; "<args>"]
+            category = CommandCategory.Development
+            examples = [
+              "scripts list            # List all stored scripts"
+              "scripts view myScript   # View script contents"
+              "scripts add myScript    # Add new script interactively"
+              "scripts run myScript    # Execute stored script"
+              "scripts delete myScript # Delete stored script"
+            ]
+            execute = fun state args ->
+              // For now, delegate to existing scripts logic
+              // TODO: This could be further organized in a future phase
+              let parts = args |> Stdlib.String.split " " |> Stdlib.List.filter (fun s -> Stdlib.Bool.not (Stdlib.String.isEmpty s))
+              
+              // Placeholder implementation - delegate to existing CLI logic
+              let newState = { state with commandResult = CommandResult.Info "CLI2 scripts command placeholder - delegating to CLI1 implementation" }
+              (newState, [])
+          }
 
-        /// Get all development commands for CLI2
-        let getCommands (state: State): List<CommandDetails> =
+        /// Get all development commands for CLI2 (enhanced version)
+        let getEnhancedCommands (state: State): List<EnhancedCommandDetails> =
           [
             runCommand
             evalCommand
             scriptsCommand
           ]
+
+        /// Get development commands as original CommandDetails for compatibility
+        let getCommands (state: State): List<CommandDetails> =
+          getEnhancedCommands state
+          |> Stdlib.List.map toCommandDetails

@@ -1,0 +1,110 @@
+module Darklang =
+  module Cli2 =
+    module UI =
+      module Help =
+        /// Enhanced help rendering system with categorization and better formatting
+
+        /// Render a group of commands within a category
+        let renderCommandGroup (commands: List<EnhancedCommandDetails>) : String =
+          commands
+          |> Stdlib.List.map (fun cmd ->
+              let aliases = 
+                if Stdlib.List.isEmpty cmd.aliases then ""
+                else " (aliases: " ++ (Stdlib.String.join cmd.aliases ", ") ++ ")"
+              
+              let args = 
+                if Stdlib.List.isEmpty cmd.arguments then ""
+                else " " ++ (Stdlib.String.join cmd.arguments " ")
+              
+              let examples = 
+                if Stdlib.List.isEmpty cmd.examples then ""
+                else
+                  let exampleText = 
+                    cmd.examples
+                    |> Stdlib.List.map (fun ex -> "     " ++ ex)
+                    |> Stdlib.String.join "\n"
+                  "\n" ++ exampleText
+              
+              $"   {CliColors.purple}{cmd.name}{args}{CliColors.reset}   {cmd.description}{aliases}{examples}")
+          |> Stdlib.String.join "\n"
+
+        /// Render help for all commands organized by categories
+        let renderCategorizedHelp (commands: List<EnhancedCommandDetails>) : String =
+          let systemCommands = commands |> Stdlib.List.filter (fun cmd -> cmd.category == CommandCategory.System)
+          let navigationCommands = commands |> Stdlib.List.filter (fun cmd -> cmd.category == CommandCategory.Navigation)
+          let developmentCommands = commands |> Stdlib.List.filter (fun cmd -> cmd.category == CommandCategory.Development)
+          let installationCommands = commands |> Stdlib.List.filter (fun cmd -> cmd.category == CommandCategory.Installation)
+
+          let sections = [
+            if Stdlib.Bool.not (Stdlib.List.isEmpty systemCommands) then
+              let icon = getCategoryIcon CommandCategory.System
+              let name = getCategoryDisplayName CommandCategory.System
+              $"{icon} {name}\n{renderCommandGroup systemCommands}"
+            
+            if Stdlib.Bool.not (Stdlib.List.isEmpty navigationCommands) then
+              let icon = getCategoryIcon CommandCategory.Navigation
+              let name = getCategoryDisplayName CommandCategory.Navigation
+              $"{icon} {name}\n{renderCommandGroup navigationCommands}"
+            
+            if Stdlib.Bool.not (Stdlib.List.isEmpty developmentCommands) then
+              let icon = getCategoryIcon CommandCategory.Development
+              let name = getCategoryDisplayName CommandCategory.Development
+              $"{icon} {name}\n{renderCommandGroup developmentCommands}"
+            
+            if Stdlib.Bool.not (Stdlib.List.isEmpty installationCommands) then
+              let icon = getCategoryIcon CommandCategory.Installation
+              let name = getCategoryDisplayName CommandCategory.Installation
+              $"{icon} {name}\n{renderCommandGroup installationCommands}"
+          ] |> Stdlib.List.filter (fun s -> Stdlib.Bool.not (Stdlib.String.isEmpty s))
+
+          "Available commands:\n\n" ++ (Stdlib.String.join sections "\n\n")
+
+        /// Render help for a specific category
+        let renderCategoryHelp (commands: List<EnhancedCommandDetails>) (category: CommandCategory) : String =
+          let categoryCommands = commands |> Stdlib.List.filter (fun cmd -> cmd.category == category)
+          
+          if Stdlib.List.isEmpty categoryCommands then
+            $"No commands found in category: {getCategoryDisplayName category}"
+          else
+            let icon = getCategoryIcon category
+            let name = getCategoryDisplayName category
+            $"{icon} {name}\n\n{renderCommandGroup categoryCommands}"
+
+        /// Render help for a specific command
+        let renderSpecificCommandHelp (commands: List<EnhancedCommandDetails>) (commandName: String) : String =
+          match commands |> Stdlib.List.findFirst (fun cmd -> cmd.name == commandName || Stdlib.List.member_v0 cmd.aliases commandName) with
+          | Some cmd ->
+            let aliases = 
+              if Stdlib.List.isEmpty cmd.aliases then ""
+              else "\nAliases: " ++ (Stdlib.String.join cmd.aliases ", ")
+            
+            let args = 
+              if Stdlib.List.isEmpty cmd.arguments then ""
+              else "\nArguments: " ++ (Stdlib.String.join cmd.arguments " ")
+            
+            let examples = 
+              if Stdlib.List.isEmpty cmd.examples then ""
+              else
+                let exampleText = 
+                  cmd.examples
+                  |> Stdlib.List.map (fun ex -> "  " ++ ex)
+                  |> Stdlib.String.join "\n"
+                "\n\nExamples:\n" ++ exampleText
+            
+            let categoryName = getCategoryDisplayName cmd.category
+            $"Command: {cmd.name}\nCategory: {categoryName}\nDescription: {cmd.description}{aliases}{args}{examples}"
+          
+          | None ->
+            $"Command '{commandName}' not found. Use 'help' to see all available commands."
+
+        /// Parse help command arguments and determine what type of help to show
+        let parseHelpArgs (args: String) : String =
+          let trimmedArgs = Stdlib.String.trim args
+          
+          match trimmedArgs with
+          | "" -> "all"
+          | "system" -> "category:system"
+          | "navigation" -> "category:navigation" 
+          | "development" -> "category:development"
+          | "installation" -> "category:installation"
+          | commandName -> $"command:{commandName}"
