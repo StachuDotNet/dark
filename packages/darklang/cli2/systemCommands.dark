@@ -1,0 +1,24 @@
+module Darklang =
+  module Cli2 =
+    module SystemCommands =
+      /// System commands that are always available (help, version, status, quit, clear)
+      
+      let help (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now - will implement organized version later
+        Darklang.Cli.executeCommand state "help" args
+      
+      let version (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "version" args
+      
+      let status (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "status" args
+      
+      let quit (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "quit" args
+      
+      let clear (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "clear" args

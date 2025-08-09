@@ -1,0 +1,16 @@
+module Darklang =
+  module Cli2 =
+    module DevelopmentCommands =
+      /// Development commands for working with code (run, scripts, eval)
+      
+      let runScript (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "run" args
+      
+      let manageScripts (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "scripts" args
+      
+      let evaluateExpression (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "eval" args

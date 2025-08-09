@@ -1,10 +1,63 @@
 module Darklang =
   module Cli2 =
     /// Command organization module for CLI2
-    /// This provides a cleaner command structure while delegating to CLI1 implementation
+    /// Provides organized command dispatch using categorized command modules
     module Commands =
-      /// Execute a command with organized dispatch
+      /// Execute a command with organized dispatch to categorized modules
       let executeCommand (state: Darklang.Cli.State) (command: String) (args: String) : Darklang.Cli.CommandResult =
-        // For now, just delegate to the original CLI implementation
-        // Later we can add organized command routing here
-        Darklang.Cli.executeCommand state command args
+        let lowerCommand = Stdlib.String.toLowercase command
+        
+        // Route commands to appropriate category modules
+        if lowerCommand == "help" then
+          Darklang.Cli2.SystemCommands.help state args
+        else if lowerCommand == "version" then
+          Darklang.Cli2.SystemCommands.version state args
+        else if lowerCommand == "v" then
+          Darklang.Cli2.SystemCommands.version state args
+        else if lowerCommand == "status" then
+          Darklang.Cli2.SystemCommands.status state args
+        else if lowerCommand == "quit" then
+          Darklang.Cli2.SystemCommands.quit state args
+        else if lowerCommand == "exit" then
+          Darklang.Cli2.SystemCommands.quit state args
+        else if lowerCommand == "q" then
+          Darklang.Cli2.SystemCommands.quit state args
+        else if lowerCommand == "clear" then
+          Darklang.Cli2.SystemCommands.clear state args
+        else if lowerCommand == "cls" then
+          Darklang.Cli2.SystemCommands.clear state args
+          
+        else if lowerCommand == "back" then
+          Darklang.Cli2.NavigationCommands.back state args
+        else if lowerCommand == "cd" then
+          Darklang.Cli2.NavigationCommands.changeDirectory state args
+        else if lowerCommand == "ls" then
+          Darklang.Cli2.NavigationCommands.listItems state args
+        else if lowerCommand == "list" then
+          Darklang.Cli2.NavigationCommands.listItems state args
+        else if lowerCommand == "dir" then
+          Darklang.Cli2.NavigationCommands.listItems state args
+        else if lowerCommand == "pwd" then
+          Darklang.Cli2.NavigationCommands.listItems state args
+        else if lowerCommand == "view" then
+          Darklang.Cli2.NavigationCommands.viewItem state args
+          
+        else if lowerCommand == "run" then
+          Darklang.Cli2.DevelopmentCommands.runScript state args
+        else if lowerCommand == "scripts" then
+          Darklang.Cli2.DevelopmentCommands.manageScripts state args
+        else if lowerCommand == "eval" then
+          Darklang.Cli2.DevelopmentCommands.evaluateExpression state args
+        else if lowerCommand == "e" then
+          Darklang.Cli2.DevelopmentCommands.evaluateExpression state args
+          
+        else if lowerCommand == "install" then
+          Darklang.Cli2.InstallationCommands.install state args
+        else if lowerCommand == "update" then
+          Darklang.Cli2.InstallationCommands.update state args
+        else if lowerCommand == "uninstall" then
+          Darklang.Cli2.InstallationCommands.uninstall state args
+          
+        else
+          // Fallback to original CLI for any unhandled commands
+          Darklang.Cli.executeCommand state command args

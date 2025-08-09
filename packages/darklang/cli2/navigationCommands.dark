@@ -1,0 +1,20 @@
+module Darklang =
+  module Cli2 =
+    module NavigationCommands =
+      /// Navigation commands for moving through CLI contexts (back, cd, ls, view)
+      
+      let back (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "back" args
+      
+      let changeDirectory (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "cd" args
+      
+      let listItems (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "ls" args
+      
+      let viewItem (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "view" args

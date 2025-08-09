@@ -1,0 +1,16 @@
+module Darklang =
+  module Cli2 =
+    module InstallationCommands =
+      /// Installation and update commands (install, update, uninstall)
+      
+      let install (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "install" args
+      
+      let update (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "update" args
+      
+      let uninstall (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+        // Delegate to CLI1 for now
+        Darklang.Cli.executeCommand state "uninstall" args
