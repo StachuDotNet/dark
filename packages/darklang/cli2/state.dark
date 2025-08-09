@@ -4,7 +4,7 @@ module Darklang =
     // Later we can modify these as needed for CLI2
     
     type Page = Darklang.Cli.Page
-    type CommandResult = Darklang.Cli.CommandResult  
+    type CommandResult = { output: String; nextState: Darklang.Cli.State }  
     type InteractionMode = Darklang.Cli.InteractionMode
     type CompletionState = Darklang.Cli.CompletionState
     type State = Darklang.Cli.State

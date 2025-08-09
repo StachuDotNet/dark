@@ -3,18 +3,49 @@ module Darklang =
     module NavigationCommands =
       /// Navigation commands for moving through CLI contexts (back, cd, ls, view)
       
-      let back (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
-        // Delegate to CLI1 for now
-        Darklang.Cli.executeCommand state "back" args
+      let back (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // CLI2 native back navigation - completely independent
+        match state.pageHistory with
+        | [] ->
+          Darklang.Cli2.CommandResult { output = "Already at the root. No history to go back to."; nextState = state }
+        | prevPage :: remainingHistory ->
+          let newState = { state with currentPage = prevPage; pageHistory = remainingHistory }
+          let pathDisplay = Darklang.Cli.getPathDisplay prevPage
+          Darklang.Cli2.CommandResult { output = $"Navigated back to {pathDisplay}"; nextState = newState }
       
-      let changeDirectory (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
-        // Delegate to CLI1 for now
-        Darklang.Cli.executeCommand state "cd" args
+      let changeDirectory (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // CLI2 native directory change - completely independent
+        let path = Stdlib.String.trim args
+        let newPage = 
+          if path == "/" || path == "" then
+            Darklang.Cli.Page.Root
+          else if path == ".." then
+            match state.currentPage with
+            | Root -> Darklang.Cli.Page.Root
+            | Module(owner, []) -> Darklang.Cli.Page.Root
+            | Module(owner, head :: tail) -> Darklang.Cli.Page.Module(owner, tail)
+            | _ -> Darklang.Cli.Page.Root
+          else
+            match state.currentPage with
+            | Root -> Darklang.Cli.Page.Module(path, [])
+            | Module(owner, subPath) -> Darklang.Cli.Page.Module(owner, Stdlib.List.pushBack subPath path)
+            | _ -> Darklang.Cli.Page.Module(path, [])
+        let newHistory = Stdlib.List.push state.pageHistory state.currentPage
+        let newState = { state with currentPage = newPage; pageHistory = newHistory }
+        let pathDisplay = Darklang.Cli.getPathDisplay newPage
+        Darklang.Cli2.CommandResult { output = $"Changed directory to {pathDisplay}"; nextState = newState }
       
-      let listItems (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
-        // Delegate to CLI1 for now
-        Darklang.Cli.executeCommand state "ls" args
+      let listItems (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // CLI2 native listing - completely independent
+        let currentPath = Darklang.Cli.getPathDisplay state.currentPage
+        let listingText = Darklang.Cli2.UI.formatDirectoryListing state.currentPage
+        Darklang.Cli2.CommandResult { output = $"Contents of {currentPath}:\n{listingText}"; nextState = state }
       
-      let viewItem (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
-        // Delegate to CLI1 for now
-        Darklang.Cli.executeCommand state "view" args
+      let viewItem (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // CLI2 native item viewing - completely independent
+        let itemName = Stdlib.String.trim args
+        if Stdlib.String.isEmpty itemName then
+          Darklang.Cli2.CommandResult { output = "Usage: view <item-name>"; nextState = state }
+        else
+          let viewText = Darklang.Cli2.UI.formatItemView state.currentPage itemName
+          Darklang.Cli2.CommandResult { output = viewText; nextState = state }

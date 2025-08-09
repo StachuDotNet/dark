@@ -3,10 +3,92 @@ module Darklang =
     /// Entry point for the reorganized CLI2
     /// Provides organized command structure while maintaining CLI1 functionality
     let executeCliCommand (args: List<String>) : Int64 =
-      // Initialize CLI1 state and messages
+      // Initialize CLI1 state and messages (CLI2 reuses CLI1's initialization)
       let (state, initialMsgs) = Darklang.Cli.init args
-      let state = Darklang.Cli.processMessages state initialMsgs
       
-      // CLI2 uses the same MVU loop but with organized command dispatch
-      // The Commands module provides the organized structure
-      Darklang.Cli.runInternalLoop state
+      // Process initial messages using CLI2's update logic instead of CLI1's
+      let state = processCli2Messages state initialMsgs
+      
+      // CLI2 uses its own update loop with organized command dispatch
+      runCli2Loop state
+      
+    /// Process messages using CLI2's update logic
+    let processCli2Messages (state: Darklang.Cli.State) (msgs: List<Darklang.Cli.Msg>) : Darklang.Cli.State =
+      match msgs with
+      | [] -> state
+      | msg :: remainingMsgs ->
+        let (updatedState, newMsgs) = updateCli2 state msg
+        let stateAfterNewMsgs =
+          if Stdlib.List.isEmpty newMsgs then
+            updatedState
+          else
+            processCli2Messages updatedState newMsgs
+        processCli2Messages stateAfterNewMsgs remainingMsgs
+      
+    /// CLI2's main loop - uses CLI2's organized command dispatch
+    let runCli2Loop (state: Darklang.Cli.State): Int64 =
+      // Handle rendering based on the interaction mode
+      let stateAfterRender =
+        match state.interactionMode with
+        // In NonInteractive mode, just render and exit
+        | NonInteractive ->
+          Builtin.print (Darklang.Cli.render state)
+          { state with isExiting = true }
+        // In Regular mode, don't clear the screen, just print the prompt
+        | Regular ->
+          if state.needsFullRedraw then
+            Builtin.print (Darklang.Cli.render state)
+            { state with needsFullRedraw = false }
+          else
+            Builtin.print "\r\u001b[K"
+            Builtin.print (Darklang.Cli.renderPromptOnly state)
+            state
+        // In RefreshScreen mode, clear the screen and redraw everything
+        | RefreshScreen ->
+          if state.needsFullRedraw then
+            Builtin.stdoutClear()
+            Builtin.print (Darklang.Cli.render state)
+            { state with needsFullRedraw = false }
+          else
+            Builtin.print "\r\u001b[K"
+            Builtin.print (Darklang.Cli.renderPromptOnly state)
+            state
+
+      // Check if we should exit before reading input
+      if stateAfterRender.isExiting then
+        0L
+      else
+        let keyRead = Stdlib.Cli.Stdin.readKey ()
+        let msg = Darklang.Cli.Msg.KeyPressed(keyRead.key, keyRead.modifiers, keyRead.keyChar)
+        let (newState, messages) = updateCli2 stateAfterRender msg
+
+        // Process all messages
+        let stateAfterMessages = Darklang.Cli.processMessages newState messages
+
+        // Check if we should exit
+        if keyRead.key == Stdlib.Cli.Stdin.Key.Key.Escape || stateAfterMessages.isExiting then
+          0L
+        else
+          // Continue the REPL loop with the updated state
+          runCli2Loop stateAfterMessages
+          
+    /// CLI2's update function - uses CLI2's organized command dispatch
+    let updateCli2 (state: Darklang.Cli.State) (msg: Darklang.Cli.Msg): (Darklang.Cli.State * List<Darklang.Cli.Msg>) =
+      match msg with
+      | SubmitCommand commandStr ->
+        // Parse the command into name and arguments
+        let (name, args) = Darklang.Cli.Command.parseCommand commandStr
+        
+        // Use CLI2's organized command dispatch instead of CLI1's findCommand
+        let result = Darklang.Cli2.Commands.executeCommand state name args
+        let newState = { result.nextState with needsFullRedraw = true }
+        
+        // Convert result to CLI1's expected format
+        match result.output with
+        | "" -> (newState, [])
+        | output -> 
+          let newStateWithResult = { newState with commandResult = Darklang.Cli.CommandResult.Success output }
+          (newStateWithResult, [])
+      | _ ->
+        // For all other messages, delegate to CLI1's update logic
+        Darklang.Cli.update state msg

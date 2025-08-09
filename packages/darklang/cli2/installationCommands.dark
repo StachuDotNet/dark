@@ -3,14 +3,30 @@ module Darklang =
     module InstallationCommands =
       /// Installation and update commands (install, update, uninstall)
       
-      let install (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
-        // Delegate to CLI1 for now
-        Darklang.Cli.executeCommand state "install" args
+      let install (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // CLI2 native package installation - completely independent
+        let packageName = Stdlib.String.trim args
+        if Stdlib.String.isEmpty packageName then
+          Darklang.Cli2.CommandResult { output = "Usage: install <package-name>\nExample: install mypackage"; nextState = state }
+        else
+          let installResult = Darklang.Cli2.UI.installPackage packageName
+          Darklang.Cli2.CommandResult { output = installResult; nextState = state }
       
-      let update (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
-        // Delegate to CLI1 for now
-        Darklang.Cli.executeCommand state "update" args
+      let update (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // CLI2 native package update - completely independent
+        let packageName = Stdlib.String.trim args
+        if Stdlib.String.isEmpty packageName then
+          let updateResult = Darklang.Cli2.UI.updateAllPackages ()
+          Darklang.Cli2.CommandResult { output = updateResult; nextState = state }
+        else
+          let updateResult = Darklang.Cli2.UI.updatePackage packageName
+          Darklang.Cli2.CommandResult { output = updateResult; nextState = state }
       
-      let uninstall (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
-        // Delegate to CLI1 for now
-        Darklang.Cli.executeCommand state "uninstall" args
+      let uninstall (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // CLI2 native package uninstallation - completely independent
+        let packageName = Stdlib.String.trim args
+        if Stdlib.String.isEmpty packageName then
+          Darklang.Cli2.CommandResult { output = "Usage: uninstall <package-name>\nExample: uninstall mypackage"; nextState = state }
+        else
+          let uninstallResult = Darklang.Cli2.UI.uninstallPackage packageName
+          Darklang.Cli2.CommandResult { output = uninstallResult; nextState = state }

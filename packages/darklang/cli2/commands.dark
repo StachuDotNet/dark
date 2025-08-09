@@ -4,7 +4,7 @@ module Darklang =
     /// Provides organized command dispatch using categorized command modules
     module Commands =
       /// Execute a command with organized dispatch to categorized modules
-      let executeCommand (state: Darklang.Cli.State) (command: String) (args: String) : Darklang.Cli.CommandResult =
+      let executeCommand (state: Darklang.Cli.State) (command: String) (args: String) : Darklang.Cli2.CommandResult =
         let lowerCommand = Stdlib.String.toLowercase command
         
         // Route commands to appropriate category modules
@@ -59,5 +59,6 @@ module Darklang =
           Darklang.Cli2.InstallationCommands.uninstall state args
           
         else
-          // Fallback to original CLI for any unhandled commands
-          Darklang.Cli.executeCommand state command args
+          // CLI2 is completely independent - no CLI1 fallback
+          let errorMsg = $"Unknown command '{command}'. Type 'help' to see available commands."
+          Darklang.Cli2.CommandResult { output = errorMsg; nextState = state }

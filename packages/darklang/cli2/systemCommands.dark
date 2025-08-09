@@ -3,17 +3,12 @@ module Darklang =
     module SystemCommands =
       /// System commands that are always available (help, version, status, quit, clear)
       
-      let help (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
-        // Check if asking for help on a specific command
-        if args == "" then
-          // Show organized help overview
-          let helpText = Darklang.Cli2.UI.getOrganizedHelpText ()
-          Darklang.Cli.CommandResult { output = helpText; nextState = state }
-        else
-          // Delegate to CLI1 for specific command help
-          Darklang.Cli.executeCommand state "help" args
+      let help (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // CLI2 native help - completely independent
+        let helpText = Darklang.Cli2.UI.getOrganizedHelpText ()
+        Darklang.Cli2.CommandResult { output = helpText; nextState = state }
       
-      let version (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+      let version (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
         // Show enhanced version information
         let versionText = 
           "Darklang CLI v2 - Organized & Powerful\n" ++
@@ -23,17 +18,20 @@ module Darklang =
           "• MVU/FRP architecture\n" ++
           "• TUI mode support\n\n" ++
           "Built on the reliable Darklang CLI foundation"
-        Darklang.Cli.CommandResult { output = versionText; nextState = state }
+        Darklang.Cli2.CommandResult { output = versionText; nextState = state }
       
-      let status (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
+      let status (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
         // Use enhanced status display from UI module
         let statusText = Darklang.Cli2.UI.formatStatus state
-        Darklang.Cli.CommandResult { output = statusText; nextState = state }
+        Darklang.Cli2.CommandResult { output = statusText; nextState = state }
       
-      let quit (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
-        // Delegate to CLI1 for now
-        Darklang.Cli.executeCommand state "quit" args
+      let quit (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // CLI2 native quit - completely independent
+        let newState = { state with isExiting = true }
+        Darklang.Cli2.CommandResult { output = "Goodbye! 👋"; nextState = newState }
       
-      let clear (state: Darklang.Cli.State) (args: String) : Darklang.Cli.CommandResult =
-        // Delegate to CLI1 for now
-        Darklang.Cli.executeCommand state "clear" args
+      let clear (state: Darklang.Cli.State) (args: String) : Darklang.Cli2.CommandResult =
+        // CLI2 native clear - completely independent
+        let clearOutput = "\u001b[2J\u001b[H"  // ANSI codes to clear screen and move cursor to top
+        let newState = { state with needsFullRedraw = true }
+        Darklang.Cli2.CommandResult { output = clearOutput; nextState = newState }
