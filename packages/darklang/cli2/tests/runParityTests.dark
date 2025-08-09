@@ -1,6 +1,0 @@
-module Darklang =
-  module Cli2 =
-    module Tests =
-      /// Test runner entry point for CLI parity tests
-      let main (): Int64 =
-        Darklang.Cli2.Tests.BehaviorParity.runParityTests ()
