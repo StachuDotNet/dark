@@ -8,48 +8,142 @@ module Darklang =
           acc ++ "  " ++ cmd ++ "\n")
         "\n" ++ categoryName ++ ":\n" ++ commandList
       
+      /// Generate categorized help text with icons and better organization
       let getContextualHelpText (state: Darklang.Cli.State) : List<String> =
-        // Create beautiful help text lines exactly like CLI1 does
-        let commandLines = [
-          $"{Darklang.Cli.CliColors.purple}help       {Darklang.Cli.CliColors.reset}   Show help information";
-          $"{Darklang.Cli.CliColors.purple}version    {Darklang.Cli.CliColors.reset}   Show CLI version";
-          $"{Darklang.Cli.CliColors.purple}status     {Darklang.Cli.CliColors.reset}   Show system status";
-          $"{Darklang.Cli.CliColors.purple}mode       {Darklang.Cli.CliColors.reset}   Change the interaction mode";
-          $"{Darklang.Cli.CliColors.purple}quit       {Darklang.Cli.CliColors.reset}   Exit the CLI";
-          $"{Darklang.Cli.CliColors.purple}clear      {Darklang.Cli.CliColors.reset}   Clear the screen";
-          $"{Darklang.Cli.CliColors.purple}back       {Darklang.Cli.CliColors.reset}   Go back to the previous page";
-          $"{Darklang.Cli.CliColors.purple}cd         {Darklang.Cli.CliColors.reset}   Change directory";
-          $"{Darklang.Cli.CliColors.purple}ls         {Darklang.Cli.CliColors.reset}   List items in current directory";
-          $"{Darklang.Cli.CliColors.purple}view       {Darklang.Cli.CliColors.reset}   View modules, types, functions, or constants";
-          $"{Darklang.Cli.CliColors.purple}run        {Darklang.Cli.CliColors.reset}   Run a function or execute a script";
-          $"{Darklang.Cli.CliColors.purple}scripts    {Darklang.Cli.CliColors.reset}   Store, manage, and run Dark scripts";
-          $"{Darklang.Cli.CliColors.purple}eval       {Darklang.Cli.CliColors.reset}   Evaluate a Dark expression";
-          $"{Darklang.Cli.CliColors.purple}install    {Darklang.Cli.CliColors.reset}   Install the darklang CLI globally";
-          $"{Darklang.Cli.CliColors.purple}update     {Darklang.Cli.CliColors.reset}   Update the darklang CLI";
-          $"{Darklang.Cli.CliColors.purple}uninstall  {Darklang.Cli.CliColors.reset}   Uninstall the darklang CLI"
-        ]
-        
-        Stdlib.List.append [ "Darklang CLI"; "============"; ""; "Available commands:" ] commandLines
-      
-      let getOrganizedHelpText () : List<String> =
-        let systemCommands = [ "help"; "version"; "status"; "quit"; "clear"; "cli-test" ]
-        let navigationCommands = [ "back"; "cd"; "ls"; "tree"; "view" ]
-        let toplevelCommands = [ "toplevels"; "http"; "scripts"; "test"; "docs"; "cron"; "views" ]
-        let developmentCommands = [ "run"; "eval" ]
-        let installationCommands = [ "install"; "update"; "uninstall" ]
+        let sectionHeader = $"{Darklang.Cli.CliColors.magenta}●{Darklang.Cli.CliColors.reset}"
+        let cmdColor = Darklang.Cli.CliColors.purple
+        let resetColor = Darklang.Cli.CliColors.reset
+        let descColor = Darklang.Cli.CliColors.darkGray
         
         [
-          "Darklang CLI - Command Reference";
-          "================================";
+          "Darklang CLI v2 - Enhanced & Organized";
+          "======================================";
           "";
-          formatCommandCategory "System Commands" systemCommands;
-          formatCommandCategory "Navigation Commands" navigationCommands;
-          formatCommandCategory "Toplevel Commands" toplevelCommands;
-          formatCommandCategory "Development Commands" developmentCommands;
-          formatCommandCategory "Installation Commands" installationCommands;
+          $"{sectionHeader} System Commands";
+          $"  {cmdColor}help{resetColor}       Show this categorized help";
+          $"  {cmdColor}version{resetColor}    Show CLI version and update status";
+          $"  {cmdColor}status{resetColor}     Show comprehensive system information";
+          $"  {cmdColor}mode{resetColor}       Switch interaction modes (regular/non-interactive)";
+          $"  {cmdColor}quit{resetColor}       Exit the CLI gracefully";
+          $"  {cmdColor}clear{resetColor}      Clear screen with ANSI codes";
           "";
-          "Use 'help <command>' for detailed information about a specific command."
+          $"{sectionHeader} Navigation & Discovery";
+          $"  {cmdColor}ls{resetColor}         List directory contents {descColor}(try 'ls Darklang.Stdlib'){resetColor}";
+          $"  {cmdColor}cd{resetColor}         Change directory {descColor}(supports .., /, module paths){resetColor}";
+          $"  {cmdColor}back{resetColor}       Navigate back through history";
+          $"  {cmdColor}view{resetColor}       View functions, types, constants with syntax highlighting";
+          "";
+          $"{sectionHeader} Development Tools";
+          $"  {cmdColor}eval{resetColor}       Evaluate Dark expressions {descColor}(try 'eval 1L + 2L'){resetColor}";
+          $"  {cmdColor}run{resetColor}        Execute functions and scripts";
+          $"  {cmdColor}scripts{resetColor}    Manage Dark scripts {descColor}(list/view/add/edit/delete/run){resetColor}";
+          "";
+          $"{sectionHeader} Installation & Updates";
+          $"  {cmdColor}install{resetColor}    Install CLI globally for system-wide access";
+          $"  {cmdColor}update{resetColor}     Update to latest CLI version";
+          $"  {cmdColor}uninstall{resetColor}  Remove CLI from system";
+          "";
+          $"{descColor}💡 Tips:{resetColor}";
+          $"   • Use 'help <command>' for detailed help on specific commands";
+          $"   • CLI2 features real PackageManager data (not placeholders)";
+          $"   • Try 'ls Darklang.Stdlib.List' to explore standard library";
+          $"   • Use Tab completion for faster command input"
         ]
+      
+      /// Generate help for specific command categories
+      let getCategoryHelpText (category: String) : List<String> =
+        let cmdColor = Darklang.Cli.CliColors.purple
+        let resetColor = Darklang.Cli.CliColors.reset
+        let exampleColor = Darklang.Cli.CliColors.darkGray
+        let headerColor = Darklang.Cli.CliColors.magenta
+        
+        match category with
+        | "system" ->
+          [
+            $"{headerColor}System Commands{resetColor}";
+            "===============";
+            "";
+            $"{cmdColor}help{resetColor}       Show categorized command help";
+            $"             {exampleColor}Examples: help, help navigation, help development{resetColor}";
+            "";
+            $"{cmdColor}version{resetColor}    Show CLI version and check for updates";
+            $"             {exampleColor}Shows current version and latest available version{resetColor}";
+            "";
+            $"{cmdColor}status{resetColor}     Show comprehensive system information";
+            $"             {exampleColor}Displays current location, mode, and installation status{resetColor}";
+            "";
+            $"{cmdColor}mode{resetColor}       Switch between interaction modes";
+            $"             {exampleColor}Examples: mode regular, mode non-interactive{resetColor}";
+            "";
+            $"{cmdColor}quit{resetColor}       Exit the CLI gracefully";
+            $"             {exampleColor}Aliases: exit, q{resetColor}";
+            "";
+            $"{cmdColor}clear{resetColor}      Clear screen using ANSI escape codes";
+            $"             {exampleColor}Aliases: cls{resetColor}"
+          ]
+        
+        | "navigation" ->
+          [
+            $"{headerColor}Navigation & Discovery Commands{resetColor}";
+            "================================";
+            "";
+            $"{cmdColor}ls{resetColor}         List directory contents with real PackageManager data";
+            $"             {exampleColor}Examples: ls, ls Darklang.Stdlib, ls Darklang.Stdlib.List{resetColor}";
+            "";
+            $"{cmdColor}cd{resetColor}         Change directory with intelligent path handling";  
+            $"             {exampleColor}Examples: cd Darklang, cd .., cd /{resetColor}";
+            "";
+            $"{cmdColor}back{resetColor}       Navigate back through directory history";
+            $"             {exampleColor}Returns to previous location in navigation stack{resetColor}";
+            "";
+            $"{cmdColor}view{resetColor}       View detailed information about functions, types, constants";
+            $"             {exampleColor}Examples: view Darklang.Stdlib.List.head, view Option.Option{resetColor}"
+          ]
+        
+        | "development" ->
+          [
+            $"{headerColor}Development Tools{resetColor}";
+            "=================";
+            "";
+            $"{cmdColor}eval{resetColor}       Evaluate Dark expressions interactively";
+            $"             {exampleColor}Examples: eval 1L + 2L, eval Stdlib.String.append \"hello\" \" world\"{resetColor}";
+            "";
+            $"{cmdColor}run{resetColor}        Execute functions from PackageManager or run scripts";
+            $"             {exampleColor}Examples: run @Stdlib.List.length [1L; 2L; 3L], run script.dark{resetColor}";
+            "";
+            $"{cmdColor}scripts{resetColor}    Complete script management system";
+            $"             {exampleColor}Commands: scripts list, scripts view <name>, scripts add <name> <code>{resetColor}";
+            $"             {exampleColor}          scripts edit <name>, scripts delete <name>, scripts run <name>{resetColor}"
+          ]
+        
+        | "installation" ->
+          [
+            $"{headerColor}Installation & Updates{resetColor}";
+            "======================";
+            "";
+            $"{cmdColor}install{resetColor}    Install CLI globally for system-wide access";
+            $"             {exampleColor}Offers choice: copy current binary or download latest release{resetColor}";
+            $"             {exampleColor}Sets up shell integration and PATH configuration{resetColor}";
+            "";
+            $"{cmdColor}update{resetColor}     Update CLI to the latest available version";
+            $"             {exampleColor}Checks GitHub releases and updates installed version{resetColor}";
+            "";
+            $"{cmdColor}uninstall{resetColor}  Cleanly remove CLI from system";
+            $"             {exampleColor}Removes binary, shell integration, and configuration{resetColor}"
+          ]
+        
+        | _ ->
+          [
+            $"Unknown category: {category}";
+            "";
+            "Available categories:";
+            "  • system       - help, version, status, mode, quit, clear";
+            "  • navigation   - ls, cd, back, view";  
+            "  • development  - eval, run, scripts";
+            "  • installation - install, update, uninstall";
+            "";
+            "Use 'help <category>' or just 'help' for all commands."
+          ]
       
       let formatWelcome () : String =
         "Welcome to Darklang CLI v2 - Organized & Powerful\n" ++
