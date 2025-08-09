@@ -75,7 +75,7 @@ module Darklang =
 
     /// Starts the REPL with the initial state
     let executeCliCommand (args: List<String>) : Int64 =
-      // Switch to CLI2 for development - parallel development approach
+      // CLI2 is now the default!
       Darklang.Cli2.executeCliCommand args
 
 
