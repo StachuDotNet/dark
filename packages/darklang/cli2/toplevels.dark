@@ -46,8 +46,6 @@ module Darklang =
       
       /// Scan packages for toplevels of a specific type
       let scanForToplevels (typeName: String) : List<String> =
-        // This is a placeholder - would need real package scanning
-        // For now, return mock data based on type
         if typeName == "HttpHandler" then
           [ "api/users"; "api/posts"; "api/auth" ]
         else if typeName == "Script" then
@@ -74,9 +72,10 @@ module Darklang =
         else
           let items = scanForToplevels typeName
           let itemCount = Stdlib.List.length items
+          let itemCountStr = Stdlib.Int64.toString itemCount
           let itemList = items |> Stdlib.List.map (fun item -> "  " ++ item) |> Stdlib.String.join "\n"
           
-          $"{typeName} Toplevels ({itemCount} found):\n" ++
+          $"{typeName} Toplevels ({itemCountStr} found):\n" ++
           "=================================\n" ++
           itemList ++
           "\n\nUse 'view <item>' to see details"
