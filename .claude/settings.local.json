@@ -18,8 +18,13 @@
       "Bash(done)",
       "Bash(/home/stachu/code/dark/scripts/build/build-release-cli-exes.sh:*)",
       "Bash(scripts/run-backend-tests:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(tree:*)",
+      "Bash(sed:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
-    "deny": []
+    "deny": [],
+    "defaultMode": "acceptEdits"
   }
 }

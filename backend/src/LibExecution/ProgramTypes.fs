@@ -599,12 +599,48 @@ module Search =
     | Value
 
   /// How deep to search in the module hierarchy
-  type SearchDepth = | OnlyDirectDescendants
-  // TODO: support this. | AllDescendants
+  type SearchDepth =
+    // TODO verify we're actually respecting this
+    | OnlyDirectDescendants
+  // // TODO: support this.
+  // | AllDescendants
+
+  // we'll probably need to rewrite search with the changes to the sql tables..
+  // worth studying and thinking.
+  // esp given the split between names and
+  (*
+  rant to AI for a bit about
+  give it FQTypeName, PackageType.Name, etc.
+  note many existing modules and package items
+  things may move around
+  somehow we gotta deal with patches
+
+  offer 5 different major schema changes towards supporting this
+  I wanna see how you'd model this, and go from there
+
+  I need to review every usage of the package manager:
+  - runtime
+  - devtime
+    search
+    PT2RT, WT2PT
+  - website
+  - cli stuff, search
+  - vs code setup
+  - ??? other things the LSP or DAP or whatever might need
+
+  and design the schema change with those things in mind
+  RT is largely fine since we just care about ID -> RT_DEF
+  , though when you RTE and such we may need RT-PT
+  and then various PT lookups for displaying the error, etc.
+  *)
 
   /// Query parameters for searching packages
   type SearchQuery =
     {
+      // TODO consider this instead of currentModule
+      // /// Search from the perspective of a given module/namespace
+      // fromModule: Option<List<string>>
+
       /// i.e. "Darklang.Stdlib"
       currentModule : List<string>
 
@@ -615,6 +651,9 @@ module Search =
 
       /// empty list implies 'any'
       entityTypes : List<EntityType>
+
+      /// if true, require exact matches for names and modules instead of fuzzy matching
+      exactMatch : bool
     }
 
   /// Results from a package search
@@ -643,17 +682,17 @@ type PackageManager =
     init : Ply<unit> }
 
   static member empty =
-    { findType = (fun _ -> Ply None)
-      findFn = (fun _ -> Ply None)
-      findValue = (fun _ -> Ply None)
+    { findType = fun _ -> Ply None
+      findFn = fun _ -> Ply None
+      findValue = fun _ -> Ply None
 
-      getType = (fun _ -> Ply None)
-      getFn = (fun _ -> Ply None)
-      getValue = (fun _ -> Ply None)
+      getType = fun _ -> Ply None
+      getFn = fun _ -> Ply None
+      getValue = fun _ -> Ply None
 
       search =
-        (fun _ ->
-          uply { return { submodules = []; types = []; values = []; fns = [] } })
+        fun _ ->
+          uply { return { submodules = []; types = []; values = []; fns = [] } }
 
       init = uply { return () } }
 
