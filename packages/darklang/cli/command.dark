@@ -217,7 +217,8 @@ module Darklang =
           let newState = { state with commandResult = CommandResult.Success result }
           (newState, [])
         | Error err ->
-          let newState = { state with commandResult = CommandResult.Error $"\n{err}" }
+          let errStr = ExecutionError.toString err
+          let newState = { state with commandResult = CommandResult.Error $"\n{errStr}" }
           (newState, [])
 
 

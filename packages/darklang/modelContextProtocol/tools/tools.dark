@@ -10,6 +10,8 @@ module Darklang =
       type ToolAnnotations = Darklang.ModelContextProtocol.ToolAnnotations
       type ToolId = Darklang.ModelContextProtocol.ToolId
       // </aliases>
+
+
       /// Schema for the listTools request
       module ListToolsRequest =
         type ListToolsParams = {

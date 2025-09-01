@@ -255,7 +255,7 @@ let fns : List<BuiltInFn> =
                 ExecutionError.fqTypeName,
                 [],
                 Map fields
-              )
+              ) |> resultError
 
             let exnError (e : exn) : Dval =
               let msg = Exception.getMessages e |> String.concat "\n"

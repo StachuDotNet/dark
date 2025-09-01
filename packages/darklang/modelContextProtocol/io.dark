@@ -22,6 +22,9 @@ module Darklang =
           requestId: JsonRPC.RequestId *
           ToolRequest.CallToolParams.CallToolParams
 
+      // Prompts
+      | ListPromptsRequest of requestId: JsonRPC.RequestId
+
       // Other
       | Other of JsonRPC.Request.Request
 
@@ -37,24 +40,28 @@ module Darklang =
           IncomingMessage.Shutdown requestId
 
       // Resources
-      | ("listResources", Some requestId, _) ->
+      | ("resources/list", Some requestId, _) ->
           IncomingMessage.ListResourcesRequest requestId
-      | ("listResourceTemplates", Some requestId, _) ->
+      | ("resources/templates/list", Some requestId, _) ->
           IncomingMessage.ListResourceTemplatesRequest requestId
-      | ("readResource", Some requestId, Some(Object p)) ->
+      | ("resources/read", Some requestId, Some(Object p)) ->
           (Stdlib.AltJson.Json.Object p)
           |> ResourceRequest.ReadResourceParams.fromJson
           |> Builtin.unwrap
           |> fun p -> IncomingMessage.ReadResourceRequest(requestId, p)
 
       // Tools
-      | ("listTools", Some requestId, _) ->
+      | ("tools/list", Some requestId, _) ->
           IncomingMessage.ListToolsRequest requestId
-      | ("callTool", Some requestId, Some(Object p)) ->
+      | ("tools/call", Some requestId, Some(Object p)) ->
           (Stdlib.AltJson.Json.Object p)
           |> ToolRequest.CallToolParams.fromJson
           |> Builtin.unwrap
           |> fun p -> IncomingMessage.CallToolRequest(requestId, p)
+
+      // Prompts
+      | ("prompts/list", Some requestId, _) ->
+          IncomingMessage.ListPromptsRequest requestId
 
       // Other
       | _ -> IncomingMessage.Other r

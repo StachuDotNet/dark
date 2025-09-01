@@ -37,4 +37,7 @@ do
   fi
 done
 
-"${EXE}" "$@" 2>&1 | tee "${CLI_LOG}"
+# 'tee' was screwing up our MCP server running through this script
+# "${EXE}" "$@" 2>&1 | tee "${CLI_LOG}"
+# CLEANUP It'd be great to come up with a solution that allos us to still log to that cli.log file.
+"${EXE}" "$@"
