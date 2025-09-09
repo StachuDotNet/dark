@@ -837,24 +837,43 @@ module Type =
           "e93d58403910af3345858b76898c9345a37dbdbdb79950da03a2e44fa0acd838"
 
   // what we expose to the outside world
+  // This is now only used for known Darklang built-in types
+  // All other types should have their hash calculated from content
   let hashForName (owner : string) (modules : List<string>) (name : string) : Hash =
     match owner with
     | "Darklang" ->
       match Map.get (modules, name) _lookup with
       | Some hash -> hash
-      | None -> Hash "unknown-type"
-    | _ -> Hash "external-type"
+      | None -> 
+        // This should not happen - all Darklang types should be in the lookup
+        let modulesStr = String.concat "." modules
+        let fullName = $"{owner}.{modulesStr}.{name}"
+        Exception.raiseInternal 
+          $"Unknown Darklang type: {fullName}" 
+          []
+    | _ -> 
+      // Non-Darklang types should have their hash calculated from content
+      // This is a temporary placeholder that should never be used
+      let modulesStr = String.concat "." modules
+      let fullName = $"{owner}.{modulesStr}.{name}"
+      Exception.raiseInternal 
+        $"Content hash should be calculated for: {fullName}" 
+        []
 
 
 module Value =
-  // There are no referenced Values at this point,
-  // but we may be thankful later for hooking this up in the meantime.
+  // There are no built-in values that need static IDs
+  // All values should have their hash calculated from content
   let hashForName
-    (_owner : string)
-    (_modules : List<string>)
-    (_name : string)
+    (owner : string)
+    (modules : List<string>)
+    (name : string)
     : Hash =
-    Hash "external-value"
+    let modulesStr = String.concat "." modules
+    let fullName = $"{owner}.{modulesStr}.{name}"
+    Exception.raiseInternal 
+      $"Content hash should be calculated for value: {fullName}" 
+      []
 
 
 
@@ -977,31 +996,25 @@ module Fn =
           "594fb3496f67541e2d537cccc42b4a454cb5fbd6e0c3ab253ca1ce71d5fcbbcc"
 
   // what we expose to the outside world
+  // This is now only used for known Darklang built-in functions
+  // All other functions should have their hash calculated from content
   let hashForName (owner : string) (modules : List<string>) (name : string) : Hash =
     match owner with
     | "Darklang" ->
       match Map.get (modules, name) _lookup with
       | Some hash -> hash
       | None ->
-        // Generate a unique hash based on the function name for consistency
-        let fullName = $"""{owner}.{String.concat "." modules}.{name}"""
-        let hashBytes = System.Text.Encoding.UTF8.GetBytes(fullName)
-        use sha256 = System.Security.Cryptography.SHA256.Create()
-        let computedHash = sha256.ComputeHash(hashBytes)
-        let hashString =
-          System.BitConverter
-            .ToString(computedHash)
-            .Replace("-", "")
-            .ToLowerInvariant()
-        Hash hashString
+        // This should not happen - all Darklang functions should be in the lookup
+        let modulesStr = String.concat "." modules
+        let fullName = $"{owner}.{modulesStr}.{name}"
+        Exception.raiseInternal 
+          $"Unknown Darklang function: {fullName}" 
+          []
     | _ ->
-      let fullName = $"""{owner}.{String.concat "." modules}.{name}"""
-      let hashBytes = System.Text.Encoding.UTF8.GetBytes(fullName)
-      use sha256 = System.Security.Cryptography.SHA256.Create()
-      let computedHash = sha256.ComputeHash(hashBytes)
-      let hashString =
-        System.BitConverter
-          .ToString(computedHash)
-          .Replace("-", "")
-          .ToLowerInvariant()
-      Hash hashString
+      // Non-Darklang functions should have their hash calculated from content
+      // This is a temporary placeholder that should never be used
+      let modulesStr = String.concat "." modules
+      let fullName = $"{owner}.{modulesStr}.{name}"
+      Exception.raiseInternal 
+        $"Content hash should be calculated for function: {fullName}" 
+        []

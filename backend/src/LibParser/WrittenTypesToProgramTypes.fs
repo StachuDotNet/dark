@@ -530,8 +530,7 @@ module PackageType =
       let! declaration =
         TypeDeclaration.toPT pm onMissing currentModule pt.declaration
       return
-        { hash =
-            PackageIDs.Type.hashForName pt.name.owner pt.name.modules pt.name.name
+        { hash = Hash "placeholder" // Will be calculated at insert time
           name = Name.toPT pt.name
           description = pt.description
           declaration = declaration
@@ -553,7 +552,7 @@ module PackageValue =
     uply {
       let! body = Expr.toPT builtins pm onMissing currentModule c.body
       let packageValue : PT.PackageValue.PackageValue =
-        { hash = PackageIDs.Value.hashForName c.name.owner c.name.modules c.name.name
+        { hash = Hash "placeholder" // Will be calculated at insert time
           name = Name.toPT c.name
           description = c.description
           deprecated = PT.NotDeprecated
@@ -595,7 +594,7 @@ module PackageFn =
       let! body = Expr.toPT builtins pm onMissing currentModule fn.body
 
       return
-        { hash = PackageIDs.Fn.hashForName fn.name.owner fn.name.modules fn.name.name
+        { hash = Hash "placeholder" // Will be calculated at insert time
           name = Name.toPT fn.name
           parameters = parameters
           returnType = returnType

@@ -269,43 +269,5 @@ let parseTestFile
     let! (afterSecondPass : List<PTModule>) =
       modulesWT |> Ply.List.mapSequentially (toPT owner builtins pm onMissing)
 
-    // The IDs that weren't locked-in have changed - let's fix that now.
-    let adjusted : List<PTModule> =
-      afterSecondPass
-      |> List.map (fun m ->
-        let originalModule =
-          afterFirstPass
-          |> List.find (fun original -> original.name = m.name)
-          |> Option.unwrap m
-
-        { m with
-            types =
-              m.types
-              |> List.map (fun typ ->
-                { typ with
-                    hash =
-                      originalModule.types
-                      |> List.find (fun original -> original.name = typ.name)
-                      |> Option.map _.hash
-                      |> Option.defaultValue typ.hash })
-            values =
-              m.values
-              |> List.map (fun c ->
-                { c with
-                    hash =
-                      originalModule.values
-                      |> List.find (fun original -> original.name = c.name)
-                      |> Option.map _.hash
-                      |> Option.defaultValue c.hash })
-            fns =
-              m.fns
-              |> List.map (fun fn ->
-                { fn with
-                    hash =
-                      originalModule.fns
-                      |> List.find (fun original -> original.name = fn.name)
-                      |> Option.map _.hash
-                      |> Option.defaultValue fn.hash }) })
-
-    return adjusted
+    return afterSecondPass
   }

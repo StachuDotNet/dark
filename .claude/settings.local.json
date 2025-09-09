@@ -18,7 +18,10 @@
       "Bash(done)",
       "Bash(/home/stachu/code/dark/scripts/build/build-release-cli-exes.sh:*)",
       "Bash(scripts/run-backend-tests:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "WebFetch(domain:spec.modelcontextprotocol.io)",
+      "Bash(dotnet fsi:*)",
+      "Bash(dotnet build:*)"
     ],
     "deny": []
   }

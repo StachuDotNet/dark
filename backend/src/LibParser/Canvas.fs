@@ -328,29 +328,9 @@ let parse
     // Now, parse again, but with the names in context (so fewer are marked as unresolved)
     let! result = toPT builtins pm onMissing moduleWT
 
-    let adjusted =
-      { types = result.types |> List.map (fun typ -> { typ with hash = typ.hash })
-        // id =
-        //   initialResult.types
-        //   |> List.find (fun original -> original.name = typ.name)
-        //   |> Option.map _.id
-        //   |> Option.defaultValue typ.id })
-        values = result.values |> List.map (fun c -> { c with hash = c.hash })
-        // id =
-        //   initialResult.values
-        //   |> List.find (fun original -> original.name = c.name)
-        //   |> Option.map _.id
-        //   |> Option.defaultValue c.id })
-        fns = result.fns |> List.map (fun fn -> { fn with hash = fn.hash })
-        // id =
-        //   initialResult.fns
-        //   |> List.find (fun original -> original.name = fn.name)
-        //   |> Option.map _.id
-        //   |> Option.defaultValue fn.id })
-
-        dbs = result.dbs
-        handlers = result.handlers
-        exprs = result.exprs }
+    // Since hashes are now calculated deterministically from content,
+    // no need to adjust them
+    let adjusted = result
 
     return adjusted
   }

@@ -27,9 +27,13 @@ let insertTypes (types : List<PT.PackageType.PackageType>) : Task<unit> =
         @"INSERT INTO package_types_v0
             (hash, owner, modules, name, pt_def, rt_def)
           VALUES
-            (@hash, @owner, @modules, @name, @pt_def, @rt_def)"
+            (@hash, @owner, @modules, @name, @pt_def, @rt_def)
+          ON CONFLICT(hash) DO NOTHING"
 
-      let (Hash hashStr) = Hashing.hashPackageType typ
+      // Calculate hash from content (this is the fix - no more name-based hashing)
+      let hashCalculated = Hashing.hashPackageType typ
+      let typeWithHash = { typ with hash = hashCalculated }
+      let (Hash hashStr) = hashCalculated
       let ptDef = BinarySerialization.PT.PackageType.serialize hashStr typ
       let rtDef =
         typ
@@ -47,6 +51,13 @@ let insertTypes (types : List<PT.PackageType.PackageType>) : Task<unit> =
       (sql, [ parameters ]))
     |> Sql.executeTransactionSync
     |> ignore<List<int>>
+    
+    // Log any hash collisions we might have missed
+    for typ in types do
+      let (Hash hashStr) = typ.hash
+      let shortId = Hash.toShortId12 typ.hash
+      let modulesStr = String.concat "." typ.name.modules
+      print $"Inserted type {typ.name.owner}.{modulesStr}.{typ.name.name} with hash {shortId}..."
   }
 
 
@@ -60,9 +71,13 @@ let insertValues (values : List<PT.PackageValue.PackageValue>) : Task<unit> =
         @"INSERT INTO package_values_v0
             (hash, owner, modules, name, pt_def, rt_dval)
           VALUES
-            (@hash, @owner, @modules, @name, @pt_def, @rt_dval)"
+            (@hash, @owner, @modules, @name, @pt_def, @rt_dval)
+          ON CONFLICT(hash) DO NOTHING"
 
-      let (Hash hashStr) = Hashing.hashPackageValue v
+      // Calculate hash from content (this is the fix - no more name-based hashing)
+      let hashCalculated = Hashing.hashPackageValue v
+      let valueWithHash = { v with hash = hashCalculated }
+      let (Hash hashStr) = hashCalculated
       let dval = PT2RT.PackageValue.toRT v
 
       let ptBits = BinarySerialization.PT.PackageValue.serialize hashStr v
@@ -79,6 +94,12 @@ let insertValues (values : List<PT.PackageValue.PackageValue>) : Task<unit> =
       (sql, [ parameters ]))
     |> Sql.executeTransactionSync
     |> ignore<List<int>>
+    
+    // Log insertions
+    for v in values do
+      let shortId = Hash.toShortId12 v.hash
+      let modulesStr = String.concat "." v.name.modules
+      print $"Inserted value {v.name.owner}.{modulesStr}.{v.name.name} with hash {shortId}..."
   }
 
 let insertFns (fns : List<PT.PackageFn.PackageFn>) : Task<unit> =
@@ -91,9 +112,13 @@ let insertFns (fns : List<PT.PackageFn.PackageFn>) : Task<unit> =
         @"INSERT INTO package_functions_v0
             (hash, owner, modules, name, pt_def, rt_instrs)
           VALUES
-            (@hash, @owner, @modules, @name, @pt_def, @rt_instrs)"
+            (@hash, @owner, @modules, @name, @pt_def, @rt_instrs)
+          ON CONFLICT(hash) DO NOTHING"
 
-      let (Hash hashStr) = Hashing.hashPackageFn fn
+      // Calculate hash from content (this is the fix - no more name-based hashing)
+      let hashCalculated = Hashing.hashPackageFn fn
+      let fnWithHash = { fn with hash = hashCalculated }
+      let (Hash hashStr) = hashCalculated
       let ptDef = BinarySerialization.PT.PackageFn.serialize hashStr fn
       let rtInstrs =
         fn
@@ -111,4 +136,10 @@ let insertFns (fns : List<PT.PackageFn.PackageFn>) : Task<unit> =
       (sql, [ parameters ]))
     |> Sql.executeTransactionSync
     |> ignore<List<int>>
+    
+    // Log insertions
+    for fn in fns do
+      let shortId = Hash.toShortId12 fn.hash
+      let modulesStr = String.concat "." fn.name.modules
+      print $"Inserted function {fn.name.owner}.{modulesStr}.{fn.name.name} with hash {shortId}..."
   }

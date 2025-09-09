@@ -395,6 +395,48 @@ let guuid () : uuid = System.Guid.NewGuid()
 
 type Hash = Hash of string
 
+module Hash =
+  /// Crockford Base32 alphabet (case-insensitive, excludes ambiguous chars)
+  let private crockfordAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+  
+  /// Convert hash to Crockford Base32 short ID
+  let toShortId (Hash hashStr) (length : int) : string =
+    // Take first N*5/8 bytes (since base32 uses 5 bits per char)
+    let bytesToTake = (length * 5 + 7) / 8 // ceiling division
+    let maxBytes = min bytesToTake (hashStr.Length / 2)
+    
+    // Convert hex string to bytes
+    let bytes = 
+      [| for i in 0 .. 2 .. min (hashStr.Length - 1) (maxBytes * 2 - 1) ->
+          System.Convert.ToByte(hashStr.Substring(i, 2), 16) |]
+    
+    let mutable result = ""
+    let mutable bits = 0
+    let mutable bitsCount = 0
+    
+    for b in bytes do
+      bits <- (bits <<< 8) ||| int b
+      bitsCount <- bitsCount + 8
+      
+      while bitsCount >= 5 && result.Length < length do
+        let idx = (bits >>> (bitsCount - 5)) &&& 0x1F
+        result <- result + string crockfordAlphabet[idx]
+        bitsCount <- bitsCount - 5
+    
+    // Pad with remaining bits if needed
+    while result.Length < length && bitsCount > 0 do
+      let idx = (bits <<< (5 - bitsCount)) &&& 0x1F
+      result <- result + string crockfordAlphabet[idx]
+      bitsCount <- 0
+    
+    result.PadRight(length, '0') // Pad with zeros if still short
+  
+  /// Default 12-character short ID  
+  let toShortId12 (hash : Hash) : string = toShortId hash 12
+  
+  /// 8-character short ID
+  let toShortId8 (hash : Hash) : string = toShortId hash 8
+
 let randomString (length : int) : string =
   let result =
     Array.init length (fun _ -> char (RNG.GetInt32(int32 'A', int32 'Z')))

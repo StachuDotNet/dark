@@ -56,35 +56,7 @@ let load (builtins : RT.Builtins) : Ply<PT.Packages> =
           contents)
       |> Ply.map PT.Packages.combine
 
-    // The IDs that weren't locked-in have changed - let's fix that now.
-    let adjusted : PT.Packages =
-      { types =
-          reParsed.types
-          |> List.map (fun typ ->
-            { typ with
-                hash =
-                  packages.types
-                  |> List.find (fun original -> original.name = typ.name)
-                  |> Option.map _.hash
-                  |> Option.defaultValue typ.hash })
-        values =
-          reParsed.values
-          |> List.map (fun c ->
-            { c with
-                hash =
-                  packages.values
-                  |> List.find (fun original -> original.name = c.name)
-                  |> Option.map _.hash
-                  |> Option.defaultValue c.hash })
-        fns =
-          reParsed.fns
-          |> List.map (fun fn ->
-            { fn with
-                hash =
-                  packages.fns
-                  |> List.find (fun original -> original.name = fn.name)
-                  |> Option.map _.hash
-                  |> Option.defaultValue fn.hash }) }
-
-    return adjusted
+    // Since hashes are now calculated deterministically from content,
+    // we don't need to preserve/adjust them between parses
+    return reParsed
   }
