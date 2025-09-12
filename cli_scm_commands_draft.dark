@@ -1,0 +1,234 @@
+// Draft CLI SCM commands for Darklang CLI
+// This shows what the commands could look like
+
+module Darklang.Cli.SCM
+
+// ============================================================================
+// Patch Commands
+// ============================================================================
+
+module Patches =
+  let execute (state: AppState) (args: List<String>) : AppState =
+    match args with
+    | ["new"; name] ->
+      // Create new patch: `dark patch new "Add String.reverse"`
+      Stdlib.printLine $"Creating new patch: {name}"
+      // TODO: Call LibSCM.createPatch
+      state
+    | ["show"] ->
+      // Show current patch: `dark patch show`
+      Stdlib.printLine "Current patch: feature/add-reverse"
+      Stdlib.printLine "Status: draft"
+      Stdlib.printLine "Operations: 2"
+      Stdlib.printLine "- AddFunctionContent: String.reverse"  
+      Stdlib.printLine "- CreateName: Darklang.Stdlib.String.reverse"
+      state
+    | ["show"; patchId] ->
+      // Show specific patch: `dark patch show abc123`
+      Stdlib.printLine $"Patch: {patchId}"
+      // TODO: Query database for patch details
+      state
+    | ["list"] ->
+      // List all patches: `dark patch list`
+      Stdlib.printLine "Available patches:"
+      Stdlib.printLine "- main (applied)"
+      Stdlib.printLine "- feature/add-reverse (draft) <- current"
+      Stdlib.printLine "- hotfix/auth-bug (validated)"
+      state
+    | ["apply"; patchId] ->
+      // Apply a patch: `dark patch apply abc123`
+      Stdlib.printLine $"Applying patch: {patchId}"
+      // TODO: Call LibSCM.executePatch
+      state
+    | ["validate"] ->
+      // Validate current patch: `dark patch validate`
+      Stdlib.printLine "Validating current patch..."
+      Stdlib.printLine "✓ All content hashes valid"
+      Stdlib.printLine "✓ No naming conflicts"  
+      Stdlib.printLine "✓ All dependencies satisfied"
+      Stdlib.printLine "✓ All tests pass"
+      Stdlib.printLine "Patch is valid and ready to apply"
+      state
+    | _ ->
+      Stdlib.printLine "Usage: patch [new|show|list|apply|validate] [args...]"
+      state
+
+  let help (state: AppState) : AppState =
+    Stdlib.printLine "patch - Manage code patches"
+    Stdlib.printLine ""
+    Stdlib.printLine "Commands:"
+    Stdlib.printLine "  new <name>     Create a new patch"
+    Stdlib.printLine "  show [id]      Show current patch or specific patch"
+    Stdlib.printLine "  list           List all patches"
+    Stdlib.printLine "  apply <id>     Apply a patch" 
+    Stdlib.printLine "  validate       Validate current patch"
+    state
+
+  let complete (state: AppState) (args: List<String>) : List<String> =
+    match args with
+    | [] -> ["new"; "show"; "list"; "apply"; "validate"]
+    | ["new"] -> [] // No completions for patch names
+    | ["show"] -> ["main"; "current"] // TODO: Get actual patch IDs
+    | ["apply"] -> ["main"] // TODO: Get applicable patches
+    | _ -> []
+
+// ============================================================================
+// Session Commands  
+// ============================================================================
+
+module Sessions =
+  let execute (state: AppState) (args: List<String>) : AppState =
+    match args with
+    | ["new"; "--name"; name; "--base"; basePatch] ->
+      // Create new session: `dark session new --name "my-work" --base main`
+      Stdlib.printLine $"Creating new session: {name} based on {basePatch}"
+      // TODO: Call LibSCM.createSession
+      state
+    | ["new"; "--name"; name] ->
+      // Create session based on current: `dark session new --name "my-work"`
+      Stdlib.printLine $"Creating new session: {name} based on current"
+      state
+    | ["list"] ->
+      // List sessions: `dark session list`
+      Stdlib.printLine "Available sessions:"
+      Stdlib.printLine "- main-dev (active) <- current"
+      Stdlib.printLine "- feature-work (paused)" 
+      Stdlib.printLine "- hotfix-session (archived)"
+      state
+    | ["switch"; name] ->
+      // Switch session: `dark session switch feature-work`
+      Stdlib.printLine $"Switching to session: {name}"
+      // TODO: Update current session in state
+      state
+    | ["status"] ->
+      // Show current session status: `dark session status`
+      Stdlib.printLine "Current session: main-dev"
+      Stdlib.printLine "Base patch: main"
+      Stdlib.printLine "Current patch: feature/add-reverse (draft)"
+      Stdlib.printLine "Status: active"
+      Stdlib.printLine "Last activity: 2024-09-12 16:45"
+      state
+    | _ ->
+      Stdlib.printLine "Usage: session [new|list|switch|status] [args...]"
+      state
+
+  let help (state: AppState) : AppState =
+    Stdlib.printLine "session - Manage development sessions"
+    Stdlib.printLine ""
+    Stdlib.printLine "Commands:"
+    Stdlib.printLine "  new --name <name> [--base <patch>]  Create a new session"
+    Stdlib.printLine "  list                                List all sessions"
+    Stdlib.printLine "  switch <name>                       Switch to a session"
+    Stdlib.printLine "  status                              Show current session info"
+    state
+
+  let complete (state: AppState) (args: List<String>) : List<String> =
+    match args with
+    | [] -> ["new"; "list"; "switch"; "status"]
+    | ["new"] -> ["--name"]
+    | ["switch"] -> ["main-dev"; "feature-work"] // TODO: Get actual sessions
+    | _ -> []
+
+// ============================================================================
+// Function Commands
+// ============================================================================
+
+module Functions =
+  let execute (state: AppState) (args: List<String>) : AppState =
+    match args with
+    | ["create"; owner; module_; name; description] ->
+      // Create function: `dark fn create Darklang.Stdlib.String reverse "Reverses a string"`
+      Stdlib.printLine $"Creating function: {owner}.{module_}.{name}"
+      Stdlib.printLine $"Description: {description}"
+      
+      // TODO: Create PackageLocation and empty PackageFn
+      // TODO: Call LibSCM.createFunction
+      // TODO: Open editor for implementation
+      
+      Stdlib.printLine "✓ Function created with hash: abc123def456"
+      Stdlib.printLine "✓ Name pointer updated"
+      Stdlib.printLine "Opening editor for implementation..."
+      state
+    | ["hash"; name] ->
+      // Show hash: `dark fn hash String.reverse`  
+      Stdlib.printLine $"Function: {name}"
+      Stdlib.printLine "Hash: abc123def456789"
+      // TODO: Call LibSCM.getFunctionHash
+      state
+    | ["show"; name] ->
+      // Show function details: `dark fn show String.reverse`
+      Stdlib.printLine $"Function: {name}"
+      Stdlib.printLine "Hash: abc123def456789"
+      Stdlib.printLine "Owner: Darklang"
+      Stdlib.printLine "Module: Stdlib.String"
+      Stdlib.printLine "Created: 2024-09-12 16:30"
+      Stdlib.printLine "Description: Reverses a string"
+      // TODO: Show implementation
+      state
+    | _ ->
+      Stdlib.printLine "Usage: fn [create|hash|show] [args...]"
+      state
+
+  let help (state: AppState) : AppState =
+    Stdlib.printLine "fn - Manage functions with content-addressable storage"
+    Stdlib.printLine ""
+    Stdlib.printLine "Commands:"
+    Stdlib.printLine "  create <owner> <module> <name> <desc>  Create new function"
+    Stdlib.printLine "  hash <name>                            Show content hash"
+    Stdlib.printLine "  show <name>                            Show function details"
+    state
+
+  let complete (state: AppState) (args: List<String>) : List<String> =
+    match args with
+    | [] -> ["create"; "hash"; "show"]
+    | ["create"] -> ["Darklang"; "MyCompany"] // TODO: Get valid owners
+    | ["hash"] -> ["String.reverse"; "List.map"] // TODO: Get existing functions
+    | ["show"] -> ["String.reverse"; "List.map"] // TODO: Get existing functions
+    | _ -> []
+
+// ============================================================================
+// Sync Commands
+// ============================================================================
+
+module Sync = 
+  let execute (state: AppState) (args: List<String>) : AppState =
+    match args with
+    | ["push"] ->
+      // Push current changes: `dark sync push`
+      Stdlib.printLine "Pushing current session patches..."
+      Stdlib.printLine "✓ Patch feature/add-reverse uploaded"
+      Stdlib.printLine "✓ Hash abc123 uploaded"  
+      Stdlib.printLine "Sync complete"
+      state
+    | ["pull"] ->
+      // Pull remote changes: `dark sync pull`
+      Stdlib.printLine "Pulling remote patches..."
+      Stdlib.printLine "✓ 3 new patches downloaded"
+      Stdlib.printLine "✓ 12 new content hashes downloaded"
+      Stdlib.printLine "Run 'dark patch list' to see available patches"
+      state
+    | ["status"] ->
+      // Show sync status: `dark sync status`
+      Stdlib.printLine "Sync status:"
+      Stdlib.printLine "Remote: https://dark.stachu.net"
+      Stdlib.printLine "Local patches ahead: 1"
+      Stdlib.printLine "Remote patches behind: 0"
+      Stdlib.printLine "Last sync: 2024-09-12 16:20"
+      state
+    | _ ->
+      Stdlib.printLine "Usage: sync [push|pull|status]"
+      state
+
+  let help (state: AppState) : AppState =
+    Stdlib.printLine "sync - Synchronize with remote instances"
+    Stdlib.printLine ""
+    Stdlib.printLine "Commands:"
+    Stdlib.printLine "  push      Upload local patches and content"
+    Stdlib.printLine "  pull      Download remote patches and content"  
+    Stdlib.printLine "  status    Show sync status"
+    state
+
+  let complete (state: AppState) (args: List<String>) : List<String> =
+    match args with
+    | [] -> ["push"; "pull"; "status"]
+    | _ -> []

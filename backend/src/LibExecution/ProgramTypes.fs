@@ -751,3 +751,191 @@ module Toplevel =
     match tl with
     | TLDB db -> db.tlid
     | TLHandler h -> h.tlid
+
+
+// --
+// Source Control & Package Management Extensions  
+// --
+
+/// Package location (separate from content)
+module PackageLocation =
+  type T = {
+    owner : string
+    modules : List<string>
+    name : string
+  }
+
+/// Operations - atomic changes to package manager state
+module Op =
+  type T =
+    // == Content Management (Append-Only) ==
+    
+    // -- Functions --
+    | AddFunctionContent of 
+      contentHash : string * 
+      definition : PackageFn.PackageFn
+    
+    // -- Types --  
+    | AddTypeContent of 
+      contentHash : string * 
+      definition : PackageType.PackageType
+    
+    // -- Values/Constants --
+    | AddValueContent of 
+      contentHash : string * 
+      definition : PackageValue.PackageValue
+    
+    // == Name Management (Mutable Pointers) ==
+    
+    | CreateName of 
+      location : PackageLocation.T * 
+      initialHash : string
+    
+    | UpdateNamePointer of 
+      location : PackageLocation.T * 
+      newHash : string
+    
+    | MoveName of 
+      fromLocation : PackageLocation.T * 
+      toLocation : PackageLocation.T
+    
+    | DeleteName of location : PackageLocation.T
+    
+    // == Aliasing (Multiple Names → Same Content) ==
+    
+    | CreateAlias of 
+      aliasLocation : PackageLocation.T * 
+      targetHash : string
+    
+    // == Module/Namespace Management ==
+    
+    | CreateModule of 
+      location : PackageLocation.T * 
+      description : string
+    
+    // == Access Control & Metadata ==
+    
+    | SetVisibility of 
+      location : PackageLocation.T * 
+      visibility : Visibility
+    
+    | SetDescription of 
+      location : PackageLocation.T * 
+      description : string
+    
+    // == Migration Support ==
+    
+    | AddMigration of 
+      fromHash : string * 
+      toHash : string * 
+      migrationExpr : Expr
+    
+    // == Branch/Patch Management Ops ==
+    | CreatePatch of 
+      id : uuid * 
+      parentPatches : List<uuid> * 
+      metadata : Patch.Metadata
+    
+    | MergePatch of 
+      patchId : uuid * 
+      targetPatchId : uuid * 
+      conflictResolutions : List<ConflictResolution>
+    
+    | RevertPatch of patchId : uuid
+    
+    // == Session Management Ops ==
+    | CreateSession of 
+      id : uuid * 
+      name : string * 
+      basePatch : uuid * 
+      config : Session.Config
+    
+    | UpdateSession of 
+      id : uuid * 
+      config : Session.Config
+    
+    | AttachToPatch of 
+      sessionId : uuid * 
+      patchId : uuid
+    
+    | DeleteSession of id : uuid
+
+and Visibility =
+  | Public
+  | Internal  
+  | Private
+
+
+/// Patches - collections of related operations
+module Patch =
+  type Status =
+    | Draft
+    | Validated
+    | Applied
+    | Reverted
+
+  type Metadata = 
+    { id : uuid
+      name : Option<string>
+      description : string
+      author : string
+      intent : List<string> // TODOs, goals, etc.
+      tags : List<string>
+      status : Status
+      createdAt : System.DateTime
+      updatedAt : System.DateTime }
+
+  type T = 
+    { metadata : Metadata
+      parentPatches : List<uuid>
+      ops : List<Op.T>
+      dependencies : List<uuid> }
+
+/// Sessions - development contexts  
+module Session =
+  type Status =
+    | Active
+    | Paused
+    | Archived
+
+  type Config = 
+    { environmentVars : Map<string, string>
+      workingDirectory : Option<string>
+      preferences : Map<string, string> }
+
+  type T = 
+    { id : uuid
+      name : string
+      basePatchId : uuid
+      currentPatchId : Option<uuid>
+      config : Config
+      status : Status
+      lastActivity : System.DateTime
+      createdAt : System.DateTime }
+
+/// Conflict detection and resolution
+module Conflict =
+  type Type =
+    | NameConflict of string
+    | TypeConflict of string // content hash
+    | DependencyConflict of string * string // hash conflicts  
+    | DataMigrationConflict of string // hash
+
+  type T = 
+    { conflictId : uuid
+      conflictType : Type
+      localChange : Op.T
+      remoteChange : Op.T
+      suggestedResolution : Option<ConflictResolution> }
+
+and ConflictResolution =
+  { conflictType : Conflict.Type
+    resolution : ResolutionStrategy
+    resolvedBy : string
+    resolvedAt : System.DateTime }
+
+and ResolutionStrategy =
+  | UseLeft
+  | UseRight
+  | UseMerged of mergedDefinition : Expr
+  | UseCustom of customResolution : Expr

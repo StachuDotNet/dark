@@ -1,0 +1,442 @@
+// Realistic CLI commands for core developer workflows
+// Following existing Darklang CLI patterns from packages/darklang/cli
+
+// ============================================================================
+// Project Management Commands
+// ============================================================================
+
+module Darklang.Cli.Project.New
+// Creates new projects with scaffolding
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | [projectType; name] ->
+    // dark new webapp my-blog
+    // dark new cli my-tool  
+    // dark new lib my-package
+    
+    let validTypes = ["webapp"; "cli"; "lib"; "script"]
+    if Stdlib.List.contains validTypes projectType then
+      Stdlib.printLine $"Creating new {projectType} project: {name}"
+      
+      // Create directory structure
+      // TODO: Create scaffold files based on project type
+      // TODO: Initialize Matter session for project
+      
+      Stdlib.printLine "✓ Project structure created"
+      Stdlib.printLine "✓ Dependencies resolved" 
+      Stdlib.printLine "✓ Development session initialized"
+      Stdlib.printLine ""
+      Stdlib.printLine $"Next steps:"
+      Stdlib.printLine $"  cd {name}"
+      Stdlib.printLine $"  dark dev    # Start development server"
+      
+      state
+    else
+      let typesStr = Stdlib.String.join validTypes ", "
+      Stdlib.printLine $"Error: Unknown project type '{projectType}'"
+      Stdlib.printLine $"Valid types: {typesStr}"
+      state
+  | [projectType] ->
+    Stdlib.printLine $"Error: Project name required"
+    Stdlib.printLine $"Usage: new {projectType} <name>"
+    state
+  | _ ->
+    Stdlib.printLine "Usage: new <type> <name>"
+    Stdlib.printLine "Types: webapp, cli, lib, script"
+    state
+
+let complete (state: AppState) (args: List<String>) : List<String> =
+  match args with
+  | [] -> ["webapp"; "cli"; "lib"; "script"]
+  | [_] -> [] // No completion for project names
+  | _ -> []
+
+let help (state: AppState) : Unit =
+  [
+    "Usage: new <type> <name>"
+    "Create a new Darklang project with scaffolding."
+    ""
+    "Types:"
+    "  webapp    Web application with HTTP handlers"
+    "  cli       Command-line tool" 
+    "  lib       Reusable library package"
+    "  script    Simple script for automation"
+    ""
+    "Examples:"
+    "  dark new webapp my-blog"
+    "  dark new cli file-processor"
+  ] |> Stdlib.printLines
+
+// ============================================================================
+// Development Server
+// ============================================================================
+
+module Darklang.Cli.Dev
+// Development server with hot reload and trace viewing
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | [] ->
+    // dark dev
+    Stdlib.printLine "Starting Darklang development server..."
+    Stdlib.printLine ""
+    Stdlib.printLine "✓ Watching files for changes"
+    Stdlib.printLine "✓ Trace collection enabled" 
+    Stdlib.printLine "✓ HTTP server running on http://localhost:8000"
+    Stdlib.printLine ""
+    Stdlib.printLine "Commands while running:"
+    Stdlib.printLine "  t  - View traces"
+    Stdlib.printLine "  l  - View logs" 
+    Stdlib.printLine "  r  - Restart server"
+    Stdlib.printLine "  q  - Quit"
+    
+    // TODO: Start file watcher
+    // TODO: Start HTTP server  
+    // TODO: Start trace collector
+    // TODO: Enter interactive mode
+    
+    state
+  | ["--port"; port] ->
+    // dark dev --port 3000
+    Stdlib.printLine $"Starting server on port {port}..."
+    // TODO: Start with custom port
+    state
+  | _ ->
+    Stdlib.printLine "Usage: dev [--port <number>]"
+    state
+
+let complete (state: AppState) (args: List<String>) : List<String> =
+  match args with
+  | [] -> ["--port"]
+  | ["--port"] -> ["3000"; "8000"; "8080"]
+  | _ -> []
+
+let help (state: AppState) : Unit =
+  [
+    "Usage: dev [--port <number>]"
+    "Start the development server with hot reload and trace viewing."
+    ""
+    "Features:"
+    "- Automatic reload on file changes"
+    "- Live trace collection and viewing"  
+    "- HTTP server for web apps"
+    "- Interactive debugging commands"
+    ""
+    "Options:"
+    "  --port <number>   Custom port (default: 8000)"
+  ] |> Stdlib.printLines
+
+// ============================================================================
+// Package Discovery and Search
+// ============================================================================
+
+module Darklang.Cli.Search
+// Search packages and functions across community
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | [query] ->
+    // dark search "send email"
+    Stdlib.printLine $"Searching for: {query}"
+    Stdlib.printLine ""
+    
+    // TODO: Search local packages first
+    // TODO: Search community packages
+    // TODO: Rank by relevance and popularity
+    
+    Stdlib.printLine "📦 Packages:"
+    Stdlib.printLine "  Darklang.Email - Email sending utilities"
+    Stdlib.printLine "  Acme.Notifications - Multi-channel notifications"
+    Stdlib.printLine ""
+    Stdlib.printLine "🔧 Functions:"
+    Stdlib.printLine "  Darklang.Email.send - Send email via SMTP"
+    Stdlib.printLine "  Darklang.Email.sendTemplate - Send templated email"
+    Stdlib.printLine "  Acme.Notifications.email - Send notification email"
+    Stdlib.printLine ""
+    Stdlib.printLine "Use 'view <name>' for details or 'try <name>' to test"
+    
+    state
+  | [] ->
+    Stdlib.printLine "Usage: search <query>"
+    Stdlib.printLine "Search packages and functions by description or keywords"
+    state
+  | _ ->
+    let query = Stdlib.String.join args " "
+    Stdlib.printLine $"Searching for: {query}"
+    // TODO: Handle multi-word queries
+    state
+
+let complete (state: AppState) (args: List<String>) : List<String> =
+  // TODO: Suggest common search terms
+  ["email"; "json"; "http"; "database"; "auth"]
+
+let help (state: AppState) : Unit =
+  [
+    "Usage: search <query>"
+    "Search for packages and functions across the Darklang ecosystem."
+    ""
+    "Examples:"
+    "  dark search \"send email\"" 
+    "  dark search json parsing"
+    "  dark search http client"
+    ""
+    "Results show both local and community packages."
+    "Use 'view' to see details or 'try' to test functions interactively."
+  ] |> Stdlib.printLines
+
+// ============================================================================
+// Interactive Function Testing
+// ============================================================================
+
+module Darklang.Cli.Try
+// Try functions interactively before importing
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | [functionName] ->
+    // dark try Stdlib.String.reverse
+    Stdlib.printLine $"Interactive testing: {functionName}"
+    Stdlib.printLine ""
+    
+    // TODO: Load function signature
+    // TODO: Start interactive REPL for this function
+    // TODO: Show examples and documentation
+    
+    Stdlib.printLine "Function signature:"
+    Stdlib.printLine "  String.reverse(input: String): String"
+    Stdlib.printLine ""
+    Stdlib.printLine "Examples:"
+    Stdlib.printLine "  reverse(\"hello\") → \"olleh\""
+    Stdlib.printLine "  reverse(\"\") → \"\""
+    Stdlib.printLine ""
+    Stdlib.printLine "Enter values to test (or 'quit' to exit):"
+    Stdlib.printLine "> reverse(\"\") = "
+    
+    // TODO: Enter interactive mode
+    state
+  | [] ->
+    Stdlib.printLine "Usage: try <function>"
+    Stdlib.printLine "Test a function interactively before importing"
+    state
+  | _ ->
+    Stdlib.printLine "Usage: try <function>"
+    Stdlib.printLine "Only one function can be tested at a time"
+    state
+
+let complete (state: AppState) (args: List<String>) : List<String> =
+  match args with
+  | [] ->
+    // TODO: Return available functions
+    ["Stdlib.String.reverse"; "Stdlib.List.map"; "Stdlib.JSON.parse"]
+  | _ -> []
+
+let help (state: AppState) : Unit =
+  [
+    "Usage: try <function>"
+    "Interactively test a function before importing it into your project."
+    ""
+    "Features:"
+    "- See function signature and documentation"
+    "- Test with your own inputs"  
+    "- View example usage"
+    "- No need to import first"
+    ""
+    "Examples:"
+    "  dark try Stdlib.String.reverse"
+    "  dark try Acme.JSON.parse"
+  ] |> Stdlib.printLines
+
+// ============================================================================
+// Deployment
+// ============================================================================
+
+module Darklang.Cli.Deploy
+// One-command deployment to production
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | [] ->
+    // dark deploy (to default/production environment)
+    Stdlib.printLine "Deploying to production..."
+    Stdlib.printLine ""
+    
+    // TODO: Build project
+    // TODO: Run tests
+    // TODO: Deploy to production environment
+    // TODO: Run health checks
+    
+    Stdlib.printLine "✓ Build successful"
+    Stdlib.printLine "✓ Tests passed"
+    Stdlib.printLine "✓ Deploying to production..."
+    Stdlib.printLine "✓ Health checks passed"
+    Stdlib.printLine ""
+    Stdlib.printLine "🚀 Deployed successfully!"
+    Stdlib.printLine "   URL: https://my-app.darklang.io"
+    Stdlib.printLine "   Version: v1.2.3"
+    
+    state
+  | [environment] ->
+    // dark deploy staging
+    Stdlib.printLine $"Deploying to {environment}..."
+    
+    let validEnvs = ["staging"; "production"; "preview"]
+    if Stdlib.List.contains validEnvs environment then
+      // TODO: Deploy to specified environment
+      Stdlib.printLine $"✓ Deployed to {environment}"
+    else
+      let envsStr = Stdlib.String.join validEnvs ", "
+      Stdlib.printLine $"Error: Unknown environment '{environment}'"
+      Stdlib.printLine $"Valid environments: {envsStr}"
+    
+    state
+  | _ ->
+    Stdlib.printLine "Usage: deploy [environment]"
+    Stdlib.printLine "Environments: staging, production, preview"
+    state
+
+let complete (state: AppState) (args: List<String>) : List<String> =
+  match args with
+  | [] -> ["staging"; "production"; "preview"]
+  | _ -> []
+
+let help (state: AppState) : Unit =
+  [
+    "Usage: deploy [environment]"
+    "Deploy your application with zero configuration."
+    ""
+    "Environments:"
+    "  staging     Deploy to staging environment for testing"
+    "  production  Deploy to production (default)"
+    "  preview     Deploy preview version for sharing"
+    ""
+    "The deploy command automatically:"
+    "- Builds your application"
+    "- Runs all tests"
+    "- Handles infrastructure provisioning"
+    "- Performs health checks"
+    "- Provides live URL"
+  ] |> Stdlib.printLines
+
+// ============================================================================
+// Matter Session Management
+// ============================================================================
+
+module Darklang.Cli.Session
+// Manage development sessions (Matter integration)
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | ["new"; name] ->
+    // dark session new my-feature
+    Stdlib.printLine $"Creating new session: {name}"
+    
+    // TODO: Create session in Matter
+    // TODO: Update CLI state
+    
+    Stdlib.printLine "✓ Session created"
+    Stdlib.printLine $"✓ Switched to session: {name}"
+    Stdlib.printLine "✓ Based on current state"
+    state
+  | ["list"] ->
+    // dark session list
+    Stdlib.printLine "Development sessions:"
+    Stdlib.printLine ""
+    Stdlib.printLine "  main           (active) ← current"
+    Stdlib.printLine "  add-auth       (draft)  - 3 changes"
+    Stdlib.printLine "  fix-validation (paused) - 1 change"
+    Stdlib.printLine ""
+    Stdlib.printLine "Use 'session switch <name>' to change sessions"
+    state
+  | ["switch"; name] ->
+    // dark session switch add-auth
+    Stdlib.printLine $"Switching to session: {name}"
+    
+    // TODO: Switch session in Matter
+    // TODO: Update CLI state and prompt
+    
+    Stdlib.printLine $"✓ Now working in session: {name}"
+    state
+  | ["status"] ->
+    // dark session status
+    Stdlib.printLine "Current session: main"
+    Stdlib.printLine "Status: active"
+    Stdlib.printLine "Changes: 0"
+    Stdlib.printLine "Last activity: 2 minutes ago"
+    state
+  | _ ->
+    Stdlib.printLine "Usage: session [new|list|switch|status]"
+    state
+
+let complete (state: AppState) (args: List<String>) : List<String> =
+  match args with
+  | [] -> ["new"; "list"; "switch"; "status"]
+  | ["switch"] -> ["main"; "add-auth"; "fix-validation"] // TODO: Get actual sessions
+  | ["new"] -> [] // No completion for session names
+  | _ -> []
+
+let help (state: AppState) : Unit =
+  [
+    "Usage: session <command> [args]"
+    "Manage development sessions for parallel work."
+    ""
+    "Commands:"
+    "  new <name>     Create a new development session"
+    "  list           List all sessions"
+    "  switch <name>  Switch to a different session"
+    "  status         Show current session info"
+    ""
+    "Sessions allow you to work on multiple features simultaneously"
+    "without conflicts, similar to git branches but more lightweight."
+  ] |> Stdlib.printLines
+
+// ============================================================================
+// Matter Sharing (Sync)
+// ============================================================================
+
+module Darklang.Cli.Share  
+// Share work with team using Matter
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | [] ->
+    // dark share (share current session)
+    Stdlib.printLine "Sharing current session..."
+    
+    // TODO: Package current session changes
+    // TODO: Upload to Matter instance
+    
+    Stdlib.printLine "✓ Session packaged"
+    Stdlib.printLine "✓ Uploaded to team"
+    Stdlib.printLine ""
+    Stdlib.printLine "Share link: https://matter.darklang.com/sessions/abc123"
+    Stdlib.printLine "Team members can now see and review your changes"
+    state
+  | ["--message"; message] ->
+    // dark share --message "Added user authentication"
+    Stdlib.printLine $"Sharing session: {message}"
+    // TODO: Share with message
+    state
+  | _ ->
+    Stdlib.printLine "Usage: share [--message <description>]"
+    state
+
+let complete (state: AppState) (args: List<String>) : List<String> =
+  match args with
+  | [] -> ["--message"]
+  | _ -> []
+
+let help (state: AppState) : Unit =
+  [
+    "Usage: share [--message <description>]"
+    "Share your current work-in-progress with team members."
+    ""
+    "This creates a shareable link that allows others to:"
+    "- View your changes"
+    "- Test your work locally"
+    "- Provide feedback"
+    "- Merge changes when ready"
+    ""
+    "Options:"
+    "  --message <text>  Add description of changes"
+  ] |> Stdlib.printLines
