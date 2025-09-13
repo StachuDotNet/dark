@@ -1,0 +1,154 @@
+/// Session management commands for persistent work contexts
+module Darklang.Cli.Session
+
+type SessionInfo =
+  { id: String
+    name: String
+    intent: String
+    owner: String
+    status: String
+    lastActive: String
+    patchCount: Int64 }
+
+// Mock data for development
+let mockSessions : List<SessionInfo> = [
+  SessionInfo
+    { id = "helpful-owl-42"
+      name = "list-improvements"
+      intent = "Add missing List functions"
+      owner = "stachu"
+      status = "active"
+      lastActive = "now"
+      patchCount = 2L }
+  SessionInfo
+    { id = "clever-fox-17"
+      name = "string-fixes"
+      intent = "Fix String module edge cases"
+      owner = "ocean"
+      status = "suspended"
+      lastActive = "1 hour ago"
+      patchCount = 1L }
+]
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | [] ->
+    Stdlib.printLine "Usage: session <command> [args]"
+    Stdlib.printLine ""
+    Stdlib.printLine "Commands:"
+    Stdlib.printLine "  new --intent \"description\"   Create a new session"
+    Stdlib.printLine "  list                          List all sessions"
+    Stdlib.printLine "  continue <name>               Resume a session"
+    Stdlib.printLine "  suspend                       Suspend current session"
+    Stdlib.printLine "  current                       Show current session info"
+    Stdlib.printLine "  end                           End current session"
+    state
+
+  | ["new"; "--intent"; intent] ->
+    let sessionId = "brave-cat-91"  // TODO: Generate real ID
+    let sessionName = "new-work"    // TODO: Generate from intent
+    Stdlib.printLine $"✓ Created session: {sessionId}"
+    Stdlib.printLine $"Name: {sessionName}"
+    Stdlib.printLine $"Intent: {intent}"
+    Stdlib.printLine $"✓ Switched to session: {sessionId}"
+    Stdlib.printLine ""
+    Stdlib.printLine "Session is now active. All patches will be associated with this session."
+    state
+
+  | ["new"] ->
+    Stdlib.printLine "Please provide an intent for the session:"
+    Stdlib.printLine "  session new --intent \"What you're working on\""
+    state
+
+  | ["list"] ->
+    Stdlib.printLine "Sessions:"
+    mockSessions |> Stdlib.List.iter (fun session ->
+      let statusIcon = 
+        match session.status with
+        | "active" -> "🟢"
+        | "suspended" -> "⏸️"
+        | "completed" -> "✅"
+        | _ -> "❓"
+      Stdlib.printLine $"  {statusIcon} {session.id}: \"{session.intent}\" ({session.lastActive})")
+    state
+
+  | ["continue"; sessionName] ->
+    match Stdlib.List.findFirst mockSessions (fun s -> Stdlib.String.contains s.name sessionName || Stdlib.String.contains s.id sessionName) with
+    | Some session ->
+      Stdlib.printLine $"Resuming session: {session.id}"
+      Stdlib.printLine $"Intent: {session.intent}"
+      Stdlib.printLine $"Patches in session: {Stdlib.Int64.toString session.patchCount}"
+      Stdlib.printLine ""
+      Stdlib.printLine "Session context restored:"
+      Stdlib.printLine "  Location: /Darklang.Stdlib.List"
+      Stdlib.printLine "  Current patch: draft-abc123"
+    | None ->
+      Stdlib.printLine $"Session matching '{sessionName}' not found"
+      Stdlib.printLine "Use 'session list' to see available sessions"
+    state
+
+  | ["suspend"] ->
+    Stdlib.printLine "Suspending current session: helpful-owl-42"
+    Stdlib.printLine "✓ Session state saved"
+    Stdlib.printLine "✓ Session suspended"
+    Stdlib.printLine ""
+    Stdlib.printLine "Use 'session continue helpful-owl' to resume later"
+    state
+
+  | ["current"] ->
+    Stdlib.printLine "Current session: helpful-owl-42"
+    Stdlib.printLine "Name: list-improvements"
+    Stdlib.printLine "Intent: Add missing List functions"
+    Stdlib.printLine "Status: active"
+    Stdlib.printLine "Started: 2 hours ago"
+    Stdlib.printLine "Patches: 2"
+    Stdlib.printLine ""
+    Stdlib.printLine "Context:"
+    Stdlib.printLine "  Location: /Darklang.Stdlib.List"
+    Stdlib.printLine "  Current patch: draft-abc123"
+    Stdlib.printLine "  Notes: Working on filterMap and partitionMap"
+    state
+
+  | ["end"] ->
+    Stdlib.printLine "Ending current session: helpful-owl-42"
+    Stdlib.printLine "✓ Session marked as completed"
+    Stdlib.printLine "✓ 2 patches created in this session"
+    Stdlib.printLine ""
+    Stdlib.printLine "Session summary:"
+    Stdlib.printLine "  Duration: 2 hours"
+    Stdlib.printLine "  Patches: 2 (1 ready, 1 draft)"
+    Stdlib.printLine "  Functions added: 2"
+    state
+
+  | _ ->
+    Stdlib.printLine "Unknown session command. Use 'session' for help."
+    state
+
+let help (_state: AppState) : Unit =
+  [
+    "session - Manage persistent work contexts"
+    ""
+    "Sessions help you organize your work and maintain context"
+    "across CLI restarts. Each session tracks:"
+    "  - Your current intent/goal"
+    "  - Patches created during the session"
+    "  - Current location and work state"
+    ""
+    "Example workflow:"
+    "  1. session new --intent \"Add List functions\""
+    "  2. [work on your changes]"
+    "  3. session suspend (when taking a break)"
+    "  4. session continue my-session (resume later)"
+    "  5. session end (when work is complete)"
+  ] |> Stdlib.printLines
+
+let complete (state: AppState) (args: List<String>) : List<String> =
+  match args with
+  | [] ->
+    ["new"; "list"; "continue"; "suspend"; "current"; "end"]
+  | ["continue"] ->
+    mockSessions 
+    |> Stdlib.List.filter (fun s -> s.status != "completed")
+    |> Stdlib.List.map (fun s -> s.name)
+  | _ ->
+    []

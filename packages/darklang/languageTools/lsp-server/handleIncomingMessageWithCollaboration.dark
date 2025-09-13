@@ -1,0 +1,597 @@
+/// Enhanced LSP message handler that includes collaboration extensions
+/// This integrates the collaboration features into the main LSP server
+/// while maintaining compatibility with all LSP clients
+module Darklang.LanguageTools.LspServer
+
+// Import the collaboration extensions
+open Darklang.LanguageTools.LspServer.CollaborationExtensions
+open Darklang.LanguageTools.LspServer.VirtualFileSystemHandlers
+
+/// Enhanced LSP state that includes collaboration client capabilities
+type EnhancedLspState = {
+  // Standard LSP state fields
+  initialized: Bool
+  shouldShutdown: Bool
+  documentsInScope: Dict<LanguageServerProtocol.DocumentUri, String>
+  
+  // Collaboration-specific state
+  collaborationCapabilities: CollaborationClientCapabilities
+  currentUser: Stdlib.Option.Option<String>
+  activeSession: Stdlib.Option.Option<String>
+}
+
+/// Enhanced initialize handler that negotiates collaboration capabilities
+let handleEnhancedInitializeRequest (initializeParams: Json) : EnhancedLspState =
+  log "Handling enhanced initialize request with collaboration capabilities"
+  
+  // Parse client capabilities including collaboration extensions
+  let clientCapabilities = parseClientCollaborationCapabilities initializeParams
+  
+  // Send enhanced server capabilities that include collaboration features
+  let serverCapabilities = getExtendedServerCapabilities ()
+  
+  let initializeResult = {
+    capabilities = serverCapabilities
+    serverInfo = {
+      name = "Darklang Language Server"
+      version = "1.0.0-collab"
+    }
+  }
+  
+  let response = JsonRPC.Response.Ok.make None (Builtin.jsonSerialize initializeResult)
+  logAndSendToClient (Stdlib.AltJson.format response)
+  
+  // Return enhanced state with collaboration capabilities
+  {
+    initialized = true
+    shouldShutdown = false
+    documentsInScope = Dict.empty
+    collaborationCapabilities = clientCapabilities
+    currentUser = None
+    activeSession = None
+  }
+
+/// Enhanced message handler that routes collaboration and VFS methods appropriately
+let handleEnhancedIncomingMessage
+  (state: EnhancedLspState)
+  (r: JsonRPC.Request.Request)
+  : EnhancedLspState =
+  
+  // Check if this is a darklang-specific method
+  if Stdlib.String.startsWith r.method "darklang/" then
+    match r.id with
+    | Some requestId ->
+      log $"Handling Darklang method: {r.method}"
+      
+      // Route to appropriate handler based on method prefix
+      if Stdlib.String.startsWith r.method "darklang/vfs/" then
+        // Virtual File System methods
+        let updatedState = handleVfsMethod 
+          (convertToStandardState state)
+          r.method 
+          requestId 
+          r.params
+        
+        // Convert back to enhanced state
+        { state with 
+            initialized = updatedState.initialized
+            shouldShutdown = updatedState.shouldShutdown
+            documentsInScope = updatedState.documentsInScope }
+      
+      elif Stdlib.String.startsWith r.method "darklang/packages/" then
+        // Package management methods
+        let updatedState = handlePackageMethod 
+          (convertToStandardState state)
+          r.method 
+          requestId 
+          r.params
+        
+        { state with 
+            initialized = updatedState.initialized
+            shouldShutdown = updatedState.shouldShutdown
+            documentsInScope = updatedState.documentsInScope }
+      
+      else
+        // Collaboration methods
+        let updatedState = handleCollaborationMethod 
+          (convertToStandardState state)
+          r.method 
+          requestId 
+          r.params
+        
+        { state with 
+            initialized = updatedState.initialized
+            shouldShutdown = updatedState.shouldShutdown
+            documentsInScope = updatedState.documentsInScope }
+    
+    | None ->
+      // Handle notifications (methods without IDs)
+      if Stdlib.String.startsWith r.method "darklang/vfs/" then
+        handleVfsNotification state r.method r.params
+      else
+        handleCollaborationNotification state r.method r.params
+  
+  else
+    // Handle standard LSP methods using existing handler
+    let standardState = convertToStandardState state
+    let updatedStandardState = handleStandardIncomingMessage standardState r
+    
+    // Convert back to enhanced state
+    { state with 
+        initialized = updatedStandardState.initialized
+        shouldShutdown = updatedStandardState.shouldShutdown
+        documentsInScope = updatedStandardState.documentsInScope }
+
+/// Handle collaboration notifications (no response expected)
+let handleCollaborationNotification
+  (state: EnhancedLspState)
+  (method: String)
+  (params: Stdlib.Option.Option<Json>)
+  : EnhancedLspState =
+  
+  match method with
+  | "darklang/auth/login" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "username") with
+      | Some (_, String username) ->
+        log $"User logged in: {username}"
+        { state with currentUser = Some username }
+      | _ ->
+        log "Invalid login notification"
+        state
+    | _ ->
+      log "Invalid login notification parameters"
+      state
+  
+  | "darklang/session/activated" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "sessionId") with
+      | Some (_, String sessionId) ->
+        log $"Session activated: {sessionId}"
+        { state with activeSession = Some sessionId }
+      | _ ->
+        log "Invalid session activation notification"
+        state
+    | _ ->
+      log "Invalid session activation notification parameters"
+      state
+  
+  | _ ->
+    log $"Unknown collaboration notification: {method}"
+    state
+
+/// Enhanced server loop that uses the enhanced message handler
+let runEnhancedServerCliLoop (state: EnhancedLspState) : Int64 =
+  log "---"
+
+  let incomingMessageRaw = readMessageFromClient ()
+  logIncomingRequest incomingMessageRaw
+
+  let updatedState =
+    match JsonRPC.IncomingMessage.parse incomingMessageRaw with
+    | EmptyBatch -> state
+
+    | SingleRequest(Ok jsonRpcRequest) ->
+      log $"Parsed incoming message as single JSON-RPC request"
+      handleEnhancedIncomingMessage state jsonRpcRequest
+
+    | BatchOfRequests items ->
+      log "TODO - Got batch request; not yet set to handle these"
+      state
+
+    | SingleRequest(Error singleRequestParseError) ->
+      // Handle parsing errors (same as original)
+      handleRequestParseError singleRequestParseError
+      state
+
+    | NotJson err ->
+      log $"Error parsing incoming message as json:\n{incomingMessageRaw}\nError: {err}"
+      logAndSendToClient """{"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": null}"""
+      state
+
+    | NotObjectOrArray ->
+      log $"Error parsing incoming message as json-rpc:\n{incomingMessageRaw}"
+      logAndSendToClient """{"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request"}, "id": null}"""
+      state
+
+  // shut down if instructed, or listen for the next message
+  if updatedState.shouldShutdown then
+    0L
+  else
+    runEnhancedServerCliLoop updatedState
+
+/// Convert enhanced state to standard state for compatibility
+let convertToStandardState (enhancedState: EnhancedLspState) : LspState =
+  {
+    initialized = enhancedState.initialized
+    shouldShutdown = enhancedState.shouldShutdown
+    documentsInScope = enhancedState.documentsInScope
+  }
+
+/// The main entry point that now includes collaboration features
+/// Handle VFS method requests
+let handleVfsMethod
+  (state: LspState)
+  (method: String)
+  (requestId: JsonRPC.Request.RequestId)
+  (params: Stdlib.Option.Option<Json>)
+  : LspState =
+  
+  match method with
+  | "darklang/vfs/stat" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "uri") with
+      | Some (_, String uri) ->
+        handleVfsStatRequest state requestId uri
+      | _ ->
+        sendInvalidUriError requestId "Missing uri parameter"
+        state
+    | _ ->
+      sendInvalidUriError requestId "Invalid parameters"
+      state
+  
+  | "darklang/vfs/readFile" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "uri") with
+      | Some (_, String uri) ->
+        handleVfsReadFileRequest state requestId uri
+      | _ ->
+        sendInvalidUriError requestId "Missing uri parameter"
+        state
+    | _ ->
+      sendInvalidUriError requestId "Invalid parameters"
+      state
+  
+  | "darklang/vfs/writeFile" ->
+    match params with
+    | Some (Object p) ->
+      let uri = 
+        match Stdlib.List.find p (fun (key, _) -> key == "uri") with
+        | Some (_, String u) -> Some u
+        | _ -> None
+      
+      let content = 
+        match Stdlib.List.find p (fun (key, _) -> key == "content") with
+        | Some (_, String c) -> Some c
+        | _ -> None
+      
+      let options =
+        match Stdlib.List.find p (fun (key, _) -> key == "options") with
+        | Some (_, Object opts) ->
+          let create = 
+            match Stdlib.List.find opts (fun (key, _) -> key == "create") with
+            | Some (_, Bool b) -> b
+            | _ -> false
+          let overwrite = 
+            match Stdlib.List.find opts (fun (key, _) -> key == "overwrite") with
+            | Some (_, Bool b) -> b
+            | _ -> false
+          { create = create; overwrite = overwrite }
+        | _ -> { create = true; overwrite = true }
+      
+      match (uri, content) with
+      | (Some u, Some c) ->
+        handleVfsWriteFileRequest state requestId u c options
+      | _ ->
+        sendInvalidUriError requestId "Missing uri or content parameter"
+        state
+    | _ ->
+      sendInvalidUriError requestId "Invalid parameters"
+      state
+  
+  | "darklang/vfs/readDirectory" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "uri") with
+      | Some (_, String uri) ->
+        handleVfsReadDirectoryRequest state requestId uri
+      | _ ->
+        sendInvalidUriError requestId "Missing uri parameter"
+        state
+    | _ ->
+      sendInvalidUriError requestId "Invalid parameters"
+      state
+  
+  | "darklang/vfs/delete" ->
+    match params with
+    | Some (Object p) ->
+      let uri = 
+        match Stdlib.List.find p (fun (key, _) -> key == "uri") with
+        | Some (_, String u) -> Some u
+        | _ -> None
+      
+      let options =
+        match Stdlib.List.find p (fun (key, _) -> key == "options") with
+        | Some (_, Object opts) ->
+          let recursive = 
+            match Stdlib.List.find opts (fun (key, _) -> key == "recursive") with
+            | Some (_, Bool b) -> b
+            | _ -> false
+          { recursive = recursive }
+        | _ -> { recursive = false }
+      
+      match uri with
+      | Some u ->
+        handleVfsDeleteRequest state requestId u options
+      | _ ->
+        sendInvalidUriError requestId "Missing uri parameter"
+        state
+    | _ ->
+      sendInvalidUriError requestId "Invalid parameters"
+      state
+  
+  | _ ->
+    sendInvalidUriError requestId $"Unknown VFS method: {method}"
+    state
+
+/// Handle package method requests
+let handlePackageMethod
+  (state: LspState)
+  (method: String)
+  (requestId: JsonRPC.Request.RequestId)
+  (params: Stdlib.Option.Option<Json>)
+  : LspState =
+  
+  match method with
+  | "darklang/packages/list" ->
+    handlePackageListRequest state requestId
+  
+  | "darklang/packages/modules" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "packageName") with
+      | Some (_, String packageName) ->
+        handlePackageModulesRequest state requestId packageName
+      | _ ->
+        sendInvalidUriError requestId "Missing packageName parameter"
+        state
+    | _ ->
+      sendInvalidUriError requestId "Invalid parameters"
+      state
+  
+  | "darklang/packages/items" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "packagePath") with
+      | Some (_, String packagePath) ->
+        handlePackageItemsRequest state requestId packagePath
+      | _ ->
+        sendInvalidUriError requestId "Missing packagePath parameter"
+        state
+    | _ ->
+      sendInvalidUriError requestId "Invalid parameters"
+      state
+  
+  | _ ->
+    sendInvalidUriError requestId $"Unknown package method: {method}"
+    state
+
+/// Handle VFS notifications
+let handleVfsNotification
+  (state: EnhancedLspState)
+  (method: String)
+  (params: Stdlib.Option.Option<Json>)
+  : EnhancedLspState =
+  
+  match method with
+  | "darklang/vfs/watch" ->
+    match params with
+    | Some (Object p) ->
+      let uri = 
+        match Stdlib.List.find p (fun (key, _) -> key == "uri") with
+        | Some (_, String u) -> Some u
+        | _ -> None
+      
+      let options =
+        match Stdlib.List.find p (fun (key, _) -> key == "options") with
+        | Some (_, Object opts) ->
+          let recursive = 
+            match Stdlib.List.find opts (fun (key, _) -> key == "recursive") with
+            | Some (_, Bool b) -> b
+            | _ -> false
+          let excludes =
+            match Stdlib.List.find opts (fun (key, _) -> key == "excludes") with
+            | Some (_, Array arr) -> arr |> Stdlib.List.choose (function | String s -> Some s | _ -> None)
+            | _ -> []
+          { recursive = recursive; excludes = excludes }
+        | _ -> { recursive = false; excludes = [] }
+      
+      match uri with
+      | Some u ->
+        let updatedState = handleVfsWatchRequest (convertToStandardState state) u options
+        { state with 
+            initialized = updatedState.initialized
+            shouldShutdown = updatedState.shouldShutdown
+            documentsInScope = updatedState.documentsInScope }
+      | _ ->
+        log "VFS watch notification: missing uri"
+        state
+    | _ ->
+      log "VFS watch notification: invalid parameters"
+      state
+  
+  | "darklang/vfs/unwatch" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "uri") with
+      | Some (_, String uri) ->
+        let updatedState = handleVfsUnwatchRequest (convertToStandardState state) uri
+        { state with 
+            initialized = updatedState.initialized
+            shouldShutdown = updatedState.shouldShutdown
+            documentsInScope = updatedState.documentsInScope }
+      | _ ->
+        log "VFS unwatch notification: missing uri"
+        state
+    | _ ->
+      log "VFS unwatch notification: invalid parameters"
+      state
+  
+  | _ ->
+    log $"Unknown VFS notification: {method}"
+    state
+
+let runEnhancedServerCli (u: Unit) : Int64 =
+  // clear `lsp-server.log`, and write a timestamp of the start-up
+  let _deleted = Builtin.fileDelete logFilePath
+
+  (Stdlib.DateTime.now_v0 ())
+  |> Stdlib.DateTime.toString
+  |> fun nowStr -> log $"Running Enhanced Darklang LSP Server with Collaboration {nowStr}"
+
+  // Handle the initialize request with collaboration capabilities
+  let incomingMessageRaw = readMessageFromClient ()
+  logIncomingRequest incomingMessageRaw
+  
+  let initialState = 
+    match JsonRPC.IncomingMessage.parse incomingMessageRaw with
+    | SingleRequest(Ok jsonRpcRequest) ->
+      if jsonRpcRequest.method == "initialize" then
+        match jsonRpcRequest.params with
+        | Some params -> handleEnhancedInitializeRequest params
+        | None -> handleEnhancedInitializeRequest (Object [])
+      else
+        // Fallback to standard initialize
+        let standardState = handleInitializeRequest ()
+        {
+          initialized = standardState.initialized
+          shouldShutdown = standardState.shouldShutdown
+          documentsInScope = standardState.documentsInScope
+          collaborationCapabilities = CollaborationClientCapabilities {
+            patchTreeView = false
+            conflictResolutionUI = false
+            sessionManagementUI = false
+            realtimeNotifications = false
+            webviewProvider = false
+          }
+          currentUser = None
+          activeSession = None
+        }
+    | _ ->
+      // Fallback initialization
+      {
+        initialized = true
+        shouldShutdown = false
+        documentsInScope = Dict.empty
+        collaborationCapabilities = CollaborationClientCapabilities {
+          patchTreeView = false
+          conflictResolutionUI = false
+          sessionManagementUI = false
+          realtimeNotifications = false
+          webviewProvider = false
+        }
+        currentUser = None
+        activeSession = None
+      }
+
+  // Start the enhanced server loop
+  runEnhancedServerCliLoop initialState
+
+/// LSP capability advertisement for different editors
+let getCollaborationCapabilitiesForEditor (editorType: String) : CollaborationServerCapabilities =
+  match editorType with
+  | "vscode" ->
+    // VS Code supports rich UI
+    CollaborationServerCapabilities {
+      patchProvider = true
+      sessionProvider = true
+      conflictProvider = true
+      syncProvider = true
+      realtimeProvider = true
+      executeCommandProvider = ExecuteCommandOptions {
+        commands = getAllCollaborationCommands ()
+      }
+    }
+  
+  | "nvim" | "vim" ->
+    // Vim/Neovim - focus on command-line interface
+    CollaborationServerCapabilities {
+      patchProvider = true
+      sessionProvider = true
+      conflictProvider = true
+      syncProvider = true
+      realtimeProvider = false  // Usually don't support WebSockets
+      executeCommandProvider = ExecuteCommandOptions {
+        commands = getCommandLineCommands ()
+      }
+    }
+  
+  | "emacs" ->
+    // Emacs - good LSP support but different UI paradigms
+    CollaborationServerCapabilities {
+      patchProvider = true
+      sessionProvider = true
+      conflictProvider = true
+      syncProvider = true
+      realtimeProvider = true
+      executeCommandProvider = ExecuteCommandOptions {
+        commands = getAllCollaborationCommands ()
+      }
+    }
+  
+  | _ ->
+    // Generic editor - minimal but functional
+    CollaborationServerCapabilities {
+      patchProvider = true
+      sessionProvider = false  // Requires UI support
+      conflictProvider = true
+      syncProvider = true
+      realtimeProvider = false
+      executeCommandProvider = ExecuteCommandOptions {
+        commands = getCoreCommands ()
+      }
+    }
+
+let getAllCollaborationCommands () : List<String> = [
+  "darklang.patch.create"
+  "darklang.patch.list"
+  "darklang.patch.view"
+  "darklang.patch.apply"
+  "darklang.patch.ready"
+  "darklang.session.create"
+  "darklang.session.list"
+  "darklang.session.switch"
+  "darklang.session.suspend"
+  "darklang.session.end"
+  "darklang.conflicts.list"
+  "darklang.conflicts.resolve"
+  "darklang.conflicts.auto"
+  "darklang.sync.status"
+  "darklang.sync.push"
+  "darklang.sync.pull"
+]
+
+let getCommandLineCommands () : List<String> = [
+  "darklang.patch.create"
+  "darklang.patch.list"
+  "darklang.patch.apply"
+  "darklang.conflicts.list"
+  "darklang.conflicts.auto"
+  "darklang.sync.status"
+  "darklang.sync.push"
+  "darklang.sync.pull"
+]
+
+let getCoreCommands () : List<String> = [
+  "darklang.patch.create"
+  "darklang.patch.list"
+  "darklang.patch.apply"
+  "darklang.sync.push"
+  "darklang.sync.pull"
+]
+
+// Placeholder implementations for missing functions
+let handleRequestParseError (error: JsonRPC.IncomingMessage.SingleRequestParseError) : Unit = ()
+let handleStandardIncomingMessage (state: LspState) (request: JsonRPC.Request.Request) : LspState = state
+let handleInitializeRequest () : LspState = { initialized = true; shouldShutdown = false; documentsInScope = Dict.empty }
+let logFilePath : String = "rundir/logs/lsp-server.log"
+
+type LspState = {
+  initialized: Bool
+  shouldShutdown: Bool
+  documentsInScope: Dict<LanguageServerProtocol.DocumentUri, String>
+}

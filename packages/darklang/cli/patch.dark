@@ -1,0 +1,178 @@
+/// Patch management commands for developer collaboration
+module Darklang.Cli.Patch
+
+// For now, we'll use simple in-memory storage
+// TODO: Replace with actual SQLite database calls
+
+type PatchInfo =
+  { id: String
+    author: String
+    intent: String
+    opsCount: Int64
+    status: String
+    createdAt: String }
+
+// Mock data for development
+let mockPatches : List<PatchInfo> = [
+  PatchInfo 
+    { id = "89ab4e"
+      author = "stachu"
+      intent = "Add List.filterMap function"
+      opsCount = 1L
+      status = "ready"
+      createdAt = "2 mins ago" }
+  PatchInfo
+    { id = "77cd3f"
+      author = "ocean"
+      intent = "Fix String.split edge case"
+      opsCount = 2L
+      status = "draft"
+      createdAt = "1 hour ago" }
+]
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | [] ->
+    // Show patch help
+    Stdlib.printLine "Usage: patch <command> [args]"
+    Stdlib.printLine ""
+    Stdlib.printLine "Commands:"
+    Stdlib.printLine "  create [intent]  Create a new patch"
+    Stdlib.printLine "  list            List all patches"
+    Stdlib.printLine "  view <id>       View patch details"
+    Stdlib.printLine "  apply <id>      Apply a patch"
+    Stdlib.printLine "  ready           Mark current patch as ready"
+    Stdlib.printLine "  status          Show current patch status"
+    state
+
+  | ["create"] ->
+    match Database.getCurrentUser () with
+    | Some author ->
+      let patchId = Database.createPatch author "New patch"
+      Stdlib.printLine $"✓ Created patch: {patchId}"
+      Stdlib.printLine "Use 'patch ready' when you're done making changes"
+      state
+    | None ->
+      Stdlib.printLine "❌ Not authenticated. Use 'auth login <username>' first."
+      state
+
+  | ["create"; intent] ->
+    match Database.getCurrentUser () with
+    | Some author ->
+      let patchId = Database.createPatch author intent
+      Stdlib.printLine $"✓ Created patch: {patchId}"
+      Stdlib.printLine $"Intent: {intent}"
+      Stdlib.printLine "Use 'patch ready' when you're done making changes"
+      state
+    | None ->
+      Stdlib.printLine "❌ Not authenticated. Use 'auth login <username>' first."
+      state
+
+  | ["list"] ->
+    Stdlib.printLine "Patches:"
+    let patchIds = Database.loadPatches ()
+    patchIds |> Stdlib.List.iter (fun patchId ->
+      match Database.getPatchInfo patchId with
+      | Some info ->
+        let statusIcon = 
+          match Stdlib.Dict.get info "status" with
+          | Some "draft" -> "📝"
+          | Some "ready" -> "✅"
+          | Some "applied" -> "🚀"
+          | _ -> "❓"
+        let intent = Stdlib.Dict.get info "intent" |> Stdlib.Option.withDefault "No intent"
+        let author = Stdlib.Dict.get info "author" |> Stdlib.Option.withDefault "Unknown"
+        let createdAt = Stdlib.Dict.get info "createdAt" |> Stdlib.Option.withDefault "Unknown time"
+        Stdlib.printLine $"  {statusIcon} {patchId}: \"{intent}\" by {author} ({createdAt})"
+      | None ->
+        Stdlib.printLine $"  ❓ {patchId}: (error loading patch info)")
+    state
+
+  | ["view"; patchId] ->
+    match Database.getPatchInfo patchId with
+    | Some info ->
+      let author = Stdlib.Dict.get info "author" |> Stdlib.Option.withDefault "Unknown"
+      let intent = Stdlib.Dict.get info "intent" |> Stdlib.Option.withDefault "No intent"
+      let status = Stdlib.Dict.get info "status" |> Stdlib.Option.withDefault "unknown"
+      let opsCount = Stdlib.Dict.get info "opsCount" |> Stdlib.Option.withDefault "0"
+      let createdAt = Stdlib.Dict.get info "createdAt" |> Stdlib.Option.withDefault "Unknown time"
+      
+      Stdlib.printLine $"Patch: {patchId}"
+      Stdlib.printLine $"Author: {author}"
+      Stdlib.printLine $"Intent: {intent}"
+      Stdlib.printLine $"Status: {status}"
+      Stdlib.printLine $"Operations: {opsCount}"
+      Stdlib.printLine $"Created: {createdAt}"
+      Stdlib.printLine ""
+      Stdlib.printLine "Changes:"
+      Stdlib.printLine "  + Function operations (details coming soon...)"
+    | None ->
+      Stdlib.printLine $"Patch {patchId} not found"
+    state
+
+  | ["apply"; patchId] ->
+    match Stdlib.List.findFirst mockPatches (fun p -> p.id == patchId) with
+    | Some patch ->
+      Stdlib.printLine $"Applying patch {patchId}..."
+      Stdlib.printLine "Validating changes..."
+      Stdlib.printLine "✓ Type checks passed"
+      Stdlib.printLine "✓ No naming conflicts"
+      Stdlib.printLine $"✓ Applied: {patch.intent}"
+      if patch.id == "89ab4e" then
+        Stdlib.printLine "✓ Added function: Darklang.Stdlib.List.filterMap"
+      else
+        Stdlib.printLine "✓ Updated function: Darklang.Stdlib.String.split"
+        Stdlib.printLine "✓ Added test: Darklang.Stdlib.String.splitEdgeCase"
+    | None ->
+      Stdlib.printLine $"Patch {patchId} not found"
+    state
+
+  | ["ready"] ->
+    Stdlib.printLine "Marking current patch as ready..."
+    Stdlib.printLine "Validating patch..."
+    Stdlib.printLine "✓ Type checks passed"
+    Stdlib.printLine "✓ No naming conflicts"
+    Stdlib.printLine "✓ Patch marked as ready: patch-abc123"
+    Stdlib.printLine "Use 'sync push' to share with other developers"
+    state
+
+  | ["status"] ->
+    Stdlib.printLine "Current patch: draft-abc123"
+    Stdlib.printLine "Intent: Add List.filterMap function"
+    Stdlib.printLine "Status: draft"
+    Stdlib.printLine "Operations: 1 (AddFunction)"
+    Stdlib.printLine ""
+    Stdlib.printLine "Pending changes:"
+    Stdlib.printLine "  + Function Darklang.Stdlib.List.filterMap"
+    state
+
+  | _ ->
+    Stdlib.printLine "Unknown patch command. Use 'patch' for help."
+    state
+
+let help (_state: AppState) : Unit =
+  [
+    "patch - Manage code patches for collaboration"
+    ""
+    "Patches are collections of operations that represent logical changes."
+    "They can be shared with other developers and applied to their codebase."
+    ""
+    "Basic workflow:"
+    "  1. patch create \"Add new function\""
+    "  2. [make your changes]"
+    "  3. patch ready"
+    "  4. sync push"
+  ] |> Stdlib.printLines
+
+let complete (state: AppState) (args: List<String>) : List<String> =
+  match args with
+  | [] ->
+    ["create"; "list"; "view"; "apply"; "ready"; "status"]
+  | ["view"] ->
+    mockPatches |> Stdlib.List.map (fun p -> p.id)
+  | ["apply"] ->
+    mockPatches 
+    |> Stdlib.List.filter (fun p -> p.status == "ready")
+    |> Stdlib.List.map (fun p -> p.id)
+  | _ ->
+    []

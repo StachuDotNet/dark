@@ -1,0 +1,469 @@
+/// WebSocket Server for Real-time Collaborative Editing
+/// Handles WebSocket connections and real-time message routing
+module Darklang.Collaboration.RealtimeWebSocketServer
+
+open Darklang.Collaboration.RealtimeEditing
+open System.Net.WebSockets
+open System.Collections.Concurrent
+
+/// WebSocket server for real-time collaboration
+type RealtimeServer = {
+  port: Int64
+  isRunning: Bool
+  connections: ConcurrentDictionary<String, ClientConnection>
+  sessions: ConcurrentDictionary<String, CollaborativeSession>
+  messageHandlers: Dict<String, MessageHandler>
+  rateLimiter: RateLimiter
+  heartbeatTimer: Timer
+}
+
+type ClientConnection = {
+  connectionId: String
+  userId: String
+  webSocket: WebSocket
+  sessionId: Option<String>
+  isAuthenticated: Bool
+  connectedAt: DateTime
+  lastActivity: DateTime
+  messageQueue: Queue<OutgoingMessage>
+  permissions: ConnectionPermissions
+}
+
+type MessageHandler = IncomingMessage -> ClientConnection -> Unit
+
+/// Real-time message types
+type IncomingMessage = {
+  messageId: String
+  messageType: MessageType
+  payload: Json
+  timestamp: DateTime
+  sessionId: Option<String>
+}
+
+type MessageType =
+  | JoinSession of sessionId: String
+  | LeaveSession
+  | Operation of operation: Operation
+  | CursorUpdate of cursor: CursorPosition * selection: SelectionRange
+  | PresenceUpdate of presence: PresenceInfo
+  | HeartbeatPing
+  | ChatMessage of message: String
+  | RequestSnapshot
+  | AcknowledgeOperation of operationId: Int64
+
+type OutgoingMessage = {
+  messageId: String
+  messageType: OutgoingMessageType
+  payload: Json
+  timestamp: DateTime
+  priority: MessagePriority
+}
+
+type OutgoingMessageType =
+  | SessionJoined of joinInfo: JoinInfo
+  | ParticipantJoined of participant: Participant
+  | ParticipantLeft of userId: String
+  | OperationBroadcast of operation: Operation
+  | CursorBroadcast of userId: String * cursor: CursorPosition * selection: SelectionRange
+  | PresenceBroadcast of userId: String * presence: PresenceInfo
+  | ConflictDetected of conflict: RealtimeConflict
+  | ErrorMessage of error: String
+  | HeartbeatPong
+  | SessionSnapshot of snapshot: DocumentSnapshot
+
+type MessagePriority = Immediate | High | Normal | Low
+
+/// Start the real-time WebSocket server
+let startRealtimeServer (port: Int64) : RealtimeServer =
+  try
+    let server = {
+      port = port
+      isRunning = false
+      connections = ConcurrentDictionary<String, ClientConnection>()
+      sessions = ConcurrentDictionary<String, CollaborativeSession>()
+      messageHandlers = createMessageHandlers ()
+      rateLimiter = createRateLimiter ()
+      heartbeatTimer = Timer.create ()
+    }
+    
+    // Initialize message handlers
+    setupMessageHandlers server
+    
+    // Start WebSocket listener
+    startWebSocketListener server
+    
+    // Start heartbeat timer
+    startHeartbeatTimer server
+    
+    log $"Real-time server started on port {port}"
+    { server with isRunning = true }
+    
+  with
+  | error ->
+    log $"Failed to start real-time server: {error}"
+    failwith error
+
+/// Handle new WebSocket connection
+let handleNewConnection (server: RealtimeServer) (webSocket: WebSocket) (userId: String) : Unit =
+  try
+    let connectionId = generateConnectionId ()
+    
+    let connection = {
+      connectionId = connectionId
+      userId = userId
+      webSocket = webSocket
+      sessionId = None
+      isAuthenticated = authenticateUser userId
+      connectedAt = DateTime.now
+      lastActivity = DateTime.now
+      messageQueue = Queue.empty
+      permissions = getConnectionPermissions userId
+    }
+    
+    if connection.isAuthenticated then
+      server.connections.TryAdd(connectionId, connection) |> ignore
+      
+      // Start message loop for this connection
+      startConnectionMessageLoop server connection
+      
+      log $"New connection established: {connectionId} (user: {userId})"
+    else
+      // Close unauthenticated connection
+      closeConnection webSocket "Authentication failed"
+      log $"Rejected unauthenticated connection for user: {userId}"
+  
+  with
+  | error ->
+    log $"Failed to handle new connection: {error}"
+    closeConnection webSocket $"Connection setup failed: {error}"
+
+/// Process incoming message from client
+let processIncomingMessage (server: RealtimeServer) (connection: ClientConnection) (messageJson: String) : Unit =
+  try
+    // Check rate limiting
+    if not (server.rateLimiter.allowMessage connection.userId) then
+      sendErrorMessage connection "Rate limit exceeded"
+      return ()
+    
+    // Parse message
+    let message = parseIncomingMessage messageJson
+    
+    // Update connection activity
+    let updatedConnection = { connection with lastActivity = DateTime.now }
+    server.connections.TryUpdate(connection.connectionId, updatedConnection, connection) |> ignore
+    
+    // Route message to appropriate handler
+    match Dict.tryFind server.messageHandlers message.messageType.ToString() with
+    | Some handler ->
+      handler message updatedConnection
+    
+    | None ->
+      log $"Unknown message type: {message.messageType}"
+      sendErrorMessage connection $"Unknown message type: {message.messageType}"
+  
+  with
+  | error ->
+    log $"Failed to process incoming message: {error}"
+    sendErrorMessage connection $"Message processing failed: {error}"
+
+/// Handle join session request
+let handleJoinSession (server: RealtimeServer) (message: IncomingMessage) (connection: ClientConnection) : Unit =
+  try
+    match message.messageType with
+    | JoinSession sessionId ->
+      // Check if user can join this session
+      if not (canUserJoinSession connection.userId sessionId) then
+        sendErrorMessage connection "Permission denied"
+        return ()
+      
+      // Get or create collaborative session
+      let session = 
+        match server.sessions.TryGetValue(sessionId) with
+        | (true, existingSession) -> existingSession
+        | (false, _) -> 
+          // Create new session if it doesn't exist
+          let newSession = startCollaborativeSession sessionId connection.userId
+          server.sessions.TryAdd(sessionId, newSession) |> ignore
+          newSession
+      
+      // Join the session
+      let joinResult = joinCollaborativeSession sessionId connection.userId connection
+      
+      match joinResult with
+      | JoinSuccess joinInfo ->
+        // Update connection with session info
+        let updatedConnection = { connection with sessionId = Some sessionId }
+        server.connections.TryUpdate(connection.connectionId, updatedConnection, connection) |> ignore
+        
+        // Send join confirmation
+        let response = {
+          messageId = generateMessageId ()
+          messageType = SessionJoined joinInfo
+          payload = Builtin.jsonSerialize joinInfo
+          timestamp = DateTime.now
+          priority = High
+        }
+        
+        sendMessage updatedConnection response
+        
+        // Broadcast to other participants
+        broadcastParticipantJoined server session joinInfo.participantId
+      
+      | JoinDenied reason ->
+        sendErrorMessage connection $"Join denied: {reason}"
+      
+      | JoinError error ->
+        sendErrorMessage connection $"Join error: {error}"
+    
+    | _ ->
+      sendErrorMessage connection "Invalid join session message"
+  
+  with
+  | error ->
+    log $"Failed to handle join session: {error}"
+    sendErrorMessage connection $"Join session failed: {error}"
+
+/// Handle operation from client
+let handleOperation (server: RealtimeServer) (message: IncomingMessage) (connection: ClientConnection) : Unit =
+  try
+    match (message.messageType, connection.sessionId) with
+    | (Operation operation, Some sessionId) ->
+      // Validate operation
+      if operation.userId != connection.userId then
+        sendErrorMessage connection "Operation user mismatch"
+        return ()
+      
+      // Apply operation to session
+      let result = applyOperation sessionId operation
+      
+      match result with
+      | OperationApplied applyResult ->
+        // Broadcast operation to all session participants
+        broadcastOperationToSession server sessionId operation
+        
+        // Send acknowledgment to sender
+        let ackMessage = {
+          messageId = generateMessageId ()
+          messageType = OutgoingMessageType.OperationBroadcast operation
+          payload = Builtin.jsonSerialize applyResult
+          timestamp = DateTime.now
+          priority = High
+        }
+        
+        sendMessage connection ackMessage
+      
+      | OperationRejected reason ->
+        sendErrorMessage connection $"Operation rejected: {reason}"
+      
+      | OperationError error ->
+        sendErrorMessage connection $"Operation error: {error}"
+    
+    | (Operation _, None) ->
+      sendErrorMessage connection "Not in a session"
+    
+    | _ ->
+      sendErrorMessage connection "Invalid operation message"
+  
+  with
+  | error ->
+    log $"Failed to handle operation: {error}"
+    sendErrorMessage connection $"Operation failed: {error}"
+
+/// Handle cursor update from client
+let handleCursorUpdate (server: RealtimeServer) (message: IncomingMessage) (connection: ClientConnection) : Unit =
+  try
+    match (message.messageType, connection.sessionId) with
+    | (CursorUpdate (cursor, selection), Some sessionId) ->
+      // Update cursor in session
+      updateParticipantCursor sessionId connection.userId cursor selection
+      
+      // Broadcast cursor update to other participants
+      broadcastCursorUpdateToSession server sessionId connection.userId cursor selection
+    
+    | (CursorUpdate _, None) ->
+      sendErrorMessage connection "Not in a session"
+    
+    | _ ->
+      sendErrorMessage connection "Invalid cursor update message"
+  
+  with
+  | error ->
+    log $"Failed to handle cursor update: {error}"
+
+/// Broadcast operation to all session participants
+let broadcastOperationToSession (server: RealtimeServer) (sessionId: String) (operation: Operation) : Unit =
+  try
+    // Get all connections in this session
+    let sessionConnections = 
+      server.connections.Values
+      |> Seq.filter (fun conn -> conn.sessionId == Some sessionId)
+      |> Seq.filter (fun conn -> conn.userId != operation.userId)  // Don't send back to sender
+    
+    let broadcastMessage = {
+      messageId = generateMessageId ()
+      messageType = OperationBroadcast operation
+      payload = Builtin.jsonSerialize operation
+      timestamp = DateTime.now
+      priority = High
+    }
+    
+    // Send to all session participants
+    sessionConnections
+    |> Seq.iter (fun conn -> sendMessage conn broadcastMessage)
+  
+  with
+  | error ->
+    log $"Failed to broadcast operation: {error}"
+
+/// Send message to client connection
+let sendMessage (connection: ClientConnection) (message: OutgoingMessage) : Unit =
+  try
+    let messageJson = Builtin.jsonSerialize message
+    sendWebSocketMessage connection.webSocket messageJson
+  
+  with
+  | error ->
+    log $"Failed to send message to {connection.connectionId}: {error}"
+
+/// Send error message to client
+let sendErrorMessage (connection: ClientConnection) (errorText: String) : Unit =
+  let errorMessage = {
+    messageId = generateMessageId ()
+    messageType = ErrorMessage errorText
+    payload = Object [("error", String errorText)]
+    timestamp = DateTime.now
+    priority = High
+  }
+  
+  sendMessage connection errorMessage
+
+/// Heartbeat management
+let startHeartbeatTimer (server: RealtimeServer) : Unit =
+  let heartbeatInterval = 30.0  // 30 seconds
+  
+  Timer.start server.heartbeatTimer heartbeatInterval (fun () ->
+    try
+      let currentTime = DateTime.now
+      let timeoutThreshold = TimeSpan.fromSeconds 90.0  // 90 seconds
+      
+      // Check for dead connections
+      let deadConnections = 
+        server.connections.Values
+        |> Seq.filter (fun conn ->
+          let timeSinceLastActivity = currentTime.Subtract(conn.lastActivity)
+          timeSinceLastActivity > timeoutThreshold)
+        |> Seq.toList
+      
+      // Remove dead connections
+      deadConnections
+      |> List.iter (fun conn ->
+        removeConnection server conn.connectionId
+        log $"Removed dead connection: {conn.connectionId}")
+      
+      // Send heartbeat to active connections
+      server.connections.Values
+      |> Seq.iter (fun conn ->
+        let pingMessage = {
+          messageId = generateMessageId ()
+          messageType = HeartbeatPong
+          payload = Object []
+          timestamp = DateTime.now
+          priority = Low
+        }
+        sendMessage conn pingMessage)
+    
+    with
+    | error ->
+      log $"Heartbeat timer error: {error}")
+
+/// Connection cleanup
+let removeConnection (server: RealtimeServer) (connectionId: String) : Unit =
+  try
+    match server.connections.TryGetValue(connectionId) with
+    | (true, connection) ->
+      // Leave session if in one
+      match connection.sessionId with
+      | Some sessionId ->
+        leaveCollaborativeSession sessionId connection.userId
+        broadcastParticipantLeft server sessionId connection.userId
+      | None -> ()
+      
+      // Remove from connections
+      server.connections.TryRemove(connectionId) |> ignore
+      
+      // Close WebSocket
+      closeConnection connection.webSocket "Connection removed"
+      
+      log $"Connection removed: {connectionId}"
+    
+    | (false, _) ->
+      log $"Connection not found for removal: {connectionId}"
+  
+  with
+  | error ->
+    log $"Failed to remove connection: {error}"
+
+/// Message parsing and serialization
+let parseIncomingMessage (messageJson: String) : IncomingMessage =
+  try
+    let parsed = Builtin.jsonDeserialize<IncomingMessage> messageJson
+    parsed
+  with
+  | error ->
+    log $"Failed to parse incoming message: {error}"
+    failwith "Invalid message format"
+
+/// Rate limiting
+let createRateLimiter () : RateLimiter = {
+  userLimits = ConcurrentDictionary<String, UserRateLimit>()
+  globalLimit = { maxRequests = 1000L; windowSize = TimeSpan.fromMinutes 1.0 }
+}
+
+type RateLimiter = {
+  userLimits: ConcurrentDictionary<String, UserRateLimit>
+  globalLimit: RateLimit
+  allowMessage: String -> Bool
+}
+
+type UserRateLimit = {
+  userId: String
+  requestCount: Int64
+  windowStart: DateTime
+  limit: RateLimit
+}
+
+type RateLimit = {
+  maxRequests: Int64
+  windowSize: TimeSpan
+}
+
+// Helper functions and implementations
+let generateConnectionId () : String = Stdlib.Uuid.generate ()
+let generateMessageId () : String = Stdlib.Uuid.generate ()
+let authenticateUser (userId: String) : Bool = true  // TODO: Implement proper auth
+let getConnectionPermissions (userId: String) : ConnectionPermissions = FullAccess
+let canUserJoinSession (userId: String) (sessionId: String) : Bool = true
+let createMessageHandlers () : Dict<String, MessageHandler> = Dict.empty
+let setupMessageHandlers (server: RealtimeServer) : Unit = ()
+let startWebSocketListener (server: RealtimeServer) : Unit = ()
+let closeConnection (webSocket: WebSocket) (reason: String) : Unit = ()
+let sendWebSocketMessage (webSocket: WebSocket) (message: String) : Unit = ()
+let leaveCollaborativeSession (sessionId: String) (userId: String) : Unit = ()
+let broadcastParticipantJoined (server: RealtimeServer) (session: CollaborativeSession) (userId: String) : Unit = ()
+let broadcastParticipantLeft (server: RealtimeServer) (sessionId: String) (userId: String) : Unit = ()
+let broadcastCursorUpdateToSession (server: RealtimeServer) (sessionId: String) (userId: String) (cursor: CursorPosition) (selection: SelectionRange) : Unit = ()
+
+// Type definitions
+type ConnectionPermissions = ReadOnly | Standard | FullAccess
+type Queue<'T> = List<'T>  // Simplified queue
+type Timer = { id: String }
+type RealtimeConflict = String  // Placeholder
+
+module Queue =
+  let empty<'T> : Queue<'T> = []
+
+module Timer =
+  let create () : Timer = { id = Stdlib.Uuid.generate () }
+  let start (timer: Timer) (interval: Float) (callback: Unit -> Unit) : Unit = ()
+
+let return (value: 'T) : Unit = ()

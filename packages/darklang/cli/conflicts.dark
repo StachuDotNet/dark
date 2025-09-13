@@ -1,0 +1,270 @@
+/// Conflict resolution commands for developer collaboration
+module Darklang.Cli.Conflicts
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | [] ->
+    Stdlib.printLine "Usage: conflicts <command> [args]"
+    Stdlib.printLine ""
+    Stdlib.printLine "Commands:"
+    Stdlib.printLine "  list                    List all detected conflicts"
+    Stdlib.printLine "  show <id>              Show detailed conflict information"
+    Stdlib.printLine "  resolve <id> <strategy> Resolve conflict with strategy"
+    Stdlib.printLine "  plan                   Generate resolution plan for all conflicts"
+    Stdlib.printLine "  auto                   Auto-resolve simple conflicts"
+    Stdlib.printLine "  report                 Generate conflict resolution report"
+    state
+
+  | ["list"] ->
+    Stdlib.printLine "Current Conflicts:"
+    Stdlib.printLine ""
+    
+    // Mock conflict data for demonstration
+    let mockConflicts = [
+      ("c1", "high", "Same function modified", "Function 'filterMap' changed in patches abc123 and def456")
+      ("c2", "medium", "Name collision", "Both patches create type 'Result'")
+      ("c3", "low", "Style difference", "Different formatting in patches")
+    ]
+    
+    if Stdlib.List.isEmpty mockConflicts then
+      Stdlib.printLine "🎉 No conflicts detected!"
+    else
+      mockConflicts |> Stdlib.List.iter (fun (id, severity, type_, desc) ->
+        let icon = 
+          match severity with
+          | "high" -> "🔴"
+          | "medium" -> "🟡"
+          | "low" -> "🟢"
+          | _ -> "❓"
+        Stdlib.printLine $"  {icon} {id}: {type_}"
+        Stdlib.printLine $"     {desc}")
+    
+    Stdlib.printLine ""
+    Stdlib.printLine "Use 'conflicts show <id>' for details or 'conflicts plan' for resolution suggestions"
+    state
+
+  | ["show"; conflictId] ->
+    Stdlib.printLine $"Conflict Details: {conflictId}"
+    Stdlib.printLine "================================"
+    
+    // Mock detailed conflict info
+    match conflictId with
+    | "c1" ->
+      Stdlib.printLine "Type: Same Function Different Implementation"
+      Stdlib.printLine "Severity: 🔴 High"
+      Stdlib.printLine "Function: Darklang.Stdlib.List.filterMap"
+      Stdlib.printLine ""
+      Stdlib.printLine "Local Patch (abc123) by stachu:"
+      Stdlib.printLine "  Uses fold-based implementation for performance"
+      Stdlib.printLine "  Added error handling for None cases"
+      Stdlib.printLine ""
+      Stdlib.printLine "Remote Patch (def456) by ocean:"
+      Stdlib.printLine "  Uses filter+map composition for clarity"
+      Stdlib.printLine "  Added comprehensive documentation"
+      Stdlib.printLine ""
+      Stdlib.printLine "Resolution Options:"
+      Stdlib.printLine "  1. keep-local     - Use stachu's implementation"
+      Stdlib.printLine "  2. keep-remote    - Use ocean's implementation"
+      Stdlib.printLine "  3. three-way      - Attempt intelligent merge"
+      Stdlib.printLine "  4. manual         - Resolve manually in editor"
+      Stdlib.printLine ""
+      Stdlib.printLine "Recommendation: Review both approaches and choose based on"
+      Stdlib.printLine "performance requirements vs code readability preferences."
+    
+    | "c2" ->
+      Stdlib.printLine "Type: Name Collision"
+      Stdlib.printLine "Severity: 🟡 Medium"
+      Stdlib.printLine "Name: Result"
+      Stdlib.printLine ""
+      Stdlib.printLine "Local Patch (ghi789): Creates Result<T, E> type for HTTP responses"
+      Stdlib.printLine "Remote Patch (jkl012): Creates Result<T> type for validation"
+      Stdlib.printLine ""
+      Stdlib.printLine "Resolution Options:"
+      Stdlib.printLine "  1. rename-both    - Keep both with descriptive names (recommended)"
+      Stdlib.printLine "  2. keep-local     - Use only the local version"
+      Stdlib.printLine "  3. keep-remote    - Use only the remote version"
+      Stdlib.printLine ""
+      Stdlib.printLine "Recommendation: Rename to HttpResult and ValidationResult"
+    
+    | _ ->
+      Stdlib.printLine $"Conflict {conflictId} not found"
+    
+    state
+
+  | ["resolve"; conflictId; strategy] ->
+    Stdlib.printLine $"Resolving conflict {conflictId} with strategy: {strategy}"
+    Stdlib.printLine ""
+    
+    match (conflictId, strategy) with
+    | ("c1", "keep-local") ->
+      Stdlib.printLine "✅ Applying local implementation..."
+      Stdlib.printLine "✅ Updated function: Darklang.Stdlib.List.filterMap"
+      Stdlib.printLine "✅ Conflict resolved"
+      Stdlib.printLine ""
+      Stdlib.printLine "Summary: Using fold-based implementation from stachu's patch"
+      
+    | ("c1", "keep-remote") ->
+      Stdlib.printLine "✅ Applying remote implementation..."
+      Stdlib.printLine "✅ Updated function: Darklang.Stdlib.List.filterMap"  
+      Stdlib.printLine "✅ Conflict resolved"
+      Stdlib.printLine ""
+      Stdlib.printLine "Summary: Using filter+map implementation from ocean's patch"
+      
+    | ("c1", "three-way") ->
+      Stdlib.printLine "🔍 Analyzing three-way merge..."
+      Stdlib.printLine "🔍 Found common ancestor implementation"
+      Stdlib.printLine "⚠️  Unable to auto-merge: conflicting logic changes"
+      Stdlib.printLine ""
+      Stdlib.printLine "Manual merge required:"
+      Stdlib.printLine "  1. Both versions modify the core algorithm"
+      Stdlib.printLine "  2. Error handling approaches differ"
+      Stdlib.printLine "  3. Performance characteristics vary"
+      Stdlib.printLine ""
+      Stdlib.printLine "Next steps:"
+      Stdlib.printLine "  - Use 'conflicts resolve c1 manual' to open merge editor"
+      Stdlib.printLine "  - Or choose keep-local/keep-remote strategy"
+      
+    | ("c2", "rename-both") ->
+      Stdlib.printLine "✅ Renaming conflicting types..."
+      Stdlib.printLine "✅ Local: Result → HttpResult"
+      Stdlib.printLine "✅ Remote: Result → ValidationResult"
+      Stdlib.printLine "✅ Updated all references"
+      Stdlib.printLine "✅ Conflict resolved"
+      
+    | (_, "manual") ->
+      Stdlib.printLine $"🛠️  Opening manual resolution for conflict {conflictId}..."
+      Stdlib.printLine "This would open a merge editor showing:"
+      Stdlib.printLine "  - Local changes"
+      Stdlib.printLine "  - Remote changes"  
+      Stdlib.printLine "  - Common ancestor (if available)"
+      Stdlib.printLine ""
+      Stdlib.printLine "Manual resolution not yet implemented in demo"
+      
+    | _ ->
+      Stdlib.printLine $"❌ Unknown conflict/strategy combination: {conflictId} {strategy}"
+      Stdlib.printLine "Use 'conflicts show <id>' to see available strategies"
+    
+    state
+
+  | ["plan"] ->
+    Stdlib.printLine "Conflict Resolution Plan"
+    Stdlib.printLine "========================"
+    Stdlib.printLine ""
+    
+    Stdlib.printLine "🔴 High Priority (1 conflict):"
+    Stdlib.printLine "  c1: Same function implementation"
+    Stdlib.printLine "      Recommended: Review both and choose manually"
+    Stdlib.printLine "      Estimated time: 15-20 minutes"
+    Stdlib.printLine ""
+    
+    Stdlib.printLine "🟡 Medium Priority (1 conflict):"
+    Stdlib.printLine "  c2: Name collision"
+    Stdlib.printLine "      Recommended: Auto-rename both types"
+    Stdlib.printLine "      Estimated time: 2-3 minutes"
+    Stdlib.printLine ""
+    
+    Stdlib.printLine "🟢 Low Priority (1 conflict):"
+    Stdlib.printLine "  c3: Formatting difference"
+    Stdlib.printLine "      Recommended: Use project formatter"
+    Stdlib.printLine "      Estimated time: 1 minute"
+    Stdlib.printLine ""
+    
+    Stdlib.printLine "Suggested Resolution Order:"
+    Stdlib.printLine "  1. Auto-resolve c2 and c3 with 'conflicts auto'"
+    Stdlib.printLine "  2. Manually review c1 with 'conflicts show c1'"
+    Stdlib.printLine "  3. Apply c1 resolution after review"
+    Stdlib.printLine ""
+    
+    Stdlib.printLine "Total estimated time: 18-24 minutes"
+    state
+
+  | ["auto"] ->
+    Stdlib.printLine "Auto-resolving simple conflicts..."
+    Stdlib.printLine ""
+    
+    Stdlib.printLine "🟡 c2: Name collision"
+    Stdlib.printLine "  ✅ Renamed Result → HttpResult (local)"
+    Stdlib.printLine "  ✅ Renamed Result → ValidationResult (remote)"
+    Stdlib.printLine ""
+    
+    Stdlib.printLine "🟢 c3: Style difference"
+    Stdlib.printLine "  ✅ Applied project formatter"
+    Stdlib.printLine "  ✅ Standardized code style"
+    Stdlib.printLine ""
+    
+    Stdlib.printLine "Auto-resolution complete!"
+    Stdlib.printLine "  ✅ 2 conflicts resolved automatically"
+    Stdlib.printLine "  ⚠️  1 conflict requires manual review (c1)"
+    Stdlib.printLine ""
+    Stdlib.printLine "Next: Use 'conflicts show c1' to review remaining conflict"
+    state
+
+  | ["report"] ->
+    Stdlib.printLine "Conflict Resolution Report"
+    Stdlib.printLine "=========================="
+    Stdlib.printLine ""
+    
+    Stdlib.printLine "Session Summary:"
+    Stdlib.printLine "  Total conflicts detected: 3"
+    Stdlib.printLine "  Auto-resolved: 2"
+    Stdlib.printLine "  Manual resolution: 1"
+    Stdlib.printLine "  Failed resolutions: 0"
+    Stdlib.printLine ""
+    
+    Stdlib.printLine "Resolution Strategies Used:"
+    Stdlib.printLine "  - Rename and keep both: 1"
+    Stdlib.printLine "  - Auto-format: 1"
+    Stdlib.printLine "  - Manual review pending: 1"
+    Stdlib.printLine ""
+    
+    Stdlib.printLine "Recommendations for Future:"
+    Stdlib.printLine "  ✓ Use descriptive names to avoid collisions"
+    Stdlib.printLine "  ✓ Run formatter before creating patches"
+    Stdlib.printLine "  ✓ Break large changes into smaller patches"
+    Stdlib.printLine "  ✓ Coordinate with team on major function changes"
+    Stdlib.printLine ""
+    
+    Stdlib.printLine "Team Patterns:"
+    Stdlib.printLine "  - stachu: Tends toward performance optimizations"
+    Stdlib.printLine "  - ocean: Focuses on code clarity and documentation"
+    Stdlib.printLine "  - Suggestion: Discuss optimization vs clarity tradeoffs"
+    state
+
+  | _ ->
+    Stdlib.printLine "Unknown conflicts command. Use 'conflicts' for help."
+    state
+
+let help (_state: AppState) : Unit =
+  [
+    "conflicts - Manage and resolve code conflicts"
+    ""
+    "When patches modify the same code, conflicts can occur."
+    "This command helps detect, analyze, and resolve conflicts."
+    ""
+    "Resolution strategies:"
+    "  keep-local    - Use your local changes"
+    "  keep-remote   - Use the incoming changes"
+    "  rename-both   - Rename to avoid collisions"
+    "  three-way     - Attempt intelligent merge"
+    "  manual        - Resolve in merge editor"
+    ""
+    "Example workflow:"
+    "  1. conflicts list        # See all conflicts"
+    "  2. conflicts plan        # Get resolution plan"
+    "  3. conflicts auto        # Auto-resolve simple ones"
+    "  4. conflicts show c1     # Review complex ones"
+    "  5. conflicts resolve c1 keep-local  # Apply resolution"
+  ] |> Stdlib.printLines
+
+let complete (state: AppState) (args: List<String>) : List<String> =
+  match args with
+  | [] ->
+    ["list"; "show"; "resolve"; "plan"; "auto"; "report"]
+  | ["show"] ->
+    ["c1"; "c2"; "c3"]  // Mock conflict IDs
+  | ["resolve"] ->
+    ["c1"; "c2"; "c3"]  // Mock conflict IDs
+  | ["resolve"; _] ->
+    ["keep-local"; "keep-remote"; "rename-both"; "three-way"; "manual"]
+  | _ ->
+    []

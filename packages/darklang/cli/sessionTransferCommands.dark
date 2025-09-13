@@ -1,0 +1,420 @@
+/// CLI commands for Session Transfer and Persistence
+module Darklang.Cli.SessionTransferCommands
+
+open Darklang.Collaboration.SessionTransfer
+open Darklang.Cli.CliUtils
+
+/// Export current session to file or clipboard
+let sessionExport (args: List<String>) : Int64 =
+  match args with
+  | sessionId :: format :: destination :: [] ->
+    try
+      let bundle = createSessionTransferBundle sessionId
+      
+      let exportFormat = 
+        match format with
+        | "json" -> Json
+        | "compressed" -> CompressedJson
+        | "qr" -> QrCode
+        | "link" -> ShareableLink
+        | _ -> Json
+      
+      let exportedData = exportSessionBundle bundle exportFormat
+      
+      match destination with
+      | "clipboard" ->
+        copyToClipboard exportedData
+        printSuccess $"Session {sessionId} exported to clipboard"
+      
+      | "stdout" ->
+        Builtin.printLine exportedData
+      
+      | filePath ->
+        Builtin.fileWrite filePath exportedData
+        printSuccess $"Session {sessionId} exported to {filePath}"
+      
+      0L
+      
+    with
+    | error ->
+      printError $"Export failed: {error}"
+      1L
+  
+  | sessionId :: format :: [] ->
+    // Export to stdout by default
+    sessionExport [sessionId; format; "stdout"]
+  
+  | sessionId :: [] ->
+    // Use JSON format by default
+    sessionExport [sessionId; "json"; "stdout"]
+  
+  | [] ->
+    // Get current session
+    match getCurrentSessionId () with
+    | Some sessionId -> sessionExport [sessionId; "json"; "stdout"]
+    | None ->
+      printError "No active session. Please specify session ID."
+      1L
+  
+  | _ ->
+    printUsage "session export [session-id] [format] [destination]"
+    printLine "Formats: json, compressed, qr, link"
+    printLine "Destinations: clipboard, stdout, or file path"
+    1L
+
+/// Import session from file, clipboard, or link
+let sessionImport (args: List<String>) : Int64 =
+  match args with
+  | source :: format :: [] ->
+    try
+      let importData = 
+        match source with
+        | "clipboard" ->
+          readFromClipboard ()
+        
+        | "stdin" ->
+          readFromStdin ()
+        
+        | _ ->
+          if Builtin.fileExists source then
+            Builtin.fileRead source
+          else
+            // Assume it's a direct data string or link
+            source
+      
+      let importFormat = 
+        match format with
+        | "json" -> Json
+        | "compressed" -> CompressedJson
+        | "qr" -> QrCode
+        | "link" -> ShareableLink
+        | _ -> Json
+      
+      match importSessionBundle importData importFormat with
+      | SessionRestoreSuccess newSessionId ->
+        printSuccess $"Session imported successfully: {newSessionId}"
+        setActiveSession newSessionId
+        0L
+      
+      | SessionRestoreError message ->
+        printError $"Import failed: {message}"
+        1L
+    
+    with
+    | error ->
+      printError $"Import failed: {error}"
+      1L
+  
+  | source :: [] ->
+    sessionImport [source; "json"]
+  
+  | [] ->
+    sessionImport ["stdin"; "json"]
+  
+  | _ ->
+    printUsage "session import [source] [format]"
+    printLine "Sources: clipboard, stdin, file path, or direct data"
+    printLine "Formats: json, compressed, qr, link"
+    1L
+
+/// Generate QR code for quick session transfer
+let sessionQr (args: List<String>) : Int64 =
+  match args with
+  | sessionId :: [] ->
+    try
+      let qrCode = generateSessionQrCode sessionId
+      printLine qrCode
+      printSuccess $"QR code generated for session {sessionId}"
+      0L
+    
+    with
+    | error ->
+      printError $"QR generation failed: {error}"
+      1L
+  
+  | [] ->
+    match getCurrentSessionId () with
+    | Some sessionId -> sessionQr [sessionId]
+    | None ->
+      printError "No active session. Please specify session ID."
+      1L
+  
+  | _ ->
+    printUsage "session qr [session-id]"
+    1L
+
+/// Sync session to cloud storage
+let sessionSync (args: List<String>) : Int64 =
+  match args with
+  | "push" :: sessionId :: [] ->
+    try
+      match syncSessionToCloud sessionId with
+      | CloudSyncSuccess uploadId ->
+        printSuccess $"Session {sessionId} synced to cloud: {uploadId}"
+        0L
+      | CloudSyncError message ->
+        printError $"Sync failed: {message}"
+        1L
+    
+    with
+    | error ->
+      printError $"Sync failed: {error}"
+      1L
+  
+  | "pull" :: uploadId :: [] ->
+    try
+      match downloadSessionFromCloud uploadId with
+      | SessionRestoreSuccess newSessionId ->
+        printSuccess $"Session downloaded from cloud: {newSessionId}"
+        setActiveSession newSessionId
+        0L
+      | SessionRestoreError message ->
+        printError $"Download failed: {message}"
+        1L
+    
+    with
+    | error ->
+      printError $"Download failed: {error}"
+      1L
+  
+  | "push" :: [] ->
+    match getCurrentSessionId () with
+    | Some sessionId -> sessionSync ["push"; sessionId]
+    | None ->
+      printError "No active session. Please specify session ID."
+      1L
+  
+  | [] ->
+    printUsage "session sync <push|pull> [session-id|upload-id]"
+    printLine "Examples:"
+    printLine "  session sync push                   # Sync current session"
+    printLine "  session sync push session-123       # Sync specific session"
+    printLine "  session sync pull upload-456        # Download from cloud"
+    1L
+  
+  | _ ->
+    printUsage "session sync <push|pull> [session-id|upload-id]"
+    1L
+
+/// Persist session state to disk
+let sessionSave (args: List<String>) : Int64 =
+  match args with
+  | sessionId :: [] ->
+    try
+      persistSessionState sessionId
+      printSuccess $"Session {sessionId} saved to disk"
+      0L
+    
+    with
+    | error ->
+      printError $"Save failed: {error}"
+      1L
+  
+  | [] ->
+    match getCurrentSessionId () with
+    | Some sessionId -> sessionSave [sessionId]
+    | None ->
+      printError "No active session. Please specify session ID."
+      1L
+  
+  | _ ->
+    printUsage "session save [session-id]"
+    1L
+
+/// Restore session from disk
+let sessionRestore (args: List<String>) : Int64 =
+  match args with
+  | sessionId :: [] ->
+    try
+      match restorePersistedSession sessionId with
+      | SessionRestoreSuccess restoredSessionId ->
+        printSuccess $"Session restored: {restoredSessionId}"
+        setActiveSession restoredSessionId
+        0L
+      | SessionRestoreError message ->
+        printError $"Restore failed: {message}"
+        1L
+    
+    with
+    | error ->
+      printError $"Restore failed: {error}"
+      1L
+  
+  | [] ->
+    printUsage "session restore <session-id>"
+    1L
+  
+  | _ ->
+    printUsage "session restore <session-id>"
+    1L
+
+/// Enable auto-save for a session
+let sessionAutosave (args: List<String>) : Int64 =
+  match args with
+  | "enable" :: sessionId :: intervalStr :: [] ->
+    try
+      let interval = Stdlib.Int64.parse intervalStr
+      match interval with
+      | Some intervalMinutes ->
+        startSessionAutosave sessionId intervalMinutes
+        printSuccess $"Auto-save enabled for session {sessionId} (every {intervalMinutes} minutes)"
+        0L
+      | None ->
+        printError $"Invalid interval: {intervalStr}"
+        1L
+    
+    with
+    | error ->
+      printError $"Auto-save setup failed: {error}"
+      1L
+  
+  | "enable" :: sessionId :: [] ->
+    sessionAutosave ["enable"; sessionId; "5"]  // Default 5 minutes
+  
+  | "enable" :: [] ->
+    match getCurrentSessionId () with
+    | Some sessionId -> sessionAutosave ["enable"; sessionId; "5"]
+    | None ->
+      printError "No active session. Please specify session ID."
+      1L
+  
+  | "disable" :: sessionId :: [] ->
+    try
+      stopSessionAutosave sessionId
+      printSuccess $"Auto-save disabled for session {sessionId}"
+      0L
+    
+    with
+    | error ->
+      printError $"Auto-save disable failed: {error}"
+      1L
+  
+  | [] ->
+    printUsage "session autosave <enable|disable> [session-id] [interval-minutes]"
+    printLine "Default interval: 5 minutes"
+    1L
+  
+  | _ ->
+    printUsage "session autosave <enable|disable> [session-id] [interval-minutes]"
+    1L
+
+/// Merge two sessions
+let sessionMerge (args: List<String>) : Int64 =
+  match args with
+  | primarySessionId :: secondarySessionId :: [] ->
+    try
+      match mergeSessions primarySessionId secondarySessionId with
+      | SessionMergeSuccess newSessionId ->
+        printSuccess $"Sessions merged successfully: {newSessionId}"
+        setActiveSession newSessionId
+        0L
+      | SessionMergeError message ->
+        printError $"Merge failed: {message}"
+        1L
+    
+    with
+    | error ->
+      printError $"Merge failed: {error}"
+      1L
+  
+  | [] ->
+    printUsage "session merge <primary-session-id> <secondary-session-id>"
+    printLine "The primary session takes precedence in conflicts"
+    1L
+  
+  | _ ->
+    printUsage "session merge <primary-session-id> <secondary-session-id>"
+    1L
+
+/// Transfer session to another device (via various methods)
+let sessionTransfer (args: List<String>) : Int64 =
+  match args with
+  | "prepare" :: sessionId :: [] ->
+    // Prepare session for transfer and show options
+    try
+      let bundle = createSessionTransferBundle sessionId
+      
+      printSuccess $"Session {sessionId} prepared for transfer:"
+      printLine ""
+      printLine "Transfer options:"
+      printLine "1. QR Code:"
+      let qr = exportSessionBundle bundle QrCode
+      printLine $"   {qr}"
+      printLine ""
+      printLine "2. Shareable Link:"
+      let link = exportSessionBundle bundle ShareableLink
+      printLine $"   {link}"
+      printLine ""
+      printLine "3. File Export:"
+      let fileName = $"session-{sessionId}.json"
+      let json = exportSessionBundle bundle Json
+      Builtin.fileWrite fileName json
+      printLine $"   Saved to: {fileName}"
+      printLine ""
+      printLine "4. Cloud Sync:"
+      match syncSessionToCloud sessionId with
+      | CloudSyncSuccess uploadId ->
+        printLine $"   Cloud ID: {uploadId}"
+      | CloudSyncError _ ->
+        printLine "   Cloud sync unavailable"
+      
+      0L
+      
+    with
+    | error ->
+      printError $"Transfer preparation failed: {error}"
+      1L
+  
+  | "receive" :: method :: data :: [] ->
+    match method with
+    | "qr" ->
+      sessionImport [data; "qr"]
+    | "link" ->
+      sessionImport [data; "link"]
+    | "file" ->
+      sessionImport [data; "json"]
+    | "cloud" ->
+      sessionSync ["pull"; data]
+    | _ ->
+      printError $"Unknown transfer method: {method}"
+      1L
+  
+  | [] ->
+    match getCurrentSessionId () with
+    | Some sessionId -> sessionTransfer ["prepare"; sessionId]
+    | None ->
+      printError "No active session. Please specify session ID."
+      1L
+  
+  | _ ->
+    printUsage "session transfer [prepare session-id | receive method data]"
+    printLine "Methods: qr, link, file, cloud"
+    1L
+
+// Helper functions
+let copyToClipboard (data: String) : Unit = 
+  // TODO: Implement clipboard integration
+  log $"Clipboard: {data}"
+
+let readFromClipboard () : String = 
+  // TODO: Implement clipboard reading
+  ""
+
+let readFromStdin () : String =
+  // TODO: Implement stdin reading
+  ""
+
+let getCurrentSessionId () : Option<String> = 
+  // TODO: Get from session manager
+  None
+
+let setActiveSession (sessionId: String) : Unit =
+  // TODO: Set active session
+  ()
+
+let stopSessionAutosave (sessionId: String) : Unit =
+  // TODO: Stop autosave timer
+  ()
+
+let printUsage (usage: String) : Unit =
+  printLine $"Usage: dark {usage}"

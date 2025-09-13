@@ -211,6 +211,11 @@ module Registry =
       ("view", "View details of a module, type, value, or fns", [], Packages.View.execute, Packages.View.help, Packages.View.complete)
       ("tree", "Display package hierarchy in tree format", [], Packages.Tree.execute, Packages.Tree.help, Packages.Tree.complete)
       ("experiments", "Try out various WIP CLI experiments", [], Cli.Experiments.execute, Cli.Experiments.help, Cli.Experiments.complete)
+      ("patch", "Manage code patches for collaboration", ["p"], Patch.execute, Patch.help, Patch.complete)
+      ("session", "Manage work sessions", ["s"], Session.execute, Session.help, Session.complete)
+      ("sync", "Sync patches with other developers", [], Sync.execute, Sync.help, Sync.complete)
+      ("auth", "Authentication for collaboration", [], Auth.execute, Auth.help, Auth.complete)
+      ("conflicts", "Manage and resolve code conflicts", ["resolve"], Conflicts.execute, Conflicts.help, Conflicts.complete)
     ]
     |> Stdlib.List.map(
       // CLEANUP nitpicky: swap help and complete
@@ -300,17 +305,19 @@ module Registry =
     // Group commands by category
     let packageCommands = ["nav"; "ls"; "view"; "tree"; "back"]
     let executionCommands = ["run"; "eval"; "scripts"]
+    let collaborationCommands = ["auth"; "patch"; "session"; "sync"; "conflicts"]
     let installCommands = ["install"; "update"; "uninstall"; "status"; "version"]
     let utilityCommands = ["clear"; "help"; "quit"; "experiments"]
 
     // Format command groups
     let packageGroup = formatCommandGroup "Packages" packageCommands commands
     let executionGroup = formatCommandGroup "Execution" executionCommands commands
+    let collaborationGroup = formatCommandGroup "Collaboration" collaborationCommands commands
     let installGroup = formatCommandGroup "Installation" installCommands commands
     let utilityGroup = formatCommandGroup "Utilities" utilityCommands commands
 
     // Find any ungrouped commands
-    let allGroupedCommands = Stdlib.List.append (Stdlib.List.append (Stdlib.List.append packageCommands executionCommands) installCommands) utilityCommands
+    let allGroupedCommands = Stdlib.List.append (Stdlib.List.append (Stdlib.List.append (Stdlib.List.append packageCommands executionCommands) collaborationCommands) installCommands) utilityCommands
     let ungroupedCommands =
       commands
       |> Stdlib.List.filter (fun cmd ->
@@ -324,7 +331,7 @@ module Registry =
           let aliasText = Stdlib.String.join aliases ", "
           $"  {cmd.name} ({aliasText}) - {cmd.description}")
 
-    let allGroups = [packageGroup; executionGroup; installGroup; utilityGroup]
+    let allGroups = [packageGroup; executionGroup; collaborationGroup; installGroup; utilityGroup]
     let finalGroups =
       if Stdlib.List.isEmpty ungroupedCommands then
         allGroups

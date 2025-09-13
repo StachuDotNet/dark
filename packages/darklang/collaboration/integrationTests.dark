@@ -1,0 +1,472 @@
+module Darklang =
+  module Collaboration =
+    module IntegrationTests =
+      // Integration test suite for the complete 10-component collaboration system
+      // Validates end-to-end workflows across all collaboration features
+
+      type TestResult =
+        | Success of String
+        | Failure of String * String // error message, details
+
+      type TestSuite =
+        { name: String
+          tests: List<TestCase>
+          setupFn: String -> Unit
+          teardownFn: String -> Unit }
+
+      type TestCase =
+        { name: String
+          description: String
+          testFn: String -> TestResult
+          dependencies: List<String>
+          timeout: Int64 }
+
+      type IntegrationTestConfig =
+        { enableRealTimeEditing: Bool
+          enableMobileSupport: Bool
+          enablePluginSystem: Bool
+          enableAnalytics: Bool
+          enableSecurity: Bool
+          testDataPath: String
+          mockUserCount: Int64
+          simulatedLatency: Int64 }
+
+      // Test data setup and utilities
+      let createTestConfig () : IntegrationTestConfig =
+        { enableRealTimeEditing = true
+          enableMobileSupport = true
+          enablePluginSystem = true
+          enableAnalytics = true
+          enableSecurity = true
+          testDataPath = "/tmp/darklang-collaboration-tests"
+          mockUserCount = 5L
+          simulatedLatency = 50L }
+
+      let setupTestEnvironment (config: IntegrationTestConfig) : String =
+        try
+          let testId = Stdlib.Uuid.generate ()
+          
+          // Initialize test database
+          let dbPath = $"{config.testDataPath}/{testId}.db"
+          Darklang.Collaboration.Database.initializeTestDatabase dbPath
+          
+          // Setup mock users
+          Stdlib.List.range 1L config.mockUserCount
+          |> Stdlib.List.map (fun i ->
+               let userId = $"test-user-{i}"
+               let userName = $"Test User {i}"
+               Darklang.Collaboration.Auth.createTestUser userId userName)
+          |> ignore
+          
+          // Initialize all collaboration components
+          Darklang.Collaboration.VirtualFileSystem.initialize testId
+          Darklang.Collaboration.SessionManager.initialize testId
+          Darklang.Collaboration.RealtimeEditing.initialize testId
+          Darklang.Collaboration.PerformanceMonitoring.initialize testId
+          Darklang.Collaboration.SecurityAndAccess.initialize testId
+          Darklang.Collaboration.MobileSupport.initialize testId
+          Darklang.Collaboration.PluginArchitecture.initialize testId
+          
+          testId
+        with
+        | error -> failwith $"Failed to setup test environment: {error}"
+
+      let teardownTestEnvironment (testId: String) : Unit =
+        try
+          // Cleanup all components
+          Darklang.Collaboration.PluginArchitecture.shutdown testId
+          Darklang.Collaboration.MobileSupport.shutdown testId
+          Darklang.Collaboration.SecurityAndAccess.shutdown testId
+          Darklang.Collaboration.PerformanceMonitoring.shutdown testId
+          Darklang.Collaboration.RealtimeEditing.shutdown testId
+          Darklang.Collaboration.SessionManager.shutdown testId
+          Darklang.Collaboration.VirtualFileSystem.shutdown testId
+          
+          // Cleanup test data
+          let config = createTestConfig ()
+          Darklang.Collaboration.Database.cleanupTestDatabase $"{config.testDataPath}/{testId}.db"
+        with
+        | error -> Darklang.Stdlib.Log.error $"Failed to teardown test environment: {error}"
+
+      // Core integration test suites
+
+      // Test Suite 1: Virtual File System + Real-time Editing Integration
+      let createVfsRealtimeIntegrationSuite () : TestSuite =
+        { name = "VFS + Real-time Editing Integration"
+          setupFn = setupTestEnvironment
+          teardownFn = teardownTestEnvironment
+          tests = [
+            { name = "vfs_realtime_concurrent_editing"
+              description = "Multiple users editing same virtual file simultaneously"
+              dependencies = []
+              timeout = 30000L
+              testFn = fun testId ->
+                try
+                  // Create virtual file
+                  let packagePath = "TestPackage"
+                  let itemName = "testFunction"
+                  let virtualUri = Darklang.Collaboration.VirtualFileSystem.createVirtualUri packagePath itemName
+                  
+                  // Start collaborative session
+                  let session = Darklang.Collaboration.RealtimeEditing.startCollaborativeSession virtualUri "test-user-1"
+                  
+                  // Add multiple participants
+                  Darklang.Collaboration.RealtimeEditing.addParticipant session.sessionId "test-user-2"
+                  Darklang.Collaboration.RealtimeEditing.addParticipant session.sessionId "test-user-3"
+                  
+                  // Simulate concurrent edits
+                  let edit1 = { operation = Insert; position = { line = 1L; column = 0L }; content = "let x = 42L\n"; userId = "test-user-1" }
+                  let edit2 = { operation = Insert; position = { line = 2L; column = 0L }; content = "let y = 24L\n"; userId = "test-user-2" }
+                  let edit3 = { operation = Insert; position = { line = 3L; column = 0L }; content = "x + y"; userId = "test-user-3" }
+                  
+                  // Apply operations through VFS
+                  let result1 = Darklang.Collaboration.VirtualFileSystem.applyEdit virtualUri edit1
+                  let result2 = Darklang.Collaboration.VirtualFileSystem.applyEdit virtualUri edit2
+                  let result3 = Darklang.Collaboration.VirtualFileSystem.applyEdit virtualUri edit3
+                  
+                  // Verify final content
+                  let finalContent = Darklang.Collaboration.VirtualFileSystem.readVirtualFile virtualUri
+                  let expectedContent = "let x = 42L\nlet y = 24L\nx + y"
+                  
+                  if finalContent == expectedContent then
+                    Success "Concurrent editing through VFS successful"
+                  else
+                    Failure ("Content mismatch", $"Expected: {expectedContent}, Got: {finalContent}")
+                with
+                | error -> Failure ("Exception during test", Stdlib.String.toString error) }
+            
+            { name = "vfs_realtime_conflict_resolution"
+              description = "Conflict resolution for overlapping edits in virtual files"
+              dependencies = []
+              timeout = 20000L
+              testFn = fun testId ->
+                try
+                  let virtualUri = Darklang.Collaboration.VirtualFileSystem.createVirtualUri "TestPackage" "conflictTest"
+                  let session = Darklang.Collaboration.RealtimeEditing.startCollaborativeSession virtualUri "test-user-1"
+                  Darklang.Collaboration.RealtimeEditing.addParticipant session.sessionId "test-user-2"
+                  
+                  // Create overlapping edits
+                  let edit1 = { operation = Insert; position = { line = 1L; column = 5L }; content = " modified"; userId = "test-user-1" }
+                  let edit2 = { operation = Insert; position = { line = 1L; column = 5L }; content = " changed"; userId = "test-user-2" }
+                  
+                  // Apply edits and check conflict resolution
+                  let result1 = Darklang.Collaboration.VirtualFileSystem.applyEdit virtualUri edit1
+                  let result2 = Darklang.Collaboration.VirtualFileSystem.applyEdit virtualUri edit2
+                  
+                  let conflicts = Darklang.Collaboration.ConflictResolution.detectConflicts virtualUri
+                  
+                  if Stdlib.List.length conflicts > 0L then
+                    let resolved = Darklang.Collaboration.ConflictResolution.resolveConflicts virtualUri conflicts
+                    if resolved then
+                      Success "Conflict detection and resolution successful"
+                    else
+                      Failure ("Resolution failed", "Could not resolve detected conflicts")
+                  else
+                    Failure ("No conflicts detected", "Expected conflicts for overlapping edits")
+                with
+                | error -> Failure ("Exception during conflict test", Stdlib.String.toString error) }
+          ] }
+
+      // Test Suite 2: Session Transfer + Mobile Support Integration
+      let createSessionMobileIntegrationSuite () : TestSuite =
+        { name = "Session Transfer + Mobile Support Integration"
+          setupFn = setupTestEnvironment
+          teardownFn = teardownTestEnvironment
+          tests = [
+            { name = "session_desktop_to_mobile_transfer"
+              description = "Transfer active session from desktop to mobile device"
+              dependencies = []
+              timeout = 25000L
+              testFn = fun testId ->
+                try
+                  // Start desktop session
+                  let desktopDevice = { deviceId = "desktop-001"; deviceType = Desktop; capabilities = ["keyboard"; "mouse"; "large-screen"] }
+                  let session = Darklang.Collaboration.SessionManager.createSession "test-user-1" desktopDevice
+                  
+                  // Add some work to the session
+                  let workItem = { packagePath = "MobileTest"; itemName = "transferFunction"; lastModified = DateTime.now }
+                  Darklang.Collaboration.SessionManager.addWorkItem session.sessionId workItem
+                  
+                  // Prepare mobile device
+                  let mobileDevice = { deviceId = "mobile-001"; deviceType = Mobile; capabilities = ["touch"; "small-screen"; "camera"] }
+                  Darklang.Collaboration.MobileSupport.initializeMobileDevice mobileDevice
+                  
+                  // Transfer session
+                  let transferResult = Darklang.Collaboration.SessionManager.transferSession session.sessionId mobileDevice "test-user-1"
+                  
+                  match transferResult with
+                  | SessionTransferred newSessionId ->
+                    // Verify mobile session has same work items
+                    let mobileSession = Darklang.Collaboration.SessionManager.getSession newSessionId
+                    let mobileWorkItems = Darklang.Collaboration.SessionManager.getWorkItems newSessionId
+                    
+                    if Stdlib.List.length mobileWorkItems == 1L then
+                      Success "Session transfer to mobile successful"
+                    else
+                      Failure ("Work items not transferred", $"Expected 1 work item, got {Stdlib.List.length mobileWorkItems}")
+                  | TransferFailed reason ->
+                    Failure ("Transfer failed", reason)
+                with
+                | error -> Failure ("Exception during transfer test", Stdlib.String.toString error) }
+            
+            { name = "mobile_touch_gesture_editing"
+              description = "Touch gesture editing on mobile interface"
+              dependencies = ["session_desktop_to_mobile_transfer"]
+              timeout = 20000L
+              testFn = fun testId ->
+                try
+                  let mobileDevice = { deviceId = "mobile-002"; deviceType = Mobile; capabilities = ["touch"; "gestures"] }
+                  let session = Darklang.Collaboration.MobileSupport.createMobileCollaborationSession "test-user-2" mobileDevice
+                  
+                  // Test touch gestures
+                  let tapGesture = { gestureType = Tap; position = { x = 100.0; y = 200.0 }; timestamp = DateTime.now }
+                  let swipeGesture = { gestureType = Swipe; startPosition = { x = 50.0; y = 100.0 }; endPosition = { x = 150.0; y = 100.0 }; timestamp = DateTime.now }
+                  let pinchGesture = { gestureType = Pinch; scale = 1.5; center = { x = 125.0; y = 175.0 }; timestamp = DateTime.now }
+                  
+                  // Process gestures
+                  let tapResult = Darklang.Collaboration.MobileSupport.processGesture session.sessionId tapGesture
+                  let swipeResult = Darklang.Collaboration.MobileSupport.processGesture session.sessionId swipeGesture
+                  let pinchResult = Darklang.Collaboration.MobileSupport.processGesture session.sessionId pinchGesture
+                  
+                  // Verify gesture processing
+                  if tapResult && swipeResult && pinchResult then
+                    Success "Mobile touch gesture processing successful"
+                  else
+                    Failure ("Gesture processing failed", "One or more gestures failed to process")
+                with
+                | error -> Failure ("Exception during gesture test", Stdlib.String.toString error) }
+          ] }
+
+      // Test Suite 3: Security + Analytics Integration
+      let createSecurityAnalyticsIntegrationSuite () : TestSuite =
+        { name = "Security + Analytics Integration"
+          setupFn = setupTestEnvironment
+          teardownFn = teardownTestEnvironment
+          tests = [
+            { name = "security_threat_detection_analytics"
+              description = "Security threat detection with analytics tracking"
+              dependencies = []
+              timeout = 30000L
+              testFn = fun testId ->
+                try
+                  // Setup security monitoring
+                  Darklang.Collaboration.SecurityAndAccess.enableThreatDetection testId
+                  Darklang.Collaboration.PerformanceMonitoring.enableSecurityMetrics testId
+                  
+                  // Simulate suspicious activities
+                  let suspiciousActions = [
+                    { userId = "test-user-1"; action = "rapid_file_access"; count = 50L; timeWindow = 10L }
+                    { userId = "test-user-2"; action = "failed_authentication"; count = 10L; timeWindow = 5L }
+                    { userId = "test-user-3"; action = "unusual_location"; details = "Login from new country"; timestamp = DateTime.now }
+                  ]
+                  
+                  // Process actions and track in analytics
+                  let securityEvents = 
+                    suspiciousActions
+                    |> Stdlib.List.map (fun action ->
+                         let event = Darklang.Collaboration.SecurityAndAccess.analyzeAction action
+                         Darklang.Collaboration.PerformanceMonitoring.recordSecurityEvent event
+                         event)
+                  
+                  // Check threat detection
+                  let detectedThreats = Darklang.Collaboration.SecurityAndAccess.getDetectedThreats testId
+                  let securityMetrics = Darklang.Collaboration.PerformanceMonitoring.getSecurityMetrics testId
+                  
+                  if Stdlib.List.length detectedThreats > 0L && securityMetrics.threatDetectionCount > 0L then
+                    Success $"Security threat detection and analytics successful: {Stdlib.List.length detectedThreats} threats detected"
+                  else
+                    Failure ("No threats detected", "Expected security events to trigger threat detection")
+                with
+                | error -> Failure ("Exception during security test", Stdlib.String.toString error) }
+            
+            { name = "access_control_audit_trail"
+              description = "Role-based access control with complete audit trail"
+              dependencies = []
+              timeout = 25000L
+              testFn = fun testId ->
+                try
+                  // Setup roles and permissions
+                  let adminRole = Darklang.Collaboration.SecurityAndAccess.createRole "admin" ["read"; "write"; "delete"; "manage_users"]
+                  let developerRole = Darklang.Collaboration.SecurityAndAccess.createRole "developer" ["read"; "write"]
+                  let viewerRole = Darklang.Collaboration.SecurityAndAccess.createRole "viewer" ["read"]
+                  
+                  // Assign roles to test users
+                  Darklang.Collaboration.SecurityAndAccess.assignRole "test-user-1" adminRole
+                  Darklang.Collaboration.SecurityAndAccess.assignRole "test-user-2" developerRole
+                  Darklang.Collaboration.SecurityAndAccess.assignRole "test-user-3" viewerRole
+                  
+                  // Test access control with audit logging
+                  let adminAction = Darklang.Collaboration.SecurityAndAccess.authorizeAction "test-user-1" "delete" "TestPackage/sensitiveFunction"
+                  let devAction = Darklang.Collaboration.SecurityAndAccess.authorizeAction "test-user-2" "write" "TestPackage/regularFunction"
+                  let viewerAction = Darklang.Collaboration.SecurityAndAccess.authorizeAction "test-user-3" "delete" "TestPackage/anyFunction"
+                  
+                  // Check audit trail
+                  let auditTrail = Darklang.Collaboration.PerformanceMonitoring.getAuditTrail testId
+                  
+                  // Verify expected authorization results
+                  if adminAction == Authorized && devAction == Authorized && viewerAction == Denied then
+                    if Stdlib.List.length auditTrail >= 3L then
+                      Success "Access control and audit trail working correctly"
+                    else
+                      Failure ("Incomplete audit trail", $"Expected at least 3 audit entries, got {Stdlib.List.length auditTrail}")
+                  else
+                    Failure ("Access control failure", "Unexpected authorization results")
+                with
+                | error -> Failure ("Exception during access control test", Stdlib.String.toString error) }
+          ] }
+
+      // Test Suite 4: Plugin System + AI Integration
+      let createPluginAiIntegrationSuite () : TestSuite =
+        { name = "Plugin System + AI Integration"
+          setupFn = setupTestEnvironment
+          teardownFn = teardownTestEnvironment
+          tests = [
+            { name = "plugin_ai_workflow_automation"
+              description = "Plugin-based AI workflow automation"
+              dependencies = []
+              timeout = 40000L
+              testFn = fun testId ->
+                try
+                  // Initialize plugin system and AI agents
+                  let pluginSystem = Darklang.Collaboration.PluginArchitecture.initializePluginSystem testId
+                  let aiWorkflowManager = Darklang.Collaboration.AiAgents.initializeWorkflowManager testId
+                  
+                  // Create AI workflow plugin
+                  let aiPlugin = {
+                    id = "ai-workflow-plugin"
+                    name = "AI Workflow Automation"
+                    version = "1.0.0"
+                    hooks = ["pre_edit"; "post_edit"; "conflict_detected"]
+                    permissions = ["read_code"; "suggest_changes"; "analyze_patterns"]
+                    config = { aiProvider = "claude"; maxSuggestions = 3L; confidenceThreshold = 0.8 }
+                  }
+                  
+                  // Load and activate plugin
+                  let loadResult = Darklang.Collaboration.PluginArchitecture.loadPlugin pluginSystem aiPlugin
+                  let activateResult = Darklang.Collaboration.PluginArchitecture.activatePlugin pluginSystem aiPlugin.id
+                  
+                  // Test AI workflow triggers
+                  let codeChange = { packagePath = "TestAI"; itemName = "suggestFunction"; content = "let test = "; userId = "test-user-1" }
+                  let preEditHook = Darklang.Collaboration.PluginArchitecture.executeHook pluginSystem "pre_edit" codeChange
+                  let aiSuggestions = Darklang.Collaboration.AiAgents.getSuggestions codeChange
+                  
+                  if loadResult && activateResult && Stdlib.List.length aiSuggestions > 0L then
+                    Success $"Plugin AI integration successful: {Stdlib.List.length aiSuggestions} AI suggestions generated"
+                  else
+                    Failure ("Plugin AI integration failed", "Could not load plugin or generate AI suggestions")
+                with
+                | error -> Failure ("Exception during plugin AI test", Stdlib.String.toString error) }
+            
+            { name = "plugin_hot_reload_development"
+              description = "Hot-reload plugin development workflow"
+              dependencies = []
+              timeout = 30000L
+              testFn = fun testId ->
+                try
+                  let pluginSystem = Darklang.Collaboration.PluginArchitecture.initializePluginSystem testId
+                  
+                  // Create development plugin
+                  let devPlugin = {
+                    id = "dev-test-plugin"
+                    name = "Development Test Plugin"
+                    version = "0.1.0"
+                    hooks = ["test_hook"]
+                    permissions = ["read_code"]
+                    config = { testValue = "initial"; counter = 0L }
+                  }
+                  
+                  // Load plugin in development mode
+                  let loadResult = Darklang.Collaboration.PluginArchitecture.loadPluginDev pluginSystem devPlugin
+                  
+                  // Test initial functionality
+                  let initialResult = Darklang.Collaboration.PluginArchitecture.executeHook pluginSystem "test_hook" { data = "test" }
+                  
+                  // Update plugin (simulate hot reload)
+                  let updatedPlugin = { devPlugin with version = "0.2.0"; config = { testValue = "updated"; counter = 1L } }
+                  let reloadResult = Darklang.Collaboration.PluginArchitecture.hotReloadPlugin pluginSystem updatedPlugin
+                  
+                  // Test updated functionality
+                  let updatedResult = Darklang.Collaboration.PluginArchitecture.executeHook pluginSystem "test_hook" { data = "test" }
+                  
+                  if loadResult && reloadResult && initialResult != updatedResult then
+                    Success "Plugin hot-reload development successful"
+                  else
+                    Failure ("Hot reload failed", "Plugin functionality did not update correctly")
+                with
+                | error -> Failure ("Exception during hot reload test", Stdlib.String.toString error) }
+          ] }
+
+      // Comprehensive test execution
+      let runIntegrationTests () : List<TestResult> =
+        try
+          let config = createTestConfig ()
+          let testSuites = [
+            createVfsRealtimeIntegrationSuite ()
+            createSessionMobileIntegrationSuite ()
+            createSecurityAnalyticsIntegrationSuite ()
+            createPluginAiIntegrationSuite ()
+          ]
+          
+          let results = 
+            testSuites
+            |> Stdlib.List.map (fun suite ->
+                 let testId = setupTestEnvironment config
+                 
+                 let suiteResults = 
+                   suite.tests
+                   |> Stdlib.List.map (fun test ->
+                        try
+                          let startTime = DateTime.now
+                          let result = test.testFn testId
+                          let endTime = DateTime.now
+                          let duration = DateTime.subtract endTime startTime
+                          
+                          match result with
+                          | Success message -> Success $"[{suite.name}] {test.name}: {message} (took {duration}ms)"
+                          | Failure (error, details) -> Failure ($"[{suite.name}] {test.name}: {error}", details)
+                        with
+                        | error -> Failure ($"[{suite.name}] {test.name}: Exception", Stdlib.String.toString error))
+                 
+                 teardownTestEnvironment testId
+                 suiteResults)
+            |> Stdlib.List.flatten
+          
+          results
+        with
+        | error -> [ Failure ("Integration test execution failed", Stdlib.String.toString error) ]
+
+      // Test result analysis and reporting
+      let analyzeTestResults (results: List<TestResult>) : String =
+        let successCount = results |> Stdlib.List.filter (fun r -> match r with | Success _ -> true | _ -> false) |> Stdlib.List.length
+        let failureCount = results |> Stdlib.List.filter (fun r -> match r with | Failure _ -> true | _ -> false) |> Stdlib.List.length
+        let totalCount = successCount + failureCount
+        
+        let successRate = if totalCount > 0L then (successCount * 100L) / totalCount else 0L
+        
+        let summary = $"Integration Test Results: {successCount}/{totalCount} passed ({successRate}%)"
+        let failures = 
+          results
+          |> Stdlib.List.filterMap (fun r -> 
+               match r with 
+               | Failure (error, details) -> Some $"FAILED: {error} - {details}"
+               | Success _ -> None)
+          |> Stdlib.String.join "\n"
+        
+        if failureCount > 0L then
+          $"{summary}\n\nFailures:\n{failures}"
+        else
+          $"{summary}\n\nAll integration tests passed successfully!"
+
+      // Main integration test entry point
+      let validateCollaborationSystem () : String =
+        try
+          Darklang.Stdlib.Log.info "Starting comprehensive collaboration system integration tests..."
+          let results = runIntegrationTests ()
+          let analysis = analyzeTestResults results
+          Darklang.Stdlib.Log.info $"Integration tests completed: {analysis}"
+          analysis
+        with
+        | error -> 
+          let errorMessage = $"Integration test execution failed: {error}"
+          Darklang.Stdlib.Log.error errorMessage
+          errorMessage

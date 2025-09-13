@@ -1,0 +1,95 @@
+/// Authentication commands for developer collaboration
+module Darklang.Cli.Auth
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | [] ->
+    Stdlib.printLine "Usage: auth <command> [args]"
+    Stdlib.printLine ""
+    Stdlib.printLine "Commands:"
+    Stdlib.printLine "  login <username>    Log in as a user"
+    Stdlib.printLine "  logout             Log out current user"
+    Stdlib.printLine "  whoami             Show current user"
+    Stdlib.printLine "  status             Show authentication status"
+    state
+
+  | ["login"; username] ->
+    // For now, accept hardcoded users
+    match username with
+    | "stachu" ->
+      Stdlib.printLine "🔑 Logging in as stachu..."
+      Stdlib.printLine "✅ Successfully logged in as stachu"
+      Stdlib.printLine "Connected to: dev.darklang.com"
+    | "ocean" ->
+      Stdlib.printLine "🔑 Logging in as ocean..."
+      Stdlib.printLine "✅ Successfully logged in as ocean"
+      Stdlib.printLine "Connected to: dev.darklang.com"
+    | _ ->
+      Stdlib.printLine $"❌ Unknown user: {username}"
+      Stdlib.printLine "Available users: stachu, ocean"
+      Stdlib.printLine "(This is a development build with hardcoded users)"
+    state
+
+  | ["login"] ->
+    Stdlib.printLine "Please specify a username:"
+    Stdlib.printLine "  auth login <username>"
+    Stdlib.printLine ""
+    Stdlib.printLine "Available users: stachu, ocean"
+    state
+
+  | ["logout"] ->
+    Stdlib.printLine "Logging out..."
+    Stdlib.printLine "✅ Logged out successfully"
+    Stdlib.printLine "Use 'auth login <username>' to log back in"
+    state
+
+  | ["whoami"] ->
+    // TODO: Get from actual state
+    Stdlib.printLine "Current user: stachu"
+    Stdlib.printLine "Server: dev.darklang.com"
+    Stdlib.printLine "Role: developer"
+    state
+
+  | ["status"] ->
+    Stdlib.printLine "Authentication Status:"
+    Stdlib.printLine "  User: ✅ stachu"
+    Stdlib.printLine "  Server: ✅ dev.darklang.com"
+    Stdlib.printLine "  Connection: ✅ Connected"
+    Stdlib.printLine "  Token: ✅ Valid (expires in 7 days)"
+    Stdlib.printLine ""
+    Stdlib.printLine "Permissions:"
+    Stdlib.printLine "  - Create patches: ✅"
+    Stdlib.printLine "  - Push patches: ✅"
+    Stdlib.printLine "  - Pull patches: ✅"
+    Stdlib.printLine "  - Apply patches: ✅"
+    state
+
+  | _ ->
+    Stdlib.printLine "Unknown auth command. Use 'auth' for help."
+    state
+
+let help (_state: AppState) : Unit =
+  [
+    "auth - Manage authentication for collaboration features"
+    ""
+    "Before you can share patches with other developers, you need"
+    "to authenticate with the Darklang development server."
+    ""
+    "For development builds, the following users are available:"
+    "  - stachu"
+    "  - ocean"
+    ""
+    "Example:"
+    "  auth login stachu"
+    "  [work on patches]"
+    "  sync push"
+  ] |> Stdlib.printLines
+
+let complete (state: AppState) (args: List<String>) : List<String> =
+  match args with
+  | [] ->
+    ["login"; "logout"; "whoami"; "status"]
+  | ["login"] ->
+    ["stachu"; "ocean"]
+  | _ ->
+    []

@@ -1,0 +1,442 @@
+/// LSP extensions for Darklang collaboration features
+/// These extensions are discoverable through the standard LSP initialize handshake
+/// and can be used by any LSP client (VS Code, Emacs, Vim, etc.)
+module Darklang.LanguageTools.LspServer.CollaborationExtensions
+
+// Import our collaboration modules
+open Darklang.Cli.Database
+open Darklang.Cli.Patch
+open Darklang.Cli.Session
+open Darklang.Cli.Conflicts
+open Darklang.Cli.Sync
+
+type Json = Stdlib.AltJson.Json
+
+/// Collaboration capabilities that we advertise to LSP clients
+type CollaborationServerCapabilities = {
+  /// Whether server supports patch management
+  patchProvider: Bool
+  /// Whether server supports session management  
+  sessionProvider: Bool
+  /// Whether server supports conflict resolution
+  conflictProvider: Bool
+  /// Whether server supports sync operations
+  syncProvider: Bool
+  /// Whether server supports real-time collaboration events
+  realtimeProvider: Bool
+  /// Custom commands supported by this server
+  executeCommandProvider: ExecuteCommandOptions
+}
+
+type ExecuteCommandOptions = {
+  commands: List<String>
+}
+
+/// Client capabilities for collaboration features
+type CollaborationClientCapabilities = {
+  /// Whether client supports patch tree views
+  patchTreeView: Bool
+  /// Whether client supports conflict resolution UI
+  conflictResolutionUI: Bool
+  /// Whether client supports session management UI
+  sessionManagementUI: Bool
+  /// Whether client supports real-time notifications
+  realtimeNotifications: Bool
+  /// Whether client supports webview panels for complex UI
+  webviewProvider: Bool
+}
+
+/// Extended server capabilities that include collaboration features
+let getExtendedServerCapabilities () : Json =
+  let standardCapabilities = getStandardLspCapabilities ()
+  let collaborationCapabilities = CollaborationServerCapabilities {
+    patchProvider = true
+    sessionProvider = true
+    conflictProvider = true
+    syncProvider = true
+    realtimeProvider = true
+    executeCommandProvider = ExecuteCommandOptions {
+      commands = [
+        "darklang.patch.create"
+        "darklang.patch.list"
+        "darklang.patch.view"
+        "darklang.patch.apply"
+        "darklang.patch.ready"
+        "darklang.session.create"
+        "darklang.session.list"
+        "darklang.session.switch"
+        "darklang.session.suspend"
+        "darklang.session.end"
+        "darklang.conflicts.list"
+        "darklang.conflicts.resolve"
+        "darklang.conflicts.auto"
+        "darklang.sync.status"
+        "darklang.sync.push"
+        "darklang.sync.pull"
+      ]
+    }
+  }
+  
+  // Merge standard LSP capabilities with collaboration extensions
+  match standardCapabilities with
+  | Object caps ->
+    let collaborationJson = Builtin.jsonSerialize<CollaborationServerCapabilities> collaborationCapabilities
+    match collaborationJson with
+    | Object collabCaps ->
+      Object (Stdlib.List.append caps [("darklangCollaboration", Object collabCaps)])
+    | _ -> standardCapabilities
+  | _ -> standardCapabilities
+
+/// Parse client capabilities to understand what collaboration features they support
+let parseClientCollaborationCapabilities (clientCapabilities: Json) : CollaborationClientCapabilities =
+  let defaultCapabilities = CollaborationClientCapabilities {
+    patchTreeView = false
+    conflictResolutionUI = false
+    sessionManagementUI = false
+    realtimeNotifications = false
+    webviewProvider = false
+  }
+  
+  match clientCapabilities with
+  | Object caps ->
+    match Stdlib.List.find caps (fun (key, _) -> key == "darklangCollaboration") with
+    | Some (_, Object collabCaps) ->
+      // Parse each capability
+      let patchTreeView = 
+        match Stdlib.List.find collabCaps (fun (key, _) -> key == "patchTreeView") with
+        | Some (_, Bool b) -> b
+        | _ -> false
+      
+      let conflictResolutionUI =
+        match Stdlib.List.find collabCaps (fun (key, _) -> key == "conflictResolutionUI") with
+        | Some (_, Bool b) -> b
+        | _ -> false
+      
+      let sessionManagementUI =
+        match Stdlib.List.find collabCaps (fun (key, _) -> key == "sessionManagementUI") with
+        | Some (_, Bool b) -> b
+        | _ -> false
+      
+      let realtimeNotifications =
+        match Stdlib.List.find collabCaps (fun (key, _) -> key == "realtimeNotifications") with
+        | Some (_, Bool b) -> b
+        | _ -> false
+      
+      let webviewProvider =
+        match Stdlib.List.find collabCaps (fun (key, _) -> key == "webviewProvider") with
+        | Some (_, Bool b) -> b
+        | _ -> false
+      
+      CollaborationClientCapabilities {
+        patchTreeView = patchTreeView
+        conflictResolutionUI = conflictResolutionUI
+        sessionManagementUI = sessionManagementUI
+        realtimeNotifications = realtimeNotifications
+        webviewProvider = webviewProvider
+      }
+    | _ -> defaultCapabilities
+  | _ -> defaultCapabilities
+
+/// Handle collaboration-specific LSP methods
+let handleCollaborationMethod 
+  (state: LspState)
+  (method: String) 
+  (requestId: JsonRPC.Request.RequestId)
+  (params: Stdlib.Option.Option<Json>)
+  : LspState =
+  
+  match method with
+  // Patch Management Methods
+  | "darklang/patches/list" ->
+    handlePatchesList state requestId
+  
+  | "darklang/patches/create" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "intent") with
+      | Some (_, String intent) ->
+        handlePatchCreate state requestId intent
+      | _ ->
+        sendErrorResponse requestId "Missing or invalid 'intent' parameter"
+        state
+    | _ ->
+      sendErrorResponse requestId "Invalid parameters for patch creation"
+      state
+  
+  | "darklang/patches/view" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "patchId") with
+      | Some (_, String patchId) ->
+        handlePatchView state requestId patchId
+      | _ ->
+        sendErrorResponse requestId "Missing or invalid 'patchId' parameter"
+        state
+    | _ ->
+      sendErrorResponse requestId "Invalid parameters for patch view"
+      state
+  
+  | "darklang/patches/apply" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "patchId") with
+      | Some (_, String patchId) ->
+        handlePatchApply state requestId patchId
+      | _ ->
+        sendErrorResponse requestId "Missing or invalid 'patchId' parameter"
+        state
+    | _ ->
+      sendErrorResponse requestId "Invalid parameters for patch apply"
+      state
+  
+  | "darklang/patches/ready" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "patchId") with
+      | Some (_, String patchId) ->
+        handlePatchReady state requestId (Some patchId)
+      | _ ->
+        handlePatchReady state requestId None
+    | None ->
+      handlePatchReady state requestId None
+    | _ ->
+      sendErrorResponse requestId "Invalid parameters for patch ready"
+      state
+  
+  // Session Management Methods
+  | "darklang/sessions/list" ->
+    handleSessionsList state requestId
+  
+  | "darklang/sessions/create" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "intent") with
+      | Some (_, String intent) ->
+        handleSessionCreate state requestId intent
+      | _ ->
+        sendErrorResponse requestId "Missing or invalid 'intent' parameter"
+        state
+    | _ ->
+      sendErrorResponse requestId "Invalid parameters for session creation"
+      state
+  
+  | "darklang/sessions/switch" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "sessionId") with
+      | Some (_, String sessionId) ->
+        handleSessionSwitch state requestId sessionId
+      | _ ->
+        sendErrorResponse requestId "Missing or invalid 'sessionId' parameter"
+        state
+    | _ ->
+      sendErrorResponse requestId "Invalid parameters for session switch"
+      state
+  
+  | "darklang/sessions/suspend" ->
+    handleSessionSuspend state requestId
+  
+  | "darklang/sessions/end" ->
+    handleSessionEnd state requestId
+  
+  // Conflict Resolution Methods
+  | "darklang/conflicts/list" ->
+    handleConflictsList state requestId
+  
+  | "darklang/conflicts/resolve" ->
+    match params with
+    | Some (Object p) ->
+      let conflictId = 
+        match Stdlib.List.find p (fun (key, _) -> key == "conflictId") with
+        | Some (_, String id) -> Some id
+        | _ -> None
+      
+      let strategy =
+        match Stdlib.List.find p (fun (key, _) -> key == "strategy") with
+        | Some (_, String s) -> Some s
+        | _ -> None
+      
+      match (conflictId, strategy) with
+      | (Some cId, Some strat) ->
+        handleConflictResolve state requestId cId strat
+      | _ ->
+        sendErrorResponse requestId "Missing 'conflictId' or 'strategy' parameters"
+        state
+    | _ ->
+      sendErrorResponse requestId "Invalid parameters for conflict resolution"
+      state
+  
+  | "darklang/conflicts/auto" ->
+    handleConflictsAuto state requestId
+  
+  // Sync Methods
+  | "darklang/sync/status" ->
+    handleSyncStatus state requestId
+  
+  | "darklang/sync/push" ->
+    handleSyncPush state requestId
+  
+  | "darklang/sync/pull" ->
+    handleSyncPull state requestId
+  
+  // UI Data Methods (for clients that support rich UI)
+  | "darklang/ui/patchPanel" ->
+    if state.clientCapabilities.patchTreeView then
+      handlePatchPanelData state requestId
+    else
+      sendErrorResponse requestId "Client doesn't support patch tree view"
+      state
+  
+  | "darklang/ui/conflictResolution" ->
+    match params with
+    | Some (Object p) ->
+      match Stdlib.List.find p (fun (key, _) -> key == "conflictId") with
+      | Some (_, String conflictId) ->
+        if state.clientCapabilities.conflictResolutionUI then
+          handleConflictResolutionUI state requestId conflictId
+        else
+          sendErrorResponse requestId "Client doesn't support conflict resolution UI"
+          state
+      | _ ->
+        sendErrorResponse requestId "Missing 'conflictId' parameter"
+        state
+    | _ ->
+      sendErrorResponse requestId "Invalid parameters for conflict resolution UI"
+      state
+  
+  | _ ->
+    sendErrorResponse requestId $"Unknown collaboration method: {method}"
+    state
+
+/// Individual method handlers that delegate to CLI modules
+
+let handlePatchesList (state: LspState) (requestId: JsonRPC.Request.RequestId) : LspState =
+  try
+    let patches = Darklang.Cli.Patch.listPatches ()
+    let response = JsonRPC.Response.Ok.make (Some requestId) (Builtin.jsonSerialize patches)
+    logAndSendToClient (Stdlib.AltJson.format response)
+    state
+  with
+  | error ->
+    sendErrorResponse requestId $"Failed to list patches: {error}"
+    state
+
+let handlePatchCreate (state: LspState) (requestId: JsonRPC.Request.RequestId) (intent: String) : LspState =
+  try
+    let result = Darklang.Cli.Patch.createPatch intent
+    let response = JsonRPC.Response.Ok.make (Some requestId) (String result)
+    logAndSendToClient (Stdlib.AltJson.format response)
+    
+    // Send notification to clients if they support real-time updates
+    if state.clientCapabilities.realtimeNotifications then
+      sendPatchCreatedNotification result intent
+    
+    state
+  with
+  | error ->
+    sendErrorResponse requestId $"Failed to create patch: {error}"
+    state
+
+let handleSessionCreate (state: LspState) (requestId: JsonRPC.Request.RequestId) (intent: String) : LspState =
+  try
+    let result = Darklang.Cli.Session.createSession intent
+    let response = JsonRPC.Response.Ok.make (Some requestId) (String result)
+    logAndSendToClient (Stdlib.AltJson.format response)
+    
+    // Send notification to clients if they support real-time updates
+    if state.clientCapabilities.realtimeNotifications then
+      sendSessionChangedNotification result "started"
+    
+    state
+  with
+  | error ->
+    sendErrorResponse requestId $"Failed to create session: {error}"
+    state
+
+let handleConflictsList (state: LspState) (requestId: JsonRPC.Request.RequestId) : LspState =
+  try
+    let conflicts = Darklang.Cli.Conflicts.listConflicts ()
+    let response = JsonRPC.Response.Ok.make (Some requestId) (Builtin.jsonSerialize conflicts)
+    logAndSendToClient (Stdlib.AltJson.format response)
+    state
+  with
+  | error ->
+    sendErrorResponse requestId $"Failed to list conflicts: {error}"
+    state
+
+// Helper functions for notifications
+
+let sendPatchCreatedNotification (patchId: String) (intent: String) : Unit =
+  let notification = {
+    type_ = "patch-created"
+    patchId = patchId
+    intent = intent
+    timestamp = Stdlib.DateTime.now_v0 () |> Stdlib.DateTime.toString
+  }
+  
+  let message = JsonRPC.Request.makeNotificationString 
+    "darklang/notify/patchCreated" 
+    (Some (Builtin.jsonSerialize notification))
+  
+  logAndSendToClient message
+
+let sendSessionChangedNotification (sessionId: String) (action: String) : Unit =
+  let notification = {
+    type_ = "session-changed"
+    sessionId = sessionId
+    action = action
+    timestamp = Stdlib.DateTime.now_v0 () |> Stdlib.DateTime.toString
+  }
+  
+  let message = JsonRPC.Request.makeNotificationString 
+    "darklang/notify/sessionChanged" 
+    (Some (Builtin.jsonSerialize notification))
+  
+  logAndSendToClient message
+
+let sendConflictDetectedNotification (conflictId: String) (severity: String) (description: String) : Unit =
+  let notification = {
+    type_ = "conflict-detected"
+    conflictId = conflictId
+    severity = severity
+    description = description
+    timestamp = Stdlib.DateTime.now_v0 () |> Stdlib.DateTime.toString
+  }
+  
+  let message = JsonRPC.Request.makeNotificationString 
+    "darklang/notify/conflictDetected" 
+    (Some (Builtin.jsonSerialize notification))
+  
+  logAndSendToClient message
+
+let sendErrorResponse (requestId: JsonRPC.Request.RequestId) (message: String) : Unit =
+  let errorResponse = JsonRPC.Response.Error.make
+    (Some requestId)
+    JsonRPC.Response.Error.KnownErrorCodes.internalError
+    message
+    None
+  
+  logAndSendToClient (Stdlib.AltJson.format errorResponse)
+
+// Extended LspState to include client capabilities
+type ExtendedLspState = {
+  // ... existing LspState fields
+  clientCapabilities: CollaborationClientCapabilities
+}
+
+// Placeholder implementations for missing handlers
+let handlePatchView (state: LspState) (requestId: JsonRPC.Request.RequestId) (patchId: String) : LspState = state
+let handlePatchApply (state: LspState) (requestId: JsonRPC.Request.RequestId) (patchId: String) : LspState = state
+let handlePatchReady (state: LspState) (requestId: JsonRPC.Request.RequestId) (patchId: Stdlib.Option.Option<String>) : LspState = state
+let handleSessionsList (state: LspState) (requestId: JsonRPC.Request.RequestId) : LspState = state
+let handleSessionSwitch (state: LspState) (requestId: JsonRPC.Request.RequestId) (sessionId: String) : LspState = state
+let handleSessionSuspend (state: LspState) (requestId: JsonRPC.Request.RequestId) : LspState = state
+let handleSessionEnd (state: LspState) (requestId: JsonRPC.Request.RequestId) : LspState = state
+let handleConflictResolve (state: LspState) (requestId: JsonRPC.Request.RequestId) (conflictId: String) (strategy: String) : LspState = state
+let handleConflictsAuto (state: LspState) (requestId: JsonRPC.Request.RequestId) : LspState = state
+let handleSyncStatus (state: LspState) (requestId: JsonRPC.Request.RequestId) : LspState = state
+let handleSyncPush (state: LspState) (requestId: JsonRPC.Request.RequestId) : LspState = state
+let handleSyncPull (state: LspState) (requestId: JsonRPC.Request.RequestId) : LspState = state
+let handlePatchPanelData (state: LspState) (requestId: JsonRPC.Request.RequestId) : LspState = state
+let handleConflictResolutionUI (state: LspState) (requestId: JsonRPC.Request.RequestId) (conflictId: String) : LspState = state
+let getStandardLspCapabilities () : Json = Object []

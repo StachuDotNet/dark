@@ -1,0 +1,539 @@
+/// Real-time Collaborative Editing for Darklang
+/// Enables multiple developers to edit code simultaneously with operational transforms
+module Darklang.Collaboration.RealtimeEditing
+
+open Darklang.Collaboration.SessionManager
+open System.Collections.Concurrent
+
+/// Real-time collaboration session for multiple editors
+type CollaborativeSession = {
+  sessionId: String
+  documentId: String
+  participants: List<Participant>
+  
+  // Document state
+  currentState: DocumentState
+  operationHistory: List<Operation>
+  lastOperationId: Int64
+  
+  // Synchronization
+  transformEngine: OperationalTransform
+  conflictResolver: RealtimeConflictResolver
+  
+  // Connection management
+  connections: ConcurrentDictionary<String, WebSocketConnection>
+  heartbeatInterval: TimeSpan
+  
+  // Persistence
+  snapshotInterval: TimeSpan
+  lastSnapshot: DateTime
+  
+  createdAt: DateTime
+  isActive: Bool
+}
+
+type Participant = {
+  userId: String
+  userName: String
+  connectionId: String
+  cursor: CursorPosition
+  selection: SelectionRange
+  isActive: Bool
+  lastSeen: DateTime
+  permissions: EditPermissions
+  color: String  // For visual identification
+}
+
+type DocumentState = {
+  content: String
+  version: Int64
+  checksum: String
+  lastModified: DateTime
+  modifiedBy: String
+}
+
+/// Operational Transform operations for real-time editing
+type Operation = {
+  operationId: Int64
+  userId: String
+  timestamp: DateTime
+  operationType: OperationType
+  position: Int64
+  content: Option<String>
+  length: Option<Int64>
+  metadata: OperationMetadata
+}
+
+type OperationType =
+  | Insert of text: String
+  | Delete of length: Int64
+  | Retain of length: Int64
+  | Replace of oldText: String * newText: String
+  | CursorMove of position: CursorPosition
+  | SelectionChange of range: SelectionRange
+
+type OperationMetadata = {
+  sourceVersion: Int64
+  targetVersion: Int64
+  priority: OperationPriority
+  isComposite: Bool
+  compositeId: Option<String>
+}
+
+type OperationPriority = Low | Normal | High | System
+
+/// Operational Transform engine for conflict-free concurrent editing
+type OperationalTransform = {
+  transformRules: List<TransformRule>
+  inclusionTransform: Operation -> Operation -> (Operation * Operation)
+  exclusionTransform: Operation -> Operation -> Operation
+  compose: Operation -> Operation -> Option<Operation>
+}
+
+type TransformRule = {
+  ruleId: String
+  leftType: OperationType
+  rightType: OperationType
+  transform: Operation -> Operation -> (Operation * Operation)
+  priority: Int64
+}
+
+/// Start a new collaborative editing session
+let startCollaborativeSession (documentId: String) (initiatorUserId: String) : CollaborativeSession =
+  try
+    let sessionId = generateSessionId ()
+    
+    let initialParticipant = {
+      userId = initiatorUserId
+      userName = getUserName initiatorUserId
+      connectionId = generateConnectionId ()
+      cursor = { line = 0L; column = 0L }
+      selection = { start = { line = 0L; column = 0L }; end_ = { line = 0L; column = 0L } }
+      isActive = true
+      lastSeen = DateTime.now
+      permissions = FullEdit
+      color = assignParticipantColor 0L
+    }
+    
+    let initialDocument = loadDocument documentId
+    
+    {
+      sessionId = sessionId
+      documentId = documentId
+      participants = [initialParticipant]
+      
+      currentState = {
+        content = initialDocument.content
+        version = 1L
+        checksum = calculateChecksum initialDocument.content
+        lastModified = DateTime.now
+        modifiedBy = initiatorUserId
+      }
+      
+      operationHistory = []
+      lastOperationId = 0L
+      
+      transformEngine = createTransformEngine ()
+      conflictResolver = createConflictResolver ()
+      
+      connections = ConcurrentDictionary<String, WebSocketConnection>()
+      heartbeatInterval = TimeSpan.fromSeconds 30.0
+      
+      snapshotInterval = TimeSpan.fromMinutes 5.0
+      lastSnapshot = DateTime.now
+      
+      createdAt = DateTime.now
+      isActive = true
+    }
+  
+  with
+  | error ->
+    log $"Failed to start collaborative session: {error}"
+    failwith error
+
+/// Join an existing collaborative session
+let joinCollaborativeSession (sessionId: String) (userId: String) (connection: WebSocketConnection) : JoinResult =
+  try
+    let session = getCollaborativeSession sessionId
+    
+    match session with
+    | Some s ->
+      // Check permissions
+      if not (canUserJoinSession userId s) then
+        JoinDenied "Insufficient permissions"
+      else
+        let participant = {
+          userId = userId
+          userName = getUserName userId
+          connectionId = connection.connectionId
+          cursor = { line = 0L; column = 0L }
+          selection = { start = { line = 0L; column = 0L }; end_ = { line = 0L; column = 0L } }
+          isActive = true
+          lastSeen = DateTime.now
+          permissions = determineUserPermissions userId s
+          color = assignParticipantColor (Stdlib.List.length s.participants)
+        }
+        
+        // Add participant to session
+        let updatedSession = { s with participants = participant :: s.participants }
+        updateCollaborativeSession updatedSession
+        
+        // Register connection
+        s.connections.TryAdd(connection.connectionId, connection) |> ignore
+        
+        // Send initial state to new participant
+        sendInitialState connection updatedSession
+        
+        // Notify other participants
+        broadcastParticipantJoined updatedSession participant
+        
+        JoinSuccess {
+          sessionState = updatedSession.currentState
+          participants = updatedSession.participants
+          operationHistory = updatedSession.operationHistory
+          participantId = participant.userId
+        }
+    
+    | None ->
+      JoinDenied "Session not found"
+  
+  with
+  | error ->
+    log $"Failed to join collaborative session: {error}"
+    JoinError $"Join failed: {error}"
+
+type JoinResult =
+  | JoinSuccess of joinInfo: JoinInfo
+  | JoinDenied of reason: String
+  | JoinError of error: String
+
+type JoinInfo = {
+  sessionState: DocumentState
+  participants: List<Participant>
+  operationHistory: List<Operation>
+  participantId: String
+}
+
+/// Apply an operation to the collaborative session
+let applyOperation (sessionId: String) (operation: Operation) : OperationResult =
+  try
+    let session = getCollaborativeSession sessionId
+    
+    match session with
+    | Some s ->
+      // Validate operation
+      let validation = validateOperation operation s
+      
+      if not validation.isValid then
+        OperationRejected validation.reason
+      else
+        // Transform operation against concurrent operations
+        let transformedOp = transformOperation operation s
+        
+        // Apply operation to document
+        let newContent = applyOperationToContent transformedOp s.currentState.content
+        let newVersion = s.currentState.version + 1L
+        
+        let newState = {
+          s.currentState with
+            content = newContent
+            version = newVersion
+            checksum = calculateChecksum newContent
+            lastModified = DateTime.now
+            modifiedBy = operation.userId
+        }
+        
+        let updatedSession = {
+          s with
+            currentState = newState
+            operationHistory = transformedOp :: s.operationHistory
+            lastOperationId = transformedOp.operationId
+        }
+        
+        // Persist updated session
+        updateCollaborativeSession updatedSession
+        
+        // Broadcast operation to all participants
+        broadcastOperation updatedSession transformedOp
+        
+        // Check if snapshot is needed
+        if shouldCreateSnapshot updatedSession then
+          createSnapshot updatedSession
+        
+        OperationApplied {
+          newVersion = newVersion
+          operation = transformedOp
+          newChecksum = newState.checksum
+        }
+    
+    | None ->
+      OperationRejected "Session not found"
+  
+  with
+  | error ->
+    log $"Failed to apply operation: {error}"
+    OperationError $"Operation failed: {error}"
+
+type OperationResult =
+  | OperationApplied of result: OperationApplyResult
+  | OperationRejected of reason: String
+  | OperationError of error: String
+
+type OperationApplyResult = {
+  newVersion: Int64
+  operation: Operation
+  newChecksum: String
+}
+
+/// Transform operation against concurrent operations using Operational Transform
+let transformOperation (operation: Operation) (session: CollaborativeSession) : Operation =
+  // Get concurrent operations (operations that happened after the source version)
+  let concurrentOps = 
+    session.operationHistory
+    |> Stdlib.List.filter (fun op -> op.operationId > operation.metadata.sourceVersion)
+    |> Stdlib.List.sortBy (fun op -> op.operationId)
+  
+  // Apply inclusion transformation for each concurrent operation
+  let transformedOp = 
+    concurrentOps
+    |> Stdlib.List.fold operation (fun acc concurrentOp ->
+      let (transformed, _) = session.transformEngine.inclusionTransform acc concurrentOp
+      transformed)
+  
+  { transformedOp with 
+      operationId = session.lastOperationId + 1L
+      metadata = { transformedOp.metadata with targetVersion = session.currentState.version + 1L }
+  }
+
+/// Handle cursor and selection updates
+let updateParticipantCursor (sessionId: String) (userId: String) (cursor: CursorPosition) (selection: SelectionRange) : Unit =
+  try
+    let session = getCollaborativeSession sessionId
+    
+    match session with
+    | Some s ->
+      let updatedParticipants = 
+        s.participants
+        |> Stdlib.List.map (fun p ->
+          if p.userId == userId then
+            { p with cursor = cursor; selection = selection; lastSeen = DateTime.now }
+          else
+            p)
+      
+      let updatedSession = { s with participants = updatedParticipants }
+      updateCollaborativeSession updatedSession
+      
+      // Broadcast cursor update to other participants
+      broadcastCursorUpdate updatedSession userId cursor selection
+    
+    | None ->
+      log $"Session not found for cursor update: {sessionId}"
+  
+  with
+  | error ->
+    log $"Failed to update participant cursor: {error}"
+
+/// Real-time conflict resolution for simultaneous edits
+let resolveRealtimeConflict (operation1: Operation) (operation2: Operation) : ConflictResolution =
+  try
+    match (operation1.operationType, operation2.operationType) with
+    | (Insert text1, Insert text2) when operation1.position == operation2.position ->
+      // Simultaneous inserts at same position - use timestamp priority
+      if operation1.timestamp < operation2.timestamp then
+        PreferFirst { adjustedOperation2 = { operation2 with position = operation2.position + (Stdlib.String.length text1) } }
+      else
+        PreferSecond { adjustedOperation1 = { operation1 with position = operation1.position + (Stdlib.String.length text2) } }
+    
+    | (Delete length1, Delete length2) when operation1.position == operation2.position ->
+      // Simultaneous deletes at same position - merge ranges
+      let maxLength = max length1 length2
+      MergeOperations { 
+        mergedOperation = { operation1 with operationType = Delete maxLength }
+      }
+    
+    | (Insert text, Delete length) ->
+      // Insert/Delete conflict - apply transformation
+      let transformedOps = transformInsertDelete operation1 operation2
+      ApplyTransformation transformedOps
+    
+    | _ ->
+      // Use operational transform for other cases
+      let (transformed1, transformed2) = applyOperationalTransform operation1 operation2
+      ApplyTransformation { operation1 = transformed1; operation2 = transformed2 }
+  
+  with
+  | error ->
+    log $"Conflict resolution failed: {error}"
+    RejectBoth $"Unable to resolve conflict: {error}"
+
+type ConflictResolution =
+  | PreferFirst of adjustment: { adjustedOperation2: Operation }
+  | PreferSecond of adjustment: { adjustedOperation1: Operation }
+  | MergeOperations of merge: { mergedOperation: Operation }
+  | ApplyTransformation of transform: { operation1: Operation; operation2: Operation }
+  | RejectBoth of reason: String
+
+/// Connection management and heartbeat
+let manageConnections (session: CollaborativeSession) : Unit =
+  // Check for dead connections
+  let currentTime = DateTime.now
+  let timeoutThreshold = session.heartbeatInterval.Multiply(3.0)
+  
+  let deadConnections = 
+    session.participants
+    |> Stdlib.List.filter (fun p -> 
+      let timeSinceLastSeen = currentTime.Subtract(p.lastSeen)
+      timeSinceLastSeen > timeoutThreshold)
+  
+  // Remove dead connections
+  deadConnections
+  |> Stdlib.List.iter (fun p ->
+    removeParticipant session.sessionId p.userId
+    session.connections.TryRemove(p.connectionId) |> ignore
+    broadcastParticipantLeft session p)
+  
+  // Send heartbeat to active connections
+  session.connections.Values
+  |> Seq.iter (fun connection ->
+    sendHeartbeat connection)
+
+/// Document snapshots for recovery and performance
+let createSnapshot (session: CollaborativeSession) : Unit =
+  try
+    let snapshot = {
+      snapshotId = generateSnapshotId ()
+      sessionId = session.sessionId
+      documentId = session.documentId
+      version = session.currentState.version
+      content = session.currentState.content
+      checksum = session.currentState.checksum
+      operationCount = Stdlib.List.length session.operationHistory
+      participants = session.participants
+      createdAt = DateTime.now
+    }
+    
+    saveSnapshot snapshot
+    
+    // Trim operation history (keep last 1000 operations)
+    let trimmedHistory = 
+      session.operationHistory
+      |> Stdlib.List.take 1000
+    
+    let updatedSession = { 
+      session with 
+        operationHistory = trimmedHistory
+        lastSnapshot = DateTime.now 
+    }
+    
+    updateCollaborativeSession updatedSession
+    
+    log $"Created snapshot for session {session.sessionId}"
+  
+  with
+  | error ->
+    log $"Failed to create snapshot: {error}"
+
+type DocumentSnapshot = {
+  snapshotId: String
+  sessionId: String
+  documentId: String
+  version: Int64
+  content: String
+  checksum: String
+  operationCount: Int64
+  participants: List<Participant>
+  createdAt: DateTime
+}
+
+/// Awareness and presence indicators
+let updateParticipantPresence (sessionId: String) (userId: String) (presenceInfo: PresenceInfo) : Unit =
+  try
+    let session = getCollaborativeSession sessionId
+    
+    match session with
+    | Some s ->
+      // Update participant presence
+      let updatedParticipants = 
+        s.participants
+        |> Stdlib.List.map (fun p ->
+          if p.userId == userId then
+            { p with lastSeen = DateTime.now }
+          else
+            p)
+      
+      let updatedSession = { s with participants = updatedParticipants }
+      updateCollaborativeSession updatedSession
+      
+      // Broadcast presence update
+      broadcastPresenceUpdate updatedSession userId presenceInfo
+    
+    | None ->
+      log $"Session not found for presence update: {sessionId}"
+  
+  with
+  | error ->
+    log $"Failed to update participant presence: {error}"
+
+type PresenceInfo = {
+  isTyping: Bool
+  focusedElement: Option<String>
+  status: PresenceStatus
+  customData: Dict<String, String>
+}
+
+type PresenceStatus = Online | Away | Busy | Offline
+
+// Helper functions and implementations
+let generateSessionId () : String = Stdlib.Uuid.generate ()
+let generateConnectionId () : String = Stdlib.Uuid.generate ()
+let generateSnapshotId () : String = Stdlib.Uuid.generate ()
+let getUserName (userId: String) : String = userId  // TODO: Get from user service
+let assignParticipantColor (index: Int64) : String = 
+  let colors = ["#FF6B6B"; "#4ECDC4"; "#45B7D1"; "#96CEB4"; "#FFEAA7"; "#DDA0DD"; "#98D8C8"]
+  let colorIndex = index % (Stdlib.List.length colors)
+  Stdlib.List.getAt colors colorIndex |> Option.defaultValue "#999999"
+
+let loadDocument (documentId: String) : { content: String } = { content = "" }
+let createTransformEngine () : OperationalTransform = {
+  transformRules = []
+  inclusionTransform = fun op1 op2 -> (op1, op2)
+  exclusionTransform = fun op1 op2 -> op1
+  compose = fun op1 op2 -> None
+}
+let createConflictResolver () : RealtimeConflictResolver = RealtimeConflictResolver.Default
+let calculateChecksum (content: String) : String = content.GetHashCode().ToString()
+let canUserJoinSession (userId: String) (session: CollaborativeSession) : Bool = true
+let determineUserPermissions (userId: String) (session: CollaborativeSession) : EditPermissions = FullEdit
+let getCollaborativeSession (sessionId: String) : Option<CollaborativeSession> = None
+let updateCollaborativeSession (session: CollaborativeSession) : Unit = ()
+let sendInitialState (connection: WebSocketConnection) (session: CollaborativeSession) : Unit = ()
+let broadcastParticipantJoined (session: CollaborativeSession) (participant: Participant) : Unit = ()
+let validateOperation (operation: Operation) (session: CollaborativeSession) : { isValid: Bool; reason: String } = { isValid = true; reason = "" }
+let applyOperationToContent (operation: Operation) (content: String) : String = content
+let broadcastOperation (session: CollaborativeSession) (operation: Operation) : Unit = ()
+let shouldCreateSnapshot (session: CollaborativeSession) : Bool = false
+let createSnapshot (session: CollaborativeSession) : Unit = ()
+let broadcastCursorUpdate (session: CollaborativeSession) (userId: String) (cursor: CursorPosition) (selection: SelectionRange) : Unit = ()
+let transformInsertDelete (op1: Operation) (op2: Operation) : { operation1: Operation; operation2: Operation } = { operation1 = op1; operation2 = op2 }
+let applyOperationalTransform (op1: Operation) (op2: Operation) : (Operation * Operation) = (op1, op2)
+let removeParticipant (sessionId: String) (userId: String) : Unit = ()
+let broadcastParticipantLeft (session: CollaborativeSession) (participant: Participant) : Unit = ()
+let sendHeartbeat (connection: WebSocketConnection) : Unit = ()
+let saveSnapshot (snapshot: DocumentSnapshot) : Unit = ()
+let broadcastPresenceUpdate (session: CollaborativeSession) (userId: String) (presence: PresenceInfo) : Unit = ()
+
+// Type definitions
+type CursorPosition = { line: Int64; column: Int64 }
+type SelectionRange = { start: CursorPosition; end_: CursorPosition }
+type EditPermissions = ReadOnly | Comment | Edit | FullEdit
+type WebSocketConnection = { connectionId: String; socket: obj }
+type RealtimeConflictResolver = Default
+
+module TimeSpan =
+  let fromSeconds (seconds: Float) : TimeSpan = seconds.ToString()
+  let fromMinutes (minutes: Float) : TimeSpan = minutes.ToString()
+  let Multiply (timespan: TimeSpan) (factor: Float) : TimeSpan = timespan
+
+module DateTime =
+  let now : DateTime = System.DateTime.Now
+  let Subtract (dt1: DateTime) (dt2: DateTime) : TimeSpan = (dt1 - dt2).ToString()

@@ -1,0 +1,591 @@
+module Darklang =
+  module Collaboration =
+    module EndToEndWorkflowTests =
+      // End-to-end workflow validation tests for realistic collaboration scenarios
+      // Tests complete user journeys across the entire collaboration ecosystem
+
+      type WorkflowTestResult =
+        | WorkflowSuccess of String * List<String> // message, step details
+        | WorkflowFailure of String * String * List<String> // workflow name, error, completed steps
+
+      type WorkflowStep =
+        { stepName: String
+          description: String
+          executeFn: String -> Bool
+          validateFn: String -> Bool
+          timeout: Int64
+          required: Bool }
+
+      type CollaborationWorkflow =
+        { workflowName: String
+          description: String
+          participants: List<String>
+          steps: List<WorkflowStep>
+          expectedOutcome: String }
+
+      type WorkflowContext =
+        { testId: String
+          participants: List<String>
+          sharedState: Dict<String>
+          currentStep: Int64
+          stepResults: List<String> }
+
+      // Workflow execution engine
+      let executeWorkflowStep (context: WorkflowContext) (step: WorkflowStep) : (Bool * String) =
+        try
+          let startTime = DateTime.now
+          let executeResult = step.executeFn context.testId
+          let validateResult = step.validateFn context.testId
+          let endTime = DateTime.now
+          let duration = DateTime.subtract endTime startTime
+          
+          let success = executeResult && validateResult
+          let resultMessage = 
+            if success then
+              $"✅ {step.stepName}: {step.description} (took {duration}ms)"
+            else
+              $"❌ {step.stepName}: Failed execution or validation"
+          
+          (success, resultMessage)
+        with
+        | error -> (false, $"❌ {step.stepName}: Exception - {error}")
+
+      let executeWorkflow (workflow: CollaborationWorkflow) (testId: String) : WorkflowTestResult =
+        try
+          let context = {
+            testId = testId
+            participants = workflow.participants
+            sharedState = Dict.empty
+            currentStep = 0L
+            stepResults = []
+          }
+          
+          let (finalSuccess, finalResults) =
+            workflow.steps
+            |> Stdlib.List.fold (fun (success, results) step ->
+                 if success || not step.required then
+                   let (stepSuccess, stepResult) = executeWorkflowStep context step
+                   let newSuccess = success && (stepSuccess || not step.required)
+                   let newResults = stepResult :: results
+                   (newSuccess, newResults)
+                 else
+                   (false, $"⏭️ {step.stepName}: Skipped due to previous failure" :: results)
+               ) (true, [])
+          
+          let orderedResults = Stdlib.List.reverse finalResults
+          
+          if finalSuccess then
+            WorkflowSuccess (workflow.expectedOutcome, orderedResults)
+          else
+            WorkflowFailure (workflow.workflowName, "One or more required steps failed", orderedResults)
+        with
+        | error -> WorkflowFailure (workflow.workflowName, $"Workflow execution exception: {error}", [])
+
+      // Workflow Definitions
+
+      // Workflow 1: Complete Collaborative Development Cycle
+      let createCollaborativeDevelopmentWorkflow () : CollaborationWorkflow =
+        { workflowName = "Collaborative Development Cycle"
+          description = "Full development workflow with multiple developers, real-time editing, and mobile handoff"
+          participants = ["dev-1"; "dev-2"; "mobile-user"]
+          expectedOutcome = "Complete function developed collaboratively with mobile review and deployment"
+          steps = [
+            { stepName = "initialize_project"
+              description = "Create new package and initialize collaboration"
+              required = true
+              timeout = 10000L
+              executeFn = fun testId ->
+                let packagePath = "CollaborativeProject"
+                let result = Darklang.Collaboration.VirtualFileSystem.createPackage packagePath testId
+                result == PackageCreated
+              validateFn = fun testId ->
+                let packages = Darklang.Collaboration.VirtualFileSystem.listPackages testId
+                Stdlib.List.contains packages "CollaborativeProject" }
+            
+            { stepName = "start_realtime_session"
+              description = "Developer 1 starts real-time collaborative editing session"
+              required = true
+              timeout = 15000L
+              executeFn = fun testId ->
+                let virtualUri = Darklang.Collaboration.VirtualFileSystem.createVirtualUri "CollaborativeProject" "mainFunction"
+                let session = Darklang.Collaboration.RealtimeEditing.startCollaborativeSession virtualUri "dev-1"
+                session.sessionId != ""
+              validateFn = fun testId ->
+                let activeSessions = Darklang.Collaboration.RealtimeEditing.getActiveSessions testId
+                Stdlib.List.length activeSessions > 0L }
+            
+            { stepName = "developer_2_joins"
+              description = "Developer 2 joins the collaborative session"
+              required = true
+              timeout = 10000L
+              executeFn = fun testId ->
+                let sessions = Darklang.Collaboration.RealtimeEditing.getActiveSessions testId
+                match Stdlib.List.head sessions with
+                | Some session -> 
+                  let result = Darklang.Collaboration.RealtimeEditing.addParticipant session.sessionId "dev-2"
+                  result == ParticipantAdded
+                | None -> false
+              validateFn = fun testId ->
+                let sessions = Darklang.Collaboration.RealtimeEditing.getActiveSessions testId
+                match Stdlib.List.head sessions with
+                | Some session -> Stdlib.List.length session.participants == 2L
+                | None -> false }
+            
+            { stepName = "collaborative_coding"
+              description = "Both developers work on function simultaneously"
+              required = true
+              timeout = 30000L
+              executeFn = fun testId ->
+                let virtualUri = Darklang.Collaboration.VirtualFileSystem.createVirtualUri "CollaborativeProject" "mainFunction"
+                
+                // Developer 1 starts function signature
+                let edit1 = { operation = Insert; position = { line = 1L; column = 0L }; content = "let calculateResult (input: Int64) : Int64 =\n"; userId = "dev-1" }
+                let result1 = Darklang.Collaboration.VirtualFileSystem.applyEdit virtualUri edit1
+                
+                // Developer 2 adds logic
+                let edit2 = { operation = Insert; position = { line = 2L; column = 0L }; content = "  let processed = input * 2L\n"; userId = "dev-2" }
+                let result2 = Darklang.Collaboration.VirtualFileSystem.applyEdit virtualUri edit2
+                
+                // Developer 1 completes function
+                let edit3 = { operation = Insert; position = { line = 3L; column = 0L }; content = "  processed + 10L"; userId = "dev-1" }
+                let result3 = Darklang.Collaboration.VirtualFileSystem.applyEdit virtualUri edit3
+                
+                result1 && result2 && result3
+              validateFn = fun testId ->
+                let virtualUri = Darklang.Collaboration.VirtualFileSystem.createVirtualUri "CollaborativeProject" "mainFunction"
+                let content = Darklang.Collaboration.VirtualFileSystem.readVirtualFile virtualUri
+                Stdlib.String.contains content "calculateResult" && Stdlib.String.contains content "processed" }
+            
+            { stepName = "ai_code_review"
+              description = "AI agent reviews the collaborative code"
+              required = false
+              timeout = 20000L
+              executeFn = fun testId ->
+                let virtualUri = Darklang.Collaboration.VirtualFileSystem.createVirtualUri "CollaborativeProject" "mainFunction"
+                let content = Darklang.Collaboration.VirtualFileSystem.readVirtualFile virtualUri
+                let reviewResult = Darklang.Collaboration.AiAgents.reviewCode content "dev-1"
+                match reviewResult with
+                | ReviewCompleted review -> review.suggestions |> Stdlib.List.length >= 0L
+                | ReviewFailed _ -> false
+              validateFn = fun testId ->
+                let reviews = Darklang.Collaboration.AiAgents.getRecentReviews testId
+                Stdlib.List.length reviews > 0L }
+            
+            { stepName = "session_transfer_mobile"
+              description = "Transfer session to mobile device for review"
+              required = true
+              timeout = 25000L
+              executeFn = fun testId ->
+                let sessions = Darklang.Collaboration.RealtimeEditing.getActiveSessions testId
+                match Stdlib.List.head sessions with
+                | Some session ->
+                  let mobileDevice = { deviceId = "mobile-review-001"; deviceType = Mobile; capabilities = ["touch"; "small-screen"] }
+                  let transferResult = Darklang.Collaboration.SessionManager.transferSession session.sessionId mobileDevice "mobile-user"
+                  match transferResult with
+                  | SessionTransferred _ -> true
+                  | TransferFailed _ -> false
+                | None -> false
+              validateFn = fun testId ->
+                let mobileSessions = Darklang.Collaboration.MobileSupport.getActiveMobileSessions testId
+                Stdlib.List.length mobileSessions > 0L }
+            
+            { stepName = "mobile_approval"
+              description = "Mobile user reviews and approves changes"
+              required = true
+              timeout = 15000L
+              executeFn = fun testId ->
+                let mobileSessions = Darklang.Collaboration.MobileSupport.getActiveMobileSessions testId
+                match Stdlib.List.head mobileSessions with
+                | Some session ->
+                  let approvalGesture = { gestureType = Tap; position = { x = 200.0; y = 100.0 }; timestamp = DateTime.now }
+                  let gestureResult = Darklang.Collaboration.MobileSupport.processGesture session.sessionId approvalGesture
+                  let approval = Darklang.Collaboration.MobileSupport.approveChanges session.sessionId "mobile-user"
+                  gestureResult && approval
+                | None -> false
+              validateFn = fun testId ->
+                let approvals = Darklang.Collaboration.MobileSupport.getApprovals testId
+                Stdlib.List.length approvals > 0L }
+            
+            { stepName = "conflict_resolution"
+              description = "Resolve any conflicts and finalize code"
+              required = false
+              timeout = 20000L
+              executeFn = fun testId ->
+                let virtualUri = Darklang.Collaboration.VirtualFileSystem.createVirtualUri "CollaborativeProject" "mainFunction"
+                let conflicts = Darklang.Collaboration.ConflictResolution.detectConflicts virtualUri
+                if Stdlib.List.length conflicts > 0L then
+                  Darklang.Collaboration.ConflictResolution.resolveConflicts virtualUri conflicts
+                else
+                  true
+              validateFn = fun testId ->
+                let virtualUri = Darklang.Collaboration.VirtualFileSystem.createVirtualUri "CollaborativeProject" "mainFunction"
+                let conflicts = Darklang.Collaboration.ConflictResolution.detectConflicts virtualUri
+                Stdlib.List.length conflicts == 0L }
+            
+            { stepName = "performance_monitoring"
+              description = "Validate performance metrics were collected"
+              required = false
+              timeout = 10000L
+              executeFn = fun testId ->
+                let metrics = Darklang.Collaboration.PerformanceMonitoring.collectCollaborationMetrics ()
+                metrics.activeSessions > 0L && metrics.totalEdits > 0L
+              validateFn = fun testId ->
+                let sessionMetrics = Darklang.Collaboration.PerformanceMonitoring.getSessionMetrics testId
+                sessionMetrics.collaborationEvents > 0L }
+          ] }
+
+      // Workflow 2: Security and Access Control Validation
+      let createSecurityWorkflow () : CollaborationWorkflow =
+        { workflowName = "Security and Access Control"
+          description = "Comprehensive security workflow with authentication, authorization, and threat detection"
+          participants = ["admin-user"; "developer-user"; "viewer-user"; "malicious-user"]
+          expectedOutcome = "Security system properly authenticates, authorizes, and detects threats"
+          steps = [
+            { stepName = "setup_roles_permissions"
+              description = "Create role hierarchy and assign permissions"
+              required = true
+              timeout = 15000L
+              executeFn = fun testId ->
+                let adminRole = Darklang.Collaboration.SecurityAndAccess.createRole "admin" ["read"; "write"; "delete"; "manage_users"; "security_admin"]
+                let devRole = Darklang.Collaboration.SecurityAndAccess.createRole "developer" ["read"; "write"]
+                let viewerRole = Darklang.Collaboration.SecurityAndAccess.createRole "viewer" ["read"]
+                
+                let assign1 = Darklang.Collaboration.SecurityAndAccess.assignRole "admin-user" adminRole
+                let assign2 = Darklang.Collaboration.SecurityAndAccess.assignRole "developer-user" devRole
+                let assign3 = Darklang.Collaboration.SecurityAndAccess.assignRole "viewer-user" viewerRole
+                
+                assign1 && assign2 && assign3
+              validateFn = fun testId ->
+                let adminPerms = Darklang.Collaboration.SecurityAndAccess.getUserPermissions "admin-user"
+                let devPerms = Darklang.Collaboration.SecurityAndAccess.getUserPermissions "developer-user"
+                let viewerPerms = Darklang.Collaboration.SecurityAndAccess.getUserPermissions "viewer-user"
+                
+                Stdlib.List.contains adminPerms "security_admin" && 
+                Stdlib.List.contains devPerms "write" && 
+                not (Stdlib.List.contains viewerPerms "write") }
+            
+            { stepName = "mfa_authentication"
+              description = "Test multi-factor authentication flow"
+              required = true
+              timeout = 20000L
+              executeFn = fun testId ->
+                // Setup MFA for admin user
+                let mfaSetup = Darklang.Collaboration.SecurityAndAccess.setupMFA "admin-user" TOTP
+                
+                // Simulate authentication with MFA
+                let primaryAuth = Darklang.Collaboration.SecurityAndAccess.authenticate "admin-user" "secure-password-123"
+                let totpCode = "123456" // Simulated TOTP code
+                let mfaAuth = Darklang.Collaboration.SecurityAndAccess.verifyMFA "admin-user" totpCode
+                
+                mfaSetup && primaryAuth && mfaAuth
+              validateFn = fun testId ->
+                let authStatus = Darklang.Collaboration.SecurityAndAccess.getAuthenticationStatus "admin-user"
+                authStatus.isAuthenticated && authStatus.mfaVerified }
+            
+            { stepName = "access_control_enforcement"
+              description = "Test granular access control enforcement"
+              required = true
+              timeout = 15000L
+              executeFn = fun testId ->
+                // Test various access scenarios
+                let adminWrite = Darklang.Collaboration.SecurityAndAccess.authorizeAction "admin-user" "write" "SecurePackage/adminFunction"
+                let devWrite = Darklang.Collaboration.SecurityAndAccess.authorizeAction "developer-user" "write" "PublicPackage/devFunction"
+                let viewerWrite = Darklang.Collaboration.SecurityAndAccess.authorizeAction "viewer-user" "write" "PublicPackage/anyFunction"
+                let viewerRead = Darklang.Collaboration.SecurityAndAccess.authorizeAction "viewer-user" "read" "PublicPackage/anyFunction"
+                
+                adminWrite == Authorized && devWrite == Authorized && viewerWrite == Denied && viewerRead == Authorized
+              validateFn = fun testId ->
+                let auditLog = Darklang.Collaboration.PerformanceMonitoring.getAuditTrail testId
+                let authEvents = auditLog |> Stdlib.List.filter (fun event -> event.eventType == "authorization")
+                Stdlib.List.length authEvents >= 4L }
+            
+            { stepName = "threat_detection"
+              description = "Test automated threat detection and response"
+              required = true
+              timeout = 30000L
+              executeFn = fun testId ->
+                // Simulate various suspicious activities
+                let rapidAccess = {
+                  userId = "malicious-user"
+                  action = "rapid_file_access"
+                  count = 100L
+                  timeWindow = 5L
+                  suspicionLevel = High
+                }
+                
+                let bruteForce = {
+                  userId = "malicious-user"
+                  action = "failed_authentication"
+                  count = 20L
+                  timeWindow = 10L
+                  suspicionLevel = Critical
+                }
+                
+                let unusualPattern = {
+                  userId = "malicious-user"
+                  action = "unusual_access_pattern"
+                  details = "Access from multiple countries simultaneously"
+                  timestamp = DateTime.now
+                  suspicionLevel = Medium
+                }
+                
+                // Process threats
+                let threat1 = Darklang.Collaboration.SecurityAndAccess.analyzeAction rapidAccess
+                let threat2 = Darklang.Collaboration.SecurityAndAccess.analyzeAction bruteForce
+                let threat3 = Darklang.Collaboration.SecurityAndAccess.analyzeAction unusualPattern
+                
+                threat1.isThreat && threat2.isThreat && threat3.isThreat
+              validateFn = fun testId ->
+                let detectedThreats = Darklang.Collaboration.SecurityAndAccess.getDetectedThreats testId
+                let highSeverityThreats = detectedThreats |> Stdlib.List.filter (fun t -> t.severity == High || t.severity == Critical)
+                Stdlib.List.length highSeverityThreats >= 2L }
+            
+            { stepName = "automated_response"
+              description = "Test automated security response actions"
+              required = true
+              timeout = 20000L
+              executeFn = fun testId ->
+                // Get detected threats
+                let threats = Darklang.Collaboration.SecurityAndAccess.getDetectedThreats testId
+                let criticalThreats = threats |> Stdlib.List.filter (fun t -> t.severity == Critical)
+                
+                // Test automated responses
+                let responseResults = 
+                  criticalThreats
+                  |> Stdlib.List.map (fun threat ->
+                       let response = Darklang.Collaboration.SecurityAndAccess.executeAutomatedResponse threat
+                       response.actionTaken != None)
+                
+                Stdlib.List.all responseResults (fun result -> result)
+              validateFn = fun testId ->
+                let securityActions = Darklang.Collaboration.SecurityAndAccess.getSecurityActions testId
+                let blockActions = securityActions |> Stdlib.List.filter (fun action -> action.actionType == "user_blocked")
+                Stdlib.List.length blockActions > 0L }
+            
+            { stepName = "data_encryption"
+              description = "Validate end-to-end data encryption"
+              required = true
+              timeout = 15000L
+              executeFn = fun testId ->
+                let sensitiveData = "sensitive collaboration data for testing"
+                let encryptedData = Darklang.Collaboration.SecurityAndAccess.encryptCollaborationData sensitiveData testId
+                let decryptedData = Darklang.Collaboration.SecurityAndAccess.decryptCollaborationData encryptedData testId
+                
+                encryptedData != sensitiveData && decryptedData == sensitiveData
+              validateFn = fun testId ->
+                let encryptionMetrics = Darklang.Collaboration.PerformanceMonitoring.getEncryptionMetrics testId
+                encryptionMetrics.encryptionEvents > 0L && encryptionMetrics.decryptionEvents > 0L }
+          ] }
+
+      // Workflow 3: Plugin Development and Extension
+      let createPluginDevelopmentWorkflow () : CollaborationWorkflow =
+        { workflowName = "Plugin Development and Extension"
+          description = "Complete plugin development lifecycle with hot-reload and marketplace integration"
+          participants = ["plugin-developer"; "plugin-tester"; "marketplace-admin"]
+          expectedOutcome = "Plugin successfully developed, tested, published, and installed"
+          steps = [
+            { stepName = "plugin_development_setup"
+              description = "Initialize plugin development environment"
+              required = true
+              timeout = 15000L
+              executeFn = fun testId ->
+                let pluginSystem = Darklang.Collaboration.PluginArchitecture.initializePluginSystem testId
+                let devEnv = Darklang.Collaboration.PluginArchitecture.createDevelopmentEnvironment "plugin-developer"
+                pluginSystem != "" && devEnv.isReady
+              validateFn = fun testId ->
+                let devEnvs = Darklang.Collaboration.PluginArchitecture.getActiveDevelopmentEnvironments testId
+                Stdlib.List.length devEnvs > 0L }
+            
+            { stepName = "create_plugin"
+              description = "Develop a new collaboration enhancement plugin"
+              required = true
+              timeout = 25000L
+              executeFn = fun testId ->
+                let plugin = {
+                  id = "syntax-highlighter-pro"
+                  name = "Advanced Syntax Highlighter"
+                  version = "1.0.0"
+                  author = "plugin-developer"
+                  description = "Enhanced syntax highlighting with semantic analysis"
+                  hooks = ["pre_render"; "post_edit"; "cursor_move"]
+                  permissions = ["read_code"; "modify_ui"; "access_ast"]
+                  dependencies = ["darklang-core"; "syntax-analyzer"]
+                  config = { 
+                    highlightStyle = "semantic"
+                    enableAnalysis = true
+                    cacheSize = 1000L
+                  }
+                }
+                
+                let createResult = Darklang.Collaboration.PluginArchitecture.createPlugin plugin "plugin-developer"
+                createResult == PluginCreated
+              validateFn = fun testId ->
+                let plugins = Darklang.Collaboration.PluginArchitecture.listDeveloperPlugins "plugin-developer"
+                Stdlib.List.any plugins (fun p -> p.id == "syntax-highlighter-pro") }
+            
+            { stepName = "hot_reload_development"
+              description = "Test hot-reload development workflow"
+              required = true
+              timeout = 30000L
+              executeFn = fun testId ->
+                let pluginId = "syntax-highlighter-pro"
+                let initialLoad = Darklang.Collaboration.PluginArchitecture.loadPluginDev testId pluginId
+                
+                // Test initial functionality
+                let initialTest = Darklang.Collaboration.PluginArchitecture.executeHook testId "pre_render" { code = "let test = 42L" }
+                
+                // Update plugin code
+                let updatedPlugin = {
+                  id = pluginId
+                  version = "1.0.1"
+                  config = { 
+                    highlightStyle = "advanced-semantic"
+                    enableAnalysis = true
+                    cacheSize = 2000L
+                  }
+                  // Additional hook implementations...
+                }
+                
+                let hotReload = Darklang.Collaboration.PluginArchitecture.hotReloadPlugin testId updatedPlugin
+                
+                // Test updated functionality
+                let updatedTest = Darklang.Collaboration.PluginArchitecture.executeHook testId "pre_render" { code = "let test = 42L" }
+                
+                initialLoad && hotReload && initialTest != updatedTest
+              validateFn = fun testId ->
+                let reloadHistory = Darklang.Collaboration.PluginArchitecture.getHotReloadHistory testId
+                Stdlib.List.length reloadHistory > 0L }
+            
+            { stepName = "plugin_testing"
+              description = "Comprehensive plugin testing with different scenarios"
+              required = true
+              timeout = 35000L
+              executeFn = fun testId ->
+                let pluginId = "syntax-highlighter-pro"
+                
+                // Test plugin hooks with various code samples
+                let testCases = [
+                  { code = "let simple = 42L"; expectedHighlights = 2L }
+                  { code = "let complex = Stdlib.List.map someList fn"; expectedHighlights = 5L }
+                  { code = "match value with | Some x -> x | None -> 0L"; expectedHighlights = 8L }
+                ]
+                
+                let testResults = 
+                  testCases
+                  |> Stdlib.List.map (fun testCase ->
+                       let result = Darklang.Collaboration.PluginArchitecture.executeHook testId "pre_render" { code = testCase.code }
+                       let highlightCount = result.highlights |> Stdlib.List.length
+                       highlightCount >= testCase.expectedHighlights)
+                
+                Stdlib.List.all testResults (fun result -> result)
+              validateFn = fun testId ->
+                let testResults = Darklang.Collaboration.PluginArchitecture.getPluginTestResults testId "syntax-highlighter-pro"
+                testResults.passedTests > testResults.failedTests }
+            
+            { stepName = "plugin_security_scan"
+              description = "Security scanning and sandboxing validation"
+              required = true
+              timeout = 20000L
+              executeFn = fun testId ->
+                let pluginId = "syntax-highlighter-pro"
+                let securityScan = Darklang.Collaboration.PluginArchitecture.performSecurityScan testId pluginId
+                let sandboxTest = Darklang.Collaboration.PluginArchitecture.testPluginSandbox testId pluginId
+                
+                securityScan.noVulnerabilities && sandboxTest.containmentVerified
+              validateFn = fun testId ->
+                let securityReports = Darklang.Collaboration.PluginArchitecture.getSecurityReports testId
+                let latestReport = securityReports |> Stdlib.List.head
+                match latestReport with
+                | Some report -> report.status == "approved"
+                | None -> false }
+            
+            { stepName = "marketplace_submission"
+              description = "Submit plugin to marketplace for review"
+              required = true
+              timeout = 25000L
+              executeFn = fun testId ->
+                let pluginId = "syntax-highlighter-pro"
+                let submission = Darklang.Collaboration.PluginArchitecture.submitToMarketplace testId pluginId "plugin-developer"
+                submission.submissionId != ""
+              validateFn = fun testId ->
+                let submissions = Darklang.Collaboration.PluginArchitecture.getMarketplaceSubmissions testId
+                Stdlib.List.any submissions (fun s -> s.status == "under_review") }
+            
+            { stepName = "marketplace_approval"
+              description = "Marketplace admin reviews and approves plugin"
+              required = true
+              timeout = 20000L
+              executeFn = fun testId ->
+                let submissions = Darklang.Collaboration.PluginArchitecture.getMarketplaceSubmissions testId
+                match Stdlib.List.head submissions with
+                | Some submission ->
+                  let approval = Darklang.Collaboration.PluginArchitecture.approveMarketplaceSubmission submission.submissionId "marketplace-admin"
+                  approval.approved
+                | None -> false
+              validateFn = fun testId ->
+                let marketplacePlugins = Darklang.Collaboration.PluginArchitecture.getMarketplacePlugins testId
+                Stdlib.List.any marketplacePlugins (fun p -> p.id == "syntax-highlighter-pro") }
+            
+            { stepName = "plugin_installation"
+              description = "End user discovers and installs plugin"
+              required = true
+              timeout = 15000L
+              executeFn = fun testId ->
+                let installation = Darklang.Collaboration.PluginArchitecture.installPlugin testId "syntax-highlighter-pro" "plugin-tester"
+                installation.installed
+              validateFn = fun testId ->
+                let userPlugins = Darklang.Collaboration.PluginArchitecture.getUserInstalledPlugins testId "plugin-tester"
+                Stdlib.List.any userPlugins (fun p -> p.id == "syntax-highlighter-pro" && p.status == "active") }
+          ] }
+
+      // Main workflow execution functions
+      let runAllWorkflows (testId: String) : List<WorkflowTestResult> =
+        let workflows = [
+          createCollaborativeDevelopmentWorkflow ()
+          createSecurityWorkflow ()
+          createPluginDevelopmentWorkflow ()
+        ]
+        
+        workflows
+        |> Stdlib.List.map (fun workflow -> executeWorkflow workflow testId)
+
+      let analyzeWorkflowResults (results: List<WorkflowTestResult>) : String =
+        let successCount = results |> Stdlib.List.filter (fun r -> match r with | WorkflowSuccess _ -> true | _ -> false) |> Stdlib.List.length
+        let failureCount = results |> Stdlib.List.filter (fun r -> match r with | WorkflowFailure _ -> true | _ -> false) |> Stdlib.List.length
+        let totalCount = successCount + failureCount
+        
+        let summary = $"End-to-End Workflow Results: {successCount}/{totalCount} workflows completed successfully"
+        
+        let details = 
+          results
+          |> Stdlib.List.map (fun result ->
+               match result with
+               | WorkflowSuccess (outcome, steps) ->
+                 let stepSummary = steps |> Stdlib.String.join "\n  "
+                 $"✅ SUCCEEDED: {outcome}\n  {stepSummary}"
+               | WorkflowFailure (name, error, completedSteps) ->
+                 let stepSummary = completedSteps |> Stdlib.String.join "\n  "
+                 $"❌ FAILED: {name} - {error}\n  Completed steps:\n  {stepSummary}")
+          |> Stdlib.String.join "\n\n"
+        
+        $"{summary}\n\n{details}"
+
+      // Main entry point for end-to-end workflow testing
+      let validateEndToEndWorkflows () : String =
+        try
+          let testConfig = Darklang.Collaboration.IntegrationTests.createTestConfig ()
+          let testId = Darklang.Collaboration.IntegrationTests.setupTestEnvironment testConfig
+          
+          Darklang.Stdlib.Log.info "Starting end-to-end workflow validation..."
+          let results = runAllWorkflows testId
+          let analysis = analyzeWorkflowResults results
+          
+          Darklang.Collaboration.IntegrationTests.teardownTestEnvironment testId
+          
+          Darklang.Stdlib.Log.info $"End-to-end workflow validation completed: {analysis}"
+          analysis
+        with
+        | error -> 
+          let errorMessage = $"End-to-end workflow validation failed: {error}"
+          Darklang.Stdlib.Log.error errorMessage
+          errorMessage

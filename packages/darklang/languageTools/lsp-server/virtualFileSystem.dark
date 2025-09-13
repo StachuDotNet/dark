@@ -1,0 +1,340 @@
+/// Virtual File System support for LSP clients
+/// Enables editors to work with "virtual" .dark files that map to package items
+module Darklang.LanguageTools.LspServer.VirtualFileSystem
+
+open Darklang.Cli.Database
+open LibPackageManager.PackageManager
+
+type VirtualUri = String
+type PackageItemId = String
+
+/// Maps between virtual file paths and package items
+type VirtualFileMapping = {
+  virtualUri: VirtualUri
+  packageItemId: PackageItemId
+  packageItemType: PackageItemType
+  lastModified: System.DateTime
+  content: String
+}
+
+type PackageItemType =
+  | Function
+  | Type
+  | Constant
+  | Value
+
+/// Virtual file URI scheme: dark://package/Darklang.Stdlib.List/filterMap.dark
+let createVirtualUri (packagePath: String) (itemName: String) : VirtualUri =
+  $"dark://package/{packagePath}/{itemName}.dark"
+
+/// Parse virtual URI back to package components
+let parseVirtualUri (uri: VirtualUri) : (String * String) option =
+  if Stdlib.String.startsWith uri "dark://package/" then
+    let path = Stdlib.String.dropFirst uri 15L // Remove "dark://package/"
+    match Stdlib.String.split path "/" with
+    | packagePath :: itemNameWithExt :: [] ->
+      let itemName = 
+        if Stdlib.String.endsWith itemNameWithExt ".dark" then
+          Stdlib.String.dropLast itemNameWithExt 5L
+        else
+          itemNameWithExt
+      Some (packagePath, itemName)
+    | _ -> None
+  else
+    None
+
+/// Get all virtual files for a package
+let getVirtualFilesForPackage (packageName: String) : List<VirtualFileMapping> =
+  let allItems = Darklang.Cli.Database.getAllPackageItems packageName
+  
+  allItems
+  |> Stdlib.List.map (fun item ->
+    let itemType = 
+      match item with
+      | PackageFunction _ -> Function
+      | PackageType _ -> Type
+      | PackageConstant _ -> Constant
+      | PackageValue _ -> Value
+    
+    let itemName = getPackageItemName item
+    let virtualUri = createVirtualUri packageName itemName
+    let content = generateDarkFileContent item
+    
+    {
+      virtualUri = virtualUri
+      packageItemId = getPackageItemId item
+      packageItemType = itemType
+      lastModified = getPackageItemModified item
+      content = content
+    })
+
+/// Generate .dark file content from package item
+let generateDarkFileContent (item: PackageItem) : String =
+  match item with
+  | PackageFunction func ->
+    let signature = PrettyPrinter.formatFunctionSignature func.declaration
+    let body = PrettyPrinter.formatExpression func.body
+    $"/// {func.description}\n{signature} =\n  {body}"
+  
+  | PackageType type_ ->
+    let definition = PrettyPrinter.formatTypeDefinition type_.definition
+    $"/// {type_.description}\ntype {type_.name} = {definition}"
+  
+  | PackageConstant const ->
+    let value = PrettyPrinter.formatDValue const.value
+    $"/// {const.description}\nlet {const.name} = {value}"
+  
+  | PackageValue value ->
+    let valueStr = PrettyPrinter.formatDValue value.value
+    $"/// {value.description}\nlet {value.name} = {valueStr}"
+
+/// Parse .dark file content back to package operations
+let parseDarkFileContent (content: String) (existingItem: PackageItem option) : List<PackageOp> =
+  let parsed = Parser.parseScript content
+  
+  match parsed with
+  | Ok ast ->
+    match existingItem with
+    | Some existing ->
+      // Compare with existing and generate update operations
+      let differences = computeDifferences existing ast
+      differences |> Stdlib.List.map (fun diff -> generateUpdateOp diff)
+    
+    | None ->
+      // New item - generate create operation
+      [generateCreateOp ast]
+  
+  | Error parseError ->
+    // Return validation error - don't create ops for invalid content
+    []
+
+/// Handle virtual file operations from LSP clients
+let handleVirtualFileOperation 
+  (operation: VirtualFileOperation) 
+  (uri: VirtualUri) 
+  (content: String option) 
+  : VirtualFileOperationResult =
+  
+  match parseVirtualUri uri with
+  | Some (packagePath, itemName) ->
+    match operation with
+    | ReadFile ->
+      // Return current content of package item
+      let currentContent = getCurrentPackageItemContent packagePath itemName
+      VirtualFileContent currentContent
+    
+    | WriteFile newContent ->
+      // Parse new content and generate package operations
+      let existingItem = getPackageItem packagePath itemName
+      let ops = parseDarkFileContent newContent existingItem
+      
+      // Apply operations to package manager
+      let results = ops |> Stdlib.List.map (fun op -> applyPackageOp op)
+      
+      match results |> Stdlib.List.all (fun r -> r.success) with
+      | true -> VirtualFileSuccess
+      | false -> VirtualFileError "Failed to apply package operations"
+    
+    | CreateFile newContent ->
+      // Create new package item
+      let ops = parseDarkFileContent newContent None
+      let result = ops |> Stdlib.List.head |> Option.map applyPackageOp
+      
+      match result with
+      | Some r when r.success -> VirtualFileSuccess
+      | _ -> VirtualFileError "Failed to create package item"
+    
+    | DeleteFile ->
+      // Mark package item as deprecated
+      let deleteOp = DeprecateEntity (packagePath, itemName)
+      let result = applyPackageOp deleteOp
+      
+      if result.success then
+        VirtualFileSuccess
+      else
+        VirtualFileError "Failed to delete package item"
+    
+    | ListFiles ->
+      // Return all virtual files in this package
+      let mappings = getVirtualFilesForPackage packagePath
+      let uris = mappings |> Stdlib.List.map (fun m -> m.virtualUri)
+      VirtualFileList uris
+  
+  | None ->
+    VirtualFileError $"Invalid virtual URI: {uri}"
+
+/// LSP method handlers for virtual file system
+let handleVirtualFileRead (uri: VirtualUri) : String =
+  match handleVirtualFileOperation ReadFile uri None with
+  | VirtualFileContent content -> content
+  | VirtualFileError error -> failwith error
+  | _ -> failwith "Unexpected result for read operation"
+
+let handleVirtualFileWrite (uri: VirtualUri) (content: String) : Bool =
+  match handleVirtualFileOperation WriteFile uri (Some content) with
+  | VirtualFileSuccess -> true
+  | VirtualFileError _ -> false
+  | _ -> false
+
+let handleVirtualFileCreate (uri: VirtualUri) (content: String) : Bool =
+  match handleVirtualFileOperation CreateFile uri (Some content) with
+  | VirtualFileSuccess -> true
+  | VirtualFileError _ -> false
+  | _ -> false
+
+let handleVirtualFileDelete (uri: VirtualUri) : Bool =
+  match handleVirtualFileOperation DeleteFile uri None with
+  | VirtualFileSuccess -> true
+  | VirtualFileError _ -> false
+  | _ -> false
+
+let handleVirtualDirectoryList (uri: VirtualUri) : List<String> =
+  match handleVirtualFileOperation ListFiles uri None with
+  | VirtualFileList uris -> uris
+  | _ -> []
+
+/// Watch for package changes and notify virtual file system
+let notifyVirtualFileChanged (packageItemId: PackageItemId) : Unit =
+  // Find all virtual URIs that map to this package item
+  let affectedUris = findVirtualUrisForPackageItem packageItemId
+  
+  // Send file change notifications to LSP clients
+  affectedUris
+  |> Stdlib.List.iter (fun uri ->
+    let notification = {
+      method = "workspace/didChangeWatchedFiles"
+      params = {
+        changes = [{
+          uri = uri
+          type_ = FileChangeType.Changed
+        }]
+      }
+    }
+    sendNotificationToClient notification)
+
+/// Integration with existing package manager events
+let onPackageItemChanged (item: PackageItem) : Unit =
+  let itemId = getPackageItemId item
+  notifyVirtualFileChanged itemId
+
+let onPackageItemCreated (item: PackageItem) : Unit =
+  let itemId = getPackageItemId item
+  notifyVirtualFileChanged itemId
+
+let onPackageItemDeleted (itemId: PackageItemId) : Unit =
+  notifyVirtualFileChanged itemId
+
+// Types for virtual file system operations
+type VirtualFileOperation =
+  | ReadFile
+  | WriteFile of content: String
+  | CreateFile of content: String
+  | DeleteFile
+  | ListFiles
+
+type VirtualFileOperationResult =
+  | VirtualFileSuccess
+  | VirtualFileContent of content: String
+  | VirtualFileList of uris: List<String>
+  | VirtualFileError of message: String
+
+type FileChangeType =
+  | Created
+  | Changed
+  | Deleted
+
+// Integration with Darklang package infrastructure
+let getPackageItemName (item: PackageItem) : String = 
+  // TODO: Extract actual name from PackageItem
+  // For now, return placeholder based on item type
+  match item with
+  | PackageFunction func -> func.name
+  | PackageType type_ -> type_.name  
+  | PackageConstant const -> const.name
+  | PackageValue value -> value.name
+
+let getPackageItemId (item: PackageItem) : String = 
+  // TODO: Generate unique ID based on package item
+  let name = getPackageItemName item
+  let typeStr = match item with
+    | PackageFunction _ -> "fn"
+    | PackageType _ -> "type"
+    | PackageConstant _ -> "const"
+    | PackageValue _ -> "val"
+  $"{typeStr}:{name}"
+
+let getPackageItemModified (item: PackageItem) : System.DateTime = 
+  // TODO: Extract actual modification time from PackageItem
+  // For now, return current time as placeholder
+  System.DateTime.Now
+
+let getCurrentPackageItemContent (packagePath: String) (itemName: String) : String = 
+  // TODO: Retrieve actual content from package manager
+  match getPackageItem packagePath itemName with
+  | Some item -> generateDarkFileContent item
+  | None -> ""
+
+let getPackageItem (packagePath: String) (itemName: String) : PackageItem option = 
+  // TODO: Query actual package manager for specific item
+  // For now, return placeholder function item
+  None
+
+let computeDifferences (existing: PackageItem) (ast: ParsedAst) : List<Difference> = 
+  // TODO: Implement AST comparison logic
+  // For now, assume everything changed
+  [Difference.ContentChanged]
+
+let generateUpdateOp (diff: Difference) : PackageOp = 
+  // TODO: Generate appropriate package operation based on difference
+  match diff with
+  | Difference.ContentChanged -> UpdateFunction("placeholder", Expr.EUnit, 1L)
+
+let generateCreateOp (ast: ParsedAst) : PackageOp = 
+  // TODO: Parse AST and generate appropriate create operation
+  // For now, assume it's a function
+  AddFunction("newFunction", "A new function", Expr.EUnit, FnDeclaration.empty)
+
+let applyPackageOp (op: PackageOp) : OperationResult = 
+  // TODO: Actually apply operation to package manager
+  // For now, simulate success
+  { success = true; message = "Operation applied successfully" }
+
+let findVirtualUrisForPackageItem (itemId: PackageItemId) : List<VirtualUri> = 
+  // TODO: Query mapping database for URIs associated with this item
+  // For now, return empty list
+  []
+
+let sendNotificationToClient (notification: LspNotification) : Unit = 
+  // TODO: Send LSP notification to connected clients
+  // For now, just log
+  log $"LSP Notification: {notification.method}"
+
+// Enhanced type definitions
+type PackageItem =
+  | PackageFunction of fn: { name: String; description: String; declaration: FnDeclaration; body: Expr }
+  | PackageType of type_: { name: String; description: String; definition: TypeDefinition }
+  | PackageConstant of const: { name: String; description: String; value: DValue }
+  | PackageValue of value: { name: String; description: String; value: DValue }
+
+type ParsedAst = {
+  declarations: List<Declaration>
+  expressions: List<Expr>
+}
+
+type Difference = 
+  | ContentChanged
+  | SignatureChanged
+  | BodyChanged
+
+type Declaration =
+  | FunctionDeclaration of fn: FnDeclaration
+  | TypeDeclaration of type_: TypeDefinition
+
+type OperationResult = { success: Bool; message: String }
+type LspNotification = { method: String; params: obj }
+
+// Temporary placeholder types that should be imported from proper modules
+type FnDeclaration = { name: String; parameters: List<String>; returnType: String }
+type TypeDefinition = { name: String; cases: List<String> }
+type DValue = String  // Simplified for now
+type Expr = EUnit | EString of String | EInt64 of Int64  // Simplified for now

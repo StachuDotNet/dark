@@ -1,0 +1,506 @@
+/// CLI commands for AI Agent Integration
+module Darklang.Cli.AiAgentCommands
+
+open Darklang.Collaboration.AiAgentIntegration
+open Darklang.Cli.CliUtils
+
+/// Register a new AI agent
+let aiRegister (args: List<String>) : Int64 =
+  match args with
+  | name :: provider :: model :: apiKey :: [] ->
+    try
+      let aiProvider = 
+        match provider with
+        | "claude" -> Claude (apiKey, model)
+        | "gpt" -> GPT (apiKey, model)
+        | "gemini" -> Gemini (apiKey, model)
+        | _ -> failwith $"Unknown provider: {provider}"
+      
+      let agent = {
+        agentId = generateAgentId name
+        name = name
+        provider = aiProvider
+        capabilities = [CodeGeneration; CodeReview; BugDetection; TestGeneration; Documentation]
+        contextWindow = 100000L
+        maxTokens = 4000L
+        specializations = []
+        isActive = true
+        lastUsed = DateTime.now
+      }
+      
+      if registerAiAgent agent then
+        printSuccess $"AI Agent '{name}' registered successfully"
+        printLine $"Agent ID: {agent.agentId}"
+        0L
+      else
+        printError $"Failed to register AI agent '{name}'"
+        1L
+    
+    with
+    | error ->
+      printError $"Registration failed: {error}"
+      1L
+  
+  | name :: "local" :: modelPath :: [] ->
+    try
+      let agent = {
+        agentId = generateAgentId name
+        name = name
+        provider = LocalModel modelPath
+        capabilities = [CodeGeneration; CodeReview]
+        contextWindow = 50000L
+        maxTokens = 2000L
+        specializations = []
+        isActive = true
+        lastUsed = DateTime.now
+      }
+      
+      if registerAiAgent agent then
+        printSuccess $"Local AI Agent '{name}' registered successfully"
+        0L
+      else
+        printError $"Failed to register local AI agent '{name}'"
+        1L
+    
+    with
+    | error ->
+      printError $"Registration failed: {error}"
+      1L
+  
+  | [] ->
+    printUsage "ai register <name> <provider> <model> <api-key>"
+    printLine "Providers: claude, gpt, gemini, local"
+    printLine "Examples:"
+    printLine "  ai register assistant claude claude-3-sonnet sk-xxx"
+    printLine "  ai register local-model local ./models/codellama"
+    1L
+  
+  | _ ->
+    printUsage "ai register <name> <provider> <model> <api-key>"
+    1L
+
+/// List registered AI agents
+let aiList (args: List<String>) : Int64 =
+  try
+    let agents = getAllAiAgents ()
+    
+    if Stdlib.List.isEmpty agents then
+      printLine "No AI agents registered"
+    else
+      printLine "Registered AI Agents:"
+      printLine ""
+      
+      agents
+      |> Stdlib.List.iter (fun agent ->
+        let status = if agent.isActive then "Active" else "Inactive"
+        let capabilities = Stdlib.String.join "; " (Stdlib.List.map (fun c -> c.ToString()) agent.capabilities)
+        
+        printLine $"• {agent.name} ({agent.agentId})"
+        printLine $"  Provider: {agent.provider}"
+        printLine $"  Status: {status}"
+        printLine $"  Capabilities: {capabilities}"
+        printLine $"  Last Used: {agent.lastUsed}"
+        printLine "")
+    
+    0L
+  
+  with
+  | error ->
+    printError $"Failed to list agents: {error}"
+    1L
+
+/// Request AI assistance for a task
+let aiAssist (args: List<String>) : Int64 =
+  match args with
+  | taskType :: prompt :: [] ->
+    try
+      let sessionId = getCurrentSessionId () |> Option.defaultValue "default"
+      let userId = getCurrentUserId ()
+      
+      let aiTaskType = 
+        match taskType with
+        | "review" -> 
+          match getCurrentPatchId () with
+          | Some patchId -> ReviewPatch patchId
+          | None -> failwith "No current patch to review"
+        | "test" ->
+          let functionName = prompt
+          GenerateTests functionName
+        | "doc" ->
+          let functionName = prompt
+          GenerateDocumentation functionName
+        | "explain" ->
+          ExplainCode prompt
+        | "fix" ->
+          SuggestFix prompt ""
+        | _ ->
+          failwith $"Unknown task type: {taskType}"
+      
+      let request = {
+        requestId = generateRequestId ()
+        sessionId = sessionId
+        userId = userId
+        agentId = None
+        taskType = aiTaskType
+        context = buildBasicContext sessionId
+        prompt = prompt
+        priority = Medium
+        deadline = None
+        callbacks = [NotifyUser "AI assistance completed"]
+      }
+      
+      match requestAiAssistance request with
+      | AiAssistanceSuccess result ->
+        printSuccess "AI assistance completed:"
+        printLine ""
+        printLine result.response
+        printLine ""
+        
+        if not (Stdlib.List.isEmpty result.suggestions) then
+          printLine "Suggestions:"
+          result.suggestions
+          |> Stdlib.List.iter (fun suggestion ->
+            printLine $"• {suggestion.description} (confidence: {suggestion.confidence})")
+          printLine ""
+        
+        if not (Stdlib.List.isEmpty result.actions) then
+          printLine "Recommended actions:"
+          result.actions
+          |> Stdlib.List.iter (fun action ->
+            match action with
+            | CreateFile (path, _) -> printLine $"• Create file: {path}"
+            | ModifyFunction (name, _) -> printLine $"• Modify function: {name}"
+            | AddTest (name, _) -> printLine $"• Add test: {name}"
+            | UpdateDocumentation (path, _) -> printLine $"• Update docs: {path}"
+            | CreatePatchSuggestion _ -> printLine $"• Create patch suggestion")
+        
+        0L
+      
+      | AiAssistanceError message ->
+        printError $"AI assistance failed: {message}"
+        1L
+    
+    with
+    | error ->
+      printError $"Request failed: {error}"
+      1L
+  
+  | taskType :: [] ->
+    match taskType with
+    | "review" ->
+      aiAssist [taskType; "Please review the current patch"]
+    | _ ->
+      printError $"Task type '{taskType}' requires additional prompt"
+      1L
+  
+  | [] ->
+    printUsage "ai assist <task-type> [prompt]"
+    printLine "Task types:"
+    printLine "  review    - Review current patch"
+    printLine "  test      - Generate tests for function"
+    printLine "  doc       - Generate documentation for function"
+    printLine "  explain   - Explain code snippet"
+    printLine "  fix       - Suggest fix for error"
+    printLine ""
+    printLine "Examples:"
+    printLine "  ai assist review"
+    printLine "  ai assist test myFunction"
+    printLine "  ai assist doc calculateTotal"
+    printLine "  ai assist explain 'let result = map fn list'"
+    1L
+  
+  | _ ->
+    printUsage "ai assist <task-type> [prompt]"
+    1L
+
+/// Perform AI code review on a patch
+let aiReview (args: List<String>) : Int64 =
+  match args with
+  | patchId :: [] ->
+    try
+      match performAiCodeReview patchId None with
+      | AiCodeReviewSuccess review ->
+        printSuccess $"AI Code Review for Patch {patchId}:"
+        printLine ""
+        printLine $"Overall Score: {review.overallScore}/1.0"
+        printLine $"Reviewer: {review.reviewerId}"
+        printLine $"Timestamp: {review.timestamp}"
+        printLine ""
+        
+        if not (Stdlib.List.isEmpty review.comments) then
+          printLine "Comments:"
+          review.comments
+          |> Stdlib.List.iter (fun comment ->
+            let severityIcon = 
+              match comment.severity with
+              | Critical -> "🔴"
+              | Error -> "🟠"
+              | Warning -> "🟡"
+              | Info -> "🔵"
+            
+            printLine $"{severityIcon} Line {comment.line}: {comment.message}")
+          printLine ""
+        
+        if not (Stdlib.List.isEmpty review.recommendations) then
+          printLine "Recommendations:"
+          review.recommendations
+          |> Stdlib.List.iter (fun rec ->
+            printLine $"• {rec.description} (confidence: {rec.confidence})")
+        
+        0L
+      
+      | AiCodeReviewError message ->
+        printError $"Code review failed: {message}"
+        1L
+    
+    with
+    | error ->
+      printError $"Review failed: {error}"
+      1L
+  
+  | [] ->
+    match getCurrentPatchId () with
+    | Some patchId -> aiReview [patchId]
+    | None ->
+      printError "No current patch. Please specify patch ID."
+      1L
+  
+  | _ ->
+    printUsage "ai review [patch-id]"
+    1L
+
+/// Generate tests using AI
+let aiTest (args: List<String>) : Int64 =
+  match args with
+  | functionName :: [] ->
+    try
+      let sessionId = getCurrentSessionId () |> Option.defaultValue "default"
+      
+      match generateAiTests functionName sessionId with
+      | AiTestGenerationSuccess result ->
+        printSuccess $"Generated tests for {functionName}:"
+        printLine ""
+        printLine $"Test Coverage: {result.coverage * 100.0}%"
+        printLine ""
+        
+        result.tests
+        |> Stdlib.List.iter (fun test ->
+          printLine $"Test: {test.name}"
+          printLine $"Category: {test.category}"
+          printLine $"Description: {test.description}"
+          printLine "Code:"
+          printLine test.testCode
+          printLine "")
+        
+        // Ask if user wants to create a patch with the tests
+        let createPatch = promptYesNo "Create patch with generated tests?"
+        if createPatch then
+          let testCode = 
+            result.tests
+            |> Stdlib.List.map (fun t -> t.testCode)
+            |> Stdlib.String.join "\n\n"
+          
+          createTestPatch functionName testCode
+          printSuccess "Test patch created"
+        
+        0L
+      
+      | AiTestGenerationError message ->
+        printError $"Test generation failed: {message}"
+        1L
+    
+    with
+    | error ->
+      printError $"Test generation failed: {error}"
+      1L
+  
+  | [] ->
+    printUsage "ai test <function-name>"
+    printLine "Example: ai test calculateTotal"
+    1L
+  
+  | _ ->
+    printUsage "ai test <function-name>"
+    1L
+
+/// Generate documentation using AI
+let aiDoc (args: List<String>) : Int64 =
+  match args with
+  | functionName :: [] ->
+    try
+      let sessionId = getCurrentSessionId () |> Option.defaultValue "default"
+      
+      match generateAiDocumentation functionName sessionId with
+      | AiDocumentationSuccess result ->
+        printSuccess $"Generated documentation for {functionName}:"
+        printLine ""
+        printLine result.documentation
+        printLine ""
+        
+        if not (Stdlib.List.isEmpty result.examples) then
+          printLine "Examples:"
+          result.examples
+          |> Stdlib.List.iter (fun example ->
+            printLine $"• {example.description}"
+            printLine $"  Code: {example.code}"
+            printLine $"  Output: {example.expectedOutput}")
+          printLine ""
+        
+        if not (Stdlib.List.isEmpty result.relatedFunctions) then
+          printLine $"Related functions: {Stdlib.String.join \", \" result.relatedFunctions}"
+        
+        0L
+      
+      | AiDocumentationError message ->
+        printError $"Documentation generation failed: {message}"
+        1L
+    
+    with
+    | error ->
+      printError $"Documentation generation failed: {error}"
+      1L
+  
+  | [] ->
+    printUsage "ai doc <function-name>"
+    printLine "Example: ai doc calculateTotal"
+    1L
+  
+  | _ ->
+    printUsage "ai doc <function-name>"
+    1L
+
+/// Train AI agent with feedback
+let aiTrain (args: List<String>) : Int64 =
+  match args with
+  | agentId :: rating :: comments :: [] ->
+    try
+      let ratingInt = Stdlib.Int64.parse rating
+      
+      match ratingInt with
+      | Some r when r >= 1L && r <= 5L ->
+        let trainingData = {
+          examples = []
+          feedback = [{
+            requestId = "manual-feedback"
+            rating = r
+            comments = comments
+            improvements = []
+          }]
+          outcomes = []
+        }
+        
+        if trainAiAgent agentId trainingData then
+          printSuccess $"Training feedback submitted for agent {agentId}"
+          0L
+        else
+          printError $"Failed to train agent {agentId}"
+          1L
+      
+      | _ ->
+        printError "Rating must be between 1 and 5"
+        1L
+    
+    with
+    | error ->
+      printError $"Training failed: {error}"
+      1L
+  
+  | [] ->
+    printUsage "ai train <agent-id> <rating> <comments>"
+    printLine "Rating: 1-5 scale"
+    printLine "Example: ai train agent-123 4 'Good but could be more detailed'"
+    1L
+  
+  | _ ->
+    printUsage "ai train <agent-id> <rating> <comments>"
+    1L
+
+/// Configure AI agent settings
+let aiConfig (args: List<String>) : Int64 =
+  match args with
+  | agentId :: "capabilities" :: capabilities :: [] ->
+    try
+      let capabilityList = parseCapabilities capabilities
+      updateAgentCapabilities agentId capabilityList
+      printSuccess $"Updated capabilities for agent {agentId}"
+      0L
+    
+    with
+    | error ->
+      printError $"Configuration failed: {error}"
+      1L
+  
+  | agentId :: "active" :: status :: [] ->
+    try
+      let isActive = 
+        match status with
+        | "true" | "on" | "enabled" -> true
+        | "false" | "off" | "disabled" -> false
+        | _ -> failwith "Status must be true/false, on/off, or enabled/disabled"
+      
+      updateAgentStatus agentId isActive
+      printSuccess $"Agent {agentId} {if isActive then \"activated\" else \"deactivated\"}"
+      0L
+    
+    with
+    | error ->
+      printError $"Configuration failed: {error}"
+      1L
+  
+  | [] ->
+    printUsage "ai config <agent-id> <setting> <value>"
+    printLine "Settings:"
+    printLine "  capabilities <list>  - Set agent capabilities"
+    printLine "  active <true|false>  - Enable/disable agent"
+    printLine ""
+    printLine "Examples:"
+    printLine "  ai config agent-123 capabilities 'CodeGeneration,CodeReview'"
+    printLine "  ai config agent-123 active false"
+    1L
+  
+  | _ ->
+    printUsage "ai config <agent-id> <setting> <value>"
+    1L
+
+// Helper functions
+let generateAgentId (name: String) : String =
+  let sanitized = Stdlib.String.replace name " " "-" |> Stdlib.String.toLowercase
+  $"ai-{sanitized}-{Stdlib.Uuid.generate().Substring(0, 8)}"
+
+let getAllAiAgents () : List<AiAgent> =
+  // TODO: Retrieve from database
+  []
+
+let getCurrentSessionId () : Option<String> = None
+let getCurrentUserId () : String = "user1"
+let getCurrentPatchId () : Option<String> = None
+
+let buildBasicContext (sessionId: String) : AiContext = {
+  codebase = ""
+  session = ""
+  userPreferences = ""
+  previousInteractions = []
+  relevantFiles = []
+  testResults = None
+}
+
+let promptYesNo (question: String) : Bool =
+  printLine $"{question} (y/n): "
+  // TODO: Read user input
+  true
+
+let createTestPatch (functionName: String) (testCode: String) : Unit =
+  // TODO: Create patch with test code
+  ()
+
+let parseCapabilities (capabilitiesStr: String) : List<AiCapability> =
+  // TODO: Parse comma-separated capabilities
+  [CodeGeneration; CodeReview]
+
+let updateAgentCapabilities (agentId: String) (capabilities: List<AiCapability>) : Unit =
+  // TODO: Update agent capabilities
+  ()
+
+let updateAgentStatus (agentId: String) (isActive: Bool) : Unit =
+  // TODO: Update agent active status
+  ()

@@ -1,0 +1,86 @@
+/// Simple database operations for local state storage
+module Darklang.Cli.Database
+
+// For now, we'll just create the schema as a string
+// In a real implementation, this would use actual SQLite operations
+
+let createSchema () : String =
+  """
+  -- Users table for authentication
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL
+  );
+
+  -- Insert hardcoded development users
+  INSERT OR IGNORE INTO users (id, username) VALUES 
+    ('1', 'stachu'),
+    ('2', 'ocean');
+
+  -- Patches table for local patch storage
+  CREATE TABLE IF NOT EXISTS patches (
+    id TEXT PRIMARY KEY,
+    author_id TEXT NOT NULL REFERENCES users(id),
+    intent TEXT NOT NULL,
+    ops_json TEXT NOT NULL,     -- Serialized ops as JSON
+    dependencies_json TEXT,     -- JSON array of patch IDs
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status TEXT NOT NULL CHECK(status IN ('draft', 'ready', 'applied', 'rejected')),
+    todos_json TEXT,           -- JSON array of todo strings
+    validation_errors_json TEXT -- JSON array of error strings
+  );
+
+  -- Sessions table for work context
+  CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    intent TEXT NOT NULL,
+    owner_id TEXT NOT NULL REFERENCES users(id),
+    patches_json TEXT,         -- JSON array of patch IDs
+    current_patch_id TEXT,
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    state TEXT NOT NULL CHECK(state IN ('active', 'suspended', 'completed')),
+    context_json TEXT          -- Serialized WorkContext
+  );
+
+  -- Sync state table
+  CREATE TABLE IF NOT EXISTS sync_state (
+    instance_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    last_sync_at TIMESTAMP,
+    pending_patches_json TEXT, -- JSON array of patch IDs to push
+    server_url TEXT NOT NULL DEFAULT 'dev.darklang.com'
+  );
+
+  -- Insert default sync state for development
+  INSERT OR IGNORE INTO sync_state (instance_id, user_id, server_url) VALUES 
+    ('dev-instance-1', '1', 'dev.darklang.com');
+  """
+
+// Real database operations using CLI builtins
+let initDatabase () : Unit =
+  Stdlib.printLine "📦 Initializing local database..."
+  Builtin.devCollabInitDb ()
+  Stdlib.printLine "✅ Database schema created"
+  Stdlib.printLine "✅ Development users added"
+  Stdlib.printLine "Database location: ~/.darklang/dev.db"
+
+let getCurrentUser () : String option =
+  Builtin.devCollabGetCurrentUser ()
+
+let createPatch (author: String) (intent: String) : String =
+  Builtin.devCollabCreatePatch author intent
+
+let loadPatches () : List<String> =
+  Builtin.devCollabLoadPatches ()
+
+let getPatchInfo (patchId: String) : Dict<String> option =
+  Builtin.devCollabGetPatchInfo patchId
+
+let createSession (owner: String) (name: String) (intent: String) : String =
+  Builtin.devCollabCreateSession owner name intent
+
+let getCurrentSession (userId: String) : Dict<String> option =
+  Builtin.devCollabGetCurrentSession userId

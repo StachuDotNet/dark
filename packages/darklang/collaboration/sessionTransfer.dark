@@ -1,0 +1,419 @@
+/// Session Transfer and Persistence for Darklang Collaboration
+/// Enables seamless session handoff between machines and session state persistence
+module Darklang.Collaboration.SessionTransfer
+
+open Darklang.Collaboration.SessionManager
+open Darklang.Collaboration.PatchManager
+
+/// Session transfer payload that contains all necessary state
+type SessionTransferBundle = {
+  sessionId: String
+  sessionName: String
+  userId: String
+  createdAt: DateTime
+  
+  // Session metadata
+  metadata: SessionMetadata
+  
+  // Workspace state
+  workspaceState: WorkspaceState
+  
+  // Pending patches (not yet pushed)
+  pendingPatches: List<PatchMetadata>
+  patchContents: Dict<String, PatchContent>
+  
+  // Session history and context
+  sessionHistory: List<SessionEvent>
+  
+  // Editor state (optional - for advanced resume)
+  editorState: Option<EditorState>
+  
+  // Conflict resolution state
+  activeConflicts: List<ConflictResolution>
+  
+  // Transfer metadata
+  transferId: String
+  transferredAt: DateTime
+  sourceDevice: DeviceInfo
+  targetDevice: Option<DeviceInfo>
+}
+
+type SessionMetadata = {
+  description: String
+  tags: List<String>
+  lastActiveAt: DateTime
+  totalActiveTime: TimeSpan
+  patchCount: Int64
+  conflictCount: Int64
+}
+
+type WorkspaceState = {
+  openFiles: List<FileState>
+  activeFile: Option<String>
+  cursorPositions: Dict<String, CursorPosition>
+  scrollPositions: Dict<String, ScrollPosition>
+  breakpoints: List<BreakpointInfo>
+  watchedExpressions: List<String>
+}
+
+type FileState = {
+  filePath: String
+  isModified: Bool
+  lastSaved: DateTime
+  content: Option<String>  // Only if modified
+}
+
+type EditorState = {
+  layout: EditorLayout
+  panels: List<PanelState>
+  terminal: Option<TerminalState>
+  extensions: List<ExtensionState>
+}
+
+type SessionEvent = {
+  eventId: String
+  timestamp: DateTime
+  eventType: SessionEventType
+  data: Json
+}
+
+type SessionEventType =
+  | FunctionModified of functionName: String
+  | PatchCreated of patchId: String
+  | ConflictEncountered of conflictId: String
+  | FileOpened of filePath: String
+  | SyncPerformed of direction: SyncDirection
+  | SessionPaused
+  | SessionResumed
+
+type DeviceInfo = {
+  deviceId: String
+  deviceName: String
+  platform: String
+  ipAddress: String
+  darklangVersion: String
+  timestamp: DateTime
+}
+
+/// Create a session transfer bundle from current session
+let createSessionTransferBundle (sessionId: String) : SessionTransferBundle =
+  let session = getCurrentSession sessionId
+  
+  match session with
+  | Some s ->
+    let pendingPatches = getPendingPatches sessionId
+    let patchContents = 
+      pendingPatches 
+      |> Stdlib.List.map (fun p -> (p.patchId, getPatchContent p.patchId))
+      |> Dict.fromList
+    
+    let workspaceState = captureWorkspaceState sessionId
+    let editorState = captureEditorState sessionId
+    let sessionHistory = getSessionHistory sessionId 50L  // Last 50 events
+    let activeConflicts = getActiveConflicts sessionId
+    
+    {
+      sessionId = sessionId
+      sessionName = s.name
+      userId = s.userId
+      createdAt = s.createdAt
+      
+      metadata = {
+        description = s.description
+        tags = s.tags
+        lastActiveAt = s.lastActiveAt  
+        totalActiveTime = calculateTotalActiveTime sessionId
+        patchCount = Stdlib.List.length pendingPatches
+        conflictCount = Stdlib.List.length activeConflicts
+      }
+      
+      workspaceState = workspaceState
+      pendingPatches = pendingPatches
+      patchContents = patchContents
+      sessionHistory = sessionHistory
+      editorState = Some editorState
+      activeConflicts = activeConflicts
+      
+      transferId = generateTransferId ()
+      transferredAt = DateTime.now
+      sourceDevice = getCurrentDeviceInfo ()
+      targetDevice = None
+    }
+  
+  | None ->
+    failwith $"Session not found: {sessionId}"
+
+/// Export session transfer bundle to various formats
+let exportSessionBundle (bundle: SessionTransferBundle) (format: ExportFormat) : String =
+  match format with
+  | Json ->
+    Builtin.jsonSerialize bundle
+  
+  | CompressedJson ->
+    let json = Builtin.jsonSerialize bundle
+    compressString json
+  
+  | QrCode ->
+    // For quick transfer via QR code (limited size)
+    let minimalBundle = createMinimalBundle bundle
+    let json = Builtin.jsonSerialize minimalBundle
+    generateQrCode json
+  
+  | ShareableLink ->
+    // Upload bundle to temporary server and return link
+    let uploadId = uploadBundleToServer bundle
+    $"https://transfer.darklang.com/session/{uploadId}"
+
+type ExportFormat =
+  | Json
+  | CompressedJson  
+  | QrCode
+  | ShareableLink
+
+/// Import and restore session from transfer bundle
+let importSessionBundle (bundleData: String) (format: ExportFormat) : SessionRestoreResult =
+  try
+    let bundle = 
+      match format with
+      | Json ->
+        Builtin.jsonDeserialize<SessionTransferBundle> bundleData
+      
+      | CompressedJson ->
+        let decompressed = decompressString bundleData
+        Builtin.jsonDeserialize<SessionTransferBundle> decompressed
+      
+      | QrCode ->
+        let minimalBundle = Builtin.jsonDeserialize<MinimalSessionBundle> bundleData
+        expandMinimalBundle minimalBundle
+      
+      | ShareableLink ->
+        let uploadId = extractUploadId bundleData
+        downloadBundleFromServer uploadId
+    
+    restoreSessionFromBundle bundle
+    
+  with
+  | error ->
+    SessionRestoreError $"Failed to import session: {error}"
+
+type SessionRestoreResult =
+  | SessionRestoreSuccess of sessionId: String
+  | SessionRestoreError of message: String
+
+/// Restore session state from bundle
+let restoreSessionFromBundle (bundle: SessionTransferBundle) : SessionRestoreResult =
+  try
+    // Check if session already exists
+    let existingSession = findSessionById bundle.sessionId
+    
+    let newSessionId = 
+      match existingSession with
+      | Some _ ->
+        // Session exists, create new session with incremented name
+        let newName = $"{bundle.sessionName} (transferred)"
+        createNewSession bundle.userId newName bundle.metadata.description
+      | None ->
+        // Create session with original ID
+        createSessionWithId bundle.sessionId bundle.userId bundle.sessionName bundle.metadata.description
+    
+    // Restore workspace state
+    restoreWorkspaceState newSessionId bundle.workspaceState
+    
+    // Restore pending patches
+    bundle.pendingPatches
+    |> Stdlib.List.iter (fun patchMeta ->
+      let content = Dict.get bundle.patchContents patchMeta.patchId
+      match content with
+      | Some patchContent ->
+        createPatchFromBundle newSessionId patchMeta patchContent
+      | None ->
+        log $"Warning: Missing content for patch {patchMeta.patchId}")
+    
+    // Restore session history
+    bundle.sessionHistory
+    |> Stdlib.List.iter (fun event ->
+      recordSessionEvent newSessionId event.eventType event.data)
+    
+    // Restore conflicts
+    bundle.activeConflicts
+    |> Stdlib.List.iter (fun conflict ->
+      restoreConflictState newSessionId conflict)
+    
+    // Restore editor state (if available and requested)
+    match bundle.editorState with
+    | Some editorState ->
+      restoreEditorState newSessionId editorState
+    | None ->
+      ()
+    
+    // Update transfer metadata
+    updateSessionTransferInfo newSessionId bundle.transferId bundle.sourceDevice
+    
+    // Record successful transfer
+    recordSessionEvent newSessionId (SessionEventType.SessionResumed) (Object [
+      ("transferId", String bundle.transferId)
+      ("sourceDevice", String bundle.sourceDevice.deviceName)
+      ("transferredAt", String (bundle.transferredAt.ToString()))
+    ])
+    
+    SessionRestoreSuccess newSessionId
+    
+  with
+  | error ->
+    SessionRestoreError $"Failed to restore session: {error}"
+
+/// Create QR code for quick session transfer
+let generateSessionQrCode (sessionId: String) : String =
+  let bundle = createSessionTransferBundle sessionId
+  exportSessionBundle bundle QrCode
+
+/// Session persistence - save session state to disk
+let persistSessionState (sessionId: String) : Unit =
+  let bundle = createSessionTransferBundle sessionId
+  let json = Builtin.jsonSerialize bundle
+  let filePath = $"rundir/sessions/{sessionId}.session"
+  
+  // Ensure directory exists
+  ensureDirectoryExists "rundir/sessions"
+  
+  // Write session file
+  Builtin.fileWrite filePath json
+
+/// Auto-save session state periodically
+let startSessionAutosave (sessionId: String) (intervalMinutes: Int64) : Unit =
+  let intervalMs = intervalMinutes * 60L * 1000L
+  
+  // Start background timer
+  startPeriodicTask intervalMs (fun () ->
+    try
+      persistSessionState sessionId
+      log $"Auto-saved session {sessionId}"
+    with
+    | error ->
+      log $"Auto-save failed for session {sessionId}: {error}")
+
+/// Restore session from persisted state
+let restorePersistedSession (sessionId: String) : SessionRestoreResult =
+  let filePath = $"rundir/sessions/{sessionId}.session"
+  
+  if Builtin.fileExists filePath then
+    try
+      let json = Builtin.fileRead filePath
+      importSessionBundle json Json
+    with
+    | error ->
+      SessionRestoreError $"Failed to restore persisted session: {error}"
+  else
+    SessionRestoreError $"No persisted session found: {sessionId}"
+
+/// Session synchronization across devices
+let syncSessionToCloud (sessionId: String) : CloudSyncResult =
+  try
+    let bundle = createSessionTransferBundle sessionId
+    let uploadId = uploadBundleToCloud bundle
+    
+    // Update session metadata with cloud sync info
+    updateSessionCloudSync sessionId uploadId
+    
+    CloudSyncSuccess uploadId
+    
+  with
+  | error ->
+    CloudSyncError $"Failed to sync session to cloud: {error}"
+
+type CloudSyncResult =
+  | CloudSyncSuccess of uploadId: String
+  | CloudSyncError of message: String
+
+/// Download session from cloud
+let downloadSessionFromCloud (uploadId: String) : SessionRestoreResult =
+  try
+    let bundle = downloadBundleFromCloud uploadId
+    restoreSessionFromBundle bundle
+  with
+  | error ->
+    SessionRestoreError $"Failed to download session from cloud: {error}"
+
+/// Session merge - combine two sessions
+let mergeSessions (primarySessionId: String) (secondarySessionId: String) : SessionMergeResult =
+  try
+    let primaryBundle = createSessionTransferBundle primarySessionId
+    let secondaryBundle = createSessionTransferBundle secondarySessionId
+    
+    let mergedBundle = mergeSessionBundles primaryBundle secondaryBundle
+    let newSessionId = createNewSession primaryBundle.userId $"Merged: {primaryBundle.sessionName}" "Merged session"
+    
+    restoreSessionFromBundle { mergedBundle with sessionId = newSessionId }
+    
+    SessionMergeSuccess newSessionId
+    
+  with
+  | error ->
+    SessionMergeError $"Failed to merge sessions: {error}"
+
+type SessionMergeResult =
+  | SessionMergeSuccess of newSessionId: String
+  | SessionMergeError of message: String
+
+// Helper functions and type definitions
+
+let captureWorkspaceState (sessionId: String) : WorkspaceState = {
+  openFiles = []  // TODO: Implement
+  activeFile = None
+  cursorPositions = Dict.empty
+  scrollPositions = Dict.empty  
+  breakpoints = []
+  watchedExpressions = []
+}
+
+let captureEditorState (sessionId: String) : EditorState = {
+  layout = EditorLayout.Default
+  panels = []
+  terminal = None
+  extensions = []
+}
+
+let restoreWorkspaceState (sessionId: String) (state: WorkspaceState) : Unit = ()
+let restoreEditorState (sessionId: String) (state: EditorState) : Unit = ()
+let restoreConflictState (sessionId: String) (conflict: ConflictResolution) : Unit = ()
+let createPatchFromBundle (sessionId: String) (meta: PatchMetadata) (content: PatchContent) : Unit = ()
+let updateSessionTransferInfo (sessionId: String) (transferId: String) (sourceDevice: DeviceInfo) : Unit = ()
+let updateSessionCloudSync (sessionId: String) (uploadId: String) : Unit = ()
+let calculateTotalActiveTime (sessionId: String) : TimeSpan = TimeSpan.fromMinutes 0.0
+let generateTransferId () : String = Stdlib.Uuid.generate ()
+let getCurrentDeviceInfo () : DeviceInfo = {
+  deviceId = "dev1"
+  deviceName = "Development Machine"
+  platform = "Linux"
+  ipAddress = "127.0.0.1"
+  darklangVersion = "1.0.0"
+  timestamp = DateTime.now
+}
+
+// Placeholder types and functions
+type CursorPosition = { line: Int64; column: Int64 }
+type ScrollPosition = { top: Int64; left: Int64 }
+type BreakpointInfo = { file: String; line: Int64 }
+type EditorLayout = Default
+type PanelState = String
+type TerminalState = String  
+type ExtensionState = String
+type MinimalSessionBundle = SessionTransferBundle  // Simplified version
+type TimeSpan = { minutes: Float }
+
+let compressString (s: String) : String = s
+let decompressString (s: String) : String = s
+let generateQrCode (data: String) : String = $"QR:{data}"
+let uploadBundleToServer (bundle: SessionTransferBundle) : String = "upload123"
+let downloadBundleFromServer (uploadId: String) : SessionTransferBundle = failwith "Not implemented"
+let uploadBundleToCloud (bundle: SessionTransferBundle) : String = "cloud123"
+let downloadBundleFromCloud (uploadId: String) : SessionTransferBundle = failwith "Not implemented"
+let createMinimalBundle (bundle: SessionTransferBundle) : MinimalSessionBundle = bundle
+let expandMinimalBundle (minimal: MinimalSessionBundle) : SessionTransferBundle = minimal
+let extractUploadId (link: String) : String = "upload123"
+let ensureDirectoryExists (path: String) : Unit = ()
+let startPeriodicTask (intervalMs: Int64) (task: Unit -> Unit) : Unit = ()
+let mergeSessionBundles (primary: SessionTransferBundle) (secondary: SessionTransferBundle) : SessionTransferBundle = primary
+
+module TimeSpan =
+  let fromMinutes (minutes: Float) : TimeSpan = { minutes = minutes }

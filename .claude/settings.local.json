@@ -18,7 +18,15 @@
       "Bash(done)",
       "Bash(/home/stachu/code/dark/scripts/build/build-release-cli-exes.sh:*)",
       "Bash(scripts/run-backend-tests:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "WebFetch(domain:blog.darklang.com)",
+      "WebSearch",
+      "WebFetch(domain:stachu.net)",
+      "Read(//home/stachu/code/darklang.com/**)",
+      "Bash(tree:*)",
+      "Read(//home/stachu/vaults/Darklang Dev/**)",
+      "Read(//home/stachu/code/dev.darklang.com/**)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }

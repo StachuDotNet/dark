@@ -1,0 +1,351 @@
+{
+  "name": "darklang-collaboration",
+  "displayName": "Darklang Developer Collaboration",
+  "description": "Seamless code sharing and conflict resolution for Darklang teams",
+  "version": "1.0.0",
+  "publisher": "darklang",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["SCM Providers", "Other"],
+  "keywords": ["darklang", "collaboration", "patches", "conflict-resolution"],
+  "activationEvents": [
+    "workspaceContains:**/*.dark",
+    "onCommand:darklang.patch.create"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "darklang.patch.create",
+        "title": "Create Patch",
+        "category": "Darklang",
+        "icon": "$(add)"
+      },
+      {
+        "command": "darklang.patch.ready",
+        "title": "Mark Patch Ready",
+        "category": "Darklang",
+        "icon": "$(check)"
+      },
+      {
+        "command": "darklang.patch.apply",
+        "title": "Apply Patch",
+        "category": "Darklang",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "darklang.patch.view",
+        "title": "View Patch Details",
+        "category": "Darklang",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "darklang.patch.diff",
+        "title": "Show Patch Diff",
+        "category": "Darklang",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "darklang.sync.push",
+        "title": "Push Patches",
+        "category": "Darklang",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "darklang.sync.pull",
+        "title": "Pull Patches",
+        "category": "Darklang",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "darklang.sync.status",
+        "title": "Show Sync Status",
+        "category": "Darklang",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "darklang.session.new",
+        "title": "New Work Session",
+        "category": "Darklang",
+        "icon": "$(play)"
+      },
+      {
+        "command": "darklang.session.switch",
+        "title": "Switch Session",
+        "category": "Darklang",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "darklang.session.suspend",
+        "title": "Suspend Session",
+        "category": "Darklang",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "darklang.session.end",
+        "title": "End Session",
+        "category": "Darklang",
+        "icon": "$(stop)"
+      },
+      {
+        "command": "darklang.conflicts.resolve",
+        "title": "Resolve Conflicts",
+        "category": "Darklang",
+        "icon": "$(warning)"
+      },
+      {
+        "command": "darklang.conflicts.auto",
+        "title": "Auto-Resolve Simple Conflicts",
+        "category": "Darklang",
+        "icon": "$(wand)"
+      },
+      {
+        "command": "darklang.conflicts.list",
+        "title": "List All Conflicts",
+        "category": "Darklang",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "darklangPatches.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "darklang.packages.refresh",
+        "title": "Refresh Packages",
+        "category": "Darklang",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "darklang.packages.openWorkspace",
+        "title": "Open Package Workspace",
+        "category": "Darklang",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "darklang.packages.createFunction",
+        "title": "Create Function",
+        "category": "Darklang",
+        "icon": "$(add)"
+      },
+      {
+        "command": "darklang.session.export",
+        "title": "Export Session",
+        "category": "Darklang",
+        "icon": "$(export)"
+      },
+      {
+        "command": "darklang.session.import", 
+        "title": "Import Session",
+        "category": "Darklang",
+        "icon": "$(import)"
+      },
+      {
+        "command": "darklang.session.transfer",
+        "title": "Transfer Session",
+        "category": "Darklang", 
+        "icon": "$(device-mobile)"
+      },
+      {
+        "command": "darklang.session.autosave",
+        "title": "Configure Auto-save",
+        "category": "Darklang",
+        "icon": "$(save)"
+      },
+      {
+        "command": "darklang.session.syncCloud",
+        "title": "Cloud Sync",
+        "category": "Darklang",
+        "icon": "$(cloud)"
+      },
+      {
+        "command": "darklang.ai.review",
+        "title": "AI Code Review",
+        "category": "Darklang AI",
+        "icon": "$(search)"
+      },
+      {
+        "command": "darklang.ai.generateTests",
+        "title": "Generate Tests with AI",
+        "category": "Darklang AI",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "darklang.ai.generateDocs",
+        "title": "Generate Documentation with AI", 
+        "category": "Darklang AI",
+        "icon": "$(book)"
+      },
+      {
+        "command": "darklang.ai.explainCode",
+        "title": "Explain Code with AI",
+        "category": "Darklang AI",
+        "icon": "$(question)"
+      },
+      {
+        "command": "darklang.ai.suggestFix",
+        "title": "AI Fix Suggestion",
+        "category": "Darklang AI",
+        "icon": "$(lightbulb)"
+      },
+      {
+        "command": "darklang.ai.assist",
+        "title": "AI Assistant",
+        "category": "Darklang AI",
+        "icon": "$(robot)"
+      },
+      {
+        "command": "darklang.ai.configure",
+        "title": "Configure AI Agents",
+        "category": "Darklang AI",
+        "icon": "$(settings-gear)"
+      }
+    ],
+    "views": {
+      "darklangCollaboration": [
+        {
+          "id": "darklangPatches",
+          "name": "Patches",
+          "when": "workspaceContains:**/*.dark"
+        },
+        {
+          "id": "darklangSessions",
+          "name": "Sessions", 
+          "when": "workspaceContains:**/*.dark"
+        },
+        {
+          "id": "darklangConflicts",
+          "name": "Conflicts",
+          "when": "workspaceContains:**/*.dark"
+        },
+        {
+          "id": "darklangPackages",
+          "name": "Packages",
+          "when": "workspaceContains:**/*.dark"
+        }
+      ],
+      "scm": [
+        {
+          "id": "darklangScm",
+          "name": "Darklang",
+          "when": "workspaceContains:**/*.dark"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "darklangCollaboration",
+          "title": "Darklang Collaboration",
+          "icon": "$(git-pull-request)"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "darklangPatches.refresh",
+          "when": "view == darklangPatches",
+          "group": "navigation"
+        },
+        {
+          "command": "darklang.patch.create",
+          "when": "view == darklangPatches",
+          "group": "navigation"
+        },
+        {
+          "command": "darklang.packages.refresh",
+          "when": "view == darklangPackages",
+          "group": "navigation"
+        },
+        {
+          "command": "darklang.packages.openWorkspace",
+          "when": "view == darklangPackages",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "darklang.patch.view",
+          "when": "view == darklangPatches && viewItem == patch",
+          "group": "inline"
+        },
+        {
+          "command": "darklang.patch.apply",
+          "when": "view == darklangPatches && viewItem == incomingPatch",
+          "group": "inline"
+        },
+        {
+          "command": "darklang.patch.ready",
+          "when": "view == darklangPatches && viewItem == draftPatch",
+          "group": "inline"
+        },
+        {
+          "command": "darklang.packages.createFunction",
+          "when": "view == darklangPackages && viewItem == package",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "darklang.patch.create",
+          "when": "workspaceContains:**/*.dark"
+        },
+        {
+          "command": "darklang.sync.push",
+          "when": "workspaceContains:**/*.dark"
+        },
+        {
+          "command": "darklang.session.new",
+          "when": "workspaceContains:**/*.dark"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Darklang Collaboration",
+      "properties": {
+        "darklang.collaboration.autoSync": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically sync patches when changes are detected"
+        },
+        "darklang.collaboration.autoApply": {
+          "type": "boolean", 
+          "default": false,
+          "description": "Automatically apply incoming patches (requires manual review disabled)"
+        },
+        "darklang.collaboration.conflictResolution": {
+          "type": "string",
+          "enum": ["prompt", "auto", "manual"],
+          "default": "prompt",
+          "description": "Default conflict resolution strategy"
+        },
+        "darklang.collaboration.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "Collaboration server URL"
+        },
+        "darklang.collaboration.showNotifications": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications for collaboration events"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.14.0",
+    "node-fetch": "^3.3.0"
+  }
+}

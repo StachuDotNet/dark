@@ -1,0 +1,665 @@
+/// Performance Monitoring and Analytics for Darklang Collaboration
+/// Tracks system performance, user behavior, and collaboration metrics
+module Darklang.Collaboration.PerformanceMonitoring
+
+open System.Collections.Concurrent
+
+/// Performance monitoring system for collaboration features
+type PerformanceMonitor = {
+  metricsCollector: MetricsCollector
+  analyticsEngine: AnalyticsEngine
+  alertingSystem: AlertingSystem
+  dashboardData: ConcurrentDictionary<String, DashboardMetric>
+  performanceProfiles: ConcurrentDictionary<String, PerformanceProfile>
+  isEnabled: Bool
+  startTime: DateTime
+}
+
+type MetricsCollector = {
+  collectors: List<MetricCollector>
+  bufferSize: Int64
+  flushInterval: TimeSpan
+  retentionPeriod: TimeSpan
+}
+
+type MetricCollector = {
+  collectorId: String
+  name: String
+  metricType: MetricType
+  collect: Unit -> List<MetricSample>
+  isEnabled: Bool
+}
+
+type MetricType =
+  | SystemPerformance
+  | CollaborationActivity
+  | UserBehavior
+  | NetworkLatency
+  | DatabasePerformance
+  | ResourceUtilization
+
+/// Core metrics for collaboration system
+type CollaborationMetrics = {
+  // Session metrics
+  activeSessions: Int64
+  totalSessions: Int64
+  averageSessionDuration: TimeSpan
+  sessionCreationRate: Float
+  
+  // User metrics
+  activeUsers: Int64
+  totalUsers: Int64
+  userEngagementScore: Float
+  averageCollaboratorsPerSession: Float
+  
+  // Operation metrics
+  operationsPerSecond: Float
+  averageOperationLatency: TimeSpan
+  operationSuccessRate: Float
+  conflictRate: Float
+  
+  // System metrics
+  cpuUsage: Float
+  memoryUsage: Float
+  networkBandwidth: Float
+  storageUsage: Float
+  
+  // Quality metrics
+  systemAvailability: Float
+  errorRate: Float
+  responseTime: TimeSpan
+  throughput: Float
+}
+
+type MetricSample = {
+  timestamp: DateTime
+  metricName: String
+  value: Float
+  unit: String
+  tags: Dict<String, String>
+  source: String
+}
+
+/// Analytics engine for processing metrics
+type AnalyticsEngine = {
+  processors: List<MetricProcessor>
+  aggregators: List<MetricAggregator>
+  alertRules: List<AlertRule>
+  trendAnalyzer: TrendAnalyzer
+}
+
+type MetricProcessor = {
+  processorId: String
+  inputMetrics: List<String>
+  process: List<MetricSample> -> List<ProcessedMetric>
+}
+
+type ProcessedMetric = {
+  metricName: String
+  value: Float
+  timestamp: DateTime
+  metadata: Dict<String, String>
+  confidence: Float
+}
+
+/// Start performance monitoring
+let startPerformanceMonitoring () : PerformanceMonitor =
+  try
+    let monitor = {
+      metricsCollector = createMetricsCollector ()
+      analyticsEngine = createAnalyticsEngine ()
+      alertingSystem = createAlertingSystem ()
+      dashboardData = ConcurrentDictionary<String, DashboardMetric>()
+      performanceProfiles = ConcurrentDictionary<String, PerformanceProfile>()
+      isEnabled = true
+      startTime = DateTime.now
+    }
+    
+    // Start metric collection
+    startMetricCollection monitor.metricsCollector
+    
+    // Start analytics processing
+    startAnalyticsProcessing monitor.analyticsEngine
+    
+    // Initialize alerting
+    startAlertingSystem monitor.alertingSystem
+    
+    log "Performance monitoring started"
+    monitor
+    
+  with
+  | error ->
+    log $"Failed to start performance monitoring: {error}"
+    failwith error
+
+/// Collect real-time collaboration metrics
+let collectCollaborationMetrics () : CollaborationMetrics =
+  try
+    {
+      // Session metrics
+      activeSessions = getActiveSessionCount ()
+      totalSessions = getTotalSessionCount ()
+      averageSessionDuration = getAverageSessionDuration ()
+      sessionCreationRate = getSessionCreationRate ()
+      
+      // User metrics
+      activeUsers = getActiveUserCount ()
+      totalUsers = getTotalUserCount ()
+      userEngagementScore = calculateUserEngagementScore ()
+      averageCollaboratorsPerSession = getAverageCollaboratorsPerSession ()
+      
+      // Operation metrics
+      operationsPerSecond = getOperationsPerSecond ()
+      averageOperationLatency = getAverageOperationLatency ()
+      operationSuccessRate = getOperationSuccessRate ()
+      conflictRate = getConflictRate ()
+      
+      // System metrics
+      cpuUsage = getCpuUsage ()
+      memoryUsage = getMemoryUsage ()
+      networkBandwidth = getNetworkBandwidth ()
+      storageUsage = getStorageUsage ()
+      
+      // Quality metrics
+      systemAvailability = getSystemAvailability ()
+      errorRate = getErrorRate ()
+      responseTime = getAverageResponseTime ()
+      throughput = getSystemThroughput ()
+    }
+  
+  with
+  | error ->
+    log $"Failed to collect collaboration metrics: {error}"
+    // Return default metrics on error
+    {
+      activeSessions = 0L; totalSessions = 0L; averageSessionDuration = TimeSpan.zero
+      sessionCreationRate = 0.0; activeUsers = 0L; totalUsers = 0L
+      userEngagementScore = 0.0; averageCollaboratorsPerSession = 0.0
+      operationsPerSecond = 0.0; averageOperationLatency = TimeSpan.zero
+      operationSuccessRate = 0.0; conflictRate = 0.0
+      cpuUsage = 0.0; memoryUsage = 0.0; networkBandwidth = 0.0; storageUsage = 0.0
+      systemAvailability = 0.0; errorRate = 0.0; responseTime = TimeSpan.zero; throughput = 0.0
+    }
+
+/// Track user behavior and interaction patterns
+let trackUserBehavior (userId: String) (action: UserAction) (context: ActionContext) : Unit =
+  try
+    let behaviorEvent = {
+      eventId = generateEventId ()
+      userId = userId
+      action = action
+      context = context
+      timestamp = DateTime.now
+      sessionId = context.sessionId
+      metadata = extractActionMetadata action context
+    }
+    
+    // Record behavior event
+    recordBehaviorEvent behaviorEvent
+    
+    // Update user profile
+    updateUserProfile userId behaviorEvent
+    
+    // Trigger real-time analytics
+    processUserBehaviorEvent behaviorEvent
+    
+  with
+  | error ->
+    log $"Failed to track user behavior: {error}"
+
+type UserAction =
+  | SessionCreated
+  | SessionJoined of sessionId: String
+  | PatchCreated of patchId: String
+  | ConflictResolved of conflictId: String
+  | OperationPerformed of operationType: String
+  | CollaborationStarted
+  | ToolUsed of toolName: String
+  | ErrorEncountered of errorType: String
+
+type ActionContext = {
+  sessionId: Option<String>
+  documentId: Option<String>
+  collaboratorCount: Int64
+  timestamp: DateTime
+  source: String
+  additionalData: Dict<String, String>
+}
+
+type UserBehaviorEvent = {
+  eventId: String
+  userId: String
+  action: UserAction
+  context: ActionContext
+  timestamp: DateTime
+  sessionId: Option<String>
+  metadata: Dict<String, String>
+}
+
+/// Analyze performance trends and patterns
+let analyzePerformanceTrends (timeWindow: TimeSpan) : PerformanceAnalysis =
+  try
+    let endTime = DateTime.now
+    let startTime = endTime.Subtract(timeWindow)
+    
+    // Collect historical metrics
+    let historicalMetrics = getHistoricalMetrics startTime endTime
+    
+    // Analyze trends
+    let trends = analyzeTrends historicalMetrics
+    let patterns = detectPatterns historicalMetrics
+    let anomalies = detectAnomalies historicalMetrics
+    
+    // Generate insights
+    let insights = generatePerformanceInsights trends patterns anomalies
+    
+    // Calculate predictions
+    let predictions = predictFutureTrends trends
+    
+    {
+      analysisId = generateAnalysisId ()
+      timeRange = { start = startTime; end_ = endTime }
+      trends = trends
+      patterns = patterns
+      anomalies = anomalies
+      insights = insights
+      predictions = predictions
+      confidence = calculateAnalysisConfidence trends patterns
+      generatedAt = DateTime.now
+    }
+  
+  with
+  | error ->
+    log $"Failed to analyze performance trends: {error}"
+    createEmptyPerformanceAnalysis ()
+
+type PerformanceAnalysis = {
+  analysisId: String
+  timeRange: TimeRange
+  trends: List<Trend>
+  patterns: List<Pattern>
+  anomalies: List<Anomaly>
+  insights: List<Insight>
+  predictions: List<Prediction>
+  confidence: Float
+  generatedAt: DateTime
+}
+
+type Trend = {
+  metricName: String
+  direction: TrendDirection
+  strength: Float
+  duration: TimeSpan
+  startValue: Float
+  endValue: Float
+  changeRate: Float
+}
+
+type TrendDirection = Increasing | Decreasing | Stable | Volatile
+
+/// Real-time performance alerting
+let setupPerformanceAlerts () : List<AlertRule> =
+  [
+    {
+      ruleId = "high-cpu-usage"
+      name = "High CPU Usage"
+      metricName = "cpu_usage"
+      condition = GreaterThan 80.0
+      duration = TimeSpan.fromMinutes 5.0
+      severity = High
+      action = SendNotification "System CPU usage is critically high"
+    }
+    {
+      ruleId = "high-error-rate"
+      name = "High Error Rate" 
+      metricName = "error_rate"
+      condition = GreaterThan 5.0
+      duration = TimeSpan.fromMinutes 2.0
+      severity = Critical
+      action = SendAlert "Collaboration system error rate is too high"
+    }
+    {
+      ruleId = "low-availability"
+      name = "Low System Availability"
+      metricName = "system_availability"
+      condition = LessThan 95.0
+      duration = TimeSpan.fromMinutes 1.0
+      severity = Critical
+      action = SendPagerAlert "System availability below SLA threshold"
+    }
+    {
+      ruleId = "high-conflict-rate"
+      name = "High Conflict Rate"
+      metricName = "conflict_rate"
+      condition = GreaterThan 10.0
+      duration = TimeSpan.fromMinutes 10.0
+      severity = Medium
+      action = SendNotification "High collaboration conflict rate detected"
+    }
+    {
+      ruleId = "slow-response-time"
+      name = "Slow Response Time"
+      metricName = "response_time"
+      condition = GreaterThan 2000.0  // 2 seconds
+      duration = TimeSpan.fromMinutes 3.0
+      severity = High
+      action = SendAlert "System response time is degraded"
+    }
+  ]
+
+type AlertRule = {
+  ruleId: String
+  name: String
+  metricName: String
+  condition: AlertCondition
+  duration: TimeSpan
+  severity: AlertSeverity
+  action: AlertAction
+}
+
+type AlertCondition = GreaterThan of Float | LessThan of Float | Equals of Float
+type AlertSeverity = Low | Medium | High | Critical
+type AlertAction = SendNotification of String | SendAlert of String | SendPagerAlert of String
+
+/// Generate performance dashboard data
+let generateDashboardData (monitor: PerformanceMonitor) : DashboardData =
+  try
+    let currentMetrics = collectCollaborationMetrics ()
+    let recentTrends = analyzePerformanceTrends (TimeSpan.fromHours 24.0)
+    
+    {
+      lastUpdated = DateTime.now
+      currentMetrics = currentMetrics
+      trends = recentTrends.trends
+      alerts = getActiveAlerts ()
+      systemHealth = calculateSystemHealth currentMetrics
+      
+      // Key performance indicators
+      kpis = [
+        { name = "Active Sessions"; value = currentMetrics.activeSessions; unit = "count"; trend = getTrendForMetric "active_sessions" }
+        { name = "Operations/sec"; value = currentMetrics.operationsPerSecond; unit = "ops/s"; trend = getTrendForMetric "operations_per_second" }
+        { name = "Conflict Rate"; value = currentMetrics.conflictRate; unit = "%"; trend = getTrendForMetric "conflict_rate" }
+        { name = "System Availability"; value = currentMetrics.systemAvailability; unit = "%"; trend = getTrendForMetric "system_availability" }
+      ]
+      
+      // Usage statistics
+      usageStats = {
+        totalUsers = currentMetrics.totalUsers
+        activeUsers = currentMetrics.activeUsers
+        totalSessions = currentMetrics.totalSessions
+        activeSessions = currentMetrics.activeSessions
+        averageSessionDuration = currentMetrics.averageSessionDuration
+        topFeatures = getTopUsedFeatures ()
+      }
+      
+      // Performance charts data
+      chartData = generateChartData recentTrends
+    }
+  
+  with
+  | error ->
+    log $"Failed to generate dashboard data: {error}"
+    createEmptyDashboardData ()
+
+type DashboardData = {
+  lastUpdated: DateTime
+  currentMetrics: CollaborationMetrics
+  trends: List<Trend>
+  alerts: List<ActiveAlert>
+  systemHealth: SystemHealth
+  kpis: List<KPI>
+  usageStats: UsageStatistics
+  chartData: List<ChartDataSet>
+}
+
+type KPI = {
+  name: String
+  value: Float
+  unit: String
+  trend: TrendDirection
+}
+
+type UsageStatistics = {
+  totalUsers: Int64
+  activeUsers: Int64
+  totalSessions: Int64
+  activeSessions: Int64
+  averageSessionDuration: TimeSpan
+  topFeatures: List<FeatureUsage>
+}
+
+type FeatureUsage = {
+  featureName: String
+  usageCount: Int64
+  uniqueUsers: Int64
+  averageUsageTime: TimeSpan
+}
+
+/// A/B testing framework for collaboration features
+let runABTest (testConfig: ABTestConfig) : ABTestResult =
+  try
+    // Initialize test groups
+    let groups = initializeTestGroups testConfig
+    
+    // Run test for specified duration
+    let testResults = executeABTest testConfig groups
+    
+    // Analyze results
+    let analysis = analyzeABTestResults testResults
+    
+    // Generate recommendations
+    let recommendations = generateABTestRecommendations analysis
+    
+    {
+      testId = testConfig.testId
+      testName = testConfig.name
+      startTime = testConfig.startTime
+      endTime = DateTime.now
+      groups = groups
+      results = testResults
+      analysis = analysis
+      recommendations = recommendations
+      isStatisticallySignificant = analysis.pValue < 0.05
+      winningVariant = analysis.winningVariant
+    }
+  
+  with
+  | error ->
+    log $"Failed to run A/B test: {error}"
+    createFailedABTestResult testConfig error
+
+type ABTestConfig = {
+  testId: String
+  name: String
+  description: String
+  variants: List<TestVariant>
+  targetMetric: String
+  sampleSize: Int64
+  duration: TimeSpan
+  startTime: DateTime
+  trafficSplit: Dict<String, Float>
+}
+
+type TestVariant = {
+  variantId: String
+  name: String
+  description: String
+  configuration: Dict<String, String>
+}
+
+/// Export performance data for external analysis
+let exportPerformanceData (exportConfig: ExportConfig) : ExportResult =
+  try
+    let data = 
+      match exportConfig.dataType with
+      | MetricsExport -> exportMetricsData exportConfig
+      | UserBehaviorExport -> exportUserBehaviorData exportConfig
+      | SessionDataExport -> exportSessionData exportConfig
+      | SystemLogsExport -> exportSystemLogsData exportConfig
+    
+    let exportedFile = saveExportData data exportConfig.format exportConfig.destination
+    
+    ExportSuccess {
+      exportId = generateExportId ()
+      filePath = exportedFile
+      recordCount = data.recordCount
+      fileSize = getFileSize exportedFile
+      exportedAt = DateTime.now
+    }
+  
+  with
+  | error ->
+    log $"Failed to export performance data: {error}"
+    ExportFailed $"Export failed: {error}"
+
+type ExportConfig = {
+  dataType: ExportDataType
+  timeRange: TimeRange
+  format: ExportFormat
+  destination: String
+  filters: Dict<String, String>
+}
+
+type ExportDataType = MetricsExport | UserBehaviorExport | SessionDataExport | SystemLogsExport
+type ExportFormat = JSON | CSV | Parquet | Excel
+
+type ExportResult = ExportSuccess of ExportInfo | ExportFailed of String
+
+type ExportInfo = {
+  exportId: String
+  filePath: String
+  recordCount: Int64
+  fileSize: Int64
+  exportedAt: DateTime
+}
+
+// Helper functions and implementations
+let createMetricsCollector () : MetricsCollector = {
+  collectors = []
+  bufferSize = 10000L
+  flushInterval = TimeSpan.fromMinutes 1.0
+  retentionPeriod = TimeSpan.fromDays 30.0
+}
+
+let createAnalyticsEngine () : AnalyticsEngine = {
+  processors = []
+  aggregators = []
+  alertRules = setupPerformanceAlerts ()
+  trendAnalyzer = TrendAnalyzer.create ()
+}
+
+let createAlertingSystem () : AlertingSystem = AlertingSystem.create ()
+let startMetricCollection (collector: MetricsCollector) : Unit = ()
+let startAnalyticsProcessing (engine: AnalyticsEngine) : Unit = ()
+let startAlertingSystem (system: AlertingSystem) : Unit = ()
+
+// Metric collection functions
+let getActiveSessionCount () : Int64 = 0L
+let getTotalSessionCount () : Int64 = 0L
+let getAverageSessionDuration () : TimeSpan = TimeSpan.zero
+let getSessionCreationRate () : Float = 0.0
+let getActiveUserCount () : Int64 = 0L
+let getTotalUserCount () : Int64 = 0L
+let calculateUserEngagementScore () : Float = 0.0
+let getAverageCollaboratorsPerSession () : Float = 0.0
+let getOperationsPerSecond () : Float = 0.0
+let getAverageOperationLatency () : TimeSpan = TimeSpan.zero
+let getOperationSuccessRate () : Float = 0.0
+let getConflictRate () : Float = 0.0
+let getCpuUsage () : Float = 0.0
+let getMemoryUsage () : Float = 0.0
+let getNetworkBandwidth () : Float = 0.0
+let getStorageUsage () : Float = 0.0
+let getSystemAvailability () : Float = 0.0
+let getErrorRate () : Float = 0.0
+let getAverageResponseTime () : TimeSpan = TimeSpan.zero
+let getSystemThroughput () : Float = 0.0
+
+// Analysis functions
+let getHistoricalMetrics (startTime: DateTime) (endTime: DateTime) : List<MetricSample> = []
+let analyzeTrends (metrics: List<MetricSample>) : List<Trend> = []
+let detectPatterns (metrics: List<MetricSample>) : List<Pattern> = []
+let detectAnomalies (metrics: List<MetricSample>) : List<Anomaly> = []
+let generatePerformanceInsights (trends: List<Trend>) (patterns: List<Pattern>) (anomalies: List<Anomaly>) : List<Insight> = []
+let predictFutureTrends (trends: List<Trend>) : List<Prediction> = []
+let calculateAnalysisConfidence (trends: List<Trend>) (patterns: List<Pattern>) : Float = 0.8
+
+// Dashboard functions
+let getActiveAlerts () : List<ActiveAlert> = []
+let calculateSystemHealth (metrics: CollaborationMetrics) : SystemHealth = SystemHealth.Healthy
+let getTrendForMetric (metricName: String) : TrendDirection = Stable
+let getTopUsedFeatures () : List<FeatureUsage> = []
+let generateChartData (trends: PerformanceAnalysis) : List<ChartDataSet> = []
+
+// Placeholder implementations
+let generateEventId () : String = Stdlib.Uuid.generate ()
+let generateAnalysisId () : String = Stdlib.Uuid.generate ()
+let generateExportId () : String = Stdlib.Uuid.generate ()
+let recordBehaviorEvent (event: UserBehaviorEvent) : Unit = ()
+let updateUserProfile (userId: String) (event: UserBehaviorEvent) : Unit = ()
+let processUserBehaviorEvent (event: UserBehaviorEvent) : Unit = ()
+let extractActionMetadata (action: UserAction) (context: ActionContext) : Dict<String, String> = Dict.empty
+let createEmptyPerformanceAnalysis () : PerformanceAnalysis = {
+  analysisId = ""; timeRange = { start = DateTime.now; end_ = DateTime.now }
+  trends = []; patterns = []; anomalies = []; insights = []; predictions = []
+  confidence = 0.0; generatedAt = DateTime.now
+}
+let createEmptyDashboardData () : DashboardData = {
+  lastUpdated = DateTime.now; currentMetrics = collectCollaborationMetrics ()
+  trends = []; alerts = []; systemHealth = SystemHealth.Unknown
+  kpis = []; usageStats = { totalUsers = 0L; activeUsers = 0L; totalSessions = 0L; activeSessions = 0L; averageSessionDuration = TimeSpan.zero; topFeatures = [] }
+  chartData = []
+}
+
+let initializeTestGroups (config: ABTestConfig) : List<TestGroup> = []
+let executeABTest (config: ABTestConfig) (groups: List<TestGroup>) : ABTestResults = { results = [] }
+let analyzeABTestResults (results: ABTestResults) : ABTestAnalysis = { pValue = 1.0; winningVariant = None }
+let generateABTestRecommendations (analysis: ABTestAnalysis) : List<String> = []
+let createFailedABTestResult (config: ABTestConfig) (error: String) : ABTestResult = {
+  testId = config.testId; testName = config.name; startTime = config.startTime; endTime = DateTime.now
+  groups = []; results = { results = [] }; analysis = { pValue = 1.0; winningVariant = None }
+  recommendations = []; isStatisticallySignificant = false; winningVariant = None
+}
+
+let exportMetricsData (config: ExportConfig) : ExportData = { recordCount = 0L; data = "" }
+let exportUserBehaviorData (config: ExportConfig) : ExportData = { recordCount = 0L; data = "" }
+let exportSessionData (config: ExportConfig) : ExportData = { recordCount = 0L; data = "" }
+let exportSystemLogsData (config: ExportConfig) : ExportData = { recordCount = 0L; data = "" }
+let saveExportData (data: ExportData) (format: ExportFormat) (destination: String) : String = destination
+let getFileSize (filePath: String) : Int64 = 0L
+
+// Type definitions
+type TimeRange = { start: DateTime; end_: DateTime }
+type Pattern = String
+type Anomaly = String
+type Insight = String
+type Prediction = String
+type ActiveAlert = String
+type SystemHealth = Healthy | Warning | Critical | Unknown
+type ChartDataSet = String
+type MetricAggregator = String
+type TrendAnalyzer = String
+type AlertingSystem = String
+type DashboardMetric = String
+type PerformanceProfile = String
+type TestGroup = String
+type ABTestResults = { results: List<String> }
+type ABTestAnalysis = { pValue: Float; winningVariant: Option<String> }
+type ABTestResult = {
+  testId: String; testName: String; startTime: DateTime; endTime: DateTime
+  groups: List<TestGroup>; results: ABTestResults; analysis: ABTestAnalysis
+  recommendations: List<String>; isStatisticallySignificant: Bool; winningVariant: Option<String>
+}
+type ExportData = { recordCount: Int64; data: String }
+
+module TimeSpan =
+  let zero : TimeSpan = ""
+  let fromMinutes (minutes: Float) : TimeSpan = minutes.ToString()
+  let fromHours (hours: Float) : TimeSpan = hours.ToString()
+  let fromDays (days: Float) : TimeSpan = days.ToString()
+
+module TrendAnalyzer =
+  let create () : TrendAnalyzer = "TrendAnalyzer"
+
+module AlertingSystem =
+  let create () : AlertingSystem = "AlertingSystem"

@@ -1,0 +1,573 @@
+/// AI Agent Integration for Darklang Collaboration
+/// Enables AI assistants to participate in the development workflow
+module Darklang.Collaboration.AiAgentIntegration
+
+open Darklang.Collaboration.PatchManager
+open Darklang.Collaboration.SessionManager
+
+/// AI Agent capabilities and context management
+type AiAgent = {
+  agentId: String
+  name: String
+  provider: AiProvider
+  capabilities: List<AiCapability>
+  contextWindow: Int64
+  maxTokens: Int64
+  specializations: List<String>
+  isActive: Bool
+  lastUsed: DateTime
+}
+
+type AiProvider =
+  | Claude of apiKey: String * model: String
+  | GPT of apiKey: String * model: String  
+  | Gemini of apiKey: String * model: String
+  | LocalModel of modelPath: String
+  | CustomAPI of endpoint: String * apiKey: String
+
+type AiCapability =
+  | CodeGeneration
+  | CodeReview
+  | BugDetection
+  | TestGeneration
+  | Documentation
+  | Refactoring
+  | PerformanceOptimization
+  | SecurityAnalysis
+  | ConflictResolution
+  | PatchSuggestion
+
+/// AI Agent workflow integration points
+type AiWorkflowEvent =
+  | FunctionModified of functionName: String * changes: String
+  | PatchCreated of patchId: String
+  | ConflictDetected of conflictId: String
+  | TestsFailed of failures: List<TestFailure>
+  | CodeReviewRequested of patchId: String
+  | SecurityScanRequested of scope: String
+  | PerformanceIssueDetected of issue: PerformanceIssue
+
+type AiAssistanceRequest = {
+  requestId: String
+  sessionId: String
+  userId: String
+  agentId: Option<String>  // Specific agent or auto-select
+  taskType: AiTaskType
+  context: AiContext
+  prompt: String
+  priority: AiPriority
+  deadline: Option<DateTime>
+  callbacks: List<AiCallback>
+}
+
+type AiTaskType =
+  | ReviewPatch of patchId: String
+  | SuggestFix of errorMessage: String * context: String
+  | GenerateTests of functionName: String
+  | OptimizeFunction of functionName: String
+  | ExplainCode of codeSnippet: String
+  | GenerateDocumentation of functionName: String
+  | ResolveConflict of conflictId: String
+  | RefactorCode of scope: String * requirements: String
+
+type AiContext = {
+  codebase: CodebaseContext
+  session: SessionContext
+  userPreferences: UserPreferences
+  previousInteractions: List<AiInteraction>
+  relevantFiles: List<String>
+  testResults: Option<TestResults>
+}
+
+type AiPriority = Low | Medium | High | Critical
+
+type AiCallback =
+  | NotifyUser of message: String
+  | CreatePatch of patchData: String
+  | UpdateDocumentation of path: String * content: String
+  | ScheduleFollowup of task: AiTaskType * delay: TimeSpan
+
+/// AI Agent registration and management
+let registerAiAgent (agent: AiAgent) : Bool =
+  try
+    // Validate agent configuration
+    validateAiAgent agent
+    
+    // Test connectivity to AI provider
+    testAiProviderConnection agent.provider
+    
+    // Store agent configuration
+    storeAiAgent agent
+    
+    log $"AI Agent registered: {agent.name} ({agent.agentId})"
+    true
+    
+  with
+  | error ->
+    log $"Failed to register AI agent {agent.name}: {error}"
+    false
+
+/// Request AI assistance for a specific task
+let requestAiAssistance (request: AiAssistanceRequest) : AiAssistanceResult =
+  try
+    // Select appropriate AI agent
+    let selectedAgent = 
+      match request.agentId with
+      | Some agentId -> getAiAgent agentId
+      | None -> selectBestAgent request.taskType request.context
+    
+    match selectedAgent with
+    | Some agent ->
+      // Prepare context for AI
+      let enrichedContext = enrichAiContext request.context request.sessionId
+      
+      // Generate AI prompt with context
+      let fullPrompt = buildAiPrompt request.taskType request.prompt enrichedContext
+      
+      // Call AI provider
+      let aiResponse = callAiProvider agent.provider fullPrompt agent.maxTokens
+      
+      // Process AI response
+      let processedResult = processAiResponse aiResponse request.taskType
+      
+      // Execute any callbacks
+      request.callbacks
+      |> Stdlib.List.iter (fun callback -> executeAiCallback callback processedResult)
+      
+      // Record interaction for learning
+      recordAiInteraction {
+        requestId = request.requestId
+        agentId = agent.agentId
+        taskType = request.taskType
+        prompt = request.prompt
+        response = aiResponse
+        timestamp = DateTime.now
+        success = true
+      }
+      
+      AiAssistanceSuccess processedResult
+    
+    | None ->
+      AiAssistanceError "No suitable AI agent available"
+  
+  with
+  | error ->
+    AiAssistanceError $"AI assistance failed: {error}"
+
+type AiAssistanceResult =
+  | AiAssistanceSuccess of result: AiProcessedResult
+  | AiAssistanceError of message: String
+
+type AiProcessedResult = {
+  taskType: AiTaskType
+  response: String
+  confidence: Float
+  suggestions: List<AiSuggestion>
+  actions: List<AiAction>
+  followupTasks: List<AiTaskType>
+}
+
+type AiSuggestion = {
+  type_: SuggestionType
+  description: String
+  implementation: String
+  confidence: Float
+  impact: ImpactLevel
+}
+
+type SuggestionType =
+  | CodeImprovement
+  | BugFix
+  | PerformanceOptimization
+  | SecurityEnhancement
+  | TestAddition
+  | DocumentationUpdate
+
+type AiAction =
+  | CreateFile of path: String * content: String
+  | ModifyFunction of name: String * changes: String
+  | AddTest of testName: String * testCode: String
+  | UpdateDocumentation of path: String * updates: String
+  | CreatePatchSuggestion of patchData: PatchData
+
+/// AI-powered code review
+let performAiCodeReview (patchId: String) (agentId: Option<String>) : AiCodeReviewResult =
+  try
+    let patch = getPatch patchId
+    
+    match patch with
+    | Some p ->
+      let request = {
+        requestId = generateRequestId ()
+        sessionId = p.sessionId
+        userId = p.userId
+        agentId = agentId
+        taskType = ReviewPatch patchId
+        context = buildCodeReviewContext p
+        prompt = $"Please review this patch for correctness, style, performance, and potential issues:\n\n{p.changes}"
+        priority = Medium
+        deadline = None
+        callbacks = [
+          NotifyUser "Code review completed"
+        ]
+      }
+      
+      match requestAiAssistance request with
+      | AiAssistanceSuccess result ->
+        AiCodeReviewSuccess {
+          patchId = patchId
+          reviewerId = "ai-agent"
+          comments = parseReviewComments result.response
+          recommendations = result.suggestions
+          overallScore = result.confidence
+          timestamp = DateTime.now
+        }
+      
+      | AiAssistanceError message ->
+        AiCodeReviewError message
+    
+    | None ->
+      AiCodeReviewError $"Patch not found: {patchId}"
+  
+  with
+  | error ->
+    AiCodeReviewError $"Code review failed: {error}"
+
+type AiCodeReviewResult =
+  | AiCodeReviewSuccess of review: AiCodeReview
+  | AiCodeReviewError of message: String
+
+type AiCodeReview = {
+  patchId: String
+  reviewerId: String
+  comments: List<ReviewComment>
+  recommendations: List<AiSuggestion>
+  overallScore: Float
+  timestamp: DateTime
+}
+
+type ReviewComment = {
+  line: Int64
+  type_: CommentType
+  message: String
+  severity: CommentSeverity
+}
+
+type CommentType = Bug | Style | Performance | Security | Logic | Documentation
+type CommentSeverity = Info | Warning | Error | Critical
+
+/// AI-powered conflict resolution
+let suggestConflictResolution (conflictId: String) : AiConflictResolutionResult =
+  try
+    let conflict = getConflict conflictId
+    
+    match conflict with
+    | Some c ->
+      let request = {
+        requestId = generateRequestId ()
+        sessionId = c.sessionId
+        userId = c.userId
+        agentId = None
+        taskType = ResolveConflict conflictId
+        context = buildConflictContext c
+        prompt = $"Analyze this conflict and suggest resolution strategies:\n\nConflict: {c.description}\nChanges A: {c.changesA}\nChanges B: {c.changesB}"
+        priority = High
+        deadline = Some (DateTime.now.AddHours(1))
+        callbacks = []
+      }
+      
+      match requestAiAssistance request with
+      | AiAssistanceSuccess result ->
+        AiConflictResolutionSuccess {
+          conflictId = conflictId
+          strategies = parseConflictStrategies result.response
+          recommendedStrategy = selectBestStrategy result.suggestions
+          mergedCode = extractMergedCode result.response
+          confidence = result.confidence
+        }
+      
+      | AiAssistanceError message ->
+        AiConflictResolutionError message
+    
+    | None ->
+      AiConflictResolutionError $"Conflict not found: {conflictId}"
+  
+  with
+  | error ->
+    AiConflictResolutionError $"Conflict resolution failed: {error}"
+
+type AiConflictResolutionResult =
+  | AiConflictResolutionSuccess of resolution: AiConflictResolution
+  | AiConflictResolutionError of message: String
+
+type AiConflictResolution = {
+  conflictId: String
+  strategies: List<ResolutionStrategy>
+  recommendedStrategy: ResolutionStrategy
+  mergedCode: Option<String>
+  confidence: Float
+}
+
+type ResolutionStrategy =
+  | AcceptChangesA of reason: String
+  | AcceptChangesB of reason: String
+  | MergeChanges of mergedCode: String * explanation: String
+  | RejectBoth of reason: String * alternatives: List<String>
+
+/// AI-powered test generation
+let generateAiTests (functionName: String) (sessionId: String) : AiTestGenerationResult =
+  try
+    let functionInfo = getFunctionInfo functionName sessionId
+    
+    match functionInfo with
+    | Some info ->
+      let request = {
+        requestId = generateRequestId ()
+        sessionId = sessionId
+        userId = getCurrentUserId sessionId
+        agentId = None
+        taskType = GenerateTests functionName
+        context = buildTestGenerationContext info
+        prompt = $"Generate comprehensive tests for this function:\n\n{info.code}\n\nInclude edge cases, error conditions, and property-based tests."
+        priority = Medium
+        deadline = None
+        callbacks = [
+          CreatePatch "Generated tests"
+        ]
+      }
+      
+      match requestAiAssistance request with
+      | AiAssistanceSuccess result ->
+        let tests = parseGeneratedTests result.response
+        AiTestGenerationSuccess {
+          functionName = functionName
+          tests = tests
+          coverage = estimateTestCoverage tests info
+          recommendations = result.suggestions
+        }
+      
+      | AiAssistanceError message ->
+        AiTestGenerationError message
+    
+    | None ->
+      AiTestGenerationError $"Function not found: {functionName}"
+  
+  with
+  | error ->
+    AiTestGenerationError $"Test generation failed: {error}"
+
+type AiTestGenerationResult =
+  | AiTestGenerationSuccess of result: AiTestGeneration
+  | AiTestGenerationError of message: String
+
+type AiTestGeneration = {
+  functionName: String
+  tests: List<GeneratedTest>
+  coverage: TestCoverage
+  recommendations: List<AiSuggestion>
+}
+
+type GeneratedTest = {
+  name: String
+  description: String
+  testCode: String
+  category: TestCategory
+}
+
+type TestCategory = UnitTest | IntegrationTest | PropertyTest | EdgeCaseTest | ErrorTest
+
+/// AI-powered documentation generation
+let generateAiDocumentation (functionName: String) (sessionId: String) : AiDocumentationResult =
+  try
+    let functionInfo = getFunctionInfo functionName sessionId
+    
+    match functionInfo with
+    | Some info ->
+      let request = {
+        requestId = generateRequestId ()
+        sessionId = sessionId
+        userId = getCurrentUserId sessionId
+        agentId = None
+        taskType = GenerateDocumentation functionName
+        context = buildDocumentationContext info
+        prompt = $"Generate comprehensive documentation for this function:\n\n{info.code}\n\nInclude purpose, parameters, return value, examples, and edge cases."
+        priority = Low
+        deadline = None
+        callbacks = [
+          UpdateDocumentation $"docs/{functionName}.md" "Generated documentation"
+        ]
+      }
+      
+      match requestAiAssistance request with
+      | AiAssistanceSuccess result ->
+        AiDocumentationSuccess {
+          functionName = functionName
+          documentation = result.response
+          examples = parseCodeExamples result.response
+          relatedFunctions = extractRelatedFunctions result.response
+        }
+      
+      | AiAssistanceError message ->
+        AiDocumentationError message
+    
+    | None ->
+      AiDocumentationError $"Function not found: {functionName}"
+  
+  with
+  | error ->
+    AiDocumentationError $"Documentation generation failed: {error}"
+
+type AiDocumentationResult =
+  | AiDocumentationSuccess of result: AiDocumentation
+  | AiDocumentationError of message: String
+
+type AiDocumentation = {
+  functionName: String
+  documentation: String
+  examples: List<CodeExample>
+  relatedFunctions: List<String>
+}
+
+type CodeExample = {
+  description: String
+  code: String
+  expectedOutput: String
+}
+
+/// AI agent learning and improvement
+let trainAiAgent (agentId: String) (trainingData: AiTrainingData) : Bool =
+  try
+    let agent = getAiAgent agentId
+    
+    match agent with
+    | Some a ->
+      // Process training data
+      let processedData = processTrainingData trainingData
+      
+      // Update agent's knowledge base
+      updateAgentKnowledge agentId processedData
+      
+      // Improve agent's performance metrics
+      updateAgentMetrics agentId trainingData.feedback
+      
+      log $"AI Agent {agentId} trained with {Stdlib.List.length trainingData.examples} examples"
+      true
+    
+    | None ->
+      log $"AI Agent {agentId} not found for training"
+      false
+  
+  with
+  | error ->
+    log $"AI Agent training failed: {error}"
+    false
+
+type AiTrainingData = {
+  examples: List<TrainingExample>
+  feedback: List<UserFeedback>
+  outcomes: List<TaskOutcome>
+}
+
+type TrainingExample = {
+  input: String
+  expectedOutput: String
+  context: AiContext
+  taskType: AiTaskType
+}
+
+type UserFeedback = {
+  requestId: String
+  rating: Int64  // 1-5 scale
+  comments: String
+  improvements: List<String>
+}
+
+type TaskOutcome = {
+  requestId: String
+  success: Bool
+  actualResult: String
+  userSatisfaction: Float
+}
+
+// Helper functions and implementations
+
+let validateAiAgent (agent: AiAgent) : Unit =
+  if Stdlib.String.isEmpty agent.name then
+    failwith "Agent name cannot be empty"
+  if agent.maxTokens <= 0L then
+    failwith "Max tokens must be positive"
+
+let testAiProviderConnection (provider: AiProvider) : Unit =
+  // TODO: Test actual connection to AI provider
+  ()
+
+let storeAiAgent (agent: AiAgent) : Unit =
+  // TODO: Store agent configuration in database
+  ()
+
+let getAiAgent (agentId: String) : Option<AiAgent> =
+  // TODO: Retrieve agent from database
+  None
+
+let selectBestAgent (taskType: AiTaskType) (context: AiContext) : Option<AiAgent> =
+  // TODO: Select agent based on capabilities and performance
+  None
+
+let enrichAiContext (context: AiContext) (sessionId: String) : AiContext =
+  // TODO: Add more context information
+  context
+
+let buildAiPrompt (taskType: AiTaskType) (userPrompt: String) (context: AiContext) : String =
+  // TODO: Build comprehensive prompt with context
+  userPrompt
+
+let callAiProvider (provider: AiProvider) (prompt: String) (maxTokens: Int64) : String =
+  // TODO: Make actual call to AI provider
+  "AI response placeholder"
+
+let processAiResponse (response: String) (taskType: AiTaskType) : AiProcessedResult =
+  {
+    taskType = taskType
+    response = response
+    confidence = 0.8
+    suggestions = []
+    actions = []
+    followupTasks = []
+  }
+
+let executeAiCallback (callback: AiCallback) (result: AiProcessedResult) : Unit =
+  // TODO: Execute callback actions
+  ()
+
+// Placeholder types and functions
+type TestFailure = String
+type PerformanceIssue = String
+type CodebaseContext = String
+type SessionContext = String  
+type UserPreferences = String
+type AiInteraction = { requestId: String; agentId: String; taskType: AiTaskType; prompt: String; response: String; timestamp: DateTime; success: Bool }
+type TestResults = String
+type ImpactLevel = Low | Medium | High
+type PatchData = String
+type TestCoverage = Float
+type FunctionInfo = { name: String; code: String; signature: String }
+
+let recordAiInteraction (interaction: AiInteraction) : Unit = ()
+let generateRequestId () : String = Stdlib.Uuid.generate ()
+let buildCodeReviewContext (patch: PatchMetadata) : AiContext = { codebase = ""; session = ""; userPreferences = ""; previousInteractions = []; relevantFiles = []; testResults = None }
+let parseReviewComments (response: String) : List<ReviewComment> = []
+let buildConflictContext (conflict: ConflictResolution) : AiContext = { codebase = ""; session = ""; userPreferences = ""; previousInteractions = []; relevantFiles = []; testResults = None }
+let parseConflictStrategies (response: String) : List<ResolutionStrategy> = []
+let selectBestStrategy (suggestions: List<AiSuggestion>) : ResolutionStrategy = AcceptChangesA "Default"
+let extractMergedCode (response: String) : Option<String> = None
+let buildTestGenerationContext (info: FunctionInfo) : AiContext = { codebase = ""; session = ""; userPreferences = ""; previousInteractions = []; relevantFiles = []; testResults = None }
+let parseGeneratedTests (response: String) : List<GeneratedTest> = []
+let estimateTestCoverage (tests: List<GeneratedTest>) (info: FunctionInfo) : TestCoverage = 0.8
+let buildDocumentationContext (info: FunctionInfo) : AiContext = { codebase = ""; session = ""; userPreferences = ""; relevantFiles = []; previousInteractions = []; testResults = None; session = "" }
+let parseCodeExamples (response: String) : List<CodeExample> = []
+let extractRelatedFunctions (response: String) : List<String> = []
+let getFunctionInfo (name: String) (sessionId: String) : Option<FunctionInfo> = None
+let getCurrentUserId (sessionId: String) : String = "user1"
+let processTrainingData (data: AiTrainingData) : String = "processed"
+let updateAgentKnowledge (agentId: String) (data: String) : Unit = ()
+let updateAgentMetrics (agentId: String) (feedback: List<UserFeedback>) : Unit = ()

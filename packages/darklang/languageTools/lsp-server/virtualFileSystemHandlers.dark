@@ -1,0 +1,423 @@
+/// LSP handlers for virtual file system operations
+module Darklang.LanguageTools.LspServer.VirtualFileSystemHandlers
+
+open Darklang.LanguageTools.LspServer.VirtualFileSystem
+open Darklang.LanguageTools.LspServer
+
+/// Handle virtual file system stat request
+let handleVfsStatRequest 
+  (state: LspState) 
+  (requestId: JsonRPC.Request.RequestId) 
+  (uri: String) 
+  : LspState =
+  
+  try
+    match parseVirtualUri uri with
+    | Some (packagePath, itemName) ->
+      let item = getPackageItem packagePath itemName
+      match item with
+      | Some packageItem ->
+        let stat = {
+          isDirectory = false
+          created = getPackageItemModified packageItem |> fun dt -> dt.Ticks
+          modified = getPackageItemModified packageItem |> fun dt -> dt.Ticks
+          size = (generateDarkFileContent packageItem).Length
+        }
+        
+        let response = JsonRPC.Response.Ok.make (Some requestId) (Builtin.jsonSerialize stat)
+        logAndSendToClient (Stdlib.AltJson.format response)
+        state
+      
+      | None ->
+        sendFileNotFoundError requestId uri
+        state
+    
+    | None ->
+      sendInvalidUriError requestId uri
+      state
+  
+  with
+  | error ->
+    sendInternalError requestId $"VFS stat error: {error}"
+    state
+
+/// Handle virtual file system read file request
+let handleVfsReadFileRequest 
+  (state: LspState) 
+  (requestId: JsonRPC.Request.RequestId) 
+  (uri: String) 
+  : LspState =
+  
+  try
+    let content = handleVirtualFileRead uri
+    let response = JsonRPC.Response.Ok.make (Some requestId) (Object [("content", String content)])
+    logAndSendToClient (Stdlib.AltJson.format response)
+    state
+  
+  with
+  | error ->
+    sendFileNotFoundError requestId uri
+    state
+
+/// Handle virtual file system write file request
+let handleVfsWriteFileRequest 
+  (state: LspState) 
+  (requestId: JsonRPC.Request.RequestId) 
+  (uri: String) 
+  (content: String) 
+  (options: WriteFileOptions)
+  : LspState =
+  
+  try
+    let success = handleVirtualFileWrite uri content
+    
+    if success then
+      let response = JsonRPC.Response.Ok.make (Some requestId) (Object [("success", Bool true)])
+      logAndSendToClient (Stdlib.AltJson.format response)
+      
+      // Notify clients of file change
+      notifyFileChanged uri
+      state
+    else
+      sendPermissionError requestId uri
+      state
+  
+  with
+  | error ->
+    sendInternalError requestId $"VFS write error: {error}"
+    state
+
+/// Handle virtual file system read directory request
+let handleVfsReadDirectoryRequest 
+  (state: LspState) 
+  (requestId: JsonRPC.Request.RequestId) 
+  (uri: String) 
+  : LspState =
+  
+  try
+    if uri == "dark://package" then
+      // Return list of packages
+      let packages = getAllPackages ()
+      let entries = packages |> Stdlib.List.map (fun pkg -> 
+        Object [("name", String pkg.name); ("isDirectory", Bool true)])
+      
+      let response = JsonRPC.Response.Ok.make (Some requestId) (Object [("entries", Array entries)])
+      logAndSendToClient (Stdlib.AltJson.format response)
+      state
+    
+    else
+      match parseVirtualUri uri with
+      | Some (packagePath, _) ->
+        // Return list of package items in this package  
+        let items = getVirtualFilesForPackage packagePath
+        let entries = items |> Stdlib.List.map (fun item ->
+          Object [
+            ("name", String $"{getItemNameFromUri item.virtualUri}.dark")
+            ("isDirectory", Bool false)
+          ])
+        
+        let response = JsonRPC.Response.Ok.make (Some requestId) (Object [("entries", Array entries)])
+        logAndSendToClient (Stdlib.AltJson.format response)
+        state
+      
+      | None ->
+        sendInvalidUriError requestId uri
+        state
+  
+  with
+  | error ->
+    sendInternalError requestId $"VFS readDirectory error: {error}"
+    state
+
+/// Handle virtual file system delete request
+let handleVfsDeleteRequest 
+  (state: LspState) 
+  (requestId: JsonRPC.Request.RequestId) 
+  (uri: String) 
+  (options: DeleteFileOptions)
+  : LspState =
+  
+  try
+    let success = handleVirtualFileDelete uri
+    
+    if success then
+      let response = JsonRPC.Response.Ok.make (Some requestId) (Object [("success", Bool true)])
+      logAndSendToClient (Stdlib.AltJson.format response)
+      
+      // Notify clients of file deletion
+      notifyFileDeleted uri
+      state
+    else
+      sendPermissionError requestId uri
+      state
+  
+  with
+  | error ->
+    sendInternalError requestId $"VFS delete error: {error}"
+    state
+
+/// Handle package list request
+let handlePackageListRequest 
+  (state: LspState) 
+  (requestId: JsonRPC.Request.RequestId) 
+  : LspState =
+  
+  try
+    let packages = getAllPackages ()
+    let packageData = packages |> Stdlib.List.map (fun pkg ->
+      Object [
+        ("name", String pkg.name)
+        ("description", String pkg.description)
+        ("version", String pkg.version)
+      ])
+    
+    let response = JsonRPC.Response.Ok.make (Some requestId) (Object [("packages", Array packageData)])
+    logAndSendToClient (Stdlib.AltJson.format response)
+    state
+  
+  with
+  | error ->
+    sendInternalError requestId $"Package list error: {error}"
+    state
+
+/// Handle package modules request
+let handlePackageModulesRequest 
+  (state: LspState) 
+  (requestId: JsonRPC.Request.RequestId) 
+  (packageName: String) 
+  : LspState =
+  
+  try
+    let modules = getPackageModules packageName
+    let moduleData = modules |> Stdlib.List.map (fun module_ ->
+      Object [
+        ("name", String module_.name)
+        ("itemCount", Number (Int64.toFloat module_.itemCount))
+      ])
+    
+    let response = JsonRPC.Response.Ok.make (Some requestId) (Object [("modules", Array moduleData)])
+    logAndSendToClient (Stdlib.AltJson.format response)
+    state
+  
+  with
+  | error ->
+    sendInternalError requestId $"Package modules error: {error}"
+    state
+
+/// Handle package items request
+let handlePackageItemsRequest 
+  (state: LspState) 
+  (requestId: JsonRPC.Request.RequestId) 
+  (packagePath: String) 
+  : LspState =
+  
+  try
+    let items = getPackageItemsForPath packagePath
+    let itemData = items |> Stdlib.List.map (fun item ->
+      Object [
+        ("name", String item.name)
+        ("type", String item.type_)
+        ("description", String item.description)
+        ("uri", String (createVirtualUri packagePath item.name))
+      ])
+    
+    let response = JsonRPC.Response.Ok.make (Some requestId) (Object [("items", Array itemData)])
+    logAndSendToClient (Stdlib.AltJson.format response)
+    state
+  
+  with
+  | error ->
+    sendInternalError requestId $"Package items error: {error}"
+    state
+
+/// Handle VFS watch request  
+let handleVfsWatchRequest 
+  (state: LspState) 
+  (uri: String) 
+  (options: WatchOptions)
+  : LspState =
+  
+  // Add URI to watched files for this client
+  // In a real implementation, this would track which client is watching which URIs
+  addWatchedUri uri options
+  state
+
+/// Handle VFS unwatch request
+let handleVfsUnwatchRequest 
+  (state: LspState) 
+  (uri: String) 
+  : LspState =
+  
+  // Remove URI from watched files for this client
+  removeWatchedUri uri
+  state
+
+/// Notification helpers
+let notifyFileChanged (uri: String) : Unit =
+  let notification = {
+    method = "workspace/didChangeWatchedFiles"
+    params = Object [
+      ("changes", Array [
+        Object [
+          ("uri", String uri)
+          ("type", Number 2.0) // Changed
+        ]
+      ])
+    ]
+  }
+  sendNotificationToAllClients notification
+
+let notifyFileDeleted (uri: String) : Unit =
+  let notification = {
+    method = "workspace/didChangeWatchedFiles"
+    params = Object [
+      ("changes", Array [
+        Object [
+          ("uri", String uri)
+          ("type", Number 3.0) // Deleted
+        ]
+      ])
+    ]
+  }
+  sendNotificationToAllClients notification
+
+let notifyFileCreated (uri: String) : Unit =
+  let notification = {
+    method = "workspace/didChangeWatchedFiles"
+    params = Object [
+      ("changes", Array [
+        Object [
+          ("uri", String uri)
+          ("type", Number 1.0) // Created
+        ]
+      ])
+    ]
+  }
+  sendNotificationToAllClients notification
+
+/// Error response helpers
+let sendFileNotFoundError (requestId: JsonRPC.Request.RequestId) (uri: String) : Unit =
+  let errorResponse = JsonRPC.Response.Error.make
+    (Some requestId)
+    JsonRPC.Response.Error.KnownErrorCodes.invalidRequest
+    $"File not found: {uri}"
+    None
+  
+  logAndSendToClient (Stdlib.AltJson.format errorResponse)
+
+let sendInvalidUriError (requestId: JsonRPC.Request.RequestId) (uri: String) : Unit =
+  let errorResponse = JsonRPC.Response.Error.make
+    (Some requestId)
+    JsonRPC.Response.Error.KnownErrorCodes.invalidParams
+    $"Invalid virtual URI: {uri}"
+    None
+  
+  logAndSendToClient (Stdlib.AltJson.format errorResponse)
+
+let sendPermissionError (requestId: JsonRPC.Request.RequestId) (uri: String) : Unit =
+  let errorResponse = JsonRPC.Response.Error.make
+    (Some requestId)
+    JsonRPC.Response.Error.KnownErrorCodes.internalError
+    $"Permission denied: {uri}"
+    None
+  
+  logAndSendToClient (Stdlib.AltJson.format errorResponse)
+
+let sendInternalError (requestId: JsonRPC.Request.RequestId) (message: String) : Unit =
+  let errorResponse = JsonRPC.Response.Error.make
+    (Some requestId)
+    JsonRPC.Response.Error.KnownErrorCodes.internalError
+    message
+    None
+  
+  logAndSendToClient (Stdlib.AltJson.format errorResponse)
+
+// Type definitions for VFS operations
+type WriteFileOptions = {
+  create: Bool
+  overwrite: Bool
+}
+
+type DeleteFileOptions = {
+  recursive: Bool
+}
+
+type WatchOptions = {
+  recursive: Bool
+  excludes: List<String>
+}
+
+type PackageInfo = {
+  name: String
+  description: String
+  version: String
+}
+
+type ModuleInfo = {
+  name: String
+  itemCount: Int64
+}
+
+type PackageItemInfo = {
+  name: String
+  type_: String
+  description: String
+}
+
+// Integration with Darklang package manager
+let getAllPackages () : List<PackageInfo> = 
+  // TODO: Replace with actual package manager call
+  // For now, return some test packages
+  [
+    { name = "Darklang.Stdlib.List"; description = "List manipulation functions"; version = "1.0.0" }
+    { name = "Darklang.Stdlib.String"; description = "String manipulation functions"; version = "1.0.0" }
+    { name = "Darklang.Stdlib.Math"; description = "Mathematical functions"; version = "1.0.0" }
+  ]
+
+let getPackageModules (packageName: String) : List<ModuleInfo> = 
+  // TODO: Replace with actual package manager call
+  match packageName with
+  | "Darklang.Stdlib.List" -> 
+    [{ name = "List"; itemCount = 25L }]
+  | "Darklang.Stdlib.String" -> 
+    [{ name = "String"; itemCount = 30L }]
+  | "Darklang.Stdlib.Math" -> 
+    [{ name = "Math"; itemCount = 15L }]
+  | _ -> []
+
+let getPackageItemsForPath (packagePath: String) : List<PackageItemInfo> = 
+  // TODO: Replace with actual package manager call
+  match packagePath with
+  | "Darklang.Stdlib.List" -> 
+    [
+      { name = "map"; type_ = "function"; description = "Transform each element in a list" }
+      { name = "filter"; type_ = "function"; description = "Filter elements based on a predicate" }
+      { name = "fold"; type_ = "function"; description = "Reduce a list to a single value" }
+    ]
+  | "Darklang.Stdlib.String" -> 
+    [
+      { name = "length"; type_ = "function"; description = "Get the length of a string" }
+      { name = "slice"; type_ = "function"; description = "Extract a substring" }
+      { name = "split"; type_ = "function"; description = "Split string by delimiter" }
+    ]
+  | _ -> []
+
+let getItemNameFromUri (uri: String) : String = 
+  match parseVirtualUri uri with
+  | Some (_, itemName) -> itemName
+  | None -> ""
+
+// Watch management (in-memory for now)
+let mutable watchedUris : List<String> = []
+
+let addWatchedUri (uri: String) (options: WatchOptions) : Unit = 
+  if not (Stdlib.List.contains watchedUris uri) then
+    watchedUris <- uri :: watchedUris
+
+let removeWatchedUri (uri: String) : Unit = 
+  watchedUris <- Stdlib.List.filter watchedUris (fun u -> u != uri)
+
+let sendNotificationToAllClients (notification: obj) : Unit = 
+  // TODO: Implement actual notification sending
+  // For now, just log the notification
+  log $"Sending notification to all clients: {notification}"
