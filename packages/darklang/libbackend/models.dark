@@ -1,0 +1,146 @@
+module Darklang =
+  module LibBackend =
+    module Models =
+      /// Core data models for the ApiServer implementation
+
+      // -------------------------
+      // Basic Types
+      // -------------------------
+
+      type TLID = String  // Toplevel ID
+      type CanvasID = String
+      type UserID = String
+      type OpCtr = Int64
+
+      type Position =
+        { x: Int64
+          y: Int64 }
+
+      // -------------------------
+      // Handlers
+      // -------------------------
+
+      type HandlerSpec =
+        | HTTP of verb: String * route: String
+        | Worker of name: String
+        | Cron of name: String * interval: String
+        | REPL of name: String
+
+      type Handler =
+        { tlid: TLID
+          pos: Position
+          spec: HandlerSpec
+          ast: String }  // JSON-encoded AST for now
+
+      // -------------------------
+      // User Functions
+      // -------------------------
+
+      type Parameter =
+        { name: String
+          paramType: String
+          description: String }
+
+      type UserFunction =
+        { tlid: TLID
+          name: String
+          parameters: List<Parameter>
+          returnType: String
+          description: String
+          body: String }  // JSON-encoded AST
+
+      // -------------------------
+      // Databases (Datastores)
+      // -------------------------
+
+      type DBCol =
+        { name: String
+          colType: String
+          id: String }
+
+      type DB =
+        { tlid: TLID
+          name: String
+          version: Int64
+          cols: List<DBCol> }
+
+      // -------------------------
+      // User Types
+      // -------------------------
+
+      type UserType =
+        { tlid: TLID
+          name: String
+          version: Int64
+          definition: String }  // JSON-encoded type definition
+
+      // -------------------------
+      // Secrets
+      // -------------------------
+
+      type Secret =
+        { name: String
+          value: String }
+
+      // -------------------------
+      // Canvas
+      // -------------------------
+
+      type CanvasMeta =
+        { id: CanvasID
+          name: String
+          owner: UserID }
+
+      type Canvas =
+        { meta: CanvasMeta
+          handlers: Dict<Handler>
+          deletedHandlers: Dict<Handler>
+          dbs: Dict<DB>
+          deletedDBs: Dict<DB>
+          userFunctions: Dict<UserFunction>
+          deletedUserFunctions: Dict<UserFunction>
+          userTypes: Dict<UserType>
+          deletedUserTypes: Dict<UserType>
+          secrets: Dict<Secret> }
+
+      // -------------------------
+      // Operations
+      // -------------------------
+
+      type Op =
+        | SetHandler of tlid: TLID * pos: Position * spec: HandlerSpec * ast: String
+        | CreateDB of tlid: TLID * pos: Position * name: String
+        | AddDBCol of tlid: TLID * colId: String * colName: String * colType: String
+        | SetDBColName of tlid: TLID * colId: String * name: String
+        | SetDBColType of tlid: TLID * colId: String * colType: String
+        | DeleteTL of tlid: TLID
+        | MoveTL of tlid: TLID * pos: Position
+        | SetFunction of fn: UserFunction
+        | DeleteFunction of tlid: TLID
+        | SetType of userType: UserType
+        | DeleteType of tlid: TLID
+        | SetExpr of tlid: TLID * id: String * ast: String
+        | TLSavepoint of tlid: TLID
+        | UndoTL of tlid: TLID
+        | RedoTL of tlid: TLID
+        | RenameDBname of tlid: TLID * name: String
+        | DeleteDBCol of tlid: TLID * colId: String
+        | ChangeDBColName of tlid: TLID * colId: String * name: String
+        | ChangeDBColType of tlid: TLID * colId: String * colType: String
+
+      // -------------------------
+      // Helper Functions
+      // -------------------------
+
+      let emptyCanvas (meta: CanvasMeta) : Canvas =
+        Canvas
+          { meta = meta
+            handlers = Stdlib.Dict.empty
+            deletedHandlers = Stdlib.Dict.empty
+            dbs = Stdlib.Dict.empty
+            deletedDBs = Stdlib.Dict.empty
+            userFunctions = Stdlib.Dict.empty
+            deletedUserFunctions = Stdlib.Dict.empty
+            userTypes = Stdlib.Dict.empty
+            deletedUserTypes = Stdlib.Dict.empty
+            secrets = Stdlib.Dict.empty }

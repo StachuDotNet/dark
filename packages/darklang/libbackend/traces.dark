@@ -1,0 +1,57 @@
+module Darklang =
+  module LibBackend =
+    module Traces =
+      /// Basic trace storage for function/handler execution
+
+      type TraceID = String
+      type InputVar = (String * String)  // (name, value as JSON)
+      type FunctionResult = (String * String * String)  // (fnName, argsHash, resultJSON)
+
+      type TraceData =
+        { input: List<InputVar>
+          timestamp: String
+          functionResults: List<FunctionResult> }
+
+      let initSchema () : Unit =
+        let _ =
+          execute
+            """CREATE TABLE IF NOT EXISTS traces (
+                 id TEXT PRIMARY KEY,
+                 canvas_id TEXT NOT NULL,
+                 tlid TEXT NOT NULL,
+                 timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                 input_data TEXT,
+                 function_results TEXT,
+                 FOREIGN KEY (canvas_id) REFERENCES canvases(id)
+               )"""
+            []
+        ()
+
+      let saveTrace (canvasId: String) (tlid: String) (traceId: TraceID) (traceData: TraceData) : Unit =
+        let inputJson = Builtin.jsonSerialize traceData.input
+        let resultsJson = Builtin.jsonSerialize traceData.functionResults
+        let _ =
+          execute
+            """INSERT OR REPLACE INTO traces (id, canvas_id, tlid, timestamp, input_data, function_results)
+               VALUES (?, ?, ?, ?, ?, ?)"""
+            [traceId; canvasId; tlid; traceData.timestamp; inputJson; resultsJson]
+        ()
+
+      let getTracesByCanvas (canvasId: String) : List<(String * TraceID)> =
+        let result = query "SELECT tlid, id FROM traces WHERE canvas_id = ? ORDER BY timestamp DESC LIMIT 100" [canvasId]
+        Stdlib.List.map
+          (fun row ->
+            match row with
+            | [tlid; traceId] -> (tlid, traceId)
+            | _ -> ("", ""))
+          result.rows
+
+      let getTrace (traceId: TraceID) : Stdlib.Result.Result<TraceData, String> =
+        // Simplified - return dummy data since we don't use traces in the demo
+        Stdlib.Result.Result.Error("Trace not found")
+
+      let createEmptyTrace (canvasId: String) (tlid: String) : TraceID =
+        let traceId = Stdlib.Uuid.generate ()
+        let emptyTrace = TraceData { input = []; timestamp = "2025-01-01T00:00:00Z"; functionResults = [] }
+        saveTrace canvasId tlid traceId emptyTrace
+        traceId

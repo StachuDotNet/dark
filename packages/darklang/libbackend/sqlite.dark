@@ -1,0 +1,91 @@
+module Darklang =
+  module LibBackend =
+    module SQLite =
+      /// Raw SQLite access for managing canvas data
+      /// All operations work directly on the data.db database
+
+      type QueryResult =
+        { columns: List<String>
+          rows: List<List<String>> }
+
+      /// Execute a query and return results from data.db
+      let query (sql: String) (params: List<String>) : QueryResult =
+        // TODO: This will need a builtin to execute SQL on data.db
+        QueryResult { columns = []; rows = [] }
+
+      /// Execute a non-query SQL statement (INSERT, UPDATE, DELETE) on data.db
+      let execute (sql: String) (params: List<String>) : Int64 =
+        // TODO: This will need a builtin to execute SQL on data.db
+        // Returns number of affected rows
+        0L
+
+      /// Create tables if they don't exist
+      let initializeTables () : Unit =
+        // Canvas metadata table
+        let _ =
+          execute
+            """CREATE TABLE IF NOT EXISTS canvases (
+                 id INTEGER PRIMARY KEY,
+                 name TEXT UNIQUE NOT NULL,
+                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
+               )"""
+            []
+
+        // Operations log table
+        let _ =
+          execute
+            """CREATE TABLE IF NOT EXISTS operations (
+                 id INTEGER PRIMARY KEY,
+                 canvas_id INTEGER,
+                 op_ctr INTEGER,
+                 op_data TEXT,
+                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                 FOREIGN KEY (canvas_id) REFERENCES canvases(id)
+               )"""
+            []
+
+        // Handlers table
+        let _ =
+          execute
+            """CREATE TABLE IF NOT EXISTS handlers (
+                 id INTEGER PRIMARY KEY,
+                 canvas_id INTEGER,
+                 tlid TEXT,
+                 name TEXT,
+                 ast TEXT,
+                 spec TEXT,
+                 pos_x INTEGER,
+                 pos_y INTEGER,
+                 deleted BOOLEAN DEFAULT 0,
+                 FOREIGN KEY (canvas_id) REFERENCES canvases(id)
+               )"""
+            []
+
+        // User functions table
+        let _ =
+          execute
+            """CREATE TABLE IF NOT EXISTS user_functions (
+                 id INTEGER PRIMARY KEY,
+                 canvas_id INTEGER,
+                 tlid TEXT,
+                 name TEXT,
+                 parameters TEXT,
+                 body TEXT,
+                 return_type TEXT,
+                 deleted BOOLEAN DEFAULT 0,
+                 FOREIGN KEY (canvas_id) REFERENCES canvases(id)
+               )"""
+            []
+
+        // Static assets table for UI
+        let _ =
+          execute
+            """CREATE TABLE IF NOT EXISTS static_assets (
+                 path TEXT PRIMARY KEY,
+                 content BLOB,
+                 content_type TEXT,
+                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
+               )"""
+            []
+
+        ()

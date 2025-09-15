@@ -1,0 +1,361 @@
+module Darklang =
+  module LibBackend =
+    module Serialization =
+      /// Serialization/deserialization for ops and canvas data
+
+      // -------------------------
+      // Op Serialization
+      // -------------------------
+
+      let serializePosition (pos: Darklang.LibBackend.Models.Position) : Dict<String> =
+        Stdlib.Dict.fromList
+          [ ("x", Builtin.int64ToString pos.x)
+            ("y", Builtin.int64ToString pos.y) ]
+
+      let deserializePosition (data: Dict<String>) : Darklang.LibBackend.Models.Position =
+        let x = (Stdlib.Dict.get "x" data) |> Builtin.unwrap |> Builtin.int64Parse |> Builtin.unwrap
+        let y = (Stdlib.Dict.get "y" data) |> Builtin.unwrap |> Builtin.int64Parse |> Builtin.unwrap
+        Darklang.LibBackend.Models.Position { x = x; y = y }
+
+      let serializeHandlerSpec (spec: Darklang.LibBackend.Models.HandlerSpec) : Dict<String> =
+        match spec with
+        | HTTP(verb, route) ->
+            Stdlib.Dict.fromList
+              [ ("type", "http")
+                ("verb", verb)
+                ("route", route) ]
+        | Worker(name) ->
+            Stdlib.Dict.fromList
+              [ ("type", "worker")
+                ("name", name) ]
+        | Cron(name, interval) ->
+            Stdlib.Dict.fromList
+              [ ("type", "cron")
+                ("name", name)
+                ("interval", interval) ]
+        | REPL(name) ->
+            Stdlib.Dict.fromList
+              [ ("type", "repl")
+                ("name", name) ]
+
+      let deserializeHandlerSpec (data: Dict<String>) : Darklang.LibBackend.Models.HandlerSpec =
+        let specType = (Stdlib.Dict.get "type" data) |> Builtin.unwrap
+        match specType with
+        | "http" ->
+            let verb = (Stdlib.Dict.get "verb" data) |> Builtin.unwrap
+            let route = (Stdlib.Dict.get "route" data) |> Builtin.unwrap
+            HTTP(verb = verb, route = route)
+        | "worker" ->
+            let name = (Stdlib.Dict.get "name" data) |> Builtin.unwrap
+            Worker(name = name)
+        | "cron" ->
+            let name = (Stdlib.Dict.get "name" data) |> Builtin.unwrap
+            let interval = (Stdlib.Dict.get "interval" data) |> Builtin.unwrap
+            Cron(name = name, interval = interval)
+        | "repl" ->
+            let name = (Stdlib.Dict.get "name" data) |> Builtin.unwrap
+            REPL(name = name)
+        | _ ->
+            REPL(name = "unknown")
+
+      let serializeParameter (param: Darklang.LibBackend.Models.Parameter) : Dict<String> =
+        Stdlib.Dict.fromList
+          [ ("name", param.name)
+            ("type", param.paramType)
+            ("description", param.description) ]
+
+      let deserializeParameter (data: Dict<String>) : Darklang.LibBackend.Models.Parameter =
+        Darklang.LibBackend.Models.Parameter
+          { name = (Stdlib.Dict.get "name" data) |> Builtin.unwrap
+            paramType = (Stdlib.Dict.get "type" data) |> Builtin.unwrap
+            description = (Stdlib.Dict.get "description" data) |> Stdlib.Option.withDefault "" }
+
+      let serializeDBCol (col: Darklang.LibBackend.Models.DBCol) : Dict<String> =
+        Stdlib.Dict.fromList
+          [ ("name", col.name)
+            ("type", col.colType)
+            ("id", col.id) ]
+
+      let deserializeDBCol (data: Dict<String>) : Darklang.LibBackend.Models.DBCol =
+        Darklang.LibBackend.Models.DBCol
+          { name = (Stdlib.Dict.get "name" data) |> Builtin.unwrap
+            colType = (Stdlib.Dict.get "type" data) |> Builtin.unwrap
+            id = (Stdlib.Dict.get "id" data) |> Builtin.unwrap }
+
+      let serializeOp (op: Darklang.LibBackend.Models.Op) : Dict<String> =
+        match op with
+        | SetHandler(tlid, pos, spec, ast) ->
+            Stdlib.Dict.fromList
+              [ ("type", "SetHandler")
+                ("tlid", tlid)
+                ("pos", serializePosition pos)
+                ("spec", serializeHandlerSpec spec)
+                ("ast", ast) ]
+
+        | CreateDB(tlid, pos, name) ->
+            Stdlib.Dict.fromList
+              [ ("type", "CreateDB")
+                ("tlid", tlid)
+                ("pos", serializePosition pos)
+                ("name", name) ]
+
+        | AddDBCol(tlid, colId, colName, colType) ->
+            Stdlib.Dict.fromList
+              [ ("type", "AddDBCol")
+                ("tlid", tlid)
+                ("colId", colId)
+                ("colName", colName)
+                ("colType", colType) ]
+
+        | SetDBColName(tlid, colId, name) ->
+            Stdlib.Dict.fromList
+              [ ("type", "SetDBColName")
+                ("tlid", tlid)
+                ("colId", colId)
+                ("name", name) ]
+
+        | SetDBColType(tlid, colId, colType) ->
+            Stdlib.Dict.fromList
+              [ ("type", "SetDBColType")
+                ("tlid", tlid)
+                ("colId", colId)
+                ("colType", colType) ]
+
+        | DeleteTL(tlid) ->
+            Stdlib.Dict.fromList
+              [ ("type", "DeleteTL")
+                ("tlid", tlid) ]
+
+        | MoveTL(tlid, pos) ->
+            Stdlib.Dict.fromList
+              [ ("type", "MoveTL")
+                ("tlid", tlid)
+                ("pos", serializePosition pos) ]
+
+        | SetFunction(fn) ->
+            Stdlib.Dict.fromList
+              [ ("type", "SetFunction")
+                ("tlid", fn.tlid)
+                ("name", fn.name)
+                ("parameters", Stdlib.List.map serializeParameter fn.parameters)
+                ("returnType", fn.returnType)
+                ("description", fn.description)
+                ("body", fn.body) ]
+
+        | DeleteFunction(tlid) ->
+            Stdlib.Dict.fromList
+              [ ("type", "DeleteFunction")
+                ("tlid", tlid) ]
+
+        | SetType(userType) ->
+            Stdlib.Dict.fromList
+              [ ("type", "SetType")
+                ("tlid", userType.tlid)
+                ("name", userType.name)
+                ("version", Builtin.int64ToString userType.version)
+                ("definition", userType.definition) ]
+
+        | DeleteType(tlid) ->
+            Stdlib.Dict.fromList
+              [ ("type", "DeleteType")
+                ("tlid", tlid) ]
+
+        | SetExpr(tlid, id, ast) ->
+            Stdlib.Dict.fromList
+              [ ("type", "SetExpr")
+                ("tlid", tlid)
+                ("id", id)
+                ("ast", ast) ]
+
+        | TLSavepoint(tlid) ->
+            Stdlib.Dict.fromList
+              [ ("type", "TLSavepoint")
+                ("tlid", tlid) ]
+
+        | UndoTL(tlid) ->
+            Stdlib.Dict.fromList
+              [ ("type", "UndoTL")
+                ("tlid", tlid) ]
+
+        | RedoTL(tlid) ->
+            Stdlib.Dict.fromList
+              [ ("type", "RedoTL")
+                ("tlid", tlid) ]
+
+        | RenameDBname(tlid, name) ->
+            Stdlib.Dict.fromList
+              [ ("type", "RenameDBname")
+                ("tlid", tlid)
+                ("name", name) ]
+
+        | DeleteDBCol(tlid, colId) ->
+            Stdlib.Dict.fromList
+              [ ("type", "DeleteDBCol")
+                ("tlid", tlid)
+                ("colId", colId) ]
+
+        | ChangeDBColName(tlid, colId, name) ->
+            Stdlib.Dict.fromList
+              [ ("type", "ChangeDBColName")
+                ("tlid", tlid)
+                ("colId", colId)
+                ("name", name) ]
+
+        | ChangeDBColType(tlid, colId, colType) ->
+            Stdlib.Dict.fromList
+              [ ("type", "ChangeDBColType")
+                ("tlid", tlid)
+                ("colId", colId)
+                ("colType", colType) ]
+
+      let deserializeOp (data: Dict<String>) : Darklang.LibBackend.Models.Op =
+        let opType = (Stdlib.Dict.get "type" data) |> Builtin.unwrap
+
+        match opType with
+        | "SetHandler" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            let pos = (Stdlib.Dict.get "pos" data) |> Builtin.unwrap |> deserializePosition
+            let spec = (Stdlib.Dict.get "spec" data) |> Builtin.unwrap |> deserializeHandlerSpec
+            let ast = (Stdlib.Dict.get "ast" data) |> Builtin.unwrap
+            SetHandler(tlid = tlid, pos = pos, spec = spec, ast = ast)
+
+        | "CreateDB" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            let pos = (Stdlib.Dict.get "pos" data) |> Builtin.unwrap |> deserializePosition
+            let name = (Stdlib.Dict.get "name" data) |> Builtin.unwrap
+            CreateDB(tlid = tlid, pos = pos, name = name)
+
+        | "AddDBCol" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            let colId = (Stdlib.Dict.get "colId" data) |> Builtin.unwrap
+            let colName = (Stdlib.Dict.get "colName" data) |> Builtin.unwrap
+            let colType = (Stdlib.Dict.get "colType" data) |> Builtin.unwrap
+            AddDBCol(tlid = tlid, colId = colId, colName = colName, colType = colType)
+
+        | "SetDBColName" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            let colId = (Stdlib.Dict.get "colId" data) |> Builtin.unwrap
+            let name = (Stdlib.Dict.get "name" data) |> Builtin.unwrap
+            SetDBColName(tlid = tlid, colId = colId, name = name)
+
+        | "SetDBColType" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            let colId = (Stdlib.Dict.get "colId" data) |> Builtin.unwrap
+            let colType = (Stdlib.Dict.get "colType" data) |> Builtin.unwrap
+            SetDBColType(tlid = tlid, colId = colId, colType = colType)
+
+        | "DeleteTL" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            DeleteTL(tlid = tlid)
+
+        | "MoveTL" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            let pos = (Stdlib.Dict.get "pos" data) |> Builtin.unwrap |> deserializePosition
+            MoveTL(tlid = tlid, pos = pos)
+
+        | "SetFunction" ->
+            let params =
+              (Stdlib.Dict.get "parameters" data)
+              |> Builtin.unwrap
+              |> Stdlib.List.map deserializeParameter
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            let name = (Stdlib.Dict.get "name" data) |> Builtin.unwrap
+            let returnType = (Stdlib.Dict.get "returnType" data) |> Builtin.unwrap
+            let description = (Stdlib.Dict.get "description" data) |> Builtin.unwrap
+            let body = (Stdlib.Dict.get "body" data) |> Builtin.unwrap
+            let fn = Darklang.LibBackend.Models.UserFunction { tlid = tlid; name = name; parameters = params; returnType = returnType; description = description; body = body }
+            SetFunction(fn = fn)
+
+        | "DeleteFunction" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            DeleteFunction(tlid = tlid)
+
+        | "SetType" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            let name = (Stdlib.Dict.get "name" data) |> Builtin.unwrap
+            let version = (Stdlib.Dict.get "version" data) |> Builtin.unwrap |> Builtin.int64Parse |> Builtin.unwrap
+            let definition = (Stdlib.Dict.get "definition" data) |> Builtin.unwrap
+            let userType = Darklang.LibBackend.Models.UserType { tlid = tlid; name = name; version = version; definition = definition }
+            SetType(userType = userType)
+
+        | "DeleteType" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            DeleteType(tlid = tlid)
+
+        | "SetExpr" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            let id = (Stdlib.Dict.get "id" data) |> Builtin.unwrap
+            let ast = (Stdlib.Dict.get "ast" data) |> Builtin.unwrap
+            SetExpr(tlid = tlid, id = id, ast = ast)
+
+        | "TLSavepoint" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            TLSavepoint(tlid = tlid)
+
+        | "UndoTL" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            UndoTL(tlid = tlid)
+
+        | "RedoTL" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            RedoTL(tlid = tlid)
+
+        | "RenameDBname" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            let name = (Stdlib.Dict.get "name" data) |> Builtin.unwrap
+            RenameDBname(tlid = tlid, name = name)
+
+        | "DeleteDBCol" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            let colId = (Stdlib.Dict.get "colId" data) |> Builtin.unwrap
+            DeleteDBCol(tlid = tlid, colId = colId)
+
+        | "ChangeDBColName" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            let colId = (Stdlib.Dict.get "colId" data) |> Builtin.unwrap
+            let name = (Stdlib.Dict.get "name" data) |> Builtin.unwrap
+            ChangeDBColName(tlid = tlid, colId = colId, name = name)
+
+        | "ChangeDBColType" ->
+            let tlid = (Stdlib.Dict.get "tlid" data) |> Builtin.unwrap
+            let colId = (Stdlib.Dict.get "colId" data) |> Builtin.unwrap
+            let colType = (Stdlib.Dict.get "colType" data) |> Builtin.unwrap
+            ChangeDBColType(tlid = tlid, colId = colId, colType = colType)
+
+        | _ ->
+            // Unknown op type, use savepoint as placeholder
+            TLSavepoint(tlid = "unknown")
+
+      // -------------------------
+      // Canvas Data Serialization
+      // -------------------------
+
+      let serializeHandler (h: Darklang.LibBackend.Models.Handler) : Dict<String> =
+        Stdlib.Dict.fromList
+          [ ("tlid", h.tlid)
+            ("pos", serializePosition h.pos)
+            ("spec", serializeHandlerSpec h.spec)
+            ("ast", h.ast) ]
+
+      let serializeUserFunction (fn: Darklang.LibBackend.Models.UserFunction) : Dict<String> =
+        Stdlib.Dict.fromList
+          [ ("tlid", fn.tlid)
+            ("name", fn.name)
+            ("parameters", Stdlib.List.map serializeParameter fn.parameters)
+            ("returnType", fn.returnType)
+            ("description", fn.description)
+            ("body", fn.body) ]
+
+      let serializeDB (db: Darklang.LibBackend.Models.DB) : Dict<String> =
+        Stdlib.Dict.fromList
+          [ ("tlid", db.tlid)
+            ("name", db.name)
+            ("version", Builtin.int64ToString db.version)
+            ("cols", Stdlib.List.map serializeDBCol db.cols) ]
+
+      let serializeUserType (ut: Darklang.LibBackend.Models.UserType) : Dict<String> =
+        Stdlib.Dict.fromList
+          [ ("tlid", ut.tlid)
+            ("name", ut.name)
+            ("version", Builtin.int64ToString ut.version)
+            ("definition", ut.definition) ]

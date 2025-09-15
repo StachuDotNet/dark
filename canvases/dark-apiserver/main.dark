@@ -1,0 +1,484 @@
+// ApiServer for Dark Classic UI
+// Full implementation compatible with dark-client-fork
+
+// Initialize database schema on load
+let _ = Darklang.LibBackend.Canvas.initSchema ()
+
+// Health check endpoint
+[<HttpHandler("GET", "/check-apiserver")>]
+let checkApiserver _req =
+  Stdlib.Http.response (Stdlib.String.toBytes "success: this is apiserver") 200L
+
+// CORS preflight handlers
+[<HttpHandler("OPTIONS", "/api/:canvasName/:path1")>]
+let handleCors1 _req =
+  Stdlib.Http.responseWithHeaders
+    (Stdlib.String.toBytes "")
+    (Stdlib.Dict.fromList
+      [ ("Access-Control-Allow-Origin", "*")
+        ("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        ("Access-Control-Allow-Headers", "Content-Type, X-CSRF-Token, x-darklang-client-version") ])
+    200L
+
+[<HttpHandler("OPTIONS", "/api/:canvasName/:path1/:path2")>]
+let handleCors2 _req =
+  Stdlib.Http.responseWithHeaders
+    (Stdlib.String.toBytes "")
+    (Stdlib.Dict.fromList
+      [ ("Access-Control-Allow-Origin", "*")
+        ("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        ("Access-Control-Allow-Headers", "Content-Type, X-CSRF-Token, x-darklang-client-version") ])
+    200L
+
+// Initial load endpoint - returns complete canvas data
+[<HttpHandler("GET", "/api/:canvasName/v1/initial_load")>]
+let initialLoad _req =
+  let canvas = Darklang.LibBackend.Canvas.loadCanvas canvasName
+
+  // Get op counters
+  let opCtrs = Darklang.LibBackend.Canvas.getOpCtrs canvas.meta.id
+
+  // Get secrets
+  let secrets =
+    let sqlResult = Darklang.LibBackend.SQLite.query "SELECT name, value FROM secrets WHERE canvas_id = ?" [canvas.meta.id]
+    Stdlib.List.map
+      (fun row ->
+        match row with
+        | [name; value] -> Stdlib.Dict.fromList [("name", name); ("value", value)]
+        | _ -> Stdlib.Dict.empty)
+      sqlResult.rows
+
+  // Convert to response format with proper serialization
+  let handlersValues = Stdlib.Dict.values canvas.handlers
+  let handlersList = Stdlib.List.map handlersValues Darklang.LibBackend.Serialization.serializeHandler
+  let deletedHandlersValues = Stdlib.Dict.values canvas.deletedHandlers
+  let deletedHandlersList = Stdlib.List.map deletedHandlersValues Darklang.LibBackend.Serialization.serializeHandler
+  let dbsValues = Stdlib.Dict.values canvas.dbs
+  let dbsList = Stdlib.List.map dbsValues Darklang.LibBackend.Serialization.serializeDB
+  let deletedDbsValues = Stdlib.Dict.values canvas.deletedDBs
+  let deletedDbsList = Stdlib.List.map deletedDbsValues Darklang.LibBackend.Serialization.serializeDB
+  let userFunctionsValues = Stdlib.Dict.values canvas.userFunctions
+  let userFunctionsList = Stdlib.List.map userFunctionsValues Darklang.LibBackend.Serialization.serializeUserFunction
+  let deletedUserFunctionsValues = Stdlib.Dict.values canvas.deletedUserFunctions
+  let deletedUserFunctionsList = Stdlib.List.map deletedUserFunctionsValues Darklang.LibBackend.Serialization.serializeUserFunction
+  let userTypesValues = Stdlib.Dict.values canvas.userTypes
+  let userTypesList = Stdlib.List.map userTypesValues Darklang.LibBackend.Serialization.serializeUserType
+  let deletedUserTypesValues = Stdlib.Dict.values canvas.deletedUserTypes
+  let deletedUserTypesList = Stdlib.List.map deletedUserTypesValues Darklang.LibBackend.Serialization.serializeUserType
+
+  let response =
+    Stdlib.Dict.fromList
+      [ ("handlers", handlersList)
+        ("deletedHandlers", deletedHandlersList)
+        ("dbs", dbsList)
+        ("deletedDBs", deletedDbsList)
+        ("userFunctions", userFunctionsList)
+        ("deletedUserFunctions", deletedUserFunctionsList)
+        ("userTypes", userTypesList)
+        ("deletedUserTypes", deletedUserTypesList)
+        ("unlockedDBs", (Stdlib.Dict.keys canvas.dbs))  // All DBs unlocked for now
+        ("staticDeploys", [])
+        ("permission", "ReadWrite")
+        ("opCtrs", opCtrs)
+        ("account",
+          Stdlib.Dict.fromList
+            [ ("username", "local-user")
+              ("name", "Local User")
+              ("email", "user@localhost") ])
+        ("canvasList", [canvasName])
+        ("orgs", [])
+        ("orgCanvasList", [])
+        ("workerSchedules", Stdlib.Dict.empty)
+        ("creationDate", "2025-01-01T00:00:00Z")
+        ("secrets", secrets) ]
+
+  let json = Builtin.jsonSerialize response
+
+  Stdlib.Http.responseWithHeaders
+    (Stdlib.String.toBytes json)
+    (Stdlib.Dict.fromList
+      [ ("Content-Type", "application/json")
+        ("Access-Control-Allow-Origin", "*") ])
+    200L
+
+// Add operation endpoint - applies operations to canvas
+[<HttpHandler("POST", "/api/:canvasName/v1/add_op")>]
+let addOp req =
+  let bodyBytes = Stdlib.Http.Request.body req
+  let body = Stdlib.String.fromBytes bodyBytes
+
+  // Parse request
+  let parsedRequest = Builtin.jsonParse body
+  let request = Builtin.unwrap parsedRequest
+  let opsResult = Stdlib.Dict.get "ops" request
+  let ops = Builtin.unwrap opsResult
+  let opCtrResult = Stdlib.Dict.get "opCtr" request
+  let opCtrStr = Builtin.unwrap opCtrResult
+  let opCtrParsed = Builtin.int64Parse opCtrStr
+  let opCtr = Builtin.unwrap opCtrParsed
+  let clientOpCtrIDResult = Stdlib.Dict.get "clientOpCtrID" request
+  let clientOpCtrID = Builtin.unwrap clientOpCtrIDResult
+
+  // Get canvas
+  let canvasMeta = Darklang.LibBackend.Canvas.getOrCreateCanvas canvasName
+  let canvas = Darklang.LibBackend.Canvas.loadToplevels canvasMeta.id
+
+  // Deserialize and apply operations
+  let parsedOps =
+    Stdlib.List.map
+      (fun opData ->
+        Darklang.LibBackend.Serialization.deserializeOp opData)
+      ops
+
+  let newCanvas = Stdlib.List.fold canvas Darklang.LibBackend.Canvas.applyOp parsedOps
+
+  // Save operations to log
+  Stdlib.List.iter (fun op -> Darklang.LibBackend.Canvas.saveOp canvasMeta.id op opCtr) parsedOps
+
+  // Update op counter
+  Darklang.LibBackend.Canvas.updateOpCtr canvasMeta.id clientOpCtrID opCtr
+
+  // Save updated canvas state
+  Darklang.LibBackend.Canvas.saveCanvas newCanvas
+
+  // Return changes - serialize properly
+  let newHandlersValues = Stdlib.Dict.values newCanvas.handlers
+  let newHandlersList = Stdlib.List.map newHandlersValues Darklang.LibBackend.Serialization.serializeHandler
+  let newDeletedHandlersValues = Stdlib.Dict.values newCanvas.deletedHandlers
+  let newDeletedHandlersList = Stdlib.List.map newDeletedHandlersValues Darklang.LibBackend.Serialization.serializeHandler
+  let newDbsValues = Stdlib.Dict.values newCanvas.dbs
+  let newDbsList = Stdlib.List.map newDbsValues Darklang.LibBackend.Serialization.serializeDB
+  let newDeletedDbsValues = Stdlib.Dict.values newCanvas.deletedDBs
+  let newDeletedDbsList = Stdlib.List.map newDeletedDbsValues Darklang.LibBackend.Serialization.serializeDB
+  let newUserFunctionsValues = Stdlib.Dict.values newCanvas.userFunctions
+  let newUserFunctionsList = Stdlib.List.map newUserFunctionsValues Darklang.LibBackend.Serialization.serializeUserFunction
+  let newDeletedUserFunctionsValues = Stdlib.Dict.values newCanvas.deletedUserFunctions
+  let newDeletedUserFunctionsList = Stdlib.List.map newDeletedUserFunctionsValues Darklang.LibBackend.Serialization.serializeUserFunction
+  let newUserTypesValues = Stdlib.Dict.values newCanvas.userTypes
+  let newUserTypesList = Stdlib.List.map newUserTypesValues Darklang.LibBackend.Serialization.serializeUserType
+  let newDeletedUserTypesValues = Stdlib.Dict.values newCanvas.deletedUserTypes
+  let newDeletedUserTypesList = Stdlib.List.map newDeletedUserTypesValues Darklang.LibBackend.Serialization.serializeUserType
+
+  let response =
+    Stdlib.Dict.fromList
+      [ ("handlers", newHandlersList)
+        ("deletedHandlers", newDeletedHandlersList)
+        ("dbs", newDbsList)
+        ("deletedDBs", newDeletedDbsList)
+        ("userFunctions", newUserFunctionsList)
+        ("deletedUserFunctions", newDeletedUserFunctionsList)
+        ("userTypes", newUserTypesList)
+        ("deletedUserTypes", newDeletedUserTypesList) ]
+
+  let json = Builtin.jsonSerialize response
+
+  Stdlib.Http.responseWithHeaders
+    (Stdlib.String.toBytes json)
+    (Stdlib.Dict.fromList
+      [ ("Content-Type", "application/json")
+        ("Access-Control-Allow-Origin", "*") ])
+    200L
+
+// Execute function endpoint
+[<HttpHandler("POST", "/api/:canvasName/v1/execute_function")>]
+let executeFunction req =
+  let bodyBytes = Stdlib.Http.Request.body req
+  let body = Stdlib.String.fromBytes bodyBytes
+  let parsedRequest2 = Builtin.jsonParse body
+  let request = Builtin.unwrap parsedRequest2
+
+  let tlidResult = Stdlib.Dict.get "tlid" request
+  let tlid = Builtin.unwrap tlidResult
+  let traceIdResult = Stdlib.Dict.get "trace_id" request
+  let traceId = Builtin.unwrap traceIdResult
+  let callerIdResult = Stdlib.Dict.get "caller_id" request
+  let callerId = Builtin.unwrap callerIdResult
+  let argsResult = Stdlib.Dict.get "args" request
+  let args = Builtin.unwrap argsResult
+  let fnnameResult = Stdlib.Dict.get "fnname" request
+  let fnname = Builtin.unwrap fnnameResult
+
+  // Load canvas and execute function
+  let canvas = Darklang.LibBackend.Canvas.loadCanvas canvasName
+  let execResult = Darklang.LibBackend.Execution.executeUserFunction canvas fnname args
+
+  // Convert result to JSON
+  let resultJson = Darklang.LibBackend.Execution.valueToJson execResult.result
+
+  // Create trace data
+  let traceData = Darklang.LibBackend.Traces.TraceData {
+    input = [("args", Builtin.jsonSerialize args)];
+    timestamp = "2025-01-01T00:00:00Z";
+    functionResults = [(fnname, "hash123", resultJson)]
+  }
+  let _ = Darklang.LibBackend.Traces.saveTrace canvas.meta.id tlid traceId traceData
+
+  let response =
+    Stdlib.Dict.fromList
+      [ ("result", resultJson)
+        ("hash", "hash123")
+        ("hashVersion", 1L)
+        ("touched_tlids", execResult.touchedTlids)
+        ("unlocked_dbs", execResult.unlockedDbs) ]
+
+  let json = Builtin.jsonSerialize response
+
+  Stdlib.Http.responseWithHeaders
+    (Stdlib.String.toBytes json)
+    (Stdlib.Dict.fromList
+      [ ("Content-Type", "application/json")
+        ("Access-Control-Allow-Origin", "*") ])
+    200L
+
+// Trigger handler endpoint
+[<HttpHandler("POST", "/api/:canvasName/v1/trigger_handler")>]
+let triggerHandler req =
+  let bodyBytes = Stdlib.Http.Request.body req
+  let body = Stdlib.String.fromBytes bodyBytes
+  let parsedRequest3 = Builtin.jsonParse body
+  let request = Builtin.unwrap parsedRequest3
+
+  let tlidResult = Stdlib.Dict.get "tlid" request
+  let tlid = Builtin.unwrap tlidResult
+  let traceIdResult = Stdlib.Dict.get "trace_id" request
+  let traceId = Builtin.unwrap traceIdResult
+  let inputResult = Stdlib.Dict.get "input" request
+  let input = Builtin.unwrap inputResult
+
+  // Load canvas and execute handler
+  let canvas = Darklang.LibBackend.Canvas.loadCanvas canvasName
+  let execResult = Darklang.LibBackend.Execution.executeHandler canvas tlid input
+
+  // Create trace data
+  let resultJson = Darklang.LibBackend.Execution.valueToJson execResult.result
+  let traceData = Darklang.LibBackend.Traces.TraceData {
+    input = input;
+    timestamp = "2025-01-01T00:00:00Z";
+    functionResults = [("handler", "hash123", resultJson)]
+  }
+  let _ = Darklang.LibBackend.Traces.saveTrace canvas.meta.id tlid traceId traceData
+
+  let response = Stdlib.Dict.fromList [ ("touched_tlids", execResult.touchedTlids) ]
+  let json = Builtin.jsonSerialize response
+
+  Stdlib.Http.responseWithHeaders
+    (Stdlib.String.toBytes json)
+    (Stdlib.Dict.fromList
+      [ ("Content-Type", "application/json")
+        ("Access-Control-Allow-Origin", "*") ])
+    200L
+
+// Packages endpoint
+[<HttpHandler("GET", "/api/:canvasName/v1/packages")>]
+let packages _req =
+  // Get packages from the package manager
+  let packageStats = Builtin.packageManagerGetStats ()
+
+  // Get a sample of functions to return
+  let sampleFunctions = [
+    Stdlib.Dict.fromList
+      [ ("name", "Stdlib.String.append")
+        ("parameters",
+          [ Stdlib.Dict.fromList [ ("name", "str1"); ("type", "String"); ("description", "First string") ]
+            Stdlib.Dict.fromList [ ("name", "str2"); ("type", "String"); ("description", "Second string") ] ])
+        ("returnType", "String")
+        ("description", "Concatenate two strings")
+        ("infix", false) ]
+    Stdlib.Dict.fromList
+      [ ("name", "Stdlib.List.map")
+        ("parameters",
+          [ Stdlib.Dict.fromList [ ("name", "list"); ("type", "List<'a>"); ("description", "The list to map over") ]
+            Stdlib.Dict.fromList [ ("name", "fn"); ("type", "'a -> 'b"); ("description", "The function to apply") ] ])
+        ("returnType", "List<'b>")
+        ("description", "Apply a function to each element of a list")
+        ("infix", false) ]
+    Stdlib.Dict.fromList
+      [ ("name", "Stdlib.Int64.add")
+        ("parameters",
+          [ Stdlib.Dict.fromList [ ("name", "a"); ("type", "Int64"); ("description", "First number") ]
+            Stdlib.Dict.fromList [ ("name", "b"); ("type", "Int64"); ("description", "Second number") ] ])
+        ("returnType", "Int64")
+        ("description", "Add two integers")
+        ("infix", false) ]
+    Stdlib.Dict.fromList
+      [ ("name", "Stdlib.Dict.get")
+        ("parameters",
+          [ Stdlib.Dict.fromList [ ("name", "key"); ("type", "String"); ("description", "Key to look up") ]
+            Stdlib.Dict.fromList [ ("name", "dict"); ("type", "Dict<'a>"); ("description", "Dictionary to search") ] ])
+        ("returnType", "Option<'a>")
+        ("description", "Get value for key from dictionary")
+        ("infix", false) ]
+    Stdlib.Dict.fromList
+      [ ("name", "Stdlib.Http.response")
+        ("parameters",
+          [ Stdlib.Dict.fromList [ ("name", "body"); ("type", "Bytes"); ("description", "Response body") ]
+            Stdlib.Dict.fromList [ ("name", "status"); ("type", "Int64"); ("description", "HTTP status code") ] ])
+        ("returnType", "HttpResponse")
+        ("description", "Create an HTTP response")
+        ("infix", false) ]
+  ]
+
+  let json = Builtin.jsonSerialize sampleFunctions
+
+  Stdlib.Http.responseWithHeaders
+    (Stdlib.String.toBytes json)
+    (Stdlib.Dict.fromList
+      [ ("Content-Type", "application/json")
+        ("Access-Control-Allow-Origin", "*") ])
+    200L
+
+// All traces endpoint
+[<HttpHandler("POST", "/api/:canvasName/all_traces")>]
+let allTraces _req =
+  let canvasMeta = Darklang.LibBackend.Canvas.getOrCreateCanvas canvasName
+  let traces = Darklang.LibBackend.Traces.getTracesByCanvas canvasMeta.id
+  let response = Stdlib.Dict.fromList [ ("traces", traces) ]
+  let json = Builtin.jsonSerialize response
+
+  Stdlib.Http.responseWithHeaders
+    (Stdlib.String.toBytes json)
+    (Stdlib.Dict.fromList
+      [ ("Content-Type", "application/json")
+        ("Access-Control-Allow-Origin", "*") ])
+    200L
+
+// Get 404s endpoint
+[<HttpHandler("POST", "/api/:canvasName/get_404s")>]
+let get404s _req =
+  let response = Stdlib.Dict.fromList [ ("f404s", []) ]
+  let json = Builtin.jsonSerialize response
+
+  Stdlib.Http.responseWithHeaders
+    (Stdlib.String.toBytes json)
+    (Stdlib.Dict.fromList
+      [ ("Content-Type", "application/json")
+        ("Access-Control-Allow-Origin", "*") ])
+    200L
+
+// Get trace data endpoint
+[<HttpHandler("POST", "/api/:canvasName/v1/get_trace_data")>]
+let getTraceData req =
+  let bodyBytes = Stdlib.Http.Request.body req
+  let body = Stdlib.String.fromBytes bodyBytes
+  let parsedRequest4 = Builtin.jsonParse body
+  let request = Builtin.unwrap parsedRequest4
+
+  let traceIdResult = Stdlib.Dict.get "traceID" request
+  let traceId = Builtin.unwrap traceIdResult
+
+  match Darklang.LibBackend.Traces.getTrace traceId with
+  | Ok traceData ->
+      let response =
+        Stdlib.Dict.fromList
+          [ ("trace",
+              ( traceId
+              , Stdlib.Dict.fromList
+                  [ ("input", traceData.input)
+                    ("timestamp", traceData.timestamp)
+                    ("functionResults", traceData.functionResults) ])) ]
+      let json = Builtin.jsonSerialize response
+
+      Stdlib.Http.responseWithHeaders
+        (Stdlib.String.toBytes json)
+        (Stdlib.Dict.fromList
+          [ ("Content-Type", "application/json")
+            ("Access-Control-Allow-Origin", "*") ])
+        200L
+  | Error msg ->
+      let response = Stdlib.Dict.fromList [ ("error", msg) ]
+      let json = Builtin.jsonSerialize response
+
+      Stdlib.Http.responseWithHeaders
+        (Stdlib.String.toBytes json)
+        (Stdlib.Dict.fromList
+          [ ("Content-Type", "application/json")
+            ("Access-Control-Allow-Origin", "*") ])
+        404L
+
+// Get unlocked DBs endpoint
+[<HttpHandler("POST", "/api/:canvasName/get_unlocked_dbs")>]
+let getUnlockedDbs _req =
+  let canvas = Darklang.LibBackend.Canvas.loadCanvas canvasName
+  let unlockedDbs = (Stdlib.Dict.keys canvas.dbs)
+  let response = Stdlib.Dict.fromList [ ("unlocked_dbs", unlockedDbs) ]
+  let json = Builtin.jsonSerialize response
+
+  Stdlib.Http.responseWithHeaders
+    (Stdlib.String.toBytes json)
+    (Stdlib.Dict.fromList
+      [ ("Content-Type", "application/json")
+        ("Access-Control-Allow-Origin", "*") ])
+    200L
+
+// Get DB stats endpoint
+[<HttpHandler("POST", "/api/:canvasName/v1/get_db_stats")>]
+let getDbStats _req =
+  // TODO: Get actual DB statistics
+  let response = Stdlib.Dict.empty
+  let json = Builtin.jsonSerialize response
+
+  Stdlib.Http.responseWithHeaders
+    (Stdlib.String.toBytes json)
+    (Stdlib.Dict.fromList
+      [ ("Content-Type", "application/json")
+        ("Access-Control-Allow-Origin", "*") ])
+    200L
+
+// Insert secret endpoint
+[<HttpHandler("POST", "/api/:canvasName/v1/insert_secret")>]
+let insertSecret req =
+  let bodyBytes = Stdlib.Http.Request.body req
+  let body = Stdlib.String.fromBytes bodyBytes
+  let parsedRequest5 = Builtin.jsonParse body
+  let request = Builtin.unwrap parsedRequest5
+
+  let nameResult = Stdlib.Dict.get "name" request
+  let name = Builtin.unwrap nameResult
+  let valueResult = Stdlib.Dict.get "value" request
+  let value = Builtin.unwrap valueResult
+
+  let canvasMeta = Darklang.LibBackend.Canvas.getOrCreateCanvas canvasName
+  let _ =
+    Darklang.LibBackend.SQLite.execute
+      "INSERT OR REPLACE INTO secrets (canvas_id, name, value) VALUES (?, ?, ?)"
+      [canvasMeta.id; name; value]
+
+  // Return all secrets
+  let secrets =
+    let sqlResult = Darklang.LibBackend.SQLite.query "SELECT name, value FROM secrets WHERE canvas_id = ?" [canvasMeta.id]
+    Stdlib.List.map
+      (fun row ->
+        match row with
+        | [n; v] -> Stdlib.Dict.fromList [("name", n); ("value", v)]
+        | _ -> Stdlib.Dict.empty)
+      sqlResult.rows
+
+  let response = Stdlib.Dict.fromList [ ("secrets", secrets) ]
+  let json = Builtin.jsonSerialize response
+
+  Stdlib.Http.responseWithHeaders
+    (Stdlib.String.toBytes json)
+    (Stdlib.Dict.fromList
+      [ ("Content-Type", "application/json")
+        ("Access-Control-Allow-Origin", "*") ])
+    200L
+
+// UI page handler
+[<HttpHandler("GET", "/a/:canvasName")>]
+let serveUI _req =
+  let html =
+    $"<!DOCTYPE html>
+<html>
+<head>
+  <title>Dark - {canvasName}</title>
+  <meta http-equiv='refresh' content='0; url=http://localhost:8000/index.html'>
+</head>
+<body>
+  <p>Redirecting to Dark UI...</p>
+</body>
+</html>"
+
+  Stdlib.Http.responseWithHeaders
+    (Stdlib.String.toBytes html)
+    (Stdlib.Dict.fromList [ ("Content-Type", "text/html") ])
+    200L

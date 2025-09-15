@@ -1,0 +1,127 @@
+/// Builtin functions for raw SQLite access
+module BuiltinCliHost.Libs.SQLite
+
+open System
+open System.Data
+open Microsoft.Data.Sqlite
+
+open Prelude
+open LibExecution.RuntimeTypes
+open LibExecution.Builtin.Shortcuts
+
+module Dval = LibExecution.Dval
+
+// Database connection string for data.db
+let private connectionString =
+  let dataPath = System.IO.Path.Combine(System.Environment.CurrentDirectory, "data.db")
+  $"Data Source={dataPath}"
+
+// Execute a query and return results as strings
+let private executeQuery (sql: string) (parameters: List<string>) =
+  use connection = new SqliteConnection(connectionString)
+  connection.Open()
+
+  use command = connection.CreateCommand()
+  command.CommandText <- sql
+
+  // Add parameters
+  parameters
+  |> List.iteri (fun i value ->
+    let param = command.CreateParameter()
+    param.ParameterName <- $"@p{i}"
+    param.Value <- value
+    command.Parameters.Add(param) |> ignore<SqliteParameter>)
+
+  use reader = command.ExecuteReader()
+
+  let mutable results = []
+  while reader.Read() do
+    let row =
+      [ for i in 0 .. reader.FieldCount - 1 ->
+          if reader.IsDBNull(i) then ""
+          else reader.GetValue(i).ToString() ]
+    results <- row :: results
+
+  List.rev results
+
+// Execute a non-query statement
+let private executeNonQuery (sql: string) (parameters: List<string>) =
+  use connection = new SqliteConnection(connectionString)
+  connection.Open()
+
+  use command = connection.CreateCommand()
+  command.CommandText <- sql
+
+  // Add parameters
+  parameters
+  |> List.iteri (fun i value ->
+    let param = command.CreateParameter()
+    param.ParameterName <- $"@p{i}"
+    param.Value <- value
+    command.Parameters.Add(param) |> ignore<SqliteParameter>)
+
+  int64 (command.ExecuteNonQuery())
+
+let fns : List<BuiltInFn> =
+  [ { name = fn "sqliteQuery" 0
+      typeParams = []
+      parameters =
+        [ Param.make "sql" TString ""
+          Param.make "parameters" (TList TString) "" ]
+      returnType = TypeReference.result (TList TString) TString
+      description = "Execute a SQL query on data.db and return results as JSON"
+      fn =
+        (function
+        | _, _, [], [ DString sql; DList(_vtTODO, parameters) ] ->
+          uply {
+            try
+              let stringParams =
+                parameters
+                |> List.map (function
+                  | DString s -> s
+                  | _ -> "")
+
+              let rows = executeQuery sql stringParams
+              let jsonRows = rows |> List.map (fun row -> String.concat "," row)
+              let result = DList(ValueType.string, jsonRows |> List.map DString)
+
+              return Dval.resultOk (KTList KTString) KTString result
+            with
+            | ex ->
+              return Dval.resultError (KTList KTString) KTString (DString $"SQLite error: {ex.Message}")
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+    { name = fn "sqliteExecute" 0
+      typeParams = []
+      parameters =
+        [ Param.make "sql" TString ""
+          Param.make "parameters" (TList TString) "" ]
+      returnType = TypeReference.result TInt64 TString
+      description = "Execute a non-query SQL statement on data.db and return affected rows"
+      fn =
+        (function
+        | _, _, [], [ DString sql; DList(_vtTODO, parameters) ] ->
+          uply {
+            try
+              let stringParams =
+                parameters
+                |> List.map (function
+                  | DString s -> s
+                  | _ -> "")
+
+              let affectedRows = executeNonQuery sql stringParams
+              return Dval.resultOk KTInt64 KTString (DInt64 affectedRows)
+            with
+            | ex ->
+              return Dval.resultError KTInt64 KTString (DString $"SQLite error: {ex.Message}")
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated } ]
+
+let builtins = LibExecution.Builtin.make [] fns

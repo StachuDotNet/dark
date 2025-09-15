@@ -1,0 +1,116 @@
+module Darklang =
+  module LibBackend =
+    module Canvas =
+      /// Canvas management - loading, saving, and applying operations
+
+      // -------------------------
+      // Canvas Management
+      // -------------------------
+
+      let emptyCanvas (meta: Darklang.LibBackend.Models.CanvasMeta) : Darklang.LibBackend.Models.Canvas =
+        Darklang.LibBackend.Models.Canvas
+          { meta = meta
+            handlers = Stdlib.Dict.empty
+            deletedHandlers = Stdlib.Dict.empty
+            dbs = Stdlib.Dict.empty
+            deletedDBs = Stdlib.Dict.empty
+            userFunctions = Stdlib.Dict.empty
+            deletedUserFunctions = Stdlib.Dict.empty
+            userTypes = Stdlib.Dict.empty
+            deletedUserTypes = Stdlib.Dict.empty
+            secrets = Stdlib.Dict.empty }
+
+      let getOrCreateCanvas (canvasName: String) : Darklang.LibBackend.Models.CanvasMeta =
+        // For simplicity, create a canvas meta with default values
+        let canvasId = Stdlib.Uuid.generate ()
+        let ownerId = "default-user"
+        Darklang.LibBackend.Models.CanvasMeta { id = canvasId; name = canvasName; owner = ownerId }
+
+      let loadCanvas (canvasName: String) : Darklang.LibBackend.Models.Canvas =
+        let meta = getOrCreateCanvas canvasName
+        emptyCanvas meta
+
+      // Operations
+      let tlidOf (op: Darklang.LibBackend.Models.Op) : Darklang.LibBackend.Models.TLID =
+        match op with
+        | SetHandler(tlid, _, _, _) -> tlid
+        | CreateDB(tlid, _, _) -> tlid
+        | AddDBCol(tlid, _, _, _) -> tlid
+        | SetDBColName(tlid, _, _) -> tlid
+        | SetDBColType(tlid, _, _) -> tlid
+        | DeleteTL(tlid) -> tlid
+        | MoveTL(tlid, _) -> tlid
+        | SetFunction(fn) -> fn.tlid
+        | DeleteFunction(tlid) -> tlid
+        | SetType(ut) -> ut.tlid
+        | DeleteType(tlid) -> tlid
+        | SetExpr(tlid, _, _) -> tlid
+        | TLSavepoint(tlid) -> tlid
+        | UndoTL(tlid) -> tlid
+        | RedoTL(tlid) -> tlid
+        | RenameDBname(tlid, _) -> tlid
+        | DeleteDBCol(tlid, _) -> tlid
+        | ChangeDBColName(tlid, _, _) -> tlid
+        | ChangeDBColType(tlid, _, _) -> tlid
+
+      let applyOp (canvas: Darklang.LibBackend.Models.Canvas) (op: Darklang.LibBackend.Models.Op) : Darklang.LibBackend.Models.Canvas =
+        match op with
+        | SetHandler(tlid, pos, spec, ast) ->
+            let handler = Darklang.LibBackend.Models.Handler { tlid = tlid; pos = pos; spec = spec; ast = ast }
+            { canvas with
+                handlers = Stdlib.Dict.set tlid handler canvas.handlers
+                deletedHandlers = Stdlib.Dict.remove tlid canvas.deletedHandlers }
+
+        | CreateDB(tlid, pos, name) ->
+            let db = Darklang.LibBackend.Models.DB { tlid = tlid; name = name; version = 0L; cols = [] }
+            { canvas with
+                dbs = Stdlib.Dict.set tlid db canvas.dbs
+                deletedDBs = Stdlib.Dict.remove tlid canvas.deletedDBs }
+
+        | AddDBCol(tlid, colId, colName, colType) ->
+            match Stdlib.Dict.get tlid canvas.dbs with
+            | Some db ->
+                let newCol = Darklang.LibBackend.Models.DBCol { name = colName; colType = colType; id = colId }
+                let updatedDB = { db with cols = Stdlib.List.append db.cols [newCol] }
+                { canvas with dbs = Stdlib.Dict.set tlid updatedDB canvas.dbs }
+            | None -> canvas
+
+        | SetFunction(fn) ->
+            { canvas with
+                userFunctions = Stdlib.Dict.set fn.tlid fn canvas.userFunctions
+                deletedUserFunctions = Stdlib.Dict.remove fn.tlid canvas.deletedUserFunctions }
+
+        | SetType(ut) ->
+            { canvas with
+                userTypes = Stdlib.Dict.set ut.tlid ut canvas.userTypes
+                deletedUserTypes = Stdlib.Dict.remove ut.tlid canvas.deletedUserTypes }
+
+        | DeleteTL(tlid) ->
+            // Move from active to deleted
+            match Stdlib.Dict.get tlid canvas.handlers with
+            | Some h ->
+                { canvas with
+                    handlers = Stdlib.Dict.remove tlid canvas.handlers
+                    deletedHandlers = Stdlib.Dict.set tlid h canvas.deletedHandlers }
+            | None -> canvas
+
+        | _ -> canvas  // Simplified - just return canvas for other operations
+
+      let fromOplist (meta: Darklang.LibBackend.Models.CanvasMeta) (ops: List<Darklang.LibBackend.Models.Op>) : Darklang.LibBackend.Models.Canvas =
+        Stdlib.List.fold (emptyCanvas meta) applyOp ops
+
+      // Simplified persistence - just no-ops for now
+      let saveOp (canvasId: String) (op: Darklang.LibBackend.Models.Op) (opCtr: Int64) : Unit =
+        ()
+
+      let updateOpCtr (canvasId: String) (browserId: String) (ctr: Int64) : Unit =
+        ()
+
+      let getOpCtrs (canvasId: String) : Dict<Int64> =
+        Stdlib.Dict.empty
+
+      let saveCanvas (canvas: Darklang.LibBackend.Models.Canvas) : Unit =
+        ()
+
+      let loadOpsForCanvas (canvasId: String) : List<Darklang.LibBackend.Models.Op> =
+        []

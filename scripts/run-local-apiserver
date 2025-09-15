@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Run the ApiServer canvas locally
+# This serves the API endpoints for the Dark Classic UI
+
+set -euo pipefail
+
+echo "Starting ApiServer on port 9000..."
+echo "Canvas: apiserver"
+echo ""
+
+# Run the canvas using the local execution
+./scripts/run-cli run-canvas apiserver --port 9000

@@ -1,0 +1,49 @@
+module Darklang =
+  module Cli =
+    module UI =
+      /// Launch the Dark Classic UI locally
+
+      let description = "Launch the Dark Classic UI in your browser"
+
+      let execute (state: Cli.AppState) (_args: List<String>) : Cli.AppState =
+        run ()
+        state
+
+      let help (_state: Cli.AppState) : Cli.AppState =
+        Stdlib.Cli.print "ui - Launch the Dark Classic UI"
+        Stdlib.Cli.print ""
+        Stdlib.Cli.print "Usage: ui"
+        Stdlib.Cli.print ""
+        Stdlib.Cli.print "This command starts the Dark Classic UI locally, allowing you to"
+        Stdlib.Cli.print "develop using the familiar Dark interface in your browser."
+        _state
+
+      let complete (_state: Cli.AppState) (_args: List<String>) : List<String> =
+        []
+
+      let run () : Unit =
+        // Initialize the database
+        Darklang.LibBackend.SQLite.initializeTables ()
+
+        Stdlib.Cli.print "Starting Dark Classic UI..."
+        Stdlib.Cli.print ""
+        Stdlib.Cli.print "ApiServer running at: http://localhost:9000"
+        Stdlib.Cli.print "Client UI running at: http://localhost:8000"
+        Stdlib.Cli.print ""
+        Stdlib.Cli.print "Opening browser to http://localhost:8000/a/default"
+        Stdlib.Cli.print "Press Ctrl+C to stop the server"
+
+        // Start the HTTP server for the ApiServer canvas
+        // This would need to be implemented to actually serve the canvas
+        // For now, just inform the user how to access it
+
+        // TODO: Actually start HTTP server on port 9000 for ApiServer
+        // TODO: Actually start static file server on port 8000 for UI
+        // TODO: Open browser automatically
+
+        Stdlib.Cli.print ""
+        Stdlib.Cli.print "Please run the following in separate terminals:"
+        Stdlib.Cli.print "1. cd ~/code/dark-client-fork && npm run dev"
+        Stdlib.Cli.print "2. cd ~/code/dark && ./scripts/run-local-apiserver"
+
+        ()

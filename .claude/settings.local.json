@@ -18,7 +18,10 @@
       "Bash(done)",
       "Bash(/home/stachu/code/dark/scripts/build/build-release-cli-exes.sh:*)",
       "Bash(scripts/run-backend-tests:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Read(//home/stachu/code/classic-dark/backend/src/ApiServer/**)",
+      "Read(//home/stachu/code/classic-dark/backend/src/LibBackend/**)",
+      "Read(//home/stachu/code/dark-client-fork/**)"
     ],
     "deny": []
   }

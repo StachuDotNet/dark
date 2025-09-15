@@ -1,0 +1,155 @@
+module Darklang =
+  module LibBackend =
+    module Execution =
+      /// Basic execution engine for functions and handlers
+
+      type Value =
+        | VString of String
+        | VInt of Int64
+        | VFloat of Float
+        | VBool of Bool
+        | VNull
+        | VList of List<Value>
+        | VDict of Dict<Value>
+        | VError of String
+
+      type ExecutionResult =
+        { result: Value
+          touchedTlids: List<Darklang.LibBackend.Models.TLID>
+          unlockedDbs: List<Darklang.LibBackend.Models.TLID> }
+
+      // Simple AST structure for basic execution
+      type SimpleExpr =
+        | EString of String
+        | EInt of Int64
+        | EFloat of Float
+        | EBool of Bool
+        | ENull
+        | EVar of String
+        | EList of List<SimpleExpr>
+        | EDict of List<(String * SimpleExpr)>
+        | EFnCall of name: String * args: List<SimpleExpr>
+        | ELet of name: String * value: SimpleExpr * body: SimpleExpr
+
+      let valueToJson (v: Value) : String =
+        match v with
+        | VString s -> $"\"{s}\""
+        | VInt i -> Builtin.int64ToString i
+        | VFloat f -> Builtin.floatToString f
+        | VBool true -> "true"
+        | VBool false -> "false"
+        | VNull -> "null"
+        | VList items -> "[]"  // Simplified - no recursion
+        | VDict dict -> "{}"  // Simplified - no recursion
+        | VError msg -> $"{{\"error\": \"{msg}\"}}"
+
+      let parseSimpleJson (json: String) : SimpleExpr =
+        // Very basic JSON parsing - in reality would need proper parser
+        match json with
+        | "null" -> ENull
+        | "true" -> EBool true
+        | "false" -> EBool false
+        | _ when Stdlib.String.startsWith "\"" json ->
+            let temp = Stdlib.String.dropFirst 1 json
+            let content = Stdlib.String.dropLast 1 temp
+            EString content
+        | _ when Stdlib.String.contains "." json ->
+            match Builtin.floatParse json with
+            | Ok f -> EFloat f
+            | Error _ -> EString json
+        | _ ->
+            match Builtin.int64Parse json with
+            | Ok i -> EInt i
+            | Error _ -> EString json
+
+      let evalExpr (env: Dict<Value>) (expr: SimpleExpr) : Value =
+        match expr with
+        | EString s -> VString s
+        | EInt i -> VInt i
+        | EFloat f -> VFloat f
+        | EBool b -> VBool b
+        | ENull -> VNull
+        | EVar name ->
+            match Stdlib.Dict.get name env with
+            | Some v -> v
+            | None -> VError $"Variable {name} not found"
+        | EList items -> VList []  // Simplified - no recursion
+        | EDict pairs -> VDict Stdlib.Dict.empty  // Simplified - no recursion
+        | EFnCall(name, args) -> VError "Function calls not supported"  // Simplified
+        | ELet(name, value, body) -> VError "Let expressions not supported"  // Simplified
+
+      let evalFnCall (env: Dict<Value>) (name: String) (args: List<Value>) : Value =
+        match (name, args) with
+        // Basic stdlib functions
+        | ("Stdlib.String.append", [VString a; VString b]) -> VString (a ++ b)
+        | ("Stdlib.String.length", [VString s]) -> VInt (Builtin.int64FromString (Stdlib.String.length s))
+        | ("Stdlib.Int64.add", [VInt a; VInt b]) -> VInt (a + b)
+        | ("Stdlib.Int64.subtract", [VInt a; VInt b]) -> VInt (a - b)
+        | ("Stdlib.Int64.multiply", [VInt a; VInt b]) -> VInt (a * b)
+        | ("Stdlib.List.length", [VList items]) -> VInt (Builtin.int64FromString (Stdlib.List.length items))
+        | ("Stdlib.List.head", [VList []]) -> VNull
+        | ("Stdlib.List.head", [VList items]) ->
+            let headOpt = Stdlib.List.head items
+            Stdlib.Option.withDefault VNull headOpt
+        | _ -> VError $"Unknown function: {name}"
+
+      let executeUserFunction (canvas: Darklang.LibBackend.Models.Canvas) (fnName: String) (args: List<String>) : ExecutionResult =
+        // Find function by name
+        let userFn =
+          (Stdlib.Dict.values canvas.userFunctions)
+          |> Stdlib.List.findFirst (fun f -> f.name == fnName)
+
+        match userFn with
+        | Some fn ->
+            // Parse arguments
+            let argValues = Stdlib.List.map parseSimpleJson args
+
+            // Create environment with parameters
+            let env =
+              Stdlib.List.fold2
+                Stdlib.Dict.empty
+                (fun env param argValue ->
+                  Stdlib.Dict.set param.name (evalExpr Stdlib.Dict.empty argValue) env)
+                fn.parameters
+                argValues
+
+            // Parse and execute function body
+            let bodyExpr = parseSimpleJson fn.body
+            let result = evalExpr env bodyExpr
+
+            ExecutionResult
+              { result = result
+                touchedTlids = [fn.tlid]
+                unlockedDbs = [] }
+        | None ->
+            ExecutionResult
+              { result = VError $"Function {fnName} not found"
+                touchedTlids = []
+                unlockedDbs = [] }
+
+      let executeHandler (canvas: Darklang.LibBackend.Models.Canvas) (handlerTlid: Darklang.LibBackend.Models.TLID) (input: List<(String * String)>) : ExecutionResult =
+        match Stdlib.Dict.get handlerTlid canvas.handlers with
+        | Some handler ->
+            // Create environment from input
+            let env =
+              Stdlib.List.fold
+                Stdlib.Dict.empty
+                (fun env (name, valueJson) ->
+                  let expr = parseSimpleJson valueJson
+                  let value = evalExpr Stdlib.Dict.empty expr
+                  Stdlib.Dict.set name value env)
+                input
+
+            // Parse and execute handler AST
+            let astExpr = parseSimpleJson handler.ast
+            let result = evalExpr env astExpr
+
+            ExecutionResult
+              { result = result
+                touchedTlids = [handler.tlid]
+                unlockedDbs = [] }
+        | None ->
+            ExecutionResult
+              { result = VError $"Handler {handlerTlid} not found"
+                touchedTlids = []
+                unlockedDbs = [] }

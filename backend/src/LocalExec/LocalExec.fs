@@ -24,6 +24,16 @@ module HandleCommand =
       return Ok()
     }
 
+  let reloadApiServerCanvas () : Ply<Result<unit, string>> =
+    uply {
+      let! (canvasId, toplevels) =
+        Canvas.loadFromDisk LibPackageManager.PackageManager.pt "dark-apiserver"
+
+      print $"Loaded apiserver canvas {canvasId} with {List.length toplevels} toplevels"
+
+      return Ok()
+    }
+
   let reloadPackages () : Ply<Result<unit, string>> =
     uply {
       // first, load the packages from disk, ensuring all parse well
@@ -81,6 +91,10 @@ module HandleCommand =
       // Reload dark-packages canvas after package reload
       print "Reloading dark-packages canvas..."
       let! _ = reloadDarkPackagesCanvas ()
+
+      // Also reload apiserver canvas
+      print "Reloading apiserver canvas..."
+      let! _ = reloadApiServerCanvas ()
 
       return Ok()
     }
@@ -164,11 +178,17 @@ let main (args : string[]) : int =
         "loading dark-packages canvas from disk"
         (HandleCommand.reloadDarkPackagesCanvas ())
 
+    | [ "reload-apiserver-canvas" ] ->
+      handleCommand
+        "loading apiserver canvas from disk"
+        (HandleCommand.reloadApiServerCanvas ())
+
     | _ ->
       print "Invalid arguments"
       print "Available commands:"
       print "  reload-packages"
       print "  reload-dark-packages-canvas"
+      print "  reload-apiserver-canvas"
       print "  migrations run"
       print "  migrations list"
       NonBlockingConsole.wait ()
