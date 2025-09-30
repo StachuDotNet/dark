@@ -14,6 +14,17 @@ module PT = LibExecution.ProgramTypes
 module BinarySerialization = LibBinarySerialization.BinarySerialization
 
 
+// how do we deal with different sessions having different package stuff available?
+// (comes up when we're doing package search - a search against one session should return diff results than a search in another)
+// 1. Keep only Sessions+Patches+Ops in SQL, and have LibPM keep in-memory instances of the "packages tables" (on which we can search etc.)
+// 2. Evolve our SQL schema in fancy ways
+//    - separate package tables per active session package_sessionId123_types
+// 3. Separate SQL DB per session
+//     default would stay as data.db
+//     some other session might be stored as session-123.db
+// all these solutions are bad because they scale O(N) with the number of sessions. and there might be thousands of sessions. (most abandoned)
+
+
 module Type =
   let find (name : PT.PackageType.Name) : Ply<Option<PT.FQTypeName.Package>> =
     uply {

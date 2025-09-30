@@ -24,7 +24,15 @@
     <Compile Include="Purge.fs" />
     <Compile Include="Inserts.fs" />
     <Compile Include="ProgramTypes.fs" />
+    <Compile Include="ContentStore.fs" />
+    <Compile Include="NameStore.fs" />
+    <Compile Include="SessionProjection.fs" />
+    <Compile Include="OpValidation.fs" />
+    <Compile Include="OpExecution.fs" />
+    <Compile Include="SessionStorage.fs" />
+    <Compile Include="SessionManager.fs" />
     <Compile Include="RuntimeTypes.fs" />
+    <Compile Include="SessionAwarePackageManager.fs" />
     <Compile Include="PackageManager.fs" />
     <Compile Include="Scripts.fs" />
   </ItemGroup>
