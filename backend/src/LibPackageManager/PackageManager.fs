@@ -10,29 +10,46 @@ open LibPackageManager.Caching
 module PMPT = LibPackageManager.ProgramTypes
 module PMRT = LibPackageManager.RuntimeTypes
 
-
-// TODO: bring back eager loading
+/// The default RuntimeTypes.PackageManager using the default session
 let rt : RT.PackageManager =
-  { getType = withCache PMRT.Type.get
-    getFn = withCache PMRT.Fn.get
-    getValue = withCache PMRT.Value.get
+  SessionAwarePackageManager.createDefault ()
 
-    init =
-      uply {
-        //eagerLoad
-        return ()
-      } }
+/// Create a RuntimeTypes.PackageManager for a specific session
+let rtForSession (sessionId: uuid) : RT.PackageManager =
+  SessionAwarePackageManager.createForSpecificSession sessionId
 
-
+/// The default ProgramTypes.PackageManager using session-aware lookups
 let pt : PT.PackageManager =
   { findType = withCache PMPT.Type.find
     findValue = withCache PMPT.Value.find
     findFn = withCache PMPT.Fn.find
 
-    getType = withCache PMPT.Type.get
-    getFn = withCache PMPT.Fn.get
-    getValue = withCache PMPT.Value.get
+    getType = withCache (fun id -> SessionManager.getType None id)
+    getFn = withCache (fun id -> SessionManager.getFn None id)
+    getValue = withCache (fun id -> SessionManager.getValue None id)
 
-    search = LibPackageManager.ProgramTypes.search
+    search = fun query -> SessionManager.searchInSession None query
 
-    init = uply { return () } }
+    init =
+      uply {
+        do! SessionManager.ensureDefaultSession ()
+        return ()
+      } }
+
+/// Create a ProgramTypes.PackageManager for a specific session
+let ptForSession (sessionId: uuid) : PT.PackageManager =
+  { findType = withCache PMPT.Type.find
+    findValue = withCache PMPT.Value.find
+    findFn = withCache PMPT.Fn.find
+
+    getType = withCache (fun id -> SessionManager.getType (Some sessionId) id)
+    getFn = withCache (fun id -> SessionManager.getFn (Some sessionId) id)
+    getValue = withCache (fun id -> SessionManager.getValue (Some sessionId) id)
+
+    search = fun query -> SessionManager.searchInSession (Some sessionId) query
+
+    init =
+      uply {
+        do! SessionManager.ensureDefaultSession ()
+        return ()
+      } }

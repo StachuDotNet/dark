@@ -1,0 +1,1 @@
+- **Integrated trace viewer**: See execution for every request/command

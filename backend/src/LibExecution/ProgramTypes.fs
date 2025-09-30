@@ -751,3 +751,161 @@ module Toplevel =
     match tl with
     | TLDB db -> db.tlid
     | TLHandler h -> h.tlid
+
+
+/// Represents a location in the package namespace
+module PackageLocation =
+  type T = {
+    owner: string
+    modules: List<string>
+    name: string
+  }
+
+  let create (owner: string) (modules: List<string>) (name: string) : T =
+    { owner = owner; modules = modules; name = name }
+
+  let toString (location: T) : string =
+    let moduleStr =
+      if List.isEmpty location.modules then
+        ""
+      else
+        (String.concat "." location.modules) + "."
+    $"{location.owner}.{moduleStr}{location.name}"
+
+  let parse (locationString: string) : Result<T, string> =
+    let parts = locationString.Split('.') |> Array.toList
+    match parts with
+    | owner :: rest when not (List.isEmpty rest) ->
+      let reversedRest = List.rev rest
+      match reversedRest with
+      | name :: reversedModules ->
+        let modules = List.rev reversedModules
+        Ok { owner = owner; modules = modules; name = name }
+      | [] -> Error $"Invalid package location: {locationString}"
+    | _ -> Error $"Invalid package location: {locationString}"
+
+
+/// Atomic operations that can be tracked and validated
+module Op =
+  type T =
+    // Content Operations - create new immutable content
+    | AddFunctionContent of hash: string * content: PackageFn.PackageFn
+    | AddTypeContent of hash: string * content: PackageType.PackageType
+    | AddValueContent of hash: string * content: PackageValue.PackageValue
+
+    // Name Operations - manage name pointers
+    | CreateName of location: PackageLocation.T * hash: string * contentType: string
+    | UpdateNamePointer of location: PackageLocation.T * oldHash: string * newHash: string
+    | MoveName of oldLocation: PackageLocation.T * newLocation: PackageLocation.T
+    | UnassignName of location: PackageLocation.T
+
+    // Content Operations - deprecate content (by hash)
+    | DeprecateContent of hash: string * reason: string * replacement: string option
+
+
+/// Patch status workflow
+module PatchStatus =
+  type T =
+    | Draft       // Work in progress, can be modified
+    | Ready       // Complete and ready for review
+    | Applied     // Successfully applied to instance
+    | Rejected    // Rejected during validation
+
+
+/// A logical collection of operations
+module Patch =
+  type Metadata = {
+    todos: List<string>
+    tags: List<string>
+    testsCovered: List<string>
+  }
+
+  type T = {
+    id: uuid
+    intent: string                     // Human-readable description
+    ops: List<Op.T>
+    parentPatches: List<uuid>          // Patches this depends on
+    status: PatchStatus.T
+    author: string
+    createdAt: System.DateTime
+    updatedAt: System.DateTime
+    metadata: Metadata
+  }
+
+
+/// Session state
+module SessionState =
+  type T =
+    | Active
+    | Suspended
+    | Completed
+
+
+/// Working context within a session
+module WorkspaceState =
+  type T = {
+    openFiles: List<PackageLocation.T>
+    currentFile: PackageLocation.T option
+    breakpoints: List<PackageLocation.T * int>
+    bookmarks: List<PackageLocation.T * string>
+  }
+
+  let empty : T = {
+    openFiles = []
+    currentFile = None
+    breakpoints = []
+    bookmarks = []
+  }
+
+
+/// A development session
+module Session =
+  type T = {
+    id: uuid
+    name: string
+    intent: string                      // What you're working on
+    owner: string
+    patches: List<uuid>                 // Patches created in this session
+    currentPatch: uuid option
+    startedAt: System.DateTime
+    lastActiveAt: System.DateTime
+    state: SessionState.T
+    workspace: WorkspaceState.T
+  }
+
+
+/// Instance types in the Darklang ecosystem
+module InstanceType =
+  type T =
+    | LocalCLI        // Individual developer machine
+    | HttpServer   // Main Darklang package repository
+
+
+/// Darklang instance definition
+module Instance =
+  type T = {
+    id: uuid
+    type_: InstanceType.T
+    name: string
+    lastSyncAt: System.DateTime option
+  }
+
+
+/// Types of conflicts that can occur
+module Conflict =
+  type T =
+    // Two patches trying to point the same name to different content
+    | NameConflict of location: PackageLocation.T * hash1: string * hash2: string
+    // Type signature changed in incompatible way (to be defined more specifically later)
+    | TypeIncompatibility of location: PackageLocation.T * oldHash: string * newHash: string
+
+
+/// Validation results for operations and patches
+module ValidationResult =
+  type T = {
+    isValid: bool
+    conflicts: List<Conflict.T>
+    dependencies: List<PackageLocation.T>
+    warnings: List<string>
+    suggestions: List<string>
+  }
