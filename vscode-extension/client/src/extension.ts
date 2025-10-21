@@ -14,6 +14,7 @@ import { PackageCommands } from "./commands/packageCommands";
 import { InstanceCommands } from "./commands/instanceCommands";
 
 import { StatusBarManager } from "./ui/statusbar/statusBarManager";
+import { BranchStateManager } from "./data/branchStateManager";
 
 import { DarkContentProvider } from "./providers/darkContentProvider";
 import { DarklangFileDecorationProvider } from "./providers/fileDecorationProvider";
@@ -100,6 +101,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Pass the LSP client to the content provider once it's ready
   client.onReady().then(() => {
     contentProvider.setClient(client);
+    BranchStateManager.getInstance().setClient(client);
   });
 
   // Initialize file decoration provider for badges

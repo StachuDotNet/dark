@@ -256,6 +256,14 @@ let handleIncomingMessage
           Some(Object [ ("nodeId", String nodeId) ])) ->
           TreeView.handleGetChildNodesRequest state requestId nodeId
 
+        | ("darklang/getBranches", Some requestId, None) ->
+          Branches.handleGetBranchesRequest state requestId
+
+        | ("darklang/createBranch",
+          Some requestId,
+          Some(Object [ ("name", String branchName) ])) ->
+          Branches.handleCreateBranchRequest state requestId branchName
+
         | other ->
           log $"TODO: we don't yet support this method: {r.method}"
           state

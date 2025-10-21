@@ -1,5 +1,38 @@
 module Darklang.Cli.Packages.Branch
 
+let displayBranchInfo (branch: SCM.Branch.Branch) : Unit =
+  Stdlib.printLine ""
+  Stdlib.printLine (Colors.boldText "Branch Information:")
+  Stdlib.printLine ""
+
+  let stateText =
+    match branch.state with
+    | Active -> "active"
+    | Merged -> "merged"
+    | Abandoned -> "abandoned"
+
+  Stdlib.printLine $"  ID:             {Stdlib.Uuid.toString branch.id}"
+
+  let createdByText =
+    match branch.createdBy with
+    | Some uuid -> Stdlib.Uuid.toString uuid
+    | None -> "(none)"
+
+  Stdlib.printLine $"  Created by:     {createdByText}"
+  Stdlib.printLine $"  Title:          {branch.title}"
+  Stdlib.printLine $"  State:          {stateText}"
+  Stdlib.printLine $"  Created at:     {Stdlib.DateTime.toString branch.createdAt}"
+  Stdlib.printLine $"  Last active:    {Stdlib.DateTime.toString branch.lastActiveAt}"
+
+  let mergedAtText =
+    match branch.mergedAt with
+    | Some dt -> Stdlib.DateTime.toString dt
+    | None -> "(not merged)"
+
+  Stdlib.printLine $"  Merged at:      {mergedAtText}"
+  Stdlib.printLine ""
+
+
 let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   let accountId = Darklang.SCM.Account.getCurrentId ()
 
@@ -110,13 +143,54 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
         | Abandoned -> "abandoned"
 
       Stdlib.printLine $"Branch: {branch.title} ({statusText})"
-      Stdlib.printLine $"ID: {branch.id}"
-      Stdlib.printLine $"Last active: {branch.lastActiveAt}"
+      Stdlib.printLine $"ID: {Stdlib.Uuid.toString branch.id}"
+      Stdlib.printLine $"Last active: {Stdlib.DateTime.toString branch.lastActiveAt}"
       Stdlib.printLine ""
 
     | None -> Stdlib.printLine (Colors.error "Current branch not found")
 
     state
+
+  | ["info"] ->
+    let currentBranch =
+      match state.currentBranchId with
+      | Some branchId -> Darklang.SCM.Branch.get branchId
+      | None -> Stdlib.Option.Option.None
+
+    match currentBranch with
+    | Some branch ->
+      displayBranchInfo branch
+      state
+
+    | None ->
+      Stdlib.printLine (Colors.error "Current branch not found")
+      state
+
+  | ["info"; name] ->
+    let branches = Darklang.SCM.Branch.findByTitle name
+
+    match branches with
+    | [] ->
+      Stdlib.printLine (Colors.error $"Branch not found: {name}")
+      state
+
+    | [branch] ->
+      displayBranchInfo branch
+      state
+
+    | multipleBranches ->
+      // Multiple branches with same name
+      Stdlib.printLine (Colors.error $"Multiple branches found with name '{name}':")
+      Stdlib.printLine ""
+
+      multipleBranches
+      |> Stdlib.List.iter (fun b ->
+        let dateStr = Stdlib.DateTime.toString b.createdAt
+        let idShort = Stdlib.String.slice (Stdlib.Uuid.toString b.id) 0L 8L
+        Stdlib.printLine $"  {b.title} (id: {idShort}..., created {dateStr})")
+
+      Stdlib.printLine ""
+      state
 
   | ["clear"] ->
     Darklang.SCM.Account.clearCurrentBranch ()
@@ -139,6 +213,8 @@ let help (state: Cli.AppState) : Cli.AppState =
   Stdlib.printLine "  dark branch switch NAME    Switch to existing branch"
   Stdlib.printLine "  dark branch switch-id ID   Switch to branch by ID"
   Stdlib.printLine "  dark branch status         Show current branch status"
+  Stdlib.printLine "  dark branch info           Show detailed info (current branch)"
+  Stdlib.printLine "  dark branch info NAME      Show detailed info (specific branch)"
   Stdlib.printLine "  dark branch clear          Clear current branch (search all packages)"
   Stdlib.printLine ""
   state

@@ -166,6 +166,11 @@
 					"group": "inline@2"
 				},
 				{
+					"command": "darklang.branch.new",
+					"when": "view == darklangWorkspace && viewItem == workspace-branch-root",
+					"group": "inline@3"
+				},
+				{
 					"command": "darklang.branch.switch",
 					"when": "view == darklangWorkspace && viewItem == branch",
 					"group": "basic@1"

@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { UrlPatternRouter, ParsedUrl } from "./urlPatternRouter";
 import { PackageContentProvider } from "./content/packageContentProvider";
 import { LanguageClient } from "vscode-languageclient/node";
+import { BranchStateManager } from "../data/branchStateManager";
 
 export class DarkContentProvider implements vscode.TextDocumentContentProvider {
   private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
@@ -161,17 +162,37 @@ ${JSON.stringify(parsedUrl, null, 2)}
   }
 
   private getBranchOverviewContent(branchId: string): string {
-    return `# Branch: ${branchId}
+    const branchManager = BranchStateManager.getInstance();
+    const branch = branchManager.getBranches().find(b => b.id === branchId);
+
+    if (!branch) {
+      return `# Branch Not Found
+
+Branch with ID \`${branchId}\` was not found.
+`;
+    }
+
+    const formatDate = (dateStr: string) => {
+      try {
+        return new Date(dateStr).toLocaleString();
+      } catch {
+        return dateStr;
+      }
+    };
+
+    return `# Branch: ${branch.title}
 
 ## Branch Information
 
 | Field | Value |
 |-------|-------|
-| **ID** | ${branchId} |
-| **Name** | ${branchId === 'feature-auth' ? 'Authentication Features' : branchId} |
-| **Status** | ${branchId === 'feature-auth' ? 'Active' : 'Available'} |
-| **Created** | 2024-01-15 10:00:00 |
-| **Last Activity** | 2024-01-15 16:45:00 |
+| **ID** | \`${branch.id}\` |
+| **Title** | ${branch.title} |
+| **State** | ${branch.state} |
+| **Created By** | ${branch.createdBy || '(none)'} |
+| **Created At** | ${formatDate(branch.createdAt)} |
+| **Last Active** | ${formatDate(branch.lastActiveAt)} |
+| **Merged At** | ${branch.mergedAt ? formatDate(branch.mergedAt) : '(not merged)'} |
 
 ## Branch Contents
 

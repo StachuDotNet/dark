@@ -48,7 +48,9 @@ let createFn
 
 let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   match args with
-  | [ location ] -> createFn state.packageData.currentLocation location state
+  | [ location ] ->
+    let updateState = createFn state.packageData.currentLocation location
+    updateState state
 
   | _ -> help state
 

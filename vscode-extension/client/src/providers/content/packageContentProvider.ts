@@ -48,10 +48,7 @@ export class PackageContentProvider {
 
     try {
       const packagePath = target;
-
-      const uri = isModule
-        ? `darkfs:/module/${packagePath}.dark`
-        : `darkfs:/${packagePath}.dark`;
+      const uri = `darkfs:/${packagePath}.dark`;
 
       const response = await this.client.sendRequest<{ content: string }>(
         'fileSystem/read',

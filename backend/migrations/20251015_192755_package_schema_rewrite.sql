@@ -22,21 +22,21 @@ DROP TABLE IF EXISTS package_functions_v0;
 
 
 -- Create new package content tables (no location info)
-CREATE TABLE package_types (
+CREATE TABLE IF NOT EXISTS package_types (
   id TEXT PRIMARY KEY, -- (UUID)
   -- TODO hash
   pt_def BLOB NOT NULL,
   rt_def BLOB NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE TABLE package_values (
+CREATE TABLE IF NOT EXISTS package_values (
   id TEXT PRIMARY KEY, -- (UUID)
   -- TODO hash
   pt_def BLOB NOT NULL,
   rt_dval BLOB NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE TABLE package_functions (
+CREATE TABLE IF NOT EXISTS package_functions (
   id TEXT PRIMARY KEY, -- (UUID)
   -- TODO hash
   pt_def BLOB NOT NULL,
@@ -48,7 +48,7 @@ CREATE TABLE package_functions (
 
 -- Locations table: maps (owner, modules, name) -> item_id
 -- Supports branch-specific overrides and deprecation tracking
-CREATE TABLE locations (
+CREATE TABLE IF NOT EXISTS locations (
   id TEXT PRIMARY KEY,              -- Item ID (references package_types/package_values/package_functions)
 
   branch_id TEXT NULL,              -- NULL = merged (main), non-null = branch-specific
@@ -63,22 +63,22 @@ CREATE TABLE locations (
   -- Multiple branches can have conflicting locations (conflict detection needed at merge time)
 );
 
-CREATE INDEX idx_locations_lookup ON locations(owner, modules, name, branch_id)
+CREATE INDEX IF NOT EXISTS idx_locations_lookup ON locations(owner, modules, name, branch_id)
   WHERE deprecated_at IS NULL;
-CREATE INDEX idx_locations_module ON locations(owner, modules)
+CREATE INDEX IF NOT EXISTS idx_locations_module ON locations(owner, modules)
   WHERE deprecated_at IS NULL;
-CREATE INDEX idx_locations_conflicts ON locations(owner, modules, name, branch_id)
+CREATE INDEX IF NOT EXISTS idx_locations_conflicts ON locations(owner, modules, name, branch_id)
   WHERE deprecated_at IS NULL AND branch_id IS NOT NULL;
 
 -- Index for branch shadowing/override lookups (used in NOT EXISTS subqueries)
 -- This helps find if a branch-specific version exists for a given location
-CREATE INDEX idx_locations_shadowing ON locations(owner, modules, name, item_type, branch_id, deprecated_at);
+CREATE INDEX IF NOT EXISTS idx_locations_shadowing ON locations(owner, modules, name, item_type, branch_id, deprecated_at);
 
 -- Index for branch_id filtering to speed up branch-scoped searches
-CREATE INDEX idx_locations_branch ON locations(branch_id) WHERE branch_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_locations_branch ON locations(branch_id) WHERE branch_id IS NOT NULL;
 
 
-CREATE TABLE branches (
+CREATE TABLE IF NOT EXISTS branches (
   id TEXT PRIMARY KEY,
   created_by TEXT NULL REFERENCES accounts(id),   -- Who created this branch (for attribution)
   title TEXT NOT NULL,                            -- User-friendly name (non-unique)
@@ -88,11 +88,11 @@ CREATE TABLE branches (
   merged_at TIMESTAMP NULL
 );
 
-CREATE INDEX idx_branches_state ON branches(state);
-CREATE INDEX idx_branches_active ON branches(last_active_at) WHERE state = 'active';
+CREATE INDEX IF NOT EXISTS idx_branches_state ON branches(state);
+CREATE INDEX IF NOT EXISTS idx_branches_active ON branches(last_active_at) WHERE state = 'active';
 
 -- Track which branch each account is currently working on
-CREATE TABLE account_context (
+CREATE TABLE IF NOT EXISTS account_context (
   account_id TEXT PRIMARY KEY REFERENCES accounts(id),
   current_branch_id TEXT REFERENCES branches(id),
   last_updated_at TIMESTAMP NOT NULL
@@ -106,14 +106,14 @@ ON CONFLICT DO NOTHING;
 
 -- Ops tracking table - source of truth for all package changes
 -- The package_types/package_values/package_functions/locations tables are projections of these ops
-CREATE TABLE package_ops (
+CREATE TABLE IF NOT EXISTS package_ops (
   id TEXT PRIMARY KEY,
   branch_id TEXT NULL,              -- NULL = merged to main, non-null = branch-specific
   op_blob BLOB NOT NULL,            -- Serialized PackageOp (includes type: AddType/AddValue/AddFn/Set*Name)
   created_at TIMESTAMP NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX idx_package_ops_branch ON package_ops(branch_id);
-CREATE INDEX idx_package_ops_created ON package_ops(created_at);
+CREATE INDEX IF NOT EXISTS idx_package_ops_branch ON package_ops(branch_id);
+CREATE INDEX IF NOT EXISTS idx_package_ops_created ON package_ops(created_at);
 
 -- FUTURE: Patches/commits within branches
 -- CREATE TABLE patches (

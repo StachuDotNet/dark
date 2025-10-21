@@ -48,98 +48,96 @@ module ReadFile =
         match Builtin.cliScriptsGet scriptName with
         | Some script -> script.text
         | None -> $"Script not found: {scriptName}"
-
-      // Check if this is a full module request
-      elif Stdlib.String.startsWith nameForLookup "module/" then
-        let modulePath =
-          nameForLookup
-          |> Stdlib.String.dropFirst 7L  // Drop "module/"
-          |> Stdlib.String.split "."
-
-        // Search for all entities in this module
-        let searchQuery =
-          LanguageTools.ProgramTypes.Search.SearchQuery
-            { currentModule = modulePath
-              text = ""
-              searchDepth = LanguageTools.ProgramTypes.Search.SearchDepth.OnlyDirectDescendants
-              entityTypes = [
-                LanguageTools.ProgramTypes.Search.EntityType.Fn
-                LanguageTools.ProgramTypes.Search.EntityType.Type
-                LanguageTools.ProgramTypes.Search.EntityType.Value
-              ]
-              exactMatch = false }
-
-        let searchResults =
-          LanguageTools.PackageManager.Search.search state.branchID searchQuery
-
-        let functions =
-          searchResults.fns
-          |> Stdlib.List.map (fun locatedFn ->
-            locatedFn.entity |> PrettyPrinter.ProgramTypes.packageFn)
-          |> Stdlib.String.join "\n\n"
-
-        let types =
-          searchResults.types
-          |> Stdlib.List.map (fun locatedType ->
-            locatedType.entity |> PrettyPrinter.ProgramTypes.packageType)
-          |> Stdlib.String.join "\n\n"
-
-        let values =
-          searchResults.values
-          |> Stdlib.List.map (fun locatedValue ->
-            locatedValue.entity |> PrettyPrinter.ProgramTypes.packageValue)
-          |> Stdlib.String.join "\n\n"
-
-        let allDefinitions =
-          [ types; values; functions ]
-          |> Stdlib.List.filter (fun s -> s != "")
-          |> Stdlib.String.join "\n\n"
-
-        // Build module header with proper nesting
-        let moduleHeader =
-          modulePath
-          |> Stdlib.List.indexedMap (fun i name ->
-            let indent = Stdlib.String.repeat "  " i
-            $"{indent}module {name} =")
-          |> Stdlib.String.join "\n"
-
-        let contentIndent = Stdlib.String.repeat "  " (Stdlib.List.length modulePath)
-        let indentedContent =
-          allDefinitions
-          |> Stdlib.String.split "\n"
-          |> Stdlib.List.map (fun line ->
-            if line == "" then line else $"{contentIndent}{line}")
-          |> Stdlib.String.join "\n"
-
-        $"{moduleHeader}\n{indentedContent}"
       else
         // Handle package entities
         let pm = LanguageTools.PackageManager.pm ()
 
-        // Try to find the entity in the package manager
-        // First try as a type, then function, then value
-        // Try to find as a type
-        match pm.findType branchID location with
-        | Some id ->
-          match pm.getType id with
-          | Some typ -> typ |> PrettyPrinter.ProgramTypes.packageType
-          | None -> "Could not get type"
-        | None ->
-          // Try to find as a function
-          match pm.findFn branchID location with
+        // Try to find as a specific entity (type, function, or value)
+        let entityContent =
+          match pm.findType branchID location with
           | Some id ->
-            match pm.getFn id with
-            | Some fn -> fn |> PrettyPrinter.ProgramTypes.packageFn
-            | None -> "Could not get function"
+            match pm.getType id with
+            | Some typ -> Stdlib.Option.Option.Some(typ |> PrettyPrinter.ProgramTypes.packageType)
+            | None -> Stdlib.Option.Option.None
           | None ->
-            // Try to find as a value
-            match pm.findValue branchID location with
+            match pm.findFn branchID location with
             | Some id ->
-              match pm.getValue id with
-              | Some value ->
-                value |> PrettyPrinter.ProgramTypes.packageValue
-              | None -> "Could not get value"
-            | None -> $"Package element not found: {location}"
+              match pm.getFn id with
+              | Some fn -> Stdlib.Option.Option.Some(fn |> PrettyPrinter.ProgramTypes.packageFn)
+              | None -> Stdlib.Option.Option.None
+            | None ->
+              match pm.findValue branchID location with
+              | Some id ->
+                match pm.getValue id with
+                | Some value -> Stdlib.Option.Option.Some(value |> PrettyPrinter.ProgramTypes.packageValue)
+                | None -> Stdlib.Option.Option.None
+              | None -> Stdlib.Option.Option.None
+
+        match entityContent with
+        | Some content -> content
+        | None ->
+          // Not a specific entity, treat as a module
+          let modulePath = nameForLookup |> Stdlib.String.split "."
+
+          // Search for all entities in this module
+          let searchQuery =
+            LanguageTools.ProgramTypes.Search.SearchQuery
+              { currentModule = modulePath
+                text = ""
+                searchDepth = LanguageTools.ProgramTypes.Search.SearchDepth.OnlyDirectDescendants
+                entityTypes = [
+                  LanguageTools.ProgramTypes.Search.EntityType.Fn
+                  LanguageTools.ProgramTypes.Search.EntityType.Type
+                  LanguageTools.ProgramTypes.Search.EntityType.Value
+                ]
+                exactMatch = false }
+
+          let searchResults =
+            LanguageTools.PackageManager.Search.search state.branchID searchQuery
+
+          let functions =
+            searchResults.fns
+            |> Stdlib.List.map (fun locatedFn ->
+              locatedFn.entity |> PrettyPrinter.ProgramTypes.packageFn)
+            |> Stdlib.String.join "\n\n"
+
+          let types =
+            searchResults.types
+            |> Stdlib.List.map (fun locatedType ->
+              locatedType.entity |> PrettyPrinter.ProgramTypes.packageType)
+            |> Stdlib.String.join "\n\n"
+
+          let values =
+            searchResults.values
+            |> Stdlib.List.map (fun locatedValue ->
+              locatedValue.entity |> PrettyPrinter.ProgramTypes.packageValue)
+            |> Stdlib.String.join "\n\n"
+
+          let allDefinitions =
+            [ types; values; functions ]
+            |> Stdlib.List.filter (fun s -> s != "")
+            |> Stdlib.String.join "\n\n"
+
+          // Build module header with proper nesting
+          let moduleHeader =
+            modulePath
+            |> Stdlib.List.indexedMap (fun i name ->
+              let indent = Stdlib.String.repeat "  " i
+              $"{indent}module {name} =")
+            |> Stdlib.String.join "\n"
+
+          let contentIndent = Stdlib.String.repeat "  " (Stdlib.List.length modulePath)
+          let indentedContent =
+            allDefinitions
+            |> Stdlib.String.split "\n"
+            |> Stdlib.List.map (fun line ->
+              if line == "" then line else $"{contentIndent}{line}")
+            |> Stdlib.String.join "\n"
+
+          if allDefinitions == "" then
+            $"Module or package element not found: {nameForLookup}"
+          else
+            $"{moduleHeader}\n{indentedContent}"
 
     sendResponse state requestId getContent
 

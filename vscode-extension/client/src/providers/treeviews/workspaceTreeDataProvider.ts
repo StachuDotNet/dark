@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { BranchNode } from "../../types";
-import { BranchStateManager, DemoBranchId } from "../../data/branchStateManager";
+import { BranchStateManager } from "../../data/branchStateManager";
 import { InstanceDemoData } from "../../data/demo/instanceDemoData";
 import { buildPackageTree, change } from "../../utils/patchTreeBuilder";
 
@@ -228,8 +228,8 @@ export class WorkspaceTreeDataProvider implements vscode.TreeDataProvider<Branch
   }
 
   private getRootNodes(): BranchNode[] {
-    const branchState = this.branchStateManager.getCurrentBranchState();
-    const branchName = branchState.statusBar.branch.name;
+    const branchName = this.branchStateManager.getCurrentBranchName();
+    const branchId = this.branchStateManager.getCurrentBranchId();
 
     // Get instances for the Instance node
     const instances = InstanceDemoData.getInstancesData();
@@ -254,9 +254,6 @@ export class WorkspaceTreeDataProvider implements vscode.TreeDataProvider<Branch
       }))
     }));
 
-    // Get patches for the Patches node
-    const patches = this.getBranchPatches();
-
     return [
       // Instance node (collapsed by default)
       {
@@ -268,116 +265,12 @@ export class WorkspaceTreeDataProvider implements vscode.TreeDataProvider<Branch
       },
       // Branch node (non-expandable, clickable)
       {
-        id: "workspace-branch",
+        id: branchId || "no-branch",
         label: `Branch: ${branchName}`,
         type: "branch-root" as any,
         contextValue: "workspace-branch-root",
         children: []
-      },
-      // Patches node (expanded by default)
-      {
-        id: "workspace-patches",
-        label: `Patches (${patches.length})`,
-        type: "patches-root" as any,
-        contextValue: "workspace-patches-root",
-        children: patches
       }
     ];
-  }
-
-  private getBranchPatches(): BranchNode[] {
-    // Get patches from branch state
-    const currentBranch = this.branchStateManager.currentBranch;
-
-    switch (currentBranch) {
-      case DemoBranchId.Default:
-        // Default branch - no patches
-        return [];
-
-      case DemoBranchId.FeatureFilterMap:
-        return [
-          {
-            id: "patch-quick-edits-filtermap",
-            label: "Quick edits",
-            type: "patch",
-            contextValue: "patch-quick-edits",
-            patchData: { isFocused: true },
-            children: buildPackageTree("patch-quick-edits-filtermap", [
-              change("Darklang.Stdlib.List.map", "modify")
-            ])
-          },
-          {
-            id: "patch-filtermap",
-            label: "Add List.filterMap function",
-            type: "patch",
-            contextValue: "patch-local",
-            children: buildPackageTree("patch-filtermap", [
-              change("Darklang.Stdlib.List.filterMap", "add"),
-              change("Darklang.Stdlib.List.map", "modify")
-            ])
-          }
-        ];
-
-      case DemoBranchId.RefactorDbLayer:
-        return [
-          {
-            id: "patch-quick-edits-db",
-            label: "Quick edits",
-            type: "patch",
-            contextValue: "patch-quick-edits",
-            patchData: { isFocused: true },
-            children: buildPackageTree("patch-quick-edits-db", [
-              change("MyApp.Database.query", "modify"),
-              change("MyApp.Database.connect", "modify")
-            ])
-          },
-          {
-            id: "patch-db",
-            label: "Database Layer: Connection pooling",
-            type: "patch",
-            contextValue: "patch-local",
-            children: buildPackageTree("patch-db", [
-              change("MyApp.Database.ConnectionPool", "add"),
-              change("MyApp.Database.connect", "modify"),
-              change("MyApp.Database.query", "modify")
-            ])
-          },
-          {
-            id: "patch-shared-auth",
-            label: "Shared auth updates",
-            type: "patch",
-            contextValue: "patch-shared",
-            patchData: { referenceCount: 3 },
-            children: buildPackageTree("patch-shared-auth", [
-              change("MyApp.Auth.validateToken", "modify"),
-              change("MyApp.Auth.refreshToken", "add")
-            ])
-          },
-          {
-            id: "patch-remote-stdlib",
-            label: "Stdlib improvements (Bob)",
-            type: "patch",
-            contextValue: "patch-remote",
-            children: buildPackageTree("patch-remote-stdlib", [
-              change("Darklang.Stdlib.List.head", "modify"),
-              change("Darklang.Stdlib.List.tail", "modify"),
-              change("Darklang.Stdlib.List.findFirst", "add")
-            ])
-          },
-          {
-            id: "patch-merged-base",
-            label: "Base DB schema",
-            type: "patch",
-            contextValue: "patch-merged",
-            patchData: { isMergedUpstream: true },
-            children: buildPackageTree("patch-merged-base", [
-              change("MyApp.Database.init", "add")
-            ])
-          }
-        ];
-
-      default:
-        return [];
-    }
   }
 }

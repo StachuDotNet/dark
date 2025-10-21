@@ -19,7 +19,7 @@ export class StatusBarManager {
   private createDemoData(): StatusData {
     return {
       instance: { name: "Local" },
-      branch: { name: "feature-auth" },
+      branch: { name: "main" },
       user: "stachu"
     };
   }

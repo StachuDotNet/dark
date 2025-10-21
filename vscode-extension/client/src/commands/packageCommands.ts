@@ -45,7 +45,7 @@ export class PackageCommands {
       vscode.commands.registerCommand("darklang.openFullModule", async (node: any) => {
         try {
           const modulePath = node?.id || "";
-          const virtualUri = vscode.Uri.parse(`dark:///package/module/${modulePath}`);
+          const virtualUri = vscode.Uri.parse(`dark:///package/${modulePath}`);
           const doc = await vscode.workspace.openTextDocument(virtualUri);
 
           await vscode.languages.setTextDocumentLanguage(doc, 'darklang');
