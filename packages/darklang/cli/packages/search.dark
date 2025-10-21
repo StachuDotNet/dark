@@ -71,17 +71,8 @@ let findValuesByName (results: LanguageTools.ProgramTypes.Search.SearchResults) 
 /// Check if search results contain any content
 let hasContent (r: LanguageTools.ProgramTypes.Search.SearchResults) : Bool =
   match r.submodules with
-  | [] ->
-    (r.types != []) ||
-    (r.fns != []) ||
-    (r.values != [])
-
-  | [submodules] ->
-    (submodules) != [] ||
-    (r.types != []) ||
-    (r.fns != []) ||
-    (r.values != [])
-
+  | [] -> (r.types != []) || (r.fns != []) || (r.values != [])
+  | [submodules] -> (submodules != []) || (r.types != []) || (r.fns != []) || (r.values != [])
   | _ -> true
 
 
