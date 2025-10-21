@@ -48,8 +48,9 @@ CREATE TABLE IF NOT EXISTS package_functions (
 
 -- Locations table: maps (owner, modules, name) -> item_id
 -- Supports branch-specific overrides and deprecation tracking
-CREATE TABLE IF NOT EXISTS locations (
-  id TEXT PRIMARY KEY,              -- Item ID (references package_types/package_values/package_functions)
+CREATE TABLE  IF NOT EXISTS locations (
+  location_id TEXT PRIMARY KEY,    -- Unique ID for this location entry
+  item_id TEXT NOT NULL,            -- Item ID (references package_types/package_values/package_functions)
 
   branch_id TEXT NULL,              -- NULL = merged (main), non-null = branch-specific
 

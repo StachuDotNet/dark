@@ -1,21 +1,21 @@
 module Darklang.SCM.PackageOps
 
-/// Commit a list of package ops to the database
-/// branchId = None means commit to main branch
-/// branchId = Some(id) means commit to specific branch
-let commit
+/// Add a list of package ops to the database and apply them immediately
+/// branchId = None means add to main branch
+/// branchId = Some(id) means add to specific branch
+let add
   (branchId: Stdlib.Option.Option<Uuid>)
   (ops: List<LanguageTools.ProgramTypes.PackageOp>)
   : Unit =
-  Builtin.cliPackageOpsCommit branchId ops
+  Builtin.scmAddOps branchId ops
 
 
-/// Helper to commit ops to the current branch
-let commitToCurrent (ops: List<LanguageTools.ProgramTypes.PackageOp>) : Unit =
+/// Helper to add ops to the current branch
+let addToCurrent (ops: List<LanguageTools.ProgramTypes.PackageOp>) : Unit =
   let currentBranchId = Darklang.SCM.Account.getCurrentBranch ()
-  commit (Stdlib.Option.Option.Some currentBranchId) ops
+  add (Stdlib.Option.Option.Some currentBranchId) ops
 
 
-/// Helper to commit ops to main branch
-let commitToMain (ops: List<LanguageTools.ProgramTypes.PackageOp>) : Unit =
-  commit Stdlib.Option.Option.None ops
+/// Helper to add ops to main branch
+let addToMain (ops: List<LanguageTools.ProgramTypes.PackageOp>) : Unit =
+  add Stdlib.Option.Option.None ops

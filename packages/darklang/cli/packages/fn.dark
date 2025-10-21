@@ -1,8 +1,8 @@
-module Darklang.Cli.Packages.Create.Type
+module Darklang.Cli.Packages.Create.Fn
 
-/// Create a type by opening $EDITOR
-/// Example: createType "User" when in Darklang.Foo -> opens editor for Darklang.Foo.User
-let createType
+/// Create a function by opening $EDITOR
+/// Example: createFn "map" when in Darklang.Stdlib.List -> opens editor for Darklang.Stdlib.List.map
+let createFn
   (currentLocation: Packages.PackageLocation)
   (locationStr: String)
   : Cli.AppState -> Cli.AppState =
@@ -22,24 +22,24 @@ let createType
         |> Stdlib.String.join "."
 
       Stdlib.printLine ""
-      Stdlib.printLine (Colors.boldText "Creating type:")
+      Stdlib.printLine (Colors.boldText "Creating function:")
       Stdlib.printLine $"  Location: {fullPath}"
       Stdlib.printLine ""
-      Stdlib.printLine (Colors.dimText "TODO: Open $EDITOR with type template")
+      Stdlib.printLine (Colors.dimText "TODO: Open $EDITOR with function template")
       Stdlib.printLine ""
 
       // Flow would be:
       // 1. Generate template:
-      //    type <Name> =
-      //      | CaseOne
-      //      | CaseTwo of String
+      //    let <name> (param: Type) : ReturnType =
+      //      // TODO: implement
+      //      Builtin.todo
       // 2. Write to temp file
       // 3. Open in $EDITOR (via Builtin.cliFileEdit or similar)
       // 4. User edits and saves
-      // 5. Parse file to WrittenTypes.TypeDeclaration
-      // 6. Convert to ProgramTypes.PackageType
-      // 7. Create ops: [AddType(pt), SetTypeName(pt.id, location)]
-      // 8. Ask for confirmation: "Create type Darklang.Foo.Bar? [y/n]"
+      // 5. Parse file to WrittenTypes.Fn
+      // 6. Convert to ProgramTypes.PackageFn
+      // 7. Create ops: [AddFn(pf), SetFnName(pf.id, location)]
+      // 8. Ask for confirmation: "Create function Darklang.Foo.bar? [y/n]"
       // 9. If yes: Call Darklang.SCM.PackageOps.commitToCurrent ops
       // 10. Show success message
 
@@ -48,25 +48,25 @@ let createType
 
 let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   match args with
-  | [ location ] -> createType state.packageData.currentLocation location state
+  | [ location ] -> createFn state.packageData.currentLocation location state
 
   | _ -> help state
 
 
 let help (state: Cli.AppState) : Cli.AppState =
-  Stdlib.printLine "Create a new type"
+  Stdlib.printLine "Create a new function"
   Stdlib.printLine ""
-  Stdlib.printLine "Usage: dark type <location>"
+  Stdlib.printLine "Usage: dark fn <location>"
   Stdlib.printLine ""
-  Stdlib.printLine "Opens $EDITOR with a type template"
+  Stdlib.printLine "Opens $EDITOR with a function template"
   Stdlib.printLine ""
   Stdlib.printLine "Examples:"
   Stdlib.printLine "  # Absolute path:"
-  Stdlib.printLine "  dark type /Darklang.Foo.User"
+  Stdlib.printLine "  dark fn /Darklang.Foo.helper"
   Stdlib.printLine ""
   Stdlib.printLine "  # Relative path (if you're in Darklang.Foo):"
-  Stdlib.printLine "  dark type User"
-  Stdlib.printLine "  dark type Models.User"
+  Stdlib.printLine "  dark fn helper"
+  Stdlib.printLine "  dark fn Utils.parse"
   Stdlib.printLine ""
   state
 

@@ -24,7 +24,7 @@ module Type =
       return!
         Sql.query
           """
-          SELECT id
+          SELECT item_id
           FROM locations
           WHERE owner = @owner
             AND modules = @modules
@@ -40,7 +40,7 @@ module Type =
             "modules", Sql.string modulesStr
             "name", Sql.string location.name
             "branch_id", (match branchId with | Some id -> Sql.uuid id | None -> Sql.dbnull) ]
-        |> Sql.executeRowOptionAsync (fun read -> read.uuid "id")
+        |> Sql.executeRowOptionAsync (fun read -> read.uuid "item_id")
     }
 
   let get (id : uuid) : Ply<Option<PT.PackageType.PackageType>> =
@@ -66,7 +66,7 @@ module Type =
           """
           SELECT owner, modules, name
           FROM locations
-          WHERE id = @id
+          WHERE item_id = @item_id
             AND item_type = 'type'
             AND deprecated_at IS NULL
             AND (branch_id = @branch_id OR (branch_id IS NULL AND @branch_id IS NULL))
@@ -74,7 +74,7 @@ module Type =
           LIMIT 1
           """
         |> Sql.parameters
-          [ "id", Sql.uuid id
+          [ "item_id", Sql.uuid id
             "branch_id", (match branchId with | Some id -> Sql.uuid id | None -> Sql.dbnull) ]
         |> Sql.executeRowOptionAsync (fun read ->
           let modulesStr = read.string "modules"
@@ -94,7 +94,7 @@ module Value =
       return!
         Sql.query
           """
-          SELECT id
+          SELECT item_id
           FROM locations
           WHERE owner = @owner
             AND modules = @modules
@@ -110,7 +110,7 @@ module Value =
             "modules", Sql.string modulesStr
             "name", Sql.string location.name
             "branch_id", (match branchId with | Some id -> Sql.uuid id | None -> Sql.dbnull) ]
-        |> Sql.executeRowOptionAsync (fun read -> read.uuid "id")
+        |> Sql.executeRowOptionAsync (fun read -> read.uuid "item_id")
     }
 
   let get (id : uuid) : Ply<Option<PT.PackageValue.PackageValue>> =
@@ -136,7 +136,7 @@ module Value =
           """
           SELECT owner, modules, name
           FROM locations
-          WHERE id = @id
+          WHERE item_id = @item_id
             AND item_type = 'value'
             AND deprecated_at IS NULL
             AND (branch_id = @branch_id OR (branch_id IS NULL AND @branch_id IS NULL))
@@ -144,7 +144,7 @@ module Value =
           LIMIT 1
           """
         |> Sql.parameters
-          [ "id", Sql.uuid id
+          [ "item_id", Sql.uuid id
             "branch_id", (match branchId with | Some id -> Sql.uuid id | None -> Sql.dbnull) ]
         |> Sql.executeRowOptionAsync (fun read ->
           let modulesStr = read.string "modules"
@@ -164,7 +164,7 @@ module Fn =
       return!
         Sql.query
           """
-          SELECT id
+          SELECT item_id
           FROM locations
           WHERE owner = @owner
             AND modules = @modules
@@ -180,7 +180,7 @@ module Fn =
             "modules", Sql.string modulesStr
             "name", Sql.string location.name
             "branch_id", (match branchId with | Some id -> Sql.uuid id | None -> Sql.dbnull) ]
-        |> Sql.executeRowOptionAsync (fun read -> read.uuid "id")
+        |> Sql.executeRowOptionAsync (fun read -> read.uuid "item_id")
     }
 
   let get (id : uuid) : Ply<Option<PT.PackageFn.PackageFn>> =
@@ -206,7 +206,7 @@ module Fn =
           """
           SELECT owner, modules, name
           FROM locations
-          WHERE id = @id
+          WHERE item_id = @item_id
             AND item_type = 'fn'
             AND deprecated_at IS NULL
             AND (branch_id = @branch_id OR (branch_id IS NULL AND @branch_id IS NULL))
@@ -214,7 +214,7 @@ module Fn =
           LIMIT 1
           """
         |> Sql.parameters
-          [ "id", Sql.uuid id
+          [ "item_id", Sql.uuid id
             "branch_id", (match branchId with | Some id -> Sql.uuid id | None -> Sql.dbnull) ]
         |> Sql.executeRowOptionAsync (fun read ->
           let modulesStr = read.string "modules"
@@ -335,7 +335,7 @@ let search
       // Same shadowing logic as for submodules
       $"SELECT c.id, c.pt_def, l.owner, l.modules, l.name\n"
       + $"FROM locations l\n"
-      + $"JOIN {contentTable} c ON l.id = c.id\n"
+      + $"JOIN {contentTable} c ON l.item_id = c.id\n"
       + "WHERE (l.branch_id IS NULL OR l.branch_id = @branch_id)\n"
       + "  AND l.deprecated_at IS NULL\n"
       + $"  AND l.item_type = '{itemType}'\n"

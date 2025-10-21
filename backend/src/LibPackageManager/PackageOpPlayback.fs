@@ -90,28 +90,33 @@ let private applySetName
   task {
     let modulesStr = String.concat "." location.modules
 
-    // First, deprecate any existing location for this ID
+    // First, deprecate any existing location for this item in this branch
     // (handles moves: old location gets deprecated, new location created)
     do!
       Sql.query
         """
         UPDATE locations
         SET deprecated_at = datetime('now')
-        WHERE id = @id
+        WHERE item_id = @item_id
           AND deprecated_at IS NULL
+          AND (branch_id = @branch_id OR (branch_id IS NULL AND @branch_id IS NULL))
         """
-      |> Sql.parameters [ "id", Sql.uuid itemId ]
+      |> Sql.parameters
+        [ "item_id", Sql.uuid itemId
+          "branch_id", (match branchId with | Some id -> Sql.uuid id | None -> Sql.dbnull) ]
       |> Sql.executeStatementAsync
 
-    // Insert new location entry
+    // Insert new location entry with unique location_id
+    let locationId = System.Guid.NewGuid()
     do!
       Sql.query
         """
-        INSERT INTO locations (id, branch_id, owner, modules, name, item_type)
-        VALUES (@id, @branch_id, @owner, @modules, @name, @item_type)
+        INSERT INTO locations (location_id, item_id, branch_id, owner, modules, name, item_type)
+        VALUES (@location_id, @item_id, @branch_id, @owner, @modules, @name, @item_type)
         """
       |> Sql.parameters
-        [ "id", Sql.uuid itemId
+        [ "location_id", Sql.uuid locationId
+          "item_id", Sql.uuid itemId
           "branch_id", (match branchId with | Some id -> Sql.uuid id | None -> Sql.dbnull)
           "owner", Sql.string location.owner
           "modules", Sql.string modulesStr

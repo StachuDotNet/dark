@@ -18,16 +18,16 @@ open LibDB.Db
 
 
 let fns : List<BuiltInFn> =
-  [ { name = fn "cliPackageOpsCommit" 0
+  [ { name = fn "scmAddOps" 0
       typeParams = []
       parameters =
         [ Param.make "branchId" (TypeReference.option TUuid) ""
           Param.make "ops" (TList(TVariable "packageOp")) "" ]
       returnType = TUnit
       description =
-        "Commit package ops to the database. branchId None = main branch, Some = specific branch"
+        "Add package ops to the database and apply them to projections. branchId None = main branch, Some = specific branch"
       fn =
-        (function
+        function
         | _, _, _, [ branchIdOpt; DList(_vtTODO, ops) ] ->
           uply {
             let branchId =
@@ -41,7 +41,7 @@ let fns : List<BuiltInFn> =
               |> List.choose (fun opDval ->
                 PT2DT.PackageOp.fromDT opDval)
 
-            // Serialize and insert each op
+            // Serialize, insert, and playback each op
             for op in ptOps do
               let opId = System.Guid.NewGuid()
               let opBlob = BinarySerialization.PT.PackageOp.serialize opId op
@@ -64,13 +64,12 @@ let fns : List<BuiltInFn> =
                 |> Sql.executeNonQueryAsync
                 |> Task.map (fun _ -> ())
 
-            // TODO: Trigger op playback to update the projections
-            // (package_types, package_values, package_functions, locations tables)
-            // For now, this requires a restart or package reload
+              // Trigger op playback to update the projections
+              do! LibPackageManager.PackageOpPlayback.applyOp branchId op
 
             return DUnit
           }
-        | _ -> incorrectArgs ())
+        | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
       deprecated = NotDeprecated } ]

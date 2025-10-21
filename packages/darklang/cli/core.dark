@@ -327,7 +327,6 @@ module Registry =
     let commands = allCommands ()
 
     // Group commands by category
-    let scmCommands = [] // maybe 'instance', later
     let packageCommands = ["branch"; "nav"; "ls"; "view"; "tree"; "back"; "history"; "let"; "fn"; "type"; "mv"; "rm"]
     let executionCommands = ["run"; "eval"; "scripts"]
     let installCommands = ["install"; "update"; "uninstall"; "status"; "version"]
@@ -335,13 +334,13 @@ module Registry =
 
     // Format command groups
     let packageGroup = formatCommandGroup "Packages" packageCommands commands
-    let scmGroup = formatCommandGroup "Source Control" scmCommands commands
     let executionGroup = formatCommandGroup "Execution" executionCommands commands
     let installGroup = formatCommandGroup "Installation" installCommands commands
     let utilityGroup = formatCommandGroup "Utilities" utilityCommands commands
 
     // Find any ungrouped commands
-    let allGroupedCommands = Stdlib.List.append (Stdlib.List.append (Stdlib.List.append (Stdlib.List.append scmCommands packageCommands) executionCommands) installCommands) utilityCommands
+    let allGroupedCommands =
+      Stdlib.List.flatten [ packageCommands; executionCommands; installCommands; utilityCommands ]
     let ungroupedCommands =
       commands
       |> Stdlib.List.filter (fun cmd ->
@@ -355,7 +354,7 @@ module Registry =
           let aliasText = Stdlib.String.join aliases ", "
           $"  {cmd.name} ({aliasText}) - {cmd.description}")
 
-    let allGroups = [packageGroup; scmGroup; executionGroup; installGroup; utilityGroup]
+    let allGroups = [packageGroup; executionGroup; installGroup; utilityGroup]
     let finalGroups =
       if Stdlib.List.isEmpty ungroupedCommands then
         allGroups
