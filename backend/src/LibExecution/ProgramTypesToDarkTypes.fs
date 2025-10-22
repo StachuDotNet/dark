@@ -1364,12 +1364,15 @@ module Search =
       let (caseName, fields) =
         match sd with
         | PT.Search.SearchDepth.OnlyDirectDescendants -> "OnlyDirectDescendants", []
+        | PT.Search.SearchDepth.AllDescendants -> "AllDescendants", []
       DEnum(typeName, typeName, [], caseName, fields)
 
     let fromDT (d : Dval) : PT.Search.SearchDepth =
       match d with
       | DEnum(_, _, [], "OnlyDirectDescendants", []) ->
         PT.Search.SearchDepth.OnlyDirectDescendants
+      | DEnum(_, _, [], "AllDescendants", []) ->
+        PT.Search.SearchDepth.AllDescendants
       | _ -> Exception.raiseInternal "Invalid SearchDepth" []
 
   module SearchQuery =

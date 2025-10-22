@@ -752,8 +752,9 @@ module Search =
     | Value
 
   /// How deep to search in the module hierarchy
-  type SearchDepth = | OnlyDirectDescendants
-  // TODO: support this. | AllDescendants
+  type SearchDepth =
+    | OnlyDirectDescendants
+    | AllDescendants
 
   /// Query parameters for searching packages
   type SearchQuery =

@@ -97,15 +97,15 @@ let resolveEntity
   : Stdlib.Result.Result<PackageLocation, String> =
   // First see if it's a module
   let modulePath = Stdlib.List.append basePath [name]
-  let moduleResults = Search.searchContents branchID modulePath
+  let moduleResults = Query.searchContents branchID modulePath
 
-  let isAModule = Search.hasContent moduleResults
+  let isAModule = Query.hasContent moduleResults
 
   if isAModule then
     Stdlib.Result.Result.Ok (PackageLocation.Module modulePath)
   // Not a module -- check if it's a type/value/fn
   else
-    let entityResults = Search.searchEntity branchID basePath name
+    let entityResults = Query.searchEntity branchID basePath name
 
     // Access lists directly to avoid type parameter loss
     match entityResults.types with
@@ -137,9 +137,9 @@ let searchDarklangModules
   (branchID: Stdlib.Option.Option<Uuid>)
   (prefixText: String)
   : List<String> =
-  let darklangResults = Search.searchContents branchID ["Darklang"]
+  let darklangResults = Query.searchContents branchID ["Darklang"]
   let currentPathLength = 1L
-  let moduleNames = Search.getDirectSubmodules darklangResults currentPathLength
+  let moduleNames = Query.getDirectSubmodules darklangResults currentPathLength
 
   moduleNames
   |> Stdlib.List.filter (fun name -> Stdlib.String.startsWith name prefixText)
@@ -153,10 +153,10 @@ let getAvailableNames
   : List<String> =
   let currentPath = getCurrentModulePath location
   // Get all available entities in this module
-  let allResults = Search.searchContents branchID currentPath
+  let allResults = Query.searchContents branchID currentPath
 
   let currentPathLength = Stdlib.List.length currentPath
-  let moduleNames = Search.getDirectSubmodules allResults currentPathLength
+  let moduleNames = Query.getDirectSubmodules allResults currentPathLength
   let typeNames = allResults.types |> Stdlib.List.map (fun item -> item.location.name)
   let fnNames = allResults.fns |> Stdlib.List.map (fun item -> item.location.name)
   let valueNames = allResults.values |> Stdlib.List.map (fun item -> item.location.name)
