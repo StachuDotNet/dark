@@ -58,17 +58,17 @@ let createValueInline
 
   | Ok parsedLocation ->
     // 2. Build full source code for parsing
-    let fullSource = $"let {parsedLocation.name} = {expression}"
+    let fullSource = $"val {parsedLocation.name} = {expression}"
 
     // 3. Parse the value definition string using tree-sitter
     let tree = LanguageTools.Parser.parseToSimplifiedTree fullSource
 
-    // Find the let_expression node
-    let letExpr =
+    // Find the val_decl node
+    let valDecl =
       tree.children
-      |> Stdlib.List.findFirst (fun node -> node.typ == "let_expression")
+      |> Stdlib.List.findFirst (fun node -> node.typ == "val_decl")
 
-    match letExpr with
+    match valDecl with
     | None ->
       Stdlib.printLine (Colors.error "Failed to parse value expression")
       Stdlib.printLine ""
@@ -78,10 +78,10 @@ let createValueInline
       Stdlib.printLine ""
       state
 
-    | Some letExprNode ->
+    | Some valDeclNode ->
       // 4. Parse node to WrittenTypes
       let writtenValueResult =
-        LanguageTools.Parser.LetExpression.parseAsValue letExprNode
+        LanguageTools.Parser.ValueDeclaration.parse valDeclNode
 
       match writtenValueResult with
       | Error unparseable ->
@@ -94,7 +94,7 @@ let createValueInline
         let pm = LanguageTools.PackageManager.pm ()
 
         let (packageValue, unresolvedNames) =
-          LanguageTools.WrittenTypesToProgramTypes.LetExpression.toPackageValuePT
+          LanguageTools.WrittenTypesToProgramTypes.ValueDeclaration.toPackageValuePT
             branchId
             LanguageTools.NameResolver.OnMissing.Allow
             pm

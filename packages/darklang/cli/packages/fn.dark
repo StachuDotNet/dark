@@ -62,12 +62,12 @@ let createFnInline
     // 3. Parse the function definition string using tree-sitter
     let tree = LanguageTools.Parser.parseToSimplifiedTree fullSource
 
-    // Find the let_expression node
-    let letExpr =
+    // Find the fn_decl node
+    let fnDecl =
       tree.children
-      |> Stdlib.List.findFirst (fun node -> node.typ == "let_expression")
+      |> Stdlib.List.findFirst (fun node -> node.typ == "fn_decl")
 
-    match letExpr with
+    match fnDecl with
     | None ->
       Stdlib.printLine (Colors.error "Failed to parse function definition")
       Stdlib.printLine ""
@@ -77,10 +77,10 @@ let createFnInline
       Stdlib.printLine ""
       state
 
-    | Some letExprNode ->
+    | Some fnDeclNode ->
       // 4. Parse node to WrittenTypes
       let writtenFnResult =
-        LanguageTools.Parser.LetExpression.parseAsFn letExprNode
+        LanguageTools.Parser.FunctionDeclaration.parse fnDeclNode
 
       match writtenFnResult with
       | Error unparseable ->
@@ -93,7 +93,7 @@ let createFnInline
         let pm = LanguageTools.PackageManager.pm ()
 
         let (packageFn, unresolvedNames) =
-          LanguageTools.WrittenTypesToProgramTypes.LetExpression.toPackageFnPT
+          LanguageTools.WrittenTypesToProgramTypes.FunctionDeclaration.toPackageFnPT
             branchId
             LanguageTools.NameResolver.OnMissing.Allow
             pm
