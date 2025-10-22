@@ -1,5 +1,10 @@
 module Darklang.Cli.Packages.History
 
+// TODO: we just care what has been at some location,
+// with no regard to the item type
+// TODO Hm that said, we're currently being kinda loose, potentially allowing
+// types of lowercase names and fns/vals of uppercase names
+
 let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   match args with
   | [itemType; location] ->
@@ -56,16 +61,20 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
 
 
 let help (state: Cli.AppState) : Cli.AppState =
-  Stdlib.printLine "View history of what a name pointed to"
-  Stdlib.printLine ""
-  Stdlib.printLine "Usage: dark history <type|fn|value> <location>"
-  Stdlib.printLine "Example: dark history fn Darklang.Stdlib.List.map"
-  Stdlib.printLine ""
-  Stdlib.printLine "Shows all times the name was pointed to different items"
-  Stdlib.printLine ""
+  [
+    "View history of what a name pointed to"
+    ""
+    "Usage: dark history <type|fn|value> <location>"
+    "Example: dark history fn Darklang.Stdlib.List.map"
+    ""
+    "Shows all times the name was pointed to different items"
+    ""
+  ] |> Stdlib.printLines
+
   state
 
-
+// TODO: completions should _not_ be for 'subcommands'
+//, but should rather work based on what's available at the location -- like 'ls' and 'nav' and that sorta thing.
 let complete (state: Cli.AppState) (args: List<String>) : List<String> =
   match args with
   | [] -> [ "fn"; "type"; "value" ]

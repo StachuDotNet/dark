@@ -53,11 +53,11 @@ let displayTree
       | Function f -> Stdlib.List.append [f.owner] f.modules
 
     // Get all entities in this module
-    let results = Search.searchContents branchID modulePath
+    let results = Query.searchContents branchID modulePath
 
     // Get submodules
     let currentPathLength = Stdlib.List.length modulePath
-    let submoduleNames = Search.getDirectSubmodules results currentPathLength
+    let submoduleNames = Query.getDirectSubmodules results currentPathLength
 
     // Get entity names
     let functionNames = results.fns |> Stdlib.List.map (fun f -> f.location.name) |> Stdlib.List.sort
@@ -84,7 +84,7 @@ let displayTree
       let treeBranch = if isLast then "└── " else "├── "
       let fullPrefix = prefix ++ treeBranch
 
-      let icon = Search.getIcon entityType ++ " "
+      let icon = Display.getIcon entityType ++ " "
 
       Stdlib.printLine $"{fullPrefix}{icon}{name}"
 

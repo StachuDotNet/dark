@@ -195,7 +195,7 @@ module View =
 
 
   let formatWelcome () : String =
-    Registry.getCommandList () ++ "\n\nType 'help <command>' for specific command help."
+    Registry.getCompactCommandList ()
 
 
 
@@ -233,8 +233,9 @@ module Registry =
       ("view", "View details of a module, type, value, or fns", [], Packages.View.execute, Packages.View.help, Packages.View.complete)
       ("tree", "Display package hierarchy in tree format", [], Packages.Tree.execute, Packages.Tree.help, Packages.Tree.complete)
       ("history", "View history of what a name pointed to", [], Packages.History.execute, Packages.History.help, Packages.History.complete)
-      ("let", "Create a new value", [], Packages.Create.Value.execute, Packages.Create.Value.help, Packages.Create.Value.complete)
-      ("fn", "Create a new function", [], Packages.Create.Fn.execute, Packages.Create.Fn.help, Packages.Create.Fn.complete)
+      ("search", "Search for packages, types, functions, and values", [], Packages.Search.execute, Packages.Search.help, Packages.Search.complete)
+      ("val", "Create a new value", [], Packages.Create.Value.execute, Packages.Create.Value.help, Packages.Create.Value.complete)
+      ("fn", "Create a new function", ["function"], Packages.Create.Fn.execute, Packages.Create.Fn.help, Packages.Create.Fn.complete)
       ("type", "Create a new type", [], Packages.Create.Type.execute, Packages.Create.Type.help, Packages.Create.Type.complete)
       ("mv", "Rename a package item", [], Packages.Rename.execute, Packages.Rename.help, Packages.Rename.complete)
       ("rm", "Remove a package item", [], Packages.Remove.execute, Packages.Remove.help, Packages.Remove.complete)
@@ -307,7 +308,7 @@ module Registry =
       resultState
 
   // TODO: formatCommandGroup + getCommandList logic could be simplified or moved to View module
-  // Helper function to format a group of commands
+  // Helper function to format a group of commands with details
   let formatCommandGroup (groupName: String) (commandNames: List<String>) (commands: List<CommandHandler>) : String =
     let formattedCommands =
       commandNames
@@ -323,11 +324,38 @@ module Registry =
     let commandLines = Stdlib.String.join formattedCommands "\n"
     $"{groupName}:\n{commandLines}"
 
-  let getCommandList () : String =
+  // Helper function to format a group of commands compactly (just names)
+  let formatCompactGroup (groupName: String) (cmdNames: List<String>) : String =
+    let namesList = Stdlib.String.join cmdNames ", "
+    $"{groupName}: {namesList}"
+
+  // Compact command list for welcome screen (with logo, minimal text)
+  let getCompactCommandList () : String =
+    let commands = allCommands ()
+
+    // Group commands by category - just names, no descriptions
+    let packageCommands = ["branch"; "nav"; "ls"; "view"; "tree"; "back"; "history"; "search"; "val"; "fn"; "type"; "mv"; "rm"]
+    let executionCommands = ["run"; "eval"; "scripts"]
+    let installCommands = ["install"; "update"; "uninstall"; "status"; "version"]
+    let utilityCommands = ["clear"; "help"; "quit"; "experiments"]
+
+    let packageGroup = formatCompactGroup "Packages" packageCommands
+    let executionGroup = formatCompactGroup "Execution" executionCommands
+    let installGroup = formatCompactGroup "Installation" installCommands
+    let utilityGroup = formatCompactGroup "Utilities" utilityCommands
+
+    let welcome = "Hello! Let's write some software with Darklang."
+    let availableCommands = "Here are the commands available:"
+    let compactText = Stdlib.String.join [welcome; ""; availableCommands; ""; packageGroup; executionGroup; installGroup; utilityGroup; ""; "Type 'help' for detailed command info"] "\n"
+    let textLines = Stdlib.String.split compactText "\n"
+    Logo.combineLogoAndText Logo.logo textLines Colors.logoColor
+
+  // Detailed command list for help command (no logo, full details)
+  let getDetailedCommandList () : String =
     let commands = allCommands ()
 
     // Group commands by category
-    let packageCommands = ["branch"; "nav"; "ls"; "view"; "tree"; "back"; "history"; "let"; "fn"; "type"; "mv"; "rm"]
+    let packageCommands = ["branch"; "nav"; "ls"; "view"; "tree"; "back"; "history"; "search"; "val"; "fn"; "type"; "mv"; "rm"]
     let executionCommands = ["run"; "eval"; "scripts"]
     let installCommands = ["install"; "update"; "uninstall"; "status"; "version"]
     let utilityCommands = ["clear"; "help"; "quit"; "experiments"]
@@ -364,9 +392,7 @@ module Registry =
           $"Other:\n{ungroupedLines}"
         Stdlib.List.append allGroups [ungroupedGroup]
 
-    let groupsText = Stdlib.String.join finalGroups "\n\n"
-    let helpLines = Stdlib.String.split groupsText "\n"
-    Logo.combineLogoAndText Logo.logo helpLines Colors.logoColor
+    Stdlib.String.join finalGroups "\n\n"
 
 
   let getCompletions (state: AppState) (input: String) : List<String> =
@@ -576,7 +602,7 @@ let handleKeyInput (state: AppState) (key: Stdlib.Cli.Stdin.Key.Key) (modifiers:
       state
   | InteractiveNav navState ->
     // Interactive navigation key handling
-    Packages.Nav.Interactive.handleKey state key navState
+    Packages.Nav.Interactive.handleKey state key keyChar navState
 
 module Update =
   let updateAppState (state: AppState) (msg: Msg) : AppState =

@@ -5,21 +5,31 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   match args with
   | [] -> help state
 
+  // type SomeModule.myType = definition
   | location :: definitionParts ->
+    // Strip leading "=" if present (since users naturally type "type Foo = ...")
+    let cleanedParts =
+      match definitionParts with
+      | "=" :: rest -> rest
+      | parts -> parts
+
     // Join all remaining args as the inline definition
-    let inlineDefinition = Stdlib.String.join definitionParts " "
+    let inlineDefinition = Stdlib.String.join cleanedParts " "
 
     if Stdlib.String.isEmpty inlineDefinition then
       // No inline definition provided - show error
-      Stdlib.printLine (Colors.error "Error: Inline type definition required")
-      Stdlib.printLine ""
-      Stdlib.printLine "Usage: type <location> <definition>"
-      Stdlib.printLine ""
-      Stdlib.printLine "Examples:"
-      Stdlib.printLine "  type Status = | Active | Inactive"
-      Stdlib.printLine "  type User = { name: String; age: Int64 }"
-      Stdlib.printLine "  type Result = | Ok of String | Error of String"
-      Stdlib.printLine ""
+      [
+        (Colors.error "Error: Inline type definition required")
+        ""
+        "Usage: type <location> <definition>"
+        ""
+        "Examples:"
+        "  type Status = | Active | Inactive"
+        "  type User = { name: String; age: Int64 }"
+        "  type Result = | Ok of String | Error of String"
+        ""
+      ] |> Stdlib.printLines
+
       state
     else
       // Parse and create type immediately
@@ -114,13 +124,12 @@ let createTypeInline
           // 7. Create ops: AddType and SetTypeName
           let ops =
             [ LanguageTools.ProgramTypes.PackageOp.AddType packageType
-              LanguageTools.ProgramTypes.PackageOp.SetTypeName
-                (packageType.id, packageLocation) ]
+              LanguageTools.ProgramTypes.PackageOp.SetTypeName (packageType.id, packageLocation) ]
 
           // 8. Add ops to the current branch
           match branchId with
-          | Some id -> Darklang.SCM.PackageOps.add (Stdlib.Option.Option.Some id) ops
-          | None -> Darklang.SCM.PackageOps.addToMain ops
+          | Some id -> SCM.PackageOps.add (Stdlib.Option.Option.Some id) ops
+          | None -> SCM.PackageOps.addToMain ops
 
           // 9. Show success message
           let fullPath =
@@ -136,28 +145,32 @@ let createTypeInline
 
 
 let help (state: Cli.AppState) : Cli.AppState =
-  Stdlib.printLine "Create a new type"
-  Stdlib.printLine ""
-  Stdlib.printLine "Usage: type <location> <definition>"
-  Stdlib.printLine ""
-  Stdlib.printLine "Examples:"
-  Stdlib.printLine "  # Simple enum:"
-  Stdlib.printLine "  type Status = | Active | Inactive"
-  Stdlib.printLine ""
-  Stdlib.printLine "  # Enum with fields:"
-  Stdlib.printLine "  type Result = | Ok of String | Error of String"
-  Stdlib.printLine ""
-  Stdlib.printLine "  # Record type:"
-  Stdlib.printLine "  type User = { name: String; age: Int64 }"
-  Stdlib.printLine ""
-  Stdlib.printLine "  # Type alias:"
-  Stdlib.printLine "  type UserId = Uuid"
-  Stdlib.printLine ""
-  Stdlib.printLine "Location can be relative or absolute:"
-  Stdlib.printLine "  type Foo = ...          # Relative to current location"
-  Stdlib.printLine "  type /Darklang.Foo = ...  # Absolute path"
-  Stdlib.printLine ""
+  [
+    "Create a new type"
+    ""
+    "Usage: type <location> <definition>"
+    ""
+    "Examples:"
+    "  # Simple enum:"
+    "  type Status = | Active | Inactive"
+    ""
+    "  # Enum with fields:"
+    "  type Result = | Ok of String | Error of String"
+    ""
+    "  # Record type:"
+    "  type User = { name: String; age: Int64 }"
+    ""
+    "  # Type alias:"
+    "  type UserId = Uuid"
+    ""
+    "Location can be relative or absolute:"
+    "  type Foo = ...          # Relative to current location"
+    "  type /Darklang.Foo = ...  # Absolute path"
+    ""
+  ] |> Stdlib.printLines
+
   state
 
 
-let complete (state: Cli.AppState) (args: List<String>) : List<String> = []
+let complete (state: Cli.AppState) (args: List<String>) : List<String> =
+  []

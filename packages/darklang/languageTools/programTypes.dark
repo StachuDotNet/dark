@@ -411,7 +411,7 @@ module Search =
   /// How deep to search in the module hierarchy
   type SearchDepth =
     | OnlyDirectDescendants
-    // TODO: support this. | AllDescendants
+    | AllDescendants
 
   /// Query parameters for searching packages
   type SearchQuery =
