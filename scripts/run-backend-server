@@ -3,9 +3,12 @@
 
 set -euo pipefail
 
+# DARK_CONFIG_DB_NAME=server.db
+
 # collect args
 PUBLISHED=false
 RESTART=true
+
 for i in "$@"
 do
   case "${i}" in

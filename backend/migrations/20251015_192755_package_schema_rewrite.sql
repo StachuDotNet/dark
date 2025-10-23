@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS package_ops (
   id TEXT PRIMARY KEY,
   branch_id TEXT NULL,              -- NULL = merged to main, non-null = branch-specific
   op_blob BLOB NOT NULL,            -- Serialized PackageOp (includes type: AddType/AddValue/AddFn/Set*Name)
+  --created_by TEXT NOT NULL REFERENCES account(id)
   created_at TIMESTAMP NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_package_ops_branch ON package_ops(branch_id);
