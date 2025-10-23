@@ -1,4 +1,4 @@
-import { PackageNode, PatchNode, BranchNode, InstanceNode } from "../types";
+import { PackageNode, BranchNode, InstanceNode } from "../types";
 import { InstanceDemoData } from "./demo";
 
 export class DemoDataProvider {
@@ -8,4 +8,4 @@ export class DemoDataProvider {
 }
 
 // Re-export types for backward compatibility
-export { PackageNode, PatchNode, BranchNode, InstanceNode };
+export { PackageNode, BranchNode, InstanceNode };

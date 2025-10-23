@@ -19,3 +19,11 @@ let addToCurrent (ops: List<LanguageTools.ProgramTypes.PackageOp>) : Unit =
 /// Helper to add ops to main branch
 let addToMain (ops: List<LanguageTools.ProgramTypes.PackageOp>) : Unit =
   add Stdlib.Option.Option.None ops
+
+
+/// Get recent package ops from the database
+let getRecent
+  (branchId: Stdlib.Option.Option<Uuid>)
+  (limit: Int64)
+  : List<LanguageTools.ProgramTypes.PackageOp> =
+  Builtin.scmGetRecentOps branchId limit

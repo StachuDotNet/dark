@@ -2,7 +2,13 @@ import * as os from "os";
 
 import * as vscode from "vscode";
 import { SemanticTokensFeature } from "vscode-languageclient/lib/common/semanticTokens";
-import { LanguageClient, LanguageClientOptions, ServerOptions, Trace, TransportKind } from "vscode-languageclient/node";
+import {
+  LanguageClient,
+  LanguageClientOptions,
+  ServerOptions,
+  Trace,
+  TransportKind,
+} from "vscode-languageclient/node";
 
 import { PackagesTreeDataProvider } from "./providers/treeviews/packagesTreeDataProvider";
 import { WorkspaceTreeDataProvider } from "./providers/treeviews/workspaceTreeDataProvider";
@@ -16,9 +22,8 @@ import { InstanceCommands } from "./commands/instanceCommands";
 import { StatusBarManager } from "./ui/statusbar/statusBarManager";
 import { BranchStateManager } from "./data/branchStateManager";
 
-import { DarkContentProvider } from "./providers/darkContentProvider";
+import { DarkFileSystemProvider } from "./providers/darkFileSystemProvider";
 import { DarklangFileDecorationProvider } from "./providers/fileDecorationProvider";
-
 
 let client: LanguageClient;
 
@@ -27,7 +32,7 @@ let statusBarManager: StatusBarManager;
 let workspaceProvider: WorkspaceTreeDataProvider;
 let packagesProvider: PackagesTreeDataProvider;
 
-let contentProvider: DarkContentProvider;
+let fileSystemProvider: DarkFileSystemProvider;
 let fileDecorationProvider: DarklangFileDecorationProvider;
 
 interface LSPFileResponse {
@@ -35,7 +40,7 @@ interface LSPFileResponse {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log('🚀 Darklang VS Code extension is activating...');
+  console.log("🚀 Darklang VS Code extension is activating...");
 
   const isDebugMode = () => process.env.VSCODE_DEBUG_MODE === "true";
 
@@ -55,11 +60,10 @@ export function activate(context: vscode.ExtensionContext) {
     debug: sharedServerOptions,
   };
 
-
   const clientOptions: LanguageClientOptions = {
     documentSelector: [
       { scheme: "file", language: "darklang" },
-      { scheme: "dark", language: "darklang" },
+      { scheme: "darkfs", language: "darklang" },
     ],
     synchronize: {
       fileEvents: vscode.workspace.createFileSystemWatcher("**/*.dark"),
@@ -93,80 +97,48 @@ export function activate(context: vscode.ExtensionContext) {
   statusBarManager = new StatusBarManager();
   context.subscriptions.push(statusBarManager);
 
-  // Initialize content provider for dark:// URLs
-  contentProvider = new DarkContentProvider();
-  const contentProviderRegistration = vscode.workspace.registerTextDocumentContentProvider("dark", contentProvider);
-  context.subscriptions.push(contentProviderRegistration);
+  // Initialize file system provider for darkfs:// URLs (editable package modules)
+  fileSystemProvider = new DarkFileSystemProvider();
+  const fileSystemProviderRegistration =
+    vscode.workspace.registerFileSystemProvider("darkfs", fileSystemProvider, {
+      isCaseSensitive: true,
+      isReadonly: false,
+    });
+  context.subscriptions.push(fileSystemProviderRegistration);
 
-  // Pass the LSP client to the content provider once it's ready
+  // Pass the LSP client to providers once it's ready
   client.onReady().then(() => {
-    contentProvider.setClient(client);
+    fileSystemProvider.setClient(client);
+    workspaceProvider.setClient(client);
     BranchStateManager.getInstance().setClient(client);
   });
 
   // Initialize file decoration provider for badges
   fileDecorationProvider = new DarklangFileDecorationProvider();
-  const decorationProviderRegistration = vscode.window.registerFileDecorationProvider(fileDecorationProvider);
+  const decorationProviderRegistration =
+    vscode.window.registerFileDecorationProvider(fileDecorationProvider);
   context.subscriptions.push(decorationProviderRegistration);
-
-
-  // Per-URI view mode tracking
-  type ViewMode = 'source' | 'ast';
-  const viewModeByUri = new Map<string, ViewMode>();
-
-  function getModeFor(uri?: vscode.Uri): ViewMode {
-    if (!uri) return 'source';
-    return viewModeByUri.get(uri.toString()) ?? 'source';
-  }
-
-  async function updateContextForActiveEditor() {
-    const uri = vscode.window.activeTextEditor?.document?.uri;
-    await vscode.commands.executeCommand('setContext', 'darklang.viewMode', getModeFor(uri));
-  }
-
-  // Inject mode getter into content provider
-  contentProvider.getModeForUri = (uri) => getModeFor(uri);
-
-  // Initialize context and keep it in sync when tabs/editors change
-  updateContextForActiveEditor();
-  context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(updateContextForActiveEditor),
-    vscode.window.tabGroups.onDidChangeTabs(updateContextForActiveEditor),
-    vscode.workspace.onDidCloseTextDocument(doc => {
-      if (doc.uri.scheme === 'dark') {
-        viewModeByUri.delete(doc.uri.toString());
-      }
-    })
-  );
 
   // Register branches manager command
   context.subscriptions.push(
-    vscode.commands.registerCommand('darklang.branches.manageAll', () => {
+    vscode.commands.registerCommand("darklang.branches.manageAll", () => {
       BranchesManagerPanel.createOrShow(context.extensionUri);
     }),
-    vscode.commands.registerCommand('darklang.switchToAST', async () => {
-      const uri = vscode.window.activeTextEditor?.document?.uri;
-      if (!uri || uri.scheme !== 'dark') return;
-      viewModeByUri.set(uri.toString(), 'ast');
-      await updateContextForActiveEditor();
-      contentProvider.bump(uri);
-    }),
-    vscode.commands.registerCommand('darklang.switchToSource', async () => {
-      const uri = vscode.window.activeTextEditor?.document?.uri;
-      if (!uri || uri.scheme !== 'dark') return;
-      viewModeByUri.set(uri.toString(), 'source');
-      await updateContextForActiveEditor();
-      contentProvider.bump(uri);
-    })
   );
 
   // Register webview panel serializer for branches manager
   if (vscode.window.registerWebviewPanelSerializer) {
-    vscode.window.registerWebviewPanelSerializer(BranchesManagerPanel.viewType, {
-      async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel, state: any) {
-        BranchesManagerPanel.revive(webviewPanel, context.extensionUri);
-      }
-    });
+    vscode.window.registerWebviewPanelSerializer(
+      BranchesManagerPanel.viewType,
+      {
+        async deserializeWebviewPanel(
+          webviewPanel: vscode.WebviewPanel,
+          state: any,
+        ) {
+          BranchesManagerPanel.revive(webviewPanel, context.extensionUri);
+        },
+      },
+    );
   }
 
   // Initialize tree data providers
@@ -179,21 +151,34 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(packagesView);
+
+    // Wire up packages provider to file system provider
+    fileSystemProvider.setPackagesProvider(packagesProvider);
+
+    // Refresh packages tree and open files when branch changes
+    BranchStateManager.getInstance().onBranchChanged(() => {
+      console.log('🔄 Branch changed - refreshing packages tree and open files');
+      packagesProvider.refresh();
+      fileSystemProvider.refreshAllOpenFiles();
+    });
   });
 
   workspaceProvider = new WorkspaceTreeDataProvider();
 
-  // Create tree views
-  console.log('📊 Creating tree views...');
+  // Wire up providers now that workspaceProvider is created
+  fileSystemProvider.setWorkspaceProvider(workspaceProvider);
 
-  // Workspace tree view (unified view: Instance + Branch + Patches)
+  // Create tree views
+  console.log("📊 Creating tree views...");
+
+  // Workspace tree view (unified view: Instance + Branch)
   const workspaceView = vscode.window.createTreeView("darklangWorkspace", {
     treeDataProvider: workspaceProvider,
     showCollapseAll: false,
   });
   workspaceView.title = "Workspace";
 
-  console.log('✅ Tree views created successfully');
+  console.log("✅ Tree views created successfully");
 
   context.subscriptions.push(workspaceView);
 
@@ -202,8 +187,14 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Initialize command handlers
   const packageCommands = new PackageCommands();
-  const branchCommands = new BranchCommands(statusBarManager, workspaceProvider);
-  const instanceCommands = new InstanceCommands(statusBarManager, workspaceProvider);
+  const branchCommands = new BranchCommands(
+    statusBarManager,
+    workspaceProvider,
+  );
+  const instanceCommands = new InstanceCommands(
+    statusBarManager,
+    workspaceProvider,
+  );
 
   // Register all commands
   const allBranchCommands = branchCommands.register();
@@ -217,7 +208,7 @@ export function activate(context: vscode.ExtensionContext) {
     ...allInstanceCommands,
   );
 
-  console.log('🎉 Darklang VS Code extension fully activated!');
+  console.log("🎉 Darklang VS Code extension fully activated!");
 }
 
 export function deactivate(): Thenable<void> | undefined {

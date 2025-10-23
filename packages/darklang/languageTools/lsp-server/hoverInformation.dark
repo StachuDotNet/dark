@@ -47,7 +47,7 @@ let hoverInfoForThingAtPosition
     createHoverInfo range description metadata
 
   | PackageValue v description ->
-    let prettyVal = PrettyPrinter.ProgramTypes.packageValue v
+    let prettyVal = PrettyPrinter.ProgramTypes.packageValue Stdlib.Option.Option.None v
 
     let fqName =
       (Stdlib.List.append v.name.modules [ v.name.name ])
@@ -89,7 +89,7 @@ let hoverInfoForThingAtPosition
 
 
   | PackageType typ description ->
-    let prettyType = PrettyPrinter.ProgramTypes.packageType typ
+    let prettyType = PrettyPrinter.ProgramTypes.packageType Stdlib.Option.Option.None typ
 
     let fqName =
       (Stdlib.List.append typ.name.modules [ typ.name.name ])

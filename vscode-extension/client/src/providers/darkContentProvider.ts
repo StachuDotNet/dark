@@ -10,10 +10,12 @@ export class DarkContentProvider implements vscode.TextDocumentContentProvider {
   private client: LanguageClient | null = null;
 
   // Injected by activate() to get view mode for a given URI
-  getModeForUri?: (uri: vscode.Uri) => 'source' | 'ast';
+  getModeForUri?: (uri: vscode.Uri) => "source" | "ast";
 
   constructor() {
-    console.log('DarkContentProvider initialized with support for all URL patterns');
+    console.log(
+      "DarkContentProvider initialized with support for all URL patterns",
+    );
   }
 
   setClient(client: LanguageClient): void {
@@ -34,16 +36,15 @@ export class DarkContentProvider implements vscode.TextDocumentContentProvider {
       console.log(`Providing content for: ${url}`);
 
       // Check view mode and delegate accordingly
-      const mode = this.getModeForUri ? this.getModeForUri(uri) : 'source';
+      const mode = this.getModeForUri ? this.getModeForUri(uri) : "source";
 
-      if (mode === 'ast') {
+      if (mode === "ast") {
         return await this.renderAstFor(uri);
       } else {
         return await this.renderSourceFor(uri);
       }
-
     } catch (error) {
-      console.error('Error providing content:', error);
+      console.error("Error providing content:", error);
       return this.getErrorContent(uri.toString(), `Error: ${error}`);
     }
   }
@@ -70,21 +71,30 @@ export class DarkContentProvider implements vscode.TextDocumentContentProvider {
     const parsedUrl = UrlPatternRouter.parseUrl(url);
 
     if (!parsedUrl) {
-      return this.getErrorContent(url, "Invalid URL format - cannot render AST");
+      return this.getErrorContent(
+        url,
+        "Invalid URL format - cannot render AST",
+      );
     }
 
     // For now, we'll request AST rendering from the LSP
     // TODO: implement proper LSP request for AST
     if (!this.client) {
-      return this.getErrorContent(url, "LSP client not ready - cannot render AST");
+      return this.getErrorContent(
+        url,
+        "LSP client not ready - cannot render AST",
+      );
     }
 
     try {
       // Request AST from LSP server
-      const result = await this.client.sendRequest<{ ast: string }>('darklang/ast', {
-        uri: url,
-        parsedUrl: parsedUrl
-      });
+      const result = await this.client.sendRequest<{ ast: string }>(
+        "darklang/ast",
+        {
+          uri: url,
+          parsedUrl: parsedUrl,
+        },
+      );
 
       if (result && result.ast) {
         return result.ast;
@@ -92,9 +102,8 @@ export class DarkContentProvider implements vscode.TextDocumentContentProvider {
 
       // Fallback: render a placeholder AST view
       return this.getPlaceholderAstContent(parsedUrl);
-
     } catch (error) {
-      console.error('Error fetching AST from LSP:', error);
+      console.error("Error fetching AST from LSP:", error);
       // Fallback to placeholder
       return this.getPlaceholderAstContent(parsedUrl);
     }
@@ -107,9 +116,9 @@ export class DarkContentProvider implements vscode.TextDocumentContentProvider {
     return `# AST View (Preview)
 
 **Mode:** ${parsedUrl.mode}
-**Context:** ${parsedUrl.context || 'N/A'}
-**Target:** ${parsedUrl.target || 'N/A'}
-**View:** ${parsedUrl.view || 'N/A'}
+**Context:** ${parsedUrl.context || "N/A"}
+**Target:** ${parsedUrl.target || "N/A"}
+**View:** ${parsedUrl.view || "N/A"}
 
 ---
 
@@ -134,19 +143,21 @@ ${JSON.stringify(parsedUrl, null, 2)}
    */
   private async getContentForParsedUrl(parsedUrl: ParsedUrl): Promise<string> {
     switch (parsedUrl.mode) {
-      case 'package':
+      case "package":
         return await PackageContentProvider.getContentAsync(parsedUrl);
 
-      case 'branch':
+      case "branch":
         return this.getBranchContent(parsedUrl);
 
-      case 'instance':
-        return "TODO: fake content (instance)"
+      case "instance":
+        return "TODO: fake content (instance)";
 
       default:
         return this.getErrorContent(
-          `dark:///${parsedUrl.mode}/${parsedUrl.context || ''}/${parsedUrl.target || ''}`,
-          `Unsupported URL mode: ${parsedUrl.mode}`
+          `dark:///${parsedUrl.mode}/${parsedUrl.context || ""}/${
+            parsedUrl.target || ""
+          }`,
+          `Unsupported URL mode: ${parsedUrl.mode}`,
         );
     }
   }
@@ -189,16 +200,14 @@ Branch with ID \`${branchId}\` was not found.
 | **ID** | \`${branch.id}\` |
 | **Title** | ${branch.title} |
 | **State** | ${branch.state} |
-| **Created By** | ${branch.createdBy || '(none)'} |
+| **Created By** | ${branch.createdBy || "(none)"} |
 | **Created At** | ${formatDate(branch.createdAt)} |
 | **Last Active** | ${formatDate(branch.lastActiveAt)} |
-| **Merged At** | ${branch.mergedAt ? formatDate(branch.mergedAt) : '(not merged)'} |
+| **Merged At** | ${
+      branch.mergedAt ? formatDate(branch.mergedAt) : "(not merged)"
+    } |
 
 ## Branch Contents
-
-### Active Patches
-- [abc123](dark://patch/abc123) - Add user validation (Draft)
-- [def456](dark://patch/def456) - Fix email validation (Ready)
 
 ### Branch State
 - **Modified Items:** 5
@@ -264,7 +273,6 @@ Branch with ID \`${branchId}\` was not found.
 [📊 Branch Statistics](dark://branch/stats)
 [⚙️ Branch Settings](dark://config/branchs)`;
   }
-
 
   public refresh(uri?: vscode.Uri): void {
     if (uri) {

@@ -31,7 +31,7 @@ module Type =
             AND name = @name
             AND item_type = 'type'
             AND deprecated_at IS NULL
-            AND (branch_id = @branch_id OR (branch_id IS NULL AND @branch_id IS NULL))
+            AND (branch_id IS NULL OR branch_id = @branch_id)
           ORDER BY created_at DESC
           LIMIT 1
           """
@@ -69,7 +69,7 @@ module Type =
           WHERE item_id = @item_id
             AND item_type = 'type'
             AND deprecated_at IS NULL
-            AND (branch_id = @branch_id OR (branch_id IS NULL AND @branch_id IS NULL))
+            AND (branch_id IS NULL OR branch_id = @branch_id)
           ORDER BY created_at DESC
           LIMIT 1
           """
@@ -101,7 +101,7 @@ module Value =
             AND name = @name
             AND item_type = 'value'
             AND deprecated_at IS NULL
-            AND (branch_id = @branch_id OR (branch_id IS NULL AND @branch_id IS NULL))
+            AND (branch_id IS NULL OR branch_id = @branch_id)
           ORDER BY created_at DESC
           LIMIT 1
           """
@@ -139,7 +139,7 @@ module Value =
           WHERE item_id = @item_id
             AND item_type = 'value'
             AND deprecated_at IS NULL
-            AND (branch_id = @branch_id OR (branch_id IS NULL AND @branch_id IS NULL))
+            AND (branch_id IS NULL OR branch_id = @branch_id)
           ORDER BY created_at DESC
           LIMIT 1
           """
@@ -171,7 +171,7 @@ module Fn =
             AND name = @name
             AND item_type = 'fn'
             AND deprecated_at IS NULL
-            AND (branch_id = @branch_id OR (branch_id IS NULL AND @branch_id IS NULL))
+            AND (branch_id IS NULL OR branch_id = @branch_id)
           ORDER BY created_at DESC
           LIMIT 1
           """
@@ -209,7 +209,7 @@ module Fn =
           WHERE item_id = @item_id
             AND item_type = 'fn'
             AND deprecated_at IS NULL
-            AND (branch_id = @branch_id OR (branch_id IS NULL AND @branch_id IS NULL))
+            AND (branch_id IS NULL OR branch_id = @branch_id)
           ORDER BY created_at DESC
           LIMIT 1
           """

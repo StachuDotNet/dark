@@ -28,29 +28,17 @@ export interface PatchNode {
 export interface BranchNode {
   id: string;
   label: string;
-  type: "current" | "recent" | "shared" | "actions" | "patch" | "operation" | "conflict" | "section"
-    | "instance-root" | "branch-root" | "patches-root" | "instance-item" | "packages" | "branches" | "category"
-    | "patch-namespace" | "patch-module" | "patch-change";
+  type: "current" | "recent" | "shared" | "actions" | "operation" | "conflict" | "section"
+    | "instance-root" | "branch-root" | "changes-root" | "instance-item" | "packages" | "branches" | "category"
+    | "pending-op";
   contextValue: string;
   children?: BranchNode[];
-  patchData?: {
-    status?: "draft" | "ready" | "applied" | "conflicts" | "merged";
-    operations?: number;
-    conflicts?: number;
-    tests?: number;
-    intent?: string;
-    author?: string;
-    isFocused?: boolean;
-    referenceCount?: number;
-    isMergedUpstream?: boolean;
-  };
   instanceData?: {
     url?: string;
     path?: string;
     status?: "connected" | "disconnected" | "syncing";
     packageCount?: number;
     branchCount?: number;
-    patchCount?: number;
   };
   changeData?: {
     changeType?: "add" | "modify" | "delete" | "rename";
@@ -73,12 +61,11 @@ export interface InstanceNode {
     status?: "connected" | "disconnected" | "syncing";
     packageCount?: number;
     branchCount?: number;
-    patchCount?: number;
   };
 }
 
 // URL Pattern types
-export type UrlMode = 'package' | 'edit' | 'draft' | 'patch' | 'history' | 'compare' | 'branch' | 'config' | 'instance';
+export type UrlMode = 'package' | 'edit' | 'draft' | 'history' | 'compare' | 'branch' | 'config' | 'instance';
 
 export interface ParsedUrl {
   mode: UrlMode;
@@ -98,10 +85,6 @@ export interface StatusBarData {
   branch: {
     name: string;
     active: boolean;
-  };
-  patch: {
-    current: string;
-    changes: number;
   };
   conflicts: {
     count: number;
@@ -135,15 +118,6 @@ export interface ValidationError {
   severity: "error" | "warning";
 }
 
-// Patch operations
-export interface PatchOperation {
-  type: "create" | "modify" | "delete";
-  target: string;
-  description: string;
-  content?: string;
-  diff?: string;
-}
-
 // User and authentication
 export interface User {
   id: string;
@@ -159,17 +133,6 @@ export interface Branch {
   author: User;
   createdAt: Date;
   isActive: boolean;
-}
-
-export interface Patch {
-  id: string;
-  title: string;
-  intent: string;
-  author: User;
-  operations: PatchOperation[];
-  status: "draft" | "ready" | "applied" | "conflicts";
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 // Package information

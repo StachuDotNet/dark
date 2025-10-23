@@ -57,20 +57,29 @@ module ReadFile =
           match pm.findType branchID location with
           | Some id ->
             match pm.getType id with
-            | Some typ -> Stdlib.Option.Option.Some(typ |> PrettyPrinter.ProgramTypes.packageType)
+            | Some typ ->
+              (PrettyPrinter.ProgramTypes.packageType branchID typ)
+              |> Stdlib.Option.Option.Some
             | None -> Stdlib.Option.Option.None
+
           | None ->
             match pm.findFn branchID location with
             | Some id ->
               match pm.getFn id with
-              | Some fn -> Stdlib.Option.Option.Some(fn |> PrettyPrinter.ProgramTypes.packageFn)
+              | Some fn ->
+                (PrettyPrinter.ProgramTypes.packageFn branchID fn)
+                |> Stdlib.Option.Option.Some
               | None -> Stdlib.Option.Option.None
+
             | None ->
               match pm.findValue branchID location with
               | Some id ->
                 match pm.getValue id with
-                | Some value -> Stdlib.Option.Option.Some(value |> PrettyPrinter.ProgramTypes.packageValue)
+                | Some value ->
+                  (PrettyPrinter.ProgramTypes.packageValue branchID value)
+                  |> Stdlib.Option.Option.Some
                 | None -> Stdlib.Option.Option.None
+
               | None -> Stdlib.Option.Option.None
 
         match entityContent with
@@ -98,19 +107,19 @@ module ReadFile =
           let functions =
             searchResults.fns
             |> Stdlib.List.map (fun locatedFn ->
-              locatedFn.entity |> PrettyPrinter.ProgramTypes.packageFn)
+              PrettyPrinter.ProgramTypes.packageFn branchID locatedFn.entity)
             |> Stdlib.String.join "\n\n"
 
           let types =
             searchResults.types
             |> Stdlib.List.map (fun locatedType ->
-              locatedType.entity |> PrettyPrinter.ProgramTypes.packageType)
+              PrettyPrinter.ProgramTypes.packageType branchID locatedType.entity)
             |> Stdlib.String.join "\n\n"
 
           let values =
             searchResults.values
             |> Stdlib.List.map (fun locatedValue ->
-              locatedValue.entity |> PrettyPrinter.ProgramTypes.packageValue)
+              PrettyPrinter.ProgramTypes.packageValue branchID locatedValue.entity)
             |> Stdlib.String.join "\n\n"
 
           let allDefinitions =
@@ -143,6 +152,105 @@ module ReadFile =
 
 
 module WriteFile =
+  // Extract module name from a module_decl node
+  let getModuleName (node: LanguageTools.Parser.ParsedNode) : String =
+    // A module_decl has children: keyword, identifier, equals, body
+    // Find the identifier child
+    let identifierNode =
+      node.children
+      |> Stdlib.List.findFirst (fun child ->
+        child.typ == "module_identifier")
+
+    match identifierNode with
+    | Some id -> id.text
+    | None -> ""
+
+
+  // Remove the prefix from a module path if it matches
+  let stripModulePrefix
+    (prefix: List<String>)
+    (path: List<String>)
+    : List<String> =
+    match (prefix, path) with
+    | ([], rest) -> rest
+    | (p :: pRest, m :: mRest) ->
+      if p == m then
+        WriteFile.stripModulePrefix pRest mRest
+      else
+        path
+    | _ -> path
+
+
+  // Recursively find all declarations with their module path
+  // Returns list of (extraModules, declaration) where extraModules are the modules beyond the base path
+  let findDeclsWithPath
+    (nodeType: String)
+    (currentExtraModules: List<String>)
+    (node: LanguageTools.Parser.ParsedNode)
+    : List<List<String> * LanguageTools.Parser.ParsedNode> =
+    if node.typ == nodeType then
+      [ (currentExtraModules, node) ]
+
+    else
+      if node.typ == "module_decl" then
+        let moduleName = WriteFile.getModuleName node
+        let newPath = Stdlib.List.append currentExtraModules [ moduleName ]
+
+        node.children
+        |> Stdlib.List.map (fun child -> WriteFile.findDeclsWithPath nodeType newPath child)
+        |> Stdlib.List.flatten
+
+      else
+        node.children
+        |> Stdlib.List.map (fun child ->
+          WriteFile.findDeclsWithPath nodeType currentExtraModules child)
+        |> Stdlib.List.flatten
+
+
+  let sendSuccessResponse
+    (state: LspState)
+    (requestId: JsonRPC.RequestId)
+    (ops: List<LanguageTools.ProgramTypes.PackageOp>)
+    : LspState =
+    let opsJson =
+      ops
+      |> Stdlib.List.map (fun op ->
+        Json.String (Builtin.jsonSerialize<LanguageTools.ProgramTypes.PackageOp> op))
+      |> Json.Array
+
+    let responseJson =
+      (JsonRPC.Response.Ok.make
+        (Stdlib.Option.Option.Some(requestId))
+        (Json.Object
+          [ ("success", Json.Bool true)
+            ("ops", opsJson)
+            ("errors", Json.Array []) ]))
+      |> Stdlib.AltJson.format
+
+    logAndSendToClient responseJson
+    state
+
+
+  let sendErrorResponse
+    (state: LspState)
+    (requestId: JsonRPC.RequestId)
+    (errors: List<String>)
+    : LspState =
+    let errorsJson = errors |> Stdlib.List.map (fun e -> Json.String e) |> Json.Array
+
+    let responseJson =
+      (JsonRPC.Response.Ok.make
+        (Stdlib.Option.Option.Some(requestId))
+        (Json.Object
+          [ ("success", Json.Bool false)
+            ("ops", Json.Array [])
+            ("errors", errorsJson) ]))
+      |> Stdlib.AltJson.format
+
+    logAndSendToClient responseJson
+    state
+
+
   let handleWriteFileRequest
     (state: LspState)
     (requestId: JsonRPC.RequestId)
@@ -164,14 +272,206 @@ module WriteFile =
 
       // Update the script content
       match Builtin.cliScriptsUpdate scriptName content with
-      | Ok () -> ()
-      | Error _err -> () // TODO: Handle error properly
+      | Ok () -> sendSuccessResponse state requestId []
+      | Error err -> sendErrorResponse state requestId [ err ]
+    else
+      // Parse package module content
+      let tree = LanguageTools.Parser.parseToSimplifiedTree content
 
-    let responseJson =
-      (JsonRPC.Response.Ok.make
-        (Stdlib.Option.Option.Some(requestId))
-        (Json.String content))
-      |> Stdlib.AltJson.format
+      // Find all type, function, and value declarations with their module paths
+      let typeDeclsWithPath = WriteFile.findDeclsWithPath "type_decl" [] tree
+      let fnDeclsWithPath = WriteFile.findDeclsWithPath "fn_decl" [] tree
+      let valDeclsWithPath = WriteFile.findDeclsWithPath "val_decl" [] tree
 
-    logAndSendToClient responseJson
-    state
+      // Parse declarations, keeping track of their module paths
+      let parsedTypes =
+        typeDeclsWithPath
+        |> Stdlib.List.map (fun (extraModules, node) ->
+          let parsed = LanguageTools.Parser.TypeDeclaration.parse node
+          (extraModules, parsed))
+
+      let parsedFns =
+        fnDeclsWithPath
+        |> Stdlib.List.map (fun (extraModules, node) ->
+          let parsed = LanguageTools.Parser.FunctionDeclaration.parse node
+          (extraModules, parsed))
+
+      let parsedVals =
+        valDeclsWithPath
+        |> Stdlib.List.map (fun (extraModules, node) ->
+          let parsed = LanguageTools.Parser.ValueDeclaration.parse node
+          (extraModules, parsed))
+
+      // Extract error messages from each declaration type
+      let typeErrors =
+        parsedTypes
+        |> Stdlib.List.filterMap (fun (_extraModules, result) ->
+          match result with
+          | Error unparseable ->
+            Stdlib.Option.Option.Some(
+              $"Type parse error at {unparseable.source.range.start.row}:{unparseable.source.range.start.column}"
+            )
+          | Ok _ -> Stdlib.Option.Option.None)
+
+      let fnErrors =
+        parsedFns
+        |> Stdlib.List.filterMap (fun (_extraModules, result) ->
+          match result with
+          | Error unparseable ->
+            Stdlib.Option.Option.Some(
+              $"Function parse error at {unparseable.source.range.start.row}:{unparseable.source.range.start.column}"
+            )
+          | Ok _ -> Stdlib.Option.Option.None)
+
+      let valErrors =
+        parsedVals
+        |> Stdlib.List.filterMap (fun (_extraModules, result) ->
+          match result with
+          | Error unparseable ->
+            Stdlib.Option.Option.Some(
+              $"Value parse error at {unparseable.source.range.start.row}:{unparseable.source.range.start.column}"
+            )
+          | Ok _ -> Stdlib.Option.Option.None)
+
+      let allErrors =
+        Stdlib.List.append
+          typeErrors
+          (Stdlib.List.append fnErrors valErrors)
+
+      if (Stdlib.List.isEmpty allErrors) |> Stdlib.Bool.not then
+        sendErrorResponse state requestId allErrors
+      else
+        // Convert parsed declarations to PackageOps, but only for NEW items
+        let parts = Stdlib.String.split nameForLookup "."
+
+        let owner =
+          match parts with
+          | owner :: _rest -> owner
+          | _ -> ""
+
+        let pm = LanguageTools.PackageManager.pm ()
+
+        // Process types
+        let typeOps =
+          parsedTypes
+          |> Stdlib.List.map (fun (extraModules, result) ->
+            match result with
+            | Ok typeDecl ->
+              let modules =
+                match extraModules with
+                | _owner :: rest -> rest
+                | _ -> []
+
+              let typeLocation =
+                (LanguageTools.ProgramTypes.PackageLocation
+                  { owner = owner
+                    modules = modules
+                    name = typeDecl.name.name })
+
+              let existingTypeId = pm.findType state.branchID typeLocation
+
+              match existingTypeId with
+              | Some _id -> []
+              | None ->
+                let (packageType, _unresolvedNames) =
+                  LanguageTools.WrittenTypesToProgramTypes.TypeDeclaration.toPackageTypePT
+                    state.branchID
+                    LanguageTools.NameResolver.OnMissing.Allow
+                    pm
+                    owner
+                    modules
+                    typeDecl
+
+                [ LanguageTools.ProgramTypes.PackageOp.AddType packageType
+                  LanguageTools.ProgramTypes.PackageOp.SetTypeName (packageType.id, typeLocation) ]
+            | Error _ -> [])
+          |> Stdlib.List.flatten
+
+        // Process functions
+        let fnOps =
+          parsedFns
+          |> Stdlib.List.map (fun (extraModules, result) ->
+            match result with
+            | Ok fnDecl ->
+              // extraModules contains the full path, strip the owner to get modules
+              let modules =
+                match extraModules with
+                | _owner :: rest -> rest
+                | _ -> []
+
+              let fnLocation =
+                (LanguageTools.ProgramTypes.PackageLocation
+                  { owner = owner
+                    modules = modules
+                    name = fnDecl.name.name })
+
+              let existingFnId = pm.findFn state.branchID fnLocation
+
+              match existingFnId with
+              | Some _id -> []
+              | None ->
+                let (packageFn, _unresolvedNames) =
+                  LanguageTools.WrittenTypesToProgramTypes.FunctionDeclaration.toPackageFnPT
+                    state.branchID
+                    LanguageTools.NameResolver.OnMissing.Allow
+                    pm
+                    owner
+                    modules
+                    fnDecl
+
+                [ LanguageTools.ProgramTypes.PackageOp.AddFn packageFn
+                  LanguageTools.ProgramTypes.PackageOp.SetFnName (packageFn.id, fnLocation) ]
+            | Error _ -> [])
+          |> Stdlib.List.flatten
+
+        // Process values
+        let valueOps =
+          parsedVals
+          |> Stdlib.List.map (fun (extraModules, result) ->
+            match result with
+            | Ok valDecl ->
+              // extraModules contains the full path, strip the owner to get modules
+              let modules =
+                match extraModules with
+                | _owner :: rest -> rest
+                | _ -> []
+
+              let valLocation =
+                (LanguageTools.ProgramTypes.PackageLocation
+                  { owner = owner
+                    modules = modules
+                    name = valDecl.name.name })
+
+              let existingValId = pm.findValue state.branchID valLocation
+
+              match existingValId with
+              | Some _id -> []
+              | None ->
+                let (packageValue, _unresolvedNames) =
+                  LanguageTools.WrittenTypesToProgramTypes.ValueDeclaration.toPackageValuePT
+                    state.branchID
+                    LanguageTools.NameResolver.OnMissing.Allow
+                    pm
+                    owner
+                    modules
+                    valDecl
+
+                [ LanguageTools.ProgramTypes.PackageOp.AddValue packageValue
+                  LanguageTools.ProgramTypes.PackageOp.SetValueName (packageValue.id, valLocation) ]
+            | Error _ -> [])
+          |> Stdlib.List.flatten
+
+        // Combine all ops
+        let allOps =
+          Stdlib.List.append
+            typeOps
+            (Stdlib.List.append fnOps valueOps)
+
+        // Only add ops if there are new items
+        if (Stdlib.List.isEmpty allOps) |> Stdlib.Bool.not then
+          match state.branchID with
+          | Some id ->
+            SCM.PackageOps.add (Stdlib.Option.Option.Some id) allOps
+          | None -> SCM.PackageOps.addToMain allOps
+
+        sendSuccessResponse state requestId allOps

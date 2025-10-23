@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
+import { LanguageClient } from "vscode-languageclient/node";
 import { BranchNode } from "../../types";
 import { BranchStateManager } from "../../data/branchStateManager";
 import { InstanceDemoData } from "../../data/demo/instanceDemoData";
-import { buildPackageTree, change } from "../../utils/patchTreeBuilder";
 
 export class WorkspaceTreeDataProvider implements vscode.TreeDataProvider<BranchNode> {
   private _onDidChangeTreeData: vscode.EventEmitter<BranchNode | undefined | null | void> =
@@ -11,6 +11,7 @@ export class WorkspaceTreeDataProvider implements vscode.TreeDataProvider<Branch
     this._onDidChangeTreeData.event;
 
   private branchStateManager = BranchStateManager.getInstance();
+  private client: LanguageClient | null = null;
 
   constructor() {
     console.log('🌳 WorkspaceTreeDataProvider constructor called');
@@ -20,6 +21,21 @@ export class WorkspaceTreeDataProvider implements vscode.TreeDataProvider<Branch
       console.log('🔔 WorkspaceTreeDataProvider: Branch changed event received');
       this.refresh();
     });
+  }
+
+  setClient(client: LanguageClient): void {
+    this.client = client;
+  }
+
+  addPendingOps(ops: any[]): void {
+    console.log('WorkspaceTreeDataProvider.addPendingOps called - refreshing to show new ops from DB');
+    // Ops are stored in the database, just refresh to show them
+    this.refresh();
+  }
+
+  clearPendingOps(): void {
+    // Ops are stored in DB, just refresh
+    this.refresh();
   }
 
   refresh(): void {
@@ -32,14 +48,19 @@ export class WorkspaceTreeDataProvider implements vscode.TreeDataProvider<Branch
   }
 
   getTreeItem(element: BranchNode): vscode.TreeItem {
-    const item = new vscode.TreeItem(
-      element.label,
-      element.children && element.children.length > 0
-        ? (element.type === "instance-root" ? vscode.TreeItemCollapsibleState.Collapsed :
-           element.type === "patches-root" ? vscode.TreeItemCollapsibleState.Expanded :
-           vscode.TreeItemCollapsibleState.Collapsed)
-        : vscode.TreeItemCollapsibleState.None
-    );
+    // Determine collapsible state
+    let collapsibleState: vscode.TreeItemCollapsibleState;
+
+    if (element.type === "changes-root") {
+      // Always expandable to show pending ops
+      collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+    } else if (element.children && element.children.length > 0) {
+      collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+    } else {
+      collapsibleState = vscode.TreeItemCollapsibleState.None;
+    }
+
+    const item = new vscode.TreeItem(element.label, collapsibleState);
 
     // Set context value for menu visibility
     item.contextValue = element.contextValue;
@@ -63,10 +84,12 @@ export class WorkspaceTreeDataProvider implements vscode.TreeDataProvider<Branch
       return item;
     }
 
-    // Handle Patches root node
-    if (element.type === "patches-root") {
-      item.iconPath = new vscode.ThemeIcon("files");
-      item.tooltip = "Patches in current branch";
+
+    // Handle Pending Changes root node
+    if (element.type === "changes-root") {
+      item.iconPath = new vscode.ThemeIcon("git-commit", new vscode.ThemeColor("charts.yellow"));
+      item.tooltip = "Recent package operations (last 50)";
+      // Count will be shown when children are loaded
       return item;
     }
 
@@ -102,114 +125,19 @@ export class WorkspaceTreeDataProvider implements vscode.TreeDataProvider<Branch
       return item;
     }
 
-    // Handle patches (reuse existing patch styling logic)
-    if (element.contextValue === 'patch-quick-edits') {
-      item.description = "●";
-      item.tooltip = "Auto-created patch for quick edits (focused). Organize later if needed.";
-      item.iconPath = new vscode.ThemeIcon("git-branch", new vscode.ThemeColor("charts.blue"));
-      item.command = {
-        command: "darklang.patch.view",
-        title: "View Patch",
-        arguments: [element]
-      };
-    } else if (element.contextValue === 'patch-local') {
-      if (element.patchData?.isFocused) {
-        item.description = "●";
+    // Handle pending op items
+    if (element.type === "pending-op") {
+      item.iconPath = new vscode.ThemeIcon("diff-added", new vscode.ThemeColor("charts.green"));
+      item.tooltip = "Click to open module file";
+
+      // Add command to show diff if we have location info
+      if ((element as any).location) {
+        item.command = {
+          command: "darklang.showOpDiff",
+          title: "Show Changes",
+          arguments: [(element as any).opData, (element as any).location]
+        };
       }
-      item.tooltip = "Local patch (not yet pushed)";
-      item.iconPath = new vscode.ThemeIcon("git-branch", new vscode.ThemeColor("charts.blue"));
-      item.command = {
-        command: "darklang.patch.view",
-        title: "View Patch",
-        arguments: [element]
-      };
-    } else if (element.contextValue === 'patch-shared') {
-      item.description = element.patchData?.isFocused ? "● 👥" : "👥";
-      item.tooltip = `Shared across ${element.patchData?.referenceCount || 0} branches`;
-      item.iconPath = new vscode.ThemeIcon("git-branch", new vscode.ThemeColor("charts.purple"));
-      item.command = {
-        command: "darklang.patch.view",
-        title: "View Patch",
-        arguments: [element]
-      };
-    } else if (element.contextValue === 'patch-remote') {
-      if (element.patchData?.isFocused) {
-        item.description = "● 🌐";
-      } else {
-        item.description = "🌐";
-      }
-      item.tooltip = "Pushed to remote, not yet merged";
-      item.iconPath = new vscode.ThemeIcon("cloud-upload", new vscode.ThemeColor("charts.orange"));
-      item.command = {
-        command: "darklang.patch.view",
-        title: "View Patch",
-        arguments: [element]
-      };
-    } else if (element.contextValue === 'patch-merged') {
-      const mergedWhere = element.patchData?.isMergedUpstream ? "upstream" : "local";
-      item.description = `✓ ${mergedWhere}`;
-      item.tooltip = `Merged ${mergedWhere}`;
-      item.iconPath = new vscode.ThemeIcon("check", new vscode.ThemeColor("charts.green"));
-      item.resourceUri = vscode.Uri.parse(`dark://patch/${element.id}?merged=true`);
-    }
-
-    // Handle new package-centric patch tree nodes
-    if (element.type === "patch-namespace") {
-      item.iconPath = new vscode.ThemeIcon("symbol-namespace", new vscode.ThemeColor("charts.blue"));
-      item.tooltip = `Namespace: ${element.label}`;
-      return item;
-    }
-
-    if (element.type === "patch-module") {
-      const count = element.changeCount || 0;
-      const modulePath = element.changeData?.fullPath || "";
-      item.iconPath = new vscode.ThemeIcon("symbol-module", new vscode.ThemeColor("charts.purple"));
-      item.tooltip = `Module with ${count} change${count !== 1 ? 's' : ''} - Click to view package`;
-
-      // Add command to open package view
-      item.command = {
-        command: "darklang.patch.viewPackage",
-        title: "View Package",
-        arguments: [modulePath]
-      };
-
-      // Collapse modules with multiple changes by default
-      if (count > 1 && item.collapsibleState === vscode.TreeItemCollapsibleState.None) {
-        item.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
-      }
-      return item;
-    }
-
-    if (element.type === "patch-change") {
-      const changeType = element.changeData?.changeType || "modify";
-      const fullPath = element.changeData?.fullPath || "";
-
-      // Set icon based on change type
-      switch (changeType) {
-        case "add":
-          item.iconPath = new vscode.ThemeIcon("add", new vscode.ThemeColor("charts.green"));
-          item.tooltip = `Added: ${fullPath}`;
-          break;
-        case "modify":
-          item.iconPath = new vscode.ThemeIcon("edit", new vscode.ThemeColor("charts.yellow"));
-          item.tooltip = `Modified: ${fullPath}`;
-          break;
-        case "delete":
-          item.iconPath = new vscode.ThemeIcon("trash", new vscode.ThemeColor("charts.red"));
-          item.tooltip = `Deleted: ${fullPath}`;
-          break;
-        case "rename":
-          item.iconPath = new vscode.ThemeIcon("symbol-field", new vscode.ThemeColor("charts.blue"));
-          item.tooltip = `Renamed: ${fullPath}`;
-          break;
-      }
-
-      // Add command to view/edit the change
-      item.command = {
-        command: "darklang.patch.viewChange",
-        title: "View Change",
-        arguments: [element]
-      };
 
       return item;
     }
@@ -217,15 +145,98 @@ export class WorkspaceTreeDataProvider implements vscode.TreeDataProvider<Branch
     return item;
   }
 
-  getChildren(element?: BranchNode): Thenable<BranchNode[]> {
+  async getChildren(element?: BranchNode): Promise<BranchNode[]> {
     if (!element) {
-      // Root level: Instance, Branch, Patches
-      return Promise.resolve(this.getRootNodes());
+      // Root level: Instance, Branch, Pending Changes
+      return this.getRootNodes();
+    }
+
+    // Handle pending changes node - fetch ops from LSP
+    if (element.type === "changes-root") {
+      return await this.getPendingChanges();
     }
 
     // Return children of the element
-    return Promise.resolve(element.children || []);
+    return element.children || [];
   }
+
+  private async getPendingChanges(): Promise<BranchNode[]> {
+    console.log('getPendingChanges called - querying database');
+
+    if (!this.client) {
+      console.log('No LSP client available');
+      return [];
+    }
+
+    try {
+      const ops = await this.client.sendRequest<Array<{op: string, label: string}>>(
+        'darklang/getPendingOps',
+        {}
+      );
+
+      console.log('Received ops from database:', ops.length);
+
+      const nodes = ops.map((opWithLabel, index) => {
+        const location = this.extractLocationFromOp(opWithLabel.op);
+        return {
+          id: `op-${index}`,
+          label: opWithLabel.label,  // Use the formatted label from backend
+          type: "pending-op" as any,
+          contextValue: "pending-op",
+          location: location,  // Store location for the command
+          opData: opWithLabel.op  // Store full op for diff view
+        };
+      });
+
+      console.log('Returning nodes:', nodes);
+      return nodes;
+    } catch (error) {
+      console.error('Failed to get pending ops:', error);
+      return [];
+    }
+  }
+
+  private extractLocationFromOp(op: any): { owner: string, modules: string[], name: string } | null {
+    try {
+      if (typeof op === 'string') {
+        const parsed = JSON.parse(op);
+
+        // SetTypeName has location
+        if (parsed.SetTypeName && parsed.SetTypeName[1]) {
+          const location = parsed.SetTypeName[1];
+          return {
+            owner: location.owner || '',
+            modules: location.modules || [],
+            name: location.name || ''
+          };
+        }
+
+        // SetFnName has location
+        if (parsed.SetFnName && parsed.SetFnName[1]) {
+          const location = parsed.SetFnName[1];
+          return {
+            owner: location.owner || '',
+            modules: location.modules || [],
+            name: location.name || ''
+          };
+        }
+
+        // SetValueName has location
+        if (parsed.SetValueName && parsed.SetValueName[1]) {
+          const location = parsed.SetValueName[1];
+          return {
+            owner: location.owner || '',
+            modules: location.modules || [],
+            name: location.name || ''
+          };
+        }
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+    return null;
+  }
+
 
   private getRootNodes(): BranchNode[] {
     const branchName = this.branchStateManager.getCurrentBranchName();
@@ -270,6 +281,14 @@ export class WorkspaceTreeDataProvider implements vscode.TreeDataProvider<Branch
         type: "branch-root" as any,
         contextValue: "workspace-branch-root",
         children: []
+      },
+      // Pending Changes node (shows ops created from editing packages)
+      {
+        id: "pending-changes",
+        label: "Pending Changes",
+        type: "changes-root" as any,
+        contextValue: "workspace-changes-root",
+        children: [] // Will be populated async
       }
     ];
   }

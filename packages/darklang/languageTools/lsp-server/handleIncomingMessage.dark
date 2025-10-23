@@ -264,6 +264,14 @@ let handleIncomingMessage
           Some(Object [ ("name", String branchName) ])) ->
           Branches.handleCreateBranchRequest state requestId branchName
 
+        | ("darklang/getPendingOps", Some requestId, _) ->
+          PendingOps.handleGetPendingOpsRequest state requestId
+
+        | ("darklang/switchBranch",
+          Some requestId,
+          Some(Object [ ("branchId", String branchId) ])) ->
+          SwitchBranch.handleSwitchBranchRequest state requestId branchId
+
         | other ->
           log $"TODO: we don't yet support this method: {r.method}"
           state
