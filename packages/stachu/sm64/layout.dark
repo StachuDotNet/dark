@@ -1,0 +1,249 @@
+/// SM64.net Layout and HTML helpers
+module Stachu.SM64.Layout
+
+type SiteRoute =
+  | Home
+  | Contribute
+  // Core
+  | Game
+  | Plot
+  | Mechanics
+  | Castle
+  | Characters
+  | Stages
+  | StandardCourses
+  | StandardCourse of Stachu.SM64.Courses.StandardCourse
+  | StandardCourseStar of Stachu.SM64.Stars.StandardCourseStar
+  | SecretStages
+  | SecretStage of Stachu.SM64.Courses.SecretStage
+  | SecretStageStar of Stachu.SM64.Courses.SecretStage
+  | BowserStages
+  | BowserStage of Stachu.SM64.Courses.BowserStage
+  | BowserStageReds of Stachu.SM64.Courses.BowserStage
+  | AllStars
+  // Speedrunning
+  | Speedrunning
+  | Records
+  | Rankings
+  | Categories
+  | Speedrunners
+  | Speedrunner of String
+  | Strategies
+  | Routes
+  | Competitions
+  | Challenges
+  // Tools
+  | Tools
+  | Usamune
+  | TwitchBot
+
+
+let routePath (route: SiteRoute) : String =
+  match route with
+  | Home -> "/"
+  | Contribute -> "/contribute"
+  // Core
+  | Game -> "/game"
+  | Plot -> "/plot"
+  | Mechanics -> "/mechanics"
+  | Characters -> "/characters"
+  | Castle -> "/castle"
+  | Stages -> "/stages"
+  | StandardCourses -> "/stages/courses"
+  | StandardCourse stage ->
+    let stageInfo =
+      Stachu.SM64.Courses.getInfoForStandardCourse
+        Stachu.SM64.Core.SupportedGameRelease.NA
+        stage
+
+    "/stages/courses/" ++ stageInfo.abbreviation
+
+  | StandardCourseStar star ->
+    let starInfo = Stachu.SM64.Stars.getStandardCourseStarInfo star
+    let (course, placement) = starInfo.courseConnection
+
+    let courseInfo =
+      Stachu.SM64.Courses.getInfoForStandardCourse
+        Stachu.SM64.Core.SupportedGameRelease.NA
+        course
+
+    let placementInt = Stachu.SM64.Stars.starNumberToInt placement
+    "/stars/" ++ courseInfo.abbreviation ++ "/" ++ (Stdlib.Int64.toString placementInt)
+
+  | SecretStages -> "/stages/secret"
+  | SecretStage stage ->
+    let stageInfo =
+      Stachu.SM64.Courses.getSecretStageInfo
+        Stachu.SM64.Core.SupportedGameRelease.NA
+        stage
+
+    "/stages/secret/" ++ stageInfo.abbreviation
+
+  | SecretStageStar stage ->
+    let stageInfo =
+      Stachu.SM64.Courses.getSecretStageInfo
+        Stachu.SM64.Core.SupportedGameRelease.NA
+        stage
+
+    "/stages/secret/" ++ stageInfo.abbreviation ++ "/star"
+
+  | BowserStages -> "/stages/bowser"
+  | BowserStage stage ->
+    let stageInfo =
+      Stachu.SM64.Courses.getBowserStageInfo
+        Stachu.SM64.Core.SupportedGameRelease.NA
+        stage
+
+    "/stages/bowser/" ++ stageInfo.abbreviation
+
+  | BowserStageReds stage ->
+    let stageInfo =
+      Stachu.SM64.Courses.getBowserStageInfo
+        Stachu.SM64.Core.SupportedGameRelease.NA
+        stage
+
+    "/stages/bowser/" ++ stageInfo.abbreviation ++ "/reds"
+
+  | AllStars -> "/stars"
+  // Speedrunning
+  | Speedrunning -> "/speedrunning"
+  | Records -> "/speedrunning/records"
+  | Rankings -> "/speedrunning/rankings"
+  | Categories -> "/speedrunning/categories"
+  | Routes -> "/speedrunning/routes"
+  | Speedrunners -> "/speedrunning/speedrunners"
+  | Speedrunner handle -> "/speedrunning/speedrunners/" ++ handle
+  | Strategies -> "/speedrunning/strategies"
+  | Competitions -> "/speedrunning/competitions"
+  | Challenges -> "/speedrunning/challenges"
+  // Tools
+  | Tools -> "/tools"
+  | Usamune -> "/tools/usamune"
+  | TwitchBot -> "/tools/twitch-bot"
+
+
+let bracketLink (path: String) (text: String) : Stdlib.Html.Node =
+  Stdlib.Html.a
+    [ ("href", Stdlib.Option.Option.Some path) ]
+    [ Stdlib.Html.stringNode ("[" ++ text ++ "]") ]
+
+
+let navLink (text: String) (path: String) : Stdlib.Html.Node =
+  Stdlib.Html.a
+    [ ("href", Stdlib.Option.Option.Some path)
+      ("class", Stdlib.Option.Option.Some "navbar-item") ]
+    [ Stdlib.Html.stringNode text ]
+
+
+let nav : Stdlib.Html.Node =
+  Stdlib.Html.nav
+    [ ("role", Stdlib.Option.Option.Some "navigation")
+      ("aria-label", Stdlib.Option.Option.Some "main navigation")
+      ("class", Stdlib.Option.Option.Some "navbar") ]
+    [ Stdlib.Html.div
+        [ ("class", Stdlib.Option.Option.Some "navbar-brand") ]
+        [ Stdlib.Html.a
+            [ ("href", Stdlib.Option.Option.Some (routePath SiteRoute.Home))
+              ("class", Stdlib.Option.Option.Some "navbar-item") ]
+            [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "sm64.net" ] ] ]
+
+      Stdlib.Html.div
+        [ ("class", Stdlib.Option.Option.Some "navbar-menu") ]
+        [ Stdlib.Html.div
+            [ ("class", Stdlib.Option.Option.Some "navbar-end") ]
+            [ Stdlib.Html.a
+                [ ("href", Stdlib.Option.Option.Some (routePath SiteRoute.Home))
+                  ("class", Stdlib.Option.Option.Some "navbar-item") ]
+                [ Stdlib.Html.stringNode "?" ]
+
+              // The Game dropdown
+              Stdlib.Html.div
+                [ ("class",
+                   Stdlib.Option.Option.Some "navbar-item has-dropdown is-hoverable") ]
+                [ Stdlib.Html.a
+                    [ ("href", Stdlib.Option.Option.Some (routePath SiteRoute.Game))
+                      ("class", Stdlib.Option.Option.Some "navbar-link") ]
+                    [ Stdlib.Html.stringNode "The Game" ]
+
+                  Stdlib.Html.div
+                    [ ("class", Stdlib.Option.Option.Some "navbar-dropdown") ]
+                    [ navLink "The Game" (routePath SiteRoute.Game)
+                      Stdlib.Html.htmlTagNode "hr" [ ("class", Stdlib.Option.Option.Some "navbar-divider") ] []
+                      navLink "Plot" (routePath SiteRoute.Plot)
+                      navLink "Mechanics" (routePath SiteRoute.Mechanics)
+                      navLink "Castle" (routePath SiteRoute.Castle)
+                      navLink "Characters" (routePath SiteRoute.Characters)
+                      navLink "Stages" (routePath SiteRoute.Stages)
+                      navLink "Stars" (routePath SiteRoute.AllStars) ] ]
+
+              // Speedrunning dropdown
+              Stdlib.Html.div
+                [ ("class",
+                   Stdlib.Option.Option.Some "navbar-item has-dropdown is-hoverable") ]
+                [ Stdlib.Html.a
+                    [ ("href", Stdlib.Option.Option.Some (routePath SiteRoute.Speedrunning))
+                      ("class", Stdlib.Option.Option.Some "navbar-link") ]
+                    [ Stdlib.Html.stringNode "Speedrunning" ]
+
+                  Stdlib.Html.div
+                    [ ("class", Stdlib.Option.Option.Some "navbar-dropdown") ]
+                    [ navLink "Speedrunning" (routePath SiteRoute.Speedrunning)
+                      Stdlib.Html.htmlTagNode "hr" [ ("class", Stdlib.Option.Option.Some "navbar-divider") ] []
+                      navLink "Records" (routePath SiteRoute.Records)
+                      navLink "Rankings" (routePath SiteRoute.Rankings)
+                      navLink "Categories" (routePath SiteRoute.Categories)
+                      navLink "Routes" (routePath SiteRoute.Routes)
+                      navLink "Speedrunners" (routePath SiteRoute.Speedrunners)
+                      navLink "Strategies" (routePath SiteRoute.Strategies)
+                      navLink "Competitions" (routePath SiteRoute.Competitions)
+                      navLink "Challenges" (routePath SiteRoute.Challenges) ] ]
+
+              // Tools dropdown
+              Stdlib.Html.div
+                [ ("class",
+                   Stdlib.Option.Option.Some "navbar-item has-dropdown is-hoverable") ]
+                [ Stdlib.Html.a
+                    [ ("href", Stdlib.Option.Option.Some (routePath SiteRoute.Tools))
+                      ("class", Stdlib.Option.Option.Some "navbar-link") ]
+                    [ Stdlib.Html.stringNode "Tools" ]
+
+                  Stdlib.Html.div
+                    [ ("class", Stdlib.Option.Option.Some "navbar-dropdown") ]
+                    [ navLink "Tools" (routePath SiteRoute.Tools)
+                      Stdlib.Html.htmlTagNode "hr" [ ("class", Stdlib.Option.Option.Some "navbar-divider") ] []
+                      navLink "Usamune" (routePath SiteRoute.Usamune)
+                      navLink "Twitch Bot" (routePath SiteRoute.TwitchBot) ] ] ] ] ]
+
+
+let layout (shouldDisplayNav: Bool) (content: Stdlib.Html.Node) : String =
+  let nodes =
+    [ Stdlib.Html.html
+        []
+        [ Stdlib.Html.head
+            []
+            [ Stdlib.Html.link
+                [ ("href",
+                   Stdlib.Option.Option.Some
+                     "https://cdn.jsdelivr.net/npm/bulma@0.9.0/css/bulma.css")
+                  ("rel", Stdlib.Option.Option.Some "stylesheet") ] ]
+
+          Stdlib.Html.body
+            []
+            [ Stdlib.Html.div
+                [ ("class", Stdlib.Option.Option.Some "container") ]
+                (if shouldDisplayNav then
+                   [ nav
+                     Stdlib.Html.div
+                       [ ("class", Stdlib.Option.Option.Some "content") ]
+                       [ content ] ]
+                 else
+                   [ content ]) ] ] ]
+
+  Stdlib.Html.document nodes
+
+
+let layoutWithoutNav (content: Stdlib.Html.Node) : String =
+  layout false content
+
+
+let layoutWithNav (content: Stdlib.Html.Node) : String = layout true content

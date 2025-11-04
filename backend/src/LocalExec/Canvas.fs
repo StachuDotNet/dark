@@ -80,6 +80,7 @@ let loadFromDisk
       }
 
     // i.e. dark-packages -> ("Darklang", "Packages")
+    //      dark-sm64net -> ("Darklang", "Sm64net")
     let (ownerName, canvasName) =
       if String.startsWith "dark-" canvasName then
         let canvasName = canvasName |> String.dropLeft 5

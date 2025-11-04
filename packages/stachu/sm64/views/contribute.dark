@@ -1,0 +1,14 @@
+/// Contribute page view
+module Stachu.SM64.Views.Contribute
+
+let view : Stdlib.Html.Node =
+  Stdlib.Html.div
+    []
+    [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Contribute" ]
+      Stdlib.Html.p
+        []
+        [ Stdlib.Html.stringNode "Contributions are welcome! Find the source code on "
+          Stdlib.Html.a
+            [ ("href", Stdlib.Option.Option.Some "https://github.com/stachudotnet/sm64.net") ]
+            [ Stdlib.Html.stringNode "GitHub" ]
+          Stdlib.Html.stringNode "." ] ]

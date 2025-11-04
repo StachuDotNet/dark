@@ -1,0 +1,186 @@
+/// Home page view
+module Stachu.SM64.Views.Home
+
+let view : Stdlib.Html.Node =
+  Stdlib.Html.div
+    [ ("class", Stdlib.Option.Option.Some "columns is-desktop is-centered") ]
+    [ Stdlib.Html.div
+        [ ("class", Stdlib.Option.Option.Some "column is-two-thirds-desktop") ]
+        [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "sm64.net" ]
+
+          Stdlib.Html.div
+            [ ("class", Stdlib.Option.Option.Some "content is-medium") ]
+            [ Stdlib.Html.div
+                [ ("class", Stdlib.Option.Option.Some "box") ]
+                [ Stdlib.Html.stringNode "This is a website centered around:"
+
+                  Stdlib.Html.ul
+                    []
+                    [ Stdlib.Html.li
+                        []
+                        [ Stdlib.Html.stringNode "Super Mario 64, the core game itself"
+
+                          Stdlib.Html.ul
+                            []
+                            [ Stdlib.Html.li
+                                []
+                                [ Stdlib.Html.stringNode "the "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.Plot)
+                                    "plot" ]
+
+                              Stdlib.Html.li
+                                []
+                                [ Stdlib.Html.stringNode "core "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.Mechanics)
+                                    "mechanics" ]
+
+                              Stdlib.Html.li
+                                []
+                                [ Stdlib.Html.stringNode "varied "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.Characters)
+                                    "characters" ]
+
+                              Stdlib.Html.li
+                                []
+                                [ Stdlib.Html.stringNode "the "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.Castle)
+                                    "castle"
+                                  Stdlib.Html.stringNode ", its "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.Stages)
+                                    "stages"
+                                  Stdlib.Html.stringNode ", and their "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.AllStars)
+                                    "stars" ] ] ]
+
+                      Stdlib.Html.li
+                        []
+                        [ Stdlib.Html.stringNode "the "
+                          Stachu.SM64.Layout.bracketLink
+                            (Stachu.SM64.Layout.routePath
+                              Stachu.SM64.Layout.SiteRoute.Speedrunning)
+                            "speedrunning"
+                          Stdlib.Html.stringNode " of SM64"
+
+                          Stdlib.Html.ul
+                            []
+                            [ Stdlib.Html.li
+                                []
+                                [ Stdlib.Html.stringNode "world "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.Records)
+                                    "records"
+                                  Stdlib.Html.stringNode " and "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.Rankings)
+                                    "rankings"
+                                  Stdlib.Html.stringNode " of major and minor "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.Categories)
+                                    "categories" ]
+
+                              Stdlib.Html.li
+                                []
+                                [ Stdlib.Html.stringNode "speedrunner "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.Speedrunners)
+                                    "profiles" ]
+
+                              Stdlib.Html.li
+                                []
+                                [ Stdlib.Html.stringNode "a directory of "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.Strategies)
+                                    "strategies"
+                                  Stdlib.Html.stringNode " and "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.Routes)
+                                    "routes"
+                                  Stdlib.Html.stringNode " used in speedrunning" ]
+
+                              Stdlib.Html.li
+                                []
+                                [ Stdlib.Html.stringNode "speedrunning "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.Competitions)
+                                    "competitions"
+                                  Stdlib.Html.stringNode " and "
+                                  Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.Challenges)
+                                    "challenges" ] ] ]
+
+                      Stdlib.Html.li
+                        []
+                        [ Stdlib.Html.stringNode "the world of [ROM Hacks], variants of the original Super Mario 64 game" ]
+
+                      Stdlib.Html.li
+                        []
+                        [ Stdlib.Html.stringNode "a directory of software "
+                          Stachu.SM64.Layout.bracketLink
+                            (Stachu.SM64.Layout.routePath
+                              Stachu.SM64.Layout.SiteRoute.Tools)
+                            "tools"
+                          Stdlib.Html.stringNode " to assist with speedrunning"
+
+                          Stdlib.Html.ul
+                            []
+                            [ Stdlib.Html.li
+                                []
+                                [ Stdlib.Html.stringNode "[a trainer] to help you improve your speedrunning" ]
+
+                              Stdlib.Html.li
+                                []
+                                [ Stachu.SM64.Layout.bracketLink
+                                    (Stachu.SM64.Layout.routePath
+                                      Stachu.SM64.Layout.SiteRoute.TwitchBot)
+                                    "a Twitch bot"
+                                  Stdlib.Html.stringNode " you can use to provide helpful '!sm64 ___' commands" ] ] ]
+
+                      Stdlib.Html.li
+                        []
+                        [ Stdlib.Html.stringNode "a software development-focused [log] of how this site is being built" ] ] ] ]
+
+          Stdlib.Html.div
+            [ ("class", Stdlib.Option.Option.Some "content is-small") ]
+            [ Stdlib.Html.p
+                []
+                [ Stdlib.Html.stringNode "This website is currently proof-of-concept / work-in-progress." ]
+
+              Stdlib.Html.p
+                []
+                [ Stdlib.Html.stringNode "Development is often streamed "
+                  Stdlib.Html.a
+                    [ ("href", Stdlib.Option.Option.Some "https://twitch.tv/stachudotnet") ]
+                    [ Stdlib.Html.stringNode "on Twitch" ]
+                  Stdlib.Html.stringNode " and source code available "
+                  Stdlib.Html.a
+                    [ ("href", Stdlib.Option.Option.Some "https://github.com/stachudotnet/sm64.net") ]
+                    [ Stdlib.Html.stringNode "on GitHub" ]
+                  Stdlib.Html.stringNode "." ]
+
+              Stdlib.Html.p
+                []
+                [ Stachu.SM64.Layout.bracketLink
+                    (Stachu.SM64.Layout.routePath
+                      Stachu.SM64.Layout.SiteRoute.Contribute)
+                    "Contributions"
+                  Stdlib.Html.stringNode " are welcome." ] ] ] ]

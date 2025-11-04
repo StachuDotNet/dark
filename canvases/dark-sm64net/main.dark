@@ -1,0 +1,309 @@
+// SM64.net website canvas
+
+[<HttpHandler("GET", "/ping")>]
+let _handler _req = Stdlib.Http.response (Stdlib.String.toBytes "pong") 200L
+
+
+[<HttpHandler("GET", "/")>]
+let _handler _req =
+  let html =
+    Stachu.SM64.Views.Home.view |> Stachu.SM64.Layout.layoutWithoutNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/contribute")>]
+let _handler _req =
+  let html =
+    Stachu.SM64.Views.Contribute.view |> Stachu.SM64.Layout.layoutWithoutNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/game")>]
+let _handler _req =
+  let html =
+    Stachu.SM64.Views.Game.view |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/stages")>]
+let _handler _req =
+  let html =
+    Stachu.SM64.Views.Stages.view |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/plot")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Plot" ]
+        Stdlib.Html.p
+          []
+          [ Stdlib.Html.stringNode "Princess Peach invites Mario to her castle..." ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/mechanics")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Mechanics" ]
+        Stdlib.Html.p
+          []
+          [ Stdlib.Html.stringNode "SM64 features various movement mechanics including jumping, diving, and wall kicks." ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/castle")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Castle" ]
+        Stdlib.Html.p
+          []
+          [ Stdlib.Html.stringNode "Peach's Castle is the central hub of Super Mario 64." ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/characters")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Characters" ]
+        Stdlib.Html.p
+          []
+          [ Stdlib.Html.stringNode "Mario, Princess Peach, Bowser, and many others..." ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/stages/courses")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Standard Courses" ]
+        Stdlib.Html.p
+          []
+          [ Stdlib.Html.stringNode "There are 15 standard courses in Super Mario 64." ]
+        Stdlib.Html.ul
+          []
+          [ Stdlib.Html.li
+              []
+              [ Stdlib.Html.stringNode "Bob-omb Battlefield (BoB)" ]
+            Stdlib.Html.li [] [ Stdlib.Html.stringNode "Whomp's Fortress (WF)" ]
+            Stdlib.Html.li
+              []
+              [ Stdlib.Html.stringNode "Jolly Roger Bay (JRB)" ]
+            Stdlib.Html.li
+              []
+              [ Stdlib.Html.stringNode "Cool, Cool Mountain (CCM)" ]
+            Stdlib.Html.li
+              []
+              [ Stdlib.Html.stringNode "Big Boo's Haunt (BBH)" ] ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/stages/secret")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Secret Stages" ]
+        Stdlib.Html.p [] [ Stdlib.Html.stringNode "Secret stages with single stars." ]  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/stages/bowser")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Bowser Stages" ]
+        Stdlib.Html.p
+          []
+          [ Stdlib.Html.stringNode "The three Bowser stages and their red coins." ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/stars")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "All Stars" ]
+        Stdlib.Html.p
+          []
+          [ Stdlib.Html.stringNode "There are 120 stars total in Super Mario 64."  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/speedrunning")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Speedrunning" ]
+        Stdlib.Html.p
+          []
+          [ Stdlib.Html.stringNode "SM64 speedrunning has various categories including 0 star, 1 star, 16 star, 70 star, and 120 star."  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/speedrunning/records")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Records" ]
+        Stdlib.Html.p [] [ Stdlib.Html.stringNode "World records for SM64."  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/speedrunning/rankings")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Rankings" ]
+        Stdlib.Html.p [] [ Stdlib.Html.stringNode "Rankings of speedrunners."  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/speedrunning/categories")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Categories" ]
+        Stdlib.Html.p [] [ Stdlib.Html.stringNode "Speedrunning categories."  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/speedrunning/routes")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Routes" ]
+        Stdlib.Html.p [] [ Stdlib.Html.stringNode "Speedrun routes."  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/speedrunning/speedrunners")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Speedrunners" ]
+        Stdlib.Html.p [] [ Stdlib.Html.stringNode "Notable SM64 speedrunners."  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/speedrunning/strategies")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Strategies" ]
+        Stdlib.Html.p [] [ Stdlib.Html.stringNode "Speedrunning strategies."  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/speedrunning/competitions")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Competitions" ]
+        Stdlib.Html.p [] [ Stdlib.Html.stringNode "SM64 competitions."  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/speedrunning/challenges")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Challenges" ]
+        Stdlib.Html.p [] [ Stdlib.Html.stringNode "SM64 challenges."  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/tools")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Tools" ]
+        Stdlib.Html.p [] [ Stdlib.Html.stringNode "Tools for SM64 speedrunning."  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/tools/usamune")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Usamune" ]
+        Stdlib.Html.p [] [ Stdlib.Html.stringNode "Usamune tool."  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L
+
+
+[<HttpHandler("GET", "/tools/twitch-bot")>]
+let _handler _req =
+  let html =
+    (Stdlib.Html.div
+      []
+      [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Twitch Bot" ]
+        Stdlib.Html.p
+          []
+          [ Stdlib.Html.stringNode "A Twitch bot for SM64 information."  ] ])
+    |> Stachu.SM64.Layout.layoutWithNav
+
+  Stdlib.Http.responseWithHtml html 200L

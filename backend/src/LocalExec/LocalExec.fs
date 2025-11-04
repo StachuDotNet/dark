@@ -24,6 +24,16 @@ module HandleCommand =
       return Ok()
     }
 
+  let reloadSm64NetCanvas () : Ply<Result<unit, string>> =
+    uply {
+      let! (canvasId, toplevels) =
+        Canvas.loadFromDisk LibPackageManager.PackageManager.pt "dark-sm64net"
+
+      print $"Loaded canvas {canvasId} with {List.length toplevels} toplevels"
+
+      return Ok()
+    }
+
   let reloadPackages () : Ply<Result<unit, string>> =
     uply {
       // first, load the packages from disk, ensuring all parse well
@@ -65,9 +75,12 @@ module HandleCommand =
 
       //do! PM.flushCheckpoint ()
 
-      // Reload dark-packages canvas after package reload
+      // Reload canvases after package reload
       print "Reloading dark-packages canvas..."
       let! _ = reloadDarkPackagesCanvas ()
+
+      print "Reloading dark-sm64net canvas..."
+      let! _ = reloadSm64NetCanvas ()
 
       return Ok()
     }
@@ -163,11 +176,17 @@ let main (args : string[]) : int =
         "loading dark-packages canvas from disk"
         (HandleCommand.reloadDarkPackagesCanvas ())
 
+    | [ "reload-sm64net-canvas" ] ->
+      handleCommand
+        "loading dark-sm64net canvas from disk"
+        (HandleCommand.reloadSm64NetCanvas ())
+
     | _ ->
       print "Invalid arguments"
       print "Available commands:"
       print "  reload-packages"
       print "  reload-dark-packages-canvas"
+      print "  reload-sm64net-canvas"
       print "  migrations run"
       print "  migrations list"
       NonBlockingConsole.wait ()

@@ -1,0 +1,234 @@
+/// SM64 Star definitions
+module Stachu.SM64.Stars
+
+// This type represents each of the 6 "regular" stars within the 15 standard courses
+type StandardCourseStar =
+  // BoB - Standard Course #1
+  | BigBobOmbOnTheSummit // 1
+  | FootraceWithKoopaTheQuick // 2
+  | ShootIntoTheWildSky // 3
+  | FindThe8RedCoins // 4
+  | MarioWingsToTheSky // 5
+  | BehindChainChompsGate // 6
+  // Whomp's - Standard Course #2
+  | ChipOffWhompsBlock // 1
+  | ToTheTopOfTheFortress // 2
+  | ShootIntoTheWildBlue // 3
+  | RedCoinsOnTheFloatingIsle // 4
+  | FallOntoTheCagedIsland // 5
+  | BlastAwayTheWall // 6
+  // JRB - Standard Course #3
+  | PlunderInTheSunkenShip // 1
+  | CanTheEelComeOutAndPlay // 2
+  | TreasureOfTheOceanCave // 3
+  | RedCoinsOnTheShipAfloat // 4
+  | BlastToTheStonePillar // 5
+  | ThroughTheJetStream // 6
+  // CCM - Standard Course #4
+  | SlipSlidinAway // 1
+  | LilPenguinLost // 2
+  | BigPenguinRace // 3
+  | FrostySlideFor8RedCoins // 4
+  | SnowmanLostHisHead // 5
+  | WallKicksWillWork // 6
+  // BBH - Standard Course #5
+  | GoOnAGhostHunt // 1
+  | SeekThe8RedCoins // 2
+  | EyeToEyeInTheSecretRoom // 3
+  | RideBigBoosMerryGoRound // 4
+  | BigBoosBalcony // 5
+  | SecretOfTheHauntedBooks // 6
+  // HMC - Standard Course #6
+  | SwimmingBeastInTheCavern // 1
+  | ElevateFor8RedCoins // 2
+  | MetalHeadMarioCanMove // 3
+  | NavigatingTheToxicMaze // 4
+  | AMazeingEmergencyExit // 5
+  | WatchForRollingRocks // 6
+  // LLL - Standard Course #7
+  | BoilTheBigBully // 1
+  | BullyTheBullies // 2
+  | EightCoinPuzzleWith15Pieces // 3
+  | RedHotLogRolling // 4
+  | HotFootItIntoTheVolcano // 5
+  | ElevatorTourInTheVolcano // 6
+  // SSL - Standard Course #8
+  | InTheTalonsOfTheBigBird // 1
+  | ShiningAtopThePyramid // 2
+  | InsideTheAncientPyramid // 3
+  | StandTallOnTheFourPillars // 4
+  | FreeFlyingFor8RedCoins // 5
+  | PyramidPuzzle // 6
+  // DDD - Standard Course #9
+  | BoardBowsersSub // 1
+  | ChestsInTheCurrent // 2
+  | PoleJumpingForRedCoins // 3
+  | ThroughTheJetStreams // 4
+  | TheMantaRaysReward // 5
+  | CollectTheCaps // 6
+  // SL/SML - Standard Course #10
+  | SnowmansBigHead // 1
+  | ChillWithTheBully // 2
+  | InTheDeepFreeze // 3
+  | WhirlFromTheFreezingPond // 4
+  | ShellShreddinForRedCoins // 5
+  | IntoTheIgloo // 6
+  // WDW - Standard Course #11
+  | ShockingArrowLifts // 1
+  | TopOfTheTown // 2
+  | SecretsInTheShallowsAndSky // 3
+  | ExpressElevatorHurryUp // 4
+  | GoToTownForRedCoins // 5
+  | QuickRaceThroughDowntown // 6
+  // TTM - Standard Course #12
+  | ScaleTheMountain // 1
+  | MysteryOfTheMonkeyCage // 2
+  | ScaryShroomsRedCoins // 3
+  | MysteriousMountainside // 4
+  | BreathtakingViewFromTheBridge // 5
+  | BlastToTheLonelyMushroom // 6
+  // THI - Standard Course #13
+  | PluckThePiranhaFlower // 1
+  | TheTipTopOfTheHugeIsland // 2
+  | RematchWithKoopaTheQuick // 3
+  | FiveIttyBittySecrets // 4
+  | WigglersRedCoins // 5
+  | MakeWigglerSquirm // 6
+  // TTC - Standard Course #14
+  | RollIntoTheCage // 1
+  | ThePitAndThePendulums // 2
+  | GetAHand // 3
+  | StompOnTheThwomp // 4
+  | TimedJumpsOnMovingBars // 5
+  | StopTimeForRedCoins // 6
+  // RR - Standard Course #15
+  | CruiserCrossingTheRainbow // 1
+  | TheBigHouseInTheSky // 2
+  | CoinsAmassedInAMaze // 3
+  | SwinginInTheBreeze // 4
+  | TrickyTriangles // 5
+  | SomewhereOverTheRainbow // 6
+
+
+type StarNumber =
+  | One
+  | Two
+  | Three
+  | Four
+  | Five
+  | Six
+
+
+let starNumberToInt (sn: StarNumber) : Int64 =
+  match sn with
+  | One -> 1L
+  | Two -> 2L
+  | Three -> 3L
+  | Four -> 4L
+  | Five -> 5L
+  | Six -> 6L
+
+
+type StandardCourseStarInfo =
+  { name: String
+    courseConnection: Stachu.SM64.Courses.StandardCourse * StarNumber }
+
+
+let getStandardCourseStarInfo (star: StandardCourseStar) : StandardCourseStarInfo =
+  match star with
+  | BigBobOmbOnTheSummit ->
+    StandardCourseStarInfo
+      { name = "Big Bob-omb on the Summit"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.BobOmbBattlefield, StarNumber.One) }
+
+  | FootraceWithKoopaTheQuick ->
+    StandardCourseStarInfo
+      { name = "Footrace with Koopa the Quick"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.BobOmbBattlefield, StarNumber.Two) }
+
+  | ShootIntoTheWildSky ->
+    StandardCourseStarInfo
+      { name = "Shoot into the Wild Sky"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.BobOmbBattlefield, StarNumber.Three) }
+
+  | FindThe8RedCoins ->
+    StandardCourseStarInfo
+      { name = "Find the 8 Red Coins"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.BobOmbBattlefield, StarNumber.Four) }
+
+  | MarioWingsToTheSky ->
+    StandardCourseStarInfo
+      { name = "Mario Wings to the Sky"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.BobOmbBattlefield, StarNumber.Five) }
+
+  | BehindChainChompsGate ->
+    StandardCourseStarInfo
+      { name = "Behind Chain Chomp's Gate"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.BobOmbBattlefield, StarNumber.Six) }
+
+  | ChipOffWhompsBlock ->
+    StandardCourseStarInfo
+      { name = "Chip Off Whomp's Block"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.WhompsFortress, StarNumber.One) }
+
+  | ToTheTopOfTheFortress ->
+    StandardCourseStarInfo
+      { name = "To the Top of the Fortress"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.WhompsFortress, StarNumber.Two) }
+
+  | ShootIntoTheWildBlue ->
+    StandardCourseStarInfo
+      { name = "Shoot Into the Wild Blue"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.WhompsFortress, StarNumber.Three) }
+
+  | RedCoinsOnTheFloatingIsle ->
+    StandardCourseStarInfo
+      { name = "Red Coins on the Floating Isle"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.WhompsFortress, StarNumber.Four) }
+
+  | FallOntoTheCagedIsland ->
+    StandardCourseStarInfo
+      { name = "Fall Onto the Caged Island"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.WhompsFortress, StarNumber.Five) }
+
+  | BlastAwayTheWall ->
+    StandardCourseStarInfo
+      { name = "Blast Away the Wall"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.WhompsFortress, StarNumber.Six) }
+
+  // JRB
+  | PlunderInTheSunkenShip ->
+    StandardCourseStarInfo
+      { name = "Plunder in the Sunken Ship"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.JollyRogerBay, StarNumber.One) }
+
+  | CanTheEelComeOutAndPlay ->
+    StandardCourseStarInfo
+      { name = "Can the Eel Come Out and Play?"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.JollyRogerBay, StarNumber.Two) }
+
+  | TreasureOfTheOceanCave ->
+    StandardCourseStarInfo
+      { name = "Treasure of the Ocean Cave"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.JollyRogerBay, StarNumber.Three) }
+
+  | RedCoinsOnTheShipAfloat ->
+    StandardCourseStarInfo
+      { name = "Red Coins on the Ship Afloat"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.JollyRogerBay, StarNumber.Four) }
+
+  | BlastToTheStonePillar ->
+    StandardCourseStarInfo
+      { name = "Blast to the Stone Pillar"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.JollyRogerBay, StarNumber.Five) }
+
+  | ThroughTheJetStream ->
+    StandardCourseStarInfo
+      { name = "Through the Jet Stream"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.JollyRogerBay, StarNumber.Six) }
+
+  // I'll add stub entries for the rest to keep this manageable
+  | _ ->
+    StandardCourseStarInfo
+      { name = "TODO"
+        courseConnection = (Stachu.SM64.Courses.StandardCourse.BobOmbBattlefield, StarNumber.One) }

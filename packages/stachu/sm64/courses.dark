@@ -1,0 +1,284 @@
+/// SM64 Course definitions
+module Stachu.SM64.Courses
+
+type StandardCourse =
+  | BobOmbBattlefield
+  | WhompsFortress
+  | JollyRogerBay
+  | CoolCoolMountain
+  | BigBoosHaunt
+  | HazyMazyCave
+  | LethalLavaLand
+  | ShiftingSandLand
+  | DireDireDocks
+  | SnowmanLand
+  | WetDryWorld
+  | TallTallMountain
+  | TinyHugeIsland
+  | TickTockClock
+  | RainbowRide
+
+
+type StandardCourseInfo =
+  { name: String
+    courseNumber: Int64
+    abbreviation: String
+    entryRequirements: List<Stachu.SM64.Core.EntryRequirement> }
+
+
+let getInfoForStandardCourse
+  (gameRelease: Stachu.SM64.Core.SupportedGameRelease)
+  (standardCourse: StandardCourse)
+  : StandardCourseInfo =
+  match standardCourse with
+  | BobOmbBattlefield ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Bob-omb Battlefield")
+        courseNumber = 1L
+        abbreviation = "BoB"
+        entryRequirements = [] }
+
+  | WhompsFortress ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Whomp's Fortress")
+        courseNumber = 2L
+        abbreviation = "WF"
+        entryRequirements =
+          [ Stachu.SM64.Core.EntryRequirement.MinimumStarCount 1L ] }
+
+  | JollyRogerBay ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Jolly Roger Bay")
+        courseNumber = 3L
+        abbreviation = "JRB"
+        entryRequirements =
+          [ Stachu.SM64.Core.EntryRequirement.MinimumStarCount 3L ] }
+
+  | CoolCoolMountain ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Cool, Cool Mountain")
+        courseNumber = 4L
+        abbreviation = "CCM"
+        entryRequirements =
+          [ Stachu.SM64.Core.EntryRequirement.MinimumStarCount 3L ] }
+
+  | BigBoosHaunt ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Big Boo's Haunt")
+        courseNumber = 5L
+        abbreviation = "BBH"
+        entryRequirements = [] }
+
+  | HazyMazyCave ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Hazy Mazy Cave")
+        courseNumber = 6L
+        abbreviation = "HMC"
+        entryRequirements = [ Stachu.SM64.Core.EntryRequirement.IsInBasement ] }
+
+  | LethalLavaLand ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Lethal Lava Land")
+        courseNumber = 7L
+        abbreviation = "LLL"
+        entryRequirements = [ Stachu.SM64.Core.EntryRequirement.IsInBasement ] }
+
+  | ShiftingSandLand ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Shifting Sand Land")
+        courseNumber = 8L
+        abbreviation = "SSL"
+        entryRequirements = [ Stachu.SM64.Core.EntryRequirement.IsInBasement ] }
+
+  | DireDireDocks ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Dire, Dire Docks")
+        courseNumber = 9L
+        abbreviation = "DDD"
+        entryRequirements =
+          [ Stachu.SM64.Core.EntryRequirement.IsInBasement
+            Stachu.SM64.Core.EntryRequirement.MinimumStarCount 30L ] }
+
+  | SnowmanLand ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Snowman's Land")
+        courseNumber = 10L
+        abbreviation = "SL"
+        entryRequirements = [ Stachu.SM64.Core.EntryRequirement.IsUpstairs ] }
+
+  | WetDryWorld ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Wet-Dry World")
+        courseNumber = 11L
+        abbreviation = "WDW"
+        entryRequirements = [ Stachu.SM64.Core.EntryRequirement.IsUpstairs ] }
+
+  | TallTallMountain ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Tall, Tall Mountain")
+        courseNumber = 12L
+        abbreviation = "TTM"
+        entryRequirements = [ Stachu.SM64.Core.EntryRequirement.IsUpstairs ] }
+
+  | TinyHugeIsland ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Tiny-Huge Island")
+        courseNumber = 13L
+        abbreviation = "THI"
+        entryRequirements = [ Stachu.SM64.Core.EntryRequirement.IsUpstairs ] }
+
+  | TickTockClock ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Tick Tock Clock")
+        courseNumber = 14L
+        abbreviation = "TTC"
+        entryRequirements = [ Stachu.SM64.Core.EntryRequirement.IsInTippy ] }
+
+  | RainbowRide ->
+    StandardCourseInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Rainbow Ride")
+        courseNumber = 15L
+        abbreviation = "RR"
+        entryRequirements = [ Stachu.SM64.Core.EntryRequirement.IsInTippy ] }
+
+
+type SecretStage =
+  | PrincessSecretSlide
+  | TowerOfTheWingCap
+  | VanishCapUnderTheMoat
+  | CavernOfTheMetalCave
+  | SecretAquarium
+  | Cloud
+
+
+type SecretStageInfo =
+  { name: String
+    abbreviation: String
+    entryRequirements: List<Stachu.SM64.Core.EntryRequirement> }
+
+
+let getSecretStageInfo
+  (gameRelease: Stachu.SM64.Core.SupportedGameRelease)
+  (secretStage: SecretStage)
+  : SecretStageInfo =
+  match secretStage with
+  | PrincessSecretSlide ->
+    SecretStageInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Princess Secret Slide")
+        abbreviation = "PSS"
+        entryRequirements = [] }
+
+  | TowerOfTheWingCap ->
+    SecretStageInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Tower of the Wing Cap")
+        abbreviation = "ToTWC"
+        entryRequirements =
+          [ Stachu.SM64.Core.EntryRequirement.MinimumStarCount 10L ] }
+
+  | VanishCapUnderTheMoat ->
+    SecretStageInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Vanish Cap Under the Moat")
+        abbreviation = "CotMC"
+        entryRequirements = [ Stachu.SM64.Core.EntryRequirement.IsInBasement ] }
+
+  | CavernOfTheMetalCave ->
+    SecretStageInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Cavern of the Metal Cap")
+        abbreviation = "VCutM"
+        entryRequirements = [ Stachu.SM64.Core.EntryRequirement.IsInBasement ] }
+
+  | SecretAquarium ->
+    SecretStageInfo
+      { name =
+          (match gameRelease with
+           | NA -> "The Secret Aquarium")
+        abbreviation = "SA"
+        entryRequirements = [] }
+
+  | Cloud ->
+    SecretStageInfo
+      { name =
+          (match gameRelease with
+           | NA -> "The Secret Aquarium")
+        abbreviation = "SA"
+        entryRequirements = [ Stachu.SM64.Core.EntryRequirement.IsInBasement ] }
+
+
+type BowserStage =
+  | BitDW
+  | BitFS
+  | BitS
+
+
+type BowserStageInfo =
+  { name: String
+    abbreviation: String
+    entryRequirements: List<Stachu.SM64.Core.EntryRequirement> }
+
+
+let getBowserStageInfo
+  (gameRelease: Stachu.SM64.Core.SupportedGameRelease)
+  (bowserStage: BowserStage)
+  : BowserStageInfo =
+  match bowserStage with
+  | BitDW ->
+    BowserStageInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Bowser in the Dark World")
+        abbreviation = "BitDW"
+        entryRequirements = [] }
+
+  | BitFS ->
+    BowserStageInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Bowser in the Fire Sea")
+        abbreviation = "BitFS"
+        entryRequirements = [] }
+
+  | BitS ->
+    BowserStageInfo
+      { name =
+          (match gameRelease with
+           | NA -> "Bowser in the Sky")
+        abbreviation = "BitS"
+        entryRequirements = [] }

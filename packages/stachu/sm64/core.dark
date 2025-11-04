@@ -1,0 +1,16 @@
+/// Core SM64 types and helpers
+module Stachu.SM64.Core
+
+type SupportedGameRelease =
+  | NA
+
+
+type EntryRequirement =
+  /// At least "n" stars are required to open the door normally
+  | MinimumStarCount of Int64
+  /// Entry to the star is in the basement
+  | IsInBasement
+  /// Entry to the star is upstairs
+  | IsUpstairs
+  /// Entry to the star is in the "tippy" top of the castle
+  | IsInTippy

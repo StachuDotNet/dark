@@ -1,0 +1,36 @@
+/// Stages overview page view
+module Stachu.SM64.Views.Stages
+
+let view : Stdlib.Html.Node =
+  Stdlib.Html.div
+    []
+    [ Stdlib.Html.h1 [] [ Stdlib.Html.stringNode "Stages" ]
+      Stdlib.Html.p [] [ Stdlib.Html.stringNode "SM64 has multiple types of stages:" ]
+      Stdlib.Html.ul
+        []
+        [ Stdlib.Html.li
+            []
+            [ Stdlib.Html.a
+                [ ("href",
+                   Stdlib.Option.Option.Some
+                     (Stachu.SM64.Layout.routePath
+                       Stachu.SM64.Layout.SiteRoute.StandardCourses)) ]
+                [ Stdlib.Html.stringNode "Standard Courses" ] ]
+
+          Stdlib.Html.li
+            []
+            [ Stdlib.Html.a
+                [ ("href",
+                   Stdlib.Option.Option.Some
+                     (Stachu.SM64.Layout.routePath
+                       Stachu.SM64.Layout.SiteRoute.SecretStages)) ]
+                [ Stdlib.Html.stringNode "Secret Stages" ] ]
+
+          Stdlib.Html.li
+            []
+            [ Stdlib.Html.a
+                [ ("href",
+                   Stdlib.Option.Option.Some
+                     (Stachu.SM64.Layout.routePath
+                       Stachu.SM64.Layout.SiteRoute.BowserStages)) ]
+                [ Stdlib.Html.stringNode "Bowser Stages" ] ] ] ]
