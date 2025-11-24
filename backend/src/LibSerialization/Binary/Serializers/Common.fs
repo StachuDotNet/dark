@@ -160,6 +160,16 @@ module Guid =
     Guid(bytes)
 
 
+module Hash =
+  let write (w : BinaryWriter) (hash : Hash) : unit =
+    let hexString = Hash.toString hash
+    String.write w hexString
+
+  let read (r : BinaryReader) : Hash =
+    let hexString = String.read r
+    Hash.unsafeOfString hexString
+
+
 module Option =
   let write
     (w : BinaryWriter)

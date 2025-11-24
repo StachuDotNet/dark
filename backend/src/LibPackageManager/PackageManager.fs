@@ -74,7 +74,11 @@ let stabilizeOps
             // Look up stable ID from reference PM
             let! stableIdOpt = referencePM.findType (None, loc)
             let stableId =
-              stableIdOpt |> Option.defaultWith (fun () -> System.Guid.NewGuid())
+              match stableIdOpt with
+              | Some id -> id
+              | None ->
+                // Check PackageIDs for known stable ID
+                LibExecution.PackageIDs.Type.idForName loc.owner loc.modules loc.name
             return PT.PackageOp.SetTypeName(stableId, loc)
 
           | PT.PackageOp.AddType typ ->
@@ -95,7 +99,14 @@ let stabilizeOps
           | PT.PackageOp.SetValueName(_, loc) ->
             let! stableIdOpt = referencePM.findValue (None, loc)
             let stableId =
-              stableIdOpt |> Option.defaultWith (fun () -> System.Guid.NewGuid())
+              match stableIdOpt with
+              | Some id -> id
+              | None ->
+                // Check PackageIDs for known stable ID
+                LibExecution.PackageIDs.Value.idForName
+                  loc.owner
+                  loc.modules
+                  loc.name
             return PT.PackageOp.SetValueName(stableId, loc)
 
           | PT.PackageOp.AddValue value ->
@@ -114,7 +125,11 @@ let stabilizeOps
           | PT.PackageOp.SetFnName(_, loc) ->
             let! stableIdOpt = referencePM.findFn (None, loc)
             let stableId =
-              stableIdOpt |> Option.defaultWith (fun () -> System.Guid.NewGuid())
+              match stableIdOpt with
+              | Some id -> id
+              | None ->
+                // Check PackageIDs for known stable ID
+                LibExecution.PackageIDs.Fn.idForName loc.owner loc.modules loc.name
             return PT.PackageOp.SetFnName(stableId, loc)
 
           | PT.PackageOp.AddFn fn ->

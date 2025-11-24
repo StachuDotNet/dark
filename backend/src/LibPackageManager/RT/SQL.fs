@@ -11,7 +11,7 @@ module BS = LibSerialization.Binary.Serialization
 
 
 module Type =
-  let get (id : uuid) : Ply<Option<RT.PackageType.PackageType>> =
+  let get (id : RT.FQTypeName.Package) : Ply<Option<RT.PackageType.PackageType>> =
     uply {
       return!
         Sql.query
@@ -20,14 +20,14 @@ module Type =
           FROM package_types
           WHERE id = @id
           """
-        |> Sql.parameters [ "id", Sql.uuid id ]
+        |> Sql.parameters [ "id", Sql.uuid (Hash.toGuid id) ]
         |> Sql.executeRowOptionAsync (fun read -> read.bytes "rt_def")
         |> Task.map (Option.map BS.RT.PackageType.deserialize)
     }
 
 
 module Value =
-  let get (id : uuid) : Ply<Option<RT.PackageValue.PackageValue>> =
+  let get (id : RT.FQValueName.Package) : Ply<Option<RT.PackageValue.PackageValue>> =
     uply {
       return!
         Sql.query
@@ -36,14 +36,14 @@ module Value =
           FROM package_values
           WHERE id = @id
           """
-        |> Sql.parameters [ "id", Sql.uuid id ]
+        |> Sql.parameters [ "id", Sql.uuid (Hash.toGuid id) ]
         |> Sql.executeRowOptionAsync (fun read -> read.bytes "rt_dval")
         |> Task.map (Option.map BS.RT.PackageValue.deserialize)
     }
 
 
 module Fn =
-  let get (id : uuid) : Ply<Option<RT.PackageFn.PackageFn>> =
+  let get (id : RT.FQFnName.Package) : Ply<Option<RT.PackageFn.PackageFn>> =
     uply {
       return!
         Sql.query
@@ -52,7 +52,7 @@ module Fn =
           FROM package_functions
           WHERE id = @id
           """
-        |> Sql.parameters [ "id", Sql.uuid id ]
+        |> Sql.parameters [ "id", Sql.uuid (Hash.toGuid id) ]
         |> Sql.executeRowOptionAsync (fun read -> read.bytes "rt_instrs")
         |> Task.map (Option.map BS.RT.PackageFn.deserialize)
     }

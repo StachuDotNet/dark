@@ -86,8 +86,8 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
   (currentModule : List<string>)
   (given : NEList<string>)
   (parseName : string -> Result<string * int, string>)
-  (findInPM : Option<PT.BranchID> * PT.PackageLocation -> Ply<Option<System.Guid>>)
-  (makePackageFQName : System.Guid -> 'FQName)
+  (findInPM : Option<PT.BranchID> * PT.PackageLocation -> Ply<Option<Hash>>)
+  (makePackageFQName : Hash -> 'FQName)
   (makeBuiltinFQName : string * int -> 'FQName)
   (builtinToRT : string * int -> 'Builtin)
   : Ply<PT.NameResolution<'FQName>> =

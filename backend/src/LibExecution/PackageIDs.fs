@@ -23,10 +23,14 @@ open Prelude
 
 module Type =
   let mutable private _lookup = Map []
-  let private p modules name (id : string) : System.Guid =
-    let id = System.Guid.Parse id
-    _lookup <- _lookup |> Map.add (modules, name) id
-    id
+  let private p modules name (id : string) : Hash =
+    let guid = System.Guid.Parse id
+    _lookup <- _lookup |> Map.add (modules, name) guid
+    // Convert Guid bytes to Hash
+    // For now, we use the Guid as a temporary hash value
+    // Later, these will be replaced with content-based hashes
+    let bytes = guid.ToByteArray()
+    Hash.ofBytes bytes
 
   module Stdlib =
     let private p addl = p ("Stdlib" :: addl)
@@ -378,38 +382,39 @@ module Type =
       let ptTest = p [] "PTTest" "e6fc7686-68f9-4fbe-a6cb-b615dd41ee7e"
 
   // what we expose to the outside world
-  let idForName
-    (owner : string)
-    (modules : List<string>)
-    (name : string)
-    : System.Guid =
-    match owner with
-    | "Darklang" ->
-      match Map.get (modules, name) _lookup with
-      | Some id -> id
-      | None -> System.Guid.NewGuid()
-    | _ -> System.Guid.NewGuid()
+  let idForName (owner : string) (modules : List<string>) (name : string) : Hash =
+    let guid =
+      match owner with
+      | "Darklang" ->
+        match Map.get (modules, name) _lookup with
+        | Some id -> id
+        | None -> System.Guid.NewGuid()
+      | _ -> System.Guid.NewGuid()
+    let bytes = guid.ToByteArray()
+    Hash.ofBytes bytes
 
 
 module Value =
   // There are no referenced Values at this point,
   // but we may be thankful later for hooking this up in the meantime.
-  let idForName
-    (_owner : string)
-    (_modules : List<string>)
-    (_name : string)
-    : System.Guid =
-    System.Guid.NewGuid()
+  let idForName (_owner : string) (_modules : List<string>) (_name : string) : Hash =
+    let guid = System.Guid.NewGuid()
+    let bytes = guid.ToByteArray()
+    Hash.ofBytes bytes
 
 
 
 module Fn =
   let mutable private _lookup = Map []
 
-  let private p modules name (id : string) : System.Guid =
-    let id = System.Guid.Parse id
-    _lookup <- _lookup |> Map.add (modules, name) id
-    id
+  let private p modules name (id : string) : Hash =
+    let guid = System.Guid.Parse id
+    _lookup <- _lookup |> Map.add (modules, name) guid
+    // Convert Guid bytes to Hash
+    // For now, we use the Guid as a temporary hash value
+    // Later, these will be replaced with content-based hashes
+    let bytes = guid.ToByteArray()
+    Hash.ofBytes bytes
 
   module Stdlib =
     let private p addl = p ("Stdlib" :: addl)
@@ -484,14 +489,13 @@ module Fn =
         p [] "parseSingleTestFromFile" "53f3fbc6-25fd-427a-ab0d-ba0559543c99"
 
   // what we expose to the outside world
-  let idForName
-    (owner : string)
-    (modules : List<string>)
-    (name : string)
-    : System.Guid =
-    match owner with
-    | "Darklang" ->
-      match Map.get (modules, name) _lookup with
-      | Some id -> id
-      | None -> System.Guid.NewGuid()
-    | _ -> System.Guid.NewGuid()
+  let idForName (owner : string) (modules : List<string>) (name : string) : Hash =
+    let guid =
+      match owner with
+      | "Darklang" ->
+        match Map.get (modules, name) _lookup with
+        | Some id -> id
+        | None -> System.Guid.NewGuid()
+      | _ -> System.Guid.NewGuid()
+    let bytes = guid.ToByteArray()
+    Hash.ofBytes bytes

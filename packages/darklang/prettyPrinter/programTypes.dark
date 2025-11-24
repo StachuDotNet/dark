@@ -91,7 +91,7 @@ module FQTypeName =
       : String =
       match Builtin.pmGetLocationByType branchID id with
       | Some l -> l.name
-      | None -> Stdlib.Uuid.toString id
+      | None -> id
 
     let fullForReference
       (branchID: Stdlib.Option.Option<Uuid>)
@@ -100,7 +100,7 @@ module FQTypeName =
       match Builtin.pmGetLocationByType branchID id with
       | Some l ->
         packageName l.owner l.modules l.name
-      | None -> Stdlib.Uuid.toString id
+      | None -> id
 
 
   let atDefinition
@@ -142,7 +142,7 @@ module FQValueName =
       : String =
       match Builtin.pmGetLocationByValue branchID id with
       | Some l -> l.name
-      | None -> Stdlib.Uuid.toString id
+      | None -> id
 
     let fullForReference
       (branchID: Stdlib.Option.Option<Uuid>)
@@ -151,7 +151,7 @@ module FQValueName =
       match Builtin.pmGetLocationByValue branchID id with
       | Some l ->
         packageName l.owner l.modules l.name
-      | None -> Stdlib.Uuid.toString id
+      | None -> id
 
 
 
@@ -199,7 +199,7 @@ module FQFnName =
       : String =
       match Builtin.pmGetLocationByFn branchID id with
       | Some l -> l.name
-      | None -> Stdlib.Uuid.toString id
+      | None -> id
 
     let fullForReference
       (branchID: Stdlib.Option.Option<Uuid>)
@@ -208,7 +208,7 @@ module FQFnName =
       match Builtin.pmGetLocationByFn branchID id with
       | Some l ->
         packageName l.owner l.modules l.name
-      | None -> Stdlib.Uuid.toString id
+      | None -> id
 
 
   let atDefinition

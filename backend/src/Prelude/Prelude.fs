@@ -44,6 +44,8 @@ let inline isNull (x : ^T when ^T : not struct) = obj.ReferenceEquals(x, null)
 type NEList<'a> = NEList.NEList<'a>
 type Metadata = Exception.Metadata
 
+type Hash = Hash.Hash
+
 type HashSet<'a> = HashSet.HashSet<'a>
 
 type Ply<'a> = Ply.Ply<'a>

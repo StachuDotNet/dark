@@ -3,12 +3,12 @@ module Darklang.LanguageTools.ProgramTypes
 
 /// Used to name where type/function/etc lives, eg a User module, or a Package module.
 module FQTypeName =
-  type Package = Uuid
+  type Package = String
   type FQTypeName = Package of Package
 
 module FQValueName =
   type Builtin = { name: String; version: Int32 }
-  type Package = Uuid
+  type Package = String
 
   type FQValueName =
     | Builtin of Builtin
@@ -16,7 +16,7 @@ module FQValueName =
 
 module FQFnName =
   type Builtin = { name: String; version: Int32 }
-  type Package = Uuid
+  type Package = String
 
   type FQFnName =
     | Builtin of Builtin
@@ -378,7 +378,7 @@ module PackageType =
 
 module PackageValue =
   type PackageValue =
-    { id: Uuid
+    { id: FQValueName.Package
       body: Expr
       description: String
       deprecated: Deprecation<FQValueName.FQValueName> }

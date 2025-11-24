@@ -25,8 +25,8 @@ module PM =
       let make id fields =
         make id (PT.TypeDeclaration.Record(NEList.ofListUnsafe "" [] fields))
 
-      let singleField = System.Guid.NewGuid()
-      let nested = System.Guid.NewGuid()
+      let singleField = Hash.ofBytes (System.Guid.NewGuid().ToByteArray())
+      let nested = Hash.ofBytes (System.Guid.NewGuid().ToByteArray())
 
       let all : List<PT.PackageType.PackageType> =
         [ make singleField [ { name = "key"; typ = PT.TBool; description = "TODO" } ]
@@ -38,9 +38,9 @@ module PM =
                 description = "TODO" } ] ]
 
     module Enums =
-      let withoutFields = guuid ()
-      let withFields = guuid ()
-      let resultId = guuid ()
+      let withoutFields = Hash.ofBytes (guuid().ToByteArray())
+      let withFields = Hash.ofBytes (guuid().ToByteArray())
+      let resultId = Hash.ofBytes (guuid().ToByteArray())
       let make id cases =
         make id (PT.TypeDeclaration.Enum(NEList.ofListUnsafe "" [] cases))
 
@@ -491,7 +491,10 @@ module Expressions =
     module Package =
       module MySpecialNumber =
         // 17
-        let id = System.Guid.Parse "1823ae7e-cc59-4843-a884-18591398abb0"
+        let id =
+          Hash.ofBytes (
+            (System.Guid.Parse "1823ae7e-cc59-4843-a884-18591398abb0").ToByteArray()
+          )
         let usage = ePackageValue id
 
 
@@ -586,20 +589,29 @@ module Expressions =
 
     module Package =
       module MyAdd =
-        let id = System.Guid.Parse "a180ed3b-e8ee-42e5-b3c6-9e7ca32ee273"
+        let id =
+          Hash.ofBytes (
+            (System.Guid.Parse "a180ed3b-e8ee-42e5-b3c6-9e7ca32ee273").ToByteArray()
+          )
 
         let unapplied = ePackageFn id
         let partiallyApplied = eApply unapplied [] [ eInt64 1 ]
         let fullyApplied = eApply unapplied [] [ eInt64 1; eInt64 2 ]
 
       module Inner =
-        let id = System.Guid.Parse "f38c8f89-7472-436f-8d38-2093e2e83fb7"
+        let id =
+          Hash.ofBytes (
+            (System.Guid.Parse "f38c8f89-7472-436f-8d38-2093e2e83fb7").ToByteArray()
+          )
 
         let unapplied = ePackageFn id
       //let applied = eApply unapplied [] [ eInt64 1 ]
 
       module Outer =
-        let id = System.Guid.Parse "6732ba1d-fae1-4a7e-91ea-d9f0eab6f3c7"
+        let id =
+          Hash.ofBytes (
+            (System.Guid.Parse "6732ba1d-fae1-4a7e-91ea-d9f0eab6f3c7").ToByteArray()
+          )
         let unapplied = ePackageFn id
         let applied =
           eApply
@@ -609,20 +621,29 @@ module Expressions =
 
 
       module Fact =
-        let id = System.Guid.Parse "34c0c7bb-2bfa-4dc3-85f9-b965ba3c7880"
+        let id =
+          Hash.ofBytes (
+            (System.Guid.Parse "34c0c7bb-2bfa-4dc3-85f9-b965ba3c7880").ToByteArray()
+          )
         let unapplied = ePackageFn id
         let appliedWith2 = eApply unapplied [] [ eInt64 2 ]
         let appliedWith20 = eApply unapplied [] [ eInt64 20 ]
 
       module Recursion =
-        let id = System.Guid.Parse "02036aff-7ae5-4e7c-8f95-f42936044542"
+        let id =
+          Hash.ofBytes (
+            (System.Guid.Parse "02036aff-7ae5-4e7c-8f95-f42936044542").ToByteArray()
+          )
         let unapplied = ePackageFn id
         let applied = eApply unapplied [] [ eInt64 30000 ]
 
 
       module MyFnThatTakesALambda =
         let lambdaID = gid ()
-        let id = System.Guid.Parse "25179761-0259-4d52-a505-d75f0738e45c"
+        let id =
+          Hash.ofBytes (
+            (System.Guid.Parse "25179761-0259-4d52-a505-d75f0738e45c").ToByteArray()
+          )
         let unapplied = ePackageFn id
 
         let fullyApplied =
@@ -645,7 +666,10 @@ module Expressions =
           eApply unapplied [] [ eInt64 4L; lambda ]
 
       module MyFnThatReturnsUnit =
-        let id = System.Guid.Parse "6a47744f-7390-48f6-9822-7a76b9ee174b"
+        let id =
+          Hash.ofBytes (
+            (System.Guid.Parse "6a47744f-7390-48f6-9822-7a76b9ee174b").ToByteArray()
+          )
         let applied = eApply (ePackageFn id) [] [ (eUnit ()) ]
 
   module Statements =

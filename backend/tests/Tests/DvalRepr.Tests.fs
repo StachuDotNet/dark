@@ -33,7 +33,10 @@ let queryableRoundtripsSuccessfullyInRecord
   ) : Task<bool> =
 
   task {
-    let typeID = System.Guid.Parse "82ac8d1c-86ef-45d4-be66-052050739a38"
+    let typeID =
+      Hash.ofBytes (
+        (System.Guid.Parse "82ac8d1c-86ef-45d4-be66-052050739a38").ToByteArray()
+      )
     let typeName = RT.FQTypeName.Package typeID
     let record = RT.DRecord(typeName, typeName, [], Map.ofList [ "field", dv ])
     let typeRef = RT.TCustomType(Ok typeName, [])

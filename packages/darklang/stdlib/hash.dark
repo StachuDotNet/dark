@@ -1,0 +1,64 @@
+module Darklang =
+  module Stdlib =
+    module Hash =
+      /// A Hash is a SHA256 hash represented as a 64-character lowercase hexadecimal string
+      type Hash = String
+
+      /// Convert a Uuid to a Hash by taking its bytes and converting to lowercase hex
+      let fromUuid (uuid: Uuid) : Hash =
+        let bytes = Builtin.uuidToBytes uuid
+        let hex = Builtin.bytesToHexString bytes
+        Stdlib.String.toLowercase hex
+
+      /// Convert a Hash to a Uuid by taking first 16 bytes
+      /// Note: This is lossy - only first 16 bytes of the 32-byte hash are used
+      let toUuid (hash: Hash) : Stdlib.Result.Result<Uuid, String> =
+        // A hash is 64 hex chars = 32 bytes
+        // A UUID is 32 hex chars (with dashes) = 16 bytes
+        // We take the first 32 hex chars of the hash
+        if Stdlib.String.length hash != 64L then
+          Stdlib.Result.Result.Error "Hash must be 64 characters"
+        else
+          let uuidHex = Stdlib.String.take hash 32L
+
+          // Insert dashes in UUID format: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+          let part1 = Stdlib.String.slice uuidHex 0L 8L
+          let part2 = Stdlib.String.slice uuidHex 8L 12L
+          let part3 = Stdlib.String.slice uuidHex 12L 16L
+          let part4 = Stdlib.String.slice uuidHex 16L 20L
+          let part5 = Stdlib.String.slice uuidHex 20L 32L
+
+          let uuidString =
+            Stdlib.String.join [ part1; part2; part3; part4; part5 ] "-"
+
+          Stdlib.Uuid.parse uuidString
+
+      /// Generate a random Hash (using two random UUIDs to get 64 hex chars)
+      let generate () : Hash =
+        let uuid1 = Stdlib.Uuid.generate ()
+        let uuid2 = Stdlib.Uuid.generate ()
+        let str1 = Stdlib.Uuid.toString uuid1
+        let str2 = Stdlib.Uuid.toString uuid2
+        // Remove dashes from both UUIDs and concatenate
+        let hex1 = Stdlib.String.replaceAll str1 "-" ""
+        let hex2 = Stdlib.String.replaceAll str2 "-" ""
+        let combined = Stdlib.String.append hex1 hex2
+        Stdlib.String.toLowercase combined
+
+      /// Convert bytes to a Hash
+      let fromBytes (bytes: List<UInt8>) : Hash =
+        (Builtin.bytesToHexString bytes) |> Stdlib.String.toLowercase
+
+      /// Check if a string is a valid Hash (64 lowercase hex chars)
+      let isValid (s: String) : Bool =
+        if Stdlib.String.length s != 64L then
+          false
+        else
+          let chars = Stdlib.String.toList s
+
+          Stdlib.List.all chars (fun c ->
+            (c >= 'a' && c <= 'f') || (c >= '0' && c <= '9'))
+
+      /// The empty/zero hash
+      let empty: Hash =
+        "0000000000000000000000000000000000000000000000000000000000000000"

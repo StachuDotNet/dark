@@ -24,17 +24,17 @@ module FormatV0 =
   //    change RT.Dval.
 
   module FQTypeName =
-    type Package = uuid
+    type Package = Hash
 
     type FQTypeName = Package of Package
 
     let toRT (t : FQTypeName) : RT.FQTypeName.FQTypeName =
       match t with
-      | Package id -> RT.FQTypeName.Package id
+      | Package id -> RT.FQTypeName.FQTypeName.Package id
 
     let fromRT (t : RT.FQTypeName.FQTypeName) : FQTypeName =
       match t with
-      | RT.FQTypeName.Package id -> FQTypeName.Package id
+      | RT.FQTypeName.FQTypeName.Package id -> Package id
 
 
 

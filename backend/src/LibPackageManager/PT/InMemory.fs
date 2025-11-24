@@ -13,19 +13,19 @@ module PT = LibExecution.ProgramTypes
 /// Used for transient state during parsing, testing, etc.
 let create (ops : List<PT.PackageOp>) : PT.PackageManager =
   // Use concurrent dictionaries for thread-safe mutable state
-  let typeMap = ConcurrentDictionary<System.Guid, PT.PackageType.PackageType>()
-  let valueMap = ConcurrentDictionary<System.Guid, PT.PackageValue.PackageValue>()
-  let fnMap = ConcurrentDictionary<System.Guid, PT.PackageFn.PackageFn>()
+  let typeMap = ConcurrentDictionary<Hash, PT.PackageType.PackageType>()
+  let valueMap = ConcurrentDictionary<Hash, PT.PackageValue.PackageValue>()
+  let fnMap = ConcurrentDictionary<Hash, PT.PackageFn.PackageFn>()
 
   // Location → ID mappings
-  let typeLocMap = ConcurrentDictionary<PT.PackageLocation, System.Guid>()
-  let valueLocMap = ConcurrentDictionary<PT.PackageLocation, System.Guid>()
-  let fnLocMap = ConcurrentDictionary<PT.PackageLocation, System.Guid>()
+  let typeLocMap = ConcurrentDictionary<PT.PackageLocation, Hash>()
+  let valueLocMap = ConcurrentDictionary<PT.PackageLocation, Hash>()
+  let fnLocMap = ConcurrentDictionary<PT.PackageLocation, Hash>()
 
   // ID → Location reverse mappings
-  let typeIdToLoc = ConcurrentDictionary<System.Guid, PT.PackageLocation>()
-  let valueIdToLoc = ConcurrentDictionary<System.Guid, PT.PackageLocation>()
-  let fnIdToLoc = ConcurrentDictionary<System.Guid, PT.PackageLocation>()
+  let typeIdToLoc = ConcurrentDictionary<Hash, PT.PackageLocation>()
+  let valueIdToLoc = ConcurrentDictionary<Hash, PT.PackageLocation>()
+  let fnIdToLoc = ConcurrentDictionary<Hash, PT.PackageLocation>()
 
   // Apply an op to the mutable dictionaries
   let applyOp op =

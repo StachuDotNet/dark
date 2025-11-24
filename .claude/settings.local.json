@@ -23,7 +23,9 @@
       "mcp__push-notifications__send_pushover_notification",
       "mcp__push-notifications__send_ntfy_notification",
       "Bash(git log:*)",
-      "Bash(git ls-tree:*)"
+      "Bash(git ls-tree:*)",
+      "Bash(tee:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": []
   }

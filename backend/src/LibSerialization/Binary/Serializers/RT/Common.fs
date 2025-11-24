@@ -64,10 +64,10 @@ module NameResolution =
 module FQTypeName =
   let write (w : BinaryWriter) (n : FQTypeName.FQTypeName) : unit =
     match n with
-    | FQTypeName.Package id -> Guid.write w id
+    | FQTypeName.Package id -> Hash.write w id
 
   let read (r : BinaryReader) : FQTypeName.FQTypeName =
-    let id = Guid.read r
+    let id = Hash.read r
     FQTypeName.Package id
 
 
@@ -80,7 +80,7 @@ module FQFnName =
       w.Write b.version
     | FQFnName.Package id ->
       w.Write 1uy
-      Guid.write w id
+      Hash.write w id
 
   let read (r : BinaryReader) : FQFnName.FQFnName =
     match r.ReadByte() with
@@ -89,7 +89,7 @@ module FQFnName =
       let version = r.ReadInt32()
       FQFnName.Builtin { name = name; version = version }
     | 1uy ->
-      let id = Guid.read r
+      let id = Hash.read r
       FQFnName.Package id
     | b -> raise (BinaryFormatException(CorruptedData $"Invalid FQFnName tag: {b}"))
 
@@ -103,7 +103,7 @@ module FQValueName =
       w.Write builtin.version
     | FQValueName.Package id ->
       w.Write 1uy
-      Guid.write w id
+      Hash.write w id
 
   let read (r : BinaryReader) : FQValueName.FQValueName =
     match r.ReadByte() with
@@ -112,7 +112,7 @@ module FQValueName =
       let version = r.ReadInt32()
       FQValueName.Builtin { name = name; version = version }
     | 1uy ->
-      let id = Guid.read r
+      let id = Hash.read r
       FQValueName.Package id
     | b ->
       raise (BinaryFormatException(CorruptedData $"Invalid FQValueName tag: {b}"))

@@ -1,60 +1,93 @@
 /// Content-addressed hashing utilities for Darklang
 ///
-/// Provides deterministic Guid generation by hashing serialized content.
-/// Used for stable package item IDs based on location or content.
+/// Provides deterministic hash generation by hashing serialized content.
+/// Used for stable package item IDs based on content.
 module LibSerialization.Hashing.ContentHash
 
 open System
 open System.IO
 open System.Security.Cryptography
 
+open Prelude
+
 /// Compute SHA256 hash of bytes
-let hashBytes (bytes : byte[]) : byte[] = SHA256.HashData(ReadOnlySpan(bytes))
-
-/// Convert hash bytes to Guid (using first 16 bytes of hash)
-let hashToGuid (hashBytes : byte[]) : Guid =
-  if hashBytes.Length < 16 then
-    Exception.raiseInternal
-      "Hash too short for Guid conversion"
-      [ "length", hashBytes.Length ]
-
-  Guid(hashBytes[0..15])
+let hashBytes (bytes : byte[]) : Hash =
+  let hashBytes = SHA256.HashData(ReadOnlySpan bytes)
+  Hash.ofBytes hashBytes
 
 
-/// Serialize a value using a binary writer function, then hash it to a Guid
+/// Serialize a value using a binary writer function, then hash it
 ///
 /// This is the core pattern: whatever can be written to binary can be hashed.
 /// The binary format is the source of truth for what makes something "the same".
-let hashWithWriter<'T> (writer : BinaryWriter -> 'T -> unit) (value : 'T) : Guid =
+let hashWithWriter<'T> (writer : BinaryWriter -> 'T -> unit) (value : 'T) : Hash =
   use ms = new MemoryStream()
   use bw = new BinaryWriter(ms)
 
   writer bw value
 
   let bytes = ms.ToArray()
-  let hash = hashBytes bytes
-  hashToGuid hash
+  hashBytes bytes
 
 
-/// Hash PackageLocations to stable Guids
+/// Hash PackageLocations (deprecated - prefer content-based hashing)
 module PackageLocation =
   open LibSerialization.Binary
 
-  /// Compute a stable Guid for a PackageLocation
+  /// Compute a hash for a PackageLocation
   ///
-  /// This is used for definition IDs - the identity of a package item
-  /// is determined by where it lives (owner/modules/name), not its content.
-  let hash (loc : LibExecution.ProgramTypes.PackageLocation) : Guid =
+  /// Note: Location-based hashing means IDs change when items move.
+  /// This is kept for backwards compatibility but content-based hashing is preferred.
+  let hash (loc : LibExecution.ProgramTypes.PackageLocation) : Hash =
     hashWithWriter Serializers.PT.Common.PackageLocation.write loc
 
 
-/// Hash PackageOps to stable Guids (for deduplication)
+/// Hash PackageOps (for deduplication)
 module PackageOp =
   open LibSerialization.Binary
 
-  /// Compute a content-addressed ID for a PackageOp
+  /// Compute a content-addressed hash for a PackageOp
   ///
-  /// This is used for deduplication - the same op content gets the same ID.
+  /// This is used for deduplication - the same op content gets the same hash.
   /// Originally from PT/SQL/OpPlayback.fs, centralized here.
-  let hash (op : LibExecution.ProgramTypes.PackageOp) : Guid =
+  let hash (op : LibExecution.ProgramTypes.PackageOp) : Hash =
     hashWithWriter Serializers.PT.PackageOp.write op
+
+
+/// Hash PackageType definitions to stable content-based hashes
+module PackageType =
+  open LibSerialization.Binary
+
+  /// Compute a content-addressed hash for a PackageType
+  ///
+  /// The hash is based on the complete type definition (name, fields, etc).
+  /// The existing ID field is normalized to Hash.empty before hashing.
+  let hash (typ : LibExecution.ProgramTypes.PackageType.PackageType) : Hash =
+    let normalized = { typ with id = Hash.empty }
+    hashWithWriter Serializers.PT.PackageType.write normalized
+
+
+/// Hash PackageFn definitions to stable content-based hashes
+module PackageFn =
+  open LibSerialization.Binary
+
+  /// Compute a content-addressed hash for a PackageFn
+  ///
+  /// The hash is based on the complete function definition (signature, body, etc).
+  /// The existing ID field is normalized to Hash.empty before hashing.
+  let hash (fn : LibExecution.ProgramTypes.PackageFn.PackageFn) : Hash =
+    let normalized = { fn with id = Hash.empty }
+    hashWithWriter Serializers.PT.PackageFn.write normalized
+
+
+/// Hash PackageValue definitions to stable content-based hashes
+module PackageValue =
+  open LibSerialization.Binary
+
+  /// Compute a content-addressed hash for a PackageValue
+  ///
+  /// The hash is based on the complete value definition (type, body, etc).
+  /// The existing ID field is normalized to Hash.empty before hashing.
+  let hash (value : LibExecution.ProgramTypes.PackageValue.PackageValue) : Hash =
+    let normalized = { value with id = Hash.empty }
+    hashWithWriter Serializers.PT.PackageValue.write normalized

@@ -43,10 +43,12 @@ let find
           (match branchID with
            | Some id -> Sql.uuid id
            | None -> Sql.dbnull) ]
-      |> Sql.executeRowOptionAsync (fun read -> read.uuid "item_id")
+      |> Sql.executeRowOptionAsync (fun read ->
+        let guid = read.uuid "item_id"
+        Hash.ofBytes (guid.ToByteArray()))
   }
 
-let get (id : uuid) : Ply<Option<PT.PackageValue.PackageValue>> =
+let get (id : PT.FQValueName.Package) : Ply<Option<PT.PackageValue.PackageValue>> =
   uply {
     return!
       Sql.query
@@ -55,13 +57,13 @@ let get (id : uuid) : Ply<Option<PT.PackageValue.PackageValue>> =
         FROM package_values
         WHERE id = @id
         """
-      |> Sql.parameters [ "id", Sql.uuid id ]
+      |> Sql.parameters [ "id", Sql.uuid (Hash.toGuid id) ]
       |> Sql.executeRowOptionAsync (fun read -> read.bytes "pt_def")
       |> Task.map (Option.map BS.PT.PackageValue.deserialize)
   }
 
 let getLocation
-  ((branchID, id) : Option<PT.BranchID> * uuid)
+  ((branchID, id) : Option<PT.BranchID> * PT.FQValueName.Package)
   : Ply<Option<PT.PackageLocation>> =
   uply {
     return!
@@ -77,7 +79,7 @@ let getLocation
         LIMIT 1
         """
       |> Sql.parameters
-        [ "item_id", Sql.uuid id
+        [ "item_id", Sql.uuid (Hash.toGuid id)
           "branch_id",
           (match branchID with
            | Some id -> Sql.uuid id

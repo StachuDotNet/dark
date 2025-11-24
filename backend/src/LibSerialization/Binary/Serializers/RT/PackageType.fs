@@ -72,10 +72,10 @@ module TypeDeclaration =
 
 
 let write (w : BinaryWriter) (t : PackageType.PackageType) =
-  Guid.write w t.id
+  Hash.write w t.id
   TypeDeclaration.write w t.declaration
 
 let read (r : BinaryReader) : PackageType.PackageType =
-  let id = Guid.read r
+  let id = Hash.read r
   let declaration = TypeDeclaration.read r
   { id = id; declaration = declaration }

@@ -26,7 +26,7 @@ module Parameter =
 
 
 let write (w : BinaryWriter) (p : PackageFn.PackageFn) : unit =
-  Guid.write w p.id
+  Hash.write w p.id
   Expr.Expr.write w p.body
   List.write w String.write p.typeParams
   NEList.write Parameter.write w p.parameters
@@ -35,7 +35,7 @@ let write (w : BinaryWriter) (p : PackageFn.PackageFn) : unit =
   Deprecation.write w FQFnName.write p.deprecated
 
 let read (r : BinaryReader) : PackageFn.PackageFn =
-  let id = Guid.read r
+  let id = Hash.read r
   let body = Expr.Expr.read r
   let typeParams = List.read r String.read
   let parameters = NEList.read Parameter.read r

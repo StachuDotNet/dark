@@ -18,8 +18,10 @@ module BS = LibSerialization.Binary.Serialization
 
 /// Compute a content-addressed ID for a PackageOp by hashing its serialized content
 /// Now centralized in LibSerialization.Hashing.ContentHash
+/// Returns a Guid for backwards compatibility (converts hash to Guid)
 let computeOpHash (op : PT.PackageOp) : System.Guid =
-  LibSerialization.Hashing.ContentHash.PackageOp.hash op
+  let hash = LibSerialization.Hashing.ContentHash.PackageOp.hash op
+  Hash.toGuid hash
 
 
 /// Insert PackageOps into the package_ops table and apply them to projection tables
@@ -82,7 +84,9 @@ let private applyAddType (typ : PT.PackageType.PackageType) : Task<unit> =
   """
   |> Sql.query
   |> Sql.parameters
-    [ "id", Sql.uuid typ.id; "pt_def", Sql.bytes ptDef; "rt_def", Sql.bytes rtDef ]
+    [ "id", Sql.uuid (Hash.toGuid typ.id)
+      "pt_def", Sql.bytes ptDef
+      "rt_def", Sql.bytes rtDef ]
   |> Sql.executeStatementAsync
 
 
@@ -99,7 +103,7 @@ let private applyAddValue (value : PT.PackageValue.PackageValue) : Task<unit> =
         VALUES (@id, @pt_def, @rt_dval)
         """
       |> Sql.parameters
-        [ "id", Sql.uuid value.id
+        [ "id", Sql.uuid (Hash.toGuid value.id)
           "pt_def", Sql.bytes ptDef
           "rt_dval", Sql.bytes rtDval ]
       |> Sql.executeStatementAsync
@@ -118,7 +122,7 @@ let private applyAddFn (fn : PT.PackageFn.PackageFn) : Task<unit> =
         VALUES (@id, @pt_def, @rt_instrs)
         """
       |> Sql.parameters
-        [ "id", Sql.uuid fn.id
+        [ "id", Sql.uuid (Hash.toGuid fn.id)
           "pt_def", Sql.bytes ptDef
           "rt_instrs", Sql.bytes rtInstrs ]
       |> Sql.executeStatementAsync
@@ -127,7 +131,7 @@ let private applyAddFn (fn : PT.PackageFn.PackageFn) : Task<unit> =
 /// Apply a Set*Name op to the locations table
 let private applySetName
   (branchID : Option<PT.BranchID>)
-  (itemId : uuid)
+  (itemId : Hash)
   (location : PT.PackageLocation)
   (itemType : string)
   : Task<unit> =
@@ -146,7 +150,7 @@ let private applySetName
           AND (branch_id = @branch_id OR (branch_id IS NULL AND @branch_id IS NULL))
         """
       |> Sql.parameters
-        [ "item_id", Sql.uuid itemId
+        [ "item_id", Sql.uuid (Hash.toGuid itemId)
           "branch_id",
           (match branchID with
            | Some id -> Sql.uuid id
@@ -163,7 +167,7 @@ let private applySetName
         """
       |> Sql.parameters
         [ "location_id", Sql.uuid locationId
-          "item_id", Sql.uuid itemId
+          "item_id", Sql.uuid (Hash.toGuid itemId)
           "branch_id",
           (match branchID with
            | Some id -> Sql.uuid id

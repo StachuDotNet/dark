@@ -27,14 +27,14 @@ let assertBuiltin
 ///
 /// Used to reference a type defined in a Package or by a User
 module FQTypeName =
-  /// The id of a type in the package manager
-  type Package = uuid
+  /// The id of a type in the package manage
+  type Package = Hash
 
   type FQTypeName = Package of Package
 
-  let package (id : uuid) : Package = id
+  let package (id : Hash) : Package = id
 
-  let fqPackage (id : uuid) : FQTypeName = Package id
+  let fqPackage (id : Hash) : FQTypeName = Package id
 
 
 
@@ -46,7 +46,7 @@ module FQValueName =
   type Builtin = { name : string; version : int }
 
   /// The id of a value in the package manager
-  type Package = uuid
+  type Package = Hash
 
   type FQValueName =
     | Builtin of Builtin
@@ -63,9 +63,9 @@ module FQValueName =
   let fqBuiltIn (name : string) (version : int) : FQValueName =
     Builtin(builtIn name version)
 
-  let package (id : uuid) : Package = id
+  let package (id : Hash) : Package = id
 
-  let fqPackage (id : uuid) : FQValueName = Package id
+  let fqPackage (id : Hash) : FQValueName = Package id
 
 
 
@@ -78,7 +78,7 @@ module FQFnName =
   type Builtin = { name : string; version : int }
 
   /// The id of a function in the package manager
-  type Package = uuid
+  type Package = Hash
 
   type FQFnName =
     | Builtin of Builtin
@@ -94,9 +94,9 @@ module FQFnName =
   let fqBuiltIn (name : string) (version : int) : FQFnName =
     Builtin(builtIn name version)
 
-  let package (id : uuid) : Package = id
+  let package (id : Hash) : Package = id
 
-  let fqPackage (id : uuid) : FQFnName = Package id
+  let fqPackage (id : Hash) : FQFnName = Package id
 
 
 // In ProgramTypes, names (FnNames, TypeNames, ValueNames) have already been
@@ -565,7 +565,7 @@ module PackageType =
 
 module PackageValue =
   type PackageValue =
-    { id : uuid
+    { id : FQValueName.Package
       description : string
       deprecated : Deprecation<FQValueName.FQValueName>
       body : Expr }

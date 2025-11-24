@@ -10,17 +10,17 @@ module Type =
   let find
     (branchID: Stdlib.Option.Option<Uuid>)
     (location: ProgramTypes.PackageLocation)
-    : Stdlib.Option.Option<Uuid> =
+    : Stdlib.Option.Option<String> =
     Builtin.pmFindType branchID location
 
   let get
-    (id: Uuid)
+    (id: String)
     : Stdlib.Option.Option<ProgramTypes.PackageType.PackageType> =
     Builtin.pmGetType id
 
   let getWithLocation
     (branchID: Stdlib.Option.Option<Uuid>)
-    (id: Uuid)
+    (id: String)
     : Stdlib.Option.Option<
       ProgramTypes.LocatedItem<ProgramTypes.PackageType.PackageType>> =
     match Builtin.pmGetType id with
@@ -38,17 +38,17 @@ module Value =
   let find
     (branchID: Stdlib.Option.Option<Uuid>)
     (location: ProgramTypes.PackageLocation)
-    : Stdlib.Option.Option<Uuid> =
+    : Stdlib.Option.Option<String> =
     Builtin.pmFindValue branchID location
 
   let get
-    (id: Uuid)
+    (id: String)
     : Stdlib.Option.Option<ProgramTypes.PackageValue.PackageValue> =
     Builtin.pmGetValue id
 
   let getWithLocation
     (branchID: Stdlib.Option.Option<Uuid>)
-    (id: Uuid)
+    (id: String)
     : Stdlib.Option.Option<
       ProgramTypes.LocatedItem<ProgramTypes.PackageValue.PackageValue>> =
     match Builtin.pmGetValue id with
@@ -66,15 +66,15 @@ module Function =
   let find
     (branchID: Stdlib.Option.Option<Uuid>)
     (location: ProgramTypes.PackageLocation)
-    : Stdlib.Option.Option<Uuid> =
+    : Stdlib.Option.Option<String> =
     Builtin.pmFindFn branchID location
 
-  let get (id: Uuid) : Stdlib.Option.Option<ProgramTypes.PackageFn.PackageFn> =
+  let get (id: String) : Stdlib.Option.Option<ProgramTypes.PackageFn.PackageFn> =
     Builtin.pmGetFn id
 
   let getWithLocation
     (branchID: Stdlib.Option.Option<Uuid>)
-    (id: Uuid)
+    (id: String)
     : Stdlib.Option.Option<
       ProgramTypes.LocatedItem<ProgramTypes.PackageFn.PackageFn>> =
     match Builtin.pmGetFn id with

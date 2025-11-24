@@ -7,6 +7,9 @@ open LibExecution.ProgramTypes
 
 let typeNamePkg id = FQTypeName.fqPackage id
 
+/// Helper to convert Guid to Hash for package IDs in tests
+let guidToHash (g : uuid) : Hash = Hash.ofBytes (g.ToByteArray())
+
 
 let eUnit () : Expr = EUnit(gid ())
 
@@ -85,12 +88,12 @@ let eInfix (op : Infix) (left : Expr) (right : Expr) : Expr =
 let eBuiltinValue (name : string) (version : int) : Expr =
   EValue(gid (), Ok(FQValueName.fqBuiltIn name version))
 
-let ePackageValue (id : uuid) : Expr = EValue(gid (), Ok(FQValueName.fqPackage id))
+let ePackageValue (id : Hash) : Expr = EValue(gid (), Ok(FQValueName.fqPackage id))
 
 let eBuiltinFn (name : string) (version : int) : Expr =
   EFnName(gid (), Ok(FQFnName.fqBuiltIn name version))
 
-let ePackageFn (id : uuid) : Expr = EFnName(gid (), Ok(FQFnName.fqPackage id))
+let ePackageFn (id : Hash) : Expr = EFnName(gid (), Ok(FQFnName.fqPackage id))
 
 let eLambda id (pats : List<LetPattern>) (body : Expr) : Expr =
   let pats = NEList.ofListUnsafe "eLambda" [] pats

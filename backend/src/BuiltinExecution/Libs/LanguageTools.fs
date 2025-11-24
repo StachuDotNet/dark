@@ -78,6 +78,105 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    { name = fn "languageToolsHashPackageType" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "packageType"
+            (TCustomType(
+              Ok(
+                // why doesn't this 'just' take the declaration?
+                // (description and deprecation should be irrelevant)
+                FQTypeName.fqPackage
+                  PackageIDs.Type.LanguageTools.ProgramTypes.PackageType.packageType
+              ),
+              []
+            ))
+            "" ]
+      returnType = TString
+      description = "Compute content-addressed hash for a PackageType"
+      fn =
+        function
+        | _, _, _, [ packageTypeDval ] ->
+          uply {
+            let packageType =
+              LibExecution.ProgramTypesToDarkTypes.PackageType.fromDT packageTypeDval
+
+            let hash =
+              LibSerialization.Hashing.ContentHash.PackageType.hash packageType
+            return DString(Hash.toString hash)
+          }
+        | _ -> incorrectArgs ()
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    { name = fn "languageToolsHashPackageFn" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "packageFn"
+            (TCustomType(
+              Ok(
+                FQTypeName.fqPackage
+                  PackageIDs.Type.LanguageTools.ProgramTypes.PackageFn.packageFn
+              ),
+              []
+            ))
+            "" ]
+      returnType = TString
+      description = "Compute content-addressed hash for a PackageFn"
+      fn =
+        (function
+        | _, _, _, [ packageFnDval ] ->
+          uply {
+            let packageFn =
+              LibExecution.ProgramTypesToDarkTypes.PackageFn.fromDT packageFnDval
+
+            let hash = LibSerialization.Hashing.ContentHash.PackageFn.hash packageFn
+            return DString(Hash.toString hash)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    { name = fn "languageToolsHashPackageValue" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "packageValue"
+            (TCustomType(
+              Ok(
+                FQTypeName.fqPackage
+                  PackageIDs.Type.LanguageTools.ProgramTypes.PackageValue.packageValue
+              ),
+              []
+            ))
+            "" ]
+      returnType = TString
+      description = "Compute content-addressed hash for a PackageValue"
+      fn =
+        (function
+        | _, _, _, [ packageValueDval ] ->
+          uply {
+            let packageValue =
+              LibExecution.ProgramTypesToDarkTypes.PackageValue.fromDT
+                packageValueDval
+
+            let hash =
+              LibSerialization.Hashing.ContentHash.PackageValue.hash packageValue
+
+            return DString(Hash.toString hash)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
       deprecated = NotDeprecated } ]
 
 

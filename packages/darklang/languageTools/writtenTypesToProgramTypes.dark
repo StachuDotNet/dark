@@ -1499,9 +1499,17 @@ module TypeDeclaration =
     =
     let (declaration, unresolvedNames) = toPT branchID onMissing pm owner modules d
 
+    let packageType =
+      ProgramTypes.PackageType.PackageType
+        { id = ""  // Will be computed from content
+          description = ""
+          declaration = declaration
+          deprecated = ProgramTypes.Deprecation.NotDeprecated }
+
+    let hash = Builtin.languageToolsHashPackageType packageType
+
     (ProgramTypes.PackageType.PackageType
-      // TODO: when relevant, use PackageIDs defined in F# land
-      { id = Stdlib.Uuid.generate ()
+      { id = hash
         description = ""
         declaration = declaration
         deprecated = ProgramTypes.Deprecation.NotDeprecated },
@@ -1521,8 +1529,17 @@ module ValueDeclaration =
     =
     let (body, unresolvedNames) = Expr.toPT branchID onMissing pm owner modules defaultContext d.body
 
+    let packageValue =
+      ProgramTypes.PackageValue.PackageValue
+        { id = ""  // Will be computed from content
+          body = body
+          description = ""
+          deprecated = ProgramTypes.Deprecation.NotDeprecated }
+
+    let hash = Builtin.languageToolsHashPackageValue packageValue
+
     (ProgramTypes.PackageValue.PackageValue
-      { id = Stdlib.Uuid.generate ()
+      { id = hash
         body = body
         description = ""
         deprecated = ProgramTypes.Deprecation.NotDeprecated },
@@ -1597,9 +1614,20 @@ module FunctionDeclaration =
           rtUnresolvedNames
           bdUnresolvedNames ]
 
+    let packageFn =
+      ProgramTypes.PackageFn.PackageFn
+        { id = ""  // Will be computed from content
+          typeParams = typeParams
+          parameters = params
+          returnType = rtyp
+          description = ""
+          deprecated = ProgramTypes.Deprecation.NotDeprecated
+          body = body }
+
+    let hash = Builtin.languageToolsHashPackageFn packageFn
+
     (ProgramTypes.PackageFn.PackageFn
-      // TODO: when relevant, use PackageIDs defined in F# land
-      { id = Stdlib.Uuid.generate ()
+      { id = hash
         typeParams = typeParams
         parameters = params
         returnType = rtyp

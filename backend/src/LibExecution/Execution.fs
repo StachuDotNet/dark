@@ -169,7 +169,8 @@ let getPackageFnName
     let typeName =
       RT.FQTypeName.fqPackage
         PackageIDs.Type.LanguageTools.ProgramTypes.FQFnName.fqFnName
-    let dval = RT.DEnum(typeName, typeName, [], "Package", [ RT.DUuid id ])
+    let dval =
+      RT.DEnum(typeName, typeName, [], "Package", [ RT.DString(Hash.toString id) ])
     let args = NEList.singleton dval
     let! result = executeFunction state fnName [] args
     match result with

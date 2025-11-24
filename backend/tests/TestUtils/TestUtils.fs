@@ -95,7 +95,7 @@ let testPackageFn
   (returnType : PT.TypeReference)
   (body : PT.Expr)
   : PT.PackageFn.PackageFn =
-  { id = System.Guid.NewGuid()
+  { id = Hash.ofBytes (System.Guid.NewGuid().ToByteArray())
     body = body
     description = ""
     typeParams = typeParams
@@ -1168,7 +1168,10 @@ let naughtyStrings : List<string * string> =
 
 
 let interestingDvals : List<string * RT.Dval * RT.TypeReference> =
-  let uuid = System.Guid.Parse "dca045b1-e2af-41d8-ad1b-35261b25a426"
+  let uuid =
+    Hash.ofBytes (
+      (System.Guid.Parse "dca045b1-e2af-41d8-ad1b-35261b25a426").ToByteArray()
+    )
 
   [ ("float", DFloat 7.2, TFloat)
     ("float2", DFloat -7.2, TFloat)

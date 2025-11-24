@@ -1625,7 +1625,7 @@ module PackageFn =
   let t name typeParams params' returnType expr expected =
     testTask name {
       let fn : PT.PackageFn.PackageFn =
-        { id = guuid ()
+        { id = Hash.ofBytes (guuid().ToByteArray())
           body = expr
           typeParams = typeParams
           parameters = params' |> NEList.ofListUnsafe "" []

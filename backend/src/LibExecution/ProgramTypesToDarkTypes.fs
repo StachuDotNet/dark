@@ -48,11 +48,11 @@ module FQTypeName =
       FQTypeName.fqPackage
         PackageIDs.Type.LanguageTools.ProgramTypes.FQTypeName.package
 
-    let toDT (u : PT.FQTypeName.Package) : Dval = DUuid u
+    let toDT (hash : PT.FQTypeName.Package) : Dval = DString(Hash.toString hash)
 
     let fromDT (d : Dval) : PT.FQTypeName.Package =
       match d with
-      | DUuid u -> u
+      | DString s -> Hash.unsafeOfString s
       | _ -> Exception.raiseInternal "Invalid FQTypeName.Package" []
 
 
@@ -89,11 +89,11 @@ module FQFnName =
       | _ -> Exception.raiseInternal "Invalid FQFnName.Builtin" []
 
   module Package =
-    let toDT (u : PT.FQFnName.Package) : Dval = DUuid u
+    let toDT (hash : PT.FQFnName.Package) : Dval = DString(Hash.toString hash)
 
     let fromDT (d : Dval) : PT.FQFnName.Package =
       match d with
-      | DUuid u -> u
+      | DString s -> Hash.unsafeOfString s
       | _ -> Exception.raiseInternal "Invalid FQFnName.Package" []
 
 
@@ -132,11 +132,11 @@ module FQValueName =
       | _ -> Exception.raiseInternal "Invalid FQValueName.Builtin" []
 
   module Package =
-    let toDT (u : PT.FQValueName.Package) : Dval = DUuid u
+    let toDT (hash : PT.FQValueName.Package) : Dval = DString(Hash.toString hash)
 
     let fromDT (d : Dval) : PT.FQValueName.Package =
       match d with
-      | DUuid u -> u
+      | DString s -> Hash.unsafeOfString s
       | _ -> Exception.raiseInternal "Invalid FQValueName.Package" []
 
   let toDT (u : PT.FQValueName.FQValueName) : Dval =
@@ -1183,7 +1183,7 @@ module PackageType =
 
   let toDT (p : PT.PackageType.PackageType) : Dval =
     let fields =
-      [ "id", DUuid p.id
+      [ "id", DString(Hash.toString p.id)
         "declaration", TypeDeclaration.toDT p.declaration
         "description", DString p.description
         "deprecated",
@@ -1194,7 +1194,7 @@ module PackageType =
   let fromDT (d : Dval) : PT.PackageType.PackageType =
     match d with
     | DRecord(_, _, _, fields) ->
-      { id = fields |> D.field "id" |> D.uuid
+      { id = fields |> D.field "id" |> D.string |> Hash.unsafeOfString
         declaration = fields |> D.field "declaration" |> TypeDeclaration.fromDT
         description = fields |> D.field "description" |> D.string
         deprecated =
@@ -1209,7 +1209,7 @@ module PackageValue =
 
   let toDT (p : PT.PackageValue.PackageValue) : Dval =
     let fields =
-      [ "id", DUuid p.id
+      [ "id", DString(Hash.toString p.id)
         "body", Expr.toDT p.body
         "description", DString p.description
         "deprecated",
@@ -1219,7 +1219,7 @@ module PackageValue =
   let fromDT (d : Dval) : PT.PackageValue.PackageValue =
     match d with
     | DRecord(_, _, _, fields) ->
-      { id = fields |> D.field "id" |> D.uuid
+      { id = fields |> D.field "id" |> D.string |> Hash.unsafeOfString
         body = fields |> D.field "body" |> Expr.fromDT
         description = fields |> D.field "description" |> D.string
         deprecated =
@@ -1258,7 +1258,7 @@ module PackageFn =
 
   let toDT (p : PT.PackageFn.PackageFn) : Dval =
     let fields =
-      [ ("id", DUuid p.id)
+      [ ("id", DString(Hash.toString p.id))
         ("body", Expr.toDT p.body)
         ("typeParams", DList(VT.string, List.map DString p.typeParams))
         ("parameters",
@@ -1276,7 +1276,7 @@ module PackageFn =
   let fromDT (d : Dval) : PT.PackageFn.PackageFn =
     match d with
     | DRecord(_, _, _, fields) ->
-      { id = fields |> D.field "id" |> D.uuid
+      { id = fields |> D.field "id" |> D.string |> Hash.unsafeOfString
         body = fields |> D.field "body" |> Expr.fromDT
         typeParams = fields |> D.field "typeParams" |> D.list D.string
         parameters =
@@ -1463,12 +1463,12 @@ module PackageOp =
       | PT.PackageOp.AddType t -> "AddType", [ PackageType.toDT t ]
       | PT.PackageOp.AddValue v -> "AddValue", [ PackageValue.toDT v ]
       | PT.PackageOp.AddFn f -> "AddFn", [ PackageFn.toDT f ]
-      | PT.PackageOp.SetTypeName(id, loc) ->
-        "SetTypeName", [ DUuid id; PackageLocation.toDT loc ]
-      | PT.PackageOp.SetValueName(id, loc) ->
-        "SetValueName", [ DUuid id; PackageLocation.toDT loc ]
-      | PT.PackageOp.SetFnName(id, loc) ->
-        "SetFnName", [ DUuid id; PackageLocation.toDT loc ]
+      | PT.PackageOp.SetTypeName(hash, loc) ->
+        "SetTypeName", [ DString(Hash.toString hash); PackageLocation.toDT loc ]
+      | PT.PackageOp.SetValueName(hash, loc) ->
+        "SetValueName", [ DString(Hash.toString hash); PackageLocation.toDT loc ]
+      | PT.PackageOp.SetFnName(hash, loc) ->
+        "SetFnName", [ DString(Hash.toString hash); PackageLocation.toDT loc ]
     DEnum(typeName, typeName, [], caseName, fields)
 
   let fromDT (d : Dval) : PT.PackageOp option =
@@ -1478,12 +1478,16 @@ module PackageOp =
     | DEnum(_, _, [], "AddValue", [ v ]) ->
       Some(PT.PackageOp.AddValue(PackageValue.fromDT v))
     | DEnum(_, _, [], "AddFn", [ f ]) -> Some(PT.PackageOp.AddFn(PackageFn.fromDT f))
-    | DEnum(_, _, [], "SetTypeName", [ DUuid id; loc ]) ->
-      Some(PT.PackageOp.SetTypeName(id, PackageLocation.fromDT loc))
-    | DEnum(_, _, [], "SetValueName", [ DUuid id; loc ]) ->
-      Some(PT.PackageOp.SetValueName(id, PackageLocation.fromDT loc))
-    | DEnum(_, _, [], "SetFnName", [ DUuid id; loc ]) ->
-      Some(PT.PackageOp.SetFnName(id, PackageLocation.fromDT loc))
+    | DEnum(_, _, [], "SetTypeName", [ DString s; loc ]) ->
+      Some(
+        PT.PackageOp.SetTypeName(Hash.unsafeOfString s, PackageLocation.fromDT loc)
+      )
+    | DEnum(_, _, [], "SetValueName", [ DString s; loc ]) ->
+      Some(
+        PT.PackageOp.SetValueName(Hash.unsafeOfString s, PackageLocation.fromDT loc)
+      )
+    | DEnum(_, _, [], "SetFnName", [ DString s; loc ]) ->
+      Some(PT.PackageOp.SetFnName(Hash.unsafeOfString s, PackageLocation.fromDT loc))
     | _ -> None
 
 

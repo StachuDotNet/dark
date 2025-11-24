@@ -111,7 +111,7 @@ let t
 
 let person : (PT.PackageType.PackageType * PT.PackageLocation) =
   let packageType : PT.PackageType.PackageType =
-    { id = System.Guid.NewGuid()
+    { id = Hash.ofBytes (System.Guid.NewGuid().ToByteArray())
       description = ""
       deprecated = PT.NotDeprecated
       declaration =
@@ -132,7 +132,7 @@ let person : (PT.PackageType.PackageType * PT.PackageLocation) =
 
 let myString : (PT.PackageType.PackageType * PT.PackageLocation) =
   let packageType : PT.PackageType.PackageType =
-    { id = System.Guid.NewGuid()
+    { id = Hash.ofBytes (System.Guid.NewGuid().ToByteArray())
       description = ""
       deprecated = PT.NotDeprecated
       declaration =
@@ -144,7 +144,7 @@ let myString : (PT.PackageType.PackageType * PT.PackageLocation) =
 
 let pet : (PT.PackageType.PackageType * PT.PackageLocation) =
   let packageType : PT.PackageType.PackageType =
-    { id = System.Guid.NewGuid()
+    { id = Hash.ofBytes (System.Guid.NewGuid().ToByteArray())
       description = ""
       deprecated = PT.NotDeprecated
       declaration =
@@ -155,7 +155,7 @@ let pet : (PT.PackageType.PackageType * PT.PackageLocation) =
 
 let myEnum : (PT.PackageType.PackageType * PT.PackageLocation) =
   let packageType : PT.PackageType.PackageType =
-    { id = System.Guid.NewGuid()
+    { id = Hash.ofBytes (System.Guid.NewGuid().ToByteArray())
       description = ""
       deprecated = PT.NotDeprecated
       declaration =
@@ -1956,6 +1956,12 @@ let moduleDeclarations =
       []
       false
 
+    // FAILING: Content-based hashing collision
+    // All three `type ID = Int64` definitions hash to the same value because
+    // Hash is computed from content (name + definition) without module path.
+    // So when SetTypeName ops are applied, they overwrite each other in typeIdToLoc.
+    // Result: pretty printer sees all three types at the last location (MyModule3).
+    // See analysis in session notes for options to fix this.
     t
       "nested module declaration"
       """module MyModule1 =

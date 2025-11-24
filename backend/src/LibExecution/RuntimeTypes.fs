@@ -27,13 +27,13 @@ let assertBuiltin
 /// Used to reference a type defined in a Package
 module FQTypeName =
   /// The id of a type in the package manager
-  type Package = uuid
+  type Package = Hash
 
   type FQTypeName = Package of Package
 
-  let package (id : uuid) : Package = id
+  let package (id : Hash) : Package = id
 
-  let fqPackage (id : uuid) : FQTypeName = Package id
+  let fqPackage (id : Hash) : FQTypeName = Package id
 
 
 /// A Fully-Qualified Value Name
@@ -44,7 +44,7 @@ module FQValueName =
   type Builtin = { name : string; version : int }
 
   /// The id of a value in the package manager
-  type Package = uuid
+  type Package = Hash
 
   type FQValueName =
     | Builtin of Builtin
@@ -57,9 +57,9 @@ module FQValueName =
     assertBuiltin name version assertValueName
     { name = name; version = version }
 
-  let package (id : uuid) : Package = id
+  let package (id : Hash) : Package = id
 
-  let fqPackage (id : uuid) : FQValueName = Package id
+  let fqPackage (id : Hash) : FQValueName = Package id
 
 
 /// A Fully-Qualified Function Name
@@ -69,7 +69,7 @@ module FQFnName =
   /// A function built into the runtime
   type Builtin = { name : string; version : int }
 
-  type Package = uuid
+  type Package = Hash
 
   type FQFnName =
     | Builtin of Builtin
@@ -82,12 +82,12 @@ module FQFnName =
     assertBuiltin name version assertBuiltinFnName
     { name = name; version = version }
 
-  let package (id : uuid) = id
+  let package (id : Hash) = id
 
   let fqBuiltin (name : string) (version : int) : FQFnName =
     Builtin { name = name; version = version }
 
-  let fqPackage (id : uuid) : FQFnName = Package id
+  let fqPackage (id : Hash) : FQFnName = Package id
 
 
   let isInternalFn (fnName : Builtin) : bool = fnName.name.Contains "darkInternal"
@@ -1049,16 +1049,16 @@ module Dval =
 // ------------
 // TODO reference things by hash, not ID
 module PackageType =
-  type PackageType = { id : uuid; declaration : TypeDeclaration.T }
+  type PackageType = { id : Hash; declaration : TypeDeclaration.T }
 
 module PackageValue =
-  type PackageValue = { id : uuid; body : Dval }
+  type PackageValue = { id : Hash; body : Dval }
 
 module PackageFn =
   type Parameter = { name : string; typ : TypeReference }
 
   type PackageFn =
-    { id : uuid
+    { id : Hash
       typeParams : List<string>
       parameters : NEList<Parameter>
       returnType : TypeReference

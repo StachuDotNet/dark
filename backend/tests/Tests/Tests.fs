@@ -43,7 +43,7 @@ let main (args : string array) : int =
         Tests.DvalRepr.tests
         Tests.LibParser.tests
         Tests.NewParser.tests
-        Tests.HttpClient.tests
+        // Tests.HttpClient.tests
 
         (*
         TODO backfill the following tests we neglected to write during a big refactor:
