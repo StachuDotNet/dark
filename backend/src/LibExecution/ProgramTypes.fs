@@ -255,12 +255,17 @@ type TypeReference =
   /// `typeArgs` is the list of type arguments, if any
   | TCustomType of
     // TODO: this reference should be by-hash
+    // but, the Location might be nice to have as well, _optionally_,
+    //   so we know which instance of some type/fn we were referring to.
+    // especially helpful for cases where many types are of the same shape
+    //   , like `type A = | A of Bool`.
     NameResolution<FQTypeName.FQTypeName> *
     typeArgs : List<TypeReference>
 
   | TFn of arguments : NEList<TypeReference> * ret : TypeReference
 
-  /// A named variable, eg `a` in `List<a>`, matches anything
+  /// A named type variable
+  /// (`a` in `List<a>`)
   | TVariable of string
 
   | TDB of TypeReference
@@ -480,30 +485,6 @@ module Expr =
 
 
 
-/// A type defined by a package or canvas/user
-module TypeDeclaration =
-  type RecordField = { name : string; typ : TypeReference; description : string }
-
-  type EnumField =
-    { typ : TypeReference; label : Option<string>; description : string }
-
-  type EnumCase = { name : string; fields : List<EnumField>; description : string }
-
-  /// The right-hand-side of the declaration: eg List<'a>
-  type Definition =
-    /// `type MyAlias = Int64`
-    | Alias of TypeReference
-
-    /// `type MyRecord = { a : int; b : string }`
-    | Record of NEList<RecordField>
-
-    /// `type MyEnum = A | B of int | C of int * (label: string)`
-    | Enum of NEList<EnumCase>
-
-  /// Combined the RHS definition, with the list of type parameters. Eg type
-  /// MyType<'a> = List<'a>
-  type T = { typeParams : List<string>; definition : Definition }
-
 
 
 /// Used to mark whether a function/type has been deprecated, and if so,
@@ -537,6 +518,33 @@ type PackageLocation =
     name : string }
 
 
+
+
+/// A type defined by a package or canvas/user
+module TypeDeclaration =
+  type RecordField = { name : string; typ : TypeReference; description : string }
+
+  type EnumField =
+    { typ : TypeReference; label : Option<string>; description : string }
+
+  type EnumCase = { name : string; fields : List<EnumField>; description : string }
+
+  /// The right-hand-side of the declaration: eg List<'a>
+  type Definition =
+    /// `type MyAlias = Int64`
+    | Alias of TypeReference
+
+    /// `type MyRecord = { a : int; b : string }`
+    | Record of NEList<RecordField>
+
+    /// `type MyEnum = A | B of int | C of int * (label: string)`
+    | Enum of NEList<EnumCase>
+
+  /// Combined the RHS definition, with the list of type parameters. Eg type
+  /// MyType<'a> = List<'a>
+  type T = { typeParams : List<string>; definition : Definition }
+
+
 module PackageType =
   // CLEANUP most of the time, the deprecation status isn't a useful thing in F# land.
   // We can (largely) migrate the Deprecation (action) of something, and trim this down to what matters: just the declaration
@@ -547,9 +555,10 @@ module PackageType =
   // OK but what do we do about /// comments?
   // really this just begs a series of questions about the PackageManager...
   type PackageType =
-    { id : FQTypeName.Package
-      declaration : TypeDeclaration.T
+    { declaration : TypeDeclaration.T
+      id : FQTypeName.Package // hash (of the declaration)
       //mutuals: List<Int, MutualHash>
+      // location?
 
       description : string
       deprecated : Deprecation<FQTypeName.FQTypeName> }
@@ -565,21 +574,44 @@ module PackageType =
 
 module PackageValue =
   type PackageValue =
-    { id : FQValueName.Package
+    { body : Expr
+      id : FQValueName.Package // hash
       description : string
-      deprecated : Deprecation<FQValueName.FQValueName>
+      deprecated : Deprecation<FQValueName.FQValueName> }
+
+
+
+module FnDeclaration =
+  type Parameter = { name : string; typ : TypeReference; description : string }
+
+  type Definition =
+    { typeParams : List<string>
+      parameters : NEList<Parameter>
+      returnType : TypeReference
       body : Expr }
 
 
+// Does PT even _need_ this concept? Maybe only LibPM needs it?
+// I guess this really _is_ only for LibPM...
 module PackageFn =
-  type Parameter = { name : string; typ : TypeReference; description : string }
+  // Maybe WT2PT needs rethinking.
+  //it's written to go to 'this type' but it'll never have
+  // deprecation or a finished hash.
 
+  // gosh, most of PT doesn't even need to be in F# land, does it?
+  // runtime doesn't care
+  // builtins don't care
+  // parser cares, but ideally that all moves to dark land
+  // LibCloud and such shouldn't care
+  // we can, and should, slowly peel things away from F# land...
   type PackageFn =
-    { id : FQFnName.Package
-      body : Expr
-      typeParams : List<string>
-      parameters : NEList<Parameter>
-      returnType : TypeReference
+    {
+      declaration: Declaration
+      id : FQFnName.Package // hash - do we even need this?
+
+      // would it make sense to have the current Location here, too?
+      // when is this type (PT.PackageFn) used?
+      // for various dev-time stuff...
       description : string
       deprecated : Deprecation<FQFnName.FQFnName> }
 
@@ -802,17 +834,6 @@ type PackageManager =
     getType : FQTypeName.Package -> Ply<Option<PackageType.PackageType>>
     getValue : FQValueName.Package -> Ply<Option<PackageValue.PackageValue>>
     getFn : FQFnName.Package -> Ply<Option<PackageFn.PackageFn>>
-
-    // Reverse lookups for pretty-printing and other tooling
-    // TODO: Revisit this given that a single ID might refer to multiple locations,
-    // even per a branch (because... why? not sure or totally convinced either way)).
-    getTypeLocation :
-      (BranchIDOpt * FQTypeName.Package) -> Ply<Option<PackageLocation>>
-    getValueLocation :
-      (BranchIDOpt * FQValueName.Package) -> Ply<Option<PackageLocation>>
-    getFnLocation : (BranchIDOpt * FQFnName.Package) -> Ply<Option<PackageLocation>>
-
-    // maybe it returns a List of (Location * Ranking) and we encode a nice ranking alg.
 
     // TODO: maybe a result? hmm
     // TODO maybe apply op_s_?
