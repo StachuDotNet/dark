@@ -4,7 +4,7 @@ open Prelude
 
 open LibExecution.RuntimeTypes
 module PT2DT = LibExecution.ProgramTypesToDarkTypes
-module PM = LibPackageManager.PackageManager
+module PM = PackagesBootstrap.PackageManager
 
 // CLEANUP: avoid using `Async.RunSynchronously` and try to handle the pretty printing in dark
 let private fqTypeNameToString (typeName : FQTypeName.FQTypeName) : string =

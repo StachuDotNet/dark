@@ -122,7 +122,7 @@ let main (args : string[]) =
     EmbeddedResources.extract ()
     initSerializers ()
 
-    let cliPackageManager = LibPackageManager.PackageManager.rt
+    let cliPackageManager = PackagesBootstrap.PackageManager.rt
     cliPackageManager.init.Result
 
     let result = execute cliPackageManager (Array.toList args)

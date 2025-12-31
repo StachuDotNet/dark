@@ -128,15 +128,16 @@ module ExecutionError =
   let typeRef = TCustomType(Ok fqTypeName, [])
 
 
-let pmRT = LibPackageManager.PackageManager.rt
-let ptPM = LibPackageManager.PackageManager.pt
+let pmRT = PackagesBootstrap.PackageManager.rt
+// let ptPM = PackagesBootstrap.PackageManager.pt // unused with BuiltinPM disabled
 
 let builtinsToUse : RT.Builtins =
   LibExecution.Builtin.combine
     [ BuiltinExecution.Builtin.builtins
         BuiltinExecution.Libs.HttpClient.defaultConfig
       BuiltinCli.Builtin.builtins
-      BuiltinPM.Builtin.builtins ptPM ]
+      // BuiltinPM.Builtin.builtins ptPM // disabled for bootstrap CLI
+    ]
     []
 
 
@@ -169,7 +170,7 @@ let execute
 
     // TODO we should probably use LibPM's in-memory grafting thing instead of this
     // (no need for RT.PM.withExtras to exist, I think)
-    let pm = pmRT |> PackageManager.withExtras types values fns
+    let pm = pmRT |> RT.PackageManager.withExtras types values fns
 
     let tracing = Exe.noTracing
 

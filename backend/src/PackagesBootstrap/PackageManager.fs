@@ -246,3 +246,29 @@ let initFromEmbeddedResource () : PT.PackageManager * RT.PackageManager =
 let initEmpty () : PT.PackageManager * RT.PackageManager =
   let store = PackageStore.empty ()
   (createPT store, createRT store)
+
+
+// -------
+// Module-level singletons (like LibPackageManager)
+// -------
+
+/// Lazily initialized store from embedded resource
+let private lazyStore =
+  lazy (
+    let assembly = Assembly.GetExecutingAssembly()
+    let resourceName = "PackagesBootstrap.data.packages-bootstrap.blob"
+
+    use stream = assembly.GetManifestResourceStream(resourceName)
+    if isNull stream then
+      Exception.raiseInternal $"Embedded resource not found: {resourceName}" []
+
+    use ms = new MemoryStream()
+    stream.CopyTo(ms)
+    loadFromBlob (ms.ToArray())
+  )
+
+/// PT PackageManager singleton
+let pt : PT.PackageManager = createPT (lazyStore.Force())
+
+/// RT PackageManager singleton
+let rt : RT.PackageManager = createRT (lazyStore.Force())
