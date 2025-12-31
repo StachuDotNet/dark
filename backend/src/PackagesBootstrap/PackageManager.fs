@@ -253,7 +253,8 @@ let initEmpty () : PT.PackageManager * RT.PackageManager =
 // -------
 
 /// Lazily initialized store from embedded resource
-let private lazyStore =
+/// Note: Not private so BuiltinCliHost can access it for pm* builtins
+let lazyStore =
   lazy (
     let assembly = Assembly.GetExecutingAssembly()
     let resourceName = "PackagesBootstrap.data.packages-bootstrap.blob"

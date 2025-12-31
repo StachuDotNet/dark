@@ -137,6 +137,7 @@ let builtinsToUse : RT.Builtins =
         BuiltinExecution.Libs.HttpClient.defaultConfig
       BuiltinCli.Builtin.builtins
       // BuiltinPM.Builtin.builtins ptPM // disabled for bootstrap CLI
+      BootstrapPM.builtins // Real pm* builtins using PackagesBootstrap (overrides DummyBuiltins)
     ]
     []
 
