@@ -13,9 +13,19 @@
   <ItemGroup>
     <ProjectReference Include="../Prelude/Prelude.fsproj" />
     <ProjectReference Include="../LibExecution/LibExecution.fsproj" />
-    <ProjectReference Include="../LibDB/LibDB.fsproj" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="data/packages-bootstrap.blob" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="BinaryFormat.fs" />
+    <Compile Include="Serializers/Common.fs" />
+    <Compile Include="Serializers/PT/Common.fs" />
+    <Compile Include="Serializers/PT/TypeReference.fs" />
+    <Compile Include="Serializers/PT/Expr.fs" />
+    <Compile Include="Serializers/PT/PackageType.fs" />
+    <Compile Include="Serializers/PT/PackageValue.fs" />
+    <Compile Include="Serializers/PT/PackageFn.fs" />
     <Compile Include="PackageManager.fs" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
