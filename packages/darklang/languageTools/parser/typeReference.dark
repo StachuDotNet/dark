@@ -160,8 +160,6 @@ let parseBuiltIn
 
           let args = argsNodes |> Stdlib.Result.collect
 
-          //Builtin.debug "args" args
-
           match returnTypeNode, args with
           | Ok returnType, Ok args ->
             (TBuiltin.TFn(firstChild.range, args, returnType)) |> builtin

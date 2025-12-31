@@ -30,12 +30,15 @@
     <Compile Include="ProgramTypes.fs" />
     <Compile Include="ProgramTypesAst.fs" />
     <Compile Include="ProgramTypesToRuntimeTypes.fs" />
-    <Compile Include="ProgramTypesParser.fs" />
+    <!--Compile Include="ProgramTypesParser.fs" /-->
     <!-- User+Runtime I/O /-->
     <Compile Include="DvalDecoder.fs" />
+
+    <!-- would love to migrate these -->
     <Compile Include="CommonToDarkTypes.fs" />
     <Compile Include="RuntimeTypesToDarkTypes.fs" />
     <Compile Include="ProgramTypesToDarkTypes.fs" />
+
     <!-- Expose the runtime to the outside world /-->
     <Compile Include="Execution.fs" />
   </ItemGroup>

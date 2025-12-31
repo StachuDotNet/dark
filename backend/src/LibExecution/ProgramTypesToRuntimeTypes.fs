@@ -1137,6 +1137,7 @@ module PackageValue =
         match typeArgs with
         | [] ->
           // Only infer for well-known generic types when no type args provided
+          // TODO reevaluate: should we actually do this? hmm.
           match resolvedTypeName with
           | RT.FQTypeName.Package id when id = PackageIDs.Type.Stdlib.option ->
             match caseName, fieldValues with

@@ -236,24 +236,25 @@ let fns : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "debug" 0
-      typeParams = []
-      parameters =
-        [ Param.make "label" TString "The label to be printed."
-          Param.make "value" (TVariable "a") "The value to be printed." ]
-      returnType = TUnit
-      description = "Prints the given <param value> to the standard output"
-      fn =
-        (function
-        | _, _, _, [ DString label; value ] ->
-          // TODO: call upon the Dark equivalent fn instead of relying on DvalReprDeveloper
-          let value = DvalReprDeveloper.toRepr value
-          print $"DEBUG: {label}: {value}"
-          Ply DUnit
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      deprecated = NotDeprecated } ]
+    // { name = fn "debug" 0
+    //   typeParams = []
+    //   parameters =
+    //     [ Param.make "label" TString "The label to be printed."
+    //       Param.make "value" (TVariable "a") "The value to be printed." ]
+    //   returnType = TUnit
+    //   description = "Prints the given <param value> to the standard output"
+    //   fn =
+    //     (function
+    //     | _, _, _, [ DString label; value ] ->
+    //       // TODO: call upon the Dark equivalent fn instead of relying on DvalReprDeveloper
+    //       let value = DvalReprDeveloper.toRepr value
+    //       print $"DEBUG: {label}: {value}"
+    //       Ply DUnit
+    //     | _ -> incorrectArgs ())
+    //   sqlSpec = NotQueryable
+    //   previewable = Impure
+    //   deprecated = NotDeprecated }
+      ]
 
 
 let builtins = LibExecution.Builtin.make [] fns

@@ -1081,41 +1081,41 @@ type PackageManager =
 
     init : Ply<unit> }
 
-  static member empty =
-    { getType = (fun _ -> Ply None)
-      getFn = (fun _ -> Ply None)
-      getValue = (fun _ -> Ply None)
+  // static member empty =
+  //   { getType = (fun _ -> Ply None)
+  //     getFn = (fun _ -> Ply None)
+  //     getValue = (fun _ -> Ply None)
 
-      init = uply { return () } }
+  //     init = uply { return () } }
 
-  /// Allows you to side-load a few 'extras' in-memory, along
-  /// the normal fetching functionality. (Mostly helpful for tests)
-  static member withExtras
-    (types : List<PackageType.PackageType>)
-    (values : List<PackageValue.PackageValue>)
-    (fns : List<PackageFn.PackageFn>)
-    (pm : PackageManager)
-    : PackageManager =
-    let typeMap = types |> List.map (fun t -> t.id, t) |> Map.ofList
-    let valueMap = values |> List.map (fun v -> v.id, v) |> Map.ofList
-    let fnMap = fns |> List.map (fun f -> f.id, f) |> Map.ofList
+  // /// Allows you to side-load a few 'extras' in-memory, along
+  // /// the normal fetching functionality. (Mostly helpful for tests)
+  // static member withExtras
+  //   (types : List<PackageType.PackageType>)
+  //   (values : List<PackageValue.PackageValue>)
+  //   (fns : List<PackageFn.PackageFn>)
+  //   (pm : PackageManager)
+  //   : PackageManager =
+  //   let typeMap = types |> List.map (fun t -> t.id, t) |> Map.ofList
+  //   let valueMap = values |> List.map (fun v -> v.id, v) |> Map.ofList
+  //   let fnMap = fns |> List.map (fun f -> f.id, f) |> Map.ofList
 
-    { getType =
-        fun id ->
-          match Map.tryFind id typeMap with
-          | Some t -> Some t |> Ply
-          | None -> pm.getType id
-      getValue =
-        fun id ->
-          match Map.tryFind id valueMap with
-          | Some v -> Some v |> Ply
-          | None -> pm.getValue id
-      getFn =
-        fun id ->
-          match Map.tryFind id fnMap with
-          | Some f -> Some f |> Ply
-          | None -> pm.getFn id
-      init = pm.init }
+  //   { getType =
+  //       fun id ->
+  //         match Map.tryFind id typeMap with
+  //         | Some t -> Some t |> Ply
+  //         | None -> pm.getType id
+  //     getValue =
+  //       fun id ->
+  //         match Map.tryFind id valueMap with
+  //         | Some v -> Some v |> Ply
+  //         | None -> pm.getValue id
+  //     getFn =
+  //       fun id ->
+  //         match Map.tryFind id fnMap with
+  //         | Some f -> Some f |> Ply
+  //         | None -> pm.getFn id
+  //     init = pm.init }
 
 
 // ------------
@@ -1406,7 +1406,7 @@ and Functions =
 
 
 module Types =
-  let empty = { package = (fun _ -> Ply None) }
+  //let empty = { package = (fun _ -> Ply None) }
 
   let find
     (types : Types)
@@ -1547,10 +1547,10 @@ module TypeReference =
 
 
 
-let consoleReporter : ExceptionReporter =
-  fun _state _vm (metadata : Metadata) (exn : exn) ->
-    uply { printException "runtime-error" metadata exn }
+// let consoleReporter : ExceptionReporter =
+//   fun _state _vm (metadata : Metadata) (exn : exn) ->
+//     uply { printException "runtime-error" metadata exn }
 
-let consoleNotifier : Notifier =
-  fun _state _vm msg tags ->
-    uply { print $"A notification happened in the runtime:\n  {msg}\n  {tags}\n\n" }
+// let consoleNotifier : Notifier =
+//   fun _state _vm msg tags ->
+//     uply { print $"A notification happened in the runtime:\n  {msg}\n  {tags}\n\n" }

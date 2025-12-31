@@ -93,11 +93,9 @@ let highlightCode (sourceCode: String) : String =
     let tokens = LanguageTools.SemanticTokens.ParsedFile.tokenize parsedFile
     if Stdlib.List.isEmpty tokens then
       // TODO: create a fallback highlighting when parsing and tokenization fail
-      Builtin.debug "what" parsedFile
       sourceCode
     else
       applyTokenColors sourceCode tokens
 
   | Error err ->
-    Builtin.debug "err" err
     sourceCode

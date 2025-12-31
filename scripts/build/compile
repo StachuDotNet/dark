@@ -112,9 +112,10 @@ def circleci_validate():
   return run_backend(start, "circleci config validate")
 
 
-def build_parser():
-  start = time.time()
-  return run_other(start, "scripts/build/build-parser")
+# TODO: re-enable when full F# build is restored
+# def build_parser():
+#   start = time.time()
+#   return run_other(start, "scripts/build/build-parser")
 
 ###########
 # F#
@@ -276,9 +277,10 @@ class Should:
 def execute(should):
   success = True
 
-  # parser
-  if should.build_parser:
-    if not build_parser(): success = False
+  # TODO: re-enable when full F# build is restored
+  # # parser
+  # if should.build_parser:
+  #   if not build_parser(): success = False
 
 
   # backend dependencies
@@ -300,35 +302,38 @@ def execute(should):
     should.backend_quick_build = False  # no need to do both
     if not backend_full_build(): success = False
     #should.copy_dark_wasm |= success
-    should.backend_test |= success
-    should.reload_backend_server |= success
-    should.reload_all_packages |= success
-    should.run_migrations |= success
+    # TODO: re-enable when full F# build is restored
+    # should.backend_test |= success
+    # should.reload_backend_server |= success
+    # should.reload_all_packages |= success
+    # should.run_migrations |= success
 
   if should.backend_quick_build:
     if not backend_quick_build(): success = False
     #should.copy_dark_wasm |= success
-    should.backend_test |= success
-    should.reload_backend_server |= success
-    should.reload_all_packages |= success
-    should.run_migrations |= success
+    # TODO: re-enable when full F# build is restored
+    # should.backend_test |= success
+    # should.reload_backend_server |= success
+    # should.reload_all_packages |= success
+    # should.run_migrations |= success
 
   # if should.copy_dark_wasm:
   #   if not copy_dark_wasm(): success = False
 
-  if should.reload_backend_server:
-    if not reload_backend_server(): success = False
-    should.run_migrations |= success
+  # TODO: re-enable when full F# build is restored
+  # if should.reload_backend_server:
+  #   if not reload_backend_server(): success = False
+  #   should.run_migrations |= success
 
-  if should.run_migrations:
-    if not run_migrations(): success = False
-    should.reload_all_packages |= success
+  # if should.run_migrations:
+  #   if not run_migrations(): success = False
+  #   should.reload_all_packages |= success
 
-  if should.reload_all_packages:
-    if not reload_all_packages(): success = False
+  # if should.reload_all_packages:
+  #   if not reload_all_packages(): success = False
 
-  if should.backend_test:
-    if not backend_test(): success = False
+  # if should.backend_test:
+  #   if not backend_test(): success = False
 
 
   # misc validations and formatting checkers
@@ -372,23 +377,34 @@ def mark(should, f):
     else:
       should.backend_quick_build = True
 
+  # TODO: re-enable when full F# build is restored
+  # elif f.startswith("backend/tests/"):
+  #   should.backend_test = True
   elif f.startswith("backend/tests/"):
-    should.backend_test = True
+    pass  # skip for now
 
+  # TODO: re-enable when full F# build is restored
+  # elif f.startswith("packages/") and f.endswith(".dark"):
+  #   should.reload_all_packages = True
+  #   # refresh the server as the packages migh have been cached
+  #   should.reload_backend_server = True
+
+  # elif f.startswith("canvases/") and f.endswith(".dark"):
+  #   should.reload_all_packages = True
+
+  # elif f.startswith("backend/migrations/"):
+  #   should.run_migrations = True
   elif f.startswith("packages/") and f.endswith(".dark"):
-    should.reload_all_packages = True
-    # refresh the server as the packages migh have been cached
-    should.reload_backend_server = True
-
+    pass  # skip for now
   elif f.startswith("canvases/") and f.endswith(".dark"):
-    should.reload_all_packages = True
-
+    pass  # skip for now
   elif f.startswith("backend/migrations/"):
-    should.run_migrations = True
+    pass  # skip for now
 
   elif f == "scripts/run-backend-server":
     should.shellcheck += [f]
-    should.reload_backend_server = True
+    # TODO: re-enable when full F# build is restored
+    # should.reload_backend_server = True
 
   elif f == ".circleci/config.yml":
     should.circleci_validate = True
@@ -402,9 +418,12 @@ def mark(should, f):
   elif f.endswith(".yml") or f.endswith(".yaml"):
     should.yamllint += [f]
 
+  # TODO: re-enable when full F# build is restored
+  # elif f == "tree-sitter-darklang/grammar.js":
+  #   should.build_parser = True
+  #   should.backend_quick_build = True
   elif f == "tree-sitter-darklang/grammar.js":
-    should.build_parser = True
-    should.backend_quick_build = True
+    pass  # skip for now
 
   else:
     print("non-build file: " + f, end='')

@@ -21,7 +21,9 @@
       "Bash(timeout:*)",
       "mcp__darklang-push-notifications__send_ntfy_notification",
       "mcp__push-notifications__send_pushover_notification",
-      "mcp__push-notifications__send_ntfy_notification"
+      "mcp__push-notifications__send_ntfy_notification",
+      "Bash(while ! grep -q \"Successfully loaded packages\" ./rundir/logs/packages-canvas.log)",
+      "Bash(do sleep 2)"
     ],
     "deny": []
   }

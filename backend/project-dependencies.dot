@@ -1,0 +1,251 @@
+digraph ProjectDependencies {
+  rankdir=BT;  // Bottom to top - dependencies flow upward
+  node [shape=box, style=rounded, fontname="Helvetica"];
+  edge [color="#666666"];
+
+  // ============================================
+  // LAYER 0: Foundation (no dependencies)
+  // ============================================
+  subgraph cluster_foundation {
+    label="Foundation";
+    style=dashed;
+    color="#cccccc";
+    Prelude [style="rounded,filled", fillcolor="#e8f5e9"];
+    LibConfig [style="rounded,filled", fillcolor="#e8f5e9"];
+  }
+
+  // ============================================
+  // LAYER 1: Core (depends only on foundation)
+  // ============================================
+  subgraph cluster_core {
+    label="Core";
+    style=dashed;
+    color="#cccccc";
+    LibExecution [style="rounded,filled", fillcolor="#e3f2fd"];
+    LibTreeSitter [style="rounded,filled", fillcolor="#e3f2fd"];
+    LibDB [style="rounded,filled", fillcolor="#e3f2fd"];
+    LibService [style="rounded,filled", fillcolor="#e3f2fd"];
+  }
+
+  LibExecution -> Prelude;
+  LibTreeSitter -> Prelude;
+  LibDB -> Prelude;
+  LibDB -> LibConfig;
+  LibService -> Prelude;
+  LibService -> LibConfig;
+
+  // ============================================
+  // LAYER 2: Serialization & Builtins
+  // ============================================
+  subgraph cluster_layer2 {
+    label="Serialization & Builtins";
+    style=dashed;
+    color="#cccccc";
+    LibBinarySerialization [style="rounded,filled", fillcolor="#fff3e0"];
+    BuiltinExecution [style="rounded,filled", fillcolor="#fff3e0"];
+    BuiltinCli [style="rounded,filled", fillcolor="#fff3e0"];
+  }
+
+  LibBinarySerialization -> Prelude;
+  LibBinarySerialization -> LibExecution;
+
+  BuiltinExecution -> Prelude;
+  BuiltinExecution -> LibExecution;
+  BuiltinExecution -> LibTreeSitter;
+
+  BuiltinCli -> Prelude;
+  BuiltinCli -> LibExecution;
+  BuiltinCli -> LibConfig;
+
+  // ============================================
+  // LAYER 3: Package Management
+  // ============================================
+  subgraph cluster_packages {
+    label="Package Management";
+    style=dashed;
+    color="#cccccc";
+    LibPackageManager [style="rounded,filled", fillcolor="#fce4ec"];
+  }
+
+  LibPackageManager -> Prelude;
+  LibPackageManager -> LibExecution;
+  LibPackageManager -> LibBinarySerialization;
+  LibPackageManager -> LibConfig;
+  LibPackageManager -> LibDB;
+
+  // ============================================
+  // LAYER 4: Parser & Developer Tools
+  // ============================================
+  subgraph cluster_parser {
+    label="Parser & Dev Tools";
+    style=dashed;
+    color="#cccccc";
+    LibParser [style="rounded,filled", fillcolor="#f3e5f5"];
+    DvalReprDeveloper [style="rounded,filled", fillcolor="#f3e5f5"];
+  }
+
+  LibParser -> Prelude;
+  LibParser -> LibExecution;
+  LibParser -> LibPackageManager;
+
+  DvalReprDeveloper -> Prelude;
+  DvalReprDeveloper -> LibExecution;
+  DvalReprDeveloper -> LibPackageManager;
+
+  // ============================================
+  // LAYER 5: Cloud Infrastructure
+  // ============================================
+  subgraph cluster_cloud {
+    label="Cloud Infrastructure";
+    style=dashed;
+    color="#cccccc";
+    LibCloud [style="rounded,filled", fillcolor="#e1f5fe"];
+    BuiltinCloudExecution [style="rounded,filled", fillcolor="#e1f5fe"];
+    BuiltinDarkInternal [style="rounded,filled", fillcolor="#e1f5fe"];
+  }
+
+  LibCloud -> Prelude;
+  LibCloud -> LibExecution;
+  LibCloud -> LibBinarySerialization;
+  LibCloud -> LibService;
+  LibCloud -> LibDB;
+
+  BuiltinCloudExecution -> Prelude;
+  BuiltinCloudExecution -> LibExecution;
+  BuiltinCloudExecution -> LibDB;
+  BuiltinCloudExecution -> LibCloud;
+  BuiltinCloudExecution -> LibBinarySerialization;
+  BuiltinCloudExecution -> LibPackageManager;
+
+  BuiltinDarkInternal -> Prelude;
+  BuiltinDarkInternal -> LibExecution;
+  BuiltinDarkInternal -> DvalReprDeveloper;
+  BuiltinDarkInternal -> LibDB;
+  BuiltinDarkInternal -> LibCloud;
+
+  // ============================================
+  // LAYER 6: Cloud Execution & HTTP
+  // ============================================
+  subgraph cluster_cloudexec {
+    label="Cloud Execution";
+    style=dashed;
+    color="#cccccc";
+    LibCloudExecution [style="rounded,filled", fillcolor="#ede7f6"];
+    LibHttpMiddleware [style="rounded,filled", fillcolor="#ede7f6"];
+  }
+
+  LibCloudExecution -> LibExecution;
+  LibCloudExecution -> BuiltinExecution;
+  LibCloudExecution -> LibCloud;
+  LibCloudExecution -> BuiltinCloudExecution;
+  LibCloudExecution -> BuiltinDarkInternal;
+
+  LibHttpMiddleware -> LibExecution;
+  LibHttpMiddleware -> DvalReprDeveloper;
+  LibHttpMiddleware -> LibCloud;
+
+  // ============================================
+  // LAYER 7: CLI Host
+  // ============================================
+  subgraph cluster_clihost {
+    label="CLI Host";
+    style=dashed;
+    color="#cccccc";
+    BuiltinCliHost [style="rounded,filled", fillcolor="#fff8e1"];
+  }
+
+  BuiltinCliHost -> Prelude;
+  BuiltinCliHost -> LibExecution;
+  BuiltinCliHost -> DvalReprDeveloper;
+  BuiltinCliHost -> BuiltinExecution;
+  BuiltinCliHost -> BuiltinCli;
+  BuiltinCliHost -> LibPackageManager;
+
+  // ============================================
+  // EXECUTABLES (Top Layer)
+  // ============================================
+  subgraph cluster_executables {
+    label="Executables";
+    style=dashed;
+    color="#cccccc";
+    Cli [style="rounded,filled,bold", fillcolor="#ffcdd2", penwidth=2];
+    LocalExec [style="rounded,filled", fillcolor="#ffcdd2"];
+    BwdServer [style="rounded,filled", fillcolor="#ffcdd2"];
+    QueueWorker [style="rounded,filled", fillcolor="#ffcdd2"];
+    CronChecker [style="rounded,filled", fillcolor="#ffcdd2"];
+    ProdExec [style="rounded,filled", fillcolor="#ffcdd2"];
+  }
+
+  // CLI - TARGET
+  Cli -> LibExecution;
+  Cli -> DvalReprDeveloper;
+  Cli -> LibPackageManager;
+  Cli -> BuiltinCliHost;
+
+  // LocalExec
+  LocalExec -> LibExecution;
+  LocalExec -> LibParser;
+  LocalExec -> LibCloud;
+  LocalExec -> LibDB;
+  LocalExec -> LibPackageManager;
+  LocalExec -> BuiltinExecution;
+  LocalExec -> BuiltinCli;
+  LocalExec -> BuiltinCliHost;
+  LocalExec -> BuiltinDarkInternal;
+
+  // BwdServer
+  BwdServer -> LibExecution;
+  BwdServer -> LibService;
+  BwdServer -> LibCloudExecution;
+  BwdServer -> LibCloud;
+  BwdServer -> LibHttpMiddleware;
+
+  // QueueWorker
+  QueueWorker -> LibExecution;
+  QueueWorker -> LibService;
+  QueueWorker -> LibCloud;
+  QueueWorker -> LibDB;
+  QueueWorker -> LibCloudExecution;
+
+  // CronChecker
+  CronChecker -> LibExecution;
+  CronChecker -> LibCloud;
+
+  // ProdExec
+  ProdExec -> LibExecution;
+  ProdExec -> LibCloud;
+
+  // ============================================
+  // TEST PROJECTS
+  // ============================================
+  subgraph cluster_tests {
+    label="Tests";
+    style=dashed;
+    color="#cccccc";
+    TestUtils [style="rounded,filled", fillcolor="#f5f5f5"];
+    Tests [style="rounded,filled", fillcolor="#f5f5f5"];
+  }
+
+  TestUtils -> LibExecution;
+  TestUtils -> BuiltinExecution;
+  TestUtils -> BuiltinCli;
+  TestUtils -> LibDB;
+  TestUtils -> LibPackageManager;
+  TestUtils -> LibCloudExecution;
+  TestUtils -> LibCloud;
+
+  Tests -> Prelude;
+  Tests -> LibParser;
+  Tests -> LibExecution;
+  Tests -> LibTreeSitter;
+  Tests -> BuiltinExecution;
+  Tests -> LibPackageManager;
+  Tests -> LibDB;
+  Tests -> LibBinarySerialization;
+  Tests -> BuiltinCloudExecution;
+  Tests -> BuiltinDarkInternal;
+  Tests -> LibCloudExecution;
+  Tests -> BwdServer;
+  Tests -> QueueWorker;
+  Tests -> TestUtils;
+}

@@ -10,27 +10,29 @@ open Fumble
 
 open Prelude
 
-let connString =
-  $"Data Source={LibConfig.Config.dbPath};Mode=ReadWriteCreate;Cache=Private;Pooling=true"
+/// A database connection. Create with `createConnection`.
+type Connection = Sql.SqlProps
+
+/// Create a connection to a SQLite database.
+/// Example: createConnection "Data Source=/path/to/db.sqlite;Mode=ReadWriteCreate;Cache=Private;Pooling=true"
+let createConnection (connString : string) : Connection =
+  let props = Sql.connect connString
+  // Initialize connection with PRAGMA settings that can't be set in the connection string
+  props
+  |> Sql.query
+    @"
+    PRAGMA journal_mode=WAL;
+    PRAGMA synchronous=NORMAL;
+    PRAGMA busy_timeout=5000;
+    "
+  |> Sql.executeNonQuery
+  |> ignore<Result<int, exn>>
+  props
 
 module Sql =
-  // Initialize connection with PRAGMA settings that can't be set in the connection string
-  let initializeConnection (props : Sql.SqlProps) : Sql.SqlProps =
-    props
-    |> Sql.query
-      @"
-      PRAGMA journal_mode=WAL;
-      PRAGMA synchronous=NORMAL;
-      PRAGMA busy_timeout=5000;
-      "
-    |> Sql.executeNonQuery
-    |> ignore<Result<int, exn>>
+  let query (conn : Connection) (sql : string) : Sql.SqlProps = conn |> Sql.query sql
 
-    props
-
-  let connect = Sql.connect connString |> initializeConnection
-
-  let query (sql : string) : Sql.SqlProps = connect |> Sql.query sql
+  let parameters = Sql.parameters
 
   let executeNonQueryAsync props =
     Sql.executeNonQueryAsync props |> Async.StartAsTask |> Task.map Result.unwrap
@@ -96,10 +98,11 @@ module Sql =
 
   /// Execute multiple SQL statements in a transaction synchronously
   let executeTransactionSync
+    (conn : Connection)
     (statements :
       List<string * List<List<string * Microsoft.Data.Sqlite.SqliteParameter>>>)
     : List<int> =
-    match connect |> Sql.executeTransaction statements with
+    match conn |> Sql.executeTransaction statements with
     | Ok counts -> counts
     | Error err ->
       Exception.raiseInternal
@@ -167,20 +170,21 @@ type TableStatsRow =
     diskHuman : string
     rowsHuman : string }
 
-let tableStats () : Ply<List<TableStatsRow>> =
+let tableStats (conn : Connection) : Ply<List<TableStatsRow>> =
   uply {
     let! pageCount =
-      Sql.query "PRAGMA page_count;"
+      Sql.query conn "PRAGMA page_count;"
       |> Sql.executeRowAsync (fun r -> r.int64 "page_count")
 
     let! pageSize =
-      Sql.query "PRAGMA page_size;"
+      Sql.query conn "PRAGMA page_size;"
       |> Sql.executeRowAsync (fun r -> r.int64 "page_size")
 
     let dbSizeBytes = pageCount * pageSize
 
     let! tables =
       Sql.query
+        conn
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%';"
       |> Sql.executeAsync (fun read -> read.string "name")
 
@@ -195,7 +199,7 @@ let tableStats () : Ply<List<TableStatsRow>> =
       |> Ply.List.mapSequentially (fun table ->
         uply {
           let! rows =
-            Sql.query $"SELECT COUNT(*) as count FROM \"{table}\";"
+            Sql.query conn $"SELECT COUNT(*) as count FROM \"{table}\";"
             |> Sql.executeRowAsync (fun read -> read.int64 "count")
 
           return (table, rows)

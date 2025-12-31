@@ -31,9 +31,9 @@ let runDir = absoluteDirOrCurrent "DARK_CONFIG_RUNDIR"
 
 let logDir = $"{runDir}logs/"
 
-let dbName =
-  match getEnv "DARK_CONFIG_DB_NAME" with
-  | Some s -> s
-  | None -> "data.db"
+// let dbName =
+//   match getEnv "DARK_CONFIG_DB_NAME" with
+//   | Some s -> s
+//   | None -> "data.db"
 
-let dbPath = $"{runDir}/{dbName}"
+// let dbPath = $"{runDir}/{dbName}"
