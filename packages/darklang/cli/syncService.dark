@@ -192,67 +192,16 @@ let waitForProcessShutdown (pid: Int64) (checksRemaining: Float) : Bool =
 
 
 /// Stop the sync service
+/// BOOTSTRAP: Disabled - sync requires instances infrastructure
 let stop () : Stdlib.Result.Result<Unit, String> =
-  match readPid () with
-  | Some pid ->
-    // Create shutdown signal
-    let _ = Builtin.fileDelete (shutdownSignalPath ())
-    let _ = Builtin.fileAppendText (shutdownSignalPath ()) ""
-
-    log "Waiting for sync service to shutdown..."
-
-    // Wait up to 10 seconds for graceful shutdown
-    let maxWaitMs = 10000.0
-    let checkIntervalMs = 200.0
-    let maxChecks = Stdlib.Float.divide maxWaitMs checkIntervalMs
-
-    let shutdownGracefully = waitForProcessShutdown pid maxChecks
-
-    if shutdownGracefully then
-      // Cleanup files
-      let _ = Builtin.fileDelete (pidFilePath ())
-      let _ = Builtin.fileDelete (shutdownSignalPath ())
-      log "Sync service stopped"
-      Stdlib.Result.Result.Ok ()
-    else
-      // Force kill if didn't shutdown gracefully
-      log "Force killing sync service..."
-
-      match Builtin.processKill pid with
-      | Ok () ->
-        let _ = Builtin.fileDelete (pidFilePath ())
-        let _ = Builtin.fileDelete (shutdownSignalPath ())
-        log "Sync service stopped (force killed)"
-        Stdlib.Result.Result.Ok ()
-
-      | Error errMsg ->
-        let _ = Builtin.fileDelete (pidFilePath ())
-        let _ = Builtin.fileDelete (shutdownSignalPath ())
-
-        Stdlib.Result.Result.Error $"Failed to kill sync service: {errMsg}"
-  | None -> Stdlib.Result.Result.Error "Sync service is not running"
+  // TODO: Re-enable when we have proper sync infrastructure
+  Stdlib.Result.Result.Ok ()
 
 
 /// Auto-start the sync service if not already running
 /// Called during CLI startup
+/// BOOTSTRAP: Disabled - sync requires instances infrastructure
 let autoStart () : Unit =
-  if isRunning () then
-    ()
-  else
-    // Check if auto-start is enabled (default: true)
-    let autoStartEnabled =
-      match Config.get "sync.auto_start" with
-      | Some "false" -> false
-      | _ -> true // Default to enabled
-
-    if autoStartEnabled then
-      // Auto-start syncs all branches
-      match startInBackground () with
-      | Ok () ->
-        log "Auto-started sync service"
-        Stdlib.printLine (Colors.success "✓ Sync service started")
-        ()
-      | Error errMsg ->
-        // Log error but don't block CLI startup
-        log $"Failed to auto-start sync service: {errMsg}"
-        ()
+  // TODO: Re-enable when we have proper sync infrastructure
+  // For now, just a no-op to allow CLI to start
+  ()

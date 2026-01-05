@@ -15,6 +15,7 @@ let parseArgs (args: List<String>) : Stdlib.Result.Result<Subcommand, String> =
 
 
 let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
+  // BOOTSTRAP: Account system disabled - using single CLI user
   match parseArgs args with
   | Error msg ->
     Stdlib.printLine (Colors.error msg)
@@ -24,38 +25,28 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     match subcommand with
     | Show ->
       Stdlib.printLine $"Current account: {state.accountName}"
+      Stdlib.printLine "(Note: Account system is currently disabled)"
       state
 
     | List ->
-      let accounts = Builtin.pmListAccounts ()
+      // BOOTSTRAP: pmListAccounts not available
       Stdlib.printLine "Available accounts:"
-      accounts
-      |> Stdlib.List.iter (fun name ->
-        let marker =
-          if name == state.accountName then
-            " (current)"
-          else
-            ""
-        Stdlib.printLine $"  {name}{marker}")
+      Stdlib.printLine $"  {state.accountName} (current)"
+      Stdlib.printLine "(Note: Account system is currently disabled)"
       state
 
     | Switch name ->
-      match Builtin.pmGetAccountByName name with
-      | None ->
-        Stdlib.printLine (Colors.error $"Account not found: {name}")
-        state
-      | Some uuid ->
-        Stdlib.printLine $"Switched to account: {name}"
-        { state with accountName = name; accountID = Stdlib.Option.Option.Some uuid }
+      // BOOTSTRAP: Account switching disabled
+      Stdlib.printLine (Colors.error "Account switching is currently disabled")
+      state
 
 
 let complete (state: Cli.AppState) (args: List<String>) : List<String> =
+  // BOOTSTRAP: Account system disabled
   match args with
   | [] -> ["list"; "switch"]
-  | ["switch"] -> Builtin.pmListAccounts ()
-  | ["switch"; partial] ->
-    (Builtin.pmListAccounts ())
-    |> Stdlib.List.filter (fun name -> Stdlib.String.startsWith name partial)
+  | ["switch"] -> [state.accountName]  // Only current account available
+  | ["switch"; partial] -> []  // No account switching
   | _ -> []
 
 

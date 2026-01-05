@@ -16,24 +16,17 @@ type AppState =
     currentBranchId: Stdlib.Option.Option<Uuid> }
 
 let initState () : AppState =
-  // Get account from DARK_ACCOUNT env var, or default to "Darklang"
-  // This allows testing different accounts without real auth
-  // CLEANUP: remove this once we have real auth in the CLI
-  let accountName =
-    match Builtin.environmentGet "DARK_ACCOUNT" with
-    | Some name -> name
-    | None -> "Darklang"
+  // BOOTSTRAP: Account/branch system disabled for now
+  // Using hardcoded defaults - will be replaced with UserDB-based user packages
+  let accountName = "CLI"
 
-  let accountUuid = Builtin.pmGetAccountByName accountName
+  // BOOTSTRAP: Account lookup disabled - pmGetAccountByName returns None anyway
+  // let accountUuid = Builtin.pmGetAccountByName accountName
+  let accountUuid = Stdlib.Option.Option.None
 
-  // Get branch from DARK_BRANCH env var if set
-  let branchId =
-    match Builtin.environmentGet "DARK_BRANCH" with
-    | Some idStr ->
-      match Stdlib.Uuid.parse idStr with
-      | Ok id -> Stdlib.Option.Option.Some id
-      | Error _ -> Stdlib.Option.Option.None
-    | None -> Stdlib.Option.Option.None
+  // BOOTSTRAP: Branch system disabled
+  // let branchId = ... (branch lookup code)
+  let branchId = Stdlib.Option.Option.None
 
   AppState
     { isExiting = false
@@ -486,6 +479,8 @@ let runInteractiveLoop (state: AppState) : Int64 =
 
 
 let executeCliCommand (args: List<String>) : Int64 =
+
+  Builtin.printLine "Test"
   let initialState = initState ()
 
   match args with
