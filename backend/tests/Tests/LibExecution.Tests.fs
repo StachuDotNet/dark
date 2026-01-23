@@ -137,7 +137,7 @@ let t
       // just test the actual RuntimeError Dval,
       // and have separate tests around pretty-printing the error
       let! actual =
-        uply {
+        task {
           match actual with
           | Ok _ -> return actual
 
@@ -200,7 +200,7 @@ let t
                   [ "reverseTypeCheckPath", reverseTypeCheckPath
                     "allegedRTE", allegedRTE ]
         }
-        |> Ply.toTask
+        |> 
 
       match actual, expected with
       | Ok actual, Ok expected ->

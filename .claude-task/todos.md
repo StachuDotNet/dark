@@ -32,48 +32,48 @@ Remove Ply library in favor of F#'s native `task` computation expression. The co
 - [x] Convert backend/src/LibExecution/ProgramTypes.fs
 
 ### Phase 3: Convert LibParser Files
-- [ ] Convert backend/src/LibParser/WrittenTypesToProgramTypes.fs
-- [ ] Convert backend/src/LibParser/NameResolver.fs
-- [ ] Convert backend/src/LibParser/Canvas.fs
-- [ ] Convert backend/src/LibParser/Package.fs
-- [ ] Convert backend/src/LibParser/TestModule.fs
+- [x] Convert backend/src/LibParser/WrittenTypesToProgramTypes.fs
+- [x] Convert backend/src/LibParser/NameResolver.fs
+- [x] Convert backend/src/LibParser/Canvas.fs
+- [x] Convert backend/src/LibParser/Package.fs
+- [x] Convert backend/src/LibParser/TestModule.fs
 
 ### Phase 4: Convert LibPackageManager Files
-- [ ] Convert backend/src/LibPackageManager/PackageManager.fs
-- [ ] Convert backend/src/LibPackageManager/ProgramTypes.fs
-- [ ] Convert backend/src/LibPackageManager/RuntimeTypes.fs
-- [ ] Convert backend/src/LibPackageManager/Stats.fs
-- [ ] Convert backend/src/LibPackageManager/Sync.fs
-- [ ] Convert backend/src/LibPackageManager/Caching.fs
-- [ ] Convert backend/src/LibPackageManager/Instances.fs
+- [x] Convert backend/src/LibPackageManager/PackageManager.fs
+- [x] Convert backend/src/LibPackageManager/ProgramTypes.fs
+- [x] Convert backend/src/LibPackageManager/RuntimeTypes.fs
+- [x] Convert backend/src/LibPackageManager/Stats.fs
+- [x] Convert backend/src/LibPackageManager/Sync.fs
+- [x] Convert backend/src/LibPackageManager/Caching.fs
+- [x] Convert backend/src/LibPackageManager/Instances.fs
 
 ### Phase 5: Convert Builtin Libraries
-- [ ] Convert backend/src/BuiltinExecution/Libs/Json.fs
-- [ ] Convert backend/src/BuiltinExecution/Libs/HttpClient.fs
-- [ ] Convert backend/src/BuiltinExecution/Libs/List.fs
-- [ ] Convert backend/src/BuiltinCloudExecution/Libs/DB.fs
-- [ ] Convert backend/src/BuiltinCliHost/Libs/Cli.fs
-- [ ] Convert backend/src/BuiltinCli/Libs/File.fs
-- [ ] Convert backend/src/BuiltinCli/Libs/Directory.fs
-- [ ] Convert backend/src/BuiltinCli/Libs/Process.fs
-- [ ] Convert backend/src/BuiltinCli/Libs/Terminal.fs
-- [ ] Convert backend/src/BuiltinCli/Libs/Time.fs
-- [ ] Convert backend/src/BuiltinCli/Libs/Environment.fs
-- [ ] Convert backend/src/BuiltinPM/Libs/Accounts.fs
-- [ ] Convert backend/src/BuiltinPM/Libs/Approvals.fs
-- [ ] Convert backend/src/BuiltinPM/Libs/Branches.fs
-- [ ] Convert backend/src/BuiltinPM/Libs/Dependencies.fs
-- [ ] Convert backend/src/BuiltinPM/Libs/Instances.fs
-- [ ] Convert backend/src/BuiltinPM/Libs/PackageOps.fs
-- [ ] Convert backend/src/BuiltinPM/Libs/Packages.fs
-- [ ] Convert backend/src/BuiltinPM/Libs/Scripts.fs
-- [ ] Convert backend/src/BuiltinPM/Libs/Sync.fs
-- [ ] Convert backend/src/BuiltinDarkInternal/Builtin.fs
-- [ ] Convert backend/src/BuiltinDarkInternal/Libs/Canvases.fs
-- [ ] Convert backend/src/BuiltinDarkInternal/Libs/DBs.fs
-- [ ] Convert backend/src/BuiltinDarkInternal/Libs/Domains.fs
-- [ ] Convert backend/src/BuiltinDarkInternal/Libs/Infra.fs
-- [ ] Convert backend/src/BuiltinDarkInternal/Libs/Users.fs
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
+- [x]
 
 ### Phase 6: Convert LibCloud and Other Infrastructure
 - [ ] Convert backend/src/LibCloud/UserDB.fs

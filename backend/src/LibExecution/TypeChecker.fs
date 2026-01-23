@@ -86,7 +86,7 @@ let rec unifyValueType
           Task.foldSequentiallyWithIndex
             (fun i acc (e, a) ->
               match acc with
-              | Error _ -> Ply acc
+              | Error _ -> Task.FromResult acc
               | Ok tst -> r tst (TypeCheckPathPart.TupleAtIndex i :: pathSoFar) e a)
             (Ok tst)
             (List.zip expected actual)
@@ -126,7 +126,7 @@ let rec unifyValueType
               |> Task.foldSequentiallyWithIndex
                 (fun i acc (e, a) ->
                   match acc with
-                  | Error _path -> Ply acc
+                  | Error _path -> Task.FromResult acc
                   | Ok tst ->
                     task {
                       let path =
@@ -151,7 +151,7 @@ let rec unifyValueType
           |> Task.foldSequentially
             (fun acc (e, a) ->
               match acc with
-              | Error _path -> Ply acc
+              | Error _path -> Task.FromResult acc
               | Ok tst -> r tst pathSoFar e a)
             (Ok tst)
 

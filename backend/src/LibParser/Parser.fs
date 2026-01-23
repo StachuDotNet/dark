@@ -28,7 +28,7 @@ let parsePTExpr
   (onMissing : NR.OnMissing)
   (filename : string)
   (code : string)
-  : Ply<PT.Expr> =
+  : Task<PT.Expr> =
   let context =
     { WT2PT.Context.currentFnName = None
       WT2PT.Context.isInFunction = false
@@ -46,7 +46,7 @@ let parseSimple
   (onMissing : NR.OnMissing)
   (filename : string)
   (code : string)
-  : Ply<PT.Expr> =
+  : Task<PT.Expr> =
   parsePTExpr accountID branchId builtins pm onMissing filename code
 
 
@@ -59,5 +59,5 @@ let parsePackageFile
   (onMissing : NR.OnMissing)
   (path : string)
   (contents : string)
-  : Ply<List<PT.PackageOp>> =
+  : Task<List<PT.PackageOp>> =
   Package.parse accountID branchId builtins pm onMissing path contents

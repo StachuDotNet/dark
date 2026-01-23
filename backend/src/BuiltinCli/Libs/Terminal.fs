@@ -17,7 +17,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, [], [ DUnit ] ->
-          uply {
+          task {
             try
               // First try environment variable (most reliable across different terminals)
               match System.Environment.GetEnvironmentVariable("LINES") with
@@ -81,7 +81,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, [], [ DUnit ] ->
-          uply {
+          task {
             try
               // First try environment variable (most reliable across different terminals)
               match System.Environment.GetEnvironmentVariable("COLUMNS") with

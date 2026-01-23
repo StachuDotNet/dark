@@ -30,8 +30,8 @@ module Utils = BuiltinCliHost.Utils
 let executePM
   (exeState : RT.ExecutionState)
   (branchID : Option<System.Guid>)
-  : Ply<Dval> =
-  uply {
+  : Task<Dval> =
+  task {
     let getPmFnName = FQFnName.Package PackageIDs.Fn.LanguageTools.PackageManager.pm
 
     let! execResult =
@@ -75,8 +75,8 @@ let parseCliScript
   (owner : string)
   (scriptName : string)
   (code : string)
-  : Ply<Result<Utils.CliScript.PTCliScriptModule, RuntimeError.Error>> =
-  uply {
+  : Task<Result<Utils.CliScript.PTCliScriptModule, RuntimeError.Error>> =
+  task {
     let onMissingAllow = createOnMissingAllow ()
 
     let args =
@@ -144,8 +144,8 @@ let execute
   (parentState : RT.ExecutionState)
   (mod' : Utils.CliScript.PTCliScriptModule)
   (_args : List<Dval>) // CLEANUP update to List<String>, and extract in builtin
-  : Ply<RT.ExecutionResult> =
-  uply {
+  : Task<RT.ExecutionResult> =
+  task {
     let (program : Program) =
       { canvasID = System.Guid.NewGuid()
         internalFnsAllowed = false
@@ -225,7 +225,7 @@ let fns : List<BuiltInFn> =
             DString filename
             DString code
             DList(_vtTODO, scriptArgs) ] ->
-          uply {
+          task {
             let accountID = PT2DT.AccountID.optionFromDT accountID
             let branchID = PT2DT.BranchID.optionFromDT branchID
             let! pm = executePM exeState branchID
@@ -278,7 +278,7 @@ let fns : List<BuiltInFn> =
           _,
           [],
           [ accountID; branchID; DString functionName; DList(_vtTODO, args) ] ->
-          uply {
+          task {
             let accountID = PT2DT.AccountID.optionFromDT accountID
             let branchID = PT2DT.BranchID.optionFromDT branchID
 
@@ -353,7 +353,7 @@ let fns : List<BuiltInFn> =
                 Exe.executeFunction exeState resolveFn [] resolveFnArgs
 
               let! fnNameResult =
-                uply {
+                task {
                   match execResult with
                   | Ok dval ->
                     let nre =
@@ -452,7 +452,7 @@ let fns : List<BuiltInFn> =
         let resultError = Dval.resultError KTString errType
         (function
         | exeState, _, [], [ accountID; branchID; DString expression ] ->
-          uply {
+          task {
             let accountID = PT2DT.AccountID.optionFromDT accountID
             let branchID = PT2DT.BranchID.optionFromDT branchID
             let! pm = executePM exeState branchID

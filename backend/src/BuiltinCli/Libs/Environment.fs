@@ -26,9 +26,9 @@ let fns : List<BuiltInFn> =
           let envValue = System.Environment.GetEnvironmentVariable(varName)
 
           if isNull envValue then
-            Dval.optionNone KTString |> Ply
+            Dval.optionNone KTString |> Task.FromResult
           else
-            Dval.optionSome KTString (DString envValue) |> Ply
+            Dval.optionSome KTString (DString envValue) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -53,7 +53,7 @@ let fns : List<BuiltInFn> =
             |> Seq.toList
             |> Dval.dict KTString
 
-          Ply(envMap)
+          Task.FromResult(envMap)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -67,7 +67,7 @@ let fns : List<BuiltInFn> =
       description = "Returns the git hash of the current CLI build"
       fn =
         function
-        | _, _, [], [ DUnit ] -> uply { return DString LibConfig.Config.buildHash }
+        | _, _, [], [ DUnit ] -> task { return DString LibConfig.Config.buildHash }
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure

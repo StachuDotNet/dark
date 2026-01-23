@@ -22,7 +22,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUnit ] ->
-          uply {
+          task {
             let! accounts =
               """
               SELECT name FROM accounts_v0 ORDER BY name
@@ -45,7 +45,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString name ] ->
-          uply {
+          task {
             let! result = LibPackageManager.Accounts.getByName name
             return result |> Option.map DUuid |> Dval.option KTUuid
           }
@@ -63,7 +63,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid id ] ->
-          uply {
+          task {
             let! result = LibPackageManager.Accounts.getName id
             return result |> Option.map DString |> Dval.option KTString
           }

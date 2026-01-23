@@ -90,12 +90,12 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
   (parseName : string -> Result<string * int, string>)
   (findInPM :
     Option<PT.AccountID> * Option<PT.BranchID> * PT.PackageLocation
-      -> Ply<Option<System.Guid>>)
+      -> Task<Option<System.Guid>>)
   (makePackageFQName : System.Guid -> 'FQName)
   (makeBuiltinFQName : string * int -> 'FQName)
   (builtinToRT : string * int -> 'Builtin)
-  : Ply<PT.NameResolution<'FQName>> =
-  uply {
+  : Task<PT.NameResolution<'FQName>> =
+  task {
     let notFoundError = Error(NRE.NotFound(NEList.toList given))
     let (modules, name) = NEList.splitLast given
 
@@ -104,8 +104,8 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
     | Ok(name, version) ->
       let genericName = { modules = modules; name = name; version = version }
 
-      let tryResolve (nameToTry : GenericName) : Ply<Result<'FQName, unit>> =
-        uply {
+      let tryResolve (nameToTry : GenericName) : Task<Result<'FQName, unit>> =
+        task {
           match nameToTry.modules with
           | [] -> return Error()
           | owner :: modules ->
@@ -128,12 +128,12 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
         }
 
       let! result =
-        Ply.List.foldSequentially
+        Task.foldSequentially
           (fun currentResult nameToTry ->
             match currentResult with
-            | Ok _ -> Ply currentResult
+            | Ok _ -> Task.FromResult currentResult
             | Error _ ->
-              uply {
+              task {
                 match! tryResolve nameToTry with
                 | Error() -> return currentResult
                 | Ok success -> return Ok success
@@ -152,7 +152,7 @@ let resolveTypeName
   (onMissing : OnMissing)
   (currentModule : List<string>)
   (name : WT.Name)
-  : Ply<PT.NameResolution<PT.FQTypeName.FQTypeName>> =
+  : Task<PT.NameResolution<PT.FQTypeName.FQTypeName>> =
   let warning = "Builtin types don't exist"
   let emptyBuiltins = None // irrelevant for types
 
@@ -188,10 +188,10 @@ let resolveValueName
   (onMissing : OnMissing)
   (currentModule : List<string>)
   (name : WT.Name)
-  : Ply<PT.NameResolution<PT.FQValueName.FQValueName>> =
+  : Task<PT.NameResolution<PT.FQValueName.FQValueName>> =
   match name with
   | WT.KnownBuiltin(name, version) ->
-    Ok(PT.FQValueName.fqBuiltIn name version) |> Ply
+    Ok(PT.FQValueName.fqBuiltIn name version) |> Task.FromResult
   | WT.Unresolved given ->
     resolveGenericName
       accountID
@@ -215,9 +215,9 @@ let resolveFnName
   (onMissing : OnMissing)
   (currentModule : List<string>)
   (name : WT.Name)
-  : Ply<PT.NameResolution<PT.FQFnName.FQFnName>> =
+  : Task<PT.NameResolution<PT.FQFnName.FQFnName>> =
   match name with
-  | WT.KnownBuiltin(n, v) -> Ok(PT.FQFnName.fqBuiltIn n v) |> Ply
+  | WT.KnownBuiltin(n, v) -> Ok(PT.FQFnName.fqBuiltIn n v) |> Task.FromResult
   | WT.Unresolved given ->
     resolveGenericName
       accountID

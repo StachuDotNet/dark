@@ -47,9 +47,9 @@ module TypeReference =
     (onMissing : NR.OnMissing)
     (currentModule : List<string>)
     (t : WT.TypeReference)
-    : Ply<PT.TypeReference> =
+    : Task<PT.TypeReference> =
     let toPT = toPT accountID branchId pm onMissing currentModule
-    uply {
+    task {
       match t with
       | WT.TUnit -> return PT.TUnit
       | WT.TBool -> return PT.TBool
@@ -69,27 +69,27 @@ module TypeReference =
       | WT.TDateTime -> return PT.TDateTime
       | WT.TUuid -> return PT.TUuid
 
-      | WT.TList typ -> return! toPT typ |> Ply.map PT.TList
+      | WT.TList typ -> return! toPT typ |> Task.map PT.TList
 
       | WT.TTuple(firstType, secondType, otherTypes) ->
         let! firstType = toPT firstType
         let! secondType = toPT secondType
-        let! otherTypes = Ply.List.mapSequentially toPT otherTypes
+        let! otherTypes = Task.mapSequentially toPT otherTypes
         return PT.TTuple(firstType, secondType, otherTypes)
 
-      | WT.TDict typ -> return! toPT typ |> Ply.map PT.TDict
+      | WT.TDict typ -> return! toPT typ |> Task.map PT.TDict
 
       | WT.TCustomType(t, typeArgs) ->
         let! t = NR.resolveTypeName accountID branchId pm onMissing currentModule t
-        let! typeArgs = Ply.List.mapSequentially toPT typeArgs
+        let! typeArgs = Task.mapSequentially toPT typeArgs
         return PT.TCustomType(t, typeArgs)
 
       | WT.TFn(paramTypes, returnType) ->
-        let! paramTypes = Ply.NEList.mapSequentially toPT paramTypes
+        let! paramTypes = Task.NEList.mapSequentially toPT paramTypes
         let! returnType = toPT returnType
         return PT.TFn(paramTypes, returnType)
 
-      | WT.TDB typ -> return! toPT typ |> Ply.map PT.TDB
+      | WT.TDB typ -> return! toPT typ |> Task.map PT.TDB
 
       | WT.TVariable(name) -> return PT.TVariable(name)
     }
@@ -233,9 +233,9 @@ module Expr =
     (currentModule : List<string>)
     (names : List<string>)
     (caseName : string) // used for errors
-    : Ply<PT.NameResolution<PT.FQTypeName.FQTypeName>> =
+    : Task<PT.NameResolution<PT.FQTypeName.FQTypeName>> =
     match names with
-    | [] -> Ply(Error(NRE.InvalidName [ caseName ]))
+    | [] -> Task.FromResult(Error(NRE.InvalidName [ caseName ]))
     | head :: tail ->
       let name = NEList.ofList head tail |> WT.Unresolved
       NR.resolveTypeName accountID branchId pm onMissing currentModule name
@@ -249,9 +249,9 @@ module Expr =
     (currentModule : List<string>)
     (context : Context)
     (e : WT.Expr)
-    : Ply<PT.Expr> =
+    : Task<PT.Expr> =
     let toPT ctx = toPT accountID branchId builtins pm onMissing currentModule ctx
-    uply {
+    task {
       match e with
       | WT.EChar(id, char) -> return PT.EChar(id, char)
       | WT.EInt64(id, num) -> return PT.EInt64(id, num)
@@ -266,7 +266,7 @@ module Expr =
       | WT.EUInt128(id, num) -> return PT.EUInt128(id, num)
       | WT.EString(id, segments) ->
         let! segments =
-          Ply.List.mapSequentially
+          Task.mapSequentially
             (stringSegmentToPT
               accountID
               branchId
@@ -326,10 +326,10 @@ module Expr =
           return PT.EValue(id, name)
       | WT.EApply(id, (WT.EFnName(_, name) as fnName), typeArgs, args) ->
         let! processedTypeArgs =
-          Ply.List.mapSequentially
+          Task.mapSequentially
             (TypeReference.toPT accountID branchId pm onMissing currentModule)
             typeArgs
-        let! processedArgs = Ply.NEList.mapSequentially (toPT context) args
+        let! processedArgs = Task.NEList.mapSequentially (toPT context) args
 
         // Handle function calls with arguments, check for variable shadowing first
         match name with
@@ -390,10 +390,10 @@ module Expr =
       | WT.EApply(id, name, typeArgs, args) ->
         let! name = toPT context name
         let! typeArgs =
-          Ply.List.mapSequentially
+          Task.mapSequentially
             (TypeReference.toPT accountID branchId pm onMissing currentModule)
             typeArgs
-        let! args = Ply.NEList.mapSequentially (toPT context) args
+        let! args = Task.NEList.mapSequentially (toPT context) args
 
         return PT.EApply(id, name, typeArgs, args)
       | WT.EFnName(id, name) ->
@@ -434,7 +434,7 @@ module Expr =
         let! cond = toPT context cond
         let! thenExpr = toPT context thenExpr
         let! elseExpr =
-          uply {
+          task {
             match elseExpr with
             | Some value ->
               let! newValue = toPT context value
@@ -443,20 +443,20 @@ module Expr =
           }
         return PT.EIf(id, cond, thenExpr, elseExpr)
       | WT.EList(id, exprs) ->
-        let! exprs = Ply.List.mapSequentially (toPT context) exprs
+        let! exprs = Task.mapSequentially (toPT context) exprs
         return PT.EList(id, exprs)
       | WT.ETuple(id, first, second, theRest) ->
         let! first = toPT context first
         let! second = toPT context second
-        let! theRest = Ply.List.mapSequentially (toPT context) theRest
+        let! theRest = Task.mapSequentially (toPT context) theRest
         return PT.ETuple(id, first, second, theRest)
       | WT.ERecord(id, typeName, fields) ->
         let! typeName =
           NR.resolveTypeName accountID branchId pm onMissing currentModule typeName
         let! fields =
-          Ply.List.mapSequentially
+          Task.mapSequentially
             (fun (fieldName, fieldExpr) ->
-              uply {
+              task {
                 let! fieldExpr = toPT context fieldExpr
                 return (fieldName, fieldExpr)
               })
@@ -467,8 +467,8 @@ module Expr =
         let! record = toPT context record
         let! updates =
           updates
-          |> Ply.NEList.mapSequentially (fun (name, expr) ->
-            uply {
+          |> Task.NEList.mapSequentially (fun (name, expr) ->
+            task {
               let! expr = toPT context expr
               return (name, expr)
             })
@@ -476,7 +476,7 @@ module Expr =
       | WT.EPipe(pipeID, expr1, rest) ->
         let! expr1 = toPT context expr1
         let! rest =
-          Ply.List.mapSequentially
+          Task.mapSequentially
             (pipeExprToPT
               accountID
               branchId
@@ -497,18 +497,18 @@ module Expr =
             currentModule
             typeName
             caseName
-        let! exprs = Ply.List.mapSequentially (toPT context) exprs
+        let! exprs = Task.mapSequentially (toPT context) exprs
         let typeArgs = [] // TODO
         return PT.EEnum(id, typeName, typeArgs, caseName, exprs)
       | WT.EMatch(id, mexpr, cases) ->
         let! mexpr = toPT context mexpr
         let! cases =
-          Ply.List.mapSequentially
+          Task.mapSequentially
             (fun (case : WT.MatchCase) ->
-              uply {
+              task {
                 let (patternContext, mp) = MatchPattern.toPT context case.pat
                 let! whenCondition =
-                  uply {
+                  task {
                     match case.whenCondition with
                     | Some whenExpr ->
                       let! whenExpr = toPT patternContext whenExpr
@@ -529,9 +529,9 @@ module Expr =
         return PT.EInfix(id, Infix.toPT infix, arg1, arg2)
       | WT.EDict(id, pairs) ->
         let! pairs =
-          Ply.List.mapSequentially
+          Task.mapSequentially
             (fun (key, value) ->
-              uply {
+              task {
                 let! value = toPT context value
                 return (key, value)
               })
@@ -556,12 +556,12 @@ module Expr =
     (currentModule : List<string>)
     (context : Context)
     (segment : WT.StringSegment)
-    : Ply<PT.StringSegment> =
+    : Task<PT.StringSegment> =
     match segment with
-    | WT.StringText text -> Ply(PT.StringText text)
+    | WT.StringText text -> Task.FromResult(PT.StringText text)
     | WT.StringInterpolation expr ->
       toPT accountID branchId builtins pm onMissing currentModule context expr
-      |> Ply.map (fun interpolated -> PT.StringInterpolation interpolated)
+      |> Task.map (fun interpolated -> PT.StringInterpolation interpolated)
 
   and pipeExprToPT
     (accountID : Option<PT.AccountID>)
@@ -572,10 +572,10 @@ module Expr =
     (currentModule : List<string>)
     (context : Context)
     (pipeExpr : WT.PipeExpr)
-    : Ply<PT.PipeExpr> =
+    : Task<PT.PipeExpr> =
     let toPT ctx = toPT accountID branchId builtins pm onMissing currentModule ctx
 
-    uply {
+    task {
       match pipeExpr with
       | WT.EPipeVariableOrFnCall(id, name) ->
         match context.currentFnName with
@@ -671,7 +671,7 @@ module Expr =
             NR.OnMissing.Allow
             currentModule
             name
-        let! args = Ply.List.mapSequentially (toPT context) args
+        let! args = Task.mapSequentially (toPT context) args
         match fnName with
         | Ok name -> return PT.EPipeFnCall(id, Ok name, [], args)
         | Error _ -> return PT.EPipeVariable(id, varName, args)
@@ -687,10 +687,10 @@ module Expr =
             currentModule
             name
         let! typeArgs =
-          Ply.List.mapSequentially
+          Task.mapSequentially
             (TypeReference.toPT accountID branchId pm onMissing currentModule)
             typeArgs
-        let! args = Ply.List.mapSequentially (toPT context) args
+        let! args = Task.mapSequentially (toPT context) args
         return PT.EPipeFnCall(id, fnName, typeArgs, args)
 
       | WT.EPipeEnum(id, typeName, caseName, fields) ->
@@ -703,7 +703,7 @@ module Expr =
             currentModule
             typeName
             caseName
-        let! fields = Ply.List.mapSequentially (toPT context) fields
+        let! fields = Task.mapSequentially (toPT context) fields
         return PT.EPipeEnum(id, typeName, caseName, fields)
     }
 
@@ -717,8 +717,8 @@ module TypeDeclaration =
       (onMissing : NR.OnMissing)
       (currentModule : List<string>)
       (f : WT.TypeDeclaration.RecordField)
-      : Ply<PT.TypeDeclaration.RecordField> =
-      uply {
+      : Task<PT.TypeDeclaration.RecordField> =
+      task {
         let! typ =
           TypeReference.toPT accountID branchId pm onMissing currentModule f.typ
         return { name = f.name; typ = typ; description = f.description }
@@ -732,8 +732,8 @@ module TypeDeclaration =
       (onMissing : NR.OnMissing)
       (currentModule : List<string>)
       (f : WT.TypeDeclaration.EnumField)
-      : Ply<PT.TypeDeclaration.EnumField> =
-      uply {
+      : Task<PT.TypeDeclaration.EnumField> =
+      task {
         let! typ =
           TypeReference.toPT accountID branchId pm onMissing currentModule f.typ
         return { typ = typ; label = f.label; description = f.description }
@@ -747,10 +747,10 @@ module TypeDeclaration =
       (onMissing : NR.OnMissing)
       (currentModule : List<string>)
       (c : WT.TypeDeclaration.EnumCase)
-      : Ply<PT.TypeDeclaration.EnumCase> =
-      uply {
+      : Task<PT.TypeDeclaration.EnumCase> =
+      task {
         let! fields =
-          Ply.List.mapSequentially
+          Task.mapSequentially
             (EnumField.toPT accountID branchId pm onMissing currentModule)
             c.fields
         return { name = c.name; fields = fields; description = c.description }
@@ -764,8 +764,8 @@ module TypeDeclaration =
       (onMissing : NR.OnMissing)
       (currentModule : List<string>)
       (d : WT.TypeDeclaration.Definition)
-      : Ply<PT.TypeDeclaration.Definition> =
-      uply {
+      : Task<PT.TypeDeclaration.Definition> =
+      task {
         match d with
         | WT.TypeDeclaration.Alias typ ->
           let! typ =
@@ -774,14 +774,14 @@ module TypeDeclaration =
 
         | WT.TypeDeclaration.Record fields ->
           let! fields =
-            Ply.NEList.mapSequentially
+            Task.NEList.mapSequentially
               (RecordField.toPT accountID branchId pm onMissing currentModule)
               fields
           return PT.TypeDeclaration.Record fields
 
         | WT.TypeDeclaration.Enum cases ->
           let! cases =
-            Ply.NEList.mapSequentially
+            Task.NEList.mapSequentially
               (EnumCase.toPT accountID branchId pm onMissing currentModule)
               cases
           return PT.TypeDeclaration.Enum cases
@@ -795,8 +795,8 @@ module TypeDeclaration =
     (onMissing : NR.OnMissing)
     (currentModule : List<string>)
     (d : WT.TypeDeclaration.T)
-    : Ply<PT.TypeDeclaration.T> =
-    uply {
+    : Task<PT.TypeDeclaration.T> =
+    task {
       let! def =
         Definition.toPT accountID branchId pm onMissing currentModule d.definition
       return { typeParams = d.typeParams; definition = def }
@@ -825,8 +825,8 @@ module PackageType =
     (onMissing : NR.OnMissing)
     (currentModule : List<string>)
     (pt : WT.PackageType.PackageType)
-    : Ply<PT.PackageType.PackageType> =
-    uply {
+    : Task<PT.PackageType.PackageType> =
+    task {
       let! declaration =
         TypeDeclaration.toPT
           accountID
@@ -858,8 +858,8 @@ module PackageValue =
     (onMissing : NR.OnMissing)
     (currentModule : List<string>)
     (c : WT.PackageValue.PackageValue)
-    : Ply<PT.PackageValue.PackageValue> =
-    uply {
+    : Task<PT.PackageValue.PackageValue> =
+    task {
       let context =
         { currentFnName = None; isInFunction = false; argMap = Map.empty }
       let! body =
@@ -896,8 +896,8 @@ module PackageFn =
       (onMissing : NR.OnMissing)
       (currentModule : List<string>)
       (p : WT.PackageFn.Parameter)
-      : Ply<PT.PackageFn.Parameter> =
-      uply {
+      : Task<PT.PackageFn.Parameter> =
+      task {
         let! typ =
           TypeReference.toPT accountID branchId pm onMissing currentModule p.typ
         return { name = p.name; typ = typ; description = p.description }
@@ -911,10 +911,10 @@ module PackageFn =
     (onMissing : NR.OnMissing)
     (currentModule : List<string>)
     (fn : WT.PackageFn.PackageFn)
-    : Ply<PT.PackageFn.PackageFn> =
-    uply {
+    : Task<PT.PackageFn.PackageFn> =
+    task {
       let! parameters =
-        Ply.NEList.mapSequentially
+        Task.NEList.mapSequentially
           (Parameter.toPT accountID branchId pm onMissing currentModule)
           fn.parameters
       let! returnType =
@@ -966,8 +966,8 @@ module DB =
     (onMissing : NR.OnMissing)
     (currentModule : List<string>)
     (db : WT.DB.T)
-    : Ply<PT.DB.T> =
-    uply {
+    : Task<PT.DB.T> =
+    task {
       let! typ =
         TypeReference.toPT accountID branchId pm onMissing currentModule db.typ
       return { tlid = gid (); name = db.name; version = db.version; typ = typ }
@@ -1002,8 +1002,8 @@ module Handler =
     (onMissing : NR.OnMissing)
     (currentModule : List<string>)
     (h : WT.Handler.T)
-    : Ply<PT.Handler.T> =
-    uply {
+    : Task<PT.Handler.T> =
+    task {
       let context =
         { currentFnName = None; isInFunction = false; argMap = Map.empty }
       let! ast =

@@ -15,8 +15,8 @@ open Utils
 
 module HandleCommand =
 
-  let reloadCanvas (name : string) : Ply<Result<unit, string>> =
-    uply {
+  let reloadCanvas (name : string) : Task<Result<unit, string>> =
+    task {
       print $"Reloading {name} canvas..."
 
       let! (canvasId, toplevels) =
@@ -27,8 +27,8 @@ module HandleCommand =
       return Ok()
     }
 
-  let reloadCanvases () : Ply<Result<unit, string>> =
-    uply {
+  let reloadCanvases () : Task<Result<unit, string>> =
+    task {
       // CLEANUP fetch the list of canvases by 'ls canvases' equiv.
       // CLEANUP stop tossing the result
       let! _ = reloadCanvas "dark-packages"
@@ -36,8 +36,8 @@ module HandleCommand =
       return Ok()
     }
 
-  let reloadPackages () : Ply<Result<unit, string>> =
-    uply {
+  let reloadPackages () : Task<Result<unit, string>> =
+    task {
       // first, load the packages from disk, ensuring all parse well
       let! ops = LoadPackagesFromDisk.load Builtins.all
 
@@ -62,8 +62,8 @@ module HandleCommand =
       return Ok()
     }
 
-  let runMigrations () : Ply<Result<unit, string>> =
-    uply {
+  let runMigrations () : Task<Result<unit, string>> =
+    task {
       try
         print "Running migrations"
         Migrations.run ()
@@ -73,8 +73,8 @@ module HandleCommand =
         return Error $"Migration failed: {ex.Message}"
     }
 
-  let listMigrations () : Ply<Result<unit, string>> =
-    uply {
+  let listMigrations () : Task<Result<unit, string>> =
+    task {
       try
         print "Migrations needed:\n"
         Migrations.migrationsToRun () |> List.iter (fun name -> print $" - {name}")
@@ -103,7 +103,7 @@ let main (args : string[]) : int =
 
     let handleCommand
       (description : string)
-      (command : Ply<Result<unit, string>>)
+      (command : Task<Result<unit, string>>)
       : int =
       print $"Starting: {description}"
       match command.Result with

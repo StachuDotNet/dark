@@ -38,7 +38,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid instanceID ] ->
-          uply {
+          task {
             let! instanceOpt = Instances.getByID instanceID
 
             return
@@ -60,7 +60,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DString name ] ->
-          uply {
+          task {
             let! instanceOpt = Instances.getByName name
 
             return
@@ -82,7 +82,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUnit ] ->
-          uply {
+          task {
             let! instances = Instances.list ()
 
             let instanceDvals = instances |> List.map instanceToDT
@@ -105,7 +105,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DString name; DString url ] ->
-          uply {
+          task {
             let! instance = Instances.add name url
 
             return instanceToDT instance
@@ -124,7 +124,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid instanceID ] ->
-          uply {
+          task {
             do! Instances.remove instanceID
 
             return DUnit

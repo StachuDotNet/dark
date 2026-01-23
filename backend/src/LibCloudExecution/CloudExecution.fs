@@ -38,12 +38,12 @@ let createState
   (tracing : RT.Tracing.Tracing)
   : Task<RT.ExecutionState> =
   task {
-    let extraMetadata (state : RT.ExecutionState) (vm : RT.VMState) : Ply<Metadata> =
-      uply {
+    let extraMetadata (state : RT.ExecutionState) (vm : RT.VMState) : Task<Metadata> =
+      task {
         let callStack = Exe.callStackFromVM vm
         let epToString ep =
           match ep with
-          | None -> Ply "None -- empty CallStack"
+          | None -> Task.FromResult "None -- empty CallStack"
           | Some ep -> Exe.executionPointToString state ep
 
         let! entrypoint = epToString (RT.CallStack.entrypoint callStack)
@@ -62,7 +62,7 @@ let createState
       (msg : string)
       (metadata : Metadata)
       =
-      uply {
+      task {
         let! extra = extraMetadata state vm
         let metadata = extra @ metadata
         print $"[notify] {msg}"
@@ -75,7 +75,7 @@ let createState
       (metadata : Metadata)
       (exn : exn)
       =
-      uply {
+      task {
         let! extra = extraMetadata state vm
         let metadata = extra @ metadata
         printException "[exception]" metadata exn

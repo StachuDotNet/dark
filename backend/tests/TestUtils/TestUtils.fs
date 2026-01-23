@@ -181,7 +181,7 @@ let executionStateFor
     // definition)
     let rec exceptionReporter : RT.ExceptionReporter =
       fun (state : RT.ExecutionState) vm metadata (exn : exn) ->
-        uply {
+        task {
           let message = exn.Message
           let stackTrace = exn.StackTrace
           let metadata = Exception.toMetadata exn @ metadata
@@ -194,7 +194,7 @@ let executionStateFor
     // For now, lets not track notifications, as often our tests explicitly trigger
     // things that notify, while Exceptions have historically been unexpected errors
     // in the tests and so are worth watching out for.
-    let notifier : RT.Notifier = fun _state _vm _msg _tags -> uply { return () }
+    let notifier : RT.Notifier = fun _state _vm _msg _tags -> task { return () }
 
     let builtins =
       if allowLocalHttpAccess then localBuiltIns pmPT else cloudBuiltIns pmPT
@@ -246,8 +246,8 @@ let testManyTask (name : string) (fn : 'a -> Task<'b>) (values : List<'a * 'b>) 
         })
       values)
 
-let testManyPly (name : string) (fn : 'a -> Ply<'b>) (values : List<'a * 'b>) =
-  testManyTask name (fn >> Ply.toTask) values
+let testManyPly (name : string) (fn : 'a -> Task<'b>) (values : List<'a * 'b>) =
+  testManyTask name (fn >> ) values
 
 
 let testMany2Task
@@ -1481,8 +1481,8 @@ let configureLogging
 let unwrapExecutionResult
   (state : RT.ExecutionState)
   (exeResult : RT.ExecutionResult)
-  : Ply.Ply<RT.Dval> =
-  uply {
+  : Ply.Task<RT.Dval> =
+  task {
     match exeResult with
     | Ok dval -> return dval
     | Error(rte, callStack) ->
@@ -1509,7 +1509,7 @@ let unwrapExecutionResult
   }
 
 let parsePTExpr (branchID : Option<PT.BranchID>) (code : string) : Task<PT.Expr> =
-  uply {
+  task {
     let! (state : RT.ExecutionState) =
       let canvasID = System.Guid.NewGuid()
       executionStateFor pmPT canvasID false false Map.empty
@@ -1530,4 +1530,4 @@ let parsePTExpr (branchID : Option<PT.BranchID>) (code : string) : Task<PT.Expr>
         return Exception.raiseInternal "Error converting Dval to PT.Expr" []
     | _ -> return Exception.raiseInternal "Error executing parsePTExpr function" []
   }
-  |> Ply.toTask
+  |> 

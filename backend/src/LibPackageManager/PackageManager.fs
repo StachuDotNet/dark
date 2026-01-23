@@ -1,5 +1,8 @@
 module LibPackageManager.PackageManager
 
+open System.Threading.Tasks
+open FSharp.Control.Tasks
+
 open Prelude
 
 module RT = LibExecution.RuntimeTypes
@@ -18,7 +21,7 @@ let rt : RT.PackageManager =
     getValue = withCache PMRT.Value.get
 
     init =
-      uply {
+      task {
         //eagerLoad
         return ()
       } }
@@ -39,7 +42,7 @@ let pt : PT.PackageManager =
 
     search = PMPT.search
 
-    init = uply { return () } }
+    init = task { return () } }
 
 
 /// Create an in-memory PackageManager from a list of PackageOps.
@@ -83,19 +86,19 @@ let createInMemory (ops : List<PT.PackageOp>) : PT.PackageManager =
     valueLocations |> Seq.map (fun (loc, id) -> id, loc) |> Map.ofSeq
   let fnIdToLoc = fnLocations |> Seq.map (fun (loc, id) -> id, loc) |> Map.ofSeq
 
-  { findType = fun (_accountId, _branchID, loc) -> Ply(Map.tryFind loc typeLocMap)
-    findValue = fun (_accountId, _branchID, loc) -> Ply(Map.tryFind loc valueLocMap)
-    findFn = fun (_accountId, _branchID, loc) -> Ply(Map.tryFind loc fnLocMap)
+  { findType = fun (_accountId, _branchID, loc) -> Task.FromResult(Map.tryFind loc typeLocMap)
+    findValue = fun (_accountId, _branchID, loc) -> Task.FromResult(Map.tryFind loc valueLocMap)
+    findFn = fun (_accountId, _branchID, loc) -> Task.FromResult(Map.tryFind loc fnLocMap)
 
-    getType = fun id -> Ply(Map.tryFind id typeMap)
-    getValue = fun id -> Ply(Map.tryFind id valueMap)
-    getFn = fun id -> Ply(Map.tryFind id fnMap)
+    getType = fun id -> Task.FromResult(Map.tryFind id typeMap)
+    getValue = fun id -> Task.FromResult(Map.tryFind id valueMap)
+    getFn = fun id -> Task.FromResult(Map.tryFind id fnMap)
 
     getTypeLocation =
-      fun (_accountId, _branchID, id) -> Ply(Map.tryFind id typeIdToLoc)
+      fun (_accountId, _branchID, id) -> Task.FromResult(Map.tryFind id typeIdToLoc)
     getValueLocation =
-      fun (_accountId, _branchID, id) -> Ply(Map.tryFind id valueIdToLoc)
-    getFnLocation = fun (_accountId, _branchID, id) -> Ply(Map.tryFind id fnIdToLoc)
+      fun (_accountId, _branchID, id) -> Task.FromResult(Map.tryFind id valueIdToLoc)
+    getFnLocation = fun (_accountId, _branchID, id) -> Task.FromResult(Map.tryFind id fnIdToLoc)
 
     // no need to support this for in-memory.
     search =
@@ -129,13 +132,13 @@ let createInMemory (ops : List<PT.PackageOp>) : PT.PackageManager =
               Option.Some({ entity = f; location = loc } : PT.LocatedItem<_>)
             | None -> Option.None)
 
-        Ply
+        Task.FromResult
           { PT.Search.SearchResults.submodules = []
             types = typesWithLocs
             values = valuesWithLocs
             fns = fnsWithLocs }
 
-    init = uply { return () } }
+    init = task { return () } }
 
 
 /// Combine two PackageManagers: check `overlay` first, then fall back to `fallback`.
@@ -146,7 +149,7 @@ let combine
   : PT.PackageManager =
   { findType =
       fun (accountID, branchID, loc) ->
-        uply {
+        task {
           match! overlay.findType (accountID, branchID, loc) with
           | Some id -> return Some id
           | None -> return! fallback.findType (accountID, branchID, loc)
@@ -154,7 +157,7 @@ let combine
 
     findValue =
       fun (accountID, branchID, loc) ->
-        uply {
+        task {
           match! overlay.findValue (accountID, branchID, loc) with
           | Some id -> return Some id
           | None -> return! fallback.findValue (accountID, branchID, loc)
@@ -162,7 +165,7 @@ let combine
 
     findFn =
       fun (accountID, branchID, loc) ->
-        uply {
+        task {
           match! overlay.findFn (accountID, branchID, loc) with
           | Some id -> return Some id
           | None -> return! fallback.findFn (accountID, branchID, loc)
@@ -170,7 +173,7 @@ let combine
 
     getType =
       fun id ->
-        uply {
+        task {
           match! overlay.getType id with
           | Some t -> return Some t
           | None -> return! fallback.getType id
@@ -178,7 +181,7 @@ let combine
 
     getValue =
       fun id ->
-        uply {
+        task {
           match! overlay.getValue id with
           | Some v -> return Some v
           | None -> return! fallback.getValue id
@@ -186,7 +189,7 @@ let combine
 
     getFn =
       fun id ->
-        uply {
+        task {
           match! overlay.getFn id with
           | Some f -> return Some f
           | None -> return! fallback.getFn id
@@ -194,7 +197,7 @@ let combine
 
     getTypeLocation =
       fun (accountID, branchID, id) ->
-        uply {
+        task {
           match! overlay.getTypeLocation (accountID, branchID, id) with
           | Some loc -> return Some loc
           | None -> return! fallback.getTypeLocation (accountID, branchID, id)
@@ -202,7 +205,7 @@ let combine
 
     getValueLocation =
       fun (accountID, branchID, id) ->
-        uply {
+        task {
           match! overlay.getValueLocation (accountID, branchID, id) with
           | Some loc -> return Some loc
           | None -> return! fallback.getValueLocation (accountID, branchID, id)
@@ -210,7 +213,7 @@ let combine
 
     getFnLocation =
       fun (accountID, branchID, id) ->
-        uply {
+        task {
           match! overlay.getFnLocation (accountID, branchID, id) with
           | Some loc -> return Some loc
           | None -> return! fallback.getFnLocation (accountID, branchID, id)
@@ -218,7 +221,7 @@ let combine
 
     search =
       fun (accountID, branchID, query) ->
-        uply {
+        task {
           // Combine search results from both
           let! overlayResults = overlay.search (accountID, branchID, query)
           let! fallbackResults = fallback.search (accountID, branchID, query)
@@ -232,7 +235,7 @@ let combine
         }
 
     init =
-      uply {
+      task {
         do! overlay.init
         do! fallback.init
       } }
@@ -245,13 +248,13 @@ let combine
 let stabilizeOpsAgainstPM
   (referencePM : PT.PackageManager)
   (ops : List<PT.PackageOp>)
-  : Ply<List<PT.PackageOp>> =
-  uply {
+  : Task<List<PT.PackageOp>> =
+  task {
     let mutable result = []
     let accountID : Option<PT.AccountID> = None
     for op in List.rev ops do
       let! stabilizedOp =
-        uply {
+        task {
           match op with
           | PT.PackageOp.SetTypeName(_, loc) ->
             // Look up stable ID from reference PM
@@ -271,7 +274,7 @@ let stabilizeOpsAgainstPM
             let! stableIdOpt =
               match typLoc with
               | Some loc -> referencePM.findType (accountID, None, loc)
-              | None -> Ply(None)
+              | None -> Task.FromResult(None)
             let stableId = stableIdOpt |> Option.defaultValue typ.id
             return PT.PackageOp.AddType { typ with id = stableId }
 
@@ -290,7 +293,7 @@ let stabilizeOpsAgainstPM
             let! stableIdOpt =
               match valueLoc with
               | Some loc -> referencePM.findValue (accountID, None, loc)
-              | None -> Ply(None)
+              | None -> Task.FromResult(None)
             let stableId = stableIdOpt |> Option.defaultValue value.id
             return PT.PackageOp.AddValue { value with id = stableId }
 
@@ -309,7 +312,7 @@ let stabilizeOpsAgainstPM
             let! stableIdOpt =
               match fnLoc with
               | Some loc -> referencePM.findFn (accountID, None, loc)
-              | None -> Ply(None)
+              | None -> Task.FromResult(None)
             let stableId = stableIdOpt |> Option.defaultValue fn.id
             return PT.PackageOp.AddFn { fn with id = stableId }
 

@@ -22,7 +22,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _state, _, _, [ DList(_vtTODO, args) ] ->
-          uply {
+          task {
             try
               let argStrings =
                 args
@@ -79,7 +79,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DInt64 pid ] ->
-          uply {
+          task {
             try
               let proc = System.Diagnostics.Process.GetProcessById(int pid)
               let isRunning = not proc.HasExited
@@ -106,7 +106,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _state, _, _, [ DInt64 pid ] ->
-          uply {
+          task {
             try
               let proc = System.Diagnostics.Process.GetProcessById(int pid)
               proc.Kill()

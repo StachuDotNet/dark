@@ -39,8 +39,8 @@ let queryFilterParam v =
 let resolveLoadValues
   (exeState : ExecutionState)
   (lambdaImpl : LambdaImpl)
-  : Ply.Ply<Map<FQValueName.FQValueName, Dval>> =
-  uply {
+  : Task<Map<FQValueName.FQValueName, Dval>> =
+  task {
     // Collect all value references from LoadValue instructions
     let valueRefs =
       lambdaImpl.instructions.instructions
@@ -52,8 +52,8 @@ let resolveLoadValues
     // Resolve each value
     let! resolved =
       valueRefs
-      |> Ply.List.mapSequentially (fun valueName ->
-        uply {
+      |> Task.mapSequentially (fun valueName ->
+        task {
           match valueName with
           | FQValueName.Builtin builtinName ->
             // Builtin values - look up in builtIn values
@@ -92,8 +92,8 @@ let compileQueryLambda
   (exeState : ExecutionState)
   (vm : VMState)
   (appLambda : ApplicableLambda)
-  : Ply.Ply<LibExecution.RTQueryCompiler.CompiledQuery> =
-  uply {
+  : Task<LibExecution.RTQueryCompiler.CompiledQuery> =
+  task {
     let lambdaImpl = lookupLambdaImpl vm appLambda.exprId
     let! resolvedValues = resolveLoadValues exeState lambdaImpl
 
@@ -136,7 +136,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ value; DString key; DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
 
             let! id = UserDB.set exeState vm.threadID true db key value
@@ -159,7 +159,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DString key; DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             let! result = UserDB.getOption exeState vm.threadID db key
             return TypeChecker.DvalCreator.option vm.threadID VT.unknownDbTODO result
@@ -181,7 +181,7 @@ let fns : List<BuiltInFn> =
         let optType = KTList valueType
         (function
         | exeState, vm, _, [ DList(_, keys); DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
 
             let tst = Map.empty // TODO idk if this is reasonable
@@ -216,7 +216,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DList(_, keys); DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
 
             let tst = Map.empty // TODO idk if this is reasonable
@@ -245,7 +245,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DList(_, keys); DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
 
             let tst = Map.empty // TODO idk if this is reasonable
@@ -272,7 +272,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, _, [ DString key; DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             do! UserDB.delete exeState db key
             return DUnit
@@ -291,7 +291,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, _, [ DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             do! UserDB.deleteAll exeState db
             return DUnit
@@ -310,7 +310,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             let tst = Map.empty // TODO idk if this is reasonable
             let! results = UserDB.getAll exeState vm.threadID tst db
@@ -334,7 +334,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             let tst = Map.empty // TODO idk if this is reasonable
             let! result = UserDB.getAll exeState vm.threadID tst db
@@ -354,7 +354,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, _, [ DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             let! (count : int) = UserDB.count exeState db
             return count |> int64 |> DInt64
@@ -372,7 +372,7 @@ let fns : List<BuiltInFn> =
       description = "Returns a random key suitable for use as a DB key"
       fn =
         (function
-        | _, _, _, [ DUnit ] -> System.Guid.NewGuid() |> string |> DString |> Ply
+        | _, _, _, [ DUnit ] -> System.Guid.NewGuid() |> string |> DString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -388,7 +388,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, _, [ DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             let! results = UserDB.getAllKeys exeState db
             return results |> List.map DString |> Dval.list KTString
@@ -410,7 +410,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DDB dbname; DApplicable(AppLambda appLambda) ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             let! compiled = compileQueryLambda exeState vm appLambda
             return!
@@ -437,7 +437,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DDB dbname; DApplicable(AppLambda appLambda) ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             let! compiled = compileQueryLambda exeState vm appLambda
             return!
@@ -464,7 +464,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DDB dbname; DApplicable(AppLambda appLambda) ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             let! compiled = compileQueryLambda exeState vm appLambda
             return!
@@ -491,7 +491,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DDB dbname; DApplicable(AppLambda appLambda) ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             let! compiled = compileQueryLambda exeState vm appLambda
             return!

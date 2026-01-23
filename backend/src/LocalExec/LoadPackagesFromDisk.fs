@@ -15,8 +15,8 @@ open Utils
 
 /// Reads and parses all .dark files in `packages` dir,
 /// failing upon any individual failure
-let load (builtins : RT.Builtins) : Ply<List<PT.PackageOp>> =
-  uply {
+let load (builtins : RT.Builtins) : Task<List<PT.PackageOp>> =
+  task {
     let accountID = None
     let branchId = None
     let filesWithContents =
@@ -31,7 +31,7 @@ let load (builtins : RT.Builtins) : Ply<List<PT.PackageOp>> =
     let! (firstPassOps : List<PT.PackageOp>) =
       filesWithContents
       // TODO: parallelize
-      |> Ply.List.mapSequentially (fun (path, contents) ->
+      |> Task.mapSequentially (fun (path, contents) ->
         try
           debuG "about to parse" path
           LibParser.Parser.parsePackageFile
@@ -45,13 +45,13 @@ let load (builtins : RT.Builtins) : Ply<List<PT.PackageOp>> =
         with _ex ->
           debuG "failed to parse" path
           reraise ())
-      |> Ply.map List.flatten
+      |> Task.map List.flatten
 
     // Re-parse the packages, though this time we don't allow unresolved names
     // (any package references that may have been unresolved a second ago should now be OK)
     let! reParsedOps =
       filesWithContents
-      |> Ply.List.mapSequentially (fun (path, contents) ->
+      |> Task.mapSequentially (fun (path, contents) ->
         LibParser.Parser.parsePackageFile
           accountID
           branchId
@@ -62,7 +62,7 @@ let load (builtins : RT.Builtins) : Ply<List<PT.PackageOp>> =
           NR.OnMissing.ThrowError
           path
           contents)
-      |> Ply.map List.flatten
+      |> Task.map List.flatten
 
     // Build PM from first pass for ID stabilization
     let firstPassPM = LibPackageManager.PackageManager.createInMemory firstPassOps

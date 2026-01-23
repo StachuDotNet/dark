@@ -1207,9 +1207,9 @@ module PackageFn =
 
 module PackageManager =
   let toRT (pm : PT.PackageManager) : RT.PackageManager =
-    { getType = fun id -> pm.getType id |> Ply.map (Option.map PackageType.toRT)
-      getValue = fun id -> pm.getValue id |> Ply.map (Option.map PackageValue.toRT)
-      getFn = fun id -> pm.getFn id |> Ply.map (Option.map PackageFn.toRT)
+    { getType = fun id -> pm.getType id |> Task.map (Option.map PackageType.toRT)
+      getValue = fun id -> pm.getValue id |> Task.map (Option.map PackageValue.toRT)
+      getFn = fun id -> pm.getFn id |> Task.map (Option.map PackageFn.toRT)
 
       init = pm.init }
 

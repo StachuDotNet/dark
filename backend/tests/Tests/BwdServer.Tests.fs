@@ -193,8 +193,8 @@ let setupTestCanvas (testName : string) (test : Test) : Task<CanvasID * string> 
     // Handlers
     let! oplists =
       test.handlers
-      |> Ply.List.mapSequentially (fun handler ->
-        uply {
+      |> Task.mapSequentially (fun handler ->
+        task {
           let branchID = None
           let! source = parsePTExpr branchID handler.code
 

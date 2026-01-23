@@ -169,7 +169,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Task<Dval> =
 
           { instructions = List.toArray lambda.instructions
             resultReg = lambda.resultIn }
-          |> Ply
+          |> Task.FromResult
 
         | Function(FQFnName.Builtin _) ->
           // we should error in some better way (CLEANUP)
@@ -793,7 +793,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Task<Dval> =
 
               | FQFnName.Builtin builtin ->
                 let fn = Map.findUnsafe builtin exeState.fns.builtIn
-                Ply fn.returnType
+                Task.FromResult fn.returnType
 
             let tst = currentFrame.typeSymbolTable
             match!

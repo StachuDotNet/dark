@@ -20,7 +20,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid canvasID ] ->
-          uply {
+          task {
             let! tlids = UserDB.all canvasID
             return tlids |> List.map uint64 |> List.map DUInt64 |> Dval.list KTUInt64
           }
@@ -38,7 +38,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid canvasID ] ->
-          uply {
+          task {
             let! unlocked = UserDB.unlocked canvasID
             return unlocked |> List.map int64 |> List.map DInt64 |> Dval.list KTInt64
           }

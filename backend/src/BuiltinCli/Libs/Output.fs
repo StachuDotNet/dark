@@ -23,7 +23,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DString str ] ->
           print str
-          Ply DUnit
+          Task.FromResult DUnit
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -39,7 +39,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DString str ] ->
           printInline str
-          Ply DUnit
+          Task.FromResult DUnit
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -58,7 +58,7 @@ let fns : List<BuiltInFn> =
             System.Console.Clear()
           else
             System.Console.Write("\u001b[2J\u001b[H") // ANSI escape for non-Windows
-          Ply DUnit
+          Task.FromResult DUnit
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure

@@ -43,14 +43,14 @@ let rec dbToDval
   (tst : RT.TypeSymbolTable)
   (db : RT.DB.T)
   (dbValue : string)
-  : Ply<RT.Dval> =
+  : Task<RT.Dval> =
   DvalReprInternalQueryable.parseJsonV0 types threadID tst db.typ dbValue
 
 let dvalToDB
   (threadID : RT.ThreadID)
   (types : RT.Types)
   (dv : RT.Dval)
-  : Ply<string> =
+  : Task<string> =
   DvalReprInternalQueryable.toJsonStringV0 types threadID dv
 
 let rec set
@@ -60,8 +60,8 @@ let rec set
   (db : RT.DB.T)
   (key : string)
   (dv : RT.Dval)
-  : Ply<Result<uuid, RT.RuntimeError.Error>> =
-  uply {
+  : Task<Result<uuid, RT.RuntimeError.Error>> =
+  task {
     let id = System.Guid.NewGuid()
 
     let types = exeState.types
@@ -112,8 +112,8 @@ and getOption
   (threadID : RT.ThreadID)
   (db : RT.DB.T)
   (key : string)
-  : Ply<Option<RT.Dval>> =
-  uply {
+  : Task<Option<RT.Dval>> =
+  task {
     let types = exeState.types
 
     let! result =
@@ -137,7 +137,7 @@ and getOption
     | None -> return None
     | Some dval ->
       let tst = Map.empty // OK?
-      return! dbToDval types threadID tst db dval |> Ply.map Some
+      return! dbToDval types threadID tst db dval |> Task.map Some
   }
 
 
@@ -147,8 +147,8 @@ and getMany
   (tst : RT.TypeSymbolTable)
   (db : RT.DB.T)
   (keys : string list)
-  : Ply<List<RT.Dval>> =
-  uply {
+  : Task<List<RT.Dval>> =
+  task {
     let types = exeState.types
 
     // If no keys, return empty list early
@@ -181,7 +181,7 @@ and getMany
         |> Sql.parameters (baseParams @ keyParams)
         |> Sql.executeAsync (fun read -> read.string "data")
 
-      return! result |> List.map (dbToDval types threadID tst db) |> Ply.List.flatten
+      return! result |> List.map (dbToDval types threadID tst db) |> Task.flatten
   }
 
 
@@ -192,8 +192,8 @@ and getManyWithKeys
   (tst : RT.TypeSymbolTable)
   (db : RT.DB.T)
   (keys : string list)
-  : Ply<List<string * RT.Dval>> =
-  uply {
+  : Task<List<string * RT.Dval>> =
+  task {
     let types = exeState.types
 
     // If no keys, return empty list early
@@ -229,8 +229,8 @@ and getManyWithKeys
       return!
         result
         |> List.map (fun (key, data) ->
-          dbToDval types threadID tst db data |> Ply.map (fun dval -> (key, dval)))
-        |> Ply.List.flatten
+          dbToDval types threadID tst db data |> Task.map (fun dval -> (key, dval)))
+        |> Task.flatten
   }
 
 
@@ -240,8 +240,8 @@ let getAll
   (threadID : RT.ThreadID)
   (tst : RT.TypeSymbolTable)
   (db : RT.DB.T)
-  : Ply<List<string * RT.Dval>> =
-  uply {
+  : Task<List<string * RT.Dval>> =
+  task {
     let! result =
       Sql.query
         "SELECT key, data
@@ -261,8 +261,8 @@ let getAll
       result
       |> List.map (fun (key, data) ->
         dbToDval exeState.types threadID tst db data
-        |> Ply.map (fun dval -> (key, dval)))
-      |> Ply.List.flatten
+        |> Task.map (fun dval -> (key, dval)))
+      |> Task.flatten
   }
 
 // // Reusable function that provides the template for the SqlCompiler query functions
@@ -271,8 +271,8 @@ let getAll
 //   (db : RT.DB.T)
 //   (b : RT.LambdaImpl)
 //   (queryFor : string)
-//   : Ply<Result<Sql.SqlProps, RT.RuntimeError>> =
-//   uply {
+//   : Task<Result<Sql.SqlProps, RT.RuntimeError>> =
+//   task {
 //     let paramName =
 //       match b.parameters with
 //       | { head = RT.LPVariable(_, name); tail = [] } -> name
@@ -309,8 +309,8 @@ let getAll
 //   (exeState : RT.ExecutionState)
 //   (db : RT.DB.T)
 //   (b : RT.LambdaImpl)
-//   : Ply<Result<List<string * RT.Dval>, RT.RuntimeError>> =
-//   uply {
+//   : Task<Result<List<string * RT.Dval>, RT.RuntimeError>> =
+//   task {
 //     let types = RT.ExecutionState.types exeState
 //     let! query = doQuery exeState db b "key, data"
 
@@ -325,20 +325,20 @@ let getAll
 //       return!
 //         results
 //         |> List.map (fun (key, data) ->
-//           uply {
+//           task {
 //             let! dval = dbToDval exeState.tracing.callStack types db data
 //             return (key, dval)
 //           })
-//         |> Ply.List.flatten
-//         |> Ply.map Ok
+//         |> Task.flatten
+//         |> Task.map Ok
 //   }
 
 // let queryValues
 //   (exeState : RT.ExecutionState)
 //   (db : RT.DB.T)
 //   (b : RT.LambdaImpl)
-//   : Ply<Result<List<RT.Dval>, RT.RuntimeError>> =
-//   uply {
+//   : Task<Result<List<RT.Dval>, RT.RuntimeError>> =
+//   task {
 //     let types = RT.ExecutionState.types exeState
 //     let! query = doQuery exeState db b "data"
 
@@ -350,16 +350,16 @@ let getAll
 //       return!
 //         results
 //         |> List.map (dbToDval exeState.tracing.callStack types db)
-//         |> Ply.List.flatten
-//         |> Ply.map Ok
+//         |> Task.flatten
+//         |> Task.map Ok
 //   }
 
 // let queryCount
 //   (exeState : RT.ExecutionState)
 //   (db : RT.DB.T)
 //   (b : RT.LambdaImpl)
-//   : Ply<Result<int, RT.RuntimeError>> =
-//   uply {
+//   : Task<Result<int, RT.RuntimeError>> =
+//   task {
 //     let! query = doQuery exeState db b "COUNT(*)"
 
 //     match query with
@@ -441,8 +441,8 @@ let deleteAll (exeState : RT.ExecutionState) (db : RT.DB.T) : Task<unit> =
 // let statsPluck
 //   (canvasID : CanvasID)
 //   (db : RT.DB.T)
-//   : Ply<Option<RT.Dval * string>> =
-//   uply {
+//   : Task<Option<RT.Dval * string>> =
+//   task {
 //     let! result =
 //       Sql.query
 //         "SELECT data, key
@@ -538,8 +538,8 @@ let executeCompiledQuery
   (queryType : DBQueryType)
   (compiledSql : string)
   (paramValues : List<RT.Dval>)
-  : Ply<RT.Dval> =
-  uply {
+  : Task<RT.Dval> =
+  task {
     let types = exeState.types
     let threadID = vm.threadID
     let tst = Map.empty // TODO: proper type symbol table
@@ -549,22 +549,22 @@ let executeCompiledQuery
     let! paramBindings =
       paramValues
       |> List.mapi (fun i dv -> (i, dv))
-      |> Ply.List.mapSequentially (fun (i, dv) ->
-        uply {
+      |> Task.mapSequentially (fun (i, dv) ->
+        task {
           let paramName = $"p{i + 1}"
           let! sqlValue =
             match dv with
-            | RT.DString s -> Ply(Sql.string s)
-            | RT.DInt64 n -> Ply(Sql.int64 n)
-            | RT.DFloat f -> Ply(Sql.double f)
-            | RT.DBool b -> Ply(Sql.bool b)
-            | RT.DUnit -> Ply(Sql.string "null")
-            | RT.DUuid u -> Ply(Sql.uuid u)
+            | RT.DString s -> Task.FromResult(Sql.string s)
+            | RT.DInt64 n -> Task.FromResult(Sql.int64 n)
+            | RT.DFloat f -> Task.FromResult(Sql.double f)
+            | RT.DBool b -> Task.FromResult(Sql.bool b)
+            | RT.DUnit -> Task.FromResult(Sql.string "null")
+            | RT.DUuid u -> Task.FromResult(Sql.uuid u)
             | RT.DDateTime dt ->
-              Ply(Sql.string (LibExecution.DarkDateTime.toIsoString dt))
+              Task.FromResult(Sql.string (LibExecution.DarkDateTime.toIsoString dt))
             | other ->
               // For complex types, convert to JSON string
-              uply {
+              task {
                 let! json = dvalToDB threadID types other
                 return Sql.string json
               }
@@ -596,7 +596,7 @@ let executeCompiledQuery
         |> Sql.executeAsync (fun read -> read.string "data")
 
       let! dvals =
-        results |> List.map (dbToDval types threadID tst db) |> Ply.List.flatten
+        results |> List.map (dbToDval types threadID tst db) |> Task.flatten
 
       return
         dvals
@@ -620,8 +620,8 @@ let executeCompiledQuery
       let! kvPairs =
         results
         |> List.map (fun (key, data) ->
-          dbToDval types threadID tst db data |> Ply.map (fun dval -> (key, dval)))
-        |> Ply.List.flatten
+          dbToDval types threadID tst db data |> Task.map (fun dval -> (key, dval)))
+        |> Task.flatten
 
       return
         LibExecution.TypeChecker.DvalCreator.dict

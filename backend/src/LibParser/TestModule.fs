@@ -188,14 +188,14 @@ let toPT
   (pm : PT.PackageManager)
   (onMissing : NR.OnMissing)
   (m : WTModule)
-  : Ply<PTModule> =
-  uply {
+  : Task<PTModule> =
+  task {
     let currentModule = owner :: m.name
 
     let! typeOps =
       m.types
-      |> Ply.List.mapSequentially (fun wtType ->
-        uply {
+      |> Task.mapSequentially (fun wtType ->
+        task {
           let! ptType =
             WT2PT.PackageType.toPT
               accountID
@@ -211,12 +211,12 @@ let toPT
                 WT2PT.PackageType.Name.toLocation wtType.name
               ) ]
         })
-      |> Ply.map List.flatten
+      |> Task.map List.flatten
 
     let! valueOps =
       m.values
-      |> Ply.List.mapSequentially (fun wtValue ->
-        uply {
+      |> Task.mapSequentially (fun wtValue ->
+        task {
           let! ptValue =
             WT2PT.PackageValue.toPT
               accountID
@@ -233,12 +233,12 @@ let toPT
                 WT2PT.PackageValue.Name.toLocation wtValue.name
               ) ]
         })
-      |> Ply.map List.flatten
+      |> Task.map List.flatten
 
     let! fnOps =
       m.fns
-      |> Ply.List.mapSequentially (fun wtFn ->
-        uply {
+      |> Task.mapSequentially (fun wtFn ->
+        task {
           let! ptFn =
             WT2PT.PackageFn.toPT
               accountID
@@ -255,18 +255,18 @@ let toPT
                 WT2PT.PackageFn.Name.toLocation wtFn.name
               ) ]
         })
-      |> Ply.map List.flatten
+      |> Task.map List.flatten
 
     let! dbs =
       m.dbs
-      |> Ply.List.mapSequentially (
+      |> Task.mapSequentially (
         WT2PT.DB.toPT accountID branchId pm onMissing currentModule
       )
 
     let! (tests : List<PTTest>) =
       m.tests
-      |> Ply.List.mapSequentially (fun test ->
-        uply {
+      |> Task.mapSequentially (fun test ->
+        task {
           let context =
             { WT2PT.Context.currentFnName = None
               WT2PT.Context.isInFunction = false
@@ -304,8 +304,8 @@ let parseTestFile
   (builtins : RT.Builtins)
   (pm : PT.PackageManager)
   (filename : string)
-  : Ply<List<PTModule>> =
-  uply {
+  : Task<List<PTModule>> =
+  task {
     // test modules should always allow NREs
     let onMissing = NR.OnMissing.Allow
 
@@ -318,7 +318,7 @@ let parseTestFile
     // First pass: parse with OnMissing.Allow to allow unresolved names
     let! firstPassModules =
       modulesWT
-      |> Ply.List.mapSequentially (
+      |> Task.mapSequentially (
         toPT accountID branchId owner builtins PT.PackageManager.empty onMissing
       )
 
@@ -329,7 +329,7 @@ let parseTestFile
     let enhancedPM = LibPackageManager.PackageManager.withExtraOps pm firstPassOps
     let! reParsedModules =
       modulesWT
-      |> Ply.List.mapSequentially (
+      |> Task.mapSequentially (
         toPT accountID branchId owner builtins enhancedPM onMissing
       )
 
@@ -339,8 +339,8 @@ let parseTestFile
     // Adjust IDs in each module's ops
     let! adjustedModules =
       reParsedModules
-      |> Ply.List.mapSequentially (fun m ->
-        uply {
+      |> Task.mapSequentially (fun m ->
+        task {
           let! adjustedOps =
             LibPackageManager.PackageManager.stabilizeOpsAgainstPM firstPassPM m.ops
           return { m with ops = adjustedOps }

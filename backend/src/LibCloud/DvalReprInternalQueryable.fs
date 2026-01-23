@@ -4,6 +4,8 @@
 /// That is, they should not be used in libraries, BwdServer, HttpClient, etc.
 module LibExecution.DvalReprInternalQueryable
 
+open System.Threading.Tasks
+open FSharp.Control.Tasks
 open System.Text.Json
 
 open Prelude
@@ -21,8 +23,8 @@ let parseJson (s : string) : JsonElement =
 
   JsonDocument.Parse(s, options).RootElement
 
-let writeJson (f : Utf8JsonWriter -> Ply<unit>) : Ply<string> =
-  uply {
+let writeJson (f : Utf8JsonWriter -> Task<unit>) : Task<string> =
+  task {
     let options =
       new JsonWriterOptions(
         Indented = false,
@@ -42,15 +44,15 @@ let writeJson (f : Utf8JsonWriter -> Ply<unit>) : Ply<string> =
 
 type Utf8JsonWriter with
 
-  member this.writeObject(f : unit -> Ply<unit>) =
-    uply {
+  member this.writeObject(f : unit -> Task<unit>) =
+    task {
       this.WriteStartObject()
       do! f ()
       this.WriteEndObject()
     }
 
-  member this.writeArray(f : unit -> Ply<unit>) =
-    uply {
+  member this.writeArray(f : unit -> Task<unit>) =
+    task {
       this.WriteStartArray()
       do! f ()
       this.WriteEndArray()
@@ -70,8 +72,8 @@ let rec private toJsonV0
   (threadID : ThreadID)
   (types : Types)
   (dv : Dval)
-  : Ply<unit> =
-  uply {
+  : Task<unit> =
+  task {
     let writeDval = toJsonV0 w threadID types
 
     match dv with
@@ -114,17 +116,17 @@ let rec private toJsonV0
     | DTuple(d1, d2, rest) ->
       do!
         w.writeArray (fun () ->
-          Ply.List.iterSequentially writeDval (d1 :: d2 :: rest))
+          Task.iterSequentially writeDval (d1 :: d2 :: rest))
 
     | DList(_, l) ->
-      do! w.writeArray (fun () -> Ply.List.iterSequentially writeDval l)
+      do! w.writeArray (fun () -> Task.iterSequentially writeDval l)
 
     | DDict(_typeArgsTODO, o) ->
       do!
         w.writeObject (fun () ->
-          Ply.List.iterSequentially
+          Task.iterSequentially
             (fun (k : string, v) ->
-              uply {
+              task {
                 w.WritePropertyName k
                 do! writeDval v
               })
@@ -133,9 +135,9 @@ let rec private toJsonV0
     | DRecord(_, _, _typeArgsDEnum, fields) ->
       do!
         w.writeObject (fun () ->
-          Ply.List.iterSequentially
+          Task.iterSequentially
             (fun (k : string, v) ->
-              uply {
+              task {
                 w.WritePropertyName k
                 do! writeDval v
               })
@@ -148,7 +150,7 @@ let rec private toJsonV0
           // TODO: this might be where the type args go? hmmm
           w.writeArray (fun () ->
             fields
-            |> Ply.List.iterSequentially (fun fieldVal -> writeDval fieldVal)))
+            |> Task.iterSequentially (fun fieldVal -> writeDval fieldVal)))
 
 
     // Not supported
@@ -162,7 +164,7 @@ let toJsonStringV0
   (types : Types)
   (threadID : ThreadID)
   (dval : Dval)
-  : Ply<string> =
+  : Task<string> =
   writeJson (fun w -> toJsonV0 w threadID types dval)
 
 
@@ -172,58 +174,58 @@ let parseJsonV0
   (tst : TypeSymbolTable)
   (typ : TypeReference)
   (str : string)
-  : Ply<Dval> =
-  let rec convert (typ : TypeReference) (j : JsonElement) : Ply<Dval> =
+  : Task<Dval> =
+  let rec convert (typ : TypeReference) (j : JsonElement) : Task<Dval> =
     match typ, j.ValueKind with
     // simple cases
-    | TUnit, JsonValueKind.Number -> DUnit |> Ply
+    | TUnit, JsonValueKind.Number -> DUnit |> Task.FromResult
 
-    | TBool, JsonValueKind.True -> DBool true |> Ply
-    | TBool, JsonValueKind.False -> DBool false |> Ply
+    | TBool, JsonValueKind.True -> DBool true |> Task.FromResult
+    | TBool, JsonValueKind.False -> DBool false |> Task.FromResult
 
-    | TInt8, JsonValueKind.Number -> j.GetSByte() |> DInt8 |> Ply
-    | TUInt8, JsonValueKind.Number -> j.GetByte() |> DUInt8 |> Ply
-    | TInt16, JsonValueKind.Number -> j.GetInt16() |> DInt16 |> Ply
-    | TUInt16, JsonValueKind.Number -> j.GetUInt16() |> DUInt16 |> Ply
-    | TInt32, JsonValueKind.Number -> j.GetInt32() |> DInt32 |> Ply
-    | TUInt32, JsonValueKind.Number -> j.GetUInt32() |> DUInt32 |> Ply
-    | TInt64, JsonValueKind.Number -> j.GetInt64() |> DInt64 |> Ply
-    | TUInt64, JsonValueKind.Number -> j.GetUInt64() |> DUInt64 |> Ply
+    | TInt8, JsonValueKind.Number -> j.GetSByte() |> DInt8 |> Task.FromResult
+    | TUInt8, JsonValueKind.Number -> j.GetByte() |> DUInt8 |> Task.FromResult
+    | TInt16, JsonValueKind.Number -> j.GetInt16() |> DInt16 |> Task.FromResult
+    | TUInt16, JsonValueKind.Number -> j.GetUInt16() |> DUInt16 |> Task.FromResult
+    | TInt32, JsonValueKind.Number -> j.GetInt32() |> DInt32 |> Task.FromResult
+    | TUInt32, JsonValueKind.Number -> j.GetUInt32() |> DUInt32 |> Task.FromResult
+    | TInt64, JsonValueKind.Number -> j.GetInt64() |> DInt64 |> Task.FromResult
+    | TUInt64, JsonValueKind.Number -> j.GetUInt64() |> DUInt64 |> Task.FromResult
     | TInt128, JsonValueKind.Number ->
-      j.GetRawText() |> System.Int128.Parse |> DInt128 |> Ply
+      j.GetRawText() |> System.Int128.Parse |> DInt128 |> Task.FromResult
     | TUInt128, JsonValueKind.Number ->
-      j.GetRawText() |> System.UInt128.Parse |> DUInt128 |> Ply
+      j.GetRawText() |> System.UInt128.Parse |> DUInt128 |> Task.FromResult
 
-    | TFloat, JsonValueKind.Number -> j.GetDouble() |> DFloat |> Ply
+    | TFloat, JsonValueKind.Number -> j.GetDouble() |> DFloat |> Task.FromResult
     | TFloat, JsonValueKind.String ->
       match j.GetString() with
       | "NaN" -> DFloat System.Double.NaN
       | "Infinity" -> DFloat System.Double.PositiveInfinity
       | "-Infinity" -> DFloat System.Double.NegativeInfinity
       | v -> Exception.raiseInternal "Invalid float" [ "value", v ]
-      |> Ply
+      |> Task.FromResult
 
-    | TChar, JsonValueKind.String -> DChar(j.GetString()) |> Ply
-    | TString, JsonValueKind.String -> DString(j.GetString()) |> Ply
+    | TChar, JsonValueKind.String -> DChar(j.GetString()) |> Task.FromResult
+    | TString, JsonValueKind.String -> DString(j.GetString()) |> Task.FromResult
 
-    | TUuid, JsonValueKind.String -> DUuid(System.Guid(j.GetString())) |> Ply
+    | TUuid, JsonValueKind.String -> DUuid(System.Guid(j.GetString())) |> Task.FromResult
 
     | TDateTime, JsonValueKind.String ->
       j.GetString()
       |> NodaTime.Instant.ofIsoString
       |> DarkDateTime.fromInstant
       |> DDateTime
-      |> Ply
+      |> Task.FromResult
 
 
     // nested structures
     | TTuple(t1, t2, rest), JsonValueKind.Array ->
       let arr = j.EnumerateArray() |> Seq.toList
       if List.length arr = 2 + List.length rest then
-        uply {
+        task {
           let! d1 = convert t1 arr[0]
           let! d2 = convert t2 arr[1]
-          let! rest = List.map2 convert rest arr[2..] |> Ply.List.flatten
+          let! rest = List.map2 convert rest arr[2..] |> Task.flatten
           return DTuple(d1, d2, rest)
         }
       else
@@ -233,8 +235,8 @@ let parseJsonV0
       j.EnumerateArray()
       |> Seq.map (convert nested)
       |> Seq.toList
-      |> Ply.List.flatten
-      |> Ply.map (TypeChecker.DvalCreator.list threadID VT.unknownTODO)
+      |> Task.flatten
+      |> Task.map (TypeChecker.DvalCreator.list threadID VT.unknownTODO)
 
     | TDict typ, JsonValueKind.Object ->
       let objFields =
@@ -242,13 +244,13 @@ let parseJsonV0
 
       objFields
       |> Map.toList
-      |> List.map (fun (k, v) -> convert typ v |> Ply.map (fun v -> k, v))
-      |> Ply.List.flatten
-      |> Ply.map (TypeChecker.DvalCreator.dict threadID VT.unknownTODO)
+      |> List.map (fun (k, v) -> convert typ v |> Task.map (fun v -> k, v))
+      |> Task.flatten
+      |> Task.map (TypeChecker.DvalCreator.dict threadID VT.unknownTODO)
 
 
     | TCustomType(Ok typeName, typeArgs), valueKind ->
-      uply {
+      task {
         match! Types.find types typeName with
         | None ->
           return Exception.raiseInternal "Type not found" [ "typeName", typeName ]
@@ -275,8 +277,8 @@ let parseJsonV0
                     | None ->
                       Exception.raiseInternal "Missing field" [ "field", f.name ]
 
-                  dval |> Ply.map (fun dval -> f.name, dval))
-                |> Ply.List.flatten
+                  dval |> Task.map (fun dval -> f.name, dval))
+                |> Task.flatten
 
               return!
                 TypeChecker.DvalCreator.record
@@ -315,7 +317,7 @@ let parseJsonV0
                 fields.EnumerateArray()
                 |> Seq.map2 convert fieldTypes
                 |> Seq.toList
-                |> Ply.List.flatten
+                |> Task.flatten
 
               let! enum =
                 TypeChecker.DvalCreator.enum

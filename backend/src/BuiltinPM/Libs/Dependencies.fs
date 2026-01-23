@@ -33,7 +33,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ accountID; branchID; DUuid targetId ] ->
-          uply {
+          task {
             let accountID =
               match accountID with
               | DEnum(_, _, _, "Some", [ DUuid id ]) -> Some id
@@ -68,7 +68,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid sourceId ] ->
-          uply {
+          task {
             let! results = LibPackageManager.Queries.getDependencies sourceId
             let dvals =
               results
@@ -99,7 +99,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ accountID; branchID; DList(_, targetIds) ] ->
-          uply {
+          task {
             let accountID =
               match accountID with
               | DEnum(_, _, _, "Some", [ DUuid id ]) -> Some id
@@ -157,7 +157,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ accountID; branchID; DList(_, itemIds) ] ->
-          uply {
+          task {
             let accountID =
               match accountID with
               | DEnum(_, _, _, "Some", [ DUuid id ]) -> Some id

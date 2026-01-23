@@ -11,8 +11,8 @@ open TestUtils.TestUtils
 let asyncTests =
 
   // slow it down so later items might be run first
-  let delay (f : unit -> 'a) (i : int) : Ply<'a> =
-    uply {
+  let delay (f : unit -> 'a) (i : int) : Task<'a> =
+    task {
       do! Task.Delay(100 - (i * 10))
       return (f ())
     }
@@ -21,23 +21,23 @@ let asyncTests =
     "sequential"
     [ testTask "mapSequentially" {
         let fn (i : int) = delay (fun () -> i + 1) i
-        let! result = Ply.List.mapSequentially fn [ 1; 2; 3; 4 ] |> Ply.toTask
+        let! result = Task.mapSequentially fn [ 1; 2; 3; 4 ] |> 
         Expect.equal result [ 2; 3; 4; 5 ] ""
       }
       testTask "filterSequentially" {
-        let fn (i : int) = uply { return (i % 2) = 0 }
-        let! result = Ply.List.filterSequentially fn [ 1; 2; 3; 4 ] |> Ply.toTask
+        let fn (i : int) = task { return (i % 2) = 0 }
+        let! result = Task.filterSequentially fn [ 1; 2; 3; 4 ] |> 
         Expect.equal result [ 2; 4 ] ""
       }
       testTask "findSequentially" {
         let fn (i : int) = delay (fun () -> i = 3) i
-        let! result = Ply.List.findSequentially fn [ 1; 2; 3; 4 ] |> Ply.toTask
+        let! result = Task.findSequentially fn [ 1; 2; 3; 4 ] |> 
         Expect.equal result (Some 3) ""
       }
       testTask "iterSequentially" {
         let mutable state = []
         let fn (i : int) = delay (fun () -> state <- i + 1 :: state) i
-        do! Ply.List.iterSequentially fn [ 1; 2; 3; 4 ] |> Ply.toTask
+        do! Task.iterSequentially fn [ 1; 2; 3; 4 ] |> 
         Expect.equal state [ 5; 4; 3; 2 ] ""
       } ]
 

@@ -408,11 +408,11 @@ let fns (config : Configuration) : List<BuiltInFn> =
           vm,
           _,
           [ DString method; DString uri; DList(_, reqHeaders); DList(_, reqBody) ] ->
-          uply {
+          task {
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
               reqHeaders
-              |> Ply.List.mapSequentially (fun item ->
-                uply {
+              |> Task.mapSequentially (fun item ->
+                task {
                   match item with
                   | DTuple(DString k, DString v, []) ->
                     let k = String.trim k
@@ -436,7 +436,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
                       |> raiseRTE vm.threadID
 
                 })
-              |> Ply.map Result.collect
+              |> Task.map Result.collect
 
             let method =
               try
@@ -445,7 +445,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
                 None
 
             let! (result : Result<Dval, RequestError.RequestError>) =
-              uply {
+              task {
                 match reqHeaders, method with
                 | Ok reqHeaders, Some method ->
                   let request =

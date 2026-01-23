@@ -228,7 +228,7 @@ let parse
   (types : Types)
   (typ : TypeReference)
   (str : string)
-  : Ply<Result<Dval, ParseError.ParseError>> =
+  : Task<Result<Dval, ParseError.ParseError>> =
 
   let tst = Map.empty // TODO consider passing this in.. somehow?
 
@@ -236,14 +236,14 @@ let parse
     (typ : TypeReference)
     (pathSoFar : JsonPath.JsonPath)
     (j : JsonElement)
-    : Ply<Dval> =
+    : Task<Dval> =
 
     match typ, j.ValueKind with
     // basic types
-    | TUnit, JsonValueKind.Null -> DUnit |> Ply
+    | TUnit, JsonValueKind.Null -> DUnit |> Task.FromResult
 
-    | TBool, JsonValueKind.True -> DBool true |> Ply
-    | TBool, JsonValueKind.False -> DBool false |> Ply
+    | TBool, JsonValueKind.True -> DBool true |> Task.FromResult
+    | TBool, JsonValueKind.False -> DBool false |> Task.FromResult
 
     | TInt64, JsonValueKind.Number ->
       let mutable i64 = 0L
@@ -254,11 +254,11 @@ let parse
 
       if j.TryGetUInt64(&ui64) then
         if ui64 <= uint64 System.Int64.MaxValue then
-          DInt64(int64 ui64) |> Ply
+          DInt64(int64 ui64) |> Task.FromResult
         else
-          raiseCantMatchWithType TInt64 j pathSoFar |> Ply
+          raiseCantMatchWithType TInt64 j pathSoFar |> Task.FromResult
       else if j.TryGetInt64(&i64) then
-        DInt64 i64 |> Ply
+        DInt64 i64 |> Task.FromResult
       // We allow the user to specify numbers in int or float format (e.g. 1 or 1.0
       // or even 1E+0) -- JSON uses floating point numbers, and the person/API
       // client/server that is creating a field we understand to be an int may choose
@@ -269,24 +269,24 @@ let parse
         && d >= (float System.Int64.MinValue)
         && System.Double.IsInteger d
       then
-        int64 d |> DInt64 |> Ply
+        int64 d |> DInt64 |> Task.FromResult
       else
-        raiseCantMatchWithType TInt64 j pathSoFar |> Ply
+        raiseCantMatchWithType TInt64 j pathSoFar |> Task.FromResult
 
     | TUInt64, JsonValueKind.Number ->
       let mutable ui64 = 0UL
       let mutable d = 0.0
       if j.TryGetUInt64(&ui64) then
-        DUInt64 ui64 |> Ply
+        DUInt64 ui64 |> Task.FromResult
       else if
         j.TryGetDouble(&d)
         && d <= (float System.UInt64.MaxValue)
         && d >= (float System.UInt64.MinValue)
         && System.Double.IsInteger d
       then
-        uint64 d |> DUInt64 |> Ply
+        uint64 d |> DUInt64 |> Task.FromResult
       else
-        raiseCantMatchWithType TUInt64 j pathSoFar |> Ply
+        raiseCantMatchWithType TUInt64 j pathSoFar |> Task.FromResult
 
     | TInt8, JsonValueKind.Number ->
       let mutable i64 = 0L
@@ -297,14 +297,14 @@ let parse
         && ui64 >= uint64 System.SByte.MinValue
         && ui64 <= uint64 System.SByte.MaxValue
       then
-        DInt8(int8 ui64) |> Ply
+        DInt8(int8 ui64) |> Task.FromResult
 
       else if
         j.TryGetInt64(&i64)
         && i64 >= int System.SByte.MinValue
         && i64 <= int System.SByte.MaxValue
       then
-        DInt8(int8 i64) |> Ply
+        DInt8(int8 i64) |> Task.FromResult
 
       else if
         j.TryGetDouble(&d)
@@ -312,9 +312,9 @@ let parse
         && d >= (float System.SByte.MinValue)
         && System.Double.IsInteger d
       then
-        int8 d |> DInt8 |> Ply
+        int8 d |> DInt8 |> Task.FromResult
       else
-        raiseCantMatchWithType TInt8 j pathSoFar |> Ply
+        raiseCantMatchWithType TInt8 j pathSoFar |> Task.FromResult
 
     | TUInt8, JsonValueKind.Number ->
       let mutable i64 = 0L
@@ -322,14 +322,14 @@ let parse
       let mutable d = 0.0
 
       if j.TryGetUInt64(&ui64) && ui64 <= uint64 System.Byte.MaxValue then
-        DUInt8(uint8 ui64) |> Ply
+        DUInt8(uint8 ui64) |> Task.FromResult
 
       else if
         j.TryGetInt64(&i64)
         && i64 >= int System.Byte.MinValue
         && i64 <= int System.Byte.MaxValue
       then
-        DUInt8(uint8 i64) |> Ply
+        DUInt8(uint8 i64) |> Task.FromResult
 
       else if
         j.TryGetDouble(&d)
@@ -337,129 +337,129 @@ let parse
         && d >= (float System.Byte.MinValue)
         && System.Double.IsInteger d
       then
-        uint8 d |> DUInt8 |> Ply
+        uint8 d |> DUInt8 |> Task.FromResult
       else
-        raiseCantMatchWithType TUInt8 j pathSoFar |> Ply
+        raiseCantMatchWithType TUInt8 j pathSoFar |> Task.FromResult
 
     | TInt16, JsonValueKind.Number ->
       let mutable i16 = 0s
       let mutable d = 0.0
 
       if j.TryGetInt16(&i16) then
-        DInt16 i16 |> Ply
+        DInt16 i16 |> Task.FromResult
       else if
         j.TryGetDouble(&d)
         && d <= (float System.Int16.MaxValue)
         && d >= (float System.Int16.MinValue)
         && System.Double.IsInteger d
       then
-        int16 d |> DInt16 |> Ply
+        int16 d |> DInt16 |> Task.FromResult
       else
-        raiseCantMatchWithType TInt16 j pathSoFar |> Ply
+        raiseCantMatchWithType TInt16 j pathSoFar |> Task.FromResult
 
     | TUInt16, JsonValueKind.Number ->
       let mutable ui16 = 0us
       let mutable d = 0.0
 
       if j.TryGetUInt16(&ui16) then
-        DUInt16 ui16 |> Ply
+        DUInt16 ui16 |> Task.FromResult
       else if
         j.TryGetDouble(&d)
         && d <= (float System.UInt16.MaxValue)
         && d >= (float System.UInt16.MinValue)
         && System.Double.IsInteger d
       then
-        uint16 d |> DUInt16 |> Ply
+        uint16 d |> DUInt16 |> Task.FromResult
       else
-        raiseCantMatchWithType TUInt16 j pathSoFar |> Ply
+        raiseCantMatchWithType TUInt16 j pathSoFar |> Task.FromResult
 
     | TInt32, JsonValueKind.Number ->
       let mutable i32 = 0
       let mutable d = 0.0
 
       if j.TryGetInt32(&i32) then
-        DInt32 i32 |> Ply
+        DInt32 i32 |> Task.FromResult
       else if
         j.TryGetDouble(&d)
         && d <= (float System.Int32.MaxValue)
         && d >= (float System.Int32.MinValue)
         && System.Double.IsInteger d
       then
-        int32 d |> DInt32 |> Ply
+        int32 d |> DInt32 |> Task.FromResult
       else
-        raiseCantMatchWithType TInt32 j pathSoFar |> Ply
+        raiseCantMatchWithType TInt32 j pathSoFar |> Task.FromResult
 
     | TUInt32, JsonValueKind.Number ->
       let mutable ui32 = 0ul
       let mutable d = 0.0
 
       if j.TryGetUInt32(&ui32) then
-        DUInt32 ui32 |> Ply
+        DUInt32 ui32 |> Task.FromResult
       else if
         j.TryGetDouble(&d)
         && d <= (float System.UInt32.MaxValue)
         && d >= (float System.UInt32.MinValue)
         && System.Double.IsInteger d
       then
-        uint32 d |> DUInt32 |> Ply
+        uint32 d |> DUInt32 |> Task.FromResult
       else
-        raiseCantMatchWithType TUInt32 j pathSoFar |> Ply
+        raiseCantMatchWithType TUInt32 j pathSoFar |> Task.FromResult
 
 
     | TInt128, JsonValueKind.Number ->
       let mutable i128 = System.Int128.Zero
       let mutable d = 0.0
       if System.Int128.TryParse(j.GetRawText(), &i128) then
-        DInt128 i128 |> Ply
+        DInt128 i128 |> Task.FromResult
       else if j.TryGetDouble(&d) && System.Double.IsInteger d then
         try
           System.Int128.Parse(
             d.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)
           )
           |> DInt128
-          |> Ply
+          |> Task.FromResult
         with :? System.OverflowException ->
-          raiseCantMatchWithType TInt128 j pathSoFar |> Ply
+          raiseCantMatchWithType TInt128 j pathSoFar |> Task.FromResult
       else
-        raiseCantMatchWithType TInt128 j pathSoFar |> Ply
+        raiseCantMatchWithType TInt128 j pathSoFar |> Task.FromResult
 
     | TUInt128, JsonValueKind.Number ->
       let mutable ui128 = System.UInt128.Zero
       let mutable d = 0.0
       if System.UInt128.TryParse(j.GetRawText(), &ui128) then
-        DUInt128 ui128 |> Ply
+        DUInt128 ui128 |> Task.FromResult
       else if j.TryGetDouble(&d) && System.Double.IsInteger d then
         try
           System.UInt128.Parse(
             d.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)
           )
           |> DUInt128
-          |> Ply
+          |> Task.FromResult
         with :? System.OverflowException ->
-          raiseCantMatchWithType TUInt128 j pathSoFar |> Ply
+          raiseCantMatchWithType TUInt128 j pathSoFar |> Task.FromResult
       else
-        raiseCantMatchWithType TUInt128 j pathSoFar |> Ply
+        raiseCantMatchWithType TUInt128 j pathSoFar |> Task.FromResult
 
-    | TFloat, JsonValueKind.Number -> j.GetDouble() |> DFloat |> Ply
+    | TFloat, JsonValueKind.Number -> j.GetDouble() |> DFloat |> Task.FromResult
     | TFloat, JsonValueKind.String ->
       match j.GetString() with
       | "NaN" -> DFloat System.Double.NaN
       | "Infinity" -> DFloat System.Double.PositiveInfinity
       | "-Infinity" -> DFloat System.Double.NegativeInfinity
       | _ -> raiseCantMatchWithType TFloat j pathSoFar
-      |> Ply
+      |> Task.FromResult
 
     | TChar, JsonValueKind.String ->
       match String.toEgcChar (j.GetString()) with
-      | Some c -> Ply(DChar c)
+      | Some c -> Task.FromResult(DChar c)
       | None -> raiseCantMatchWithType TChar j pathSoFar
 
 
-    | TString, JsonValueKind.String -> DString(j.GetString()) |> Ply
+    | TString, JsonValueKind.String -> DString(j.GetString()) |> Task.FromResult
 
     | TUuid, JsonValueKind.String ->
       try
-        DUuid(System.Guid(j.GetString())) |> Ply
+        DUuid(System.Guid(j.GetString())) |> Task.FromResult
       with _ ->
         raiseCantMatchWithType TUuid j pathSoFar
 
@@ -469,7 +469,7 @@ let parse
         |> NodaTime.Instant.ofIsoString
         |> DarkDateTime.fromInstant
         |> DDateTime
-        |> Ply
+        |> Task.FromResult
       with _ ->
         raiseCantMatchWithType TDateTime j pathSoFar
 
@@ -480,8 +480,8 @@ let parse
       j.EnumerateArray()
       |> Seq.mapi (fun i v -> convert nested (JsonPath.Part.Index i :: pathSoFar) v)
       |> Seq.toList
-      |> Ply.List.flatten
-      |> Ply.map (TypeChecker.DvalCreator.list threadID VT.unknownTODO)
+      |> Task.flatten
+      |> Task.map (TypeChecker.DvalCreator.list threadID VT.unknownTODO)
 
     | TTuple(t1, t2, rest), JsonValueKind.Array ->
       let values = j.EnumerateArray() |> Seq.toList
@@ -490,8 +490,8 @@ let parse
 
       List.zip types values
       |> List.mapi (fun i (t, v) -> convert t (JsonPath.Part.Index i :: pathSoFar) v)
-      |> Ply.List.flatten
-      |> Ply.map (fun mapped ->
+      |> Task.flatten
+      |> Task.map (fun mapped ->
         match mapped with
         | (d1 :: d2 :: rest) -> DTuple(d1, d2, rest)
         | _ ->
@@ -500,19 +500,19 @@ let parse
     | TDict tDict, JsonValueKind.Object ->
       j.EnumerateObject()
       |> Seq.map (fun jp ->
-        uply {
+        task {
           let! converted =
             convert tDict (JsonPath.Part.Field jp.Name :: pathSoFar) jp.Value
           return (jp.Name, converted)
         })
       |> Seq.toList
-      |> Ply.List.flatten
-      |> Ply.map (TypeChecker.DvalCreator.dict threadID VT.unknownTODO)
+      |> Task.flatten
+      |> Task.map (TypeChecker.DvalCreator.dict threadID VT.unknownTODO)
 
     | TCustomType(Ok typeName, typeArgs), jsonValueKind ->
-      uply {
+      task {
         let! typeArgsVT =
-          typeArgs |> Ply.List.mapSequentially (TypeReference.toVT types tst)
+          typeArgs |> Task.mapSequentially (TypeReference.toVT types tst)
 
         match! Types.find types typeName with
         | None ->
@@ -563,7 +563,7 @@ let parse
                   let path = JsonPath.Part.Index i :: casePath
                   let typ = Types.substitute decl.typeParams typeArgs typ
                   convert typ path j)
-                |> Ply.List.flatten
+                |> Task.flatten
 
               if expectedFieldCount > actualFieldCount then
                 let index = actualFieldCount // one higher than greatest index
@@ -624,7 +624,7 @@ let parse
               fields
               |> NEList.toList
               |> List.map (fun def ->
-                uply {
+                task {
                   let correspondingValue =
                     let matchingFieldDef =
                       // TODO: allow Option<>al fields to be omitted
@@ -649,7 +649,7 @@ let parse
                       correspondingValue
                   return (def.name, converted)
                 })
-              |> Ply.List.flatten
+              |> Task.flatten
 
             let! record =
               TypeChecker.DvalCreator.record
@@ -699,9 +699,9 @@ let parse
       Error ParseError.NotJson
 
   match parsed with
-  | Error err -> Error err |> Ply
+  | Error err -> Error err |> Task.FromResult
   | Ok parsed ->
-    uply {
+    task {
       try
         let! converted = convert typ [ JsonPath.Part.Root ] parsed
         return Ok converted
@@ -719,7 +719,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, vm, [ _typeToSerializeAs ], [ arg ] ->
-          uply {
+          task {
             let response = writeJson (fun w -> serialize vm.threadID w arg)
             return DString response
           }
@@ -749,7 +749,7 @@ let fns : List<BuiltInFn> =
           let resultError =
             TypeChecker.DvalCreator.Result.error threadID okType errType
 
-          uply {
+          task {
             match! parse threadID exeState.types typeArg arg with
             | Ok v -> return resultOk v
             | Error e -> return resultError (ParseError.toDT e)

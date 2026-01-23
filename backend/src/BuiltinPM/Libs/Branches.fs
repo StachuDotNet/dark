@@ -44,7 +44,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid owner ] ->
-          uply {
+          task {
             let! branches = Branches.list owner
             let branchVT = VT.customType branchTypeName []
             return DList(branchVT, branches |> List.map branchToDT)
@@ -63,7 +63,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchID ] ->
-          uply {
+          task {
             let! branch = Branches.get branchID
             return
               branch
@@ -86,7 +86,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid owner; DString name ] ->
-          uply {
+          task {
             let! branch = Branches.findByName owner name
             return
               branch
@@ -109,7 +109,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid owner; DString name ] ->
-          uply {
+          task {
             let! result = Branches.create owner name
             match result with
             | Ok branch ->

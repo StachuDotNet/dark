@@ -20,7 +20,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid canvasID ] ->
-          uply {
+          task {
             let! name = Canvas.domainsForCanvasID canvasID
             return name |> List.map DString |> Dval.list KTString
           }
@@ -40,7 +40,7 @@ let fns : List<BuiltInFn> =
         let resultError = Dval.resultError KTUuid KTString
         (function
         | _, _, _, [ DString domain ] ->
-          uply {
+          task {
             let! name = Canvas.canvasIDForDomain domain
             match name with
             | Some name -> return resultOk (DUuid name)

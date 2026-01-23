@@ -52,8 +52,8 @@ let list () : Task<List<Instance>> =
     { id = read.uuid "id"; name = read.string "name"; url = read.string "url" })
 
 
-let add (name : string) (url : string) : Ply<Instance> =
-  uply {
+let add (name : string) (url : string) : Task<Instance> =
+  task {
     let instanceID = System.Guid.NewGuid()
 
     do!

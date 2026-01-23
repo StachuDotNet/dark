@@ -156,7 +156,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid accountID; branchId ] ->
-          uply {
+          task {
             let branchId = C2DT.Option.fromDT D.uuid branchId
             let! locations =
               Approvals.listPendingLocationsWithDetails accountID branchId
@@ -220,7 +220,7 @@ let fns : List<BuiltInFn> =
             title
             description
             sourceBranchId ] ->
-          uply {
+          task {
             let locationIds =
               locationIds
               |> List.map (fun d ->
@@ -256,7 +256,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid requestId ] ->
-          uply {
+          task {
             let! request = Approvals.getApprovalRequest requestId
             return
               request
@@ -277,7 +277,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid requestId ] ->
-          uply {
+          task {
             let! locations = Approvals.getRequestItems requestId
             let vt = VT.customType requestItemTypeName []
             return DList(vt, locations |> List.map requestItemToDT)
@@ -297,7 +297,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid requestId ] ->
-          uply {
+          task {
             let! locations = Approvals.getRequestItemsWithDetails requestId
             let vt = VT.customType requestItemWithDetailsTypeName []
             return DList(vt, locations |> List.map requestItemWithDetailsToDT)
@@ -316,7 +316,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid accountID ] ->
-          uply {
+          task {
             let! requests = Approvals.listIncomingRequests accountID
             let vt = VT.customType approvalRequestTypeName []
             return DList(vt, requests |> List.map approvalRequestToDT)
@@ -335,7 +335,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid accountID ] ->
-          uply {
+          task {
             let! requests = Approvals.listOutgoingRequests accountID
             let vt = VT.customType approvalRequestTypeName []
             return DList(vt, requests |> List.map approvalRequestToDT)
@@ -359,7 +359,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid requestId; DString locationId; status; DUuid reviewerId ] ->
-          uply {
+          task {
             let status = dtToApprovalStatus status
             let! _ =
               Approvals.setLocationStatus
@@ -384,7 +384,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid requestId; DUuid submitterId ] ->
-          uply {
+          task {
             let! result = Approvals.withdrawRequest requestId submitterId
             return DBool result
           }
@@ -402,7 +402,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid requestId ] ->
-          uply {
+          task {
             do! Approvals.updateRequestStatusIfComplete requestId
             return DUnit
           }
@@ -423,7 +423,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid accountId; DString namespace_ ] ->
-          uply {
+          task {
             let! result = Approvals.hasAccessToNamespace accountId namespace_
             return DBool result
           }
@@ -443,7 +443,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString locationId; DUuid reviewerId ] ->
-          uply {
+          task {
             let! result = Approvals.approveLocationDirectly locationId reviewerId
             return DBool result
           }

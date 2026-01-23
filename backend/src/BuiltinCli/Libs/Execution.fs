@@ -180,7 +180,7 @@ let fns : List<BuiltInFn> =
 
           p.WaitForExit()
 
-          createExecutionOutcome p.ExitCode stdout stderr |> Ply
+          createExecutionOutcome p.ExitCode stdout stderr |> Task.FromResult
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -200,13 +200,13 @@ let fns : List<BuiltInFn> =
           let resultError = Dval.resultError osTypeRef KTString
 
           if RuntimeInformation.IsOSPlatform OSPlatform.Windows then
-            OS.Windows |> OS.toDT |> resultOk |> Ply
+            OS.Windows |> OS.toDT |> resultOk |> Task.FromResult
           else if RuntimeInformation.IsOSPlatform OSPlatform.Linux then
-            OS.Linux |> OS.toDT |> resultOk |> Ply
+            OS.Linux |> OS.toDT |> resultOk |> Task.FromResult
           else if RuntimeInformation.IsOSPlatform OSPlatform.OSX then
-            OS.OSX |> OS.toDT |> resultOk |> Ply
+            OS.OSX |> OS.toDT |> resultOk |> Task.FromResult
           else
-            "Unsupported OS" |> DString |> resultError |> Ply
+            "Unsupported OS" |> DString |> resultError |> Task.FromResult
 
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
@@ -252,7 +252,7 @@ let fns : List<BuiltInFn> =
               ErrorBuffer = "" }
 
           processHandles.TryAdd(processId, processInfo) |> ignore<bool>
-          DInt64 processId |> Ply
+          DInt64 processId |> Task.FromResult
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -354,11 +354,11 @@ let fns : List<BuiltInFn> =
                 else
                   0
               createExecutionOutcome exitCode (stdout.ToString()) (stderr.ToString())
-              |> Ply
+              |> Task.FromResult
             with ex ->
-              createExecutionOutcome -1L "" $"Process IO error: {ex.Message}" |> Ply
+              createExecutionOutcome -1L "" $"Process IO error: {ex.Message}" |> Task.FromResult
           | _ ->
-            createExecutionOutcome -1L "" "Process not found or has exited" |> Ply
+            createExecutionOutcome -1L "" "Process not found or has exited" |> Task.FromResult
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -403,15 +403,15 @@ let fns : List<BuiltInFn> =
 
               processHandles.TryRemove processId |> ignore<bool * ProcessInfo>
 
-              createExecutionOutcome exitCode finalStdout finalStderr |> Ply
+              createExecutionOutcome exitCode finalStdout finalStderr |> Task.FromResult
             with ex ->
               processHandles.TryRemove processId |> ignore<bool * ProcessInfo>
               createExecutionOutcome
                 -1L
                 ""
                 $"Process termination error: {ex.Message}"
-              |> Ply
-          | false, _ -> createExecutionOutcome -1L "" "Process not found" |> Ply
+              |> Task.FromResult
+          | false, _ -> createExecutionOutcome -1L "" "Process not found" |> Task.FromResult
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure

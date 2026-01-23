@@ -62,7 +62,7 @@ let fns : List<BuiltInFn> =
           let typeName =
             FQTypeName.Package
               PackageIDs.Type.PrettyPrinter.RuntimeTypes.RuntimeError.errorMessage
-          DEnum(typeName, typeName, [], "ErrorString", [ DString error ]) |> Ply
+          DEnum(typeName, typeName, [], "ErrorString", [ DString error ]) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -102,7 +102,7 @@ let fns : List<BuiltInFn> =
           let typeName =
             FQTypeName.Package
               PackageIDs.Type.PrettyPrinter.RuntimeTypes.RuntimeError.errorMessage
-          DEnum(typeName, typeName, [], "ErrorString", [ DString msg ]) |> Ply
+          DEnum(typeName, typeName, [], "ErrorString", [ DString msg ]) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -124,9 +124,9 @@ let fns : List<BuiltInFn> =
             |> (fun l -> l[0])
             |> DChar
             |> Dval.optionSome KTChar
-            |> Ply
+            |> Task.FromResult
           else
-            Dval.optionNone KTChar |> Ply
+            Dval.optionNone KTChar |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -136,7 +136,7 @@ let fns : List<BuiltInFn> =
     { name = fn "testIncrementSideEffectCounter" 0
       typeParams = []
       parameters =
-        [ Param.make "passThru" (TVariable "a") "Ply which will be returned" ]
+        [ Param.make "passThru" (TVariable "a") "Task.FromResult which will be returned" ]
       returnType = TVariable "a"
       description =
         "Increases the side effect counter by one, to test real-world side-effects. Returns its argument."
@@ -144,7 +144,7 @@ let fns : List<BuiltInFn> =
         (function
         | state, _, _, [ arg ] ->
           state.test.sideEffectCount <- state.test.sideEffectCount + 1
-          Ply(arg)
+          Task.FromResult(arg)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -158,7 +158,7 @@ let fns : List<BuiltInFn> =
       description = "Return the value of the side-effect counter"
       fn =
         (function
-        | state, _, _, [ DUnit ] -> Ply(Dval.int64 state.test.sideEffectCount)
+        | state, _, _, [ DUnit ] -> Task.FromResult(Dval.int64 state.test.sideEffectCount)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -174,7 +174,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ v; DString msg ] ->
           print $"{msg}: {v}"
-          Ply v
+          Task.FromResult v
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -189,7 +189,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString username ] ->
-          uply {
+          task {
             do!
               // This is unsafe. A user has canvases, and canvases have traces. It
               // will either break or cascade (haven't checked)
@@ -225,7 +225,7 @@ let fns : List<BuiltInFn> =
       description = "Get the name of the canvas that's running"
       fn =
         (function
-        | state, _, _, [ DUnit ] -> state.program.canvasID |> DUuid |> Ply
+        | state, _, _, [ DUnit ] -> state.program.canvasID |> DUuid |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -240,7 +240,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DInt64 count ] ->
-          uply {
+          task {
             state.test.expectedExceptionCount <- int count
             return DUnit
           }

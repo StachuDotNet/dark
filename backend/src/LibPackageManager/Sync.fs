@@ -17,8 +17,8 @@ module PT = LibExecution.ProgramTypes
 
 /// Get the most recent sync time with a specific instance
 /// Returns None if no sync has occurred with this instance
-let getLastSyncDate (instanceID : PT.InstanceID) : Ply<Option<DarkDateTime.T>> =
-  uply {
+let getLastSyncDate (instanceID : PT.InstanceID) : Task<Option<DarkDateTime.T>> =
+  task {
     let! result =
       Sql.query
         """

@@ -18,8 +18,8 @@ module Type =
   let find
     ((accountID, branchID, location) :
       Option<PT.AccountID> * Option<PT.BranchID> * PT.PackageLocation)
-    : Ply<Option<PT.FQTypeName.Package>> =
-    uply {
+    : Task<Option<PT.FQTypeName.Package>> =
+    task {
       let modulesStr = String.concat "." location.modules
 
       return!
@@ -52,8 +52,8 @@ module Type =
         |> Sql.executeRowOptionAsync (fun read -> read.uuid "item_id")
     }
 
-  let get (id : uuid) : Ply<Option<PT.PackageType.PackageType>> =
-    uply {
+  let get (id : uuid) : Task<Option<PT.PackageType.PackageType>> =
+    task {
       return!
         Sql.query
           """
@@ -68,8 +68,8 @@ module Type =
 
   let getLocation
     ((accountID, branchID, id) : Option<PT.AccountID> * Option<PT.BranchID> * uuid)
-    : Ply<Option<PT.PackageLocation>> =
-    uply {
+    : Task<Option<PT.PackageLocation>> =
+    task {
       return!
         Sql.query
           """
@@ -105,8 +105,8 @@ module Value =
   let find
     ((accountID, branchID, location) :
       Option<PT.AccountID> * Option<PT.BranchID> * PT.PackageLocation)
-    : Ply<Option<PT.FQValueName.Package>> =
-    uply {
+    : Task<Option<PT.FQValueName.Package>> =
+    task {
       let modulesStr = String.concat "." location.modules
 
       return!
@@ -139,8 +139,8 @@ module Value =
         |> Sql.executeRowOptionAsync (fun read -> read.uuid "item_id")
     }
 
-  let get (id : uuid) : Ply<Option<PT.PackageValue.PackageValue>> =
-    uply {
+  let get (id : uuid) : Task<Option<PT.PackageValue.PackageValue>> =
+    task {
       return!
         Sql.query
           """
@@ -155,8 +155,8 @@ module Value =
 
   let getLocation
     ((accountID, branchID, id) : Option<PT.AccountID> * Option<PT.BranchID> * uuid)
-    : Ply<Option<PT.PackageLocation>> =
-    uply {
+    : Task<Option<PT.PackageLocation>> =
+    task {
       return!
         Sql.query
           """
@@ -192,8 +192,8 @@ module Fn =
   let find
     ((accountID, branchID, location) :
       Option<PT.AccountID> * Option<PT.BranchID> * PT.PackageLocation)
-    : Ply<Option<PT.FQFnName.Package>> =
-    uply {
+    : Task<Option<PT.FQFnName.Package>> =
+    task {
       let modulesStr = String.concat "." location.modules
 
       return!
@@ -226,8 +226,8 @@ module Fn =
         |> Sql.executeRowOptionAsync (fun read -> read.uuid "item_id")
     }
 
-  let get (id : uuid) : Ply<Option<PT.PackageFn.PackageFn>> =
-    uply {
+  let get (id : uuid) : Task<Option<PT.PackageFn.PackageFn>> =
+    task {
       return!
         Sql.query
           """
@@ -242,8 +242,8 @@ module Fn =
 
   let getLocation
     ((accountID, branchID, id) : Option<PT.AccountID> * Option<PT.BranchID> * uuid)
-    : Ply<Option<PT.PackageLocation>> =
-    uply {
+    : Task<Option<PT.PackageLocation>> =
+    task {
       return!
         Sql.query
           """
@@ -279,8 +279,8 @@ module Fn =
 let search
   ((accountID, branchID, query) :
     Option<PT.AccountID> * Option<PT.BranchID> * PT.Search.SearchQuery)
-  : Ply<PT.Search.SearchResults> =
-  uply {
+  : Task<PT.Search.SearchResults> =
+  task {
     let currentModule = String.concat "." query.currentModule
 
     let! submodules =

@@ -173,8 +173,8 @@ type TableStatsRow =
     diskHuman : string
     rowsHuman : string }
 
-let tableStats () : Ply<List<TableStatsRow>> =
-  uply {
+let tableStats () : Task<List<TableStatsRow>> =
+  task {
     let! pageCount =
       Sql.query "PRAGMA page_count;"
       |> Sql.executeRowAsync (fun r -> r.int64 "page_count")
@@ -198,8 +198,8 @@ let tableStats () : Ply<List<TableStatsRow>> =
 
     let! rowCounts =
       tables
-      |> Ply.List.mapSequentially (fun table ->
-        uply {
+      |> Task.mapSequentially (fun table ->
+        task {
           let! rows =
             Sql.query $"SELECT COUNT(*) as count FROM \"{table}\";"
             |> Sql.executeRowAsync (fun read -> read.int64 "count")

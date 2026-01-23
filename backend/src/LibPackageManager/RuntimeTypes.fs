@@ -1,5 +1,8 @@
 module LibPackageManager.RuntimeTypes
 
+open System.Threading.Tasks
+open FSharp.Control.Tasks
+
 open Prelude
 
 open Microsoft.Data.Sqlite
@@ -11,8 +14,8 @@ module BinarySerialization = LibBinarySerialization.BinarySerialization
 
 
 module Type =
-  let get (id : uuid) : Ply<Option<RT.PackageType.PackageType>> =
-    uply {
+  let get (id : uuid) : Task<Option<RT.PackageType.PackageType>> =
+    task {
       return!
         Sql.query
           """
@@ -27,8 +30,8 @@ module Type =
 
 
 module Value =
-  let get (id : uuid) : Ply<Option<RT.PackageValue.PackageValue>> =
-    uply {
+  let get (id : uuid) : Task<Option<RT.PackageValue.PackageValue>> =
+    task {
       return!
         Sql.query
           """
@@ -43,8 +46,8 @@ module Value =
 
 
 module Fn =
-  let get (id : uuid) : Ply<Option<RT.PackageFn.PackageFn>> =
-    uply {
+  let get (id : uuid) : Task<Option<RT.PackageFn.PackageFn>> =
+    task {
       return!
         Sql.query
           """

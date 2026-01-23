@@ -1,13 +1,25 @@
 /// Standard libraries for reading data from the user via the CLI
 module BuiltinCli.Libs.Stdin
 
+open System.Threading.Tasks
+open FSharp.Control.Tasks
+
+
 open System
 
 open Prelude
 
 open LibExecution.RuntimeTypes
 module Builtin = LibExecution.Builtin
+
+open System.Threading.Tasks
+open FSharp.Control.Tasks
+
 module PackageIDs = LibExecution.PackageIDs
+
+open System.Threading.Tasks
+open FSharp.Control.Tasks
+
 
 open Builtin.Shortcuts
 
@@ -214,7 +226,7 @@ let fns : List<BuiltInFn> =
               Map [ "key", key; "modifiers", modifiers; "keyChar", keyChar ]
             )
 
-          Ply(keyRead)
+          Task.FromResult(keyRead)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -230,7 +242,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DUnit ] ->
           let input = System.Console.ReadLine()
-          if input = null then Ply(DString "") else Ply(DString input)
+          if input = null then Task.FromResult(DString "") else Task.FromResult(DString input)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -268,7 +280,7 @@ let fns : List<BuiltInFn> =
             let buffer = Array.zeroCreate (int length)
             let bytesRead = System.Console.In.Read(buffer, 0, (int length))
             let input = System.String(buffer, 0, bytesRead)
-            Ply(DString input)
+            Task.FromResult(DString input)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

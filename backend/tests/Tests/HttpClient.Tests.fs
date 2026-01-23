@@ -109,8 +109,8 @@ module Internal =
 let parseSingleTestFromFile
   (filename : string)
   (test : string)
-  : Ply<Internal.Test.PTTest> =
-  uply {
+  : Task<Internal.Test.PTTest> =
+  task {
     let! (state : RT.ExecutionState) =
       let canvasID = System.Guid.NewGuid()
       executionStateFor pmPT canvasID false false Map.empty
@@ -213,7 +213,7 @@ let makeTest versionName filename =
         // compressed
         |> String.replace "LENGTH" (string response.body.Length)
         |> parseSingleTestFromFile "httpclient.tests.fs"
-        |> Ply.toTask
+        |> 
 
       // Run the handler (call the HTTP client)
       // Note: this will update the corresponding value in `testCases` with the

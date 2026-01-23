@@ -4,6 +4,9 @@
 /// but we need RT to access lambda bodies when passed as variables rather than inline.
 module LibExecution.RTQueryCompiler
 
+open System.Threading.Tasks
+open FSharp.Control.Tasks
+
 open Prelude
 module RT = RuntimeTypes
 
@@ -75,8 +78,8 @@ let getSqlSpec
 let getFnBody
   (exeState : RT.ExecutionState)
   (pkgId : RT.FQFnName.Package)
-  : Ply.Ply<Option<RT.Instructions>> =
-  uply {
+  : Task<Option<RT.Instructions>> =
+  task {
     let! fn = exeState.fns.package pkgId
     return Option.map (fun (f : RT.PackageFn.PackageFn) -> f.body) fn
   }
@@ -88,8 +91,8 @@ let partialEvaluate
   (fnName : RT.FQFnName.FQFnName)
   (typeArgs : List<RT.TypeReference>)
   (args : List<RT.Dval>)
-  : Ply.Ply<RT.Dval> =
-  uply {
+  : Task<RT.Dval> =
+  task {
     // Build instructions to call the function
     let fnReg = 0
     let argRegs = [ 1 .. List.length args ]
@@ -293,7 +296,7 @@ let rec inlineAndExecute
     Error "Max inline depth exceeded"
   else
     // Look up the function body synchronously
-    let fnBodyOpt = getFnBody exeState fnId |> Ply.toTask |> _.Result
+    let fnBodyOpt = getFnBody exeState fnId |> _.Result
     match fnBodyOpt with
     | None -> Error $"Function not found for inlining: {fnId}"
     | Some fnBody ->
@@ -382,9 +385,7 @@ and executeInstruction
         if List.length argDvals = List.length args then
           // All args are Literals - partial evaluate
           let result =
-            partialEvaluate exeState fnName typeArgs argDvals
-            |> Ply.toTask
-            |> _.Result
+            (partialEvaluate exeState fnName typeArgs argDvals).Result
           Ok(state.withReg (createTo, Literal result))
         else
           // Not all args are Literals - try to inline package functions

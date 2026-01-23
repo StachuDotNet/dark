@@ -23,7 +23,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid instanceID ] ->
-          uply {
+          task {
             let! lastSync = LibPackageManager.Sync.getLastSyncDate instanceID
 
             return lastSync |> Option.map DDateTime |> Dval.option KTDateTime
@@ -45,7 +45,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid instanceID; DInt64 opsPushed; DInt64 opsFetched ] ->
-          uply {
+          task {
             do! LibPackageManager.Sync.recordSync instanceID opsPushed opsFetched
 
             return DUnit

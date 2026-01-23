@@ -160,7 +160,7 @@ module DvalComparator =
 module Sort =
   exception InvalidSortComparatorInt of int64
 
-  type Comparer = Dval -> Dval -> Ply<int>
+  type Comparer = Dval -> Dval -> Task<int>
 
   type Array = array<Dval>
 
@@ -180,8 +180,8 @@ module Sort =
     (halfLen : int)
     (length : int)
     (comparer : Comparer)
-    : Ply<unit> =
-    uply {
+    : Task<unit> =
+    task {
       let mutable leftHalfIndex = 0
       let mutable rightHalfIndex = index + halfLen
       let rightHalfEnd = index + length
@@ -227,8 +227,8 @@ module Sort =
     (length : int)
     (comparer : Comparer)
     (scratchSpace : Array)
-    : Ply<unit> =
-    uply {
+    : Task<unit> =
+    task {
       if length <= 1 then
         return ()
       elif length = 2 then
@@ -257,13 +257,13 @@ module Sort =
     (index : int)
     (length : int)
     (comparer : Comparer)
-    : Ply<unit> =
+    : Task<unit> =
     let scratchSpace =
       System.Array.CreateInstance(typeof<Dval>, arrayToSort.Length / 2) :?> Array
 
     mergeSortHelper arrayToSort index length comparer scratchSpace
 
-  let sort (comparer : Comparer) (arrayToSort : Array) : Ply<unit> =
+  let sort (comparer : Comparer) (arrayToSort : Array) : Task<unit> =
     sequentialSort arrayToSort 0 arrayToSort.Length comparer
 
 let varA = TVariable "a"
@@ -279,7 +279,7 @@ let fns : List<BuiltInFn> =
       description = "Returns the number of values in <param list>"
       fn =
         (function
-        | _, _, _, [ DList(_, l) ] -> Ply(Dval.int64 (l.Length))
+        | _, _, _, [ DList(_, l) ] -> Task.FromResult(Dval.int64 (l.Length))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -300,7 +300,7 @@ let fns : List<BuiltInFn> =
           List.distinct l
           |> List.sortWith DvalComparator.compareDvalInt
           |> fun l -> DList(vt, l)
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -324,7 +324,7 @@ let fns : List<BuiltInFn> =
           list
           |> List.sortWith DvalComparator.compareDvalInt
           |> (fun l -> DList(vt, l))
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -344,7 +344,7 @@ let fns : List<BuiltInFn> =
         | _, vm, _, [ DList(vt1, l1); DList(_vt2, l2) ] ->
           // VTTODO should fail here in the case of vt1 conflicting with vt2?
           // (or is this handled by the interpreter?)
-          Ply(TypeChecker.DvalCreator.list vm.threadID vt1 (List.append l1 l2))
+          Task.FromResult(TypeChecker.DvalCreator.list vm.threadID vt1 (List.append l1 l2))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -363,7 +363,7 @@ let fns : List<BuiltInFn> =
         let optType = VT.unknownTODO
         (function
         | _, _, _, [ DList(_, []) ] ->
-          TypeChecker.DvalCreator.optionNone optType |> Ply
+          TypeChecker.DvalCreator.optionNone optType |> Task.FromResult
         | _, vm, _, [ DList(_, l) ] ->
           // Will return <= (length - 1)
           // Maximum value is Int64.MaxValue which is half of UInt64.MaxValue, but
@@ -372,7 +372,7 @@ let fns : List<BuiltInFn> =
           let index = RNG.GetInt32(l.Length)
           (List.tryItem index l)
           |> TypeChecker.DvalCreator.option vm.threadID optType
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure

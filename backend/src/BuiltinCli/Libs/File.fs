@@ -23,7 +23,7 @@ let fns : List<BuiltInFn> =
         let resultError = Dval.resultError (KTList(ValueType.Known KTUInt8)) KTString
         (function
         | _, _, _, [ DString path ] ->
-          uply {
+          task {
             try
               let path =
                 path.Replace(
@@ -54,7 +54,7 @@ let fns : List<BuiltInFn> =
         let resultError = Dval.resultError KTUnit KTString
         (function
         | _, _, _, [ DList(_, contents); DString path ] ->
-          uply {
+          task {
             try
               let path =
                 path.Replace(
@@ -85,7 +85,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
+          task {
             try
               System.IO.File.Delete path
               return Dval.resultOk KTUnit KTString DUnit
@@ -113,7 +113,7 @@ let fns : List<BuiltInFn> =
         let resultError = Dval.resultError KTUnit KTString
         (function
         | _, _, _, [ DString path; DString content ] ->
-          uply {
+          task {
             try
               do! System.IO.File.AppendAllTextAsync(path, content)
               return resultOk DUnit
@@ -133,8 +133,8 @@ let fns : List<BuiltInFn> =
       description =
         "Creates a new temporary file with a unique name in the system's temporary directory. Returns a Result type containing the temporary file path or an error if the creation fails."
       fn =
-        let resultOk r = Dval.resultOk KTString KTString r |> Ply
-        let resultError r = Dval.resultError KTString KTString r |> Ply
+        let resultOk r = Dval.resultOk KTString KTString r |> Task.FromResult
+        let resultError r = Dval.resultError KTString KTString r |> Task.FromResult
         (function
         | _, _, _, [ DUnit ] ->
           try
@@ -157,7 +157,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
+          task {
             try
               let attrs = System.IO.File.GetAttributes(path)
               let isDir = attrs.HasFlag(System.IO.FileAttributes.Directory)
@@ -180,7 +180,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
+          task {
             try
               let attrs = System.IO.File.GetAttributes(path)
               let isDir = attrs.HasFlag(System.IO.FileAttributes.Directory)
@@ -205,7 +205,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
+          task {
             try
               let exists =
                 System.IO.File.Exists(path) || System.IO.Directory.Exists(path)
@@ -226,8 +226,8 @@ let fns : List<BuiltInFn> =
       description =
         "Returns the size of the file at the specified <param path> in bytes, or an error if the file does not exist or an error occurs"
       fn =
-        let resultOk r = Dval.resultOk KTInt64 KTString r |> Ply
-        let resultError r = Dval.resultError KTInt64 KTString r |> Ply
+        let resultOk r = Dval.resultOk KTInt64 KTString r |> Task.FromResult
+        let resultError r = Dval.resultError KTInt64 KTString r |> Task.FromResult
         (function
         | _, _, _, [ DString path ] ->
           try

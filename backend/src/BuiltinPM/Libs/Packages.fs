@@ -41,7 +41,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUnit ] ->
-          uply {
+          task {
             let! stats = LibPackageManager.Stats.get ()
 
             return
@@ -77,7 +77,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ accountID; branchID; location ] ->
-          uply {
+          task {
             let accountID = PT2DT.AccountID.optionFromDT accountID
             let branchID = PT2DT.BranchID.optionFromDT branchID
             let location = PT2DT.PackageLocation.fromDT location
@@ -100,7 +100,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         let optType = KTCustomType(PT2DT.PackageType.typeName, [])
         (function
         | _, _, _, [ DUuid id ] ->
-          uply {
+          task {
             let! result = pm.getType id
             return result |> Option.map PT2DT.PackageType.toDT |> Dval.option optType
           }
@@ -126,7 +126,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ accountID; branchID; location ] ->
-          uply {
+          task {
             let accountID = PT2DT.AccountID.optionFromDT accountID
             let branchID = PT2DT.BranchID.optionFromDT branchID
             let location = PT2DT.PackageLocation.fromDT location
@@ -148,7 +148,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid id ] ->
-          uply {
+          task {
             let! result = pm.getValue id
             return
               result
@@ -177,7 +177,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ accountID; branchID; location ] ->
-          uply {
+          task {
             let accountID = PT2DT.AccountID.optionFromDT accountID
             let branchID = PT2DT.BranchID.optionFromDT branchID
             let location = PT2DT.PackageLocation.fromDT location
@@ -199,7 +199,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid id ] ->
-          uply {
+          task {
             let! result = pm.getFn id
             return
               result
@@ -226,7 +226,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ accountID; branchID; query as DRecord(_, _, _, _fields) ] ->
-          uply {
+          task {
             let accountID = PT2DT.AccountID.optionFromDT accountID
             let branchID = PT2DT.BranchID.optionFromDT branchID
             let searchQuery = PT2DT.Search.SearchQuery.fromDT query
@@ -252,7 +252,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ accountID; branchID; DUuid id ] ->
-          uply {
+          task {
             let accountID = C2DT.Option.fromDT D.uuid accountID
             let branchID = C2DT.Option.fromDT D.uuid branchID
             let! result = pm.getTypeLocation (accountID, branchID, id)
@@ -279,7 +279,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ accountID; branchID; DUuid id ] ->
-          uply {
+          task {
             let accountID = C2DT.Option.fromDT D.uuid accountID
             let branchID = C2DT.Option.fromDT D.uuid branchID
             let! result = pm.getValueLocation (accountID, branchID, id)
@@ -307,7 +307,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ accountID; branchID; DUuid id ] ->
-          uply {
+          task {
             let accountID = C2DT.Option.fromDT D.uuid accountID
             let branchID = C2DT.Option.fromDT D.uuid branchID
             let! result = pm.getFnLocation (accountID, branchID, id)

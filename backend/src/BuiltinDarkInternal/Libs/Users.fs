@@ -22,7 +22,7 @@ let fns : List<BuiltInFn> =
         let resultError = Dval.resultError KTUuid KTString
         (function
         | _, _, _, [ DString name ] ->
-          uply {
+          task {
             let! result = LibCloud.Account.createUser name
             match result with
             | Ok userID -> return resultOk (DUuid userID)

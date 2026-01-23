@@ -35,7 +35,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUnit ] ->
-          uply {
+          task {
             let! scripts = Scripts.list ()
             return
               scripts
@@ -56,7 +56,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DString name ] ->
-          uply {
+          task {
             let! scriptOpt = Scripts.get name
             return
               scriptOpt
@@ -77,7 +77,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DString name; DString text ] ->
-          uply {
+          task {
             let! result = Scripts.add name text
             return
               result
@@ -99,7 +99,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DString name; DString text ] ->
-          uply {
+          task {
             let! result = Scripts.update name text
             return
               result
@@ -121,7 +121,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DString name ] ->
-          uply {
+          task {
             let! result = Scripts.delete name
             return
               result

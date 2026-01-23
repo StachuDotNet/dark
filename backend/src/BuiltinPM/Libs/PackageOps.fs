@@ -45,7 +45,7 @@ let fns : List<BuiltInFn> =
         let resultError = Dval.resultError KTInt64 KTString
         (function
         | _, _, _, [ instanceID; branchID; createdBy; DList(_vtTODO, ops) ] ->
-          uply {
+          task {
             try
               // Deserialize dvals
               let branchID = C2DT.Option.fromDT D.uuid branchID
@@ -81,7 +81,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ branchID; DInt64 limit ] ->
-          uply {
+          task {
             let branchID = C2DT.Option.fromDT D.uuid branchID
 
             let! ops = LibPackageManager.Queries.getRecentOps branchID limit
@@ -106,7 +106,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DInt64 limit ] ->
-          uply {
+          task {
             let! ops = LibPackageManager.Queries.getRecentOpsAllBranches limit
             return
               DList(
@@ -135,7 +135,7 @@ let fns : List<BuiltInFn> =
         let resultError = Dval.resultError KTInt64 KTString
         (function
         | _, _, _, [ branchID; DUuid itemId; DUuid reviewerId ] ->
-          uply {
+          task {
             try
               let branchID = C2DT.Option.fromDT D.uuid branchID
               let op = PT.PackageOp.ApproveItem(itemId, branchID, reviewerId)
@@ -173,7 +173,7 @@ let fns : List<BuiltInFn> =
         let resultError = Dval.resultError KTInt64 KTString
         (function
         | _, _, _, [ branchID; DUuid itemId; DUuid reviewerId; DString reason ] ->
-          uply {
+          task {
             try
               let branchID = C2DT.Option.fromDT D.uuid branchID
               let op = PT.PackageOp.RejectItem(itemId, branchID, reviewerId, reason)
@@ -208,7 +208,7 @@ let fns : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ targetInstanceID; DDateTime since ] ->
-          uply {
+          task {
             let targetID = C2DT.Option.fromDT D.uuid targetInstanceID
 
             let! opsWithMetadata =
