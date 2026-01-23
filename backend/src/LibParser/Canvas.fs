@@ -318,7 +318,8 @@ let toPT
           let context =
             { WT2PT.Context.currentFnName = None
               WT2PT.Context.isInFunction = false
-              WT2PT.Context.argMap = Map.empty }
+              WT2PT.Context.argMap = Map.empty
+              WT2PT.Context.currentPackageFnId = None }
           let! expr =
             WT2PT.Expr.toPT
               accountID
@@ -338,7 +339,8 @@ let toPT
         let context =
           { WT2PT.Context.currentFnName = None
             WT2PT.Context.isInFunction = false
-            WT2PT.Context.argMap = Map.empty }
+            WT2PT.Context.argMap = Map.empty
+            WT2PT.Context.currentPackageFnId = None }
         WT2PT.Expr.toPT
           accountID
           branchId

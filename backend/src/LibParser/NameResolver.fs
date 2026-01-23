@@ -210,24 +210,70 @@ let resolveValueName
 let resolveFnName
   (accountID : Option<PT.AccountID>)
   (branchId : Option<PT.BranchID>)
-  (builtinFns : Set<RT.FQFnName.Builtin>)
+  (builtinFns : Map<RT.FQFnName.Builtin, RT.BuiltInFn>)
   (packageManager : PT.PackageManager)
   (onMissing : OnMissing)
   (currentModule : List<string>)
+  (callerPackageFnId : Option<System.Guid>)
   (name : WT.Name)
   : Ply<PT.NameResolution<PT.FQFnName.FQFnName>> =
-  match name with
-  | WT.KnownBuiltin(n, v) -> Ok(PT.FQFnName.fqBuiltIn n v) |> Ply
-  | WT.Unresolved given ->
-    resolveGenericName
-      accountID
-      branchId
-      (Some builtinFns)
-      onMissing
-      currentModule
-      given
-      FS2WT.Expr.parseFnName
-      packageManager.findFn
-      PT.FQFnName.FQFnName.Package
-      (fun (n, v) -> PT.FQFnName.Builtin { name = n; version = v })
-      (fun (n, v) -> { RT.FQFnName.Builtin.name = n; version = v })
+  uply {
+    match name with
+    | WT.KnownBuiltin(n, v) ->
+      // Check usage restriction for known builtins
+      let builtinKey : RT.FQFnName.Builtin = { name = n; version = v }
+      match Map.tryFind builtinKey builtinFns with
+      | Some builtinFn ->
+        match builtinFn.usageRestriction with
+        | RT.AllowAny -> return Ok(PT.FQFnName.fqBuiltIn n v)
+        | RT.AllowOne allowedFnId ->
+          match callerPackageFnId with
+          | Some callerId when callerId = allowedFnId ->
+            return Ok(PT.FQFnName.fqBuiltIn n v)
+          | _ ->
+            return
+              Error(
+                NRE.NotFound
+                  [ $"Builtin.{n}_v{v} can only be called by package function with ID {allowedFnId}" ]
+              )
+      | None ->
+        // Builtin not found in map
+        return Error(NRE.NotFound [ $"Builtin.{n}_v{v}" ])
+    | WT.Unresolved given ->
+      let! result =
+        resolveGenericName
+          accountID
+          branchId
+          (Some(builtinFns |> Map.keys |> Set))
+          onMissing
+          currentModule
+          given
+          FS2WT.Expr.parseFnName
+          packageManager.findFn
+          PT.FQFnName.FQFnName.Package
+          (fun (n, v) -> PT.FQFnName.Builtin { name = n; version = v })
+          (fun (n, v) -> { RT.FQFnName.Builtin.name = n; version = v })
+
+      // Check usage restriction if resolved to a builtin
+      match result with
+      | Ok(PT.FQFnName.Builtin builtinName) ->
+        let builtinKey : RT.FQFnName.Builtin =
+          { name = builtinName.name; version = builtinName.version }
+        match Map.tryFind builtinKey builtinFns with
+        | Some builtinFn ->
+          match builtinFn.usageRestriction with
+          | RT.AllowAny -> return result
+          | RT.AllowOne allowedFnId ->
+            match callerPackageFnId with
+            | Some callerId when callerId = allowedFnId -> return result
+            | _ ->
+              return
+                Error(
+                  NRE.NotFound
+                    [ $"Builtin.{builtinName.name}_v{builtinName.version} can only be called by package function with ID {allowedFnId}" ]
+                )
+        | None ->
+          // Should not happen since resolveGenericName found it
+          return result
+      | _ -> return result
+  }

@@ -32,7 +32,8 @@ let parsePTExpr
   let context =
     { WT2PT.Context.currentFnName = None
       WT2PT.Context.isInFunction = false
-      WT2PT.Context.argMap = Map.empty }
+      WT2PT.Context.argMap = Map.empty
+      WT2PT.Context.currentPackageFnId = None }
   code
   |> initialParse filename
   |> WT2PT.Expr.toPT accountID branchId builtins pm onMissing [] context

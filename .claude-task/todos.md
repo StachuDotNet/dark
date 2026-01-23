@@ -1,26 +1,27 @@
 # Task Todos: Restrict Builtin Usage to One Package Function Each
 
 ## Phase 1: Initial Infrastructure
-- [ ] Add `UsageRestriction` type to RuntimeTypes.fs
+- [x] Add `UsageRestriction` type to RuntimeTypes.fs
   - Add type definition: `type UsageRestriction = AllowAny | AllowOne of FQFnName.Package`
   - Location: `/home/dark/app/backend/src/LibExecution/RuntimeTypes.fs` around line 1320
 
-- [ ] Add `usageRestriction` field to `BuiltInFn` record
+- [x] Add `usageRestriction` field to `BuiltInFn` record
   - Add field: `usageRestriction : UsageRestriction`
   - Location: `/home/dark/app/backend/src/LibExecution/RuntimeTypes.fs` line 1323
   - Default to `AllowAny` for now in all existing builtins
 
-- [ ] Update all builtin library files to include `usageRestriction = AllowAny`
+- [x] Update all builtin library files to include `usageRestriction = AllowAny`
   - Update template in each file in `/home/dark/app/backend/src/BuiltinExecution/Libs/*.fs`
   - Files: Bool.fs, Int8.fs, UInt8.fs, Int16.fs, UInt16.fs, Int32.fs, UInt32.fs, Int64.fs, UInt64.fs, Int128.fs, UInt128.fs, Float.fs, Math.fs, Bytes.fs, Char.fs, String.fs, List.fs, Dict.fs, DateTime.fs, Uuid.fs, Base64.fs, Json.fs, AltJson.fs, HttpClient.fs, LanguageTools.fs, Parser.fs, Crypto.fs, X509.fs, NoModule.fs
+  - Also updated: BuiltinCli, BuiltinCliHost, BuiltinCloudExecution, BuiltinDarkInternal, BuiltinPM, and test files
 
-- [ ] Implement restriction checking in NameResolver.fs
+- [x] Implement restriction checking in NameResolver.fs
   - Enhance `resolveFnName` to accept caller context (current package function ID)
   - Add validation logic to check if builtin's `usageRestriction` allows the caller
   - Return appropriate error if restriction violated
   - Location: `/home/dark/app/backend/src/LibParser/NameResolver.fs` around line 210-234
 
-- [ ] Thread caller context through WrittenTypesToProgramTypes.fs
+- [x] Thread caller context through WrittenTypesToProgramTypes.fs
   - Update `Context` type to include current package function ID
   - Pass this context through to `resolveFnName` calls
   - Location: `/home/dark/app/backend/src/LibParser/WrittenTypesToProgramTypes.fs`
@@ -31,11 +32,11 @@
   - Test that AllowOne blocks unauthorized callers
   - Test that AllowOne allows the specific authorized caller
 
-- [ ] Run tests to verify infrastructure works
+- [x] Run tests to verify infrastructure works
   - Command: `./scripts/run-backend-tests`
-  - Verify all tests pass with AllowAny defaults
+  - Verify all tests pass with AllowAny defaults (9,313 tests passed!)
 
-- [ ] Commit initial infrastructure
+- [x] Commit initial infrastructure
   - Commit message: "Add UsageRestriction infrastructure for builtins"
 
 ## Phase 2: Easy Restrictions (AllowOne)

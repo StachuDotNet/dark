@@ -20,7 +20,9 @@ type Context =
     isInFunction : bool
     // Maps parameter names to their indices within the current function
     // Used to convert EVariable references to EArg when they refer to function parameters
-    argMap : Map<string, int> }
+    argMap : Map<string, int>
+    // ID of the current package function being parsed (used for builtin usage restrictions)
+    currentPackageFnId : Option<System.Guid> }
 
 module InfixFnName =
   let toPT (name : WT.InfixFnName) : PT.InfixFnName =
@@ -306,10 +308,11 @@ module Expr =
           NR.resolveFnName
             accountID
             branchId
-            (builtins.fns |> Map.keys |> Set)
+            builtins.fns
             pm
             NR.OnMissing.Allow
             currentModule
+            context.currentPackageFnId
             name
         match fnName with
         | Ok _ as name -> return PT.EFnName(id, name)
@@ -344,10 +347,11 @@ module Expr =
                 NR.resolveFnName
                   accountID
                   branchId
-                  (builtins.fns |> Map.keys |> Set)
+                  builtins.fns
                   pm
                   NR.OnMissing.Allow
                   currentModule
+                  context.currentPackageFnId
                   name
               let expr =
                 match fnName with
@@ -370,10 +374,11 @@ module Expr =
               NR.resolveFnName
                 accountID
                 branchId
-                (builtins.fns |> Map.keys |> Set)
+                builtins.fns
                 pm
                 NR.OnMissing.Allow
                 currentModule
+                context.currentPackageFnId
                 name
             let expr =
               match fnName with
@@ -401,10 +406,11 @@ module Expr =
           NR.resolveFnName
             accountID
             branchId
-            (builtins.fns |> Map.keys |> Set)
+            builtins.fns
             pm
             NR.OnMissing.Allow
             currentModule
+            context.currentPackageFnId
             name
         return PT.EFnName(id, fnName)
       | WT.ELambda(id, pats, body) ->
@@ -589,10 +595,11 @@ module Expr =
               NR.resolveFnName
                 accountID
                 branchId
-                (builtins.fns |> Map.keys |> Set)
+                builtins.fns
                 pm
                 NR.OnMissing.Allow
                 currentModule
+                context.currentPackageFnId
                 asUserFnName
             return
               match resolved with
@@ -605,10 +612,11 @@ module Expr =
               NR.resolveFnName
                 accountID
                 branchId
-                (builtins.fns |> Map.keys |> Set)
+                builtins.fns
                 pm
                 NR.OnMissing.Allow
                 currentModule
+                context.currentPackageFnId
                 asUserFnName
             return
               match resolved with
@@ -623,10 +631,11 @@ module Expr =
             NR.resolveFnName
               accountID
               branchId
-              (builtins.fns |> Map.keys |> Set)
+              builtins.fns
               pm
               NR.OnMissing.Allow
               currentModule
+              context.currentPackageFnId
               asUserFnName
           return
             match resolved with
@@ -666,10 +675,11 @@ module Expr =
           NR.resolveFnName
             accountID
             branchId
-            (builtins.fns |> Map.keys |> Set)
+            builtins.fns
             pm
             NR.OnMissing.Allow
             currentModule
+            context.currentPackageFnId
             name
         let! args = Ply.List.mapSequentially (toPT context) args
         match fnName with
@@ -681,10 +691,11 @@ module Expr =
           NR.resolveFnName
             accountID
             branchId
-            (builtins.fns |> Map.keys |> Set)
+            builtins.fns
             pm
-            onMissing
+            NR.OnMissing.Allow
             currentModule
+            context.currentPackageFnId
             name
         let! typeArgs =
           Ply.List.mapSequentially
@@ -861,7 +872,10 @@ module PackageValue =
     : Ply<PT.PackageValue.PackageValue> =
     uply {
       let context =
-        { currentFnName = None; isInFunction = false; argMap = Map.empty }
+        { currentFnName = None
+          isInFunction = false
+          argMap = Map.empty
+          currentPackageFnId = None }
       let! body =
         Expr.toPT
           accountID
@@ -930,10 +944,12 @@ module PackageFn =
         |> NEList.toList
         |> List.mapi (fun i param -> param.name, i)
         |> Map.ofList
+      let pkgFnId = PackageIDs.Fn.idForName fn.name.owner fn.name.modules fn.name.name
       let context =
         { currentFnName = Some(currentModule @ [ fn.name.name ])
           isInFunction = true
-          argMap = argMap }
+          argMap = argMap
+          currentPackageFnId = Some pkgFnId }
       let! body =
         Expr.toPT
           accountID
@@ -1005,7 +1021,10 @@ module Handler =
     : Ply<PT.Handler.T> =
     uply {
       let context =
-        { currentFnName = None; isInFunction = false; argMap = Map.empty }
+        { currentFnName = None
+          isInFunction = false
+          argMap = Map.empty
+          currentPackageFnId = None }
       let! ast =
         Expr.toPT
           accountID

@@ -1,3 +1,60 @@
+<!-- TASK CONTEXT START -->
+# Active Task - Planning Phase
+
+You have been given a task to complete. Your job is to:
+
+1. **Research** the codebase to understand what needs to be done
+2. **Create a plan** with specific, actionable todos
+3. **Signal** when planning is complete
+
+## The Task
+
+Only expose Builtins to one package fn each, where possible.
+
+Darklang's set of available code is _mostly_ written in Darklang, but some core things are "builtins" written in F#.
+Currently, any Dark fn may reference/use any builtin.
+But we'd like to restrict things such that only ONE package fn may reference each builtin. We can do this gradually.
+
+Commits should be:
+- initial infrastructure with
+	- type usageRestriction = AllowAny | AllowOne of Location
+- Do all the easy restrictions (AllowOne)
+- further commits for the harder restrictions
+
+run-backend-tests at end to see if things work
+
+Unfortunately, the runtime doesn't know about the Locations, so this will need to SOMEHOW be a restriction set at parse-time
+
+## Your Instructions
+
+1. Read and understand the relevant code
+2. Create `.claude-task/todos.md` with a detailed checklist of specific tasks
+3. **When planning is complete**, write "ready" to `.claude-task/phase`:
+   ```bash
+   echo "ready" > .claude-task/phase
+   ```
+   This signals the TUI that you're done planning.
+
+4. Tell the user: "Planning complete. Review .claude-task/todos.md. Execution will start automatically."
+
+## What happens next
+
+The automated loop will:
+- Run you repeatedly until all todos are done
+- You read CLAUDE.md and .claude-task/todos.md each iteration
+- Mark todos as [x] when complete
+- Write "done" to .claude-task/phase when ALL todos complete
+
+## Important
+
+- Be thorough in research before creating the plan
+- Keep todos specific and actionable
+- Include testing in the plan
+- You can interact with the user now during planning
+- **COMMIT your plan** before signaling ready (git add . && git commit -m "plan: <task summary>")
+
+<!-- TASK CONTEXT END -->
+
 # This is the main Darklang monorepo. Please assist in the development of this language+platform.
 
 ## External resources:
