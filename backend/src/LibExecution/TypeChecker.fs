@@ -635,62 +635,61 @@ module DvalCreator =
             task {
               // Basic validation
               if fieldName = "" then
-                return! Task.FromResult(RTE.Records.CreationEmptyKey |> RTE.Record |> raiseRTE threadID)
-
-              if Map.containsKey fieldName fieldsSoFar then
-                return! Task.FromResult(RTE.Records.CreationDuplicateField fieldName
-                                        |> RTE.Record
-                                        |> raiseRTE threadID)
-
-              // Find and validate field
-              match expectedFields |> NEList.find (fun f -> f.name = fieldName) with
-              | None ->
-                return! Task.FromResult(RTE.Records.CreationFieldNotExpected fieldName
-                                        |> RTE.Record
-                                        |> raiseRTE threadID)
-
-              | Some fieldDef ->
-                let! expected = TypeReference.toVT types tst fieldDef.typ
-                match! unify types tst fieldDef.typ fieldValue with
-                | Error _path ->
-                  return! Task.FromResult(RTE.Records.CreationFieldOfWrongType(
-                                            fieldName,
-                                            expected,
-                                            Dval.toValueType fieldValue,
-                                            fieldValue
-                                          )
-                                          |> RTE.Record
-                                          |> raiseRTE threadID)
-
-                | Ok newTST ->
-                  let! expected = TypeReference.toVT types newTST fieldDef.typ
-                  // Update resultant typeArgs based on what we learned from this field
-                  // , by checking the TST.
-                  let newTypeArgs =
-                    currentTypeArgs
-                    |> List.map (fun (paramName, vt) ->
-                      match vt with
-                      | ValueType.Unknown ->
-                        match Map.tryFind paramName newTST with
-                        | Some known -> (paramName, known)
-                        | None -> (paramName, vt)
-
-                      | known ->
-                        match ValueType.merge known vt with
-                        | Ok merged -> (paramName, merged)
-                        | Error() ->
-                          RTE.Records.CreationFieldOfWrongType(
-                            fieldName,
-                            expected,
-                            Dval.toValueType fieldValue,
-                            fieldValue
-                          )
+                return (RTE.Records.CreationEmptyKey |> RTE.Record |> raiseRTE threadID)
+              elif Map.containsKey fieldName fieldsSoFar then
+                return (RTE.Records.CreationDuplicateField fieldName
+                        |> RTE.Record
+                        |> raiseRTE threadID)
+              else
+                // Find and validate field
+                match expectedFields |> NEList.find (fun f -> f.name = fieldName) with
+                | None ->
+                  return (RTE.Records.CreationFieldNotExpected fieldName
                           |> RTE.Record
                           |> raiseRTE threadID)
 
-                  let fields = Map.add fieldName fieldValue fieldsSoFar
+                | Some fieldDef ->
+                  let! expected = TypeReference.toVT types tst fieldDef.typ
+                  match! unify types tst fieldDef.typ fieldValue with
+                  | Error _path ->
+                    return (RTE.Records.CreationFieldOfWrongType(
+                              fieldName,
+                              expected,
+                              Dval.toValueType fieldValue,
+                              fieldValue
+                            )
+                            |> RTE.Record
+                            |> raiseRTE threadID)
 
-                  return (fields, newTypeArgs, newTST)
+                  | Ok newTST ->
+                    let! expected = TypeReference.toVT types newTST fieldDef.typ
+                    // Update resultant typeArgs based on what we learned from this field
+                    // , by checking the TST.
+                    let newTypeArgs =
+                      currentTypeArgs
+                      |> List.map (fun (paramName, vt) ->
+                        match vt with
+                        | ValueType.Unknown ->
+                          match Map.tryFind paramName newTST with
+                          | Some known -> (paramName, known)
+                          | None -> (paramName, vt)
+
+                        | known ->
+                          match ValueType.merge known vt with
+                          | Ok merged -> (paramName, merged)
+                          | Error() ->
+                            RTE.Records.CreationFieldOfWrongType(
+                              fieldName,
+                              expected,
+                              Dval.toValueType fieldValue,
+                              fieldValue
+                            )
+                            |> RTE.Record
+                            |> raiseRTE threadID)
+
+                    let fields = Map.add fieldName fieldValue fieldsSoFar
+
+                    return (fields, newTypeArgs, newTST)
             })
           (Map.empty, resolvedTypeArgs, tst)
           fields

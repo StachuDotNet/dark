@@ -154,26 +154,27 @@ let execute (exeState : ExecutionState) (vm : VMState) : Task<Dval> =
         | Source -> Task.FromResult(snd vm.rootInstrData)
 
         | Lambda(parentContext, lambdaID) ->
-          let lambda =
-            (match Map.tryFind (parentContext, lambdaID) vm.lambdaInstrCache with
-             | Some l -> l
-             | None ->
-               match Map.tryFind (Source, lambdaID) vm.lambdaInstrCache with
-               | Some l -> l
-               | None ->
-                 Exception.raiseInternal
-                   "lambda not found"
-                   [ "lambdaID", lambdaID; "parentContext", parentContext ])
-            |> _.instructions
+          let lambdaImpl =
+            match Map.tryFind (parentContext, lambdaID) vm.lambdaInstrCache with
+            | Some l -> l
+            | None ->
+              match Map.tryFind (Source, lambdaID) vm.lambdaInstrCache with
+              | Some l -> l
+              | None ->
+                Exception.raiseInternal
+                  "lambda not found"
+                  [ "lambdaID", lambdaID; "parentContext", parentContext ]
 
-          { instructions = List.toArray lambda.instructions
-            resultReg = lambda.resultIn }
+          let instructions = lambdaImpl.instructions
+
+          { instructions = List.toArray instructions.instructions
+            resultReg = instructions.resultIn }
           |> Task.FromResult
 
         | Function(FQFnName.Builtin _) ->
           // we should error in some better way (CLEANUP)
           // , but the point is that callstacks shouldn't be created for builtin fn calls
-          Task.FromResult(raiseRTE (RTE.FnNotFound(FQFnName.fqBuiltin "builtin" 0)))
+          raiseRTE (RTE.FnNotFound(FQFnName.fqBuiltin "builtin" 0))
 
         | Function(FQFnName.Package fn) ->
           task {
@@ -189,7 +190,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Task<Dval> =
                   Map.add fn.id instrData vm.packageFnInstrCache
                 return instrData
 
-              | None -> return! Task.FromResult(raiseRTE (RTE.FnNotFound(FQFnName.Package fn)))
+              | None -> return raiseRTE (RTE.FnNotFound(FQFnName.Package fn))
           }
 
 
@@ -583,7 +584,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Task<Dval> =
                   | Ok updatedTst ->
                     tst <- updatedTst
                     return ()
-                  | Error rte -> return raiseRTE rte
+                  | Error rte -> raiseRTE rte
                 })
 
             let typeArgs =
@@ -599,7 +600,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Task<Dval> =
             match applicable.name with
             | FQFnName.Builtin builtin ->
               match Map.find builtin exeState.fns.builtIn with
-              | None -> return RTE.FnNotFound(FQFnName.Builtin builtin) |> raiseRTE
+              | None -> RTE.FnNotFound(FQFnName.Builtin builtin) |> raiseRTE
               | Some fn ->
                 // Process type args
                 // - there should be right #,
@@ -676,7 +677,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Task<Dval> =
 
             | FQFnName.Package pkg ->
               match! exeState.fns.package pkg with
-              | None -> return RTE.FnNotFound(FQFnName.Package pkg) |> raiseRTE
+              | None -> RTE.FnNotFound(FQFnName.Package pkg) |> raiseRTE
               | Some fn ->
                 // Process type args
                 // - there should be right #,
@@ -786,7 +787,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Task<Dval> =
                 task {
                   let! fn = exeState.fns.package id
                   match fn with
-                  | None -> return RTE.FnNotFound fnName |> raiseRTE
+                  | None -> return (RTE.FnNotFound fnName |> raiseRTE)
                   | Some fn -> return fn.returnType
                 }
 

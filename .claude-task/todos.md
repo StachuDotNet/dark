@@ -99,11 +99,19 @@ Remove Ply library in favor of F#'s native `task` computation expression. The co
 - [x] Delete backend/src/Prelude/Ply.fs
 - [x] Remove Ply package reference from backend/paket.dependencies
 - [x] Remove Ply.fs reference from Prelude.fsproj
-- [ ] Wait for build system to update lock file automatically
+- [x] Remove Ply from all paket.references files (7 files)
+- [x] Run paket install to update lock file
+- [x] Remove all FSharp.Control.Tasks imports (75+ files)
+- [x] Convert all Ply(...) to Task.FromResult(...) (171 instances)
+- [x] Convert all |> Ply to |> Task.FromResult (292 instances)
+- [x] Convert test files using Ply.toTask and Ply.bind (5 files)
+- [x] Fix 2/3 type constraint errors in TypeChecker.fs (lines 638, 641) - used if-then-elif-else structure
+- [ ] Fix remaining type constraint error in Interpreter.fs (line 152) - TaskCode<unit,unit> vs TaskCode<Dval,unit>
 
 ### Phase 9: Testing and Verification
+- [ ] Resolve final type constraint mismatch in Interpreter.fs line 152
+- [ ] Verify build succeeds
 - [ ] Run full test suite to verify all conversions work
-- [ ] Check build logs for any compilation errors
 - [ ] Verify no remaining references to Ply in the codebase
 
 ## Conversion Pattern
