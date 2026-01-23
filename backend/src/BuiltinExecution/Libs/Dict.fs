@@ -23,7 +23,7 @@ let fns : List<BuiltInFn> =
       description = "Returns the number of entries in <param dict>"
       fn =
         (function
-        | _, _, _, [ DDict(_vtTODO, o) ] -> Ply(DInt64(int64 (Map.count o)))
+        | _, _, _, [ DDict(_vtTODO, o) ] -> Task.FromResult(DInt64(int64 (Map.count o)))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -40,7 +40,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DDict(_, o) ] ->
           // CLEANUP follow up here if/when `key` type is dynamic (not just String)
-          o |> Map.keys |> Seq.map DString |> Seq.toList |> Dval.list KTString |> Ply
+          o |> Map.keys |> Seq.map DString |> Seq.toList |> Dval.list KTString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -56,7 +56,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DDict(valueType, o) ] ->
-          o |> Map.values |> Seq.toList |> (fun vs -> DList(valueType, vs) |> Ply)
+          o |> Map.values |> Seq.toList |> (fun vs -> DList(valueType, vs) |> Task.FromResult)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -76,7 +76,7 @@ let fns : List<BuiltInFn> =
           let f k v acc = DTuple(DString k, v, []) :: acc
           Map.foldBack f o []
           |> fun pairs -> DList(VT.tuple VT.string valueType [], pairs)
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -98,7 +98,7 @@ let fns : List<BuiltInFn> =
           This function is the opposite of <fn Dict.toList>."
       fn =
         (function
-        | _, _, _, [ DList(_, []) ] -> DDict(VT.unknown, Map.empty) |> Ply
+        | _, _, _, [ DList(_, []) ] -> DDict(VT.unknown, Map.empty) |> Task.FromResult
 
         | _, vm, _, [ DList(ValueType.Known(KTTuple(_keyType, valueType, [])), l) ] ->
           let f (accType, accMap) dv =
@@ -116,7 +116,7 @@ let fns : List<BuiltInFn> =
                 [ "dval", dv ]
 
           let (typ, map) = List.fold f (valueType, Map.empty) l
-          DDict(typ, map) |> Ply
+          DDict(typ, map) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -156,8 +156,8 @@ let fns : List<BuiltInFn> =
           | Some entries ->
             DDict(dictType, entries)
             |> TypeChecker.DvalCreator.optionSome vmState.threadID optType
-            |> Ply
-          | None -> TypeChecker.DvalCreator.optionNone optType |> Ply
+            |> Task.FromResult
+          | None -> TypeChecker.DvalCreator.optionNone optType |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -176,7 +176,7 @@ let fns : List<BuiltInFn> =
         | _, vm, _, [ DDict(_vtTODO, o); DString s ] ->
           Map.find s o
           |> TypeChecker.DvalCreator.option vm.threadID VT.unknownTODO
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -192,7 +192,7 @@ let fns : List<BuiltInFn> =
          {{false}} otherwise"
       fn =
         (function
-        | _, _, _, [ DDict(_, o); DString s ] -> Ply(DBool(Map.containsKey s o))
+        | _, _, _, [ DDict(_, o); DString s ] -> Task.FromResult(DBool(Map.containsKey s o))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -215,7 +215,7 @@ let fns : List<BuiltInFn> =
           | Ok mergedType ->
             let f accMap k v = Map.add k v accMap
             let mergedMap = Map.fold f intoMap fromMap
-            DDict(mergedType, mergedMap) |> Ply
+            DDict(mergedType, mergedMap) |> Task.FromResult
           | Error() ->
             Exception.raiseInternal
               "Builtin.dictMerge input dicts somehow bypassed fn-arg type-checking"
@@ -246,7 +246,7 @@ let fns : List<BuiltInFn> =
               o
               (k, v)
               TypeChecker.ThrowIfDuplicate
-          DDict(typ, map) |> Ply
+          DDict(typ, map) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -273,7 +273,7 @@ let fns : List<BuiltInFn> =
               o
               (k, v)
               TypeChecker.ReplaceValue
-          DDict(typ, map) |> Ply
+          DDict(typ, map) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -288,7 +288,7 @@ let fns : List<BuiltInFn> =
         "If the <param dict> contains <param key>, returns a copy of <param dict> with <param key> and its associated value removed. Otherwise, returns <param dict> unchanged."
       fn =
         (function
-        | _, _, _, [ DDict(vt, o); DString k ] -> DDict(vt, Map.remove k o) |> Ply
+        | _, _, _, [ DDict(vt, o); DString k ] -> DDict(vt, Map.remove k o) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure

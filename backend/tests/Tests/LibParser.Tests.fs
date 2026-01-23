@@ -27,7 +27,6 @@ let exprRTs =
           NR.OnMissing.Allow
           "libparser.tests.fs"
           testStr
-        |> Ply.toTask
       return Expect.PT.equalExprIgnoringIDs actual expectedExpr
     }
 

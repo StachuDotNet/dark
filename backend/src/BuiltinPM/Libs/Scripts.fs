@@ -1,7 +1,6 @@
 module BuiltinPM.Libs.Scripts
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution.RuntimeTypes

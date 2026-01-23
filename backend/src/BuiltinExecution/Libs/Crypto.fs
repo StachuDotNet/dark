@@ -26,7 +26,7 @@ let fns : List<BuiltInFn> =
         | _, _, _, [ DList(_vt, data) ] ->
           let data = Dval.dlistToByteArray data
           let hash = SHA256.HashData(System.ReadOnlySpan(data))
-          Dval.byteArrayToDvalList hash |> Ply
+          Dval.byteArrayToDvalList hash |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -43,7 +43,7 @@ let fns : List<BuiltInFn> =
         | _, _, _, [ DList(_vt, data) ] ->
           let data = Dval.dlistToByteArray data
           let hash = SHA384.HashData(System.ReadOnlySpan data)
-          Dval.byteArrayToDvalList hash |> Ply
+          Dval.byteArrayToDvalList hash |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -61,7 +61,7 @@ let fns : List<BuiltInFn> =
         | _, _, _, [ DList(_vt, data) ] ->
           let data = Dval.dlistToByteArray data
           let hash = MD5.HashData(System.ReadOnlySpan data)
-          Dval.byteArrayToDvalList hash |> Ply
+          Dval.byteArrayToDvalList hash |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = ImpurePreviewable
@@ -82,7 +82,7 @@ let fns : List<BuiltInFn> =
           let hmac = new HMACSHA256(key)
           let data = Dval.dlistToByteArray data
           let hash = hmac.ComputeHash(data)
-          Dval.byteArrayToDvalList hash |> Ply
+          Dval.byteArrayToDvalList hash |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = ImpurePreviewable
@@ -103,7 +103,7 @@ let fns : List<BuiltInFn> =
           let hmac = new HMACSHA1(key)
           let data = Dval.dlistToByteArray data
           let hash = hmac.ComputeHash(data)
-          Dval.byteArrayToDvalList hash |> Ply
+          Dval.byteArrayToDvalList hash |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = ImpurePreviewable

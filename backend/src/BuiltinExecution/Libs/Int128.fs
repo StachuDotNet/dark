@@ -47,7 +47,7 @@ let fns : List<BuiltInFn> =
           else
             let result = v % m
             let result = if result < System.Int128.Zero then m + result else result
-            Ply(DInt128(result))
+            Task.FromResult(DInt128(result))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -69,7 +69,7 @@ let fns : List<BuiltInFn> =
 
         Returns an {{Error}} if <param divisor> is {{0}}."
       fn =
-        let resultOk r = Dval.resultOk KTInt128 KTString r |> Ply
+        let resultOk r = Dval.resultOk KTInt128 KTString r |> Task.FromResult
         (function
         | _, vm, _, [ DInt128 v; DInt128 d ] ->
           (try
@@ -98,7 +98,7 @@ let fns : List<BuiltInFn> =
         | _, vm, _, [ DInt128 a; DInt128 b ] ->
           try
             let result = System.Int128.op_CheckedAddition (a, b)
-            Ply(DInt128(result))
+            Task.FromResult(DInt128(result))
           with :? System.OverflowException ->
             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID
         | _ -> incorrectArgs ())
@@ -117,7 +117,7 @@ let fns : List<BuiltInFn> =
         | _, vm, _, [ DInt128 a; DInt128 b ] ->
           try
             let result = System.Int128.op_CheckedSubtraction (a, b)
-            Ply(DInt128(result))
+            Task.FromResult(DInt128(result))
           with :? System.OverflowException ->
             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID
         | _ -> incorrectArgs ())
@@ -137,7 +137,7 @@ let fns : List<BuiltInFn> =
         | _, vm, _, [ DInt128 a; DInt128 b ] ->
           try
             let result = System.Int128.op_CheckedMultiply (a, b)
-            Ply(DInt128(result))
+            Task.FromResult(DInt128(result))
           with :? System.OverflowException ->
             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID
         | _ -> incorrectArgs ())
@@ -159,7 +159,7 @@ let fns : List<BuiltInFn> =
         | _, vm, _, [ DInt128 a; DInt128 b ] ->
           try
             let result = System.Int128.op_Division (a, b)
-            Ply(DInt128(result))
+            Task.FromResult(DInt128(result))
           with
           | :? System.DivideByZeroException ->
             RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.threadID
@@ -181,7 +181,7 @@ let fns : List<BuiltInFn> =
         | _, vm, _, [ DInt128 a ] ->
           try
             let result = System.Int128.op_CheckedUnaryNegation a
-            Ply(DInt128(result))
+            Task.FromResult(DInt128(result))
           with :? System.OverflowException ->
             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID
         | _ -> incorrectArgs ())
@@ -197,7 +197,7 @@ let fns : List<BuiltInFn> =
       description = "Returns {{true}} if <param a> is greater than <param b>"
       fn =
         (function
-        | _, _, _, [ DInt128 a; DInt128 b ] -> Ply(DBool(a > b))
+        | _, _, _, [ DInt128 a; DInt128 b ] -> Task.FromResult(DBool(a > b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -212,7 +212,7 @@ let fns : List<BuiltInFn> =
         "Returns {{true}} if <param a> is greater than or equal to <param b>"
       fn =
         (function
-        | _, _, _, [ DInt128 a; DInt128 b ] -> Ply(DBool(a >= b))
+        | _, _, _, [ DInt128 a; DInt128 b ] -> Task.FromResult(DBool(a >= b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -226,7 +226,7 @@ let fns : List<BuiltInFn> =
       description = "Returns {{true}} if <param a> is less than <param b>"
       fn =
         (function
-        | _, _, _, [ DInt128 a; DInt128 b ] -> Ply(DBool(a < b))
+        | _, _, _, [ DInt128 a; DInt128 b ] -> Task.FromResult(DBool(a < b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -241,7 +241,7 @@ let fns : List<BuiltInFn> =
         "Returns {{true}} if <param a> is less than or equal to <param b>"
       fn =
         (function
-        | _, _, _, [ DInt128 a; DInt128 b ] -> Ply(DBool(a <= b))
+        | _, _, _, [ DInt128 a; DInt128 b ] -> Task.FromResult(DBool(a <= b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -255,7 +255,7 @@ let fns : List<BuiltInFn> =
       description = "Converts an <type Int128> to a <type String>"
       fn =
         (function
-        | _, _, _, [ DInt128 a ] -> Ply(DString(string a))
+        | _, _, _, [ DInt128 a ] -> Task.FromResult(DString(string a))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -269,7 +269,7 @@ let fns : List<BuiltInFn> =
       description = "Converts an <type Int128> to a <type Float>"
       fn =
         (function
-        | _, _, _, [ DInt128 a ] -> Ply(DFloat(float a))
+        | _, _, _, [ DInt128 a ] -> Task.FromResult(DFloat(float a))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -283,7 +283,7 @@ let fns : List<BuiltInFn> =
       description = "Get the square root of an <type Int128>"
       fn =
         (function
-        | _, _, _, [ DInt128 a ] -> Ply(DFloat(sqrt (float a)))
+        | _, _, _, [ DInt128 a ] -> Task.FromResult(DFloat(sqrt (float a)))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -308,12 +308,12 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DString s ] ->
           try
-            s |> System.Int128.Parse |> DInt128 |> resultOk |> Ply
+            s |> System.Int128.Parse |> DInt128 |> resultOk |> Task.FromResult
           with
           | :? System.FormatException ->
-            ParseError.BadFormat |> ParseError.toDT |> resultError |> Ply
+            ParseError.BadFormat |> ParseError.toDT |> resultError |> Task.FromResult
           | :? System.OverflowException ->
-            ParseError.OutOfRange |> ParseError.toDT |> resultError |> Ply
+            ParseError.OutOfRange |> ParseError.toDT |> resultError |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -327,7 +327,7 @@ let fns : List<BuiltInFn> =
       description = "Converts an Int8 to a 128-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DInt8 a ] -> DInt128(System.Int128.op_Implicit a) |> Ply
+        | _, _, _, [ DInt8 a ] -> DInt128(System.Int128.op_Implicit a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -341,7 +341,7 @@ let fns : List<BuiltInFn> =
       description = "Converts a UInt8 to a 128-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DUInt8 a ] -> DInt128(System.Int128.op_Implicit a) |> Ply
+        | _, _, _, [ DUInt8 a ] -> DInt128(System.Int128.op_Implicit a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -355,7 +355,7 @@ let fns : List<BuiltInFn> =
       description = "Converts an Int16 to a 128-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DInt16 a ] -> DInt128(System.Int128.op_Implicit a) |> Ply
+        | _, _, _, [ DInt16 a ] -> DInt128(System.Int128.op_Implicit a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -369,7 +369,7 @@ let fns : List<BuiltInFn> =
       description = "Converts a UInt16 to a 128-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DUInt16 a ] -> DInt128(System.Int128.op_Implicit a) |> Ply
+        | _, _, _, [ DUInt16 a ] -> DInt128(System.Int128.op_Implicit a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -383,7 +383,7 @@ let fns : List<BuiltInFn> =
       description = "Converts an Int32 to a 128-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DInt32 a ] -> DInt128(System.Int128.op_Implicit a) |> Ply
+        | _, _, _, [ DInt32 a ] -> DInt128(System.Int128.op_Implicit a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -397,7 +397,7 @@ let fns : List<BuiltInFn> =
       description = "Converts a UInt32 to a 128-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DUInt32 a ] -> DInt128(System.Int128.op_Implicit a) |> Ply
+        | _, _, _, [ DUInt32 a ] -> DInt128(System.Int128.op_Implicit a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -411,7 +411,7 @@ let fns : List<BuiltInFn> =
       description = "Converts an Int64 to a 128-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DInt64 a ] -> DInt128(System.Int128.op_Implicit a) |> Ply
+        | _, _, _, [ DInt64 a ] -> DInt128(System.Int128.op_Implicit a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -425,7 +425,7 @@ let fns : List<BuiltInFn> =
       description = "Converts a UInt64 to a 128-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DUInt64 a ] -> DInt128(System.Int128.op_Implicit a) |> Ply
+        | _, _, _, [ DUInt64 a ] -> DInt128(System.Int128.op_Implicit a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure

@@ -11,7 +11,6 @@ let dataBasePath = "testfiles/data"
 open Expecto
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open System.Net.Sockets
 open System.Text.Json

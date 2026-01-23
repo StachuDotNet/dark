@@ -2,7 +2,6 @@
 module BuiltinCli.Libs.Execution
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 open System.Collections.Concurrent
 open System.IO
 open System.Threading

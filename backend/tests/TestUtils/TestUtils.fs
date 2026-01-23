@@ -4,7 +4,6 @@ module TestUtils.TestUtils
 open Expecto
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open LibDB.Db
 
@@ -246,8 +245,6 @@ let testManyTask (name : string) (fn : 'a -> Task<'b>) (values : List<'a * 'b>) 
         })
       values)
 
-let testManyPly (name : string) (fn : 'a -> Task<'b>) (values : List<'a * 'b>) =
-  testManyTask name (fn >> ) values
 
 
 let testMany2Task
@@ -1481,7 +1478,7 @@ let configureLogging
 let unwrapExecutionResult
   (state : RT.ExecutionState)
   (exeResult : RT.ExecutionResult)
-  : Ply.Task<RT.Dval> =
+  : Task<RT.Dval> =
   task {
     match exeResult with
     | Ok dval -> return dval

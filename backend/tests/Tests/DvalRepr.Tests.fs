@@ -1,7 +1,6 @@
 module Tests.DvalRepr
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Expecto
 open Prelude
@@ -50,14 +49,14 @@ let queryableRoundtripsSuccessfullyInRecord
                         RT.TypeDeclaration.Record(
                           NEList.ofList { name = "field"; typ = fieldTyp } []
                         ) } }
-              packageType |> Some |> Ply
+              packageType |> Some |> Task.FromResult
             else
               pmRT.getType id }
 
     let! roundtripped =
       record
       |> DvalReprInternalQueryable.toJsonStringV0 types bogusThreadID
-      |> Ply.bind (
+      |> Task.bind (
         DvalReprInternalQueryable.parseJsonV0 types bogusThreadID Map.empty typeRef
       )
 

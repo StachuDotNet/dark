@@ -2,7 +2,6 @@
 module LocalExec.LoadPackagesFromDisk
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 

@@ -37,7 +37,7 @@ let fns : List<BuiltInFn> =
 
               DRecord(builtinValue, builtinValue, [], Map fields))
 
-          DList(VT.customType builtinValue [], vals) |> Ply
+          DList(VT.customType builtinValue [], vals) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -74,7 +74,7 @@ let fns : List<BuiltInFn> =
 
               DRecord(builtinFn, builtinFn, [], Map fields))
 
-          DList(VT.customType builtinFn [], fns) |> Ply
+          DList(VT.customType builtinFn [], fns) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

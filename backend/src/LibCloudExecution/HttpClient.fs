@@ -4,7 +4,6 @@ open System.IO
 open System.Net.Http
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution

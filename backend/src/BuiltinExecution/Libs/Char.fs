@@ -18,7 +18,7 @@ let fns : List<BuiltInFn> =
         If <param c> does not have an uppercase value, returns <param c>"
       fn =
         function
-        | _, _, _, [ DChar c ] -> Ply(DChar(c.ToUpper()))
+        | _, _, _, [ DChar c ] -> Task.FromResult(DChar(c.ToUpper()))
         | _ -> incorrectArgs ()
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -34,7 +34,7 @@ let fns : List<BuiltInFn> =
         If <param c> does not have a lowercase value, returns <param c>"
       fn =
         function
-        | _, _, _, [ DChar c ] -> Ply(DChar(c.ToLower()))
+        | _, _, _, [ DChar c ] -> Task.FromResult(DChar(c.ToLower()))
         | _ -> incorrectArgs ()
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -52,9 +52,9 @@ let fns : List<BuiltInFn> =
         | _, _, _, [ DChar c ] ->
           let charValue = int c[0]
           if charValue >= 0 && charValue < 256 then
-            Dval.optionSome KTInt64 (DInt64 charValue) |> Ply
+            Dval.optionSome KTInt64 (DInt64 charValue) |> Task.FromResult
           else
-            Dval.optionNone KTInt64 |> Ply
+            Dval.optionNone KTInt64 |> Task.FromResult
         | _ -> incorrectArgs ()
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -68,7 +68,7 @@ let fns : List<BuiltInFn> =
       description = "Return whether <param c1> is less than <param c2>"
       fn =
         function
-        | _, _, _, [ DChar c1; DChar c2 ] -> (c1 < c2) |> DBool |> Ply
+        | _, _, _, [ DChar c1; DChar c2 ] -> (c1 < c2) |> DBool |> Task.FromResult
         | _ -> incorrectArgs ()
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -82,7 +82,7 @@ let fns : List<BuiltInFn> =
       description = "Return whether <param c1> is less than <param c2>"
       fn =
         function
-        | _, _, _, [ DChar c1; DChar c2 ] -> (c1 <= c2) |> DBool |> Ply
+        | _, _, _, [ DChar c1; DChar c2 ] -> (c1 <= c2) |> DBool |> Task.FromResult
         | _ -> incorrectArgs ()
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -96,7 +96,7 @@ let fns : List<BuiltInFn> =
       description = "Return whether <param c1> is greater than <param c2>"
       fn =
         function
-        | _, _, _, [ DChar c1; DChar c2 ] -> (c1 > c2) |> DBool |> Ply
+        | _, _, _, [ DChar c1; DChar c2 ] -> (c1 > c2) |> DBool |> Task.FromResult
         | _ -> incorrectArgs ()
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -110,7 +110,7 @@ let fns : List<BuiltInFn> =
       description = "Return whether <param c1> is greater than <param c2>"
       fn =
         function
-        | _, _, _, [ DChar c1; DChar c2 ] -> (c1 >= c2) |> DBool |> Ply
+        | _, _, _, [ DChar c1; DChar c2 ] -> (c1 >= c2) |> DBool |> Task.FromResult
         | _ -> incorrectArgs ()
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -124,7 +124,7 @@ let fns : List<BuiltInFn> =
       description = "Stringify <param c>"
       fn =
         (function
-        | _, _, _, [ DChar c ] -> Ply(DString c)
+        | _, _, _, [ DChar c ] -> Task.FromResult(DString c)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

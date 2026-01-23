@@ -25,7 +25,7 @@ let tCheckVM
     let! exeState =
       executionStateFor TestValues.pm (System.Guid.NewGuid()) false false Map.empty
 
-    let! actual = LibExecution.Interpreter.execute exeState vmState |> Ply.toTask
+    let! actual = LibExecution.Interpreter.execute exeState vmState
     Expect.equal actual expectedInsts ""
 
     extraVmStateAssertions vmState

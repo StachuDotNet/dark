@@ -153,7 +153,7 @@ let fns : List<BuiltInFn> =
           match ValueType.merge vtA vtB with
           | Error _ ->
             RTE.EqualityCheckOnIncompatibleTypes(vtA, vtB) |> raiseRTE vm.threadID
-          | Ok _ -> equals a b |> DBool |> Ply
+          | Ok _ -> equals a b |> DBool |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "="
       previewable = Pure
@@ -172,7 +172,7 @@ let fns : List<BuiltInFn> =
           match ValueType.merge vtA vtB with
           | Error _ ->
             RTE.EqualityCheckOnIncompatibleTypes(vtA, vtB) |> raiseRTE vm.threadID
-          | Ok _ -> equals a b |> not |> DBool |> Ply
+          | Ok _ -> equals a b |> not |> DBool |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "<>"
       previewable = Pure
@@ -195,13 +195,13 @@ let fns : List<BuiltInFn> =
           | DEnum(FQTypeName.Package id, _, _, "Some", [ value ]) when
             id = PackageIDs.Type.Stdlib.option
             ->
-            Ply value
+            Task.FromResult value
 
           // Success: extract `Ok` out of a Result
           | DEnum(FQTypeName.Package id, _, _, "Ok", [ value ]) when
             id = PackageIDs.Type.Stdlib.result
             ->
-            Ply value
+            Task.FromResult value
 
           // Error: expected Some, got None
           | DEnum(FQTypeName.Package id, _, _, "None", []) when
@@ -249,7 +249,7 @@ let fns : List<BuiltInFn> =
           // TODO: call upon the Dark equivalent fn instead of relying on DvalReprDeveloper
           let value = DvalReprDeveloper.toRepr value
           print $"DEBUG: {label}: {value}"
-          Ply DUnit
+          Task.FromResult DUnit
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

@@ -4,7 +4,6 @@ module TestUtils.LibTest
 // useful for testing
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution.RuntimeTypes

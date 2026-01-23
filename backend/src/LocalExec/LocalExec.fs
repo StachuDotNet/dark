@@ -2,7 +2,6 @@
 module LocalExec.LocalExec
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 

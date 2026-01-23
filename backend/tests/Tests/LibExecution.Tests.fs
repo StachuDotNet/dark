@@ -8,7 +8,6 @@ module Tests.LibExecution
 open Expecto
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Fumble
 open LibDB.Db

@@ -2,7 +2,6 @@
 module LibCloud.Secret
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Fumble
 open LibDB.Db

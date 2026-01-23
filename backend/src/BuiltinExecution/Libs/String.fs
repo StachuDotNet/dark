@@ -28,7 +28,7 @@ let fns : List<BuiltInFn> =
           |> Seq.map DChar
           |> Seq.toList
           |> Dval.list KTChar
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -50,7 +50,7 @@ let fns : List<BuiltInFn> =
         | _, _, _, [ DString s; DString search; DString replace ] ->
           if search = "" then
             if s = "" then
-              Ply(DString replace)
+              Task.FromResult(DString replace)
             else
               // .Net Replace doesn't allow empty string, but we do.
               String.toEgcSeq s
@@ -59,9 +59,9 @@ let fns : List<BuiltInFn> =
               |> (fun l -> replace :: l @ [ replace ])
               |> String.concat ""
               |> DString
-              |> Ply
+              |> Task.FromResult
           else
-            Ply(DString(s.Replace(search, replace)))
+            Task.FromResult(DString(s.Replace(search, replace)))
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "replace"
       previewable = Pure
@@ -75,7 +75,7 @@ let fns : List<BuiltInFn> =
       description = "Returns the string, uppercased"
       fn =
         (function
-        | _, _, _, [ DString s ] -> Ply(DString(String.toUppercase s))
+        | _, _, _, [ DString s ] -> Task.FromResult(DString(String.toUppercase s))
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "upper"
       previewable = Pure
@@ -89,7 +89,7 @@ let fns : List<BuiltInFn> =
       description = "Returns the string, lowercased"
       fn =
         (function
-        | _, _, _, [ DString s ] -> Ply(DString(String.toLowercase s))
+        | _, _, _, [ DString s ] -> Task.FromResult(DString(String.toLowercase s))
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "lower"
       previewable = Pure
@@ -104,7 +104,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString s ] ->
-          s |> String.lengthInEgcs |> int64 |> Dval.int64 |> Ply
+          s |> String.lengthInEgcs |> int64 |> Dval.int64 |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented // CLEANUP: Sqlite has "LENGTH" but that counts characters; if we can get it to count EGCs, great
       previewable = Pure
@@ -122,7 +122,7 @@ let fns : List<BuiltInFn> =
         (function
         // TODO add fuzzer to ensure all strings are normalized no matter what we do to them.
         | _, _, _, [ DString s1; DString s2 ] ->
-          (s1 + s2) |> String.normalize |> DString |> Ply
+          (s1 + s2) |> String.normalize |> DString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -155,7 +155,7 @@ let fns : List<BuiltInFn> =
           |> String.trim
           |> replace toBeHyphenated "-"
           |> DString
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -170,7 +170,7 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString s ] ->
-          String.toEgcSeq s |> Seq.rev |> String.concat "" |> DString |> Ply
+          String.toEgcSeq s |> Seq.rev |> String.concat "" |> DString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "reverse"
       previewable = Pure
@@ -214,7 +214,7 @@ let fns : List<BuiltInFn> =
                 (s |> String.toEgcSeq |> Seq.toList)
                 (sep |> String.toEgcSeq |> Seq.toList)
 
-          parts |> List.map DString |> Dval.list KTString |> Ply
+          parts |> List.map DString |> Dval.list KTString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -240,7 +240,7 @@ let fns : List<BuiltInFn> =
           |> String.concat sep
           |> String.normalize
           |> DString
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -269,7 +269,7 @@ let fns : List<BuiltInFn> =
             if last < 0 then getLengthInTextElements (s) + int last else int last
 
           if first >= last then
-            Ply(DString "")
+            Task.FromResult(DString "")
           else
             // Create a TextElementEnumerator to handle EGCs
             let textElemEnumerator =
@@ -288,7 +288,7 @@ let fns : List<BuiltInFn> =
             if endIndex = 0 then endIndex <- s.Length
 
             let substringLength = endIndex - startIndex
-            s.Substring(startIndex, substringLength) |> DString |> Ply
+            s.Substring(startIndex, substringLength) |> DString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -306,7 +306,7 @@ let fns : List<BuiltInFn> =
          {{\"\\n\"}}"
       fn =
         (function
-        | _, _, _, [ DString toTrim ] -> toTrim.Trim() |> DString |> Ply
+        | _, _, _, [ DString toTrim ] -> toTrim.Trim() |> DString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "trim"
       previewable = Pure
@@ -323,7 +323,7 @@ let fns : List<BuiltInFn> =
          includes {{\" \"}}, {{\"\\t\"}} and {{\"\\n\"}}"
       fn =
         (function
-        | _, _, _, [ DString toTrim ] -> Ply(DString(toTrim.TrimStart()))
+        | _, _, _, [ DString toTrim ] -> Task.FromResult(DString(toTrim.TrimStart()))
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "ltrim"
       previewable = Pure
@@ -340,7 +340,7 @@ let fns : List<BuiltInFn> =
          property, which includes {{\" \"}}, {{\"\\t\"}} and {{\"\\n\"}}."
       fn =
         (function
-        | _, _, _, [ DString toTrim ] -> Ply(DString(toTrim.TrimEnd()))
+        | _, _, _, [ DString toTrim ] -> Task.FromResult(DString(toTrim.TrimEnd()))
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "rtrim"
       previewable = Pure
@@ -357,7 +357,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DString str ] ->
           let theBytes = System.Text.Encoding.UTF8.GetBytes str
-          Ply(Dval.byteArrayToDvalList theBytes)
+          Task.FromResult(Dval.byteArrayToDvalList theBytes)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -375,7 +375,7 @@ let fns : List<BuiltInFn> =
         | _, _, _, [ DList(_vt, bytes) ] ->
           let bytes = Dval.dlistToByteArray bytes
           let str = System.Text.Encoding.UTF8.GetString bytes
-          Ply(DString str)
+          Task.FromResult(DString str)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -394,9 +394,9 @@ let fns : List<BuiltInFn> =
           try
             let bytes = Dval.dlistToByteArray bytes
             let str = UTF8Encoding(false, true).GetString bytes
-            Dval.optionSome KTString (DString str) |> Ply
+            Dval.optionSome KTString (DString str) |> Task.FromResult
           with _e ->
-            Dval.optionNone KTString |> Ply
+            Dval.optionNone KTString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -418,7 +418,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DString str; DString search ] ->
           let index = str.IndexOf(search)
-          Ply(DInt64 index)
+          Task.FromResult(DInt64 index)
         | _ -> incorrectArgs ())
       sqlSpec = SqlCallback2(fun str search -> $"(INSTR({str}, {search}) - 1)")
       previewable = Pure
@@ -440,7 +440,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DString str; DString search ] ->
           let index = str.LastIndexOf(search)
-          Ply(DInt64 index)
+          Task.FromResult(DInt64 index)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -457,10 +457,10 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DString str ] ->
           if str = "" then
-            Dval.optionNone KTChar |> Ply
+            Dval.optionNone KTChar |> Task.FromResult
           else
             let head = String.toEgcSeq str |> Seq.head
-            Dval.optionSome KTChar (DChar head) |> Ply
+            Dval.optionSome KTChar (DChar head) |> Task.FromResult
         | _ -> incorrectArgs ())
 
       sqlSpec = NotYetImplemented

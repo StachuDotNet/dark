@@ -3,7 +3,6 @@
 module LibPackageManager.Approvals
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 

@@ -5,7 +5,6 @@
 module LibExecution.RTQueryCompiler
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 module RT = RuntimeTypes

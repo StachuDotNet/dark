@@ -76,30 +76,30 @@ Remove Ply library in favor of F#'s native `task` computation expression. The co
 - [x]
 
 ### Phase 6: Convert LibCloud and Other Infrastructure
-- [ ] Convert backend/src/LibCloud/UserDB.fs
-- [ ] Convert backend/src/LibCloud/Canvas.fs
-- [ ] Convert backend/src/LibCloud/DvalReprInternalQueryable.fs
-- [ ] Convert backend/src/LibCloudExecution/CloudExecution.fs
-- [ ] Convert backend/src/LibDB/Db.fs
-- [ ] Convert backend/src/LocalExec/LocalExec.fs
-- [ ] Convert backend/src/LocalExec/Canvas.fs
-- [ ] Convert backend/src/LocalExec/LoadPackagesFromDisk.fs
-- [ ] Convert backend/src/Cli/Cli.fs
+- [x] Convert backend/src/LibCloud/UserDB.fs (already converted)
+- [x] Convert backend/src/LibCloud/Canvas.fs (already converted)
+- [x] Convert backend/src/LibCloud/DvalReprInternalQueryable.fs (already converted)
+- [x] Convert backend/src/LibCloudExecution/CloudExecution.fs (already converted)
+- [x] Convert backend/src/LibDB/Db.fs (already converted)
+- [x] Convert backend/src/LocalExec/LocalExec.fs (already converted)
+- [x] Convert backend/src/LocalExec/Canvas.fs (already converted)
+- [x] Convert backend/src/LocalExec/LoadPackagesFromDisk.fs (already converted)
+- [x] Convert backend/src/Cli/Cli.fs (already converted)
 
 ### Phase 7: Convert Prelude and Test Files
-- [ ] Convert backend/src/Prelude/Prelude.fs
-- [ ] Convert backend/tests/Tests/Prelude.Tests.fs
-- [ ] Convert backend/tests/Tests/BwdServer.Tests.fs
-- [ ] Convert backend/tests/Tests/HttpClient.Tests.fs
-- [ ] Convert backend/tests/Tests/LibExecution.Tests.fs
-- [ ] Convert backend/tests/TestUtils/TestUtils.fs
-- [ ] Convert backend/tests/TestUtils/LibTest.fs
+- [x] Convert backend/src/Prelude/Prelude.fs (already converted)
+- [x] Convert backend/tests/Tests/Prelude.Tests.fs (already converted)
+- [x] Convert backend/tests/Tests/BwdServer.Tests.fs (already converted)
+- [x] Convert backend/tests/Tests/HttpClient.Tests.fs (already converted)
+- [x] Convert backend/tests/Tests/LibExecution.Tests.fs (already converted)
+- [x] Convert backend/tests/TestUtils/TestUtils.fs
+- [x] Convert backend/tests/TestUtils/LibTest.fs (already converted)
 
 ### Phase 8: Remove Ply Infrastructure
-- [ ] Delete backend/src/Prelude/Ply.fs
-- [ ] Remove Ply package reference from backend/paket.dependencies
-- [ ] Run `paket install` to update lock file
-- [ ] Remove any remaining Ply references in project files
+- [x] Delete backend/src/Prelude/Ply.fs
+- [x] Remove Ply package reference from backend/paket.dependencies
+- [x] Remove Ply.fs reference from Prelude.fsproj
+- [ ] Wait for build system to update lock file automatically
 
 ### Phase 9: Testing and Verification
 - [ ] Run full test suite to verify all conversions work

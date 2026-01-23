@@ -2,7 +2,6 @@
 module LibPackageManager.Accounts
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open Fumble

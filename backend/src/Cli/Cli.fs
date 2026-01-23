@@ -2,7 +2,6 @@ module Cli.Main
 
 open System
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 

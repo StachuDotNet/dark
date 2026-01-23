@@ -23,9 +23,9 @@ let fns : List<BuiltInFn> =
          [5](https://www.rfc-editor.org/rfc/rfc4648.html#section-5)."
       fn =
         let resultOk r =
-          Dval.resultOk (KTList(ValueType.Known KTUInt8)) KTString r |> Ply
+          Dval.resultOk (KTList(ValueType.Known KTUInt8)) KTString r |> Task.FromResult
         let resultError r =
-          Dval.resultError (KTList(ValueType.Known KTUInt8)) KTString r |> Ply
+          Dval.resultError (KTList(ValueType.Known KTUInt8)) KTString r |> Task.FromResult
         (function
         | _, _, _, [ DString s ] ->
           let base64FromUrlEncoded (str : string) : string =
@@ -70,7 +70,7 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DList(_vt, bytes) ] ->
           let bytes = Dval.dlistToByteArray bytes
-          System.Convert.ToBase64String(bytes) |> DString |> Ply
+          System.Convert.ToBase64String(bytes) |> DString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -92,7 +92,7 @@ let fns : List<BuiltInFn> =
           // Differs from Base64.encodeToUrlSafe as this version has padding
           System.Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_')
           |> DString
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure

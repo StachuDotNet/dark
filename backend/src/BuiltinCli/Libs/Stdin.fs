@@ -2,7 +2,6 @@
 module BuiltinCli.Libs.Stdin
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 
 open System
@@ -13,12 +12,10 @@ open LibExecution.RuntimeTypes
 module Builtin = LibExecution.Builtin
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 module PackageIDs = LibExecution.PackageIDs
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 
 open Builtin.Shortcuts
@@ -259,7 +256,7 @@ let fns : List<BuiltInFn> =
         | _, _, _, [ DUnit ] ->
           (not Console.IsInputRedirected || not Console.IsOutputRedirected)
           |> DBool
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure

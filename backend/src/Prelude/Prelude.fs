@@ -1,7 +1,6 @@
 module Prelude
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 // ----------------------
 // Fix a few functions everywhere

@@ -5,7 +5,6 @@ framework: net8.0
 storage: none
 
 // Basics
-nuget Ply = 0.3.1
 nuget FSharpPlus = 1.5.0
 nuget FsRegEx = 0.7.2
 nuget FSharpx.Extras = 3.1.0

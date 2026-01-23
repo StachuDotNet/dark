@@ -1,7 +1,6 @@
 module LibPackageManager.Scripts
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 open Microsoft.Data.Sqlite
 open Fumble
 open LibDB.Db

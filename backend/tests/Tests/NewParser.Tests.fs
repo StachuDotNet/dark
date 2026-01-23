@@ -9,7 +9,6 @@
 module Tests.NewParser
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Expecto
 
@@ -55,7 +54,7 @@ let t
     let args = NEList.ofList parseAccountId [ branchID; RT.DString input ]
     let! parseResult =
       LibExecution.Execution.executeFunction parseExeState parseFnName [] args
-    let! parseDval = unwrapExecutionResult parseExeState parseResult |> Ply.toTask
+    let! parseDval = unwrapExecutionResult parseExeState parseResult
 
     match parseDval with
     | RT.DEnum(tn, _, _, "Ok", [ RT.DTuple(sourceFile, opsList, []) ]) when
@@ -77,7 +76,7 @@ let t
       let ppArgs = NEList.ofList accountID [ branchID; sourceFile ]
       let! ppResult =
         LibExecution.Execution.executeFunction ppExeState prettyPrintFnName [] ppArgs
-      let! resultDval = unwrapExecutionResult ppExeState ppResult |> Ply.toTask
+      let! resultDval = unwrapExecutionResult ppExeState ppResult
 
       match resultDval with
       | RT.DString result ->

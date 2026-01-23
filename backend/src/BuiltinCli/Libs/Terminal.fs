@@ -1,7 +1,6 @@
 module BuiltinCli.Libs.Terminal
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution.RuntimeTypes

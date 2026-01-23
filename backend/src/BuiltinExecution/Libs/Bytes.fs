@@ -32,7 +32,7 @@ let fns : List<BuiltInFn> =
               |> ignore<StringBuilder>
             | _ -> Exception.raiseInternal "hexEncode: expected UInt8" []
 
-          buf.ToString() |> DString |> Ply
+          buf.ToString() |> DString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure

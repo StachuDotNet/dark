@@ -3,7 +3,6 @@
 /// Used by cloud services (bwdserver, etc.)
 module LibCloudExecution.CloudExecution
 
-open FSharp.Control.Tasks
 open System.Threading.Tasks
 
 open Prelude

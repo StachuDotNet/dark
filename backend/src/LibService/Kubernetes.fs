@@ -3,7 +3,6 @@
 /// See https://docs.microsoft.com/en-us/aspnet/core/host-and-deploy/health-checks
 module LibService.Kubernetes
 
-open FSharp.Control.Tasks
 open System.Threading.Tasks
 
 open Microsoft.Extensions.DependencyInjection

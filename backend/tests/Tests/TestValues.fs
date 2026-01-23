@@ -812,6 +812,6 @@ let pm : PT.PackageManager =
     |> Map.ofList
 
   { PT.PackageManager.empty with
-      getType = fun id -> Ply(Map.tryFind id typeMap)
-      getValue = fun id -> Ply(Map.tryFind id valueMap)
-      getFn = fun id -> Ply(Map.tryFind id fnMap) }
+      getType = fun id -> Task.FromResult(Map.tryFind id typeMap)
+      getValue = fun id -> Task.FromResult(Map.tryFind id valueMap)
+      getFn = fun id -> Task.FromResult(Map.tryFind id fnMap) }

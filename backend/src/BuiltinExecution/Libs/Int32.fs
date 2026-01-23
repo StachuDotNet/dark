@@ -47,7 +47,7 @@ let fns : List<BuiltInFn> =
           else
             let result = v % m
             let result = if result < 0 then m + result else result
-            Ply(DInt32 result)
+            Task.FromResult(DInt32 result)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -69,7 +69,7 @@ let fns : List<BuiltInFn> =
 
          Returns an {{Error}} if <param divisor> is {{0}}."
       fn =
-        let resultOk r = Dval.resultOk KTInt32 KTString r |> Ply
+        let resultOk r = Dval.resultOk KTInt32 KTString r |> Task.FromResult
         (function
         | _, vm, _, [ DInt32 v; DInt32 d ] ->
           (try
@@ -95,7 +95,7 @@ let fns : List<BuiltInFn> =
       description = "Adds two 32-bit signed integers together"
       fn =
         (function
-        | _, _, _, [ DInt32 a; DInt32 b ] -> Ply(DInt32(a + b))
+        | _, _, _, [ DInt32 a; DInt32 b ] -> Task.FromResult(DInt32(a + b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -109,7 +109,7 @@ let fns : List<BuiltInFn> =
       description = "Subtracts two 32-bit signed integers"
       fn =
         (function
-        | _, _, _, [ DInt32 a; DInt32 b ] -> Ply(DInt32(a - b))
+        | _, _, _, [ DInt32 a; DInt32 b ] -> Task.FromResult(DInt32(a - b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -123,7 +123,7 @@ let fns : List<BuiltInFn> =
       description = "Multiplies two 32-bit signed integers"
       fn =
         (function
-        | _, _, _, [ DInt32 a; DInt32 b ] -> Ply(DInt32(a * b))
+        | _, _, _, [ DInt32 a; DInt32 b ] -> Task.FromResult(DInt32(a * b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -145,7 +145,7 @@ let fns : List<BuiltInFn> =
             if exp < 0 then
               RTE.Ints.NegativeExponent |> RTE.Int |> raiseRTE vm.threadID
             else
-              (bigint number) ** (int exp) |> int32 |> DInt32 |> Ply
+              (bigint number) ** (int exp) |> int32 |> DInt32 |> Task.FromResult
            with :? System.OverflowException ->
              RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID)
         | _ -> incorrectArgs ())
@@ -165,7 +165,7 @@ let fns : List<BuiltInFn> =
           if b = 0 then
             RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.threadID
           else
-            Ply(DInt32(a / b))
+            Task.FromResult(DInt32(a / b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -179,7 +179,7 @@ let fns : List<BuiltInFn> =
       description = "Returns the negation of <param a>, {{-a}}"
       fn =
         (function
-        | _, _, _, [ DInt32 a ] -> Ply(DInt32(-a))
+        | _, _, _, [ DInt32 a ] -> Task.FromResult(DInt32(-a))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -193,7 +193,7 @@ let fns : List<BuiltInFn> =
       description = "Returns {{true}} if <param a> is greater than <param b>"
       fn =
         (function
-        | _, _, _, [ DInt32 a; DInt32 b ] -> Ply(DBool(a > b))
+        | _, _, _, [ DInt32 a; DInt32 b ] -> Task.FromResult(DBool(a > b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -208,7 +208,7 @@ let fns : List<BuiltInFn> =
         "Returns {{true}} if <param a> is greater than or equal to <param b>"
       fn =
         (function
-        | _, _, _, [ DInt32 a; DInt32 b ] -> Ply(DBool(a >= b))
+        | _, _, _, [ DInt32 a; DInt32 b ] -> Task.FromResult(DBool(a >= b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -222,7 +222,7 @@ let fns : List<BuiltInFn> =
       description = "Returns {{true}} if <param a> is less than <param b>"
       fn =
         (function
-        | _, _, _, [ DInt32 a; DInt32 b ] -> Ply(DBool(a < b))
+        | _, _, _, [ DInt32 a; DInt32 b ] -> Task.FromResult(DBool(a < b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -237,7 +237,7 @@ let fns : List<BuiltInFn> =
         "Returns {{true}} if <param a> is less than or equal to <param b>"
       fn =
         (function
-        | _, _, _, [ DInt32 a; DInt32 b ] -> Ply(DBool(a <= b))
+        | _, _, _, [ DInt32 a; DInt32 b ] -> Task.FromResult(DBool(a <= b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -257,7 +257,7 @@ let fns : List<BuiltInFn> =
 
           let correction : int32 = 1
 
-          lower + randomSeeded().Next(upper - lower + correction) |> DInt32 |> Ply
+          lower + randomSeeded().Next(upper - lower + correction) |> DInt32 |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -271,7 +271,7 @@ let fns : List<BuiltInFn> =
       description = "Get the square root of an <type Int32>"
       fn =
         (function
-        | _, _, _, [ DInt32 a ] -> Ply(DFloat(sqrt (float a)))
+        | _, _, _, [ DInt32 a ] -> Task.FromResult(DFloat(sqrt (float a)))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -285,7 +285,7 @@ let fns : List<BuiltInFn> =
       description = "Converts an <type Int32> to a <type Float>"
       fn =
         (function
-        | _, _, _, [ DInt32 a ] -> Ply(DFloat(float a))
+        | _, _, _, [ DInt32 a ] -> Task.FromResult(DFloat(float a))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -307,12 +307,12 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DString s ] ->
           try
-            s |> System.Convert.ToInt32 |> DInt32 |> resultOk |> Ply
+            s |> System.Convert.ToInt32 |> DInt32 |> resultOk |> Task.FromResult
           with
           | :? System.FormatException ->
-            ParseError.BadFormat |> ParseError.toDT |> resultError |> Ply
+            ParseError.BadFormat |> ParseError.toDT |> resultError |> Task.FromResult
           | :? System.OverflowException ->
-            ParseError.OutOfRange |> ParseError.toDT |> resultError |> Ply
+            ParseError.OutOfRange |> ParseError.toDT |> resultError |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -326,7 +326,7 @@ let fns : List<BuiltInFn> =
       description = "Stringify <param int>"
       fn =
         (function
-        | _, _, _, [ DInt32 int ] -> Ply(DString(string int))
+        | _, _, _, [ DInt32 int ] -> Task.FromResult(DString(string int))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -340,7 +340,7 @@ let fns : List<BuiltInFn> =
       description = "Converts an Int8 to a 32-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DInt8 a ] -> DInt32(int32 a) |> Ply
+        | _, _, _, [ DInt8 a ] -> DInt32(int32 a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -354,7 +354,7 @@ let fns : List<BuiltInFn> =
       description = "Converts a UInt8 to a 32-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DUInt8 a ] -> DInt32(int32 a) |> Ply
+        | _, _, _, [ DUInt8 a ] -> DInt32(int32 a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -368,7 +368,7 @@ let fns : List<BuiltInFn> =
       description = "Converts an Int16 to a 32-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DInt16 a ] -> DInt32(int32 a) |> Ply
+        | _, _, _, [ DInt16 a ] -> DInt32(int32 a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -382,7 +382,7 @@ let fns : List<BuiltInFn> =
       description = "Converts a UInt16 to a 32-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DUInt16 a ] -> DInt32(int32 a) |> Ply
+        | _, _, _, [ DUInt16 a ] -> DInt32(int32 a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -399,9 +399,9 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DUInt32 a ] ->
           if (a > uint32 System.Int32.MaxValue) then
-            Dval.optionNone KTInt32 |> Ply
+            Dval.optionNone KTInt32 |> Task.FromResult
           else
-            Dval.optionSome KTInt32 (DInt32(int32 a)) |> Ply
+            Dval.optionSome KTInt32 (DInt32(int32 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -420,9 +420,9 @@ let fns : List<BuiltInFn> =
           if
             (a < int64 System.Int32.MinValue) || (a > int64 System.Int32.MaxValue)
           then
-            Dval.optionNone KTInt32 |> Ply
+            Dval.optionNone KTInt32 |> Task.FromResult
           else
-            Dval.optionSome KTInt32 (DInt32(int32 a)) |> Ply
+            Dval.optionSome KTInt32 (DInt32(int32 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -439,9 +439,9 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DUInt64 a ] ->
           if (a > uint64 System.Int32.MaxValue) then
-            Dval.optionNone KTInt32 |> Ply
+            Dval.optionNone KTInt32 |> Task.FromResult
           else
-            Dval.optionSome KTInt32 (DInt32(int32 a)) |> Ply
+            Dval.optionSome KTInt32 (DInt32(int32 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -461,9 +461,9 @@ let fns : List<BuiltInFn> =
             (a < System.Int128.op_Implicit System.Int32.MinValue)
             || (a > System.Int128.op_Implicit System.Int32.MaxValue)
           then
-            Dval.optionNone KTInt32 |> Ply
+            Dval.optionNone KTInt32 |> Task.FromResult
           else
-            Dval.optionSome KTInt32 (DInt32(int32 a)) |> Ply
+            Dval.optionSome KTInt32 (DInt32(int32 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -480,9 +480,9 @@ let fns : List<BuiltInFn> =
         (function
         | _, _, _, [ DUInt128 a ] ->
           if (a > 2147483647Z) then
-            Dval.optionNone KTInt32 |> Ply
+            Dval.optionNone KTInt32 |> Task.FromResult
           else
-            Dval.optionSome KTInt32 (DInt32(int32 a)) |> Ply
+            Dval.optionSome KTInt32 (DInt32(int32 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure

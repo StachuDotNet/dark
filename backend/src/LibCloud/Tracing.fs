@@ -1,7 +1,6 @@
 /// Tracing for real execution
 module LibCloud.Tracing
 
-open FSharp.Control.Tasks
 open System.Threading.Tasks
 
 open Prelude

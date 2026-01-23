@@ -5,7 +5,6 @@
 module LibExecution.DvalReprInternalQueryable
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 open System.Text.Json
 
 open Prelude

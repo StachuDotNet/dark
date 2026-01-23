@@ -2,7 +2,6 @@
 module LibExecution.Interpreter
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open RuntimeTypes
@@ -174,7 +173,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Task<Dval> =
         | Function(FQFnName.Builtin _) ->
           // we should error in some better way (CLEANUP)
           // , but the point is that callstacks shouldn't be created for builtin fn calls
-          raiseRTE (RTE.FnNotFound(FQFnName.fqBuiltin "builtin" 0))
+          Task.FromResult(raiseRTE (RTE.FnNotFound(FQFnName.fqBuiltin "builtin" 0)))
 
         | Function(FQFnName.Package fn) ->
           task {
@@ -190,7 +189,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Task<Dval> =
                   Map.add fn.id instrData vm.packageFnInstrCache
                 return instrData
 
-              | None -> return raiseRTE (RTE.FnNotFound(FQFnName.Package fn))
+              | None -> return! Task.FromResult(raiseRTE (RTE.FnNotFound(FQFnName.Package fn)))
           }
 
 

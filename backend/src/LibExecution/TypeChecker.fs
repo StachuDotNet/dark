@@ -3,7 +3,6 @@
 module LibExecution.TypeChecker
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open RuntimeTypes
@@ -636,36 +635,32 @@ module DvalCreator =
             task {
               // Basic validation
               if fieldName = "" then
-                return
-                  RTE.Records.CreationEmptyKey |> RTE.Record |> raiseRTE threadID
+                return! Task.FromResult(RTE.Records.CreationEmptyKey |> RTE.Record |> raiseRTE threadID)
 
               if Map.containsKey fieldName fieldsSoFar then
-                return
-                  RTE.Records.CreationDuplicateField fieldName
-                  |> RTE.Record
-                  |> raiseRTE threadID
+                return! Task.FromResult(RTE.Records.CreationDuplicateField fieldName
+                                        |> RTE.Record
+                                        |> raiseRTE threadID)
 
               // Find and validate field
               match expectedFields |> NEList.find (fun f -> f.name = fieldName) with
               | None ->
-                return
-                  RTE.Records.CreationFieldNotExpected fieldName
-                  |> RTE.Record
-                  |> raiseRTE threadID
+                return! Task.FromResult(RTE.Records.CreationFieldNotExpected fieldName
+                                        |> RTE.Record
+                                        |> raiseRTE threadID)
 
               | Some fieldDef ->
                 let! expected = TypeReference.toVT types tst fieldDef.typ
                 match! unify types tst fieldDef.typ fieldValue with
                 | Error _path ->
-                  return
-                    RTE.Records.CreationFieldOfWrongType(
-                      fieldName,
-                      expected,
-                      Dval.toValueType fieldValue,
-                      fieldValue
-                    )
-                    |> RTE.Record
-                    |> raiseRTE threadID
+                  return! Task.FromResult(RTE.Records.CreationFieldOfWrongType(
+                                            fieldName,
+                                            expected,
+                                            Dval.toValueType fieldValue,
+                                            fieldValue
+                                          )
+                                          |> RTE.Record
+                                          |> raiseRTE threadID)
 
                 | Ok newTST ->
                   let! expected = TypeReference.toVT types newTST fieldDef.typ

@@ -1,7 +1,6 @@
 module Tests.Canvas
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Expecto
 open Fumble

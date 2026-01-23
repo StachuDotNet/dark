@@ -6,7 +6,6 @@
 /// (i.e. if `/hello/:name` is defined, and you go to `/hello/john`)
 module LibCloud.Routing
 
-open FSharp.Control.Tasks
 open System.Threading.Tasks
 
 open FSharpx
