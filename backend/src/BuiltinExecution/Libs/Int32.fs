@@ -51,7 +51,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32Remainder" 0
@@ -85,7 +86,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32Add" 0
@@ -99,7 +101,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32Subtract" 0
@@ -113,7 +116,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32Multiply" 0
@@ -127,7 +131,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32Power" 0
@@ -151,7 +156,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32Divide" 0
@@ -169,7 +175,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32Negate" 0
@@ -183,7 +190,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32GreaterThan" 0
@@ -197,7 +205,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32GreaterThanOrEqualTo" 0
@@ -212,7 +221,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32LessThan" 0
@@ -226,7 +236,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32LessThanOrEqualTo" 0
@@ -241,7 +252,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32Random" 0
@@ -261,7 +273,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32Sqrt" 0
@@ -275,7 +288,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32ToFloat" 0
@@ -289,7 +303,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32Parse" 0
@@ -316,7 +331,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32ToString" 0
@@ -330,7 +346,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32FromInt8" 0
@@ -344,7 +361,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32FromUInt8" 0
@@ -358,7 +376,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32FromInt16" 0
@@ -372,7 +391,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32FromUInt16" 0
@@ -386,7 +406,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32FromUInt32" 0
@@ -405,7 +426,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32FromInt64" 0
@@ -426,7 +448,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32FromUInt64" 0
@@ -445,7 +468,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32FromInt128" 0
@@ -467,7 +491,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "int32FromUInt128" 0
@@ -486,6 +511,7 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated } ]
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny } ]
 
 let builtins = LibExecution.Builtin.make [] fns

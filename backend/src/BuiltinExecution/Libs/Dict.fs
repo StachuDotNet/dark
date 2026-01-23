@@ -27,7 +27,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "dictKeys" 0
@@ -44,7 +45,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "dictValues" 0
@@ -60,7 +62,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "dictToList" 0
@@ -80,7 +83,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "dictFromListOverwritingDuplicates" 0
@@ -120,7 +124,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "dictFromList" 0
@@ -161,7 +166,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "dictGet" 0
@@ -180,7 +186,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "dictMember" 0
@@ -196,7 +203,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "dictMerge" 0
@@ -223,7 +231,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "dictSet" 0
@@ -250,7 +259,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "dictSetOverridingDuplicates" 0
@@ -277,7 +287,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "dictRemove" 0
@@ -292,6 +303,7 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated } ]
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny } ]
 
 let builtins = LibExecution.Builtin.make [] fns

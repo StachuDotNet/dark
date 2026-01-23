@@ -492,7 +492,8 @@ let fns (config : Configuration) : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
-      deprecated = NotDeprecated } ]
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny } ]
 
 
 let builtins config = Builtin.make [] (fns config)

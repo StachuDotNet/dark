@@ -35,7 +35,8 @@ let fns : List<BuiltInFn> =
         // Similarly to DateTime.now, it's not particularly fun for this to change
         // when live programming, so let's keep this as Impure rather than ImpurePreviewable
         Impure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "uuidParse" 0
@@ -62,7 +63,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
-      deprecated = NotDeprecated }
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny }
 
 
     { name = fn "uuidToString" 0
@@ -77,7 +79,8 @@ let fns : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
-      deprecated = NotDeprecated } ]
+      deprecated = NotDeprecated
+      usageRestriction = AllowAny } ]
 
 
 let builtins = LibExecution.Builtin.make [] fns

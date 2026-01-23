@@ -1316,6 +1316,13 @@ type BuiltInValue =
     deprecated : Deprecation<FQValueName.FQValueName>
     body : Dval }
 
+/// Specifies which package functions are allowed to call a builtin
+type UsageRestriction =
+  /// Any package function can call this builtin
+  | AllowAny
+  /// Only the specified package function can call this builtin
+  | AllowOne of FQFnName.Package
+
 /// A built-in standard library function
 ///
 /// (Generally shouldn't be accessed directly,
@@ -1328,6 +1335,7 @@ type BuiltInFn =
     description : string
     previewable : Previewable
     deprecated : Deprecation<FQFnName.FQFnName>
+    usageRestriction : UsageRestriction
     sqlSpec : SqlSpec
     fn : BuiltInFnSig }
 
