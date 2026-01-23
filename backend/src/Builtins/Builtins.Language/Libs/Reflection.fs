@@ -133,6 +133,53 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       previewable = Pure
       callEffects = Set.empty
+      deprecated = NotDeprecated }
+
+    { name = fn "reflectType" 0
+      typeParams = [ "a" ]
+      parameters =
+        [ Param.make "dv" (TVariable "a") "The value whose type to return." ]
+      returnType =
+        TCustomType(
+          { originalName = []; resolved = Ok(RT2DT.ValueType.typeName ()) },
+          []
+        )
+      description =
+        "Returns the runtime type of <param dv>, as a <type "
+        + "LanguageTools.RuntimeTypes.ValueType>, without reflecting the value itself."
+      fn =
+        (function
+        | _, _, _, [| dv |] -> dv |> Dval.toValueType |> RT2DT.ValueType.toDT |> Ply
+        | _ -> incorrectArgs ())
+      previewable = Pure
+      callEffects = Set.empty
+      deprecated = NotDeprecated }
+
+    { name = fn "typeName" 0
+      typeParams = [ "a" ]
+      parameters =
+        [ Param.make "dv" (TVariable "a") "The value whose type name to return." ]
+      returnType =
+        TypeReference.option (
+          TCustomType(
+            { originalName = []; resolved = Ok(RT2DT.FQTypeName.typeName ()) },
+            []
+          )
+        )
+      description =
+        "Returns the type name of a record or enum <param dv>, or {{None}} for any other value."
+      fn =
+        (function
+        | _, _, _, [| dv |] ->
+          let known = RT2DT.FQTypeName.knownType ()
+          match dv with
+          | DRecord(_, typeName, _, _)
+          | DEnum(_, typeName, _, _, _) ->
+            Dval.optionSome known (RT2DT.FQTypeName.toDT typeName) |> Ply
+          | _ -> Dval.optionNone known |> Ply
+        | _ -> incorrectArgs ())
+      previewable = Pure
+      callEffects = Set.empty
       deprecated = NotDeprecated } ]
 
 
