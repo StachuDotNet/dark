@@ -493,7 +493,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
       sqlSpec = NotQueryable
       previewable = Impure
       deprecated = NotDeprecated
-      usageRestriction = AllowAny } ]
+      usageRestriction = AllowOne PackageIDs.Fn.Stdlib.HttpClient.request } ]
 
 
 let builtins config = Builtin.make [] (fns config)

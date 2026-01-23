@@ -26,7 +26,7 @@
   - Pass this context through to `resolveFnName` calls
   - Location: `/home/dark/app/backend/src/LibParser/WrittenTypesToProgramTypes.fs`
 
-- [ ] Add tests for restriction enforcement
+- [x] Add tests for restriction enforcement
   - Create test in `/home/dark/app/backend/tests/Tests/Builtin.Tests.fs`
   - Test that AllowAny works for any caller
   - Test that AllowOne blocks unauthorized callers
@@ -35,105 +35,29 @@
 - [x] Run tests to verify infrastructure works
   - Command: `./scripts/run-backend-tests`
   - Verify all tests pass with AllowAny defaults (9,313 tests passed!)
+  - Packages reload successfully with restriction checking enabled!
 
 - [x] Commit initial infrastructure
   - Commit message: "Add UsageRestriction infrastructure for builtins"
 
+- [x] Commit restriction checking implementation
+  - Commit message: "feat: Implement builtin usage restriction checking"
+
 ## Phase 2: Easy Restrictions (AllowOne)
 
 ### Strategy
-For each builtin that has a clear 1:1 wrapper in a package function, change `usageRestriction` from `AllowAny` to `AllowOne` with the specific package function.
+For each builtin that has a clear 1:1 wrapper in a package function AND has a stable ID registered in PackageIDs.fs, change `usageRestriction` from `AllowAny` to `AllowOne` with the specific package function.
 
-### Int8 builtins
-- [ ] Restrict Int8 builtins to Darklang.Stdlib.Int8 functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/Int8.fs`
-  - Set `usageRestriction = AllowOne(FQFnName.Package for each wrapper)`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/int8.dark`
-  - Test and commit
+### HttpClient builtins
+- [x] Restrict httpClientRequest builtin to Darklang.Stdlib.HttpClient.request
+  - Updated `/home/dark/app/backend/src/BuiltinExecution/Libs/HttpClient.fs`
+  - Set `usageRestriction = AllowOne PackageIDs.Fn.Stdlib.HttpClient.request`
+  - All 9,316 tests pass, packages reload successfully!
 
-### UInt8 builtins
-- [ ] Restrict UInt8 builtins to Darklang.Stdlib.UInt8 functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/UInt8.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/uint8.dark`
-  - Test and commit
+### Note: Most stdlib functions don't have stable IDs yet
+Most Int8, UInt8, Int16, etc. functions are NOT registered in PackageIDs.fs yet, so they get random UUIDs on each parse. This makes it impossible to use AllowOne restrictions for them without first adding stable IDs. This is a larger project that should be done separately.
 
-### Int16 builtins
-- [ ] Restrict Int16 builtins to Darklang.Stdlib.Int16 functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/Int16.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/int16.dark`
-  - Test and commit
-
-### UInt16 builtins
-- [ ] Restrict UInt16 builtins to Darklang.Stdlib.UInt16 functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/UInt16.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/uint16.dark`
-  - Test and commit
-
-### Int32 builtins
-- [ ] Restrict Int32 builtins to Darklang.Stdlib.Int32 functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/Int32.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/int32.dark`
-  - Test and commit
-
-### UInt32 builtins
-- [ ] Restrict UInt32 builtins to Darklang.Stdlib.UInt32 functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/UInt32.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/uint32.dark`
-  - Test and commit
-
-### Int64 builtins
-- [ ] Restrict Int64 builtins to Darklang.Stdlib.Int64 functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/Int64.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/int64.dark`
-  - Test and commit
-
-### UInt64 builtins
-- [ ] Restrict UInt64 builtins to Darklang.Stdlib.UInt64 functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/UInt64.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/uint64.dark`
-  - Test and commit
-
-### Int128 builtins
-- [ ] Restrict Int128 builtins to Darklang.Stdlib.Int128 functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/Int128.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/int128.dark`
-  - Test and commit
-
-### UInt128 builtins
-- [ ] Restrict UInt128 builtins to Darklang.Stdlib.UInt128 functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/UInt128.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/uint128.dark`
-  - Test and commit
-
-### Bool builtins
-- [ ] Restrict Bool builtins to Darklang.Stdlib.Bool functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/Bool.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/bool.dark`
-  - Test and commit
-
-### Char builtins
-- [ ] Restrict Char builtins to Darklang.Stdlib.Char functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/Char.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/char.dark`
-  - Test and commit
-
-### UUID builtins
-- [ ] Restrict Uuid builtins to Darklang.Stdlib.Uuid functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/Uuid.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/uuid.dark`
-  - Test and commit
-
-### Base64 builtins
-- [ ] Restrict Base64 builtins to Darklang.Stdlib.Base64 functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/Base64.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/base64.dark`
-  - Test and commit
-
-### Bytes builtins
-- [ ] Restrict Bytes builtins to Darklang.Stdlib.Bytes functions
-  - Update `/home/dark/app/backend/src/BuiltinExecution/Libs/Bytes.fs`
-  - Verify package functions in `/home/dark/app/packages/darklang/stdlib/bytes.dark`
-  - Test and commit
+For now, we'll skip these and focus on the functions that already have stable IDs or are used in more complex ways that need analysis.
 
 ## Phase 3: Complex Restrictions (Require Analysis)
 
