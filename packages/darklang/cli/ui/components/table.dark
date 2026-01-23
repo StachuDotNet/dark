@@ -1,0 +1,178 @@
+module Darklang.CLI.UI.Components.Table
+
+type Column =
+  { header: String
+    width: Int64
+    alignment: Core.Types.Alignment }
+
+type TableModel =
+  { columns: List<Column>
+    rows: List<List<String>>
+    selectedRow: Int64
+    showHeader: Bool
+    borderStyle: Core.Rendering.BoxStyle
+    headerColor: Core.Types.Color
+    selectedColor: Core.Types.Color }
+
+let createColumn (header: String) (width: Int64) : Column =
+  Column { header = header; width = width; alignment = Core.Types.Alignment.Left }
+
+let createColumnWithAlignment (header: String) (width: Int64) (alignment: Core.Types.Alignment) : Column =
+  Column { header = header; width = width; alignment = alignment }
+
+let createTable (columns: List<Column>) (rows: List<List<String>>) : Core.Types.Component<TableModel> =
+  let totalWidth =
+    columns
+    |> Stdlib.List.map (fun col -> col.width + 1L)
+    |> Stdlib.List.fold 1L (fun acc w -> acc + w)
+
+  let height = (Stdlib.List.length rows) + 3L
+
+  let model =
+    TableModel
+      { columns = columns
+        rows = rows
+        selectedRow = -1L
+        showHeader = true
+        borderStyle = Core.Rendering.BoxStyle.Single
+        headerColor = Core.Types.Color.Primary
+        selectedColor = Core.Types.Color.Info }
+
+  let bounds =
+    Core.Types.Bounds
+      { position = Core.Types.Position { x = 0L; y = 0L }
+        dimensions = Core.Types.Dimensions { width = totalWidth; height = height } }
+
+  Core.Types.Component
+    { id = "table"
+      model = model
+      state = Core.Types.ComponentState.Normal
+      bounds = bounds
+      visible = true
+      focusable = true }
+
+let renderTable (component: Core.Types.Component<TableModel>) (context: Core.Types.RenderContext) : List<String> =
+  let model = component.model
+  let hasFocus = context.hasFocus && component.state == Core.Types.ComponentState.Focused
+  let (horiz, vert, tl, tr, bl, br) = Core.Rendering.getBoxCharsForStyle model.borderStyle
+
+  // Calculate total width
+  let totalWidth =
+    model.columns
+    |> Stdlib.List.map (fun col -> col.width + 1L)
+    |> Stdlib.List.fold 1L (fun acc w -> acc + w)
+
+  // Build separator line
+  let separatorParts =
+    model.columns
+    |> Stdlib.List.map (fun col -> Stdlib.String.repeat horiz col.width)
+    |> Stdlib.String.join (horiz ++ "┼" ++ horiz)
+
+  // Top border
+  let topBorder = tl ++ Stdlib.String.repeat horiz (totalWidth - 2L) ++ tr
+
+  // Header row
+  let headerLine =
+    if model.showHeader then
+      let headerCells =
+        model.columns
+        |> Stdlib.List.map (fun col ->
+            Core.Rendering.padText col.header col.width col.alignment)
+        |> Stdlib.String.join (vert)
+
+      let coloredHeader = Core.Rendering.colorize model.headerColor headerCells
+      [vert ++ coloredHeader ++ vert; vert ++ separatorParts ++ vert]
+    else
+      []
+
+  // Data rows
+  let dataLines =
+    model.rows
+    |> Stdlib.List.indexedMap (fun rowIndex row ->
+        let isSelected = rowIndex == model.selectedRow
+
+        let cells =
+          Stdlib.List.map2 row model.columns (fun cellValue col ->
+            let paddedValue = Core.Rendering.padText cellValue col.width col.alignment
+            paddedValue)
+
+        let rowContent = Stdlib.String.join vert cells
+
+        let styledRow =
+          if isSelected && hasFocus then
+            Core.Rendering.colorize model.selectedColor rowContent
+          else
+            rowContent
+
+        let prefix = if isSelected && hasFocus then "►" else vert
+        prefix ++ styledRow ++ vert)
+
+  // Bottom border
+  let bottomBorder = bl ++ Stdlib.String.repeat horiz (totalWidth - 2L) ++ br
+
+  [topBorder]
+  |> Stdlib.List.append headerLine
+  |> Stdlib.List.append dataLines
+  |> Stdlib.List.append [bottomBorder]
+
+let setTableRows (component: Core.Types.Component<TableModel>) (rows: List<List<String>>) : Core.Types.Component<TableModel> =
+  let model = component.model
+  { component with model = { model with rows = rows } }
+
+let addTableRow (component: Core.Types.Component<TableModel>) (row: List<String>) : Core.Types.Component<TableModel> =
+  let model = component.model
+  { component with model = { model with rows = Stdlib.List.append model.rows [row] } }
+
+let selectRow (component: Core.Types.Component<TableModel>) (index: Int64) : Core.Types.Component<TableModel> =
+  let model = component.model
+  let maxIndex = (Stdlib.List.length model.rows) - 1L
+  let clampedIndex =
+    if index < 0L then
+      0L
+    else if index > maxIndex then
+      maxIndex
+    else
+      index
+  { component with model = { model with selectedRow = clampedIndex } }
+
+let selectNextRow (component: Core.Types.Component<TableModel>) : Core.Types.Component<TableModel> =
+  let model = component.model
+  let maxIndex = (Stdlib.List.length model.rows) - 1L
+  let nextIndex =
+    if model.selectedRow < maxIndex then
+      model.selectedRow + 1L
+    else
+      model.selectedRow
+  { component with model = { model with selectedRow = nextIndex } }
+
+let selectPreviousRow (component: Core.Types.Component<TableModel>) : Core.Types.Component<TableModel> =
+  let model = component.model
+  let prevIndex =
+    if model.selectedRow > 0L then
+      model.selectedRow - 1L
+    else
+      0L
+  { component with model = { model with selectedRow = prevIndex } }
+
+let setTableBorderStyle (component: Core.Types.Component<TableModel>) (style: Core.Rendering.BoxStyle) : Core.Types.Component<TableModel> =
+  let model = component.model
+  { component with model = { model with borderStyle = style } }
+
+let setTableHeaderColor (component: Core.Types.Component<TableModel>) (color: Core.Types.Color) : Core.Types.Component<TableModel> =
+  let model = component.model
+  { component with model = { model with headerColor = color } }
+
+let hideTableHeader (component: Core.Types.Component<TableModel>) : Core.Types.Component<TableModel> =
+  let model = component.model
+  { component with model = { model with showHeader = false } }
+
+let showTableHeader (component: Core.Types.Component<TableModel>) : Core.Types.Component<TableModel> =
+  let model = component.model
+  { component with model = { model with showHeader = true } }
+
+let getSelectedRow (component: Core.Types.Component<TableModel>) : Stdlib.Option.Option<List<String>> =
+  let model = component.model
+  if model.selectedRow >= 0L then
+    Stdlib.List.getAt model.rows model.selectedRow
+  else
+    Stdlib.Option.Option.None

@@ -70,3 +70,34 @@ Darklang.CLI.UI.Core.Rendering.highlightIfFocused "text" true = "\u001b[7mtext\u
 
 // Test highlightIfFocused without focus
 Darklang.CLI.UI.Core.Rendering.highlightIfFocused "text" false = "text"
+
+// Test box drawing styles - getBoxCharsForStyle
+// Single style
+(let (horiz, vert, tl, tr, bl, br) =
+  Darklang.CLI.UI.Core.Rendering.getBoxCharsForStyle
+    Darklang.CLI.UI.Core.Rendering.BoxStyle.Single
+ (tl, tr, bl, br)) = ("┌", "┐", "└", "┘")
+
+// Double style
+(let (horiz, vert, tl, tr, bl, br) =
+  Darklang.CLI.UI.Core.Rendering.getBoxCharsForStyle
+    Darklang.CLI.UI.Core.Rendering.BoxStyle.Double
+ (tl, tr, bl, br)) = ("╔", "╗", "╚", "╝")
+
+// Rounded style
+(let (horiz, vert, tl, tr, bl, br) =
+  Darklang.CLI.UI.Core.Rendering.getBoxCharsForStyle
+    Darklang.CLI.UI.Core.Rendering.BoxStyle.Rounded
+ (tl, tr, bl, br)) = ("╭", "╮", "╰", "╯")
+
+// Heavy style
+(let (horiz, vert, tl, tr, bl, br) =
+  Darklang.CLI.UI.Core.Rendering.getBoxCharsForStyle
+    Darklang.CLI.UI.Core.Rendering.BoxStyle.Heavy
+ (horiz, vert)) = ("━", "┃")
+
+// Dashed style
+(let (horiz, vert, tl, tr, bl, br) =
+  Darklang.CLI.UI.Core.Rendering.getBoxCharsForStyle
+    Darklang.CLI.UI.Core.Rendering.BoxStyle.Dashed
+ (horiz, vert)) = ("┄", "┆")

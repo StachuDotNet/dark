@@ -1,0 +1,156 @@
+// Tests for Table component
+
+// Test Column creation
+(let col = Darklang.CLI.UI.Components.Table.createColumn "Name" 20L
+ col.header) = "Name"
+
+// Test Column width
+(let col = Darklang.CLI.UI.Components.Table.createColumn "Name" 15L
+ col.width) = 15L
+
+// Test Column default alignment is Left
+(let col = Darklang.CLI.UI.Components.Table.createColumn "Name" 20L
+ col.alignment) = Darklang.CLI.UI.Core.Types.Alignment.Left
+
+// Test Column with alignment
+(let col =
+  Darklang.CLI.UI.Components.Table.createColumnWithAlignment
+    "Price"
+    10L
+    Darklang.CLI.UI.Core.Types.Alignment.Right
+ col.alignment) = Darklang.CLI.UI.Core.Types.Alignment.Right
+
+// Test Table creation
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L; Darklang.CLI.UI.Components.Table.createColumn "Age" 5L]
+ let rows = [["Alice"; "30"]; ["Bob"; "25"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ Stdlib.List.length table.model.rows) = 2L
+
+// Test Table initial selection is -1 (none)
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]; ["Bob"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ table.model.selectedRow) = -1L
+
+// Test Table default shows header
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ table.model.showHeader) = true
+
+// Test Table is focusable
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ table.focusable) = true
+
+// Test selectRow
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]; ["Bob"]; ["Charlie"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let selected = Darklang.CLI.UI.Components.Table.selectRow table 1L
+ selected.model.selectedRow) = 1L
+
+// Test selectRow clamps to max
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]; ["Bob"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let selected = Darklang.CLI.UI.Components.Table.selectRow table 100L
+ selected.model.selectedRow) = 1L
+
+// Test selectRow clamps negative to 0
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]; ["Bob"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let selected = Darklang.CLI.UI.Components.Table.selectRow table (-5L)
+ selected.model.selectedRow) = 0L
+
+// Test selectNextRow
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]; ["Bob"]; ["Charlie"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let selected = Darklang.CLI.UI.Components.Table.selectRow table 0L
+ let next = Darklang.CLI.UI.Components.Table.selectNextRow selected
+ next.model.selectedRow) = 1L
+
+// Test selectNextRow at end stays at end
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]; ["Bob"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let selected = Darklang.CLI.UI.Components.Table.selectRow table 1L
+ let next = Darklang.CLI.UI.Components.Table.selectNextRow selected
+ next.model.selectedRow) = 1L
+
+// Test selectPreviousRow
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]; ["Bob"]; ["Charlie"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let selected = Darklang.CLI.UI.Components.Table.selectRow table 2L
+ let prev = Darklang.CLI.UI.Components.Table.selectPreviousRow selected
+ prev.model.selectedRow) = 1L
+
+// Test selectPreviousRow at beginning stays at beginning
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]; ["Bob"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let selected = Darklang.CLI.UI.Components.Table.selectRow table 0L
+ let prev = Darklang.CLI.UI.Components.Table.selectPreviousRow selected
+ prev.model.selectedRow) = 0L
+
+// Test setTableRows
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let updated = Darklang.CLI.UI.Components.Table.setTableRows table [["Bob"]; ["Charlie"]; ["Diana"]]
+ Stdlib.List.length updated.model.rows) = 3L
+
+// Test addTableRow
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]; ["Bob"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let updated = Darklang.CLI.UI.Components.Table.addTableRow table ["Charlie"]
+ Stdlib.List.length updated.model.rows) = 3L
+
+// Test hideTableHeader
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let hidden = Darklang.CLI.UI.Components.Table.hideTableHeader table
+ hidden.model.showHeader) = false
+
+// Test showTableHeader
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let hidden = Darklang.CLI.UI.Components.Table.hideTableHeader table
+ let shown = Darklang.CLI.UI.Components.Table.showTableHeader hidden
+ shown.model.showHeader) = true
+
+// Test setTableBorderStyle
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let styled =
+  Darklang.CLI.UI.Components.Table.setTableBorderStyle table Darklang.CLI.UI.Core.Rendering.BoxStyle.Double
+ styled.model.borderStyle) = Darklang.CLI.UI.Core.Rendering.BoxStyle.Double
+
+// Test setTableHeaderColor
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let colored =
+  Darklang.CLI.UI.Components.Table.setTableHeaderColor table Darklang.CLI.UI.Core.Types.Color.Success
+ colored.model.headerColor) = Darklang.CLI.UI.Core.Types.Color.Success
+
+// Test getSelectedRow with selection
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]; ["Bob"]; ["Charlie"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ let selected = Darklang.CLI.UI.Components.Table.selectRow table 1L
+ Darklang.CLI.UI.Components.Table.getSelectedRow selected) = Stdlib.Option.Option.Some ["Bob"]
+
+// Test getSelectedRow with no selection
+(let columns = [Darklang.CLI.UI.Components.Table.createColumn "Name" 20L]
+ let rows = [["Alice"]; ["Bob"]]
+ let table = Darklang.CLI.UI.Components.Table.createTable columns rows
+ Darklang.CLI.UI.Components.Table.getSelectedRow table) = Stdlib.Option.Option.None

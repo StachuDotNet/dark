@@ -1,0 +1,146 @@
+// Tests for form UI components: TextInput, Checkbox, RadioGroup, Select
+
+// Test TextInput creation
+(let input =
+  Darklang.CLI.UI.Components.Forms.createTextInput "Enter name" 20L
+ input.model.placeholder) = "Enter name"
+
+// Test TextInput default value is empty
+(let input =
+  Darklang.CLI.UI.Components.Forms.createTextInput "Enter name" 20L
+ input.model.value) = ""
+
+// Test TextInput maxLength
+(let input =
+  Darklang.CLI.UI.Components.Forms.createTextInput "Enter name" 50L
+ input.model.maxLength) = 50L
+
+// Test TextInput is focusable
+(let input =
+  Darklang.CLI.UI.Components.Forms.createTextInput "Enter name" 20L
+ input.focusable) = true
+
+// Test TextInput update with character
+(let input =
+  Darklang.CLI.UI.Components.Forms.createTextInput "Name" 20L
+ let updated =
+  Darklang.CLI.UI.Components.Forms.updateTextInput
+    input
+    (Darklang.CLI.UI.Core.Types.ComponentEvent.Key (Darklang.CLI.UI.Core.Types.KeyEvent.Character "a"))
+ updated.model.value) = "a"
+
+// Test Checkbox creation
+(let checkbox =
+  Darklang.CLI.UI.Components.Forms.createCheckbox "Accept terms" false
+ checkbox.model.label) = "Accept terms"
+
+// Test Checkbox initial checked state
+(let checkbox =
+  Darklang.CLI.UI.Components.Forms.createCheckbox "Accept terms" true
+ checkbox.model.checked) = true
+
+// Test Checkbox toggle
+(let checkbox =
+  Darklang.CLI.UI.Components.Forms.createCheckbox "Accept terms" false
+ let toggled = Darklang.CLI.UI.Components.Forms.toggleCheckbox checkbox
+ toggled.model.checked) = true
+
+// Test Checkbox toggle back
+(let checkbox =
+  Darklang.CLI.UI.Components.Forms.createCheckbox "Accept terms" true
+ let toggled = Darklang.CLI.UI.Components.Forms.toggleCheckbox checkbox
+ toggled.model.checked) = false
+
+// Test RadioGroup creation
+(let radio =
+  Darklang.CLI.UI.Components.Forms.createRadioGroup ["Option A"; "Option B"; "Option C"] 0L
+ radio.model.selectedIndex) = 0L
+
+// Test RadioGroup options
+(let radio =
+  Darklang.CLI.UI.Components.Forms.createRadioGroup ["Red"; "Green"; "Blue"] 1L
+ radio.model.options) = ["Red"; "Green"; "Blue"]
+
+// Test RadioGroup select option
+(let radio =
+  Darklang.CLI.UI.Components.Forms.createRadioGroup ["A"; "B"; "C"] 0L
+ let selected = Darklang.CLI.UI.Components.Forms.selectRadioOption radio 2L
+ selected.model.selectedIndex) = 2L
+
+// Test RadioGroup select invalid option (too high)
+(let radio =
+  Darklang.CLI.UI.Components.Forms.createRadioGroup ["A"; "B"; "C"] 1L
+ let selected = Darklang.CLI.UI.Components.Forms.selectRadioOption radio 10L
+ selected.model.selectedIndex) = 1L
+
+// Test RadioGroup select invalid option (negative)
+(let radio =
+  Darklang.CLI.UI.Components.Forms.createRadioGroup ["A"; "B"; "C"] 1L
+ let selected = Darklang.CLI.UI.Components.Forms.selectRadioOption radio (-1L)
+ selected.model.selectedIndex) = 1L
+
+// Test Select creation
+(let select =
+  Darklang.CLI.UI.Components.Forms.createSelect ["Small"; "Medium"; "Large"] 0L
+ select.model.selectedIndex) = 0L
+
+// Test Select is initially closed
+(let select =
+  Darklang.CLI.UI.Components.Forms.createSelect ["Small"; "Medium"; "Large"] 0L
+ select.model.isOpen) = false
+
+// Test Slider creation
+(let slider =
+  Darklang.CLI.UI.Components.Forms.createSlider "Volume" 0.0 100.0 50.0 20L
+ slider.model.value) = 50.0
+
+// Test Slider min/max
+(let slider =
+  Darklang.CLI.UI.Components.Forms.createSlider "Brightness" 0.0 255.0 128.0 30L
+ (slider.model.min, slider.model.max)) = (0.0, 255.0)
+
+// Test Slider update left
+(let slider =
+  Darklang.CLI.UI.Components.Forms.createSlider "Value" 0.0 10.0 5.0 20L
+ let updated = Darklang.CLI.UI.Components.Forms.updateSlider slider "left"
+ updated.model.value) = 4.0
+
+// Test Slider update right
+(let slider =
+  Darklang.CLI.UI.Components.Forms.createSlider "Value" 0.0 10.0 5.0 20L
+ let updated = Darklang.CLI.UI.Components.Forms.updateSlider slider "right"
+ updated.model.value) = 6.0
+
+// Test Slider clamp to min
+(let slider =
+  Darklang.CLI.UI.Components.Forms.createSlider "Value" 0.0 10.0 0.0 20L
+ let updated = Darklang.CLI.UI.Components.Forms.updateSlider slider "left"
+ updated.model.value) = 0.0
+
+// Test Slider clamp to max
+(let slider =
+  Darklang.CLI.UI.Components.Forms.createSlider "Value" 0.0 10.0 10.0 20L
+ let updated = Darklang.CLI.UI.Components.Forms.updateSlider slider "right"
+ updated.model.value) = 10.0
+
+// Test DateField creation
+(let datefield =
+  Darklang.CLI.UI.Components.Forms.createDateField "Birth date"
+ datefield.model.placeholder) = "Birth date"
+
+// Test DateField default values
+(let datefield =
+  Darklang.CLI.UI.Components.Forms.createDateField "Date"
+ (datefield.model.day, datefield.model.month, datefield.model.year)) = (1L, 1L, 2024L)
+
+// Test DateField update day increment
+(let datefield =
+  Darklang.CLI.UI.Components.Forms.createDateField "Date"
+ let updated = Darklang.CLI.UI.Components.Forms.updateDateField datefield "day" true
+ updated.model.day) = 2L
+
+// Test DateField update month decrement with wrap
+(let datefield =
+  Darklang.CLI.UI.Components.Forms.createDateField "Date"
+ let updated = Darklang.CLI.UI.Components.Forms.updateDateField datefield "month" false
+ updated.model.month) = 12L

@@ -1,0 +1,108 @@
+// Tests for Spinner component
+
+// Test Spinner creation
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Loading..." Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Dots
+ spinner.model.message) = "Loading..."
+
+// Test Spinner default running state
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Working" Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Line
+ spinner.model.running) = true
+
+// Test Spinner initial frame index
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Wait" Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Circle
+ spinner.model.frameIndex) = 0L
+
+// Test Spinner state is Loading when running
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Loading" Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Dots
+ spinner.state) = Darklang.CLI.UI.Core.Types.ComponentState.Loading
+
+// Test Spinner is not focusable
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Loading" Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Dots
+ spinner.focusable) = false
+
+// Test Spinner tick advances frame
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Loading" Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Dots
+ let ticked = Darklang.CLI.UI.Components.Spinner.tick spinner
+ ticked.model.frameIndex) = 1L
+
+// Test Spinner tick wraps around (Dots has 10 frames)
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Loading" Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Line
+ // Line has 4 frames: ["-"; "\\"; "|"; "/"]
+ let s1 = Darklang.CLI.UI.Components.Spinner.tick spinner
+ let s2 = Darklang.CLI.UI.Components.Spinner.tick s1
+ let s3 = Darklang.CLI.UI.Components.Spinner.tick s2
+ let s4 = Darklang.CLI.UI.Components.Spinner.tick s3
+ s4.model.frameIndex) = 0L
+
+// Test Spinner setMessage
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Old message" Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Dots
+ let updated = Darklang.CLI.UI.Components.Spinner.setSpinnerMessage spinner "New message"
+ updated.model.message) = "New message"
+
+// Test Spinner setColor
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Loading" Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Dots
+ let updated = Darklang.CLI.UI.Components.Spinner.setSpinnerColor spinner Darklang.CLI.UI.Core.Types.Color.Success
+ updated.model.color) = Darklang.CLI.UI.Core.Types.Color.Success
+
+// Test Spinner stop
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Loading" Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Dots
+ let stopped = Darklang.CLI.UI.Components.Spinner.stopSpinner spinner
+ stopped.model.running) = false
+
+// Test Spinner stop changes state to Normal
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Loading" Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Dots
+ let stopped = Darklang.CLI.UI.Components.Spinner.stopSpinner spinner
+ stopped.state) = Darklang.CLI.UI.Core.Types.ComponentState.Normal
+
+// Test Spinner start after stop
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Loading" Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Dots
+ let stopped = Darklang.CLI.UI.Components.Spinner.stopSpinner spinner
+ let started = Darklang.CLI.UI.Components.Spinner.startSpinner stopped
+ started.model.running) = true
+
+// Test Spinner tick does nothing when stopped
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Loading" Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Dots
+ let stopped = Darklang.CLI.UI.Components.Spinner.stopSpinner spinner
+ let ticked = Darklang.CLI.UI.Components.Spinner.tick stopped
+ ticked.model.frameIndex) = 0L
+
+// Test Spinner setStyle resets frame index
+(let spinner =
+  Darklang.CLI.UI.Components.Spinner.createSpinner "Loading" Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Dots
+ let ticked = Darklang.CLI.UI.Components.Spinner.tick spinner
+ let restyled =
+  Darklang.CLI.UI.Components.Spinner.setSpinnerStyle ticked Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Circle
+ restyled.model.frameIndex) = 0L
+
+// Test getFrames Dots
+(Darklang.CLI.UI.Components.Spinner.getFrames Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Dots
+ |> Stdlib.List.length) = 10L
+
+// Test getFrames Line
+(Darklang.CLI.UI.Components.Spinner.getFrames Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Line
+ |> Stdlib.List.length) = 4L
+
+// Test getFrames Circle
+(Darklang.CLI.UI.Components.Spinner.getFrames Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Circle
+ |> Stdlib.List.length) = 4L
+
+// Test getFrames Braille
+(Darklang.CLI.UI.Components.Spinner.getFrames Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Braille
+ |> Stdlib.List.length) = 8L
+
+// Test getFrames Arrow
+(Darklang.CLI.UI.Components.Spinner.getFrames Darklang.CLI.UI.Components.Spinner.SpinnerStyle.Arrow
+ |> Stdlib.List.length) = 8L
