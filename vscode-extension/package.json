@@ -46,7 +46,18 @@
     "configuration": {
       "type": "object",
       "title": "Darklang Extension Config",
-      "properties": {}
+      "properties": {
+        "darklang.editorHost": {
+          "type": "string",
+          "default": "dark-editor.dlio.localhost",
+          "description": "Hostname for the Darklang editor server"
+        },
+        "darklang.editorPort": {
+          "type": "number",
+          "default": 11001,
+          "description": "Port for the Darklang editor server"
+        }
+      }
     },
     "semanticTokenTypes": [
       {

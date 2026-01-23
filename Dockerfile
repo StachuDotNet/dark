@@ -249,7 +249,7 @@ ENV NUGET_SCRATCH=/tmp/NuGetScratch
 # Zig,
 # for (cross-)compiling our `tree-sitter-darklang` parser,
 # along with the `tree-sitter` library itself.
-# TODO Occasionally, check https://ziglang.org/download to see if we're using the latest version
+# NOTE: Check https://ziglang.org/download periodically for updates (current latest: 0.15.x as of Jan 2026)
 ENV ZIG_VERSION=0.11.0
 ENV ZIG_ARM64_MINISIG="RUSGOq2NVecA2XPwbgbN5SvU46UcCmhhfcfrjVC+YvcwUcjAYfIXQmqE//df1Mes7iyGZvGoy2+PSJ8pog7QGLE+3nvP8gtlSAs="
 ENV ZIG_AMD64_MINISIG="RUSGOq2NVecA2X2did6P61CXthPLZEUwi07GDWQ2MWU58W+asm3v85+PRVHN5SljhdsKoAMmbg4fdyseAcbVZayGaV1Iv6chcgE="

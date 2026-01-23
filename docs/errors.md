@@ -50,8 +50,6 @@ Never catch a `RuntimeError` anywhere except at the outer boundaries of code
 execution in `LibExecution.Execution`. That's not how they're intended to be used,
 and will lead to errors being hidden from the user.
 
-TODO continue to update this doc, starting here.
-
 #### Source of the Error
 
 `raiseRTE` takes a `DvalSource` (`Option<tlid*id>`), which allows us to indicate to

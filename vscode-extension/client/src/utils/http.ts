@@ -1,8 +1,21 @@
 import * as http from "http";
+import * as vscode from "vscode";
 
-// CLEANUP: don't hardcode these values
-export const DARK_EDITOR_HOST = "dark-editor.dlio.localhost";
-export const DARK_EDITOR_PORT = 11001;
+// Get configuration values from VS Code settings
+function getEditorHost(): string {
+  return vscode.workspace
+    .getConfiguration("darklang")
+    .get<string>("editorHost", "dark-editor.dlio.localhost");
+}
+
+function getEditorPort(): number {
+  return vscode.workspace
+    .getConfiguration("darklang")
+    .get<number>("editorPort", 11001);
+}
+
+export const DARK_EDITOR_HOST = getEditorHost();
+export const DARK_EDITOR_PORT = getEditorPort();
 
 // Helper function to make HTTP requests to the dark-editor server
 export function httpRequest(

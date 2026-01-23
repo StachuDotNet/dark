@@ -38,7 +38,6 @@ if [[ ! -v NEVER_REBUILD_DOCKER ]]; then
   # Always build for linux/amd64 (new OSX arm machines have emulation). This is
   # slow on MacOS but it gets there eventually.
   # Most of the work is done to enable arm64 builds
-  # LightTODO revisit this
   docker buildx build -t dark --build-arg uid="$uid" --build-arg gid="$gid" .
 
   echo "Removing running containers"

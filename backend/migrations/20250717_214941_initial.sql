@@ -159,7 +159,7 @@ secrets_v0
 , value TEXT NOT NULL
 , version INTEGER NOT NULL
 , created_at TEXT NOT NULL DEFAULT (datetime('now'))
-, PRIMARY KEY (canvas_id, name, version) -- TODO: simplfy PK
+, PRIMARY KEY (canvas_id, name, version) -- TODO: simplify PK
 );
 
 

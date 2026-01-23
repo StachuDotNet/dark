@@ -17,7 +17,7 @@ module PM =
     let make id definition : PT.PackageType.PackageType =
       { id = id
         declaration = { typeParams = []; definition = definition }
-        description = "TODO"
+        description = "Test value"
         deprecated = PT.NotDeprecated }
 
     module Records =
@@ -28,13 +28,13 @@ module PM =
       let nested = System.Guid.NewGuid()
 
       let all : List<PT.PackageType.PackageType> =
-        [ make singleField [ { name = "key"; typ = PT.TBool; description = "TODO" } ]
+        [ make singleField [ { name = "key"; typ = PT.TBool; description = "Test value" } ]
 
           make
             nested
             [ { name = "outer"
                 typ = PT.TCustomType(Ok(PT.FQTypeName.fqPackage singleField), [])
-                description = "TODO" } ] ]
+                description = "Test value" } ] ]
 
     module Enums =
       let withoutFields = guuid ()
@@ -46,27 +46,27 @@ module PM =
       let colorEnum =
         make
           withoutFields
-          [ { name = "Red"; fields = []; description = "TODO" }
-            { name = "Green"; fields = []; description = "TODO" }
-            { name = "Blue"; fields = []; description = "TODO" } ]
+          [ { name = "Red"; fields = []; description = "Test value" }
+            { name = "Green"; fields = []; description = "Test value" }
+            { name = "Blue"; fields = []; description = "Test value" } ]
 
       let MyOption =
         make
           withFields
-          [ { name = "None"; fields = []; description = "TODO" }
+          [ { name = "None"; fields = []; description = "Test value" }
             { name = "Some"
-              fields = [ { typ = PT.TInt64; label = None; description = "TODO" } ]
-              description = "TODO" } ]
+              fields = [ { typ = PT.TInt64; label = None; description = "Test value" } ]
+              description = "Test value" } ]
 
       let MyResult =
         make
           resultId
           [ { name = "Ok"
-              fields = [ { typ = PT.TInt64; label = None; description = "TODO" } ]
-              description = "TODO" }
+              fields = [ { typ = PT.TInt64; label = None; description = "Test value" } ]
+              description = "Test value" }
             { name = "Error"
-              fields = [ { typ = PT.TString; label = None; description = "TODO" } ]
-              description = "TODO" } ]
+              fields = [ { typ = PT.TString; label = None; description = "Test value" } ]
+              description = "Test value" } ]
 
       let all : List<PT.PackageType.PackageType> = [ colorEnum; MyOption; MyResult ]
 
@@ -671,7 +671,7 @@ let pm : PT.PackageManager =
   let valueMap =
     let value : PT.PackageValue.PackageValue =
       { id = Expressions.Values.Package.MySpecialNumber.id
-        description = "TODO"
+        description = "Test value"
         deprecated = PT.NotDeprecated
         body = PT.EInt64(gid (), 17L) }
     [ value ] |> List.map (fun v -> v.id, v) |> Map.ofList
@@ -682,11 +682,11 @@ let pm : PT.PackageManager =
         typeParams = [ "x"; "y" ]
         parameters =
           NEList.ofList
-            { name = "x"; typ = PT.TVariable "x"; description = "TODO" }
-            [ { name = "_y"; typ = PT.TVariable "y"; description = "TODO" } ]
+            { name = "x"; typ = PT.TVariable "x"; description = "Test value" }
+            [ { name = "_y"; typ = PT.TVariable "y"; description = "Test value" } ]
         returnType = PT.TVariable "x"
         body = eVar "x"
-        description = "TODO"
+        description = "Test value"
         deprecated = PT.NotDeprecated }
 
     let outer : PT.PackageFn.PackageFn =
@@ -694,8 +694,8 @@ let pm : PT.PackageManager =
         typeParams = [ "x"; "y" ]
         parameters =
           NEList.ofList
-            { name = "x"; typ = PT.TVariable "x"; description = "TODO" }
-            [ { name = "_y"; typ = PT.TVariable "y"; description = "TODO" } ]
+            { name = "x"; typ = PT.TVariable "x"; description = "Test value" }
+            [ { name = "_y"; typ = PT.TVariable "y"; description = "Test value" } ]
         returnType = PT.TVariable "x"
         body =
           eLet
@@ -705,7 +705,7 @@ let pm : PT.PackageManager =
               [ PT.TString; PT.TBool ]
               [ eStr [ strText "hi" ]; eBool true ])
             (eVar "x")
-        description = "TODO"
+        description = "Test value"
         deprecated = PT.NotDeprecated }
 
     let myAdd : PT.PackageFn.PackageFn =
@@ -713,18 +713,18 @@ let pm : PT.PackageManager =
         typeParams = []
         parameters =
           NEList.ofList
-            { name = "a"; typ = PT.TInt64; description = "TODO" }
-            [ { name = "b"; typ = PT.TInt64; description = "TODO" } ]
+            { name = "a"; typ = PT.TInt64; description = "Test value" }
+            [ { name = "b"; typ = PT.TInt64; description = "Test value" } ]
         returnType = PT.TInt64
         body = eApply (eBuiltinFn "int64Add" 0) [] [ eVar "a"; eVar "b" ]
-        description = "TODO"
+        description = "Test value"
         deprecated = PT.NotDeprecated }
 
     let fact : PT.PackageFn.PackageFn =
       { id = Expressions.Fns.Package.Fact.id
         typeParams = []
         parameters =
-          NEList.ofList { name = "a"; typ = PT.TInt64; description = "TODO" } []
+          NEList.ofList { name = "a"; typ = PT.TInt64; description = "Test value" } []
         returnType = PT.TInt64
         body =
           eIf
@@ -741,7 +741,7 @@ let pm : PT.PackageManager =
                     [ eApply (eBuiltinFn "int64Subtract" 0) [] [ eVar "a"; eInt64 1 ] ]) ]
             ))
 
-        description = "TODO"
+        description = "Test value"
         deprecated = PT.NotDeprecated }
 
     // let addUpTO (n : Int64) : Int64 =
@@ -751,7 +751,7 @@ let pm : PT.PackageManager =
       { id = Expressions.Fns.Package.Recursion.id
         typeParams = []
         parameters =
-          NEList.ofList { name = "n"; typ = PT.TInt64; description = "TODO" } []
+          NEList.ofList { name = "n"; typ = PT.TInt64; description = "Test value" } []
         returnType = PT.TInt64
         body =
           eIf
@@ -773,7 +773,7 @@ let pm : PT.PackageManager =
                         []
                         [ eVar "n"; eInt64 1L ] ]) ]
             ))
-        description = "TODO"
+        description = "Test value"
         deprecated = PT.NotDeprecated }
 
     let myFnThatTakesALambda : PT.PackageFn.PackageFn =
@@ -781,24 +781,24 @@ let pm : PT.PackageManager =
         typeParams = []
         parameters =
           NEList.ofList
-            { name = "x"; typ = PT.TInt64; description = "TODO" }
+            { name = "x"; typ = PT.TInt64; description = "Test value" }
             [ { name = "fn"
                 typ =
                   PT.TFn({ head = PT.TVariable "a"; tail = [] }, PT.TVariable "b")
-                description = "TODO" } ]
+                description = "Test value" } ]
         returnType = PT.TInt64
         body = eApply (eVar "fn") [] [ eVar "x" ]
-        description = "TODO"
+        description = "Test value"
         deprecated = PT.NotDeprecated }
 
     let myFnThatReturnsUnit : PT.PackageFn.PackageFn =
       { id = Expressions.Fns.Package.MyFnThatReturnsUnit.id
         typeParams = []
         parameters =
-          NEList.ofList { name = "unit"; typ = PT.TUnit; description = "TODO" } []
+          NEList.ofList { name = "unit"; typ = PT.TUnit; description = "Test value" } []
         returnType = PT.TUnit
         body = eUnit ()
-        description = "TODO"
+        description = "Test value"
         deprecated = PT.NotDeprecated }
 
     [ inner

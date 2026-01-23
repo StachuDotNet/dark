@@ -1,5 +1,5 @@
 ==================
-[TODO name this test]
+[Test name here]
 ==================
 
 true

@@ -120,7 +120,7 @@ module RuntimeError =
           | FullValue dv -> dval accountID branchID dv
           | LetPattern p -> letPattern p
           | segment ->
-            $"(RTETODO segmentsToString parts {(Builtin.jsonSerialize<ErrorSegment> segment)})"
+            $"(Unhandled error segment: {(Builtin.jsonSerialize<ErrorSegment> segment)})"
 
         Stdlib.List.push prevSegments newSegment)
 
@@ -459,8 +459,10 @@ module RuntimeError =
 
     | CLI err ->
       match err with
-      | NoExpressionsToExecute -> [ ES.String "TODO NoExpressionsToExecute" ]
-      | NonIntReturned actuallyReturnedOfDval -> [ ES.String "TODO NonIntReturned" ]
+      | NoExpressionsToExecute -> [ ES.String "No expressions to execute" ]
+      | NonIntReturned actuallyReturnedOfDval ->
+        [ ES.String "Expected an Int to be returned, but got: "
+          ES.FullValue actuallyReturnedOfDval ]
 
     | SqlCompiler errMsg -> [ ES.String errMsg ]
 
@@ -469,9 +471,16 @@ module RuntimeError =
         match metadata with
         | [] -> []
         | metadata ->
-          let preamble = [ ES.String " with metadata: TODO" ]
-          let todo = [ ES.String "TODO" ]
-          Stdlib.List.append preamble todo
+          let preamble = [ ES.String " with metadata: " ]
+          let metadataSegments =
+            Stdlib.List.map
+              metadata
+              (fun pair ->
+                let (key, value) = pair
+                [ ES.String $"{key}: "; ES.FullValue value; ES.String "; " ])
+            |> Stdlib.List.flatten
+
+          Stdlib.List.append preamble metadataSegments
 
       Stdlib.List.append
         [ ES.String "Uncaught exception: "; ES.String msg ]
@@ -486,7 +495,7 @@ module RuntimeError =
 
     | unhandled ->
       let serialized = Builtin.jsonSerialize<LanguageTools.RuntimeTypes.RuntimeError.Error> unhandled
-      [ ES.String $"RTE pretty-printing TODO: {serialized}" ]
+      [ ES.String $"Runtime error (formatting not yet implemented): {serialized}" ]
 
 
 

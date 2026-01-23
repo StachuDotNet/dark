@@ -293,7 +293,7 @@ let createBuiltinTypeInfoIfInRange
   | Some r ->
     let description =
       Stdlib.Option.Option.Some(
-        "TODO: add description when /// comments are supported"
+        "No description available"
       )
 
     let thingAtPosition =
@@ -481,7 +481,7 @@ let collectBuiltinTypeHoverInfoAtPos
     | Some r ->
       let description =
         Stdlib.Option.Option.Some(
-          "TODO: add description when /// comments are supported"
+          "No description available"
         )
 
       let thingAtPosition =
@@ -506,7 +506,7 @@ let collectModuleNameHoverInfoAtPos
     | Some r ->
       let description =
         Stdlib.Option.Option.Some(
-          "TODO: add description when /// comments are supported"
+          "No description available"
         )
 
       let thingAtPosition =
@@ -621,7 +621,7 @@ let collectEnumFieldHoverInfoAtPos
         | Some r ->
           let description =
             Stdlib.Option.Option.Some(
-              "TODO: add description when /// comments are supported"
+              "No description available"
             )
 
           let thingAtPosition =
@@ -654,7 +654,7 @@ let collectEnumCaseHoverInfoAtPos
     | Some r ->
       let description =
         Stdlib.Option.Option.Some(
-          "TODO: add description when /// comments are supported"
+          "No description available"
         )
 
       let thingAtPosition =
@@ -715,7 +715,7 @@ let collectDefintionHoverInfoAtPos
       | Some r ->
         let description =
           Stdlib.Option.Option.Some(
-            "TODO: add description when /// comments are supported"
+            "No description available"
           )
 
         let thingAtPosition =
@@ -807,7 +807,7 @@ let collectTypeHoverInfoAtPosition
           | Some r ->
             let description =
               Stdlib.Option.Option.Some(
-                "TODO: add description when /// comments are supported"
+                "No description available"
               )
 
             let thingAtPosition =
@@ -943,7 +943,7 @@ let collectFnParameterHoverInfoAtPos
 
         let description =
           Stdlib.Option.Option.Some(
-            "TODO: add description when /// comments are supported"
+            "No description available"
           )
 
         let thingAtPosition =
@@ -1021,7 +1021,7 @@ let collectFnHoverInfoAtPos
           | Some r ->
             let description =
               Stdlib.Option.Option.Some(
-                "TODO: add description when /// comments are supported"
+                "No description available"
               )
 
             let thingAtPosition =
@@ -1173,7 +1173,7 @@ let collectMatchPatternHoverInfoAtPos
     | Some r ->
       let description =
         Stdlib.Option.Option.Some(
-          "TODO: add description when /// comments are supported"
+          "No description available"
         )
 
       let thingAtPosition =
@@ -1196,7 +1196,7 @@ let collectMatchPatternHoverInfoAtPos
       | Some r ->
         let description =
           Stdlib.Option.Option.Some(
-            "TODO: add description when /// comments are supported"
+            "No description available"
           )
 
         let thingAtPosition =
@@ -1443,7 +1443,7 @@ let collectLetPatternHoverInfoAtPos
     | Some r ->
       let description =
         Stdlib.Option.Option.Some(
-          "TODO: add description when /// comments are supported"
+          "No description available"
         )
 
       let thingAtPosition =
@@ -1634,7 +1634,7 @@ let collectEnumHoverInfo
     | Some r ->
       let description =
         Stdlib.Option.Option.Some(
-          "TODO: add description when /// comments are supported"
+          "No description available"
         )
 
       let thingAtPosition =
@@ -1815,7 +1815,7 @@ let collectPipeExprHoverInfoAtPos
       | None ->
         let description =
           Stdlib.Option.Option.Some(
-            "TODO: add description when /// comments are supported"
+            "No description available"
           )
 
         let thingAtPosition =
@@ -1880,7 +1880,7 @@ let collectExpressionHoverInfoAtPos
           | Some r ->
             let description =
               Stdlib.Option.Option.Some(
-                "TODO: add description when /// comments are supported"
+                "No description available"
               )
 
             let thingAtPosition =
@@ -1973,7 +1973,7 @@ let collectExpressionHoverInfoAtPos
           | Some r ->
             let description =
               Stdlib.Option.Option.Some(
-                "TODO: add description when /// comments are supported"
+                "No description available"
               )
 
             let thingAtPosition =
@@ -2035,7 +2035,7 @@ let collectExpressionHoverInfoAtPos
             | Some r ->
               let description =
                 Stdlib.Option.Option.Some(
-                  "TODO: add description when /// comments are supported"
+                  "No description available"
                 )
 
               let thingAtPosition =
@@ -2121,7 +2121,7 @@ let collectExpressionHoverInfoAtPos
     | Some r ->
       let description =
         Stdlib.Option.Option.Some(
-          "TODO: add description when /// comments are supported"
+          "No description available"
         )
 
       let thingAtPosition =
@@ -2155,7 +2155,7 @@ let collectExpressionHoverInfoAtPos
         | Some r ->
           let description =
             Stdlib.Option.Option.Some(
-              "TODO: add description when /// comments are supported"
+              "No description available"
             )
 
           let thingAtPosition =
@@ -2646,7 +2646,7 @@ let collectModuleDeclHoverInfoAtPos
 
               let description =
                 Stdlib.Option.Option.Some(
-                  "TODO: add description when /// comments are supported"
+                  "No description available"
                 )
 
               let thingAtPosition =
@@ -2755,7 +2755,7 @@ let collectNodeHoverInfoAtPos
             | Some r ->
               let description =
                 Stdlib.Option.Option.Some(
-                  "TODO: add description when /// comments are supported"
+                  "No description available"
                 )
 
               let thingAtPosition =
@@ -2812,7 +2812,7 @@ let collectNodeHoverInfoAtPos
 
               let description =
                 Stdlib.Option.Option.Some(
-                  "TODO: add description when /// comments are supported"
+                  "No description available"
                 )
 
               let thingAtPosition =

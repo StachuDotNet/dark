@@ -22,7 +22,6 @@ let fns : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUnit ] ->
-          // CLEANUP rename cki to something better
           let readKey = Console.ReadKey true
 
           let altHeld =
@@ -188,7 +187,7 @@ let fns : List<BuiltInFn> =
             | ConsoleKey.Pa1 -> "Pa1"
             | ConsoleKey.OemClear -> "OemClear"
             | ConsoleKey.None -> "None"
-            // CLEANUP tidy
+            // Catch-all for any future ConsoleKey values
             | _ -> "None"
 
           let key =

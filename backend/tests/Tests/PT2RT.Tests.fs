@@ -1630,7 +1630,7 @@ module PackageFn =
           typeParams = typeParams
           parameters = params' |> NEList.ofListUnsafe "" []
           returnType = returnType
-          description = "TODO"
+          description = "Test value"
           deprecated = PT.NotDeprecated }
 
       let actual = PT2RT.PackageFn.toRT fn |> _.body
@@ -1643,8 +1643,8 @@ module PackageFn =
       t
         "returnSecondParam"
         []
-        [ { name = "a"; typ = PT.TInt64; description = "TODO" }
-          { name = "b"; typ = PT.TInt64; description = "TODO" } ]
+        [ { name = "a"; typ = PT.TInt64; description = "Test value" }
+          { name = "b"; typ = PT.TInt64; description = "Test value" } ]
         PT.TInt64
         (eVar "b")
         (2, [], 1)
@@ -1653,8 +1653,8 @@ module PackageFn =
       t
         "EArgTest"
         []
-        [ { name = "x"; typ = PT.TInt64; description = "TODO" }
-          { name = "y"; typ = PT.TInt64; description = "TODO" } ]
+        [ { name = "x"; typ = PT.TInt64; description = "Test value" }
+          { name = "y"; typ = PT.TInt64; description = "Test value" } ]
         PT.TInt64
         (PT.EArg(gid (), 1)) // Direct EArg(1) for parameter "y"
         (2, [], 1)
@@ -1663,8 +1663,8 @@ module PackageFn =
       t
         "ignoresParamsAndReturnsStr"
         []
-        [ { name = "a"; typ = PT.TInt64; description = "TODO" }
-          { name = "b"; typ = PT.TInt64; description = "TODO" } ]
+        [ { name = "a"; typ = PT.TInt64; description = "Test value" }
+          { name = "b"; typ = PT.TInt64; description = "Test value" } ]
         PT.TInt64
         (eStr [ strText "hello" ])
         (3, [ RT.LoadVal(2, RT.DString "hello") ], 2)

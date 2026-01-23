@@ -89,7 +89,7 @@
 
 - add `set statement_timeout = '1s'` or `set lock_timeout = '1s'` to the first line
   of your script, so that it fails instead of taking the service down.
-  (CLEANUP: make this happen automatically)
+  (Note: this should be automated in the future)
 
 - migrations are run manually before deployment (using `LocalExec migrations run`)
 
