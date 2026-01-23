@@ -36,9 +36,10 @@
 - ✅ Core rendering utilities
 - ✅ Basic components (Label, TextBlock, Divider)
 - ✅ Interactive components (Button, Progress)
-- ❌ Forms components
-- ❌ Layout components
-- ❌ Complex components
+- ✅ Forms components (TextInput, Checkbox, RadioGroup, Select, Slider, DateField)
+- ✅ Layout components (Panel, TabPanel, FilterPanel, Card, MediaCard)
+- ✅ Spinner component
+- ✅ Table component
 
 ---
 
