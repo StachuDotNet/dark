@@ -1,6 +1,9 @@
 /// The types that the user sees
 module LibExecution.ProgramTypes
 
+open System.Threading.Tasks
+open FSharp.Control.Tasks
+
 open Prelude
 
 
@@ -779,55 +782,55 @@ type PackageManager =
     // - When accountID = None: returns only approved items
     findType :
       (Option<AccountID> * Option<BranchID> * PackageLocation)
-        -> Ply<Option<FQTypeName.Package>>
+        -> Task<Option<FQTypeName.Package>>
     findValue :
       (Option<AccountID> * Option<BranchID> * PackageLocation)
-        -> Ply<Option<FQValueName.Package>>
+        -> Task<Option<FQValueName.Package>>
     findFn :
       (Option<AccountID> * Option<BranchID> * PackageLocation)
-        -> Ply<Option<FQFnName.Package>>
+        -> Task<Option<FQFnName.Package>>
 
     search :
       Option<AccountID> * Option<BranchID> * Search.SearchQuery
-        -> Ply<Search.SearchResults>
+        -> Task<Search.SearchResults>
 
     // why does the PT one even need these?
-    getType : FQTypeName.Package -> Ply<Option<PackageType.PackageType>>
-    getValue : FQValueName.Package -> Ply<Option<PackageValue.PackageValue>>
-    getFn : FQFnName.Package -> Ply<Option<PackageFn.PackageFn>>
+    getType : FQTypeName.Package -> Task<Option<PackageType.PackageType>>
+    getValue : FQValueName.Package -> Task<Option<PackageValue.PackageValue>>
+    getFn : FQFnName.Package -> Task<Option<PackageFn.PackageFn>>
 
     // Reverse lookups for pretty-printing and other tooling
     // TODO: Revisit this given that a single ID might refer to multiple locations,
     // even per a branch (because... why? not sure or totally convinced either way)).
     getTypeLocation :
       Option<AccountID> * Option<BranchID> * FQTypeName.Package
-        -> Ply<Option<PackageLocation>>
+        -> Task<Option<PackageLocation>>
     getValueLocation :
       Option<AccountID> * Option<BranchID> * FQValueName.Package
-        -> Ply<Option<PackageLocation>>
+        -> Task<Option<PackageLocation>>
     getFnLocation :
       Option<AccountID> * Option<BranchID> * FQFnName.Package
-        -> Ply<Option<PackageLocation>>
+        -> Task<Option<PackageLocation>>
 
-    init : Ply<unit> }
+    init : Task<unit> }
 
 
   static member empty =
-    { findType = fun _ -> Ply None
-      findFn = fun _ -> Ply None
-      findValue = fun _ -> Ply None
+    { findType = fun _ -> Task.FromResult None
+      findFn = fun _ -> Task.FromResult None
+      findValue = fun _ -> Task.FromResult None
 
-      search = fun _ -> Ply { submodules = []; types = []; values = []; fns = [] }
+      search = fun _ -> Task.FromResult { submodules = []; types = []; values = []; fns = [] }
 
-      getType = fun _ -> Ply None
-      getFn = fun _ -> Ply None
-      getValue = fun _ -> Ply None
+      getType = fun _ -> Task.FromResult None
+      getFn = fun _ -> Task.FromResult None
+      getValue = fun _ -> Task.FromResult None
 
-      getTypeLocation = fun _ -> Ply None
-      getValueLocation = fun _ -> Ply None
-      getFnLocation = fun _ -> Ply None
+      getTypeLocation = fun _ -> Task.FromResult None
+      getValueLocation = fun _ -> Task.FromResult None
+      getFnLocation = fun _ -> Task.FromResult None
 
-      init = uply { return () } }
+      init = task { return () } }
 
 
   /// Allows you to side-load a few 'extras' in-memory, along
@@ -858,19 +861,19 @@ type PackageManager =
     { findType =
         fun (accountID, branchID, location) ->
           match Map.tryFind location typeLocationToId with
-          | Some id -> Ply(Some id)
+          | Some id -> Task.FromResult(Some id)
           | None -> pm.findType (accountID, branchID, location)
 
       findValue =
         fun (accountID, branchID, location) ->
           match Map.tryFind location valueLocationToId with
-          | Some id -> Ply(Some id)
+          | Some id -> Task.FromResult(Some id)
           | None -> pm.findValue (accountID, branchID, location)
 
       findFn =
         fun (accountID, branchID, location) ->
           match Map.tryFind location fnLocationToId with
-          | Some id -> Ply(Some id)
+          | Some id -> Task.FromResult(Some id)
           | None -> pm.findFn (accountID, branchID, location)
 
       search =
@@ -879,37 +882,37 @@ type PackageManager =
       getType =
         fun id ->
           match Map.tryFind id typeIdToType with
-          | Some t -> Ply(Some t)
+          | Some t -> Task.FromResult(Some t)
           | None -> pm.getType id
 
       getValue =
         fun id ->
           match Map.tryFind id valueIdToValue with
-          | Some v -> Ply(Some v)
+          | Some v -> Task.FromResult(Some v)
           | None -> pm.getValue id
 
       getFn =
         fun id ->
           match Map.tryFind id fnIdToFn with
-          | Some f -> Ply(Some f)
+          | Some f -> Task.FromResult(Some f)
           | None -> pm.getFn id
 
       getTypeLocation =
         fun (accountID, branchID, id) ->
           match Map.tryFind id typeIdToLocation with
-          | Some location -> Ply(Some location)
+          | Some location -> Task.FromResult(Some location)
           | None -> pm.getTypeLocation (accountID, branchID, id)
 
       getValueLocation =
         fun (accountID, branchID, id) ->
           match Map.tryFind id valueIdToLocation with
-          | Some location -> Ply(Some location)
+          | Some location -> Task.FromResult(Some location)
           | None -> pm.getValueLocation (accountID, branchID, id)
 
       getFnLocation =
         fun (accountID, branchID, id) ->
           match Map.tryFind id fnIdToLocation with
-          | Some location -> Ply(Some location)
+          | Some location -> Task.FromResult(Some location)
           | None -> pm.getFnLocation (accountID, branchID, id)
 
       init = pm.init }

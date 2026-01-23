@@ -151,3 +151,116 @@ let filterMapSequentially
 
     return List.rev filtered
   }
+
+let foldSequentiallyWithIndex
+  (f : int -> 'state -> 'a -> Task<'state>)
+  (initial : 'state)
+  (list : List<'a>)
+  : Task<'state> =
+  List.fold
+    (fun (accum : Task<int * 'state>) (arg : 'a) ->
+      task {
+        let! (i, state) = accum
+        let! result = f i state arg
+        return (i + 1, result)
+      })
+    (Task.FromResult(0, initial))
+    list
+  |> map (fun (_, state) -> state)
+
+let mapSequentiallyWithIndex
+  (f : int -> 'a -> Task<'b>)
+  (list : List<'a>)
+  : Task<List<'b>> =
+  list
+  |> foldSequentiallyWithIndex
+    (fun (i : int) (accum : List<'b>) (arg : 'a) ->
+      task {
+        let! result = f i arg
+        return result :: accum
+      })
+    []
+  |> map List.rev
+
+module NEList =
+  let mapSequentially
+    (f : 'a -> Task<'b>)
+    (list : NEList.NEList<'a>)
+    : Task<NEList.NEList<'b>> =
+    task {
+      let! head = f list.head
+      let! tail = mapSequentially f list.tail
+      return NEList.ofList head tail
+    }
+
+module Map =
+  let foldSequentially
+    (f : 'state -> 'key -> 'a -> Task<'state>)
+    (initial : 'state)
+    (dict : Map<'key, 'a>)
+    : Task<'state> =
+    Map.fold
+      (fun (accum : Task<'state>) (key : 'key) (arg : 'a) ->
+        task {
+          let! (accum : 'state) = accum
+          return! f accum key arg
+        })
+      (Task.FromResult(initial))
+      dict
+
+  let mapSequentially
+    (f : 'a -> Task<'b>)
+    (dict : Map<'key, 'a>)
+    : Task<Map<'key, 'b>> =
+    foldSequentially
+      (fun (accum : Map<'key, 'b>) (key : 'key) (arg : 'a) ->
+        task {
+          let! result = f arg
+          return Map.add key result accum
+        })
+      Map.empty
+      dict
+
+  let filterSequentially
+    (f : 'key -> 'a -> Task<bool>)
+    (dict : Map<'key, 'a>)
+    : Task<Map<'key, 'a>> =
+    foldSequentially
+      (fun (accum : Map<'key, 'a>) (key : 'key) (arg : 'a) ->
+        task {
+          let! keep = f key arg
+          return (if keep then (Map.add key arg accum) else accum)
+        })
+      Map.empty
+      dict
+
+  let filterMapSequentially
+    (f : 'key -> 'a -> Task<Option<'b>>)
+    (dict : Map<'key, 'a>)
+    : Task<Map<'key, 'b>> =
+    foldSequentially
+      (fun (accum : Map<'key, 'b>) (key : 'key) (arg : 'a) ->
+        task {
+          let! keep = f key arg
+
+          let result =
+            match keep with
+            | Some v -> Map.add key v accum
+            | None -> accum
+
+          return result
+        })
+      Map.empty
+      dict
+
+module Result =
+  let map (f : 'a -> Task<'b>) (result : Result<'a, 'err>) : Task<Result<'b, 'err>> =
+    match result with
+    | Ok v -> map (fun v -> Ok v) (f v)
+    | Error err -> Task.FromResult(Error err)
+
+module Option =
+  let map (f : 'a -> Task<'b>) (option : Option<'a>) : Task<Option<'b>> =
+    match option with
+    | Some v -> map (fun v -> Some v) (f v)
+    | None -> Task.FromResult None

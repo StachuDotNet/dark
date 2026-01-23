@@ -163,8 +163,8 @@ let runtimeErrorToString
 let getPackageFnName
   (state : RT.ExecutionState)
   (id : RT.FQFnName.Package)
-  : Ply<string> =
-  uply {
+  : Task<string> =
+  task {
     let fnName =
       RT.FQFnName.fqPackage
         PackageIDs.Fn.PrettyPrinter.ProgramTypes.FQFnName.fullForReference
@@ -185,7 +185,7 @@ let getPackageFnName
 //   (state : RT.ExecutionState)
 //   (expr : RT.Expr)
 //   (id : Option<id>)
-//   : Ply<string> =
+//   : Task<string> =
 //   match id with
 //   | None -> Ply "Unknown Expr"
 //   | Some id ->
@@ -204,8 +204,8 @@ let getPackageFnName
 //       expr
 //     |> ignore<RT.Expr>
 
-//     let prettyPrint (expr : RT.Expr) : Ply<string> =
-//       uply {
+//     let prettyPrint (expr : RT.Expr) : Task<string> =
+//       task {
 //         let fnName =
 //           RT.FQFnName.fqPackage PackageIDs.Fn.PrettyPrinter.RuntimeTypes.expr
 //         let args = NEList.singleton (RuntimeTypesToDarkTypes.Expr.toDT expr)
@@ -217,7 +217,7 @@ let getPackageFnName
 
 //     match foundExpr with
 //     | None ->
-//       uply {
+//       task {
 //         let! pretty = prettyPrint expr
 //         return $"Root Expr:\n{pretty}"
 //       }
@@ -227,11 +227,11 @@ let getPackageFnName
 let executionPointToString
   (state : RT.ExecutionState)
   (ep : RT.ExecutionPoint)
-  : Ply<string> =
-  uply {
+  : Task<string> =
+  task {
     // CLEANUP improve here
-    // let handleFn (fn : Option<RT.PackageFn.PackageFn>) : Ply<string> =
-    //   uply {
+    // let handleFn (fn : Option<RT.PackageFn.PackageFn>) : Task<string> =
+    //   task {
     //     match fn with
     //     | None -> return $"<Couldn't find package function {fn.id}>"
     //     | Some fn ->
@@ -258,11 +258,11 @@ let executionPointToString
 let callStackString
   (state : RT.ExecutionState)
   (callStack : RT.CallStack)
-  : Ply<string> =
-  uply {
+  : Task<string> =
+  task {
     // First, convert all execution points to strings
     let! stringParts =
-      Ply.List.mapSequentially (fun ep -> executionPointToString state ep) callStack
+      Task.mapSequentially (fun ep -> executionPointToString state ep) callStack
 
     // Group consecutive identical entries with counts
     let rec groupConsecutive acc current count remaining =
@@ -326,11 +326,11 @@ let rec rteToString
   (branchID : option<uuid>)
   (state : RT.ExecutionState)
   (rte : RT.RuntimeError.Error)
-  : Ply<string> =
+  : Task<string> =
   let r = rteToString rteToDval accountID branchID state
   let accountID = accountID |> Option.map Dval.uuid |> Dval.option RT.KTUuid
   let branchID = branchID |> Option.map Dval.uuid |> Dval.option RT.KTUuid
-  uply {
+  task {
     let errorMessageFn =
       RT.FQFnName.fqPackage
         PackageIDs.Fn.PrettyPrinter.RuntimeTypes.RuntimeError.toErrorMessage

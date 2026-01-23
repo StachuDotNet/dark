@@ -2,6 +2,9 @@
 /// Called by the interpreter, and a few other places
 module LibExecution.TypeChecker
 
+open System.Threading.Tasks
+open FSharp.Control.Tasks
+
 open Prelude
 open RuntimeTypes
 module VT = ValueType
@@ -22,10 +25,10 @@ let rec unifyValueType
   (pathSoFar : ReverseTypeCheckPath)
   (expected : TypeReference)
   (actual : ValueType)
-  : Ply<Result<TypeSymbolTable, ReverseTypeCheckPath>> =
+  : Task<Result<TypeSymbolTable, ReverseTypeCheckPath>> =
   let r = unifyValueType types
 
-  uply {
+  task {
     match expected, actual with
 
     | TVariable name, _ ->
@@ -80,7 +83,7 @@ let rec unifyValueType
         let expected = tFirst :: tSecond :: tRest
         let actual = vFirst :: vSecond :: vRest
         return!
-          Ply.List.foldSequentiallyWithIndex
+          Task.foldSequentiallyWithIndex
             (fun i acc (e, a) ->
               match acc with
               | Error _ -> Ply acc
@@ -120,12 +123,12 @@ let rec unifyValueType
             let typeArgCount = List.length typeArgsT
             return!
               List.zip typeArgsT typeArgsV
-              |> Ply.List.foldSequentiallyWithIndex
+              |> Task.foldSequentiallyWithIndex
                 (fun i acc (e, a) ->
                   match acc with
                   | Error _path -> Ply acc
                   | Ok tst ->
-                    uply {
+                    task {
                       let path =
                         TypeCheckPathPart.TypeArg(typeNameT, i, typeArgCount)
                         :: pathSoFar
@@ -145,7 +148,7 @@ let rec unifyValueType
           List.zip
             (returnType :: (NEList.toList argTypes))
             (vRet :: (NEList.toList vArgs))
-          |> Ply.List.foldSequentially
+          |> Task.foldSequentially
             (fun acc (e, a) ->
               match acc with
               | Error _path -> Ply acc
@@ -164,8 +167,8 @@ let unify
   (tst : TypeSymbolTable)
   (expected : TypeReference)
   (actual : Dval)
-  : Ply<Result<TypeSymbolTable, ReverseTypeCheckPath>> =
-  uply {
+  : Task<Result<TypeSymbolTable, ReverseTypeCheckPath>> =
+  task {
     let actualType = Dval.toValueType actual
     match! unifyValueType types tst [] expected actualType with
     | Error path -> return path |> Error
@@ -180,8 +183,8 @@ let rec resolveType
   (typeName : FQTypeName.FQTypeName)
   (typeArgs : List<ValueType>)
   // : (typeName * typeArgs * def)
-  : Ply<FQTypeName.FQTypeName * List<string * ValueType> * TypeDeclaration.Definition> =
-  uply {
+  : Task<FQTypeName.FQTypeName * List<string * ValueType> * TypeDeclaration.Definition> =
+  task {
     match! Types.find types typeName with
     | None -> return RTE.TypeNotFound typeName |> raiseRTE threadID
     | Some decl ->
@@ -205,8 +208,8 @@ let rec resolveType
             // Map inner type args using target type's param names
             let! mappedInnerArgsVT =
               List.zip targetDecl.typeParams innerTypeArgs
-              |> Ply.List.mapSequentially (fun (targetParam, typeRef) ->
-                uply {
+              |> Task.mapSequentially (fun (targetParam, typeRef) ->
+                task {
                   let! vt = TypeReference.toVT types tst typeRef
                   return
                     match typeRef with
@@ -219,7 +222,7 @@ let rec resolveType
 
             return!
               resolveType types threadID tst innerTypeName []
-              |> Ply.map (fun (resolvedName, _, def) ->
+              |> Task.map (fun (resolvedName, _, def) ->
                 (resolvedName, mappedInnerArgsVT, def))
 
         | _ -> return RTE.TypeNotFound typeName |> raiseRTE threadID
@@ -244,8 +247,8 @@ let checkFnParam
   (paramName : string)
   (expected : TypeReference)
   (actual : Dval)
-  : Ply<Result<TypeSymbolTable, RTE.Error>> =
-  uply {
+  : Task<Result<TypeSymbolTable, RTE.Error>> =
+  task {
     let! expected = TypeReference.unwrapAlias types expected
     match! unify types tst expected actual with
     | Ok updatedTst -> return Ok updatedTst
@@ -271,8 +274,8 @@ let checkFnResult
   (tst : TypeSymbolTable)
   (expected : TypeReference)
   (actual : Dval)
-  : Ply<Result<TypeSymbolTable, RTE.Error>> =
-  uply {
+  : Task<Result<TypeSymbolTable, RTE.Error>> =
+  task {
     let! expected = TypeReference.unwrapAlias types expected
     let! expectedVT = TypeReference.toVT types tst expected
     match! unify types tst expected actual with
@@ -464,11 +467,11 @@ module DvalCreator =
     (threadID : ThreadID)
     (typeName : FQTypeName.FQTypeName)
     (typeArgs : List<ValueType>)
-    : Ply<FQTypeName.FQTypeName *
+    : Task<FQTypeName.FQTypeName *
       List<string * ValueType> *
       NEList<TypeDeclaration.EnumCase>>
     =
-    uply {
+    task {
       let! (resolvedName, typeArgs, definition) =
         resolveType types threadID Map.empty typeName typeArgs
 
@@ -491,8 +494,8 @@ module DvalCreator =
     (typeArgs : List<ValueType>)
     (caseName : string)
     (fields : List<Dval>)
-    : Ply<Dval> =
-    uply {
+    : Task<Dval> =
+    task {
       // do basic resolution of aliases and type args
       let! (resolvedTypeName, typeArgs, caseDefs) =
         resolveEnumType types threadID sourceTypeName typeArgs
@@ -528,9 +531,9 @@ module DvalCreator =
 
         // Process each field, updating type args as we learn more
         let! (typeArgs, fieldsInReverse, _updatedTst) =
-          Ply.List.foldSequentiallyWithIndex
+          Task.foldSequentiallyWithIndex
             (fun fieldIndex (typeArgs, fieldsInReverse, tst) (fieldDef, actualField) ->
-              uply {
+              task {
                 let! expected = TypeReference.toVT types tst fieldDef
                 match! unify types tst fieldDef actualField with
                 | Error _path ->
@@ -589,11 +592,11 @@ module DvalCreator =
     (threadID : ThreadID)
     (typeName : FQTypeName.FQTypeName)
     (typeArgs : List<ValueType>)
-    : Ply<FQTypeName.FQTypeName *
+    : Task<FQTypeName.FQTypeName *
       List<string * ValueType> *
       NEList<TypeDeclaration.RecordField>>
     =
-    uply {
+    task {
       let! (resolvedName, typeArgs, definition) =
         resolveType types threadID Map.empty typeName typeArgs
 
@@ -618,8 +621,8 @@ module DvalCreator =
     (sourceTypeName : FQTypeName.FQTypeName)
     (typeArgs : List<ValueType>)
     (fields : List<string * Dval>)
-    : Ply<Dval> =
-    uply {
+    : Task<Dval> =
+    task {
       let! (resolvedTypeName, resolvedTypeArgs, expectedFields) =
         resolveRecordType types threadID sourceTypeName typeArgs
 
@@ -628,9 +631,9 @@ module DvalCreator =
 
       // Process each provided field
       let! (processedFields, finalTypeArgs, _updatedTST) =
-        Ply.List.foldSequentially
+        Task.foldSequentially
           (fun (fieldsSoFar, currentTypeArgs, tst) (fieldName, fieldValue) ->
-            uply {
+            task {
               // Basic validation
               if fieldName = "" then
                 return
@@ -731,8 +734,8 @@ module DvalCreator =
     (typeArgsBeforeUpdate : List<ValueType>)
     (currentFields : Map<string, Dval>)
     (fieldUpdates : List<string * Dval>)
-    : Ply<Dval> =
-    uply {
+    : Task<Dval> =
+    task {
       let! (_resolvedTypeName, resolvedTypeArgs, expectedFields) =
         resolveRecordType types threadID sourceTypeName []
 
@@ -741,9 +744,9 @@ module DvalCreator =
         |> List.map (fun (beforeUpdate, (name, _)) -> (name, beforeUpdate))
 
       let! (updatedFields, finalTypeArgs, _updatedTST) =
-        Ply.List.foldSequentially
+        Task.foldSequentially
           (fun (fieldsSoFar, currentTypeArgs, tst) (fieldName, fieldValue) ->
-            uply {
+            task {
               if fieldName = "" then
                 return RTE.Records.UpdateEmptyKey |> RTE.Record |> raiseRTE threadID
 

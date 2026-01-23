@@ -17,19 +17,19 @@ Remove Ply library in favor of F#'s native `task` computation expression. The co
 ## Implementation Plan
 
 ### Phase 1: Extend Task Module (Add Missing Functionality)
-- [ ] Add `foldSequentiallyWithIndex` to Task module
-- [ ] Add `mapSequentiallyWithIndex` to Task module
-- [ ] Add Task.NEList submodule with `mapSequentially`
-- [ ] Add Task.Map submodule with `foldSequentially`, `mapSequentially`, `filterSequentially`, `filterMapSequentially`
-- [ ] Add Task.Result submodule with `map`
-- [ ] Add Task.Option submodule with `map`
+- [x] Add `foldSequentiallyWithIndex` to Task module
+- [x] Add `mapSequentiallyWithIndex` to Task module
+- [x] Add Task.NEList submodule with `mapSequentially`
+- [x] Add Task.Map submodule with `foldSequentially`, `mapSequentially`, `filterSequentially`, `filterMapSequentially`
+- [x] Add Task.Result submodule with `map`
+- [x] Add Task.Option submodule with `map`
 
 ### Phase 2: Convert File-by-File (High Priority Core Files)
-- [ ] Convert backend/src/LibExecution/Interpreter.fs
-- [ ] Convert backend/src/LibExecution/TypeChecker.fs
-- [ ] Convert backend/src/LibExecution/Execution.fs
-- [ ] Convert backend/src/LibExecution/RuntimeTypes.fs
-- [ ] Convert backend/src/LibExecution/ProgramTypes.fs
+- [x] Convert backend/src/LibExecution/Interpreter.fs
+- [x] Convert backend/src/LibExecution/TypeChecker.fs
+- [x] Convert backend/src/LibExecution/Execution.fs
+- [x] Convert backend/src/LibExecution/RuntimeTypes.fs
+- [x] Convert backend/src/LibExecution/ProgramTypes.fs
 
 ### Phase 3: Convert LibParser Files
 - [ ] Convert backend/src/LibParser/WrittenTypesToProgramTypes.fs

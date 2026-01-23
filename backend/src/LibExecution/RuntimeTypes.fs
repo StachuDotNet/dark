@@ -8,6 +8,9 @@
 /// CLEANUP there's some useful "reference things by hash" work to be done.
 module LibExecution.RuntimeTypes
 
+open System.Threading.Tasks
+open FSharp.Control.Tasks
+
 open Prelude
 
 let builtinNamePattern = @"^(__|[a-z])[a-z0-9A-Z_]\w*$"
@@ -596,7 +599,7 @@ and [<NoComparison>] Dval =
   | DDB of name : string
 
 
-and DvalTask = Ply<Dval>
+and DvalTask = Task<Dval>
 
 
 
@@ -1078,18 +1081,18 @@ module PackageFn =
 /// not yet in the Cloud PM.
 /// (though, we'll likely demand deps. in the PM before committing something upstream...)
 type PackageManager =
-  { getType : FQTypeName.Package -> Ply<Option<PackageType.PackageType>>
-    getValue : FQValueName.Package -> Ply<Option<PackageValue.PackageValue>>
-    getFn : FQFnName.Package -> Ply<Option<PackageFn.PackageFn>>
+  { getType : FQTypeName.Package -> Task<Option<PackageType.PackageType>>
+    getValue : FQValueName.Package -> Task<Option<PackageValue.PackageValue>>
+    getFn : FQFnName.Package -> Task<Option<PackageFn.PackageFn>>
 
-    init : Ply<unit> }
+    init : Task<unit> }
 
   static member empty =
-    { getType = (fun _ -> Ply None)
-      getFn = (fun _ -> Ply None)
-      getValue = (fun _ -> Ply None)
+    { getType = (fun _ -> Task.FromResult None)
+      getFn = (fun _ -> Task.FromResult None)
+      getValue = (fun _ -> Task.FromResult None)
 
-      init = uply { return () } }
+      init = task { return () } }
 
   /// Allows you to side-load a few 'extras' in-memory, along
   /// the normal fetching functionality. (Mostly helpful for tests)
@@ -1106,17 +1109,17 @@ type PackageManager =
     { getType =
         fun id ->
           match Map.tryFind id typeMap with
-          | Some t -> Some t |> Ply
+          | Some t -> Some t |> Task.FromResult
           | None -> pm.getType id
       getValue =
         fun id ->
           match Map.tryFind id valueMap with
-          | Some v -> Some v |> Ply
+          | Some v -> Some v |> Task.FromResult
           | None -> pm.getValue id
       getFn =
         fun id ->
           match Map.tryFind id fnMap with
-          | Some f -> Some f |> Ply
+          | Some f -> Some f |> Task.FromResult
           | None -> pm.getFn id
       init = pm.init }
 
@@ -1365,9 +1368,9 @@ and TestContext =
     postTestExecutionHook : TestContext -> unit }
 
 
-and ExceptionReporter = ExecutionState -> VMState -> Metadata -> exn -> Ply<unit>
+and ExceptionReporter = ExecutionState -> VMState -> Metadata -> exn -> Task<unit>
 
-and Notifier = ExecutionState -> VMState -> string -> Metadata -> Ply<unit>
+and Notifier = ExecutionState -> VMState -> string -> Metadata -> Task<unit>
 
 /// All state set when starting an execution; non-changing
 /// (as opposed to the VMState, which changes as the execution progresses)
@@ -1395,28 +1398,28 @@ and ExecutionState =
   }
 
 
-and Types = { package : FQTypeName.Package -> Ply<Option<PackageType.PackageType>> }
+and Types = { package : FQTypeName.Package -> Task<Option<PackageType.PackageType>> }
 
 and Values =
   { builtIn : Map<FQValueName.Builtin, BuiltInValue>
-    package : FQValueName.Package -> Ply<Option<PackageValue.PackageValue>> }
+    package : FQValueName.Package -> Task<Option<PackageValue.PackageValue>> }
 
 and Functions =
   { builtIn : Map<FQFnName.Builtin, BuiltInFn>
-    package : FQFnName.Package -> Ply<Option<PackageFn.PackageFn>> }
+    package : FQFnName.Package -> Task<Option<PackageFn.PackageFn>> }
 
 
 
 module Types =
-  let empty = { package = (fun _ -> Ply None) }
+  let empty = { package = (fun _ -> Task.FromResult None) }
 
   let find
     (types : Types)
     (name : FQTypeName.FQTypeName)
-    : Ply<Option<TypeDeclaration.T>> =
+    : Task<Option<TypeDeclaration.T>> =
     match name with
     | FQTypeName.Package pkg ->
-      types.package pkg |> Ply.map (Option.map _.declaration)
+      types.package pkg |> Task.map (Option.map _.declaration)
 
   /// Swap concrete types for type parameters
   /// CLEANUP consider accepting a pre-zipped list instead
@@ -1475,27 +1478,27 @@ module TypeReference =
   let option (t : TypeReference) : TypeReference =
     TCustomType(Ok(FQTypeName.fqPackage PackageIDs.Type.Stdlib.option), [ t ])
 
-  let rec unwrapAlias (types : Types) (typ : TypeReference) : Ply<TypeReference> =
+  let rec unwrapAlias (types : Types) (typ : TypeReference) : Task<TypeReference> =
     match typ with
     | TCustomType(Ok outerTypeName, outerTypeArgs) ->
-      uply {
+      task {
         match! Types.find types outerTypeName with
         | Some { definition = TypeDeclaration.Alias typ; typeParams = typeParams } ->
           let typ = Types.substitute typeParams outerTypeArgs typ
           return! unwrapAlias types typ
         | _ -> return typ
       }
-    | _ -> Ply typ
+    | _ -> Task.FromResult typ
 
 
   let rec toVT
     (types : Types)
     (tst : TypeSymbolTable)
     (typeRef : TypeReference)
-    : Ply<ValueType> =
+    : Task<ValueType> =
     let r = toVT types tst
 
-    uply {
+    task {
       match! unwrapAlias types typeRef with
       | TUnit -> return ValueType.Known KTUnit
       | TBool -> return ValueType.Known KTBool
@@ -1518,7 +1521,7 @@ module TypeReference =
       | TTuple(first, second, theRest) ->
         let! first = r first
         let! second = r second
-        let! theRest = theRest |> Ply.List.mapSequentially r
+        let! theRest = theRest |> Task.mapSequentially r
         return KTTuple(first, second, theRest) |> ValueType.Known
       | TList inner ->
         let! inner = r inner
@@ -1528,7 +1531,7 @@ module TypeReference =
         return ValueType.Known(KTDict inner)
 
       | TCustomType(Ok typeName, typeArgs) ->
-        let! typeArgs = typeArgs |> Ply.List.mapSequentially r
+        let! typeArgs = typeArgs |> Task.mapSequentially r
         return KTCustomType(typeName, typeArgs) |> ValueType.Known
 
       | TCustomType(Error nre, _) ->
@@ -1538,7 +1541,7 @@ module TypeReference =
         return tst |> Map.get name |> Option.defaultValue ValueType.Unknown
 
       | TFn(args, result) ->
-        let! args = args |> Ply.NEList.mapSequentially r
+        let! args = args |> Task.NEList.mapSequentially r
         let! result = r result
         return KTFn(args, result) |> ValueType.Known
 
@@ -1626,8 +1629,8 @@ module TypeReference =
 
 let consoleReporter : ExceptionReporter =
   fun _state _vm (metadata : Metadata) (exn : exn) ->
-    uply { printException "runtime-error" metadata exn }
+    task { printException "runtime-error" metadata exn }
 
 let consoleNotifier : Notifier =
   fun _state _vm msg tags ->
-    uply { print $"A notification happened in the runtime:\n  {msg}\n  {tags}\n\n" }
+    task { print $"A notification happened in the runtime:\n  {msg}\n  {tags}\n\n" }

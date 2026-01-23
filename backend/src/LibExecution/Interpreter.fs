@@ -1,6 +1,9 @@
 /// Interprets Dark instructions resulting in (tasks of) Dvals
 module LibExecution.Interpreter
 
+open System.Threading.Tasks
+open FSharp.Control.Tasks
+
 open Prelude
 open RuntimeTypes
 module RTE = RuntimeError
@@ -134,8 +137,8 @@ let rec checkAndExtractMatchPattern
 
 
 
-let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
-  uply {
+let execute (exeState : ExecutionState) (vm : VMState) : Task<Dval> =
+  task {
     let raiseRTE rte = raiseRTE vm.threadID rte
 
     let mutable finalResult : Dval option = None
@@ -149,7 +152,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
 
       let! instrData =
         match currentFrame.executionPoint with
-        | Source -> Ply(snd vm.rootInstrData)
+        | Source -> Task.FromResult(snd vm.rootInstrData)
 
         | Lambda(parentContext, lambdaID) ->
           let lambda =
@@ -174,7 +177,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
           raiseRTE (RTE.FnNotFound(FQFnName.fqBuiltin "builtin" 0))
 
         | Function(FQFnName.Package fn) ->
-          uply {
+          task {
             match Map.find fn vm.packageFnInstrCache with
             | Some fn -> return fn
             | None ->
@@ -344,7 +347,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
 
           let! typeArgs =
             typeArgs
-            |> Ply.List.mapSequentially (
+            |> Task.mapSequentially (
               TypeReference.toVT exeState.types currentFrame.typeSymbolTable
             )
 
@@ -416,7 +419,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
 
           let! typeArgs =
             typeArgs
-            |> Ply.List.mapSequentially (TypeReference.toVT exeState.types tst)
+            |> Task.mapSequentially (TypeReference.toVT exeState.types tst)
 
           let! newEnum =
             TypeChecker.DvalCreator.enum
@@ -575,8 +578,8 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
 
             let typeCheckParams pairs =
               pairs
-              |> Ply.List.iterSequentially (fun ((pIndex, pName, pType), arg) ->
-                uply {
+              |> Task.iterSequentially (fun ((pIndex, pName, pType), arg) ->
+                task {
                   match! typeCheckParam tst pIndex pName pType arg with
                   | Ok updatedTst ->
                     tst <- updatedTst
@@ -609,7 +612,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
 
                 let! typeArgsVT =
                   typeArgs
-                  |> Ply.List.mapSequentially (TypeReference.toVT exeState.types tst)
+                  |> Task.mapSequentially (TypeReference.toVT exeState.types tst)
                 tst <-
                   let newlyBound = List.zip fn.typeParams typeArgsVT |> Map
                   Map.mergeFavoringRight tst newlyBound
@@ -629,7 +632,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
                   (List.length fn.parameters, List.length allArgs)
 
                 let! result =
-                  uply {
+                  task {
                     if argCount > paramCount then
                       return handleTooManyArgs paramCount argCount
                     else if argCount < paramCount then
@@ -686,7 +689,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
 
                 let! typeArgsVT =
                   typeArgs
-                  |> Ply.List.mapSequentially (TypeReference.toVT exeState.types tst)
+                  |> Task.mapSequentially (TypeReference.toVT exeState.types tst)
                 // Bind the type params to their resolved type args
                 let newlyBound = List.zip fn.typeParams typeArgsVT |> Map
                 tst <- Map.mergeFavoringRight tst newlyBound
@@ -781,7 +784,7 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
             let! expectedReturnType =
               match fnName with
               | FQFnName.Package id ->
-                uply {
+                task {
                   let! fn = exeState.fns.package id
                   match fn with
                   | None -> return RTE.FnNotFound fnName |> raiseRTE
