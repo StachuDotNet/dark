@@ -1,3 +1,60 @@
+<!-- TASK CONTEXT START -->
+# Active Task - Executing Phase
+
+You are in an automated execution loop. Work through the todos systematically.
+
+## The Task
+
+Tidy VS Code extension page
+
+We have a VS Code extension that's WIP, very alpha.
+It requires the CLI has already been downloaded (from GH Releases) and installed (run 'install' in the exe).
+
+Please update the extension's "landing page" to note such, and include some brief text explaining what Darklang is, and the fact that it's a WIP, with the extension (at this point) meant for internal testing/usage.
+
+Tangentially, somehow demand the vscode lockfile to be in sync with the package.json. We keep running into a dumb issue in CI.
+
+## Current Todos
+
+# Task Todos
+
+<!-- Claude will populate this during planning -->
+
+- [ ] (Planning) Research and understand the codebase
+- [ ] (Planning) Create detailed implementation plan
+- [ ] (Planning) Update this todo list with specific tasks
+
+
+## Instructions
+
+1. Find the next uncompleted todo (marked with [ ])
+2. Complete it
+3. Mark it done in .claude-task/todos.md (change [ ] to [x])
+4. Run tests to verify
+5. Continue to next todo
+
+## Commits
+
+Commit early and often as you make progress:
+- Short casual commit messages (e.g., "add user auth", "fix login bug")
+- No attribution/co-author needed
+- Commit after completing each logical chunk of work
+- Don't wait until the end to commit everything
+
+## When Done
+
+When ALL todos are complete and tests pass:
+- Make a final commit if there are uncommitted changes
+- Write "done" to .claude-task/phase
+- The loop will exit
+
+## If Stuck
+
+If stuck, just exit - the loop will restart you.
+Leave notes in .claude-task/todos.md about what's blocking.
+
+<!-- TASK CONTEXT END -->
+
 # This is the main Darklang monorepo. Please assist in the development of this language+platform.
 
 ## External resources:
