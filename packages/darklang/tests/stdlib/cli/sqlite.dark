@@ -1,0 +1,115 @@
+module Darklang.Stdlib.Cli.Sqlite.Tests
+
+// withTemp hands over an empty file, which SQLite opens as an empty database.
+let withDb(fn: String -> Stdlib.Test.Result): Stdlib.Test.Result =
+  Stdlib.Cli.File.withTemp(fn) |> Builtin.unwrap
+
+
+let errorMessage(result: Result<'a, Stdlib.Cli.Sqlite.Error>): String =
+  match result with
+  | Error(e) -> e.message
+  | Ok(_) -> ""
+
+
+test createTableAndInsert =
+  withDb(fun db ->
+    Stdlib.Test.all(
+      [ Stdlib.Cli.Sqlite.execute(db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")
+        |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(0))
+
+        Stdlib.Cli.Sqlite.execute(db, "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)")
+        |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(1))
+
+        Stdlib.Cli.Sqlite.execute(db, "INSERT INTO users (id, name, age) VALUES (2, 'Bob', 25)")
+        |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(1))
+
+        Stdlib.Cli.Sqlite.query(db, "SELECT name FROM users ORDER BY id")
+        |> Stdlib.Test.equal(
+          Stdlib.Result.Result.Ok(
+            [ Dict { "name": Stdlib.Cli.Sqlite.Value.Text("Alice") }, Dict { "name": Stdlib.Cli.Sqlite.Value.Text("Bob") } ])) ]))
+
+
+test valueKinds =
+  withDb(fun db ->
+    Stdlib.Cli.Sqlite.queryOne(db, "SELECT 1 AS i, 1.5 AS r, 'a' AS t, x'00ff' AS b, NULL AS n")
+    |> Stdlib.Test.equal(
+      Stdlib.Result.Result.Ok(
+        Stdlib.Option.Option.Some(
+          Dict
+            { "i": Stdlib.Cli.Sqlite.Value.Integer(1)
+              "r": Stdlib.Cli.Sqlite.Value.Real(1.5)
+              "t": Stdlib.Cli.Sqlite.Value.Text("a")
+              "b": Stdlib.Cli.Sqlite.Value.Blob(Stdlib.Bytes.fromList([ 0u8, 255u8 ]))
+              "n": Stdlib.Cli.Sqlite.Value.Null }))))
+
+
+test queryOne =
+  withDb(fun db ->
+    let _ = Stdlib.Cli.Sqlite.execute(db, "CREATE TABLE data (id INTEGER, value TEXT)")
+    let _ = Stdlib.Cli.Sqlite.execute(db, "INSERT INTO data VALUES (1, 'first')")
+    Stdlib.Test.all(
+      [ Stdlib.Cli.Sqlite.queryOne(db, "SELECT value FROM data WHERE id = 1")
+        |> Stdlib.Test.equal(
+          Stdlib.Result.Result.Ok(Stdlib.Option.Option.Some(Dict { "value": Stdlib.Cli.Sqlite.Value.Text("first") })))
+
+        Stdlib.Cli.Sqlite.queryOne(db, "SELECT value FROM data WHERE id = 999")
+        |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(Stdlib.Option.Option.None)) ]))
+
+
+test update =
+  withDb(fun db ->
+    let _ = Stdlib.Cli.Sqlite.execute(db, "CREATE TABLE things (id INTEGER, name TEXT)")
+    let _ = Stdlib.Cli.Sqlite.execute(db, "INSERT INTO things VALUES (1, 'original')")
+    Stdlib.Test.all(
+      [ Stdlib.Cli.Sqlite.update(db, "things", "name = 'updated'", "id = 1")
+        |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(1))
+
+        Stdlib.Cli.Sqlite.query(db, "SELECT name FROM things")
+        |> Stdlib.Test.equal(Stdlib.Result.Result.Ok([ Dict { "name": Stdlib.Cli.Sqlite.Value.Text("updated") } ])) ]))
+
+
+test delete =
+  withDb(fun db ->
+    let _ = Stdlib.Cli.Sqlite.execute(db, "CREATE TABLE things (id INTEGER, name TEXT)")
+    let _ = Stdlib.Cli.Sqlite.execute(db, "INSERT INTO things VALUES (1, 'to_delete')")
+    let _ = Stdlib.Cli.Sqlite.execute(db, "INSERT INTO things VALUES (2, 'to_keep')")
+    Stdlib.Test.all(
+      [ Stdlib.Cli.Sqlite.delete(db, "things", "id = 1") |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(1))
+
+        Stdlib.Cli.Sqlite.query(db, "SELECT id FROM things")
+        |> Stdlib.Test.equal(Stdlib.Result.Result.Ok([ Dict { "id": Stdlib.Cli.Sqlite.Value.Integer(2) } ])) ]))
+
+
+test helperFunctions =
+  withDb(fun db ->
+    Stdlib.Test.all(
+      [ Stdlib.Cli.Sqlite.createTable(db, "helpers", "id INTEGER PRIMARY KEY, name TEXT")
+        |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(0))
+
+        Stdlib.Cli.Sqlite.insert(db, "helpers", "id, name", "1, 'test'")
+        |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(1)) ]))
+
+
+// SQLITE_ERROR is 1
+test invalidSql =
+  withDb(fun db ->
+    let result = Stdlib.Cli.Sqlite.execute(db, "THIS IS NOT VALID SQL")
+    Stdlib.Test.all(
+      [ (result |> Stdlib.Result.mapError(fun e -> e.code))
+        |> Stdlib.Test.equal(Stdlib.Result.Result.Error(1))
+
+        Stdlib.Test.expect(Stdlib.String.contains(errorMessage(result), "syntax error"), errorMessage(result)) ]))
+
+
+// SQLITE_CANTOPEN is 14: a query never creates the file
+test missingFile =
+  withDb(fun db ->
+    Stdlib.Cli.Sqlite.query(db + "-does-not-exist", "SELECT 1")
+    |> Stdlib.Result.mapError(fun e -> e.code)
+    |> Stdlib.Test.equal(Stdlib.Result.Result.Error(14)))
+
+
+test missingTable =
+  withDb(fun db ->
+    let result = Stdlib.Cli.Sqlite.query(db, "SELECT * FROM nonexistent_table")
+    Stdlib.Test.expect(Stdlib.String.contains(errorMessage(result), "no such table"), errorMessage(result)))

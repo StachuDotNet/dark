@@ -1,0 +1,67 @@
+/// Read and write SQLite database files.
+module Darklang.Stdlib.Cli.Sqlite
+
+/// A failure from SQLite: its result code (-1 when the failure is not SQLite's own) and message.
+type Error =
+  { code: Int64
+    message: String }
+
+
+/// One column of a row, as SQLite stores it.
+type Value =
+  | Null
+  | Integer(Int64)
+  | Real(Float)
+  | Text(String)
+  | Blob(Bytes)
+
+
+/// Runs a SQL statement (INSERT, UPDATE, DELETE, CREATE, ...) against the SQLite database at
+/// <param path>, creating the file if needed. Returns the number of rows changed.
+///
+/// {{Stdlib.Cli.Sqlite.execute("test.db", "INSERT INTO users VALUES (1, 'Alice')")}} is {{Ok(1)}}
+let execute(path: String, sql: String): Result<Int64, Error> =
+  Builtin.sqliteExecute(path, sql)
+
+
+/// Runs a SELECT query against the SQLite database at <param path> and returns every row,
+/// keyed by column name.
+///
+/// {{Stdlib.Cli.Sqlite.query("test.db", "SELECT name FROM users")}} is
+/// {{Ok([ Dict { "name": Value.Text("Alice") } ])}}
+let query(path: String, sql: String): Result<List<Dict<String, Value>>, Error> =
+  Builtin.sqliteQuery(path, sql)
+
+
+/// Runs a SELECT query against the SQLite database at <param path> and returns its first row,
+/// or {{None}} if there is none.
+let queryOne(path: String, sql: String): Result<Option<Dict<String, Value>>, Error> =
+  Builtin.sqliteQueryOne(path, sql)
+
+
+/// Creates the table <param tableName> with <param columns> unless it exists.
+///
+/// {{Stdlib.Cli.Sqlite.createTable("test.db", "users", "id INTEGER PRIMARY KEY, name TEXT")}}
+let createTable(path: String, tableName: String, columns: String): Result<Int64, Error> =
+  execute(path, $"CREATE TABLE IF NOT EXISTS {tableName} ({columns})")
+
+
+/// Inserts one row into <param tableName>.
+///
+/// {{Stdlib.Cli.Sqlite.insert("test.db", "users", "id, name", "1, 'Alice'")}} is {{Ok(1)}}
+let insert(path: String, tableName: String, columns: String, values: String): Result<Int64, Error> =
+  execute(path, $"INSERT INTO {tableName} ({columns}) VALUES ({values})")
+
+
+/// Updates the rows of <param tableName> that match <param whereClause>.
+///
+/// {{Stdlib.Cli.Sqlite.update("test.db", "users", "name = 'Bob'", "id = 1")}} is {{Ok(1)}}
+let update(path: String, tableName: String, setClause: String, whereClause: String): Result<Int64, Error> =
+  execute(path, $"UPDATE {tableName} SET {setClause} WHERE {whereClause}")
+
+
+/// Deletes the rows of <param tableName> that match <param whereClause>.
+///
+/// {{Stdlib.Cli.Sqlite.delete("test.db", "users", "id = 1")}} is {{Ok(1)}}
+let delete(path: String, tableName: String, whereClause: String): Result<Int64, Error> =
+  execute(path, $"DELETE FROM {tableName} WHERE {whereClause}")

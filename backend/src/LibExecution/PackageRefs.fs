@@ -283,6 +283,11 @@ module Type =
         let private p addl = p ("OS" :: addl)
         let os = p [] "OS"
 
+      module Sqlite =
+        let private p addl = p ("Sqlite" :: addl)
+        let error = p [] "Error"
+        let value = p [] "Value"
+
       module Stdin =
         let private p addl = p ("Stdin" :: addl)
         let modifiers = p [ "Modifiers" ] "Modifiers"
