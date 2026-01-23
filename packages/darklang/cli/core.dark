@@ -339,7 +339,7 @@ module Registry =
       if Stdlib.String.isEmpty partial then
         allOptions
       else
-        Stdlib.List.filter allOptions (fun name -> Stdlib.String.startsWith name partial)
+        Stdlib.List.filter (fun name -> Stdlib.String.startsWith name partial) allOptions
     else
       // Completing command arguments
       let handler = findCommand parsed.commandName

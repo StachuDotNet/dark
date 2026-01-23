@@ -39,7 +39,7 @@ let isEmpty (s: String) : Bool = s == ""
 
 /// Iterate over each Char (EGC, not byte) in the string, performing the
 /// operation in <param fn> on each one.
-let map (s: String) (fn: Char -> Char) : String =
+let map (fn: Char -> Char) (s: String) : String =
   s |> String.toList |> List.map fn |> String.fromList
 
 

@@ -196,7 +196,7 @@ let toggleMultiSelectItem (component: Core.Types.Component<MultiSelectModel>) (i
           let isSelected = Stdlib.List.``member`` model.selectedIndices index
           let newSelectedIndices =
             if isSelected then
-              Stdlib.List.filter model.selectedIndices (fun i -> i != index)
+              Stdlib.List.filter (fun i -> i != index) model.selectedIndices
             else
               if Stdlib.List.length model.selectedIndices < model.maxSelections then
                 model.selectedIndices

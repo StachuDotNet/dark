@@ -182,7 +182,7 @@ let help (state: Cli.AppState) : Cli.AppState =
       "  branch [clear|unset|none]     Clear current branch (search all packages)"
       "" ]
 
-  Stdlib.List.iter lines Stdlib.printLine
+  Stdlib.List.iter Stdlib.printLine lines
   state
 
 

@@ -80,7 +80,7 @@ let _getPinnedHandler _req =
     if accountID == "" then
       items
     else
-      Stdlib.List.filter items (fun item -> item.accountID == accountID)
+      Stdlib.List.filter (fun item -> item.accountID == accountID) items
 
   let responses = Stdlib.List.map filteredItems (fun item -> toResponse item)
   let body = Builtin.jsonSerialize<List<PinnedItemResponse>> responses

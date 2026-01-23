@@ -9,15 +9,15 @@ module ConstructionErrors =
 
 
 module FilterMap =
-  Stdlib.Dict.filterMap (Dict { }) (fun key value -> 0L) = (Dict { })
+  Stdlib.Dict.filterMap (fun key value -> 0L) (Dict { }) = (Dict { })
 
   (Stdlib.Dict.filterMap
-    (Dict { a = "x"; b = "y"; c = "z" })
     (fun key value ->
       if value == "y" then
         Stdlib.Option.Option.None
       else
         Stdlib.Option.Option.Some(key ++ value))
+    (Dict { a = "x"; b = "y"; c = "z" })
   ) = (Dict { c = "cz"; a = "ax" })
 
   // CLEANUP figure out why this isn't failing on the `false` not being an option
@@ -34,15 +34,15 @@ module FilterMap =
 
 module Filter =
   (Stdlib.Dict.filter
-    (Dict { key1 = "val1"; key2 = "val2" })
-    (fun k v -> k == "key1")) = (Dict { key1 = "val1" })
+    (fun k v -> k == "key1")
+    (Dict { key1 = "val1"; key2 = "val2" })) = (Dict { key1 = "val1" })
 
-  Stdlib.Dict.filter (Dict { key1 = 1L; key2 = 3L }) (fun k v -> v < 2L) =
+  Stdlib.Dict.filter (fun k v -> v < 2L) (Dict { key1 = 1L; key2 = 3L }) =
     (Dict { key1 = 1L })
 
-  Stdlib.Dict.filter (Dict { }) (fun k v -> 0L) = (Dict { })
+  Stdlib.Dict.filter (fun k v -> 0L) (Dict { }) = (Dict { })
 
-  Stdlib.Dict.filter (Dict { a = 1L; b = 2L; c = 3L }) (fun k v -> 2L) =
+  Stdlib.Dict.filter (fun k v -> 2L) (Dict { a = 1L; b = 2L; c = 3L }) =
     Builtin.testDerrorMessage "Encountered a condition that must be a Bool, but got an Int64 (2)"
 
 
@@ -104,23 +104,23 @@ module Keys =
 
 
 module Map =
-  Stdlib.Dict.map_v0 (Dict { }) (fun key value -> 0L) = (Dict { })
+  Stdlib.Dict.map_v0 (fun key value -> 0L) (Dict { }) = (Dict { })
 
   (Stdlib.Dict.map_v0
-    (Dict { key1 = "val1"; key2 = "val2" })
     (fun k x -> k ++ x)
+    (Dict { key1 = "val1"; key2 = "val2" })
   ) = (Dict { key2 = "key2val2"; key1 = "key1val1" })
 
   (Stdlib.Dict.map_v0
-    (Dict { key1 = 5L; key2 = 3L; key3 = 3L })
     (fun k x ->
       Stdlib.Bool.and_v0
         (Stdlib.Int64.greaterThanOrEqualTo_v0 x 1L)
         (Stdlib.Int64.lessThanOrEqualTo_v0 x 4L)
     )
+    (Dict { key1 = 5L; key2 = 3L; key3 = 3L })
     )= (Dict { key3 = true; key2 = true; key1 = false })
 
-  Stdlib.Dict.map_v0 (Dict { a = 1L; b = 2L }) (fun k x -> x + 1L) =
+  Stdlib.Dict.map_v0 (fun k x -> x + 1L) (Dict { a = 1L; b = 2L }) =
     (Dict { b = 3L; a = 2L })
 
 

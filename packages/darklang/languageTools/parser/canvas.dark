@@ -169,8 +169,8 @@ let parse
                       initialParse.types
                       |> Stdlib.List.findFirst (fun original ->
                         original.name == t.name)
-                      |> Stdlib.Option.mapWithDefault t.id (fun original ->
-                        original.id) })
+                      |> Stdlib.Option.mapWithDefault (fun original ->
+                        original.id) t.id })
 
             values =
               result.values
@@ -180,8 +180,8 @@ let parse
                       initialParse.values
                       |> Stdlib.List.findFirst (fun original ->
                         original.name == v.name)
-                      |> Stdlib.Option.mapWithDefault v.id (fun original ->
-                        original.id) })
+                      |> Stdlib.Option.mapWithDefault (fun original ->
+                        original.id) v.id })
 
             fns =
               result.fns
@@ -191,8 +191,8 @@ let parse
                       initialParse.fns
                       |> Stdlib.List.findFirst (fun original ->
                         original.name == f.name)
-                      |> Stdlib.Option.mapWithDefault f.id (fun original ->
-                        original.id) })
+                      |> Stdlib.Option.mapWithDefault (fun original ->
+                        original.id) f.id })
 
             exprs = result.exprs }
 

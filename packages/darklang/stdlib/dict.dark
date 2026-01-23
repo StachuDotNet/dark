@@ -88,7 +88,7 @@ let ``member`` (dict: Dict<'a>) (key: String) : Bool =
 /// dict> with values that have been transformed by {{fn}}, which operates on
 /// each key-value pair.
 /// Consider <fn Dict.filterMap> if you also want to drop some of the entries.
-let map (dict: Dict<'a>) (fn: String -> 'a -> 'b) : Dict<'b> =
+let map (fn: String -> 'a -> 'b) (dict: Dict<'a>) : Dict<'b> =
   dict
   |> Stdlib.Dict.toList
   |> List.map (fun (k, v) -> (k, fn k v))
@@ -96,14 +96,14 @@ let map (dict: Dict<'a>) (fn: String -> 'a -> 'b) : Dict<'b> =
 
 
 /// Evaluates {{fn key value}} on every entry in <param dict>. Returns {{()}}.
-let iter (dict: Dict<'a>) (fn: String -> 'a -> Unit) : Unit =
+let iter (fn: String -> 'a -> Unit) (dict: Dict<'a>) : Unit =
   dict |> Stdlib.Dict.toList |> List.iter (fun (k, v) -> fn k v)
 
 
 /// Evaluates {{fn key value}} on every entry in <param dict>. Returns a <type
 /// dict> that contains only the entries of <param dict> for which <param fn>
 /// returned {{true}}.
-let filter (dict: Dict<'a>) (fn: String -> 'a -> Bool) : Dict<'a> =
+let filter (fn: String -> 'a -> Bool) (dict: Dict<'a>) : Dict<'a> =
   dict
   |> Stdlib.Dict.toList
   |> List.filter (fun (k, v) -> fn k v)
@@ -115,8 +115,8 @@ let filter (dict: Dict<'a>) (fn: String -> 'a -> Bool) : Dict<'a> =
 /// If {{fn key value}} returns {{Some newValue}}, adds the entry <var key>: <var newValue> to the new dictionary.
 /// This function combines <fn Dict.filter> and <fn Dict.map>.
 let filterMap
-  (dict: Dict<'a>)
   (fn: String -> 'a -> Option.Option<'b>)
+  (dict: Dict<'a>)
   : Dict<'b> =
   dict
   |> Stdlib.Dict.toList

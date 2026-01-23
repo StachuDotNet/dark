@@ -11,8 +11,8 @@ type Result<'Ok, 'Err> =
 /// {{Ok}}. If <param result> is {{Error <var msg>}}, returns <param result>
 /// unchanged.
 let map
-  (result: Stdlib.Result.Result<'t, 'e>)
   (fn: 't -> 'u)
+  (result: Stdlib.Result.Result<'t, 'e>)
   : Stdlib.Result.Result<'u, 'e> =
   match result with
   | Ok value -> Stdlib.Result.Result.Ok(fn value)
@@ -25,9 +25,9 @@ let map
 /// Otherwise, returns the first of <param result1> and <param result2> that is
 /// an error.
 let map2
+  (fn: 'a -> 'b -> 'c)
   (result1: Stdlib.Result.Result<'a, 'e>)
   (result2: Stdlib.Result.Result<'b, 'e>)
-  (fn: 'a -> 'b -> 'c)
   : Stdlib.Result.Result<'c, 'e> =
   match (result1, result2) with
   | (Ok v1, Ok v2) -> Stdlib.Result.Result.Ok(fn v1 v2)
@@ -42,10 +42,10 @@ let map2
 /// Otherwise, returns the first of <param result1>, <param result2>, and
 /// <param result3> that is an error.
 let map3
+  (fn: 'a -> 'b -> 'c -> 'd)
   (result1: Stdlib.Result.Result<'a, 'e>)
   (result2: Stdlib.Result.Result<'b, 'e>)
   (result3: Stdlib.Result.Result<'c, 'e>)
-  (fn: 'a -> 'b -> 'c -> 'd)
   : Stdlib.Result.Result<'d, 'e> =
   match (result1, result2, result3) with
   | (Ok v1, Ok v2, Ok v3) -> Stdlib.Result.Result.Ok(fn v1 v2 v3)
@@ -62,11 +62,11 @@ let map3
 /// result1>, <param result2>, <param result3>, and <param result4> that is an
 /// error.
 let map4
+  (fn: 'a -> 'b -> 'c -> 'd -> 'f)
   (result1: Stdlib.Result.Result<'a, 'e>)
   (result2: Stdlib.Result.Result<'b, 'e>)
   (result3: Stdlib.Result.Result<'c, 'e>)
   (result4: Stdlib.Result.Result<'d, 'e>)
-  (fn: 'a -> 'b -> 'c -> 'd -> 'f)
   : Stdlib.Result.Result<'f, 'e> =
   match (result1, result2, result3, result4) with
   | (Ok v1, Ok v2, Ok v3, Ok v4) -> Stdlib.Result.Result.Ok(fn v1 v2 v3 v4)
@@ -84,12 +84,12 @@ let map4
 /// wrapped in {{Ok}}. Otherwise, returns the first of <param result1>, <param
 /// result2>, <param result3>, <param result4>, and <param result5> that is an error.
 let map5
+  (fn: 'a -> 'b -> 'c -> 'd -> 'f -> 'g)
   (result1: Stdlib.Result.Result<'a, 'e>)
   (result2: Stdlib.Result.Result<'b, 'e>)
   (result3: Stdlib.Result.Result<'c, 'e>)
   (result4: Stdlib.Result.Result<'d, 'e>)
   (result5: Stdlib.Result.Result<'f, 'e>)
-  (fn: 'a -> 'b -> 'c -> 'd -> 'f -> 'g)
   : Stdlib.Result.Result<'g, 'e> =
   match (result1, result2, result3, result4, result5) with
   | (Ok v1, Ok v2, Ok v3, Ok v4, Ok v5) ->
@@ -104,9 +104,9 @@ let map5
 /// Applies the function <param fn> to the value inside the {{Ok <var value>}} variant of <param result>
 /// if it exists. If <param result> is an {{Error _}}, returns the provided <param default_>.
 let mapWithDefault
-  (result: Stdlib.Result.Result<'t, 'e>)
-  (default_: 'u)
   (fn: 't -> 'u)
+  (default_: 'u)
+  (result: Stdlib.Result.Result<'t, 'e>)
   : 'u =
   match result with
   | Ok value -> fn value
@@ -118,8 +118,8 @@ let mapWithDefault
 /// {{Error}}. If <param result> is {{Ok <var value>}}, returns <param result>
 /// unchanged.
 let mapError
-  (result: Stdlib.Result.Result<'t, 'e>)
   (fn: 'e -> 'u)
+  (result: Stdlib.Result.Result<'t, 'e>)
   : Stdlib.Result.Result<'t, 'u> =
   match result with
   | Ok value -> Stdlib.Result.Result.Ok value
@@ -131,8 +131,8 @@ let mapError
 /// msg>}} or {{Ok <var newValue>}}. If <param result> is {{Error <var msg>}},
 /// returns <param result> unchanged."
 let andThen
-  (result: Stdlib.Result.Result<'t, 'e>)
   (fn: 't -> Stdlib.Result.Result<'u, 'e>)
+  (result: Stdlib.Result.Result<'t, 'e>)
   : Stdlib.Result.Result<'u, 'e> =
   match result with
   | Ok value -> fn value

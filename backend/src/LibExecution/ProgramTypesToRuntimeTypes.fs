@@ -652,20 +652,28 @@ module Expr =
             PT.EApply(id, PT.ELambda(id, pats, body), [], NEList.ofList lhs [])
 
           // `1 |> (+) 1`
-          | PT.EPipeInfix(id, infix, rhs) -> PT.EInfix(id, infix, lhs, rhs)
+          | PT.EPipeInfix(id, infix, rhs) -> PT.EInfix(id, infix, rhs, lhs)
 
           // `1 |> Json.serialize<Int64>`
           | PT.EPipeFnCall(id, fnName, typeArgs, args) ->
-            PT.EApply(id, PT.EFnName(id, fnName), typeArgs, NEList.ofList lhs args)
+            let allArgs =
+              match args with
+              | [] -> NEList.ofList lhs []
+              | firstArg :: restArgs -> NEList.ofList firstArg (restArgs @ [ lhs ])
+            PT.EApply(id, PT.EFnName(id, fnName), typeArgs, allArgs)
 
           // `1 |> Option.Some`
           | PT.EPipeEnum(id, typeName, caseName, fields) ->
             let typeArgs = [] // TODO
-            PT.EEnum(id, typeName, typeArgs, caseName, [ lhs ] @ fields)
+            PT.EEnum(id, typeName, typeArgs, caseName, fields @ [ lhs ])
 
           // `1 |> myLambda`
           | PT.EPipeVariable(id, varName, args) ->
-            PT.EApply(id, PT.EVariable(id, varName), [], NEList.ofList lhs args)
+            let allArgs =
+              match args with
+              | [] -> NEList.ofList lhs []
+              | firstArg :: restArgs -> NEList.ofList firstArg (restArgs @ [ lhs ])
+            PT.EApply(id, PT.EVariable(id, varName), [], allArgs)
 
         toRT symbols rc currentFnName (PT.EPipe(id, newLHS, parts))
 

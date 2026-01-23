@@ -35,8 +35,8 @@ let parse
     let name = findField node "name"
 
     let declarations =
-      (Stdlib.List.filter node.children (fun node ->
-        node.typ == "module_content"))
+      (Stdlib.List.filter (fun node ->
+        node.typ == "module_content") node.children)
       |> Stdlib.List.map (fun node ->
         match node.children |> Stdlib.List.head with
         | Some child -> ModuleDeclaration.parseDecls child

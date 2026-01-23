@@ -256,58 +256,58 @@ let parse
 
       let adjustedTypes =
         (Stdlib.List.zip result.types initialParse.types)
-        |> Stdlib.Option.mapWithDefault result.types (fun zipped ->
+        |> Stdlib.Option.mapWithDefault (fun zipped ->
           zipped
           |> Stdlib.List.map (fun tuple ->
             let (newType, originalType) = tuple
-            { newType with id = originalType.id }))
+            { newType with id = originalType.id })) result.types
 
       let adjustedValues =
         (Stdlib.List.zip result.values initialParse.values)
-        |> Stdlib.Option.mapWithDefault result.values (fun zipped ->
+        |> Stdlib.Option.mapWithDefault (fun zipped ->
           zipped
           |> Stdlib.List.map (fun tuple ->
             let (newValue, originalValue) = tuple
-            { newValue with id = originalValue.id }))
+            { newValue with id = originalValue.id })) result.values
 
       let adjustedFns =
         (Stdlib.List.zip result.fns initialParse.fns)
-        |> Stdlib.Option.mapWithDefault result.fns (fun zipped ->
+        |> Stdlib.Option.mapWithDefault (fun zipped ->
           zipped
           |> Stdlib.List.map (fun tuple ->
             let (newFn, originalFn) = tuple
-            { newFn with id = originalFn.id }))
+            { newFn with id = originalFn.id })) result.fns
 
       let adjustedSubmodules =
         (Stdlib.List.zip result.submodules initialParse.submodules)
-        |> Stdlib.Option.mapWithDefault result.submodules (fun zipped ->
+        |> Stdlib.Option.mapWithDefault (fun zipped ->
           zipped
           |> Stdlib.List.map (fun tuple ->
             let (newSub, originalSub) = tuple
 
             let subTypes =
               (Stdlib.List.zip newSub.types originalSub.types)
-              |> Stdlib.Option.mapWithDefault newSub.types (fun z ->
+              |> Stdlib.Option.mapWithDefault (fun z ->
                 z
                 |> Stdlib.List.map (fun t ->
                   let (newT, origT) = t
-                  { newT with id = origT.id }))
+                  { newT with id = origT.id })) newSub.types
 
             let subValues =
               (Stdlib.List.zip newSub.values originalSub.values)
-              |> Stdlib.Option.mapWithDefault newSub.values (fun z ->
+              |> Stdlib.Option.mapWithDefault (fun z ->
                 z
                 |> Stdlib.List.map (fun v ->
                   let (newV, origV) = v
-                  { newV with id = origV.id }))
+                  { newV with id = origV.id })) newSub.values
 
             let subFns =
               (Stdlib.List.zip newSub.fns originalSub.fns)
-              |> Stdlib.Option.mapWithDefault newSub.fns (fun z ->
+              |> Stdlib.Option.mapWithDefault (fun z ->
                 z
                 |> Stdlib.List.map (fun f ->
                   let (newF, origF) = f
-                  { newF with id = origF.id }))
+                  { newF with id = origF.id })) newSub.fns
 
             ProgramTypes.Definitions
               { types = subTypes

@@ -71,7 +71,7 @@ let commandNamesCompletion (_state: AppState) (args: List<String>) : List<String
     let commandNames = Stdlib.List.map commands (fun cmd -> cmd.name)
     let allAliases = Stdlib.List.fold commands [] (fun acc cmd -> Stdlib.List.append acc cmd.aliases)
     let allOptions = Stdlib.List.append commandNames allAliases
-    Stdlib.List.filter allOptions (fun name -> Stdlib.String.startsWith name partialArg)
+    Stdlib.List.filter (fun name -> Stdlib.String.startsWith name partialArg) allOptions
   | _ ->
     // Only complete first argument
     []

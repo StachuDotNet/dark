@@ -125,10 +125,10 @@ Stdlib.Option.andThen4_v0
   (fun x y z w -> Stdlib.Option.Option.Some(x + y + z + w)) = Stdlib.Option.Option.None
 
 
-Stdlib.Option.map (Stdlib.Option.Option.Some 4L) (fun x ->
-  Stdlib.Int64.divide_v0 x 2L) = Stdlib.Option.Option.Some 2L
+Stdlib.Option.map (fun x ->
+  Stdlib.Int64.divide_v0 x 2L) (Stdlib.Option.Option.Some 4L) = Stdlib.Option.Option.Some 2L
 
-Stdlib.Option.map Stdlib.Option.Option.None (fun x -> Stdlib.Int64.divide_v0 x 2L) = Stdlib.Option.Option.None
+Stdlib.Option.map (fun x -> Stdlib.Int64.divide_v0 x 2L) Stdlib.Option.Option.None = Stdlib.Option.Option.None
 
 
 Stdlib.Option.map2_v0

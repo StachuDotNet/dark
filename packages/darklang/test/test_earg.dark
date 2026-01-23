@@ -70,6 +70,6 @@ let test14 = (Darklang.Test.EArgTests.tupleMatchWithArgShadowing (42L, "data")) 
 let testList = [ test1; test2; test3; test4; test6; test7; test8; test9; test10; test11; test12; test13; test14 ]
 
 
-match Stdlib.List.all testList Stdlib.Fun.identity with
+match Stdlib.List.all Stdlib.Fun.identity testList with
 | true -> 0L
 | false -> 1L

@@ -64,19 +64,19 @@ let reverse (list: List<'a>) : List<'a> = reverseHelper list []
 /// Returns {{Some firstMatch}} where <var firstMatch> is the first value of the
 /// list for which <param fn> returns {{true}}. Returns {{None}} if no such
 /// value exists
-let findFirst (list: List<'a>) (fn: 'a -> Bool) : Option.Option<'a> =
+let findFirst (fn: 'a -> Bool) (list: List<'a>) : Option.Option<'a> =
   match list with
   | [] -> Option.Option.None
   | head :: tail ->
     if (fn head) then
       Option.Option.Some head
     else
-      findFirst tail fn
+      findFirst fn tail
 
 
 /// Returns {{true}} if <param value> is in the list
 let ``member`` (list: List<'a>) (value: 'a) : Bool =
-  Option.isSome (findFirst list (fun elem -> elem == value))
+  Option.isSome (findFirst (fun elem -> elem == value) list)
 
 
 // TODO: remove this once we have a way to call lambdas recursively
@@ -114,12 +114,12 @@ let range (lowest: Int64) (highest: Int64) : List<Int64> =
 
 
 /// Folds <param list> into a single value, by repeatedly applying <param fn> to any two pairs.
-let fold (list: List<'a>) (init: 'b) (fn: 'b -> 'a -> 'b) : 'b =
+let fold (fn: 'b -> 'a -> 'b) (init: 'b) (list: List<'a>) : 'b =
   match list with
   | [] -> init
   | head :: tail ->
     let init = fn init head
-    fold tail init fn
+    fold fn init tail
 
 
 /// Returns a single list containing the values of every list directly in <paramlist>
@@ -159,15 +159,15 @@ let interleave (lA: List<'a>) (lB: List<'a>) : List<'a> =
 /// Returns the passed list, with only unique values, where uniqueness is based
 /// on the result of <param fn>. Only one of each value will be returned, but the
 /// order will not be maintained.
-let uniqueBy (list: List<'a>) (fn: 'a -> 'b) : List<'a> =
+let uniqueBy (fn: 'a -> 'b) (list: List<'a>) : List<'a> =
   list
-  |> fold ([], []) (fun (unique, seen) value ->
+  |> fold (fun (unique, seen) value ->
     let uniqueValue = fn value
 
     if member_v0 seen uniqueValue then
       (unique, seen)
     else
-      (push unique value, push seen uniqueValue))
+      (push unique value, push seen uniqueValue)) ([], [])
   |> fun (uniqueValues, _) -> uniqueValues
   |> sort
 
@@ -195,11 +195,11 @@ let sort (list: List<'a>) : List<'a> = Builtin.listSort list
 /// val}} returns {{[ \"x\", \"ab\", \"jkl\" ]}}.
 /// Consider <fn sort> if the list values can be directly compared, or <fn
 /// sortByComparator> if you want more control over the sorting process.
-let sortBy (list: List<'a>) (fn: 'a -> 'b) : List<'a> =
+let sortBy (fn: 'a -> 'b) (list: List<'a>) : List<'a> =
   list
   |> map (fun x -> (fn x, x))
   |> sort
-  |> map (Tuple2.second)
+  |> map Tuple2.second
 
 
 /// Helper functions for sortByComparator
@@ -273,8 +273,8 @@ module SortByComparatorHelpers =
 /// Consider <fn sort> or <fn sortBy> if you don't need this level
 /// of control.
 let sortByComparator
-  (list: List<'a>)
   (fn: 'a -> 'a -> Int64)
+  (list: List<'a>)
   : Result.Result<List<'a>, String> =
   SortByComparatorHelpers.mergeSort fn list
 
@@ -282,30 +282,29 @@ let sortByComparator
 
 
 /// Return {{true}} if all elements in the list meet the function's criteria, else {{false}}
-let all (list: List<'a>) (fn: 'a -> Bool) : Bool =
+let all (fn: 'a -> Bool) (list: List<'a>) : Bool =
   match list with
   | [] -> true
-  | head :: tail -> if (fn head) then all tail fn else false
+  | head :: tail -> if (fn head) then all fn tail else false
 
 
 /// Return {{true}} if any elements in the list meet the function's criteria, else {{false}}
-let any (list: List<'a>) (fn: 'a -> Bool) : Bool =
+let any (fn: 'a -> Bool) (list: List<'a>) : Bool =
   match list with
   | [] -> true
   | head :: tail ->
     if fn head then
       true
     else
-      any tail fn
+      any fn tail
 
 
 // Calls <param f> on every <var val> in <param list>, returning a list of only
 // those values for which {{fn val}} returns {{true}}.
 // Preserves the order of values that were not dropped. Consider <fn
 // filterMap> if you also want to transform the values.
-let filter (list: List<'a>) (f: 'a -> Bool) : List<'a> =
-  (fold list [] (fun acc elem ->
-    if (f elem) then push acc elem else acc))
+let filter (f: 'a -> Bool) (list: List<'a>) : List<'a> =
+  (fold (fun acc elem -> if (f elem) then push acc elem else acc) [] list)
   |> reverse
 
 
@@ -316,16 +315,16 @@ let filter (list: List<'a>) (f: 'a -> Bool) : List<'a> =
 // Preserves the order of values that were not dropped.
 // This function combines <fn filter> and <fn map>.
 let filterMap
-  (list: List<'a>)
   (fn: 'a -> Option.Option<'b>)
+  (list: List<'a>)
   : List<'b> =
   match list with
   | [] -> []
   | head :: tail ->
     match (fn head) with
     | Some newValue ->
-      push (filterMap tail fn) newValue
-    | None -> filterMap tail fn
+      push (filterMap fn tail) newValue
+    | None -> filterMap fn tail
 
 
 /// Drops the first <param count> values from <param list>
@@ -339,10 +338,10 @@ let drop (list: List<'a>) (count: Int64) : List<'a> =
 
 
 /// Drops the longest prefix of <param list> which satisfies the predicate <param val>
-let dropWhile (list: List<'a>) (fn: 'a -> Bool) : List<'a> =
+let dropWhile (fn: 'a -> Bool) (list: List<'a>) : List<'a> =
   match list with
   | [] -> []
-  | head :: tail -> if (fn head) then dropWhile tail fn else list
+  | head :: tail -> if (fn head) then dropWhile fn tail else list
 
 
 /// Drops the last value from <param list>
@@ -367,12 +366,12 @@ let take (list: List<'a>) (count: Int64) : List<'a> =
 
 
 /// Return the longest prefix of <param list> which satisfies the predicate <param fn>
-let takeWhile (list: List<'a>) (fn: 'a -> Bool) : List<'a> =
+let takeWhile (fn: 'a -> Bool) (list: List<'a>) : List<'a> =
   match list with
   | [] -> []
   | head :: tail ->
     if (fn head) then
-      push (takeWhile tail fn) head
+      push (takeWhile fn tail) head
     else
       []
 
@@ -380,19 +379,19 @@ let takeWhile (list: List<'a>) (fn: 'a -> Bool) : List<'a> =
 // Calls <param fn> on every <var val> in <param list>, returning a list of the
 // results of those calls.
 // Consider <fn filterMap> if you also want to drop some of the values.
-let map (list: List<'a>) (fn: 'a -> 'b) : List<'b> =
-  (fold list [] (fun acc elem -> push acc (fn elem)))
+let map (fn: 'a -> 'b) (list: List<'a>) : List<'b> =
+  (fold (fun acc elem -> push acc (fn elem)) [] list)
   |> reverse
 
 
 /// Calls <fn fn> on every <var val> and its <var index> in <param list>,
 /// returning a list of the results of those calls.
 /// Consider <fn map> if you don't need the index.
-let indexedMap (list: List<'a>) (fn: Int64 -> 'a -> 'b) : List<'b> =
+let indexedMap (fn: Int64 -> 'a -> 'b) (list: List<'a>) : List<'b> =
   list
-  |> fold ([], 0L) (fun (acc, index) item ->
+  |> fold (fun (acc, index) item ->
     let mappedItem = fn index item
-    (pushBack acc mappedItem, index + 1L))
+    (pushBack acc mappedItem, index + 1L)) ([], 0L)
   |> Tuple2.first
 
 
@@ -531,31 +530,33 @@ let randomElement (list: List<'a>) : Option.Option<'a> =
 /// For example, if <param list> is {{[1, 2, 3, 4, 5]}} and <param fn>
 /// is {{fn item -> Int64.mod item 2}}, returns {{[(1, [1, 3, 5]), (0, [2, 4])]}}.
 /// Preserves the order of values and of the keys.
-let groupByWithKey (list: List<'a>) (fn: 'a -> 'b) : List<('b * List<'a>)> =
+let groupByWithKey (fn: 'a -> 'b) (list: List<'a>) : List<('b * List<'a>)> =
   list
   // CLEANUP: improve performance
-  |> fold [] (fun groupCollector element ->
+  |> fold (fun groupCollector element ->
     let key = fn element
-    let tryFindGroup = findFirst groupCollector (fun (k, _) -> k == key)
+    let tryFindGroup = findFirst (fun (k, _) -> k == key) groupCollector
 
     match tryFindGroup with
     | Some _ ->
-      map groupCollector (fun (k, elements) ->
-        if k == key then
-          (k, pushBack elements element)
-        else
-          (k, elements))
-    | None -> pushBack groupCollector (key, [ element ]))
+      map
+        (fun (k, elements) ->
+          if k == key then
+            (k, pushBack elements element)
+          else
+            (k, elements))
+        groupCollector
+    | None -> pushBack groupCollector (key, [ element ])) []
 
 
 /// Calls <param f> on every <var val> in <param list>, splitting the list into
 /// two - those values for which {{fn val}} returns {{true}}, and those that
 /// return {{false}}
-let partition (ls: List<'a>) (f: 'a -> Bool) : (List<'a> * List<'a>) =
+let partition (f: 'a -> Bool) (ls: List<'a>) : (List<'a> * List<'a>) =
   match ls with
   | [] -> ([], [])
   | head :: tail ->
-    let (trueList, falseList) = partition tail f
+    let (trueList, falseList) = partition f tail
 
     if (f head) then
       (push trueList head, falseList)
@@ -564,12 +565,12 @@ let partition (ls: List<'a>) (f: 'a -> Bool) : (List<'a> * List<'a>) =
 
 
 /// Applies the given function <param fn> to each element of the <param list>.
-let iter (list: List<'a>) (f: 'a -> Unit) : Unit =
+let iter (f: 'a -> Unit) (list: List<'a>) : Unit =
   match list with
   | [] -> ()
   | head :: tail ->
     f head
-    iter tail f
+    iter f tail
 
 
 /// Helper function for chunkBySize. Recursively divides a list into chunks of a given size.

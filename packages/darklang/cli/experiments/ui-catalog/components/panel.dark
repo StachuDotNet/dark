@@ -276,7 +276,7 @@ let toggleFilter (component: Core.Types.Component<FilterPanelModel>) (index: Int
     let isApplied = Stdlib.List.``member`` model.appliedFilters index
     let newAppliedFilters =
       if isApplied then
-        Stdlib.List.filter model.appliedFilters (fun i -> i != index)
+        Stdlib.List.filter (fun i -> i != index) model.appliedFilters
       else
         model.appliedFilters |> Stdlib.List.append [index]
     { component with model = { model with appliedFilters = newAppliedFilters } }

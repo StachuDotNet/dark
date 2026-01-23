@@ -57,7 +57,7 @@ type MyEnum = A of Int64 * Int64 * Int64
  x |> Stdlib.Option.map (fun a -> a) |> Stdlib.Option.map (fun a -> a + 1L)) =
   Stdlib.Option.Option.Some 4L
 
-(let x = fun x -> Stdlib.Option.map x (fun a -> a)
+(let x = fun x -> Stdlib.Option.map (fun a -> a) x
  (Stdlib.Option.Option.Some 3L) |> x |> Stdlib.Option.map (fun a -> a + 1L)) =
   Stdlib.Option.Option.Some 4L
 

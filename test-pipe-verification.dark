@@ -1,0 +1,53 @@
+// Test pipe operator behavior with F# semantics
+// After the fix, pipes should work naturally with our reordered stdlib functions
+
+// Test 1: List.map with pipe
+let testListMap =
+  [ 1L; 2L; 3L ]
+  |> Stdlib.List.map (fun x -> x + 1L)
+// Expected: [2, 3, 4] - list flows as last arg to map
+
+// Test 2: Multiple pipes with List functions
+let testMultiplePipes =
+  [ 1L; 2L; 3L; 4L; 5L ]
+  |> Stdlib.List.filter (fun x -> x > 2L)
+  |> Stdlib.List.map (fun x -> x * 2L)
+// Expected: [6, 8, 10]
+
+// Test 3: Option.map with pipe
+let testOptionMap =
+  Stdlib.Option.Option.Some 5L
+  |> Stdlib.Option.map (fun x -> x * 2L)
+// Expected: Some 10
+
+// Test 4: Result.map with pipe
+let testResultMap =
+  Stdlib.Result.Result.Ok 10L
+  |> Stdlib.Result.map (fun x -> x + 5L)
+// Expected: Ok 15
+
+// Test 5: String.map with pipe
+let testStringMap =
+  "hello"
+  |> Stdlib.String.map (fun c -> c)
+// Expected: "hello"
+
+// Test 6: Dict.map with pipe
+let testDictMap =
+  Stdlib.Dict.empty
+  |> Stdlib.Dict.set "a" 1L
+  |> Stdlib.Dict.set "b" 2L
+  |> Stdlib.Dict.map (fun key value -> value * 2L)
+// Expected: Dict with a=2, b=4
+
+// Test 7: Complex pipeline combining multiple modules
+let testComplexPipeline =
+  [ Stdlib.Option.Option.Some 1L
+    Stdlib.Option.Option.Some 2L
+    Stdlib.Option.Option.None
+    Stdlib.Option.Option.Some 3L ]
+  |> Stdlib.List.filterMap (fun opt -> opt)
+  |> Stdlib.List.map (fun x -> x * 10L)
+// Expected: [10, 20, 30]
+
+testComplexPipeline

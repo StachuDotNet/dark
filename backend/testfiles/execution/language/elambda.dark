@@ -39,8 +39,8 @@
 (let y = (fun c -> if c > 2L then Builtin.testRuntimeError "err" else 18L)
  [ 1L; 2L ] |> Stdlib.List.map_v0 y) = [ 18L; 18L ]
 
-(let t = true in Stdlib.List.all [ 1L; 2L ] (fun _ -> t)) = true
-(let f = false in Stdlib.List.all [ 1L; 2L ] (fun _ -> f)) = false
+(let t = true in Stdlib.List.all (fun _ -> t) [ 1L; 2L ]) = true
+(let f = false in Stdlib.List.all (fun _ -> f) [ 1L; 2L ]) = false
 
 (let x = 1L
  let f = fun _ -> x
@@ -94,15 +94,15 @@
   Builtin.testDerrorMessage "Could not deconstruct value (1, \"one\", true) into pattern ([variable], [variable])"
 
 Stdlib.Dict.map_v0
+  (fun x (y, z) -> x ++ y ++ z)
   (Dict
     { key1 = ("val11", "val12")
-      key2 = ("val21", "val22") })
-  (fun x (y, z) -> x ++ y ++ z) =
+      key2 = ("val21", "val22") }) =
    (Dict { key2 = "key2val21val22"; key1 = "key1val11val12" })
 
 (Stdlib.Dict.map_v0
-  (Dict { key1 = ("val11", "val12"); key2 = ("val21", "val22") })
-  (fun x (_, z) -> x ++ z)) =
+  (fun x (_, z) -> x ++ z)
+  (Dict { key1 = ("val11", "val12"); key2 = ("val21", "val22") })) =
     (Dict { key2 = "key2val22"; key1 = "key1val12" })
 
 

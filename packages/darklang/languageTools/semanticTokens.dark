@@ -885,11 +885,11 @@ module Expr =
     // if true then 1 else 2
     | EIf(_range, cond, thenExpr, elseExpr, keywordIf, keywordThen, keywordElse) ->
       let elseKeyword =
-        Stdlib.Option.mapWithDefault keywordElse [] (fun e ->
-          [ makeToken e TokenType.Keyword ])
+        Stdlib.Option.mapWithDefault (fun e ->
+          [ makeToken e TokenType.Keyword ]) [] keywordElse
 
       let elseExpr =
-        Stdlib.Option.mapWithDefault elseExpr [] (fun e -> Expr.tokenize e)
+        Stdlib.Option.mapWithDefault (fun e -> Expr.tokenize e) [] elseExpr
 
       [ // if
         [ makeToken keywordIf TokenType.Keyword ]
@@ -918,14 +918,14 @@ module Expr =
 
           let whenCondition =
             Stdlib.Option.mapWithDefault
-              case.whenCondition
-              []
               (fun (whenKeyword, expr) ->
                 [ // when
                   [ makeToken whenKeyword TokenType.Keyword ]
                   // x > 1
                   (Expr.tokenize expr) ]
                 |> Stdlib.List.flatten)
+              []
+              case.whenCondition
 
           [ // |
             [ makeToken pipeSym TokenType.Symbol ]

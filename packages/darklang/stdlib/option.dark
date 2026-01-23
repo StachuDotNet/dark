@@ -10,8 +10,8 @@ type Option<'v> =
 /// lambda <fn fn> is applied to <var value> and the result is wrapped in
 /// {{Some}}. Otherwise, returns {{None}}
 let map
-  (option: Stdlib.Option.Option<'a>)
   (fn: 'a -> 'b)
+  (option: Stdlib.Option.Option<'a>)
   : Stdlib.Option.Option<'b> =
   match option with
   | Some v -> Stdlib.Option.Option.Some(fn v)
@@ -25,9 +25,9 @@ let map
 ///  <param option2> are {{None}}, returns {{None}} without applying <param
 ///  fn>.
 let map2
+  (fn: 'a -> 'b -> 'c)
   (option1: Stdlib.Option.Option<'a>)
   (option2: Stdlib.Option.Option<'b>)
-  (fn: 'a -> 'b -> 'c)
   : Stdlib.Option.Option<'c> =
   match (option1, option2) with
   | Some v1, Some v2 -> Stdlib.Option.Option.Some(fn v1 v2)
@@ -40,10 +40,10 @@ let map2
 /// representing <var v1>, <var v2>, and <var v3>. But if any of <param option1>, <param option2>, or
 /// <param option3> are {{None}}, returns {{None}} without applying <param fn>.
 let map3
+  (fn: 'a -> 'b -> 'c -> 'd)
   (option1: Stdlib.Option.Option<'a>)
   (option2: Stdlib.Option.Option<'b>)
   (option3: Stdlib.Option.Option<'c>)
-  (fn: 'a -> 'b -> 'c -> 'd)
   : Stdlib.Option.Option<'d> =
   match (option1, option2, option3) with
   | Some v1, Some v2, Some v3 -> Stdlib.Option.Option.Some(fn v1 v2 v3)
@@ -56,11 +56,11 @@ let map3
 /// representing <var v1>, <var v2>, <var v3>, and <var v4>. But if any of <param option1>, <param option2>, <param option3>, or
 /// <param option4> are {{None}}, returns {{None}} without applying <param fn>.
 let map4
+  (fn: 'a -> 'b -> 'c -> 'd -> 'e)
   (option1: Stdlib.Option.Option<'a>)
   (option2: Stdlib.Option.Option<'b>)
   (option3: Stdlib.Option.Option<'c>)
   (option4: Stdlib.Option.Option<'d>)
-  (fn: 'a -> 'b -> 'c -> 'd -> 'e)
   : Stdlib.Option.Option<'e> =
   match (option1, option2, option3, option4) with
   | Some v1, Some v2, Some v3, Some v4 ->
@@ -74,12 +74,12 @@ let map4
 /// representing <var v1>, <var v2>, <var v3>, <var v4>, and <var v5>. But if any of <param option1>, <param option2>, <param option3>, <param option4>, or
 /// <param option5> are {{None}}, returns {{None}} without applying <param fn>.
 let map5
+  (fn: 'a -> 'b -> 'c -> 'd -> 'e -> 'f)
   (option1: Stdlib.Option.Option<'a>)
   (option2: Stdlib.Option.Option<'b>)
   (option3: Stdlib.Option.Option<'c>)
   (option4: Stdlib.Option.Option<'d>)
   (option5: Stdlib.Option.Option<'e>)
-  (fn: 'a -> 'b -> 'c -> 'd -> 'e -> 'f)
   : Stdlib.Option.Option<'f> =
   match (option1, option2, option3, option4, option5) with
   | Some v1, Some v2, Some v3, Some v4, Some v5 ->
@@ -89,9 +89,9 @@ let map5
 
 /// If <param option> is {{Some <var value>}}, returns {{fn <var value>}}. The lambda <fn fn> is applied to <var value> and the result is wrapped in {{Some}}. Otherwise, returns {{None}}
 let mapWithDefault
-  (option: Stdlib.Option.Option<'a>)
-  (default_: 'b)
   (fn: 'a -> 'b)
+  (default_: 'b)
+  (option: Stdlib.Option.Option<'a>)
   : 'b =
   match option with
   | Some v -> fn v
@@ -102,8 +102,8 @@ let mapWithDefault
 /// lambda <fn fn> is applied to <var value> and the result is wrapped in
 /// {{Some}}. Otherwise, returns {{None}}
 let andThen
-  (option: Stdlib.Option.Option<'a>)
   (fn: 'a -> Stdlib.Option.Option<'b>)
+  (option: Stdlib.Option.Option<'a>)
   : Stdlib.Option.Option<'b> =
   match option with
   | Some v -> fn v
@@ -114,9 +114,9 @@ let andThen
 /// The lambda <fn fn> is applied to <var value1> and <var value2> and the result is wrapped in
 /// {{Some}}. Otherwise, returns {{None}}
 let andThen2
+  (fn: 'a -> 'b -> Stdlib.Option.Option<'c>)
   (option1: Stdlib.Option.Option<'a>)
   (option2: Stdlib.Option.Option<'b>)
-  (fn: 'a -> 'b -> Stdlib.Option.Option<'c>)
   : Stdlib.Option.Option<'c> =
   match (option1, option2) with
   | Some v1, Some v2 -> fn v1 v2
@@ -127,10 +127,10 @@ let andThen2
 /// The lambda <fn fn> is applied to <var value1>, <var value2>, and <var value3> and the result is wrapped in
 /// {{Some}}. Otherwise, returns {{None}}
 let andThen3
+  (fn: 'a -> 'b -> 'c -> Stdlib.Option.Option<'d>)
   (option1: Stdlib.Option.Option<'a>)
   (option2: Stdlib.Option.Option<'b>)
   (option3: Stdlib.Option.Option<'c>)
-  (fn: 'a -> 'b -> 'c -> Stdlib.Option.Option<'d>)
   : Stdlib.Option.Option<'d> =
   match (option1, option2, option3) with
   | Some v1, Some v2, Some v3 -> fn v1 v2 v3
@@ -141,11 +141,11 @@ let andThen3
 /// The lambda <fn fn> is applied to <var value1>, <var value2>, <var value3>, and <var value4> and the result is wrapped in
 /// {{Some}}. Otherwise, returns {{None}}
 let andThen4
+  (fn: 'a -> 'b -> 'c -> 'd -> Stdlib.Option.Option<'e>)
   (option1: Stdlib.Option.Option<'a>)
   (option2: Stdlib.Option.Option<'b>)
   (option3: Stdlib.Option.Option<'c>)
   (option4: Stdlib.Option.Option<'d>)
-  (fn: 'a -> 'b -> 'c -> 'd -> Stdlib.Option.Option<'e>)
   : Stdlib.Option.Option<'e> =
   match (option1, option2, option3, option4) with
   | Some v1, Some v2, Some v3, Some v4 -> fn v1 v2 v3 v4
@@ -228,10 +228,10 @@ let combine
   (options: List<Stdlib.Option.Option<'a>>)
   : Stdlib.Option.Option<List<'a>> =
   Stdlib.List.fold options (Stdlib.Option.Option.Some []) (fun acc option ->
-    Stdlib.Option.andThen2 acc option (fun acc value ->
-      Stdlib.Option.Option.Some(Stdlib.List.append acc [ value ])))
+    Stdlib.Option.andThen2 (fun acc value ->
+      Stdlib.Option.Option.Some(Stdlib.List.append acc [ value ])) acc option)
 
 
 /// Returns a list of all the values that are {{Some _}}, and ignores all the {{None}} values.
 let values (options: List<Stdlib.Option.Option<'a>>) : List<'a> =
-  Stdlib.List.filterMap options (fun option -> option)
+  Stdlib.List.filterMap (fun option -> option) options

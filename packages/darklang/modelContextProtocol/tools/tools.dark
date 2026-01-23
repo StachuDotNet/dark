@@ -42,19 +42,19 @@ module Darklang =
         module ToolAnnotations =
           let toJson (annotations: ToolAnnotations) : Json =
             let titleJson =
-              Stdlib.Option.mapWithDefault annotations.title Json.Null (fun s -> Json.String s)
+              Stdlib.Option.mapWithDefault (fun s -> Json.String s) Json.Null annotations.title
 
             let readOnlyHintJson =
-              Stdlib.Option.mapWithDefault annotations.readOnlyHint Json.Null (fun b -> Json.Bool b)
+              Stdlib.Option.mapWithDefault (fun b -> Json.Bool b) Json.Null annotations.readOnlyHint
 
             let destructiveHintJson =
-              Stdlib.Option.mapWithDefault annotations.destructiveHint Json.Null (fun b -> Json.Bool b)
+              Stdlib.Option.mapWithDefault (fun b -> Json.Bool b) Json.Null annotations.destructiveHint
 
             let idempotentHintJson =
-              Stdlib.Option.mapWithDefault annotations.idempotentHint Json.Null (fun b -> Json.Bool b)
+              Stdlib.Option.mapWithDefault (fun b -> Json.Bool b) Json.Null annotations.idempotentHint
 
             let openWorldHintJson =
-              Stdlib.Option.mapWithDefault annotations.openWorldHint Json.Null (fun b -> Json.Bool b)
+              Stdlib.Option.mapWithDefault (fun b -> Json.Bool b) Json.Null annotations.openWorldHint
 
             Json.Object [
               ("title", titleJson);
