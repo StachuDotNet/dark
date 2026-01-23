@@ -1,0 +1,266 @@
+// Tests for layout UI components: Panel, Card
+
+// ============= Panel Tests =============
+
+// Test Panel creation
+(let panel =
+  Darklang.CLI.UI.Components.Panel.createPanel "Settings" 40L
+ panel.model.title) = "Settings"
+
+// Test Panel width
+(let panel =
+  Darklang.CLI.UI.Components.Panel.createPanel "Options" 50L
+ panel.model.width) = 50L
+
+// Test Panel default showHeader
+(let panel =
+  Darklang.CLI.UI.Components.Panel.createPanel "Test" 30L
+ panel.model.showHeader) = true
+
+// Test Panel is focusable
+(let panel =
+  Darklang.CLI.UI.Components.Panel.createPanel "Menu" 40L
+ panel.focusable) = true
+
+// Test Panel initial selection is -1
+(let panel =
+  Darklang.CLI.UI.Components.Panel.createPanel "Menu" 40L
+ panel.model.selectedIndex) = -1L
+
+// Test Panel addItem and selectPanelItem
+(let panel =
+  Darklang.CLI.UI.Components.Panel.createPanel "Menu" 40L
+ let item =
+  Darklang.CLI.UI.Components.Panel.PanelItem
+    { id = "opt1"
+      label = "Option 1"
+      icon = ""
+      isActive = false
+      isDisabled = false
+      itemType = Darklang.CLI.UI.Components.Panel.PanelItemType.Action }
+ let withItem = Darklang.CLI.UI.Components.Panel.addPanelItem panel item
+ let selected = Darklang.CLI.UI.Components.Panel.selectPanelItem withItem 0L
+ selected.model.selectedIndex) = 0L
+
+// Test Panel selectPanelItem ignores disabled items
+(let panel =
+  Darklang.CLI.UI.Components.Panel.createPanel "Menu" 40L
+ let disabledItem =
+  Darklang.CLI.UI.Components.Panel.PanelItem
+    { id = "disabled"
+      label = "Disabled"
+      icon = ""
+      isActive = false
+      isDisabled = true
+      itemType = Darklang.CLI.UI.Components.Panel.PanelItemType.Action }
+ let withItem = Darklang.CLI.UI.Components.Panel.addPanelItem panel disabledItem
+ let selected = Darklang.CLI.UI.Components.Panel.selectPanelItem withItem 0L
+ selected.model.selectedIndex) = -1L
+
+// Test Panel setPanelTitle
+(let panel =
+  Darklang.CLI.UI.Components.Panel.createPanel "Old Title" 40L
+ let updated = Darklang.CLI.UI.Components.Panel.setPanelTitle panel "New Title"
+ updated.model.title) = "New Title"
+
+// Test Panel hideHeader
+(let panel =
+  Darklang.CLI.UI.Components.Panel.createPanel "Title" 40L
+ let hidden = Darklang.CLI.UI.Components.Panel.hideHeader panel
+ hidden.model.showHeader) = false
+
+// Test Panel setPanelColors
+(let panel =
+  Darklang.CLI.UI.Components.Panel.createPanel "Styled" 40L
+ let styled =
+  Darklang.CLI.UI.Components.Panel.setPanelColors
+    panel
+    Darklang.CLI.UI.Core.Types.Color.Success
+    Darklang.CLI.UI.Core.Types.Color.Info
+ styled.model.headerColor) = Darklang.CLI.UI.Core.Types.Color.Success
+
+// ============= TabPanel Tests =============
+
+// Test TabPanel creation
+(let tabPanel =
+  Darklang.CLI.UI.Components.Panel.createTabPanel 60L Darklang.CLI.UI.Components.Panel.TabStyle.Boxed
+ tabPanel.model.width) = 60L
+
+// Test TabPanel initial activeTabIndex
+(let tabPanel =
+  Darklang.CLI.UI.Components.Panel.createTabPanel 60L Darklang.CLI.UI.Components.Panel.TabStyle.Toggle
+ tabPanel.model.activeTabIndex) = 0L
+
+// Test TabPanel addTab
+(let tabPanel =
+  Darklang.CLI.UI.Components.Panel.createTabPanel 60L Darklang.CLI.UI.Components.Panel.TabStyle.Pills
+ let tab =
+  Darklang.CLI.UI.Components.Panel.PanelItem
+    { id = "tab1"
+      label = "Home"
+      icon = ""
+      isActive = false
+      isDisabled = false
+      itemType = Darklang.CLI.UI.Components.Panel.PanelItemType.Tab }
+ let withTab = Darklang.CLI.UI.Components.Panel.addTab tabPanel tab
+ Stdlib.List.length withTab.model.tabs) = 1L
+
+// Test TabPanel setActiveTab
+(let tabPanel =
+  Darklang.CLI.UI.Components.Panel.createTabPanel 60L Darklang.CLI.UI.Components.Panel.TabStyle.Boxed
+ let tab1 =
+  Darklang.CLI.UI.Components.Panel.PanelItem
+    { id = "t1"; label = "Tab1"; icon = ""; isActive = false; isDisabled = false; itemType = Darklang.CLI.UI.Components.Panel.PanelItemType.Tab }
+ let tab2 =
+  Darklang.CLI.UI.Components.Panel.PanelItem
+    { id = "t2"; label = "Tab2"; icon = ""; isActive = false; isDisabled = false; itemType = Darklang.CLI.UI.Components.Panel.PanelItemType.Tab }
+ let withTabs =
+  tabPanel
+  |> Darklang.CLI.UI.Components.Panel.addTab tab1
+  |> Darklang.CLI.UI.Components.Panel.addTab tab2
+ let selected = Darklang.CLI.UI.Components.Panel.setActiveTab withTabs 1L
+ selected.model.activeTabIndex) = 1L
+
+// Test TabPanel setActiveTab ignores invalid index
+(let tabPanel =
+  Darklang.CLI.UI.Components.Panel.createTabPanel 60L Darklang.CLI.UI.Components.Panel.TabStyle.Boxed
+ let selected = Darklang.CLI.UI.Components.Panel.setActiveTab tabPanel 5L
+ selected.model.activeTabIndex) = 0L
+
+// ============= FilterPanel Tests =============
+
+// Test FilterPanel creation
+(let filterPanel =
+  Darklang.CLI.UI.Components.Panel.createFilterPanel "Filters" 30L
+ filterPanel.model.title) = "Filters"
+
+// Test FilterPanel addFilter
+(let filterPanel =
+  Darklang.CLI.UI.Components.Panel.createFilterPanel "Filters" 30L
+ let filter =
+  Darklang.CLI.UI.Components.Panel.PanelItem
+    { id = "f1"
+      label = "Active"
+      icon = ""
+      isActive = false
+      isDisabled = false
+      itemType = Darklang.CLI.UI.Components.Panel.PanelItemType.Filter }
+ let withFilter = Darklang.CLI.UI.Components.Panel.addFilter filterPanel filter
+ Stdlib.List.length withFilter.model.filters) = 1L
+
+// Test FilterPanel toggleFilter
+(let filterPanel =
+  Darklang.CLI.UI.Components.Panel.createFilterPanel "Filters" 30L
+ let filter =
+  Darklang.CLI.UI.Components.Panel.PanelItem
+    { id = "f1"; label = "Active"; icon = ""; isActive = false; isDisabled = false; itemType = Darklang.CLI.UI.Components.Panel.PanelItemType.Filter }
+ let withFilter = Darklang.CLI.UI.Components.Panel.addFilter filterPanel filter
+ let toggled = Darklang.CLI.UI.Components.Panel.toggleFilter withFilter 0L
+ Stdlib.List.length toggled.model.appliedFilters) = 1L
+
+// ============= Card Tests =============
+
+// Test Card creation
+(let card =
+  Darklang.CLI.UI.Components.Card.createCard "My Card" ["Line 1"; "Line 2"] 40L 10L
+ card.model.title) = "My Card"
+
+// Test Card dimensions
+(let card =
+  Darklang.CLI.UI.Components.Card.createCard "Card" ["Content"] 50L 15L
+ (card.model.width, card.model.height)) = (50L, 15L)
+
+// Test Card content
+(let card =
+  Darklang.CLI.UI.Components.Card.createCard "Card" ["Hello"; "World"] 40L 10L
+ card.model.content) = ["Hello"; "World"]
+
+// Test Card default hasShadow
+(let card =
+  Darklang.CLI.UI.Components.Card.createCard "Card" [] 40L 10L
+ card.model.hasShadow) = false
+
+// Test Card default isRounded
+(let card =
+  Darklang.CLI.UI.Components.Card.createCard "Card" [] 40L 10L
+ card.model.isRounded) = false
+
+// Test Card is not focusable by default
+(let card =
+  Darklang.CLI.UI.Components.Card.createCard "Card" [] 40L 10L
+ card.focusable) = false
+
+// Test setCardTitle
+(let card =
+  Darklang.CLI.UI.Components.Card.createCard "Old" [] 40L 10L
+ let updated = Darklang.CLI.UI.Components.Card.setCardTitle card "New Title"
+ updated.model.title) = "New Title"
+
+// Test setCardSubtitle
+(let card =
+  Darklang.CLI.UI.Components.Card.createCard "Card" [] 40L 10L
+ let updated = Darklang.CLI.UI.Components.Card.setCardSubtitle card "A subtitle"
+ updated.model.subtitle) = "A subtitle"
+
+// Test setCardContent
+(let card =
+  Darklang.CLI.UI.Components.Card.createCard "Card" ["old"] 40L 10L
+ let updated = Darklang.CLI.UI.Components.Card.setCardContent card ["new"; "content"]
+ card.model.content) = ["old"]
+
+// Test setCardFooter
+(let card =
+  Darklang.CLI.UI.Components.Card.createCard "Card" [] 40L 10L
+ let updated = Darklang.CLI.UI.Components.Card.setCardFooter card ["Footer text"]
+ updated.model.footer) = ["Footer text"]
+
+// Test enableCardShadow
+(let card =
+  Darklang.CLI.UI.Components.Card.createCard "Card" [] 40L 10L
+ let shadowed = Darklang.CLI.UI.Components.Card.enableCardShadow card
+ shadowed.model.hasShadow) = true
+
+// Test enableCardRounding
+(let card =
+  Darklang.CLI.UI.Components.Card.createCard "Card" [] 40L 10L
+ let rounded = Darklang.CLI.UI.Components.Card.enableCardRounding card
+ rounded.model.isRounded) = true
+
+// Test setCardColors
+(let card =
+  Darklang.CLI.UI.Components.Card.createCard "Card" [] 40L 10L
+ let colored =
+  Darklang.CLI.UI.Components.Card.setCardColors
+    card
+    Darklang.CLI.UI.Core.Types.Color.Primary
+    Darklang.CLI.UI.Core.Types.Color.Info
+ colored.model.headerColor) = Darklang.CLI.UI.Core.Types.Color.Primary
+
+// ============= MediaCard Tests =============
+
+// Test MediaCard creation
+(let mediaCard =
+  Darklang.CLI.UI.Components.Card.createMediaCard "Photo" "A nice photo" 20L 10L
+ mediaCard.model.title) = "Photo"
+
+// Test MediaCard description
+(let mediaCard =
+  Darklang.CLI.UI.Components.Card.createMediaCard "Image" "Description text" 20L 10L
+ mediaCard.model.description) = "Description text"
+
+// Test MediaCard dimensions calculated correctly
+(let mediaCard =
+  Darklang.CLI.UI.Components.Card.createMediaCard "Image" "Desc" 30L 15L
+ // width = mediaWidth + 4, height = mediaHeight + 6
+ (mediaCard.model.width, mediaCard.model.height)) = (34L, 21L)
+
+// Test MediaCard default empty actions
+(let mediaCard =
+  Darklang.CLI.UI.Components.Card.createMediaCard "Image" "Desc" 20L 10L
+ mediaCard.model.actions) = []
+
+// Test setMediaCardActions
+(let mediaCard =
+  Darklang.CLI.UI.Components.Card.createMediaCard "Image" "Desc" 20L 10L
+ let withActions = Darklang.CLI.UI.Components.Card.setMediaCardActions mediaCard ["Like"; "Share"]
+ withActions.model.actions) = ["Like"; "Share"]
