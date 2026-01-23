@@ -22,3 +22,18 @@ escape sequence
 (source_file
   (expression
     (simple_expression (char_literal (symbol) (character (char_or_string_escape_sequence)) (symbol)))))
+
+
+==================
+char with trailing space should fail
+==================
+
+'a '
+
+---
+
+(source_file
+  (ERROR
+    (symbol)
+    (character)
+    (symbol)))

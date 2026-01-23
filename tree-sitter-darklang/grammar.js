@@ -514,7 +514,7 @@ module.exports = grammar({
       seq(
         field("symbol_open_single_quote", alias("'", $.symbol)),
         field("content", $.character),
-        field("symbol_close_single_quote", alias("'", $.symbol)),
+        field("symbol_close_single_quote", alias(token.immediate("'"), $.symbol)),
       ),
     character: $ =>
       choice(
