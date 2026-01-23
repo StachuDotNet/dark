@@ -95,7 +95,7 @@ let complete (state: AppState) (args: List<String>) : List<String> =
   | _ -> []
 
 
-let help (_state: AppState) : Unit =
+let help (_state: AppState) : AppState =
   [
     "Usage: ls [path]"
     "List contents of the current location or specified path with icons."
@@ -110,3 +110,5 @@ let help (_state: AppState) : Unit =
     ""
     "See also: `tree` for multi-level view, `view` for detailed view"
   ] |> Stdlib.printLines
+
+  _state

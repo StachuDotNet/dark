@@ -64,6 +64,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     // List all common config keys
     Stdlib.printLine "Common configuration keys:"
     Stdlib.printLine ""
+    Stdlib.printLine "  cli.default_app          - Default CLI app (default, stachu, ocean, darklang-dev)"
     Stdlib.printLine "  sync.default_instance    - Default instance for sync service"
     Stdlib.printLine "  sync.interval_seconds    - Sync check interval (default: 20)"
     Stdlib.printLine "  sync.auto_start          - Auto-start sync service (default: true)"
@@ -84,12 +85,14 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<String> =
   | [] -> ["get"; "set"; "list"]
 
   | ["get"] ->
-    [ "sync.default_instance"
+    [ "cli.default_app"
+      "sync.default_instance"
       "sync.interval_seconds"
       "sync.auto_start" ]
 
   | ["set"] ->
-    [ "sync.default_instance"
+    [ "cli.default_app"
+      "sync.default_instance"
       "sync.interval_seconds"
       "sync.auto_start" ]
 
@@ -109,6 +112,7 @@ let help (_state: Cli.AppState) : Cli.AppState =
     "  config set sync.auto_start false"
     ""
     "Common keys:"
+    "  cli.default_app          - Default CLI app (default, stachu, ocean, darklang-dev)"
     "  sync.default_instance    - Which instance to sync with"
     "  sync.interval_seconds    - How often to check for changes (default: 20)"
     "  sync.auto_start          - Start sync service automatically (default: true)" ]

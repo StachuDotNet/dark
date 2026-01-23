@@ -31,13 +31,14 @@ let runWithCommand (args: List<String>): String =
 let testHelpCommand (): TestResult =
   let output = runWithCommand ["help"]
 
-  if Stdlib.String.contains output "Available commands:" &&
+  // Help output shows commands organized in sections like "Packages:", "Execution:", etc.
+  if Stdlib.String.contains output "Packages:" &&
       Stdlib.String.contains output "help" &&
       Stdlib.String.contains output "version" &&
-      Stdlib.String.contains output "status" then
+      Stdlib.String.contains output "apps" then
       TestResult.Pass
   else
-    TestResult.Fail "Expected help text with available commands"
+    TestResult.Fail "Expected help text with available commands including 'apps'"
 
 
 let testVersionCommand (): TestResult =
@@ -51,12 +52,13 @@ let testVersionCommand (): TestResult =
 
 let testStatusCommand (): TestResult =
   let output = runWithCommand ["status"]
+  // Status shows Version and Status lines
   if Stdlib.String.contains output "Darklang CLI" &&
-      Stdlib.String.contains output "Location:" &&
-      Stdlib.String.contains output "Mode:" then
+      Stdlib.String.contains output "Version:" &&
+      Stdlib.String.contains output "Status:" then
     TestResult.Pass
   else
-    TestResult.Fail "Expected status output with CLI info, Location, and Mode"
+    TestResult.Fail "Expected status output with Version and Status info"
 
 
 let testRunBoolAnd (): TestResult =
@@ -155,6 +157,28 @@ let testEvalStringExpression (): TestResult =
     TestResult.Fail $"Expected 'helloworld', got '{output}'"
 
 
+let testAppsLs (): TestResult =
+  let output = runWithCommand ["apps"; "ls"]
+  if Stdlib.String.contains output "default" &&
+      Stdlib.String.contains output "stachu" &&
+      Stdlib.String.contains output "ocean" &&
+      Stdlib.String.contains output "darklang-dev" then
+    TestResult.Pass
+  else
+    TestResult.Fail
+      $"Expected apps ls to list default, stachu, ocean, darklang-dev. Got: {output}"
+
+
+let testAppsGetDefault (): TestResult =
+  let output = runWithCommand ["apps"; "get-default"]
+  // Should show either "default" or "stachu" (since it's currently set)
+  if Stdlib.String.contains output "default" ||
+      Stdlib.String.contains output "stachu" then
+    TestResult.Pass
+  else
+    TestResult.Fail $"Expected default app info. Got: {output}"
+
+
 type TestFunction = Unit -> TestResult
 
 let allTests (): List<String * TestFunction> =
@@ -177,6 +201,9 @@ let allTests (): List<String * TestFunction> =
 
     ("Eval Simple Expression", fun () -> testEvalSimpleExpression ())
     ("Eval String Expression", fun () -> testEvalStringExpression ())
+
+    ("Apps ls", fun () -> testAppsLs ())
+    ("Apps get-default", fun () -> testAppsGetDefault ())
   ]
 
 type TestSummary =

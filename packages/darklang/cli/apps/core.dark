@@ -1,0 +1,32 @@
+module Darklang.Cli.Apps
+
+type CliApp =
+  { name: String
+    description: String }
+
+let defaultApp: CliApp =
+  CliApp
+    { name = "default"
+      description = "Standard Darklang CLI" }
+
+let stachuApp: CliApp =
+  CliApp
+    { name = "stachu"
+      description = "Stachu's custom CLI commands" }
+
+let oceanApp: CliApp =
+  CliApp
+    { name = "ocean"
+      description = "Ocean's custom CLI commands" }
+
+let darklangDevApp: CliApp =
+  CliApp
+    { name = "darklang-dev"
+      description = "Darklang development tools" }
+
+let availableApps () : List<CliApp> =
+  [ defaultApp; stachuApp; oceanApp; darklangDevApp ]
+
+let getAppByName (name: String) : Stdlib.Option.Option<CliApp> =
+  (availableApps ())
+  |> Stdlib.List.findFirst (fun app -> app.name == name)

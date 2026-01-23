@@ -13,7 +13,8 @@ type AppState =
     currentPage: Page
     accountName: String
     accountID: Stdlib.Option.Option<Uuid>
-    currentBranchId: Stdlib.Option.Option<Uuid> }
+    currentBranchId: Stdlib.Option.Option<Uuid>
+    currentApp: String }
 
 let initState () : AppState =
   // Get account from DARK_ACCOUNT env var, or default to "Darklang"
@@ -35,15 +36,26 @@ let initState () : AppState =
       | Error _ -> Stdlib.Option.Option.None
     | None -> Stdlib.Option.Option.None
 
+  // Get default app from config, or use "default"
+  let currentApp =
+    match Config.get "cli.default_app" with
+    | Some appName ->
+      // Validate the app name exists
+      match Apps.getAppByName appName with
+      | Some _ -> appName
+      | None -> "default"
+    | None -> "default"
+
   AppState
     { isExiting = false
-      prompt = Prompt.initState()
+      prompt = Prompt.initState ()
       needsFullRedraw = true
-      packageData = Packages.initState()
+      packageData = Packages.initState ()
       currentPage = Page.MainPrompt
       accountName = accountName
       accountID = accountUuid
-      currentBranchId = branchId }
+      currentBranchId = branchId
+      currentApp = currentApp }
 
 type Msg =
   | ProcessInput of String
@@ -77,8 +89,8 @@ module View =
     let hint = Registry.getCompletionHint state state.prompt.text
     Prompt.Display.formatPromptWithInput state.currentBranchId locationStr state.prompt.text hint
 
-  let formatWelcome (accountName: String) : String =
-    Registry.getCompactCommandList accountName
+  let formatWelcome (state: AppState) : String =
+    Registry.getCompactCommandList state.accountName state.currentApp
 
 
 
@@ -91,56 +103,236 @@ module Registry =
       help: AppState -> AppState // CLEANUP we shouldn't need to return an AppState? Like a string would be fine...
       complete: AppState -> List<String> -> List<String> }
 
-  let allCommands () : List<CommandHandler> =
-    [
-      ("quit", "Exit the CLI", ["exit"; "q"], Quit.execute, Quit.help, Quit.complete)
-      ("help", "Show help for commands", ["commands"; "?"], Help.execute, Help.help, Help.complete)
-      ("branch", "Manage development branches", [], Packages.Branch.execute, Packages.Branch.help, Packages.Branch.complete)
-      ("instance", "Manage remote instances for syncing", [], Instances.execute, Instances.help, Instances.complete)
-      ("config", "Manage CLI configuration", [], Config.execute, Config.help, Config.complete)
-      ("account", "Manage account settings", [], Account.execute, Account.help, Account.complete)
-      ("install", "Install CLI globally", [], Installation.Install.execute, Installation.Install.help, Installation.Install.complete)
-      ("update", "Update CLI to latest version", ["upgrade"], Installation.Update.execute, Installation.Update.help, Installation.Update.complete)
-      ("uninstall", "Remove CLI installation", [], Installation.Uninstall.execute, Installation.Uninstall.help, Installation.Uninstall.complete)
-      ("status", "Show installation status", [], Installation.Status.execute, Installation.Status.help, Installation.Status.complete)
-      ("version", "Display CLI version", ["--version"; "-v"], Installation.Version.execute, Installation.Version.help, Installation.Version.complete)
-      ("nav", "Navigate between packages, modules, and entities", ["cd"], Packages.Nav.execute, Packages.Nav.help, Packages.Nav.complete)
-      ("ls", "List package contents", ["dir"], Packages.Listing.execute, Packages.Listing.help, Packages.Listing.complete)
-      //("pwd", "Show current package path", [], Packages.Navigation.executePWD, Packages.Navigation.pwdHelp, Packages.Navigation.pwdComplete)
-      ("back", "Go back to previous location", [], Packages.Back.execute, Packages.Back.help, Packages.Back.complete)
-      ("clear", "Clear the screen", ["cls"], Cli.Clear.execute, Cli.Clear.help, Cli.Clear.complete)
-      ("run", "Run a function or script", [], Cli.Run.execute, Cli.Run.help, Cli.Run.complete)
-      ("eval", "Evaluate a Dark expression", [], Cli.Eval.execute, Cli.Eval.help, Cli.Eval.complete)
-      ("scripts", "Store, manage, and run Dark scripts", [], Cli.Scripts.execute, Cli.Scripts.help, Cli.Scripts.complete)
-      ("view", "View details of a module, type, value, or fns", [], Packages.View.execute, Packages.View.help, Packages.View.complete)
-      ("tree", "Display package hierarchy in tree format", [], Packages.Tree.execute, Packages.Tree.help, Packages.Tree.complete)
-      ("search", "Search for packages, types, functions, and values", [], Packages.Search.execute, Packages.Search.help, Packages.Search.complete)
-      ("val", "Create a new value", [], Packages.Value.execute, Packages.Value.help, Packages.Value.complete)
-      ("let", "Create a new value (alias for val)", [], Packages.Value.execute, Packages.Value.help, Packages.Value.complete)
-      ("fn", "Create a new function", ["function"], Packages.Fn.execute, Packages.Fn.help, Packages.Fn.complete)
-      ("type", "Create a new type", [], Packages.Type.execute, Packages.Type.help, Packages.Type.complete)
-      ("experiments", "Try out various WIP CLI experiments", [], Cli.Experiments.execute, Cli.Experiments.help, Cli.Experiments.complete)
-    ]
-    |> Stdlib.List.map(
-      // CLEANUP nitpicky: swap help and complete
-      fun (name, desc, aliases, execute, help, complete) ->
-        CommandHandler
-          { name = name
-            description = desc
-            aliases = aliases
-            execute = execute
-            help = help
-            complete = complete }
-      )
+  // Base commands available to all CLI apps
+  let baseCommands () : List<CommandHandler> =
+    [ CommandHandler
+        { name = "quit"
+          description = "Exit the CLI"
+          aliases = ["exit"; "q"]
+          execute = Quit.execute
+          help = Quit.help
+          complete = Quit.complete }
+      CommandHandler
+        { name = "help"
+          description = "Show help for commands"
+          aliases = ["commands"; "?"]
+          execute = Help.execute
+          help = Help.help
+          complete = Help.complete }
+      CommandHandler
+        { name = "branch"
+          description = "Manage development branches"
+          aliases = []
+          execute = Packages.Branch.execute
+          help = Packages.Branch.help
+          complete = Packages.Branch.complete }
+      CommandHandler
+        { name = "instance"
+          description = "Manage remote instances for syncing"
+          aliases = []
+          execute = Instances.execute
+          help = Instances.help
+          complete = Instances.complete }
+      CommandHandler
+        { name = "config"
+          description = "Manage CLI configuration"
+          aliases = []
+          execute = Config.execute
+          help = Config.help
+          complete = Config.complete }
+      CommandHandler
+        { name = "account"
+          description = "Manage account settings"
+          aliases = []
+          execute = Account.execute
+          help = Account.help
+          complete = Account.complete }
+      CommandHandler
+        { name = "install"
+          description = "Install CLI globally"
+          aliases = []
+          execute = Installation.Install.execute
+          help = Installation.Install.help
+          complete = Installation.Install.complete }
+      CommandHandler
+        { name = "update"
+          description = "Update CLI to latest version"
+          aliases = ["upgrade"]
+          execute = Installation.Update.execute
+          help = Installation.Update.help
+          complete = Installation.Update.complete }
+      CommandHandler
+        { name = "uninstall"
+          description = "Remove CLI installation"
+          aliases = []
+          execute = Installation.Uninstall.execute
+          help = Installation.Uninstall.help
+          complete = Installation.Uninstall.complete }
+      CommandHandler
+        { name = "status"
+          description = "Show installation status"
+          aliases = []
+          execute = Installation.Status.execute
+          help = Installation.Status.help
+          complete = Installation.Status.complete }
+      CommandHandler
+        { name = "version"
+          description = "Display CLI version"
+          aliases = ["--version"; "-v"]
+          execute = Installation.Version.execute
+          help = Installation.Version.help
+          complete = Installation.Version.complete }
+      CommandHandler
+        { name = "nav"
+          description = "Navigate between packages, modules, and entities"
+          aliases = ["cd"]
+          execute = Packages.Nav.execute
+          help = Packages.Nav.help
+          complete = Packages.Nav.complete }
+      CommandHandler
+        { name = "ls"
+          description = "List package contents"
+          aliases = ["dir"]
+          execute = Packages.Listing.execute
+          help = Packages.Listing.help
+          complete = Packages.Listing.complete }
+      CommandHandler
+        { name = "back"
+          description = "Go back to previous location"
+          aliases = []
+          execute = Packages.Back.execute
+          help = Packages.Back.help
+          complete = Packages.Back.complete }
+      CommandHandler
+        { name = "clear"
+          description = "Clear the screen"
+          aliases = ["cls"]
+          execute = Cli.Clear.execute
+          help = Cli.Clear.help
+          complete = Cli.Clear.complete }
+      CommandHandler
+        { name = "run"
+          description = "Run a function or script"
+          aliases = []
+          execute = Cli.Run.execute
+          help = Cli.Run.help
+          complete = Cli.Run.complete }
+      CommandHandler
+        { name = "eval"
+          description = "Evaluate a Dark expression"
+          aliases = []
+          execute = Cli.Eval.execute
+          help = Cli.Eval.help
+          complete = Cli.Eval.complete }
+      CommandHandler
+        { name = "scripts"
+          description = "Store, manage, and run Dark scripts"
+          aliases = []
+          execute = Cli.Scripts.execute
+          help = Cli.Scripts.help
+          complete = Cli.Scripts.complete }
+      CommandHandler
+        { name = "view"
+          description = "View details of a module, type, value, or fns"
+          aliases = []
+          execute = Packages.View.execute
+          help = Packages.View.help
+          complete = Packages.View.complete }
+      CommandHandler
+        { name = "tree"
+          description = "Display package hierarchy in tree format"
+          aliases = []
+          execute = Packages.Tree.execute
+          help = Packages.Tree.help
+          complete = Packages.Tree.complete }
+      CommandHandler
+        { name = "search"
+          description = "Search for packages, types, functions, and values"
+          aliases = []
+          execute = Packages.Search.execute
+          help = Packages.Search.help
+          complete = Packages.Search.complete }
+      CommandHandler
+        { name = "val"
+          description = "Create a new value"
+          aliases = []
+          execute = Packages.Value.execute
+          help = Packages.Value.help
+          complete = Packages.Value.complete }
+      CommandHandler
+        { name = "let"
+          description = "Create a new value (alias for val)"
+          aliases = []
+          execute = Packages.Value.execute
+          help = Packages.Value.help
+          complete = Packages.Value.complete }
+      CommandHandler
+        { name = "fn"
+          description = "Create a new function"
+          aliases = ["function"]
+          execute = Packages.Fn.execute
+          help = Packages.Fn.help
+          complete = Packages.Fn.complete }
+      CommandHandler
+        { name = "type"
+          description = "Create a new type"
+          aliases = []
+          execute = Packages.Type.execute
+          help = Packages.Type.help
+          complete = Packages.Type.complete }
+      CommandHandler
+        { name = "experiments"
+          description = "Try out various WIP CLI experiments"
+          aliases = []
+          execute = Cli.Experiments.execute
+          help = Cli.Experiments.help
+          complete = Cli.Experiments.complete }
+      CommandHandler
+        { name = "apps"
+          description = "Switch between CLI apps"
+          aliases = []
+          execute = Apps.AppsCommand.execute
+          help = Apps.AppsCommand.help
+          complete = Apps.AppsCommand.complete } ]
+
+  // Get commands specific to Stachu's CLI app
+  let stachuCommands () : List<CommandHandler> =
+    Apps.Stachu.commands ()
+
+  // Get commands specific to Ocean's CLI app
+  let oceanCommands () : List<CommandHandler> =
+    Apps.Ocean.commands ()
+
+  // Get commands specific to the darklang-dev CLI app
+  let darklangDevCommands () : List<CommandHandler> =
+    Apps.DarklangDev.commands ()
+
+  // Get all commands for a given app name
+  // If appName is None or "default", returns base commands only
+  let allCommands (appName: Stdlib.Option.Option<String>) : List<CommandHandler> =
+    let baseCmds = baseCommands ()
+
+    let appSpecific =
+      match appName with
+      | None -> []
+      | Some name ->
+        match name with
+        | "default" -> []
+        | "stachu" -> stachuCommands ()
+        | "ocean" -> oceanCommands ()
+        | "darklang-dev" -> darklangDevCommands ()
+        | _ -> []
+
+    Stdlib.List.append baseCmds appSpecific
 
 
-  let findCommand (name: String) : CommandHandler =
-    let commands = allCommands ()
+  let findCommand (name: String) (appName: String) : CommandHandler =
+    let commands = allCommands (Stdlib.Option.Option.Some appName)
 
     let allMatches = // CLEANUP use a Set?
       let nameMatches =
         commands
-        |> Stdlib.List.filter  (fun cmd -> cmd.name == name)
+        |> Stdlib.List.filter (fun cmd -> cmd.name == name)
 
       let aliasMatches =
         commands
@@ -169,12 +361,12 @@ module Registry =
           complete = fun state args -> [] }
 
   let executeCommand (name: String) (state: AppState) (args: List<String>) : AppState =
-    let handler = findCommand name
+    let handler = findCommand name state.currentApp
     let ex = handler.execute
     ex state args
 
   let executeCommandHelp (name: String) (state: AppState) : AppState =
-    let handler = findCommand name
+    let handler = findCommand name state.currentApp
     let help = handler.help
     let resultState = help state
 
@@ -193,7 +385,7 @@ module Registry =
       ("Source Control", ["branch"; "instance"])
       ("Execution", ["run"; "eval"; "scripts"])
       ("Installation", ["install"; "update"; "uninstall"; "status"; "version"])
-      ("Utilities", ["clear"; "help"; "quit"; "config"; "account"; "experiments"]) ]
+      ("Utilities", ["clear"; "help"; "quit"; "config"; "account"; "apps"; "experiments"]) ]
 
   // Helper function to format a group of commands with details
   let formatCommandGroup (groupName: String) (commandNames: List<String>) (commands: List<CommandHandler>) : String =
@@ -217,24 +409,34 @@ module Registry =
     $"{groupName}: {namesList}"
 
   // Compact command list for welcome screen (with logo, minimal text)
-  let getCompactCommandList (accountName: String) : String =
+  let getCompactCommandList (accountName: String) (appName: String) : String =
     let groups = commandGroups ()
     let formattedGroups =
       groups
       |> Stdlib.List.map (fun (groupName, cmdNames) ->
         formatCompactGroup groupName cmdNames)
 
-    let welcome = $"Hello {accountName}! Let's write some software with Darklang."
+    let appInfo =
+      if appName == "default" then
+        ""
+      else
+        $" [{appName} app]"
+
+    let welcome =
+      $"Hello {accountName}!{appInfo} Let's write some software with Darklang."
+
     let availableCommands = "Here are the commands available:"
-    let groupsWithFooter = Stdlib.List.append formattedGroups [""; "Type 'help' for detailed command info"]
-    let allLines = Stdlib.List.append [welcome; ""; availableCommands; ""] groupsWithFooter
+    let groupsWithFooter =
+      Stdlib.List.append formattedGroups [ ""; "Type 'help' for detailed command info" ]
+    let allLines =
+      Stdlib.List.append [ welcome; ""; availableCommands; "" ] groupsWithFooter
     let compactText = Stdlib.String.join allLines "\n"
     let textLines = Stdlib.String.split compactText "\n"
     Logo.combineLogoAndText Logo.logo textLines Colors.logoColor
 
   // Detailed command list for help command (no logo, full details)
-  let getDetailedCommandList () : String =
-    let commands = allCommands ()
+  let getDetailedCommandList (appName: String) : String =
+    let commands = allCommands (Stdlib.Option.Option.Some appName)
     let groups = commandGroups ()
 
     // Format command groups with details
@@ -279,7 +481,7 @@ module Registry =
     if parsed.isCompletingCommand then
       // Completing command name
       let partial = Completion.getPartialCompletion parsed
-      let commands = allCommands ()
+      let commands = allCommands (Stdlib.Option.Option.Some state.currentApp)
       let allNames = Stdlib.List.map commands (fun cmd -> cmd.name)
       let allAliases = Stdlib.List.fold commands [] (fun acc cmd -> Stdlib.List.append acc cmd.aliases)
       let allOptions = Stdlib.List.append allNames allAliases
@@ -290,7 +492,7 @@ module Registry =
         Stdlib.List.filter allOptions (fun name -> Stdlib.String.startsWith name partial)
     else
       // Completing command arguments
-      let handler = findCommand parsed.commandName
+      let handler = findCommand parsed.commandName state.currentApp
       let completeFunc = handler.complete
       completeFunc state parsed.args
 
@@ -494,7 +696,7 @@ let executeCliCommand (args: List<String>) : Int64 =
     // Auto-start sync service if not already running
     SyncService.autoStart ()
 
-    Stdlib.printLine (View.formatWelcome initialState.accountName)
+    Stdlib.printLine (View.formatWelcome initialState)
     runInteractiveLoop initialState
   // Otherwise, just execute command, print result, and exit
   | _ ->

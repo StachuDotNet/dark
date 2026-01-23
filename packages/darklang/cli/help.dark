@@ -4,11 +4,10 @@ module Darklang.Cli.Help
 let execute (state: AppState) (args: List<String>) : AppState =
   match args with
   | [] ->
-    [
-      (Registry.getDetailedCommandList ())
+    [ (Registry.getDetailedCommandList state.currentApp)
       ""
-      "Type 'help <command>' for specific command help."
-    ] |> Stdlib.printLines
+      "Type 'help <command>' for specific command help." ]
+    |> Stdlib.printLines
     state
   | [commandName] ->
     Registry.executeCommandHelp commandName state

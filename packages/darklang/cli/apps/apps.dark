@@ -1,0 +1,168 @@
+module Darklang.Cli.Apps.AppsCommand
+
+let configKey: String = "cli.default_app"
+
+type SelectionState =
+  { apps: List<Apps.CliApp>
+    selectedIndex: Int64
+    isRunning: Bool }
+
+let initSelection () : SelectionState =
+  SelectionState
+    { apps = Apps.availableApps ()
+      selectedIndex = 0L
+      isRunning = true }
+
+let viewSelection (state: SelectionState) : Unit =
+  Stdlib.print "\u001b[2J\u001b[H"
+
+  Stdlib.printLine "=== Darklang CLI Apps ==="
+  Stdlib.printLine ""
+  Stdlib.printLine "Use \u2191/\u2193 to navigate, Enter to select as default, Q to quit"
+  Stdlib.printLine ""
+
+  let currentDefault = Config.get configKey
+
+  state.apps
+  |> Stdlib.List.indexedMap (fun i app ->
+    let symbol = if i == state.selectedIndex then "\u25b6" else " "
+    let defaultMarker =
+      match currentDefault with
+      | Some name -> if name == app.name then " (current)" else ""
+      | None -> if app.name == "default" then " (current)" else ""
+    Stdlib.printLine $"{symbol} {app.name} - {app.description}{defaultMarker}"
+  )
+  |> fun _ -> ()
+
+let handleSelectionKey (state: SelectionState) (keyInput: Stdlib.Cli.Stdin.KeyRead.KeyRead) : SelectionState =
+  match keyInput.key with
+  | UpArrow ->
+    let newIndex = if state.selectedIndex > 0L then state.selectedIndex - 1L else 0L
+    { state with selectedIndex = newIndex }
+
+  | DownArrow ->
+    let maxIndex = Stdlib.List.length state.apps - 1L
+    let newIndex = if state.selectedIndex < maxIndex then state.selectedIndex + 1L else maxIndex
+    { state with selectedIndex = newIndex }
+
+  | Enter ->
+    match Stdlib.List.getAt state.apps state.selectedIndex with
+    | Some app ->
+      let config = Config.readConfig ()
+      let updatedConfig = Stdlib.Dict.setOverridingDuplicates config configKey app.name
+      Config.writeConfig updatedConfig
+      Stdlib.print "\u001b[2J\u001b[H"
+      Stdlib.printLine (Colors.success $"Default app set to: {app.name}")
+      Stdlib.printLine ""
+      { state with isRunning = false }
+    | None -> state
+
+  | Q ->
+    Stdlib.print "\u001b[2J\u001b[H"
+    { state with isRunning = false }
+
+  | Escape ->
+    Stdlib.print "\u001b[2J\u001b[H"
+    { state with isRunning = false }
+
+  | _ ->
+    state
+
+let selectionLoop (state: SelectionState) : Unit =
+  if Stdlib.Bool.not state.isRunning then
+    ()
+  else
+    viewSelection state
+    let keyInput = Stdlib.Cli.Stdin.readKey ()
+    let newState = handleSelectionKey state keyInput
+    selectionLoop newState
+
+let listApps () : Unit =
+  let apps = Apps.availableApps ()
+  let currentDefault = Config.get configKey
+
+  Stdlib.printLine "Available CLI apps:"
+  Stdlib.printLine ""
+
+  apps
+  |> Stdlib.List.map (fun app ->
+    let defaultMarker =
+      match currentDefault with
+      | Some name -> if name == app.name then " (default)" else ""
+      | None -> if app.name == "default" then " (default)" else ""
+    Stdlib.printLine $"  {app.name} - {app.description}{defaultMarker}"
+  )
+  |> fun _ -> ()
+
+let getDefault () : Unit =
+  match Config.get configKey with
+  | Some name -> Stdlib.printLine $"Current default app: {name}"
+  | None -> Stdlib.printLine "Current default app: default (not explicitly set)"
+
+let setDefault (name: String) : Unit =
+  match Apps.getAppByName name with
+  | Some app ->
+    let config = Config.readConfig ()
+    let updatedConfig = Stdlib.Dict.setOverridingDuplicates config configKey name
+    Config.writeConfig updatedConfig
+    Stdlib.printLine (Colors.success $"Default app set to: {name}")
+  | None ->
+    Stdlib.printLine (Colors.error $"Unknown app: {name}")
+    Stdlib.printLine ""
+    listApps ()
+
+let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
+  match args with
+  | [] ->
+    selectionLoop (initSelection ())
+    { state with needsFullRedraw = true }
+
+  | ["ls"] ->
+    listApps ()
+    state
+
+  | ["list"] ->
+    listApps ()
+    state
+
+  | ["get-default"] ->
+    getDefault ()
+    state
+
+  | ["set-default"; name] ->
+    setDefault name
+    state
+
+  | _ ->
+    Stdlib.printLine (Colors.error "Invalid arguments")
+    Stdlib.printLine ""
+    let _ = help state
+    state
+
+let complete (_state: Cli.AppState) (args: List<String>) : List<String> =
+  match args with
+  | [] -> ["ls"; "get-default"; "set-default"]
+  | ["set-default"] ->
+    (Apps.availableApps ())
+    |> Stdlib.List.map (fun app -> app.name)
+  | _ -> []
+
+let help (_state: Cli.AppState) : Cli.AppState =
+  [ "Usage:"
+    "  apps                       - Interactive app selection"
+    "  apps ls                    - List available apps"
+    "  apps get-default           - Show current default app"
+    "  apps set-default <name>    - Set default app"
+    ""
+    "Available apps:"
+    "  default      - Standard Darklang CLI"
+    "  stachu       - Stachu's custom CLI commands"
+    "  ocean        - Ocean's custom CLI commands"
+    "  darklang-dev - Darklang development tools"
+    ""
+    "The default app determines which commands are available when you start"
+    "the interactive CLI. Use 'apps' without arguments to interactively"
+    "select and set your default app." ]
+  |> Stdlib.printLines
+
+  _state

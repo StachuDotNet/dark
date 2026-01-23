@@ -1,0 +1,28 @@
+module Darklang.Cli.Apps.Ocean
+
+// Ocean's custom CLI commands
+
+let waveExecute (state: Cli.AppState) (_args: List<String>) : Cli.AppState =
+  Stdlib.printLine "~~ Ocean waves at you ~~"
+  state
+
+let waveHelp (_state: Cli.AppState) : Cli.AppState =
+  Stdlib.printLine "Usage: wave"
+  Stdlib.printLine "A friendly wave from Ocean's CLI."
+  _state
+
+let waveComplete
+  (_state: Cli.AppState)
+  (_args: List<String>)
+  : List<String> =
+  []
+
+// Get all of Ocean's custom commands
+let commands () : List<Cli.Registry.CommandHandler> =
+  [ Cli.Registry.CommandHandler
+      { name = "wave"
+        description = "Wave hello (Ocean's command)"
+        aliases = []
+        execute = waveExecute
+        help = waveHelp
+        complete = waveComplete } ]

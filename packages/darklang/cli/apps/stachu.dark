@@ -1,0 +1,28 @@
+module Darklang.Cli.Apps.Stachu
+
+// Stachu's custom CLI commands
+
+let helloExecute (state: Cli.AppState) (_args: List<String>) : Cli.AppState =
+  Stdlib.printLine "Hello from Stachu's CLI!"
+  state
+
+let helloHelp (_state: Cli.AppState) : Cli.AppState =
+  Stdlib.printLine "Usage: hello"
+  Stdlib.printLine "A friendly greeting from Stachu's CLI."
+  _state
+
+let helloComplete
+  (_state: Cli.AppState)
+  (_args: List<String>)
+  : List<String> =
+  []
+
+// Get all of Stachu's custom commands
+let commands () : List<Cli.Registry.CommandHandler> =
+  [ Cli.Registry.CommandHandler
+      { name = "hello"
+        description = "Say hello (Stachu's command)"
+        aliases = []
+        execute = Stachu.helloExecute
+        help = Stachu.helloHelp
+        complete = Stachu.helloComplete } ]

@@ -1,0 +1,50 @@
+module Darklang.Cli.Apps.DarklangDev
+
+// Darklang development tools CLI commands
+
+let reloadExecute (state: Cli.AppState) (_args: List<String>) : Cli.AppState =
+  Stdlib.printLine "Reloading packages... (placeholder)"
+  state
+
+let reloadHelp (_state: Cli.AppState) : Cli.AppState =
+  Stdlib.printLine "Usage: reload"
+  Stdlib.printLine "Reload all packages (dev tool)."
+  _state
+
+let reloadComplete
+  (_state: Cli.AppState)
+  (_args: List<String>)
+  : List<String> =
+  []
+
+let debugExecute (state: Cli.AppState) (_args: List<String>) : Cli.AppState =
+  Stdlib.printLine "Debug mode enabled (placeholder)"
+  state
+
+let debugHelp (_state: Cli.AppState) : Cli.AppState =
+  Stdlib.printLine "Usage: debug"
+  Stdlib.printLine "Toggle debug mode (dev tool)."
+  _state
+
+let debugComplete
+  (_state: Cli.AppState)
+  (_args: List<String>)
+  : List<String> =
+  []
+
+// Get all dev tool commands
+let commands () : List<Cli.Registry.CommandHandler> =
+  [ Cli.Registry.CommandHandler
+      { name = "reload"
+        description = "Reload packages (dev tool)"
+        aliases = []
+        execute = reloadExecute
+        help = reloadHelp
+        complete = reloadComplete }
+    Cli.Registry.CommandHandler
+      { name = "debug"
+        description = "Toggle debug mode (dev tool)"
+        aliases = []
+        execute = debugExecute
+        help = debugHelp
+        complete = debugComplete } ]

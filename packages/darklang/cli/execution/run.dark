@@ -135,7 +135,7 @@ let complete (state: AppState) (args: List<String>) : List<String> =
   | _ -> []
 
 
-let help (state: AppState) : Unit =
+let help (state: AppState) : AppState =
   [
     "Usage: run @function_name [args...] | run script_path [args...]"
     "Run a function from the package manager or execute a Dark script file."
@@ -148,4 +148,6 @@ let help (state: AppState) : Unit =
     "  run script.dark                  - Run a script file"
     "  run script.dark arg1 arg2        - Run script with arguments"
   ] |> Stdlib.printLines
+
+  state
 
