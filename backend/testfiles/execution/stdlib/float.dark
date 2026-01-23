@@ -185,3 +185,24 @@ Stdlib.Float.toString 0.0 = "0.0"
 Stdlib.Float.toString -0.5 = "-0.5"
 Stdlib.Float.toString 0.5 = "0.5"
 Stdlib.Float.toString -55555555555555555555555555555.5 = "-5.55555555556e+28"
+
+// Additional edge cases
+Stdlib.Float.add_v0 Builtin.testInfinity_v0 1.0 = Builtin.testInfinity_v0
+Stdlib.Float.add_v0 Builtin.testNegativeInfinity_v0 1.0 = Builtin.testNegativeInfinity_v0
+Stdlib.Float.subtract_v0 Builtin.testInfinity_v0 1.0 = Builtin.testInfinity_v0
+Stdlib.Float.multiply_v0 Builtin.testInfinity_v0 2.0 = Builtin.testInfinity_v0
+Stdlib.Float.multiply_v0 Builtin.testInfinity_v0 -2.0 = Builtin.testNegativeInfinity_v0
+
+// sum with empty list
+Stdlib.Float.sum_v0 [] = 0.0
+
+// sum with negative numbers
+Stdlib.Float.sum_v0 [ -1.0; -2.0; -3.0 ] = -6.0
+
+// power edge cases
+Stdlib.Float.power_v0 0.0 0.0 = 1.0
+Stdlib.Float.power_v0 2.0 0.0 = 1.0
+Stdlib.Float.power_v0 0.0 2.0 = 0.0
+
+// sqrt of negative returns NaN
+Stdlib.Float.sqrt_v0 -1.0 = Builtin.testNan_v0

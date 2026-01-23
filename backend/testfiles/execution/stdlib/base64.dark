@@ -1,5 +1,3 @@
-// TODO: try decoding values with incorrect padding
-
 // Base64.decode
 Stdlib.Base64.decode "" = Stdlib.Result.Result.Ok(Stdlib.String.toBytes_v0 "")
 Stdlib.Base64.decode "garbage text" = Stdlib.Result.Result.Error "Not a valid base64 string"
@@ -42,6 +40,14 @@ Stdlib.Base64.decode "lI" = Stdlib.Result.Result.Ok([ 148uy ])
 Stdlib.Base64.decode "5Sk" = Stdlib.Result.Result.Ok([ 229uy; 41uy ])
 Stdlib.Base64.decode "AA" = Stdlib.Result.Result.Ok([ 0uy ])
 Stdlib.Base64.decode "_w" = Stdlib.Result.Result.Ok([ 255uy ])
+
+// Incorrect padding tests
+Stdlib.Base64.decode "Zg===" = Stdlib.Result.Result.Error "Not a valid base64 string"
+Stdlib.Base64.decode "Zm9=" = Stdlib.Result.Result.Ok(Stdlib.String.toBytes_v0 "fo")
+Stdlib.Base64.decode "Zm9vYg=" = Stdlib.Result.Result.Ok(Stdlib.String.toBytes_v0 "foob")
+Stdlib.Base64.decode "====" = Stdlib.Result.Result.Error "Not a valid base64 string"
+Stdlib.Base64.decode "=Zm9v" = Stdlib.Result.Result.Error "Not a valid base64 string"
+Stdlib.Base64.decode "Zm=9v" = Stdlib.Result.Result.Error "Not a valid base64 string"
 
 
 // Base64.encode

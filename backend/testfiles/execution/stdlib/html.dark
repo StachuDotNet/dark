@@ -113,6 +113,64 @@ let tidyHtml (html: String) : String =
 (Stdlib.Html.nav [] []) |> nodeToString = "<nav></nav>"
 (Stdlib.Html.footer [] []) |> nodeToString = "<footer></footer>"
 
+// additional HTML elements that exist in the module
+(Stdlib.Html.a [] []) |> nodeToString = "<a></a>"
+(Stdlib.Html.a [ ("href", Stdlib.Option.Option.Some "https://darklang.com") ] [ stringNode "Visit Darklang" ])
+|> nodeToString = "<a href=\"https://darklang.com\">Visit Darklang</a>"
+
+(Stdlib.Html.button [] []) |> nodeToString = "<button></button>"
+(Stdlib.Html.button [ ("type", Stdlib.Option.Option.Some "submit") ] [ stringNode "Submit" ])
+|> nodeToString = "<button type=\"submit\">Submit</button>"
+
+// test attributes with None values
+(Stdlib.Html.div [ ("id", Stdlib.Option.Option.None) ] []) |> nodeToString = "<div></div>"
+(Stdlib.Html.div [ ("id", Stdlib.Option.Option.Some "test-id") ] []) |> nodeToString = "<div id=\"test-id\"></div>"
+
+// test multiple attributes
+(Stdlib.Html.div
+  [ ("id", Stdlib.Option.Option.Some "my-div")
+    ("class", Stdlib.Option.Option.Some "container")
+    ("data-value", Stdlib.Option.Option.Some "123") ]
+  [])
+|> nodeToString = "<div id=\"my-div\" class=\"container\" data-value=\"123\"></div>"
+
+// test nested structures
+(Stdlib.Html.ul
+  []
+  [ Stdlib.Html.li [] [ stringNode "Item 1" ]
+    Stdlib.Html.li [] [ stringNode "Item 2" ]
+    Stdlib.Html.li [] [ stringNode "Item 3" ] ])
+|> nodeToString = "<ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul>"
+
+// test table structure
+(Stdlib.Html.table
+  []
+  [ Stdlib.Html.thead
+      []
+      [ Stdlib.Html.tr
+          []
+          [ Stdlib.Html.th [] [ stringNode "Name" ]
+            Stdlib.Html.th [] [ stringNode "Age" ] ] ]
+    Stdlib.Html.tbody
+      []
+      [ Stdlib.Html.tr
+          []
+          [ Stdlib.Html.td [] [ stringNode "John" ]
+            Stdlib.Html.td [] [ stringNode "30" ] ] ] ])
+|> nodeToString = "<table><thead><tr><th>Name</th><th>Age</th></tr></thead><tbody><tr><td>John</td><td>30</td></tr></tbody></table>"
+
+// test form with inputs
+(Stdlib.Html.form
+  [ ("action", Stdlib.Option.Option.Some "/submit")
+    ("method", Stdlib.Option.Option.Some "post") ]
+  [ Stdlib.Html.label [ ("for", Stdlib.Option.Option.Some "email") ] [ stringNode "Email:" ]
+    Stdlib.Html.input
+      [ ("type", Stdlib.Option.Option.Some "email")
+        ("id", Stdlib.Option.Option.Some "email")
+        ("name", Stdlib.Option.Option.Some "email") ]
+    Stdlib.Html.button [ ("type", Stdlib.Option.Option.Some "submit") ] [ stringNode "Submit" ] ])
+|> nodeToString = "<form action=\"/submit\" method=\"post\"><label for=\"email\">Email:</label><input type=\"email\" id=\"email\" name=\"email\"><button type=\"submit\">Submit</button></form>"
+
 // -- test writing out a full document
 
 ([ Stdlib.Html.html

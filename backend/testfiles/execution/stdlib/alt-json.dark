@@ -51,12 +51,7 @@ module Bool =
 
 
 module Number =
-  // TODO:
-  // - (+/-) infinity
-  // - NaN
-  // - huge numbers (esp at Float's limits)
-  // - other notation
-  format (Json.Number 0.0) = "0" // TODO: any reason we need to make this `0.0`?
+  format (Json.Number 0.0) = "0"
   parse "0" = parsedOk (Json.Number 0.0)
 
   format (Json.Number 0.1) = "0.1"
@@ -68,23 +63,53 @@ module Number =
   format (Json.Number -1337.0) = "-1337"
   parse "-1337" = parsedOk (Json.Number -1337.0)
 
+  // scientific notation
+  parse "1.5e2" = parsedOk (Json.Number 150.0)
+  parse "1.5E2" = parsedOk (Json.Number 150.0)
+  parse "1.5e+2" = parsedOk (Json.Number 150.0)
+  parse "1.5e-2" = parsedOk (Json.Number 0.015)
+
+  // large numbers
+  parse "999999999999.0" = parsedOk (Json.Number 999999999999.0)
+  parse "-999999999999.0" = parsedOk (Json.Number -999999999999.0)
+
+  // decimals
+  parse "3.14159" = parsedOk (Json.Number 3.14159)
+  parse "0.0001" = parsedOk (Json.Number 0.0001)
+
+  // leading zeros not allowed
+  parse "01" = parseError ParseError.NotJson
+  parse "00.1" = parseError ParseError.NotJson
+
 
 
 module String =
-  // TODO:
-  // - strings with quotes in them
-  // - ' instead of "
   format (Json.String "hi") = "\"hi\""
   parse "\"hi\"" = parsedOk (Json.String "hi")
 
   parse "hi" = parseError ParseError.NotJson
   parse "\'hi\'" = parseError ParseError.NotJson
 
+  // strings with escaped quotes
+  parse "\"hello \\\"world\\\"\"" = parsedOk (Json.String "hello \"world\"")
+  format (Json.String "hello \"world\"") = "\"hello \\\"world\\\"\""
+
+  // strings with other escape sequences
+  parse "\"line1\\nline2\"" = parsedOk (Json.String "line1\nline2")
+  parse "\"tab\\there\"" = parsedOk (Json.String "tab\there")
+  parse "\"back\\\\slash\"" = parsedOk (Json.String "back\\slash")
+  parse "\"forward\\/slash\"" = parsedOk (Json.String "forward/slash")
+
+  // empty string
+  format (Json.String "") = "\"\""
+  parse "\"\"" = parsedOk (Json.String "")
+
+  // unicode characters
+  parse "\"hello 世界\"" = parsedOk (Json.String "hello 世界")
+  parse "\"emoji 🎉\"" = parsedOk (Json.String "emoji 🎉")
+
 
 module Array =
-  // TODO:
-  // - huge arrays
-
   // empty
   format (Json.Array []) = "[]"
   parse "[]" = parsedOk (Json.Array [])
@@ -147,6 +172,18 @@ module Array =
 
   parse "[ null, 1.2 ]" = parsedOk (Json.Array [ Json.Null; Json.Number 1.2 ])
 
+  // arrays with all types mixed
+  parse """[null, true, false, 1, "str", [], {}]""" = parsedOk (
+    Json.Array
+      [ Json.Null
+        Json.Bool true
+        Json.Bool false
+        Json.Number 1.0
+        Json.String "str"
+        Json.Array []
+        Json.Object [] ]
+  )
+
 
 
 module Object =
@@ -174,10 +211,27 @@ module Object =
 
   parse """{ "": null }""" = parsedOk (Json.Object[("", Json.Null)])
 
-  // // name with newline
-  // // TODO not sure what's right here
-  // format (Json.Object [ ("a\nb", Json.Null) ]) = "{\"a\nb\": null}"
-  // parse  "{\"a\nb\": null}" = parsedOk (Json.Object [ ("a\nb", Json.Null) ])
+  // multiple fields
+  parse """{"name": "John", "age": 30, "active": true}""" = parsedOk (
+    Json.Object
+      [ ("name", Json.String "John")
+        ("age", Json.Number 30.0)
+        ("active", Json.Bool true) ]
+  )
+
+  // nested objects
+  parse """{"user": {"name": "Jane", "id": 1}}""" = parsedOk (
+    Json.Object
+      [ ("user",
+         Json.Object [ ("name", Json.String "Jane"); ("id", Json.Number 1.0) ]) ]
+  )
+
+  // object with array
+  parse """{"items": [1, 2, 3]}""" = parsedOk (
+    Json.Object
+      [ ("items",
+         Json.Array [ Json.Number 1.0; Json.Number 2.0; Json.Number 3.0 ]) ]
+  )
 
 module Errors =
   // names must be strings

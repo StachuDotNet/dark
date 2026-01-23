@@ -1,0 +1,29 @@
+// Tests for Darklang.Stdlib.Fun module
+
+// identity tests with various types
+Stdlib.Fun.identity 42L = 42L
+Stdlib.Fun.identity 0L = 0L
+Stdlib.Fun.identity -100L = -100L
+
+Stdlib.Fun.identity "hello" = "hello"
+Stdlib.Fun.identity "" = ""
+
+Stdlib.Fun.identity true = true
+Stdlib.Fun.identity false = false
+
+Stdlib.Fun.identity 3.14 = 3.14
+Stdlib.Fun.identity 0.0 = 0.0
+
+Stdlib.Fun.identity [ 1L; 2L; 3L ] = [ 1L; 2L; 3L ]
+Stdlib.Fun.identity [] = []
+
+Stdlib.Fun.identity (Stdlib.Option.Option.Some 5L) = Stdlib.Option.Option.Some 5L
+Stdlib.Fun.identity Stdlib.Option.Option.None = Stdlib.Option.Option.None
+
+Stdlib.Fun.identity (Stdlib.Result.Result.Ok "success") = Stdlib.Result.Result.Ok "success"
+Stdlib.Fun.identity (Stdlib.Result.Result.Error "failed") = Stdlib.Result.Result.Error "failed"
+
+Stdlib.Fun.identity ('a', 'b') = ('a', 'b')
+
+// Test with dict
+Stdlib.Fun.identity (Dict { a = 1L; b = 2L }) = (Dict { a = 1L; b = 2L })

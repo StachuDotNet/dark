@@ -205,3 +205,34 @@ module Remove =
   Stdlib.Dict.remove_v0 (Dict { key1 = "val1" }) "key1" = (Dict { })
   Stdlib.Dict.remove_v0 (Dict { key1 = "val1" }) "key2" = (Dict { key1 = "val1" })
   Stdlib.Dict.remove_v0 (Dict { }) "key1" = (Dict { })
+
+
+// Additional coverage tests
+module MultipleOperations =
+  // chaining multiple operations
+  (Dict { a = 1L; b = 2L; c = 3L })
+  |> Stdlib.Dict.remove_v0 "b"
+  |> Stdlib.Dict.setOverridingDuplicates_v0 "d" 4L = (Dict { a = 1L; c = 3L; d = 4L })
+
+  // map then filter
+  (Dict { a = 1L; b = 2L; c = 3L })
+  |> Stdlib.Dict.map_v0 (fun k v -> v + 1L)
+  |> Stdlib.Dict.filter (fun k v -> v > 2L) = (Dict { b = 3L; c = 4L })
+
+
+module EdgeCases =
+  // empty dict operations
+  Stdlib.Dict.map_v0 (Dict { }) (fun k v -> "result") = (Dict { })
+  Stdlib.Dict.filter (Dict { }) (fun k v -> true) = (Dict { })
+  Stdlib.Dict.toList_v0 (Dict { }) = []
+  Stdlib.Dict.keys_v0 (Dict { }) = []
+  Stdlib.Dict.values_v0 (Dict { }) = []
+
+  // single element dict
+  Stdlib.Dict.size_v0 (Dict { x = 1L }) = 1L
+  Stdlib.Dict.keys_v0 (Dict { x = 1L }) = [ "x" ]
+  Stdlib.Dict.values_v0 (Dict { x = 1L }) = [ 1L ]
+
+  // special characters in keys
+  Stdlib.Dict.singleton_v0 "key-with-dashes" 1L = (Dict { ``key-with-dashes`` = 1L })
+  Stdlib.Dict.get (Dict { ``key-with-dashes`` = 1L }) "key-with-dashes" = Stdlib.Option.Option.Some 1L
