@@ -6,29 +6,31 @@
 - [x] Review blog posts and vision
 - [x] Study package system patterns
 
-## Phase 1: Core AI Primitives & Types
-- [ ] Design and implement `Prompt` type with template management
-  - [ ] Variable interpolation support
-  - [ ] Few-shot example handling
-  - [ ] Message construction (system/user/assistant)
-- [ ] Design and implement `Session` type for conversation management
-  - [ ] History tracking
-  - [ ] Token counting
-  - [ ] Context window management
-- [ ] Design and implement `Agent` type for execution
-  - [ ] Tool registry system
-  - [ ] Execution loop implementation
-  - [ ] State management
-- [ ] Create common AI types package (`packages/darklang/ai/common.dark`)
+## Phase 1: Core AI Primitives & Types ✓
+- [x] Design and implement `Prompt` type with template management
+  - [x] Variable interpolation support
+  - [x] Few-shot example handling
+  - [x] Message construction (system/user/assistant)
+- [x] Design and implement `Session` type for conversation management
+  - [x] History tracking
+  - [x] Token counting
+  - [x] Context window management
+- [x] Design and implement `Agent` type for execution
+  - [x] Tool registry system
+  - [x] Execution loop implementation
+  - [x] State management
+- [x] Create common AI types package (`packages/darklang/ai/common.dark`)
 - [ ] Write tests for core primitives
 
-## Phase 2: Anthropic/Claude Integration
-- [ ] Study Anthropic API documentation (2026)
-- [ ] Implement full Anthropic client (`packages/darklang/ai/anthropic.dark`)
-  - [ ] Messages API with streaming
+## Phase 2: Anthropic/Claude Integration (IN PROGRESS)
+- [x] Study Anthropic API documentation (2026)
+- [x] Implement basic Anthropic client (`packages/darklang/ai/anthropic.dark`)
+  - [x] Basic Messages API
+  - [ ] Streaming support
   - [ ] Tool use/function calling
   - [ ] Vision support
   - [ ] Token counting
+  - [ ] Response parsing (complete)
 - [ ] Add Claude-specific optimizations (`packages/darklang/ai/vendors/claude.dark`)
   - [ ] Extended thinking support
   - [ ] Claude Code specific features

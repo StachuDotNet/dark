@@ -1,0 +1,121 @@
+module Darklang.AI.Anthropic
+
+/// Anthropic Claude API client implementation
+
+
+/// API configuration
+module Config =
+  let apiVersion = "2023-06-01"
+  let baseUrl = "https://api.anthropic.com/v1"
+
+
+  let getHeaders (apiKey: String) : List<(String * String)> =
+    [ ("x-api-key", apiKey)
+      ("anthropic-version", apiVersion)
+      ("content-type", "application/json") ]
+
+
+/// Simple message type
+type SimpleMessage = { role: String; content: String }
+
+
+/// Simple request type
+type SimpleRequest =
+  { model: String
+    maxTokens: Int64
+    messages: List<SimpleMessage>
+    temperature: Float
+    system: String }
+
+
+/// Helper to create simple request JSON
+let buildRequestJson
+  (model: String)
+  (maxTokens: Int64)
+  (systemPrompt: String)
+  (userPrompt: String)
+  : String =
+  let tempStr = "0.7"
+  let maxTokensStr = Stdlib.Int64.toString maxTokens
+
+  let systemField =
+    if Stdlib.String.isEmpty systemPrompt then
+      ""
+    else
+      ",\"system\":\"" ++ systemPrompt ++ "\""
+
+  "{"
+  ++ "\"model\":\""
+  ++ model
+  ++ "\""
+  ++ ",\"max_tokens\":"
+  ++ maxTokensStr
+  ++ ",\"temperature\":"
+  ++ tempStr
+  ++ systemField
+  ++ ",\"messages\":[{\"role\":\"user\",\"content\":\""
+  ++ userPrompt
+  ++ "\"}]}"
+
+
+/// Extract text content from response
+let extractTextFromResponse (responseBody: String) : Stdlib.Result.Result<String, String> =
+  Stdlib.Result.Result.Error "Response parsing not fully implemented yet"
+
+
+/// Simple completion function
+let simpleCompletion
+  (apiKey: String)
+  (model: String)
+  (prompt: String)
+  : Stdlib.Result.Result<String, String> =
+  let headers = Config.getHeaders apiKey
+  let url = Config.baseUrl ++ "/messages"
+  let body = buildRequestJson model 1024L "" prompt
+
+  let response =
+    Stdlib.HttpClient.post url headers (Stdlib.String.toBytes body)
+
+  match response with
+  | Ok r ->
+    let responseBody = Stdlib.String.fromBytesWithReplacement r.body
+
+    extractTextFromResponse responseBody
+  | Error e -> Stdlib.Result.Result.Error("API request failed: " ++ e)
+
+
+/// Completion with system prompt
+let completionWithSystem
+  (apiKey: String)
+  (model: String)
+  (systemPrompt: String)
+  (userPrompt: String)
+  : Stdlib.Result.Result<String, String> =
+  let headers = Config.getHeaders apiKey
+  let url = Config.baseUrl ++ "/messages"
+  let body = buildRequestJson model 1024L systemPrompt userPrompt
+
+  let response =
+    Stdlib.HttpClient.post url headers (Stdlib.String.toBytes body)
+
+  match response with
+  | Ok r ->
+    let responseBody = Stdlib.String.fromBytesWithReplacement r.body
+
+    extractTextFromResponse responseBody
+  | Error e -> Stdlib.Result.Result.Error("API request failed: " ++ e)
+
+
+/// Model constants
+module Models =
+  /// Claude Opus 4.5 - Latest premium model
+  let opus4_5 = "claude-opus-4-5-20251101"
+
+  /// Claude Sonnet 4.5 - Best for agents and coding
+  let sonnet4_5 = "claude-sonnet-4-5-20250929"
+
+  /// Claude Haiku 3.5 - Fastest and most compact
+  let haiku3_5 = "claude-3-5-haiku-20241022"
+
+  /// Claude Haiku 4.5 - Near-instant with extended thinking
+  let haiku4_5 = "claude-haiku-4-5-20251001"

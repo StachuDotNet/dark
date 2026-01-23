@@ -1,0 +1,423 @@
+module Darklang.AI.Common
+
+/// Core types and abstractions for AI operations in Darklang
+
+
+/// Message role in a conversation
+type MessageRole =
+  | System
+  | User
+  | Assistant
+  | Tool
+
+
+/// A single message in a conversation
+type Message =
+  { role: MessageRole
+    content: String
+    name: Stdlib.Option.Option<String>
+    toolCallId: Stdlib.Option.Option<String> }
+
+
+/// Variable substitution for prompt templates
+type PromptVariable = { name: String; value: String }
+
+
+/// Prompt template with variable support
+type PromptTemplate =
+  { template: String
+    variables: List<PromptVariable>
+    systemMessage: Stdlib.Option.Option<String>
+    fewShotExamples: List<Message> }
+
+
+/// A fully constructed prompt ready for execution
+type Prompt =
+  { messages: List<Message>
+    temperature: Stdlib.Option.Option<Float>
+    maxTokens: Stdlib.Option.Option<Int64>
+    topP: Stdlib.Option.Option<Float>
+    stopSequences: List<String> }
+
+
+/// Token usage statistics
+type TokenUsage =
+  { promptTokens: Int64
+    completionTokens: Int64
+    totalTokens: Int64 }
+
+
+/// Session configuration
+type SessionConfig =
+  { maxTokens: Int64
+    maxHistoryMessages: Int64
+    enableSummarization: Bool
+    summarizationThreshold: Int64 }
+
+
+/// Conversation session with history management
+type Session =
+  { id: String
+    messages: List<Message>
+    config: SessionConfig
+    totalTokens: Int64
+    createdAt: Int64
+    lastUsedAt: Int64 }
+
+
+/// Tool parameter definition
+type ToolParameter =
+  { name: String
+    description: String
+    paramType: String
+    required: Bool
+    defaultValue: Stdlib.Option.Option<String> }
+
+
+/// Tool definition for AI function calling
+type Tool =
+  { name: String
+    description: String
+    parameters: List<ToolParameter>
+    handler: String }
+
+
+/// Tool call request from AI
+type ToolCall =
+  { id: String
+    name: String
+    arguments: String }
+
+
+/// Tool call result
+type ToolResult =
+  { toolCallId: String
+    result: String
+    isError: Bool }
+
+
+/// Agent state
+type AgentState =
+  | Idle
+  | Running
+  | Waiting
+  | Error
+  | Completed
+
+
+/// Agent execution context
+type Agent =
+  { name: String
+    session: Session
+    tools: List<Tool>
+    state: AgentState
+    maxIterations: Int64
+    currentIteration: Int64 }
+
+
+/// AI response from any vendor
+type AIResponse =
+  { content: String
+    toolCalls: List<ToolCall>
+    usage: Stdlib.Option.Option<TokenUsage>
+    finishReason: String
+    model: String }
+
+
+/// Error types for AI operations
+type AIError =
+  | APIError of String
+  | RateLimitError of String
+  | InvalidResponseError of String
+  | ToolExecutionError of String
+  | MaxIterationsError of String
+  | ConfigurationError of String
+
+
+module PromptTemplate =
+  /// Create a new prompt template
+  let create
+    (template: String)
+    (systemMessage: Stdlib.Option.Option<String>)
+    : PromptTemplate =
+    PromptTemplate
+      { template = template
+        variables = []
+        systemMessage = systemMessage
+        fewShotExamples = [] }
+
+
+  /// Add a variable to the template
+  let addVariable
+    (tmpl: PromptTemplate)
+    (name: String)
+    (value: String)
+    : PromptTemplate =
+    let newVar = PromptVariable { name = name; value = value }
+    { tmpl with variables = Stdlib.List.append tmpl.variables [ newVar ] }
+
+
+  /// Add a few-shot example
+  let addExample (tmpl: PromptTemplate) (msg: Message) : PromptTemplate =
+    { tmpl with fewShotExamples = Stdlib.List.append tmpl.fewShotExamples [ msg ] }
+
+
+  /// Render template with variables
+  let render (tmpl: PromptTemplate) : String =
+    let rendered =
+      Stdlib.List.fold tmpl.variables tmpl.template (fun acc var ->
+        Stdlib.String.replaceAll acc ("{{" ++ var.name ++ "}}") var.value)
+
+    rendered
+
+
+  /// Build full prompt from template
+  let toPrompt (tmpl: PromptTemplate) : Prompt =
+    let renderedContent = render tmpl
+    let userMsg = Message { role = User; content = renderedContent; name = Stdlib.Option.Option.None; toolCallId = Stdlib.Option.Option.None }
+
+    let systemMsgs =
+      match tmpl.systemMessage with
+      | Some sys ->
+        [ Message { role = System; content = sys; name = Stdlib.Option.Option.None; toolCallId = Stdlib.Option.Option.None } ]
+      | None -> []
+
+    let allMessages =
+      Stdlib.List.append (Stdlib.List.append systemMsgs tmpl.fewShotExamples) [ userMsg ]
+
+    Prompt
+      { messages = allMessages
+        temperature = Stdlib.Option.Option.None
+        maxTokens = Stdlib.Option.Option.None
+        topP = Stdlib.Option.Option.None
+        stopSequences = [] }
+
+
+module Message =
+  /// Create a system message
+  let system (content: String) : Message =
+    Message
+      { role = System
+        content = content
+        name = Stdlib.Option.Option.None
+        toolCallId = Stdlib.Option.Option.None }
+
+
+  /// Create a user message
+  let user (content: String) : Message =
+    Message
+      { role = User
+        content = content
+        name = Stdlib.Option.Option.None
+        toolCallId = Stdlib.Option.Option.None }
+
+
+  /// Create an assistant message
+  let assistant (content: String) : Message =
+    Message
+      { role = Assistant
+        content = content
+        name = Stdlib.Option.Option.None
+        toolCallId = Stdlib.Option.Option.None }
+
+
+  /// Create a tool result message
+  let toolResult (toolCallId: String) (content: String) : Message =
+    Message
+      { role = Tool
+        content = content
+        name = Stdlib.Option.Option.None
+        toolCallId = Stdlib.Option.Option.Some toolCallId }
+
+
+module Prompt =
+  /// Create a simple prompt from a single message
+  let simple (content: String) : Prompt =
+    Prompt
+      { messages = [ Message.user content ]
+        temperature = Stdlib.Option.Option.None
+        maxTokens = Stdlib.Option.Option.None
+        topP = Stdlib.Option.Option.None
+        stopSequences = [] }
+
+
+  /// Create a prompt from messages
+  let fromMessages (messages: List<Message>) : Prompt =
+    Prompt
+      { messages = messages
+        temperature = Stdlib.Option.Option.None
+        maxTokens = Stdlib.Option.Option.None
+        topP = Stdlib.Option.Option.None
+        stopSequences = [] }
+
+
+  /// Set temperature
+  let withTemperature (prompt: Prompt) (temp: Float) : Prompt =
+    { prompt with temperature = Stdlib.Option.Option.Some temp }
+
+
+  /// Set max tokens
+  let withMaxTokens (prompt: Prompt) (tokens: Int64) : Prompt =
+    { prompt with maxTokens = Stdlib.Option.Option.Some tokens }
+
+
+  /// Set top-p
+  let withTopP (prompt: Prompt) (topP: Float) : Prompt =
+    { prompt with topP = Stdlib.Option.Option.Some topP }
+
+
+  /// Add a stop sequence
+  let addStopSequence (prompt: Prompt) (seq: String) : Prompt =
+    { prompt with stopSequences = Stdlib.List.append prompt.stopSequences [ seq ] }
+
+
+module Session =
+  /// Create a default session config
+  let defaultConfig () : SessionConfig =
+    SessionConfig
+      { maxTokens = 100000L
+        maxHistoryMessages = 50L
+        enableSummarization = false
+        summarizationThreshold = 80000L }
+
+
+  /// Create a new session
+  let create (id: String) (config: SessionConfig) : Session =
+    let now = Builtin.dateTimeToSeconds (Builtin.dateTimeNow ())
+
+    Session
+      { id = id
+        messages = []
+        config = config
+        totalTokens = 0L
+        createdAt = now
+        lastUsedAt = now }
+
+
+  /// Add a message to session
+  let addMessage (session: Session) (msg: Message) : Session =
+    let now = Builtin.dateTimeToSeconds (Builtin.dateTimeNow ())
+
+    { session with
+        messages = Stdlib.List.append session.messages [ msg ]
+        lastUsedAt = now }
+
+
+  /// Add multiple messages to session
+  let addMessages (session: Session) (msgs: List<Message>) : Session =
+    let now = Builtin.dateTimeToSeconds (Builtin.dateTimeNow ())
+
+    { session with
+        messages = Stdlib.List.append session.messages msgs
+        lastUsedAt = now }
+
+
+  /// Update token count
+  let updateTokens (session: Session) (usage: TokenUsage) : Session =
+    { session with
+        totalTokens =
+          Stdlib.Int64.add session.totalTokens usage.totalTokens }
+
+
+  /// Get recent messages (for context window management)
+  let getRecentMessages (session: Session) (count: Int64) : List<Message> =
+    let len = Stdlib.List.length session.messages
+
+    if Stdlib.Int64.greaterThan len count then
+      Stdlib.List.drop session.messages (Stdlib.Int64.subtract len count)
+    else
+      session.messages
+
+
+  /// Clear message history
+  let clearHistory (session: Session) : Session =
+    { session with messages = []; totalTokens = 0L }
+
+
+module Agent =
+  /// Create a new agent
+  let create (name: String) (session: Session) (tools: List<Tool>) : Agent =
+    Agent
+      { name = name
+        session = session
+        tools = tools
+        state = Idle
+        maxIterations = 10L
+        currentIteration = 0L }
+
+
+  /// Set max iterations
+  let withMaxIterations (agent: Agent) (max: Int64) : Agent =
+    { agent with maxIterations = max }
+
+
+  /// Update agent state
+  let setState (agent: Agent) (state: AgentState) : Agent =
+    { agent with state = state }
+
+
+  /// Increment iteration counter
+  let incrementIteration (agent: Agent) : Agent =
+    { agent with currentIteration = Stdlib.Int64.add agent.currentIteration 1L }
+
+
+  /// Check if agent should continue
+  let shouldContinue (agent: Agent) : Bool =
+    match agent.state with
+    | Running -> Stdlib.Int64.lessThan agent.currentIteration agent.maxIterations
+    | Waiting -> Stdlib.Int64.lessThan agent.currentIteration agent.maxIterations
+    | _ -> false
+
+
+  /// Update agent session
+  let updateSession (agent: Agent) (session: Session) : Agent =
+    { agent with session = session }
+
+
+module Tool =
+  /// Create a new tool definition
+  let create (name: String) (description: String) (handler: String) : Tool =
+    Tool
+      { name = name
+        description = description
+        parameters = []
+        handler = handler }
+
+
+  /// Add a parameter to a tool
+  let addParameter
+    (tool: Tool)
+    (name: String)
+    (description: String)
+    (paramType: String)
+    (required: Bool)
+    : Tool =
+    let param =
+      ToolParameter
+        { name = name
+          description = description
+          paramType = paramType
+          required = required
+          defaultValue = Stdlib.Option.Option.None }
+
+    { tool with parameters = Stdlib.List.append tool.parameters [ param ] }
+
+
+  /// Add a parameter with default value
+  let addParameterWithDefault
+    (tool: Tool)
+    (name: String)
+    (description: String)
+    (paramType: String)
+    (required: Bool)
+    (defaultValue: String)
+    : Tool =
+    let param =
+      ToolParameter
+        { name = name
+          description = description
+          paramType = paramType
+          required = required
+          defaultValue = Stdlib.Option.Option.Some defaultValue }
+
+    { tool with parameters = Stdlib.List.append tool.parameters [ param ] }
