@@ -85,7 +85,10 @@ let renderCard (component: Core.Types.Component<CardModel>) (context: Core.Types
     let remainingHeight = maxContentHeight - Stdlib.List.length paddedContent
     let emptyLines =
       if remainingHeight > 0L then
-        Stdlib.List.repeat remainingHeight (left ++ (Stdlib.String.repeat " " (model.width - 2L)) ++ right)
+        let emptyLine = left ++ Stdlib.String.repeat " " (model.width - 2L) ++ right
+        match Stdlib.List.repeat remainingHeight emptyLine with
+        | Ok lines -> lines
+        | Error _ -> []
       else
         []
 
