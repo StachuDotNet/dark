@@ -1,12 +1,6 @@
-module Darklang.Cli.Experiments
+module Darklang.CLI.Runtime
 
-
-module Abstractions =
-// ==========================================
-// Enhanced CLI Abstractions and Utilities
-// ==========================================
-
-
+/// Screen control utilities for terminal manipulation
 module Screen =
   let clear () : Unit =
     Stdlib.print "\u001b[2J\u001b[H"
@@ -30,10 +24,10 @@ module Screen =
     Stdlib.print "\u001b[?25h"
 
   let getSize () : (Int64 * Int64) =
-    // Default to 80x24 if unable to detect
-    (80L, 24L)
+    (Stdlib.Cli.Terminal.getWidth (), Stdlib.Cli.Terminal.getHeight ())
 
 
+/// Interactive input utilities
 module Input =
   type InputResult = { text: String; cancelled: Bool }
 
@@ -94,7 +88,8 @@ module Input =
       false
 
 
-module Progress =
+/// Live progress bar that renders directly to terminal
+module LiveProgress =
   type ProgressBar = { current: Int64; total: Int64; width: Int64; message: String }
 
   let create (total: Int64) (width: Int64) (message: String) : ProgressBar =
@@ -119,14 +114,19 @@ module Progress =
     Stdlib.printLine ""
 
 
-module Spinner =
+/// Live animated spinner that renders directly to terminal
+module LiveSpinner =
   type Spinner = { frames: List<String>; current: Int64; message: String }
 
   let create (message: String) : Spinner =
     Spinner { frames = ["⠋"; "⠙"; "⠹"; "⠸"; "⠼"; "⠴"; "⠦"; "⠧"; "⠇"; "⠏"]; current = 0L; message = message }
 
   let next (spinner: Spinner) : Spinner =
-    let newCurrent = (spinner.current + 1L) % Stdlib.List.length spinner.frames
+    let frameCount = Stdlib.List.length spinner.frames
+    let newCurrent =
+      match Stdlib.Int64.remainder (spinner.current + 1L) frameCount with
+      | Ok idx -> idx
+      | Error _ -> 0L
     Spinner { spinner with current = newCurrent }
 
   let render (spinner: Spinner) : Unit =
@@ -141,24 +141,29 @@ module Spinner =
     Stdlib.printLine ("✓ " ++ finalMessage)
 
 
-module Menu =
+/// Interactive menu with keyboard navigation
+module InteractiveMenu =
   type MenuItem = { label: String; value: String; enabled: Bool }
   type MenuResult = { selectedValue: String; cancelled: Bool }
 
   let menuLoop (title: String) (items: List<MenuItem>) (selectedIndex: Int64) : MenuResult =
     Screen.clear ()
-    Stdlib.printLine (Colors.boldText title)
+    Stdlib.printLine (UI.Core.Rendering.bold title)
     Stdlib.printLine ""
 
     items
     |> Stdlib.List.indexedMap (fun i item ->
       let marker = if i == selectedIndex then "▶ " else "  "
-      let text = if item.enabled then item.label else Colors.dimText item.label
-      let display = if i == selectedIndex then Colors.boldText (Colors.info text) else text
+      let text = if item.enabled then item.label else UI.Core.Rendering.dim item.label
+      let display =
+        if i == selectedIndex then
+          UI.Core.Rendering.bold (UI.Core.Rendering.colorize UI.Core.Types.Color.Info text)
+        else
+          text
       Stdlib.printLine (marker ++ display))
 
     Stdlib.printLine ""
-    Stdlib.printLine (Colors.hint "Use ↑/↓ to navigate, Enter to select, Esc to cancel")
+    Stdlib.printLine (UI.Core.Rendering.dim "Use ↑/↓ to navigate, Enter to select, Esc to cancel")
 
     let key = Stdlib.Cli.Stdin.readKey ()
     match key.key with
@@ -170,8 +175,12 @@ module Menu =
         menuLoop title items newIndex
     | Enter ->
         match Stdlib.List.getAt items selectedIndex with
-        | Some item when item.enabled -> MenuResult { selectedValue = item.value; cancelled = false }
-        | _ -> menuLoop title items selectedIndex
+        | Some item ->
+            if item.enabled then
+              MenuResult { selectedValue = item.value; cancelled = false }
+            else
+              menuLoop title items selectedIndex
+        | None -> menuLoop title items selectedIndex
     | Escape ->
         MenuResult { selectedValue = ""; cancelled = true }
     | _ -> menuLoop title items selectedIndex
@@ -180,119 +189,13 @@ module Menu =
     menuLoop title items 0L
 
 
-module Table =
-  type TableColumn = { header: String; width: Int64; align: String }
-  type TableData = List<List<String>>
-
-  let display (columns: List<TableColumn>) (data: TableData) : Unit =
-    // Print header
-    let headerLine =
-      columns
-      |> Stdlib.List.map (fun col ->
-        let padding = col.width - Stdlib.String.length col.header
-        col.header ++ Stdlib.String.repeat " " padding)
-      |> Stdlib.String.join " │ "
-
-    Stdlib.printLine ("│ " ++ headerLine ++ " │")
-
-    // Print separator
-    let separator =
-      columns
-      |> Stdlib.List.map (fun col -> Stdlib.String.repeat "─" col.width)
-      |> Stdlib.String.join "─┼─"
-
-    Stdlib.printLine ("├─" ++ separator ++ "─┤")
-
-    // Print data rows
-    data
-    |> Stdlib.List.iter (fun row ->
-      let rowLine =
-        row
-        |> Stdlib.List.indexedMap (fun i cell ->
-          match Stdlib.List.getAt columns i with
-          | Some col ->
-              let truncated =
-                if Stdlib.String.length cell > col.width then
-                  Stdlib.String.slice cell 0L (col.width - 3L) ++ "..."
-                else
-                  cell
-              let padding = col.width - Stdlib.String.length truncated
-              truncated ++ Stdlib.String.repeat " " padding
-          | None -> cell)
-        |> Stdlib.String.join " │ "
-
-      Stdlib.printLine ("│ " ++ rowLine ++ " │"))
-
-
-module Form =
-  type FieldType = | Text | Password | Number | Email | Choice of List<String>
-  type FormField = { name: String; label: String; fieldType: FieldType; required: Bool; value: String }
-  type FormResult = { values: List<(String * String)>; cancelled: Bool }
-
-  let createField (name: String) (label: String) (fieldType: FieldType) (required: Bool) : FormField =
-    FormField { name = name; label = label; fieldType = fieldType; required = required; value = "" }
-
-  let show (title: String) (fields: List<FormField>) : FormResult =
-    Screen.clear ()
-    Stdlib.printLine (Colors.boldText title)
-    Stdlib.printLine ""
-
-    let (results, cancelled) =
-      fields
-      |> Stdlib.List.fold ([], false) (fun (acc, wasCancelled) field ->
-        if wasCancelled then
-          (acc, true)
-        else
-          let prompt = field.label ++ (if field.required then " *" else "") ++ ": "
-          let result =
-            match field.fieldType with
-            | Text -> Input.readLine prompt
-            | Password -> Input.readPassword prompt
-            | Number -> Input.readLine prompt
-            | Email -> Input.readLine prompt
-            | Choice options ->
-                let menuItems = options |> Stdlib.List.map (fun opt -> Menu.MenuItem { label = opt; value = opt; enabled = true })
-                let menuResult = Menu.show ("Select " ++ field.label) menuItems
-                Input.InputResult { text = menuResult.selectedValue; cancelled = menuResult.cancelled }
-
-          if result.cancelled then
-            (acc, true)
-          else
-            (acc ++ [(field.name, result.text)], false))
-
-    FormResult { values = results; cancelled = cancelled }
-
-
-module Notifications =
-  type NotificationType = | Info | Success | Warning | Error
-  type Notification = { message: String; notificationType: NotificationType; timestamp: String }
-
-  let show (notification: Notification) : Unit =
-    let icon =
-      match notification.notificationType with
-      | Info -> "ℹ"
-      | Success -> "✓"
-      | Warning -> "⚠"
-      | Error -> "✗"
-
-    let color =
-      match notification.notificationType with
-      | Info -> Colors.info
-      | Success -> Colors.success
-      | Warning -> Colors.warning
-      | Error -> Colors.error
-
-    Stdlib.printLine (color (icon ++ " " ++ notification.message))
-
-  let showToast (message: String) (notificationType: NotificationType) (durationMs: Int64) : Unit =
-    let notification = Notification { message = message; notificationType = notificationType; timestamp = "now" }
-    show notification
-    // In a real implementation, this would use a timer to hide the toast
-    // For demo purposes, we'll just show it immediately
-
-
+/// Command line argument parsing
 module Args =
-  type ArgValue = | StringValue of String | IntValue of Int64 | BoolValue of Bool
+  type ArgValue =
+    | StringValue of String
+    | IntValue of Int64
+    | BoolValue of Bool
+
   type ParsedArgs = List<(String * ArgValue)>
 
   let parseArgsLoop (remaining: List<String>) (result: ParsedArgs) : ParsedArgs =
@@ -301,33 +204,35 @@ module Args =
     | flag :: value :: rest when Stdlib.String.startsWith flag "--" ->
         let key = Stdlib.String.dropFirst flag 2L
         let parsedValue =
-          if value == "true" then BoolValue true
-          else if value == "false" then BoolValue false
+          if value == "true" then
+            ArgValue.BoolValue true
+          else if value == "false" then
+            ArgValue.BoolValue false
           else
             match Stdlib.Int64.parse value with
-            | Ok intVal -> IntValue intVal
-            | Error _ -> StringValue value
-        parseArgsLoop rest (result ++ [(key, parsedValue)])
+            | Ok intVal -> ArgValue.IntValue intVal
+            | Error _ -> ArgValue.StringValue value
+        parseArgsLoop rest (Stdlib.List.append result [(key, parsedValue)])
     | flag :: rest when Stdlib.String.startsWith flag "--" ->
         let key = Stdlib.String.dropFirst flag 2L
-        parseArgsLoop rest (result ++ [(key, BoolValue true)])
+        parseArgsLoop rest (Stdlib.List.append result [(key, ArgValue.BoolValue true)])
     | _ :: rest ->
         parseArgsLoop rest result
 
-  let parseArgs (args: List<String>) : ParsedArgs =
+  let parse (args: List<String>) : ParsedArgs =
     parseArgsLoop args []
 
-  let getStringArg (args: ParsedArgs) (key: String) (defaultValue: String) : String =
+  let getString (args: ParsedArgs) (key: String) (defaultValue: String) : String =
     match Stdlib.List.findFirst args (fun (k, _) -> k == key) with
     | Some (_, StringValue value) -> value
     | _ -> defaultValue
 
-  let getIntArg (args: ParsedArgs) (key: String) (defaultValue: Int64) : Int64 =
+  let getInt (args: ParsedArgs) (key: String) (defaultValue: Int64) : Int64 =
     match Stdlib.List.findFirst args (fun (k, _) -> k == key) with
     | Some (_, IntValue value) -> value
     | _ -> defaultValue
 
-  let getBoolArg (args: ParsedArgs) (key: String) (defaultValue: Bool) : Bool =
+  let getBool (args: ParsedArgs) (key: String) (defaultValue: Bool) : Bool =
     match Stdlib.List.findFirst args (fun (k, _) -> k == key) with
     | Some (_, BoolValue value) -> value
     | _ -> defaultValue
