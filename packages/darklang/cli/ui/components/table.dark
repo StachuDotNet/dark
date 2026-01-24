@@ -56,19 +56,28 @@ let renderTable (component: Core.Types.Component<TableModel>) (context: Core.Typ
   let hasFocus = context.hasFocus && component.state == Core.Types.ComponentState.Focused
   let (horiz, vert, tl, tr, bl, br) = Core.Rendering.getBoxCharsForStyle model.borderStyle
 
-  // Calculate total width
-  let totalWidth =
-    model.columns
-    |> Stdlib.List.map (fun col -> col.width + 1L)
-    |> Stdlib.List.fold 1L (fun acc w -> acc + w)
+  // Box characters for table joints
+  let teeDown = Core.Rendering.BoxChars.teeDown   // ┬
+  let teeUp = Core.Rendering.BoxChars.teeUp       // ┴
+  let teeRight = Core.Rendering.BoxChars.teeRight // ├
+  let teeLeft = Core.Rendering.BoxChars.teeLeft   // ┤
+  let cross = Core.Rendering.BoxChars.cross       // ┼
 
-  // Build separator line
-  let separatorParts =
-    let parts = model.columns |> Stdlib.List.map (fun col -> Stdlib.String.repeat horiz col.width)
-    Stdlib.String.join parts (horiz ++ "┼" ++ horiz)
+  // Build column separator segments (horizontal lines for each column width)
+  let columnSegments =
+    model.columns |> Stdlib.List.map (fun col -> Stdlib.String.repeat horiz col.width)
 
-  // Top border
-  let topBorder = tl ++ Stdlib.String.repeat horiz (totalWidth - 2L) ++ tr
+  // Top border: ┌───┬───┬───┐
+  let topBorder =
+    tl ++ Stdlib.String.join columnSegments teeDown ++ tr
+
+  // Header separator: ├───┼───┼───┤
+  let headerSeparator =
+    teeRight ++ Stdlib.String.join columnSegments cross ++ teeLeft
+
+  // Bottom border: └───┴───┴───┘
+  let bottomBorder =
+    bl ++ Stdlib.String.join columnSegments teeUp ++ br
 
   // Header row
   let headerLine =
@@ -78,7 +87,7 @@ let renderTable (component: Core.Types.Component<TableModel>) (context: Core.Typ
         Stdlib.String.join cells vert
 
       let coloredHeader = Core.Rendering.colorize model.headerColor headerCells
-      [vert ++ coloredHeader ++ vert; vert ++ separatorParts ++ vert]
+      [vert ++ coloredHeader ++ vert; headerSeparator]
     else
       []
 
@@ -105,9 +114,6 @@ let renderTable (component: Core.Types.Component<TableModel>) (context: Core.Typ
 
         let prefix = if isSelected && hasFocus then "►" else vert
         prefix ++ styledRow ++ vert)
-
-  // Bottom border
-  let bottomBorder = bl ++ Stdlib.String.repeat horiz (totalWidth - 2L) ++ br
 
   [topBorder]
   |> Stdlib.List.append headerLine

@@ -91,21 +91,23 @@ let drawBoxWithStyle (bounds: Types.Bounds) (title: String) (content: List<Strin
   let topBorder = tl ++ Stdlib.String.repeat horiz (width - 2L) ++ tr
   let bottomBorder = bl ++ Stdlib.String.repeat horiz (width - 2L) ++ br
 
+  let innerWidth = width - 2L
+
   let titleLine =
     if Stdlib.String.isEmpty title then
       []
     else
       let paddedTitle = " " ++ title ++ " "
       let titleWidth = Stdlib.String.length paddedTitle
-      let leftPadding = Stdlib.Int64.divide (width - titleWidth) 2L
-      let rightPadding = width - titleWidth - leftPadding
+      let leftPadding = Stdlib.Int64.divide (innerWidth - titleWidth) 2L
+      let rightPadding = innerWidth - titleWidth - leftPadding
       [vert ++ Stdlib.String.repeat " " leftPadding ++ bold paddedTitle ++ Stdlib.String.repeat " " rightPadding ++ vert]
 
   let contentLines =
     content
     |> Stdlib.List.map (fun line ->
       let lineLength = Stdlib.String.length line
-      let padding = if lineLength < width - 2L then Stdlib.String.repeat " " (width - 2L - lineLength) else ""
+      let padding = if lineLength < innerWidth - 1L then Stdlib.String.repeat " " (innerWidth - 1L - lineLength) else ""
       vert ++ " " ++ line ++ padding ++ vert)
 
   [topBorder]
