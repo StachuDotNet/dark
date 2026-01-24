@@ -135,6 +135,37 @@ let run (unit: Unit) : Int64 =
   let paginationLines = Components.Pagination.renderPagination paginationPage3 demoContext
   paginationLines |> Stdlib.List.iter Stdlib.printLine
 
+  // Form Components
+  printSection "Form Components"
+
+  // TextInput
+  Stdlib.printLine "TextInput:"
+  let textInput = Components.Forms.createTextInput "Enter name..." 20L
+  let textInputLines = Components.Forms.renderTextInput textInput demoContext
+  textInputLines |> Stdlib.List.iter Stdlib.printLine
+
+  // Checkbox
+  Stdlib.printLine "Checkboxes:"
+  let checkbox1 = Components.Forms.createCheckbox "Remember me" true
+  let checkbox2 = Components.Forms.createCheckbox "Subscribe to newsletter" false
+  let checkbox1Lines = Components.Forms.renderCheckbox checkbox1 demoContext
+  checkbox1Lines |> Stdlib.List.iter Stdlib.printLine
+  let checkbox2Lines = Components.Forms.renderCheckbox checkbox2 demoContext
+  checkbox2Lines |> Stdlib.List.iter Stdlib.printLine
+
+  // Radio Group
+  Stdlib.printLine "Radio Group:"
+  let radio = Components.Forms.createRadioGroup ["Option A"; "Option B"; "Option C"] 1L
+  let radioLines = Components.Forms.renderRadioGroup radio demoContext
+  radioLines |> Stdlib.List.iter Stdlib.printLine
+
+  // Confirm Dialog
+  printSection "Confirm Dialog"
+  let confirmDialog = Components.Modal.createConfirmDialog "Delete File?" "Are you sure?" "Yes" "No"
+  let dialogVisible = Components.Modal.showConfirmDialog confirmDialog
+  let dialogLines = Components.Modal.renderConfirmDialog dialogVisible demoContext
+  dialogLines |> Stdlib.List.iter Stdlib.printLine
+
   // Colors
   printSection "Colors"
   Stdlib.printLine (Core.Rendering.colorize Core.Types.Color.Primary "██ Primary")
