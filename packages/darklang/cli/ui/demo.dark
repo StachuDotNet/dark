@@ -1,0 +1,71 @@
+module Darklang.CLI.UI.Demo
+
+/// Simple demo to visually verify UI components render correctly.
+/// Run with: dark run Darklang.CLI.UI.Demo.run
+
+let demoContext : Core.Types.RenderContext =
+  Core.Types.RenderContext
+    { availableWidth = 60L
+      availableHeight = 20L
+      hasFocus = true
+      theme = "default" }
+
+let printSection (title: String) : Unit =
+  Stdlib.printLine ""
+  Stdlib.printLine (Core.Rendering.bold ("━━━ " ++ title ++ " ━━━"))
+
+let run (unit: Unit) : Int64 =
+  Stdlib.printLine (Core.Rendering.bold "Darklang CLI UI Component Demo")
+  Stdlib.printLine (Core.Rendering.dim "Visual verification of component rendering")
+
+  // Box styles
+  printSection "Box Styles"
+  let bounds =
+    Core.Types.Bounds
+      { position = Core.Types.Position { x = 0L; y = 0L }
+        dimensions = Core.Types.Dimensions { width = 30L; height = 5L } }
+
+  let singleBox = Core.Rendering.drawBoxWithStyle bounds "Single" ["Content"] Core.Rendering.BoxStyle.Single
+  singleBox |> Stdlib.List.iter Stdlib.printLine
+
+  let doubleBox = Core.Rendering.drawBoxWithStyle bounds "Double" ["Content"] Core.Rendering.BoxStyle.Double
+  doubleBox |> Stdlib.List.iter Stdlib.printLine
+
+  let roundedBox = Core.Rendering.drawBoxWithStyle bounds "Rounded" ["Content"] Core.Rendering.BoxStyle.Rounded
+  roundedBox |> Stdlib.List.iter Stdlib.printLine
+
+  // Progress
+  printSection "Progress Bar"
+  let progress = Components.Progress.createProgressBar 75L 0L 100L Core.Types.Color.Success
+  let progressLines = Components.Progress.renderProgressBar progress demoContext
+  progressLines |> Stdlib.List.iter Stdlib.printLine
+
+  // Spinner frames
+  printSection "Spinner Styles"
+  let dotsFrames = Components.Spinner.getFrames Components.Spinner.SpinnerStyle.Dots
+  let lineFrames = Components.Spinner.getFrames Components.Spinner.SpinnerStyle.Line
+  Stdlib.printLine ("Dots: " ++ Stdlib.String.join (Stdlib.List.take dotsFrames 6L) " ")
+  Stdlib.printLine ("Line: " ++ Stdlib.String.join lineFrames " ")
+
+  // Table
+  printSection "Table"
+  let col1 = Components.Table.createColumn "Name" 15L
+  let col2 = Components.Table.createColumn "Status" 10L
+  let cols = [col1; col2]
+  let rows = [["Alice"; "Active"]; ["Bob"; "Pending"]; ["Charlie"; "Done"]]
+  let table = Components.Table.createTable cols rows
+  let tableWithSelection = Components.Table.selectRow table 1L
+  let tableLines = Components.Table.renderTable tableWithSelection demoContext
+  tableLines |> Stdlib.List.iter Stdlib.printLine
+
+  // Colors
+  printSection "Colors"
+  Stdlib.printLine (Core.Rendering.colorize Core.Types.Color.Primary "██ Primary")
+  Stdlib.printLine (Core.Rendering.colorize Core.Types.Color.Success "██ Success")
+  Stdlib.printLine (Core.Rendering.colorize Core.Types.Color.Warning "██ Warning")
+  Stdlib.printLine (Core.Rendering.colorize Core.Types.Color.Error "██ Error")
+  Stdlib.printLine (Core.Rendering.colorize Core.Types.Color.Info "██ Info")
+
+  Stdlib.printLine ""
+  Stdlib.printLine (Core.Rendering.dim "Demo complete.")
+  0L

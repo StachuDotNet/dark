@@ -64,9 +64,8 @@ let renderTable (component: Core.Types.Component<TableModel>) (context: Core.Typ
 
   // Build separator line
   let separatorParts =
-    model.columns
-    |> Stdlib.List.map (fun col -> Stdlib.String.repeat horiz col.width)
-    |> Stdlib.String.join (horiz ++ "┼" ++ horiz)
+    let parts = model.columns |> Stdlib.List.map (fun col -> Stdlib.String.repeat horiz col.width)
+    Stdlib.String.join parts (horiz ++ "┼" ++ horiz)
 
   // Top border
   let topBorder = tl ++ Stdlib.String.repeat horiz (totalWidth - 2L) ++ tr
@@ -75,10 +74,8 @@ let renderTable (component: Core.Types.Component<TableModel>) (context: Core.Typ
   let headerLine =
     if model.showHeader then
       let headerCells =
-        model.columns
-        |> Stdlib.List.map (fun col ->
-            Core.Rendering.padText col.header col.width col.alignment)
-        |> Stdlib.String.join (vert)
+        let cells = model.columns |> Stdlib.List.map (fun col -> Core.Rendering.padText col.header col.width col.alignment)
+        Stdlib.String.join cells vert
 
       let coloredHeader = Core.Rendering.colorize model.headerColor headerCells
       [vert ++ coloredHeader ++ vert; vert ++ separatorParts ++ vert]
@@ -91,12 +88,14 @@ let renderTable (component: Core.Types.Component<TableModel>) (context: Core.Typ
     |> Stdlib.List.indexedMap (fun rowIndex row ->
         let isSelected = rowIndex == model.selectedRow
 
-        let cells =
+        let cellsOpt =
           Stdlib.List.map2 row model.columns (fun cellValue col ->
-            let paddedValue = Core.Rendering.padText cellValue col.width col.alignment
-            paddedValue)
+            Core.Rendering.padText cellValue col.width col.alignment)
 
-        let rowContent = Stdlib.String.join vert cells
+        let rowContent =
+          match cellsOpt with
+          | Some cells -> Stdlib.String.join cells vert
+          | None -> ""
 
         let styledRow =
           if isSelected && hasFocus then
