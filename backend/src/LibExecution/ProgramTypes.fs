@@ -556,6 +556,7 @@ module PackageType =
 module PackageValue =
   type PackageValue =
     { id : uuid
+      typ : TypeReference
       description : string
       deprecated : Deprecation<FQValueName.FQValueName>
       body : Expr }

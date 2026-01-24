@@ -460,7 +460,8 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
                 |> List.map (fun (parentReg, childReg) ->
                   childReg, registers[parentReg])
               typeSymbolTable = currentFrame.typeSymbolTable
-              argsSoFar = [] }
+              argsSoFar = []
+              inlineImpl = Some impl }
             |> AppLambda
             |> DApplicable
 
@@ -491,15 +492,26 @@ let execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
           | AppLambda appLambda ->
             let exprId = appLambda.exprId
             let foundLambda =
-              match
-                Map.tryFind (currentFrame.executionPoint, exprId) vm.lambdaInstrCache
-              with
-              | Some lambda -> lambda
+              // First check for inline impl (used by package values)
+              match appLambda.inlineImpl with
+              | Some impl ->
+                // Cache the inline impl so getInstrData can find it later
+                vm.lambdaInstrCache <-
+                  vm.lambdaInstrCache
+                  |> Map.add (currentFrame.executionPoint, exprId) impl
+                  |> Map.add (Source, exprId) impl
+                impl
               | None ->
-                match Map.tryFind (Source, exprId) vm.lambdaInstrCache with
+                // Fall back to cache lookup
+                match
+                  Map.tryFind (currentFrame.executionPoint, exprId) vm.lambdaInstrCache
+                with
                 | Some lambda -> lambda
                 | None ->
-                  Exception.raiseInternal "lambda not found" [ "exprId", exprId ]
+                  match Map.tryFind (Source, exprId) vm.lambdaInstrCache with
+                  | Some lambda -> lambda
+                  | None ->
+                    Exception.raiseInternal "lambda not found" [ "exprId", exprId ]
 
             let allArgs = appLambda.argsSoFar @ newArgDvals
 

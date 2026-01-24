@@ -14,9 +14,11 @@ open Fumble
 open LibDB.Db
 
 module PT = LibExecution.ProgramTypes
+module RT = LibExecution.RuntimeTypes
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module BS = LibBinarySerialization.BinarySerialization
 module DE = LibPackageManager.DependencyExtractor
+module Exe = LibExecution.Execution
 
 
 /// Update dependencies for an item atomically.
@@ -77,23 +79,81 @@ let private applyAddType (typ : PT.PackageType.PackageType) : Task<unit> =
     do! updateDependencies typ.id refs
   }
 
+/// Extract the type ID from a TypeReference (for custom/package types)
+let private extractTypeId (typ : PT.TypeReference) : Option<uuid> =
+  match typ with
+  | PT.TCustomType(Ok(PT.FQTypeName.Package typeId), _) -> Some typeId
+  | _ -> None
+
+/// Evaluate a package value expression to a Dval using real execution
+let private evaluateValueExpr
+  (exeState : RT.ExecutionState)
+  (value : PT.PackageValue.PackageValue)
+  : Task<RT.Dval> =
+  task {
+    // Convert the PT expression to RT instructions
+    let rtValue = PT2RT.PackageValue.toRT value
+
+    // If it's already a simple value (not DUnit), use it directly
+    match rtValue.body with
+    | RT.DUnit ->
+      // The simple evaluator failed - try real execution
+      // Convert PT.Expr to RT.Instructions (pass empty map for inputVars)
+      let inputVars : Map<string, RT.Dval> = Map.empty
+      let instrs = PT2RT.Handler.toRT inputVars value.body
+
+      let! result = Exe.executeExpr exeState instrs
+      match result with
+      | Ok dval -> return dval
+      | Error(rte, _) ->
+        // Log the error but return DUnit as fallback
+        print $"[PackageValue] Failed to evaluate {value.id}: {rte}"
+        return RT.DUnit
+    | dval ->
+      // Simple evaluation worked, use it
+      return dval
+  }
+
+
 /// Apply a single AddValue op to the package_values table
-let private applyAddValue (value : PT.PackageValue.PackageValue) : Task<unit> =
+let private applyAddValue
+  (exeState : Option<RT.ExecutionState>)
+  (value : PT.PackageValue.PackageValue)
+  : Task<unit> =
   task {
     let ptDef = BS.PT.PackageValue.serialize value.id value
-    let rtDval =
-      value |> PT2RT.PackageValue.toRT |> BS.RT.PackageValue.serialize value.id
+
+    // Evaluate the value - use real execution if ExecutionState is available
+    let! rtDval =
+      match exeState with
+      | Some state ->
+        task {
+          let! dval = evaluateValueExpr state value
+          let rtValue : RT.PackageValue.PackageValue = { id = value.id; body = dval }
+          return BS.RT.PackageValue.serialize value.id rtValue
+        }
+      | None ->
+        // Fall back to simple evaluation (for contexts without ExecutionState)
+        let rtValue = value |> PT2RT.PackageValue.toRT
+        Task.FromResult(BS.RT.PackageValue.serialize value.id rtValue)
+
+    // Extract type ID for indexing (if it's a custom/package type)
+    let typeId = extractTypeId value.typ
 
     do!
       Sql.query
         """
-        INSERT OR REPLACE INTO package_values (id, pt_def, rt_dval)
-        VALUES (@id, @pt_def, @rt_dval)
+        INSERT OR REPLACE INTO package_values (id, pt_def, rt_dval, value_type_id)
+        VALUES (@id, @pt_def, @rt_dval, @value_type_id)
         """
       |> Sql.parameters
         [ "id", Sql.uuid value.id
           "pt_def", Sql.bytes ptDef
-          "rt_dval", Sql.bytes rtDval ]
+          "rt_dval", Sql.bytes rtDval
+          "value_type_id",
+          (match typeId with
+           | Some id -> Sql.string (string id)
+           | None -> Sql.dbnull) ]
       |> Sql.executeStatementAsync
 
     // Extract and store dependency references atomically
@@ -371,6 +431,7 @@ let private applyRequestChanges
 
 /// Apply a single PackageOp to the projection tables
 let applyOp
+  (exeState : Option<RT.ExecutionState>)
   (instanceID : Option<PT.InstanceID>)
   (branchID : Option<PT.BranchID>)
   (createdBy : Option<uuid>)
@@ -379,7 +440,7 @@ let applyOp
   task {
     match op with
     | PT.PackageOp.AddType typ -> do! applyAddType typ
-    | PT.PackageOp.AddValue value -> do! applyAddValue value
+    | PT.PackageOp.AddValue value -> do! applyAddValue exeState value
     | PT.PackageOp.AddFn fn -> do! applyAddFn fn
     | PT.PackageOp.SetTypeName(id, loc) ->
       do! applySetName instanceID branchID createdBy id loc "type"
@@ -419,6 +480,7 @@ let applyOp
 
 /// Apply a list of PackageOps to the projection tables
 let applyOps
+  (exeState : Option<RT.ExecutionState>)
   (instanceID : Option<PT.InstanceID>)
   (branchID : Option<PT.BranchID>)
   (createdBy : Option<uuid>)
@@ -426,5 +488,5 @@ let applyOps
   : Task<unit> =
   task {
     for op in ops do
-      do! applyOp instanceID branchID createdBy op
+      do! applyOp exeState instanceID branchID createdBy op
   }

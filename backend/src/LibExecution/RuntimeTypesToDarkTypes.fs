@@ -564,7 +564,8 @@ module ApplicableLambda =
           |> D.list (D.tuple2 D.int32 Dval.fromDT)
         typeSymbolTable =
           fields |> D.field "typeSymbolTable" |> D.dict ValueType.fromDT
-        argsSoFar = fields |> D.field "argsSoFar" |> D.list Dval.fromDT }
+        argsSoFar = fields |> D.field "argsSoFar" |> D.list Dval.fromDT
+        inlineImpl = None }
     | _ -> Exception.raiseInternal "Invalid ApplicableLambda" []
 
 

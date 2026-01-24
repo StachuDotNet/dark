@@ -1,0 +1,94 @@
+module Darklang.Stdlib.Http.Serve
+
+// HTTP server helpers
+
+// Type ID for HttpHandler (from PackageIDs.fs)
+// Computed at runtime since constant expressions can't handle pipes
+let getHttpHandlerTypeId () : Uuid =
+  (Stdlib.Uuid.parse "62491861-fe6e-4ab6-adee-365c83298627")
+  |> Builtin.unwrap
+
+
+/// Serve a list of HttpHandler values on the given port
+///
+/// Example:
+/// ```
+/// let handlers = [ myGetHandler; myPostHandler ]
+/// Stdlib.Http.Serve.handlers 8080L handlers
+/// ```
+let handlers (port: Int64) (handlerList: List<Stdlib.Http.HttpHandler>) : Int64 =
+  if Stdlib.List.isEmpty handlerList then
+    Stdlib.printLine "No handlers provided"
+    1L
+  else
+    Stdlib.printLine $"Starting HTTP server on port {Stdlib.Int64.toString port}"
+    Stdlib.printLine $"Serving {Stdlib.Int64.toString (Stdlib.List.length handlerList)} handlers"
+    Builtin.httpServeHandlers port "0.0.0.0" handlerList
+
+
+/// Serve handlers on a specific host and port
+let handlersOnHost
+  (host: String)
+  (port: Int64)
+  (handlerList: List<Stdlib.Http.HttpHandler>)
+  : Int64 =
+  if Stdlib.List.isEmpty handlerList then
+    Stdlib.printLine "No handlers provided"
+    1L
+  else
+    Stdlib.printLine $"Starting HTTP server on {host}:{Stdlib.Int64.toString port}"
+    Builtin.httpServeHandlers port host handlerList
+
+
+/// Auto-discover all HttpHandler values in a targetNamespace and serve them
+///
+/// Example:
+/// ```
+/// // Discovers all HttpHandler values in Darklang.Apps.MyServer
+/// Stdlib.Http.Serve.discoverAndServe 8080L "Darklang.Apps.MyServer"
+/// ```
+let discoverAndServe (port: Int64) (targetNamespace: String) : Int64 =
+  Stdlib.printLine $"Discovering HttpHandler values in {targetNamespace}..."
+
+  let discovered =
+    Stdlib.Discovery.findByType
+      Stdlib.Option.Option.None
+      Stdlib.Option.Option.None
+      targetNamespace
+      (getHttpHandlerTypeId ())
+
+  if Stdlib.List.isEmpty discovered then
+    Stdlib.printLine "No HttpHandler values found"
+    1L
+  else
+    discovered
+    |> Stdlib.List.iter (fun d -> Stdlib.printLine $"  Found: {d.path}")
+
+    let handlerList =
+      discovered |> Stdlib.List.map (fun d -> d.value)
+
+    handlers port handlerList
+
+
+/// Auto-discover HttpHandlers on a specific host
+let discoverAndServeOnHost (host: String) (port: Int64) (targetNamespace: String) : Int64 =
+  Stdlib.printLine $"Discovering HttpHandler values in {targetNamespace}..."
+
+  let discovered =
+    Stdlib.Discovery.findByType
+      Stdlib.Option.Option.None
+      Stdlib.Option.Option.None
+      targetNamespace
+      (getHttpHandlerTypeId ())
+
+  if Stdlib.List.isEmpty discovered then
+    Stdlib.printLine "No HttpHandler values found"
+    1L
+  else
+    discovered
+    |> Stdlib.List.iter (fun d -> Stdlib.printLine $"  Found: {d.path}")
+
+    let handlerList =
+      discovered |> Stdlib.List.map (fun d -> d.value)
+
+    handlersOnHost host port handlerList

@@ -12,6 +12,11 @@ open LibBinarySerialization.Serializers.Common
 open LibBinarySerialization.Serializers.RT.Common
 
 
+// Use the hooks from Common.fs for late-bound lambda serialization
+let inline lambdaImplWriter () = LambdaSerializationHooks.writer
+let inline lambdaImplReader () = LambdaSerializationHooks.reader
+
+
 // Forward declarations for mutual recursion
 let rec writeDval : BinaryWriter -> Dval -> unit = fun w dval -> writeDvalImpl w dval
 
@@ -89,6 +94,19 @@ and writeApplicableLambda (w : BinaryWriter) (lambda : ApplicableLambda) =
     lambda.closedRegisters
   writeTypeSymbolTable w lambda.typeSymbolTable
   List.write w writeDval lambda.argsSoFar
+  // Serialize inlineImpl for package values (using late-bound writer)
+  match lambda.inlineImpl, lambdaImplWriter () with
+  | Some impl, Some writer ->
+    print $"[Lambda] Writing inlineImpl for exprId {lambda.exprId}"
+    w.Write true
+    writer w impl
+  | Some _, None ->
+    // Writer not initialized - skip inlineImpl (will be None on read)
+    print $"[Lambda] WARNING: Writer not initialized for exprId {lambda.exprId}"
+    w.Write false
+  | None, _ ->
+    print $"[Lambda] No inlineImpl for exprId {lambda.exprId}"
+    w.Write false
 
 and writeApplicableNamedFn (w : BinaryWriter) (namedFn : ApplicableNamedFn) =
   FQFnName.write w namedFn.name
@@ -249,10 +267,25 @@ and readApplicableLambda (r : BinaryReader) : ApplicableLambda =
       (reg, dval))
   let typeSymbolTable = readTypeSymbolTable r
   let argsSoFar = List.read r readDval
+  // Deserialize inlineImpl for package values (using late-bound reader)
+  let hasInlineImpl = r.ReadBoolean()
+  let inlineImpl =
+    if hasInlineImpl then
+      match lambdaImplReader () with
+      | Some reader ->
+        print $"[Lambda] Reading inlineImpl for exprId {exprId}"
+        Some(reader r)
+      | None ->
+        print $"[Lambda] WARNING: Reader not initialized for exprId {exprId}"
+        None // Reader not initialized
+    else
+      print $"[Lambda] No inlineImpl in data for exprId {exprId}"
+      None
   { exprId = exprId
     closedRegisters = closedRegisters
     typeSymbolTable = typeSymbolTable
-    argsSoFar = argsSoFar }
+    argsSoFar = argsSoFar
+    inlineImpl = inlineImpl }
 
 and readApplicableNamedFn (r : BinaryReader) : ApplicableNamedFn =
   let name = FQFnName.read r

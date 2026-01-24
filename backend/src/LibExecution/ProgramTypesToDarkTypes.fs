@@ -1219,6 +1219,7 @@ module PackageValue =
   let toDT (p : PT.PackageValue.PackageValue) : Dval =
     let fields =
       [ "id", DUuid p.id
+        "typ", TypeReference.toDT p.typ
         "body", Expr.toDT p.body
         "description", DString p.description
         "deprecated",
@@ -1229,6 +1230,7 @@ module PackageValue =
     match d with
     | DRecord(_, _, _, fields) ->
       { id = fields |> D.field "id" |> D.uuid
+        typ = fields |> D.field "typ" |> TypeReference.fromDT
         body = fields |> D.field "body" |> Expr.fromDT
         description = fields |> D.field "description" |> D.string
         deprecated =

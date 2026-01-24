@@ -179,6 +179,12 @@ module LambdaImpl =
       instructions = instructions }
 
 
+// Initialize late-bound references in Common.fs (breaks circular dependency)
+do
+  LambdaSerializationHooks.writer <- Some LambdaImpl.write
+  LambdaSerializationHooks.reader <- Some LambdaImpl.read
+
+
 module StringSegment =
   let write (w : BinaryWriter) (seg : StringSegment) =
     match seg with

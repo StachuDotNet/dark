@@ -1,0 +1,135 @@
+module Darklang.Stdlib.Discovery
+
+// Type-based value discovery
+// Allows finding all package values of a specific type
+
+/// Information about a discovered value
+type DiscoveredValue<'a> =
+  { path: String
+    value: 'a }
+
+
+/// Find all values whose names end with a specific suffix
+/// This is a naming-convention approach to discovery
+let findBySuffix
+  (accountID: Stdlib.Option.Option<Uuid>)
+  (branchID: Stdlib.Option.Option<Uuid>)
+  (targetNamespace: String)
+  (suffix: String)
+  : List<String> =
+  let query =
+    LanguageTools.ProgramTypes.Search.SearchQuery
+      { currentModule =
+          if Stdlib.String.isEmpty targetNamespace then
+            []
+          else
+            Stdlib.String.split targetNamespace "."
+        text = suffix
+        searchDepth = LanguageTools.ProgramTypes.Search.SearchDepth.AllDescendants
+        entityTypes = [ LanguageTools.ProgramTypes.Search.EntityType.Value ]
+        exactMatch = false }
+
+  let results = LanguageTools.PackageManager.Search.search accountID branchID query
+
+  results.values
+  |> Stdlib.List.filterMap (fun v ->
+    if Stdlib.String.endsWith v.location.name suffix then
+      let fullPath =
+        (Stdlib.List.append [ v.location.owner ] v.location.modules)
+        |> Stdlib.List.append [ v.location.name ]
+        |> Stdlib.String.join "."
+
+      Stdlib.Option.Option.Some fullPath
+    else
+      Stdlib.Option.Option.None)
+
+
+/// Find all values in a targetNamespace that match a specific type
+/// Returns a list of (path, value) tuples for values of the target type
+let findByType
+  (accountID: Stdlib.Option.Option<Uuid>)
+  (branchID: Stdlib.Option.Option<Uuid>)
+  (targetNamespace: String)
+  (targetTypeId: Uuid)
+  : List<DiscoveredValue<'a>> =
+  // Search for all values in the targetNamespace
+  let query =
+    LanguageTools.ProgramTypes.Search.SearchQuery
+      { currentModule =
+          if Stdlib.String.isEmpty targetNamespace then
+            []
+          else
+            Stdlib.String.split targetNamespace "."
+        text = ""
+        searchDepth = LanguageTools.ProgramTypes.Search.SearchDepth.AllDescendants
+        entityTypes = [ LanguageTools.ProgramTypes.Search.EntityType.Value ]
+        exactMatch = false }
+
+  let results = LanguageTools.PackageManager.Search.search accountID branchID query
+
+  results.values
+  |> Stdlib.List.filterMap (fun v ->
+    // Try to evaluate the value
+    match Builtin.cliEvaluatePackageValue v.entity.id with
+    | Some evaluatedValue ->
+      // Check if it matches the target type
+      if Builtin.cliValueMatchesType evaluatedValue targetTypeId then
+        let fullPath =
+          (Stdlib.List.append [ v.location.owner ] v.location.modules)
+          |> Stdlib.List.append [ v.location.name ]
+          |> Stdlib.String.join "."
+
+        Stdlib.Option.Option.Some(
+          DiscoveredValue { path = fullPath; value = evaluatedValue }
+        )
+      else
+        Stdlib.Option.Option.None
+    | None -> Stdlib.Option.Option.None)
+
+
+/// Find all values in a targetNamespace with a given type, returning just the values
+/// This is a convenience function when you don't need the paths
+let findValuesByType<'a>
+  (accountID: Stdlib.Option.Option<Uuid>)
+  (branchID: Stdlib.Option.Option<Uuid>)
+  (targetNamespace: String)
+  (targetTypeId: Uuid)
+  : List<'a> =
+  (findByType accountID branchID targetNamespace targetTypeId)
+  |> Stdlib.List.map (fun discovered -> discovered.value)
+
+
+/// Find all values in a targetNamespace, returning path and value pairs
+/// Does not filter by type - returns all values
+let findAllValues
+  (accountID: Stdlib.Option.Option<Uuid>)
+  (branchID: Stdlib.Option.Option<Uuid>)
+  (targetNamespace: String)
+  : List<DiscoveredValue<'a>> =
+  let query =
+    LanguageTools.ProgramTypes.Search.SearchQuery
+      { currentModule =
+          if Stdlib.String.isEmpty targetNamespace then
+            []
+          else
+            Stdlib.String.split targetNamespace "."
+        text = ""
+        searchDepth = LanguageTools.ProgramTypes.Search.SearchDepth.AllDescendants
+        entityTypes = [ LanguageTools.ProgramTypes.Search.EntityType.Value ]
+        exactMatch = false }
+
+  let results = LanguageTools.PackageManager.Search.search accountID branchID query
+
+  results.values
+  |> Stdlib.List.filterMap (fun v ->
+    match Builtin.cliEvaluatePackageValue v.entity.id with
+    | Some evaluatedValue ->
+      let fullPath =
+        (Stdlib.List.append [ v.location.owner ] v.location.modules)
+        |> Stdlib.List.append [ v.location.name ]
+        |> Stdlib.String.join "."
+
+      Stdlib.Option.Option.Some(
+        DiscoveredValue { path = fullPath; value = evaluatedValue }
+      )
+    | None -> Stdlib.Option.Option.None)

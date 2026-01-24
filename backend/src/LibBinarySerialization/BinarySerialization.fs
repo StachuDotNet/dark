@@ -14,6 +14,8 @@ open LibBinarySerialization.BinaryFormat
 open LibBinarySerialization.Serializers.Common
 open LibBinarySerialization.Serializers
 
+// (Lambda serialization initialization is done in the nested RT.PackageValue module)
+
 
 let wrap (id : string) (f : unit -> 'a) : 'a =
   try
@@ -129,8 +131,20 @@ module RT =
     let deserialize id data = makeDeserializer RT.Instructions.read id data
 
   module PackageValue =
-    let serialize id value = makeSerializer RT.PackageValue.write id value
-    let deserialize id data = makeDeserializer RT.PackageValue.read id data
+    /// Ensure lambda serialization hooks are initialized before use
+    let private ensureInitialized () =
+      if LambdaSerializationHooks.writer.IsNone || LambdaSerializationHooks.reader.IsNone then
+        // Force initialization by directly setting hooks (Instructions module's do block may not run in all contexts)
+        LambdaSerializationHooks.writer <- Some LibBinarySerialization.Serializers.RT.Instructions.LambdaImpl.write
+        LambdaSerializationHooks.reader <- Some LibBinarySerialization.Serializers.RT.Instructions.LambdaImpl.read
+
+    let serialize id value =
+      ensureInitialized ()
+      makeSerializer RT.PackageValue.write id value
+
+    let deserialize id data =
+      ensureInitialized ()
+      makeDeserializer RT.PackageValue.read id data
 
   module PackageFn =
     let serialize id value = makeSerializer RT.PackageFn.write id value

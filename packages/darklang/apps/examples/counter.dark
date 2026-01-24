@@ -1,0 +1,93 @@
+module Darklang.Apps.Examples.Counter
+
+// A simple counter app demonstrating the TEA (The Elm Architecture) pattern
+
+/// The model is just a counter value
+type Model = { count: Int64 }
+
+/// Messages that can be sent to the app
+type Msg =
+  | Increment
+  | Decrement
+  | Reset
+  | Quit
+
+
+/// Initialize the model from command line args
+let init (args: List<String>) : Model =
+  // If an initial value is provided, use it
+  let initialCount =
+    match args with
+    | [arg] ->
+      match Stdlib.Int64.parse arg with
+      | Ok n -> n
+      | Error _ -> 0L
+    | _ -> 0L
+
+  Model { count = initialCount }
+
+
+/// Update the model based on a message
+let update
+  (model: Model)
+  (msg: Msg)
+  : Darklang.Cli.Apps.UpdateResult<Model, Msg> =
+  match msg with
+  | Increment ->
+    Darklang.Cli.Apps.UpdateResult.Continue(Model { count = model.count + 1L })
+  | Decrement ->
+    Darklang.Cli.Apps.UpdateResult.Continue(Model { count = model.count - 1L })
+  | Reset ->
+    Darklang.Cli.Apps.UpdateResult.Continue(Model { count = 0L })
+  | Quit ->
+    Darklang.Cli.Apps.UpdateResult.Exit 0L
+
+
+/// Render the model to lines of text
+let view (model: Model) : List<String> =
+  [ ""
+    "  Counter App"
+    "  ==========="
+    ""
+    $"  Current count: {Stdlib.Int64.toString model.count}"
+    ""
+    "  Controls:"
+    "  ---------"
+    "  [+] or [=] - Increment"
+    "  [-] or [_] - Decrement"
+    "  [r] - Reset to 0"
+    "  [q] or [Esc] - Quit"
+    "" ]
+
+
+/// Convert key press to a message
+let keyToMsg (key: Stdlib.Cli.Stdin.KeyRead.KeyRead) : Msg =
+  match key.key with
+  | Escape -> Msg.Quit
+  | _ ->
+    match key.keyChar with
+    | "+" -> Msg.Increment
+    | "=" -> Msg.Increment
+    | "-" -> Msg.Decrement
+    | "_" -> Msg.Decrement
+    | "r" -> Msg.Reset
+    | "R" -> Msg.Reset
+    | "q" -> Msg.Quit
+    | "Q" -> Msg.Quit
+    | _ -> Msg.Increment // Default: do nothing meaningful, just refresh
+
+
+/// Define active subscriptions based on the model
+let subscriptions (model: Model) : List<Darklang.Cli.Apps.Subscription<Msg>> =
+  [ Darklang.Cli.Apps.Subscription.Keyboard keyToMsg ]
+
+
+/// The counter app definition
+let counterApp : Darklang.Cli.Apps.CliApp<Model, Msg> =
+  Darklang.Cli.Apps.CliApp
+    { name = "Counter"
+      description = "A simple counter app"
+      init = init
+      update = update
+      view = view
+      subscriptions = subscriptions }

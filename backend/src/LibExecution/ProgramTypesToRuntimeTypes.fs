@@ -1175,6 +1175,36 @@ module PackageValue =
         |> Map.ofList
       let convertedTypeArgs = List.map TypeReference.toValueType typeArgs
       RT.DRecord(resolvedTypeName, resolvedTypeName, convertedTypeArgs, fieldValues)
+
+    | PT.ELambda(id, pats, body) ->
+      // Convert lambda patterns - for package values, no surrounding symbols
+      let (rtPats, symbolsAfterPats, rcAfterPats) =
+        pats
+        |> NEList.toList
+        |> List.fold
+          (fun (pats, symbols, rc) p ->
+            let (pat, newSymbols, rcAfterPat) = LetPattern.toRT symbols rc p
+            (pats @ [ pat ], Map.mergeFavoringRight symbols newSymbols, rcAfterPat))
+          ([], Map.empty, 0)
+
+      // Convert body to instructions
+      let bodyInstrs = Expr.toRT symbolsAfterPats rcAfterPats None body
+
+      let impl : RT.LambdaImpl =
+        { exprId = id
+          patterns = rtPats |> NEList.ofListUnsafe "lambda must have patterns" []
+          registersToCloseOver = [] // Package values have no surrounding scope
+          instructions = bodyInstrs }
+
+      let lambda : RT.ApplicableLambda =
+        { exprId = id
+          closedRegisters = []
+          typeSymbolTable = Map.empty
+          argsSoFar = []
+          inlineImpl = Some impl }
+
+      RT.DApplicable(RT.AppLambda lambda)
+
     | _ ->
       // For more complex expressions, return Unit as fallback
       RT.DUnit

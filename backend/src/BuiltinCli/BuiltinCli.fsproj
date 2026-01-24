@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <OutputType>Library</OutputType>
     <TargetFramework>net8.0</TargetFramework>
@@ -9,7 +9,10 @@
   </PropertyGroup>
   <ItemGroup>
     <None Include="paket.references" />
+    <Compile Include="Libs/Apps.fs" />
     <Compile Include="Libs/Directory.fs" />
+    <Compile Include="Libs/Discovery.fs" />
+    <Compile Include="Libs/HttpServer.fs" />
     <Compile Include="Libs/Environment.fs" />
     <Compile Include="Libs/File.fs" />
     <Compile Include="Libs/Output.fs" />
@@ -24,6 +27,7 @@
     <ProjectReference Include="../Prelude/Prelude.fsproj" />
     <ProjectReference Include="../LibExecution/LibExecution.fsproj" />
     <ProjectReference Include="../LibConfig/LibConfig.fsproj" />
+    <ProjectReference Include="../LibPackageManager/LibPackageManager.fsproj" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

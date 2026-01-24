@@ -521,6 +521,10 @@ and ApplicableLambda =
     typeSymbolTable : TypeSymbolTable
 
     argsSoFar : List<Dval>
+
+    /// For package values: the lambda implementation stored inline
+    /// (normally looked up in VMState.lambdaInstrCache by exprId)
+    inlineImpl : Option<LambdaImpl>
   }
 
 

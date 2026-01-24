@@ -8,10 +8,32 @@ open Prelude
 
 module RT = LibExecution.RuntimeTypes
 module PT = LibExecution.ProgramTypes
+module Exe = LibExecution.Execution
 
 module PM = LibPackageManager.PackageManager
 
 open Utils
+
+
+/// Create an ExecutionState for evaluating package values during loading.
+/// This uses the database-backed PackageManager so dependencies can be resolved.
+let createPackageLoadingState () : RT.ExecutionState =
+  let program : RT.Program =
+    { canvasID = System.Guid.NewGuid()
+      internalFnsAllowed = false
+      dbs = Map.empty
+      secrets = [] }
+
+  let notify _ _ _ _ = uply { return () }
+  let sendException _ _ _ _ = uply { return () }
+
+  Exe.createState
+    Builtins.all
+    PM.rt
+    Exe.noTracing
+    sendException
+    notify
+    program
 
 module HandleCommand =
 
@@ -46,8 +68,11 @@ module HandleCommand =
       print "Purging ..."
       do! LibPackageManager.Purge.purge ()
 
+      // Create ExecutionState for evaluating package values
+      let exeState = createPackageLoadingState ()
+
       print "Filling ..."
-      let! _ = LibPackageManager.Inserts.insertAndApplyOps None None None ops
+      let! _ = LibPackageManager.Inserts.insertAndApplyOps (Some exeState) None None None ops
 
       // Get stats after ops are inserted/applied
       let! stats = LibPackageManager.Stats.get ()

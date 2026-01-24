@@ -9,6 +9,15 @@ open Prelude
 
 open LibBinarySerialization.BinaryFormat
 
+// Late-bound lambda serialization functions
+// These break the circular dependency between Dval.fs and Instructions.fs
+// Instructions.fs sets these during its module initialization
+module LambdaSerializationHooks =
+  let mutable writer : (BinaryWriter -> LibExecution.RuntimeTypes.LambdaImpl -> unit) option =
+    None
+
+  let mutable reader : (BinaryReader -> LibExecution.RuntimeTypes.LambdaImpl) option = None
+
 
 module Header =
   let write (w : BinaryWriter) (header : BinaryHeader) =

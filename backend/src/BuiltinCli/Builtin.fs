@@ -9,10 +9,13 @@ let fnRenames : Builtin.FnRenames =
 
 let builtins =
   Builtin.combine
-    [ Libs.Directory.builtins
+    [ Libs.Apps.builtins
+      Libs.Directory.builtins
+      Libs.Discovery.builtins
       Libs.Environment.builtins
       Libs.File.builtins
       Libs.Execution.builtins
+      Libs.HttpServer.builtins
       Libs.Output.builtins
       Libs.Process.builtins
       Libs.Stdin.builtins

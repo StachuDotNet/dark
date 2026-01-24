@@ -134,8 +134,9 @@ let loadFromDisk
         let dbs = canvas.dbs |> List.map PT.Toplevel.TLDB
 
         // Insert+apply canvas types, values, and fns as PackageOps
+        // Note: Canvas ops don't need value evaluation (pass None for exeState)
         let! _ =
-          LibPackageManager.Inserts.insertAndApplyOps None None None canvas.ops
+          LibPackageManager.Inserts.insertAndApplyOps None None None None canvas.ops
 
         return
           (dbs @ handlers) |> List.map (fun tl -> tl, LibCloud.Serialize.NotDeleted)
