@@ -1,0 +1,97 @@
+module Darklang.Cli.Apps.Discovery
+
+// App discovery - finds CLI apps and daemons by naming convention
+
+/// Result of discovering apps
+type DiscoveredApp =
+  { name: String
+    fullPath: String
+    description: String
+    appType: AppType }
+
+type AppType =
+  | CliApp
+  | DaemonApp
+
+
+/// Search for all apps (CLI apps and daemons) in the package space
+let findAllApps
+  (accountID: Stdlib.Option.Option<Uuid>)
+  (branchID: Stdlib.Option.Option<Uuid>)
+  : List<DiscoveredApp> =
+  // Search for values ending in "App" or "Daemon"
+  let appQuery =
+    LanguageTools.ProgramTypes.Search.SearchQuery
+      { currentModule = []
+        text = "App"
+        searchDepth = LanguageTools.ProgramTypes.Search.SearchDepth.AllDescendants
+        entityTypes = [ LanguageTools.ProgramTypes.Search.EntityType.Value ]
+        exactMatch = false }
+
+  let daemonQuery =
+    LanguageTools.ProgramTypes.Search.SearchQuery
+      { currentModule = []
+        text = "Daemon"
+        searchDepth = LanguageTools.ProgramTypes.Search.SearchDepth.AllDescendants
+        entityTypes = [ LanguageTools.ProgramTypes.Search.EntityType.Value ]
+        exactMatch = false }
+
+  let appResults = LanguageTools.PackageManager.Search.search accountID branchID appQuery
+  let daemonResults = LanguageTools.PackageManager.Search.search accountID branchID daemonQuery
+
+  // Filter to only values whose names end with "App" or "Daemon"
+  let cliApps =
+    appResults.values
+    |> Stdlib.List.filter (fun v -> Stdlib.String.endsWith v.location.name "App")
+    |> Stdlib.List.map (fun v ->
+      let fullPath =
+        (Stdlib.List.append [ v.location.owner ] v.location.modules)
+        |> Stdlib.List.append [ v.location.name ]
+        |> Stdlib.String.join "."
+
+      DiscoveredApp
+        { name = v.location.name
+          fullPath = fullPath
+          description = ""
+          appType = AppType.CliApp })
+
+  let daemons =
+    daemonResults.values
+    |> Stdlib.List.filter (fun v -> Stdlib.String.endsWith v.location.name "Daemon")
+    |> Stdlib.List.map (fun v ->
+      let fullPath =
+        (Stdlib.List.append [ v.location.owner ] v.location.modules)
+        |> Stdlib.List.append [ v.location.name ]
+        |> Stdlib.String.join "."
+
+      DiscoveredApp
+        { name = v.location.name
+          fullPath = fullPath
+          description = ""
+          appType = AppType.DaemonApp })
+
+  Stdlib.List.append cliApps daemons
+
+
+/// Find CLI apps only
+let findCliApps
+  (accountID: Stdlib.Option.Option<Uuid>)
+  (branchID: Stdlib.Option.Option<Uuid>)
+  : List<DiscoveredApp> =
+  (findAllApps accountID branchID)
+  |> Stdlib.List.filter (fun app ->
+    match app.appType with
+    | CliApp -> true
+    | DaemonApp -> false)
+
+
+/// Find daemons only
+let findDaemons
+  (accountID: Stdlib.Option.Option<Uuid>)
+  (branchID: Stdlib.Option.Option<Uuid>)
+  : List<DiscoveredApp> =
+  (findAllApps accountID branchID)
+  |> Stdlib.List.filter (fun app ->
+    match app.appType with
+    | CliApp -> false
+    | DaemonApp -> true)

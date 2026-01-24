@@ -862,6 +862,14 @@ module PackageValue =
     uply {
       let context =
         { currentFnName = None; isInFunction = false; argMap = Map.empty }
+      let! typ =
+        TypeReference.toPT
+          accountID
+          branchId
+          pm
+          onMissing
+          currentModule
+          c.typ
       let! body =
         Expr.toPT
           accountID
@@ -874,6 +882,7 @@ module PackageValue =
           c.body
       return
         { id = PackageIDs.Value.idForName c.name.owner c.name.modules c.name.name
+          typ = typ
           description = c.description
           deprecated = PT.NotDeprecated
           body = body }

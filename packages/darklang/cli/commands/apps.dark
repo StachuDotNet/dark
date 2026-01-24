@@ -1,0 +1,267 @@
+module Darklang.Cli.Commands.Apps
+
+// The 'apps' CLI command for managing CLI apps and daemons
+
+/// Execute the apps command
+let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
+  match args with
+  | [] ->
+    // Interactive picker - list all apps and let user choose
+    let apps = Apps.Discovery.findAllApps state.accountID state.currentBranchId
+
+    if Stdlib.List.isEmpty apps then
+      Stdlib.printLine (Colors.dimText "No apps found.")
+      Stdlib.printLine ""
+      Stdlib.printLine "Apps are discovered by naming convention:"
+      Stdlib.printLine "  - CLI Apps: Values ending in 'App' of type CliApp<_, _>"
+      Stdlib.printLine "  - Daemons: Values ending in 'Daemon' of type DaemonApp<_>"
+      state
+    else
+      Stdlib.printLine (Colors.boldText "Available Apps:")
+      Stdlib.printLine ""
+
+      apps
+      |> Stdlib.List.iter (fun app ->
+        let typeIcon =
+          match app.appType with
+          | CliApp -> Colors.colorize Colors.cyan "[CLI]"
+          | DaemonApp -> Colors.colorize Colors.yellow "[Daemon]"
+
+        Stdlib.printLine $"  {typeIcon} {app.fullPath}")
+
+      Stdlib.printLine ""
+      Stdlib.printLine "Usage:"
+      Stdlib.printLine "  apps run <path>    - Run a CLI app"
+      Stdlib.printLine "  apps start <path>  - Start a daemon in background"
+      Stdlib.printLine "  apps stop <name>   - Stop a running daemon"
+      Stdlib.printLine "  apps status        - Show running daemons"
+      state
+
+  | ["list"] ->
+    // List all apps
+    let apps = Apps.Discovery.findAllApps state.accountID state.currentBranchId
+
+    if Stdlib.List.isEmpty apps then
+      Stdlib.printLine (Colors.dimText "No apps found.")
+    else
+      let cliApps =
+        apps
+        |> Stdlib.List.filter (fun a ->
+          match a.appType with
+          | CliApp -> true
+          | _ -> false)
+
+      let daemons =
+        apps
+        |> Stdlib.List.filter (fun a ->
+          match a.appType with
+          | DaemonApp -> true
+          | _ -> false)
+
+      if Stdlib.Bool.not (Stdlib.List.isEmpty cliApps) then
+        Stdlib.printLine (Colors.boldText "CLI Apps:")
+        cliApps
+        |> Stdlib.List.iter (fun app ->
+          Stdlib.printLine $"  {app.fullPath}")
+        Stdlib.printLine ""
+
+      if Stdlib.Bool.not (Stdlib.List.isEmpty daemons) then
+        Stdlib.printLine (Colors.boldText "Daemons:")
+        daemons
+        |> Stdlib.List.iter (fun app ->
+          Stdlib.printLine $"  {app.fullPath}")
+        Stdlib.printLine ""
+
+    state
+
+  | ["run"; path] ->
+    // Run a CLI app
+    Stdlib.printLine $"Running CLI app: {path}"
+    Stdlib.printLine ""
+
+    // The path should be like "Darklang.Apps.Examples.counterApp"
+    // We use Builtin.cliRunCliApp which expects the app value and args
+    // For now, we'll execute it via the run command infrastructure
+    let runResult = Cli.Run.execute state ["@" ++ path]
+    runResult
+
+  | runArgs when (Stdlib.List.head runArgs) == (Stdlib.Option.Option.Some "run") ->
+    // run with additional args
+    match Stdlib.List.tail runArgs with
+    | Some rest ->
+      match rest with
+      | path :: appArgs ->
+        Stdlib.printLine $"Running CLI app: {path}"
+        Stdlib.printLine ""
+        let runResult = Cli.Run.execute state (Stdlib.List.append ["@" ++ path] appArgs)
+        runResult
+      | _ ->
+        Stdlib.printLine (Colors.error "Error: Missing app path")
+        state
+    | None ->
+      Stdlib.printLine (Colors.error "Error: Missing app path")
+      state
+
+  | ["start"; path] ->
+    // Start a daemon in background
+    Stdlib.printLine $"Starting daemon: {path}"
+
+    let result = Builtin.cliSpawnDaemon path []
+
+    match result with
+    | Ok pid ->
+      Stdlib.printLine (Colors.success $"Daemon started with PID: {Stdlib.Int64.toString pid}")
+    | Error msg ->
+      Stdlib.printLine (Colors.error $"Failed to start daemon: {msg}")
+
+    state
+
+  | startArgs when (Stdlib.List.head startArgs) == (Stdlib.Option.Option.Some "start") ->
+    // start with additional args
+    match Stdlib.List.tail startArgs with
+    | Some rest ->
+      match rest with
+      | path :: daemonArgs ->
+        Stdlib.printLine $"Starting daemon: {path}"
+
+        let result = Builtin.cliSpawnDaemon path daemonArgs
+
+        match result with
+        | Ok pid ->
+          Stdlib.printLine (Colors.success $"Daemon started with PID: {Stdlib.Int64.toString pid}")
+        | Error msg ->
+          Stdlib.printLine (Colors.error $"Failed to start daemon: {msg}")
+
+        state
+      | _ ->
+        Stdlib.printLine (Colors.error "Error: Missing daemon path")
+        state
+    | None ->
+      Stdlib.printLine (Colors.error "Error: Missing daemon path")
+      state
+
+  | ["stop"; name] ->
+    // Stop a running daemon
+    Stdlib.printLine $"Stopping daemon: {name}"
+
+    let result = Builtin.cliStopDaemon name
+
+    match result with
+    | Ok _ ->
+      Stdlib.printLine (Colors.success $"Daemon '{name}' stopped")
+    | Error msg ->
+      Stdlib.printLine (Colors.error $"Failed to stop daemon: {msg}")
+
+    state
+
+  | ["status"] ->
+    // Show running daemons
+    let daemons = Builtin.cliListRunningDaemons ()
+
+    if Stdlib.List.isEmpty daemons then
+      Stdlib.printLine (Colors.dimText "No daemons running.")
+    else
+      Stdlib.printLine (Colors.boldText "Running Daemons:")
+      Stdlib.printLine ""
+
+      daemons
+      |> Stdlib.List.iter (fun daemon ->
+        let statusIcon =
+          if daemon.isRunning then
+            Colors.colorize Colors.green "[Running]"
+          else
+            Colors.colorize Colors.red "[Stopped]"
+
+        Stdlib.printLine $"  {statusIcon} {daemon.name} (PID: {Stdlib.Int64.toString daemon.pid})")
+
+      Stdlib.printLine ""
+
+    state
+
+  | _ ->
+    Stdlib.printLine (Colors.error "Unknown subcommand")
+    Stdlib.printLine ""
+    let _ = help state
+    state
+
+
+/// Show help for the apps command
+let help (state: Cli.AppState) : Cli.AppState =
+  [ "Manage CLI apps and background daemons"
+    ""
+    "Usage: apps [subcommand] [args]"
+    ""
+    "Subcommands:"
+    "  (none)           List all available apps (interactive picker)"
+    "  list             List all available apps"
+    "  run <path>       Run a CLI app"
+    "  start <path>     Start a daemon in background"
+    "  stop <name>      Stop a running daemon"
+    "  status           Show running daemons"
+    ""
+    "Examples:"
+    "  apps                                      # List all apps"
+    "  apps list                                 # List all apps"
+    "  apps run Darklang.Apps.Examples.counterApp"
+    "  apps start Darklang.Apps.Examples.fileWatcherDaemon"
+    "  apps stop fileWatcherDaemon"
+    "  apps status"
+    ""
+    "App Discovery:"
+    "  CLI apps are discovered as values ending in 'App'"
+    "  Daemons are discovered as values ending in 'Daemon'"
+    ""
+  ]
+  |> Stdlib.printLines
+
+  state
+
+
+/// Tab completion for the apps command
+let complete (state: Cli.AppState) (args: List<String>) : List<Cli.Completion.CompletionItem> =
+  match args with
+  | [] ->
+    // Completing subcommand
+    [ "list"; "run"; "start"; "stop"; "status" ]
+    |> Stdlib.List.map Cli.Completion.simple
+
+  | [subcommand] ->
+    // Partial subcommand
+    [ "list"; "run"; "start"; "stop"; "status" ]
+    |> Stdlib.List.filter (fun cmd -> Stdlib.String.startsWith cmd subcommand)
+    |> Stdlib.List.map Cli.Completion.simple
+
+  | ["run"] ->
+    // Complete CLI app paths
+    (Apps.Discovery.findCliApps state.accountID state.currentBranchId)
+    |> Stdlib.List.map (fun app -> Cli.Completion.simple app.fullPath)
+
+  | ["run"; partial] ->
+    // Complete CLI app paths with partial match
+    (Apps.Discovery.findCliApps state.accountID state.currentBranchId)
+    |> Stdlib.List.filter (fun app -> Stdlib.String.contains app.fullPath partial)
+    |> Stdlib.List.map (fun app -> Cli.Completion.simple app.fullPath)
+
+  | ["start"] ->
+    // Complete daemon paths
+    (Apps.Discovery.findDaemons state.accountID state.currentBranchId)
+    |> Stdlib.List.map (fun app -> Cli.Completion.simple app.fullPath)
+
+  | ["start"; partial] ->
+    // Complete daemon paths with partial match
+    (Apps.Discovery.findDaemons state.accountID state.currentBranchId)
+    |> Stdlib.List.filter (fun app -> Stdlib.String.contains app.fullPath partial)
+    |> Stdlib.List.map (fun app -> Cli.Completion.simple app.fullPath)
+
+  | ["stop"] ->
+    // Complete running daemon names
+    (Builtin.cliListRunningDaemons ())
+    |> Stdlib.List.map (fun daemon -> Cli.Completion.simple daemon.name)
+
+  | ["stop"; partial] ->
+    // Complete running daemon names with partial match
+    (Builtin.cliListRunningDaemons ())
+    |> Stdlib.List.filter (fun daemon -> Stdlib.String.startsWith daemon.name partial)
+    |> Stdlib.List.map (fun daemon -> Cli.Completion.simple daemon.name)
+
+  | _ -> []

@@ -266,7 +266,8 @@ module FormatV0 =
           { exprId = gid ()
             closedRegisters = []
             argsSoFar = []
-            typeSymbolTable = Map.empty }
+            typeSymbolTable = Map.empty
+            inlineImpl = None }
       )
 
     | DDB name -> RT.DDB name

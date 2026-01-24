@@ -1,0 +1,88 @@
+module Darklang.Cli.Apps
+
+/// Subscriptions for event sources in CLI apps
+type Subscription<'Msg> =
+  /// Keyboard input subscription - receives key presses
+  | Keyboard of (Stdlib.Cli.Stdin.KeyRead.KeyRead -> 'Msg)
+
+  /// Timer subscription - fires at specified interval
+  | Timer of intervalMs: Int64 * (Unit -> 'Msg)
+
+
+/// Result from update function - controls app lifecycle
+type UpdateResult<'Model, 'Msg> =
+  /// Continue running with new model
+  | Continue of 'Model
+
+  /// Exit the app with the given exit code
+  | Exit of Int64
+
+
+/// Interactive TUI application using The Elm Architecture (TEA) pattern
+///
+/// Generic parameters:
+/// - 'Model: The application state type
+/// - 'Msg: The message/event type
+type CliApp<'Model, 'Msg> =
+  { /// Display name of the app
+    name: String
+
+    /// Brief description of what the app does
+    description: String
+
+    /// Initialize model from command line arguments
+    init: List<String> -> 'Model
+
+    /// Update model based on message, return new model or exit
+    update: 'Model -> 'Msg -> UpdateResult<'Model, 'Msg>
+
+    /// Render model to list of lines for display
+    view: 'Model -> List<String>
+
+    /// Get active subscriptions based on current model
+    subscriptions: 'Model -> List<Subscription<'Msg>> }
+
+
+/// Events that can occur in a daemon app
+type DaemonEvent =
+  /// Daemon has just started
+  | Started
+
+  /// Timer tick with the timer's ID
+  | Timer of id: String
+
+  /// Shutdown signal received
+  | Shutdown
+
+
+/// Background daemon/service application with FRP-style event handling
+///
+/// Generic parameters:
+/// - 'State: The daemon's state type
+type DaemonApp<'State> =
+  { /// Display name of the daemon
+    name: String
+
+    /// Brief description of what the daemon does
+    description: String
+
+    /// Initialize state from command line arguments
+    init: List<String> -> 'State
+
+    /// Handle an event - return Some newState to continue, None to stop
+    onEvent: 'State -> DaemonEvent -> Stdlib.Option.Option<'State>
+
+    /// Interval in milliseconds between timer events
+    timerIntervalMs: Int64 }
+
+
+/// Status of a running daemon
+type DaemonStatus =
+  { /// Name of the daemon
+    name: String
+
+    /// Process ID
+    pid: Int64
+
+    /// Whether the process is still running
+    isRunning: Bool }

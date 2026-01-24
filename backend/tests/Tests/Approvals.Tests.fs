@@ -23,6 +23,7 @@ module BinarySerialization = LibBinarySerialization.BinarySerialization
 // =============================================================================
 
 // Named parameters for insertAndApplyOps clarity
+let noExeState : Option<LibExecution.RuntimeTypes.ExecutionState> = None
 let noInstance : Option<PT.InstanceID> = None
 let noBranch : Option<PT.BranchID> = None
 
@@ -156,7 +157,7 @@ let testAddItemToOwnNamespaceMain =
 
     // Add a type to own namespace
     let ops = createTestTypeOps ownerName "MyType"
-    let! _ = Inserts.insertAndApplyOps noInstance noBranch (Some ownerId) ops
+    let! _ = Inserts.insertAndApplyOps noExeState noInstance noBranch (Some ownerId) ops
 
     // Check ops: AddType + SetTypeName (user must explicitly approve)
     let! newOps = getOpsAfter maxRowidBefore noBranch
@@ -188,7 +189,7 @@ let testAddItemToOwnNamespaceBranch =
 
     // Add a type to own namespace in branch
     let ops = createTestTypeOps ownerName "MyBranchType"
-    let! _ = Inserts.insertAndApplyOps noInstance (Some branch.id) (Some ownerId) ops
+    let! _ = Inserts.insertAndApplyOps noExeState noInstance (Some branch.id) (Some ownerId) ops
 
     // Check ops in branch: AddType + SetTypeName (user must explicitly approve)
     let! branchOps = getOpsAfter maxRowidBefore (Some branch.id)
@@ -221,7 +222,7 @@ let testExplicitApprovalOwnNamespace =
 
     // Add a type to own namespace (starts pending)
     let ops = createTestTypeOps ownerName "ExplicitApproveType"
-    let! _ = Inserts.insertAndApplyOps noInstance noBranch (Some ownerId) ops
+    let! _ = Inserts.insertAndApplyOps noExeState noInstance noBranch (Some ownerId) ops
 
     // Verify it starts as pending
     let! statusBefore = getApprovalStatus ownerName "ExplicitApproveType"
@@ -259,7 +260,7 @@ let testAddItemToOthersNamespaceMain =
 
     // Dave adds a type to Charlie's namespace
     let ops = createTestTypeOps namespaceOwnerName "ContributedType"
-    let! _ = Inserts.insertAndApplyOps noInstance noBranch (Some contributorId) ops
+    let! _ = Inserts.insertAndApplyOps noExeState noInstance noBranch (Some contributorId) ops
 
     // Check ops: AddType + SetTypeName only (no ApproveItem) (main only)
     let! newOps = getOpsAfter maxRowidBefore noBranch
@@ -291,7 +292,7 @@ let testAddItemToOthersNamespaceBranch =
     // Frank adds a type to Eve's namespace in branch
     let ops = createTestTypeOps namespaceOwnerName "BranchContributedType"
     let! _ =
-      Inserts.insertAndApplyOps noInstance (Some branch.id) (Some contributorId) ops
+      Inserts.insertAndApplyOps noExeState noInstance (Some branch.id) (Some contributorId) ops
 
     // Check ops in branch: AddType + SetTypeName only (no ApproveItem)
     let! branchOps = getOpsAfter maxRowidBefore (Some branch.id)
@@ -327,7 +328,7 @@ let testCreateApprovalRequestSingleItem =
 
     // Henry adds a type to Grace's namespace (pending)
     let ops = createTestTypeOps namespaceOwnerName "RequestedType"
-    let! _ = Inserts.insertAndApplyOps noInstance noBranch (Some contributorId) ops
+    let! _ = Inserts.insertAndApplyOps noExeState noInstance noBranch (Some contributorId) ops
 
     // Get the location_id
     let! locationIdOpt = getLocationId namespaceOwnerName "RequestedType"
@@ -387,9 +388,9 @@ let testCreateApprovalRequestMultipleItems =
 
     // Jack adds two types to Ivy's namespace (pending)
     let ops1 = createTestTypeOps namespaceOwnerName "MultiType1"
-    let! _ = Inserts.insertAndApplyOps noInstance noBranch (Some contributorId) ops1
+    let! _ = Inserts.insertAndApplyOps noExeState noInstance noBranch (Some contributorId) ops1
     let ops2 = createTestTypeOps namespaceOwnerName "MultiType2"
-    let! _ = Inserts.insertAndApplyOps noInstance noBranch (Some contributorId) ops2
+    let! _ = Inserts.insertAndApplyOps noExeState noInstance noBranch (Some contributorId) ops2
 
     // Get the location_ids
     let! locationId1Opt = getLocationId namespaceOwnerName "MultiType1"
@@ -447,7 +448,7 @@ let testApproveRequest =
 
     // Liam adds a type to Kate's namespace (pending)
     let ops = createTestTypeOps namespaceOwnerName "ApproveMe"
-    let! _ = Inserts.insertAndApplyOps noInstance noBranch (Some contributorId) ops
+    let! _ = Inserts.insertAndApplyOps noExeState noInstance noBranch (Some contributorId) ops
 
     let! locationIdOpt = getLocationId namespaceOwnerName "ApproveMe"
     let locationId =
@@ -495,7 +496,7 @@ let testRejectRequest =
 
     // Noah adds a type to Mia's namespace (pending)
     let ops = createTestTypeOps namespaceOwnerName "RejectMe"
-    let! _ = Inserts.insertAndApplyOps noInstance noBranch (Some contributorId) ops
+    let! _ = Inserts.insertAndApplyOps noExeState noInstance noBranch (Some contributorId) ops
 
     let! locationIdOpt = getLocationId namespaceOwnerName "RejectMe"
     let locationId =
@@ -543,7 +544,7 @@ let testRequestChanges =
 
     // Marcus adds a type to Olivia's namespace (pending)
     let ops = createTestTypeOps namespaceOwnerName "NeedsChanges"
-    let! _ = Inserts.insertAndApplyOps noInstance noBranch (Some contributorId) ops
+    let! _ = Inserts.insertAndApplyOps noExeState noInstance noBranch (Some contributorId) ops
 
     let! locationIdOpt = getLocationId namespaceOwnerName "NeedsChanges"
     let locationId =
@@ -597,7 +598,7 @@ let testWithdrawRequest =
 
     // Ryan adds a type to Quinn's namespace (pending)
     let ops = createTestTypeOps namespaceOwnerName "WithdrawMe"
-    let! _ = Inserts.insertAndApplyOps noInstance noBranch (Some contributorId) ops
+    let! _ = Inserts.insertAndApplyOps noExeState noInstance noBranch (Some contributorId) ops
 
     let! locationIdOpt = getLocationId namespaceOwnerName "WithdrawMe"
     let locationId =

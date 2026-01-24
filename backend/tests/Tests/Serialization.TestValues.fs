@@ -741,6 +741,7 @@ module ProgramTypes =
 
   let packageValue : PT.PackageValue.PackageValue =
     { id = uuid
+      typ = PT.TUnit
       body = constValue
       description = "test"
       deprecated = PT.NotDeprecated }

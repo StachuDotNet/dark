@@ -1014,12 +1014,20 @@ module PackageValue =
                  _,
                  _,
                  SynPat.Named(SynIdent(name, _), _, _, _),
-                 _,
+                 returnInfo,
                  expr,
                  _,
                  _,
                  _) ->
+      let typ =
+        match returnInfo with
+        | Some(SynBindingReturnInfo(typeName, _, _, _)) ->
+          TypeReference.fromSynType typeName
+        | None ->
+          // No type annotation - use TUnit as placeholder (value won't be indexed for discovery)
+          WT.TUnit
       { name = { owner = owner; modules = modules; name = name.idText }
+        typ = typ
         description = ""
         body = Expr.fromSynExpr expr }
     | _ ->

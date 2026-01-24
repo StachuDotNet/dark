@@ -97,15 +97,9 @@ and writeApplicableLambda (w : BinaryWriter) (lambda : ApplicableLambda) =
   // Serialize inlineImpl for package values (using late-bound writer)
   match lambda.inlineImpl, lambdaImplWriter () with
   | Some impl, Some writer ->
-    print $"[Lambda] Writing inlineImpl for exprId {lambda.exprId}"
     w.Write true
     writer w impl
-  | Some _, None ->
-    // Writer not initialized - skip inlineImpl (will be None on read)
-    print $"[Lambda] WARNING: Writer not initialized for exprId {lambda.exprId}"
-    w.Write false
-  | None, _ ->
-    print $"[Lambda] No inlineImpl for exprId {lambda.exprId}"
+  | _ ->
     w.Write false
 
 and writeApplicableNamedFn (w : BinaryWriter) (namedFn : ApplicableNamedFn) =
@@ -268,18 +262,10 @@ and readApplicableLambda (r : BinaryReader) : ApplicableLambda =
   let typeSymbolTable = readTypeSymbolTable r
   let argsSoFar = List.read r readDval
   // Deserialize inlineImpl for package values (using late-bound reader)
-  let hasInlineImpl = r.ReadBoolean()
   let inlineImpl =
-    if hasInlineImpl then
-      match lambdaImplReader () with
-      | Some reader ->
-        print $"[Lambda] Reading inlineImpl for exprId {exprId}"
-        Some(reader r)
-      | None ->
-        print $"[Lambda] WARNING: Reader not initialized for exprId {exprId}"
-        None // Reader not initialized
+    if r.ReadBoolean() then
+      lambdaImplReader () |> Option.map (fun reader -> reader r)
     else
-      print $"[Lambda] No inlineImpl in data for exprId {exprId}"
       None
   { exprId = exprId
     closedRegisters = closedRegisters

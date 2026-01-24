@@ -671,6 +671,7 @@ let pm : PT.PackageManager =
   let valueMap =
     let value : PT.PackageValue.PackageValue =
       { id = Expressions.Values.Package.MySpecialNumber.id
+        typ = PT.TInt64
         description = "TODO"
         deprecated = PT.NotDeprecated
         body = PT.EInt64(gid (), 17L) }

@@ -10,6 +10,7 @@ open Fumble
 open LibDB.Db
 
 module PT = LibExecution.ProgramTypes
+module RT = LibExecution.RuntimeTypes
 module BinarySerialization = LibBinarySerialization.BinarySerialization
 
 
@@ -41,6 +42,7 @@ let computeOpHash (op : PT.PackageOp) : System.Guid =
 
 // CLEANUP: The 'applied' flag is currently always set to true and all ops are applied immediately
 let insertAndApplyOps
+  (exeState : Option<RT.ExecutionState>)
   (instanceID : Option<PT.InstanceID>)
   (branchID : Option<PT.BranchID>)
   (createdBy : Option<uuid>)
@@ -95,7 +97,7 @@ let insertAndApplyOps
         |> List.filter (fun (_, affected) -> affected > 0)
         |> List.map fst
 
-      do! PackageOpPlayback.applyOps instanceID branchID createdBy opsToApply
+      do! PackageOpPlayback.applyOps exeState instanceID branchID createdBy opsToApply
 
       return insertedCount
   }

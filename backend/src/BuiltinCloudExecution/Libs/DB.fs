@@ -94,7 +94,10 @@ let compileQueryLambda
   (appLambda : ApplicableLambda)
   : Ply.Ply<LibExecution.RTQueryCompiler.CompiledQuery> =
   uply {
-    let lambdaImpl = lookupLambdaImpl vm appLambda.exprId
+    let lambdaImpl =
+      match appLambda.inlineImpl with
+      | Some impl -> impl
+      | None -> lookupLambdaImpl vm appLambda.exprId
     let! resolvedValues = resolveLoadValues exeState lambdaImpl
 
     match

@@ -44,7 +44,7 @@ let fns : List<BuiltInFn> =
         let resultOk = Dval.resultOk KTInt64 KTString
         let resultError = Dval.resultError KTInt64 KTString
         (function
-        | _, _, _, [ instanceID; branchID; createdBy; DList(_vtTODO, ops) ] ->
+        | exeState, _, _, [ instanceID; branchID; createdBy; DList(_vtTODO, ops) ] ->
           uply {
             try
               // Deserialize dvals
@@ -54,8 +54,10 @@ let fns : List<BuiltInFn> =
               let ops = ops |> List.choose PT2DT.PackageOp.fromDT
 
               // Insert ops with deduplication, get count of actually inserted ops
+              // Pass ExecutionState for evaluating package values
               let! insertedCount =
                 LibPackageManager.Inserts.insertAndApplyOps
+                  (Some exeState)
                   instanceID
                   branchID
                   createdBy
@@ -134,7 +136,7 @@ let fns : List<BuiltInFn> =
         let resultOk = Dval.resultOk KTInt64 KTString
         let resultError = Dval.resultError KTInt64 KTString
         (function
-        | _, _, _, [ branchID; DUuid itemId; DUuid reviewerId ] ->
+        | exeState, _, _, [ branchID; DUuid itemId; DUuid reviewerId ] ->
           uply {
             try
               let branchID = C2DT.Option.fromDT D.uuid branchID
@@ -142,6 +144,7 @@ let fns : List<BuiltInFn> =
 
               let! insertedCount =
                 LibPackageManager.Inserts.insertAndApplyOps
+                  (Some exeState)
                   None // local op, not from sync
                   branchID
                   (Some reviewerId)
@@ -172,7 +175,7 @@ let fns : List<BuiltInFn> =
         let resultOk = Dval.resultOk KTInt64 KTString
         let resultError = Dval.resultError KTInt64 KTString
         (function
-        | _, _, _, [ branchID; DUuid itemId; DUuid reviewerId; DString reason ] ->
+        | exeState, _, _, [ branchID; DUuid itemId; DUuid reviewerId; DString reason ] ->
           uply {
             try
               let branchID = C2DT.Option.fromDT D.uuid branchID
@@ -180,6 +183,7 @@ let fns : List<BuiltInFn> =
 
               let! insertedCount =
                 LibPackageManager.Inserts.insertAndApplyOps
+                  (Some exeState)
                   None // local op, not from sync
                   branchID
                   (Some reviewerId)

@@ -14,8 +14,6 @@ open LibBinarySerialization.BinaryFormat
 open LibBinarySerialization.Serializers.Common
 open LibBinarySerialization.Serializers
 
-// (Lambda serialization initialization is done in the nested RT.PackageValue module)
-
 
 let wrap (id : string) (f : unit -> 'a) : 'a =
   try

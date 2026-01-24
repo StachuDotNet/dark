@@ -249,7 +249,11 @@ module PackageType =
 module PackageValue =
   type Name = { owner : string; modules : List<string>; name : string }
 
-  type PackageValue = { name : Name; description : string; body : Expr }
+  type PackageValue =
+    { name : Name
+      typ : TypeReference
+      description : string
+      body : Expr }
 
 module PackageFn =
   type Name = { owner : string; modules : List<string>; name : string }

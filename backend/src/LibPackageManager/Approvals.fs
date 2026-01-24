@@ -156,7 +156,7 @@ let createApprovalRequest
         sourceBranchId
       )
 
-    let! _ = Inserts.insertAndApplyOps None sourceBranchId (Some accountID) [ op ]
+    let! _ = Inserts.insertAndApplyOps None None sourceBranchId (Some accountID) [ op ]
 
     return
       { id = requestId
@@ -378,7 +378,7 @@ let setLocationStatus
             branchId,
             reviewerId
           )
-        let! _ = Inserts.insertAndApplyOps None branchId (Some reviewerId) [ op ]
+        let! _ = Inserts.insertAndApplyOps None None branchId (Some reviewerId) [ op ]
         return true
       | Some(itemId, branchId), Rejected reason ->
         let op =
@@ -388,7 +388,7 @@ let setLocationStatus
             reviewerId,
             reason
           )
-        let! _ = Inserts.insertAndApplyOps None branchId (Some reviewerId) [ op ]
+        let! _ = Inserts.insertAndApplyOps None None branchId (Some reviewerId) [ op ]
         return true
       | Some _, (Pending | ChangesRequested _) -> return false
       | None, _ -> return false
@@ -404,7 +404,7 @@ let setLocationStatus
             reviewerId,
             comment
           )
-        let! _ = Inserts.insertAndApplyOps None None (Some reviewerId) [ op ]
+        let! _ = Inserts.insertAndApplyOps None None None (Some reviewerId) [ op ]
         return true
       | None -> return false
 
@@ -429,7 +429,7 @@ let withdrawRequest (requestId : uuid) (submitterId : uuid) : Task<bool> =
           submitterId
         )
       let! _ =
-        Inserts.insertAndApplyOps None r.sourceBranchId (Some submitterId) [ op ]
+        Inserts.insertAndApplyOps None None r.sourceBranchId (Some submitterId) [ op ]
       return true
     | _ -> return false
   }
