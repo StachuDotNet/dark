@@ -82,12 +82,15 @@ let renderTable (component: Core.Types.Component<TableModel>) (context: Core.Typ
   // Header row
   let headerLine =
     if model.showHeader then
-      let headerCells =
-        let cells = model.columns |> Stdlib.List.map (fun col -> Core.Rendering.padText col.header col.width col.alignment)
-        Stdlib.String.join cells vert
+      // Colorize each cell individually so separators stay uncolored
+      let coloredCells =
+        model.columns
+        |> Stdlib.List.map (fun col ->
+            let paddedHeader = Core.Rendering.padText col.header col.width col.alignment
+            Core.Rendering.colorize model.headerColor paddedHeader)
 
-      let coloredHeader = Core.Rendering.colorize model.headerColor headerCells
-      [vert ++ coloredHeader ++ vert; headerSeparator]
+      let headerContent = Stdlib.String.join coloredCells vert
+      [vert ++ headerContent ++ vert; headerSeparator]
     else
       []
 
