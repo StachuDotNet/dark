@@ -11,7 +11,6 @@ let builtins =
   Builtin.combine
     [ Libs.Apps.builtins
       Libs.Directory.builtins
-      Libs.Discovery.builtins
       Libs.Environment.builtins
       Libs.File.builtins
       Libs.Execution.builtins

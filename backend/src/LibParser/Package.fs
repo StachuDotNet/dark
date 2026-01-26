@@ -171,6 +171,8 @@ let parse
             value)
 
       // Generate PackageOps from parsed items
+      // Order is important: types first, then functions, then values.
+      // Values may reference functions, so functions must exist first.
       let ops : List<PT.PackageOp> =
         [ // Add all types and their locations
           for (wtType, ptType) in List.zip modul.types types do
@@ -181,22 +183,22 @@ let parse
                 WT2PT.PackageType.Name.toLocation wtType.name
               )
 
-          // Add all values and their locations
-          for (wtValue, ptValue) in List.zip modul.values values do
-            yield PT.PackageOp.AddValue ptValue
-            yield
-              PT.PackageOp.SetValueName(
-                ptValue.id,
-                WT2PT.PackageValue.Name.toLocation wtValue.name
-              )
-
-          // Add all functions and their locations
+          // Add all functions and their locations (before values!)
           for (wtFn, ptFn) in List.zip modul.fns fns do
             yield PT.PackageOp.AddFn ptFn
             yield
               PT.PackageOp.SetFnName(
                 ptFn.id,
                 WT2PT.PackageFn.Name.toLocation wtFn.name
+              )
+
+          // Add all values and their locations (after functions)
+          for (wtValue, ptValue) in List.zip modul.values values do
+            yield PT.PackageOp.AddValue ptValue
+            yield
+              PT.PackageOp.SetValueName(
+                ptValue.id,
+                WT2PT.PackageValue.Name.toLocation wtValue.name
               ) ]
 
       return ops

@@ -116,8 +116,21 @@ let execute
 
 let initSerializers () = ()
 
+/// Reset terminal state to clean state on exit
+let resetTerminal () =
+  // Full terminal reset (RIS - Reset to Initial State)
+  // This resets scroll regions, clears screen, resets all attributes
+  Console.Write "\x1bc"
+  Console.Out.Flush()
+
 [<EntryPoint>]
 let main (args : string[]) =
+  // Handle Ctrl+C to clean up terminal state
+  Console.CancelKeyPress.Add(fun e ->
+    resetTerminal ()
+    // Allow the process to terminate
+    e.Cancel <- false)
+
   try
     EmbeddedResources.extract ()
     initSerializers ()
@@ -132,6 +145,7 @@ let main (args : string[]) =
 
     match result with
     | Error(rte, callStack) ->
+      resetTerminal ()
       let state = state cliPackageManager
 
       let errorCallStackStr =
@@ -160,6 +174,7 @@ let main (args : string[]) =
 
 
   with e ->
+    resetTerminal ()
     System.Console.Error.WriteLine
       $"Error starting Darklang CLI: {e.Message}\nStack trace:\n{e.StackTrace}"
     1

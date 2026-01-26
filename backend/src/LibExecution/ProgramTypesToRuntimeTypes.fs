@@ -1206,7 +1206,9 @@ module PackageValue =
       RT.DApplicable(RT.AppLambda lambda)
 
     | _ ->
-      // For more complex expressions, return Unit as fallback
+      // For expressions we can't evaluate statically (EValue, EFnName, EApply, etc.),
+      // return DUnit to signal that real execution is needed.
+      // The caller (evaluateValueExpr) will detect this and use the interpreter.
       RT.DUnit
 
   let toRT (c : PT.PackageValue.PackageValue) : RT.PackageValue.PackageValue =

@@ -27,6 +27,8 @@ module PT = LibExecution.ProgramTypes
 module PT2DT = LibExecution.ProgramTypesToDarkTypes
 module PackageIDs = LibExecution.PackageIDs
 module C2DT = LibExecution.CommonToDarkTypes
+module VT = LibExecution.ValueType
+module RTPM = LibPackageManager.RuntimeTypes
 
 let statsTypeName = FQTypeName.fqPackage PackageIDs.Type.DarkPackages.stats
 
@@ -154,6 +156,53 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               result
               |> Option.map PT2DT.PackageValue.toDT
               |> Dval.option (KTCustomType(PT2DT.PackageValue.typeName, []))
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    // Get a package value's runtime body (the evaluated Dval)
+    { name = fn "pmGetValueBody" 0
+      typeParams = []
+      parameters = [ Param.make "valueId" TUuid "UUID of the package value" ]
+      returnType = TypeReference.option (TVariable "a")
+      description =
+        "Gets a package value's evaluated body by its UUID. " +
+        "Returns None if the value doesn't exist."
+      fn =
+        (function
+        | _, _, _, [ DUuid valueId ] ->
+          uply {
+            let! result = RTPM.Value.get valueId
+            match result with
+            | Some packageValue ->
+              match Dval.toValueType packageValue.body with
+              | ValueType.Known kt -> return Dval.optionSome kt packageValue.body
+              | ValueType.Unknown -> return Dval.optionSome KTUnit packageValue.body
+            | None -> return Dval.optionNone KTUnit
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    // Find all value IDs that have a specific type
+    { name = fn "pmFindValueIdsByType" 0
+      typeParams = []
+      parameters = [ Param.make "typeId" TUuid "UUID of the type to search for" ]
+      returnType = TList TUuid
+      description =
+        "Returns a list of value UUIDs that have the given type. " +
+        "Uses the indexed value_type_id column for efficient lookup."
+      fn =
+        (function
+        | _, _, _, [ DUuid typeId ] ->
+          uply {
+            let! valueIds = RTPM.Value.findByTypeId typeId
+            return DList(VT.uuid, valueIds |> List.map DUuid)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

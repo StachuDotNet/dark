@@ -85,6 +85,17 @@ let private extractTypeId (typ : PT.TypeReference) : Option<uuid> =
   | PT.TCustomType(Ok(PT.FQTypeName.Package typeId), _) -> Some typeId
   | _ -> None
 
+/// Check if a Dval contains any DUnit values (indicating incomplete evaluation)
+let rec private containsUnit (dval : RT.Dval) : bool =
+  match dval with
+  | RT.DUnit -> true
+  | RT.DRecord(_, _, _, fields) -> fields |> Map.values |> Seq.exists containsUnit
+  | RT.DList(_, items) -> items |> List.exists containsUnit
+  | RT.DTuple(a, b, rest) -> containsUnit a || containsUnit b || List.exists containsUnit rest
+  | RT.DDict(_, entries) -> entries |> Map.values |> Seq.exists containsUnit
+  | RT.DEnum(_, _, _, _, fields) -> fields |> List.exists containsUnit
+  | _ -> false
+
 /// Evaluate a package value expression to a Dval using real execution
 let private evaluateValueExpr
   (exeState : RT.ExecutionState)
@@ -94,10 +105,9 @@ let private evaluateValueExpr
     // Convert the PT expression to RT instructions
     let rtValue = PT2RT.PackageValue.toRT value
 
-    // If it's already a simple value (not DUnit), use it directly
-    match rtValue.body with
-    | RT.DUnit ->
-      // The simple evaluator failed - try real execution
+    // If simple evaluation produced any DUnit (unresolved), use real execution
+    if containsUnit rtValue.body then
+      // The simple evaluator couldn't fully evaluate - try real execution
       // Convert PT.Expr to RT.Instructions (pass empty map for inputVars)
       let inputVars : Map<string, RT.Dval> = Map.empty
       let instrs = PT2RT.Handler.toRT inputVars value.body
@@ -109,9 +119,9 @@ let private evaluateValueExpr
         // Log the error but return DUnit as fallback
         print $"[PackageValue] Failed to evaluate {value.id}: {rte}"
         return RT.DUnit
-    | dval ->
+    else
       // Simple evaluation worked, use it
-      return dval
+      return rtValue.body
   }
 
 
@@ -478,7 +488,104 @@ let applyOp
   }
 
 
-/// Apply a list of PackageOps to the projection tables
+/// Topologically sort AddValue ops so dependencies are processed first.
+/// Returns the sorted list of value ops in dependency order.
+let private sortValueOpsByDependency
+  (valueOps : List<PT.PackageValue.PackageValue>)
+  : List<PT.PackageValue.PackageValue> =
+  // Build a map from ID to value
+  let idToValue = valueOps |> List.map (fun v -> v.id, v) |> Map.ofList
+  let allIds = valueOps |> List.map (_.id) |> Set.ofList
+
+  // Build dependency graph (only keep deps that are in this batch)
+  let deps =
+    valueOps
+    |> List.map (fun v ->
+      let valueDeps =
+        DE.extractFromValue v
+        |> List.filter (fun depId -> Set.contains depId allIds)
+      v.id, valueDeps)
+    |> Map.ofList
+
+  // Kahn's algorithm for topological sort
+  let rec topoSort
+    (sorted : List<uuid>)
+    (remaining : Set<uuid>)
+    (inDegree : Map<uuid, int>)
+    : List<uuid> =
+    if Set.isEmpty remaining then
+      List.rev sorted
+    else
+      // Find nodes with no remaining dependencies
+      let ready =
+        remaining
+        |> Set.filter (fun id ->
+          Map.tryFind id inDegree |> Option.defaultValue 0 = 0)
+
+      if Set.isEmpty ready then
+        // Cycle detected - just return remaining in arbitrary order
+        List.rev sorted @ (remaining |> Set.toList)
+      else
+        // Process ready nodes
+        let nextId = Set.minElement ready
+        let newRemaining = Set.remove nextId remaining
+        let newSorted = nextId :: sorted
+
+        // Decrease in-degree for nodes that depend on this one
+        let newInDegree =
+          remaining
+          |> Set.fold
+            (fun acc id ->
+              let idDeps = Map.tryFind id deps |> Option.defaultValue []
+              if List.contains nextId idDeps then
+                Map.add id ((Map.tryFind id acc |> Option.defaultValue 0) - 1) acc
+              else
+                acc)
+            inDegree
+
+        topoSort newSorted newRemaining newInDegree
+
+  // Calculate initial in-degrees
+  let initialInDegree =
+    valueOps
+    |> List.map (fun v ->
+      let count = Map.find v.id deps |> Option.defaultValue [] |> List.length
+      v.id, count)
+    |> Map.ofList
+
+  let sortedIds = topoSort [] allIds initialInDegree
+  sortedIds |> List.choose (fun id -> Map.tryFind id idToValue)
+
+
+/// Reorder ops so AddValue ops are sorted by dependency while preserving
+/// the relative order of all other ops. The idea is:
+/// 1. Collect all AddValue ops and sort them by dependency
+/// 2. Replace each AddValue in the original list with the next sorted one
+let private reorderOpsWithSortedValues
+  (ops : List<PT.PackageOp>)
+  : List<PT.PackageOp> =
+  // Extract values and sort them
+  let values =
+    ops
+    |> List.choose (function
+      | PT.PackageOp.AddValue v -> Some v
+      | _ -> None)
+  let sortedValues = sortValueOpsByDependency values
+
+  // Use a mutable index to iterate through sorted values
+  let mutable sortedIdx = 0
+
+  ops
+  |> List.map (function
+    | PT.PackageOp.AddValue _ ->
+      let v = sortedValues[sortedIdx]
+      sortedIdx <- sortedIdx + 1
+      PT.PackageOp.AddValue v
+    | op -> op)
+
+
+/// Apply a list of PackageOps to the projection tables.
+/// AddValue ops are sorted by dependency order to ensure referenced values exist.
 let applyOps
   (exeState : Option<RT.ExecutionState>)
   (instanceID : Option<PT.InstanceID>)
@@ -487,6 +594,10 @@ let applyOps
   (ops : List<PT.PackageOp>)
   : Task<unit> =
   task {
-    for op in ops do
+    // Reorder so AddValue ops are sorted by dependency, but preserve
+    // the positions of all ops (important: SetFnName must come after AddFn)
+    let orderedOps = reorderOpsWithSortedValues ops
+
+    for op in orderedOps do
       do! applyOp exeState instanceID branchID createdBy op
   }

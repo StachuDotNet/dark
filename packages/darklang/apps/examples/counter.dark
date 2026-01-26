@@ -79,7 +79,7 @@ let keyToMsg (key: Stdlib.Cli.Stdin.KeyRead.KeyRead) : Msg =
 
 /// Define active subscriptions based on the model
 let subscriptions (model: Model) : List<Darklang.Cli.Apps.Subscription<Msg>> =
-  [ Darklang.Cli.Apps.Subscription.Keyboard keyToMsg ]
+  [ Darklang.Cli.Apps.Subscription.Keyboard (fun key -> Darklang.Apps.Examples.Counter.keyToMsg key) ]
 
 
 /// The counter app definition
@@ -87,7 +87,7 @@ let counterApp : Darklang.Cli.Apps.CliApp<Model, Msg> =
   Darklang.Cli.Apps.CliApp
     { name = "Counter"
       description = "A simple counter app"
-      init = init
-      update = update
-      view = view
-      subscriptions = subscriptions }
+      init = (fun args -> Darklang.Apps.Examples.Counter.init args)
+      update = (fun model msg -> Darklang.Apps.Examples.Counter.update model msg)
+      view = (fun model -> Darklang.Apps.Examples.Counter.view model)
+      subscriptions = (fun model -> Darklang.Apps.Examples.Counter.subscriptions model) }

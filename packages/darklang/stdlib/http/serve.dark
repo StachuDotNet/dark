@@ -40,6 +40,26 @@ let handlersOnHost
     Builtin.httpServeHandlers port host handlerList
 
 
+/// Discover HttpHandler values in a namespace (internal helper)
+let discoverHandlers (targetNamespace: String) : List<Stdlib.Http.HttpHandler> =
+  Stdlib.printLine $"Discovering HttpHandler values in {targetNamespace}..."
+
+  let discovered =
+    Stdlib.Discovery.findByType
+      Stdlib.Option.Option.None
+      Stdlib.Option.Option.None
+      targetNamespace
+      (getHttpHandlerTypeId ())
+
+  if Stdlib.List.isEmpty discovered then
+    Stdlib.printLine "No HttpHandler values found"
+    []
+  else
+    discovered
+    |> Stdlib.List.iter (fun d -> Stdlib.printLine $"  Found: {d.path}")
+    discovered |> Stdlib.List.map (fun d -> d.value)
+
+
 /// Auto-discover all HttpHandler values in a targetNamespace and serve them
 ///
 /// Example:
@@ -48,47 +68,13 @@ let handlersOnHost
 /// Stdlib.Http.Serve.discoverAndServe 8080L "Darklang.Apps.MyServer"
 /// ```
 let discoverAndServe (port: Int64) (targetNamespace: String) : Int64 =
-  Stdlib.printLine $"Discovering HttpHandler values in {targetNamespace}..."
-
-  let discovered =
-    Stdlib.Discovery.findByType
-      Stdlib.Option.Option.None
-      Stdlib.Option.Option.None
-      targetNamespace
-      (getHttpHandlerTypeId ())
-
-  if Stdlib.List.isEmpty discovered then
-    Stdlib.printLine "No HttpHandler values found"
-    1L
-  else
-    discovered
-    |> Stdlib.List.iter (fun d -> Stdlib.printLine $"  Found: {d.path}")
-
-    let handlerList =
-      discovered |> Stdlib.List.map (fun d -> d.value)
-
-    handlers port handlerList
+  let handlerList = discoverHandlers targetNamespace
+  if Stdlib.List.isEmpty handlerList then 1L
+  else handlers port handlerList
 
 
 /// Auto-discover HttpHandlers on a specific host
 let discoverAndServeOnHost (host: String) (port: Int64) (targetNamespace: String) : Int64 =
-  Stdlib.printLine $"Discovering HttpHandler values in {targetNamespace}..."
-
-  let discovered =
-    Stdlib.Discovery.findByType
-      Stdlib.Option.Option.None
-      Stdlib.Option.Option.None
-      targetNamespace
-      (getHttpHandlerTypeId ())
-
-  if Stdlib.List.isEmpty discovered then
-    Stdlib.printLine "No HttpHandler values found"
-    1L
-  else
-    discovered
-    |> Stdlib.List.iter (fun d -> Stdlib.printLine $"  Found: {d.path}")
-
-    let handlerList =
-      discovered |> Stdlib.List.map (fun d -> d.value)
-
-    handlersOnHost host port handlerList
+  let handlerList = discoverHandlers targetNamespace
+  if Stdlib.List.isEmpty handlerList then 1L
+  else handlersOnHost host port handlerList

@@ -46,42 +46,48 @@ let findBySuffix
 
 /// Find all values in a targetNamespace that match a specific type
 /// Returns a list of (path, value) tuples for values of the target type
+/// Uses indexed type lookup for efficiency
 let findByType
   (accountID: Stdlib.Option.Option<Uuid>)
   (branchID: Stdlib.Option.Option<Uuid>)
   (targetNamespace: String)
   (targetTypeId: Uuid)
   : List<DiscoveredValue<'a>> =
-  // Search for all values in the targetNamespace
-  let query =
-    LanguageTools.ProgramTypes.Search.SearchQuery
-      { currentModule =
-          if Stdlib.String.isEmpty targetNamespace then
-            []
-          else
-            Stdlib.String.split targetNamespace "."
-        text = ""
-        searchDepth = LanguageTools.ProgramTypes.Search.SearchDepth.AllDescendants
-        entityTypes = [ LanguageTools.ProgramTypes.Search.EntityType.Value ]
-        exactMatch = false }
+  let namespaceParts =
+    if Stdlib.String.isEmpty targetNamespace then
+      []
+    else
+      Stdlib.String.split targetNamespace "."
 
-  let results = LanguageTools.PackageManager.Search.search accountID branchID query
+  // Use indexed query to find all values of the target type
+  let valueIds = Builtin.pmFindValueIdsByType targetTypeId
 
-  results.values
-  |> Stdlib.List.filterMap (fun v ->
-    // Try to evaluate the value
-    match Builtin.cliEvaluatePackageValue v.entity.id with
-    | Some evaluatedValue ->
-      // Check if it matches the target type
-      if Builtin.cliValueMatchesType evaluatedValue targetTypeId then
-        let fullPath =
-          (Stdlib.List.append [ v.location.owner ] v.location.modules)
-          |> Stdlib.List.append [ v.location.name ]
-          |> Stdlib.String.join "."
+  valueIds
+  |> Stdlib.List.filterMap (fun valueId ->
+    // Look up location for this value
+    match Builtin.pmGetLocationByValue accountID branchID valueId with
+    | Some location ->
+      // Check if it's in the target namespace
+      let valuePath = Stdlib.List.append [ location.owner ] location.modules
+      let isInNamespace =
+        if Stdlib.List.isEmpty namespaceParts then
+          true
+        else
+          Stdlib.List.take valuePath (Stdlib.List.length namespaceParts) == namespaceParts
 
-        Stdlib.Option.Option.Some(
-          DiscoveredValue { path = fullPath; value = evaluatedValue }
-        )
+      if isInNamespace then
+        // Evaluate the value
+        match Builtin.pmGetValueBody valueId with
+        | Some evaluatedValue ->
+          let fullPath =
+            (Stdlib.List.append [ location.owner ] location.modules)
+            |> Stdlib.List.append [ location.name ]
+            |> Stdlib.String.join "."
+
+          Stdlib.Option.Option.Some(
+            DiscoveredValue { path = fullPath; value = evaluatedValue }
+          )
+        | None -> Stdlib.Option.Option.None
       else
         Stdlib.Option.Option.None
     | None -> Stdlib.Option.Option.None)
@@ -122,7 +128,7 @@ let findAllValues
 
   results.values
   |> Stdlib.List.filterMap (fun v ->
-    match Builtin.cliEvaluatePackageValue v.entity.id with
+    match Builtin.pmGetValueBody v.entity.id with
     | Some evaluatedValue ->
       let fullPath =
         (Stdlib.List.append [ v.location.owner ] v.location.modules)

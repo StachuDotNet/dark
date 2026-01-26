@@ -2,6 +2,53 @@ module Darklang.Cli.Commands.Apps
 
 // The 'apps' CLI command for managing CLI apps and daemons
 
+/// Parse a dotted path string into a PackageLocation
+let parsePathToLocation (path: String) : Stdlib.Result.Result<LanguageTools.ProgramTypes.PackageLocation, String> =
+  let parts = Stdlib.String.split path "."
+  match Stdlib.List.reverse parts with
+  | [] -> Stdlib.Result.Result.Error "Empty path"
+  | name :: revRest ->
+    let rest = Stdlib.List.reverse revRest
+    match rest with
+    | [] -> Stdlib.Result.Result.Error "Path must have at least owner.name"
+    | owner :: modules ->
+      Stdlib.Result.Result.Ok(
+        LanguageTools.ProgramTypes.PackageLocation
+          { owner = owner
+            modules = modules
+            name = name }
+      )
+
+
+/// Run a CLI app by its dotted path (e.g. "Darklang.Apps.Examples.counterApp")
+let runCliAppByPath (state: Cli.AppState) (path: String) (args: List<String>) : Cli.AppState =
+  Stdlib.printLine $"Running CLI app: {path}"
+  Stdlib.printLine ""
+
+  match parsePathToLocation path with
+  | Error msg ->
+    Stdlib.printLine (Colors.error $"Invalid path: {msg}")
+    state
+  | Ok location ->
+    // Find the value by location
+    match LanguageTools.PackageManager.Value.find state.accountID state.currentBranchId location with
+    | None ->
+      Stdlib.printLine (Colors.error $"Value not found: {path}")
+      state
+    | Some valueId ->
+      // Get the evaluated value body
+      match Builtin.pmGetValueBody valueId with
+      | None ->
+        Stdlib.printLine (Colors.error $"Failed to evaluate value: {path}")
+        state
+      | Some appValue ->
+        // Run the CLI app
+        let exitCode = Builtin.cliRunCliApp appValue args
+        Stdlib.printLine ""
+        Stdlib.printLine $"App exited with code: {Stdlib.Int64.toString exitCode}"
+        state
+
+
 /// Execute the apps command
 let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   match args with
@@ -75,15 +122,8 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     state
 
   | ["run"; path] ->
-    // Run a CLI app
-    Stdlib.printLine $"Running CLI app: {path}"
-    Stdlib.printLine ""
-
-    // The path should be like "Darklang.Apps.Examples.counterApp"
-    // We use Builtin.cliRunCliApp which expects the app value and args
-    // For now, we'll execute it via the run command infrastructure
-    let runResult = Cli.Run.execute state ["@" ++ path]
-    runResult
+    // Run a CLI app by path
+    runCliAppByPath state path []
 
   | runArgs when (Stdlib.List.head runArgs) == (Stdlib.Option.Option.Some "run") ->
     // run with additional args
@@ -91,10 +131,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     | Some rest ->
       match rest with
       | path :: appArgs ->
-        Stdlib.printLine $"Running CLI app: {path}"
-        Stdlib.printLine ""
-        let runResult = Cli.Run.execute state (Stdlib.List.append ["@" ++ path] appArgs)
-        runResult
+        runCliAppByPath state path appArgs
       | _ ->
         Stdlib.printLine (Colors.error "Error: Missing app path")
         state

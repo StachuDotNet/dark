@@ -11,7 +11,6 @@
     <None Include="paket.references" />
     <Compile Include="Libs/Apps.fs" />
     <Compile Include="Libs/Directory.fs" />
-    <Compile Include="Libs/Discovery.fs" />
     <Compile Include="Libs/HttpServer.fs" />
     <Compile Include="Libs/Environment.fs" />
     <Compile Include="Libs/File.fs" />

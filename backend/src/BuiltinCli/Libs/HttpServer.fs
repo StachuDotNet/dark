@@ -147,14 +147,10 @@ type HandlerInfo =
 
 /// Extract handler info from a list of HttpHandler Dvals
 let extractHandlerInfos (handlers : List<Dval>) : List<HandlerInfo> =
-  print $"[DEBUG] Extracting from {List.length handlers} handlers"
   handlers
   |> List.choose (fun h ->
-    print $"[DEBUG] Handler type: {h.GetType().Name}"
     match h with
-    | DRecord(typeName, _, _, fields) ->
-      print $"[DEBUG]   Record type: {typeName}"
-      print $"[DEBUG]   Fields: {fields |> Map.keys |> Seq.toList}"
+    | DRecord(_, _, _, fields) ->
       let route =
         Map.find "route" fields
         |> Option.bind (function DString s -> Some s | _ -> None)
@@ -164,11 +160,8 @@ let extractHandlerInfos (handlers : List<Dval>) : List<HandlerInfo> =
         |> Option.map dvalToMethod
         |> Option.defaultValue "GET"
       let handler = Map.find "handler" fields
-      print $"[DEBUG]   Route: {route}, Method: {method}, Handler found: {handler.IsSome}"
       handler |> Option.map (fun hf -> { route = route; method = method; handler = hf })
-    | other ->
-      print $"[DEBUG]   Not a DRecord! Actual: {other}"
-      None)
+    | _ -> None)
 
 
 /// Run HTTP server with a list of HttpHandler values using Kestrel
@@ -181,17 +174,14 @@ let runHttpServeHandlers
   task {
     let handlerInfos = extractHandlerInfos handlers
 
-    print $"[HttpServe] Starting server on http://{host}:{port}/"
-    print $"[HttpServe] Registered {List.length handlerInfos} handlers:"
-    handlerInfos
-    |> List.iter (fun info ->
-      print $"  {info.method} {info.route}")
-
     let builder = WebApplication.CreateBuilder()
 
     // Configure Kestrel
     builder.WebHost.ConfigureKestrel(fun options ->
-      options.ListenAnyIP(port)
+      if host = "0.0.0.0" then
+        options.ListenAnyIP(port)
+      else
+        options.Listen(System.Net.IPAddress.Parse(host), port)
     ) |> ignore<IWebHostBuilder>
 
     // Disable default logging noise
@@ -273,8 +263,7 @@ let runHttpServeHandlers
                   executeApplicable exeState info.handler [] [ darkRequest; pathParamsDval ]
                 match result with
                 | Ok resp -> return resp
-                | Error(rte, _) ->
-                  print $"Handler error: {rte}"
+                | Error(_, _) ->
                   return
                     DRecord(
                       responseTypeName,
@@ -339,8 +328,7 @@ let runHttpServeHandlers
           | _ ->
             ctx.Response.StatusCode <- 500
 
-        with ex ->
-          print $"Request error: {ex.Message}"
+        with _ ->
           ctx.Response.StatusCode <- 500
       }
 

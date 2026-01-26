@@ -66,6 +66,6 @@ let fileWatcherDaemon : Darklang.Cli.Apps.DaemonApp<State> =
   Darklang.Cli.Apps.DaemonApp
     { name = "FileWatcher"
       description = "Watches a directory for file changes"
-      init = init
-      onEvent = onEvent
+      init = (fun args -> Darklang.Apps.Examples.FileWatcher.init args)
+      onEvent = (fun state event -> Darklang.Apps.Examples.FileWatcher.onEvent state event)
       timerIntervalMs = 2000L }

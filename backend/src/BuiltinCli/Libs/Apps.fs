@@ -309,9 +309,9 @@ let ensureDaemonDir () =
 
 let fns : List<BuiltInFn> =
   [ { name = fn "cliRunCliApp" 0
-      typeParams = [ "Model"; "Msg" ]
+      typeParams = []
       parameters =
-        [ Param.make "app" (TCustomType(Ok cliAppTypeName, [ TVariable "Model"; TVariable "Msg" ])) "The CLI app to run"
+        [ Param.make "app" (TVariable "a") "The CLI app to run (CliApp record)"
           Param.make "args" (TList TString) "Command line arguments" ]
       returnType = TInt64
       description = "Runs an interactive CLI app using the TEA pattern. Returns exit code."
@@ -334,9 +334,9 @@ let fns : List<BuiltInFn> =
 
 
     { name = fn "cliRunDaemonApp" 0
-      typeParams = [ "State" ]
+      typeParams = []
       parameters =
-        [ Param.make "app" (TCustomType(Ok daemonAppTypeName, [ TVariable "State" ])) "The daemon app to run"
+        [ Param.make "app" (TVariable "a") "The daemon app to run (DaemonApp record)"
           Param.make "args" (TList TString) "Command line arguments" ]
       returnType = TInt64
       description = "Runs a daemon app in the foreground. Returns exit code when daemon stops."
@@ -434,10 +434,12 @@ let fns : List<BuiltInFn> =
               |> List.choose (function DString s -> Some s | _ -> None)
               |> String.concat " "
 
-            // Use the dark CLI to run the daemon
+            // Use the current CLI executable to run the daemon
+            // Get the path to the current running CLI
+            let currentExe = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName
             let psi =
               System.Diagnostics.ProcessStartInfo(
-                FileName = "dark",
+                FileName = currentExe,
                 Arguments = $"run @{daemonPath} {argsStr}",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
