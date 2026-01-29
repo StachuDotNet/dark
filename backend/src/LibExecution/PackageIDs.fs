@@ -60,8 +60,13 @@ module Type =
       p [ "Uuid" ] "ParseError" "3d3dd7bd-0a4e-4816-95e6-70bfafa3fb75"
 
     module Http =
-      let request = p [ "Http" ] "Request" "926dcb16-4708-451a-9fff-d0f19166c3c8"
-      let response = p [ "Http" ] "Response" "875ece77-ff5d-46c4-b68e-7d88685ead6f"
+      let private p addl = p ("Http" :: addl)
+      let httpMethod = p [] "Method" "b21c3abc-c36d-4f5f-b5fa-2d8882865bdc"
+      let request = p [] "Request" "926dcb16-4708-451a-9fff-d0f19166c3c8"
+      let response = p [] "Response" "875ece77-ff5d-46c4-b68e-7d88685ead6f"
+      let route = p [] "Route" "667d9bda-4eff-4ef4-9940-09e2f2a8cc2f"
+      let httpApp = p [] "HttpApp" "1c5e45fb-27f8-402e-ba29-ccf4bb488598"
+      let httpHandler = p [] "HttpHandler" "62491861-fe6e-4ab6-adee-365c83298627"
 
     module HttpClient =
       let private p addl = p ("HttpClient" :: addl)
@@ -342,6 +347,19 @@ module Type =
 
     let script =
       p [ "Cli"; "Scripts" ] "Script" "de1629b6-cdfa-46b1-84c0-e0c60048d93b"
+
+    module Apps =
+      let private p addl = p ("Cli" :: "Apps" :: addl)
+      let subscription =
+        p [] "Subscription" "f534fcbf-8bef-4bb3-92e7-70c1096db8f7"
+      let updateResult =
+        p [] "UpdateResult" "8b8704a7-abda-4787-b7c4-be44472c88fa"
+      let cliApp = p [] "CliApp" "39dbab82-972d-45c5-82aa-ed4332317bf5"
+      let daemonEvent =
+        p [] "DaemonEvent" "e54ba3ca-63e3-4bfd-8b8f-f8a4f14d50f7"
+      let daemonApp = p [] "DaemonApp" "566af9a6-4aba-4c43-87b9-d61b183e1a59"
+      let daemonStatus =
+        p [] "DaemonStatus" "46548630-95d8-45eb-86a1-e784e9211fcd"
 
 
   module DarkPackages =

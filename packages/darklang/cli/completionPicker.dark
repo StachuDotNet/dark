@@ -9,12 +9,26 @@ type State =
 
 let maxVisibleItems: Int64 = 10L
 
+/// Clear a block of lines (move up, clear each line, return to start)
+let clearLines (lineCount: Int64) : Unit =
+  Stdlib.print $"\u001b[{Stdlib.Int64.toString lineCount}A"
+  let lines = Stdlib.List.range 0L (lineCount - 1L)
+  lines
+  |> Stdlib.List.iter (fun _ ->
+      Stdlib.print "\u001b[K\u001b[1B")
+  Stdlib.print $"\u001b[{Stdlib.Int64.toString lineCount}A"
+
 /// Create picker state from completions
 let create (promptText: String) (items: List<Completion.CompletionItem>) : State =
   let parsed = Completion.parseInput promptText
   let commandPrefix =
-    if parsed.isCompletingCommand then ""
-    else parsed.commandName ++ " "
+    if parsed.isCompletingCommand then
+      ""
+    else
+      // Include command name and all args except the last (which is being completed)
+      let argsWithoutLast = Stdlib.List.dropLast parsed.args
+      let prefixParts = Stdlib.List.append [ parsed.commandName ] argsWithoutLast
+      (Stdlib.String.join prefixParts " ") ++ " "
 
   State
     { items = items
@@ -35,10 +49,10 @@ let display (state: State) : Unit =
   let visibleCount = Stdlib.Int64.min maxVisibleItems itemCount
   let hasScrollIndicator = itemCount > maxVisibleItems
 
-  // Move cursor up to overwrite previous display (only after first render)
+  // Clear previous display (only after first render)
   if state.hasBeenDisplayed then
     let lineCount = visibleCount + (if hasScrollIndicator then 1L else 0L) + 1L
-    Stdlib.print $"\u001b[{Stdlib.Int64.toString lineCount}A\u001b[J"
+    clearLines lineCount
 
   let visibleItems =
     state.items
@@ -125,3 +139,12 @@ let handleKey (state: State) (key: Stdlib.Cli.Stdin.Key.Key) : KeyResult =
 /// Build the completed command text from selection
 let buildCompletedCommand (state: State) (selection: String) : String =
   state.commandPrefix ++ selection
+
+/// Clear the picker output when exiting
+let cleanup (state: State) : Unit =
+  if state.hasBeenDisplayed then
+    let itemCount = Stdlib.List.length state.items
+    let visibleCount = Stdlib.Int64.min maxVisibleItems itemCount
+    let hasScrollIndicator = itemCount > maxVisibleItems
+    let lineCount = visibleCount + (if hasScrollIndicator then 1L else 0L) + 1L
+    clearLines lineCount

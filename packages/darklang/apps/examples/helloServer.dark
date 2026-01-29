@@ -1,0 +1,128 @@
+module Darklang.Apps.Examples.HelloServer
+
+// Example HTTP server using HttpHandler values
+//
+// Each handler is defined as a separate value with direct record construction.
+// This allows the type system to properly track the HttpHandler type,
+// enabling auto-discovery of handlers.
+
+/// GET / - Home page
+let rootHandler : Stdlib.Http.HttpHandler =
+  Stdlib.Http.HttpHandler
+    { route = "/"
+      method = Stdlib.Http.Method.GET
+      description = "Home page"
+      handler = (fun req params ->
+        Stdlib.Http.responseWithHtml
+          """<!DOCTYPE html>
+<html>
+<head><title>Hello from Darklang</title></head>
+<body>
+  <h1>Hello from Darklang!</h1>
+  <p>This server uses HttpHandler values.</p>
+  <ul>
+    <li><a href="/hello">Say Hello</a></li>
+    <li><a href="/hello/World">Say Hello to World</a></li>
+    <li><a href="/users/123">Get User 123</a></li>
+    <li><a href="/api/status">API Status</a></li>
+  </ul>
+</body>
+</html>"""
+          200L) }
+
+
+/// GET /hello - Simple greeting
+let helloHandler : Stdlib.Http.HttpHandler =
+  Stdlib.Http.HttpHandler
+    { route = "/hello"
+      method = Stdlib.Http.Method.GET
+      description = "Simple greeting"
+      handler = (fun req params ->
+        Stdlib.Http.responseWithText "Hello, World!" 200L) }
+
+
+/// GET /hello/:name - Parameterized greeting
+let helloNameHandler : Stdlib.Http.HttpHandler =
+  Stdlib.Http.HttpHandler
+    { route = "/hello/:name"
+      method = Stdlib.Http.Method.GET
+      description = "Greeting with name"
+      handler = (fun req params ->
+        let name =
+          match Stdlib.Dict.get params "name" with
+          | Some n -> n
+          | None -> "Anonymous"
+
+        Stdlib.Http.responseWithText $"Hello, {name}!" 200L) }
+
+
+/// GET /users/:id - Get user by ID
+let getUserHandler : Stdlib.Http.HttpHandler =
+  Stdlib.Http.HttpHandler
+    { route = "/users/:id"
+      method = Stdlib.Http.Method.GET
+      description = "Get user by ID"
+      handler = (fun req params ->
+        let userId =
+          match Stdlib.Dict.get params "id" with
+          | Some id -> id
+          | None -> "unknown"
+
+        let json = $"""{{ "id": "{userId}", "name": "User {userId}" }}"""
+        Stdlib.Http.responseWithJson json 200L) }
+
+
+/// POST /users - Create user
+let createUserHandler : Stdlib.Http.HttpHandler =
+  Stdlib.Http.HttpHandler
+    { route = "/users"
+      method = Stdlib.Http.Method.POST
+      description = "Create user"
+      handler = (fun req params ->
+        let body = Stdlib.String.fromBytesWithReplacement req.body
+        let json = $"""{{ "created": true, "body": "{body}" }}"""
+        Stdlib.Http.responseWithJson json 201L) }
+
+
+/// GET /api/status - API status
+let apiStatusHandler : Stdlib.Http.HttpHandler =
+  Stdlib.Http.HttpHandler
+    { route = "/api/status"
+      method = Stdlib.Http.Method.GET
+      description = "API status"
+      handler = (fun req params ->
+        Stdlib.Http.responseWithJson """{"status": "ok", "version": "1.0"}""" 200L) }
+
+
+/// Run the server using type-based discovery
+/// Usage: run @Darklang.Apps.Examples.HelloServer.run 8080
+let run (port: Int64) : Int64 =
+  // Discover all HttpHandler values in this module and serve them
+  Stdlib.Http.Serve.discoverAndServe port "Darklang.Apps.Examples.HelloServer"
+
+
+/// Init for the server app
+let serverInit (args: List<String>) : Unit = ()
+
+/// Update for the server app (no-op)
+let serverUpdate (model: Unit) (msg: Unit) : Darklang.Cli.Apps.UpdateResult<Unit, Unit> =
+  Darklang.Cli.Apps.UpdateResult.Continue ()
+
+/// View for the server app
+let serverView (model: Unit) : List<String> =
+  [ "HelloServer starting..."
+    "Press Ctrl+C to stop" ]
+
+/// Subscriptions for the server app (none)
+let serverSubscriptions (model: Unit) : List<Darklang.Cli.Apps.Subscription<Unit>> = []
+
+/// The server as a CliApp (can also be run via apps command)
+/// Usage: apps run Darklang.Apps.Examples.helloServerApp
+let helloServerApp : Darklang.Cli.Apps.CliApp<Unit, Unit> =
+  Darklang.Cli.Apps.CliApp
+    { name = "HelloServer"
+      description = "Example HTTP server"
+      init = Darklang.Apps.Examples.HelloServer.serverInit
+      update = Darklang.Apps.Examples.HelloServer.serverUpdate
+      view = Darklang.Apps.Examples.HelloServer.serverView
+      subscriptions = Darklang.Apps.Examples.HelloServer.serverSubscriptions }

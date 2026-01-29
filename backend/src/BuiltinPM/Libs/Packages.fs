@@ -27,6 +27,10 @@ module PT = LibExecution.ProgramTypes
 module PT2DT = LibExecution.ProgramTypesToDarkTypes
 module PackageIDs = LibExecution.PackageIDs
 module C2DT = LibExecution.CommonToDarkTypes
+module VT = LibExecution.ValueType
+module RT2DT = LibExecution.RuntimeTypesToDarkTypes
+module Execution = LibExecution.Execution
+module RTPM = LibPackageManager.RuntimeTypes
 
 let statsTypeName = FQTypeName.fqPackage PackageIDs.Type.DarkPackages.stats
 
@@ -154,6 +158,90 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               result
               |> Option.map PT2DT.PackageValue.toDT
               |> Dval.option (KTCustomType(PT2DT.PackageValue.typeName, []))
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    // Get a package value's runtime body (the evaluated Dval)
+    { name = fn "pmGetValueBody" 0
+      typeParams = []
+      parameters = [ Param.make "valueId" TUuid "UUID of the package value" ]
+      returnType = TypeReference.option (TVariable "a")
+      description =
+        "Gets a package value's evaluated body by its UUID. " +
+        "Returns None if the value doesn't exist."
+      fn =
+        (function
+        | _, _, _, [ DUuid valueId ] ->
+          uply {
+            let! result = RTPM.Value.get valueId
+            match result with
+            | Some packageValue ->
+              match Dval.toValueType packageValue.body with
+              | ValueType.Known kt -> return Dval.optionSome kt packageValue.body
+              | ValueType.Unknown -> return Dval.optionSome KTUnit packageValue.body
+            | None -> return Dval.optionNone KTUnit
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    // Evaluate a package value by its UUID using the interpreter
+    { name = fn "pmEvaluateValue" 0
+      typeParams = []
+      parameters = [ Param.make "valueId" TUuid "UUID of the package value to evaluate" ]
+      returnType = TypeReference.option (TVariable "a")
+      description =
+        "Evaluates a package value by its UUID using the interpreter. " +
+        "Returns None if the value doesn't exist or fails to evaluate."
+      fn =
+        (function
+        | exeState, _, _, [ DUuid valueId ] ->
+          uply {
+            let valueName = FQValueName.Package valueId
+            let instrs : Instructions =
+              { registerCount = 1
+                instructions = [ LoadValue(0, valueName) ]
+                resultIn = 0 }
+
+            let! result = Execution.executeExpr exeState instrs
+            match result with
+            | Ok dval ->
+              match Dval.toValueType dval with
+              | ValueType.Known kt -> return Dval.optionSome kt dval
+              | ValueType.Unknown -> return Dval.optionSome KTUnit dval
+            | Error _ -> return Dval.optionNone KTUnit
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    // Find all value IDs that have a specific ValueType
+    { name = fn "pmFindValueIdsByValueType" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "valueType"
+            (TCustomType(Ok RT2DT.ValueType.typeName, []))
+            "The ValueType to search for" ]
+      returnType = TList TUuid
+      description =
+        "Returns a list of value UUIDs that have the given ValueType. " +
+        "Uses the indexed value_type column for efficient lookup (exact match)."
+      fn =
+        (function
+        | _, _, _, [ valueTypeDval ] ->
+          uply {
+            let vt = RT2DT.ValueType.fromDT valueTypeDval
+            let! valueIds = RTPM.Value.findByValueType vt
+            return DList(VT.uuid, valueIds |> List.map DUuid)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

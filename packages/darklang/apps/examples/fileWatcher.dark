@@ -1,0 +1,71 @@
+module Darklang.Apps.Examples.FileWatcher
+
+// A simple file watcher daemon that logs when files change
+// This is a demonstration of the daemon app pattern
+
+/// The daemon state tracks what we're watching
+type State =
+  { watchPath: String
+    lastCheckTime: Int64
+    fileCount: Int64 }
+
+
+/// Initialize the state from command line args
+let init (args: List<String>) : State =
+  let watchPath =
+    match args with
+    | [path] -> path
+    | _ -> "."
+
+  Stdlib.printLine $"FileWatcher: Starting to watch '{watchPath}'"
+
+  State
+    { watchPath = watchPath
+      lastCheckTime = 0L
+      fileCount = 0L }
+
+
+/// Handle daemon events
+let onEvent
+  (state: State)
+  (event: Darklang.Cli.Apps.DaemonEvent)
+  : Stdlib.Option.Option<State> =
+  match event with
+  | Started ->
+    Stdlib.printLine "FileWatcher: Daemon started"
+    Stdlib.Option.Option.Some state
+
+  | Timer id ->
+    // Check for file changes (simplified - just counts files)
+    let files = Builtin.directoryList state.watchPath
+
+    let currentCount =
+      match files with
+      | Ok fileList -> Stdlib.List.length fileList
+      | Error _ -> 0L
+
+    // Log if file count changed
+    let newState =
+      if currentCount != state.fileCount then
+        Stdlib.printLine
+          $"FileWatcher: File count changed from {Stdlib.Int64.toString state.fileCount} to {Stdlib.Int64.toString currentCount}"
+
+        State { state with fileCount = currentCount }
+      else
+        state
+
+    Stdlib.Option.Option.Some newState
+
+  | Shutdown ->
+    Stdlib.printLine "FileWatcher: Shutting down"
+    Stdlib.Option.Option.None
+
+
+/// The file watcher daemon definition
+let fileWatcherDaemon : Darklang.Cli.Apps.DaemonApp<State> =
+  Darklang.Cli.Apps.DaemonApp
+    { name = "FileWatcher"
+      description = "Watches a directory for file changes"
+      init = Darklang.Apps.Examples.FileWatcher.init
+      onEvent = Darklang.Apps.Examples.FileWatcher.onEvent
+      timerIntervalMs = 2000L }

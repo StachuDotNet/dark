@@ -441,7 +441,8 @@ module Lambdas =
             { exprId = E.Lambdas.Identity.id
               closedRegisters = []
               argsSoFar = []
-              typeSymbolTable = Map.empty }
+              typeSymbolTable = Map.empty
+              }
         ))
         (fun vm ->
           Expect.isFalse (Map.isEmpty vm.lambdaInstrCache) "no lambdas in VMState")
@@ -460,7 +461,8 @@ module Lambdas =
             { exprId = E.Lambdas.Add.id
               closedRegisters = []
               argsSoFar = []
-              typeSymbolTable = Map.empty }
+              typeSymbolTable = Map.empty
+              }
         ))
         (fun vm ->
           Expect.isFalse (Map.isEmpty vm.lambdaInstrCache) "no lambdas in VMState")
@@ -474,7 +476,8 @@ module Lambdas =
             { exprId = E.Lambdas.Add.id
               closedRegisters = []
               argsSoFar = [ RT.DInt64 1L ]
-              typeSymbolTable = Map.empty }
+              typeSymbolTable = Map.empty
+              }
         ))
 
     let fullyApplied =
@@ -493,7 +496,8 @@ module Lambdas =
             { exprId = E.Lambdas.AddTuple.id
               closedRegisters = []
               argsSoFar = []
-              typeSymbolTable = Map.empty }
+              typeSymbolTable = Map.empty
+              }
         ))
         (fun vm ->
           Expect.isFalse (Map.isEmpty vm.lambdaInstrCache) "no lambdas in VMState")
@@ -515,7 +519,8 @@ module Lambdas =
             { exprId = E.Lambdas.AddToClosedVars.id
               closedRegisters = [ (1, RT.DInt64 5); (2, RT.DInt64 10) ]
               argsSoFar = []
-              typeSymbolTable = Map.empty }
+              typeSymbolTable = Map.empty
+              }
         ))
         (fun vm ->
           Expect.isFalse (Map.isEmpty vm.lambdaInstrCache) "no lambdas in VMState")

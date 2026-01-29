@@ -1175,8 +1175,18 @@ module PackageValue =
         |> Map.ofList
       let convertedTypeArgs = List.map TypeReference.toValueType typeArgs
       RT.DRecord(resolvedTypeName, resolvedTypeName, convertedTypeArgs, fieldValues)
+
+    | PT.EFnName(_, Ok name) ->
+      let namedFn : RT.ApplicableNamedFn =
+        { name = FQFnName.toRT name
+          typeSymbolTable = Map.empty
+          typeArgs = []
+          argsSoFar = [] }
+      RT.DApplicable(RT.AppNamedFn namedFn)
+
     | _ ->
-      // For more complex expressions, return Unit as fallback
+      // For more complex expressions (lambdas, let bindings, etc.), return Unit as fallback.
+      // Callers needing callable lambdas should use named function references instead.
       RT.DUnit
 
   let toRT (c : PT.PackageValue.PackageValue) : RT.PackageValue.PackageValue =

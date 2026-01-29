@@ -94,6 +94,8 @@ module StatusBar =
   /// Initialize the status bar by setting up scroll region to reserve bottom line
   let init () : Unit =
     let terminalHeight = Terminal.getHeight ()
+    // Clear the screen first to remove any leftover content from previous sessions
+    Stdlib.print Terminal.Display.clearScreen
     // Set scroll region to all rows except the last one
     Stdlib.print (Colors.setScrollRegion 1L (terminalHeight - 1L))
 
@@ -128,9 +130,10 @@ module StatusBar =
 
   /// Clear the status bar and reset scroll region
   let clear () : Unit =
-    let terminalHeight = Terminal.getHeight ()
-    // Reset scroll region and clear the status bar line
-    Stdlib.print (Colors.resetScrollRegion ++ Colors.saveCursor ++ Colors.moveCursorTo terminalHeight 1L ++ Colors.clearLine ++ Colors.restoreCursor)
+    // Reset scroll region first so we can access the whole terminal
+    Stdlib.print Colors.resetScrollRegion
+    // Clear entire screen to remove all content including old "stuck" content
+    Stdlib.print Terminal.Display.clearScreen
 
 
 
@@ -147,6 +150,7 @@ module Registry =
     [
       ("quit", "Exit the CLI", ["exit"; "q"], Quit.execute, Quit.help, Quit.complete)
       ("help", "Show help for commands", ["commands"; "?"], Help.execute, Help.help, Help.complete)
+      ("apps", "Manage CLI apps and daemons", [], Commands.Apps.execute, Commands.Apps.help, Commands.Apps.complete)
       ("branch", "Manage development branches", [], Packages.Branch.execute, Packages.Branch.help, Packages.Branch.complete)
       ("instance", "Manage remote instances for syncing", [], Instances.execute, Instances.help, Instances.complete)
       ("config", "Manage CLI configuration", [], Config.execute, Config.help, Config.complete)
@@ -158,6 +162,7 @@ module Registry =
       ("version", "Display CLI version", ["--version"; "-v"], Installation.Version.execute, Installation.Version.help, Installation.Version.complete)
       ("nav", "Navigate between packages, modules, and entities", ["cd"], Packages.Nav.execute, Packages.Nav.help, Packages.Nav.complete)
       ("ls", "List package contents", ["dir"], Packages.Listing.execute, Packages.Listing.help, Packages.Listing.complete)
+      ("find-values", "Find values of a given type", [], Commands.Find.execute, Commands.Find.help, Commands.Find.complete)
       //("pwd", "Show current package path", [], Packages.Navigation.executePWD, Packages.Navigation.pwdHelp, Packages.Navigation.pwdComplete)
       ("back", "Go back to previous location", [], Packages.Back.execute, Packages.Back.help, Packages.Back.complete)
       ("clear", "Clear the screen", ["cls"], Cli.Clear.execute, Cli.Clear.help, Cli.Clear.complete)
@@ -243,7 +248,7 @@ module Registry =
   let commandGroups () : List<(String * List<String>)> =
     [ ("Packages", ["nav"; "ls"; "view"; "tree"; "back"; "search"; "deps"; "val"; "let"; "fn"; "type"; "rm"])
       ("Source Control", ["branch"; "instance"])
-      ("Execution", ["run"; "eval"; "scripts"])
+      ("Execution", ["run"; "eval"; "scripts"; "apps"])
       ("Installation", ["install"; "update"; "uninstall"; "status"; "version"])
       ("Utilities", ["clear"; "help"; "quit"; "config"; "account"]) ]
 
@@ -460,15 +465,6 @@ let handleKeyInput (state: AppState) (key: Stdlib.Cli.Stdin.Key.Key) (modifiers:
             needsFullRedraw = false }
       | None -> state
 
-  | Experiments ->
-    // Experiments page key handling
-    match key with
-    | Escape ->
-      // Exit experiments page back to main prompt
-      { state with currentPage = Page.MainPrompt; needsFullRedraw = true }
-    | _ ->
-      // Ignore other keys in experiments mode
-      state
   | InteractiveNav navState ->
     // Interactive navigation key handling
     Packages.NavInteractive.handleKey state key keyChar navState
@@ -481,14 +477,16 @@ let handleKeyInput (state: AppState) (key: Stdlib.Cli.Stdin.Key.Key) (modifiers:
           currentPage = Page.CompletionPicker newPickerState
           needsFullRedraw = true }
     | SelectItem selection ->
-      // User selected an item - update prompt and return to main
+      // User selected an item - clear picker output and return to main
+      CompletionPicker.cleanup pickerState
       let newPromptText = CompletionPicker.buildCompletedCommand pickerState selection
       { state with
           currentPage = Page.MainPrompt
           prompt = Prompt.Editing.setText state.prompt newPromptText
           needsFullRedraw = true }
     | Cancel ->
-      // User cancelled - return to main with original prompt
+      // User cancelled - clear picker output and return to main
+      CompletionPicker.cleanup pickerState
       { state with
           currentPage = Page.MainPrompt
           needsFullRedraw = true }

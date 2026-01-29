@@ -6,12 +6,10 @@ open FSharp.Control.Tasks
 
 open Prelude
 
-module RT = LibExecution.RuntimeTypes
 module PT = LibExecution.ProgramTypes
 
-module PM = LibPackageManager.PackageManager
-
 open Utils
+
 
 module HandleCommand =
 

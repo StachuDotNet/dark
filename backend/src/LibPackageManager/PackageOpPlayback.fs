@@ -14,6 +14,7 @@ open Fumble
 open LibDB.Db
 
 module PT = LibExecution.ProgramTypes
+module RT = LibExecution.RuntimeTypes
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module BS = LibBinarySerialization.BinarySerialization
 module DE = LibPackageManager.DependencyExtractor
@@ -77,23 +78,41 @@ let private applyAddType (typ : PT.PackageType.PackageType) : Task<unit> =
     do! updateDependencies typ.id refs
   }
 
-/// Apply a single AddValue op to the package_values table
-let private applyAddValue (value : PT.PackageValue.PackageValue) : Task<unit> =
+/// Apply a single AddValue op to the package_values table.
+/// Uses evalConstantExpr to produce a Dval from the PT expression.
+/// This handles records, enums, literals, etc. — lambda fields will be DUnit
+/// but the record/enum type is preserved correctly for type indexing.
+/// Actual evaluation with callable lambdas happens at runtime via pmEvaluateValue.
+let private applyAddValue
+  (value : PT.PackageValue.PackageValue)
+  : Task<unit> =
   task {
     let ptDef = BS.PT.PackageValue.serialize value.id value
-    let rtDval =
-      value |> PT2RT.PackageValue.toRT |> BS.RT.PackageValue.serialize value.id
+
+    let rtValue = value |> PT2RT.PackageValue.toRT
+    let rtDval = BS.RT.PackageValue.serialize value.id rtValue
+
+    // Serialize the value's type for indexing
+    let valueType = RT.Dval.toValueType rtValue.body
+    let valueTypeBytes =
+      match valueType with
+      | RT.ValueType.Unknown -> None
+      | _ -> Some(BS.RT.ValueType.serialize valueType)
 
     do!
       Sql.query
         """
-        INSERT OR REPLACE INTO package_values (id, pt_def, rt_dval)
-        VALUES (@id, @pt_def, @rt_dval)
+        INSERT OR REPLACE INTO package_values (id, pt_def, rt_dval, value_type)
+        VALUES (@id, @pt_def, @rt_dval, @value_type)
         """
       |> Sql.parameters
         [ "id", Sql.uuid value.id
           "pt_def", Sql.bytes ptDef
-          "rt_dval", Sql.bytes rtDval ]
+          "rt_dval", Sql.bytes rtDval
+          "value_type",
+          (match valueTypeBytes with
+           | Some bytes -> Sql.bytes bytes
+           | None -> Sql.dbnull) ]
       |> Sql.executeStatementAsync
 
     // Extract and store dependency references atomically
@@ -417,7 +436,104 @@ let applyOp
   }
 
 
-/// Apply a list of PackageOps to the projection tables
+/// Topologically sort AddValue ops so dependencies are processed first.
+/// Returns the sorted list of value ops in dependency order.
+let private sortValueOpsByDependency
+  (valueOps : List<PT.PackageValue.PackageValue>)
+  : List<PT.PackageValue.PackageValue> =
+  // Build a map from ID to value
+  let idToValue = valueOps |> List.map (fun v -> v.id, v) |> Map.ofList
+  let allIds = valueOps |> List.map (_.id) |> Set.ofList
+
+  // Build dependency graph (only keep deps that are in this batch)
+  let deps =
+    valueOps
+    |> List.map (fun v ->
+      let valueDeps =
+        DE.extractFromValue v
+        |> List.filter (fun depId -> Set.contains depId allIds)
+      v.id, valueDeps)
+    |> Map.ofList
+
+  // Kahn's algorithm for topological sort
+  let rec topoSort
+    (sorted : List<uuid>)
+    (remaining : Set<uuid>)
+    (inDegree : Map<uuid, int>)
+    : List<uuid> =
+    if Set.isEmpty remaining then
+      List.rev sorted
+    else
+      // Find nodes with no remaining dependencies
+      let ready =
+        remaining
+        |> Set.filter (fun id ->
+          Map.tryFind id inDegree |> Option.defaultValue 0 = 0)
+
+      if Set.isEmpty ready then
+        // Cycle detected - just return remaining in arbitrary order
+        List.rev sorted @ (remaining |> Set.toList)
+      else
+        // Process ready nodes
+        let nextId = Set.minElement ready
+        let newRemaining = Set.remove nextId remaining
+        let newSorted = nextId :: sorted
+
+        // Decrease in-degree for nodes that depend on this one
+        let newInDegree =
+          remaining
+          |> Set.fold
+            (fun acc id ->
+              let idDeps = Map.tryFind id deps |> Option.defaultValue []
+              if List.contains nextId idDeps then
+                Map.add id ((Map.tryFind id acc |> Option.defaultValue 0) - 1) acc
+              else
+                acc)
+            inDegree
+
+        topoSort newSorted newRemaining newInDegree
+
+  // Calculate initial in-degrees
+  let initialInDegree =
+    valueOps
+    |> List.map (fun v ->
+      let count = Map.find v.id deps |> Option.defaultValue [] |> List.length
+      v.id, count)
+    |> Map.ofList
+
+  let sortedIds = topoSort [] allIds initialInDegree
+  sortedIds |> List.choose (fun id -> Map.tryFind id idToValue)
+
+
+/// Reorder ops so AddValue ops are sorted by dependency while preserving
+/// the relative order of all other ops. The idea is:
+/// 1. Collect all AddValue ops and sort them by dependency
+/// 2. Replace each AddValue in the original list with the next sorted one
+let private reorderOpsWithSortedValues
+  (ops : List<PT.PackageOp>)
+  : List<PT.PackageOp> =
+  // Extract values and sort them
+  let values =
+    ops
+    |> List.choose (function
+      | PT.PackageOp.AddValue v -> Some v
+      | _ -> None)
+  let sortedValues = sortValueOpsByDependency values
+
+  // Use a mutable index to iterate through sorted values
+  let mutable sortedIdx = 0
+
+  ops
+  |> List.map (function
+    | PT.PackageOp.AddValue _ ->
+      let v = sortedValues[sortedIdx]
+      sortedIdx <- sortedIdx + 1
+      PT.PackageOp.AddValue v
+    | op -> op)
+
+
+/// Apply a list of PackageOps to the projection tables.
+/// AddValue ops are sorted by dependency order to ensure referenced values exist.
 let applyOps
   (instanceID : Option<PT.InstanceID>)
   (branchID : Option<PT.BranchID>)
@@ -425,6 +541,10 @@ let applyOps
   (ops : List<PT.PackageOp>)
   : Task<unit> =
   task {
-    for op in ops do
+    // Reorder so AddValue ops are sorted by dependency, but preserve
+    // the positions of all ops (important: SetFnName must come after AddFn)
+    let orderedOps = reorderOpsWithSortedValues ops
+
+    for op in orderedOps do
       do! applyOp instanceID branchID createdBy op
   }

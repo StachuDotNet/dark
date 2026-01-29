@@ -113,6 +113,23 @@ module PT =
 
 
 module RT =
+  // CLEANUP consider switching ValueType serialization to JSON for easier DB querying
+  // (e.g. partial/generic type matching like "any Option<_>")
+  module ValueType =
+    /// Serialize a ValueType to bytes (no header — used for exact binary comparison in DB)
+    let serialize (vt : LibExecution.RuntimeTypes.ValueType) : byte[] =
+      use stream = new MemoryStream()
+      use w = new BinaryWriter(stream)
+      RT.ValueType.write w vt
+      w.Flush()
+      stream.ToArray()
+
+    /// Deserialize a ValueType from bytes (no header)
+    let deserialize (data : byte[]) : LibExecution.RuntimeTypes.ValueType =
+      use stream = new MemoryStream(data)
+      use r = new BinaryReader(stream)
+      RT.ValueType.read r
+
   // TODO upstream, it might be better to serialize a slightly lower type,
   // since we'll always have the corresponding ID in any context we use this
   // (just for type and constants?)

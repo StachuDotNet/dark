@@ -1,8 +1,22 @@
 module Darklang.Stdlib.Http
 
 
+/// HTTP methods for routing
+type Method =
+  | GET
+  | POST
+  | PUT
+  | DELETE
+  | PATCH
+  | HEAD
+  | OPTIONS
+  | TRACE
+  | CONNECT
+
+
 type Request =
-  { url: String
+  { method: Method
+    url: String
     headers: List<String * String>
     body: List<UInt8> }
 
@@ -201,3 +215,241 @@ type Cookie =
 //       Error "Cookie must have at least one parameter"
 //     else
 //       Ok("Set-Cookie", name ++ "=" ++ value ++ "; " ++ cookie)
+
+
+// =============================================================================
+// HTTP Server / App Types
+// =============================================================================
+
+/// A route definition for pattern matching incoming requests
+type Route =
+  { method: Method
+    /// Path pattern with :param placeholders (e.g., "/users/:id/posts/:postId")
+    path: String
+    /// Handler receives request and extracted path parameters
+    handler: Request -> Dict<String> -> Response }
+
+
+/// HTTP Server application definition
+///
+/// This allows defining an HTTP server as a Darklang value that can be run
+/// with `Builtin.httpRunServer`.
+type HttpApp =
+  { /// Display name for the server
+    name: String
+
+    /// Brief description
+    description: String
+
+    /// Host to bind to (e.g., "0.0.0.0" for all interfaces, "127.0.0.1" for localhost)
+    host: String
+
+    /// Port to listen on
+    port: Int64
+
+    /// Routes to handle - matched in order, first match wins
+    routes: List<Route> }
+
+
+module HttpApp =
+  /// Create a simple single-handler HTTP app
+  let simple
+    (name: String)
+    (port: Int64)
+    (handler: Request -> Response)
+    : HttpApp =
+    let wrappedHandler = (fun req _params -> handler req)
+
+    HttpApp
+      { name = name
+        description = ""
+        host = "0.0.0.0"
+        port = port
+        routes =
+          [ Route
+              { method = Method.GET
+                path = "/*"
+                handler = wrappedHandler }
+            Route
+              { method = Method.POST
+                path = "/*"
+                handler = wrappedHandler }
+            Route
+              { method = Method.PUT
+                path = "/*"
+                handler = wrappedHandler }
+            Route
+              { method = Method.DELETE
+                path = "/*"
+                handler = wrappedHandler }
+            Route
+              { method = Method.PATCH
+                path = "/*"
+                handler = wrappedHandler } ] }
+
+
+  /// Add a route to an HttpApp
+  let addRoute
+    (app: HttpApp)
+    (method: Method)
+    (path: String)
+    (handler: Request -> Dict<String> -> Response)
+    : HttpApp =
+    let newRoute = Route { method = method; path = path; handler = handler }
+
+    HttpApp { app with routes = Stdlib.List.append app.routes [ newRoute ] }
+
+
+  /// Add a GET route
+  let get
+    (app: HttpApp)
+    (path: String)
+    (handler: Request -> Dict<String> -> Response)
+    : HttpApp =
+    addRoute app Method.GET path handler
+
+
+  /// Add a POST route
+  let post
+    (app: HttpApp)
+    (path: String)
+    (handler: Request -> Dict<String> -> Response)
+    : HttpApp =
+    addRoute app Method.POST path handler
+
+
+  /// Add a PUT route
+  let put
+    (app: HttpApp)
+    (path: String)
+    (handler: Request -> Dict<String> -> Response)
+    : HttpApp =
+    addRoute app Method.PUT path handler
+
+
+  /// Add a DELETE route
+  let delete
+    (app: HttpApp)
+    (path: String)
+    (handler: Request -> Dict<String> -> Response)
+    : HttpApp =
+    addRoute app Method.DELETE path handler
+
+
+  /// Create an empty HttpApp builder
+  let create (name: String) (port: Int64) : HttpApp =
+    HttpApp
+      { name = name
+        description = ""
+        host = "0.0.0.0"
+        port = port
+        routes = [] }
+
+
+  /// Set the description
+  let withDescription (app: HttpApp) (description: String) : HttpApp =
+    HttpApp { app with description = description }
+
+
+  /// Set the host
+  let withHost (app: HttpApp) (host: String) : HttpApp =
+    HttpApp { app with host = host }
+
+
+// =============================================================================
+// Magic HTTP Handler Discovery
+// =============================================================================
+
+/// An HTTP handler that can be automatically discovered and routed to.
+///
+/// Define values of this type anywhere in your packages, and they will be
+/// automatically discovered when running `Builtin.httpServe`.
+///
+/// Example:
+/// ```
+/// let getUserHandler : Stdlib.Http.HttpHandler =
+///   Stdlib.Http.HttpHandler {
+///     route = "/api/users/:id"
+///     method = Stdlib.Http.Method.GET
+///     description = "Get a user by ID"
+///     handler = fun req params ->
+///       let userId = Stdlib.Dict.get params "id"
+///       Stdlib.Http.responseWithJson "{\"user\": \"...\"}" 200L
+///   }
+/// ```
+type HttpHandler =
+  { /// The route pattern (e.g., "/api/users/:id")
+    /// Use :paramName for path parameters
+    route: String
+
+    /// HTTP method this handler responds to
+    method: Method
+
+    /// Brief description of what this handler does
+    description: String
+
+    /// The handler function - receives request and extracted path params
+    handler: Request -> Dict<String> -> Response }
+
+
+module HttpHandler =
+  /// Create a GET handler
+  let get
+    (route: String)
+    (description: String)
+    (handler: Request -> Dict<String> -> Response)
+    : HttpHandler =
+    HttpHandler
+      { route = route
+        method = Method.GET
+        description = description
+        handler = handler }
+
+  /// Create a POST handler
+  let post
+    (route: String)
+    (description: String)
+    (handler: Request -> Dict<String> -> Response)
+    : HttpHandler =
+    HttpHandler
+      { route = route
+        method = Method.POST
+        description = description
+        handler = handler }
+
+  /// Create a PUT handler
+  let put
+    (route: String)
+    (description: String)
+    (handler: Request -> Dict<String> -> Response)
+    : HttpHandler =
+    HttpHandler
+      { route = route
+        method = Method.PUT
+        description = description
+        handler = handler }
+
+  /// Create a DELETE handler
+  let delete
+    (route: String)
+    (description: String)
+    (handler: Request -> Dict<String> -> Response)
+    : HttpHandler =
+    HttpHandler
+      { route = route
+        method = Method.DELETE
+        description = description
+        handler = handler }
+
+  /// Create a handler for any method
+  let any
+    (route: String)
+    (method: Method)
+    (description: String)
+    (handler: Request -> Dict<String> -> Response)
+    : HttpHandler =
+    HttpHandler
+      { route = route
+        method = method
+        description = description
+        handler = handler }
