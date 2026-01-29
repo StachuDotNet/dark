@@ -138,7 +138,7 @@ let main (args : string[]) =
         (LibExecution.Execution.callStackString state callStack).Result
 
       match
-        (LibExecution.Execution.runtimeErrorToString None None state rte).Result
+        (LibExecution.Execution.runtimeErrorToString state rte).Result
       with
       | Ok(RT.DString s) ->
         logError $"Encountered a Runtime Error:\n{s}\n\n{errorCallStackStr}\n  "

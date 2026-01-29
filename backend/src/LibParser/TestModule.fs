@@ -181,8 +181,6 @@ let parseFile
 
 
 let toPT
-  (accountID : Option<PT.AccountID>)
-  (branchId : Option<PT.BranchID>)
   (owner : string)
   (builtins : RT.Builtins)
   (pm : PT.PackageManager)
@@ -198,8 +196,6 @@ let toPT
         uply {
           let! ptType =
             WT2PT.PackageType.toPT
-              accountID
-              branchId
               pm
               onMissing
               currentModule
@@ -219,8 +215,6 @@ let toPT
         uply {
           let! ptValue =
             WT2PT.PackageValue.toPT
-              accountID
-              branchId
               builtins
               pm
               onMissing
@@ -241,8 +235,6 @@ let toPT
         uply {
           let! ptFn =
             WT2PT.PackageFn.toPT
-              accountID
-              branchId
               builtins
               pm
               onMissing
@@ -260,7 +252,7 @@ let toPT
     let! dbs =
       m.dbs
       |> Ply.List.mapSequentially (
-        WT2PT.DB.toPT accountID branchId pm onMissing currentModule
+        WT2PT.DB.toPT pm onMissing currentModule
       )
 
     let! (tests : List<PTTest>) =
@@ -273,8 +265,6 @@ let toPT
               WT2PT.Context.argMap = Map.empty }
           let exprToPT =
             WT2PT.Expr.toPT
-              accountID
-              branchId
               builtins
               pm
               onMissing
@@ -298,8 +288,6 @@ let toPT
 
 // Helper functions for two-phase parsing (must be defined before parseTestFile)
 let parseTestFile
-  (accountID : Option<PT.AccountID>)
-  (branchId : Option<PT.BranchID>)
   (owner : string)
   (builtins : RT.Builtins)
   (pm : PT.PackageManager)
@@ -319,7 +307,7 @@ let parseTestFile
     let! firstPassModules =
       modulesWT
       |> Ply.List.mapSequentially (
-        toPT accountID branchId owner builtins PT.PackageManager.empty onMissing
+        toPT owner builtins PT.PackageManager.empty onMissing
       )
 
     // Extract ops from first pass for second pass PackageManager
@@ -330,7 +318,7 @@ let parseTestFile
     let! reParsedModules =
       modulesWT
       |> Ply.List.mapSequentially (
-        toPT accountID branchId owner builtins enhancedPM onMissing
+        toPT owner builtins enhancedPM onMissing
       )
 
     // ID stabilization: adjust second pass IDs to match first pass IDs
