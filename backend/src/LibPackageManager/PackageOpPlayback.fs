@@ -14,6 +14,7 @@ open Fumble
 open LibDB.Db
 
 module PT = LibExecution.ProgramTypes
+module RT = LibExecution.RuntimeTypes
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module BS = LibBinarySerialization.BinarySerialization
 module DE = LibPackageManager.DependencyExtractor
@@ -78,12 +79,10 @@ let private applyAddType (typ : PT.PackageType.PackageType) : Task<unit> =
   }
 
 /// Extract the type ID from an evaluated Dval (for records/enums)
-let private extractTypeIdFromDval (dval : LibExecution.RuntimeTypes.Dval) : Option<uuid> =
+let private extractTypeIdFromDval (dval : RT.Dval) : Option<uuid> =
   match dval with
-  | LibExecution.RuntimeTypes.DRecord(LibExecution.RuntimeTypes.FQTypeName.Package typeId, _, _, _) ->
-    Some typeId
-  | LibExecution.RuntimeTypes.DEnum(LibExecution.RuntimeTypes.FQTypeName.Package typeId, _, _, _, _) ->
-    Some typeId
+  | RT.DRecord(RT.FQTypeName.Package typeId, _, _, _) -> Some typeId
+  | RT.DEnum(RT.FQTypeName.Package typeId, _, _, _, _) -> Some typeId
   | _ -> None
 
 /// Apply a single AddValue op to the package_values table

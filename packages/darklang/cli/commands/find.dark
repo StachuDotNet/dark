@@ -84,8 +84,8 @@ let help (state: Cli.AppState) : Cli.AppState =
     "Usage: find-values <type-path> [namespace]"
     ""
     "Examples:"
-    "  find-values Darklang.Stdlib.Discovery.DiscoveredValue"
-    "  find-values Darklang.Cli.AppState Darklang.Cli" ]
+    "  find-values Darklang.LanguageTools.WrittenTypesToProgramTypes.Context"
+    "  find-values Darklang.CLI.UI.Core.Types.RenderContext Darklang.CLI" ]
   |> Stdlib.printLines
 
   state
