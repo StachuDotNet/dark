@@ -41,6 +41,21 @@ module Value =
         |> Task.map (Option.map (BinarySerialization.RT.PackageValue.deserialize id))
     }
 
+  /// Find all value IDs that have the given type
+  let findByTypeId (typeId : uuid) : Ply<List<uuid>> =
+    uply {
+      return!
+        Sql.query
+          """
+          SELECT id
+          FROM package_values
+          WHERE value_type_id = @type_id
+          """
+        |> Sql.parameters [ "type_id", Sql.string (string typeId) ]
+        |> Sql.executeAsync (fun read ->
+          read.string "id" |> System.Guid.Parse)
+    }
+
 
 module Fn =
   let get (id : uuid) : Ply<Option<RT.PackageFn.PackageFn>> =
