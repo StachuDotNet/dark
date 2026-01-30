@@ -25,6 +25,7 @@ module Dval = LibExecution.Dval
 module D = LibExecution.DvalDecoder
 module PT = LibExecution.ProgramTypes
 module PT2DT = LibExecution.ProgramTypesToDarkTypes
+module RT2DT = LibExecution.RuntimeTypesToDarkTypes
 module PackageIDs = LibExecution.PackageIDs
 module C2DT = LibExecution.CommonToDarkTypes
 module VT = LibExecution.ValueType
@@ -164,19 +165,24 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // Find all value IDs that have a specific type
-    { name = fn "pmFindValuesByTypeId" 0
+    // Find all value IDs that have a specific ValueType
+    { name = fn "pmFindValuesByValueType" 0
       typeParams = []
-      parameters = [ Param.make "typeId" TUuid "UUID of the type to search for" ]
+      parameters =
+        [ Param.make
+            "valueType"
+            (TCustomType(Ok RT2DT.ValueType.typeName, []))
+            "The ValueType to search for" ]
       returnType = TList TUuid
       description =
-        "Returns a list of value UUIDs that have the given type. " +
-        "Uses the indexed value_type_id column for efficient lookup."
+        "Returns a list of value UUIDs that have the given ValueType. " +
+        "Uses exact match on the serialized type for efficient lookup."
       fn =
         (function
-        | _, _, _, [ DUuid typeId ] ->
+        | _, _, _, [ valueTypeDval ] ->
           uply {
-            let! valueIds = RTPM.Value.findByTypeId typeId
+            let vt = RT2DT.ValueType.fromDT valueTypeDval
+            let! valueIds = RTPM.Value.findByValueType vt
             return DList(VT.uuid, valueIds |> List.map DUuid)
           }
         | _ -> incorrectArgs ())

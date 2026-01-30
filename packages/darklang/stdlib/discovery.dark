@@ -44,7 +44,7 @@ let findBySuffix
       Stdlib.Option.Option.None)
 
 
-/// Find all values that match a specific type
+/// Find all values that match a specific custom type
 /// Uses indexed type lookup for efficiency
 /// Optionally filters by namespace prefix
 let findByType
@@ -59,8 +59,15 @@ let findByType
     else
       Stdlib.String.split targetNamespace "."
 
+  // Construct a ValueType for the custom type
+  let valueType =
+    LanguageTools.RuntimeTypes.ValueType.Known
+      (LanguageTools.RuntimeTypes.KnownType.KTCustomType
+        (LanguageTools.RuntimeTypes.FQTypeName.FQTypeName.Package targetTypeId)
+        [])
+
   // Use indexed query to find all value IDs with the target type
-  let valueIds = Builtin.pmFindValuesByTypeId targetTypeId
+  let valueIds = Builtin.pmFindValuesByValueType valueType
 
   valueIds
   |> Stdlib.List.filterMap (fun valueId ->

@@ -1,7 +1,5 @@
-// pmFindValuesByTypeId returns empty list for unknown type
-(Stdlib.Uuid.parse_v0 "00000000-0000-0000-0000-000000000000")
-|> Builtin.unwrap
-|> Builtin.pmFindValuesByTypeId = []
+// pmFindValuesByValueType returns empty list for unknown type
+(Builtin.pmFindValuesByValueType Darklang.LanguageTools.RuntimeTypes.ValueType.Unknown) = []
 
 // pmEvaluateValue returns None for unknown value
 (Stdlib.Uuid.parse_v0 "00000000-0000-0000-0000-000000000000")

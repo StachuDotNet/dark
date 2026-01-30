@@ -78,13 +78,6 @@ let private applyAddType (typ : PT.PackageType.PackageType) : Task<unit> =
     do! updateDependencies typ.id refs
   }
 
-/// Extract the type ID from an evaluated Dval (for records/enums)
-let private extractTypeIdFromDval (dval : RT.Dval) : Option<uuid> =
-  match dval with
-  | RT.DRecord(RT.FQTypeName.Package typeId, _, _, _) -> Some typeId
-  | RT.DEnum(RT.FQTypeName.Package typeId, _, _, _, _) -> Some typeId
-  | _ -> None
-
 /// Apply a single AddValue op to the package_values table
 let private applyAddValue (value : PT.PackageValue.PackageValue) : Task<unit> =
   task {
@@ -92,23 +85,21 @@ let private applyAddValue (value : PT.PackageValue.PackageValue) : Task<unit> =
     let rtValue = value |> PT2RT.PackageValue.toRT
     let rtDval = BS.RT.PackageValue.serialize value.id rtValue
 
-    // Extract type ID from the evaluated value (if it's a record/enum)
-    let typeId = extractTypeIdFromDval rtValue.body
+    // Serialize the ValueType for type-based indexing
+    let valueType = RT.Dval.toValueType rtValue.body
+    let valueTypeBytes = BS.RT.ValueType.serialize valueType
 
     do!
       Sql.query
         """
-        INSERT OR REPLACE INTO package_values (id, pt_def, rt_dval, value_type_id)
-        VALUES (@id, @pt_def, @rt_dval, @value_type_id)
+        INSERT OR REPLACE INTO package_values (id, pt_def, rt_dval, value_type)
+        VALUES (@id, @pt_def, @rt_dval, @value_type)
         """
       |> Sql.parameters
         [ "id", Sql.uuid value.id
           "pt_def", Sql.bytes ptDef
           "rt_dval", Sql.bytes rtDval
-          "value_type_id",
-          (match typeId with
-           | Some id -> Sql.string (string id)
-           | None -> Sql.dbnull) ]
+          "value_type", Sql.bytes valueTypeBytes ]
       |> Sql.executeStatementAsync
 
     // Extract and store dependency references atomically
