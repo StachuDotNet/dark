@@ -1,0 +1,12 @@
+- be a bit more brief in this document
+  - loction IDs section can be shorter
+  - sql schema changes can be described more briefly
+  - FQXName stuff
+  - NameResolution stuff
+  - maybe others, but those are the important ones
+- be sure to /// regardin ghte SCC stuff - not clear without some explanation
+- make the mention of op coupling more of an aside, casual.
+- your SCC detection timing strat sounds good, for initial load. but we also need to solve for handling when users add types and fns and values via the CLI or otherwise during normal dev-time, distributed, offline-first, etc. i.e. (how) do we handle doing (in the CLI) a `type A = | A of B` followed by (separately) `type B = | B of A`? Or do we somehow allow for and demand them to be done at the same time?
+- let's rebrand PackageIDs as PackageRefs in an early separate commit. that way we don't have to rebrand _during a bigger change_ to PackageHash
+- the ContentHash type -- should def be in PT.fs, _maybe_ in RT.fs too
+- extract the phase 3 and 4 stuff full from this doc to separate .md files. same with future: hash inspectabilty. kill the Open Questions section
