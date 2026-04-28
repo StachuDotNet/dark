@@ -68,8 +68,10 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ elemType ], [ DList(elemVT, items) ] ->
-          uply {
+          task {
             let remaining = ref items
+            // The FromIO callback type is still `unit -> Ply<...>`, so
+            // nextFn stays uply (constrained by Stream.newFromIO's signature).
             let nextFn () : Ply<Option<Dval>> =
               uply {
                 match remaining.Value with
@@ -84,10 +86,11 @@ let fns () : List<BuiltInFn> =
             // table so custom types resolve correctly.
             let! inferredElem =
               match elemVT with
-              | ValueType.Unknown -> resolveElemVT state elemType
-              | known -> Ply known
+              | ValueType.Unknown -> resolveElemVT state elemType |> Ply.toTask
+              | known -> Task.FromResult known
             return Stream.newFromIO inferredElem nextFn None
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -117,9 +120,10 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, vm, [ _; outputType ], [ initialState; DApplicable app ] ->
-          uply {
-            let! elemType = resolveElemVT state outputType
+          task {
+            let! elemType = resolveElemVT state outputType |> Ply.toTask
             let currentState = ref initialState
+            // FromIO callback stays uply (Stream.newFromIO signature).
             let next () : Ply<Option<Dval>> =
               uply {
                 let! result =
@@ -141,6 +145,7 @@ let fns () : List<BuiltInFn> =
               }
             return Stream.newFromIO elemType next None
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -156,11 +161,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ elemType ], [ s ] ->
-          uply {
+          task {
             let! nextResult = Stream.readNext s
-            let! elemKT = resolveElemKT state elemType
+            let! elemKT = resolveElemKT state elemType |> Ply.toTask
             return Dval.option elemKT nextResult
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -175,7 +181,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ elemType ], [ s ] ->
-          uply {
+          task {
             let collected = ResizeArray<Dval>()
             let mutable keepGoing = true
             while keepGoing do
@@ -189,11 +195,12 @@ let fns () : List<BuiltInFn> =
             // the declared type-arg for empty results.
             let! elemVT =
               if collected.Count > 0 then
-                Ply(Dval.toValueType collected[0])
+                Task.FromResult(Dval.toValueType collected[0])
               else
-                resolveElemVT state elemType
+                resolveElemVT state elemType |> Ply.toTask
             return DList(elemVT, List.ofSeq collected)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -209,7 +216,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ s ] ->
-          uply {
+          task {
             // Drain via `readStreamChunk` so IO-backed byte streams
             // (HttpClient.stream) hand back a whole buffer per pull
             // instead of boxing one DUInt8 per byte. Falls back to
@@ -225,6 +232,7 @@ let fns () : List<BuiltInFn> =
               | None -> keepGoing <- false
             return Blob.newEphemeral state (collected.ToArray())
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -283,8 +291,10 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, vm, [ _; outputType ], [ DStream(src, _, _); DApplicable app ] ->
-          uply {
-            let! elemType = resolveElemVT state outputType
+          task {
+            let! elemType = resolveElemVT state outputType |> Ply.toTask
+            // Mapped(src, fn, _) callback type is still `Dval -> Ply<Dval>`,
+            // so apply stays uply.
             let apply (dv : Dval) : Ply<Dval> =
               uply {
                 let! result = Exe.executeApplicable state app (NEList.singleton dv)
@@ -294,6 +304,7 @@ let fns () : List<BuiltInFn> =
               }
             return Stream.wrapImpl (Mapped(src, apply, elemType))
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
