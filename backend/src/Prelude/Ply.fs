@@ -21,6 +21,18 @@ let bind (f : 'a -> Ply<'b>) (v : Ply<'a>) : Ply<'b> =
 
 let toTask (v : Ply<'a>) : Task<'a> = Ply.TplPrimitives.runPlyAsTask v
 
+/// Bridge a `Task<'a>` back into Ply context. Needed during the
+/// Ply→Task migration when an inner function has been swapped to
+/// task-builder but its caller is still in `uply { }`. The
+/// `uply` builder accepts Task in its `let!` directly, so this is
+/// just a thin wrapper that makes the bridge intent explicit at
+/// migration call-sites.
+let ofTask (t : Task<'a>) : Ply<'a> =
+  uply {
+    let! v = t
+    return v
+  }
+
 
 // These functions are sequential versions of List/Map functions like map/iter/etc.
 // They await each list item before they process the next.  This ensures each

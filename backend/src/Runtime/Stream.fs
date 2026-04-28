@@ -7,6 +7,8 @@
 /// `RuntimeTypes.fs`.
 module LibExecution.Stream
 
+open System.Threading.Tasks
+
 open Prelude
 
 open LibExecution.RuntimeTypes
@@ -119,6 +121,10 @@ let newChunked
         carryPos.Value <- carryPos.Value + 1
         return Some(DUInt8 b)
     }
+  // The FromIO `next` field still has type `unit -> Ply<...>` per its
+  // declaration in RuntimeTypes (consumers across the codebase still
+  // produce Ply). When pullImpl reads it, it bridges back to Task via
+  // Ply.toTask. Cascading the FromIO type is a later chunk.
   wrapImpl (FromIO(next, elemType, disposer, Some nextChunk))
 
 
@@ -127,17 +133,21 @@ let newChunked
 /// (Mapped/Filtered/Take/Concat) without re-entering the root's
 /// disposed flag — nested transforms share the wrapping DStream's
 /// lifecycle.
-let rec private pullImpl (impl : StreamImpl) : Ply.Ply<Option<Dval>> =
-  uply {
+let rec private pullImpl (impl : StreamImpl) : Task<Option<Dval>> =
+  task {
     match impl with
-    | FromIO(next, _elemType, _disposer, _nextChunk) -> return! next ()
+    | FromIO(next, _elemType, _disposer, _nextChunk) ->
+      // FromIO.next still produces Ply (its consumers across the
+      // codebase haven't been swapped yet). Bridge to Task here.
+      return! next () |> Ply.toTask
 
     | Mapped(src, fn, _elemType) ->
       let! upstream = pullImpl src
       match upstream with
       | None -> return None
       | Some v ->
-        let! mapped = fn v
+        // fn produces Ply (StreamImpl.Mapped's fn type is unchanged).
+        let! mapped = fn v |> Ply.toTask
         return Some mapped
 
     | Filtered(src, pred) ->
@@ -151,7 +161,7 @@ let rec private pullImpl (impl : StreamImpl) : Ply.Ply<Option<Dval>> =
         match upstream with
         | None -> keepGoing <- false
         | Some v ->
-          let! matches = pred v
+          let! matches = pred v |> Ply.toTask
           if matches then
             result <- Some v
             keepGoing <- false
@@ -218,8 +228,8 @@ let rec private pullImpl (impl : StreamImpl) : Ply.Ply<Option<Dval>> =
 /// streams; element-wise streams pay full cost. Real fix is replacing
 /// Ply with something cheaper — either a custom `Future<'a>` struct
 /// or a CPS interpreter with a fiber scheduler.
-let readNext (dv : Dval) : Ply.Ply<Option<Dval>> =
-  uply {
+let readNext (dv : Dval) : Task<Option<Dval>> =
+  task {
     match dv with
     | DStream(impl, disposed, _lockObj) ->
       if disposed.Value then
@@ -246,8 +256,8 @@ let readNext (dv : Dval) : Ply.Ply<Option<Dval>> =
 /// Used by `streamToBlob` and SSE byte accumulators to amortise the
 /// Ply-continuation cost across whole chunks rather than paying it
 /// per byte.
-let readChunk (maxBytes : int) (dv : Dval) : Ply.Ply<Option<byte[]>> =
-  uply {
+let readChunk (maxBytes : int) (dv : Dval) : Task<Option<byte[]>> =
+  task {
     match dv with
     | DStream(impl, disposed, _) ->
       if disposed.Value then
@@ -255,7 +265,9 @@ let readChunk (maxBytes : int) (dv : Dval) : Ply.Ply<Option<byte[]>> =
       else
         match impl with
         | FromIO(_, _, _, Some nextChunk) ->
-          let! chunk = nextChunk maxBytes
+          // nextChunk's signature is still `int -> Ply<...>` per
+          // RuntimeTypes; bridge to Task via Ply.toTask.
+          let! chunk = nextChunk maxBytes |> Ply.toTask
           match chunk with
           | Some buf when buf.Length > 0 -> return Some buf
           | _ ->
@@ -277,10 +289,7 @@ let readChunk (maxBytes : int) (dv : Dval) : Ply.Ply<Option<byte[]>> =
               collected.WriteByte b
               bytesSoFar <- bytesSoFar + 1
             | Some _ ->
-              return
-                Exception.raiseInternal
-                  "readChunk: expected Stream<UInt8> element"
-                  []
+              Exception.raiseInternal "readChunk: expected Stream<UInt8> element" []
             | None -> keepGoing <- false
           if bytesSoFar = 0 then
             disposed.Value <- true

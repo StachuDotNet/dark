@@ -59,8 +59,7 @@ let private streamImplOfList
 
 let private wrap (impl : RT.StreamImpl) : RT.Dval = Stream.wrapImpl impl
 
-let private pull (s : RT.Dval) : Task<Option<RT.Dval>> =
-  Stream.readNext s |> Ply.toTask
+let private pull (s : RT.Dval) : Task<Option<RT.Dval>> = Stream.readNext s
 
 /// Drain a stream to a list. Pulls until None.
 let private drain (s : RT.Dval) : Task<List<RT.Dval>> =
@@ -68,7 +67,7 @@ let private drain (s : RT.Dval) : Task<List<RT.Dval>> =
     let acc = ResizeArray<RT.Dval>()
     let mutable keepGoing = true
     while keepGoing do
-      let! r = Stream.readNext s |> Ply.toTask
+      let! r = Stream.readNext s
       match r with
       | Some v -> acc.Add v
       | None -> keepGoing <- false
@@ -409,8 +408,8 @@ let gcFinalizesMidDrainStream =
       let disposer () = disposerRan.Value <- true
       let dv = Stream.newFromIO VT.int64 next (Some disposer)
       // Pull 2 of 3 elements, then return the weak ref.
-      let pulled1 = (Stream.readNext dv |> Ply.toTask).Result
-      let pulled2 = (Stream.readNext dv |> Ply.toTask).Result
+      let pulled1 = (Stream.readNext dv).Result
+      let pulled2 = (Stream.readNext dv).Result
       Expect.equal pulled1 (Some(RT.DInt64 1L)) "first pull"
       Expect.equal pulled2 (Some(RT.DInt64 2L)) "second pull"
       System.WeakReference<RT.Dval>(dv)
@@ -471,8 +470,8 @@ let chunkedDrainMatchesByteDrain =
     "chunked drain: readStreamChunk returns the same bytes readStreamNext would" {
     let buf = [| 0x01uy; 0x02uy; 0x03uy; 0x04uy; 0x05uy; 0x06uy; 0x07uy; 0x08uy |]
     let s = Stream.newChunked VT.uint8 (chunkPullFn [ buf ]) None
-    let! first = Stream.readChunk 4096 s |> Ply.toTask
-    let! second = Stream.readChunk 4096 s |> Ply.toTask
+    let! first = Stream.readChunk 4096 s
+    let! second = Stream.readChunk 4096 s
     Expect.equal first (Some buf) "first chunk comes through intact"
     Expect.equal second None "second call returns None on exhaustion"
   }
@@ -498,9 +497,9 @@ let chunkedDrainFallsBackToByteWise =
         VT.uint8
         (listPullFn [ RT.DUInt8 0xAAuy; RT.DUInt8 0xBBuy; RT.DUInt8 0xCCuy ])
         None
-    let! chunk = Stream.readChunk 4096 s |> Ply.toTask
+    let! chunk = Stream.readChunk 4096 s
     Expect.equal chunk (Some [| 0xAAuy; 0xBBuy; 0xCCuy |]) "all bytes collected"
-    let! after = Stream.readChunk 4096 s |> Ply.toTask
+    let! after = Stream.readChunk 4096 s
     Expect.equal after None "exhausted"
   }
 
