@@ -4,7 +4,6 @@
     <OutputType>Library</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>10.0</LangVersion>
-    <!-- Publishing configuration -->
     <IsPublishable>false</IsPublishable>
     <IsTrimmable>true</IsTrimmable>
     <SelfContained>true</SelfContained>
@@ -12,20 +11,22 @@
   <ItemGroup>
     <None Include="paket.references" />
   </ItemGroup>
-  <!--
-    LibExecution is now an umbrella that pulls in the three split projects.
-    Downstream consumers reference LibExecution and transitively get
-    Language → Runtime → DarkTypes. The single file here exposes the
-    runtime-orchestration surface (Execution).
-  -->
   <ItemGroup>
     <ProjectReference Include="../Prelude/Prelude.fsproj" />
     <ProjectReference Include="../Language/Language.fsproj" />
-    <ProjectReference Include="../Runtime/Runtime.fsproj" />
-    <ProjectReference Include="../DarkTypes/DarkTypes.fsproj" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Execution.fs" />
+    <Compile Include="RuntimeTypes.fs" />
+    <Compile Include="ValueType.fs" />
+    <Compile Include="Blob.fs" />
+    <Compile Include="Stream.fs" />
+    <Compile Include="Dval.fs" />
+    <Compile Include="Builtin.fs" />
+    <Compile Include="TypeChecker.fs" />
+    <Compile Include="Interpreter.fs" />
+    <Compile Include="AnalysisTypes.fs" />
+    <Compile Include="RTQueryCompiler.fs" />
+    <Compile Include="ProgramTypesToRuntimeTypes.fs" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>
