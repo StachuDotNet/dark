@@ -5,12 +5,50 @@
 # .circleci/config.yml. Generally, if you add something to one of these
 # files, there's an equivalent to be added in .circleci/config.yml.
 
+import os
 import subprocess
 import sys
 import threading
 import signal
 
 run_tests = False
+
+# Path to the log this process is being redirected into by the caller
+# (see scripts/devcontainer/_vscode-post-start-command). We rotate it in-place
+# so the caller's open append-FD stays valid: kernel O_APPEND seeks to EOF
+# before each write, so even after we shrink the file the next append lands
+# at the new EOF.
+BUILD_LOG_PATH = "/home/dark/app/rundir/logs/build-server.log"
+BUILD_LOG_MAX_BYTES = 5_000_000      # rotate above ~5 MB
+BUILD_LOG_KEEP_BYTES = 500_000       # keep the most recent ~500 KB on rotate
+
+
+def rotate_build_log_if_needed():
+  try:
+    if not os.path.exists(BUILD_LOG_PATH):
+      return
+    size = os.path.getsize(BUILD_LOG_PATH)
+    if size <= BUILD_LOG_MAX_BYTES:
+      return
+    # Read the tail we want to keep, then rewrite the file in place.
+    with open(BUILD_LOG_PATH, "rb") as f:
+      f.seek(max(0, size - BUILD_LOG_KEEP_BYTES))
+      tail = f.read()
+    header = (
+      b"\n--- build-server.log rotated; older content discarded "
+      b"(threshold "
+      + str(BUILD_LOG_MAX_BYTES).encode()
+      + b" B, kept last "
+      + str(len(tail)).encode()
+      + b" B) ---\n"
+    )
+    with open(BUILD_LOG_PATH, "rb+") as f:
+      f.seek(0)
+      f.write(header + tail)
+      f.truncate(len(header) + len(tail))
+  except Exception:
+    # Best-effort; never let rotation kill the build server.
+    pass
 
 # When compiling code, use the optimized version of the build. This causes
 # --optimize to be passed to the compile script.
@@ -125,6 +163,8 @@ def main():
 
     return success
 
+  rotate_build_log_if_needed()
+
   run_or_fail("scripts/devcontainer/_write-config-file")
   run_or_fail("scripts/devcontainer/_allow-docker-access")
   run_or_fail("scripts/devcontainer/_create-app-directories")
@@ -148,6 +188,7 @@ def main():
     ignored = set(["/home/dark/app/" + f for f in ignored])
     filter = watchfiles.DefaultFilter(ignore_paths=ignored)
     for changes in watchfiles.watch("/home/dark/app/", watch_filter=filter):
+      rotate_build_log_if_needed()
       changes = [f for (_, f) in changes]
       compile(changes)
 
