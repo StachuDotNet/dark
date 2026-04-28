@@ -560,11 +560,12 @@ let fns (config : Configuration) : List<BuiltInFn> =
           vm,
           _,
           [ DString method; DString uri; DList(_, reqHeaders); DBlob bodyRef ] ->
-          uply {
-            let! reqBodyBytes = Blob.readBytes state bodyRef
+          task {
+            let! reqBodyBytes = Blob.readBytes state bodyRef |> Ply.toTask
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
               reqHeaders
               |> Ply.List.mapSequentially (fun item ->
+                // Ply.List.mapSequentially callback — stays uply.
                 uply {
                   match item with
                   | DTuple(DString k, DString v, []) ->
@@ -592,6 +593,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
 
                 })
               |> Ply.map Result.collect
+              |> Ply.toTask
 
             let method =
               try
@@ -600,7 +602,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
                 None
 
             let! (result : Result<Dval, RequestError.RequestError>) =
-              uply {
+              task {
                 match reqHeaders, method with
                 | Ok reqHeaders, Some method ->
                   let request =
@@ -646,6 +648,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
             | Ok result -> return result
             | Error err -> return resultError (RequestError.toDT err)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -692,10 +695,11 @@ let fns (config : Configuration) : List<BuiltInFn> =
         let resultError = Dval.resultError streamTypeOk streamTypeErr
         (function
         | _, vm, _, [ DString method; DString uri; DList(_, reqHeaders) ] ->
-          uply {
+          task {
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
               reqHeaders
               |> Ply.List.mapSequentially (fun item ->
+                // Ply.List.mapSequentially callback — stays uply.
                 uply {
                   match item with
                   | DTuple(DString k, DString v, []) ->
@@ -720,6 +724,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
                       |> raiseRTE vm.threadID
                 })
               |> Ply.map Result.collect
+              |> Ply.toTask
 
             let method =
               try
@@ -796,6 +801,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
             | _, None ->
               return resultError (RequestError.toDT RequestError.BadMethod)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
