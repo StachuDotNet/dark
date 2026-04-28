@@ -24,7 +24,8 @@
     <ProjectReference Include="../../src/BuiltinCloudExecution/BuiltinCloudExecution.fsproj" />
     <ProjectReference Include="../../src/BuiltinDarkInternal/BuiltinDarkInternal.fsproj" />
     <ProjectReference Include="../../src/LibCloudExecution/LibCloudExecution.fsproj" />
-    <ProjectReference Include="../../src/BwdServer/BwdServer.fsproj" />
+    <!-- BwdServer disabled — restore when HTTP server functionality returns. -->
+    <!-- <ProjectReference Include="../../src/BwdServer/BwdServer.fsproj" /> -->
 
     <!-- cross-cutting -->
     <ProjectReference Include="../TestUtils/TestUtils.fsproj" />
@@ -45,14 +46,16 @@
     <Compile Include="Execution.Tests.fs" />
     <Compile Include="LibParser.Tests.fs" />
     <Compile Include="NewParser.Tests.fs" />
-    <Compile Include="HttpClient.Tests.fs" />
+    <!-- HttpClient.Tests disabled with BwdServer; relies on BwdServer test scaffolding. -->
+    <!-- <Compile Include="HttpClient.Tests.fs" /> -->
     <Compile Include="LibExecution.Tests.fs" />
     <Compile Include="Propagation.Tests.fs" />
     <Compile Include="Hashing.Tests.fs" />
     <Compile Include="BranchOps.Tests.fs" />
 
     <!-- cloud stuff /-->
-    <Compile Include="BwdServer.Tests.fs" />
+    <!-- BwdServer.Tests disabled with BwdServer. -->
+    <!-- <Compile Include="BwdServer.Tests.fs" /> -->
     <Compile Include="Canvas.Tests.fs" />
     <Compile Include="DvalRepr.Tests.fs" />
     <Compile Include="Routing.Tests.fs" />

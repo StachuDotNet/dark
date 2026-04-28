@@ -10,7 +10,12 @@ open Prelude
 module PT = LibExecution.ProgramTypes
 
 let initSerializers () =
-  BwdServer.Server.initSerializers ()
+  // (was: BwdServer.Server.initSerializers ()) — BwdServer disabled; inline the equivalents.
+  Json.Vanilla.allow<LibExecution.DvalReprInternalRoundtrippable.FormatV0.Dval>
+    "RoundtrippableSerializationFormatV0.Dval"
+  Json.Vanilla.allow<List<LibExecution.ProgramTypes.Toplevel.T>>
+    "Canvas.loadJsonFromDisk"
+  Json.Vanilla.allow<LibExecution.ProgramTypes.Toplevel.T> "Canvas.loadJsonFromDisk"
 
   // These are serializers used in the tests that are not used in the main program
   Json.Vanilla.allow<Map<string, string>> "tests"
@@ -51,7 +56,7 @@ let main (args : string array) : int =
         Tests.DvalRepr.tests
         Tests.LibParser.tests
         Tests.NewParser.tests
-        Tests.HttpClient.tests
+        // Tests.HttpClient.tests — disabled with BwdServer
 
         // package manager
         Tests.Propagation.tests
@@ -68,7 +73,7 @@ let main (args : string array) : int =
         *)
 
         // cloud
-        Tests.BwdServer.tests
+        // Tests.BwdServer.tests — disabled with BwdServer
         Tests.Canvas.tests
         Tests.Routing.tests
         Tests.BinarySerialization.tests
@@ -82,8 +87,9 @@ let main (args : string array) : int =
         Tests.Stream.tests ]
 
     let cancelationTokenSource = new System.Threading.CancellationTokenSource()
-    let bwdServerTestsTask = Tests.BwdServer.init cancelationTokenSource.Token
-    let httpClientTestsTask = Tests.HttpClient.init cancelationTokenSource.Token
+    // BwdServer + HttpClient test scaffolding disabled with BwdServer.
+    // let bwdServerTestsTask = Tests.BwdServer.init cancelationTokenSource.Token
+    // let httpClientTestsTask = Tests.HttpClient.init cancelationTokenSource.Token
 
     // Generate this so that we can see if the format has changed in a git diff
     BinarySerialization.generateTestFiles ()
@@ -96,8 +102,8 @@ let main (args : string array) : int =
 
     NonBlockingConsole.wait () // flush stdout
     cancelationTokenSource.Cancel()
-    bwdServerTestsTask.Wait()
-    httpClientTestsTask.Wait()
+    // bwdServerTestsTask.Wait()
+    // httpClientTestsTask.Wait()
     exitCode
   with e ->
     printException "Outer exception" [] e
