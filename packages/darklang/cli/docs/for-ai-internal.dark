@@ -5,7 +5,10 @@ let content () : String =
 
 ## Directories
   backend/src/          # F# source
-    LibExecution/       # execution engine
+    Language/           # PT (ProgramTypes) — what programs look like
+    Runtime/            # RT, Interpreter, Dval, Builtin, TypeChecker, Blob, Stream
+    DarkTypes/          # value <-> Dark-side encoding (DvalDecoder + *ToDarkTypes)
+    LibExecution/       # umbrella; just Execution.fs (orchestrator)
     LibParser/          # parser
     LibPackageManager/  # package DB, branches, SCM ops
     BuiltinExecution/   # builtin impls
@@ -17,10 +20,38 @@ let content () : String =
   rundir/logs/          # log files
   scripts/              # build scripts
 
-## Builds - DON'T MANUALLY REBUILD
-Auto-rebuilds on save. Watch logs:
+## LibExecution layering (Language → Runtime → DarkTypes → umbrella)
+  Language    deps: Prelude only — DarkDateTime, PackageRefs (shared
+              primitives), ProgramTypes, ProgramTypesAst, ProgramTypesParser
+  Runtime     deps: Prelude, Language — RuntimeTypes, ValueType, Blob, Stream,
+              Dval, Builtin, TypeChecker, Interpreter, AnalysisTypes,
+              RTQueryCompiler, ProgramTypesToRuntimeTypes
+  DarkTypes   deps: Prelude, Language, Runtime — DvalDecoder, CommonToDarkTypes,
+              RuntimeTypesToDarkTypes, ProgramTypesToDarkTypes
+  LibExecution  umbrella, just Execution.fs; downstream consumers reference
+              this and pick up the three sub-projects transitively.
+F# `module LibExecution.X` declarations are unchanged across files, so the
+namespace path `LibExecution.RuntimeTypes` etc. still resolves regardless of
+which assembly the type lives in.
+
+## BwdServer disabled
+BwdServer is commented out in fsdark.sln and Tests.fsproj. The source is
+still on disk; restore by un-commenting the Project, ConfigurationPlatforms
+and NestedProjects entries in fsdark.sln, plus the ProjectReference and
+test-file Compile entries in Tests.fsproj. ``BwdServer.Tests.fs`` and
+``HttpClient.Tests.fs`` are also skipped from compile while it's off.
+
+## Builds — VS Code starts the watcher; agents compile explicitly
+The container post-start does a one-shot compile so binaries are fresh.
+The auto-rebuild watcher is started by ``.vscode/tasks.json`` on
+``folderOpen`` — i.e. only when a human attaches VS Code. An agent that
+wants the watcher can run:
+  ./scripts/build/_build-server --watch
+Otherwise compile on demand:
+  ./scripts/build/_dotnet-wrapper build --no-restore --configuration Debug fsdark.sln
+Watch logs (humans):
   packages-canvas.log   # .dark reload (~10s)
-  build-server.log      # F# build (~1min)
+  build-server.log      # F# build (~30-45s); auto-rotates above 5 MB
 
 ## Tests
   ./scripts/run-backend-tests
@@ -75,17 +106,29 @@ branch chain for name resolution. Items are global (content-addressed),
 locations (name bindings) are branch-scoped.
 
 ## Log Files (rundir/logs/)
-When something goes wrong, check these logs:
+Two parallel views of the same activity:
+
+**Per-component .log files** (humans, streaming visual feedback):
   cli.log              # CLI runtime issues
   lsp.log              # LSP input/output
   packages-canvas.log  # .dark file loading from disk
-  build-server.log     # F# build issues, high-level errors
+  build-server.log     # F# build output; auto-rotates above 5 MB
+  fsharp-tests.log     # full Expecto test output
   migrations.log       # migration issues (if recently changed)
 
+**telemetry.jsonl** (unified structured event log — agents grep this):
+  One JSON object per line (`{event, wall, ms?, ctx}`). Currently fed by
+  CLI startup, build-server cycles (`build.compile.start|end|fail`,
+  `build.initial.start|end|fail`), and Tests entry point
+  (`test.suite.start|end`). Single grep target instead of folklore about
+  which .log file holds which signal.
+  Add new emitters via `Telemetry.event "foo.bar" [("k", "v")]` in F#
+  (Prelude.Telemetry) or the `emit_event` helper in scripts/build/_build-server.
+
 ## PackageRefs stale-hash (bootstrap gotcha)
-backend/src/LibExecution/package-ref-hashes.txt (not in git). Empty = tolerated;
+backend/src/Language/package-ref-hashes.txt (not in git). Empty = tolerated;
 non-empty with missing key = "PackageRefs: X hash not found" crash at startup.
-Fix after adding a new ref: `> backend/src/LibExecution/package-ref-hashes.txt &&
+Fix after adding a new ref: `> backend/src/Language/package-ref-hashes.txt &&
 ./scripts/build/reload-packages`
 
 ## Name Resolution (see also: `docs for-ai`)
