@@ -33,6 +33,14 @@ let main (args : string array) : int =
     (LibCloud.Init.init name).Result
     (LibCloudExecution.Init.init name).Result
 
+    // Init the unified event log so test-suite milestones land alongside
+    // build-server / CLI events. Per-case detail still goes to fsharp-tests.log
+    // for humans to scroll through.
+    let eventLogPath =
+      System.IO.Path.Combine(LibConfig.Config.logDir, "telemetry.jsonl")
+    Telemetry.init eventLogPath
+    Telemetry.event "test.suite.start" [ ("name", name) ]
+
     initSerializers ()
 
     // Grow the DB from seed if needed. Builtins are deferred (constructed after
@@ -99,6 +107,10 @@ let main (args : string array) : int =
     // context or it may hang
     let exitCode =
       runTestsWithCLIArgs [ Allow_Duplicate_Names ] args (testList "tests" tests)
+
+    Telemetry.event
+      "test.suite.end"
+      [ ("exitCode", string exitCode); ("name", name) ]
 
     NonBlockingConsole.wait () // flush stdout
     cancelationTokenSource.Cancel()

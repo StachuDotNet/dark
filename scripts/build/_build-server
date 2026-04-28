@@ -5,10 +5,13 @@
 # .circleci/config.yml. Generally, if you add something to one of these
 # files, there's an equivalent to be added in .circleci/config.yml.
 
+import datetime
+import json
 import os
 import subprocess
 import sys
 import threading
+import time
 import signal
 
 run_tests = False
@@ -48,6 +51,29 @@ def rotate_build_log_if_needed():
       f.truncate(len(header) + len(tail))
   except Exception:
     # Best-effort; never let rotation kill the build server.
+    pass
+
+
+# Unified structured event log: shared with F# Prelude.Telemetry, which
+# already writes to this file. Adding build-server events here means every
+# build cycle is greppable alongside CLI / Tests / migration events without
+# tailing five separate log files. Humans still get the full per-component
+# build output via stdout → build-server.log; this is the structured shadow.
+EVENT_LOG_PATH = "/home/dark/app/rundir/logs/telemetry.jsonl"
+
+
+def emit_event(name, ctx=None):
+  try:
+    line = {
+      "event": name,
+      "wall": datetime.datetime.now(datetime.timezone.utc)
+                .strftime("%Y-%m-%dT%H:%M:%S.") + f"{datetime.datetime.now().microsecond // 1000:03d}Z",
+      "ctx": ctx or {},
+    }
+    os.makedirs(os.path.dirname(EVENT_LOG_PATH), exist_ok=True)
+    with open(EVENT_LOG_PATH, "a") as f:
+      f.write(json.dumps(line, separators=(",", ":")) + "\n")
+  except Exception:
     pass
 
 # When compiling code, use the optimized version of the build. This causes
@@ -99,10 +125,18 @@ def compile_project(name):
 def compile(files):
   fileStr = " ".join(files)
   flags = getFlags()
+  emit_event("build.compile.start", {"fileCount": str(len(files))})
+  start = time.time()
   try:
-    return run(f"scripts/build/compile {flags} {fileStr}")
+    ok = run(f"scripts/build/compile {flags} {fileStr}")
+    emit_event(
+      "build.compile.end" if ok else "build.compile.fail",
+      {"ms": str(int((time.time() - start) * 1000)), "fileCount": str(len(files))},
+    )
+    return ok
   except:
     print(f"Tried to compile too many files. Length was {len(fileStr)}")
+    emit_event("build.compile.overflow", {"fileCount": str(len(files))})
     return compile_project("all")
 
 
@@ -153,7 +187,13 @@ def main():
       should_run_tests = True
 
   def initial_compile():
+    emit_event("build.initial.start", {})
+    start = time.time()
     success = compile_project("all")
+    emit_event(
+      "build.initial.end" if success else "build.initial.fail",
+      {"ms": str(int((time.time() - start) * 1000))},
+    )
     print("--------------------------")
     if success:
       print("-- Initial compile succeeded")
