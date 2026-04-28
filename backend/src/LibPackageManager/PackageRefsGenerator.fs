@@ -19,10 +19,7 @@ let private buildKey (itemType : string) (modules : string) (name : string) =
 
 /// Path to the source-tree copy of the hash file (committed to git).
 let private sourceTreePath =
-  System.IO.Path.Combine(
-    __SOURCE_DIRECTORY__,
-    "../Language/package-ref-hashes.txt"
-  )
+  System.IO.Path.Combine(__SOURCE_DIRECTORY__, "../Language/package-ref-hashes.txt")
   |> System.IO.Path.GetFullPath
 
 
