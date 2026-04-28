@@ -42,7 +42,7 @@ let private loadHashes () : Map<string, string> =
       use stream =
         System.Reflection.Assembly
           .GetExecutingAssembly()
-          .GetManifestResourceStream("LibExecution.package-ref-hashes.txt")
+          .GetManifestResourceStream("Language.package-ref-hashes.txt")
       if stream <> null then
         use reader = new System.IO.StreamReader(stream)
         reader.ReadToEnd().Split('\n') |> parseLines

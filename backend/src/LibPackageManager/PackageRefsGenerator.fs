@@ -21,7 +21,7 @@ let private buildKey (itemType : string) (modules : string) (name : string) =
 let private sourceTreePath =
   System.IO.Path.Combine(
     __SOURCE_DIRECTORY__,
-    "../LibExecution/package-ref-hashes.txt"
+    "../Language/package-ref-hashes.txt"
   )
   |> System.IO.Path.GetFullPath
 
