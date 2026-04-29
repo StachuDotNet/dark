@@ -113,8 +113,8 @@ let private printSummary (results : List<Scenarios.Result>) : unit =
     print line
 
 
-let runAll () : Ply<Result<unit, string>> =
-  uply {
+let runAll () : Task<Result<unit, string>> =
+  task {
     let results = Scenarios.run (Scenarios.freshState ())
     let timestamp = System.DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
     let json = serializeSnapshot timestamp (gitCommit ()) results
@@ -176,8 +176,8 @@ let private renderSnapshotBody (results : List<Scenarios.Result>) : List<string>
       "" ])
 
 
-let render () : Ply<Result<unit, string>> =
-  uply {
+let render () : Task<Result<unit, string>> =
+  task {
     let dir = resultsDir ()
     let historyPath = System.IO.Path.Combine(dir, "history.jsonl")
     if not (System.IO.File.Exists(historyPath)) then

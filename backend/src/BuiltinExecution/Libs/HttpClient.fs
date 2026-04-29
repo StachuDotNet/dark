@@ -564,9 +564,9 @@ let fns (config : Configuration) : List<BuiltInFn> =
             let! reqBodyBytes = Blob.readBytes state bodyRef
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
               reqHeaders
-              |> Ply.List.mapSequentially (fun item ->
-                // Ply.List.mapSequentially callback — stays uply.
-                uply {
+              |> Task.mapSequentially (fun item ->
+                // Task.mapSequentially callback — stays uply.
+                task {
                   match item with
                   | DTuple(DString k, DString v, []) ->
                     let k = String.trim k
@@ -592,8 +592,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
                       |> raiseRTE vm.threadID
 
                 })
-              |> Ply.map Result.collect
-              |> Ply.toTask
+              |> Task.map Result.collect
 
             let method =
               try
@@ -698,9 +697,9 @@ let fns (config : Configuration) : List<BuiltInFn> =
           task {
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
               reqHeaders
-              |> Ply.List.mapSequentially (fun item ->
-                // Ply.List.mapSequentially callback — stays uply.
-                uply {
+              |> Task.mapSequentially (fun item ->
+                // Task.mapSequentially callback — stays uply.
+                task {
                   match item with
                   | DTuple(DString k, DString v, []) ->
                     let k = String.trim k
@@ -723,8 +722,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
                       |> RTE.Apply
                       |> raiseRTE vm.threadID
                 })
-              |> Ply.map Result.collect
-              |> Ply.toTask
+              |> Task.map Result.collect
 
             let method =
               try

@@ -378,14 +378,13 @@ let queryableJsonRoundtrip =
           2048L
         )
       )
-    let! json = QueryableJson.toJsonStringV0 types threadID original |> Ply.toTask
+    let! json = QueryableJson.toJsonStringV0 types threadID original
     Expect.stringContains json "\"type\":\"blob\"" "has blob envelope tag"
     Expect.stringContains
       json
       "\"hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\""
       "has the content hash"
-    let! restored =
-      QueryableJson.parseJsonV0 types threadID Map.empty RT.TBlob json |> Ply.toTask
+    let! restored = QueryableJson.parseJsonV0 types threadID Map.empty RT.TBlob json
     Expect.equal restored original "persistent blob survives queryable JSON"
   }
 
@@ -398,8 +397,7 @@ let queryableJsonEphemeralRaises =
     do!
       expectThrows
         "ephemeral blob in queryable JSON should raise (promote first)"
-        (fun () ->
-          QueryableJson.toJsonStringV0 types threadID ephemeral |> Ply.toTask)
+        (fun () -> QueryableJson.toJsonStringV0 types threadID ephemeral)
   }
 
 let roundtrippableJsonPersistentRoundtrip =

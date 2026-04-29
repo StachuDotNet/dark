@@ -172,7 +172,7 @@ module DvalComparator =
 module Sort =
   exception InvalidSortComparatorInt of int64
 
-  type Comparer = Dval -> Dval -> Ply<int>
+  type Comparer = Dval -> Dval -> Task<int>
 
   type Array = array<Dval>
 
@@ -192,8 +192,8 @@ module Sort =
     (halfLen : int)
     (length : int)
     (comparer : Comparer)
-    : Ply<unit> =
-    uply {
+    : Task<unit> =
+    task {
       let mutable leftHalfIndex = 0
       let mutable rightHalfIndex = index + halfLen
       let rightHalfEnd = index + length
@@ -239,8 +239,8 @@ module Sort =
     (length : int)
     (comparer : Comparer)
     (scratchSpace : Array)
-    : Ply<unit> =
-    uply {
+    : Task<unit> =
+    task {
       if length <= 1 then
         return ()
       elif length = 2 then
@@ -269,13 +269,13 @@ module Sort =
     (index : int)
     (length : int)
     (comparer : Comparer)
-    : Ply<unit> =
+    : Task<unit> =
     let scratchSpace =
       System.Array.CreateInstance(typeof<Dval>, arrayToSort.Length / 2) :?> Array
 
     mergeSortHelper arrayToSort index length comparer scratchSpace
 
-  let sort (comparer : Comparer) (arrayToSort : Array) : Ply<unit> =
+  let sort (comparer : Comparer) (arrayToSort : Array) : Task<unit> =
     sequentialSort arrayToSort 0 arrayToSort.Length comparer
 
 let varA = TVariable "a"

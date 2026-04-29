@@ -295,7 +295,7 @@ let dvalToTypeName (state : RT.ExecutionState) (dval : RT.Dval) : Task<string> =
 //   (state : RT.ExecutionState)
 //   (expr : RT.Expr)
 //   (id : Option<id>)
-//   : Ply<string> =
+//   : Task<string> =
 //   match id with
 //   | None -> Ply "Unknown Expr"
 //   | Some id ->
@@ -314,8 +314,8 @@ let dvalToTypeName (state : RT.ExecutionState) (dval : RT.Dval) : Task<string> =
 //       expr
 //     |> ignore<RT.Expr>
 
-//     let prettyPrint (expr : RT.Expr) : Ply<string> =
-//       uply {
+//     let prettyPrint (expr : RT.Expr) : Task<string> =
+//       task {
 //         let fnName =
 //           RT.FQFnName.fqPackage PackageRefs.Fn.PrettyPrinter.RuntimeTypes.expr
 //         let args = NEList.singleton (RuntimeTypesToDarkTypes.Expr.toDT expr)
@@ -327,7 +327,7 @@ let dvalToTypeName (state : RT.ExecutionState) (dval : RT.Dval) : Task<string> =
 
 //     match foundExpr with
 //     | None ->
-//       uply {
+//       task {
 //         let! pretty = prettyPrint expr
 //         return $"Root Expr:\n{pretty}"
 //       }
@@ -340,8 +340,8 @@ let executionPointToString
   : Task<string> =
   task {
     // CLEANUP improve here
-    // let handleFn (fn : Option<RT.PackageFn.PackageFn>) : Ply<string> =
-    //   uply {
+    // let handleFn (fn : Option<RT.PackageFn.PackageFn>) : Task<string> =
+    //   task {
     //     match fn with
     //     | None -> return $"<Couldn't find package function {fn.id}>"
     //     | Some fn ->

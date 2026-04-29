@@ -250,8 +250,8 @@ let testManyTask (name : string) (fn : 'a -> Task<'b>) (values : List<'a * 'b>) 
         })
       values)
 
-let testManyPly (name : string) (fn : 'a -> Ply<'b>) (values : List<'a * 'b>) =
-  testManyTask name (fn >> Ply.toTask) values
+let testManyPly (name : string) (fn : 'a -> Task<'b>) (values : List<'a * 'b>) =
+  testManyTask name fn values
 
 
 let testMany2Task
@@ -1516,8 +1516,8 @@ let configureLogging
 let unwrapExecutionResult
   (state : RT.ExecutionState)
   (exeResult : RT.ExecutionResult)
-  : Ply.Ply<RT.Dval> =
-  uply {
+  : Task<RT.Dval> =
+  task {
     match exeResult with
     | Ok dval -> return dval
     | Error(rte, callStack) ->
@@ -1549,7 +1549,7 @@ let unwrapExecutionResult
   }
 
 let parsePTExpr (code : string) : Task<PT.Expr> =
-  uply {
+  task {
     let! (state : RT.ExecutionState) =
       let canvasID = System.Guid.NewGuid()
       executionStateFor pmPT canvasID false false Map.empty
@@ -1568,4 +1568,3 @@ let parsePTExpr (code : string) : Task<PT.Expr> =
         return Exception.raiseInternal "Error converting Dval to PT.Expr" []
     | _ -> return Exception.raiseInternal "Error executing parsePTExpr function" []
   }
-  |> Ply.toTask

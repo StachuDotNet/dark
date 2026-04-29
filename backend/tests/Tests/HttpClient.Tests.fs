@@ -110,8 +110,8 @@ module Internal =
 let parseSingleTestFromFile
   (filename : string)
   (test : string)
-  : Ply<Internal.Test.PTTest> =
-  uply {
+  : Task<Internal.Test.PTTest> =
+  task {
     let! (state : RT.ExecutionState) =
       let canvasID = System.Guid.NewGuid()
       executionStateFor pmPT canvasID false false Map.empty
@@ -213,7 +213,6 @@ let makeTest versionName filename =
         // compressed
         |> String.replace "LENGTH" (string response.body.Length)
         |> parseSingleTestFromFile "httpclient.tests.fs"
-        |> Ply.toTask
 
       // Run the handler (call the HTTP client)
       // Note: this will update the corresponding value in `testCases` with the
@@ -241,12 +240,12 @@ let makeTest versionName filename =
 
       // Promote ephemeral blobs on both sides so two independently-built
       // Blobs with identical bytes (different UUIDs) compare equal.
-      let noopInsert _ _ = uply { return () }
+      let noopInsert _ _ = task { return () }
       let promoteIfOk r =
         task {
           match r with
           | Ok dv ->
-            let! p = LibExecution.Blob.promote exeState noopInsert dv |> Ply.toTask
+            let! p = LibExecution.Blob.promote exeState noopInsert dv
             return Ok p
           | Error _ -> return r
         }
@@ -497,8 +496,8 @@ module StreamDvalTests =
       let buffer = Array.zeroCreate<byte> 8192
       let mutable bufferLen = 0
       let mutable bufferPos = 0
-      let next () : Ply<Option<RT.Dval>> =
-        uply {
+      let next () : Task<Option<RT.Dval>> =
+        task {
           if bufferPos >= bufferLen then
             let! n = responseStream.ReadAsync(buffer, 0, buffer.Length)
             if n = 0 then
@@ -528,7 +527,7 @@ module StreamDvalTests =
       use ms = new System.IO.MemoryStream()
       let mutable keepGoing = true
       while keepGoing do
-        let! pulled = Stream.readNext s |> Ply.toTask
+        let! pulled = Stream.readNext s
         match pulled with
         | Some(RT.DUInt8 b) -> ms.WriteByte b
         | Some _ -> Exception.raiseInternal "expected DUInt8" []
@@ -626,7 +625,7 @@ module StreamDvalTests =
             | _ -> failtest "expected DStream"
             Expect.isTrue disposerRan.Value "disposer runs on explicit close"
             // Subsequent pulls yield None.
-            let! after = Stream.readNext s |> Ply.toTask
+            let! after = Stream.readNext s
             Expect.equal after None "closed stream yields None"
         } ]
 

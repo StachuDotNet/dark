@@ -19,8 +19,8 @@ open Utils
 
 /// Reads and parses all .dark files in `packages` dir,
 /// failing upon any individual failure
-let load (builtins : RT.Builtins) : Ply<List<PT.PackageOp>> =
-  uply {
+let load (builtins : RT.Builtins) : Task<List<PT.PackageOp>> =
+  task {
     let filesWithContents =
       "/home/dark/app/packages"
       |> listDirectoryRecursive
@@ -34,7 +34,7 @@ let load (builtins : RT.Builtins) : Ply<List<PT.PackageOp>> =
     let! (firstPassOps : List<PT.PackageOp>) =
       filesWithContents
       // TODO: parallelize
-      |> Ply.List.mapSequentially (fun (path, contents) ->
+      |> Task.mapSequentially (fun (path, contents) ->
         try
           debuG "  parsing" path
           LibParser.Parser.parsePackageFile
@@ -46,7 +46,7 @@ let load (builtins : RT.Builtins) : Ply<List<PT.PackageOp>> =
         with _ex ->
           debuG "  FAILED to parse" path
           reraise ())
-      |> Ply.map List.flatten
+      |> Task.map List.flatten
     debuG "phase 1" $"done, {List.length firstPassOps} ops"
 
     // -- Phase 2: Iterative re-parse until hashes converge --
@@ -69,14 +69,14 @@ let load (builtins : RT.Builtins) : Ply<List<PT.PackageOp>> =
           currentOps
       let! newRawOps =
         filesWithContents
-        |> Ply.List.mapSequentially (fun (path, contents) ->
+        |> Task.mapSequentially (fun (path, contents) ->
           LibParser.Parser.parsePackageFile
             builtins
             pm
             NR.OnMissing.ThrowError
             path
             contents)
-        |> Ply.map List.flatten
+        |> Task.map List.flatten
       let remapped = HS.remapSetNames newRawOps currentOps
       let newOps = HS.computeRealHashes remapped
       let newHashes = HS.extractAllHashes newOps

@@ -1,6 +1,7 @@
 /// CLEANUP still feels like this can be tidied/shortened a bit.
 module LibParser.NameResolver
 
+open System.Threading.Tasks
 open Prelude
 open LibExecution.ProgramTypes
 
@@ -60,12 +61,12 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
   (currentModule : List<string>)
   (given : NEList<string>)
   (parseName : string -> Result<string * int, string>)
-  (findInPM : (PT.BranchId * PT.PackageLocation) -> Ply<Option<Hash>>)
+  (findInPM : (PT.BranchId * PT.PackageLocation) -> Task<Option<Hash>>)
   (makePackageFQName : Hash -> 'FQName)
   (makeBuiltinFQName : string * int -> 'FQName)
   (builtinToRT : string * int -> 'Builtin)
-  : Ply<PT.NameResolution<'FQName>> =
-  uply {
+  : Task<PT.NameResolution<'FQName>> =
+  task {
     let originalName = NEList.toList given
     let notFoundError = Error NRE.NotFound
     let (modules, name) = NEList.splitLast given
@@ -77,8 +78,8 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
       let genericName : GenericName =
         { modules = modules; name = name; version = version }
 
-      let tryResolve (nameToTry : GenericName) : Ply<Result<'FQName, unit>> =
-        uply {
+      let tryResolve (nameToTry : GenericName) : Task<Result<'FQName, unit>> =
+        task {
           match nameToTry.modules with
           | [] -> return Error()
           | owner :: modules ->
@@ -101,12 +102,12 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
         }
 
       let! result =
-        Ply.List.foldSequentially
+        Task.foldSequentially
           (fun currentResult nameToTry ->
             match currentResult with
-            | Ok _ -> Ply currentResult
+            | Ok _ -> Task.FromResult currentResult
             | Error _ ->
-              uply {
+              task {
                 match! tryResolve nameToTry with
                 | Error() -> return currentResult
                 | Ok success -> return Ok success
@@ -128,7 +129,7 @@ let resolveTypeName
   (onMissing : OnMissing)
   (currentModule : List<string>)
   (name : WT.Name)
-  : Ply<PT.NameResolution<PT.FQTypeName.FQTypeName>> =
+  : Task<PT.NameResolution<PT.FQTypeName.FQTypeName>> =
   let warning = "Builtin types don't exist"
   let emptyBuiltins = None // irrelevant for types
 
@@ -147,7 +148,7 @@ let resolveTypeName
       currentModule
       given
       parseTypeName
-      (fun args -> packageManager.findType args |> Ply.ofTask)
+      (fun args -> packageManager.findType args)
       PT.FQTypeName.FQTypeName.Package
       (fun _ -> Exception.raiseInternal warning [])
       (fun _ -> Exception.raiseInternal warning [])
@@ -160,10 +161,10 @@ let resolveValueName
   (onMissing : OnMissing)
   (currentModule : List<string>)
   (name : WT.Name)
-  : Ply<PT.NameResolution<PT.FQValueName.FQValueName>> =
+  : Task<PT.NameResolution<PT.FQValueName.FQValueName>> =
   match name with
   | WT.KnownBuiltin(name, version) ->
-    Ply(
+    Task.FromResult(
       { originalName = [ name ]
         resolved = Ok(PT.FQValueName.fqBuiltIn name version) }
       : PT.NameResolution<_>
@@ -175,7 +176,7 @@ let resolveValueName
       currentModule
       given
       FS2WT.Expr.parseFnName
-      (fun args -> packageManager.findValue args |> Ply.ofTask)
+      (fun args -> packageManager.findValue args)
       PT.FQValueName.FQValueName.Package
       (fun (n, v) -> PT.FQValueName.Builtin { name = n; version = v })
       (fun (n, v) -> { RT.FQValueName.Builtin.name = n; version = v })
@@ -187,10 +188,10 @@ let resolveFnName
   (onMissing : OnMissing)
   (currentModule : List<string>)
   (name : WT.Name)
-  : Ply<PT.NameResolution<PT.FQFnName.FQFnName>> =
+  : Task<PT.NameResolution<PT.FQFnName.FQFnName>> =
   match name with
   | WT.KnownBuiltin(n, v) ->
-    Ply(
+    Task.FromResult(
       { originalName = [ n ]; resolved = Ok(PT.FQFnName.fqBuiltIn n v) }
       : PT.NameResolution<_>
     )
@@ -201,7 +202,7 @@ let resolveFnName
       currentModule
       given
       FS2WT.Expr.parseFnName
-      (fun args -> packageManager.findFn args |> Ply.ofTask)
+      (fun args -> packageManager.findFn args)
       PT.FQFnName.FQFnName.Package
       (fun (n, v) -> PT.FQFnName.Builtin { name = n; version = v })
       (fun (n, v) -> { RT.FQFnName.Builtin.name = n; version = v })

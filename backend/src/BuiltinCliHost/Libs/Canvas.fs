@@ -1,6 +1,7 @@
 /// Builtin functions for canvas and DB operations in the CLI
 module BuiltinCliHost.Libs.Canvas
 
+open System.Threading.Tasks
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
@@ -116,23 +117,22 @@ let fns () : List<BuiltInFn> =
             let! dbs =
               canvas.dbs
               |> Map.values
-              |> Ply.List.mapSequentially (fun (db : PT.DB.T) ->
-                // Ply.List.mapSequentially callback — stays uply.
-                uply {
+              |> Task.mapSequentially (fun (db : PT.DB.T) ->
+                // Task.mapSequentially callback — stays uply.
+                task {
                   let! typeName =
                     match db.typ with
                     | PT.TypeReference.TCustomType({ resolved = Ok(PT.FQTypeName.Package typeID) },
                                                    _) ->
-                      uply {
+                      task {
                         let! locs = pm.getTypeLocations branchId typeID
                         match locs with
                         | location :: _ -> return PackageLocation.toFQN location
                         | [] -> return typeID.ToString()
                       }
-                    | _ -> Ply "unknown"
+                    | _ -> Task.FromResult "unknown"
                   return DTuple(DString db.name, DString typeName, [])
                 })
-              |> Ply.toTask
             return Dval.list (KTTuple(VT.string, VT.string, [])) dbs
           }
 

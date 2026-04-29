@@ -53,8 +53,8 @@ let runtimeErrorMessage
   (state : RT.ExecutionState)
   (allegedRTE : RT.RuntimeError.Error)
   (callStack : RT.CallStack)
-  : Ply<string> =
-  uply {
+  : Task<string> =
+  task {
     let actual = RT2DT.RuntimeError.toDT allegedRTE
     let errorMessageFn =
       RT.FQFnName.fqPackage (
@@ -248,8 +248,7 @@ let t
               None
               $"Expected runtime error `{expectedError}` but expression returned a value.\n\nTest location: {filename}:{lineNumber}"
         | Error(allegedRTE, callStack) ->
-          let! actualError =
-            runtimeErrorMessage state allegedRTE callStack |> Ply.toTask
+          let! actualError = runtimeErrorMessage state allegedRTE callStack
           return Expect.equal actualError expectedError ""
 
       | LibParser.TestModule.PTExpected.PTExpectedSqlError expectedSqlError ->
@@ -262,8 +261,7 @@ let t
               None
               $"Expected SQL runtime error `{expectedSqlError}` but expression returned a value.\n\nTest location: {filename}:{lineNumber}"
         | Error(allegedRTE, callStack) ->
-          let! actualError =
-            runtimeErrorMessage state allegedRTE callStack |> Ply.toTask
+          let! actualError = runtimeErrorMessage state allegedRTE callStack
           let expected =
             LibExecution.RTQueryCompiler.errorTemplate + expectedSqlError
           return Expect.equal actualError expected ""

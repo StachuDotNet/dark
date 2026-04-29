@@ -39,8 +39,8 @@ let queryFilterParam v =
 let resolveLoadValues
   (exeState : ExecutionState)
   (lambdaImpl : LambdaImpl)
-  : Ply.Ply<Map<FQValueName.FQValueName, Dval>> =
-  uply {
+  : Task<Map<FQValueName.FQValueName, Dval>> =
+  task {
     // Collect all value references from LoadValue instructions
     let valueRefs =
       lambdaImpl.instructions.instructions
@@ -52,8 +52,8 @@ let resolveLoadValues
     // Resolve each value
     let! resolved =
       valueRefs
-      |> Ply.List.mapSequentially (fun valueName ->
-        uply {
+      |> Task.mapSequentially (fun valueName ->
+        task {
           match valueName with
           | FQValueName.Builtin builtinName ->
             // Builtin values - look up in builtIn values
@@ -84,8 +84,8 @@ let lookupLambdaImpl (exeState : ExecutionState) (exprId : id) : LambdaImpl =
 let compileQueryLambda
   (exeState : ExecutionState)
   (appLambda : ApplicableLambda)
-  : Ply.Ply<LibExecution.RTQueryCompiler.CompiledQuery> =
-  uply {
+  : Task<LibExecution.RTQueryCompiler.CompiledQuery> =
+  task {
     let lambdaImpl = lookupLambdaImpl exeState appLambda.exprId
     let! resolvedValues = resolveLoadValues exeState lambdaImpl
 
@@ -131,7 +131,7 @@ let fns () : List<BuiltInFn> =
           task {
             let db = exeState.program.dbs[dbname]
 
-            let! id = UserDB.set exeState vm.threadID true db key value |> Ply.toTask
+            let! id = UserDB.set exeState vm.threadID true db key value
 
             match id with
             | Ok _id -> return value
@@ -154,7 +154,7 @@ let fns () : List<BuiltInFn> =
         | exeState, vm, _, [ DString key; DDB dbname ] ->
           task {
             let db = exeState.program.dbs[dbname]
-            let! result = UserDB.getOption exeState vm.threadID db key |> Ply.toTask
+            let! result = UserDB.getOption exeState vm.threadID db key
             return TypeChecker.DvalCreator.option vm.threadID VT.unknownDbTODO result
           }
 
@@ -186,7 +186,6 @@ let fns () : List<BuiltInFn> =
                 | DString s -> s
                 | dv -> Exception.raiseInternal "keys aren't strings" [ "key", dv ])
               |> UserDB.getMany exeState vm.threadID tst db
-              |> Ply.toTask
 
             if List.length items = List.length keys then
               return
@@ -223,7 +222,6 @@ let fns () : List<BuiltInFn> =
                 | DString s -> s
                 | dv -> Exception.raiseInternal "keys aren't strings" [ "key", dv ])
               |> UserDB.getMany exeState vm.threadID tst db
-              |> Ply.toTask
             return
               result |> TypeChecker.DvalCreator.list vm.threadID VT.unknownDbTODO
           }
@@ -254,7 +252,6 @@ let fns () : List<BuiltInFn> =
                 | DString s -> s
                 | dv -> Exception.raiseInternal "keys aren't strings" [ "key", dv ])
               |> UserDB.getManyWithKeys exeState vm.threadID tst db
-              |> Ply.toTask
             return TypeChecker.DvalCreator.dict vm.threadID VT.unknownDbTODO result
           }
 
@@ -315,7 +312,7 @@ let fns () : List<BuiltInFn> =
           task {
             let db = exeState.program.dbs[dbname]
             let tst = Map.empty // TODO idk if this is reasonable
-            let! results = UserDB.getAll exeState vm.threadID tst db |> Ply.toTask
+            let! results = UserDB.getAll exeState vm.threadID tst db
             return
               results
               |> List.map snd
@@ -340,7 +337,7 @@ let fns () : List<BuiltInFn> =
           task {
             let db = exeState.program.dbs[dbname]
             let tst = Map.empty // TODO idk if this is reasonable
-            let! result = UserDB.getAll exeState vm.threadID tst db |> Ply.toTask
+            let! result = UserDB.getAll exeState vm.threadID tst db
             return TypeChecker.DvalCreator.dict vm.threadID VT.unknownDbTODO result
           }
 
@@ -419,7 +416,7 @@ let fns () : List<BuiltInFn> =
         | exeState, vm, _, [ DDB dbname; DApplicable(AppLambda appLambda) ] ->
           task {
             let db = exeState.program.dbs[dbname]
-            let! compiled = compileQueryLambda exeState appLambda |> Ply.toTask
+            let! compiled = compileQueryLambda exeState appLambda
             return!
               UserDB.executeCompiledQuery
                 exeState
@@ -428,7 +425,7 @@ let fns () : List<BuiltInFn> =
                 UserDB.DBQueryAll
                 compiled.sql
                 compiled.paramValues
-              |> Ply.toTask
+
           }
 
         | _ -> incorrectArgs ())
@@ -448,7 +445,7 @@ let fns () : List<BuiltInFn> =
         | exeState, vm, _, [ DDB dbname; DApplicable(AppLambda appLambda) ] ->
           task {
             let db = exeState.program.dbs[dbname]
-            let! compiled = compileQueryLambda exeState appLambda |> Ply.toTask
+            let! compiled = compileQueryLambda exeState appLambda
             return!
               UserDB.executeCompiledQuery
                 exeState
@@ -457,7 +454,7 @@ let fns () : List<BuiltInFn> =
                 UserDB.DBQueryWithKey
                 compiled.sql
                 compiled.paramValues
-              |> Ply.toTask
+
           }
 
         | _ -> incorrectArgs ())
@@ -477,7 +474,7 @@ let fns () : List<BuiltInFn> =
         | exeState, vm, _, [ DDB dbname; DApplicable(AppLambda appLambda) ] ->
           task {
             let db = exeState.program.dbs[dbname]
-            let! compiled = compileQueryLambda exeState appLambda |> Ply.toTask
+            let! compiled = compileQueryLambda exeState appLambda
             return!
               UserDB.executeCompiledQuery
                 exeState
@@ -486,7 +483,7 @@ let fns () : List<BuiltInFn> =
                 UserDB.DBQueryOne
                 compiled.sql
                 compiled.paramValues
-              |> Ply.toTask
+
           }
 
         | _ -> incorrectArgs ())
@@ -506,7 +503,7 @@ let fns () : List<BuiltInFn> =
         | exeState, vm, _, [ DDB dbname; DApplicable(AppLambda appLambda) ] ->
           task {
             let db = exeState.program.dbs[dbname]
-            let! compiled = compileQueryLambda exeState appLambda |> Ply.toTask
+            let! compiled = compileQueryLambda exeState appLambda
             return!
               UserDB.executeCompiledQuery
                 exeState
@@ -515,7 +512,7 @@ let fns () : List<BuiltInFn> =
                 UserDB.DBQueryCount
                 compiled.sql
                 compiled.paramValues
-              |> Ply.toTask
+
           }
 
         | _ -> incorrectArgs ())

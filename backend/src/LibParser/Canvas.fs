@@ -2,6 +2,7 @@ module LibParser.Canvas
 
 open FSharp.Compiler.Syntax
 
+open System.Threading.Tasks
 open Prelude
 
 module RT = LibExecution.RuntimeTypes
@@ -232,14 +233,14 @@ let toPT
   (pm : PT.PackageManager)
   (onMissing : NR.OnMissing)
   (m : WTCanvasModule)
-  : Ply<PTCanvasModule> =
-  uply {
+  : Task<PTCanvasModule> =
+  task {
     let currentModule = m.owner :: m.name
 
     let! typeOps =
       m.types
-      |> Ply.List.mapSequentially (fun wtType ->
-        uply {
+      |> Task.mapSequentially (fun wtType ->
+        task {
           let! ptType = WT2PT.PackageType.toPT pm onMissing currentModule wtType
           let location : PT.PackageLocation =
             { owner = wtType.name.owner
@@ -250,12 +251,12 @@ let toPT
             [ PT.PackageOp.AddType ptType
               PT.PackageOp.SetName(location, PT.PackageType hash) ]
         })
-      |> Ply.map List.flatten
+      |> Task.map List.flatten
 
     let! valueOps =
       m.values
-      |> Ply.List.mapSequentially (fun wtValue ->
-        uply {
+      |> Task.mapSequentially (fun wtValue ->
+        task {
           let! ptValue =
             WT2PT.PackageValue.toPT builtins pm onMissing currentModule wtValue
           let location : PT.PackageLocation =
@@ -269,12 +270,12 @@ let toPT
                 PT.PackageValue(Hashing.computeValueHash Hashing.Normal ptValue)
               ) ]
         })
-      |> Ply.map List.flatten
+      |> Task.map List.flatten
 
     let! fnOps =
       m.fns
-      |> Ply.List.mapSequentially (fun wtFn ->
-        uply {
+      |> Task.mapSequentially (fun wtFn ->
+        task {
           let! ptFn = WT2PT.PackageFn.toPT builtins pm onMissing currentModule wtFn
           let location : PT.PackageLocation =
             { owner = wtFn.name.owner
@@ -285,15 +286,15 @@ let toPT
             [ PT.PackageOp.AddFn ptFn
               PT.PackageOp.SetName(location, PT.PackageFn hash) ]
         })
-      |> Ply.map List.flatten
+      |> Task.map List.flatten
 
     let! dbs =
-      m.dbs |> Ply.List.mapSequentially (WT2PT.DB.toPT pm onMissing currentModule)
+      m.dbs |> Task.mapSequentially (WT2PT.DB.toPT pm onMissing currentModule)
 
     let! handlers =
       m.handlers
-      |> Ply.List.mapSequentially (fun (spec, expr) ->
-        uply {
+      |> Task.mapSequentially (fun (spec, expr) ->
+        task {
           let spec = WT2PT.Handler.Spec.toPT spec
           let context =
             { WT2PT.Context.currentFnName = None
@@ -307,7 +308,7 @@ let toPT
 
     let! exprs =
       m.exprs
-      |> Ply.List.mapSequentially (
+      |> Task.mapSequentially (
         let context =
           { WT2PT.Context.currentFnName = None
             WT2PT.Context.isInFunction = false
@@ -330,9 +331,9 @@ let parse
   (onMissing : NR.OnMissing)
   (filename : string)
   (source : string)
-  : Ply<PTCanvasModule> =
+  : Task<PTCanvasModule> =
 
-  uply {
+  task {
     let parsedAsFSharp = parseAsFSharpSourceFile filename source
 
     let decls =

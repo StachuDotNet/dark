@@ -60,8 +60,8 @@ let purgeDataFromInternalSqlTables (id : CanvasID) : Task<unit> =
 let loadFromDisk
   (pm : PT.PackageManager)
   (canvasName : string)
-  : Ply<System.Guid * List<LibExecution.ProgramTypes.Toplevel.T>> =
-  uply {
+  : Task<System.Guid * List<LibExecution.ProgramTypes.Toplevel.T>> =
+  task {
     print $"Loading canvas {canvasName} from disk"
 
     let canvasDir = $"canvases/{canvasName}"
@@ -93,7 +93,7 @@ let loadFromDisk
     do! LibCloud.Canvas.createWithExactID canvasID None domain
 
     let! tls =
-      uply {
+      task {
         let fileName = $"{canvasDir}/{config.Main}.dark"
         let source = System.IO.File.ReadAllText fileName
 

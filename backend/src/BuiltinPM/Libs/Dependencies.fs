@@ -2,6 +2,7 @@
 /// Enables "what calls this?" and "what does this call?" queries.
 module BuiltinPM.Libs.Dependencies
 
+open System.Threading.Tasks
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
@@ -22,8 +23,8 @@ let tupleVT = VT.tuple hashVT VT.string []
 let private getLocationAny
   (branchChain : List<PT.BranchId>)
   (hash : PT.Hash)
-  : Ply<Option<PT.PackageLocation>> =
-  uply {
+  : Task<Option<PT.PackageLocation>> =
+  task {
     // Try fn first (most common)
     match! PMPT.Fn.getLocations branchChain hash with
     | loc :: _ -> return Some loc
@@ -190,15 +191,14 @@ let fns () : List<BuiltInFn> =
             let! results =
               hashes
               |> List.map (fun hash ->
-                // Ply.List.flatten callback — stays uply.
-                uply {
+                // Task.flatten callback — stays uply.
+                task {
                   match! getLocationAny branchChain hash with
                   | Some loc -> return Some(hash, loc)
                   | None -> return None
                 })
-              |> Ply.List.flatten
-              |> Ply.map (List.choose identity)
-              |> Ply.toTask
+              |> Task.flatten
+              |> Task.map (List.choose identity)
 
             let dvals =
               results

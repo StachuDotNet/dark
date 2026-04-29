@@ -86,7 +86,10 @@ let fns () : List<BuiltInFn> =
     { name = fn "testIncrementSideEffectCounter" 0
       typeParams = []
       parameters =
-        [ Param.make "passThru" (TVariable "a") "Ply which will be returned" ]
+        [ Param.make
+            "passThru"
+            (TVariable "a")
+            "Task.FromResult which will be returned" ]
       returnType = TVariable "a"
       description =
         "Increases the side effect counter by one, to test real-world side-effects. Returns its argument."

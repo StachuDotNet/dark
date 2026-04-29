@@ -2,6 +2,7 @@ module LibParser.TestModule
 
 open FSharp.Compiler.Syntax
 
+open System.Threading.Tasks
 open Prelude
 
 module FS2WT = FSharpToWrittenTypes
@@ -247,14 +248,14 @@ let toPT
   (pm : PT.PackageManager)
   (onMissing : NR.OnMissing)
   (m : WTModule)
-  : Ply<PTModule> =
-  uply {
+  : Task<PTModule> =
+  task {
     let currentModule = owner :: m.name
 
     let! typeOps =
       m.types
-      |> Ply.List.mapSequentially (fun wtType ->
-        uply {
+      |> Task.mapSequentially (fun wtType ->
+        task {
           let! ptType = WT2PT.PackageType.toPT pm onMissing currentModule wtType
           let hash = Hashing.computeTypeHash Hashing.Normal ptType
           return
@@ -264,12 +265,12 @@ let toPT
                 PT.PackageType hash
               ) ]
         })
-      |> Ply.map List.flatten
+      |> Task.map List.flatten
 
     let! valueOps =
       m.values
-      |> Ply.List.mapSequentially (fun wtValue ->
-        uply {
+      |> Task.mapSequentially (fun wtValue ->
+        task {
           let! ptValue =
             WT2PT.PackageValue.toPT builtins pm onMissing currentModule wtValue
           return
@@ -279,12 +280,12 @@ let toPT
                 PT.PackageValue(Hashing.computeValueHash Hashing.Normal ptValue)
               ) ]
         })
-      |> Ply.map List.flatten
+      |> Task.map List.flatten
 
     let! fnOps =
       m.fns
-      |> Ply.List.mapSequentially (fun wtFn ->
-        uply {
+      |> Task.mapSequentially (fun wtFn ->
+        task {
           let! ptFn = WT2PT.PackageFn.toPT builtins pm onMissing currentModule wtFn
           let hash = Hashing.computeFnHash Hashing.Normal ptFn
           return
@@ -294,15 +295,15 @@ let toPT
                 PT.PackageFn hash
               ) ]
         })
-      |> Ply.map List.flatten
+      |> Task.map List.flatten
 
     let! dbs =
-      m.dbs |> Ply.List.mapSequentially (WT2PT.DB.toPT pm onMissing currentModule)
+      m.dbs |> Task.mapSequentially (WT2PT.DB.toPT pm onMissing currentModule)
 
     let! (tests : List<PTTest>) =
       m.tests
-      |> Ply.List.mapSequentially (fun test ->
-        uply {
+      |> Task.mapSequentially (fun test ->
+        task {
           let context =
             { WT2PT.Context.currentFnName = None
               WT2PT.Context.isInFunction = false
@@ -311,7 +312,7 @@ let toPT
           let exprToPT = WT2PT.Expr.toPT builtins pm onMissing currentModule context
           let! actual = exprToPT test.actual
           let! expected =
-            uply {
+            task {
               match test.expected with
               | WTExpectedExpr expected ->
                 let! expected = exprToPT expected
@@ -338,8 +339,8 @@ let parseTestFile
   (builtins : RT.Builtins)
   (pm : PT.PackageManager)
   (filename : string)
-  : Ply<List<PTModule>> =
-  uply {
+  : Task<List<PTModule>> =
+  task {
     let onMissing = NR.OnMissing.Allow
 
     let modulesWT =
@@ -351,9 +352,7 @@ let parseTestFile
     // First pass: parse with empty PM, then compute real SCC-aware hashes
     let! firstPassModules =
       modulesWT
-      |> Ply.List.mapSequentially (
-        toPT owner builtins PT.PackageManager.empty onMissing
-      )
+      |> Task.mapSequentially (toPT owner builtins PT.PackageManager.empty onMissing)
 
     let firstPassOps = firstPassModules |> List.collect _.ops
 
@@ -368,8 +367,7 @@ let parseTestFile
       iteration <- iteration + 1
       let enhancedPM = LibPackageManager.PackageManager.withExtraOps pm currentOps
       let! newModules =
-        modulesWT
-        |> Ply.List.mapSequentially (toPT owner builtins enhancedPM onMissing)
+        modulesWT |> Task.mapSequentially (toPT owner builtins enhancedPM onMissing)
       let newRawOps = newModules |> List.collect _.ops
       let remapped = HS.remapSetNames newRawOps currentOps
       let newOps = HS.computeRealHashes remapped

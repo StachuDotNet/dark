@@ -32,8 +32,8 @@ module Tracing = LibCloud.Tracing
 // Load canvas ID and DBs for an account
 let loadCanvasAndDBs
   (accountID : Option<System.Guid>)
-  : Ply<Option<CanvasID> * Map<string, RT.DB.T>> =
-  uply {
+  : Task<Option<CanvasID> * Map<string, RT.DB.T>> =
+  task {
     match accountID with
     | None -> return (None, Map.empty)
     | Some accID ->
@@ -74,8 +74,8 @@ let parseCliScript
   (owner : string)
   (scriptName : string)
   (code : string)
-  : Ply<Result<Utils.CliScript.PTCliScriptModule, RuntimeError.Error>> =
-  uply {
+  : Task<Result<Utils.CliScript.PTCliScriptModule, RuntimeError.Error>> =
+  task {
     let args =
       NEList.ofList
         (DUuid branchId)
@@ -143,8 +143,8 @@ let execute
   (canvasID : Option<CanvasID>)
   (dbs : Map<string, RT.DB.T>)
   (traceSource : CliTraceSource)
-  : Ply<RT.ExecutionResult> =
-  uply {
+  : Task<RT.ExecutionResult> =
+  task {
     let resolvedCanvasID = canvasID |> Option.defaultValue (System.Guid.NewGuid())
 
     let (program : Program) =
@@ -278,10 +278,9 @@ let fns () : List<BuiltInFn> =
             let branchState = createBranchState exeState branchId allowHarmful
             let! parsedScript =
               parseCliScript branchState branchId "CliScript" filename code
-              |> Ply.toTask
 
             try
-              let! (canvasID, dbs) = loadCanvasAndDBs accountID |> Ply.toTask
+              let! (canvasID, dbs) = loadCanvasAndDBs accountID
 
               match parsedScript with
               | Ok mod' ->
@@ -294,7 +293,6 @@ let fns () : List<BuiltInFn> =
                     canvasID
                     dbs
                     (RunScript(filename, code))
-                  |> Ply.toTask
                 with
                 | Ok(DInt64 i) -> return resultOk (DInt64 i)
                 | Ok result ->
@@ -350,10 +348,9 @@ let fns () : List<BuiltInFn> =
                 "CliScript"
                 "exprWrapper"
                 expression
-              |> Ply.toTask
 
             try
-              let! (canvasID, dbs) = loadCanvasAndDBs accountID |> Ply.toTask
+              let! (canvasID, dbs) = loadCanvasAndDBs accountID
 
               match parsedScript with
               | Ok mod' ->
@@ -366,7 +363,6 @@ let fns () : List<BuiltInFn> =
                     canvasID
                     dbs
                     (EvalExpression expression)
-                  |> Ply.toTask
                 with
                 | Ok result ->
                   match result with

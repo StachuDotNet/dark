@@ -31,7 +31,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUnit ] ->
           task {
-            let! tableStats = LibDB.Db.tableStats () |> Ply.toTask
+            let! tableStats = LibDB.Db.tableStats ()
 
             let typeName =
               FQTypeName.fqPackage (PackageRefs.Type.Internal.Infra.tableSize ())
