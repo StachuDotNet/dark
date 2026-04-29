@@ -66,7 +66,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, _, [ DInt64 port; DApplicable handler ] ->
-          uply {
+          task {
             let builder = WebApplication.CreateBuilder()
             builder.WebHost.UseUrls($"http://*:{port}") |> ignore<IWebHostBuilder>
 
@@ -147,6 +147,7 @@ let fns () : List<BuiltInFn> =
 
             return DUnit
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
