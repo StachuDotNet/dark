@@ -24,6 +24,26 @@
     <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
     <UseSystemResourceKeys>true</UseSystemResourceKeys>
 
+    <!-- Maximum-aggression AOT settings for smallest binary. -->
+    <!-- Drop stack-trace metadata. Errors will show offsets, not line numbers
+         in user-code; the diagnostic from commit 3c8fd674e still walks
+         AggregateException chains, which is enough for the cli.growIfNeeded
+         class of crashes. Native stack traces still work via DWARF. -->
+    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+    <!-- Fold identical method bodies. -->
+    <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
+
+    <!-- Note: tried StaticExecutable=true with linux-musl-x64 to get a
+         fully-static binary with zero shared-library deps (Alpine-friendly).
+         Failed in this devcontainer: musl-tools brings musl-gcc but the
+         musl crt set needed for cross-linking isn't installed, and clang's
+         linker aborts. To revisit with a proper musl-cross / zigcc toolchain
+         in the devcontainer image. The default linux-x64 build still produces
+         a binary that runs on every glibc-based distro (Ubuntu/Debian/RHEL/
+         Fedora/Arch/etc.) — only Alpine and other musl-only distros need
+         the static-musl variant. -->
+
+
     <!-- We publish these for lots of different runtimes, so leave these empty and
          then specify them in scripts/build/build-release-cli-exes.sh. The
          regular build works fine with the defaults (and will pick a runtime
