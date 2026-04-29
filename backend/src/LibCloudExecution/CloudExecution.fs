@@ -45,8 +45,8 @@ let createState
         let callStack = Exe.callStackFromVM vm
         let epToString ep =
           match ep with
-          | None -> Ply "None -- empty CallStack"
-          | Some ep -> Exe.executionPointToString state ep
+          | None -> Ply.ofTask (Task.FromResult "None -- empty CallStack")
+          | Some ep -> Exe.executionPointToString state ep |> Ply.ofTask
 
         let! entrypoint = epToString (RT.CallStack.entrypoint callStack)
         let! lastCalled = epToString (RT.CallStack.last callStack)

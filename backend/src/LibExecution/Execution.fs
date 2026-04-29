@@ -337,8 +337,8 @@ let dvalToTypeName (state : RT.ExecutionState) (dval : RT.Dval) : Task<string> =
 let executionPointToString
   (state : RT.ExecutionState)
   (ep : RT.ExecutionPoint)
-  : Ply<string> =
-  uply {
+  : Task<string> =
+  task {
     // CLEANUP improve here
     // let handleFn (fn : Option<RT.PackageFn.PackageFn>) : Ply<string> =
     //   uply {
@@ -368,11 +368,11 @@ let executionPointToString
 let callStackString
   (state : RT.ExecutionState)
   (callStack : RT.CallStack)
-  : Ply<string> =
-  uply {
+  : Task<string> =
+  task {
     // First, convert all execution points to strings
     let! stringParts =
-      Ply.List.mapSequentially (fun ep -> executionPointToString state ep) callStack
+      Task.mapSequentially (fun ep -> executionPointToString state ep) callStack
 
     // Group consecutive identical entries with counts
     let rec groupConsecutive acc current count remaining =
@@ -425,9 +425,9 @@ let rec rteToString
   (rteToDval : RT.RuntimeError.Error -> RT.Dval)
   (state : RT.ExecutionState)
   (rte : RT.RuntimeError.Error)
-  : Ply<string> =
+  : Task<string> =
   let r = rteToString rteToDval state
-  uply {
+  task {
     let errorMessageFn =
       RT.FQFnName.fqPackage (
         PackageRefs.Fn.PrettyPrinter.RuntimeTypes.RuntimeError.toErrorMessage ()
