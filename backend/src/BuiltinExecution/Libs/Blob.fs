@@ -22,10 +22,11 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob ref ] ->
-          uply {
-            let! bs = Blob.readBytes state ref
+          task {
+            let! bs = Blob.readBytes state ref |> Ply.toTask
             return DInt64(int64 bs.Length)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -59,14 +60,15 @@ let fns () : List<BuiltInFn> =
         let err r = Dval.resultError KTString KTString r
         (function
         | state, _, _, [ DBlob ref ] ->
-          uply {
-            let! bs = Blob.readBytes state ref
+          task {
+            let! bs = Blob.readBytes state ref |> Ply.toTask
             try
               let s = (new System.Text.UTF8Encoding(false, true)).GetString(bs)
               return ok (DString s)
             with e ->
               return err (DString($"Invalid UTF-8: {e.Message}"))
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -83,10 +85,11 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob ref ] ->
-          uply {
-            let! bs = Blob.readBytes state ref
+          task {
+            let! bs = Blob.readBytes state ref |> Ply.toTask
             return DString(System.Convert.ToHexString(bs))
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -124,10 +127,11 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob ref ] ->
-          uply {
-            let! bs = Blob.readBytes state ref
+          task {
+            let! bs = Blob.readBytes state ref |> Ply.toTask
             return DString(System.Convert.ToBase64String(bs))
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -173,20 +177,18 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DList(_, items) ] ->
-          uply {
+          task {
             use collected = new System.IO.MemoryStream()
             for item in items do
               match item with
               | DBlob ref ->
-                let! bs = Blob.readBytes state ref
+                let! bs = Blob.readBytes state ref |> Ply.toTask
                 collected.Write(bs, 0, bs.Length)
               | _ ->
-                return
-                  Exception.raiseInternal
-                    "blobConcat: expected DBlob"
-                    [ "item", item ]
+                Exception.raiseInternal "blobConcat: expected DBlob" [ "item", item ]
             return Blob.newEphemeral state (collected.ToArray())
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -209,8 +211,8 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob ref; DInt64 startL; DInt64 lenL ] ->
-          uply {
-            let! bs = Blob.readBytes state ref
+          task {
+            let! bs = Blob.readBytes state ref |> Ply.toTask
             let len64 = int64 bs.Length
             let safeStart = max 0L (min startL len64)
             let safeLen = max 0L (min lenL (len64 - safeStart))
@@ -219,6 +221,7 @@ let fns () : List<BuiltInFn> =
               System.Array.Copy(bs, int safeStart, slice, 0, int safeLen)
             return Blob.newEphemeral state slice
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -234,10 +237,11 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob ref ] ->
-          uply {
-            let! bs = Blob.readBytes state ref
+          task {
+            let! bs = Blob.readBytes state ref |> Ply.toTask
             return Dval.byteArrayToDvalList bs
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure

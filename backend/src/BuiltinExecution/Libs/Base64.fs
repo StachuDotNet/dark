@@ -64,10 +64,11 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob ref ] ->
-          uply {
-            let! bytes = Blob.readBytes state ref
+          task {
+            let! bytes = Blob.readBytes state ref |> Ply.toTask
             return DString(System.Convert.ToBase64String(bytes))
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -85,8 +86,8 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob ref ] ->
-          uply {
-            let! bytes = Blob.readBytes state ref
+          task {
+            let! bytes = Blob.readBytes state ref |> Ply.toTask
             // Differs from Base64.encodeToUrlSafe as this version has padding
             let encoded =
               System.Convert
@@ -95,6 +96,7 @@ let fns () : List<BuiltInFn> =
                 .Replace('/', '_')
             return DString encoded
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure

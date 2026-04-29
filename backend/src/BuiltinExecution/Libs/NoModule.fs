@@ -270,11 +270,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, _, [ DString label; value ] ->
-          uply {
+          task {
             let! repr = Exe.dvalToRepr exeState value
             print $"DEBUG: {label}: {repr}"
             return DUnit
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -290,10 +291,11 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, _, [ value ] ->
-          uply {
+          task {
             let! repr = Exe.dvalToRepr exeState value
             return DString repr
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

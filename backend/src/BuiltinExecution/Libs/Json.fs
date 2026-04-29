@@ -725,10 +725,8 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, vm, [ _typeToSerializeAs ], [ arg ] ->
-          uply {
-            let response = writeJson (fun w -> serialize vm.threadID w arg)
-            return DString response
-          }
+          let response = writeJson (fun w -> serialize vm.threadID w arg)
+          DString response |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -755,11 +753,12 @@ let fns () : List<BuiltInFn> =
           let resultError =
             TypeChecker.DvalCreator.Result.error threadID okType errType
 
-          uply {
-            match! parse threadID exeState.types typeArg arg with
+          task {
+            match! parse threadID exeState.types typeArg arg |> Ply.toTask with
             | Ok v -> return resultOk v
             | Error e -> return resultError (ParseError.toDT e)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

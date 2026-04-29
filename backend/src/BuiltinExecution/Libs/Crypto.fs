@@ -25,11 +25,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob ref ] ->
-          uply {
-            let! data = Blob.readBytes state ref
+          task {
+            let! data = Blob.readBytes state ref |> Ply.toTask
             let hash = SHA256.HashData(System.ReadOnlySpan(data))
             return Blob.newEphemeral state hash
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -44,11 +45,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob ref ] ->
-          uply {
-            let! data = Blob.readBytes state ref
+          task {
+            let! data = Blob.readBytes state ref |> Ply.toTask
             let hash = SHA384.HashData(System.ReadOnlySpan data)
             return Blob.newEphemeral state hash
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -64,11 +66,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob ref ] ->
-          uply {
-            let! data = Blob.readBytes state ref
+          task {
+            let! data = Blob.readBytes state ref |> Ply.toTask
             let hash = MD5.HashData(System.ReadOnlySpan data)
             return Blob.newEphemeral state hash
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = ImpurePreviewable
@@ -84,13 +87,14 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob keyRef; DBlob dataRef ] ->
-          uply {
-            let! key = Blob.readBytes state keyRef
-            let! data = Blob.readBytes state dataRef
+          task {
+            let! key = Blob.readBytes state keyRef |> Ply.toTask
+            let! data = Blob.readBytes state dataRef |> Ply.toTask
             use hmac = new HMACSHA256(key)
             let hash = hmac.ComputeHash(data)
             return Blob.newEphemeral state hash
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = ImpurePreviewable
@@ -106,13 +110,14 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob keyRef; DBlob dataRef ] ->
-          uply {
-            let! key = Blob.readBytes state keyRef
-            let! data = Blob.readBytes state dataRef
+          task {
+            let! key = Blob.readBytes state keyRef |> Ply.toTask
+            let! data = Blob.readBytes state dataRef |> Ply.toTask
             use hmac = new HMACSHA1(key)
             let hash = hmac.ComputeHash(data)
             return Blob.newEphemeral state hash
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = ImpurePreviewable
