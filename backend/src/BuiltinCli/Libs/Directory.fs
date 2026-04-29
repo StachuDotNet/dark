@@ -21,10 +21,8 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUnit ] ->
-          uply {
-            let contents = System.IO.Directory.GetCurrentDirectory()
-            return DString contents
-          }
+          let contents = System.IO.Directory.GetCurrentDirectory()
+          DString contents |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -84,16 +82,14 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
-            // TODO make async
-            let contents =
-              try
-                System.IO.Directory.EnumerateFileSystemEntries path |> Seq.toList
-              with _ ->
-                []
+          // TODO make async
+          let contents =
+            try
+              System.IO.Directory.EnumerateFileSystemEntries path |> Seq.toList
+            with _ ->
+              []
 
-            return DList(VT.string, List.map DString contents)
-          }
+          DList(VT.string, List.map DString contents) |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -108,11 +104,9 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUnit ] ->
-          uply {
-            let exePath =
-              System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName
-            return DString exePath
-          }
+          let exePath =
+            System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName
+          DString exePath |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

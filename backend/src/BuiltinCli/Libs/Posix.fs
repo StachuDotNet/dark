@@ -937,14 +937,15 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DInt64 fd; DBlob ref ] ->
-          uply {
-            let! bytes = Blob.readBytes state ref
+          task {
+            let! bytes = Blob.readBytes state ref |> Ply.toTask
             match Libc.fdWrite (int fd) bytes with
             | Ok n ->
               return Dval.resultOk KTInt64 (posixErrorKT ()) (DInt64(int64 n))
             | Error e ->
               return Dval.resultError KTInt64 (posixErrorKT ()) (dPosixError e)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

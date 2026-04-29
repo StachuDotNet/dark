@@ -24,7 +24,7 @@ let fns () : List<BuiltInFn> =
         let resultError = Dval.resultError KTBlob KTString
         (function
         | state, _, _, [ DString path ] ->
-          uply {
+          task {
             try
               let path =
                 path.Replace(
@@ -37,6 +37,7 @@ let fns () : List<BuiltInFn> =
             with e ->
               return resultError (DString($"Error reading file: {e.Message}"))
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -54,7 +55,7 @@ let fns () : List<BuiltInFn> =
         let resultError = Dval.resultError KTUnit KTString
         (function
         | state, _, _, [ DBlob ref; DString path ] ->
-          uply {
+          task {
             try
               let path =
                 path.Replace(
@@ -62,12 +63,13 @@ let fns () : List<BuiltInFn> =
                   System.Environment.GetEnvironmentVariable "HOME"
                 )
 
-              let! bytes = Blob.readBytes state ref
+              let! bytes = Blob.readBytes state ref |> Ply.toTask
               do! System.IO.File.WriteAllBytesAsync(path, bytes)
               return resultOk DUnit
             with e ->
               return resultError (DString($"Error writing file: {e.Message}"))
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -82,17 +84,15 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
-            try
-              System.IO.File.Delete path
-              return Dval.resultOk KTUnit KTString DUnit
-            with e ->
-              return
-                Dval.resultError
-                  KTUnit
-                  KTString
-                  (DString $"Error deleting file: {e.Message}")
-          }
+          try
+            System.IO.File.Delete path
+            Dval.resultOk KTUnit KTString DUnit |> Ply
+          with e ->
+            Dval.resultError
+              KTUnit
+              KTString
+              (DString $"Error deleting file: {e.Message}")
+            |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -110,13 +110,14 @@ let fns () : List<BuiltInFn> =
         let resultError = Dval.resultError KTUnit KTString
         (function
         | _, _, _, [ DString path; DString content ] ->
-          uply {
+          task {
             try
               do! System.IO.File.AppendAllTextAsync(path, content)
               return resultOk DUnit
             with e ->
               return resultError (DString e.Message)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -154,14 +155,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
-            try
-              let attrs = System.IO.File.GetAttributes(path)
-              let isDir = attrs.HasFlag(System.IO.FileAttributes.Directory)
-              return DBool isDir
-            with _ ->
-              return DBool false
-          }
+          try
+            let attrs = System.IO.File.GetAttributes(path)
+            let isDir = attrs.HasFlag(System.IO.FileAttributes.Directory)
+            DBool isDir |> Ply
+          with _ ->
+            DBool false |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -177,16 +176,14 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
-            try
-              let attrs = System.IO.File.GetAttributes(path)
-              let isDir = attrs.HasFlag(System.IO.FileAttributes.Directory)
-              let exists =
-                System.IO.File.Exists(path) || System.IO.Directory.Exists(path)
-              return DBool(exists && not isDir)
-            with _ ->
-              return DBool false
-          }
+          try
+            let attrs = System.IO.File.GetAttributes(path)
+            let isDir = attrs.HasFlag(System.IO.FileAttributes.Directory)
+            let exists =
+              System.IO.File.Exists(path) || System.IO.Directory.Exists(path)
+            DBool(exists && not isDir) |> Ply
+          with _ ->
+            DBool false |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -202,14 +199,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
-            try
-              let exists =
-                System.IO.File.Exists(path) || System.IO.Directory.Exists(path)
-              return DBool exists
-            with _ ->
-              return DBool false
-          }
+          try
+            let exists =
+              System.IO.File.Exists(path) || System.IO.Directory.Exists(path)
+            DBool exists |> Ply
+          with _ ->
+            DBool false |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

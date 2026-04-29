@@ -19,11 +19,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DFloat delay ] ->
-          uply {
+          task {
             let delay = System.TimeSpan.FromMilliseconds delay
             do! Task.Delay(delay)
             return DUnit
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
