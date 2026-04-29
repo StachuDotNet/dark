@@ -7,9 +7,10 @@
     <IsPublishable>false</IsPublishable>
     <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
+  <!-- Microsoft.AspNetCore.App FrameworkReference removed: HttpServer.fs now
+       uses System.Net.HttpListener (in the BCL, AOT-clean) instead of
+       WebApplication / ASP.NET routing. Drops a large slice of the CLI's
+       AOT graph. -->
   <ItemGroup>
     <None Include="paket.references" />
     <Compile Include="Libs/HttpServer.fs" />
