@@ -26,7 +26,7 @@ let fns () : List<BuiltInFn> =
         let resultError = Dval.resultError KTString (KTList VT.string)
         (function
         | _, _, _, [ DUuid branchId ] ->
-          uply {
+          task {
             let! result = LibPackageManager.Rebase.rebase branchId
             match result with
             | Ok msg -> return resultOk (DString msg)
@@ -38,6 +38,7 @@ let fns () : List<BuiltInFn> =
                 |> List.map DString
               return resultError (DList(VT.string, conflictStrs))
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -52,7 +53,7 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid branchId ] ->
-          uply {
+          task {
             let! conflicts = LibPackageManager.Rebase.getConflicts branchId
             let conflictStrs =
               conflicts
@@ -60,6 +61,7 @@ let fns () : List<BuiltInFn> =
                 DString $"{c.owner}.{c.modules}.{c.name} ({c.itemType})")
             return DList(VT.string, conflictStrs)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
