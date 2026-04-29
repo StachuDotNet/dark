@@ -20,13 +20,14 @@ let fns : List<BuiltInFn> =
         let resultError = Dval.resultError KTUnit KTString
         (function
         | _, _, _, [ DString outputPath ] ->
-          uply {
+          task {
             try
               do! LibPackageManager.Seed.export outputPath
               return resultOk DUnit
             with ex ->
               return resultError (DString ex.Message)
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

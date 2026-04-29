@@ -4,7 +4,6 @@ module TestUtils.TestUtils
 open Expecto
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open LibDB.Db
 
@@ -143,55 +142,56 @@ let executionStateFor
   (allowLocalHttpAccess : bool)
   (dbs : Map<string, RT.DB.T>)
   : Task<RT.ExecutionState> =
+  let domains = [] //Canvas.domainsForCanvasID canvasID
+
+  let program : RT.Program =
+    { canvasID = canvasID
+      internalFnsAllowed = internalFnsAllowed
+      dbs = dbs
+      secrets = [] }
+
+  let testContext : RT.TestContext =
+    { sideEffectCount = 0
+      exceptionReports = []
+      expectedExceptionCount = 0
+      postTestExecutionHook =
+        fun tc ->
+          let exceptionCountMatches =
+            tc.exceptionReports.Length = tc.expectedExceptionCount
+
+          if not exceptionCountMatches then
+            List.iter
+              (fun (msg, stackTrace, metadata) ->
+                print
+                  $"An error was reported in the runtime:  \n  {msg}\n{stackTrace}\n  {metadata}\n\n")
+              tc.exceptionReports
+            Exception.raiseInternal
+              $"UNEXPECTED EXCEPTION COUNT in test {domains}"
+              [ "expectedExceptionCount", tc.expectedExceptionCount
+                "actualExceptionCount", tc.exceptionReports.Length
+                "reports", tc.exceptionReports ] }
+
+  // Typically, exceptions thrown in tests have surprised us. Take these errors and
+  // catch them much closer to where they happen (usually in the function
+  // definition)
+  let rec exceptionReporter : RT.ExceptionReporter =
+    fun (state : RT.ExecutionState) vm metadata (exn : exn) ->
+      task {
+        let message = exn.Message
+        let stackTrace = exn.StackTrace
+        let metadata = Exception.toMetadata exn @ metadata
+        let inner = exn.InnerException
+        if not (isNull inner) then do! exceptionReporter state vm [] inner
+        state.test.exceptionReports <-
+          (message, stackTrace, metadata) :: state.test.exceptionReports
+      }
+
   task {
-    let domains = [] //Canvas.domainsForCanvasID canvasID
-
-    let program : RT.Program =
-      { canvasID = canvasID
-        internalFnsAllowed = internalFnsAllowed
-        dbs = dbs
-        secrets = [] }
-
-    let testContext : RT.TestContext =
-      { sideEffectCount = 0
-        exceptionReports = []
-        expectedExceptionCount = 0
-        postTestExecutionHook =
-          fun tc ->
-            let exceptionCountMatches =
-              tc.exceptionReports.Length = tc.expectedExceptionCount
-
-            if not exceptionCountMatches then
-              List.iter
-                (fun (msg, stackTrace, metadata) ->
-                  print
-                    $"An error was reported in the runtime:  \n  {msg}\n{stackTrace}\n  {metadata}\n\n")
-                tc.exceptionReports
-              Exception.raiseInternal
-                $"UNEXPECTED EXCEPTION COUNT in test {domains}"
-                [ "expectedExceptionCount", tc.expectedExceptionCount
-                  "actualExceptionCount", tc.exceptionReports.Length
-                  "reports", tc.exceptionReports ] }
-
-    // Typically, exceptions thrown in tests have surprised us. Take these errors and
-    // catch them much closer to where they happen (usually in the function
-    // definition)
-    let rec exceptionReporter : RT.ExceptionReporter =
-      fun (state : RT.ExecutionState) vm metadata (exn : exn) ->
-        uply {
-          let message = exn.Message
-          let stackTrace = exn.StackTrace
-          let metadata = Exception.toMetadata exn @ metadata
-          let inner = exn.InnerException
-          if not (isNull inner) then do! exceptionReporter state vm [] inner
-          state.test.exceptionReports <-
-            (message, stackTrace, metadata) :: state.test.exceptionReports
-        }
 
     // For now, lets not track notifications, as often our tests explicitly trigger
     // things that notify, while Exceptions have historically been unexpected errors
     // in the tests and so are worth watching out for.
-    let notifier : RT.Notifier = fun _state _vm _msg _tags -> uply { return () }
+    let notifier : RT.Notifier = fun _state _vm _msg _tags -> task { return () }
 
     let builtins =
       if allowLocalHttpAccess then localBuiltIns pmPT else cloudBuiltIns pmPT
@@ -250,8 +250,8 @@ let testManyTask (name : string) (fn : 'a -> Task<'b>) (values : List<'a * 'b>) 
         })
       values)
 
-let testManyPly (name : string) (fn : 'a -> Ply<'b>) (values : List<'a * 'b>) =
-  testManyTask name (fn >> Ply.toTask) values
+let testManyPly (name : string) (fn : 'a -> Task<'b>) (values : List<'a * 'b>) =
+  testManyTask name fn values
 
 
 let testMany2Task
@@ -1516,8 +1516,8 @@ let configureLogging
 let unwrapExecutionResult
   (state : RT.ExecutionState)
   (exeResult : RT.ExecutionResult)
-  : Ply.Ply<RT.Dval> =
-  uply {
+  : Task<RT.Dval> =
+  task {
     match exeResult with
     | Ok dval -> return dval
     | Error(rte, callStack) ->
@@ -1549,7 +1549,7 @@ let unwrapExecutionResult
   }
 
 let parsePTExpr (code : string) : Task<PT.Expr> =
-  uply {
+  task {
     let! (state : RT.ExecutionState) =
       let canvasID = System.Guid.NewGuid()
       executionStateFor pmPT canvasID false false Map.empty
@@ -1568,4 +1568,3 @@ let parsePTExpr (code : string) : Task<PT.Expr> =
         return Exception.raiseInternal "Error converting Dval to PT.Expr" []
     | _ -> return Exception.raiseInternal "Error executing parsePTExpr function" []
   }
-  |> Ply.toTask

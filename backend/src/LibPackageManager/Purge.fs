@@ -1,7 +1,6 @@
 module LibPackageManager.Purge
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 open System.Collections.Concurrent
 
 open Prelude

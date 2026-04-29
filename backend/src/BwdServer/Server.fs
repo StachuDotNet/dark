@@ -4,7 +4,6 @@
 /// See README.md for more details.
 module BwdServer.Server
 
-open FSharp.Control.Tasks
 open System.Threading.Tasks
 
 open Microsoft.AspNetCore

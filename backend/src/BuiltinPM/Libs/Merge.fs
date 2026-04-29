@@ -27,12 +27,13 @@ let fns () : List<BuiltInFn> =
         let resultError = Dval.resultError KTUnit (PT2DT.MergeError.knownType ())
         (function
         | _, _, _, [ DUuid branchId ] ->
-          uply {
+          task {
             let! result = LibPackageManager.Merge.merge branchId
             match result with
             | Ok() -> return resultOk DUnit
             | Error e -> return resultError (PT2DT.MergeError.toDT e)
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -52,12 +53,13 @@ let fns () : List<BuiltInFn> =
         let resultError = Dval.resultError KTUnit (PT2DT.MergeError.knownType ())
         (function
         | _, _, _, [ DUuid branchId ] ->
-          uply {
+          task {
             let! result = LibPackageManager.Merge.canMerge branchId
             match result with
             | Ok() -> return resultOk DUnit
             | Error e -> return resultError (PT2DT.MergeError.toDT e)
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

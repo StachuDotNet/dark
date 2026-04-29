@@ -11,7 +11,6 @@ let dataBasePath = "testfiles/data"
 open Expecto
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open System.Net.Sockets
 open System.Text.Json
@@ -193,8 +192,8 @@ let setupTestCanvas (testName : string) (test : Test) : Task<CanvasID * string> 
     // Handlers
     let! oplists =
       test.handlers
-      |> Ply.List.mapSequentially (fun handler ->
-        uply {
+      |> Task.mapSequentially (fun handler ->
+        task {
           let! source = parsePTExpr handler.code
 
           let spec =

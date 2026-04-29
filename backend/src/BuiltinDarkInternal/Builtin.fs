@@ -19,7 +19,7 @@ let fnRenames : Builtin.FnRenames =
 // only accessible to the LibCloud.Config.allowedDarkInternalCanvasID canvas
 let internalFn (f : BuiltInFnSig) : BuiltInFnSig =
   (fun (exeState, vmState, typeArgs, args) ->
-    uply {
+    task {
       if exeState.program.internalFnsAllowed then
         return! f (exeState, vmState, typeArgs, args)
       else

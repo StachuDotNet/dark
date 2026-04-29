@@ -1,7 +1,6 @@
 module Tests.DvalRepr
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Expecto
 open Prelude
@@ -23,8 +22,8 @@ let toRepr (dval : RT.Dval) : string =
       builtins
       pmRT
       Exe.noTracing
-      (fun _ _ _ _ -> uply { return () })
-      (fun _ _ _ _ -> uply { return () })
+      (fun _ _ _ _ -> task { return () })
+      (fun _ _ _ _ -> task { return () })
       PT.mainBranchId
       { canvasID = System.Guid.NewGuid()
         internalFnsAllowed = false
@@ -69,16 +68,22 @@ let queryableRoundtripsSuccessfullyInRecord
                         RT.TypeDeclaration.Record(
                           NEList.ofList { name = "field"; typ = fieldTyp } []
                         ) } }
-              packageType |> Some |> Ply
+              packageType |> Some |> Task.FromResult
             else
               pmRT.getType id }
 
     let! roundtripped =
-      record
-      |> DvalReprInternalQueryable.toJsonStringV0 types bogusThreadID
-      |> Ply.bind (
-        DvalReprInternalQueryable.parseJsonV0 types bogusThreadID Map.empty typeRef
-      )
+      task {
+        let! json =
+          DvalReprInternalQueryable.toJsonStringV0 types bogusThreadID record
+        return!
+          DvalReprInternalQueryable.parseJsonV0
+            types
+            bogusThreadID
+            Map.empty
+            typeRef
+            json
+      }
 
     return Expect.RT.dvalEquality record roundtripped
   }

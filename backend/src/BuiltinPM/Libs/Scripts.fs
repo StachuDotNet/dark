@@ -33,13 +33,14 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUnit ] ->
-          uply {
+          task {
             let! scripts = Scripts.list ()
             return
               scripts
               |> List.map Scripts.toDT
               |> Dval.list (KTCustomType(scriptTypeName (), []))
           }
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -54,13 +55,14 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DString name ] ->
-          uply {
+          task {
             let! scriptOpt = Scripts.get name
             return
               scriptOpt
               |> Option.map Scripts.toDT
               |> Dval.option (KTCustomType(scriptTypeName (), []))
           }
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -75,7 +77,7 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DString name; DString text ] ->
-          uply {
+          task {
             let! result = Scripts.add name text
             return
               result
@@ -83,6 +85,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> Dval.result (KTCustomType(scriptTypeName (), [])) KTString
           }
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -97,7 +100,7 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DString name; DString text ] ->
-          uply {
+          task {
             let! result = Scripts.update name text
             return
               result
@@ -105,6 +108,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> Dval.result KTUnit KTString
           }
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -119,7 +123,7 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DString name ] ->
-          uply {
+          task {
             let! result = Scripts.delete name
             return
               result
@@ -127,6 +131,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> Dval.result KTUnit KTString
           }
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure

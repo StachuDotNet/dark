@@ -1,7 +1,6 @@
 module LibPackageManager.ProgramTypes
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution.ProgramTypes
@@ -54,8 +53,8 @@ let private findItem
   (itemType : string)
   (branchChain : List<PT.BranchId>)
   (location : PT.PackageLocation)
-  : Ply<Option<Hash>> =
-  uply {
+  : Task<Option<Hash>> =
+  task {
     let modulesStr = String.concat "." location.modules
     let (branchFilter, branchParams) = buildBranchFilter branchChain
     let orderBy = buildBranchOrderBy branchChain
@@ -88,8 +87,8 @@ let private getItem<'a>
   (lookupColumn : string)
   (deserialize : Hash -> byte[] -> 'a)
   (hash : Hash)
-  : Ply<Option<'a>> =
-  uply {
+  : Task<Option<'a>> =
+  task {
     let (Hash hashStr) = hash
     return!
       Sql.query
@@ -107,8 +106,8 @@ let private getItemLocations
   (itemType : string)
   (branchChain : List<PT.BranchId>)
   (hash : Hash)
-  : Ply<List<PT.PackageLocation>> =
-  uply {
+  : Task<List<PT.PackageLocation>> =
+  task {
     let (Hash hashStr) = hash
     let (branchFilter, branchParams) = buildBranchFilter branchChain
     let orderBy = buildBranchOrderBy branchChain
@@ -152,8 +151,8 @@ module Fn =
 let search
   (branchChain : List<PT.BranchId>)
   (query : PT.Search.SearchQuery)
-  : Ply<PT.Search.SearchResults> =
-  uply {
+  : Task<PT.Search.SearchResults> =
+  task {
     let currentModule = String.concat "." query.currentModule
     let (branchFilter, branchParams) = buildBranchFilter branchChain
 
@@ -298,5 +297,7 @@ let search
       else
         Task.FromResult<List<PT.LocatedItem<PT.PackageFn.PackageFn>>> []
 
-    return { submodules = submodules; types = types; values = values; fns = fns }
+    let result : PT.Search.SearchResults =
+      { submodules = submodules; types = types; values = values; fns = fns }
+    return result
   }

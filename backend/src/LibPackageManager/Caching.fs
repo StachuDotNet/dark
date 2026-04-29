@@ -1,16 +1,15 @@
 module LibPackageManager.Caching
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 open System.Collections.Concurrent
 
 open Prelude
 
 
-let withCache (f : 'key -> Ply<Option<'value>>) =
+let withCache (f : 'key -> Task<Option<'value>>) =
   let cache = ConcurrentDictionary<'key, 'value>()
   fun (key : 'key) ->
-    uply {
+    task {
       let mutable cached = Unchecked.defaultof<'value>
       let inCache = cache.TryGetValue(key, &cached)
       if inCache then

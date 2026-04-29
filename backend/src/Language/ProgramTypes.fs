@@ -1,6 +1,8 @@
 /// The types that the user sees
 module LibExecution.ProgramTypes
 
+open System.Threading.Tasks
+
 open Prelude
 
 
@@ -837,42 +839,44 @@ module Search =
 /// but there's a chance of Local <-> Cloud not being fully in sync,
 /// for whatever reasons.
 type PackageManager =
-  { findType : (BranchId * PackageLocation) -> Ply<Option<FQTypeName.Package>>
-    findValue : (BranchId * PackageLocation) -> Ply<Option<FQValueName.Package>>
-    findFn : (BranchId * PackageLocation) -> Ply<Option<FQFnName.Package>>
+  { findType : (BranchId * PackageLocation) -> Task<Option<FQTypeName.Package>>
+    findValue : (BranchId * PackageLocation) -> Task<Option<FQValueName.Package>>
+    findFn : (BranchId * PackageLocation) -> Task<Option<FQFnName.Package>>
 
-    search : (BranchId * Search.SearchQuery) -> Ply<Search.SearchResults>
+    search : (BranchId * Search.SearchQuery) -> Task<Search.SearchResults>
 
     // CLEANUP why does the PT one even need these?
-    getType : FQTypeName.Package -> Ply<Option<PackageType.PackageType>>
-    getValue : FQValueName.Package -> Ply<Option<PackageValue.PackageValue>>
-    getFn : FQFnName.Package -> Ply<Option<PackageFn.PackageFn>>
+    getType : FQTypeName.Package -> Task<Option<PackageType.PackageType>>
+    getValue : FQValueName.Package -> Task<Option<PackageValue.PackageValue>>
+    getFn : FQFnName.Package -> Task<Option<PackageFn.PackageFn>>
 
     // Reverse lookups — returns ALL locations for a hash
-    getTypeLocations : BranchId -> FQTypeName.Package -> Ply<List<PackageLocation>>
-    getValueLocations : BranchId -> FQValueName.Package -> Ply<List<PackageLocation>>
-    getFnLocations : BranchId -> FQFnName.Package -> Ply<List<PackageLocation>>
+    getTypeLocations : BranchId -> FQTypeName.Package -> Task<List<PackageLocation>>
+    getValueLocations :
+      BranchId -> FQValueName.Package -> Task<List<PackageLocation>>
+    getFnLocations : BranchId -> FQFnName.Package -> Task<List<PackageLocation>>
 
-    init : Ply<unit> }
+    init : Task<unit> }
 
 
   static member empty =
-    { findType = fun (_, _) -> Ply None
-      findFn = fun (_, _) -> Ply None
-      findValue = fun (_, _) -> Ply None
+    { findType = fun (_, _) -> Task.FromResult None
+      findFn = fun (_, _) -> Task.FromResult None
+      findValue = fun (_, _) -> Task.FromResult None
 
       search =
-        fun (_, _) -> Ply { submodules = []; types = []; values = []; fns = [] }
+        fun (_, _) ->
+          Task.FromResult { submodules = []; types = []; values = []; fns = [] }
 
-      getType = fun _ -> Ply None
-      getFn = fun _ -> Ply None
-      getValue = fun _ -> Ply None
+      getType = fun _ -> Task.FromResult None
+      getFn = fun _ -> Task.FromResult None
+      getValue = fun _ -> Task.FromResult None
 
-      getTypeLocations = fun _ _ -> Ply []
-      getValueLocations = fun _ _ -> Ply []
-      getFnLocations = fun _ _ -> Ply []
+      getTypeLocations = fun _ _ -> Task.FromResult []
+      getValueLocations = fun _ _ -> Task.FromResult []
+      getFnLocations = fun _ _ -> Task.FromResult []
 
-      init = uply { return () } }
+      init = task { return () } }
 
 
   /// Allows you to side-load a few 'extras' in-memory, along
@@ -920,19 +924,19 @@ type PackageManager =
     { findType =
         fun (branchId, location) ->
           match Map.tryFind location typeLocationToHash with
-          | Some hash -> Ply(Some hash)
+          | Some hash -> Task.FromResult(Some hash)
           | None -> pm.findType (branchId, location)
 
       findValue =
         fun (branchId, location) ->
           match Map.tryFind location valueLocationToHash with
-          | Some hash -> Ply(Some hash)
+          | Some hash -> Task.FromResult(Some hash)
           | None -> pm.findValue (branchId, location)
 
       findFn =
         fun (branchId, location) ->
           match Map.tryFind location fnLocationToHash with
-          | Some hash -> Ply(Some hash)
+          | Some hash -> Task.FromResult(Some hash)
           | None -> pm.findFn (branchId, location)
 
       search = fun (branchId, query) -> pm.search (branchId, query)
@@ -940,24 +944,24 @@ type PackageManager =
       getType =
         fun hash ->
           match Map.tryFind hash typeHashToType with
-          | Some t -> Ply(Some t)
+          | Some t -> Task.FromResult(Some t)
           | None -> pm.getType hash
 
       getValue =
         fun hash ->
           match Map.tryFind hash valueHashToValue with
-          | Some v -> Ply(Some v)
+          | Some v -> Task.FromResult(Some v)
           | None -> pm.getValue hash
 
       getFn =
         fun hash ->
           match Map.tryFind hash fnHashToFn with
-          | Some f -> Ply(Some f)
+          | Some f -> Task.FromResult(Some f)
           | None -> pm.getFn hash
 
       getTypeLocations =
         fun branchId hash ->
-          uply {
+          task {
             let local =
               Map.tryFind hash typeHashToLocations |> Option.defaultValue []
             let! fallback = pm.getTypeLocations branchId hash
@@ -966,7 +970,7 @@ type PackageManager =
 
       getValueLocations =
         fun branchId hash ->
-          uply {
+          task {
             let local =
               Map.tryFind hash valueHashToLocations |> Option.defaultValue []
             let! fallback = pm.getValueLocations branchId hash
@@ -975,7 +979,7 @@ type PackageManager =
 
       getFnLocations =
         fun branchId hash ->
-          uply {
+          task {
             let local = Map.tryFind hash fnHashToLocations |> Option.defaultValue []
             let! fallback = pm.getFnLocations branchId hash
             return local @ fallback

@@ -55,6 +55,22 @@
       "runOptions": {
         "runOn": "folderOpen"
       }
+    },
+    {
+      "label": "Watch & rebuild backend",
+      "type": "shell",
+      "command": "./scripts/build/_build-server --watch >> rundir/logs/build-server.log 2>&1",
+      "isBackground": true,
+      "presentation": {
+        "echo": true,
+        "reveal": "never",
+        "focus": false,
+        "panel": "dedicated"
+      },
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "problemMatcher": []
     }
   ]
 }

@@ -2,6 +2,8 @@
 /// PackageRefs.fs reads this file at startup.
 module LibPackageManager.PackageRefsGenerator
 
+open System.Threading.Tasks
+
 open Prelude
 
 open Fumble
@@ -19,17 +21,14 @@ let private buildKey (itemType : string) (modules : string) (name : string) =
 
 /// Path to the source-tree copy of the hash file (committed to git).
 let private sourceTreePath =
-  System.IO.Path.Combine(
-    __SOURCE_DIRECTORY__,
-    "../LibExecution/package-ref-hashes.txt"
-  )
+  System.IO.Path.Combine(__SOURCE_DIRECTORY__, "../Language/package-ref-hashes.txt")
   |> System.IO.Path.GetFullPath
 
 
 /// Query the DB for all current Darklang-owned locations and write
 /// `package-ref-hashes.txt` in the source tree.
-let generate () : Ply<unit> =
-  uply {
+let generate () : Task<unit> =
+  task {
     // Collect all referenced items from PackageRefs _lookup maps
     let typeRefKeys =
       PackageRefs.Type._lookup

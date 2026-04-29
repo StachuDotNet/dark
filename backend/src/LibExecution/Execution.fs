@@ -1,7 +1,6 @@
 module LibExecution.Execution
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 
@@ -295,7 +294,7 @@ let dvalToTypeName (state : RT.ExecutionState) (dval : RT.Dval) : Task<string> =
 //   (state : RT.ExecutionState)
 //   (expr : RT.Expr)
 //   (id : Option<id>)
-//   : Ply<string> =
+//   : Task<string> =
 //   match id with
 //   | None -> Ply "Unknown Expr"
 //   | Some id ->
@@ -314,8 +313,8 @@ let dvalToTypeName (state : RT.ExecutionState) (dval : RT.Dval) : Task<string> =
 //       expr
 //     |> ignore<RT.Expr>
 
-//     let prettyPrint (expr : RT.Expr) : Ply<string> =
-//       uply {
+//     let prettyPrint (expr : RT.Expr) : Task<string> =
+//       task {
 //         let fnName =
 //           RT.FQFnName.fqPackage PackageRefs.Fn.PrettyPrinter.RuntimeTypes.expr
 //         let args = NEList.singleton (RuntimeTypesToDarkTypes.Expr.toDT expr)
@@ -327,7 +326,7 @@ let dvalToTypeName (state : RT.ExecutionState) (dval : RT.Dval) : Task<string> =
 
 //     match foundExpr with
 //     | None ->
-//       uply {
+//       task {
 //         let! pretty = prettyPrint expr
 //         return $"Root Expr:\n{pretty}"
 //       }
@@ -337,11 +336,11 @@ let dvalToTypeName (state : RT.ExecutionState) (dval : RT.Dval) : Task<string> =
 let executionPointToString
   (state : RT.ExecutionState)
   (ep : RT.ExecutionPoint)
-  : Ply<string> =
-  uply {
+  : Task<string> =
+  task {
     // CLEANUP improve here
-    // let handleFn (fn : Option<RT.PackageFn.PackageFn>) : Ply<string> =
-    //   uply {
+    // let handleFn (fn : Option<RT.PackageFn.PackageFn>) : Task<string> =
+    //   task {
     //     match fn with
     //     | None -> return $"<Couldn't find package function {fn.id}>"
     //     | Some fn ->
@@ -365,35 +364,37 @@ let executionPointToString
 /// - move this impl to darklang
 /// - consider accepting a VMState rather than the CallStack
 /// - generally tidy the output here
+// Group consecutive identical entries with counts
+let private groupConsecutiveWithCounts (parts : List<string>) : List<string> =
+  let rec groupConsecutive acc current count remaining =
+    match remaining with
+    | [] ->
+      // Add the final group
+      let countStr = if count = 1 then "" else $" (×{count})"
+      List.rev ((current + countStr) :: acc)
+    | head :: tail ->
+      if head = current then
+        // Same as current, increment count
+        groupConsecutive acc current (count + 1) tail
+      else
+        // Different, add current group and start new one
+        let countStr = if count = 1 then "" else $" (×{count})"
+        groupConsecutive ((current + countStr) :: acc) head 1 tail
+
+  match parts with
+  | [] -> []
+  | head :: tail -> groupConsecutive [] head 1 tail
+
 let callStackString
   (state : RT.ExecutionState)
   (callStack : RT.CallStack)
-  : Ply<string> =
-  uply {
+  : Task<string> =
+  task {
     // First, convert all execution points to strings
     let! stringParts =
-      Ply.List.mapSequentially (fun ep -> executionPointToString state ep) callStack
+      Task.mapSequentially (fun ep -> executionPointToString state ep) callStack
 
-    // Group consecutive identical entries with counts
-    let rec groupConsecutive acc current count remaining =
-      match remaining with
-      | [] ->
-        // Add the final group
-        let countStr = if count = 1 then "" else $" (×{count})"
-        List.rev ((current + countStr) :: acc)
-      | head :: tail ->
-        if head = current then
-          // Same as current, increment count
-          groupConsecutive acc current (count + 1) tail
-        else
-          // Different, add current group and start new one
-          let countStr = if count = 1 then "" else $" (×{count})"
-          groupConsecutive ((current + countStr) :: acc) head 1 tail
-
-    let groupedParts =
-      match stringParts with
-      | [] -> []
-      | head :: tail -> groupConsecutive [] head 1 tail
+    let groupedParts = groupConsecutiveWithCounts stringParts
 
     // Build the final string
     let result =
@@ -425,9 +426,9 @@ let rec rteToString
   (rteToDval : RT.RuntimeError.Error -> RT.Dval)
   (state : RT.ExecutionState)
   (rte : RT.RuntimeError.Error)
-  : Ply<string> =
+  : Task<string> =
   let r = rteToString rteToDval state
-  uply {
+  task {
     let errorMessageFn =
       RT.FQFnName.fqPackage (
         PackageRefs.Fn.PrettyPrinter.RuntimeTypes.RuntimeError.toErrorMessage ()

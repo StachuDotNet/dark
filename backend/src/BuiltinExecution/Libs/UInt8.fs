@@ -3,6 +3,7 @@ module BuiltinExecution.Libs.UInt8
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
@@ -43,11 +44,14 @@ let fns () : List<BuiltInFn> =
         (function
         | _, vm, _, [ DUInt8 v; DUInt8 m ] ->
           if m = 0uy then
-            RTE.Ints.ZeroModulus |> RTE.Int |> raiseRTE vm.threadID |> Ply
+            RTE.Ints.ZeroModulus
+            |> RTE.Int
+            |> raiseRTE vm.threadID
+            |> Task.FromResult
           else
             let result = v % m
             let result = if result < 0uy then m + result else result
-            Ply(DUInt8(result))
+            Task.FromResult(DUInt8(result))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -63,9 +67,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, vm, _, [ DUInt8 a; DUInt8 b ] ->
           try
-            DUInt8(Checked.(+) a b) |> Ply
+            DUInt8(Checked.(+) a b) |> Task.FromResult
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID |> Ply
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -81,9 +85,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, vm, _, [ DUInt8 a; DUInt8 b ] ->
           try
-            DUInt8(Checked.(-) a b) |> Ply
+            DUInt8(Checked.(-) a b) |> Task.FromResult
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID |> Ply
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -99,9 +103,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, vm, _, [ DUInt8 a; DUInt8 b ] ->
           try
-            DUInt8(Checked.(*) a b) |> Ply
+            DUInt8(Checked.(*) a b) |> Task.FromResult
           with :? System.OverflowException ->
-            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID |> Ply
+            RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -120,9 +124,12 @@ let fns () : List<BuiltInFn> =
         (function
         | _, vm, _, [ DUInt8 number; DUInt8 exp ] ->
           (try
-            (bigint number) ** (int exp) |> uint8 |> DUInt8 |> Ply
+            (bigint number) ** (int exp) |> uint8 |> DUInt8 |> Task.FromResult
            with :? System.OverflowException ->
-             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID |> Ply)
+             RTE.Ints.OutOfRange
+             |> RTE.Int
+             |> raiseRTE vm.threadID
+             |> Task.FromResult)
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -138,13 +145,19 @@ let fns () : List<BuiltInFn> =
         (function
         | _, vm, _, [ DUInt8 a; DUInt8 b ] ->
           if b = 0uy then
-            RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.threadID |> Ply
+            RTE.Ints.DivideByZeroError
+            |> RTE.Int
+            |> raiseRTE vm.threadID
+            |> Task.FromResult
           else
             let result = int a / int b
             if result < 0 || result > 255 then
-              RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID |> Ply
+              RTE.Ints.OutOfRange
+              |> RTE.Int
+              |> raiseRTE vm.threadID
+              |> Task.FromResult
             else
-              Ply(DUInt8(uint8 result))
+              Task.FromResult(DUInt8(uint8 result))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -158,7 +171,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns {{true}} if <param a> is greater than <param b>"
       fn =
         (function
-        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Ply(DBool(a > b))
+        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Task.FromResult(DBool(a > b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -173,7 +186,7 @@ let fns () : List<BuiltInFn> =
         "Returns {{true}} if <param a> is greater than or equal to <param b>"
       fn =
         (function
-        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Ply(DBool(a >= b))
+        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Task.FromResult(DBool(a >= b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -187,7 +200,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns {{true}} if <param a> is less than <param b>"
       fn =
         (function
-        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Ply(DBool(a < b))
+        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Task.FromResult(DBool(a < b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -202,7 +215,7 @@ let fns () : List<BuiltInFn> =
         "Returns {{true}} if <param a> is less than or equal to <param b>"
       fn =
         (function
-        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Ply(DBool(a <= b))
+        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Task.FromResult(DBool(a <= b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -216,7 +229,7 @@ let fns () : List<BuiltInFn> =
       description = "Converts an <type UInt8> to a <type String>"
       fn =
         (function
-        | _, _, _, [ DUInt8 a ] -> Ply(DString(string a))
+        | _, _, _, [ DUInt8 a ] -> Task.FromResult(DString(string a))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -230,7 +243,7 @@ let fns () : List<BuiltInFn> =
       description = "Converts an <type UInt8> to a <type Float>"
       fn =
         (function
-        | _, _, _, [ DUInt8 a ] -> Ply(DFloat(float a))
+        | _, _, _, [ DUInt8 a ] -> Task.FromResult(DFloat(float a))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -257,7 +270,7 @@ let fns () : List<BuiltInFn> =
 
           let uint8Result = lowerBound + (uint8 resultInt)
 
-          uint8Result |> DUInt8 |> Ply
+          uint8Result |> DUInt8 |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -271,7 +284,7 @@ let fns () : List<BuiltInFn> =
       description = "Get the square root of an <type UInt8>"
       fn =
         (function
-        | _, _, _, [ DUInt8 a ] -> Ply(DFloat(sqrt (float a)))
+        | _, _, _, [ DUInt8 a ] -> Task.FromResult(DFloat(sqrt (float a)))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -294,12 +307,15 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString s ] ->
           try
-            s |> System.Byte.Parse |> DUInt8 |> resultOk |> Ply
+            s |> System.Byte.Parse |> DUInt8 |> resultOk |> Task.FromResult
           with
           | :? System.FormatException ->
-            ParseError.BadFormat |> ParseError.toDT |> resultError |> Ply
+            ParseError.BadFormat |> ParseError.toDT |> resultError |> Task.FromResult
           | :? System.OverflowException ->
-            ParseError.OutOfRange |> ParseError.toDT |> resultError |> Ply
+            ParseError.OutOfRange
+            |> ParseError.toDT
+            |> resultError
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -316,9 +332,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DInt8 a ] ->
           if a < 0y then
-            Dval.optionNone KTUInt8 |> Ply
+            Dval.optionNone KTUInt8 |> Task.FromResult
           else
-            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Ply
+            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -335,9 +351,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DInt16 a ] ->
           if a < 0s || a > 255s then
-            Dval.optionNone KTUInt8 |> Ply
+            Dval.optionNone KTUInt8 |> Task.FromResult
           else
-            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Ply
+            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -354,9 +370,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUInt16 a ] ->
           if a > 255us then
-            Dval.optionNone KTUInt8 |> Ply
+            Dval.optionNone KTUInt8 |> Task.FromResult
           else
-            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Ply
+            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -373,9 +389,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DInt32 a ] ->
           if a < 0l || a > 255l then
-            Dval.optionNone KTUInt8 |> Ply
+            Dval.optionNone KTUInt8 |> Task.FromResult
           else
-            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Ply
+            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -392,9 +408,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUInt32 a ] ->
           if a > 255ul then
-            Dval.optionNone KTUInt8 |> Ply
+            Dval.optionNone KTUInt8 |> Task.FromResult
           else
-            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Ply
+            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -411,9 +427,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DInt64 a ] ->
           if a < 0L || a > 255L then
-            Dval.optionNone KTUInt8 |> Ply
+            Dval.optionNone KTUInt8 |> Task.FromResult
           else
-            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Ply
+            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -430,9 +446,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUInt64 a ] ->
           if a > 255UL then
-            Dval.optionNone KTUInt8 |> Ply
+            Dval.optionNone KTUInt8 |> Task.FromResult
           else
-            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Ply
+            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -449,9 +465,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DInt128 a ] ->
           if a < 0Q || a > 255Q then
-            Dval.optionNone KTUInt8 |> Ply
+            Dval.optionNone KTUInt8 |> Task.FromResult
           else
-            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Ply
+            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -468,9 +484,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUInt128 a ] ->
           if a > 255Z then
-            Dval.optionNone KTUInt8 |> Ply
+            Dval.optionNone KTUInt8 |> Task.FromResult
           else
-            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Ply
+            Dval.optionSome KTUInt8 (DUInt8(uint8 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -484,7 +500,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise AND on two <type UInt8> values"
       fn =
         (function
-        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Ply(DUInt8(a &&& b))
+        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Task.FromResult(DUInt8(a &&& b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -498,7 +514,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise OR on two <type UInt8> values"
       fn =
         (function
-        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Ply(DUInt8(a ||| b))
+        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Task.FromResult(DUInt8(a ||| b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -512,7 +528,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise XOR on two <type UInt8> values"
       fn =
         (function
-        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Ply(DUInt8(a ^^^ b))
+        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Task.FromResult(DUInt8(a ^^^ b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -526,7 +542,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise NOT on a <type UInt8> value"
       fn =
         (function
-        | _, _, _, [ DUInt8 a ] -> Ply(DUInt8(~~~a))
+        | _, _, _, [ DUInt8 a ] -> Task.FromResult(DUInt8(~~~a))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -540,7 +556,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise left shift of a <type UInt8> value"
       fn =
         (function
-        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Ply(DUInt8(a <<< int b))
+        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Task.FromResult(DUInt8(a <<< int b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -554,7 +570,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise right shift of a <type UInt8> value"
       fn =
         (function
-        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Ply(DUInt8(a >>> int b))
+        | _, _, _, [ DUInt8 a; DUInt8 b ] -> Task.FromResult(DUInt8(a >>> int b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

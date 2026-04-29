@@ -3,7 +3,6 @@ module LibCloud.Canvas
 // Functions related to Canvases
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 open Microsoft.Data.Sqlite
 open Fumble
 open LibDB.Db
@@ -442,8 +441,8 @@ let healthCheck : K8s.HealthCheck =
   { name = "canvas"; checkFn = loadDomainsHealthCheck; probeTypes = [ K8s.Startup ] }
 
 
-let toProgram (c : T) : Ply<RT.Program> =
-  uply {
+let toProgram (c : T) : Task<RT.Program> =
+  task {
     let dbs =
       c.dbs
       |> Map.values

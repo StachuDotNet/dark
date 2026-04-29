@@ -1,5 +1,7 @@
 module LibPackageManager.RuntimeTypes
 
+open System.Threading.Tasks
+
 open Prelude
 open LibExecution.RuntimeTypes
 
@@ -12,8 +14,8 @@ module BS = LibSerialization.Binary.Serialization
 
 
 module Type =
-  let get (hash : Hash) : Ply<Option<RT.PackageType.PackageType>> =
-    uply {
+  let get (hash : Hash) : Task<Option<RT.PackageType.PackageType>> =
+    task {
       let (Hash hashStr) = hash
       return!
         Sql.query
@@ -29,8 +31,8 @@ module Type =
 
 
 module Value =
-  let get (hash : Hash) : Ply<Option<RT.PackageValue.PackageValue>> =
-    uply {
+  let get (hash : Hash) : Task<Option<RT.PackageValue.PackageValue>> =
+    task {
       let (Hash hashStr) = hash
       return!
         Sql.query
@@ -45,8 +47,8 @@ module Value =
     }
 
   /// Find all value hashes that have the given ValueType (exact match)
-  let findByValueType (vt : RT.ValueType) : Ply<List<Hash>> =
-    uply {
+  let findByValueType (vt : RT.ValueType) : Task<List<Hash>> =
+    task {
       let vtBytes = BS.RT.ValueType.serialize vt
       return!
         Sql.query
@@ -61,8 +63,8 @@ module Value =
 
 
 module Fn =
-  let get (hash : Hash) : Ply<Option<RT.PackageFn.PackageFn>> =
-    uply {
+  let get (hash : Hash) : Task<Option<RT.PackageFn.PackageFn>> =
+    task {
       let (Hash hashStr) = hash
       return!
         Sql.query
@@ -80,8 +82,8 @@ module Fn =
 /// Content-addressed blob storage — bytes keyed by SHA-256 hash.
 module Blob =
   /// Look up bytes by hash. Returns [None] when the row doesn't exist.
-  let get (hash : string) : Ply<Option<byte[]>> =
-    uply {
+  let get (hash : string) : Task<Option<byte[]>> =
+    task {
       return!
         Sql.query
           """
@@ -96,8 +98,8 @@ module Blob =
   /// Insert bytes under [hash]. If the row already exists (same hash
   /// = same content, by content-addressing invariant), this is a no-op
   /// — `INSERT OR IGNORE` handles dedup.
-  let insert (hash : string) (bytes : byte[]) : Ply<unit> =
-    uply {
+  let insert (hash : string) (bytes : byte[]) : Task<unit> =
+    task {
       let! _ =
         Sql.query
           """
@@ -169,8 +171,8 @@ module Blob =
   /// deserialise passes plus one DELETE per orphan. Good enough for
   /// CLI-triggered sweeps at current scale; a reverse-index table
   /// is the natural next step when the DB grows past it.
-  let sweepOrphans () : Ply<int64> =
-    uply {
+  let sweepOrphans () : Task<int64> =
+    task {
       // Pull every materialised rt_dval — deserialise and collect
       // hashes referenced anywhere in the tree.
       let! valueRows =

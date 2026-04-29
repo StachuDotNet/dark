@@ -2,7 +2,6 @@
 module BuiltinCli.Libs.File
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution.RuntimeTypes
@@ -24,7 +23,7 @@ let fns () : List<BuiltInFn> =
         let resultError = Dval.resultError KTBlob KTString
         (function
         | state, _, _, [ DString path ] ->
-          uply {
+          task {
             try
               let path =
                 path.Replace(
@@ -37,6 +36,7 @@ let fns () : List<BuiltInFn> =
             with e ->
               return resultError (DString($"Error reading file: {e.Message}"))
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -54,7 +54,7 @@ let fns () : List<BuiltInFn> =
         let resultError = Dval.resultError KTUnit KTString
         (function
         | state, _, _, [ DBlob ref; DString path ] ->
-          uply {
+          task {
             try
               let path =
                 path.Replace(
@@ -68,6 +68,7 @@ let fns () : List<BuiltInFn> =
             with e ->
               return resultError (DString($"Error writing file: {e.Message}"))
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -82,17 +83,15 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
-            try
-              System.IO.File.Delete path
-              return Dval.resultOk KTUnit KTString DUnit
-            with e ->
-              return
-                Dval.resultError
-                  KTUnit
-                  KTString
-                  (DString $"Error deleting file: {e.Message}")
-          }
+          try
+            System.IO.File.Delete path
+            Dval.resultOk KTUnit KTString DUnit |> Task.FromResult
+          with e ->
+            Dval.resultError
+              KTUnit
+              KTString
+              (DString $"Error deleting file: {e.Message}")
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -110,13 +109,14 @@ let fns () : List<BuiltInFn> =
         let resultError = Dval.resultError KTUnit KTString
         (function
         | _, _, _, [ DString path; DString content ] ->
-          uply {
+          task {
             try
               do! System.IO.File.AppendAllTextAsync(path, content)
               return resultOk DUnit
             with e ->
               return resultError (DString e.Message)
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -130,8 +130,8 @@ let fns () : List<BuiltInFn> =
       description =
         "Creates a new temporary file with a unique name in the system's temporary directory. Returns a Result type containing the temporary file path or an error if the creation fails."
       fn =
-        let resultOk r = Dval.resultOk KTString KTString r |> Ply
-        let resultError r = Dval.resultError KTString KTString r |> Ply
+        let resultOk r = Dval.resultOk KTString KTString r |> Task.FromResult
+        let resultError r = Dval.resultError KTString KTString r |> Task.FromResult
         (function
         | _, _, _, [ DUnit ] ->
           try
@@ -154,14 +154,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
-            try
-              let attrs = System.IO.File.GetAttributes(path)
-              let isDir = attrs.HasFlag(System.IO.FileAttributes.Directory)
-              return DBool isDir
-            with _ ->
-              return DBool false
-          }
+          try
+            let attrs = System.IO.File.GetAttributes(path)
+            let isDir = attrs.HasFlag(System.IO.FileAttributes.Directory)
+            DBool isDir |> Task.FromResult
+          with _ ->
+            DBool false |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -177,16 +175,14 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
-            try
-              let attrs = System.IO.File.GetAttributes(path)
-              let isDir = attrs.HasFlag(System.IO.FileAttributes.Directory)
-              let exists =
-                System.IO.File.Exists(path) || System.IO.Directory.Exists(path)
-              return DBool(exists && not isDir)
-            with _ ->
-              return DBool false
-          }
+          try
+            let attrs = System.IO.File.GetAttributes(path)
+            let isDir = attrs.HasFlag(System.IO.FileAttributes.Directory)
+            let exists =
+              System.IO.File.Exists(path) || System.IO.Directory.Exists(path)
+            DBool(exists && not isDir) |> Task.FromResult
+          with _ ->
+            DBool false |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -202,14 +198,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
-            try
-              let exists =
-                System.IO.File.Exists(path) || System.IO.Directory.Exists(path)
-              return DBool exists
-            with _ ->
-              return DBool false
-          }
+          try
+            let exists =
+              System.IO.File.Exists(path) || System.IO.Directory.Exists(path)
+            DBool exists |> Task.FromResult
+          with _ ->
+            DBool false |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -223,8 +217,8 @@ let fns () : List<BuiltInFn> =
       description =
         "Returns the size of the file at the specified <param path> in bytes, or an error if the file does not exist or an error occurs"
       fn =
-        let resultOk r = Dval.resultOk KTInt64 KTString r |> Ply
-        let resultError r = Dval.resultError KTInt64 KTString r |> Ply
+        let resultOk r = Dval.resultOk KTInt64 KTString r |> Task.FromResult
+        let resultError r = Dval.resultError KTInt64 KTString r |> Task.FromResult
         (function
         | _, _, _, [ DString path ] ->
           try

@@ -4,7 +4,6 @@ module LibDB.Db
 // To be reviewed by someone with more DB expertise.
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 open Microsoft.Data.Sqlite
 open Fumble
 
@@ -43,7 +42,11 @@ module Sql =
       | Ok list ->
         return
           Exception.raiseInternal $"Too many results, expected 1" [ "actual", list ]
-      | Error err -> return Exception.raiseInternal "fail" [ "err", err ]
+      | Error err ->
+        return
+          Exception.raiseInternal
+            $"SQL query failed in executeRowAsync: {err.Message}"
+            [ "err", err ]
     }
 
   let executeRowOptionAsync
@@ -59,7 +62,11 @@ module Sql =
           Exception.raiseInternal
             $"Too many results, expected 0 or 1"
             [ "actual", list ]
-      | Error err -> return Exception.raiseInternal "fail" [ "err", err ]
+      | Error err ->
+        return
+          Exception.raiseInternal
+            $"SQL query failed in executeRowOptionAsync: {err.Message}"
+            [ "err", err ]
     }
 
   let executeAsync rr props =
@@ -178,8 +185,8 @@ type TableStatsRow =
     diskHuman : string
     rowsHuman : string }
 
-let tableStats () : Ply<List<TableStatsRow>> =
-  uply {
+let tableStats () : Task<List<TableStatsRow>> =
+  task {
     let! pageCount =
       Sql.query "PRAGMA page_count;"
       |> Sql.executeRowAsync (fun r -> r.int64 "page_count")
@@ -203,8 +210,8 @@ let tableStats () : Ply<List<TableStatsRow>> =
 
     let! rowCounts =
       tables
-      |> Ply.List.mapSequentially (fun table ->
-        uply {
+      |> Task.mapSequentially (fun table ->
+        task {
           let! rows =
             Sql.query $"SELECT COUNT(*) as count FROM \"{table}\";"
             |> Sql.executeRowAsync (fun read -> read.int64 "count")

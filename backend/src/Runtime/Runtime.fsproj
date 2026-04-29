@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <IsPublishable>false</IsPublishable>
+    <IsTrimmable>true</IsTrimmable>
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="paket.references" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Prelude/Prelude.fsproj" />
+    <ProjectReference Include="../Language/Language.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="RuntimeTypes.fs" />
+    <Compile Include="ValueType.fs" />
+    <Compile Include="Blob.fs" />
+    <Compile Include="Stream.fs" />
+    <Compile Include="Dval.fs" />
+    <Compile Include="Builtin.fs" />
+    <Compile Include="TypeChecker.fs" />
+    <Compile Include="Interpreter.fs" />
+    <Compile Include="AnalysisTypes.fs" />
+    <Compile Include="RTQueryCompiler.fs" />
+    <Compile Include="ProgramTypesToRuntimeTypes.fs" />
+  </ItemGroup>
+  <Import Project="..\..\.paket\Paket.Restore.targets" />
+</Project>

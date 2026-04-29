@@ -3,6 +3,7 @@ module BuiltinExecution.Libs.Builtins
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module Dval = LibExecution.Dval
 module PackageRefs = LibExecution.PackageRefs
@@ -67,23 +68,21 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, [], [ DUnit ] ->
-          uply {
-            let fns =
-              exeState.fns.builtIn
-              |> Map.values
-              |> List.filter (fun fn ->
-                match fn.deprecated with
-                | NotDeprecated -> true
-                | _ -> false)
-              |> List.sortBy (fun fn -> fn.name.name)
+          let fns =
+            exeState.fns.builtIn
+            |> Map.values
+            |> List.filter (fun fn ->
+              match fn.deprecated with
+              | NotDeprecated -> true
+              | _ -> false)
+            |> List.sortBy (fun fn -> fn.name.name)
 
-            let builtins =
-              fns
-              |> List.map ToDarkTypes.FunctionInfo.toDT
-              |> Dval.list (KTCustomType(ToDarkTypes.FunctionInfo.typeName (), []))
+          let builtins =
+            fns
+            |> List.map ToDarkTypes.FunctionInfo.toDT
+            |> Dval.list (KTCustomType(ToDarkTypes.FunctionInfo.typeName (), []))
 
-            return builtins
-          }
+          Task.FromResult builtins
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

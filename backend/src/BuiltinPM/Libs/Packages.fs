@@ -51,8 +51,9 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUnit ] ->
-          uply {
-            let! stats = LibPackageManager.Stats.get ()
+          task {
+            let! (stats : LibPackageManager.Stats.Stats) =
+              LibPackageManager.Stats.get ()
 
             return
               DRecord(
@@ -65,6 +66,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 |> Map
               )
           }
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -87,7 +89,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchId; location ] ->
-          uply {
+          task {
             let location = PT2DT.PackageLocation.fromDT location
             // Do a fresh lookup using the branchId to get the current branch chain.
             // This ensures newly-created types on the branch are visible.
@@ -98,6 +100,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> Option.map PT2DT.Hash.toDT
               |> Dval.option (PT2DT.Hash.knownType ())
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -115,11 +118,12 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         let optType = KTCustomType((PT2DT.PackageType.typeName ()), [])
         (function
         | _, _, _, [ hashDval ] ->
-          uply {
+          task {
             let hash = PT2DT.Hash.fromDT hashDval
             let! result = pm.getType hash
             return result |> Option.map PT2DT.PackageType.toDT |> Dval.option optType
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -142,7 +146,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchId; location ] ->
-          uply {
+          task {
             let location = PT2DT.PackageLocation.fromDT location
             let! branchChain = Branches.getBranchChain branchId
             let! result = PMPT.Value.find branchChain location
@@ -151,6 +155,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> Option.map PT2DT.Hash.toDT
               |> Dval.option (PT2DT.Hash.knownType ())
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -169,7 +174,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ hashDval ] ->
-          uply {
+          task {
             let hash = PT2DT.Hash.fromDT hashDval
             let! result = pm.getValue hash
             return
@@ -177,6 +182,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> Option.map PT2DT.PackageValue.toDT
               |> Dval.option (KTCustomType((PT2DT.PackageValue.typeName ()), []))
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -198,7 +204,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ valueTypeDval ] ->
-          uply {
+          task {
             let vt = RT2DT.ValueType.fromDT valueTypeDval
             let! valueIds = RTPM.Value.findByValueType vt
             return
@@ -207,6 +213,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 valueIds |> List.map RT2DT.Hash.toDT
               )
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -228,7 +235,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, _, [ hashDval ] ->
-          uply {
+          task {
             let (PT.Hash hash) = PT2DT.Hash.fromDT hashDval
             let valueName = FQValueName.Package(Hash hash)
             let instrs : Instructions =
@@ -244,6 +251,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               | ValueType.Unknown -> return Dval.optionSome KTUnit dval
             | Error _ -> return Dval.optionNone KTUnit
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -266,7 +274,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchId; location ] ->
-          uply {
+          task {
             let location = PT2DT.PackageLocation.fromDT location
             let! branchChain = Branches.getBranchChain branchId
             let! result = PMPT.Fn.find branchChain location
@@ -275,6 +283,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> Option.map PT2DT.Hash.toDT
               |> Dval.option (PT2DT.Hash.knownType ())
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -291,7 +300,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ hashDval ] ->
-          uply {
+          task {
             let hash = PT2DT.Hash.fromDT hashDval
             let! result = pm.getFn hash
             return
@@ -299,6 +308,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> Option.map PT2DT.PackageFn.toDT
               |> Dval.option (KTCustomType((PT2DT.PackageFn.typeName ()), []))
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -318,12 +328,13 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid branchId; query as DRecord(_, _, _, _fields) ] ->
-          uply {
+          task {
             let searchQuery = PT2DT.Search.SearchQuery.fromDT query
             let! branchChain = Branches.getBranchChain branchId
             let! results = PMPT.search branchChain searchQuery
             return PT2DT.Search.SearchResults.toDT results
           }
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -341,7 +352,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchId; hashDval ] ->
-          uply {
+          task {
             let hash = PT2DT.Hash.fromDT hashDval
             let! result = pm.getTypeLocations branchId hash
             return
@@ -349,6 +360,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> List.map PT2DT.PackageLocation.toDT
               |> Dval.list (KTCustomType((PT2DT.PackageLocation.typeName ()), []))
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -365,7 +377,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchId; hashDval ] ->
-          uply {
+          task {
             let hash = PT2DT.Hash.fromDT hashDval
             let! result = pm.getValueLocations branchId hash
             return
@@ -373,6 +385,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> List.map PT2DT.PackageLocation.toDT
               |> Dval.list (KTCustomType((PT2DT.PackageLocation.typeName ()), []))
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -389,7 +402,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchId; hashDval ] ->
-          uply {
+          task {
             let hash = PT2DT.Hash.fromDT hashDval
             let! result = pm.getFnLocations branchId hash
             return
@@ -397,6 +410,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> List.map PT2DT.PackageLocation.toDT
               |> Dval.list (KTCustomType((PT2DT.PackageLocation.typeName ()), []))
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -422,7 +436,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchId; location; itemKindDval ] ->
-          uply {
+          task {
             let location = PT2DT.PackageLocation.fromDT location
             let itemKind = PT2DT.ItemKind.fromDT itemKindDval
             let modulesStr = location.modules |> String.concat "."
@@ -439,6 +453,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> List.map PT2DT.Hash.toDT
               |> Dval.list (PT2DT.Hash.knownType ())
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -486,7 +501,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             sourceItemKindDval
             DList(_, fromSourceHashDvals)
             toSourceHashDval ] ->
-          uply {
+          task {
             let sourceLocation = PT2DT.PackageLocation.fromDT sourceLocation
             let sourceItemKind = PT2DT.ItemKind.fromDT sourceItemKindDval
             let fromSourceHashes = fromSourceHashDvals |> List.map PT2DT.Hash.fromDT
@@ -527,6 +542,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             | Error errMsg ->
               return Dval.resultError tupleKT KTString (DString errMsg)
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -578,7 +594,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             sourceItemKindDval
             DList(_, propagationIds)
             targetHashDval ] ->
-          uply {
+          task {
             let repoints = repoints |> List.map PT2DT.PropagateRepoint.fromDT
             let sourceLocation = PT2DT.PackageLocation.fromDT sourceLocation
             let sourceItemKind = PT2DT.ItemKind.fromDT sourceItemKindDval
@@ -595,9 +611,9 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             // Determine the hash to restore: explicit target or find committed
             let! restoredHashResult =
               match C2DT.Option.fromDT PT2DT.Hash.fromDT targetHashDval with
-              | Some targetHash -> uply { return Ok targetHash }
+              | Some targetHash -> task { return Ok targetHash }
               | None ->
-                uply {
+                task {
                   let! result =
                     LibPackageManager.Inserts.findCommittedHash
                       branchId
@@ -636,6 +652,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 DTuple(DUuid revertId, PT2DT.Hash.toDT restoredHash, [])
               return Dval.resultOk tupleKT KTString resultTuple
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -660,7 +677,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchId ] ->
-          uply {
+          task {
             let! branchChain = Branches.getBranchChain branchId
             let! sets = LibPackageManager.Queries.getDeprecationSets branchChain
             let hashListDval (hashes : Set<PT.Hash>) =
@@ -671,6 +688,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             return
               DTuple(hashListDval sets.allDeprecated, hashListDval sets.hidden, [])
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -704,7 +722,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchId; hashDval; itemKindDval ] ->
-          uply {
+          task {
             let hash = PT2DT.Hash.fromDT hashDval
             let itemKind = PT2DT.ItemKind.fromDT itemKindDval
             let! branchChain = Branches.getBranchChain branchId
@@ -727,6 +745,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                   tupleKT
                   (DTuple(PT2DT.DeprecationKind.toDT kind, DString message, []))
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

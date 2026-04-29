@@ -13,7 +13,6 @@
 module BuiltinExecution.Libs.Stream
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 
@@ -39,7 +38,7 @@ let varA = TVariable "a"
 let private resolveElemVT
   (state : ExecutionState)
   (t : TypeReference)
-  : Ply<ValueType> =
+  : Task<ValueType> =
   LibExecution.RuntimeTypes.TypeReference.toVT state.types Map.empty t
 
 
@@ -49,8 +48,8 @@ let private resolveElemVT
 let private resolveElemKT
   (state : ExecutionState)
   (t : TypeReference)
-  : Ply<KnownType> =
-  uply {
+  : Task<KnownType> =
+  task {
     let! vt = resolveElemVT state t
     match vt with
     | ValueType.Known kt -> return kt
@@ -68,10 +67,10 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ elemType ], [ DList(elemVT, items) ] ->
-          uply {
+          task {
             let remaining = ref items
-            let nextFn () : Ply<Option<Dval>> =
-              uply {
+            let nextFn () : Task<Option<Dval>> =
+              task {
                 match remaining.Value with
                 | head :: tail ->
                   remaining.Value <- tail
@@ -85,9 +84,10 @@ let fns () : List<BuiltInFn> =
             let! inferredElem =
               match elemVT with
               | ValueType.Unknown -> resolveElemVT state elemType
-              | known -> Ply known
+              | known -> Task.FromResult known
             return Stream.newFromIO inferredElem nextFn None
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -117,11 +117,11 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, vm, [ _; outputType ], [ initialState; DApplicable app ] ->
-          uply {
+          task {
             let! elemType = resolveElemVT state outputType
             let currentState = ref initialState
-            let next () : Ply<Option<Dval>> =
-              uply {
+            let next () : Task<Option<Dval>> =
+              task {
                 let! result =
                   Exe.executeApplicable
                     state
@@ -141,6 +141,7 @@ let fns () : List<BuiltInFn> =
               }
             return Stream.newFromIO elemType next None
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -156,11 +157,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ elemType ], [ s ] ->
-          uply {
+          task {
             let! nextResult = Stream.readNext s
             let! elemKT = resolveElemKT state elemType
             return Dval.option elemKT nextResult
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -175,7 +177,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, [ elemType ], [ s ] ->
-          uply {
+          task {
             let collected = ResizeArray<Dval>()
             let mutable keepGoing = true
             while keepGoing do
@@ -189,11 +191,12 @@ let fns () : List<BuiltInFn> =
             // the declared type-arg for empty results.
             let! elemVT =
               if collected.Count > 0 then
-                Ply(Dval.toValueType collected[0])
+                Task.FromResult(Dval.toValueType collected[0])
               else
                 resolveElemVT state elemType
             return DList(elemVT, List.ofSeq collected)
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -209,7 +212,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ s ] ->
-          uply {
+          task {
             // Drain via `readStreamChunk` so IO-backed byte streams
             // (HttpClient.stream) hand back a whole buffer per pull
             // instead of boxing one DUInt8 per byte. Falls back to
@@ -225,6 +228,7 @@ let fns () : List<BuiltInFn> =
               | None -> keepGoing <- false
             return Blob.newEphemeral state (collected.ToArray())
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -253,7 +257,7 @@ let fns () : List<BuiltInFn> =
           if not disposed.Value then
             disposed.Value <- true
             Stream.disposeImpl impl
-          DUnit |> Ply
+          DUnit |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -283,10 +287,10 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, vm, [ _; outputType ], [ DStream(src, _, _); DApplicable app ] ->
-          uply {
+          task {
             let! elemType = resolveElemVT state outputType
-            let apply (dv : Dval) : Ply<Dval> =
-              uply {
+            let apply (dv : Dval) : Task<Dval> =
+              task {
                 let! result = Exe.executeApplicable state app (NEList.singleton dv)
                 match result with
                 | Ok v -> return v
@@ -294,6 +298,7 @@ let fns () : List<BuiltInFn> =
               }
             return Stream.wrapImpl (Mapped(src, apply, elemType))
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -317,8 +322,8 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, vm, _, [ DStream(src, _, _); DApplicable app ] ->
-          let pred (dv : Dval) : Ply<bool> =
-            uply {
+          let pred (dv : Dval) : Task<bool> =
+            task {
               let! result = Exe.executeApplicable state app (NEList.singleton dv)
               match result with
               | Ok(DBool b) -> return b
@@ -329,7 +334,7 @@ let fns () : List<BuiltInFn> =
                     [ "got", other ]
               | Error(rte, _cs) -> return raiseRTE vm.threadID rte
             }
-          Stream.wrapImpl (Filtered(src, pred)) |> Ply
+          Stream.wrapImpl (Filtered(src, pred)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -352,7 +357,7 @@ let fns () : List<BuiltInFn> =
           // Clamp negative n to 0 — pullStreamImpl treats remaining<=0
           // as done, so a negative here becomes an empty stream.
           let clamped = max 0L n
-          Stream.wrapImpl (Take(src, clamped, ref clamped)) |> Ply
+          Stream.wrapImpl (Take(src, clamped, ref clamped)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -379,7 +384,7 @@ let fns () : List<BuiltInFn> =
                 Exception.raiseInternal
                   "streamConcat: expected List<Stream>"
                   [ "got", other ])
-          Stream.wrapImpl (Concat(ref impls)) |> Ply
+          Stream.wrapImpl (Concat(ref impls)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure

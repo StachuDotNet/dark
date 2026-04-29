@@ -25,7 +25,7 @@ let tCheckVM
     let! exeState =
       executionStateFor TestValues.pm (System.Guid.NewGuid()) false false Map.empty
 
-    let! actual = LibExecution.Interpreter.execute exeState vmState |> Ply.toTask
+    let! actual = LibExecution.Interpreter.execute exeState vmState
     Expect.equal actual expectedInsts ""
 
     extraAssertions exeState vmState
@@ -549,7 +549,7 @@ module Lambdas =
         E.Lambdas.Identity.unapplied
         |> PT2RT.Expr.toRT Map.empty 0 None
         |> RT.VMState.createWithoutTLID
-      let! lambdaDval = LibExecution.Interpreter.execute exeState vmA |> Ply.toTask
+      let! lambdaDval = LibExecution.Interpreter.execute exeState vmA
 
       let applicable =
         match lambdaDval with

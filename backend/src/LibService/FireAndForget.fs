@@ -2,7 +2,6 @@ module LibService.FireAndForget
 
 open System.Threading.Tasks
 open System.Threading
-open FSharp.Control.Tasks
 
 open Prelude
 

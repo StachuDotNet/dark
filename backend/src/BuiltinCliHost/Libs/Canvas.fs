@@ -1,6 +1,7 @@
 /// Builtin functions for canvas and DB operations in the CLI
 module BuiltinCliHost.Libs.Canvas
 
+open System.Threading.Tasks
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
@@ -34,7 +35,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUuid canvasID; DString dbName; typeHashDval ] ->
           let typeHash = PT2DT.Hash.fromDT typeHashDval
-          uply {
+          task {
             // Check for existing DB with the same name
             let! existing =
               Sql.query
@@ -70,6 +71,7 @@ let fns () : List<BuiltInFn> =
               do! Canvas.saveTLIDs canvasID [ (toplevel, Serialize.NotDeleted) ]
               return Dval.resultOk KTUInt64 KTString (DUInt64 tlid)
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -87,10 +89,11 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid accountID; DString domain ] ->
-          uply {
+          task {
             let! canvasID = Canvas.getOrCreateForAccount accountID domain
             return DUuid canvasID
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -108,29 +111,30 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid canvasID; DUuid branchId ] ->
-          uply {
+          task {
             let! canvas = Canvas.loadAllDBs canvasID
             let pm = LibPackageManager.PackageManager.pt
             let! dbs =
               canvas.dbs
               |> Map.values
-              |> Ply.List.mapSequentially (fun (db : PT.DB.T) ->
-                uply {
+              |> Task.mapSequentially (fun (db : PT.DB.T) ->
+                task {
                   let! typeName =
                     match db.typ with
                     | PT.TypeReference.TCustomType({ resolved = Ok(PT.FQTypeName.Package typeID) },
                                                    _) ->
-                      uply {
+                      task {
                         let! locs = pm.getTypeLocations branchId typeID
                         match locs with
                         | location :: _ -> return PackageLocation.toFQN location
                         | [] -> return typeID.ToString()
                       }
-                    | _ -> Ply "unknown"
+                    | _ -> Task.FromResult "unknown"
                   return DTuple(DString db.name, DString typeName, [])
                 })
             return Dval.list (KTTuple(VT.string, VT.string, [])) dbs
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -148,7 +152,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid canvasID; DString dbName ] ->
-          uply {
+          task {
             let! matchingTlids =
               Sql.query
                 "SELECT tlid FROM toplevels_v0
@@ -184,6 +188,7 @@ let fns () : List<BuiltInFn> =
                   |> Sql.executeStatementAsync)
               return Dval.resultOk KTUnit KTString DUnit
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -199,12 +204,13 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString name ] ->
-          uply {
+          task {
             let! result = Account.getUserByName name
             match result with
             | Some userID -> return Dval.optionSome KTUuid (DUuid userID)
             | None -> return Dval.optionNone KTUuid
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

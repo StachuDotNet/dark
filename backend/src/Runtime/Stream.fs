@@ -7,6 +7,8 @@
 /// `RuntimeTypes.fs`.
 module LibExecution.Stream
 
+open System.Threading.Tasks
+
 open Prelude
 
 open LibExecution.RuntimeTypes
@@ -38,15 +40,26 @@ let rec disposeImpl (impl : StreamImpl) : unit =
 /// full [disposeImpl] chain once (guarded by the shared `disposed`
 /// ref, so no double-fire if streamClose/drain-to-EOF already ran).
 ///
+/// Carries a permit-1 SemaphoreSlim that the consumer paths
+/// (`readNext`, `readChunk`) try to claim immediately. A second
+/// concurrent consumer hits the contended path and raises a clean
+/// `concurrent consumer` error rather than racing silently. Reachable
+/// via the `lockObj : obj` slot on `DStream`; consumers cast back
+/// through `Finalizer.consumerLock`. Disposed via `Dispose` from
+/// the finalizer/streamClose chain so the OS handle is released.
+///
 /// Swallows disposer exceptions — finalizers that throw crash the
 /// process, and we'd rather leak on the pathological case than take
 /// down everything.
 type Finalizer(impl : StreamImpl, disposed : bool ref) =
+  let consumerLock = new System.Threading.SemaphoreSlim(1, 1)
+  member _.ConsumerLock = consumerLock
   override this.Finalize() =
     try
       if not disposed.Value then
         disposed.Value <- true
         disposeImpl impl
+        consumerLock.Dispose()
     with _ ->
       ()
 
@@ -64,6 +77,25 @@ let wrapImpl (impl : StreamImpl) : Dval =
   DStream(impl, disposed, Finalizer(impl, disposed) :> obj)
 
 
+/// Try to claim the per-stream consumer lock without blocking. Used
+/// by `readNext` and `readChunk` to detect concurrent consumers —
+/// the second consumer hits the contended path and we raise a clean
+/// error rather than racing on shared `disposed`/`carry` state.
+///
+/// Cast back through the `Finalizer` because `DStream`'s `lockObj`
+/// slot is `obj` (kept opaque so the lifecycle is always managed
+/// through `wrapImpl`/`Finalizer`).
+let private tryAcquireConsumerLock (lockObj : obj) : bool =
+  match lockObj with
+  | :? Finalizer as f -> f.ConsumerLock.Wait(0)
+  | _ -> true // unknown lock object — be permissive rather than crash
+
+let private releaseConsumerLock (lockObj : obj) : unit =
+  match lockObj with
+  | :? Finalizer as f -> f.ConsumerLock.Release() |> ignore<int>
+  | _ -> ()
+
+
 /// Mint a fresh DStream from a pull function. Convenience wrapper
 /// over [wrapImpl] for the common FromIO case. [disposer], when
 /// `Some`, is called once when the stream is drained to completion,
@@ -73,7 +105,7 @@ let wrapImpl (impl : StreamImpl) : Dval =
 /// efficiently yield a whole chunk per pull.
 let newFromIO
   (elemType : ValueType)
-  (next : unit -> Ply.Ply<Option<Dval>>)
+  (next : unit -> Task<Option<Dval>>)
   (disposer : (unit -> unit) option)
   : Dval =
   wrapImpl (FromIO(next, elemType, disposer, None))
@@ -90,15 +122,15 @@ let newFromIO
 /// chunk buffer.
 let newChunked
   (elemType : ValueType)
-  (nextChunk : int -> Ply.Ply<Option<byte[]>>)
+  (nextChunk : int -> Task<Option<byte[]>>)
   (disposer : (unit -> unit) option)
   : Dval =
   // Maintain a small carry buffer so single-byte `next` pulls can
   // be served from the chunks that `nextChunk` returned.
   let carry = ref [||]
   let carryPos = ref 0
-  let next () : Ply.Ply<Option<Dval>> =
-    uply {
+  let next () : Task<Option<Dval>> =
+    task {
       if carryPos.Value >= carry.Value.Length then
         // Refill from the underlying chunked producer. 8 KB mirrors
         // the socket-read buffer size we use across the codebase.
@@ -127,8 +159,8 @@ let newChunked
 /// (Mapped/Filtered/Take/Concat) without re-entering the root's
 /// disposed flag — nested transforms share the wrapping DStream's
 /// lifecycle.
-let rec private pullImpl (impl : StreamImpl) : Ply.Ply<Option<Dval>> =
-  uply {
+let rec private pullImpl (impl : StreamImpl) : Task<Option<Dval>> =
+  task {
     match impl with
     | FromIO(next, _elemType, _disposer, _nextChunk) -> return! next ()
 
@@ -143,7 +175,7 @@ let rec private pullImpl (impl : StreamImpl) : Ply.Ply<Option<Dval>> =
     | Filtered(src, pred) ->
       // Pull from source until the predicate accepts or the source
       // runs dry. Written as a mutable loop rather than tail recursion
-      // so a long rejection run doesn't blow the Ply chain.
+      // so a long rejection run doesn't blow the state-machine chain.
       let mutable result : Option<Dval> = None
       let mutable keepGoing = true
       while keepGoing do
@@ -196,42 +228,43 @@ let rec private pullImpl (impl : StreamImpl) : Ply.Ply<Option<Dval>> =
 /// stream is exhausted; subsequent calls after exhaustion return
 /// [None] (single-consumer — once drained, stays drained).
 ///
-/// No thread-affine lock: `pullImpl` awaits inside `fn v` / `pred v`
-/// (via `Exe.executeApplicable`) and Ply continuations can resume on
-/// a different thread, which makes `Monitor.Exit` throw
-/// `SynchronizationLockException`. We rely on the single-threaded
-/// Dark VM model for ordering instead — concurrent consumers of the
-/// same stream have undefined output but never crash.
+/// Single-consumer enforcement: each DStream carries a permit-1
+/// SemaphoreSlim on its `lockObj` (the `Finalizer`). `readNext`
+/// claims the permit non-blockingly at entry; a second concurrent
+/// consumer hits `Wait(0) = false` and we raise an internal error
+/// rather than racing on shared `disposed`/transform-node state.
+/// The permit is held across the inner `pullImpl` await — it's
+/// released in the `finally`, so even a raised lambda inside `fn v`
+/// / `pred v` can't strand the lock.
 ///
-/// TODO LATENT BUG: the single-consumer invariant is unenforced.
-/// `disposed` only short-circuits AFTER drain; two callers entering
-/// `readNext` concurrently on the same DStream interleave silently.
-/// Cheap fix: a semaphore-with-permit-1 + raise on contention.
-/// Proper fix: a Ply-aware lock that survives continuation awaits —
-/// that's a Ply-internals refactor. Nothing in the codebase shares a
-/// DStream across consumers today, but the type system doesn't
-/// prevent it.
-///
-/// TODO per-element Ply continuation cost: every `next` allocates a
+/// TODO per-element state-machine cost: every `next` allocates a
 /// state machine. A 1000-element pipeline with three transforms is
 /// ~3000 allocations. The chunked `nextChunk` fast path covers byte
-/// streams; element-wise streams pay full cost. Real fix is replacing
-/// Ply with something cheaper — either a custom `Future<'a>` struct
-/// or a CPS interpreter with a fiber scheduler.
-let readNext (dv : Dval) : Ply.Ply<Option<Dval>> =
-  uply {
+/// streams; element-wise streams pay full cost. A future iteration
+/// could replace `Task<'a>` on this hot path with a custom
+/// `Future<'a>` struct or a CPS interpreter with a fiber scheduler.
+let readNext (dv : Dval) : Task<Option<Dval>> =
+  task {
     match dv with
-    | DStream(impl, disposed, _lockObj) ->
+    | DStream(impl, disposed, lockObj) ->
       if disposed.Value then
         return None
+      else if not (tryAcquireConsumerLock lockObj) then
+        return
+          Exception.raiseInternal
+            "concurrent consumer on a single-consumer DStream"
+            []
       else
-        let! result = pullImpl impl
-        match result with
-        | Some _ -> return result
-        | None ->
-          disposed.Value <- true
-          disposeImpl impl
-          return None
+        try
+          let! result = pullImpl impl
+          match result with
+          | Some _ -> return result
+          | None ->
+            disposed.Value <- true
+            disposeImpl impl
+            return None
+        finally
+          releaseConsumerLock lockObj
     | _ -> return Exception.raiseInternal "readNext: expected DStream" []
   }
 
@@ -246,47 +279,54 @@ let readNext (dv : Dval) : Ply.Ply<Option<Dval>> =
 /// Used by `streamToBlob` and SSE byte accumulators to amortise the
 /// Ply-continuation cost across whole chunks rather than paying it
 /// per byte.
-let readChunk (maxBytes : int) (dv : Dval) : Ply.Ply<Option<byte[]>> =
-  uply {
+let readChunk (maxBytes : int) (dv : Dval) : Task<Option<byte[]>> =
+  task {
     match dv with
-    | DStream(impl, disposed, _) ->
+    | DStream(impl, disposed, lockObj) ->
       if disposed.Value then
         return None
+      else if not (tryAcquireConsumerLock lockObj) then
+        return
+          Exception.raiseInternal
+            "concurrent consumer on a single-consumer DStream"
+            []
       else
-        match impl with
-        | FromIO(_, _, _, Some nextChunk) ->
-          let! chunk = nextChunk maxBytes
-          match chunk with
-          | Some buf when buf.Length > 0 -> return Some buf
+        try
+          match impl with
+          | FromIO(_, _, _, Some nextChunk) ->
+            let! chunk = nextChunk maxBytes
+            match chunk with
+            | Some buf when buf.Length > 0 -> return Some buf
+            | _ ->
+              disposed.Value <- true
+              disposeImpl impl
+              return None
           | _ ->
-            disposed.Value <- true
-            disposeImpl impl
-            return None
-        | _ ->
-          // Fallback: pull byte-by-byte. Only pays off vs per-byte
-          // `readNext` if the caller really wants bulk bytes —
-          // transform chains lose the chunk optimisation but still
-          // drain correctly.
-          use collected = new System.IO.MemoryStream()
-          let mutable keepGoing = true
-          let mutable bytesSoFar = 0
-          while keepGoing && bytesSoFar < maxBytes do
-            let! pulled = pullImpl impl
-            match pulled with
-            | Some(DUInt8 b) ->
-              collected.WriteByte b
-              bytesSoFar <- bytesSoFar + 1
-            | Some _ ->
-              return
+            // Fallback: pull byte-by-byte. Only pays off vs per-byte
+            // `readNext` if the caller really wants bulk bytes —
+            // transform chains lose the chunk optimisation but still
+            // drain correctly.
+            use collected = new System.IO.MemoryStream()
+            let mutable keepGoing = true
+            let mutable bytesSoFar = 0
+            while keepGoing && bytesSoFar < maxBytes do
+              let! pulled = pullImpl impl
+              match pulled with
+              | Some(DUInt8 b) ->
+                collected.WriteByte b
+                bytesSoFar <- bytesSoFar + 1
+              | Some _ ->
                 Exception.raiseInternal
                   "readChunk: expected Stream<UInt8> element"
                   []
-            | None -> keepGoing <- false
-          if bytesSoFar = 0 then
-            disposed.Value <- true
-            disposeImpl impl
-            return None
-          else
-            return Some(collected.ToArray())
+              | None -> keepGoing <- false
+            if bytesSoFar = 0 then
+              disposed.Value <- true
+              disposeImpl impl
+              return None
+            else
+              return Some(collected.ToArray())
+        finally
+          releaseConsumerLock lockObj
     | _ -> return Exception.raiseInternal "readChunk: expected DStream" []
   }

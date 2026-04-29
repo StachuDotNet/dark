@@ -1,7 +1,6 @@
 module Task
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 let map (f : 'a -> 'b) (v : Task<'a>) : Task<'b> =
   task {
@@ -33,6 +32,22 @@ let foldSequentially
     (Task.FromResult initial)
     list
 
+let foldSequentiallyWithIndex
+  (f : int -> 'state -> 'a -> Task<'state>)
+  (initial : 'state)
+  (list : List<'a>)
+  : Task<'state> =
+  List.fold
+    (fun (accum : Task<int * 'state>) (arg : 'a) ->
+      task {
+        let! (i, state) = accum
+        let! result = f i state arg
+        return (i + 1, result)
+      })
+    (Task.FromResult(0, initial))
+    list
+  |> map snd
+
 let mapSequentially (f : 'a -> Task<'b>) (list : List<'a>) : Task<List<'b>> =
   list
   |> foldSequentially
@@ -43,6 +58,17 @@ let mapSequentially (f : 'a -> Task<'b>) (list : List<'a>) : Task<List<'b>> =
       })
     []
   |> map List.rev
+
+module NEList =
+  let mapSequentially
+    (f : 'a -> Task<'b>)
+    (list : NEList.NEList<'a>)
+    : Task<NEList.NEList<'b>> =
+    task {
+      let! head = f list.head
+      let! tail = mapSequentially f list.tail
+      return NEList.ofList head tail
+    }
 
 let mapInParallel (f : 'a -> Task<'b>) (list : List<'a>) : Task<List<'b>> =
   List.map f list |> flatten

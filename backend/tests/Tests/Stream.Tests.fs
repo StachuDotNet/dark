@@ -8,7 +8,6 @@ module Tests.Stream
 open Expecto
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 
@@ -29,10 +28,10 @@ module RT2DT = LibExecution.RuntimeTypesToDarkTypes
 
 /// Pull-fn over a mutable list cell. Used to back streamOfList +
 /// streamImplOfList without duplicating the closure body.
-let private listPullFn (items : List<RT.Dval>) : (unit -> Ply<Option<RT.Dval>>) =
+let private listPullFn (items : List<RT.Dval>) : (unit -> Task<Option<RT.Dval>>) =
   let remaining = ref items
   fun () ->
-    uply {
+    task {
       match remaining.Value with
       | head :: tail ->
         remaining.Value <- tail
@@ -59,8 +58,7 @@ let private streamImplOfList
 
 let private wrap (impl : RT.StreamImpl) : RT.Dval = Stream.wrapImpl impl
 
-let private pull (s : RT.Dval) : Task<Option<RT.Dval>> =
-  Stream.readNext s |> Ply.toTask
+let private pull (s : RT.Dval) : Task<Option<RT.Dval>> = Stream.readNext s
 
 /// Drain a stream to a list. Pulls until None.
 let private drain (s : RT.Dval) : Task<List<RT.Dval>> =
@@ -68,7 +66,7 @@ let private drain (s : RT.Dval) : Task<List<RT.Dval>> =
     let acc = ResizeArray<RT.Dval>()
     let mutable keepGoing = true
     while keepGoing do
-      let! r = Stream.readNext s |> Ply.toTask
+      let! r = Stream.readNext s
       match r with
       | Some v -> acc.Add v
       | None -> keepGoing <- false
@@ -88,15 +86,15 @@ let private binaryRoundtrip
   let r = new System.IO.BinaryReader(new System.IO.MemoryStream(ms.ToArray()))
   read r
 
-let private intPredEven (dv : RT.Dval) : Ply<bool> =
-  uply {
+let private intPredEven (dv : RT.Dval) : Task<bool> =
+  task {
     match dv with
     | RT.DInt64 i -> return i % 2L = 0L
     | _ -> return false
   }
 
-let private intDouble (dv : RT.Dval) : Ply<RT.Dval> =
-  uply {
+let private intDouble (dv : RT.Dval) : Task<RT.Dval> =
+  task {
     match dv with
     | RT.DInt64 i -> return RT.DInt64(i * 2L)
     | _ -> return RT.DInt64 0L
@@ -297,8 +295,8 @@ let takeOverInfiniteSourceTerminates =
     // Producer counts up forever; Take must early-terminate without
     // pulling source past the limit.
     let counter = ref 0L
-    let next () : Ply<Option<RT.Dval>> =
-      uply {
+    let next () : Task<Option<RT.Dval>> =
+      task {
         counter.Value <- counter.Value + 1L
         return Some(RT.DInt64 counter.Value)
       }
@@ -336,8 +334,8 @@ let composedTransformsAreLazy =
     // [4, 8, 12]. Source pulled past 6 to find the third even, but not
     // unboundedly — proves the pipeline is pull-driven.
     let counter = ref 0L
-    let next () : Ply<Option<RT.Dval>> =
-      uply {
+    let next () : Task<Option<RT.Dval>> =
+      task {
         counter.Value <- counter.Value + 1L
         return Some(RT.DInt64 counter.Value)
       }
@@ -362,7 +360,7 @@ let composedTransformsAreLazy =
 let toValueTypeWalksTransforms =
   test "stream: Dval.toValueType returns the transform's element type" {
     let src = streamImplOfList [ RT.DInt64 1L ] VT.int64
-    let toString (_ : RT.Dval) : Ply<RT.Dval> = uply { return RT.DString "x" }
+    let toString (_ : RT.Dval) : Task<RT.Dval> = task { return RT.DString "x" }
     let s = wrap (RT.Mapped(src, toString, VT.string))
     Expect.equal
       (RT.Dval.toValueType s)
@@ -409,8 +407,8 @@ let gcFinalizesMidDrainStream =
       let disposer () = disposerRan.Value <- true
       let dv = Stream.newFromIO VT.int64 next (Some disposer)
       // Pull 2 of 3 elements, then return the weak ref.
-      let pulled1 = (Stream.readNext dv |> Ply.toTask).Result
-      let pulled2 = (Stream.readNext dv |> Ply.toTask).Result
+      let pulled1 = (Stream.readNext dv).Result
+      let pulled2 = (Stream.readNext dv).Result
       Expect.equal pulled1 (Some(RT.DInt64 1L)) "first pull"
       Expect.equal pulled2 (Some(RT.DInt64 2L)) "second pull"
       System.WeakReference<RT.Dval>(dv)
@@ -425,7 +423,7 @@ let gcSkipsFinalizerAfterStreamClose =
   test "stream: finalizer doesn't re-fire disposer when close already ran" {
     let disposeCount = ref 0
     let makeWeakRef () : System.WeakReference<RT.Dval> =
-      let next () : Ply<Option<RT.Dval>> = uply { return None }
+      let next () : Task<Option<RT.Dval>> = task { return None }
       let disposer () = disposeCount.Value <- disposeCount.Value + 1
       let dv = Stream.newFromIO VT.int64 next (Some disposer)
       // Replicate streamClose: flip disposed, walk impl chain.
@@ -455,10 +453,10 @@ let gcSkipsFinalizerAfterStreamClose =
 // the same source via newStreamChunked's synthesised `next`.
 
 /// A nextChunk callback that yields each entry of `buffers` once, then None.
-let private chunkPullFn (buffers : List<byte[]>) : (int -> Ply<Option<byte[]>>) =
+let private chunkPullFn (buffers : List<byte[]>) : (int -> Task<Option<byte[]>>) =
   let remaining = ref buffers
   fun (_ : int) ->
-    uply {
+    task {
       match remaining.Value with
       | head :: tail ->
         remaining.Value <- tail
@@ -471,8 +469,8 @@ let chunkedDrainMatchesByteDrain =
     "chunked drain: readStreamChunk returns the same bytes readStreamNext would" {
     let buf = [| 0x01uy; 0x02uy; 0x03uy; 0x04uy; 0x05uy; 0x06uy; 0x07uy; 0x08uy |]
     let s = Stream.newChunked VT.uint8 (chunkPullFn [ buf ]) None
-    let! first = Stream.readChunk 4096 s |> Ply.toTask
-    let! second = Stream.readChunk 4096 s |> Ply.toTask
+    let! first = Stream.readChunk 4096 s
+    let! second = Stream.readChunk 4096 s
     Expect.equal first (Some buf) "first chunk comes through intact"
     Expect.equal second None "second call returns None on exhaustion"
   }
@@ -498,10 +496,66 @@ let chunkedDrainFallsBackToByteWise =
         VT.uint8
         (listPullFn [ RT.DUInt8 0xAAuy; RT.DUInt8 0xBBuy; RT.DUInt8 0xCCuy ])
         None
-    let! chunk = Stream.readChunk 4096 s |> Ply.toTask
+    let! chunk = Stream.readChunk 4096 s
     Expect.equal chunk (Some [| 0xAAuy; 0xBBuy; 0xCCuy |]) "all bytes collected"
-    let! after = Stream.readChunk 4096 s |> Ply.toTask
+    let! after = Stream.readChunk 4096 s
     Expect.equal after None "exhausted"
+  }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Concurrent-consumer guard
+// ─────────────────────────────────────────────────────────────────────
+// Each DStream carries a permit-1 SemaphoreSlim on its lockObj; the
+// reader paths claim it non-blockingly at entry, hold it across the
+// inner pull, and release it in `finally`. A second consumer entering
+// while the first is mid-pull hits the contended path and we raise a
+// clean error rather than racing on shared `disposed`/transform state.
+
+/// A pull function that blocks on a TaskCompletionSource so we can
+/// wedge a `readNext` at the await point and let a second consumer
+/// race against it.
+let private gatedPullFn
+  (gate : TaskCompletionSource<unit>)
+  (item : RT.Dval)
+  : (unit -> Task<Option<RT.Dval>>) =
+  let yielded = ref false
+  fun () ->
+    task {
+      if yielded.Value then
+        return None
+      else
+        do! gate.Task
+        yielded.Value <- true
+        return Some item
+    }
+
+let concurrentReadNextRaises =
+  testTask "stream: second readNext while the first is mid-pull raises" {
+    let gate = TaskCompletionSource<unit>()
+    let s = Stream.newFromIO VT.int64 (gatedPullFn gate (RT.DInt64 7L)) None
+
+    // Kick off the first pull. It will park inside the gated callback
+    // until we set the gate, holding the consumer permit the whole time.
+    let firstPull = Stream.readNext s
+
+    // Give the scheduler a moment to step into the await — without this
+    // the second pull can sometimes start before the first acquires the
+    // semaphore, which would let it through legitimately.
+    do! Task.Delay 10
+
+    let mutable raised = false
+    try
+      let! _ = Stream.readNext s
+      ()
+    with _ ->
+      raised <- true
+    Expect.isTrue raised "second concurrent readNext should raise"
+
+    // Release the first pull — it should still complete cleanly.
+    gate.SetResult()
+    let! firstResult = firstPull
+    Expect.equal firstResult (Some(RT.DInt64 7L)) "first pull completes after gate"
   }
 
 
@@ -535,4 +589,5 @@ let tests =
       gcSkipsFinalizerAfterStreamClose
       chunkedDrainMatchesByteDrain
       chunkedDrainAlsoServesByteNext
-      chunkedDrainFallsBackToByteWise ]
+      chunkedDrainFallsBackToByteWise
+      concurrentReadNextRaises ]

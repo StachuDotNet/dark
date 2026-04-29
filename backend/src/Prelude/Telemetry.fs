@@ -12,6 +12,7 @@
 /// F# and Dark traces appear in the same file and can be analyzed together.
 module Telemetry
 
+open System.Threading.Tasks
 open System.Diagnostics
 
 /// Global mutable log path. Set early in startup.

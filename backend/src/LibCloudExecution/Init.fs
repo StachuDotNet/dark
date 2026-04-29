@@ -1,7 +1,6 @@
 /// Initialize LibCloudExecution
 module LibCloudExecution.Init
 
-open FSharp.Control.Tasks
 open System.Threading.Tasks
 
 open Prelude

@@ -53,8 +53,8 @@ module Response =
   let parseHttpResponseFields
     (state : RT.ExecutionState)
     (fields : Map<string, RT.Dval>)
-    : Ply<HttpResponse> =
-    uply {
+    : Task<HttpResponse> =
+    task {
       let code = Map.get "statusCode" fields
       let headers = Map.get "headers" fields
       let body = Map.get "body" fields
@@ -127,7 +127,7 @@ module Response =
       match result with
       | RT.DRecord(RT.FQTypeName.Package hash, _, [], fields) ->
         if hash = RT.Hash(PackageRefs.Type.Stdlib.Http.response ()) then
-          return! parseHttpResponseFields state fields |> Ply.toTask
+          return! parseHttpResponseFields state fields
         else
           return! wrongTypeResponse state result
 

@@ -14,7 +14,6 @@ module BuiltinHttpServer.Libs.HttpServer
 
 open System
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Hosting
@@ -66,7 +65,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, _, [ DInt64 port; DApplicable handler ] ->
-          uply {
+          task {
             let builder = WebApplication.CreateBuilder()
             builder.WebHost.UseUrls($"http://*:{port}") |> ignore<IWebHostBuilder>
 
@@ -147,6 +146,7 @@ let fns () : List<BuiltInFn> =
 
             return DUnit
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

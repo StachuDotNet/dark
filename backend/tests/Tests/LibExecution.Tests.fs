@@ -8,7 +8,6 @@ module Tests.LibExecution
 open Expecto
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Fumble
 open LibDB.Db
@@ -53,8 +52,8 @@ let runtimeErrorMessage
   (state : RT.ExecutionState)
   (allegedRTE : RT.RuntimeError.Error)
   (callStack : RT.CallStack)
-  : Ply<string> =
-  uply {
+  : Task<string> =
+  task {
     let actual = RT2DT.RuntimeError.toDT allegedRTE
     let errorMessageFn =
       RT.FQFnName.fqPackage (
@@ -196,13 +195,12 @@ let t
       // test framework's structural `dvalEquality`. The no-op insert
       // means we don't persist to `package_blobs` — we only need the
       // hash to dedupe UUID identity.
-      let noopInsert _ _ = uply { return () }
+      let noopInsert _ _ = task { return () }
       let promoteIfOk (r : RT.ExecutionResult) : Task<RT.ExecutionResult> =
         task {
           match r with
           | Ok dv ->
-            let! promoted =
-              LibExecution.Blob.promote state noopInsert dv |> Ply.toTask
+            let! promoted = LibExecution.Blob.promote state noopInsert dv
             return Ok promoted
           | Error _ -> return r
         }
@@ -249,8 +247,7 @@ let t
               None
               $"Expected runtime error `{expectedError}` but expression returned a value.\n\nTest location: {filename}:{lineNumber}"
         | Error(allegedRTE, callStack) ->
-          let! actualError =
-            runtimeErrorMessage state allegedRTE callStack |> Ply.toTask
+          let! actualError = runtimeErrorMessage state allegedRTE callStack
           return Expect.equal actualError expectedError ""
 
       | LibParser.TestModule.PTExpected.PTExpectedSqlError expectedSqlError ->
@@ -263,8 +260,7 @@ let t
               None
               $"Expected SQL runtime error `{expectedSqlError}` but expression returned a value.\n\nTest location: {filename}:{lineNumber}"
         | Error(allegedRTE, callStack) ->
-          let! actualError =
-            runtimeErrorMessage state allegedRTE callStack |> Ply.toTask
+          let! actualError = runtimeErrorMessage state allegedRTE callStack
           let expected =
             LibExecution.RTQueryCompiler.errorTemplate + expectedSqlError
           return Expect.equal actualError expected ""

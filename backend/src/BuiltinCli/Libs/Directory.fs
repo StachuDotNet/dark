@@ -2,7 +2,6 @@
 module BuiltinCli.Libs.Directory
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution.RuntimeTypes
@@ -21,10 +20,8 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUnit ] ->
-          uply {
-            let contents = System.IO.Directory.GetCurrentDirectory()
-            return DString contents
-          }
+          let contents = System.IO.Directory.GetCurrentDirectory()
+          DString contents |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -38,8 +35,8 @@ let fns () : List<BuiltInFn> =
       description =
         "Creates a new directory at the specified <param path>. If the directory already exists, no action is taken. Returns a Result type indicating success or failure."
       fn =
-        let resultOk r = Dval.resultOk KTUnit KTString r |> Ply
-        let resultError r = Dval.resultError KTUnit KTString r |> Ply
+        let resultOk r = Dval.resultOk KTUnit KTString r |> Task.FromResult
+        let resultError r = Dval.resultError KTUnit KTString r |> Task.FromResult
         (function
         | _, _, _, [ DString path ] ->
           try
@@ -61,8 +58,8 @@ let fns () : List<BuiltInFn> =
       description =
         "Deletes the directory at the specified <param path>. If <param recursive> is set to true, it will delete the directory and its contents. If set to false (default), it will only delete an empty directory. Returns a Result type indicating success or failure."
       fn =
-        let resultOk r = Dval.resultOk KTUnit KTString r |> Ply
-        let resultError r = Dval.resultError KTUnit KTString r |> Ply
+        let resultOk r = Dval.resultOk KTUnit KTString r |> Task.FromResult
+        let resultError r = Dval.resultError KTUnit KTString r |> Task.FromResult
         (function
         | _, _, _, [ DString path ] ->
           try
@@ -84,16 +81,14 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString path ] ->
-          uply {
-            // TODO make async
-            let contents =
-              try
-                System.IO.Directory.EnumerateFileSystemEntries path |> Seq.toList
-              with _ ->
-                []
+          // TODO make async
+          let contents =
+            try
+              System.IO.Directory.EnumerateFileSystemEntries path |> Seq.toList
+            with _ ->
+              []
 
-            return DList(VT.string, List.map DString contents)
-          }
+          DList(VT.string, List.map DString contents) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -108,11 +103,9 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUnit ] ->
-          uply {
-            let exePath =
-              System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName
-            return DString exePath
-          }
+          let exePath =
+            System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName
+          DString exePath |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

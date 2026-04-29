@@ -3,6 +3,7 @@ module BuiltinExecution.Libs.Reflection
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
@@ -27,7 +28,7 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ dv ] ->
-          dv |> LibExecution.RuntimeTypesToDarkTypes.Dval.toDT |> Ply
+          dv |> LibExecution.RuntimeTypesToDarkTypes.Dval.toDT |> Task.FromResult
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Pure

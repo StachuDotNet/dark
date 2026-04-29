@@ -4,6 +4,8 @@
 /// `Benchmarks.fs`.
 module LocalExec.BenchmarkScenarios
 
+open System.Threading.Tasks
+
 open Prelude
 
 module RT = LibExecution.RuntimeTypes
@@ -77,8 +79,8 @@ let freshState () : RT.ExecutionState =
     builtins
     TestUtils.TestUtils.pmRT
     LibExecution.Execution.noTracing
-    (fun _ _ _ _ -> uply { return () })
-    (fun _ _ _ _ -> uply { return () })
+    (fun _ _ _ _ -> task { return () })
+    (fun _ _ _ _ -> task { return () })
     LibExecution.ProgramTypes.mainBranchId
     { canvasID = System.Guid.NewGuid()
       internalFnsAllowed = false
@@ -184,8 +186,8 @@ let private streamToBlob (state : RT.ExecutionState) : List<Result> =
     let _, sample =
       measure (fun () ->
         let mutable yielded = false
-        let nextChunk (_max : int) : Ply<Option<byte[]>> =
-          uply {
+        let nextChunk (_max : int) : Task<Option<byte[]>> =
+          task {
             if yielded then
               return None
             else
@@ -194,8 +196,8 @@ let private streamToBlob (state : RT.ExecutionState) : List<Result> =
           }
         let stream = Stream.newChunked VT.uint8 nextChunk None
         let collected = new System.IO.MemoryStream()
-        let rec drain () : Ply<unit> =
-          uply {
+        let rec drain () : Task<unit> =
+          task {
             let! chunk = Stream.readChunk 65536 stream
             match chunk with
             | Some bs ->
@@ -203,7 +205,7 @@ let private streamToBlob (state : RT.ExecutionState) : List<Result> =
               return! drain ()
             | None -> return ()
           }
-        drain () |> Ply.toTask |> _.Wait()
+        (drain ()).Wait()
         ignore<RT.Dval> (Blob.newEphemeral state (collected.ToArray())))
     mkResult "streamToBlob" size 1 "chunked-drain" sample)
 

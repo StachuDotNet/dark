@@ -2,6 +2,7 @@
 /// Enables "what calls this?" and "what does this call?" queries.
 module BuiltinPM.Libs.Dependencies
 
+open System.Threading.Tasks
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
@@ -22,8 +23,8 @@ let tupleVT = VT.tuple hashVT VT.string []
 let private getLocationAny
   (branchChain : List<PT.BranchId>)
   (hash : PT.Hash)
-  : Ply<Option<PT.PackageLocation>> =
-  uply {
+  : Task<Option<PT.PackageLocation>> =
+  task {
     // Try fn first (most common)
     match! PMPT.Fn.getLocations branchChain hash with
     | loc :: _ -> return Some loc
@@ -54,7 +55,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchId; targetDval ] ->
-          uply {
+          task {
             let target = PT2DT.Hash.fromDT targetDval
             let! branchChain = Branches.getBranchChain branchId
             let! results = LibPackageManager.Queries.getDependents branchChain target
@@ -69,6 +70,7 @@ let fns () : List<BuiltInFn> =
                 ))
             return DList(tupleVT, dvals)
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -90,7 +92,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchId; sourceDval ] ->
-          uply {
+          task {
             let source = PT2DT.Hash.fromDT sourceDval
             let! branchChain = Branches.getBranchChain branchId
             let! results =
@@ -105,6 +107,7 @@ let fns () : List<BuiltInFn> =
                 ))
             return DList(tupleVT, dvals)
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -132,7 +135,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchId; DList(_, targets) ] ->
-          uply {
+          task {
             let! branchChain = Branches.getBranchChain branchId
             let ids = targets |> List.map PT2DT.Hash.fromDT
 
@@ -152,6 +155,7 @@ let fns () : List<BuiltInFn> =
 
             return DList(resultVT, dvals)
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -179,7 +183,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid branchId; DList(_, itemHashes) ] ->
-          uply {
+          task {
             let hashes = itemHashes |> List.map PT2DT.Hash.fromDT
 
             let! branchChain = LibPackageManager.Branches.getBranchChain branchId
@@ -187,13 +191,13 @@ let fns () : List<BuiltInFn> =
             let! results =
               hashes
               |> List.map (fun hash ->
-                uply {
+                task {
                   match! getLocationAny branchChain hash with
                   | Some loc -> return Some(hash, loc)
                   | None -> return None
                 })
-              |> Ply.List.flatten
-              |> Ply.map (List.choose identity)
+              |> Task.flatten
+              |> Task.map (List.choose identity)
 
             let dvals =
               results
@@ -206,6 +210,7 @@ let fns () : List<BuiltInFn> =
                 dvals
               )
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

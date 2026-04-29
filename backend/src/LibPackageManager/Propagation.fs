@@ -3,7 +3,6 @@
 module LibPackageManager.Propagation
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution.ProgramTypes
@@ -22,8 +21,8 @@ type PropagationResult =
 /// Item-specific operations for retrieving, transforming, and creating ops
 type private ItemProcessingContext<'T> =
   { itemKind : PT.ItemKind
-    getItem : Hash -> Ply<Option<'T>> // Given a Hash, fetch the full item definition
-    getLocations : Hash -> Ply<List<PT.PackageLocation>> // Given a Hash, look up the item's PackageLocations
+    getItem : Hash -> Task<Option<'T>> // Given a Hash, fetch the full item definition
+    getLocations : Hash -> Task<List<PT.PackageLocation>> // Given a Hash, look up the item's PackageLocations
     transform : Map<Hash, Hash> -> 'T -> 'T // Transforms the item by replacing old hashes with new hashes based on the mapping
     computeHash : 'T -> Hash // Compute hash for the transformed item
     withNewId : Hash -> 'T -> 'T // Assigns a new Hash to the item
@@ -108,53 +107,53 @@ let private processItem<'T>
 
 
 /// Phase 1: Discover all items that need to be updated (transitive dependents)
+let rec private discoverDependentsLoop
+  (branchChain : List<PT.BranchId>)
+  (pending : List<Hash>)
+  (processed : Set<Hash>)
+  (accumulated : List<PMQueries.PackageDep>)
+  : Task<List<PMQueries.PackageDep>> =
+  task {
+    // filter out any pending hashes that are already processed
+    let toProcess =
+      pending |> List.filter (fun id -> not (Set.contains id processed))
+
+    match toProcess with
+    | [] -> return accumulated
+    | _ ->
+      // Add all toProcess hashes to the processed set so we won't visit them again
+      let newProcessed =
+        toProcess |> List.fold (fun acc id -> Set.add id acc) processed
+
+      // for all these hashes, find every item that depends on any of them
+      let! batchDependents = PMQueries.getDependentsBatch branchChain toProcess
+
+      // Filter the batch results:
+      //  - Remove any that are already in the processed set (no cycles)
+      //  - Deduplicate by itemHash
+      //  - Convert to PackageDep { itemHash, itemKind }
+      let newDeps =
+        batchDependents
+        |> List.filter (fun d -> not (Set.contains d.itemHash newProcessed))
+        |> List.distinctBy (fun d -> d.itemHash)
+        |> List.map (fun (d : PMQueries.BatchDependent) ->
+          { PMQueries.itemHash = d.itemHash; PMQueries.itemKind = d.itemKind })
+
+      let newPending = newDeps |> List.map (fun d -> d.itemHash)
+      let newAccumulated = accumulated @ newDeps
+
+      return!
+        discoverDependentsLoop branchChain newPending newProcessed newAccumulated
+  }
+
 let private discoverDependents
   (branchChain : List<PT.BranchId>)
   (fromSourceHashes : List<Hash>)
   (toSourceHash : Hash)
   : Task<List<PMQueries.PackageDep>> =
-  task {
-    let rec loop
-      (pending : List<Hash>)
-      (processed : Set<Hash>)
-      (accumulated : List<PMQueries.PackageDep>)
-      =
-      task {
-        // filter out any pending hashes that are already processed
-        let toProcess =
-          pending |> List.filter (fun id -> not (Set.contains id processed))
-
-        match toProcess with
-        | [] -> return accumulated
-        | _ ->
-          // Add all toProcess hashes to the processed set so we won't visit them again
-          let newProcessed =
-            toProcess |> List.fold (fun acc id -> Set.add id acc) processed
-
-          // for all these hashes, find every item that depends on any of them
-          let! batchDependents = PMQueries.getDependentsBatch branchChain toProcess
-
-          // Filter the batch results:
-          //  - Remove any that are already in the processed set (no cycles)
-          //  - Deduplicate by itemHash
-          //  - Convert to PackageDep { itemHash, itemKind }
-          let newDeps =
-            batchDependents
-            |> List.filter (fun d -> not (Set.contains d.itemHash newProcessed))
-            |> List.distinctBy (fun d -> d.itemHash)
-            |> List.map (fun (d : PMQueries.BatchDependent) ->
-              { PMQueries.itemHash = d.itemHash; PMQueries.itemKind = d.itemKind })
-
-          let newPending = newDeps |> List.map (fun d -> d.itemHash)
-          let newAccumulated = accumulated @ newDeps
-
-          return! loop newPending newProcessed newAccumulated
-      }
-
-    // Start with fromSourceHashes as pending, toSourceHash already processed
-    // (we don't want the source to be included as a dependent)
-    return! loop fromSourceHashes (Set.singleton toSourceHash) []
-  }
+  // Start with fromSourceHashes as pending, toSourceHash already processed
+  // (we don't want the source to be included as a dependent)
+  discoverDependentsLoop branchChain fromSourceHashes (Set.singleton toSourceHash) []
 
 
 /// Check if source item needs to be updated (for mutual recursion)

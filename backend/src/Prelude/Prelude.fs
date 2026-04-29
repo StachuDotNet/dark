@@ -1,7 +1,6 @@
 module Prelude
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 // ----------------------
 // Fix a few functions everywhere
@@ -45,9 +44,6 @@ type NEList<'a> = NEList.NEList<'a>
 type Metadata = Exception.Metadata
 
 type HashSet<'a> = HashSet.HashSet<'a>
-
-type Ply<'a> = Ply.Ply<'a>
-let uply = Ply.uply
 
 type uuid = System.Guid
 type CanvasID = uuid
@@ -163,8 +159,8 @@ let printTime (string : string) : unit =
 // Print the value of `a`. Note that since this is wrapped in a task, it must
 // resolve the task before it can print, which could lead to different ordering
 // of operations.
-let debugPly (msg : string) (a : Ply.Ply<'a>) : Ply.Ply<'a> =
-  uply {
+let debugPly (msg : string) (a : Task<'a>) : Task<'a> =
+  task {
     let! a = a
     NonBlockingConsole.writeLine $"DEBUG: {msg} ({a})"
     return a

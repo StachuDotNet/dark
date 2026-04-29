@@ -25,7 +25,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUnit ] ->
-          uply {
+          task {
             let! hosts = Canvas.allCanvasIDs ()
             return DList(VT.uuid, List.map DUuid hosts)
           }
@@ -43,7 +43,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString name ] ->
-          uply {
+          task {
             let! canvasID = Canvas.create None name
             return DUuid canvasID
           }
@@ -65,7 +65,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid canvasID; DUInt64 tlid ] ->
-          uply {
+          task {
             let tlid = uint64 tlid
             let! c = Canvas.loadFrom canvasID [ tlid ]
             if
@@ -102,7 +102,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid canvasID ] ->
-          uply {
+          task {
             let! _canvas = Canvas.loadAll canvasID
 
             // let dbs =

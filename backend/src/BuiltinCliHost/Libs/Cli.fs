@@ -3,7 +3,6 @@
 module BuiltinCliHost.Libs.Cli
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 
 open Prelude
@@ -32,8 +31,8 @@ module Tracing = LibCloud.Tracing
 // Load canvas ID and DBs for an account
 let loadCanvasAndDBs
   (accountID : Option<System.Guid>)
-  : Ply<Option<CanvasID> * Map<string, RT.DB.T>> =
-  uply {
+  : Task<Option<CanvasID> * Map<string, RT.DB.T>> =
+  task {
     match accountID with
     | None -> return (None, Map.empty)
     | Some accID ->
@@ -74,8 +73,8 @@ let parseCliScript
   (owner : string)
   (scriptName : string)
   (code : string)
-  : Ply<Result<Utils.CliScript.PTCliScriptModule, RuntimeError.Error>> =
-  uply {
+  : Task<Result<Utils.CliScript.PTCliScriptModule, RuntimeError.Error>> =
+  task {
     let args =
       NEList.ofList
         (DUuid branchId)
@@ -143,8 +142,8 @@ let execute
   (canvasID : Option<CanvasID>)
   (dbs : Map<string, RT.DB.T>)
   (traceSource : CliTraceSource)
-  : Ply<RT.ExecutionResult> =
-  uply {
+  : Task<RT.ExecutionResult> =
+  task {
     let resolvedCanvasID = canvasID |> Option.defaultValue (System.Guid.NewGuid())
 
     let (program : Program) =
@@ -272,7 +271,7 @@ let fns () : List<BuiltInFn> =
             DString code
             DList(_vtTODO, scriptArgs)
             DBool allowHarmful ] ->
-          uply {
+          task {
             let accountID = C2DT.Option.fromDT D.uuid accountIDDval
             // Use branch-specific state for parsing so name resolution uses the right branch
             let branchState = createBranchState exeState branchId allowHarmful
@@ -309,6 +308,7 @@ let fns () : List<BuiltInFn> =
             with e ->
               return createExceptionError e |> RT2DT.RuntimeError.toDT |> resultError
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -336,7 +336,7 @@ let fns () : List<BuiltInFn> =
           _,
           [],
           [ accountIDDval; DUuid branchId; DString expression; DBool allowHarmful ] ->
-          uply {
+          task {
             let accountID = C2DT.Option.fromDT D.uuid accountIDDval
             // Use branch-specific state for parsing so name resolution uses the right branch
             let branchState = createBranchState exeState branchId allowHarmful
@@ -377,6 +377,7 @@ let fns () : List<BuiltInFn> =
             with e ->
               return createExceptionError e |> RT2DT.RuntimeError.toDT |> resultError
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

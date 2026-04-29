@@ -1,6 +1,7 @@
 /// Entrypoint to parsing functions
 module LibParser.Parser
 
+open System.Threading.Tasks
 open Prelude
 
 module FS2WT = FSharpToWrittenTypes
@@ -26,7 +27,7 @@ let parsePTExpr
   (onMissing : NR.OnMissing)
   (filename : string)
   (code : string)
-  : Ply<PT.Expr> =
+  : Task<PT.Expr> =
   let context =
     { WT2PT.Context.currentFnName = None
       WT2PT.Context.isInFunction = false
@@ -43,7 +44,7 @@ let parseSimple
   (onMissing : NR.OnMissing)
   (filename : string)
   (code : string)
-  : Ply<PT.Expr> =
+  : Task<PT.Expr> =
   parsePTExpr builtins pm onMissing filename code
 
 
@@ -54,5 +55,5 @@ let parsePackageFile
   (onMissing : NR.OnMissing)
   (path : string)
   (contents : string)
-  : Ply<List<PT.PackageOp>> =
+  : Task<List<PT.PackageOp>> =
   Package.parse builtins pm onMissing path contents

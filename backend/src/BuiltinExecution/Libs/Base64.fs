@@ -6,6 +6,7 @@ open System.Text.RegularExpressions
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
@@ -23,8 +24,8 @@ let fns () : List<BuiltInFn> =
          sections [4](https://www.rfc-editor.org/rfc/rfc4648.html#section-4) and
          [5](https://www.rfc-editor.org/rfc/rfc4648.html#section-5)."
       fn =
-        let resultOk r = Dval.resultOk KTBlob KTString r |> Ply
-        let resultError r = Dval.resultError KTBlob KTString r |> Ply
+        let resultOk r = Dval.resultOk KTBlob KTString r |> Task.FromResult
+        let resultError r = Dval.resultError KTBlob KTString r |> Task.FromResult
         (function
         | state, _, _, [ DString s ] ->
           let base64FromUrlEncoded (str : string) : string =
@@ -64,10 +65,11 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob ref ] ->
-          uply {
+          task {
             let! bytes = Blob.readBytes state ref
             return DString(System.Convert.ToBase64String(bytes))
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -85,7 +87,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DBlob ref ] ->
-          uply {
+          task {
             let! bytes = Blob.readBytes state ref
             // Differs from Base64.encodeToUrlSafe as this version has padding
             let encoded =
@@ -95,6 +97,7 @@ let fns () : List<BuiltInFn> =
                 .Replace('/', '_')
             return DString encoded
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure

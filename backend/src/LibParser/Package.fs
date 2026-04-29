@@ -2,6 +2,7 @@ module internal LibParser.Package
 
 open FSharp.Compiler.Syntax
 
+open System.Threading.Tasks
 open Prelude
 open LibExecution.ProgramTypes
 
@@ -108,8 +109,8 @@ let parse
   (onMissing : NR.OnMissing)
   (filename : string)
   (contents : string)
-  : Ply<List<PT.PackageOp>> =
-  uply {
+  : Task<List<PT.PackageOp>> =
+  task {
     match parseAsFSharpSourceFile filename contents with
     | ParsedImplFileInput(_,
                           _,
@@ -137,7 +138,7 @@ let parse
 
       let! fns =
         modul.fns
-        |> Ply.List.mapSequentially (fun fn ->
+        |> Task.mapSequentially (fun fn ->
           WT2PT.PackageFn.toPT
             builtins
             pm
@@ -147,7 +148,7 @@ let parse
 
       let! types =
         modul.types
-        |> Ply.List.mapSequentially (fun typ ->
+        |> Task.mapSequentially (fun typ ->
           WT2PT.PackageType.toPT
             pm
             onMissing
@@ -156,7 +157,7 @@ let parse
 
       let! values =
         modul.values
-        |> Ply.List.mapSequentially (fun value ->
+        |> Task.mapSequentially (fun value ->
           WT2PT.PackageValue.toPT
             builtins
             pm

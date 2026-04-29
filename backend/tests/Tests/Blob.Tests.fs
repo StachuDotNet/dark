@@ -9,7 +9,6 @@ module Tests.Blob
 open Expecto
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open TestUtils.TestUtils
@@ -44,8 +43,8 @@ let private freshState () : RT.ExecutionState =
     builtins
     pmRT
     Exe.noTracing
-    (fun _ _ _ _ -> uply { return () })
-    (fun _ _ _ _ -> uply { return () })
+    (fun _ _ _ _ -> task { return () })
+    (fun _ _ _ _ -> task { return () })
     PT.mainBranchId
     { canvasID = System.Guid.NewGuid()
       internalFnsAllowed = false
@@ -67,8 +66,14 @@ let private persistentHash (dv : RT.Dval) : string =
   | RT.DBlob(RT.Persistent(h, _)) -> h
   | _ -> failtest $"expected DBlob(Persistent _), got {dv}"
 
-let private noopInsert : string -> byte[] -> Ply<unit> =
-  fun _ _ -> uply { return () }
+let private noopInsert : string -> byte[] -> Task<unit> =
+  fun _ _ -> task { return () }
+
+/// Bridge `LibPackageManager.RuntimeTypes.Blob.insert` (still typed
+/// `Ply<unit>`) into the Task-shaped `insert` parameter that
+/// `LibExecution.Blob.promote` now requires.
+let private pmInsertTask (hash : string) (bytes : byte[]) : Task<unit> =
+  PMBlob.insert hash bytes
 
 let private uniquePayload (label : string) : byte[] =
   System.Text.Encoding.UTF8.GetBytes($"{label}-{System.Guid.NewGuid()}")
@@ -110,7 +115,7 @@ let ephemeralRoundtrip =
     match dv with
     | RT.DBlob(RT.Ephemeral _) -> ()
     | _ -> failtest $"expected DBlob(Ephemeral _), got {dv}"
-    let! bytes = Blob.readBytes state (dblobRef dv) |> Ply.toTask
+    let! bytes = Blob.readBytes state (dblobRef dv)
     Expect.equal bytes payload "roundtripped bytes match original"
   }
 
@@ -121,8 +126,8 @@ let twoEphemeralsAreDistinct =
     let dv1 = Blob.newEphemeral state payload
     let dv2 = Blob.newEphemeral state payload
     Expect.notEqual (ephemeralId dv1) (ephemeralId dv2) "each mint gets a fresh uuid"
-    let! b1 = Blob.readBytes state (dblobRef dv1) |> Ply.toTask
-    let! b2 = Blob.readBytes state (dblobRef dv2) |> Ply.toTask
+    let! b1 = Blob.readBytes state (dblobRef dv1)
+    let! b2 = Blob.readBytes state (dblobRef dv2)
     Expect.equal b1 payload "first blob reads its bytes"
     Expect.equal b2 payload "second blob reads its bytes"
   }
@@ -133,7 +138,7 @@ let missingEphemeralRaises =
     let bogusRef = RT.Ephemeral(System.Guid.NewGuid())
     do!
       expectThrows "expected an exception on missing ephemeral id" (fun () ->
-        Blob.readBytes state bogusRef |> Ply.toTask :> Task<_>)
+        Blob.readBytes state bogusRef :> Task<_>)
   }
 
 
@@ -246,8 +251,8 @@ let packageBlobInsertLookup =
   testTask "package_blobs: insert then get returns the same bytes" {
     let bytes = [| 10uy; 20uy; 30uy; 40uy; 50uy |]
     let hash = $"test-insert-lookup-{System.Guid.NewGuid()}"
-    do! PMBlob.insert hash bytes |> Ply.toTask
-    let! got = PMBlob.get hash |> Ply.toTask
+    do! PMBlob.insert hash bytes
+    let! got = PMBlob.get hash
     Expect.equal got (Some bytes) "get returns bytes for a freshly-inserted hash"
   }
 
@@ -255,16 +260,16 @@ let packageBlobDedupesOnSameHash =
   testTask "package_blobs: second insert under same hash is a no-op" {
     let bytes = [| 1uy; 1uy; 2uy; 3uy; 5uy; 8uy |]
     let hash = $"test-dedup-{System.Guid.NewGuid()}"
-    do! PMBlob.insert hash bytes |> Ply.toTask
+    do! PMBlob.insert hash bytes
     // Different bytes under same hash must be ignored (content-addressing invariant).
-    do! PMBlob.insert hash [| 99uy; 99uy |] |> Ply.toTask
-    let! got = PMBlob.get hash |> Ply.toTask
+    do! PMBlob.insert hash [| 99uy; 99uy |]
+    let! got = PMBlob.get hash
     Expect.equal got (Some bytes) "INSERT OR IGNORE preserves the original bytes"
   }
 
 let packageBlobMissingHashReturnsNone =
   testTask "package_blobs: get on a missing hash returns None" {
-    let! got = PMBlob.get $"nonexistent-{System.Guid.NewGuid()}" |> Ply.toTask
+    let! got = PMBlob.get $"nonexistent-{System.Guid.NewGuid()}"
     Expect.equal got None "missing hash yields None"
   }
 
@@ -278,14 +283,14 @@ let promotePersistsAndSwaps =
     let state = freshState ()
     let payload = uniquePayload "promote-test"
     let ephemeral = Blob.newEphemeral state payload
-    let! promoted = Blob.promote state PMBlob.insert ephemeral |> Ply.toTask
+    let! promoted = Blob.promote state pmInsertTask ephemeral
     let expectedHash = Blob.sha256Hex payload
     match promoted with
     | RT.DBlob(RT.Persistent(h, n)) ->
       Expect.equal h expectedHash "hash matches SHA-256 of bytes"
       Expect.equal n (int64 payload.Length) "length matches"
     | _ -> failtest $"expected Persistent, got {promoted}"
-    let! row = PMBlob.get expectedHash |> Ply.toTask
+    let! row = PMBlob.get expectedHash
     Expect.equal row (Some payload) "package_blobs row exists with our bytes"
   }
 
@@ -294,7 +299,7 @@ let promoteThenSerializeRoundtrips =
     let state = freshState ()
     let payload = uniquePayload "promote-serialize"
     let ephemeral = Blob.newEphemeral state payload
-    let! promoted = Blob.promote state PMBlob.insert ephemeral |> Ply.toTask
+    let! promoted = Blob.promote state pmInsertTask ephemeral
     let restored =
       BS.RT.Dval.deserialize "dval" (BS.RT.Dval.serialize "dval" promoted)
     Expect.equal
@@ -309,10 +314,10 @@ let promoteSameBytesTwiceDedups =
     let payload = uniquePayload "dedup-test"
     let eph1 = Blob.newEphemeral state payload
     let eph2 = Blob.newEphemeral state payload
-    let! p1 = Blob.promote state PMBlob.insert eph1 |> Ply.toTask
-    let! p2 = Blob.promote state PMBlob.insert eph2 |> Ply.toTask
+    let! p1 = Blob.promote state pmInsertTask eph1
+    let! p2 = Blob.promote state pmInsertTask eph2
     Expect.equal p1 p2 "two promotions of identical bytes share the hash"
-    let! row = PMBlob.get (Blob.sha256Hex payload) |> Ply.toTask
+    let! row = PMBlob.get (Blob.sha256Hex payload)
     Expect.equal row (Some payload) "row still contains original bytes"
   }
 
@@ -321,8 +326,8 @@ let promotedBlobResolvesViaReadBlobBytes =
     let state = freshState ()
     let payload = uniquePayload "resolve-test"
     let ephemeral = Blob.newEphemeral state payload
-    let! promoted = Blob.promote state PMBlob.insert ephemeral |> Ply.toTask
-    let! bytes = Blob.readBytes state (dblobRef promoted) |> Ply.toTask
+    let! promoted = Blob.promote state pmInsertTask ephemeral
+    let! bytes = Blob.readBytes state (dblobRef promoted)
     Expect.equal bytes payload "persistent blob resolves back to its bytes"
   }
 
@@ -372,14 +377,13 @@ let queryableJsonRoundtrip =
           2048L
         )
       )
-    let! json = QueryableJson.toJsonStringV0 types threadID original |> Ply.toTask
+    let! json = QueryableJson.toJsonStringV0 types threadID original
     Expect.stringContains json "\"type\":\"blob\"" "has blob envelope tag"
     Expect.stringContains
       json
       "\"hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\""
       "has the content hash"
-    let! restored =
-      QueryableJson.parseJsonV0 types threadID Map.empty RT.TBlob json |> Ply.toTask
+    let! restored = QueryableJson.parseJsonV0 types threadID Map.empty RT.TBlob json
     Expect.equal restored original "persistent blob survives queryable JSON"
   }
 
@@ -392,8 +396,7 @@ let queryableJsonEphemeralRaises =
     do!
       expectThrows
         "ephemeral blob in queryable JSON should raise (promote first)"
-        (fun () ->
-          QueryableJson.toJsonStringV0 types threadID ephemeral |> Ply.toTask)
+        (fun () -> QueryableJson.toJsonStringV0 types threadID ephemeral)
   }
 
 let roundtrippableJsonPersistentRoundtrip =
@@ -472,12 +475,11 @@ let promotedBlobsSurviveScopePop =
     let payload = [| 0xDEuy; 0xADuy; 0xBEuy; 0xEFuy |]
     Blob.pushScope state
     let eph = Blob.newEphemeral state payload
-    let! promoted = Blob.promote state pmRT.persistBlob eph |> Ply.toTask
+    let! promoted = Blob.promote state pmRT.persistBlob eph
     let hash = persistentHash promoted
     Blob.popScope state
     // Ephemeral bytes gone; persistent bytes survive in package_blobs.
-    let! bytes =
-      Blob.readBytes state (RT.Persistent(hash, int64 payload.Length)) |> Ply.toTask
+    let! bytes = Blob.readBytes state (RT.Persistent(hash, int64 payload.Length))
     Expect.equal bytes payload "persistent bytes survive the pop"
   }
 
@@ -520,7 +522,7 @@ let persistableRejectsEphemeralBlob =
 
 let persistableRejectsStream =
   test "isPersistable: DStream is not persistable" {
-    let next () : Ply<Option<RT.Dval>> = uply { return None }
+    let next () : Task<Option<RT.Dval>> = task { return None }
     let dv = Stream.newFromIO LibExecution.ValueType.int64 next None
     Expect.isFalse (Dval.isPersistable dv) "stream rejected"
     match Dval.nonPersistableReason dv with
@@ -545,7 +547,7 @@ let persistableRejectsNestedBadShapes =
       )
     Expect.isFalse (Dval.isPersistable list) "list with ephemeral blob rejected"
 
-    let next () : Ply<Option<RT.Dval>> = uply { return None }
+    let next () : Task<Option<RT.Dval>> = task { return None }
     let streamDv = Stream.newFromIO LibExecution.ValueType.int64 next None
     let typeName =
       RT.FQTypeName.fqPackage (LibExecution.PackageRefs.Type.Stdlib.option ())
@@ -571,8 +573,8 @@ let sweepDeletesOrphansButKeepsReferenced =
     let (RT.Hash fakeHashStr) = fakeHash
 
     try
-      do! PMBlob.insert refHash refBytes |> Ply.toTask
-      do! PMBlob.insert orphanHash orphanBytes |> Ply.toTask
+      do! PMBlob.insert refHash refBytes
+      do! PMBlob.insert orphanHash orphanBytes
 
       // Plant a package_value row whose rt_dval references refHash.
       let referencingDval = RT.DBlob(RT.Persistent(refHash, int64 refBytes.Length))
@@ -594,14 +596,14 @@ let sweepDeletesOrphansButKeepsReferenced =
             "value_type", Sql.bytes valueTypeBytes ]
         |> Sql.executeStatementAsync
 
-      let! deleted = PMBlob.sweepOrphans () |> Ply.toTask
+      let! deleted = PMBlob.sweepOrphans ()
       Expect.isGreaterThanOrEqual
         deleted
         1L
         "at least the orphan blob should have been swept"
-      let! refStill = PMBlob.get refHash |> Ply.toTask
+      let! refStill = PMBlob.get refHash
       Expect.isSome refStill "referenced blob stays in package_blobs"
-      let! orphanStill = PMBlob.get orphanHash |> Ply.toTask
+      let! orphanStill = PMBlob.get orphanHash
       Expect.isNone orphanStill "orphan blob was swept"
     finally
       // Clean up the planted package_values row even on assertion

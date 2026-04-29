@@ -52,7 +52,6 @@ open System.IO
 open System.Net.Http
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution
@@ -188,27 +187,29 @@ module BaseClient =
         (context : SocketsHttpConnectionContext)
         (cancellationToken : System.Threading.CancellationToken)
         : ValueTask<Stream> =
-        vtask {
-          try
-            // While this DNS call is expensive, it should be cached
-            let ips = System.Net.Dns.GetHostAddresses context.DnsEndPoint.Host
+        let inner =
+          task {
+            try
+              // While this DNS call is expensive, it should be cached
+              let ips = System.Net.Dns.GetHostAddresses context.DnsEndPoint.Host
 
-            if not (Array.forall config.allowedIP ips) then
-              // Use this to hide more specific errors when looking at loopback
-              Exception.raiseInternal "Could not connect" []
+              if not (Array.forall config.allowedIP ips) then
+                // Use this to hide more specific errors when looking at loopback
+                Exception.raiseInternal "Could not connect" []
 
-            let socket =
-              new System.Net.Sockets.Socket(
-                System.Net.Sockets.SocketType.Stream,
-                System.Net.Sockets.ProtocolType.Tcp
-              )
-            socket.NoDelay <- true
+              let socket =
+                new System.Net.Sockets.Socket(
+                  System.Net.Sockets.SocketType.Stream,
+                  System.Net.Sockets.ProtocolType.Tcp
+                )
+              socket.NoDelay <- true
 
-            do! socket.ConnectAsync(context.DnsEndPoint, cancellationToken)
-            return new System.Net.Sockets.NetworkStream(socket, true)
-          with :? System.ArgumentException ->
-            return Exception.raiseInternal "Could not connect" []
-        }
+              do! socket.ConnectAsync(context.DnsEndPoint, cancellationToken)
+              return new System.Net.Sockets.NetworkStream(socket, true) :> Stream
+            with :? System.ArgumentException ->
+              return Exception.raiseInternal "Could not connect" []
+          }
+        ValueTask<Stream>(inner)
       new SocketsHttpHandler(
         // Avoid DNS problems
         PooledConnectionIdleTimeout = System.TimeSpan.FromMinutes 5.0,
@@ -560,12 +561,12 @@ let fns (config : Configuration) : List<BuiltInFn> =
           vm,
           _,
           [ DString method; DString uri; DList(_, reqHeaders); DBlob bodyRef ] ->
-          uply {
+          task {
             let! reqBodyBytes = Blob.readBytes state bodyRef
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
               reqHeaders
-              |> Ply.List.mapSequentially (fun item ->
-                uply {
+              |> Task.mapSequentially (fun item ->
+                task {
                   match item with
                   | DTuple(DString k, DString v, []) ->
                     let k = String.trim k
@@ -591,7 +592,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
                       |> raiseRTE vm.threadID
 
                 })
-              |> Ply.map Result.collect
+              |> Task.map Result.collect
 
             let method =
               try
@@ -600,7 +601,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
                 None
 
             let! (result : Result<Dval, RequestError.RequestError>) =
-              uply {
+              task {
                 match reqHeaders, method with
                 | Ok reqHeaders, Some method ->
                   let request =
@@ -646,6 +647,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
             | Ok result -> return result
             | Error err -> return resultError (RequestError.toDT err)
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -692,11 +694,11 @@ let fns (config : Configuration) : List<BuiltInFn> =
         let resultError = Dval.resultError streamTypeOk streamTypeErr
         (function
         | _, vm, _, [ DString method; DString uri; DList(_, reqHeaders) ] ->
-          uply {
+          task {
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
               reqHeaders
-              |> Ply.List.mapSequentially (fun item ->
-                uply {
+              |> Task.mapSequentially (fun item ->
+                task {
                   match item with
                   | DTuple(DString k, DString v, []) ->
                     let k = String.trim k
@@ -719,7 +721,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
                       |> RTE.Apply
                       |> raiseRTE vm.threadID
                 })
-              |> Ply.map Result.collect
+              |> Task.map Result.collect
 
             let method =
               try
@@ -746,8 +748,8 @@ let fns (config : Configuration) : List<BuiltInFn> =
                 // path. `Stream.newChunked` synthesises a
                 // byte-wise `next` from the same source so
                 // `streamNext` semantics are preserved.
-                let nextChunk (maxBytes : int) : Ply<Option<byte[]>> =
-                  uply {
+                let nextChunk (maxBytes : int) : Task<Option<byte[]>> =
+                  task {
                     let cap = max 1 maxBytes
                     let buf = Array.zeroCreate<byte> cap
                     let! n = responseStream.ReadAsync(buf, 0, cap)
@@ -796,6 +798,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
             | _, None ->
               return resultError (RequestError.toDT RequestError.BadMethod)
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

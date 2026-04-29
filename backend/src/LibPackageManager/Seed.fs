@@ -11,7 +11,6 @@
 module LibPackageManager.Seed
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution.ProgramTypes
@@ -161,8 +160,8 @@ let evaluateAllValues
         dbs = Map.empty
         secrets = [] }
 
-    let notify _ _ _ _ = uply { return () }
-    let sendException _ _ _ _ = uply { return () }
+    let notify _ _ _ _ = task { return () }
+    let sendException _ _ _ _ = task { return () }
 
     let exeState =
       Execution.createState

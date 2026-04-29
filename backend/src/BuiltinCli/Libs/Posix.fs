@@ -16,6 +16,7 @@ module PackageRefs = LibExecution.PackageRefs
 module NR = LibExecution.RuntimeTypes.NameResolution
 module Blob = LibExecution.Blob
 open Builtin.Shortcuts
+open System.Threading.Tasks
 
 
 // =====================================================================
@@ -489,9 +490,11 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUnit ] ->
           match Libc.getcwd () with
-          | Ok cwd -> Dval.resultOk KTString (posixErrorKT ()) (DString cwd) |> Ply
+          | Ok cwd ->
+            Dval.resultOk KTString (posixErrorKT ()) (DString cwd) |> Task.FromResult
           | Error e ->
-            Dval.resultError KTString (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTString (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -507,9 +510,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString path ] ->
           match Libc.chdir path with
-          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Ply
+          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Task.FromResult
           | Error e ->
-            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -527,9 +531,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString name; DString value ] ->
           match Libc.setenv name value with
-          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Ply
+          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Task.FromResult
           | Error e ->
-            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -545,9 +550,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString name ] ->
           match Libc.unsetenv name with
-          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Ply
+          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Task.FromResult
           | Error e ->
-            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -565,9 +571,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString path; DInt64 mode ] ->
           match Libc.mkdir path (int mode) with
-          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Ply
+          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Task.FromResult
           | Error e ->
-            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -583,9 +590,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString path ] ->
           match Libc.rmdir path with
-          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Ply
+          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Task.FromResult
           | Error e ->
-            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -601,9 +609,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString path ] ->
           match Libc.unlink path with
-          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Ply
+          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Task.FromResult
           | Error e ->
-            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -621,9 +630,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString oldpath; DString newpath ] ->
           match Libc.rename oldpath newpath with
-          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Ply
+          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Task.FromResult
           | Error e ->
-            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -641,9 +651,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString path; DInt64 mode ] ->
           match Libc.chmod path (int mode) with
-          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Ply
+          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Task.FromResult
           | Error e ->
-            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -659,9 +670,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString path ] ->
           match Libc.utimesNow path with
-          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Ply
+          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Task.FromResult
           | Error e ->
-            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -679,9 +691,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString target; DString linkpath ] ->
           match Libc.symlink target linkpath with
-          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Ply
+          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Task.FromResult
           | Error e ->
-            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -698,9 +711,11 @@ let fns () : List<BuiltInFn> =
         | _, _, _, [ DString path ] ->
           match Libc.readlink path with
           | Ok target ->
-            Dval.resultOk KTString (posixErrorKT ()) (DString target) |> Ply
+            Dval.resultOk KTString (posixErrorKT ()) (DString target)
+            |> Task.FromResult
           | Error e ->
-            Dval.resultError KTString (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTString (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -727,8 +742,8 @@ let fns () : List<BuiltInFn> =
             Dval.resultError (KTTuple(VT.int64, VT.string, [])) (posixErrorKT ())
           match Libc.mkstemp prefix with
           | Ok(fd, path) ->
-            resultOk (DTuple(DInt64(int64 fd), DString path, [])) |> Ply
-          | Error e -> resultError (dPosixError e) |> Ply
+            resultOk (DTuple(DInt64(int64 fd), DString path, [])) |> Task.FromResult
+          | Error e -> resultError (dPosixError e) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -749,9 +764,12 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString prefix ] ->
           match Libc.mkdtemp prefix with
-          | Ok path -> Dval.resultOk KTString (posixErrorKT ()) (DString path) |> Ply
+          | Ok path ->
+            Dval.resultOk KTString (posixErrorKT ()) (DString path)
+            |> Task.FromResult
           | Error e ->
-            Dval.resultError KTString (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTString (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -774,8 +792,8 @@ let fns () : List<BuiltInFn> =
           match Libc.listDir path with
           | Ok entries ->
             let dvals = entries |> List.map DString
-            resultOk (DList(ValueType.Known KTString, dvals)) |> Ply
-          | Error e -> resultError (dPosixError e) |> Ply
+            resultOk (DList(ValueType.Known KTString, dvals)) |> Task.FromResult
+          | Error e -> resultError (dPosixError e) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -791,8 +809,8 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString name ] ->
           match Libc.getenv name with
-          | Some v -> Dval.optionSome KTString (DString v) |> Ply
-          | None -> Dval.optionNone KTString |> Ply
+          | Some v -> Dval.optionSome KTString (DString v) |> Task.FromResult
+          | None -> Dval.optionNone KTString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -832,8 +850,8 @@ let fns () : List<BuiltInFn> =
             resultOk (
               DTuple(DInt64(int64 exitCode), DString stdout, [ DString stderr ])
             )
-            |> Ply
-          | Error e -> resultError (dPosixError e) |> Ply
+            |> Task.FromResult
+          | Error e -> resultError (dPosixError e) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -874,8 +892,8 @@ let fns () : List<BuiltInFn> =
             resultOk (
               DTuple(DInt64(int64 exitCode), DString stdout, [ DString stderr ])
             )
-            |> Ply
-          | Error e -> resultError (dPosixError e) |> Ply
+            |> Task.FromResult
+          | Error e -> resultError (dPosixError e) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -896,9 +914,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DInt64 pid; DInt64 signal ] ->
           match Libc.kill (int pid) (int signal) with
-          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Ply
+          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Task.FromResult
           | Error e ->
-            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -919,8 +938,8 @@ let fns () : List<BuiltInFn> =
           let resultOk = Dval.resultOk KTBlob (posixErrorKT ())
           let resultError = Dval.resultError KTBlob (posixErrorKT ())
           match Libc.fdRead (int fd) (int count) with
-          | Ok bytes -> resultOk (Blob.newEphemeral state bytes) |> Ply
-          | Error e -> resultError (dPosixError e) |> Ply
+          | Ok bytes -> resultOk (Blob.newEphemeral state bytes) |> Task.FromResult
+          | Error e -> resultError (dPosixError e) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -937,7 +956,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DInt64 fd; DBlob ref ] ->
-          uply {
+          task {
             let! bytes = Blob.readBytes state ref
             match Libc.fdWrite (int fd) bytes with
             | Ok n ->
@@ -945,6 +964,7 @@ let fns () : List<BuiltInFn> =
             | Error e ->
               return Dval.resultError KTInt64 (posixErrorKT ()) (dPosixError e)
           }
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -960,9 +980,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DInt64 fd ] ->
           match Libc.fdClose (int fd) with
-          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Ply
+          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Task.FromResult
           | Error e ->
-            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -985,9 +1006,11 @@ let fns () : List<BuiltInFn> =
         | _, _, _, [ DString path; DInt64 flags; DInt64 mode ] ->
           match Libc.openFile path (int flags) (int mode) with
           | Ok fd ->
-            Dval.resultOk KTInt64 (posixErrorKT ()) (DInt64(int64 fd)) |> Ply
+            Dval.resultOk KTInt64 (posixErrorKT ()) (DInt64(int64 fd))
+            |> Task.FromResult
           | Error e ->
-            Dval.resultError KTInt64 (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTInt64 (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -1001,7 +1024,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns the O_RDONLY flag for open()"
       fn =
         (function
-        | _, _, _, [ DUnit ] -> DInt64(int64 Libc.O_RDONLY) |> Ply
+        | _, _, _, [ DUnit ] -> DInt64(int64 Libc.O_RDONLY) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -1015,7 +1038,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns the O_WRONLY flag for open()"
       fn =
         (function
-        | _, _, _, [ DUnit ] -> DInt64(int64 Libc.O_WRONLY) |> Ply
+        | _, _, _, [ DUnit ] -> DInt64(int64 Libc.O_WRONLY) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -1029,7 +1052,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns the O_RDWR flag for open()"
       fn =
         (function
-        | _, _, _, [ DUnit ] -> DInt64(int64 Libc.O_RDWR) |> Ply
+        | _, _, _, [ DUnit ] -> DInt64(int64 Libc.O_RDWR) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -1043,7 +1066,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns the O_CREAT flag for open() (platform-aware)"
       fn =
         (function
-        | _, _, _, [ DUnit ] -> DInt64(int64 Libc.O_CREAT) |> Ply
+        | _, _, _, [ DUnit ] -> DInt64(int64 Libc.O_CREAT) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -1057,7 +1080,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns the O_TRUNC flag for open() (platform-aware)"
       fn =
         (function
-        | _, _, _, [ DUnit ] -> DInt64(int64 Libc.O_TRUNC) |> Ply
+        | _, _, _, [ DUnit ] -> DInt64(int64 Libc.O_TRUNC) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -1071,7 +1094,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns the O_APPEND flag for open() (platform-aware)"
       fn =
         (function
-        | _, _, _, [ DUnit ] -> DInt64(int64 Libc.O_APPEND) |> Ply
+        | _, _, _, [ DUnit ] -> DInt64(int64 Libc.O_APPEND) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -1100,8 +1123,8 @@ let fns () : List<BuiltInFn> =
           match Libc.stat path with
           | Ok(mode, size, mtimeSec) ->
             resultOk (DTuple(DInt64(int64 mode), DInt64 size, [ DInt64 mtimeSec ]))
-            |> Ply
-          | Error e -> resultError (dPosixError e) |> Ply
+            |> Task.FromResult
+          | Error e -> resultError (dPosixError e) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -1130,8 +1153,8 @@ let fns () : List<BuiltInFn> =
           match Libc.uname () with
           | Ok(sysname, nodename, machine) ->
             resultOk (DTuple(DString sysname, DString nodename, [ DString machine ]))
-            |> Ply
-          | Error e -> resultError (dPosixError e) |> Ply
+            |> Task.FromResult
+          | Error e -> resultError (dPosixError e) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -1145,7 +1168,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns the current process ID via libc getpid()"
       fn =
         (function
-        | _, _, _, [ DUnit ] -> DInt64(int64 (Libc.getpid ())) |> Ply
+        | _, _, _, [ DUnit ] -> DInt64(int64 (Libc.getpid ())) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -1159,7 +1182,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns the current user ID via libc getuid()"
       fn =
         (function
-        | _, _, _, [ DUnit ] -> DInt64(int64 (Libc.getuid ())) |> Ply
+        | _, _, _, [ DUnit ] -> DInt64(int64 (Libc.getuid ())) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -1177,8 +1200,8 @@ let fns () : List<BuiltInFn> =
         | _, _, _, [ DUnit ] ->
           let uid = Libc.getuid ()
           match Libc.getUserName (uint32 uid) with
-          | Some name -> Dval.optionSome KTString (DString name) |> Ply
-          | None -> Dval.optionNone KTString |> Ply
+          | Some name -> Dval.optionSome KTString (DString name) |> Task.FromResult
+          | None -> Dval.optionNone KTString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -1192,7 +1215,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns the number of online CPUs via sysconf()"
       fn =
         (function
-        | _, _, _, [ DUnit ] -> DInt64(Libc.cpuCount ()) |> Ply
+        | _, _, _, [ DUnit ] -> DInt64(Libc.cpuCount ()) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -1209,8 +1232,8 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUnit ] ->
           match Libc.getHomeDir () with
-          | Some dir -> Dval.optionSome KTString (DString dir) |> Ply
-          | None -> Dval.optionNone KTString |> Ply
+          | Some dir -> Dval.optionSome KTString (DString dir) |> Task.FromResult
+          | None -> Dval.optionNone KTString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -1229,7 +1252,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString pattern; DString str; DBool pathMode ] ->
           let flags = if pathMode then Libc.FNM_PATHNAME else 0
-          DBool(Libc.fnmatch pattern str flags) |> Ply
+          DBool(Libc.fnmatch pattern str flags) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -1248,9 +1271,10 @@ let fns () : List<BuiltInFn> =
         | _, _, _, [ DInt64 fd; DBool exclusive ] ->
           let op = if exclusive then Libc.LOCK_EX else Libc.LOCK_UN
           match Libc.flock (int fd) op with
-          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Ply
+          | Ok() -> Dval.resultOk KTUnit (posixErrorKT ()) DUnit |> Task.FromResult
           | Error e ->
-            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTUnit (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -1266,9 +1290,12 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString path ] ->
           match Libc.fileOwner path with
-          | Ok name -> Dval.resultOk KTString (posixErrorKT ()) (DString name) |> Ply
+          | Ok name ->
+            Dval.resultOk KTString (posixErrorKT ()) (DString name)
+            |> Task.FromResult
           | Error e ->
-            Dval.resultError KTString (posixErrorKT ()) (dPosixError e) |> Ply
+            Dval.resultError KTString (posixErrorKT ()) (dPosixError e)
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

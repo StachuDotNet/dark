@@ -17,6 +17,11 @@
     <!-- Run some parts of compilation in parallel: https://blog.nojaf.com/2023/08/22/unleashing-parallel-processing-in-your-fsharp-compiler/ -->
     <OtherFlags>$(OtherFlags) --test:GraphBasedChecking --test:ParallelOptimization --test:ParallelIlxGen</OtherFlags>
     <!-- warnings - https://learn.microsoft.com/en-us/dotnet/fsharp/language-reference/compiler-options#opt-in-warnings -->
-    <OtherFlags>$(OtherFlags) --warnaserror --warnon:1182,3387,3366</OtherFlags>
+    <!-- nowarn:3511 — task builder's resumable-code analyzer can't always statically -->
+    <!--   reduce complex recursive task patterns (esp. ones with `match!` over a -->
+    <!--   recursive Task helper). Falls back to dynamic dispatch — correct but -->
+    <!--   slightly slower. Affects Runtime/TypeChecker.fs and a couple of -->
+    <!--   similarly-shaped recursive-task helpers. -->
+    <OtherFlags>$(OtherFlags) --warnaserror --warnon:1182,3387,3366 --nowarn:3511</OtherFlags>
   </PropertyGroup>
 </Project>

@@ -1,6 +1,8 @@
 /// Interprets Dark instructions resulting in (tasks of) Dvals
 module LibExecution.Interpreter
 
+open System.Threading.Tasks
+
 open Prelude
 open RuntimeTypes
 module RTE = RuntimeError
@@ -259,8 +261,11 @@ let rec checkAndExtractMatchPattern
 
 
 
-let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
-  uply {
+let rec private executeInner
+  (exeState : ExecutionState)
+  (vm : VMState)
+  : Task<Dval> =
+  task {
     let raiseRTE rte = raiseRTE vm.threadID rte
     let pendingCallArgs = System.Collections.Generic.Dictionary<uuid, Dval list>()
 
@@ -273,13 +278,13 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
       let registers = currentFrame.registers
 
 
-      let! instrData =
+      let! (instrData : InstrData) =
         match currentFrame.executionPoint with
-        | Source -> Ply(snd vm.rootInstrData)
+        | Source -> Task.FromResult(snd vm.rootInstrData)
 
         | Lambda(parentContext, lambdaID) ->
           match Map.tryFind lambdaID vm.lambdaInstrDataCache with
-          | Some cached -> Ply cached
+          | Some cached -> Task.FromResult cached
           | None ->
             let lambda =
               match exeState.lambdaInstrCache.TryGetValue lambdaID with
@@ -294,24 +299,24 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
                 resultReg = lambda.resultIn }
             vm.lambdaInstrDataCache <-
               Map.add lambdaID instrData vm.lambdaInstrDataCache
-            Ply instrData
+            Task.FromResult instrData
 
         | Function(FQFnName.Builtin _) ->
           // we should error in some better way (CLEANUP)
           // , but the point is that callstacks shouldn't be created for builtin fn calls
-          raiseRTE (RTE.FnNotFound(FQFnName.fqBuiltin "builtin" 0))
+          task { return raiseRTE (RTE.FnNotFound(FQFnName.fqBuiltin "builtin" 0)) }
 
         | Function(FQFnName.Package fn) ->
-          uply {
+          task {
             match exeState.packageFnInstrCache.TryGetValue fn with
             | true, cached -> return cached
             | false, _ ->
               match! exeState.fns.package fn with
-              | Some fn ->
+              | Some pkgFn ->
                 let instrData =
-                  { instructions = List.toArray fn.body.instructions
-                    resultReg = fn.body.resultIn }
-                exeState.packageFnInstrCache[fn.hash] <- instrData
+                  { instructions = List.toArray pkgFn.body.instructions
+                    resultReg = pkgFn.body.resultIn }
+                exeState.packageFnInstrCache[pkgFn.hash] <- instrData
                 return instrData
 
               | None -> return raiseRTE (RTE.FnNotFound(FQFnName.Package fn))
@@ -483,9 +488,8 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
 
           let! typeArgs =
             typeArgs
-            |> Ply.List.mapSequentially (
-              TypeReference.toVT exeState.types currentFrame.typeSymbolTable
-            )
+            |> Task.mapSequentially (fun t ->
+              TypeReference.toVT exeState.types currentFrame.typeSymbolTable t)
 
           let! record =
             TypeChecker.DvalCreator.record
@@ -554,7 +558,8 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
 
           let! typeArgs =
             typeArgs
-            |> Ply.List.mapSequentially (TypeReference.toVT exeState.types tst)
+            |> Task.mapSequentially (fun t ->
+              TypeReference.toVT exeState.types tst t)
 
           let! newEnum =
             TypeChecker.DvalCreator.enum
@@ -723,8 +728,8 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
 
             let typeCheckParams pairs =
               pairs
-              |> Ply.List.iterSequentially (fun ((pIndex, pName, pType), arg) ->
-                uply {
+              |> Task.iterSequentially (fun ((pIndex, pName, pType), arg) ->
+                task {
                   match! typeCheckParam tst pIndex pName pType arg with
                   | Ok updatedTst ->
                     tst <- updatedTst
@@ -745,7 +750,7 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
             match applicable.name with
             | FQFnName.Builtin builtin ->
               match Map.find builtin exeState.fns.builtIn with
-              | None -> return RTE.FnNotFound(FQFnName.Builtin builtin) |> raiseRTE
+              | None -> RTE.FnNotFound(FQFnName.Builtin builtin) |> raiseRTE
               | Some fn ->
                 // Step 1: resolve typeArgs against the OUTER tst so the
                 // wrapper-pass-through pattern works (a wrapper body
@@ -754,10 +759,11 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
                 let typeParamCount, typeArgCount =
                   (List.length fn.typeParams, List.length typeArgs)
                 if typeArgCount <> typeParamCount then
-                  return handleWrongTypeArgCount typeParamCount typeArgCount
+                  handleWrongTypeArgCount typeParamCount typeArgCount
                 let! resolvedTypeArgsVT =
                   typeArgs
-                  |> Ply.List.mapSequentially (TypeReference.toVT exeState.types tst)
+                  |> Task.mapSequentially (fun t ->
+                    TypeReference.toVT exeState.types tst t)
 
                 // Step 2: shadow this fn's free type-vars from the
                 // inherited TST. Mirrors the package-fn path; without
@@ -818,7 +824,7 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
                   |> typeCheckParams
 
                 let! result =
-                  uply {
+                  task {
                     if argCount > paramCount then
                       return handleTooManyArgs paramCount argCount
                     else if argCount < paramCount then
@@ -885,9 +891,9 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
               // whether or not the fn definition is still available.
               let! isHarmful = exeState.fns.isHarmful pkg
               if isHarmful && not exeState.allowHarmful then
-                return RTE.DeprecatedItemHalted pkg |> raiseRTE
+                RTE.DeprecatedItemHalted pkg |> raiseRTE
               match! exeState.fns.package pkg with
-              | None -> return RTE.FnNotFound(FQFnName.Package pkg) |> raiseRTE
+              | None -> RTE.FnNotFound(FQFnName.Package pkg) |> raiseRTE
               | Some fn ->
                 // Step 1: resolve any explicit typeArgs against the
                 // OUTER tst — they may reference outer-scope TVariables
@@ -897,18 +903,18 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
                 // step 4 below).
                 let! resolvedExplicitTypeArgsVT =
                   match typeArgs, fn.typeParams with
-                  | [], _ -> Ply [] // OK to omit type args entirely
+                  | [], _ -> Task.FromResult [] // OK to omit type args entirely
                   | _ ->
-                    uply {
+                    task {
                       let typeParamCount, typeArgCount =
                         (List.length fn.typeParams, List.length typeArgs)
                       if typeArgCount <> typeParamCount then
                         return handleWrongTypeArgCount typeParamCount typeArgCount
-                      return!
-                        typeArgs
-                        |> Ply.List.mapSequentially (
-                          TypeReference.toVT exeState.types tst
-                        )
+                      else
+                        return!
+                          typeArgs
+                          |> Task.mapSequentially (fun t ->
+                            TypeReference.toVT exeState.types tst t)
                     }
 
                 // Step 2: shadow this fn's free type-vars in the inherited
@@ -983,7 +989,7 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
                   |> typeCheckParams
 
                 if argCount > paramCount then
-                  return handleTooManyArgs paramCount argCount
+                  handleTooManyArgs paramCount argCount
                 else if argCount < paramCount then
                   registers[putResultIn] <-
                     { applicable with
@@ -1074,7 +1080,7 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
             let! expectedReturnType =
               match fnName with
               | FQFnName.Package id ->
-                uply {
+                task {
                   let! fn = exeState.fns.package id
                   match fn with
                   | None -> return RTE.FnNotFound fnName |> raiseRTE
@@ -1083,7 +1089,7 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
 
               | FQFnName.Builtin builtin ->
                 let fn = Map.findUnsafe builtin exeState.fns.builtIn
-                Ply fn.returnType
+                Task.FromResult fn.returnType
 
             let tst = currentFrame.typeSymbolTable
             match!
@@ -1096,15 +1102,14 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
             | Error _path ->
               let! expectedVT =
                 TypeReference.toVT exeState.types tst expectedReturnType
-              return
-                RuntimeError.Applications.FnResultNotExpectedType(
-                  fnName,
-                  expectedVT,
-                  Dval.toValueType resultOfFrame,
-                  resultOfFrame
-                )
-                |> RuntimeError.Apply
-                |> raiseRTE
+              RuntimeError.Applications.FnResultNotExpectedType(
+                fnName,
+                expectedVT,
+                Dval.toValueType resultOfFrame,
+                resultOfFrame
+              )
+              |> RuntimeError.Apply
+              |> raiseRTE
 
           // Record per-package-fn timing on frame return
           if vm.stats.enabled && vm.stats.detailedTiming then
@@ -1154,8 +1159,8 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
     // If we've reached the end of the instructions, return the result
     match finalResult with
     | Some dv -> return dv
-    | None -> return Exception.raiseInternal "No finalResult found" []
+    | None -> return (Exception.raiseInternal "No finalResult found" [] : Dval)
   }
 
-and execute (exeState : ExecutionState) (vm : VMState) : Ply<Dval> =
+and execute (exeState : ExecutionState) (vm : VMState) : Task<Dval> =
   executeInner exeState vm

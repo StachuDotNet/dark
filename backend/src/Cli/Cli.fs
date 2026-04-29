@@ -2,7 +2,6 @@ module Cli.Main
 
 open System
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 
@@ -87,7 +86,7 @@ let state (packageManager : RT.PackageManager) =
     =
     // let metadata = extraMetadata state @ metadata
     // LibService.Rollbar.notify msg metadata
-    uply { return () }
+    task { return () }
 
   let sendException
     (_ : RT.ExecutionState)
@@ -95,7 +94,7 @@ let state (packageManager : RT.PackageManager) =
     (metadata : Metadata)
     (exn : exn)
     =
-    uply { printException "Internal error" metadata exn }
+    task { printException "Internal error" metadata exn }
 
   Exe.createState
     builtins
@@ -196,6 +195,17 @@ let main (args : string[]) =
 
 
   with e ->
-    System.Console.Error.WriteLine
-      $"Error starting Darklang CLI: {e.Message}\nStack trace:\n{e.StackTrace}"
+    let rec describe (depth : int) (ex : exn) : unit =
+      let indent = String.replicate depth "  "
+      System.Console.Error.WriteLine $"{indent}{ex.GetType().FullName}: {ex.Message}"
+      match ex with
+      | :? System.AggregateException as agg ->
+        for inner in agg.InnerExceptions do
+          describe (depth + 1) inner
+      | _ ->
+        if not (isNull ex.InnerException) then describe (depth + 1) ex.InnerException
+      if depth = 0 && not (isNull ex.StackTrace) then
+        System.Console.Error.WriteLine $"Stack trace:\n{ex.StackTrace}"
+    System.Console.Error.WriteLine "Error starting Darklang CLI:"
+    describe 0 e
     1

@@ -2,7 +2,6 @@
 module LocalExec.LocalExec
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution.ProgramTypes
@@ -26,8 +25,8 @@ let evaluateAllValues = LibPackageManager.Seed.evaluateAllValues
 
 module HandleCommand =
 
-  let reloadCanvas (name : string) : Ply<Result<unit, string>> =
-    uply {
+  let reloadCanvas (name : string) : Task<Result<unit, string>> =
+    task {
       print $"Reloading {name} canvas..."
 
       let! (canvasId, toplevels) =
@@ -38,8 +37,8 @@ module HandleCommand =
       return Ok()
     }
 
-  let reloadCanvases () : Ply<Result<unit, string>> =
-    uply {
+  let reloadCanvases () : Task<Result<unit, string>> =
+    task {
       // CLEANUP fetch the list of canvases by 'ls canvases' equiv.
       // CLEANUP stop tossing the result
       let! _ = reloadCanvas "dark-packages"
@@ -47,8 +46,8 @@ module HandleCommand =
       return Ok()
     }
 
-  let reloadPackages () : Ply<Result<unit, string>> =
-    uply {
+  let reloadPackages () : Task<Result<unit, string>> =
+    task {
       // Load packages from disk, ensuring all parse well
       let! ops = LoadPackagesFromDisk.load (Builtins.all ())
 
@@ -106,8 +105,8 @@ module HandleCommand =
         return Ok()
     }
 
-  let runMigrations () : Ply<Result<unit, string>> =
-    uply {
+  let runMigrations () : Task<Result<unit, string>> =
+    task {
       try
         print "Running migrations"
         Migrations.run ()
@@ -117,8 +116,8 @@ module HandleCommand =
         return Error $"Migration failed: {ex.Message}"
     }
 
-  let exportSeed (outputPath : string) : Ply<Result<unit, string>> =
-    uply {
+  let exportSeed (outputPath : string) : Task<Result<unit, string>> =
+    task {
       try
         do! LibPackageManager.Seed.export outputPath
         let size = System.IO.FileInfo(outputPath).Length / 1024L / 1024L
@@ -128,8 +127,8 @@ module HandleCommand =
         return Error $"Export failed: {ex.Message}"
     }
 
-  let listMigrations () : Ply<Result<unit, string>> =
-    uply {
+  let listMigrations () : Task<Result<unit, string>> =
+    task {
       try
         print "Migrations needed:\n"
         Migrations.migrationsToRun () |> List.iter (fun name -> print $" - {name}")
@@ -140,8 +139,8 @@ module HandleCommand =
 
   /// Scan `package_values.rt_dval` for referenced blob hashes and
   /// delete any `package_blobs` rows that aren't referenced.
-  let sweepBlobs () : Ply<Result<unit, string>> =
-    uply {
+  let sweepBlobs () : Task<Result<unit, string>> =
+    task {
       try
         print "Sweeping orphan package_blobs..."
         let! deleted = LibPackageManager.RuntimeTypes.Blob.sweepOrphans ()
@@ -171,7 +170,7 @@ let main (args : string[]) : int =
 
     let handleCommand
       (description : string)
-      (command : Ply<Result<unit, string>>)
+      (command : Task<Result<unit, string>>)
       : int =
       print $"Starting: {description}"
       match command.Result with
