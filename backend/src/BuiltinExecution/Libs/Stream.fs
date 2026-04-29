@@ -39,7 +39,7 @@ let varA = TVariable "a"
 let private resolveElemVT
   (state : ExecutionState)
   (t : TypeReference)
-  : Ply<ValueType> =
+  : Task<ValueType> =
   LibExecution.RuntimeTypes.TypeReference.toVT state.types Map.empty t
 
 
@@ -49,8 +49,8 @@ let private resolveElemVT
 let private resolveElemKT
   (state : ExecutionState)
   (t : TypeReference)
-  : Ply<KnownType> =
-  uply {
+  : Task<KnownType> =
+  task {
     let! vt = resolveElemVT state t
     match vt with
     | ValueType.Known kt -> return kt
@@ -84,7 +84,7 @@ let fns () : List<BuiltInFn> =
             // table so custom types resolve correctly.
             let! inferredElem =
               match elemVT with
-              | ValueType.Unknown -> resolveElemVT state elemType |> Ply.toTask
+              | ValueType.Unknown -> resolveElemVT state elemType
               | known -> Task.FromResult known
             return Stream.newFromIO inferredElem nextFn None
           }
@@ -119,7 +119,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, vm, [ _; outputType ], [ initialState; DApplicable app ] ->
           task {
-            let! elemType = resolveElemVT state outputType |> Ply.toTask
+            let! elemType = resolveElemVT state outputType
             let currentState = ref initialState
             let next () : Task<Option<Dval>> =
               task {
@@ -160,7 +160,7 @@ let fns () : List<BuiltInFn> =
         | state, _, [ elemType ], [ s ] ->
           task {
             let! nextResult = Stream.readNext s
-            let! elemKT = resolveElemKT state elemType |> Ply.toTask
+            let! elemKT = resolveElemKT state elemType
             return Dval.option elemKT nextResult
           }
 
@@ -194,7 +194,7 @@ let fns () : List<BuiltInFn> =
               if collected.Count > 0 then
                 Task.FromResult(Dval.toValueType collected[0])
               else
-                resolveElemVT state elemType |> Ply.toTask
+                resolveElemVT state elemType
             return DList(elemVT, List.ofSeq collected)
           }
 
@@ -289,7 +289,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, vm, [ _; outputType ], [ DStream(src, _, _); DApplicable app ] ->
           task {
-            let! elemType = resolveElemVT state outputType |> Ply.toTask
+            let! elemType = resolveElemVT state outputType
             let apply (dv : Dval) : Task<Dval> =
               task {
                 let! result = Exe.executeApplicable state app (NEList.singleton dv)

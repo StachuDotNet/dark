@@ -311,7 +311,7 @@ let rec private executeInner
             match exeState.packageFnInstrCache.TryGetValue fn with
             | true, cached -> return cached
             | false, _ ->
-              match! exeState.fns.package fn |> Ply.toTask with
+              match! exeState.fns.package fn with
               | Some pkgFn ->
                 let instrData =
                   { instructions = List.toArray pkgFn.body.instructions
@@ -489,8 +489,7 @@ let rec private executeInner
           let! typeArgs =
             typeArgs
             |> Task.mapSequentially (fun t ->
-              TypeReference.toVT exeState.types currentFrame.typeSymbolTable t
-              |> Ply.toTask)
+              TypeReference.toVT exeState.types currentFrame.typeSymbolTable t)
 
           let! record =
             TypeChecker.DvalCreator.record
@@ -560,7 +559,7 @@ let rec private executeInner
           let! typeArgs =
             typeArgs
             |> Task.mapSequentially (fun t ->
-              TypeReference.toVT exeState.types tst t |> Ply.toTask)
+              TypeReference.toVT exeState.types tst t)
 
           let! newEnum =
             TypeChecker.DvalCreator.enum
@@ -583,7 +582,7 @@ let rec private executeInner
             | None -> raiseRTE (RTE.ValueNotFound name)
 
           | FQValueName.Package pkg ->
-            match! exeState.values.package pkg |> Ply.toTask with
+            match! exeState.values.package pkg with
             | Some v ->
               // The Dval is already stored in the package value
               registers[createTo] <- v.body
@@ -764,7 +763,7 @@ let rec private executeInner
                 let! resolvedTypeArgsVT =
                   typeArgs
                   |> Task.mapSequentially (fun t ->
-                    TypeReference.toVT exeState.types tst t |> Ply.toTask)
+                    TypeReference.toVT exeState.types tst t)
 
                 // Step 2: shadow this fn's free type-vars from the
                 // inherited TST. Mirrors the package-fn path; without
@@ -890,10 +889,10 @@ let rec private executeInner
               // Harmful-deprecation runtime halt.
               // Checked before even fetching the fn so the error is surfaced
               // whether or not the fn definition is still available.
-              let! isHarmful = exeState.fns.isHarmful pkg |> Ply.toTask
+              let! isHarmful = exeState.fns.isHarmful pkg
               if isHarmful && not exeState.allowHarmful then
                 RTE.DeprecatedItemHalted pkg |> raiseRTE
-              match! exeState.fns.package pkg |> Ply.toTask with
+              match! exeState.fns.package pkg with
               | None -> RTE.FnNotFound(FQFnName.Package pkg) |> raiseRTE
               | Some fn ->
                 // Step 1: resolve any explicit typeArgs against the
@@ -915,7 +914,7 @@ let rec private executeInner
                         return!
                           typeArgs
                           |> Task.mapSequentially (fun t ->
-                            TypeReference.toVT exeState.types tst t |> Ply.toTask)
+                            TypeReference.toVT exeState.types tst t)
                     }
 
                 // Step 2: shadow this fn's free type-vars in the inherited
@@ -1082,7 +1081,7 @@ let rec private executeInner
               match fnName with
               | FQFnName.Package id ->
                 task {
-                  let! fn = exeState.fns.package id |> Ply.toTask
+                  let! fn = exeState.fns.package id
                   match fn with
                   | None -> return RTE.FnNotFound fnName |> raiseRTE
                   | Some fn -> return fn.returnType
@@ -1103,7 +1102,6 @@ let rec private executeInner
             | Error _path ->
               let! expectedVT =
                 TypeReference.toVT exeState.types tst expectedReturnType
-                |> Ply.toTask
               RuntimeError.Applications.FnResultNotExpectedType(
                 fnName,
                 expectedVT,

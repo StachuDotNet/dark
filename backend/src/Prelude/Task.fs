@@ -60,6 +60,17 @@ let mapSequentially (f : 'a -> Task<'b>) (list : List<'a>) : Task<List<'b>> =
     []
   |> map List.rev
 
+module NEList =
+  let mapSequentially
+    (f : 'a -> Task<'b>)
+    (list : NEList.NEList<'a>)
+    : Task<NEList.NEList<'b>> =
+    task {
+      let! head = f list.head
+      let! tail = mapSequentially f list.tail
+      return NEList.ofList head tail
+    }
+
 let mapInParallel (f : 'a -> Task<'b>) (list : List<'a>) : Task<List<'b>> =
   List.map f list |> flatten
 

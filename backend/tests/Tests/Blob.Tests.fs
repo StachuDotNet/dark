@@ -67,8 +67,14 @@ let private persistentHash (dv : RT.Dval) : string =
   | RT.DBlob(RT.Persistent(h, _)) -> h
   | _ -> failtest $"expected DBlob(Persistent _), got {dv}"
 
-let private noopInsert : string -> byte[] -> Ply<unit> =
-  fun _ _ -> uply { return () }
+let private noopInsert : string -> byte[] -> Task<unit> =
+  fun _ _ -> task { return () }
+
+/// Bridge `LibPackageManager.RuntimeTypes.Blob.insert` (still typed
+/// `Ply<unit>`) into the Task-shaped `insert` parameter that
+/// `LibExecution.Blob.promote` now requires.
+let private pmInsertTask (hash : string) (bytes : byte[]) : Task<unit> =
+  PMBlob.insert hash bytes |> Ply.toTask
 
 let private uniquePayload (label : string) : byte[] =
   System.Text.Encoding.UTF8.GetBytes($"{label}-{System.Guid.NewGuid()}")
@@ -278,7 +284,7 @@ let promotePersistsAndSwaps =
     let state = freshState ()
     let payload = uniquePayload "promote-test"
     let ephemeral = Blob.newEphemeral state payload
-    let! promoted = Blob.promote state PMBlob.insert ephemeral
+    let! promoted = Blob.promote state pmInsertTask ephemeral
     let expectedHash = Blob.sha256Hex payload
     match promoted with
     | RT.DBlob(RT.Persistent(h, n)) ->
@@ -294,7 +300,7 @@ let promoteThenSerializeRoundtrips =
     let state = freshState ()
     let payload = uniquePayload "promote-serialize"
     let ephemeral = Blob.newEphemeral state payload
-    let! promoted = Blob.promote state PMBlob.insert ephemeral
+    let! promoted = Blob.promote state pmInsertTask ephemeral
     let restored =
       BS.RT.Dval.deserialize "dval" (BS.RT.Dval.serialize "dval" promoted)
     Expect.equal
@@ -309,8 +315,8 @@ let promoteSameBytesTwiceDedups =
     let payload = uniquePayload "dedup-test"
     let eph1 = Blob.newEphemeral state payload
     let eph2 = Blob.newEphemeral state payload
-    let! p1 = Blob.promote state PMBlob.insert eph1
-    let! p2 = Blob.promote state PMBlob.insert eph2
+    let! p1 = Blob.promote state pmInsertTask eph1
+    let! p2 = Blob.promote state pmInsertTask eph2
     Expect.equal p1 p2 "two promotions of identical bytes share the hash"
     let! row = PMBlob.get (Blob.sha256Hex payload) |> Ply.toTask
     Expect.equal row (Some payload) "row still contains original bytes"
@@ -321,7 +327,7 @@ let promotedBlobResolvesViaReadBlobBytes =
     let state = freshState ()
     let payload = uniquePayload "resolve-test"
     let ephemeral = Blob.newEphemeral state payload
-    let! promoted = Blob.promote state PMBlob.insert ephemeral
+    let! promoted = Blob.promote state pmInsertTask ephemeral
     let! bytes = Blob.readBytes state (dblobRef promoted)
     Expect.equal bytes payload "persistent blob resolves back to its bytes"
   }

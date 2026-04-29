@@ -94,7 +94,7 @@ let readBytes (state : ExecutionState) (ref : BlobRef) : Task<byte[]> =
         return Exception.raiseInternal "ephemeral blob not found" [ "id", id ]
     | Persistent(hash, _length) when hash = emptyHash -> return [||]
     | Persistent(hash, _length) ->
-      let! got = state.blobs.get hash |> Ply.toTask
+      let! got = state.blobs.get hash
       match got with
       | Some bs -> return bs
       | None ->
@@ -130,7 +130,7 @@ let readBytes (state : ExecutionState) (ref : BlobRef) : Task<byte[]> =
 /// short-circuit would skip the round-trip in the common case.
 let rec private promoteWalk
   (exeState : ExecutionState)
-  (insert : string -> byte[] -> Ply<unit>)
+  (insert : string -> byte[] -> Task<unit>)
   (dv : Dval)
   : Task<Dval> =
   task {
@@ -140,7 +140,7 @@ let rec private promoteWalk
       if exeState.blobStore.TryGetValue(id, &bs) then
         let h = sha256Hex bs
         let n : int64 = System.Convert.ToInt64 bs.Length
-        do! insert h bs |> Ply.toTask
+        do! insert h bs
         return DBlob(Persistent(h, n))
       else
         return
@@ -203,7 +203,7 @@ let rec private promoteWalk
 
 let promote
   (exeState : ExecutionState)
-  (insert : string -> byte[] -> Ply<unit>)
+  (insert : string -> byte[] -> Task<unit>)
   (dv : Dval)
   : Task<Dval> =
   promoteWalk exeState insert dv

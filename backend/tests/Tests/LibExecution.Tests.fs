@@ -196,7 +196,7 @@ let t
       // test framework's structural `dvalEquality`. The no-op insert
       // means we don't persist to `package_blobs` — we only need the
       // hash to dedupe UUID identity.
-      let noopInsert _ _ = uply { return () }
+      let noopInsert _ _ = task { return () }
       let promoteIfOk (r : RT.ExecutionResult) : Task<RT.ExecutionResult> =
         task {
           match r with

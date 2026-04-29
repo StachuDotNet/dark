@@ -1248,37 +1248,37 @@ module PackageFn =
 /// (though, we'll likely demand deps. in the PM before committing something upstream...)
 type PackageManager =
   {
-    getType : FQTypeName.Package -> Ply<Option<PackageType.PackageType>>
-    getValue : FQValueName.Package -> Ply<Option<PackageValue.PackageValue>>
-    getFn : FQFnName.Package -> Ply<Option<PackageFn.PackageFn>>
+    getType : FQTypeName.Package -> Task<Option<PackageType.PackageType>>
+    getValue : FQValueName.Package -> Task<Option<PackageValue.PackageValue>>
+    getFn : FQFnName.Package -> Task<Option<PackageFn.PackageFn>>
 
     /// Content-addressed blob bytes by SHA-256 hash. Returns [None]
     /// for missing hashes.
-    getBlob : string -> Ply<Option<byte[]>>
+    getBlob : string -> Task<Option<byte[]>>
 
     /// Insert bytes into `package_blobs` keyed by SHA-256 hash. Uses
     /// INSERT OR IGNORE — same hash = same content (content-addressing
     /// invariant), so a second insert is a cheap no-op.
-    persistBlob : string -> byte[] -> Ply<unit>
+    persistBlob : string -> byte[] -> Task<unit>
 
     /// Is this package fn hash marked Harmful on the given branch chain?
     /// Branch-scoped because deprecation state flows through branches; the
     /// other PM lookups are content-addressed and need no branch.
     /// Only fns participate — see DeprecationKind.Harmful for why.
-    isHarmful : BranchId -> FQFnName.Package -> Ply<bool>
+    isHarmful : BranchId -> FQFnName.Package -> Task<bool>
 
-    init : Ply<unit>
+    init : Task<unit>
   }
 
   static member empty =
-    { getType = (fun _ -> Ply None)
-      getFn = (fun _ -> Ply None)
-      getValue = (fun _ -> Ply None)
-      getBlob = (fun _ -> Ply None)
-      persistBlob = (fun _ _ -> uply { return () })
-      isHarmful = (fun _ _ -> Ply false)
+    { getType = (fun _ -> Task.FromResult None)
+      getFn = (fun _ -> Task.FromResult None)
+      getValue = (fun _ -> Task.FromResult None)
+      getBlob = (fun _ -> Task.FromResult None)
+      persistBlob = (fun _ _ -> task { return () })
+      isHarmful = (fun _ _ -> Task.FromResult false)
 
-      init = uply { return () } }
+      init = task { return () } }
 
   /// Allows you to side-load a few 'extras' in-memory, along
   /// the normal fetching functionality. (Mostly helpful for tests)
@@ -1295,17 +1295,17 @@ type PackageManager =
     { getType =
         fun id ->
           match Map.tryFind id typeMap with
-          | Some t -> Some t |> Ply
+          | Some t -> Task.FromResult(Some t)
           | None -> pm.getType id
       getValue =
         fun id ->
           match Map.tryFind id valueMap with
-          | Some v -> Some v |> Ply
+          | Some v -> Task.FromResult(Some v)
           | None -> pm.getValue id
       getFn =
         fun id ->
           match Map.tryFind id fnMap with
-          | Some f -> Some f |> Ply
+          | Some f -> Task.FromResult(Some f)
           | None -> pm.getFn id
       getBlob = pm.getBlob
       persistBlob = pm.persistBlob
@@ -1750,11 +1750,11 @@ and ExecutionState =
   }
 
 
-and Types = { package : FQTypeName.Package -> Ply<Option<PackageType.PackageType>> }
+and Types = { package : FQTypeName.Package -> Task<Option<PackageType.PackageType>> }
 
 and Values =
   { builtIn : Map<FQValueName.Builtin, BuiltInValue>
-    package : FQValueName.Package -> Ply<Option<PackageValue.PackageValue>> }
+    package : FQValueName.Package -> Task<Option<PackageValue.PackageValue>> }
 
 /// Blob-byte access wired onto the ExecutionState. `get` resolves a
 /// content-addressed hash to bytes (or None if the hash is missing);
@@ -1762,28 +1762,28 @@ and Values =
 /// Needed inside builtins that manipulate blobs — eg.
 /// `Blob.toHex : Blob -> String` has to dereference its arg.
 and Blobs =
-  { get : string -> Ply<Option<byte[]>>; persist : string -> byte[] -> Ply<unit> }
+  { get : string -> Task<Option<byte[]>>; persist : string -> byte[] -> Task<unit> }
 
 and Functions =
   {
     builtIn : Map<FQFnName.Builtin, BuiltInFn>
-    package : FQFnName.Package -> Ply<Option<PackageFn.PackageFn>>
+    package : FQFnName.Package -> Task<Option<PackageFn.PackageFn>>
     /// `PackageManager.isHarmful` with the state's branchId pre-applied.
-    isHarmful : FQFnName.Package -> Ply<bool>
+    isHarmful : FQFnName.Package -> Task<bool>
   }
 
 
 
 module Types =
-  let empty = { package = (fun _ -> Ply None) }
+  let empty = { package = (fun _ -> Task.FromResult None) }
 
   let find
     (types : Types)
     (name : FQTypeName.FQTypeName)
-    : Ply<Option<TypeDeclaration.T>> =
+    : Task<Option<TypeDeclaration.T>> =
     match name with
     | FQTypeName.Package pkg ->
-      types.package pkg |> Ply.map (Option.map _.declaration)
+      types.package pkg |> Task.map (Option.map _.declaration)
 
   /// Swap concrete types for type parameters
   /// CLEANUP consider accepting a pre-zipped list instead
@@ -1852,27 +1852,27 @@ module TypeReference =
       [ t ]
     )
 
-  let rec unwrapAlias (types : Types) (typ : TypeReference) : Ply<TypeReference> =
+  let rec unwrapAlias (types : Types) (typ : TypeReference) : Task<TypeReference> =
     match typ with
     | TCustomType({ resolved = Ok outerTypeName }, outerTypeArgs) ->
-      uply {
+      task {
         match! Types.find types outerTypeName with
         | Some { definition = TypeDeclaration.Alias typ; typeParams = typeParams } ->
           let typ = Types.substitute typeParams outerTypeArgs typ
           return! unwrapAlias types typ
         | _ -> return typ
       }
-    | _ -> Ply typ
+    | _ -> Task.FromResult typ
 
 
   let rec toVT
     (types : Types)
     (tst : TypeSymbolTable)
     (typeRef : TypeReference)
-    : Ply<ValueType> =
+    : Task<ValueType> =
     let r = toVT types tst
 
-    uply {
+    task {
       match! unwrapAlias types typeRef with
       | TUnit -> return ValueType.Known KTUnit
       | TBool -> return ValueType.Known KTBool
@@ -1900,7 +1900,7 @@ module TypeReference =
       | TTuple(first, second, theRest) ->
         let! first = r first
         let! second = r second
-        let! theRest = theRest |> Ply.List.mapSequentially r
+        let! theRest = theRest |> Task.mapSequentially r
         return KTTuple(first, second, theRest) |> ValueType.Known
       | TList inner ->
         let! inner = r inner
@@ -1910,7 +1910,7 @@ module TypeReference =
         return ValueType.Known(KTDict inner)
 
       | TCustomType({ resolved = Ok typeName }, typeArgs) ->
-        let! typeArgs = typeArgs |> Ply.List.mapSequentially r
+        let! typeArgs = typeArgs |> Task.mapSequentially r
         return KTCustomType(typeName, typeArgs) |> ValueType.Known
 
       | TCustomType({ originalName = names; resolved = Error nre }, _) ->
@@ -1920,7 +1920,7 @@ module TypeReference =
         return tst |> Map.get name |> Option.defaultValue ValueType.Unknown
 
       | TFn(args, result) ->
-        let! args = args |> Ply.NEList.mapSequentially r
+        let! args = args |> Task.NEList.mapSequentially r
         let! result = r result
         return KTFn(args, result) |> ValueType.Known
 

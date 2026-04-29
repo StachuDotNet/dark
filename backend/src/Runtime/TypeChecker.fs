@@ -101,12 +101,12 @@ let rec unifyValueType
     | TCustomType({ resolved = Ok typeNameT }, typeArgsT), actual ->
       // CLEANUP can't we assume aliases are already unwrapped?
       // if so, we can tidy this case quite a bit
-      match! Types.find types typeNameT |> Ply.toTask with
+      match! Types.find types typeNameT with
       | None -> return Error pathSoFar
       | Some expected ->
         match expected, actual with
         | { definition = TypeDeclaration.Alias aliasType }, _ ->
-          let! expected = TypeReference.unwrapAlias types aliasType |> Ply.toTask
+          let! expected = TypeReference.unwrapAlias types aliasType
           return! r tst pathSoFar expected actual
 
         | _, ValueType.Known(KTCustomType(typeNameV, typeArgsV)) ->
@@ -192,15 +192,15 @@ let rec resolveType
     TypeDeclaration.Definition>
   =
   task {
-    match! Types.find types typeName |> Ply.toTask with
+    match! Types.find types typeName with
     | None -> return RTE.TypeNotFound typeName |> raiseRTE threadID
     | Some decl ->
       match decl.definition with
       | TypeDeclaration.Alias aliasedType ->
-        let! resolvedType = TypeReference.unwrapAlias types aliasedType |> Ply.toTask
+        let! resolvedType = TypeReference.unwrapAlias types aliasedType
         match resolvedType with
         | TCustomType({ resolved = Ok innerTypeName }, innerTypeArgs) ->
-          match! Types.find types innerTypeName |> Ply.toTask with
+          match! Types.find types innerTypeName with
           | None -> return RTE.TypeNotFound innerTypeName |> raiseRTE threadID
           | Some targetDecl ->
             // Create mapping from original type params to provided args/unknowns
@@ -217,7 +217,7 @@ let rec resolveType
               List.zip targetDecl.typeParams innerTypeArgs
               |> Task.mapSequentially (fun (targetParam, typeRef) ->
                 task {
-                  let! vt = TypeReference.toVT types tst typeRef |> Ply.toTask
+                  let! vt = TypeReference.toVT types tst typeRef
                   return
                     match typeRef with
                     | TVariable name ->
@@ -256,11 +256,11 @@ let checkFnParam
   (actual : Dval)
   : Task<Result<TypeSymbolTable, RTE.Error>> =
   task {
-    let! expected = TypeReference.unwrapAlias types expected |> Ply.toTask
+    let! expected = TypeReference.unwrapAlias types expected
     match! unify types tst expected actual with
     | Ok updatedTst -> return Ok updatedTst
     | Error _path ->
-      let! expected = TypeReference.toVT types tst expected |> Ply.toTask
+      let! expected = TypeReference.toVT types tst expected
       return
         RTE.Applications.FnParameterNotExpectedType(
           fnName,
@@ -283,8 +283,8 @@ let checkFnResult
   (actual : Dval)
   : Task<Result<TypeSymbolTable, RTE.Error>> =
   task {
-    let! expected = TypeReference.unwrapAlias types expected |> Ply.toTask
-    let! expectedVT = TypeReference.toVT types tst expected |> Ply.toTask
+    let! expected = TypeReference.unwrapAlias types expected
+    let! expectedVT = TypeReference.toVT types tst expected
     match! unify types tst expected actual with
     | Ok updatedTst -> return Ok updatedTst
     | Error _path ->
@@ -541,7 +541,7 @@ module DvalCreator =
           Task.foldSequentiallyWithIndex
             (fun fieldIndex (typeArgs, fieldsInReverse, tst) (fieldDef, actualField) ->
               task {
-                let! expected = TypeReference.toVT types tst fieldDef |> Ply.toTask
+                let! expected = TypeReference.toVT types tst fieldDef
                 match! unify types tst fieldDef actualField with
                 | Error _path ->
                   return
@@ -556,8 +556,7 @@ module DvalCreator =
                     |> raiseRTE threadID
 
                 | Ok newTST ->
-                  let! expected =
-                    TypeReference.toVT types tst fieldDef |> Ply.toTask
+                  let! expected = TypeReference.toVT types tst fieldDef
                   // Update resultant typeArgs based on what we learned from this field
                   // , by checking the TST.
                   let newTypeArgs =
@@ -660,8 +659,7 @@ module DvalCreator =
                   |> raiseRTE threadID
 
               | Some fieldDef ->
-                let! expected =
-                  TypeReference.toVT types tst fieldDef.typ |> Ply.toTask
+                let! expected = TypeReference.toVT types tst fieldDef.typ
                 match! unify types tst fieldDef.typ fieldValue with
                 | Error _path ->
                   return
@@ -675,8 +673,7 @@ module DvalCreator =
                     |> raiseRTE threadID
 
                 | Ok newTST ->
-                  let! expected =
-                    TypeReference.toVT types newTST fieldDef.typ |> Ply.toTask
+                  let! expected = TypeReference.toVT types newTST fieldDef.typ
                   // Update resultant typeArgs based on what we learned from this field
                   // , by checking the TST.
                   let newTypeArgs =
@@ -771,8 +768,7 @@ module DvalCreator =
                     |> raiseRTE threadID
 
                 | Some fieldDef ->
-                  let! expected =
-                    TypeReference.toVT types tst fieldDef.typ |> Ply.toTask
+                  let! expected = TypeReference.toVT types tst fieldDef.typ
                   match! unify types tst fieldDef.typ fieldValue with
                   | Error _path ->
                     // CLEANUP involve path, somehow
@@ -786,8 +782,7 @@ module DvalCreator =
                       |> RTE.Record
                       |> raiseRTE threadID
                   | Ok updatedTst ->
-                    let! expected =
-                      TypeReference.toVT types updatedTst fieldDef.typ |> Ply.toTask
+                    let! expected = TypeReference.toVT types updatedTst fieldDef.typ
 
                     // Update resultant typeArgs based on what we learned from this field
                     // , by checking the TST.

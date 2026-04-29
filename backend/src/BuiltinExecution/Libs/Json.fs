@@ -517,9 +517,11 @@ let parse
     | TCustomType({ resolved = Ok typeName }, typeArgs), jsonValueKind ->
       uply {
         let! typeArgsVT =
-          typeArgs |> Ply.List.mapSequentially (TypeReference.toVT types tst)
+          typeArgs
+          |> Ply.List.mapSequentially (fun t ->
+            TypeReference.toVT types tst t |> Ply.ofTask)
 
-        match! Types.find types typeName with
+        match! Types.find types typeName |> Ply.ofTask with
         | None ->
           return
             Exception.raiseInternal "Couldn't find type" [ "typeName", typeName ]

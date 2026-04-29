@@ -79,7 +79,7 @@ let getFnBody
   (pkgId : RT.FQFnName.Package)
   : Task<Option<RT.Instructions>> =
   task {
-    let! fn = exeState.fns.package pkgId |> Ply.toTask
+    let! fn = exeState.fns.package pkgId
     return Option.map (fun (f : RT.PackageFn.PackageFn) -> f.body) fn
   }
 

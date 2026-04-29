@@ -1,5 +1,7 @@
 module LibPackageManager.PackageManager
 
+open System.Threading.Tasks
+
 open Prelude
 open LibExecution.ProgramTypes
 
@@ -41,17 +43,21 @@ let private loadHarmfulForBranch (branchId : PT.BranchId) : Set<string> =
 
 // TODO: bring back eager loading
 let rt : RT.PackageManager =
-  { getType = withCache PMRT.Type.get
-    getFn = withCache PMRT.Fn.get
-    getValue = withCache PMRT.Value.get
-    getBlob = PMRT.Blob.get
-    persistBlob = PMRT.Blob.insert
+  let typeCache = withCache PMRT.Type.get
+  let fnCache = withCache PMRT.Fn.get
+  let valueCache = withCache PMRT.Value.get
+  { getType = fun id -> typeCache id |> Ply.toTask
+    getFn = fun id -> fnCache id |> Ply.toTask
+    getValue = fun id -> valueCache id |> Ply.toTask
+    getBlob = fun h -> PMRT.Blob.get h |> Ply.toTask
+    persistBlob = fun h bs -> PMRT.Blob.insert h bs |> Ply.toTask
 
     isHarmful =
-      fun branchId (RT.Hash h) -> Ply(Set.contains h (loadHarmfulForBranch branchId))
+      fun branchId (RT.Hash h) ->
+        Task.FromResult(Set.contains h (loadHarmfulForBranch branchId))
 
     init =
-      uply {
+      task {
         //eagerLoad
         return ()
       } }

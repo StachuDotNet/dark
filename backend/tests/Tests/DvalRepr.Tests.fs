@@ -69,7 +69,7 @@ let queryableRoundtripsSuccessfullyInRecord
                         RT.TypeDeclaration.Record(
                           NEList.ofList { name = "field"; typ = fieldTyp } []
                         ) } }
-              packageType |> Some |> Ply
+              packageType |> Some |> Task.FromResult
             else
               pmRT.getType id }
 

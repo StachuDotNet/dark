@@ -1,6 +1,8 @@
 /// Convert from ProgramTypes to RuntimeTypes
 module LibExecution.ProgramTypesToRuntimeTypes
 
+open System.Threading.Tasks
+
 open Prelude
 
 // Used for conversion functions
@@ -1249,24 +1251,30 @@ module PackageManager =
     : RT.PackageManager =
     let toPT (RT.Hash h) : PT.Hash = PT.Hash h
     { getType =
-        fun id -> pm.getType (toPT id) |> Ply.map (Option.map PackageType.toRT)
+        fun id ->
+          pm.getType (toPT id)
+          |> Ply.toTask
+          |> Task.map (Option.map PackageType.toRT)
       getValue =
         fun id ->
           pm.getValue (toPT id)
-          |> Ply.map (Option.map (PackageValue.toRT builtinValues))
-      getFn = fun id -> pm.getFn (toPT id) |> Ply.map (Option.map PackageFn.toRT)
+          |> Ply.toTask
+          |> Task.map (Option.map (PackageValue.toRT builtinValues))
+      getFn =
+        fun id ->
+          pm.getFn (toPT id) |> Ply.toTask |> Task.map (Option.map PackageFn.toRT)
 
       // PT PackageManager has no blob channel — it's purely location-
       // based name resolution. Transient wrappers return None; the
       // real blob lookup comes from the canonical RT PM.
-      getBlob = fun _ -> Ply None
-      persistBlob = fun _ _ -> uply { return () }
+      getBlob = fun _ -> Task.FromResult None
+      persistBlob = fun _ _ -> task { return () }
 
       // PT PackageManager doesn't surface deprecation state; transient
       // wrappers (tests, in-memory flows) have no branch chain anyway.
-      isHarmful = fun _ _ -> Ply false
+      isHarmful = fun _ _ -> Task.FromResult false
 
-      init = pm.init }
+      init = pm.init |> Ply.toTask }
 
 
 // --
