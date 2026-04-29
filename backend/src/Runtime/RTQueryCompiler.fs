@@ -129,7 +129,7 @@ let partialEvaluate
 
     // Execute
     let miniVm = RT.VMState.createWithoutTLID instrs
-    return! Interpreter.execute exeState miniVm |> Ply.toTask
+    return! Interpreter.execute exeState miniVm
   }
 
 
