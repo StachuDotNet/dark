@@ -503,6 +503,62 @@ let chunkedDrainFallsBackToByteWise =
   }
 
 
+// ─────────────────────────────────────────────────────────────────────
+// Concurrent-consumer guard
+// ─────────────────────────────────────────────────────────────────────
+// Each DStream carries a permit-1 SemaphoreSlim on its lockObj; the
+// reader paths claim it non-blockingly at entry, hold it across the
+// inner pull, and release it in `finally`. A second consumer entering
+// while the first is mid-pull hits the contended path and we raise a
+// clean error rather than racing on shared `disposed`/transform state.
+
+/// A pull function that blocks on a TaskCompletionSource so we can
+/// wedge a `readNext` at the await point and let a second consumer
+/// race against it.
+let private gatedPullFn
+  (gate : TaskCompletionSource<unit>)
+  (item : RT.Dval)
+  : (unit -> Task<Option<RT.Dval>>) =
+  let yielded = ref false
+  fun () ->
+    task {
+      if yielded.Value then
+        return None
+      else
+        do! gate.Task
+        yielded.Value <- true
+        return Some item
+    }
+
+let concurrentReadNextRaises =
+  testTask "stream: second readNext while the first is mid-pull raises" {
+    let gate = TaskCompletionSource<unit>()
+    let s = Stream.newFromIO VT.int64 (gatedPullFn gate (RT.DInt64 7L)) None
+
+    // Kick off the first pull. It will park inside the gated callback
+    // until we set the gate, holding the consumer permit the whole time.
+    let firstPull = Stream.readNext s
+
+    // Give the scheduler a moment to step into the await — without this
+    // the second pull can sometimes start before the first acquires the
+    // semaphore, which would let it through legitimately.
+    do! Task.Delay 10
+
+    let mutable raised = false
+    try
+      let! _ = Stream.readNext s
+      ()
+    with _ ->
+      raised <- true
+    Expect.isTrue raised "second concurrent readNext should raise"
+
+    // Release the first pull — it should still complete cleanly.
+    gate.SetResult()
+    let! firstResult = firstPull
+    Expect.equal firstResult (Some(RT.DInt64 7L)) "first pull completes after gate"
+  }
+
+
 let tests =
   testList
     "stream"
@@ -533,4 +589,5 @@ let tests =
       gcSkipsFinalizerAfterStreamClose
       chunkedDrainMatchesByteDrain
       chunkedDrainAlsoServesByteNext
-      chunkedDrainFallsBackToByteWise ]
+      chunkedDrainFallsBackToByteWise
+      concurrentReadNextRaises ]
