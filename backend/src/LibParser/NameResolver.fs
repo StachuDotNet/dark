@@ -147,7 +147,7 @@ let resolveTypeName
       currentModule
       given
       parseTypeName
-      packageManager.findType
+      (fun args -> packageManager.findType args |> Ply.ofTask)
       PT.FQTypeName.FQTypeName.Package
       (fun _ -> Exception.raiseInternal warning [])
       (fun _ -> Exception.raiseInternal warning [])
@@ -175,7 +175,7 @@ let resolveValueName
       currentModule
       given
       FS2WT.Expr.parseFnName
-      packageManager.findValue
+      (fun args -> packageManager.findValue args |> Ply.ofTask)
       PT.FQValueName.FQValueName.Package
       (fun (n, v) -> PT.FQValueName.Builtin { name = n; version = v })
       (fun (n, v) -> { RT.FQValueName.Builtin.name = n; version = v })
@@ -201,7 +201,7 @@ let resolveFnName
       currentModule
       given
       FS2WT.Expr.parseFnName
-      packageManager.findFn
+      (fun args -> packageManager.findFn args |> Ply.ofTask)
       PT.FQFnName.FQFnName.Package
       (fun (n, v) -> PT.FQFnName.Builtin { name = n; version = v })
       (fun (n, v) -> { RT.FQFnName.Builtin.name = n; version = v })

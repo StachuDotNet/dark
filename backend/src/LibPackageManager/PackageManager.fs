@@ -69,42 +69,46 @@ let pt : PT.PackageManager =
   let getBranchChain branchId =
     Branches.getBranchChain branchId |> Async.AwaitTask |> Async.RunSynchronously
 
+  let typeGetCache = withCache PMPT.Type.get
+  let fnGetCache = withCache PMPT.Fn.get
+  let valueGetCache = withCache PMPT.Value.get
+
   { findType =
       fun (branchId, location) ->
         let chain = getBranchChain branchId
-        withCache (PMPT.Type.find chain) location
+        withCache (PMPT.Type.find chain) location |> Ply.toTask
     findValue =
       fun (branchId, location) ->
         let chain = getBranchChain branchId
-        withCache (PMPT.Value.find chain) location
+        withCache (PMPT.Value.find chain) location |> Ply.toTask
     findFn =
       fun (branchId, location) ->
         let chain = getBranchChain branchId
-        withCache (PMPT.Fn.find chain) location
+        withCache (PMPT.Fn.find chain) location |> Ply.toTask
 
-    getType = withCache PMPT.Type.get
-    getFn = withCache PMPT.Fn.get
-    getValue = withCache PMPT.Value.get
+    getType = fun id -> typeGetCache id |> Ply.toTask
+    getFn = fun id -> fnGetCache id |> Ply.toTask
+    getValue = fun id -> valueGetCache id |> Ply.toTask
 
     getTypeLocations =
       fun branchId id ->
         let chain = getBranchChain branchId
-        PMPT.Type.getLocations chain id
+        PMPT.Type.getLocations chain id |> Ply.toTask
     getValueLocations =
       fun branchId id ->
         let chain = getBranchChain branchId
-        PMPT.Value.getLocations chain id
+        PMPT.Value.getLocations chain id |> Ply.toTask
     getFnLocations =
       fun branchId id ->
         let chain = getBranchChain branchId
-        PMPT.Fn.getLocations chain id
+        PMPT.Fn.getLocations chain id |> Ply.toTask
 
     search =
       fun (branchId, query) ->
         let chain = getBranchChain branchId
-        PMPT.search chain query
+        PMPT.search chain query |> Ply.toTask
 
-    init = uply { return () } }
+    init = task { return () } }
 
 
 /// Create an in-memory PackageManager from a list of PackageOps.
@@ -235,20 +239,23 @@ let createInMemory (ops : List<PT.PackageOp>) : PT.PackageManager =
         Map.add id (loc :: existing) acc)
       Map.empty
 
-  { findType = fun (_, loc) -> Ply(Map.tryFind loc typeLocMap)
-    findValue = fun (_, loc) -> Ply(Map.tryFind loc valueLocMap)
-    findFn = fun (_, loc) -> Ply(Map.tryFind loc fnLocMap)
+  { findType = fun (_, loc) -> Task.FromResult(Map.tryFind loc typeLocMap)
+    findValue = fun (_, loc) -> Task.FromResult(Map.tryFind loc valueLocMap)
+    findFn = fun (_, loc) -> Task.FromResult(Map.tryFind loc fnLocMap)
 
-    getType = fun id -> Ply(Map.tryFind id typeMap)
-    getValue = fun id -> Ply(Map.tryFind id valueMap)
-    getFn = fun id -> Ply(Map.tryFind id fnMap)
+    getType = fun id -> Task.FromResult(Map.tryFind id typeMap)
+    getValue = fun id -> Task.FromResult(Map.tryFind id valueMap)
+    getFn = fun id -> Task.FromResult(Map.tryFind id fnMap)
 
     getTypeLocations =
-      fun _branchId id -> Ply(Map.tryFind id typeIdToLocs |> Option.defaultValue [])
+      fun _branchId id ->
+        Task.FromResult(Map.tryFind id typeIdToLocs |> Option.defaultValue [])
     getValueLocations =
-      fun _branchId id -> Ply(Map.tryFind id valueIdToLocs |> Option.defaultValue [])
+      fun _branchId id ->
+        Task.FromResult(Map.tryFind id valueIdToLocs |> Option.defaultValue [])
     getFnLocations =
-      fun _branchId id -> Ply(Map.tryFind id fnIdToLocs |> Option.defaultValue [])
+      fun _branchId id ->
+        Task.FromResult(Map.tryFind id fnIdToLocs |> Option.defaultValue [])
 
     // no need to support this for in-memory.
     search =
@@ -282,13 +289,13 @@ let createInMemory (ops : List<PT.PackageOp>) : PT.PackageManager =
               Option.Some({ entity = f; location = loc } : PT.LocatedItem<_>)
             | [] -> Option.None)
 
-        Ply
+        Task.FromResult
           { PT.Search.SearchResults.submodules = []
             types = typesWithLocs
             values = valuesWithLocs
             fns = fnsWithLocs }
 
-    init = uply { return () } }
+    init = task { return () } }
 
 
 /// Combine two PackageManagers: check `overlay` first, then fall back to `fallback`.
@@ -299,7 +306,7 @@ let combine
   : PT.PackageManager =
   { findType =
       fun (branchId, loc) ->
-        uply {
+        task {
           match! overlay.findType (branchId, loc) with
           | Some id -> return Some id
           | None -> return! fallback.findType (branchId, loc)
@@ -307,7 +314,7 @@ let combine
 
     findValue =
       fun (branchId, loc) ->
-        uply {
+        task {
           match! overlay.findValue (branchId, loc) with
           | Some id -> return Some id
           | None -> return! fallback.findValue (branchId, loc)
@@ -315,7 +322,7 @@ let combine
 
     findFn =
       fun (branchId, loc) ->
-        uply {
+        task {
           match! overlay.findFn (branchId, loc) with
           | Some id -> return Some id
           | None -> return! fallback.findFn (branchId, loc)
@@ -323,7 +330,7 @@ let combine
 
     getType =
       fun id ->
-        uply {
+        task {
           match! overlay.getType id with
           | Some t -> return Some t
           | None -> return! fallback.getType id
@@ -331,7 +338,7 @@ let combine
 
     getValue =
       fun id ->
-        uply {
+        task {
           match! overlay.getValue id with
           | Some v -> return Some v
           | None -> return! fallback.getValue id
@@ -339,7 +346,7 @@ let combine
 
     getFn =
       fun id ->
-        uply {
+        task {
           match! overlay.getFn id with
           | Some f -> return Some f
           | None -> return! fallback.getFn id
@@ -347,7 +354,7 @@ let combine
 
     getTypeLocations =
       fun branchId id ->
-        uply {
+        task {
           let! overlayLocs = overlay.getTypeLocations branchId id
           let! fallbackLocs = fallback.getTypeLocations branchId id
           return overlayLocs @ fallbackLocs
@@ -355,7 +362,7 @@ let combine
 
     getValueLocations =
       fun branchId id ->
-        uply {
+        task {
           let! overlayLocs = overlay.getValueLocations branchId id
           let! fallbackLocs = fallback.getValueLocations branchId id
           return overlayLocs @ fallbackLocs
@@ -363,7 +370,7 @@ let combine
 
     getFnLocations =
       fun branchId id ->
-        uply {
+        task {
           let! overlayLocs = overlay.getFnLocations branchId id
           let! fallbackLocs = fallback.getFnLocations branchId id
           return overlayLocs @ fallbackLocs
@@ -371,21 +378,24 @@ let combine
 
     search =
       fun (branchId, query) ->
-        uply {
+        task {
           // Combine search results from both
-          let! overlayResults = overlay.search (branchId, query)
-          let! fallbackResults = fallback.search (branchId, query)
+          let! (overlayResults : PT.Search.SearchResults) =
+            overlay.search (branchId, query)
+          let! (fallbackResults : PT.Search.SearchResults) =
+            fallback.search (branchId, query)
 
-          return
-            { PT.Search.SearchResults.submodules =
+          let combined : PT.Search.SearchResults =
+            { submodules =
                 List.append overlayResults.submodules fallbackResults.submodules
               types = List.append overlayResults.types fallbackResults.types
               values = List.append overlayResults.values fallbackResults.values
               fns = List.append overlayResults.fns fallbackResults.fns }
+          return combined
         }
 
     init =
-      uply {
+      task {
         do! overlay.init
         do! fallback.init
       } }

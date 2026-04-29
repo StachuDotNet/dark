@@ -1251,18 +1251,12 @@ module PackageManager =
     : RT.PackageManager =
     let toPT (RT.Hash h) : PT.Hash = PT.Hash h
     { getType =
-        fun id ->
-          pm.getType (toPT id)
-          |> Ply.toTask
-          |> Task.map (Option.map PackageType.toRT)
+        fun id -> pm.getType (toPT id) |> Task.map (Option.map PackageType.toRT)
       getValue =
         fun id ->
           pm.getValue (toPT id)
-          |> Ply.toTask
           |> Task.map (Option.map (PackageValue.toRT builtinValues))
-      getFn =
-        fun id ->
-          pm.getFn (toPT id) |> Ply.toTask |> Task.map (Option.map PackageFn.toRT)
+      getFn = fun id -> pm.getFn (toPT id) |> Task.map (Option.map PackageFn.toRT)
 
       // PT PackageManager has no blob channel — it's purely location-
       // based name resolution. Transient wrappers return None; the
@@ -1274,7 +1268,7 @@ module PackageManager =
       // wrappers (tests, in-memory flows) have no branch chain anyway.
       isHarmful = fun _ _ -> Task.FromResult false
 
-      init = pm.init |> Ply.toTask }
+      init = pm.init }
 
 
 // --

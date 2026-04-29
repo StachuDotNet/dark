@@ -119,7 +119,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [ hashDval ] ->
           task {
             let hash = PT2DT.Hash.fromDT hashDval
-            let! result = pm.getType hash |> Ply.toTask
+            let! result = pm.getType hash
             return result |> Option.map PT2DT.PackageType.toDT |> Dval.option optType
           }
 
@@ -175,7 +175,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [ hashDval ] ->
           task {
             let hash = PT2DT.Hash.fromDT hashDval
-            let! result = pm.getValue hash |> Ply.toTask
+            let! result = pm.getValue hash
             return
               result
               |> Option.map PT2DT.PackageValue.toDT
@@ -301,7 +301,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [ hashDval ] ->
           task {
             let hash = PT2DT.Hash.fromDT hashDval
-            let! result = pm.getFn hash |> Ply.toTask
+            let! result = pm.getFn hash
             return
               result
               |> Option.map PT2DT.PackageFn.toDT
@@ -353,7 +353,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [ DUuid branchId; hashDval ] ->
           task {
             let hash = PT2DT.Hash.fromDT hashDval
-            let! result = pm.getTypeLocations branchId hash |> Ply.toTask
+            let! result = pm.getTypeLocations branchId hash
             return
               result
               |> List.map PT2DT.PackageLocation.toDT
@@ -378,7 +378,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [ DUuid branchId; hashDval ] ->
           task {
             let hash = PT2DT.Hash.fromDT hashDval
-            let! result = pm.getValueLocations branchId hash |> Ply.toTask
+            let! result = pm.getValueLocations branchId hash
             return
               result
               |> List.map PT2DT.PackageLocation.toDT
@@ -403,7 +403,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [ DUuid branchId; hashDval ] ->
           task {
             let hash = PT2DT.Hash.fromDT hashDval
-            let! result = pm.getFnLocations branchId hash |> Ply.toTask
+            let! result = pm.getFnLocations branchId hash
             return
               result
               |> List.map PT2DT.PackageLocation.toDT

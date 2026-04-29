@@ -216,7 +216,12 @@ let rec private reResolveTypeRef
       return PT.TTuple(first, second, rest)
 
     | PT.TCustomType(nr, typeArgs) ->
-      let! nr = reResolveTypeName branchId contextModules pm.findType nr
+      let! nr =
+        reResolveTypeName
+          branchId
+          contextModules
+          (fun args -> pm.findType args |> Ply.ofTask)
+          nr
       let! typeArgs =
         Ply.List.mapSequentially
           (reResolveTypeRef branchId contextModules pm)
@@ -290,7 +295,12 @@ and private reResolvePipeExpr
       return PT.EPipeInfix(id, infix, rhs)
 
     | PT.EPipeFnCall(id, nr, typeArgs, args) ->
-      let! nr = reResolveFnName branchId contextModules pm.findFn nr
+      let! nr =
+        reResolveFnName
+          branchId
+          contextModules
+          (fun args -> pm.findFn args |> Ply.ofTask)
+          nr
       let! typeArgs =
         Ply.List.mapSequentially
           (reResolveTypeRef branchId contextModules pm)
@@ -300,7 +310,12 @@ and private reResolvePipeExpr
       return PT.EPipeFnCall(id, nr, typeArgs, args)
 
     | PT.EPipeEnum(id, nr, caseName, fields) ->
-      let! nr = reResolveTypeName branchId contextModules pm.findType nr
+      let! nr =
+        reResolveTypeName
+          branchId
+          contextModules
+          (fun args -> pm.findType args |> Ply.ofTask)
+          nr
       let! fields =
         Ply.List.mapSequentially (reResolveExpr branchId contextModules pm) fields
       return PT.EPipeEnum(id, nr, caseName, fields)
@@ -413,7 +428,12 @@ and private reResolveExpr
       return PT.EApply(id, fnExpr, typeArgs, args)
 
     | PT.EFnName(id, nr) ->
-      let! nr = reResolveFnName branchId contextModules pm.findFn nr
+      let! nr =
+        reResolveFnName
+          branchId
+          contextModules
+          (fun args -> pm.findFn args |> Ply.ofTask)
+          nr
       return PT.EFnName(id, nr)
 
     | PT.ELambda(id, pats, body) ->
@@ -426,7 +446,12 @@ and private reResolveExpr
       return PT.EInfix(id, infix, lhs, rhs)
 
     | PT.ERecord(id, nr, typeArgs, fields) ->
-      let! nr = reResolveTypeName branchId contextModules pm.findType nr
+      let! nr =
+        reResolveTypeName
+          branchId
+          contextModules
+          (fun args -> pm.findType args |> Ply.ofTask)
+          nr
       let! typeArgs =
         Ply.List.mapSequentially
           (reResolveTypeRef branchId contextModules pm)
@@ -458,7 +483,12 @@ and private reResolveExpr
       return PT.ERecordUpdate(id, record, updates)
 
     | PT.EEnum(id, nr, typeArgs, caseName, fields) ->
-      let! nr = reResolveTypeName branchId contextModules pm.findType nr
+      let! nr =
+        reResolveTypeName
+          branchId
+          contextModules
+          (fun args -> pm.findType args |> Ply.ofTask)
+          nr
       let! typeArgs =
         Ply.List.mapSequentially
           (reResolveTypeRef branchId contextModules pm)
@@ -468,7 +498,12 @@ and private reResolveExpr
       return PT.EEnum(id, nr, typeArgs, caseName, fields)
 
     | PT.EValue(id, nr) ->
-      let! nr = reResolveValueName branchId contextModules pm.findValue nr
+      let! nr =
+        reResolveValueName
+          branchId
+          contextModules
+          (fun args -> pm.findValue args |> Ply.ofTask)
+          nr
       return PT.EValue(id, nr)
 
     | PT.EStatement(id, first, next) ->
