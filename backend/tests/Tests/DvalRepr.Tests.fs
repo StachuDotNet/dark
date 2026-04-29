@@ -23,8 +23,8 @@ let toRepr (dval : RT.Dval) : string =
       builtins
       pmRT
       Exe.noTracing
-      (fun _ _ _ _ -> uply { return () })
-      (fun _ _ _ _ -> uply { return () })
+      (fun _ _ _ _ -> task { return () })
+      (fun _ _ _ _ -> task { return () })
       PT.mainBranchId
       { canvasID = System.Guid.NewGuid()
         internalFnsAllowed = false

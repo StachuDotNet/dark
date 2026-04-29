@@ -87,7 +87,7 @@ let state (packageManager : RT.PackageManager) =
     =
     // let metadata = extraMetadata state @ metadata
     // LibService.Rollbar.notify msg metadata
-    uply { return () }
+    task { return () }
 
   let sendException
     (_ : RT.ExecutionState)
@@ -95,7 +95,7 @@ let state (packageManager : RT.PackageManager) =
     (metadata : Metadata)
     (exn : exn)
     =
-    uply { printException "Internal error" metadata exn }
+    task { printException "Internal error" metadata exn }
 
   Exe.createState
     builtins

@@ -79,8 +79,8 @@ let freshState () : RT.ExecutionState =
     builtins
     TestUtils.TestUtils.pmRT
     LibExecution.Execution.noTracing
-    (fun _ _ _ _ -> uply { return () })
-    (fun _ _ _ _ -> uply { return () })
+    (fun _ _ _ _ -> task { return () })
+    (fun _ _ _ _ -> task { return () })
     LibExecution.ProgramTypes.mainBranchId
     { canvasID = System.Guid.NewGuid()
       internalFnsAllowed = false

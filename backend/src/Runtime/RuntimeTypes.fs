@@ -1656,9 +1656,9 @@ and TestContext =
     postTestExecutionHook : TestContext -> unit }
 
 
-and ExceptionReporter = ExecutionState -> VMState -> Metadata -> exn -> Ply<unit>
+and ExceptionReporter = ExecutionState -> VMState -> Metadata -> exn -> Task<unit>
 
-and Notifier = ExecutionState -> VMState -> string -> Metadata -> Ply<unit>
+and Notifier = ExecutionState -> VMState -> string -> Metadata -> Task<unit>
 
 /// All state set when starting an execution; non-changing
 /// (as opposed to the VMState, which changes as the execution progresses)
@@ -2012,8 +2012,8 @@ module TypeReference =
 
 let consoleReporter : ExceptionReporter =
   fun _state _vm (metadata : Metadata) (exn : exn) ->
-    uply { printException "runtime-error" metadata exn }
+    task { printException "runtime-error" metadata exn }
 
 let consoleNotifier : Notifier =
   fun _state _vm msg tags ->
-    uply { print $"A notification happened in the runtime:\n  {msg}\n  {tags}\n\n" }
+    task { print $"A notification happened in the runtime:\n  {msg}\n  {tags}\n\n" }
