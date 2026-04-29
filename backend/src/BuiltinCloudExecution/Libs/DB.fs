@@ -127,15 +127,16 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ value; DString key; DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
 
-            let! id = UserDB.set exeState vm.threadID true db key value
+            let! id = UserDB.set exeState vm.threadID true db key value |> Ply.toTask
 
             match id with
             | Ok _id -> return value
             | Error rte -> return raiseUntargetedRTE rte
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -150,11 +151,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DString key; DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
-            let! result = UserDB.getOption exeState vm.threadID db key
+            let! result = UserDB.getOption exeState vm.threadID db key |> Ply.toTask
             return TypeChecker.DvalCreator.option vm.threadID VT.unknownDbTODO result
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -172,7 +174,7 @@ let fns () : List<BuiltInFn> =
         let optType = KTList valueType
         (function
         | exeState, vm, _, [ DList(_, keys); DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
 
             let tst = Map.empty // TODO idk if this is reasonable
@@ -183,6 +185,7 @@ let fns () : List<BuiltInFn> =
                 | DString s -> s
                 | dv -> Exception.raiseInternal "keys aren't strings" [ "key", dv ])
               |> UserDB.getMany exeState vm.threadID tst db
+              |> Ply.toTask
 
             if List.length items = List.length keys then
               return
@@ -192,6 +195,7 @@ let fns () : List<BuiltInFn> =
             else
               return Dval.optionNone optType
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -207,7 +211,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DList(_, keys); DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
 
             let tst = Map.empty // TODO idk if this is reasonable
@@ -218,9 +222,11 @@ let fns () : List<BuiltInFn> =
                 | DString s -> s
                 | dv -> Exception.raiseInternal "keys aren't strings" [ "key", dv ])
               |> UserDB.getMany exeState vm.threadID tst db
+              |> Ply.toTask
             return
               result |> TypeChecker.DvalCreator.list vm.threadID VT.unknownDbTODO
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -236,7 +242,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DList(_, keys); DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
 
             let tst = Map.empty // TODO idk if this is reasonable
@@ -247,8 +253,10 @@ let fns () : List<BuiltInFn> =
                 | DString s -> s
                 | dv -> Exception.raiseInternal "keys aren't strings" [ "key", dv ])
               |> UserDB.getManyWithKeys exeState vm.threadID tst db
+              |> Ply.toTask
             return TypeChecker.DvalCreator.dict vm.threadID VT.unknownDbTODO result
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -263,11 +271,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, _, [ DString key; DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             do! UserDB.delete exeState db key
             return DUnit
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -282,11 +291,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, _, [ DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             do! UserDB.deleteAll exeState db
             return DUnit
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -301,15 +311,16 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             let tst = Map.empty // TODO idk if this is reasonable
-            let! results = UserDB.getAll exeState vm.threadID tst db
+            let! results = UserDB.getAll exeState vm.threadID tst db |> Ply.toTask
             return
               results
               |> List.map snd
               |> TypeChecker.DvalCreator.list vm.threadID VT.unknownDbTODO
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -325,12 +336,13 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             let tst = Map.empty // TODO idk if this is reasonable
-            let! result = UserDB.getAll exeState vm.threadID tst db
+            let! result = UserDB.getAll exeState vm.threadID tst db |> Ply.toTask
             return TypeChecker.DvalCreator.dict vm.threadID VT.unknownDbTODO result
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -345,11 +357,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, _, [ DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             let! (count : int) = UserDB.count exeState db
             return count |> int64 |> DInt64
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -379,11 +392,12 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, _, _, [ DDB dbname ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
             let! results = UserDB.getAllKeys exeState db
             return results |> List.map DString |> Dval.list KTString
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -401,9 +415,9 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DDB dbname; DApplicable(AppLambda appLambda) ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
-            let! compiled = compileQueryLambda exeState appLambda
+            let! compiled = compileQueryLambda exeState appLambda |> Ply.toTask
             return!
               UserDB.executeCompiledQuery
                 exeState
@@ -412,7 +426,9 @@ let fns () : List<BuiltInFn> =
                 UserDB.DBQueryAll
                 compiled.sql
                 compiled.paramValues
+              |> Ply.toTask
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = QueryFunction
       previewable = Impure
@@ -428,9 +444,9 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DDB dbname; DApplicable(AppLambda appLambda) ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
-            let! compiled = compileQueryLambda exeState appLambda
+            let! compiled = compileQueryLambda exeState appLambda |> Ply.toTask
             return!
               UserDB.executeCompiledQuery
                 exeState
@@ -439,7 +455,9 @@ let fns () : List<BuiltInFn> =
                 UserDB.DBQueryWithKey
                 compiled.sql
                 compiled.paramValues
+              |> Ply.toTask
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = QueryFunction
       previewable = Impure
@@ -455,9 +473,9 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DDB dbname; DApplicable(AppLambda appLambda) ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
-            let! compiled = compileQueryLambda exeState appLambda
+            let! compiled = compileQueryLambda exeState appLambda |> Ply.toTask
             return!
               UserDB.executeCompiledQuery
                 exeState
@@ -466,7 +484,9 @@ let fns () : List<BuiltInFn> =
                 UserDB.DBQueryOne
                 compiled.sql
                 compiled.paramValues
+              |> Ply.toTask
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = QueryFunction
       previewable = Impure
@@ -482,9 +502,9 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [ DDB dbname; DApplicable(AppLambda appLambda) ] ->
-          uply {
+          task {
             let db = exeState.program.dbs[dbname]
-            let! compiled = compileQueryLambda exeState appLambda
+            let! compiled = compileQueryLambda exeState appLambda |> Ply.toTask
             return!
               UserDB.executeCompiledQuery
                 exeState
@@ -493,7 +513,9 @@ let fns () : List<BuiltInFn> =
                 UserDB.DBQueryCount
                 compiled.sql
                 compiled.paramValues
+              |> Ply.toTask
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = QueryFunction
       previewable = Impure
