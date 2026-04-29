@@ -23,7 +23,6 @@
     <ProjectReference Include="../../src/LibSerialization/LibSerialization.fsproj" />
     <ProjectReference Include="../../src/BuiltinDB/BuiltinDB.fsproj" />
     <ProjectReference Include="../../src/BuiltinDarkInternal/BuiltinDarkInternal.fsproj" />
-    <ProjectReference Include="../../src/LibCloudExecution/LibCloudExecution.fsproj" />
     <!-- BwdServer disabled — restore when HTTP server functionality returns. -->
     <!-- <ProjectReference Include="../../src/BwdServer/BwdServer.fsproj" /> -->
 

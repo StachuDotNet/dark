@@ -278,6 +278,86 @@ let defaultConfig =
     telemetryAddException = fun _ _ -> () }
 
 
+/// SSRF-protected configuration: blocks access to internal IP ranges, the
+/// Instance Metadata service, localhost, and other private/link-local addresses.
+/// Suitable for any context where Dark code might run with semi-trusted input
+/// (a hosted darklang serve runtime, a CI CLI invocation processing untrusted
+/// HTTP urls, etc.). Originally lived in LibCloudExecution.HttpClient.
+module LocalAccess =
+
+  // https://datatracker.ietf.org/doc/html/rfc1918#section-3
+  let private ten = System.Net.IPNetwork.Parse "10.0.0.0/8"
+  let private oneSevenTwo = System.Net.IPNetwork.Parse "172.16.0.0/12"
+  let private oneNineTwo = System.Net.IPNetwork.Parse "192.168.0.0/16"
+
+  // https://datatracker.ietf.org/doc/html/rfc6598#section-7
+  let private oneHundred = System.Net.IPNetwork.Parse "100.64.0.0/10"
+
+  // GCP Cloud Run internal-route ranges
+  let private oneNineNineFour = System.Net.IPNetwork.Parse "199.36.153.4/30"
+  let private oneNineNineEight = System.Net.IPNetwork.Parse "199.36.153.8/30"
+
+  // 169.254.0.0/16 — link-local
+  let private oneSixNine = System.Net.IPNetwork.Parse "169.254.0.0/16"
+
+  let private zero = System.Net.IPAddress.Parse "0.0.0.0"
+
+  let bannedIPv4 (ip : System.Net.IPAddress) : bool =
+    System.Net.IPAddress.IsLoopback ip
+    || ten.Contains ip
+    || oneSevenTwo.Contains ip
+    || oneNineTwo.Contains ip
+    || oneHundred.Contains ip
+    || oneNineNineFour.Contains ip
+    || oneNineNineEight.Contains ip
+    || oneSixNine.Contains ip
+    || zero = ip
+
+  let bannedIp (ip : System.Net.IPAddress) : bool =
+    if ip.AddressFamily = System.Net.Sockets.AddressFamily.InterNetworkV6 then
+      if ip.IsIPv4MappedToIPv6 then
+        bannedIPv4 (ip.MapToIPv4())
+      else
+        ip.IsIPv6LinkLocal
+        || ip.IsIPv6SiteLocal
+        || System.Net.IPAddress.IsLoopback ip
+    else if ip.AddressFamily = System.Net.Sockets.AddressFamily.InterNetwork then
+      bannedIPv4 ip
+    else
+      true // unknown family, ban
+
+  let bannedHost (host : string) =
+    let host = host.Trim().ToLower()
+    let badIP =
+      let mutable ip = null
+      if System.Net.IPAddress.TryParse(host, &ip) then bannedIp ip else false
+    badIP
+    || host = "localhost"
+    || host = "metadata"
+    || host = "metadata.google.internal"
+
+  /// Disallow headers that access GCP's Instance Metadata service
+  let hasInstanceMetadataHeader (headers : List<string * string>) =
+    let eq = String.equalsCaseInsensitive
+    headers
+    |> List.find (fun (k, v) ->
+      let (k, v) = (String.trim k, String.trim v)
+      (eq k "Metadata-Flavor" && eq v "Google")
+      || (eq k "X-Google-Metadata-Request" && eq v "True"))
+    |> Option.isSome
+
+let protectedConfig : Configuration =
+  { timeoutInMs = 30000
+    allowedIP = (fun ip -> not <| LocalAccess.bannedIp ip)
+    allowedHost = (fun host -> not <| LocalAccess.bannedHost host)
+    allowedScheme = (fun scheme -> scheme = "https" || scheme = "http")
+    allowedHeaders =
+      (fun headers -> not <| LocalAccess.hasInstanceMetadataHeader headers)
+    telemetryInitialize = (fun f -> f ())
+    telemetryAddTag = (fun _ _ -> ())
+    telemetryAddException = (fun _ _ -> ()) }
+
+
 // ————————————————————————————————————————————————————————————
 // Shared request-prep helpers used by both the buffered and the
 // streaming builtins. Pulled out so that the duplication between

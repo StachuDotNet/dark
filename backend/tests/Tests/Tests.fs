@@ -29,9 +29,7 @@ let initSerializers () =
 let main (args : string array) : int =
   try
     let name = "Tests"
-    LibService.Init.init name
-    (LibCloud.Init.init name).Result
-    (LibCloudExecution.Init.init name).Result
+    printTime $"Initing {name}"
 
     // Init the unified event log so test-suite milestones land alongside
     // build-server / CLI events. Per-case detail still goes to fsharp-tests.log
