@@ -1,7 +1,6 @@
 module Prelude
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 // ----------------------
 // Fix a few functions everywhere
@@ -45,9 +44,6 @@ type NEList<'a> = NEList.NEList<'a>
 type Metadata = Exception.Metadata
 
 type HashSet<'a> = HashSet.HashSet<'a>
-
-type Ply<'a> = Ply.Ply<'a>
-let uply = Ply.uply
 
 type uuid = System.Guid
 type CanvasID = uuid

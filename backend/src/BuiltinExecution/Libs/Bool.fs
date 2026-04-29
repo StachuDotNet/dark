@@ -1,7 +1,6 @@
 module BuiltinExecution.Libs.Bool
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts

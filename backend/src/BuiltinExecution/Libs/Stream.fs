@@ -13,7 +13,6 @@
 module BuiltinExecution.Libs.Stream
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 

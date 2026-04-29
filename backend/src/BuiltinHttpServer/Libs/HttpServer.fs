@@ -14,7 +14,6 @@ module BuiltinHttpServer.Libs.HttpServer
 
 open System
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Hosting

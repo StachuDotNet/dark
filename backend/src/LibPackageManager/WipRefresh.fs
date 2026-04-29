@@ -7,7 +7,6 @@
 module LibPackageManager.WipRefresh
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 
@@ -17,6 +16,41 @@ module DR = LibPackageManager.DeferredResolver
 
 
 /// Re-resolve all items in Add+SetName pairs, using the location for context
+let rec private processOps
+  (pm : PT.PackageManager)
+  (branchId : PT.BranchId)
+  (result : ResizeArray<PT.PackageOp>)
+  (remaining : List<PT.PackageOp>)
+  : Task<unit> =
+  task {
+    match remaining with
+    | PT.PackageOp.AddType t :: PT.PackageOp.SetName(loc,
+                                                     (PT.PackageType _ as target)) :: rest ->
+      let! reResolved = DR.reResolveType pm branchId loc.owner loc.modules t
+      result.Add(PT.PackageOp.AddType reResolved)
+      result.Add(PT.PackageOp.SetName(loc, target))
+      do! processOps pm branchId result rest
+
+    | PT.PackageOp.AddFn f :: PT.PackageOp.SetName(loc, (PT.PackageFn _ as target)) :: rest ->
+      let! reResolved = DR.reResolveFn pm branchId loc.owner loc.modules f
+      result.Add(PT.PackageOp.AddFn reResolved)
+      result.Add(PT.PackageOp.SetName(loc, target))
+      do! processOps pm branchId result rest
+
+    | PT.PackageOp.AddValue v :: PT.PackageOp.SetName(loc,
+                                                      (PT.PackageValue _ as target)) :: rest ->
+      let! reResolved = DR.reResolveValue pm branchId loc.owner loc.modules v
+      result.Add(PT.PackageOp.AddValue reResolved)
+      result.Add(PT.PackageOp.SetName(loc, target))
+      do! processOps pm branchId result rest
+
+    | op :: rest ->
+      result.Add(op)
+      do! processOps pm branchId result rest
+
+    | [] -> ()
+  }
+
 let private reResolveAllItems
   (pm : PT.PackageManager)
   (branchId : PT.BranchId)
@@ -24,42 +58,7 @@ let private reResolveAllItems
   : Task<List<PT.PackageOp>> =
   task {
     let result = ResizeArray<PT.PackageOp>()
-
-    let rec processOps (remaining : List<PT.PackageOp>) =
-      task {
-        match remaining with
-        | PT.PackageOp.AddType t :: PT.PackageOp.SetName(loc,
-                                                         (PT.PackageType _ as target)) :: rest ->
-          let! reResolved = DR.reResolveType pm branchId loc.owner loc.modules t
-
-          result.Add(PT.PackageOp.AddType reResolved)
-          result.Add(PT.PackageOp.SetName(loc, target))
-          do! processOps rest
-
-        | PT.PackageOp.AddFn f :: PT.PackageOp.SetName(loc,
-                                                       (PT.PackageFn _ as target)) :: rest ->
-          let! reResolved = DR.reResolveFn pm branchId loc.owner loc.modules f
-
-          result.Add(PT.PackageOp.AddFn reResolved)
-          result.Add(PT.PackageOp.SetName(loc, target))
-          do! processOps rest
-
-        | PT.PackageOp.AddValue v :: PT.PackageOp.SetName(loc,
-                                                          (PT.PackageValue _ as target)) :: rest ->
-          let! reResolved = DR.reResolveValue pm branchId loc.owner loc.modules v
-
-          result.Add(PT.PackageOp.AddValue reResolved)
-          result.Add(PT.PackageOp.SetName(loc, target))
-          do! processOps rest
-
-        | op :: rest ->
-          result.Add(op)
-          do! processOps rest
-
-        | [] -> ()
-      }
-
-    do! processOps ops
+    do! processOps pm branchId result ops
     return result |> Seq.toList
   }
 

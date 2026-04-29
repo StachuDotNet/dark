@@ -9,7 +9,6 @@ module Tests.Blob
 open Expecto
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open TestUtils.TestUtils

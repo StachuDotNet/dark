@@ -8,7 +8,6 @@ module Tests.Stream
 open Expecto
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 

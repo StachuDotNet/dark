@@ -118,7 +118,6 @@ let fns () : List<BuiltInFn> =
               canvas.dbs
               |> Map.values
               |> Task.mapSequentially (fun (db : PT.DB.T) ->
-                // Task.mapSequentially callback — stays uply.
                 task {
                   let! typeName =
                     match db.typ with

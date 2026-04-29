@@ -14,7 +14,6 @@ let versions = [ "v0" ]
 open Expecto
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open System.IO
 open System.IO.Compression

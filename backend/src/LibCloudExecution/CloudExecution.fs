@@ -3,7 +3,6 @@
 /// Used by cloud services (bwdserver, etc.)
 module LibCloudExecution.CloudExecution
 
-open FSharp.Control.Tasks
 open System.Threading.Tasks
 
 open Prelude
@@ -54,11 +53,12 @@ let createState
         let! entrypoint = epToString (RT.CallStack.entrypoint callStack)
         let! lastCalled = epToString (RT.CallStack.last callStack)
 
-        return
+        let result : Metadata =
           [ ("entrypoint", entrypoint)
             ("lastCalled", lastCalled)
             ("traceID", traceID)
             ("canvasID", program.canvasID) ]
+        return result
       }
 
     let notify

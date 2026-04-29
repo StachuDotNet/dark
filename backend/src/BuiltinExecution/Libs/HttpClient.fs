@@ -52,7 +52,6 @@ open System.IO
 open System.Net.Http
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution
@@ -188,27 +187,29 @@ module BaseClient =
         (context : SocketsHttpConnectionContext)
         (cancellationToken : System.Threading.CancellationToken)
         : ValueTask<Stream> =
-        vtask {
-          try
-            // While this DNS call is expensive, it should be cached
-            let ips = System.Net.Dns.GetHostAddresses context.DnsEndPoint.Host
+        let inner =
+          task {
+            try
+              // While this DNS call is expensive, it should be cached
+              let ips = System.Net.Dns.GetHostAddresses context.DnsEndPoint.Host
 
-            if not (Array.forall config.allowedIP ips) then
-              // Use this to hide more specific errors when looking at loopback
-              Exception.raiseInternal "Could not connect" []
+              if not (Array.forall config.allowedIP ips) then
+                // Use this to hide more specific errors when looking at loopback
+                Exception.raiseInternal "Could not connect" []
 
-            let socket =
-              new System.Net.Sockets.Socket(
-                System.Net.Sockets.SocketType.Stream,
-                System.Net.Sockets.ProtocolType.Tcp
-              )
-            socket.NoDelay <- true
+              let socket =
+                new System.Net.Sockets.Socket(
+                  System.Net.Sockets.SocketType.Stream,
+                  System.Net.Sockets.ProtocolType.Tcp
+                )
+              socket.NoDelay <- true
 
-            do! socket.ConnectAsync(context.DnsEndPoint, cancellationToken)
-            return new System.Net.Sockets.NetworkStream(socket, true)
-          with :? System.ArgumentException ->
-            return Exception.raiseInternal "Could not connect" []
-        }
+              do! socket.ConnectAsync(context.DnsEndPoint, cancellationToken)
+              return new System.Net.Sockets.NetworkStream(socket, true) :> Stream
+            with :? System.ArgumentException ->
+              return Exception.raiseInternal "Could not connect" []
+          }
+        ValueTask<Stream>(inner)
       new SocketsHttpHandler(
         // Avoid DNS problems
         PooledConnectionIdleTimeout = System.TimeSpan.FromMinutes 5.0,
@@ -565,7 +566,6 @@ let fns (config : Configuration) : List<BuiltInFn> =
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
               reqHeaders
               |> Task.mapSequentially (fun item ->
-                // Task.mapSequentially callback — stays uply.
                 task {
                   match item with
                   | DTuple(DString k, DString v, []) ->
@@ -698,7 +698,6 @@ let fns (config : Configuration) : List<BuiltInFn> =
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
               reqHeaders
               |> Task.mapSequentially (fun item ->
-                // Task.mapSequentially callback — stays uply.
                 task {
                   match item with
                   | DTuple(DString k, DString v, []) ->

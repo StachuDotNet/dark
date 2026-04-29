@@ -4,7 +4,6 @@ module LibDB.Db
 // To be reviewed by someone with more DB expertise.
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 open Microsoft.Data.Sqlite
 open Fumble
 

@@ -191,7 +191,6 @@ let fns () : List<BuiltInFn> =
             let! results =
               hashes
               |> List.map (fun hash ->
-                // Task.flatten callback — stays uply.
                 task {
                   match! getLocationAny branchChain hash with
                   | Some loc -> return Some(hash, loc)

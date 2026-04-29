@@ -1,7 +1,6 @@
 module LibPackageManager.BranchOpPlayback
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution.ProgramTypes

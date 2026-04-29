@@ -1,7 +1,6 @@
 module LibPackageManager.ProgramTypes
 
 open System.Threading.Tasks
-open FSharp.Control.Tasks
 
 open Prelude
 open LibExecution.ProgramTypes
@@ -298,5 +297,7 @@ let search
       else
         Task.FromResult<List<PT.LocatedItem<PT.PackageFn.PackageFn>>> []
 
-    return { submodules = submodules; types = types; values = values; fns = fns }
+    let result : PT.Search.SearchResults =
+      { submodules = submodules; types = types; values = values; fns = fns }
+    return result
   }
