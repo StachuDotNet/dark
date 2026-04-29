@@ -751,8 +751,8 @@ let fns (config : Configuration) : List<BuiltInFn> =
                 // path. `Stream.newChunked` synthesises a
                 // byte-wise `next` from the same source so
                 // `streamNext` semantics are preserved.
-                let nextChunk (maxBytes : int) : Ply<Option<byte[]>> =
-                  uply {
+                let nextChunk (maxBytes : int) : Task<Option<byte[]>> =
+                  task {
                     let cap = max 1 maxBytes
                     let buf = Array.zeroCreate<byte> cap
                     let! n = responseStream.ReadAsync(buf, 0, cap)

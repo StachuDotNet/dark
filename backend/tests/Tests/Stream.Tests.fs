@@ -29,10 +29,10 @@ module RT2DT = LibExecution.RuntimeTypesToDarkTypes
 
 /// Pull-fn over a mutable list cell. Used to back streamOfList +
 /// streamImplOfList without duplicating the closure body.
-let private listPullFn (items : List<RT.Dval>) : (unit -> Ply<Option<RT.Dval>>) =
+let private listPullFn (items : List<RT.Dval>) : (unit -> Task<Option<RT.Dval>>) =
   let remaining = ref items
   fun () ->
-    uply {
+    task {
       match remaining.Value with
       | head :: tail ->
         remaining.Value <- tail
@@ -87,15 +87,15 @@ let private binaryRoundtrip
   let r = new System.IO.BinaryReader(new System.IO.MemoryStream(ms.ToArray()))
   read r
 
-let private intPredEven (dv : RT.Dval) : Ply<bool> =
-  uply {
+let private intPredEven (dv : RT.Dval) : Task<bool> =
+  task {
     match dv with
     | RT.DInt64 i -> return i % 2L = 0L
     | _ -> return false
   }
 
-let private intDouble (dv : RT.Dval) : Ply<RT.Dval> =
-  uply {
+let private intDouble (dv : RT.Dval) : Task<RT.Dval> =
+  task {
     match dv with
     | RT.DInt64 i -> return RT.DInt64(i * 2L)
     | _ -> return RT.DInt64 0L
@@ -296,8 +296,8 @@ let takeOverInfiniteSourceTerminates =
     // Producer counts up forever; Take must early-terminate without
     // pulling source past the limit.
     let counter = ref 0L
-    let next () : Ply<Option<RT.Dval>> =
-      uply {
+    let next () : Task<Option<RT.Dval>> =
+      task {
         counter.Value <- counter.Value + 1L
         return Some(RT.DInt64 counter.Value)
       }
@@ -335,8 +335,8 @@ let composedTransformsAreLazy =
     // [4, 8, 12]. Source pulled past 6 to find the third even, but not
     // unboundedly — proves the pipeline is pull-driven.
     let counter = ref 0L
-    let next () : Ply<Option<RT.Dval>> =
-      uply {
+    let next () : Task<Option<RT.Dval>> =
+      task {
         counter.Value <- counter.Value + 1L
         return Some(RT.DInt64 counter.Value)
       }
@@ -361,7 +361,7 @@ let composedTransformsAreLazy =
 let toValueTypeWalksTransforms =
   test "stream: Dval.toValueType returns the transform's element type" {
     let src = streamImplOfList [ RT.DInt64 1L ] VT.int64
-    let toString (_ : RT.Dval) : Ply<RT.Dval> = uply { return RT.DString "x" }
+    let toString (_ : RT.Dval) : Task<RT.Dval> = task { return RT.DString "x" }
     let s = wrap (RT.Mapped(src, toString, VT.string))
     Expect.equal
       (RT.Dval.toValueType s)
@@ -424,7 +424,7 @@ let gcSkipsFinalizerAfterStreamClose =
   test "stream: finalizer doesn't re-fire disposer when close already ran" {
     let disposeCount = ref 0
     let makeWeakRef () : System.WeakReference<RT.Dval> =
-      let next () : Ply<Option<RT.Dval>> = uply { return None }
+      let next () : Task<Option<RT.Dval>> = task { return None }
       let disposer () = disposeCount.Value <- disposeCount.Value + 1
       let dv = Stream.newFromIO VT.int64 next (Some disposer)
       // Replicate streamClose: flip disposed, walk impl chain.
@@ -454,10 +454,10 @@ let gcSkipsFinalizerAfterStreamClose =
 // the same source via newStreamChunked's synthesised `next`.
 
 /// A nextChunk callback that yields each entry of `buffers` once, then None.
-let private chunkPullFn (buffers : List<byte[]>) : (int -> Ply<Option<byte[]>>) =
+let private chunkPullFn (buffers : List<byte[]>) : (int -> Task<Option<byte[]>>) =
   let remaining = ref buffers
   fun (_ : int) ->
-    uply {
+    task {
       match remaining.Value with
       | head :: tail ->
         remaining.Value <- tail

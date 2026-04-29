@@ -70,10 +70,8 @@ let fns () : List<BuiltInFn> =
         | state, _, [ elemType ], [ DList(elemVT, items) ] ->
           task {
             let remaining = ref items
-            // The FromIO callback type is still `unit -> Ply<...>`, so
-            // nextFn stays uply (constrained by Stream.newFromIO's signature).
-            let nextFn () : Ply<Option<Dval>> =
-              uply {
+            let nextFn () : Task<Option<Dval>> =
+              task {
                 match remaining.Value with
                 | head :: tail ->
                   remaining.Value <- tail
@@ -123,9 +121,8 @@ let fns () : List<BuiltInFn> =
           task {
             let! elemType = resolveElemVT state outputType |> Ply.toTask
             let currentState = ref initialState
-            // FromIO callback stays uply (Stream.newFromIO signature).
-            let next () : Ply<Option<Dval>> =
-              uply {
+            let next () : Task<Option<Dval>> =
+              task {
                 let! result =
                   Exe.executeApplicable
                     state
@@ -293,10 +290,8 @@ let fns () : List<BuiltInFn> =
         | state, vm, [ _; outputType ], [ DStream(src, _, _); DApplicable app ] ->
           task {
             let! elemType = resolveElemVT state outputType |> Ply.toTask
-            // Mapped(src, fn, _) callback type is still `Dval -> Ply<Dval>`,
-            // so apply stays uply.
-            let apply (dv : Dval) : Ply<Dval> =
-              uply {
+            let apply (dv : Dval) : Task<Dval> =
+              task {
                 let! result = Exe.executeApplicable state app (NEList.singleton dv)
                 match result with
                 | Ok v -> return v
@@ -328,8 +323,8 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, vm, _, [ DStream(src, _, _); DApplicable app ] ->
-          let pred (dv : Dval) : Ply<bool> =
-            uply {
+          let pred (dv : Dval) : Task<bool> =
+            task {
               let! result = Exe.executeApplicable state app (NEList.singleton dv)
               match result with
               | Ok(DBool b) -> return b

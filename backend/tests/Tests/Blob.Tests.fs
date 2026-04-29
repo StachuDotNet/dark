@@ -520,7 +520,7 @@ let persistableRejectsEphemeralBlob =
 
 let persistableRejectsStream =
   test "isPersistable: DStream is not persistable" {
-    let next () : Ply<Option<RT.Dval>> = uply { return None }
+    let next () : Task<Option<RT.Dval>> = task { return None }
     let dv = Stream.newFromIO LibExecution.ValueType.int64 next None
     Expect.isFalse (Dval.isPersistable dv) "stream rejected"
     match Dval.nonPersistableReason dv with
@@ -545,7 +545,7 @@ let persistableRejectsNestedBadShapes =
       )
     Expect.isFalse (Dval.isPersistable list) "list with ephemeral blob rejected"
 
-    let next () : Ply<Option<RT.Dval>> = uply { return None }
+    let next () : Task<Option<RT.Dval>> = task { return None }
     let streamDv = Stream.newFromIO LibExecution.ValueType.int64 next None
     let typeName =
       RT.FQTypeName.fqPackage (LibExecution.PackageRefs.Type.Stdlib.option ())

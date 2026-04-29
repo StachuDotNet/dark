@@ -664,7 +664,7 @@ and [<NoComparison>] Dval =
 /// until the enclosing [DStream] is drained via `readStreamNext` or
 /// `readStreamChunk`.
 ///
-/// Mapped/Filtered hold pre-bound `Dval -> Ply<...>` closures rather
+/// Mapped/Filtered hold pre-bound `Dval -> Task<...>` closures rather
 /// than the raw [Applicable]. The builtin wrapper (Stream.map etc.)
 /// closes over `exeState`/`vmState` when constructing the closure, so
 /// the drain path in Dval.fs stays decoupled from Execution — Dval.fs
@@ -708,12 +708,12 @@ and [<CustomEquality; NoComparison>] StreamImpl =
   /// FileStream / etc.
   ///
   /// Optional `nextChunk` lets byte-stream producers avoid per-byte
-  /// Ply/Dval boxing. `nextChunk maxBytes` fills up to `maxBytes` into
-  /// a fresh byte[] and returns it (or None on exhaustion). Consumers
-  /// that want bulk bytes (`streamToBlob`, SSE-byte accumulator) take
-  /// this path; byte-by-byte `next` stays authoritative for element-
-  /// wise pulls (`streamNext` on `Stream<UInt8>`). Non-byte streams
-  /// leave this `None`.
+  /// state-machine/Dval boxing. `nextChunk maxBytes` fills up to
+  /// `maxBytes` into a fresh byte[] and returns it (or None on
+  /// exhaustion). Consumers that want bulk bytes (`streamToBlob`,
+  /// SSE-byte accumulator) take this path; byte-by-byte `next` stays
+  /// authoritative for element-wise pulls (`streamNext` on
+  /// `Stream<UInt8>`). Non-byte streams leave this `None`.
   ///
   /// TODO no backpressure: a producer faster than its consumer fills
   /// memory. Today HTTP is network-bounded and in-process producers
@@ -722,12 +722,12 @@ and [<CustomEquality; NoComparison>] StreamImpl =
   /// if anyone adds a "buffer N elements ahead" or "merge multiple
   /// streams" combinator.
   | FromIO of
-    next : (unit -> Ply<Option<Dval>>) *
+    next : (unit -> Task<Option<Dval>>) *
     elemType : ValueType *
     disposer : (unit -> unit) option *
-    nextChunk : (int -> Ply<Option<byte[]>>) option
-  | Mapped of src : StreamImpl * fn : (Dval -> Ply<Dval>) * elemType : ValueType
-  | Filtered of src : StreamImpl * pred : (Dval -> Ply<bool>)
+    nextChunk : (int -> Task<Option<byte[]>>) option
+  | Mapped of src : StreamImpl * fn : (Dval -> Task<Dval>) * elemType : ValueType
+  | Filtered of src : StreamImpl * pred : (Dval -> Task<bool>)
   | Take of src : StreamImpl * n : int64 * remaining : int64 ref
   | Concat of streams : StreamImpl list ref
 

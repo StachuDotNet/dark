@@ -75,7 +75,7 @@ let wrapImpl (impl : StreamImpl) : Dval =
 /// efficiently yield a whole chunk per pull.
 let newFromIO
   (elemType : ValueType)
-  (next : unit -> Ply.Ply<Option<Dval>>)
+  (next : unit -> Task<Option<Dval>>)
   (disposer : (unit -> unit) option)
   : Dval =
   wrapImpl (FromIO(next, elemType, disposer, None))
@@ -92,15 +92,15 @@ let newFromIO
 /// chunk buffer.
 let newChunked
   (elemType : ValueType)
-  (nextChunk : int -> Ply.Ply<Option<byte[]>>)
+  (nextChunk : int -> Task<Option<byte[]>>)
   (disposer : (unit -> unit) option)
   : Dval =
   // Maintain a small carry buffer so single-byte `next` pulls can
   // be served from the chunks that `nextChunk` returned.
   let carry = ref [||]
   let carryPos = ref 0
-  let next () : Ply.Ply<Option<Dval>> =
-    uply {
+  let next () : Task<Option<Dval>> =
+    task {
       if carryPos.Value >= carry.Value.Length then
         // Refill from the underlying chunked producer. 8 KB mirrors
         // the socket-read buffer size we use across the codebase.
@@ -121,10 +121,6 @@ let newChunked
         carryPos.Value <- carryPos.Value + 1
         return Some(DUInt8 b)
     }
-  // The FromIO `next` field still has type `unit -> Ply<...>` per its
-  // declaration in RuntimeTypes (consumers across the codebase still
-  // produce Ply). When pullImpl reads it, it bridges back to Task via
-  // Ply.toTask. Cascading the FromIO type is a later chunk.
   wrapImpl (FromIO(next, elemType, disposer, Some nextChunk))
 
 
@@ -136,24 +132,20 @@ let newChunked
 let rec private pullImpl (impl : StreamImpl) : Task<Option<Dval>> =
   task {
     match impl with
-    | FromIO(next, _elemType, _disposer, _nextChunk) ->
-      // FromIO.next still produces Ply (its consumers across the
-      // codebase haven't been swapped yet). Bridge to Task here.
-      return! next () |> Ply.toTask
+    | FromIO(next, _elemType, _disposer, _nextChunk) -> return! next ()
 
     | Mapped(src, fn, _elemType) ->
       let! upstream = pullImpl src
       match upstream with
       | None -> return None
       | Some v ->
-        // fn produces Ply (StreamImpl.Mapped's fn type is unchanged).
-        let! mapped = fn v |> Ply.toTask
+        let! mapped = fn v
         return Some mapped
 
     | Filtered(src, pred) ->
       // Pull from source until the predicate accepts or the source
       // runs dry. Written as a mutable loop rather than tail recursion
-      // so a long rejection run doesn't blow the Ply chain.
+      // so a long rejection run doesn't blow the state-machine chain.
       let mutable result : Option<Dval> = None
       let mutable keepGoing = true
       while keepGoing do
@@ -161,7 +153,7 @@ let rec private pullImpl (impl : StreamImpl) : Task<Option<Dval>> =
         match upstream with
         | None -> keepGoing <- false
         | Some v ->
-          let! matches = pred v |> Ply.toTask
+          let! matches = pred v
           if matches then
             result <- Some v
             keepGoing <- false
@@ -207,7 +199,7 @@ let rec private pullImpl (impl : StreamImpl) : Task<Option<Dval>> =
 /// [None] (single-consumer — once drained, stays drained).
 ///
 /// No thread-affine lock: `pullImpl` awaits inside `fn v` / `pred v`
-/// (via `Exe.executeApplicable`) and Ply continuations can resume on
+/// (via `Exe.executeApplicable`) and Task continuations can resume on
 /// a different thread, which makes `Monitor.Exit` throw
 /// `SynchronizationLockException`. We rely on the single-threaded
 /// Dark VM model for ordering instead — concurrent consumers of the
@@ -216,18 +208,14 @@ let rec private pullImpl (impl : StreamImpl) : Task<Option<Dval>> =
 /// TODO LATENT BUG: the single-consumer invariant is unenforced.
 /// `disposed` only short-circuits AFTER drain; two callers entering
 /// `readNext` concurrently on the same DStream interleave silently.
-/// Cheap fix: a semaphore-with-permit-1 + raise on contention.
-/// Proper fix: a Ply-aware lock that survives continuation awaits —
-/// that's a Ply-internals refactor. Nothing in the codebase shares a
-/// DStream across consumers today, but the type system doesn't
-/// prevent it.
+/// Cheap fix: a `SemaphoreSlim.WaitAsync` permit-1 (planned T.15).
 ///
-/// TODO per-element Ply continuation cost: every `next` allocates a
+/// TODO per-element state-machine cost: every `next` allocates a
 /// state machine. A 1000-element pipeline with three transforms is
 /// ~3000 allocations. The chunked `nextChunk` fast path covers byte
-/// streams; element-wise streams pay full cost. Real fix is replacing
-/// Ply with something cheaper — either a custom `Future<'a>` struct
-/// or a CPS interpreter with a fiber scheduler.
+/// streams; element-wise streams pay full cost. A future iteration
+/// could replace `Task<'a>` on this hot path with a custom
+/// `Future<'a>` struct or a CPS interpreter with a fiber scheduler.
 let readNext (dv : Dval) : Task<Option<Dval>> =
   task {
     match dv with
@@ -265,9 +253,7 @@ let readChunk (maxBytes : int) (dv : Dval) : Task<Option<byte[]>> =
       else
         match impl with
         | FromIO(_, _, _, Some nextChunk) ->
-          // nextChunk's signature is still `int -> Ply<...>` per
-          // RuntimeTypes; bridge to Task via Ply.toTask.
-          let! chunk = nextChunk maxBytes |> Ply.toTask
+          let! chunk = nextChunk maxBytes
           match chunk with
           | Some buf when buf.Length > 0 -> return Some buf
           | _ ->
