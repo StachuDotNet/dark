@@ -2,6 +2,8 @@
 /// PackageRefs.fs reads this file at startup.
 module LibPackageManager.PackageRefsGenerator
 
+open System.Threading.Tasks
+
 open Prelude
 
 open Fumble
@@ -25,8 +27,8 @@ let private sourceTreePath =
 
 /// Query the DB for all current Darklang-owned locations and write
 /// `package-ref-hashes.txt` in the source tree.
-let generate () : Ply<unit> =
-  uply {
+let generate () : Task<unit> =
+  task {
     // Collect all referenced items from PackageRefs _lookup maps
     let typeRefKeys =
       PackageRefs.Type._lookup

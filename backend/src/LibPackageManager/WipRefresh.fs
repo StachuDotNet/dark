@@ -30,8 +30,7 @@ let private reResolveAllItems
         match remaining with
         | PT.PackageOp.AddType t :: PT.PackageOp.SetName(loc,
                                                          (PT.PackageType _ as target)) :: rest ->
-          let! reResolved =
-            DR.reResolveType pm branchId loc.owner loc.modules t |> Ply.toTask
+          let! reResolved = DR.reResolveType pm branchId loc.owner loc.modules t
 
           result.Add(PT.PackageOp.AddType reResolved)
           result.Add(PT.PackageOp.SetName(loc, target))
@@ -39,8 +38,7 @@ let private reResolveAllItems
 
         | PT.PackageOp.AddFn f :: PT.PackageOp.SetName(loc,
                                                        (PT.PackageFn _ as target)) :: rest ->
-          let! reResolved =
-            DR.reResolveFn pm branchId loc.owner loc.modules f |> Ply.toTask
+          let! reResolved = DR.reResolveFn pm branchId loc.owner loc.modules f
 
           result.Add(PT.PackageOp.AddFn reResolved)
           result.Add(PT.PackageOp.SetName(loc, target))
@@ -48,8 +46,7 @@ let private reResolveAllItems
 
         | PT.PackageOp.AddValue v :: PT.PackageOp.SetName(loc,
                                                           (PT.PackageValue _ as target)) :: rest ->
-          let! reResolved =
-            DR.reResolveValue pm branchId loc.owner loc.modules v |> Ply.toTask
+          let! reResolved = DR.reResolveValue pm branchId loc.owner loc.modules v
 
           result.Add(PT.PackageOp.AddValue reResolved)
           result.Add(PT.PackageOp.SetName(loc, target))

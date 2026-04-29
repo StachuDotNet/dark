@@ -52,7 +52,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         function
         | _, _, _, [ DUnit ] ->
           task {
-            let! stats = LibPackageManager.Stats.get () |> Ply.toTask
+            let! (stats : LibPackageManager.Stats.Stats) =
+              LibPackageManager.Stats.get ()
 
             return
               DRecord(
