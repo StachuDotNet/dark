@@ -10,7 +10,7 @@ module PT = LibExecution.ProgramTypes
 module PTParser = LibExecution.ProgramTypesParser
 module RT = LibExecution.RuntimeTypes
 
-open LibCloud.Routing
+open LibPackageManager.Routing
 
 let sanitizeUrlPath =
   testMany

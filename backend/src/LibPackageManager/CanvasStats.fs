@@ -1,5 +1,5 @@
 /// Non-execution analysis
-module LibCloud.Stats
+module LibPackageManager.CanvasStats
 
 open System.Threading.Tasks
 open FSharp.Control.Tasks

@@ -4,7 +4,7 @@
 ///
 /// In charge of extracting out any URL parameters along the way
 /// (i.e. if `/hello/:name` is defined, and you go to `/hello/john`)
-module LibCloud.Routing
+module LibPackageManager.Routing
 
 open FSharp.Control.Tasks
 open System.Threading.Tasks

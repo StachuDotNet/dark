@@ -8,8 +8,8 @@ open Prelude
 
 open TestUtils.TestUtils
 
-module File = LibCloud.File
-module Config = LibCloud.Config
+module File = LibPackageManager.File
+module Config = LibPackageManager.CanvasConfig
 
 module PT = LibExecution.ProgramTypes
 module RT = LibExecution.RuntimeTypes

@@ -1,5 +1,5 @@
 /// Supports the storage (CRUD) of canvas-level user secrets
-module LibCloud.Secret
+module LibPackageManager.Secret
 
 open System.Threading.Tasks
 open FSharp.Control.Tasks

@@ -1,5 +1,5 @@
 /// Tracing for real execution
-module LibCloud.Tracing
+module LibPackageManager.Tracing
 
 open Fumble
 

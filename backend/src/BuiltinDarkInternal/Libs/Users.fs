@@ -23,7 +23,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString name ] ->
           uply {
-            let! result = LibCloud.Account.createUser name
+            let! result = LibPackageManager.Account.createUser name
             match result with
             | Ok userID -> return resultOk (DUuid userID)
             | Error msg -> return resultError (DString msg)

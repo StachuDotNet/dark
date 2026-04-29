@@ -16,7 +16,7 @@ let fnRenames : Builtin.FnRenames =
   // eg: fn "Http" "respond" 0, fn "Http" "response" 0
   []
 
-// only accessible to the LibCloud.Config.allowedDarkInternalCanvasID canvas
+// only accessible to the LibPackageManager.CanvasConfig.allowedDarkInternalCanvasID canvas
 let internalFn (f : BuiltInFnSig) : BuiltInFnSig =
   (fun (exeState, vmState, typeArgs, args) ->
     uply {

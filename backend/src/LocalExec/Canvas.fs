@@ -90,7 +90,7 @@ let loadFromDisk
     // TODO this doesn't purge any added types/vals/fns from PM...
     // maybe we should?
     do! purgeDataFromInternalSqlTables canvasID
-    do! LibCloud.Canvas.createWithExactID canvasID None domain
+    do! LibPackageManager.Canvas.createWithExactID canvasID None domain
 
     let! tls =
       uply {
@@ -126,12 +126,12 @@ let loadFromDisk
             canvas.ops
 
         return
-          (dbs @ handlers) |> List.map (fun tl -> tl, LibCloud.Serialize.NotDeleted)
+          (dbs @ handlers) |> List.map (fun tl -> tl, LibPackageManager.CanvasSerialize.NotDeleted)
       }
 
     print $"Saving {List.length tls} toplevels to canvas"
 
-    do! LibCloud.Canvas.saveTLIDs canvasID tls
+    do! LibPackageManager.Canvas.saveTLIDs canvasID tls
 
     print $"Success, saved canvas {domain}"
 

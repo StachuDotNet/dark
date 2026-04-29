@@ -11,7 +11,7 @@ open LibExecution.Builtin.Shortcuts
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
 module PT = LibExecution.ProgramTypes
-module Canvas = LibCloud.Canvas
+module Canvas = LibPackageManager.Canvas
 module PT2DT = LibExecution.ProgramTypesToDarkTypes
 module PackageRefs = LibExecution.PackageRefs
 

@@ -11,8 +11,8 @@ open System.IO
 open Microsoft.Data.Sqlite
 open Fumble
 open LibDB.Db
-module File = LibCloud.File
-module Config = LibCloud.Config
+module File = LibPackageManager.File
+module Config = LibPackageManager.CanvasConfig
 
 open Prelude
 

@@ -25,8 +25,8 @@ module Json = BuiltinExecution.Libs.Json
 module C2DT = LibExecution.CommonToDarkTypes
 module D = LibExecution.DvalDecoder
 module Utils = BuiltinCliHost.Utils
-module Canvas = LibCloud.Canvas
-module Tracing = LibCloud.Tracing
+module Canvas = LibPackageManager.Canvas
+module Tracing = LibPackageManager.Tracing
 
 
 // Load canvas ID and DBs for an account

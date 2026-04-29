@@ -8,7 +8,7 @@ open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
 
 module Dval = LibExecution.Dval
-module Canvas = LibCloud.Canvas
+module Canvas = LibPackageManager.Canvas
 
 
 let fns () : List<BuiltInFn> =

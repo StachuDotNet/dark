@@ -10,11 +10,11 @@ open Prelude
 open TestUtils.TestUtils
 open LibDB.Db
 
-module Canvas = LibCloud.Canvas
-module Serialize = LibCloud.Serialize
+module Canvas = LibPackageManager.Canvas
+module Serialize = LibPackageManager.CanvasSerialize
 module PT = LibExecution.ProgramTypes
 module PTParser = LibExecution.ProgramTypesParser
-module Account = LibCloud.Account
+module Account = LibPackageManager.Account
 
 let testDBOplistRoundtrip : Test =
   testTask "db oplist roundtrip" {

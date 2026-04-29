@@ -1,5 +1,5 @@
 /// Helpers to work with files on disk
-module LibCloud.File
+module LibPackageManager.File
 
 // This makes extra careful that we're only accessing files where we expect to
 // find files, and that we're not checking outside these directories
@@ -14,8 +14,8 @@ type Mode =
   | Read
   | Write
 
-let checkFilename (root : Config.Root) (mode : Mode) (f : string) =
-  let dir = Config.dir root
+let checkFilename (root : CanvasConfig.Root) (mode : Mode) (f : string) =
+  let dir = CanvasConfig.dir root
   let f : string = $"{dir}{f}"
 
   let debug (name : string) (value : bool) =
@@ -23,7 +23,7 @@ let checkFilename (root : Config.Root) (mode : Mode) (f : string) =
     value
 
   if
-    (root <> Config.NoCheck)
+    (root <> CanvasConfig.NoCheck)
     && (f.Contains ".." |> debug "dots"
         || f.Contains "~" |> debug "tilde"
         || f.EndsWith "." |> debug "ends dot"
@@ -47,7 +47,7 @@ let fileExists root f : bool =
   let f = checkFilename root Check f
   System.IO.File.Exists f
 
-let lsdir (root : Config.Root) (dir : string) : string list =
+let lsdir (root : CanvasConfig.Root) (dir : string) : string list =
   let absoluteDir = checkFilename root Dir dir
 
   absoluteDir
@@ -55,7 +55,7 @@ let lsdir (root : Config.Root) (dir : string) : string list =
   |> Seq.toList
   |> List.map (String.dropLeft absoluteDir.Length)
 
-let lsPattern (root : Config.Root) (pattern : string) : string list =
+let lsPattern (root : CanvasConfig.Root) (pattern : string) : string list =
   let absoluteDir = checkFilename root Dir ""
 
   System.IO.Directory.EnumerateFileSystemEntries(absoluteDir, pattern)
@@ -63,19 +63,19 @@ let lsPattern (root : Config.Root) (pattern : string) : string list =
   |> List.map (String.dropLeft absoluteDir.Length)
 
 
-let readfile (root : Config.Root) (f : string) : string =
+let readfile (root : CanvasConfig.Root) (f : string) : string =
   f |> checkFilename root Read |> System.IO.File.ReadAllText
 
-let readfileBytes (root : Config.Root) (f : string) : byte[] =
+let readfileBytes (root : CanvasConfig.Root) (f : string) : byte[] =
   f |> checkFilename root Read |> System.IO.File.ReadAllBytes
 
-let tryReadFile (root : Config.Root) (f : string) : string option =
+let tryReadFile (root : CanvasConfig.Root) (f : string) : string option =
   if fileExists root f then
     f |> checkFilename root Read |> System.IO.File.ReadAllText |> Some
   else
     None
 
-let rec writefileBytes (root : Config.Root) (f : string) (contents : byte[]) : unit =
+let rec writefileBytes (root : CanvasConfig.Root) (f : string) (contents : byte[]) : unit =
   let f = checkFilename root Write f
 
   // First write to a temp file, then copy atomically. Do this as we've lost our data
@@ -96,5 +96,5 @@ let rec writefileBytes (root : Config.Root) (f : string) (contents : byte[]) : u
       if count > 10 then Exception.reraise e else ()
       ()
 
-let rec writefile (root : Config.Root) (f : string) (contents : string) : unit =
+let rec writefile (root : CanvasConfig.Root) (f : string) (contents : string) : unit =
   writefileBytes root f (UTF8.toBytes contents)

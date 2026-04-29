@@ -20,9 +20,9 @@ open Prelude
 
 module RT = LibExecution.RuntimeTypes
 module PT = LibExecution.ProgramTypes
-module Routing = LibCloud.Routing
-module Canvas = LibCloud.Canvas
-module Serialize = LibCloud.Serialize
+module Routing = LibPackageManager.Routing
+module Canvas = LibPackageManager.Canvas
+module Serialize = LibPackageManager.CanvasSerialize
 
 open Tests
 open TestUtils.TestUtils
@@ -218,7 +218,7 @@ let setupTestCanvas (testName : string) (test : Test) : Task<CanvasID * string> 
     do!
       test.secrets
       |> List.map (fun (name, value, version) ->
-        LibCloud.Secret.insert canvasID name value version)
+        LibPackageManager.Secret.insert canvasID name value version)
       |> Task.WhenAll
       |> Task.map (fun _ -> ())
 

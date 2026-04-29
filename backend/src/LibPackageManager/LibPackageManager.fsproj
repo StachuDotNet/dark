@@ -43,6 +43,19 @@
     <Compile Include="Scripts.fs" />
     <Compile Include="PackageRefsGenerator.fs" />
     <Compile Include="Seed.fs" />
+
+    <!-- Folded in from LibCloud (phase 5 of erase-cloud): Canvas, Account,
+         Secret, UserDB, Tracing, Routing, File, per-canvas configuration. -->
+    <Compile Include="CanvasConfig.fs" />
+    <Compile Include="File.fs" />
+    <Compile Include="Account.fs" />
+    <Compile Include="Routing.fs" />
+    <Compile Include="CanvasSerialize.fs" />
+    <Compile Include="Secret.fs" />
+    <Compile Include="Canvas.fs" />
+    <Compile Include="Tracing.fs" />
+    <Compile Include="UserDB.fs" />
+    <Compile Include="CanvasStats.fs" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

@@ -11,7 +11,7 @@ module TypeChecker = LibExecution.TypeChecker
 module Builtin = LibExecution.Builtin
 module PT = LibExecution.ProgramTypes
 
-module UserDB = LibCloud.UserDB
+module UserDB = LibPackageManager.UserDB
 module Db = LibDB.Db
 module RTQueryCompiler = LibExecution.RTQueryCompiler
 

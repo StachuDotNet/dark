@@ -23,7 +23,6 @@
     <ProjectReference Include="../BuiltinPM/BuiltinPM.fsproj" />
     <ProjectReference Include="../BuiltinHttpServer/BuiltinHttpServer.fsproj" />
     <ProjectReference Include="../LibPackageManager/LibPackageManager.fsproj" />
-    <ProjectReference Include="../LibCloud/LibCloud.fsproj" />
     <ProjectReference Include="../LibDB/LibDB.fsproj" />
     <ProjectReference Include="../BuiltinDB/BuiltinDB.fsproj" />
   </ItemGroup>

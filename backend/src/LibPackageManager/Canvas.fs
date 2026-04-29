@@ -1,4 +1,4 @@
-module LibCloud.Canvas
+module LibPackageManager.Canvas
 
 // Functions related to Canvases
 
@@ -117,21 +117,21 @@ type T =
     deletedHandlers : Map<tlid, PT.Handler.T>
     deletedDBs : Map<tlid, PT.DB.T> }
 
-let addToplevel (deleted : Serialize.Deleted) (tl : PT.Toplevel.T) (c : T) : T =
+let addToplevel (deleted : CanvasSerialize.Deleted) (tl : PT.Toplevel.T) (c : T) : T =
   let tlid = PT.Toplevel.toTLID tl
 
   match deleted, tl with
-  | Serialize.NotDeleted, PT.Toplevel.TLHandler h ->
+  | CanvasSerialize.NotDeleted, PT.Toplevel.TLHandler h ->
     { c with handlers = Map.add tlid h c.handlers }
-  | Serialize.NotDeleted, PT.Toplevel.TLDB db ->
+  | CanvasSerialize.NotDeleted, PT.Toplevel.TLDB db ->
     { c with dbs = Map.add tlid db c.dbs }
-  | Serialize.Deleted, PT.Toplevel.TLHandler h ->
+  | CanvasSerialize.Deleted, PT.Toplevel.TLHandler h ->
     { c with deletedHandlers = Map.add tlid h c.deletedHandlers }
-  | Serialize.Deleted, PT.Toplevel.TLDB db ->
+  | CanvasSerialize.Deleted, PT.Toplevel.TLDB db ->
     { c with deletedDBs = Map.add tlid db c.deletedDBs }
 
 
-let addToplevels (tls : List<Serialize.Deleted * PT.Toplevel.T>) (canvas : T) : T =
+let addToplevels (tls : List<CanvasSerialize.Deleted * PT.Toplevel.T>) (canvas : T) : T =
   List.fold (fun c (deleted, tl) -> addToplevel deleted tl c) canvas tls
 
 let toplevels (c : T) : Map<tlid, PT.Toplevel.T> =
@@ -234,7 +234,7 @@ let loadFrom (id : CanvasID) (tlids : List<tlid>) : Task<T> =
   task {
     try
       // load
-      let! tls = Serialize.loadToplevels id tlids
+      let! tls = CanvasSerialize.loadToplevels id tlids
 
       let c = empty id
 
@@ -249,13 +249,13 @@ let loadFrom (id : CanvasID) (tlids : List<tlid>) : Task<T> =
 
 let loadAll (id : CanvasID) : Task<T> =
   task {
-    let! tlids = Serialize.fetchAllIncludingDeletedTLIDs id
+    let! tlids = CanvasSerialize.fetchAllIncludingDeletedTLIDs id
     return! loadFrom id tlids
   }
 
 let loadHttpHandlers (id : CanvasID) (path : string) (method : string) : Task<T> =
   task {
-    let! tlids = Serialize.fetchReleventTLIDsForHTTP id path method
+    let! tlids = CanvasSerialize.fetchReleventTLIDsForHTTP id path method
     return! loadFrom id tlids
   }
 
@@ -264,7 +264,7 @@ let loadTLIDs (id : CanvasID) (tlids : tlid list) : Task<T> = loadFrom id tlids
 
 let loadTLIDsWithContext (id : CanvasID) (tlids : List<tlid>) : Task<T> =
   task {
-    let! context = Serialize.fetchRelevantTLIDsForExecution id
+    let! context = CanvasSerialize.fetchRelevantTLIDsForExecution id
     let tlids = tlids @ context
     return! loadFrom id tlids
   }
@@ -276,45 +276,45 @@ let loadForEvent
   (modifier : string)
   : Task<T> =
   task {
-    let! tlids = Serialize.fetchRelevantTLIDsForEvent id module' name modifier
+    let! tlids = CanvasSerialize.fetchRelevantTLIDsForEvent id module' name modifier
     return! loadFrom id tlids
   }
 
 let loadAllDBs (id : CanvasID) : Task<T> =
   task {
-    let! tlids = Serialize.fetchTLIDsForAllDBs id
+    let! tlids = CanvasSerialize.fetchTLIDsForAllDBs id
     return! loadFrom id tlids
   }
 
 /// Returns a best guess at all workers (excludes what it knows not to be a worker)
 let loadAllWorkers (id : CanvasID) : Task<T> =
   task {
-    let! tlids = Serialize.fetchTLIDsForAllWorkers id
+    let! tlids = CanvasSerialize.fetchTLIDsForAllWorkers id
     return! loadFrom id tlids
   }
 
 let loadTLIDsWithDBs (id : CanvasID) (tlids : List<tlid>) : Task<T> =
   task {
-    let! dbTLIDs = Serialize.fetchTLIDsForAllDBs id
+    let! dbTLIDs = CanvasSerialize.fetchTLIDsForAllDBs id
     return! loadFrom id (tlids @ dbTLIDs)
   }
 
-let getToplevel (tlid : tlid) (c : T) : Option<Serialize.Deleted * PT.Toplevel.T> =
+let getToplevel (tlid : tlid) (c : T) : Option<CanvasSerialize.Deleted * PT.Toplevel.T> =
   let handler () =
     Map.find tlid c.handlers
-    |> Option.map (fun h -> (Serialize.NotDeleted, PT.Toplevel.TLHandler h))
+    |> Option.map (fun h -> (CanvasSerialize.NotDeleted, PT.Toplevel.TLHandler h))
 
   let deletedHandler () =
     Map.find tlid c.deletedHandlers
-    |> Option.map (fun h -> (Serialize.Deleted, PT.Toplevel.TLHandler h))
+    |> Option.map (fun h -> (CanvasSerialize.Deleted, PT.Toplevel.TLHandler h))
 
   let db () =
     Map.find tlid c.dbs
-    |> Option.map (fun h -> (Serialize.NotDeleted, PT.Toplevel.TLDB h))
+    |> Option.map (fun h -> (CanvasSerialize.NotDeleted, PT.Toplevel.TLDB h))
 
   let deletedDB () =
     Map.find tlid c.deletedDBs
-    |> Option.map (fun h -> (Serialize.Deleted, PT.Toplevel.TLDB h))
+    |> Option.map (fun h -> (CanvasSerialize.Deleted, PT.Toplevel.TLDB h))
 
 
   handler ()
@@ -341,7 +341,7 @@ let toplevelToDBTypeString (tl : PT.Toplevel.T) : string =
 /// calling/testing these TLs, even though those TLs do not need to be updated)
 let saveTLIDs
   (id : CanvasID)
-  (toplevels : List<PT.Toplevel.T * Serialize.Deleted>)
+  (toplevels : List<PT.Toplevel.T * CanvasSerialize.Deleted>)
   : Task<unit> =
   try
     // Use ops rather than just set of toplevels, because toplevels may
@@ -377,7 +377,7 @@ let saveTLIDs
 
         let (module_, name, modifier) =
           // Only save info used to find handlers when the handler has not been deleted
-          if deleted = Serialize.NotDeleted then
+          if deleted = CanvasSerialize.NotDeleted then
             match routingNames with
             | Some(module_, name, modifier) ->
               (string2option module_, string2option name, string2option modifier)
@@ -389,8 +389,8 @@ let saveTLIDs
 
         let deleted =
           match deleted with
-          | Serialize.Deleted -> true
-          | Serialize.NotDeleted -> false
+          | CanvasSerialize.Deleted -> true
+          | CanvasSerialize.NotDeleted -> false
 
         return!
           Sql.query
@@ -444,7 +444,7 @@ let toProgram (c : T) : Ply<RT.Program> =
 
     return
       { canvasID = c.id
-        internalFnsAllowed = List.contains c.id Config.allowedDarkInternalCanvasIDs
+        internalFnsAllowed = List.contains c.id CanvasConfig.allowedDarkInternalCanvasIDs
         dbs = dbs
         secrets = secrets }
   }
