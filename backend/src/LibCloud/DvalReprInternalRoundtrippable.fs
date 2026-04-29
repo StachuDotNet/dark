@@ -357,18 +357,744 @@ module FormatV0 =
       DStreamStub
 
 
-let toJsonV0 (dv : RT.Dval) : string =
-  dv |> FormatV0.fromRT |> Json.Vanilla.serialize
+/// Hand-rolled JSON ser/de for FormatV0.Dval.
+///
+/// The previous implementation used `Json.Vanilla.serialize`/`deserialize<T>`
+/// which routes through `JsonSerializer.{De}serialize<T>` and ultimately F#'s
+/// reflective union-converter. Under AOT trimming, the union case-name lookup
+/// on FormatV0.Dval throws (case metadata is pruned).
+///
+/// This module walks `Utf8JsonReader`/`Utf8JsonWriter` directly. The wire
+/// format is intentionally simpler than ExternalTag: each union value is a
+/// JSON array `[tag, ...args]`, and nullary cases are just `"tag"` strings.
+/// Format chosen for readability and reader simplicity (no tag-payload
+/// parsing); not wire-compatible with the prior FSharp.SystemTextJson output,
+/// so any cached trace data on disk under the prior format won't deserialize
+/// after this change. Trace data is per-machine local; lose-and-regrow is
+/// the migration story.
+[<RequireQualifiedAccess>]
+module HandJsonV0 =
+  open System.Text.Json
+
+  // -------- helpers --------
+
+  let inline private readToken (r : byref<Utf8JsonReader>) : unit =
+    if not (r.Read()) then Exception.raiseInternal "Unexpected end of JSON" []
+
+  let private expectStartArray (r : byref<Utf8JsonReader>) : unit =
+    if r.TokenType <> JsonTokenType.StartArray then
+      Exception.raiseInternal
+        "Expected JSON array start"
+        [ "tokenType", r.TokenType ]
+
+  let private expectEndArray (r : byref<Utf8JsonReader>) : unit =
+    if r.TokenType <> JsonTokenType.EndArray then
+      Exception.raiseInternal "Expected JSON array end" [ "tokenType", r.TokenType ]
+
+  let private readTag (r : byref<Utf8JsonReader>) : string * bool =
+    // Returns (tag, isNullary). For nullary cases the value is just a JSON
+    // string; for compound cases the value is `[tag, ...]`.
+    if r.TokenType = JsonTokenType.String then
+      r.GetString(), true
+    else
+      expectStartArray &r
+      readToken &r
+      if r.TokenType <> JsonTokenType.String then
+        Exception.raiseInternal
+          "Expected tag string at start of array"
+          [ "tokenType", r.TokenType ]
+      r.GetString(), false
+
+  let private readString (r : byref<Utf8JsonReader>) : string =
+    readToken &r
+    if r.TokenType <> JsonTokenType.String then
+      Exception.raiseInternal "Expected JSON string" [ "tokenType", r.TokenType ]
+    r.GetString()
+
+  let private readBool (r : byref<Utf8JsonReader>) : bool =
+    readToken &r
+    match r.TokenType with
+    | JsonTokenType.True -> true
+    | JsonTokenType.False -> false
+    | t -> Exception.raiseInternal "Expected JSON bool" [ "tokenType", t ]
+
+  let private readDouble (r : byref<Utf8JsonReader>) : double =
+    readToken &r
+    if r.TokenType <> JsonTokenType.Number then
+      Exception.raiseInternal "Expected JSON number" [ "tokenType", r.TokenType ]
+    r.GetDouble()
+
+
+  // -------- FQTypeName / Hash --------
+
+  let private writeHash (w : Utf8JsonWriter) (h : RT.Hash) : unit =
+    let (RT.Hash s) = h
+    w.WriteStringValue(s)
+
+  let private readHash (r : byref<Utf8JsonReader>) : RT.Hash =
+    readString &r |> RT.Hash
+
+  let private writeFQTypeName
+    (w : Utf8JsonWriter)
+    (n : FormatV0.FQTypeName.FQTypeName)
+    : unit =
+    match n with
+    | FormatV0.FQTypeName.Package h ->
+      w.WriteStartArray()
+      w.WriteStringValue("Package")
+      writeHash w h
+      w.WriteEndArray()
+
+  let private readFQTypeName
+    (r : byref<Utf8JsonReader>)
+    : FormatV0.FQTypeName.FQTypeName =
+    let tag, _ = readTag &r
+    match tag with
+    | "Package" ->
+      let h = readHash &r
+      readToken &r // EndArray
+      expectEndArray &r
+      FormatV0.FQTypeName.Package h
+    | t -> Exception.raiseInternal "Unknown FQTypeName tag" [ "tag", t ]
+
+
+  // -------- ValueType + KnownType (mutually recursive) --------
+
+  let rec private writeKnownType
+    (w : Utf8JsonWriter)
+    (kt : FormatV0.ValueType.KnownType.KnownType)
+    : unit =
+    match kt with
+    | FormatV0.ValueType.KnownType.KTUnit -> w.WriteStringValue("KTUnit")
+    | FormatV0.ValueType.KnownType.KTBool -> w.WriteStringValue("KTBool")
+    | FormatV0.ValueType.KnownType.KTInt8 -> w.WriteStringValue("KTInt8")
+    | FormatV0.ValueType.KnownType.KTUInt8 -> w.WriteStringValue("KTUInt8")
+    | FormatV0.ValueType.KnownType.KTInt16 -> w.WriteStringValue("KTInt16")
+    | FormatV0.ValueType.KnownType.KTUInt16 -> w.WriteStringValue("KTUInt16")
+    | FormatV0.ValueType.KnownType.KTInt32 -> w.WriteStringValue("KTInt32")
+    | FormatV0.ValueType.KnownType.KTUInt32 -> w.WriteStringValue("KTUInt32")
+    | FormatV0.ValueType.KnownType.KTInt64 -> w.WriteStringValue("KTInt64")
+    | FormatV0.ValueType.KnownType.KTUInt64 -> w.WriteStringValue("KTUInt64")
+    | FormatV0.ValueType.KnownType.KTInt128 -> w.WriteStringValue("KTInt128")
+    | FormatV0.ValueType.KnownType.KTUInt128 -> w.WriteStringValue("KTUInt128")
+    | FormatV0.ValueType.KnownType.KTFloat -> w.WriteStringValue("KTFloat")
+    | FormatV0.ValueType.KnownType.KTChar -> w.WriteStringValue("KTChar")
+    | FormatV0.ValueType.KnownType.KTString -> w.WriteStringValue("KTString")
+    | FormatV0.ValueType.KnownType.KTUuid -> w.WriteStringValue("KTUuid")
+    | FormatV0.ValueType.KnownType.KTDateTime -> w.WriteStringValue("KTDateTime")
+    | FormatV0.ValueType.KnownType.KTBlob -> w.WriteStringValue("KTBlob")
+    | FormatV0.ValueType.KnownType.KTStream vt ->
+      w.WriteStartArray()
+      w.WriteStringValue("KTStream")
+      writeValueType w vt
+      w.WriteEndArray()
+    | FormatV0.ValueType.KnownType.KTList vt ->
+      w.WriteStartArray()
+      w.WriteStringValue("KTList")
+      writeValueType w vt
+      w.WriteEndArray()
+    | FormatV0.ValueType.KnownType.KTTuple(a, b, rest) ->
+      w.WriteStartArray()
+      w.WriteStringValue("KTTuple")
+      writeValueType w a
+      writeValueType w b
+      w.WriteStartArray()
+      for vt in rest do
+        writeValueType w vt
+      w.WriteEndArray()
+      w.WriteEndArray()
+    | FormatV0.ValueType.KnownType.KTDict vt ->
+      w.WriteStartArray()
+      w.WriteStringValue("KTDict")
+      writeValueType w vt
+      w.WriteEndArray()
+    | FormatV0.ValueType.KnownType.KTCustomType(typeName, typeArgs) ->
+      w.WriteStartArray()
+      w.WriteStringValue("KTCustomType")
+      writeFQTypeName w typeName
+      w.WriteStartArray()
+      for vt in typeArgs do
+        writeValueType w vt
+      w.WriteEndArray()
+      w.WriteEndArray()
+    | FormatV0.ValueType.KnownType.KTFn(argTypes, retType) ->
+      w.WriteStartArray()
+      w.WriteStringValue("KTFn")
+      // NEList → [head, ...tail]
+      w.WriteStartArray()
+      writeValueType w argTypes.head
+      for vt in argTypes.tail do
+        writeValueType w vt
+      w.WriteEndArray()
+      writeValueType w retType
+      w.WriteEndArray()
+    | FormatV0.ValueType.KnownType.KTDB vt ->
+      w.WriteStartArray()
+      w.WriteStringValue("KTDB")
+      writeValueType w vt
+      w.WriteEndArray()
+
+  and private writeValueType
+    (w : Utf8JsonWriter)
+    (vt : FormatV0.ValueType.ValueType)
+    : unit =
+    match vt with
+    | FormatV0.ValueType.ValueType.Unknown -> w.WriteStringValue("Unknown")
+    | FormatV0.ValueType.ValueType.Known kt ->
+      w.WriteStartArray()
+      w.WriteStringValue("Known")
+      writeKnownType w kt
+      w.WriteEndArray()
+
+  let rec private readKnownType
+    (r : byref<Utf8JsonReader>)
+    : FormatV0.ValueType.KnownType.KnownType =
+    let tag, isNullary = readTag &r
+    let kt =
+      match tag with
+      | "KTUnit" -> FormatV0.ValueType.KnownType.KTUnit
+      | "KTBool" -> FormatV0.ValueType.KnownType.KTBool
+      | "KTInt8" -> FormatV0.ValueType.KnownType.KTInt8
+      | "KTUInt8" -> FormatV0.ValueType.KnownType.KTUInt8
+      | "KTInt16" -> FormatV0.ValueType.KnownType.KTInt16
+      | "KTUInt16" -> FormatV0.ValueType.KnownType.KTUInt16
+      | "KTInt32" -> FormatV0.ValueType.KnownType.KTInt32
+      | "KTUInt32" -> FormatV0.ValueType.KnownType.KTUInt32
+      | "KTInt64" -> FormatV0.ValueType.KnownType.KTInt64
+      | "KTUInt64" -> FormatV0.ValueType.KnownType.KTUInt64
+      | "KTInt128" -> FormatV0.ValueType.KnownType.KTInt128
+      | "KTUInt128" -> FormatV0.ValueType.KnownType.KTUInt128
+      | "KTFloat" -> FormatV0.ValueType.KnownType.KTFloat
+      | "KTChar" -> FormatV0.ValueType.KnownType.KTChar
+      | "KTString" -> FormatV0.ValueType.KnownType.KTString
+      | "KTUuid" -> FormatV0.ValueType.KnownType.KTUuid
+      | "KTDateTime" -> FormatV0.ValueType.KnownType.KTDateTime
+      | "KTBlob" -> FormatV0.ValueType.KnownType.KTBlob
+      | "KTStream" ->
+        let vt = readValueType &r
+        readToken &r
+        expectEndArray &r
+        FormatV0.ValueType.KnownType.KTStream vt
+      | "KTList" ->
+        let vt = readValueType &r
+        readToken &r
+        expectEndArray &r
+        FormatV0.ValueType.KnownType.KTList vt
+      | "KTTuple" ->
+        let a = readValueType &r
+        let b = readValueType &r
+        readToken &r
+        expectStartArray &r
+        let rest = ResizeArray<FormatV0.ValueType.ValueType>()
+        readToken &r
+        while r.TokenType <> JsonTokenType.EndArray do
+          rest.Add(readValueTypeFromCurrent &r)
+          readToken &r
+        readToken &r
+        expectEndArray &r
+        FormatV0.ValueType.KnownType.KTTuple(a, b, List.ofSeq rest)
+      | "KTDict" ->
+        let vt = readValueType &r
+        readToken &r
+        expectEndArray &r
+        FormatV0.ValueType.KnownType.KTDict vt
+      | "KTCustomType" ->
+        readToken &r
+        let typeName = readFQTypeNameFromCurrent &r
+        readToken &r
+        expectStartArray &r
+        let typeArgs = ResizeArray<FormatV0.ValueType.ValueType>()
+        readToken &r
+        while r.TokenType <> JsonTokenType.EndArray do
+          typeArgs.Add(readValueTypeFromCurrent &r)
+          readToken &r
+        readToken &r
+        expectEndArray &r
+        FormatV0.ValueType.KnownType.KTCustomType(typeName, List.ofSeq typeArgs)
+      | "KTFn" ->
+        readToken &r
+        expectStartArray &r
+        let argTypes = ResizeArray<FormatV0.ValueType.ValueType>()
+        readToken &r
+        while r.TokenType <> JsonTokenType.EndArray do
+          argTypes.Add(readValueTypeFromCurrent &r)
+          readToken &r
+        let retType = readValueType &r
+        readToken &r
+        expectEndArray &r
+        let argList = List.ofSeq argTypes
+        match argList with
+        | [] -> Exception.raiseInternal "KTFn: empty arg NEList" []
+        | head :: tail ->
+          FormatV0.ValueType.KnownType.KTFn(NEList.ofList head tail, retType)
+      | "KTDB" ->
+        let vt = readValueType &r
+        readToken &r
+        expectEndArray &r
+        FormatV0.ValueType.KnownType.KTDB vt
+      | t -> Exception.raiseInternal "Unknown KnownType tag" [ "tag", t ]
+    if isNullary then () // nothing to consume
+    kt
+
+  and private readValueType
+    (r : byref<Utf8JsonReader>)
+    : FormatV0.ValueType.ValueType =
+    readToken &r
+    readValueTypeFromCurrent &r
+
+  and private readValueTypeFromCurrent
+    (r : byref<Utf8JsonReader>)
+    : FormatV0.ValueType.ValueType =
+    let tag, isNullary = readTag &r
+    match tag with
+    | "Unknown" ->
+      if not isNullary then
+        Exception.raiseInternal "Expected nullary 'Unknown' tag" []
+      FormatV0.ValueType.ValueType.Unknown
+    | "Known" ->
+      let kt = readKnownType &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.ValueType.ValueType.Known kt
+    | t -> Exception.raiseInternal "Unknown ValueType tag" [ "tag", t ]
+
+  and private readFQTypeNameFromCurrent
+    (r : byref<Utf8JsonReader>)
+    : FormatV0.FQTypeName.FQTypeName =
+    let tag, _ = readTag &r
+    match tag with
+    | "Package" ->
+      let h = readHash &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.FQTypeName.Package h
+    | t -> Exception.raiseInternal "Unknown FQTypeName tag" [ "tag", t ]
+
+
+  // -------- Dval (recursive) --------
+
+  let rec private writeDval (w : Utf8JsonWriter) (dv : FormatV0.Dval) : unit =
+    match dv with
+    | FormatV0.DUnit -> w.WriteStringValue("DUnit")
+    | FormatV0.DBool b ->
+      w.WriteStartArray()
+      w.WriteStringValue("DBool")
+      w.WriteBooleanValue(b)
+      w.WriteEndArray()
+    | FormatV0.DInt8 i ->
+      w.WriteStartArray()
+      w.WriteStringValue("DInt8")
+      w.WriteNumberValue(int i)
+      w.WriteEndArray()
+    | FormatV0.DUInt8 i ->
+      w.WriteStartArray()
+      w.WriteStringValue("DUInt8")
+      w.WriteNumberValue(int i)
+      w.WriteEndArray()
+    | FormatV0.DInt16 i ->
+      w.WriteStartArray()
+      w.WriteStringValue("DInt16")
+      w.WriteNumberValue(int i)
+      w.WriteEndArray()
+    | FormatV0.DUInt16 i ->
+      w.WriteStartArray()
+      w.WriteStringValue("DUInt16")
+      w.WriteNumberValue(int i)
+      w.WriteEndArray()
+    | FormatV0.DInt32 i ->
+      w.WriteStartArray()
+      w.WriteStringValue("DInt32")
+      w.WriteNumberValue(i)
+      w.WriteEndArray()
+    | FormatV0.DUInt32 i ->
+      w.WriteStartArray()
+      w.WriteStringValue("DUInt32")
+      w.WriteNumberValue(i)
+      w.WriteEndArray()
+    | FormatV0.DInt64 i ->
+      w.WriteStartArray()
+      w.WriteStringValue("DInt64")
+      // Encode 64-bit ints as strings to dodge JSON number precision (53-bit safe)
+      w.WriteStringValue(string i)
+      w.WriteEndArray()
+    | FormatV0.DUInt64 i ->
+      w.WriteStartArray()
+      w.WriteStringValue("DUInt64")
+      w.WriteStringValue(string i)
+      w.WriteEndArray()
+    | FormatV0.DInt128 i ->
+      w.WriteStartArray()
+      w.WriteStringValue("DInt128")
+      w.WriteStringValue(string i)
+      w.WriteEndArray()
+    | FormatV0.DUInt128 i ->
+      w.WriteStartArray()
+      w.WriteStringValue("DUInt128")
+      w.WriteStringValue(string i)
+      w.WriteEndArray()
+    | FormatV0.DFloat f ->
+      w.WriteStartArray()
+      w.WriteStringValue("DFloat")
+      // JSON doesn't natively encode NaN / Infinity; use string form
+      if System.Double.IsNaN(f) then w.WriteStringValue("NaN")
+      elif System.Double.IsPositiveInfinity(f) then w.WriteStringValue("+Infinity")
+      elif System.Double.IsNegativeInfinity(f) then w.WriteStringValue("-Infinity")
+      else w.WriteNumberValue(f)
+      w.WriteEndArray()
+    | FormatV0.DChar c ->
+      w.WriteStartArray()
+      w.WriteStringValue("DChar")
+      w.WriteStringValue(c)
+      w.WriteEndArray()
+    | FormatV0.DString s ->
+      w.WriteStartArray()
+      w.WriteStringValue("DString")
+      w.WriteStringValue(s)
+      w.WriteEndArray()
+    | FormatV0.DDateTime d ->
+      w.WriteStartArray()
+      w.WriteStringValue("DDateTime")
+      let zoned =
+        NodaTime.ZonedDateTime(d, NodaTime.DateTimeZone.Utc, NodaTime.Offset.Zero)
+      w.WriteStringValue(zoned.ToInstant().toIsoString ())
+      w.WriteEndArray()
+    | FormatV0.DUuid g ->
+      w.WriteStartArray()
+      w.WriteStringValue("DUuid")
+      w.WriteStringValue(g.ToString())
+      w.WriteEndArray()
+    | FormatV0.DTuple(a, b, rest) ->
+      w.WriteStartArray()
+      w.WriteStringValue("DTuple")
+      writeDval w a
+      writeDval w b
+      w.WriteStartArray()
+      for d in rest do
+        writeDval w d
+      w.WriteEndArray()
+      w.WriteEndArray()
+    | FormatV0.DList(typ, items) ->
+      w.WriteStartArray()
+      w.WriteStringValue("DList")
+      writeValueType w typ
+      w.WriteStartArray()
+      for d in items do
+        writeDval w d
+      w.WriteEndArray()
+      w.WriteEndArray()
+    | FormatV0.DDict(typ, entries) ->
+      w.WriteStartArray()
+      w.WriteStringValue("DDict")
+      writeValueType w typ
+      w.WriteStartObject()
+      for KeyValue(k, v) in entries do
+        w.WritePropertyName(k)
+        writeDval w v
+      w.WriteEndObject()
+      w.WriteEndArray()
+    | FormatV0.DRecord(rtt, st, ta, fields) ->
+      w.WriteStartArray()
+      w.WriteStringValue("DRecord")
+      writeFQTypeName w rtt
+      writeFQTypeName w st
+      w.WriteStartArray()
+      for vt in ta do
+        writeValueType w vt
+      w.WriteEndArray()
+      w.WriteStartObject()
+      for KeyValue(k, v) in fields do
+        w.WritePropertyName(k)
+        writeDval w v
+      w.WriteEndObject()
+      w.WriteEndArray()
+    | FormatV0.DEnum(rtt, st, ta, caseName, fields) ->
+      w.WriteStartArray()
+      w.WriteStringValue("DEnum")
+      writeFQTypeName w rtt
+      writeFQTypeName w st
+      w.WriteStartArray()
+      for vt in ta do
+        writeValueType w vt
+      w.WriteEndArray()
+      w.WriteStringValue(caseName)
+      w.WriteStartArray()
+      for d in fields do
+        writeDval w d
+      w.WriteEndArray()
+      w.WriteEndArray()
+    | FormatV0.DLambda -> w.WriteStringValue("DLambda")
+    | FormatV0.DDB name ->
+      w.WriteStartArray()
+      w.WriteStringValue("DDB")
+      w.WriteStringValue(name)
+      w.WriteEndArray()
+    | FormatV0.DBlobPersistent(hash, length) ->
+      w.WriteStartArray()
+      w.WriteStringValue("DBlobPersistent")
+      w.WriteStringValue(hash)
+      w.WriteStringValue(string length)
+      w.WriteEndArray()
+    | FormatV0.DBlobEphemeral g ->
+      w.WriteStartArray()
+      w.WriteStringValue("DBlobEphemeral")
+      w.WriteStringValue(g.ToString())
+      w.WriteEndArray()
+    | FormatV0.DStreamStub -> w.WriteStringValue("DStreamStub")
+
+
+  let rec private readDvalMap (r : byref<Utf8JsonReader>) : FormatV0.DvalMap =
+    readToken &r
+    if r.TokenType <> JsonTokenType.StartObject then
+      Exception.raiseInternal
+        "Expected JSON object for DvalMap"
+        [ "tokenType", r.TokenType ]
+    let entries = ResizeArray<string * FormatV0.Dval>()
+    readToken &r
+    while r.TokenType <> JsonTokenType.EndObject do
+      if r.TokenType <> JsonTokenType.PropertyName then
+        Exception.raiseInternal
+          "Expected property name in DvalMap"
+          [ "tokenType", r.TokenType ]
+      let key = r.GetString()
+      let value = readDval &r
+      entries.Add(key, value)
+      readToken &r
+    Map.ofSeq entries
+
+  and private readDval (r : byref<Utf8JsonReader>) : FormatV0.Dval =
+    readToken &r
+    readDvalFromCurrent &r
+
+  and private readDvalFromCurrent (r : byref<Utf8JsonReader>) : FormatV0.Dval =
+    let tag, isNullary = readTag &r
+    match tag with
+    | "DUnit" -> FormatV0.DUnit
+    | "DLambda" -> FormatV0.DLambda
+    | "DStreamStub" -> FormatV0.DStreamStub
+    | "DBool" ->
+      let b = readBool &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DBool b
+    | "DInt8" ->
+      readToken &r
+      let i = r.GetSByte()
+      readToken &r
+      expectEndArray &r
+      FormatV0.DInt8 i
+    | "DUInt8" ->
+      readToken &r
+      let i = r.GetByte()
+      readToken &r
+      expectEndArray &r
+      FormatV0.DUInt8 i
+    | "DInt16" ->
+      readToken &r
+      let i = r.GetInt16()
+      readToken &r
+      expectEndArray &r
+      FormatV0.DInt16 i
+    | "DUInt16" ->
+      readToken &r
+      let i = r.GetUInt16()
+      readToken &r
+      expectEndArray &r
+      FormatV0.DUInt16 i
+    | "DInt32" ->
+      readToken &r
+      let i = r.GetInt32()
+      readToken &r
+      expectEndArray &r
+      FormatV0.DInt32 i
+    | "DUInt32" ->
+      readToken &r
+      let i = r.GetUInt32()
+      readToken &r
+      expectEndArray &r
+      FormatV0.DUInt32 i
+    | "DInt64" ->
+      let s = readString &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DInt64(System.Int64.Parse s)
+    | "DUInt64" ->
+      let s = readString &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DUInt64(System.UInt64.Parse s)
+    | "DInt128" ->
+      let s = readString &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DInt128(System.Int128.Parse s)
+    | "DUInt128" ->
+      let s = readString &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DUInt128(System.UInt128.Parse s)
+    | "DFloat" ->
+      readToken &r
+      let f =
+        match r.TokenType with
+        | JsonTokenType.Number -> r.GetDouble()
+        | JsonTokenType.String ->
+          match r.GetString() with
+          | "NaN" -> System.Double.NaN
+          | "+Infinity" -> System.Double.PositiveInfinity
+          | "-Infinity" -> System.Double.NegativeInfinity
+          | s -> System.Double.Parse s
+        | t ->
+          Exception.raiseInternal "Expected number for DFloat" [ "tokenType", t ]
+      readToken &r
+      expectEndArray &r
+      FormatV0.DFloat f
+    | "DChar" ->
+      let c = readString &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DChar c
+    | "DString" ->
+      let s = readString &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DString s
+    | "DDateTime" ->
+      let s = readString &r
+      readToken &r
+      expectEndArray &r
+      let dt = (NodaTime.Instant.ofIsoString s).toUtcLocalTimeZone ()
+      FormatV0.DDateTime dt
+    | "DUuid" ->
+      let s = readString &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DUuid(System.Guid.Parse s)
+    | "DTuple" ->
+      let a = readDval &r
+      let b = readDval &r
+      readToken &r
+      expectStartArray &r
+      let rest = ResizeArray<FormatV0.Dval>()
+      readToken &r
+      while r.TokenType <> JsonTokenType.EndArray do
+        rest.Add(readDvalFromCurrent &r)
+        readToken &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DTuple(a, b, List.ofSeq rest)
+    | "DList" ->
+      let typ = readValueType &r
+      readToken &r
+      expectStartArray &r
+      let items = ResizeArray<FormatV0.Dval>()
+      readToken &r
+      while r.TokenType <> JsonTokenType.EndArray do
+        items.Add(readDvalFromCurrent &r)
+        readToken &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DList(typ, List.ofSeq items)
+    | "DDict" ->
+      let typ = readValueType &r
+      let entries = readDvalMap &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DDict(typ, entries)
+    | "DRecord" ->
+      readToken &r
+      let rtt = readFQTypeNameFromCurrent &r
+      readToken &r
+      let st = readFQTypeNameFromCurrent &r
+      readToken &r
+      expectStartArray &r
+      let typeArgs = ResizeArray<FormatV0.ValueType.ValueType>()
+      readToken &r
+      while r.TokenType <> JsonTokenType.EndArray do
+        typeArgs.Add(readValueTypeFromCurrent &r)
+        readToken &r
+      let fields = readDvalMap &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DRecord(rtt, st, List.ofSeq typeArgs, fields)
+    | "DEnum" ->
+      readToken &r
+      let rtt = readFQTypeNameFromCurrent &r
+      readToken &r
+      let st = readFQTypeNameFromCurrent &r
+      readToken &r
+      expectStartArray &r
+      let typeArgs = ResizeArray<FormatV0.ValueType.ValueType>()
+      readToken &r
+      while r.TokenType <> JsonTokenType.EndArray do
+        typeArgs.Add(readValueTypeFromCurrent &r)
+        readToken &r
+      let caseName = readString &r
+      readToken &r
+      expectStartArray &r
+      let fields = ResizeArray<FormatV0.Dval>()
+      readToken &r
+      while r.TokenType <> JsonTokenType.EndArray do
+        fields.Add(readDvalFromCurrent &r)
+        readToken &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DEnum(rtt, st, List.ofSeq typeArgs, caseName, List.ofSeq fields)
+    | "DDB" ->
+      let name = readString &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DDB name
+    | "DBlobPersistent" ->
+      let hash = readString &r
+      let lengthStr = readString &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DBlobPersistent(hash, System.Int64.Parse lengthStr)
+    | "DBlobEphemeral" ->
+      let s = readString &r
+      readToken &r
+      expectEndArray &r
+      FormatV0.DBlobEphemeral(System.Guid.Parse s)
+    | t ->
+      if isNullary then
+        Exception.raiseInternal "Unknown nullary Dval tag" [ "tag", t ]
+      else
+        Exception.raiseInternal "Unknown Dval tag" [ "tag", t ]
+
+  // -------- public entry points --------
+
+  let serialize (dv : FormatV0.Dval) : string =
+    use stream = new System.IO.MemoryStream()
+    use writer = new Utf8JsonWriter(stream)
+    writeDval writer dv
+    writer.Flush()
+    System.Text.Encoding.UTF8.GetString(stream.ToArray())
+
+  let deserialize (json : string) : FormatV0.Dval =
+    let bytes = System.Text.Encoding.UTF8.GetBytes(json)
+    let mutable reader = Utf8JsonReader(System.ReadOnlySpan(bytes))
+    readDval &reader
+
+  let hashList (items : List<FormatV0.Dval>) : byte[] =
+    use stream = new System.IO.MemoryStream()
+    use writer = new Utf8JsonWriter(stream)
+    writer.WriteStartArray()
+    for d in items do
+      writeDval writer d
+    writer.WriteEndArray()
+    writer.Flush()
+    stream.ToArray()
+
+
+let toJsonV0 (dv : RT.Dval) : string = dv |> FormatV0.fromRT |> HandJsonV0.serialize
 
 let parseJsonV0 (json : string) : RT.Dval =
-  json |> Json.Vanilla.deserialize<FormatV0.Dval> |> FormatV0.toRT
+  json |> HandJsonV0.deserialize |> FormatV0.toRT
 
 let toHashV2 (dvals : list<RT.Dval>) : string =
   dvals
   |> List.map FormatV0.fromRT
-  |> fun items -> FormatV0.DList(FormatV0.valueTypeTODO, items)
-  |> Json.Vanilla.serialize
-  |> UTF8.toBytes
+  |> HandJsonV0.hashList
   |> System.IO.Hashing.XxHash64.Hash // fastest in .NET, does not need to be secure
   |> Base64.urlEncodeToString
 
