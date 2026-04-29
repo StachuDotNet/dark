@@ -43,14 +43,11 @@ let private loadHarmfulForBranch (branchId : PT.BranchId) : Set<string> =
 
 // TODO: bring back eager loading
 let rt : RT.PackageManager =
-  let typeCache = withCache PMRT.Type.get
-  let fnCache = withCache PMRT.Fn.get
-  let valueCache = withCache PMRT.Value.get
-  { getType = fun id -> typeCache id |> Ply.toTask
-    getFn = fun id -> fnCache id |> Ply.toTask
-    getValue = fun id -> valueCache id |> Ply.toTask
-    getBlob = fun h -> PMRT.Blob.get h |> Ply.toTask
-    persistBlob = fun h bs -> PMRT.Blob.insert h bs |> Ply.toTask
+  { getType = withCache PMRT.Type.get
+    getFn = withCache PMRT.Fn.get
+    getValue = withCache PMRT.Value.get
+    getBlob = PMRT.Blob.get
+    persistBlob = PMRT.Blob.insert
 
     isHarmful =
       fun branchId (RT.Hash h) ->
@@ -69,44 +66,40 @@ let pt : PT.PackageManager =
   let getBranchChain branchId =
     Branches.getBranchChain branchId |> Async.AwaitTask |> Async.RunSynchronously
 
-  let typeGetCache = withCache PMPT.Type.get
-  let fnGetCache = withCache PMPT.Fn.get
-  let valueGetCache = withCache PMPT.Value.get
-
   { findType =
       fun (branchId, location) ->
         let chain = getBranchChain branchId
-        withCache (PMPT.Type.find chain) location |> Ply.toTask
+        withCache (PMPT.Type.find chain) location
     findValue =
       fun (branchId, location) ->
         let chain = getBranchChain branchId
-        withCache (PMPT.Value.find chain) location |> Ply.toTask
+        withCache (PMPT.Value.find chain) location
     findFn =
       fun (branchId, location) ->
         let chain = getBranchChain branchId
-        withCache (PMPT.Fn.find chain) location |> Ply.toTask
+        withCache (PMPT.Fn.find chain) location
 
-    getType = fun id -> typeGetCache id |> Ply.toTask
-    getFn = fun id -> fnGetCache id |> Ply.toTask
-    getValue = fun id -> valueGetCache id |> Ply.toTask
+    getType = withCache PMPT.Type.get
+    getFn = withCache PMPT.Fn.get
+    getValue = withCache PMPT.Value.get
 
     getTypeLocations =
       fun branchId id ->
         let chain = getBranchChain branchId
-        PMPT.Type.getLocations chain id |> Ply.toTask
+        PMPT.Type.getLocations chain id
     getValueLocations =
       fun branchId id ->
         let chain = getBranchChain branchId
-        PMPT.Value.getLocations chain id |> Ply.toTask
+        PMPT.Value.getLocations chain id
     getFnLocations =
       fun branchId id ->
         let chain = getBranchChain branchId
-        PMPT.Fn.getLocations chain id |> Ply.toTask
+        PMPT.Fn.getLocations chain id
 
     search =
       fun (branchId, query) ->
         let chain = getBranchChain branchId
-        PMPT.search chain query |> Ply.toTask
+        PMPT.search chain query
 
     init = task { return () } }
 

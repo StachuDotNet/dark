@@ -22,8 +22,8 @@ type PropagationResult =
 /// Item-specific operations for retrieving, transforming, and creating ops
 type private ItemProcessingContext<'T> =
   { itemKind : PT.ItemKind
-    getItem : Hash -> Ply<Option<'T>> // Given a Hash, fetch the full item definition
-    getLocations : Hash -> Ply<List<PT.PackageLocation>> // Given a Hash, look up the item's PackageLocations
+    getItem : Hash -> Task<Option<'T>> // Given a Hash, fetch the full item definition
+    getLocations : Hash -> Task<List<PT.PackageLocation>> // Given a Hash, look up the item's PackageLocations
     transform : Map<Hash, Hash> -> 'T -> 'T // Transforms the item by replacing old hashes with new hashes based on the mapping
     computeHash : 'T -> Hash // Compute hash for the transformed item
     withNewId : Hash -> 'T -> 'T // Assigns a new Hash to the item

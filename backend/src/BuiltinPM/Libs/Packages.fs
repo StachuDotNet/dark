@@ -93,7 +93,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             // Do a fresh lookup using the branchId to get the current branch chain.
             // This ensures newly-created types on the branch are visible.
             let! branchChain = Branches.getBranchChain branchId
-            let! result = PMPT.Type.find branchChain location |> Ply.toTask
+            let! result = PMPT.Type.find branchChain location
             return
               result
               |> Option.map PT2DT.Hash.toDT
@@ -148,7 +148,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
           task {
             let location = PT2DT.PackageLocation.fromDT location
             let! branchChain = Branches.getBranchChain branchId
-            let! result = PMPT.Value.find branchChain location |> Ply.toTask
+            let! result = PMPT.Value.find branchChain location
             return
               result
               |> Option.map PT2DT.Hash.toDT
@@ -205,7 +205,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [ valueTypeDval ] ->
           task {
             let vt = RT2DT.ValueType.fromDT valueTypeDval
-            let! valueIds = RTPM.Value.findByValueType vt |> Ply.toTask
+            let! valueIds = RTPM.Value.findByValueType vt
             return
               DList(
                 VT.known (PT2DT.Hash.knownType ()),
@@ -276,7 +276,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
           task {
             let location = PT2DT.PackageLocation.fromDT location
             let! branchChain = Branches.getBranchChain branchId
-            let! result = PMPT.Fn.find branchChain location |> Ply.toTask
+            let! result = PMPT.Fn.find branchChain location
             return
               result
               |> Option.map PT2DT.Hash.toDT
@@ -330,7 +330,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
           task {
             let searchQuery = PT2DT.Search.SearchQuery.fromDT query
             let! branchChain = Branches.getBranchChain branchId
-            let! results = PMPT.search branchChain searchQuery |> Ply.toTask
+            let! results = PMPT.search branchChain searchQuery
             return PT2DT.Search.SearchResults.toDT results
           }
 
