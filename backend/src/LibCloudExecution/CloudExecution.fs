@@ -29,7 +29,7 @@ let builtins : RT.Builtins =
     [ BuiltinExecution.Builtin.builtins HttpClient.configuration
       BuiltinPM.Builtin.builtins pmPT
       BuiltinHttpServer.Builtin.builtins ()
-      BuiltinCloudExecution.Builtin.builtins ()
+      BuiltinDB.Builtin.builtins ()
       BuiltinDarkInternal.Builtin.builtins () ]
     []
 

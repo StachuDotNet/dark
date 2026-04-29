@@ -14,7 +14,7 @@
     <ProjectReference Include="../BuiltinExecution/BuiltinExecution.fsproj" />
     <ProjectReference Include="../BuiltinPM/BuiltinPM.fsproj" />
     <ProjectReference Include="../LibCloud/LibCloud.fsproj" />
-    <ProjectReference Include="../BuiltinCloudExecution/BuiltinCloudExecution.fsproj" />
+    <ProjectReference Include="../BuiltinDB/BuiltinDB.fsproj" />
     <ProjectReference Include="../BuiltinDarkInternal/BuiltinDarkInternal.fsproj" />
     <ProjectReference Include="../BuiltinHttpServer/BuiltinHttpServer.fsproj" />
   </ItemGroup>
