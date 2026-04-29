@@ -24,8 +24,9 @@
     <ProjectReference Include="../LibDB/LibDB.fsproj" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="DvalReprInternalRoundtrippable.fs" />
-    <Compile Include="DvalReprInternalHash.fs" />
+    <!-- DvalReprInternalRoundtrippable, ...Hash, ...Queryable moved to LibExecution
+         (their module names were always `LibExecution.DvalReprInternal*`; the
+         file location finally matches). -->
 
     <Compile Include="Config.fs" />
     <Compile Include="File.fs" />
@@ -36,7 +37,6 @@
     <Compile Include="Canvas.fs" />
     <Compile Include="Tracing.fs" />
 
-    <Compile Include="DvalReprInternalQueryable.fs" />
     <Compile Include="UserDB.fs" />
 
     <Compile Include="Stats.fs" />

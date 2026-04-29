@@ -25,6 +25,9 @@
     <ProjectReference Include="../DarkTypes/DarkTypes.fsproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DvalReprInternalRoundtrippable.fs" />
+    <Compile Include="DvalReprInternalHash.fs" />
+    <Compile Include="DvalReprInternalQueryable.fs" />
     <Compile Include="Execution.fs" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
