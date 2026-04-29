@@ -34,7 +34,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUuid canvasID; DString dbName; typeHashDval ] ->
           let typeHash = PT2DT.Hash.fromDT typeHashDval
-          uply {
+          task {
             // Check for existing DB with the same name
             let! existing =
               Sql.query
@@ -70,6 +70,7 @@ let fns () : List<BuiltInFn> =
               do! Canvas.saveTLIDs canvasID [ (toplevel, Serialize.NotDeleted) ]
               return Dval.resultOk KTUInt64 KTString (DUInt64 tlid)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -87,10 +88,11 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid accountID; DString domain ] ->
-          uply {
+          task {
             let! canvasID = Canvas.getOrCreateForAccount accountID domain
             return DUuid canvasID
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -108,13 +110,14 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid canvasID; DUuid branchId ] ->
-          uply {
+          task {
             let! canvas = Canvas.loadAllDBs canvasID
             let pm = LibPackageManager.PackageManager.pt
             let! dbs =
               canvas.dbs
               |> Map.values
               |> Ply.List.mapSequentially (fun (db : PT.DB.T) ->
+                // Ply.List.mapSequentially callback — stays uply.
                 uply {
                   let! typeName =
                     match db.typ with
@@ -129,8 +132,10 @@ let fns () : List<BuiltInFn> =
                     | _ -> Ply "unknown"
                   return DTuple(DString db.name, DString typeName, [])
                 })
+              |> Ply.toTask
             return Dval.list (KTTuple(VT.string, VT.string, [])) dbs
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -148,7 +153,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUuid canvasID; DString dbName ] ->
-          uply {
+          task {
             let! matchingTlids =
               Sql.query
                 "SELECT tlid FROM toplevels_v0
@@ -184,6 +189,7 @@ let fns () : List<BuiltInFn> =
                   |> Sql.executeStatementAsync)
               return Dval.resultOk KTUnit KTString DUnit
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -199,12 +205,13 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString name ] ->
-          uply {
+          task {
             let! result = Account.getUserByName name
             match result with
             | Some userID -> return Dval.optionSome KTUuid (DUuid userID)
             | None -> return Dval.optionNone KTUuid
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

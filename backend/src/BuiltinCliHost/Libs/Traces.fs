@@ -2,6 +2,7 @@
 module BuiltinCliHost.Libs.Traces
 
 open System.Text.Json
+open System.Threading.Tasks
 
 open Prelude
 open LibExecution.RuntimeTypes
@@ -39,10 +40,10 @@ let private parseArgsJson (argsJson : string) : List<Dval> =
 /// Args/result are stored as JSON inline; parse them per row. The display
 /// name was resolved at write time and lives in fn_hash, so reads are a
 /// flat SELECT — lambdas have NULL fn_hash and render as "(lambda)".
-let private loadFnCalls (traceId : string) : Ply<Dval> =
+let private loadFnCalls (traceId : string) : Task<Dval> =
   let typeName = fnCallTypeName ()
   let dvalKT = KTCustomType(dvalTypeName (), [])
-  uply {
+  task {
     let! events =
       Sql.query
         "SELECT call_id, parent_call_id, kind, fn_hash, lambda_expr_id,
@@ -102,7 +103,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DInt64 limit ] ->
-          uply {
+          task {
             let typeName = traceSummaryTypeName ()
             let! rows =
               Sql.query
@@ -127,6 +128,7 @@ let fns () : List<BuiltInFn> =
                 DRecord(typeName, typeName, [], fields))
               |> Dval.list (KTCustomType(typeName, []))
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -142,7 +144,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString traceID ] ->
-          uply {
+          task {
             // One SELECT covers metadata + input — both live on the trace row.
             let! row =
               Sql.query
@@ -181,6 +183,7 @@ let fns () : List<BuiltInFn> =
                 |> Dval.optionSome (KTCustomType(typeName, []))
             | None -> return Dval.optionNone (KTCustomType(typeName, []))
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -197,7 +200,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString fnName; DInt64 limit ] ->
-          uply {
+          task {
             // Both builtins and package fns store their display name in
             // fn_hash (resolved at write time), so one LIKE matches either.
             let typeName = traceSummaryTypeName ()
@@ -228,6 +231,7 @@ let fns () : List<BuiltInFn> =
                 DRecord(typeName, typeName, [], fields))
               |> Dval.list (KTCustomType(typeName, []))
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -242,7 +246,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString traceID ] ->
-          uply {
+          task {
             let! row =
               Sql.query "SELECT input_value_json FROM traces WHERE id = @traceId"
               |> Sql.parameters [ "traceId", Sql.string traceID ]
@@ -261,6 +265,7 @@ let fns () : List<BuiltInFn> =
                 print $"[traces] Failed to parse input for replay: {ex.Message}"
                 return Dval.optionNone KTString
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -275,7 +280,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUnit ] ->
-          uply {
+          task {
             let! count =
               Sql.query "SELECT COUNT(*) as c FROM traces"
               |> Sql.executeRowAsync (fun read -> read.int64 "c")
@@ -283,6 +288,7 @@ let fns () : List<BuiltInFn> =
             do! Sql.query "DELETE FROM traces" |> Sql.executeStatementAsync
             return DInt64 count
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

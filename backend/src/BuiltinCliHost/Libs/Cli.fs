@@ -272,15 +272,16 @@ let fns () : List<BuiltInFn> =
             DString code
             DList(_vtTODO, scriptArgs)
             DBool allowHarmful ] ->
-          uply {
+          task {
             let accountID = C2DT.Option.fromDT D.uuid accountIDDval
             // Use branch-specific state for parsing so name resolution uses the right branch
             let branchState = createBranchState exeState branchId allowHarmful
             let! parsedScript =
               parseCliScript branchState branchId "CliScript" filename code
+              |> Ply.toTask
 
             try
-              let! (canvasID, dbs) = loadCanvasAndDBs accountID
+              let! (canvasID, dbs) = loadCanvasAndDBs accountID |> Ply.toTask
 
               match parsedScript with
               | Ok mod' ->
@@ -293,6 +294,7 @@ let fns () : List<BuiltInFn> =
                     canvasID
                     dbs
                     (RunScript(filename, code))
+                  |> Ply.toTask
                 with
                 | Ok(DInt64 i) -> return resultOk (DInt64 i)
                 | Ok result ->
@@ -309,6 +311,7 @@ let fns () : List<BuiltInFn> =
             with e ->
               return createExceptionError e |> RT2DT.RuntimeError.toDT |> resultError
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -336,7 +339,7 @@ let fns () : List<BuiltInFn> =
           _,
           [],
           [ accountIDDval; DUuid branchId; DString expression; DBool allowHarmful ] ->
-          uply {
+          task {
             let accountID = C2DT.Option.fromDT D.uuid accountIDDval
             // Use branch-specific state for parsing so name resolution uses the right branch
             let branchState = createBranchState exeState branchId allowHarmful
@@ -347,9 +350,10 @@ let fns () : List<BuiltInFn> =
                 "CliScript"
                 "exprWrapper"
                 expression
+              |> Ply.toTask
 
             try
-              let! (canvasID, dbs) = loadCanvasAndDBs accountID
+              let! (canvasID, dbs) = loadCanvasAndDBs accountID |> Ply.toTask
 
               match parsedScript with
               | Ok mod' ->
@@ -362,6 +366,7 @@ let fns () : List<BuiltInFn> =
                     canvasID
                     dbs
                     (EvalExpression expression)
+                  |> Ply.toTask
                 with
                 | Ok result ->
                   match result with
@@ -377,6 +382,7 @@ let fns () : List<BuiltInFn> =
             with e ->
               return createExceptionError e |> RT2DT.RuntimeError.toDT |> resultError
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
