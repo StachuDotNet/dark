@@ -239,8 +239,9 @@ jobs:
       - run: ./scripts/build/_dotnet-wrapper tool restore
       - run: ./scripts/build/_dotnet-wrapper paket restore
 
-      # The CLI embeds the Sqlite data.db,
-      # so we need to get a copy ready first.
+      # The CLI ships a seed.db alongside the binary (no longer embedded
+      # since SeedLoader.fs landed). Build it from a fresh migrations + load
+      # so the seed reflects the source of truth.
       - run:
           name: Build LocalExec for migrations (debug mode fine)
           command: ./scripts/build/_dotnet-wrapper build src/LocalExec/LocalExec.fsproj
