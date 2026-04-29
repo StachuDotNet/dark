@@ -44,13 +44,13 @@ export GIT_COMMIT="$sha"
 mkdir -p clis
 rm -rf clis/.darklang
 
-# Export a seed (smaller DB) and use it as the embedded data.db for smaller exes.
-# The seed has full schema but no derived data — the grow step rebuilds on first run.
-echo "Exporting seed for embedding..."
+# Export a seed.db. The seed has full schema but no derived data — the
+# grow step rebuilds on first run. We ship this alongside the binary
+# (no longer embedded inside it); SeedLoader.fs discovers it on startup.
+echo "Exporting seed for shipping..."
 sqlite3 rundir/data.db "PRAGMA wal_checkpoint(TRUNCATE);" || true
 scripts/run-local-exec export-seed rundir/seed.db
-cp rundir/seed.db rundir/data.db
-echo "Replaced data.db with seed ($(du -h rundir/data.db | cut -f1))"
+echo "Seed ready ($(du -h rundir/seed.db | cut -f1))"
 
 # All supported runtimes - must match:
 # - backend/src/LibTreeSitter/LibTreeSitter.fsproj
@@ -123,6 +123,16 @@ build_for_runtime() {
 for rt in $runtimes; do
   build_for_runtime "$rt"
 done
+
+# Ship the seed.db once, alongside the per-runtime binaries. The CLI
+# discovers it via SeedLoader.fs (adjacent to binary > $DARKLANG_SEED_DB >
+# ~/.darklang/seed.db > optional download). One seed.db works for every
+# runtime since the binary format and SQL schema are runtime-independent.
+echo "Shipping seed.db alongside binaries..."
+cp -f rundir/seed.db "clis/seed.db"
+if [[ "$GZIP_OUTPUT" == "true" ]]; then
+  gzip -f "clis/seed.db"
+fi
 
 echo ""
 echo "Build complete. Output in clis/"

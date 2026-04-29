@@ -127,8 +127,24 @@ let initSerializers () = ()
 [<EntryPoint>]
 let main (args : string[]) =
   try
-    // Extract embedded resources FIRST — this sets DARK_CONFIG_RUNDIR
-    // which LibConfig.Config needs to resolve paths correctly.
+    // Parse our own (F#-side) args off the front. The remainder is passed
+    // through to the Dark-side handler as before.
+    let seedOpts, remainingArgs = SeedLoader.parseArgs (Array.toList args)
+
+    // Locate a seed.db. Tries: --seed-db arg, $DARKLANG_SEED_DB, adjacent
+    // to binary, ~/.darklang/seed.db, then optionally download. Fails with a
+    // helpful message if none works (and stdin isn't a TTY for prompting).
+    let seedPath =
+      match SeedLoader.load seedOpts with
+      | Ok p -> p
+      | Error msg ->
+        System.Console.Error.WriteLine msg
+        exit 1
+
+    // Set up DARK_CONFIG_RUNDIR + copy seed.db → data.db if not already done.
+    SeedLoader.installSeed seedPath
+
+    // Extract README and any other static assets that still ship embedded.
     EmbeddedResources.extract ()
     initSerializers ()
 
@@ -137,13 +153,6 @@ let main (args : string[]) =
       System.IO.Path.Combine(LibConfig.Config.logDir, "telemetry.jsonl")
     Telemetry.init telemetryPath
     use _totalSpan = Telemetry.span "cli.total" []
-
-    // If data.db is missing but seed.db exists, copy seed as data.db
-    let dbPath = LibConfig.Config.dbPath
-    let seedPath = System.IO.Path.Combine(LibConfig.Config.runDir, "seed.db")
-    if not (System.IO.File.Exists dbPath) && System.IO.File.Exists seedPath then
-      System.Console.Error.WriteLine "Copying seed.db as data.db"
-      System.IO.File.Copy(seedPath, dbPath)
 
     // Grow the database: apply any unapplied ops and evaluate values.
     let cliPackageManager =
@@ -162,7 +171,7 @@ let main (args : string[]) =
 
     let result =
       Telemetry.time "cli.execute" [] (fun () ->
-        let result = execute cliPackageManager (Array.toList args)
+        let result = execute cliPackageManager remainingArgs
         result.Result)
 
     NonBlockingConsole.wait ()

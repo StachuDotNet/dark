@@ -81,6 +81,20 @@ let export (outputPath : string) : Task<unit> =
       """
     cleanCmd.ExecuteNonQuery() |> ignore<int>
 
+    // Stamp the seed with a version number that the CLI checks at startup
+    // (Cli.SeedLoader.CURRENT_SEED_VERSION). Bump both whenever
+    // ProgramTypes.fs or the binary serializer's wire format changes
+    // incompatibly. SQLite's user_version is a single int32 — fits the
+    // single-version-per-seed model.
+    //
+    // CLEANUP: ideally derived mechanically from a hash of the F# AST of
+    // ProgramTypes.fs (and binary serializer schemas) so a forgotten bump
+    // surfaces at compile time. For v1, manual + a CI check.
+    let SEED_FORMAT_VERSION = 1
+    use versionCmd = conn.CreateCommand()
+    versionCmd.CommandText <- $"PRAGMA user_version = {SEED_FORMAT_VERSION};"
+    versionCmd.ExecuteNonQuery() |> ignore<int>
+
     use vacuumCmd = conn.CreateCommand()
     vacuumCmd.CommandText <- "VACUUM;"
     vacuumCmd.ExecuteNonQuery() |> ignore<int>
