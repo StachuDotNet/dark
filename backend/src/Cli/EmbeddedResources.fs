@@ -4,21 +4,25 @@ open System
 open System.IO
 open System.Reflection
 
+// Resolve the running executable's directory.
+// Assembly.Location returns "" for assemblies embedded in a single-file or AOT
+// bundle (and emits IL3000). AppContext.BaseDirectory is the AOT-clean replacement
+// for "where is the published binary"; ProcessPath stays as a final fallback.
+let private exeDirectory () : string =
+  let baseDir = AppContext.BaseDirectory
+  if not (String.IsNullOrEmpty(baseDir)) then
+    baseDir.TrimEnd('/', '\\')
+  else
+    let path = System.Environment.ProcessPath
+    if String.IsNullOrEmpty(path) then
+      Environment.CurrentDirectory
+    else
+      Path.GetDirectoryName(path)
+
 /// Determines if CLI is running in "installed" mode (in ~/.darklang/bin/) vs portable mode
 let private isInstalledMode () : bool =
-  let exePath =
-    let location = Assembly.GetExecutingAssembly().Location
-    if String.IsNullOrEmpty(location) then
-      System.Environment.ProcessPath
-    else
-      location
-
-  match exePath with
-  | null
-  | "" -> false
-  | path ->
-    let exeDir = Path.GetDirectoryName(path)
-    exeDir.EndsWith("/.darklang/bin") || exeDir.EndsWith("\\.darklang\\bin")
+  let dir = exeDirectory ()
+  dir.EndsWith("/.darklang/bin") || dir.EndsWith("\\.darklang\\bin")
 
 /// Gets the appropriate .darklang directory path
 let private getDarklangDirectory () : string =
@@ -28,20 +32,7 @@ let private getDarklangDirectory () : string =
     Path.Combine(home, ".darklang")
   else
     // Portable mode: use adjacent .darklang directory
-    let exePath =
-      let location = Assembly.GetExecutingAssembly().Location
-      if String.IsNullOrEmpty(location) then
-        System.Environment.ProcessPath
-      else
-        location
-
-    let exeDir =
-      if String.IsNullOrEmpty(exePath) then
-        Environment.CurrentDirectory
-      else
-        Path.GetDirectoryName(exePath)
-
-    Path.Combine(exeDir, ".darklang")
+    Path.Combine(exeDirectory (), ".darklang")
 
 let private extractResource (resourceName : string) (targetPath : string) : unit =
   let assembly = Assembly.GetExecutingAssembly()

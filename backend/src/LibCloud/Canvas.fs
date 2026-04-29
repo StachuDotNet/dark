@@ -15,9 +15,6 @@ module PT = LibExecution.ProgramTypes
 module PTParser = LibExecution.ProgramTypesParser
 module RT = LibExecution.RuntimeTypes
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
-module K8s = LibService.Kubernetes
-
-
 let createWithExactID
   (id : CanvasID)
   (accountID : Option<UserID>)
@@ -429,17 +426,10 @@ let saveTLIDs
     Exception.reraiseAsPageable "canvas save failed" [ "canvasID", id ] e
 
 
-type HealthCheckResult =
-  Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult
-
-/// Simple healthcheck that just returns healthy (domain checks removed with LaunchDarkly)
-let loadDomainsHealthCheck
-  (_ : System.Threading.CancellationToken)
-  : Task<HealthCheckResult> =
-  task { return HealthCheckResult.Healthy() }
-
-let healthCheck : K8s.HealthCheck =
-  { name = "canvas"; checkFn = loadDomainsHealthCheck; probeTypes = [ K8s.Startup ] }
+// Canvas healthCheck moved to BwdServer/HealthChecks.fs — only consumer is BwdServer's
+// K8s startup probe registration, and dragging K8s.HealthCheck into LibCloud forces
+// the ASP.NET Microsoft.Extensions.Diagnostics.HealthChecks framework reference into
+// the CLI's transitive graph for no benefit.
 
 
 let toProgram (c : T) : Ply<RT.Program> =

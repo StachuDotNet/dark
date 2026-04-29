@@ -30,7 +30,9 @@ nuget NReco.Logging.File = 1.1.7
 nuget SimpleBase = 4.0.0
 
 // Services
-nuget Microsoft.Extensions.Diagnostics.HealthChecks = 10.0.0
+// Microsoft.Extensions.Diagnostics.HealthChecks dropped — was only used by
+// LibService.Kubernetes, which is itself disabled (no active K8s consumers).
+// nuget Microsoft.Extensions.Diagnostics.HealthChecks = 10.0.0
 
 // LibCloud
 // Sodium.Core disabled along with Password.fs (no remaining consumers)

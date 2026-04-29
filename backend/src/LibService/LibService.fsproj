@@ -15,7 +15,9 @@
     <Compile Include="Config.fs" />
     <Compile Include="Logging.fs" />
     <Compile Include="FireAndForget.fs" />
-    <Compile Include="Kubernetes.fs" />
+    <!-- Kubernetes.fs disabled: K8s healthcheck/probe infrastructure was BwdServer-only,
+         and BwdServer is itself disabled at sln level. Source kept on disk. -->
+    <!-- <Compile Include="Kubernetes.fs" /> -->
     <Compile Include="Kestrel.fs" />
     <Compile Include="HSTS.fs" />
     <Compile Include="Init.fs" />

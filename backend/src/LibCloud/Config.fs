@@ -5,7 +5,7 @@ module LibCloud.Config
 open Prelude
 
 open LibConfig.ConfigDsl
-module Config = LibService.Config
+module Config = LibConfig.Config
 
 // -------------------------
 // Note: if you add or change an env-var in development,

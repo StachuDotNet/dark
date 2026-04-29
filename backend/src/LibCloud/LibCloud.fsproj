@@ -6,7 +6,9 @@
     <LangVersion>10.0</LangVersion>
     <!-- Publishing configuration -->
     <IsPublishable>false</IsPublishable>
-    <IsTrimmable>false</IsTrimmable>
+    <!-- IsTrimmable=true so the trimmer can shake unused code from this assembly
+         in the CLI's AOT graph (the CLI uses ~half of LibCloud at runtime). -->
+    <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>
   <ItemGroup>
     <None Include="paket.references" />
@@ -15,7 +17,10 @@
     <ProjectReference Include="../Prelude/Prelude.fsproj" />
     <ProjectReference Include="../LibExecution/LibExecution.fsproj" />
     <ProjectReference Include="../LibSerialization/LibSerialization.fsproj" />
-    <ProjectReference Include="../LibService/LibService.fsproj" />
+    <!-- LibService dropped: the only usages were LibService.Config (now using
+         LibConfig.Config directly) and LibService.Kubernetes for the canvas
+         healthCheck (moved to BwdServer/Server.fs). Dropping it removes the
+         Microsoft.AspNetCore.App FrameworkReference from the CLI graph. -->
     <ProjectReference Include="../LibDB/LibDB.fsproj" />
   </ItemGroup>
   <ItemGroup>

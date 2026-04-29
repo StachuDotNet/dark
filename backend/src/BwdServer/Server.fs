@@ -359,10 +359,10 @@ let configureApp (healthCheckPort : int) (app : IApplicationBuilder) =
   |> fun app -> app.Run(RequestDelegate handler)
 
 
-let configureServices (services : IServiceCollection) : unit =
-  services
-  |> Kubernetes.configureServices [ Canvas.healthCheck ]
-  |> ignore<IServiceCollection>
+// K8s healthcheck wiring removed (Kubernetes.fs disabled). When BwdServer is
+// re-enabled, decide whether to revive K8s probes or use a different
+// liveness/readiness mechanism.
+let configureServices (_services : IServiceCollection) : unit = ()
 
 
 let webserver

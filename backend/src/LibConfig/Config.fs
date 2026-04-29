@@ -31,6 +31,10 @@ let runDir = absoluteDirOrCurrent "DARK_CONFIG_RUNDIR"
 
 let logDir = $"{runDir}logs/"
 
+// sourceRootDir is for referencing things from our source code at dev time —
+// requires env var. Used by LibCloud.Config; previously lived in LibService.Config.
+let sourceRootDir = ConfigDsl.absoluteDir "DARK_CONFIG_ROOT_DIR"
+
 let dbName =
   match getEnv "DARK_CONFIG_DB_NAME" with
   | Some s -> s
