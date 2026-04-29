@@ -12,7 +12,7 @@ module Builtin = LibExecution.Builtin
 module PT = LibExecution.ProgramTypes
 
 module UserDB = LibPackageManager.UserDB
-module Db = LibDB.Db
+module Db = LibSqlite.Db
 module RTQueryCompiler = LibExecution.RTQueryCompiler
 
 let tvar v = TVariable v

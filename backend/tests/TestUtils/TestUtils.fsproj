@@ -13,7 +13,7 @@
     <ProjectReference Include="../../src/BuiltinPM/BuiltinPM.fsproj" />
     <ProjectReference Include="../../src/BuiltinDB/BuiltinDB.fsproj" />
     <ProjectReference Include="../../src/BuiltinDarkInternal/BuiltinDarkInternal.fsproj" />
-    <ProjectReference Include="../../src/LibDB/LibDB.fsproj" />
+    <ProjectReference Include="../../src/LibSqlite/LibSqlite.fsproj" />
     <ProjectReference Include="../../src/LibPackageManager/LibPackageManager.fsproj" />
     <ProjectReference Include="../../src/BuiltinHttpServer/BuiltinHttpServer.fsproj" />
   </ItemGroup>
