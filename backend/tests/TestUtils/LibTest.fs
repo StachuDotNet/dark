@@ -74,9 +74,9 @@ let fns () : List<BuiltInFn> =
             |> (fun l -> l[0])
             |> DChar
             |> Dval.optionSome KTChar
-            |> Ply
+            |> Task.FromResult
           else
-            Dval.optionNone KTChar |> Ply
+            Dval.optionNone KTChar |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -94,7 +94,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ arg ] ->
           state.test.sideEffectCount <- state.test.sideEffectCount + 1
-          Ply(arg)
+          Task.FromResult arg
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -108,7 +108,8 @@ let fns () : List<BuiltInFn> =
       description = "Return the value of the side-effect counter"
       fn =
         (function
-        | state, _, _, [ DUnit ] -> Ply(Dval.int64 state.test.sideEffectCount)
+        | state, _, _, [ DUnit ] ->
+          Task.FromResult(Dval.int64 state.test.sideEffectCount)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -124,7 +125,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ v; DString msg ] ->
           print $"{msg}: {v}"
-          Ply v
+          Task.FromResult v
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -139,7 +140,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString username ] ->
-          uply {
+          task {
             do!
               // This is unsafe. A user has canvases, and canvases have traces. It
               // will either break or cascade (haven't checked)
@@ -175,7 +176,8 @@ let fns () : List<BuiltInFn> =
       description = "Get the name of the canvas that's running"
       fn =
         (function
-        | state, _, _, [ DUnit ] -> state.program.canvasID |> DUuid |> Ply
+        | state, _, _, [ DUnit ] ->
+          state.program.canvasID |> DUuid |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -190,7 +192,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [ DInt64 count ] ->
-          uply {
+          task {
             state.test.expectedExceptionCount <- int count
             return DUnit
           }

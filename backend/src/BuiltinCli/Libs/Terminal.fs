@@ -99,7 +99,7 @@ let fns () : List<BuiltInFn> =
               24
               &cachedHeight
           )
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -122,7 +122,7 @@ let fns () : List<BuiltInFn> =
               80
               &cachedWidth
           )
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -136,7 +136,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns the absolute path to the CLI log directory"
       fn =
         (function
-        | _, _, [], [ DUnit ] -> DString(LibConfig.Config.logDir) |> Ply
+        | _, _, [], [ DUnit ] -> DString(LibConfig.Config.logDir) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

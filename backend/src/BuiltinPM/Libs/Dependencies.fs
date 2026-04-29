@@ -69,7 +69,7 @@ let fns () : List<BuiltInFn> =
                 ))
             return DList(tupleVT, dvals)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -106,7 +106,7 @@ let fns () : List<BuiltInFn> =
                 ))
             return DList(tupleVT, dvals)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -154,7 +154,7 @@ let fns () : List<BuiltInFn> =
 
             return DList(resultVT, dvals)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -211,7 +211,7 @@ let fns () : List<BuiltInFn> =
                 dvals
               )
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

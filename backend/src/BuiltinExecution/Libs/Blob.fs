@@ -5,6 +5,7 @@ open System.Text
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
@@ -26,7 +27,7 @@ let fns () : List<BuiltInFn> =
             let! bs = Blob.readBytes state ref |> Ply.toTask
             return DInt64(int64 bs.Length)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -42,7 +43,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DString s ] ->
           let bs = System.Text.Encoding.UTF8.GetBytes(s)
-          Blob.newEphemeral state bs |> Ply
+          Blob.newEphemeral state bs |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -68,7 +69,7 @@ let fns () : List<BuiltInFn> =
             with e ->
               return err (DString($"Invalid UTF-8: {e.Message}"))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -89,7 +90,7 @@ let fns () : List<BuiltInFn> =
             let! bs = Blob.readBytes state ref |> Ply.toTask
             return DString(System.Convert.ToHexString(bs))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -109,9 +110,9 @@ let fns () : List<BuiltInFn> =
         | state, _, _, [ DString s ] ->
           try
             let bs = System.Convert.FromHexString(s)
-            ok (Blob.newEphemeral state bs) |> Ply
+            ok (Blob.newEphemeral state bs) |> Task.FromResult
           with e ->
-            err $"Invalid hex string: {e.Message}" |> Ply
+            err $"Invalid hex string: {e.Message}" |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -131,7 +132,7 @@ let fns () : List<BuiltInFn> =
             let! bs = Blob.readBytes state ref |> Ply.toTask
             return DString(System.Convert.ToBase64String(bs))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -159,9 +160,9 @@ let fns () : List<BuiltInFn> =
             | _ -> base0
           try
             let bs = System.Convert.FromBase64String(normalized)
-            ok (Blob.newEphemeral state bs) |> Ply
+            ok (Blob.newEphemeral state bs) |> Task.FromResult
           with e ->
-            err $"Invalid base64 string: {e.Message}" |> Ply
+            err $"Invalid base64 string: {e.Message}" |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -188,7 +189,7 @@ let fns () : List<BuiltInFn> =
                 Exception.raiseInternal "blobConcat: expected DBlob" [ "item", item ]
             return Blob.newEphemeral state (collected.ToArray())
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -221,7 +222,7 @@ let fns () : List<BuiltInFn> =
               System.Array.Copy(bs, int safeStart, slice, 0, int safeLen)
             return Blob.newEphemeral state slice
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -241,7 +242,7 @@ let fns () : List<BuiltInFn> =
             let! bs = Blob.readBytes state ref |> Ply.toTask
             return Dval.byteArrayToDvalList bs
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -258,7 +259,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DList(_, items) ] ->
           let bs = Dval.dlistToByteArray items
-          Blob.newEphemeral state bs |> Ply
+          Blob.newEphemeral state bs |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure

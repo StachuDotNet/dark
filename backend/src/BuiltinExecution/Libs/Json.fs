@@ -5,6 +5,7 @@ open System.Text.Json
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module DarkDateTime = LibExecution.DarkDateTime
 module VT = LibExecution.ValueType
@@ -726,7 +727,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, vm, [ _typeToSerializeAs ], [ arg ] ->
           let response = writeJson (fun w -> serialize vm.threadID w arg)
-          DString response |> Ply
+          DString response |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -758,7 +759,7 @@ let fns () : List<BuiltInFn> =
             | Ok v -> return resultOk v
             | Error e -> return resultError (ParseError.toDT e)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

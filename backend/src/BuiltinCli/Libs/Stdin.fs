@@ -11,6 +11,7 @@ module PackageRefs = LibExecution.PackageRefs
 module NR = LibExecution.RuntimeTypes.NameResolution
 
 open Builtin.Shortcuts
+open System.Threading.Tasks
 
 /// Drain any buffered input characters that arrived in a burst
 /// (e.g. mouse wheel scroll generates many escape sequences at once).
@@ -229,7 +230,7 @@ let fns () : List<BuiltInFn> =
               Map [ "key", key; "modifiers", modifiers; "keyChar", keyChar ]
             )
 
-          Ply(keyRead)
+          Task.FromResult(keyRead)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -245,7 +246,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUnit ] ->
           let input = System.Console.ReadLine()
-          if input = null then Ply(DString "") else Ply(DString input)
+          if input = null then
+            Task.FromResult(DString "")
+          else
+            Task.FromResult(DString input)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -262,7 +266,7 @@ let fns () : List<BuiltInFn> =
         | _, _, _, [ DUnit ] ->
           (not Console.IsInputRedirected || not Console.IsOutputRedirected)
           |> DBool
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -283,7 +287,7 @@ let fns () : List<BuiltInFn> =
             let buffer = Array.zeroCreate (int length)
             let bytesRead = System.Console.In.Read(buffer, 0, (int length))
             let input = System.String(buffer, 0, bytesRead)
-            Ply(DString input)
+            Task.FromResult(DString input)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -301,7 +305,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUnit ] ->
           let input = System.Console.In.ReadToEnd()
-          Ply(DString input)
+          Task.FromResult(DString input)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

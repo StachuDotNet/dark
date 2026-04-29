@@ -4,6 +4,7 @@ open Prelude
 
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 module PackageRefs = LibExecution.PackageRefs
 module Dval = LibExecution.Dval
 module ValueType = LibExecution.ValueType
@@ -182,7 +183,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns true if the two value are equal"
       fn =
         (function
-        | _, vm, _, [ a; b ] -> equalsBuiltinImpl vm a b |> DBool |> Ply
+        | _, vm, _, [ a; b ] -> equalsBuiltinImpl vm a b |> DBool |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "="
       previewable = Pure
@@ -196,7 +197,8 @@ let fns () : List<BuiltInFn> =
       description = "Returns true if the two value are not equal"
       fn =
         (function
-        | _, vm, _, [ a; b ] -> equalsBuiltinImpl vm a b |> not |> DBool |> Ply
+        | _, vm, _, [ a; b ] ->
+          equalsBuiltinImpl vm a b |> not |> DBool |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "<>"
       previewable = Pure
@@ -219,13 +221,13 @@ let fns () : List<BuiltInFn> =
           | DEnum(FQTypeName.Package(Hash id), _, _, "Some", [ value ]) when
             id = PackageRefs.Type.Stdlib.option ()
             ->
-            Ply value
+            Task.FromResult value
 
           // Success: extract `Ok` out of a Result
           | DEnum(FQTypeName.Package(Hash id), _, _, "Ok", [ value ]) when
             id = PackageRefs.Type.Stdlib.result ()
             ->
-            Ply value
+            Task.FromResult value
 
           // Error: expected Some, got None
           | DEnum(FQTypeName.Package(Hash id), _, _, "None", []) when
@@ -275,7 +277,7 @@ let fns () : List<BuiltInFn> =
             print $"DEBUG: {label}: {repr}"
             return DUnit
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -295,7 +297,7 @@ let fns () : List<BuiltInFn> =
             let! repr = Exe.dvalToRepr exeState value
             return DString repr
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

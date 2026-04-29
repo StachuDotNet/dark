@@ -70,7 +70,7 @@ let fns () : List<BuiltInFn> =
               do! Canvas.saveTLIDs canvasID [ (toplevel, Serialize.NotDeleted) ]
               return Dval.resultOk KTUInt64 KTString (DUInt64 tlid)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -92,7 +92,7 @@ let fns () : List<BuiltInFn> =
             let! canvasID = Canvas.getOrCreateForAccount accountID domain
             return DUuid canvasID
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -135,7 +135,7 @@ let fns () : List<BuiltInFn> =
               |> Ply.toTask
             return Dval.list (KTTuple(VT.string, VT.string, [])) dbs
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -189,7 +189,7 @@ let fns () : List<BuiltInFn> =
                   |> Sql.executeStatementAsync)
               return Dval.resultOk KTUnit KTString DUnit
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -211,7 +211,7 @@ let fns () : List<BuiltInFn> =
             | Some userID -> return Dval.optionSome KTUuid (DUuid userID)
             | None -> return Dval.optionNone KTUuid
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

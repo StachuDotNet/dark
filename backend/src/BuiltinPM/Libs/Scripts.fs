@@ -40,7 +40,7 @@ let fns () : List<BuiltInFn> =
               |> List.map Scripts.toDT
               |> Dval.list (KTCustomType(scriptTypeName (), []))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -62,7 +62,7 @@ let fns () : List<BuiltInFn> =
               |> Option.map Scripts.toDT
               |> Dval.option (KTCustomType(scriptTypeName (), []))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -85,7 +85,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> Dval.result (KTCustomType(scriptTypeName (), [])) KTString
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -108,7 +108,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> Dval.result KTUnit KTString
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -131,7 +131,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> Dval.result KTUnit KTString
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure

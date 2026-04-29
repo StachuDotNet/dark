@@ -54,15 +54,16 @@ let fns () : List<BuiltInFn> =
                 KTInt64
                 KTString
                 (DString "Failed to start background process")
-              |> Ply
+              |> Task.FromResult
             else
-              Dval.resultOk KTInt64 KTString (DInt64(int64 proc.Id)) |> Ply
+              Dval.resultOk KTInt64 KTString (DInt64(int64 proc.Id))
+              |> Task.FromResult
           with ex ->
             Dval.resultError
               KTInt64
               KTString
               (DString $"Error spawning process: {ex.Message}")
-            |> Ply
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -80,12 +81,12 @@ let fns () : List<BuiltInFn> =
           try
             let proc = System.Diagnostics.Process.GetProcessById(int pid)
             let isRunning = not proc.HasExited
-            DBool isRunning |> Ply
+            DBool isRunning |> Task.FromResult
           with
           | :? System.ArgumentException
           | :? System.InvalidOperationException ->
             // Process doesn't exist or has exited
-            DBool false |> Ply
+            DBool false |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -105,16 +106,17 @@ let fns () : List<BuiltInFn> =
             let proc = System.Diagnostics.Process.GetProcessById(int pid)
             proc.Kill()
             proc.WaitForExit(5000) |> ignore<bool>
-            Dval.resultOk KTUnit KTString DUnit |> Ply
+            Dval.resultOk KTUnit KTString DUnit |> Task.FromResult
           with
           | :? System.ArgumentException ->
-            Dval.resultError KTUnit KTString (DString "Process not found") |> Ply
+            Dval.resultError KTUnit KTString (DString "Process not found")
+            |> Task.FromResult
           | ex ->
             Dval.resultError
               KTUnit
               KTString
               (DString $"Error killing process: {ex.Message}")
-            |> Ply
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure

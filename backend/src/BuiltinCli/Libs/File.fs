@@ -37,7 +37,7 @@ let fns () : List<BuiltInFn> =
             with e ->
               return resultError (DString($"Error reading file: {e.Message}"))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -69,7 +69,7 @@ let fns () : List<BuiltInFn> =
             with e ->
               return resultError (DString($"Error writing file: {e.Message}"))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -86,13 +86,13 @@ let fns () : List<BuiltInFn> =
         | _, _, _, [ DString path ] ->
           try
             System.IO.File.Delete path
-            Dval.resultOk KTUnit KTString DUnit |> Ply
+            Dval.resultOk KTUnit KTString DUnit |> Task.FromResult
           with e ->
             Dval.resultError
               KTUnit
               KTString
               (DString $"Error deleting file: {e.Message}")
-            |> Ply
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -117,7 +117,7 @@ let fns () : List<BuiltInFn> =
             with e ->
               return resultError (DString e.Message)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -131,8 +131,8 @@ let fns () : List<BuiltInFn> =
       description =
         "Creates a new temporary file with a unique name in the system's temporary directory. Returns a Result type containing the temporary file path or an error if the creation fails."
       fn =
-        let resultOk r = Dval.resultOk KTString KTString r |> Ply
-        let resultError r = Dval.resultError KTString KTString r |> Ply
+        let resultOk r = Dval.resultOk KTString KTString r |> Task.FromResult
+        let resultError r = Dval.resultError KTString KTString r |> Task.FromResult
         (function
         | _, _, _, [ DUnit ] ->
           try
@@ -158,9 +158,9 @@ let fns () : List<BuiltInFn> =
           try
             let attrs = System.IO.File.GetAttributes(path)
             let isDir = attrs.HasFlag(System.IO.FileAttributes.Directory)
-            DBool isDir |> Ply
+            DBool isDir |> Task.FromResult
           with _ ->
-            DBool false |> Ply
+            DBool false |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -181,9 +181,9 @@ let fns () : List<BuiltInFn> =
             let isDir = attrs.HasFlag(System.IO.FileAttributes.Directory)
             let exists =
               System.IO.File.Exists(path) || System.IO.Directory.Exists(path)
-            DBool(exists && not isDir) |> Ply
+            DBool(exists && not isDir) |> Task.FromResult
           with _ ->
-            DBool false |> Ply
+            DBool false |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -202,9 +202,9 @@ let fns () : List<BuiltInFn> =
           try
             let exists =
               System.IO.File.Exists(path) || System.IO.Directory.Exists(path)
-            DBool exists |> Ply
+            DBool exists |> Task.FromResult
           with _ ->
-            DBool false |> Ply
+            DBool false |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -218,8 +218,8 @@ let fns () : List<BuiltInFn> =
       description =
         "Returns the size of the file at the specified <param path> in bytes, or an error if the file does not exist or an error occurs"
       fn =
-        let resultOk r = Dval.resultOk KTInt64 KTString r |> Ply
-        let resultError r = Dval.resultError KTInt64 KTString r |> Ply
+        let resultOk r = Dval.resultOk KTInt64 KTString r |> Task.FromResult
+        let resultError r = Dval.resultError KTInt64 KTString r |> Task.FromResult
         (function
         | _, _, _, [ DString path ] ->
           try

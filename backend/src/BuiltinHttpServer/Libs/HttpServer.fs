@@ -147,7 +147,7 @@ let fns () : List<BuiltInFn> =
 
             return DUnit
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

@@ -38,7 +38,7 @@ let fns () : List<BuiltInFn> =
                 |> List.map DString
               return resultError (DList(VT.string, conflictStrs))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -61,7 +61,7 @@ let fns () : List<BuiltInFn> =
                 DString $"{c.owner}.{c.modules}.{c.name} ({c.itemType})")
             return DList(VT.string, conflictStrs)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure

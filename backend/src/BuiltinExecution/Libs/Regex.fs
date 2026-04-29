@@ -5,6 +5,7 @@ open System.Text.RegularExpressions
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
@@ -24,7 +25,7 @@ let fns () : List<BuiltInFn> =
         | _, _, _, [ DString input; DString pattern ] ->
           try
             let isMatch = Regex.IsMatch(input, pattern)
-            Ply(DBool isMatch)
+            Task.FromResult(DBool isMatch)
           with :? System.ArgumentException as e ->
             Exception.raiseInternal
               "Invalid regex pattern"
@@ -49,9 +50,9 @@ let fns () : List<BuiltInFn> =
           try
             let m = Regex.Match(input, pattern)
             if m.Success then
-              Dval.optionSome KTString (DString m.Value) |> Ply
+              Dval.optionSome KTString (DString m.Value) |> Task.FromResult
             else
-              Dval.optionNone KTString |> Ply
+              Dval.optionNone KTString |> Task.FromResult
           with :? System.ArgumentException as e ->
             Exception.raiseInternal
               "Invalid regex pattern"
@@ -80,7 +81,7 @@ let fns () : List<BuiltInFn> =
               |> Seq.cast<Match>
               |> Seq.map (fun m -> DString m.Value)
               |> Seq.toList
-            Ply(Dval.list KTString results)
+            Task.FromResult(Dval.list KTString results)
           with :? System.ArgumentException as e ->
             Exception.raiseInternal
               "Invalid regex pattern"
@@ -111,9 +112,9 @@ let fns () : List<BuiltInFn> =
                 input.Substring(0, m.Index)
                 + replacement
                 + input.Substring(m.Index + m.Length)
-              Ply(DString result)
+              Task.FromResult(DString result)
             else
-              Ply(DString input)
+              Task.FromResult(DString input)
           with
           | :? System.ArgumentException as e ->
             Exception.raiseInternal
@@ -148,7 +149,7 @@ let fns () : List<BuiltInFn> =
                 RegexOptions.None,
                 System.TimeSpan.FromMilliseconds(1000.0)
               )
-            Ply(DString result)
+            Task.FromResult(DString result)
           with
           | :? System.ArgumentException as e ->
             Exception.raiseInternal
@@ -176,7 +177,7 @@ let fns () : List<BuiltInFn> =
           try
             let parts = Regex.Split(input, pattern)
             let results = parts |> Array.map DString |> Array.toList
-            Ply(Dval.list KTString results)
+            Task.FromResult(Dval.list KTString results)
           with :? System.ArgumentException as e ->
             Exception.raiseInternal
               "Invalid regex pattern"

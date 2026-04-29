@@ -4,6 +4,7 @@ module BuiltinCloudExecution.Libs.DB
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
@@ -136,7 +137,7 @@ let fns () : List<BuiltInFn> =
             | Ok _id -> return value
             | Error rte -> return raiseUntargetedRTE rte
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -156,7 +157,7 @@ let fns () : List<BuiltInFn> =
             let! result = UserDB.getOption exeState vm.threadID db key |> Ply.toTask
             return TypeChecker.DvalCreator.option vm.threadID VT.unknownDbTODO result
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -195,7 +196,7 @@ let fns () : List<BuiltInFn> =
             else
               return Dval.optionNone optType
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -226,7 +227,7 @@ let fns () : List<BuiltInFn> =
             return
               result |> TypeChecker.DvalCreator.list vm.threadID VT.unknownDbTODO
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -256,7 +257,7 @@ let fns () : List<BuiltInFn> =
               |> Ply.toTask
             return TypeChecker.DvalCreator.dict vm.threadID VT.unknownDbTODO result
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -276,7 +277,7 @@ let fns () : List<BuiltInFn> =
             do! UserDB.delete exeState db key
             return DUnit
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -296,7 +297,7 @@ let fns () : List<BuiltInFn> =
             do! UserDB.deleteAll exeState db
             return DUnit
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -320,7 +321,7 @@ let fns () : List<BuiltInFn> =
               |> List.map snd
               |> TypeChecker.DvalCreator.list vm.threadID VT.unknownDbTODO
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -342,7 +343,7 @@ let fns () : List<BuiltInFn> =
             let! result = UserDB.getAll exeState vm.threadID tst db |> Ply.toTask
             return TypeChecker.DvalCreator.dict vm.threadID VT.unknownDbTODO result
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -362,7 +363,7 @@ let fns () : List<BuiltInFn> =
             let! (count : int) = UserDB.count exeState db
             return count |> int64 |> DInt64
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -376,7 +377,8 @@ let fns () : List<BuiltInFn> =
       description = "Returns a random key suitable for use as a DB key"
       fn =
         (function
-        | _, _, _, [ DUnit ] -> System.Guid.NewGuid() |> string |> DString |> Ply
+        | _, _, _, [ DUnit ] ->
+          System.Guid.NewGuid() |> string |> DString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -397,7 +399,7 @@ let fns () : List<BuiltInFn> =
             let! results = UserDB.getAllKeys exeState db
             return results |> List.map DString |> Dval.list KTString
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -428,7 +430,7 @@ let fns () : List<BuiltInFn> =
                 compiled.paramValues
               |> Ply.toTask
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = QueryFunction
       previewable = Impure
@@ -457,7 +459,7 @@ let fns () : List<BuiltInFn> =
                 compiled.paramValues
               |> Ply.toTask
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = QueryFunction
       previewable = Impure
@@ -486,7 +488,7 @@ let fns () : List<BuiltInFn> =
                 compiled.paramValues
               |> Ply.toTask
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = QueryFunction
       previewable = Impure
@@ -515,7 +517,7 @@ let fns () : List<BuiltInFn> =
                 compiled.paramValues
               |> Ply.toTask
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = QueryFunction
       previewable = Impure

@@ -311,7 +311,7 @@ let fns () : List<BuiltInFn> =
             with e ->
               return createExceptionError e |> RT2DT.RuntimeError.toDT |> resultError
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -382,7 +382,7 @@ let fns () : List<BuiltInFn> =
             with e ->
               return createExceptionError e |> RT2DT.RuntimeError.toDT |> resultError
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

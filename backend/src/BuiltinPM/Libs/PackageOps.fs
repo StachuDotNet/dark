@@ -12,6 +12,7 @@ module VT = LibExecution.ValueType
 module NR = LibExecution.RuntimeTypes.NameResolution
 
 open Builtin.Shortcuts
+open System.Threading.Tasks
 
 
 let packageOpTypeName () =
@@ -36,7 +37,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
           let stabilized =
             LibPackageManager.HashStabilization.computeRealHashes ptOps
           Dval.list (packageOpKT ()) (stabilized |> List.map PT2DT.PackageOp.toDT)
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -74,7 +75,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             with ex ->
               return resultError (Dval.string ex.Message)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -93,7 +94,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             let! ops = LibPackageManager.Queries.getRecentOps limit
             return Dval.list (packageOpKT ()) (ops |> List.map PT2DT.PackageOp.toDT)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -112,7 +113,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             let! ops = LibPackageManager.Queries.getWipOps branchId
             return Dval.list (packageOpKT ()) (ops |> List.map PT2DT.PackageOp.toDT)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -139,7 +140,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                   "deprecations", Dval.int64 summary.deprecations
                   "total", Dval.int64 summary.total ]
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -169,7 +170,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                     "propagatedCount", DString(string item.propagatedCount) ])
               |> Dval.list (KTDict(ValueType.Known KTString))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -188,7 +189,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             let! count = LibPackageManager.Queries.getWipOpCount branchId
             return Dval.int64 count
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -207,7 +208,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             let! count = LibPackageManager.Queries.getCommitCount branchId
             return Dval.int64 count
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -238,7 +239,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               return resultOk (Dval.string h)
             | Error msg -> return resultError (Dval.string msg)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -263,7 +264,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             | Ok count -> return resultOk (Dval.int64 count)
             | Error msg -> return resultError (Dval.string msg)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -287,7 +288,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 (PT2DT.Commit.knownType ())
                 (commits |> List.map PT2DT.Commit.toDT)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -313,7 +314,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 (PT2DT.Commit.knownType ())
                 (commits |> List.map PT2DT.Commit.toDT)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -332,7 +333,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             let! ops = LibPackageManager.Queries.getCommitOps (PT.Hash commitHash)
             return Dval.list (packageOpKT ()) (ops |> List.map PT2DT.PackageOp.toDT)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure

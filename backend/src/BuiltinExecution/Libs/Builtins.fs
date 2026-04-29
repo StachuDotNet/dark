@@ -3,6 +3,7 @@ module BuiltinExecution.Libs.Builtins
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module Dval = LibExecution.Dval
 module PackageRefs = LibExecution.PackageRefs
@@ -81,7 +82,7 @@ let fns () : List<BuiltInFn> =
             |> List.map ToDarkTypes.FunctionInfo.toDT
             |> Dval.list (KTCustomType(ToDarkTypes.FunctionInfo.typeName (), []))
 
-          Ply builtins
+          Task.FromResult builtins
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

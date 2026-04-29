@@ -90,7 +90,7 @@ let fns () : List<BuiltInFn> =
               | known -> Task.FromResult known
             return Stream.newFromIO inferredElem nextFn None
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -145,7 +145,7 @@ let fns () : List<BuiltInFn> =
               }
             return Stream.newFromIO elemType next None
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -166,7 +166,7 @@ let fns () : List<BuiltInFn> =
             let! elemKT = resolveElemKT state elemType |> Ply.toTask
             return Dval.option elemKT nextResult
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -200,7 +200,7 @@ let fns () : List<BuiltInFn> =
                 resolveElemVT state elemType |> Ply.toTask
             return DList(elemVT, List.ofSeq collected)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -232,7 +232,7 @@ let fns () : List<BuiltInFn> =
               | None -> keepGoing <- false
             return Blob.newEphemeral state (collected.ToArray())
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -261,7 +261,7 @@ let fns () : List<BuiltInFn> =
           if not disposed.Value then
             disposed.Value <- true
             Stream.disposeImpl impl
-          DUnit |> Ply
+          DUnit |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -304,7 +304,7 @@ let fns () : List<BuiltInFn> =
               }
             return Stream.wrapImpl (Mapped(src, apply, elemType))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -340,7 +340,7 @@ let fns () : List<BuiltInFn> =
                     [ "got", other ]
               | Error(rte, _cs) -> return raiseRTE vm.threadID rte
             }
-          Stream.wrapImpl (Filtered(src, pred)) |> Ply
+          Stream.wrapImpl (Filtered(src, pred)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -363,7 +363,7 @@ let fns () : List<BuiltInFn> =
           // Clamp negative n to 0 — pullStreamImpl treats remaining<=0
           // as done, so a negative here becomes an empty stream.
           let clamped = max 0L n
-          Stream.wrapImpl (Take(src, clamped, ref clamped)) |> Ply
+          Stream.wrapImpl (Take(src, clamped, ref clamped)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -390,7 +390,7 @@ let fns () : List<BuiltInFn> =
                 Exception.raiseInternal
                   "streamConcat: expected List<Stream>"
                   [ "got", other ])
-          Stream.wrapImpl (Concat(ref impls)) |> Ply
+          Stream.wrapImpl (Concat(ref impls)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure

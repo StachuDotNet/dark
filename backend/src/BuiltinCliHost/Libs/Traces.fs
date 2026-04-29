@@ -128,7 +128,7 @@ let fns () : List<BuiltInFn> =
                 DRecord(typeName, typeName, [], fields))
               |> Dval.list (KTCustomType(typeName, []))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -183,7 +183,7 @@ let fns () : List<BuiltInFn> =
                 |> Dval.optionSome (KTCustomType(typeName, []))
             | None -> return Dval.optionNone (KTCustomType(typeName, []))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -231,7 +231,7 @@ let fns () : List<BuiltInFn> =
                 DRecord(typeName, typeName, [], fields))
               |> Dval.list (KTCustomType(typeName, []))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -265,7 +265,7 @@ let fns () : List<BuiltInFn> =
                 print $"[traces] Failed to parse input for replay: {ex.Message}"
                 return Dval.optionNone KTString
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -288,7 +288,7 @@ let fns () : List<BuiltInFn> =
             do! Sql.query "DELETE FROM traces" |> Sql.executeStatementAsync
             return DInt64 count
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

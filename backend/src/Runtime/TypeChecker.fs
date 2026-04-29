@@ -110,8 +110,8 @@ let rec unifyValueType
         | _, ValueType.Known(KTCustomType(typeNameV, typeArgsV)) ->
           if typeNameV <> typeNameT then
             return Error pathSoFar
+          // (this is really unexpected -- interpreter should prevent this)
           else if List.length typeArgsT <> List.length typeArgsV then
-            // (this is really unexpected -- interpreter should prevent this)
             return
               Error(
                 TypeCheckPathPart.TypeArgLength(

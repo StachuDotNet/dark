@@ -3,6 +3,7 @@ module BuiltinExecution.Libs.Int64
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
@@ -49,7 +50,7 @@ let fns () : List<BuiltInFn> =
           else
             let result = v % m
             let result = if result < 0L then m + result else result
-            Ply(DInt64 result)
+            Task.FromResult(DInt64 result)
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "%"
       previewable = Pure
@@ -73,11 +74,11 @@ let fns () : List<BuiltInFn> =
     //     (function
     //     | _, [ DInt64 v; DInt64 m ] ->
     //       (try
-    //         Ply(Dval.resultOk(DInt64(v % m)))
+    //         Task.FromResult(Dval.resultOk(DInt64(v % m)))
     //        with
     //        | e ->
     //          if m <= 0L then
-    //            Ply(
+    //            Task.FromResult(
     //              DResult(
     //                Error(
     //                  DString(
@@ -111,7 +112,7 @@ let fns () : List<BuiltInFn> =
 
          Returns an {{Error}} if <param divisor> is {{0}}."
       fn =
-        let resultOk r = Dval.resultOk KTInt64 KTString r |> Ply
+        let resultOk r = Dval.resultOk KTInt64 KTString r |> Task.FromResult
         (function
         | _, vm, _, [ DInt64 v; DInt64 d ] ->
           (try
@@ -137,7 +138,7 @@ let fns () : List<BuiltInFn> =
       description = "Adds two integers together"
       fn =
         (function
-        | _, _, _, [ DInt64 a; DInt64 b ] -> Ply(DInt64(a + b))
+        | _, _, _, [ DInt64 a; DInt64 b ] -> Task.FromResult(DInt64(a + b))
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "+"
       previewable = Pure
@@ -151,7 +152,7 @@ let fns () : List<BuiltInFn> =
       description = "Subtracts two integers"
       fn =
         (function
-        | _, _, _, [ DInt64 a; DInt64 b ] -> Ply(DInt64(a - b))
+        | _, _, _, [ DInt64 a; DInt64 b ] -> Task.FromResult(DInt64(a - b))
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "-"
       previewable = Pure
@@ -165,7 +166,7 @@ let fns () : List<BuiltInFn> =
       description = "Multiplies two integers"
       fn =
         (function
-        | _, _, _, [ DInt64 a; DInt64 b ] -> Ply(DInt64(a * b))
+        | _, _, _, [ DInt64 a; DInt64 b ] -> Task.FromResult(DInt64(a * b))
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "*"
       previewable = Pure
@@ -187,7 +188,7 @@ let fns () : List<BuiltInFn> =
             if exp < 0L then
               RTE.Ints.NegativeExponent |> RTE.Int |> raiseRTE vm.threadID
             else
-              (bigint number) ** (int exp) |> int64 |> DInt64 |> Ply
+              (bigint number) ** (int exp) |> int64 |> DInt64 |> Task.FromResult
            with :? System.OverflowException ->
              RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID)
         | _ -> incorrectArgs ())
@@ -207,7 +208,7 @@ let fns () : List<BuiltInFn> =
           if b = 0L then
             RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.threadID
           else
-            Ply(DInt64(a / b))
+            Task.FromResult(DInt64(a / b))
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "/"
       previewable = Pure
@@ -221,7 +222,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns the negation of <param a>, {{-a}}"
       fn =
         (function
-        | _, _, _, [ DInt64 a ] -> Ply(DInt64(-a))
+        | _, _, _, [ DInt64 a ] -> Task.FromResult(DInt64(-a))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -235,7 +236,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns {{true}} if <param a> is greater than <param b>"
       fn =
         (function
-        | _, _, _, [ DInt64 a; DInt64 b ] -> Ply(DBool(a > b))
+        | _, _, _, [ DInt64 a; DInt64 b ] -> Task.FromResult(DBool(a > b))
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp ">"
       previewable = Pure
@@ -250,7 +251,7 @@ let fns () : List<BuiltInFn> =
         "Returns {{true}} if <param a> is greater than or equal to <param b>"
       fn =
         (function
-        | _, _, _, [ DInt64 a; DInt64 b ] -> Ply(DBool(a >= b))
+        | _, _, _, [ DInt64 a; DInt64 b ] -> Task.FromResult(DBool(a >= b))
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp ">="
       previewable = Pure
@@ -264,7 +265,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns {{true}} if <param a> is less than <param b>"
       fn =
         (function
-        | _, _, _, [ DInt64 a; DInt64 b ] -> Ply(DBool(a < b))
+        | _, _, _, [ DInt64 a; DInt64 b ] -> Task.FromResult(DBool(a < b))
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "<"
       previewable = Pure
@@ -279,7 +280,7 @@ let fns () : List<BuiltInFn> =
         "Returns {{true}} if <param a> is less than or equal to <param b>"
       fn =
         (function
-        | _, _, _, [ DInt64 a; DInt64 b ] -> Ply(DBool(a <= b))
+        | _, _, _, [ DInt64 a; DInt64 b ] -> Task.FromResult(DBool(a <= b))
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "<="
       previewable = Pure
@@ -303,7 +304,7 @@ let fns () : List<BuiltInFn> =
 
           lower + randomSeeded().NextInt64(upper - lower + correction)
           |> DInt64
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -317,7 +318,7 @@ let fns () : List<BuiltInFn> =
       description = "Get the square root of an <type Int64>"
       fn =
         (function
-        | _, _, _, [ DInt64 a ] -> Ply(DFloat(sqrt (float a)))
+        | _, _, _, [ DInt64 a ] -> Task.FromResult(DFloat(sqrt (float a)))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -331,7 +332,7 @@ let fns () : List<BuiltInFn> =
       description = "Converts an <type Int64> to a <type Float>"
       fn =
         (function
-        | _, _, _, [ DInt64 a ] -> Ply(DFloat(float a))
+        | _, _, _, [ DInt64 a ] -> Task.FromResult(DFloat(float a))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -354,12 +355,15 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString s ] ->
           try
-            s |> System.Convert.ToInt64 |> DInt64 |> resultOk |> Ply
+            s |> System.Convert.ToInt64 |> DInt64 |> resultOk |> Task.FromResult
           with
           | :? System.FormatException ->
-            ParseError.BadFormat |> ParseError.toDT |> resultError |> Ply
+            ParseError.BadFormat |> ParseError.toDT |> resultError |> Task.FromResult
           | :? System.OverflowException ->
-            ParseError.OutOfRange |> ParseError.toDT |> resultError |> Ply
+            ParseError.OutOfRange
+            |> ParseError.toDT
+            |> resultError
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -373,7 +377,7 @@ let fns () : List<BuiltInFn> =
       description = "Stringify <param int>"
       fn =
         (function
-        | _, _, _, [ DInt64 int ] -> Ply(DString(string int))
+        | _, _, _, [ DInt64 int ] -> Task.FromResult(DString(string int))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -387,7 +391,7 @@ let fns () : List<BuiltInFn> =
       description = "Converts an Int8 to a 64-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DInt8 a ] -> DInt64(int64 a) |> Ply
+        | _, _, _, [ DInt8 a ] -> DInt64(int64 a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -401,7 +405,7 @@ let fns () : List<BuiltInFn> =
       description = "Converts a UInt8 to a 64-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DUInt8 a ] -> DInt64(int64 a) |> Ply
+        | _, _, _, [ DUInt8 a ] -> DInt64(int64 a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -415,7 +419,7 @@ let fns () : List<BuiltInFn> =
       description = "Converts an Int16 to a 64-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DInt16 a ] -> DInt64(int64 a) |> Ply
+        | _, _, _, [ DInt16 a ] -> DInt64(int64 a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -429,7 +433,7 @@ let fns () : List<BuiltInFn> =
       description = "Converts a UInt16 to a 64-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DUInt16 a ] -> DInt64(int64 a) |> Ply
+        | _, _, _, [ DUInt16 a ] -> DInt64(int64 a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -443,7 +447,7 @@ let fns () : List<BuiltInFn> =
       description = "Converts an Int32 to a 64-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DInt32 a ] -> DInt64(int64 a) |> Ply
+        | _, _, _, [ DInt32 a ] -> DInt64(int64 a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -457,7 +461,7 @@ let fns () : List<BuiltInFn> =
       description = "Converts a UInt32 to a 64-bit signed integer."
       fn =
         (function
-        | _, _, _, [ DUInt32 a ] -> DInt64(int64 a) |> Ply
+        | _, _, _, [ DUInt32 a ] -> DInt64(int64 a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -474,9 +478,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUInt64 a ] ->
           if (a > uint64 System.Int64.MaxValue) then
-            Dval.optionNone KTInt64 |> Ply
+            Dval.optionNone KTInt64 |> Task.FromResult
           else
-            Dval.optionSome KTInt64 (DInt64(int64 a)) |> Ply
+            Dval.optionSome KTInt64 (DInt64(int64 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -496,9 +500,9 @@ let fns () : List<BuiltInFn> =
             (a < System.Int128.op_Implicit System.Int64.MinValue)
             || (a > System.Int128.op_Implicit System.Int64.MaxValue)
           then
-            Dval.optionNone KTInt64 |> Ply
+            Dval.optionNone KTInt64 |> Task.FromResult
           else
-            Dval.optionSome KTInt64 (DInt64(int64 a)) |> Ply
+            Dval.optionSome KTInt64 (DInt64(int64 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -515,9 +519,9 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUInt128 a ] ->
           if (a > 9223372036854775807Z) then
-            Dval.optionNone KTInt64 |> Ply
+            Dval.optionNone KTInt64 |> Task.FromResult
           else
-            Dval.optionSome KTInt64 (DInt64(int64 a)) |> Ply
+            Dval.optionSome KTInt64 (DInt64(int64 a)) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -531,7 +535,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise AND on two <type Int64> values"
       fn =
         (function
-        | _, _, _, [ DInt64 a; DInt64 b ] -> Ply(DInt64(a &&& b))
+        | _, _, _, [ DInt64 a; DInt64 b ] -> Task.FromResult(DInt64(a &&& b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -545,7 +549,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise OR on two <type Int64> values"
       fn =
         (function
-        | _, _, _, [ DInt64 a; DInt64 b ] -> Ply(DInt64(a ||| b))
+        | _, _, _, [ DInt64 a; DInt64 b ] -> Task.FromResult(DInt64(a ||| b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -559,7 +563,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise XOR on two <type Int64> values"
       fn =
         (function
-        | _, _, _, [ DInt64 a; DInt64 b ] -> Ply(DInt64(a ^^^ b))
+        | _, _, _, [ DInt64 a; DInt64 b ] -> Task.FromResult(DInt64(a ^^^ b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -573,7 +577,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise NOT on an <type Int64> value"
       fn =
         (function
-        | _, _, _, [ DInt64 a ] -> Ply(DInt64(~~~a))
+        | _, _, _, [ DInt64 a ] -> Task.FromResult(DInt64(~~~a))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -587,7 +591,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise left shift of an <type Int64> value"
       fn =
         (function
-        | _, _, _, [ DInt64 a; DInt64 b ] -> Ply(DInt64(a <<< int b))
+        | _, _, _, [ DInt64 a; DInt64 b ] -> Task.FromResult(DInt64(a <<< int b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -601,7 +605,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise right shift of an <type Int64> value"
       fn =
         (function
-        | _, _, _, [ DInt64 a; DInt64 b ] -> Ply(DInt64(a >>> int b))
+        | _, _, _, [ DInt64 a; DInt64 b ] -> Task.FromResult(DInt64(a >>> int b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

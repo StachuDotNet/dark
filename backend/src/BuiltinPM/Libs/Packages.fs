@@ -65,7 +65,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 |> Map
               )
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -99,7 +99,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> Option.map PT2DT.Hash.toDT
               |> Dval.option (PT2DT.Hash.knownType ())
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -122,7 +122,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             let! result = pm.getType hash |> Ply.toTask
             return result |> Option.map PT2DT.PackageType.toDT |> Dval.option optType
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -154,7 +154,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> Option.map PT2DT.Hash.toDT
               |> Dval.option (PT2DT.Hash.knownType ())
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -181,7 +181,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> Option.map PT2DT.PackageValue.toDT
               |> Dval.option (KTCustomType((PT2DT.PackageValue.typeName ()), []))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -212,7 +212,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 valueIds |> List.map RT2DT.Hash.toDT
               )
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -250,7 +250,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               | ValueType.Unknown -> return Dval.optionSome KTUnit dval
             | Error _ -> return Dval.optionNone KTUnit
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -282,7 +282,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> Option.map PT2DT.Hash.toDT
               |> Dval.option (PT2DT.Hash.knownType ())
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -307,7 +307,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> Option.map PT2DT.PackageFn.toDT
               |> Dval.option (KTCustomType((PT2DT.PackageFn.typeName ()), []))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -333,7 +333,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             let! results = PMPT.search branchChain searchQuery |> Ply.toTask
             return PT2DT.Search.SearchResults.toDT results
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -359,7 +359,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> List.map PT2DT.PackageLocation.toDT
               |> Dval.list (KTCustomType((PT2DT.PackageLocation.typeName ()), []))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -384,7 +384,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> List.map PT2DT.PackageLocation.toDT
               |> Dval.list (KTCustomType((PT2DT.PackageLocation.typeName ()), []))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -409,7 +409,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> List.map PT2DT.PackageLocation.toDT
               |> Dval.list (KTCustomType((PT2DT.PackageLocation.typeName ()), []))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -452,7 +452,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> List.map PT2DT.Hash.toDT
               |> Dval.list (PT2DT.Hash.knownType ())
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -541,7 +541,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             | Error errMsg ->
               return Dval.resultError tupleKT KTString (DString errMsg)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -651,7 +651,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 DTuple(DUuid revertId, PT2DT.Hash.toDT restoredHash, [])
               return Dval.resultOk tupleKT KTString resultTuple
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -687,7 +687,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             return
               DTuple(hashListDval sets.allDeprecated, hashListDval sets.hidden, [])
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -744,7 +744,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                   tupleKT
                   (DTuple(PT2DT.DeprecationKind.toDT kind, DString message, []))
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

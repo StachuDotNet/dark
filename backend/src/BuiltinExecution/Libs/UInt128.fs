@@ -3,6 +3,7 @@ module BuiltinExecution.Libs.UInt128
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
@@ -46,7 +47,7 @@ let fns () : List<BuiltInFn> =
           else
             let result = v % m
             let result = if result < System.UInt128.Zero then m + result else result
-            Ply(DUInt128(result))
+            Task.FromResult(DUInt128(result))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -63,7 +64,7 @@ let fns () : List<BuiltInFn> =
         | _, vm, _, [ DUInt128 a; DUInt128 b ] ->
           try
             let result = System.UInt128.op_CheckedAddition (a, b)
-            Ply(DUInt128(result))
+            Task.FromResult(DUInt128(result))
           with :? System.OverflowException ->
             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID
         | _ -> incorrectArgs ())
@@ -82,7 +83,7 @@ let fns () : List<BuiltInFn> =
         | _, vm, _, [ DUInt128 a; DUInt128 b ] ->
           try
             let result = System.UInt128.op_CheckedSubtraction (a, b)
-            Ply(DUInt128(result))
+            Task.FromResult(DUInt128(result))
           with :? System.OverflowException ->
             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID
         | _ -> incorrectArgs ())
@@ -102,7 +103,7 @@ let fns () : List<BuiltInFn> =
         | _, vm, _, [ DUInt128 a; DUInt128 b ] ->
           try
             let result = System.UInt128.op_CheckedMultiply (a, b)
-            Ply(DUInt128(result))
+            Task.FromResult(DUInt128(result))
           with :? System.OverflowException ->
             RTE.Ints.OutOfRange |> RTE.Int |> raiseRTE vm.threadID
         | _ -> incorrectArgs ())
@@ -124,7 +125,7 @@ let fns () : List<BuiltInFn> =
         | _, vm, _, [ DUInt128 a; DUInt128 b ] ->
           try
             let result = System.UInt128.op_Division (a, b)
-            Ply(DUInt128(result))
+            Task.FromResult(DUInt128(result))
           with
           | :? System.DivideByZeroException ->
             RTE.Ints.DivideByZeroError |> RTE.Int |> raiseRTE vm.threadID
@@ -143,7 +144,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns {{true}} if <param a> is greater than <param b>"
       fn =
         (function
-        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Ply(DBool(a > b))
+        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Task.FromResult(DBool(a > b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -158,7 +159,7 @@ let fns () : List<BuiltInFn> =
         "Returns {{true}} if <param a> is greater than or equal to <param b>"
       fn =
         (function
-        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Ply(DBool(a >= b))
+        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Task.FromResult(DBool(a >= b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -172,7 +173,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns {{true}} if <param a> is less than <param b>"
       fn =
         (function
-        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Ply(DBool(a < b))
+        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Task.FromResult(DBool(a < b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -187,7 +188,7 @@ let fns () : List<BuiltInFn> =
         "Returns {{true}} if <param a> is less than or equal to <param b>"
       fn =
         (function
-        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Ply(DBool(a <= b))
+        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Task.FromResult(DBool(a <= b))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -201,7 +202,7 @@ let fns () : List<BuiltInFn> =
       description = "Converts an <type UInt128> to a <type String>"
       fn =
         (function
-        | _, _, _, [ DUInt128 a ] -> Ply(DString(string a))
+        | _, _, _, [ DUInt128 a ] -> Task.FromResult(DString(string a))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -215,7 +216,7 @@ let fns () : List<BuiltInFn> =
       description = "Converts an <type UInt128> to a <type Float>"
       fn =
         (function
-        | _, _, _, [ DUInt128 a ] -> Ply(DFloat(float a))
+        | _, _, _, [ DUInt128 a ] -> Task.FromResult(DFloat(float a))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -229,7 +230,7 @@ let fns () : List<BuiltInFn> =
       description = "Get the square root of an <type UInt128>"
       fn =
         (function
-        | _, _, _, [ DUInt128 a ] -> Ply(DFloat(sqrt (float a)))
+        | _, _, _, [ DUInt128 a ] -> Task.FromResult(DFloat(sqrt (float a)))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -259,12 +260,15 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString s ] ->
           try
-            s |> System.UInt128.Parse |> DUInt128 |> resultOk |> Ply
+            s |> System.UInt128.Parse |> DUInt128 |> resultOk |> Task.FromResult
           with
           | :? System.FormatException ->
-            ParseError.BadFormat |> ParseError.toDT |> resultError |> Ply
+            ParseError.BadFormat |> ParseError.toDT |> resultError |> Task.FromResult
           | :? System.OverflowException ->
-            ParseError.OutOfRange |> ParseError.toDT |> resultError |> Ply
+            ParseError.OutOfRange
+            |> ParseError.toDT
+            |> resultError
+            |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -278,7 +282,8 @@ let fns () : List<BuiltInFn> =
       description = "Converts a UInt8 to a 128-bit unsigned integer."
       fn =
         (function
-        | _, _, _, [ DUInt8 a ] -> DUInt128(System.UInt128.op_Implicit a) |> Ply
+        | _, _, _, [ DUInt8 a ] ->
+          DUInt128(System.UInt128.op_Implicit a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -292,7 +297,8 @@ let fns () : List<BuiltInFn> =
       description = "Converts a UInt16 to a 128-bit unsigned integer."
       fn =
         (function
-        | _, _, _, [ DUInt16 a ] -> DUInt128(System.UInt128.op_Implicit a) |> Ply
+        | _, _, _, [ DUInt16 a ] ->
+          DUInt128(System.UInt128.op_Implicit a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -306,7 +312,8 @@ let fns () : List<BuiltInFn> =
       description = "Converts a UInt32 to a 128-bit unsigned integer."
       fn =
         (function
-        | _, _, _, [ DUInt32 a ] -> DUInt128(System.UInt128.op_Implicit a) |> Ply
+        | _, _, _, [ DUInt32 a ] ->
+          DUInt128(System.UInt128.op_Implicit a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -320,7 +327,8 @@ let fns () : List<BuiltInFn> =
       description = "Converts a UInt64 to a 128-bit unsigned integer."
       fn =
         (function
-        | _, _, _, [ DUInt64 a ] -> DUInt128(System.UInt128.op_Implicit a) |> Ply
+        | _, _, _, [ DUInt64 a ] ->
+          DUInt128(System.UInt128.op_Implicit a) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -334,7 +342,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise AND on two <type UInt128> values"
       fn =
         (function
-        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Ply(DUInt128(a &&& b))
+        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Task.FromResult(DUInt128(a &&& b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -348,7 +356,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise OR on two <type UInt128> values"
       fn =
         (function
-        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Ply(DUInt128(a ||| b))
+        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Task.FromResult(DUInt128(a ||| b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -362,7 +370,7 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise XOR on two <type UInt128> values"
       fn =
         (function
-        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Ply(DUInt128(a ^^^ b))
+        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Task.FromResult(DUInt128(a ^^^ b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -377,7 +385,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUInt128 a ] ->
-          Ply(DUInt128(System.UInt128.op_OnesComplement (a)))
+          Task.FromResult(DUInt128(System.UInt128.op_OnesComplement (a)))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -391,7 +399,8 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise left shift of a <type UInt128> value"
       fn =
         (function
-        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Ply(DUInt128(a <<< int b))
+        | _, _, _, [ DUInt128 a; DUInt128 b ] ->
+          Task.FromResult(DUInt128(a <<< int b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -405,7 +414,8 @@ let fns () : List<BuiltInFn> =
       description = "Bitwise right shift of a <type UInt128> value"
       fn =
         (function
-        | _, _, _, [ DUInt128 a; DUInt128 b ] -> Ply(DUInt128(a >>> int b))
+        | _, _, _, [ DUInt128 a; DUInt128 b ] ->
+          Task.FromResult(DUInt128(a >>> int b))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

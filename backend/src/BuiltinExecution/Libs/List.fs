@@ -3,6 +3,7 @@ module BuiltinExecution.Libs.List
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
@@ -290,7 +291,7 @@ let fns () : List<BuiltInFn> =
       description = "Returns the number of values in <param list>"
       fn =
         (function
-        | _, _, _, [ DList(_, l) ] -> Ply(Dval.int64 (l.Length))
+        | _, _, _, [ DList(_, l) ] -> Task.FromResult(Dval.int64 (l.Length))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -311,7 +312,7 @@ let fns () : List<BuiltInFn> =
           List.distinct l
           |> List.sortWith DvalComparator.compareDvalInt
           |> fun l -> DList(vt, l)
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -335,7 +336,7 @@ let fns () : List<BuiltInFn> =
           list
           |> List.sortWith DvalComparator.compareDvalInt
           |> (fun l -> DList(vt, l))
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -355,7 +356,9 @@ let fns () : List<BuiltInFn> =
         | _, vm, _, [ DList(vt1, l1); DList(_vt2, l2) ] ->
           // VTTODO should fail here in the case of vt1 conflicting with vt2?
           // (or is this handled by the interpreter?)
-          Ply(TypeChecker.DvalCreator.list vm.threadID vt1 (List.append l1 l2))
+          Task.FromResult(
+            TypeChecker.DvalCreator.list vm.threadID vt1 (List.append l1 l2)
+          )
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -374,7 +377,7 @@ let fns () : List<BuiltInFn> =
         let optType = VT.unknownTODO
         (function
         | _, _, _, [ DList(_, []) ] ->
-          TypeChecker.DvalCreator.optionNone optType |> Ply
+          TypeChecker.DvalCreator.optionNone optType |> Task.FromResult
         | _, vm, _, [ DList(_, l) ] ->
           // Will return <= (length - 1)
           // Maximum value is Int64.MaxValue which is half of UInt64.MaxValue, but
@@ -383,7 +386,7 @@ let fns () : List<BuiltInFn> =
           let index = RNG.GetInt32(l.Length)
           (List.tryItem index l)
           |> TypeChecker.DvalCreator.option vm.threadID optType
-          |> Ply
+          |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure

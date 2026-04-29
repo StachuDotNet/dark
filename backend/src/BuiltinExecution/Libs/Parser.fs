@@ -7,6 +7,7 @@ open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
 
 open LibTreeSitter
+open System.Threading.Tasks
 
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
@@ -100,7 +101,7 @@ let fns () : List<BuiltInFn> =
           let tree =
             parser.Parse(Encoding.UTF8.GetBytes sourceCode, InputEncoding.Utf8, None)
 
-          tree.Root.Walk() |> mapNodeAtCursor |> Ply
+          tree.Root.Walk() |> mapNodeAtCursor |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

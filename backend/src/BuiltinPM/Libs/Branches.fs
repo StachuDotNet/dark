@@ -29,7 +29,7 @@ let fns () : List<BuiltInFn> =
             let! branch = LibPackageManager.Branches.create name parentBranchId
             return PT2DT.Branch.toDT branch
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -51,7 +51,7 @@ let fns () : List<BuiltInFn> =
               |> List.map PT2DT.Branch.toDT
               |> D.list (PT2DT.Branch.knownType ())
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -73,7 +73,7 @@ let fns () : List<BuiltInFn> =
               |> List.map PT2DT.Branch.toDT
               |> D.list (PT2DT.Branch.knownType ())
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -95,7 +95,7 @@ let fns () : List<BuiltInFn> =
               |> Option.map PT2DT.Branch.toDT
               |> D.option (PT2DT.Branch.knownType ())
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -117,7 +117,7 @@ let fns () : List<BuiltInFn> =
               |> Option.map PT2DT.Branch.toDT
               |> D.option (PT2DT.Branch.knownType ())
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -142,7 +142,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> D.result KTUnit KTString
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -165,7 +165,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> D.result KTUnit KTString
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -188,7 +188,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> D.result KTUnit KTString
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -211,7 +211,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> D.result KTUnit KTString
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure

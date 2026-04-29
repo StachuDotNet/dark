@@ -24,7 +24,7 @@ let fns () : List<BuiltInFn> =
             do! Task.Delay(delay)
             return DUnit
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -43,7 +43,7 @@ let fns () : List<BuiltInFn> =
         | _, _, _, [ DUnit ] ->
           let ts = System.Diagnostics.Stopwatch.GetTimestamp()
           let ms = ts * 1000L / System.Diagnostics.Stopwatch.Frequency
-          DInt64 ms |> Ply
+          DInt64 ms |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -59,7 +59,7 @@ let fns () : List<BuiltInFn> =
         | _, vm, _, [ DUnit ] ->
           vm.stats.reset ()
           vm.stats.enabled <- true
-          DUnit |> Ply
+          DUnit |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -121,7 +121,7 @@ let fns () : List<BuiltInFn> =
             sb.Append("}") |> ignore<System.Text.StringBuilder>
 
           sb.Append("}") |> ignore<System.Text.StringBuilder>
-          DString(sb.ToString()) |> Ply
+          DString(sb.ToString()) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
@@ -139,7 +139,7 @@ let fns () : List<BuiltInFn> =
         | _, vm, _, [ DBool enabled ] ->
           vm.stats.enabled <- true
           vm.stats.detailedTiming <- enabled
-          DUnit |> Ply
+          DUnit |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure

@@ -4,6 +4,7 @@ module BuiltinDarkInternal.Libs.Infra
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module Dval = LibExecution.Dval
 module PackageRefs = LibExecution.PackageRefs
@@ -29,8 +30,8 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DUnit ] ->
-          uply {
-            let! tableStats = LibDB.Db.tableStats ()
+          task {
+            let! tableStats = LibDB.Db.tableStats () |> Ply.toTask
 
             let typeName =
               FQTypeName.fqPackage (PackageRefs.Type.Internal.Infra.tableSize ())
@@ -60,7 +61,8 @@ let fns () : List<BuiltInFn> =
       description = "Returns the git hash of the server's current deploy"
       fn =
         (function
-        | _, _, _, [ DUnit ] -> LibService.Config.buildHash |> DString |> Ply
+        | _, _, _, [ DUnit ] ->
+          LibService.Config.buildHash |> DString |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

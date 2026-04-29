@@ -6,6 +6,8 @@
 ///   (referring back to PT by index or something)
 module LibExecution.RuntimeTypes
 
+open System.Threading.Tasks
+
 open Prelude
 
 // Aliases for the .NET mutable collection types used across the runtime
@@ -733,7 +735,7 @@ and [<CustomEquality; NoComparison>] StreamImpl =
   override this.GetHashCode() : int = 0
 
 
-and DvalTask = Ply<Dval>
+and DvalTask = Task<Dval>
 
 
 

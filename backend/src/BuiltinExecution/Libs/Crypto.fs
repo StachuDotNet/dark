@@ -30,7 +30,7 @@ let fns () : List<BuiltInFn> =
             let hash = SHA256.HashData(System.ReadOnlySpan(data))
             return Blob.newEphemeral state hash
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -50,7 +50,7 @@ let fns () : List<BuiltInFn> =
             let hash = SHA384.HashData(System.ReadOnlySpan data)
             return Blob.newEphemeral state hash
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
@@ -71,7 +71,7 @@ let fns () : List<BuiltInFn> =
             let hash = MD5.HashData(System.ReadOnlySpan data)
             return Blob.newEphemeral state hash
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = ImpurePreviewable
@@ -94,7 +94,7 @@ let fns () : List<BuiltInFn> =
             let hash = hmac.ComputeHash(data)
             return Blob.newEphemeral state hash
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = ImpurePreviewable
@@ -117,7 +117,7 @@ let fns () : List<BuiltInFn> =
             let hash = hmac.ComputeHash(data)
             return Blob.newEphemeral state hash
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = ImpurePreviewable

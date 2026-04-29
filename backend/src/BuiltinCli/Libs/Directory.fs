@@ -22,7 +22,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUnit ] ->
           let contents = System.IO.Directory.GetCurrentDirectory()
-          DString contents |> Ply
+          DString contents |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -36,8 +36,8 @@ let fns () : List<BuiltInFn> =
       description =
         "Creates a new directory at the specified <param path>. If the directory already exists, no action is taken. Returns a Result type indicating success or failure."
       fn =
-        let resultOk r = Dval.resultOk KTUnit KTString r |> Ply
-        let resultError r = Dval.resultError KTUnit KTString r |> Ply
+        let resultOk r = Dval.resultOk KTUnit KTString r |> Task.FromResult
+        let resultError r = Dval.resultError KTUnit KTString r |> Task.FromResult
         (function
         | _, _, _, [ DString path ] ->
           try
@@ -59,8 +59,8 @@ let fns () : List<BuiltInFn> =
       description =
         "Deletes the directory at the specified <param path>. If <param recursive> is set to true, it will delete the directory and its contents. If set to false (default), it will only delete an empty directory. Returns a Result type indicating success or failure."
       fn =
-        let resultOk r = Dval.resultOk KTUnit KTString r |> Ply
-        let resultError r = Dval.resultError KTUnit KTString r |> Ply
+        let resultOk r = Dval.resultOk KTUnit KTString r |> Task.FromResult
+        let resultError r = Dval.resultError KTUnit KTString r |> Task.FromResult
         (function
         | _, _, _, [ DString path ] ->
           try
@@ -89,7 +89,7 @@ let fns () : List<BuiltInFn> =
             with _ ->
               []
 
-          DList(VT.string, List.map DString contents) |> Ply
+          DList(VT.string, List.map DString contents) |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -106,7 +106,7 @@ let fns () : List<BuiltInFn> =
         | _, _, _, [ DUnit ] ->
           let exePath =
             System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName
-          DString exePath |> Ply
+          DString exePath |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

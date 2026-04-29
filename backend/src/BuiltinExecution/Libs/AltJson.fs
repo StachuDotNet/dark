@@ -5,6 +5,7 @@ open System.Text.Json
 open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
+open System.Threading.Tasks
 
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
@@ -191,7 +192,7 @@ let fns () : List<BuiltInFn> =
         | _, _, [], [ jtDval ] ->
           let jt = Json.fromDT jtDval
           let jsonString = Serialize.writeJson (fun w -> Serialize.writeToken w jt)
-          Ply(DString jsonString)
+          Task.FromResult(DString jsonString)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -209,8 +210,8 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, [], [ DString jsonString ] ->
           match Parsing.parse jsonString with
-          | Ok jt -> jt |> Json.toDT |> Ok |> result |> Ply
-          | Error e -> e |> ParseError.toDT |> Error |> result |> Ply
+          | Ok jt -> jt |> Json.toDT |> Ok |> result |> Task.FromResult
+          | Error e -> e |> ParseError.toDT |> Error |> result |> Task.FromResult
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure

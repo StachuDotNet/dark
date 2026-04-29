@@ -33,7 +33,7 @@ let fns () : List<BuiltInFn> =
             | Ok() -> return resultOk DUnit
             | Error e -> return resultError (PT2DT.MergeError.toDT e)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -59,7 +59,7 @@ let fns () : List<BuiltInFn> =
             | Ok() -> return resultOk DUnit
             | Error e -> return resultError (PT2DT.MergeError.toDT e)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

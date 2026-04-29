@@ -27,7 +27,7 @@ let fns : List<BuiltInFn> =
             with ex ->
               return resultError (DString ex.Message)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

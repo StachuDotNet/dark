@@ -648,7 +648,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
             | Ok result -> return result
             | Error err -> return resultError (RequestError.toDT err)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -801,7 +801,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
             | _, None ->
               return resultError (RequestError.toDT RequestError.BadMethod)
           }
-          |> Ply.ofTask
+
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
