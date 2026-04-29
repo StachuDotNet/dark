@@ -33,6 +33,22 @@ let foldSequentially
     (Task.FromResult initial)
     list
 
+let foldSequentiallyWithIndex
+  (f : int -> 'state -> 'a -> Task<'state>)
+  (initial : 'state)
+  (list : List<'a>)
+  : Task<'state> =
+  List.fold
+    (fun (accum : Task<int * 'state>) (arg : 'a) ->
+      task {
+        let! (i, state) = accum
+        let! result = f i state arg
+        return (i + 1, result)
+      })
+    (Task.FromResult(0, initial))
+    list
+  |> map snd
+
 let mapSequentially (f : 'a -> Task<'b>) (list : List<'a>) : Task<List<'b>> =
   list
   |> foldSequentially

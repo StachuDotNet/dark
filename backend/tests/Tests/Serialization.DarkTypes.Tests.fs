@@ -48,7 +48,6 @@ module RoundtripTests =
           Map.empty
           (RT.TCustomType(NR.ok typeName, []))
           firstDT
-        |> Ply.toTask
 
       let msg =
         match typeChecked with
