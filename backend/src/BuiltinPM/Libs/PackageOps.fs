@@ -32,15 +32,11 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DList(_vt, ops) ] ->
-          uply {
-            let ptOps = ops |> List.choose PT2DT.PackageOp.fromDT
-            let stabilized =
-              LibPackageManager.HashStabilization.computeRealHashes ptOps
-            return
-              Dval.list
-                (packageOpKT ())
-                (stabilized |> List.map PT2DT.PackageOp.toDT)
-          }
+          let ptOps = ops |> List.choose PT2DT.PackageOp.fromDT
+          let stabilized =
+            LibPackageManager.HashStabilization.computeRealHashes ptOps
+          Dval.list (packageOpKT ()) (stabilized |> List.map PT2DT.PackageOp.toDT)
+          |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
@@ -62,7 +58,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         let resultError = Dval.resultError KTInt64 KTString
         (function
         | _, _, _, [ DUuid branchId; DList(_vtTODO, ops) ] ->
-          uply {
+          task {
             try
               let ops = ops |> List.choose PT2DT.PackageOp.fromDT
 
@@ -78,6 +74,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             with ex ->
               return resultError (Dval.string ex.Message)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -92,10 +89,11 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DInt64 limit ] ->
-          uply {
+          task {
             let! ops = LibPackageManager.Queries.getRecentOps limit
             return Dval.list (packageOpKT ()) (ops |> List.map PT2DT.PackageOp.toDT)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -110,10 +108,11 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid branchId ] ->
-          uply {
+          task {
             let! ops = LibPackageManager.Queries.getWipOps branchId
             return Dval.list (packageOpKT ()) (ops |> List.map PT2DT.PackageOp.toDT)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -128,7 +127,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid branchId ] ->
-          uply {
+          task {
             let! summary = LibPackageManager.Queries.getWipSummary branchId
             return
               Dval.dict
@@ -140,6 +139,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                   "deprecations", Dval.int64 summary.deprecations
                   "total", Dval.int64 summary.total ]
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -156,7 +156,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid branchId ] ->
-          uply {
+          task {
             let! items = LibPackageManager.Queries.getWipItems branchId
             return
               items
@@ -169,6 +169,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                     "propagatedCount", DString(string item.propagatedCount) ])
               |> Dval.list (KTDict(ValueType.Known KTString))
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -183,10 +184,11 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid branchId ] ->
-          uply {
+          task {
             let! count = LibPackageManager.Queries.getWipOpCount branchId
             return Dval.int64 count
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -201,10 +203,11 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid branchId ] ->
-          uply {
+          task {
             let! count = LibPackageManager.Queries.getCommitCount branchId
             return Dval.int64 count
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -226,7 +229,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         let resultError = Dval.resultError KTString KTString
         (function
         | _, _, _, [ DUuid accountId; DUuid branchId; DString message ] ->
-          uply {
+          task {
             let! result =
               LibPackageManager.Inserts.commitWipOps accountId branchId message
             match result with
@@ -235,6 +238,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               return resultOk (Dval.string h)
             | Error msg -> return resultError (Dval.string msg)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -253,12 +257,13 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         let resultError = Dval.resultError KTInt64 KTString
         (function
         | _, _, _, [ DUuid branchId ] ->
-          uply {
+          task {
             let! result = LibPackageManager.Inserts.discardWipOps branchId
             match result with
             | Ok count -> return resultOk (Dval.int64 count)
             | Error msg -> return resultError (Dval.string msg)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -275,13 +280,14 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid branchId; DInt64 limit ] ->
-          uply {
+          task {
             let! commits = LibPackageManager.Queries.getCommits branchId limit
             return
               Dval.list
                 (PT2DT.Commit.knownType ())
                 (commits |> List.map PT2DT.Commit.toDT)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -299,7 +305,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid branchId; DInt64 limit ] ->
-          uply {
+          task {
             let! commits =
               LibPackageManager.Queries.getCommitsForBranchChain branchId limit
             return
@@ -307,6 +313,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 (PT2DT.Commit.knownType ())
                 (commits |> List.map PT2DT.Commit.toDT)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -321,10 +328,11 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DString commitHash ] ->
-          uply {
+          task {
             let! ops = LibPackageManager.Queries.getCommitOps (PT.Hash commitHash)
             return Dval.list (packageOpKT ()) (ops |> List.map PT2DT.PackageOp.toDT)
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
