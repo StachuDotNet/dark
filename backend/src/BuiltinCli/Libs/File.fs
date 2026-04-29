@@ -63,7 +63,7 @@ let fns () : List<BuiltInFn> =
                   System.Environment.GetEnvironmentVariable "HOME"
                 )
 
-              let! bytes = Blob.readBytes state ref |> Ply.toTask
+              let! bytes = Blob.readBytes state ref
               do! System.IO.File.WriteAllBytesAsync(path, bytes)
               return resultOk DUnit
             with e ->

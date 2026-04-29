@@ -379,7 +379,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob ref ] ->
           task {
-            let! bytes = Blob.readBytes state ref |> Ply.toTask
+            let! bytes = Blob.readBytes state ref
             return DString(System.Text.Encoding.UTF8.GetString bytes)
           }
 
@@ -420,7 +420,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob ref ] ->
           task {
-            let! bytes = Blob.readBytes state ref |> Ply.toTask
+            let! bytes = Blob.readBytes state ref
             try
               let str = UTF8Encoding(false, true).GetString bytes
               return Dval.optionSome KTString (DString str)

@@ -110,7 +110,7 @@ let ephemeralRoundtrip =
     match dv with
     | RT.DBlob(RT.Ephemeral _) -> ()
     | _ -> failtest $"expected DBlob(Ephemeral _), got {dv}"
-    let! bytes = Blob.readBytes state (dblobRef dv) |> Ply.toTask
+    let! bytes = Blob.readBytes state (dblobRef dv)
     Expect.equal bytes payload "roundtripped bytes match original"
   }
 
@@ -121,8 +121,8 @@ let twoEphemeralsAreDistinct =
     let dv1 = Blob.newEphemeral state payload
     let dv2 = Blob.newEphemeral state payload
     Expect.notEqual (ephemeralId dv1) (ephemeralId dv2) "each mint gets a fresh uuid"
-    let! b1 = Blob.readBytes state (dblobRef dv1) |> Ply.toTask
-    let! b2 = Blob.readBytes state (dblobRef dv2) |> Ply.toTask
+    let! b1 = Blob.readBytes state (dblobRef dv1)
+    let! b2 = Blob.readBytes state (dblobRef dv2)
     Expect.equal b1 payload "first blob reads its bytes"
     Expect.equal b2 payload "second blob reads its bytes"
   }
@@ -133,7 +133,7 @@ let missingEphemeralRaises =
     let bogusRef = RT.Ephemeral(System.Guid.NewGuid())
     do!
       expectThrows "expected an exception on missing ephemeral id" (fun () ->
-        Blob.readBytes state bogusRef |> Ply.toTask :> Task<_>)
+        Blob.readBytes state bogusRef :> Task<_>)
   }
 
 
@@ -278,7 +278,7 @@ let promotePersistsAndSwaps =
     let state = freshState ()
     let payload = uniquePayload "promote-test"
     let ephemeral = Blob.newEphemeral state payload
-    let! promoted = Blob.promote state PMBlob.insert ephemeral |> Ply.toTask
+    let! promoted = Blob.promote state PMBlob.insert ephemeral
     let expectedHash = Blob.sha256Hex payload
     match promoted with
     | RT.DBlob(RT.Persistent(h, n)) ->
@@ -294,7 +294,7 @@ let promoteThenSerializeRoundtrips =
     let state = freshState ()
     let payload = uniquePayload "promote-serialize"
     let ephemeral = Blob.newEphemeral state payload
-    let! promoted = Blob.promote state PMBlob.insert ephemeral |> Ply.toTask
+    let! promoted = Blob.promote state PMBlob.insert ephemeral
     let restored =
       BS.RT.Dval.deserialize "dval" (BS.RT.Dval.serialize "dval" promoted)
     Expect.equal
@@ -309,8 +309,8 @@ let promoteSameBytesTwiceDedups =
     let payload = uniquePayload "dedup-test"
     let eph1 = Blob.newEphemeral state payload
     let eph2 = Blob.newEphemeral state payload
-    let! p1 = Blob.promote state PMBlob.insert eph1 |> Ply.toTask
-    let! p2 = Blob.promote state PMBlob.insert eph2 |> Ply.toTask
+    let! p1 = Blob.promote state PMBlob.insert eph1
+    let! p2 = Blob.promote state PMBlob.insert eph2
     Expect.equal p1 p2 "two promotions of identical bytes share the hash"
     let! row = PMBlob.get (Blob.sha256Hex payload) |> Ply.toTask
     Expect.equal row (Some payload) "row still contains original bytes"
@@ -321,8 +321,8 @@ let promotedBlobResolvesViaReadBlobBytes =
     let state = freshState ()
     let payload = uniquePayload "resolve-test"
     let ephemeral = Blob.newEphemeral state payload
-    let! promoted = Blob.promote state PMBlob.insert ephemeral |> Ply.toTask
-    let! bytes = Blob.readBytes state (dblobRef promoted) |> Ply.toTask
+    let! promoted = Blob.promote state PMBlob.insert ephemeral
+    let! bytes = Blob.readBytes state (dblobRef promoted)
     Expect.equal bytes payload "persistent blob resolves back to its bytes"
   }
 
@@ -472,12 +472,11 @@ let promotedBlobsSurviveScopePop =
     let payload = [| 0xDEuy; 0xADuy; 0xBEuy; 0xEFuy |]
     Blob.pushScope state
     let eph = Blob.newEphemeral state payload
-    let! promoted = Blob.promote state pmRT.persistBlob eph |> Ply.toTask
+    let! promoted = Blob.promote state pmRT.persistBlob eph
     let hash = persistentHash promoted
     Blob.popScope state
     // Ephemeral bytes gone; persistent bytes survive in package_blobs.
-    let! bytes =
-      Blob.readBytes state (RT.Persistent(hash, int64 payload.Length)) |> Ply.toTask
+    let! bytes = Blob.readBytes state (RT.Persistent(hash, int64 payload.Length))
     Expect.equal bytes payload "persistent bytes survive the pop"
   }
 

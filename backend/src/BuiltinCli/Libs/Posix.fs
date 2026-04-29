@@ -957,7 +957,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DInt64 fd; DBlob ref ] ->
           task {
-            let! bytes = Blob.readBytes state ref |> Ply.toTask
+            let! bytes = Blob.readBytes state ref
             match Libc.fdWrite (int fd) bytes with
             | Ok n ->
               return Dval.resultOk KTInt64 (posixErrorKT ()) (DInt64(int64 n))

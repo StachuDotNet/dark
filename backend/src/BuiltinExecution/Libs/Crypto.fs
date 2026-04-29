@@ -26,7 +26,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob ref ] ->
           task {
-            let! data = Blob.readBytes state ref |> Ply.toTask
+            let! data = Blob.readBytes state ref
             let hash = SHA256.HashData(System.ReadOnlySpan(data))
             return Blob.newEphemeral state hash
           }
@@ -46,7 +46,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob ref ] ->
           task {
-            let! data = Blob.readBytes state ref |> Ply.toTask
+            let! data = Blob.readBytes state ref
             let hash = SHA384.HashData(System.ReadOnlySpan data)
             return Blob.newEphemeral state hash
           }
@@ -67,7 +67,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob ref ] ->
           task {
-            let! data = Blob.readBytes state ref |> Ply.toTask
+            let! data = Blob.readBytes state ref
             let hash = MD5.HashData(System.ReadOnlySpan data)
             return Blob.newEphemeral state hash
           }
@@ -88,8 +88,8 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob keyRef; DBlob dataRef ] ->
           task {
-            let! key = Blob.readBytes state keyRef |> Ply.toTask
-            let! data = Blob.readBytes state dataRef |> Ply.toTask
+            let! key = Blob.readBytes state keyRef
+            let! data = Blob.readBytes state dataRef
             use hmac = new HMACSHA256(key)
             let hash = hmac.ComputeHash(data)
             return Blob.newEphemeral state hash
@@ -111,8 +111,8 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob keyRef; DBlob dataRef ] ->
           task {
-            let! key = Blob.readBytes state keyRef |> Ply.toTask
-            let! data = Blob.readBytes state dataRef |> Ply.toTask
+            let! key = Blob.readBytes state keyRef
+            let! data = Blob.readBytes state dataRef
             use hmac = new HMACSHA1(key)
             let hash = hmac.ComputeHash(data)
             return Blob.newEphemeral state hash

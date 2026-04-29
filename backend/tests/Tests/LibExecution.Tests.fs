@@ -201,8 +201,7 @@ let t
         task {
           match r with
           | Ok dv ->
-            let! promoted =
-              LibExecution.Blob.promote state noopInsert dv |> Ply.toTask
+            let! promoted = LibExecution.Blob.promote state noopInsert dv
             return Ok promoted
           | Error _ -> return r
         }

@@ -14,6 +14,8 @@
 /// operation; Dval shape-walking is just the means.
 module LibExecution.Blob
 
+open System.Threading.Tasks
+
 open Prelude
 
 open LibExecution.RuntimeTypes
@@ -81,8 +83,8 @@ let popScope (exeState : ExecutionState) : unit =
 /// Resolve a BlobRef to its bytes. Ephemerals read from the VM store;
 /// persistent refs hit package_blobs via the ExecutionState's blob
 /// accessor. Shared by every builtin that dereferences a DBlob.
-let readBytes (state : ExecutionState) (ref : BlobRef) : Ply.Ply<byte[]> =
-  uply {
+let readBytes (state : ExecutionState) (ref : BlobRef) : Task<byte[]> =
+  task {
     match ref with
     | Ephemeral id ->
       let mutable bs : byte[] = null
@@ -92,7 +94,7 @@ let readBytes (state : ExecutionState) (ref : BlobRef) : Ply.Ply<byte[]> =
         return Exception.raiseInternal "ephemeral blob not found" [ "id", id ]
     | Persistent(hash, _length) when hash = emptyHash -> return [||]
     | Persistent(hash, _length) ->
-      let! got = state.blobs.get hash
+      let! got = state.blobs.get hash |> Ply.toTask
       match got with
       | Some bs -> return bs
       | None ->
@@ -119,86 +121,89 @@ let readBytes (state : ExecutionState) (ref : BlobRef) : Ply.Ply<byte[]> =
 /// A captured trace holding a `DBlob(Ephemeral _)` deserialises in a
 /// fresh VM with the UUID intact but no bytes in that VM's blobStore,
 /// so the next `readBytes` raises "ephemeral blob not found".
-/// Fix: thread a `promoteForCapture : Dval -> Ply<Dval>` through the
+/// Fix: thread a `promoteForCapture : Dval -> Task<Dval>` through the
 /// Tracing.T record, wrap each storeXXX in promote-then-serialize.
 ///
 /// CLEANUP rebuilds container Dvals (Map.toList → walk → Map.ofList)
 /// even when no descendant blob promoted. Alloc-cheap in practice
 /// (~75KB regardless of input size), but a "did anything change"
 /// short-circuit would skip the round-trip in the common case.
+let rec private promoteWalk
+  (exeState : ExecutionState)
+  (insert : string -> byte[] -> Ply<unit>)
+  (dv : Dval)
+  : Task<Dval> =
+  task {
+    match dv with
+    | DBlob(Ephemeral id) ->
+      let mutable bs : byte[] = null
+      if exeState.blobStore.TryGetValue(id, &bs) then
+        let h = sha256Hex bs
+        let n : int64 = System.Convert.ToInt64 bs.Length
+        do! insert h bs |> Ply.toTask
+        return DBlob(Persistent(h, n))
+      else
+        return
+          Exception.raiseInternal
+            "Ephemeral blob not found in store during promotion"
+            [ "id", id ]
+    | DBlob(Persistent _)
+    | DUnit
+    | DBool _
+    | DInt8 _
+    | DUInt8 _
+    | DInt16 _
+    | DUInt16 _
+    | DInt32 _
+    | DUInt32 _
+    | DInt64 _
+    | DUInt64 _
+    | DInt128 _
+    | DUInt128 _
+    | DFloat _
+    | DChar _
+    | DString _
+    | DDateTime _
+    | DUuid _
+    | DApplicable _
+    | DDB _
+    | DStream _ -> return dv
+    | DList(vt, items) ->
+      let! items' = items |> Task.mapSequentially (promoteWalk exeState insert)
+      return DList(vt, items')
+    | DDict(vt, entries) ->
+      let! entries' =
+        entries
+        |> Map.toList
+        |> Task.mapSequentially (fun (k, v) ->
+          task {
+            let! v' = promoteWalk exeState insert v
+            return (k, v')
+          })
+      return DDict(vt, Map.ofList entries')
+    | DTuple(a, b, rest) ->
+      let! a' = promoteWalk exeState insert a
+      let! b' = promoteWalk exeState insert b
+      let! rest' = rest |> Task.mapSequentially (promoteWalk exeState insert)
+      return DTuple(a', b', rest')
+    | DRecord(src, rt, typeArgs, fields) ->
+      let! fields' =
+        fields
+        |> Map.toList
+        |> Task.mapSequentially (fun (k, v) ->
+          task {
+            let! v' = promoteWalk exeState insert v
+            return (k, v')
+          })
+      return DRecord(src, rt, typeArgs, Map.ofList fields')
+    | DEnum(src, rt, typeArgs, caseName, fields) ->
+      let! fields' = fields |> Task.mapSequentially (promoteWalk exeState insert)
+      return DEnum(src, rt, typeArgs, caseName, fields')
+  }
+
 let promote
   (exeState : ExecutionState)
-  (insert : string -> byte[] -> Ply.Ply<unit>)
+  (insert : string -> byte[] -> Ply<unit>)
   (dv : Dval)
-  : Ply.Ply<Dval> =
-  uply {
-    let rec go (dv : Dval) : Ply.Ply<Dval> =
-      uply {
-        match dv with
-        | DBlob(Ephemeral id) ->
-          let mutable bs : byte[] = null
-          if exeState.blobStore.TryGetValue(id, &bs) then
-            let h = sha256Hex bs
-            let n : int64 = System.Convert.ToInt64 bs.Length
-            do! insert h bs
-            return DBlob(Persistent(h, n))
-          else
-            return
-              Exception.raiseInternal
-                "Ephemeral blob not found in store during promotion"
-                [ "id", id ]
-        | DBlob(Persistent _)
-        | DUnit
-        | DBool _
-        | DInt8 _
-        | DUInt8 _
-        | DInt16 _
-        | DUInt16 _
-        | DInt32 _
-        | DUInt32 _
-        | DInt64 _
-        | DUInt64 _
-        | DInt128 _
-        | DUInt128 _
-        | DFloat _
-        | DChar _
-        | DString _
-        | DDateTime _
-        | DUuid _
-        | DApplicable _
-        | DDB _
-        | DStream _ -> return dv
-        | DList(vt, items) ->
-          let! items' = items |> Ply.List.mapSequentially go
-          return DList(vt, items')
-        | DDict(vt, entries) ->
-          let! entries' =
-            entries
-            |> Map.toList
-            |> Ply.List.mapSequentially (fun (k, v) ->
-              uply {
-                let! v' = go v
-                return (k, v')
-              })
-          return DDict(vt, Map.ofList entries')
-        | DTuple(a, b, rest) ->
-          let! a' = go a
-          let! b' = go b
-          let! rest' = rest |> Ply.List.mapSequentially go
-          return DTuple(a', b', rest')
-        | DRecord(src, rt, typeArgs, fields) ->
-          let! fields' =
-            fields
-            |> Map.toList
-            |> Ply.List.mapSequentially (fun (k, v) ->
-              uply {
-                let! v' = go v
-                return (k, v')
-              })
-          return DRecord(src, rt, typeArgs, Map.ofList fields')
-        | DEnum(src, rt, typeArgs, caseName, fields) ->
-          let! fields' = fields |> Ply.List.mapSequentially go
-          return DEnum(src, rt, typeArgs, caseName, fields')
-      }
-    return! go dv
-  }
+  : Task<Dval> =
+  promoteWalk exeState insert dv

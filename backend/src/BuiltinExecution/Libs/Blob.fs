@@ -24,7 +24,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob ref ] ->
           task {
-            let! bs = Blob.readBytes state ref |> Ply.toTask
+            let! bs = Blob.readBytes state ref
             return DInt64(int64 bs.Length)
           }
 
@@ -62,7 +62,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob ref ] ->
           task {
-            let! bs = Blob.readBytes state ref |> Ply.toTask
+            let! bs = Blob.readBytes state ref
             try
               let s = (new System.Text.UTF8Encoding(false, true)).GetString(bs)
               return ok (DString s)
@@ -87,7 +87,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob ref ] ->
           task {
-            let! bs = Blob.readBytes state ref |> Ply.toTask
+            let! bs = Blob.readBytes state ref
             return DString(System.Convert.ToHexString(bs))
           }
 
@@ -129,7 +129,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob ref ] ->
           task {
-            let! bs = Blob.readBytes state ref |> Ply.toTask
+            let! bs = Blob.readBytes state ref
             return DString(System.Convert.ToBase64String(bs))
           }
 
@@ -183,7 +183,7 @@ let fns () : List<BuiltInFn> =
             for item in items do
               match item with
               | DBlob ref ->
-                let! bs = Blob.readBytes state ref |> Ply.toTask
+                let! bs = Blob.readBytes state ref
                 collected.Write(bs, 0, bs.Length)
               | _ ->
                 Exception.raiseInternal "blobConcat: expected DBlob" [ "item", item ]
@@ -213,7 +213,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob ref; DInt64 startL; DInt64 lenL ] ->
           task {
-            let! bs = Blob.readBytes state ref |> Ply.toTask
+            let! bs = Blob.readBytes state ref
             let len64 = int64 bs.Length
             let safeStart = max 0L (min startL len64)
             let safeLen = max 0L (min lenL (len64 - safeStart))
@@ -239,7 +239,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob ref ] ->
           task {
-            let! bs = Blob.readBytes state ref |> Ply.toTask
+            let! bs = Blob.readBytes state ref
             return Dval.byteArrayToDvalList bs
           }
 

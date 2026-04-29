@@ -561,7 +561,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
           _,
           [ DString method; DString uri; DList(_, reqHeaders); DBlob bodyRef ] ->
           task {
-            let! reqBodyBytes = Blob.readBytes state bodyRef |> Ply.toTask
+            let! reqBodyBytes = Blob.readBytes state bodyRef
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
               reqHeaders
               |> Ply.List.mapSequentially (fun item ->

@@ -66,7 +66,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob ref ] ->
           task {
-            let! bytes = Blob.readBytes state ref |> Ply.toTask
+            let! bytes = Blob.readBytes state ref
             return DString(System.Convert.ToBase64String(bytes))
           }
 
@@ -88,7 +88,7 @@ let fns () : List<BuiltInFn> =
         (function
         | state, _, _, [ DBlob ref ] ->
           task {
-            let! bytes = Blob.readBytes state ref |> Ply.toTask
+            let! bytes = Blob.readBytes state ref
             // Differs from Base64.encodeToUrlSafe as this version has padding
             let encoded =
               System.Convert
