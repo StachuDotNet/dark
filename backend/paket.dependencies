@@ -33,7 +33,8 @@ nuget SimpleBase = 4.0.0
 nuget Microsoft.Extensions.Diagnostics.HealthChecks = 10.0.0
 
 // LibCloud
-nuget Sodium.Core = 1.3.4
+// Sodium.Core disabled along with Password.fs (no remaining consumers)
+// nuget Sodium.Core = 1.3.4
 
 // LocalExec
 nuget Legivel = 0.4.6
