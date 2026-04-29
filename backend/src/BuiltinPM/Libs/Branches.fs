@@ -25,10 +25,11 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DString name; DUuid parentBranchId ] ->
-          uply {
+          task {
             let! branch = LibPackageManager.Branches.create name parentBranchId
             return PT2DT.Branch.toDT branch
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -43,13 +44,14 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUnit ] ->
-          uply {
+          task {
             let! branches = LibPackageManager.Branches.list ()
             return
               branches
               |> List.map PT2DT.Branch.toDT
               |> D.list (PT2DT.Branch.knownType ())
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -64,13 +66,14 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUnit ] ->
-          uply {
+          task {
             let! branches = LibPackageManager.Branches.listAll ()
             return
               branches
               |> List.map PT2DT.Branch.toDT
               |> D.list (PT2DT.Branch.knownType ())
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -85,13 +88,14 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid id ] ->
-          uply {
+          task {
             let! branchOpt = LibPackageManager.Branches.get id
             return
               branchOpt
               |> Option.map PT2DT.Branch.toDT
               |> D.option (PT2DT.Branch.knownType ())
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -106,13 +110,14 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DString name ] ->
-          uply {
+          task {
             let! branchOpt = LibPackageManager.Branches.getByName name
             return
               branchOpt
               |> Option.map PT2DT.Branch.toDT
               |> D.option (PT2DT.Branch.knownType ())
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -129,7 +134,7 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid id; DString newName ] ->
-          uply {
+          task {
             let! result = LibPackageManager.Branches.rename id newName
             return
               result
@@ -137,6 +142,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> D.result KTUnit KTString
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -151,7 +157,7 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid id ] ->
-          uply {
+          task {
             let! result = LibPackageManager.Branches.archive id
             return
               result
@@ -159,6 +165,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> D.result KTUnit KTString
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -173,7 +180,7 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid id ] ->
-          uply {
+          task {
             let! result = LibPackageManager.Branches.archive id
             return
               result
@@ -181,6 +188,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> D.result KTUnit KTString
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
@@ -195,7 +203,7 @@ let fns () : List<BuiltInFn> =
       fn =
         function
         | _, _, _, [ DUuid id ] ->
-          uply {
+          task {
             let! result = LibPackageManager.Branches.unarchive id
             return
               result
@@ -203,6 +211,7 @@ let fns () : List<BuiltInFn> =
               |> Result.mapError DString
               |> D.result KTUnit KTString
           }
+          |> Ply.ofTask
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
       previewable = Impure
