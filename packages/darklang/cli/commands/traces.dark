@@ -1102,9 +1102,15 @@ let isVisible (opts: ViewOptions) (call: FnCall) (ancestorMatched: Bool) : Bool 
     match opts.slowThresholdMs with
     | Some thr -> call.durationMs < thr
     | None -> false
+  // --filter / --exclude match case-insensitively, parallel to the
+  // SQL `LIKE` semantics used by `list --fn` / `find`. Uppercase the
+  // call name once per call; pat is uppercased at parse time would be
+  // cleaner but the perf gap on a typical 100-call trace is invisible.
+  let fnNameUpper = Stdlib.String.toUppercase call.fnName
   let excluded =
     match opts.exclude with
-    | Some pat -> Stdlib.String.contains call.fnName pat
+    | Some pat ->
+      Stdlib.String.contains fnNameUpper (Stdlib.String.toUppercase pat)
     | None -> false
   if stdlibInternal || builtinHidden || belowSlowThreshold || excluded then
     false
@@ -1112,7 +1118,8 @@ let isVisible (opts: ViewOptions) (call: FnCall) (ancestorMatched: Bool) : Bool 
     match opts.filter with
     | None -> true
     | Some pat ->
-      ancestorMatched || Stdlib.String.contains call.fnName pat
+      ancestorMatched
+        || Stdlib.String.contains fnNameUpper (Stdlib.String.toUppercase pat)
 
 
 /// Render one call and (recursively) its children. Lifted out of
@@ -1490,9 +1497,9 @@ let help (_state: Cli.AppState) : Unit =
     "  --no-builtins             Hide builtin calls (e.g. int64Multiply)"
     "  --no-stdlib               Hide stdlib calls below the entry point"
     "  --filter <pattern>        Show only calls whose name contains <pattern>"
-    "                            (and their descendants)"
+    "                            (and their descendants; case-insensitive)"
     "  --exclude <pattern>       Hide calls whose name contains <pattern>"
-    "                            (their children still recurse at parent indent)"
+    "                            (their children still recurse at parent indent; case-insensitive)"
     "  --slow                    Hide calls below 10ms (builtins always 0)"
     "  --slow-ms <n>             Hide calls below <n>ms"
     ""
