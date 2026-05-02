@@ -565,6 +565,29 @@ let pipeExpr (ctx: Context) (p: LanguageTools.ProgramTypes.PipeExpr) : String =
 
       $"{typeNamePart}.{caseName}{fieldPart}"
 
+
+/// Format a recorded Dval for inline `view --with-trace` annotations:
+/// pretty-print, flatten newlines, then truncate to keep the header
+/// line scannable. Long strings/records balloon the rendered output
+/// otherwise (a multi-KB HTML body would print in full on a `let`
+/// header line). 80 chars chosen by eye — fits next to most source
+/// lines without wrapping in a typical terminal width.
+let formatTraceAnnotation
+  (branchId: Uuid)
+  (dval: LanguageTools.RuntimeTypes.Dval)
+  : String =
+  let repr = PrettyPrinter.RuntimeTypes.dval branchId dval
+  let compact =
+    repr
+    |> Stdlib.String.split "\n"
+    |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
+    |> Stdlib.String.join " "
+  if Stdlib.String.length compact > 80L then
+    (Stdlib.String.slice compact 0L 80L) ++ "…"
+  else
+    compact
+
+
 let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
   match e with
   | EUnit _id -> "()"
@@ -687,15 +710,7 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
       | LPTuple(id, _, _, _) -> id
     let annotation =
       match Stdlib.Dict.get ctx.traceValues (Stdlib.Int64.toString patternId) with
-      | Some dval ->
-        let repr = PrettyPrinter.RuntimeTypes.dval ctx.branchId dval
-        // Compact to one line so the let header stays scannable.
-        let compact =
-          repr
-          |> Stdlib.String.split "\n"
-          |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
-          |> Stdlib.String.join " "
-        $"  // = {compact}"
+      | Some dval -> $"  // = {formatTraceAnnotation ctx.branchId dval}"
       | None -> ""
     $"let {patternPart} ={annotation}\n{PrettyPrinter.indent rhsPart}\n{bodyPart}"
 
@@ -732,14 +747,7 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
     // when the trace recorded a value for this if expression.
     let annotation =
       match Stdlib.Dict.get ctx.traceValues (Stdlib.Int64.toString id) with
-      | Some dval ->
-        let repr = PrettyPrinter.RuntimeTypes.dval ctx.branchId dval
-        let compact =
-          repr
-          |> Stdlib.String.split "\n"
-          |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
-          |> Stdlib.String.join " "
-        $"  // = {compact}"
+      | Some dval -> $"  // = {formatTraceAnnotation ctx.branchId dval}"
       | None -> ""
 
     match elseBranch with
@@ -777,13 +785,7 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
         let annotation =
           match Stdlib.Dict.get ctx.traceValues (Stdlib.Int64.toString rhsId) with
           | Some dval ->
-            let repr = PrettyPrinter.RuntimeTypes.dval ctx.branchId dval
-            let compact =
-              repr
-              |> Stdlib.String.split "\n"
-              |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
-              |> Stdlib.String.join " "
-            $"  // ← matched, = {compact}"
+            $"  // ← matched, = {formatTraceAnnotation ctx.branchId dval}"
           | None -> ""
 
         $"| {patternPart}{whenPart} ->{annotation}\n{rhsPart}")
@@ -817,13 +819,7 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
           | EPipeEnum(id, _, _, _) -> id
         match Stdlib.Dict.get ctx.traceValues (Stdlib.Int64.toString stageId) with
         | Some dval ->
-          let repr = PrettyPrinter.RuntimeTypes.dval ctx.branchId dval
-          let compact =
-            repr
-            |> Stdlib.String.split "\n"
-            |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
-            |> Stdlib.String.join " "
-          $"{rendered}  // = {compact}"
+          $"{rendered}  // = {formatTraceAnnotation ctx.branchId dval}"
         | None -> rendered)
       |> Stdlib.String.join "\n|> "
 
