@@ -147,6 +147,14 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     executeFollow state (Stdlib.Option.Option.Some route)
 
   | [ "stats" ] -> executeStats state 100L
+  | [ "stats"; "--json" ] -> executeStatsJson state 100L
+  | [ "stats"; "--json"; limitStr ]
+  | [ "stats"; limitStr; "--json" ] ->
+    match Stdlib.Int64.parse limitStr with
+    | Ok limit -> executeStatsJson state limit
+    | Error _ ->
+      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      state
   | [ "stats"; limitStr ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeStats state limit
@@ -170,6 +178,14 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       state
 
   | [ "hotspots" ] -> executeHotspots state 100L
+  | [ "hotspots"; "--json" ] -> executeHotspotsJson state 100L
+  | [ "hotspots"; "--json"; limitStr ]
+  | [ "hotspots"; limitStr; "--json" ] ->
+    match Stdlib.Int64.parse limitStr with
+    | Ok limit -> executeHotspotsJson state limit
+    | Error _ ->
+      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      state
   | [ "hotspots"; limitStr ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeHotspots state limit
@@ -294,6 +310,27 @@ let executeHotspots
     state
 
 
+/// `traces hotspots --json [limit]` — same data as a JSON array of
+/// `{name, count, totalMs, maxMs}` objects, no headers/footers, for
+/// piping. Empty store prints `[]`.
+let executeHotspotsJson
+  (state: Cli.AppState)
+  (traceLimit: Int64)
+  : Cli.AppState =
+  let rows = Builtin.cliTracesHotspots traceLimit
+  let body =
+    rows
+    |> Stdlib.List.map (fun row ->
+      let (name, count, total, max) = row
+      $"{{\"name\":\"{jsonEscape name}\""
+      ++ $",\"count\":{Stdlib.Int64.toString count}"
+      ++ $",\"totalMs\":{Stdlib.Int64.toString total}"
+      ++ $",\"maxMs\":{Stdlib.Int64.toString max}}}")
+    |> Stdlib.String.join ","
+  Stdlib.printLine $"[{body}]"
+  state
+
+
 /// Right-align a number in a field of `width` chars by prepending spaces.
 /// Stdlib.padStart returns Result; this helper unwraps with empty-Error
 /// fallback (only fails on bad padWith, which we hardcode here).
@@ -302,6 +339,15 @@ let padNum (n: Int64) (width: Int64) : String =
   match Stdlib.String.padStart s " " width with
   | Ok r -> r
   | Error _ -> s
+
+
+/// Escape a string for embedding in JSON. Handles backslash and double-
+/// quote — the only characters that appear in trace handler/fn names
+/// (URL paths, dotted package names, builtin identifiers).
+let jsonEscape (s: String) : String =
+  s
+  |> Stdlib.String.replaceAll "\\" "\\\\"
+  |> Stdlib.String.replaceAll "\"" "\\\""
 
 
 /// `traces find <pattern> [limit]` — list traces whose recorded input or any
@@ -430,6 +476,24 @@ let executeStats (state: Cli.AppState) (limit: Int64) : Cli.AppState =
     Stdlib.printLine ""
     Stdlib.printLine "Use 'traces list --route <substring>' to drill into a route."
     state
+
+
+/// `traces stats --json [limit]` — same data as a JSON array of
+/// `{handler, count, totalMs, maxMs}` objects, no headers/footers,
+/// for piping. Empty store prints `[]`.
+let executeStatsJson (state: Cli.AppState) (limit: Int64) : Cli.AppState =
+  let rows = Builtin.cliTracesStatsByHandler limit
+  let body =
+    rows
+    |> Stdlib.List.map (fun row ->
+      let (handler, count, total, max) = row
+      $"{{\"handler\":\"{jsonEscape handler}\""
+      ++ $",\"count\":{Stdlib.Int64.toString count}"
+      ++ $",\"totalMs\":{Stdlib.Int64.toString total}"
+      ++ $",\"maxMs\":{Stdlib.Int64.toString max}}}")
+    |> Stdlib.String.join ","
+  Stdlib.printLine $"[{body}]"
+  state
 
 
 /// One iteration of the follow loop: pull recent rows, find newer
@@ -805,6 +869,8 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
   | [ "find" ] -> [ Completion.simple "--view" ]
   | [ "replay" ] -> [ Completion.simple "--diff" ]
   | [ "prune" ] -> [ Completion.simple "--keep" ]
+  | [ "stats" ] -> [ Completion.simple "--json" ]
+  | [ "hotspots" ] -> [ Completion.simple "--json" ]
   | _ -> []
 
 
@@ -820,9 +886,11 @@ let help (_state: Cli.AppState) : Unit =
     "  tail [--route <substring>]    View the most-recent trace, optionally filtered"
     "  follow [--route <substring>]  Tail-style: print new traces as they arrive"
     "  stats [limit]                 Count of recent traces grouped by handler"
+    "  stats --json [limit]          Same data as JSON for piping"
     "  find <pattern> [limit]        List traces whose recorded values contain a substring"
     "  find <pattern> --view         Open the latest matching trace directly"
     "  hotspots [trace-limit]        Per-fn timing aggregated across last N traces (default 100)"
+    "  hotspots --json [trace-limit] Same data as JSON for piping"
     "  export <trace-id>             Print a portable JSON dump of the trace"
     "  import <path>                 Re-create a trace from a JSON dump on disk"
     "  replay <trace-id> [--diff]    Re-execute a trace's code; --diff compares against the recorded output"
