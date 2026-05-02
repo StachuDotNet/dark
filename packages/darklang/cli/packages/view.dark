@@ -258,18 +258,29 @@ let execute (state: AppState) (args: List<String>) : AppState =
       state
   | [ pathArg; "--with-trace"; traceID ] ->
     // Accept any unambiguous prefix, same as `traces view` / `export` / etc.
-    match Builtin.cliTracesResolveID traceID with
-    | Error msg ->
-      Stdlib.printLine (Colors.error msg)
+    // Mirror the guards from `traces.dark` resolveTraceID: detect `-`-prefixed
+    // input as a flag, trim whitespace from copy-paste, reject empty.
+    if Stdlib.String.startsWith traceID "-" then
+      Stdlib.printLine (Colors.error $"Unknown flag: {traceID}")
       state
-    | Ok fullID ->
-      match Traversal.traverse branchId state.packageData.currentLocation pathArg with
-      | Error errorMsg ->
-        Stdlib.printLine (Colors.error $"Cannot view: {errorMsg}")
+    else
+      let trimmed = Stdlib.String.trim traceID
+      if trimmed == "" then
+        Stdlib.printLine (Colors.error "Trace ID must not be empty")
         state
-      | Ok newLocation ->
-        viewFunctionWithTrace branchId newLocation fullID
-        state
+      else
+        match Builtin.cliTracesResolveID trimmed with
+        | Error msg ->
+          Stdlib.printLine (Colors.error msg)
+          state
+        | Ok fullID ->
+          match Traversal.traverse branchId state.packageData.currentLocation pathArg with
+          | Error errorMsg ->
+            Stdlib.printLine (Colors.error $"Cannot view: {errorMsg}")
+            state
+          | Ok newLocation ->
+            viewFunctionWithTrace branchId newLocation fullID
+            state
   | [ _; "--with-trace" ] ->
     Stdlib.printLine
       (Colors.error "Usage: view <path> --with-trace <traceID>")
