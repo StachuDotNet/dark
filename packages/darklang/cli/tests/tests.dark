@@ -352,11 +352,11 @@ let testViewWithTraceAnnotates (): TestResult =
       let output =
         runWithCommand ["view"; "Stdlib.Int64.clamp"; "--with-trace"; tid]
       // The banner reports the count. Look for "annotated with N
-      // value(s)" with N != 0 and check at least one let line is
+      // value[s]" with N != 0 and check at least one let line is
       // annotated.
       if Stdlib.String.contains output "annotated with"
           && Stdlib.Bool.not
-              (Stdlib.String.contains output "annotated with 0 value(s)")
+              (Stdlib.String.contains output "annotated with 0 values")
           && Stdlib.String.contains output "// = "
       then
         TestResult.Pass

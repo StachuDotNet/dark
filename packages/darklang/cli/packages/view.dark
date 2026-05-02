@@ -207,8 +207,9 @@ let viewFunctionWithTrace
           Stdlib.Dict.set acc k v)
       let nValues = Stdlib.List.length pairs
       let nValuesStr = Stdlib.Int64.toString nValues
+      let valueWord = if nValues == 1L then "value" else "values"
       Stdlib.printLine
-        (Colors.hint $"-- annotated with {nValuesStr} value(s) from trace {traceID} --")
+        (Colors.hint $"-- annotated with {nValuesStr} {valueWord} from trace {traceID} --")
       // 0 values is almost always one of: (a) the trace didn't call
       // this fn, or (b) the fn was refactored since the trace was
       // recorded (exprIds change with code changes). Surface a hint

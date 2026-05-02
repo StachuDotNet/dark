@@ -1248,7 +1248,8 @@ let executeClear (state: Cli.AppState) : Cli.AppState =
     Stdlib.printLine "No traces to clear."
     state
   | _ ->
-    Stdlib.printLine $"Cleared {Stdlib.Int64.toString count} trace(s)."
+    let traceWord = if count == 1L then "trace" else "traces"
+    Stdlib.printLine $"Cleared {Stdlib.Int64.toString count} {traceWord}."
     state
 
 
@@ -1303,8 +1304,9 @@ let executeClearBefore
       Stdlib.printLine $"No traces older than {durationStr}."
       state
     | _ ->
+      let traceWord = if count == 1L then "trace" else "traces"
       Stdlib.printLine
-        $"Cleared {Stdlib.Int64.toString count} trace(s) older than {durationStr}."
+        $"Cleared {Stdlib.Int64.toString count} {traceWord} older than {durationStr}."
       state
 
 
