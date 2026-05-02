@@ -472,6 +472,33 @@ let testTracesValuesAfterLet (): TestResult =
   | _ -> TestResult.Fail $"List --json had no traceId field: {listJson}"
 
 
+/// Negative limits are rejected across the limit-taking commands.
+/// Locks in `0dd0a0310` and `d7b6ae90c` — pre-fix, `traces list -1`
+/// returned every trace because SQLite treats `LIMIT -1` as unlimited;
+/// `traces stats -1` printed "Per-handler stats (last -1 traces):"
+/// verbatim. Now all four representative commands reject with a
+/// uniform "Limit must be ≥ 1".
+let testTracesRejectsNegativeLimit (): TestResult =
+  let cases =
+    [ ["traces"; "list"; "-1"]
+      ["traces"; "stats"; "-1"]
+      ["traces"; "hotspots"; "-1"]
+      ["traces"; "find"; "foo"; "-1"] ]
+  let failures =
+    cases
+    |> Stdlib.List.filter (fun argv ->
+      let out = runWithCommand argv
+      Stdlib.Bool.not (Stdlib.String.contains out "Limit must be ≥ 1"))
+  match failures with
+  | [] -> TestResult.Pass
+  | _ ->
+    let names =
+      failures
+      |> Stdlib.List.map (fun argv -> Stdlib.String.join argv " ")
+      |> Stdlib.String.join ", "
+    TestResult.Fail $"Expected `Limit must be ≥ 1` from: {names}"
+
+
 type TestFunction = Unit -> TestResult
 
 let allTests (): List<String * TestFunction> =
@@ -508,6 +535,8 @@ let allTests (): List<String * TestFunction> =
     ("View With Trace Annotates", fun () -> testViewWithTraceAnnotates ())
     ("Traces Prune Keep", fun () -> testTracesPruneKeep ())
     ("Traces Replay Diff Matches", fun () -> testTracesReplayDiffMatches ())
+    ("Traces Rejects Negative Limit",
+      fun () -> testTracesRejectsNegativeLimit ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
