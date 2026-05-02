@@ -124,6 +124,8 @@ let rec parseViewOptions
   | "--filter" :: pattern :: rest ->
     if Stdlib.String.startsWith pattern "-" then
       Stdlib.Result.Result.Error $"Unknown flag: {pattern}"
+    else if pattern == "" then
+      Stdlib.Result.Result.Error "--filter pattern must not be empty"
     else
       parseViewOptions
         { opts with filter = Stdlib.Option.Option.Some pattern }
@@ -131,6 +133,8 @@ let rec parseViewOptions
   | "--exclude" :: pattern :: rest ->
     if Stdlib.String.startsWith pattern "-" then
       Stdlib.Result.Result.Error $"Unknown flag: {pattern}"
+    else if pattern == "" then
+      Stdlib.Result.Result.Error "--exclude pattern must not be empty"
     else
       parseViewOptions
         { opts with exclude = Stdlib.Option.Option.Some pattern }
