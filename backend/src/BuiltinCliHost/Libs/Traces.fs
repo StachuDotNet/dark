@@ -13,6 +13,7 @@ module Dval = LibExecution.Dval
 module DvalReprInternalRoundtrippable = LibDB.DvalRepr.Roundtrippable
 module RT2DT = LibExecution.RuntimeTypesToDarkTypes
 module NR = LibExecution.RuntimeTypes.NameResolution
+module VT = LibExecution.ValueType
 module TracesRefs = LibExecution.PackageRefs.Type.Cli.Commands.Traces
 
 let dvalTypeName () =
@@ -229,6 +230,60 @@ let fns () : List<BuiltInFn> =
                       "timestamp", DString r.timestamp ]
                 DRecord(typeName, typeName, [], fields))
               |> Dval.list (KTCustomType(typeName, []))
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    { name = fn "cliTracesHotspots" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "traceLimit"
+            TInt64
+            "Aggregate over the last N traces (e.g. 100)" ]
+      returnType = TList(TTuple(TString, TInt64, [ TInt64; TInt64 ]))
+      description =
+        "Aggregate fn-call timing across the last N traces. Returns (fnName, callCount, totalMs, maxMs) tuples sorted by totalMs desc. Lambdas are excluded (no fn_hash to bucket by); builtins included but always have 0ms duration."
+      fn =
+        (function
+        | _, _, _, [ DInt64 traceLimit ] ->
+          uply {
+            // Subquery: the last N trace IDs by recency.
+            // Outer GROUP BY rolls duration up per fn_hash.
+            // WHERE fn_hash IS NOT NULL drops lambda rows.
+            let! rows =
+              Sql.query
+                "SELECT fn_hash AS name,
+                        COUNT(*) AS call_count,
+                        SUM(duration_ms) AS total_ms,
+                        MAX(duration_ms) AS max_ms
+                 FROM trace_fn_calls
+                 WHERE trace_id IN (
+                   SELECT id FROM traces ORDER BY rowid DESC LIMIT @traceLimit
+                 )
+                 AND fn_hash IS NOT NULL
+                 GROUP BY fn_hash
+                 ORDER BY total_ms DESC, call_count DESC
+                 LIMIT 50"
+              |> Sql.parameters [ "traceLimit", Sql.int64 traceLimit ]
+              |> Sql.executeAsync (fun read ->
+                {| name = read.string "name"
+                   callCount = read.int64 "call_count"
+                   totalMs = read.int64 "total_ms"
+                   maxMs = read.int64 "max_ms" |})
+
+            return
+              rows
+              |> List.map (fun r ->
+                DTuple(
+                  DString r.name,
+                  DInt64 r.callCount,
+                  [ DInt64 r.totalMs; DInt64 r.maxMs ]
+                ))
+              |> Dval.list (KTTuple(VT.string, VT.int64, [ VT.int64; VT.int64 ]))
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

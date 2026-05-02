@@ -158,6 +158,14 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
       state
 
+  | [ "hotspots" ] -> executeHotspots state 100L
+  | [ "hotspots"; limitStr ] ->
+    match Stdlib.Int64.parse limitStr with
+    | Ok limit -> executeHotspots state limit
+    | Error _ ->
+      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      state
+
   | [ "export"; traceID ] ->
     match resolveTraceID traceID with
     | Some full -> executeExport state full
@@ -224,6 +232,44 @@ let executeListByFn (state: Cli.AppState) (fnName: String) (limit: Int64) : Cli.
     Stdlib.printLine ""
     Stdlib.printLine "Use 'traces view <trace-id>' to see details."
     state
+
+
+/// `traces hotspots [limit]` — across the last <limit> traces (default 100),
+/// aggregate per-fn timing: call count, total ms, max ms. Sort by total ms
+/// descending. The "where is my time going?" view.
+let executeHotspots
+  (state: Cli.AppState)
+  (traceLimit: Int64)
+  : Cli.AppState =
+  let rows = Builtin.cliTracesHotspots traceLimit
+
+  match rows with
+  | [] ->
+    Stdlib.printLine $"No fn-call data in the last {Stdlib.Int64.toString traceLimit} traces."
+    state
+  | _ ->
+    Stdlib.printLine
+      $"Hotspots (last {Stdlib.Int64.toString traceLimit} traces, fn calls only):"
+    Stdlib.printLine ""
+    Stdlib.printLine "  total ms │   max ms │ count │ fn"
+    Stdlib.printLine "  ─────────┼──────────┼───────┼─────────────────────────"
+    Stdlib.List.iter rows (fun row ->
+      let (name, count, total, max) = row
+      let totalStr = padNum total 9L
+      let maxStr = padNum max 8L
+      let countStr = padNum count 5L
+      Stdlib.printLine $"  {totalStr} │ {maxStr} │ {countStr} │ {name}")
+    state
+
+
+/// Right-align a number in a field of `width` chars by prepending spaces.
+/// Stdlib.padStart returns Result; this helper unwraps with empty-Error
+/// fallback (only fails on bad padWith, which we hardcode here).
+let padNum (n: Int64) (width: Int64) : String =
+  let s = Stdlib.Int64.toString n
+  match Stdlib.String.padStart s " " width with
+  | Ok r -> r
+  | Error _ -> s
 
 
 /// `traces find <pattern> [limit]` — list traces whose recorded input or any
@@ -677,6 +723,7 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
       Completion.simple "follow"
       Completion.simple "stats"
       Completion.simple "find"
+      Completion.simple "hotspots"
       Completion.simple "export"
       Completion.simple "import"
       Completion.simple "replay"
@@ -702,6 +749,7 @@ let help (_state: Cli.AppState) : Unit =
     "  follow [--route <substring>]  Tail-style: print new traces as they arrive"
     "  stats [limit]                 Count of recent traces grouped by handler"
     "  find <pattern> [limit]        List traces whose recorded values contain a substring"
+    "  hotspots [trace-limit]        Per-fn timing aggregated across last N traces (default 100)"
     "  export <trace-id>             Print a portable JSON dump of the trace"
     "  import <path>                 Re-create a trace from a JSON dump on disk"
     "  replay <trace-id> [--diff]    Re-execute a trace's code; --diff compares against the recorded output"
@@ -732,6 +780,7 @@ let help (_state: Cli.AppState) : Unit =
     "  traces follow --route /api           - Stream new traces matching /api"
     "  traces stats                         - Count recent traces by handler"
     "  traces find user-42                  - All traces touching the substring 'user-42'"
+    "  traces hotspots                      - Top fns by total ms across recent traces"
     "  traces view <trace-id>               - View full trace tree"
     "  traces view <trace-id> -d 2          - Top two tree levels only"
     "  traces view <trace-id> --no-stdlib --no-builtins"
