@@ -153,22 +153,26 @@ module Blob =
 
 
   /// Delete `package_blobs` rows whose hashes aren't referenced by any
-  /// materialised Dval in `package_values.rt_dval`. Returns the count
-  /// of rows deleted.
+  /// materialised Dval in either `package_values.rt_dval` or in the
+  /// trace store (`traces.input_value_json` + `trace_fn_calls.{args_json,
+  /// result_json}`). Returns the count of rows deleted.
   ///
-  /// Intentionally narrow: only scans `package_values`. Other tables
-  /// that might later hold Dvals (User DB rows, `trace_data`) will
-  /// need their own reference-collection pass.
+  /// Tracing started promoting ephemeral blobs to persistent at
+  /// trace-record time (see `LibDB.Tracing.promoteBlobs`); without
+  /// scanning trace tables, the sweep would happily delete bytes that
+  /// were the only thing letting `traces view` / `gen-test` reconstruct
+  /// request/response bodies.
+  ///
+  /// Other tables that might later hold Dvals (User DB rows) will need
+  /// to register here too.
   ///
   /// Idempotent: re-running after a clean sweep deletes nothing. Safe
   /// to run while the system is live — worst-case race is a concurrent
   /// promote racing the delete, which the foreign-key-style orphan
   /// check prevents (content-addressed re-insert is cheap).
   ///
-  /// For a canvas with N package values and M blobs, cost is O(N+M)
-  /// deserialise passes plus one DELETE per orphan. Good enough for
-  /// CLI-triggered sweeps at current scale; a reverse-index table
-  /// is the natural next step when the DB grows past it.
+  /// For a canvas with N package values, T traces, and M blobs, cost is
+  /// O(N+T+M) deserialise passes plus one DELETE per orphan.
   let sweepOrphans () : Ply<int64> =
     uply {
       // Pull every materialised rt_dval — deserialise and collect
@@ -182,7 +186,7 @@ module Blob =
           """
         |> Sql.executeAsync (fun r -> (r.string "hash", r.bytes "rt_dval"))
 
-      let referenced : Set<string> =
+      let valueRefs : Set<string> =
         valueRows
         |> List.fold
           (fun acc (valueHash, rtDvalBytes) ->
@@ -194,6 +198,51 @@ module Blob =
               // sweep; skip and carry on.
               acc)
           Set.empty
+
+      // Trace inputs: one Dval per trace, JSON-encoded.
+      let! traceInputs =
+        Sql.query "SELECT input_value_json FROM traces"
+        |> Sql.executeAsync (fun r -> r.string "input_value_json")
+
+      let parseAndCollect (json : string) : Set<string> =
+        try
+          json
+          |> LibDB.DvalRepr.Roundtrippable.parseJsonV0
+          |> collectBlobHashes
+        with _ ->
+          Set.empty
+
+      let traceInputRefs : Set<string> =
+        traceInputs
+        |> List.fold (fun acc j -> Set.union acc (parseAndCollect j)) Set.empty
+
+      // Per-fn-call: args_json is a JSON array of dvals; result_json is one.
+      let! fnCallRows =
+        Sql.query "SELECT args_json, result_json FROM trace_fn_calls"
+        |> Sql.executeAsync (fun r ->
+          (r.string "args_json", r.string "result_json"))
+
+      let collectFromArgsJson (argsJson : string) : Set<string> =
+        try
+          use doc = System.Text.Json.JsonDocument.Parse(argsJson)
+          doc.RootElement.EnumerateArray()
+          |> Seq.fold
+            (fun acc el -> Set.union acc (parseAndCollect (el.GetRawText())))
+            Set.empty
+        with _ ->
+          Set.empty
+
+      let traceCallRefs : Set<string> =
+        fnCallRows
+        |> List.fold
+          (fun acc (argsJson, resultJson) ->
+            acc
+            |> Set.union (collectFromArgsJson argsJson)
+            |> Set.union (parseAndCollect resultJson))
+          Set.empty
+
+      let referenced : Set<string> =
+        valueRefs |> Set.union traceInputRefs |> Set.union traceCallRefs
 
       // List of candidate hashes in storage.
       let! allHashes =
