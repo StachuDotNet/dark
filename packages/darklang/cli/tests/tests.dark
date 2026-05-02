@@ -536,6 +536,28 @@ let testTracesArgOrderingsWork (): TestResult =
     TestResult.Fail $"Arg-order forms didn't dispatch: {names}"
 
 
+/// SQL LIKE wildcards (`%`, `_`) in user patterns match literally,
+/// not as wildcards. Locks in `6fd912433`. Pre-fix `traces find %`
+/// matched every trace.
+let testTracesFindEscapesLikeWildcards (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "1L + 1L"]
+  // `%` and `_` are SQL LIKE wildcards. After the escape fix, a pattern
+  // of just `%` or `z%` matches only literal `%` / `z%` — the eval trace
+  // doesn't contain those literally so nothing matches.
+  let pctOut = runWithCommand ["traces"; "find"; "%"]
+  let zPctOut = runWithCommand ["traces"; "find"; "z%"]
+  let zUscOut = runWithCommand ["traces"; "find"; "z_"]
+  if Stdlib.String.contains pctOut "No traces match '%'."
+      && Stdlib.String.contains zPctOut "No traces match 'z%'."
+      && Stdlib.String.contains zUscOut "No traces match 'z_'."
+  then
+    TestResult.Pass
+  else
+    TestResult.Fail
+      $"Expected no-match on wildcard-shaped patterns. %: {pctOut}; z%: {zPctOut}; z_: {zUscOut}"
+
+
 /// `tail --route` and `list --route` reject empty/whitespace input.
 /// Locks in `ed4db8129` and `a4dde7dde`. Pre-fix `traces tail --route
 /// ""` returned whatever trace was last (empty substring matches all).
@@ -844,6 +866,8 @@ let allTests (): List<String * TestFunction> =
       fun () -> testTracesArity1Catchalls ())
     ("Traces Route Empty Rejection",
       fun () -> testTracesRouteEmptyRejection ())
+    ("Traces Find Escapes Like Wildcards",
+      fun () -> testTracesFindEscapesLikeWildcards ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
