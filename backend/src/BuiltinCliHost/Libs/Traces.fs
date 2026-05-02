@@ -1351,6 +1351,14 @@ let fns () : List<BuiltInFn> =
                 |> Sql.parameters [ "cutoff", Sql.string cutoffISO ]
                 |> Sql.executeStatementAsync
               do!
+                Sql.query
+                  "DELETE FROM trace_expr_values
+                   WHERE trace_id IN (
+                     SELECT id FROM traces WHERE timestamp < @cutoff
+                   )"
+                |> Sql.parameters [ "cutoff", Sql.string cutoffISO ]
+                |> Sql.executeStatementAsync
+              do!
                 Sql.query "DELETE FROM traces WHERE timestamp < @cutoff"
                 |> Sql.parameters [ "cutoff", Sql.string cutoffISO ]
                 |> Sql.executeStatementAsync
@@ -1376,6 +1384,7 @@ let fns () : List<BuiltInFn> =
               Sql.query "SELECT COUNT(*) as c FROM traces"
               |> Sql.executeRowAsync (fun read -> read.int64 "c")
             do! Sql.query "DELETE FROM trace_fn_calls" |> Sql.executeStatementAsync
+            do! Sql.query "DELETE FROM trace_expr_values" |> Sql.executeStatementAsync
             do! Sql.query "DELETE FROM traces" |> Sql.executeStatementAsync
             return DInt64 count
           }
@@ -1390,7 +1399,7 @@ let fns () : List<BuiltInFn> =
       parameters = [ Param.make "traceID" TString "Full trace ID to delete" ]
       returnType = TInt64
       description =
-        "Delete one trace (and its fn_calls). Returns 1 if a row was deleted, 0 otherwise. Caller is responsible for resolving prefixes via cliTracesResolveID first."
+        "Delete one trace (and its fn_calls + expr_values). Returns 1 if a row was deleted, 0 otherwise. Caller is responsible for resolving prefixes via cliTracesResolveID first."
       fn =
         (function
         | _, _, _, [ DString traceID ] ->
@@ -1405,6 +1414,11 @@ let fns () : List<BuiltInFn> =
               do!
                 Sql.query
                   "DELETE FROM trace_fn_calls WHERE trace_id = @traceId"
+                |> Sql.parameters [ "traceId", Sql.string traceID ]
+                |> Sql.executeStatementAsync
+              do!
+                Sql.query
+                  "DELETE FROM trace_expr_values WHERE trace_id = @traceId"
                 |> Sql.parameters [ "traceId", Sql.string traceID ]
                 |> Sql.executeStatementAsync
               do!
@@ -1425,7 +1439,7 @@ let fns () : List<BuiltInFn> =
         [ Param.make "keepN" TInt64 "Number of most-recent traces to keep" ]
       returnType = TInt64
       description =
-        "Delete all but the N most-recent traces (and their fn_calls). Returns the count deleted. Useful for bounded retention."
+        "Delete all but the N most-recent traces (and their fn_calls + expr_values). Returns the count deleted. Useful for bounded retention."
       fn =
         (function
         | _, _, _, [ DInt64 keepN ] ->
@@ -1447,6 +1461,16 @@ let fns () : List<BuiltInFn> =
               do!
                 Sql.query
                   "DELETE FROM trace_fn_calls WHERE trace_id IN (
+                     SELECT id FROM traces
+                     WHERE rowid NOT IN (
+                       SELECT rowid FROM traces ORDER BY rowid DESC LIMIT @keepN
+                     )
+                   )"
+                |> Sql.parameters [ "keepN", Sql.int64 keepN ]
+                |> Sql.executeStatementAsync
+              do!
+                Sql.query
+                  "DELETE FROM trace_expr_values WHERE trace_id IN (
                      SELECT id FROM traces
                      WHERE rowid NOT IN (
                        SELECT rowid FROM traces ORDER BY rowid DESC LIMIT @keepN
