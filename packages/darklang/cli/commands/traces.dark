@@ -1201,7 +1201,12 @@ let formatFnCalls
         renderCall opts branchId childrenMap r 0L false)
       |> Stdlib.List.flatten
     match rendered with
-    | [] -> "  (no calls match filter)"
+    | [] ->
+      // The empty case can happen for several reasons; help the user
+      // figure out which by surfacing the most-likely cause first.
+      match opts.maxDepth with
+      | Some 0L -> "  (depth limit 0 — no calls shown)"
+      | _ -> "  (no calls match the active filters)"
     | _ -> Stdlib.String.join rendered "\n"
 
 
