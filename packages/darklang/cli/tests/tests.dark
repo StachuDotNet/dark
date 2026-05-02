@@ -532,6 +532,35 @@ let testTracesArgOrderingsWork (): TestResult =
     TestResult.Fail $"Arg-order forms didn't dispatch: {names}"
 
 
+/// `tail --route` and `list --route` reject empty/whitespace input.
+/// Locks in `ed4db8129` and `a4dde7dde`. Pre-fix `traces tail --route
+/// ""` returned whatever trace was last (empty substring matches all).
+let testTracesRouteEmptyRejection (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "1L + 1L"]
+  let cases =
+    [ ("tail empty", ["traces"; "tail"; "--route"; ""], "--route pattern must not be empty")
+      ("tail whitespace", ["traces"; "tail"; "--route"; "   "], "--route pattern must not be empty")
+      ("list empty", ["traces"; "list"; "--route"; ""], "--route pattern must not be empty")
+      ("list-fn whitespace", ["traces"; "list"; "--fn"; "   "], "--fn pattern must not be empty") ]
+  let failures =
+    cases
+    |> Stdlib.List.filter (fun tup ->
+      let (_, argv, expected) = tup
+      let out = runWithCommand argv
+      Stdlib.Bool.not (Stdlib.String.contains out expected))
+  match failures with
+  | [] -> TestResult.Pass
+  | _ ->
+    let names =
+      failures
+      |> Stdlib.List.map (fun tup ->
+        let (label, _, _) = tup
+        label)
+      |> Stdlib.String.join "; "
+    TestResult.Fail $"Empty/whitespace --route/--fn rejection failed: {names}"
+
+
 /// Malformed arity-1 commands print focused usage instead of the
 /// global help dump. Locks in `d352facdc`. Pre-fix
 /// `traces export <id> --frob` (length 3) silently fell through to
@@ -809,6 +838,8 @@ let allTests (): List<String * TestFunction> =
       fun () -> testTracesArgOrderingsWork ())
     ("Traces Arity 1 Catchalls",
       fun () -> testTracesArity1Catchalls ())
+    ("Traces Route Empty Rejection",
+      fun () -> testTracesRouteEmptyRejection ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
