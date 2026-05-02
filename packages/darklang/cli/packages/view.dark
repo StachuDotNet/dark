@@ -204,9 +204,19 @@ let viewFunctionWithTrace
         |> Stdlib.List.fold Stdlib.Dict.empty (fun acc pair ->
           let (k, v) = pair
           Stdlib.Dict.set acc k v)
-      let nValuesStr = Stdlib.Int64.toString (Stdlib.List.length pairs)
+      let nValues = Stdlib.List.length pairs
+      let nValuesStr = Stdlib.Int64.toString nValues
       Stdlib.printLine
         (Colors.hint $"-- annotated with {nValuesStr} value(s) from trace {traceID} --")
+      // 0 values is almost always one of: (a) the trace didn't call
+      // this fn, or (b) the fn was refactored since the trace was
+      // recorded (exprIds change with code changes). Surface a hint
+      // so the user doesn't stare at a bare un-annotated source
+      // wondering "why didn't it work?"
+      if nValues == 0L then
+        Stdlib.printLine
+          (Colors.hint
+            "   (this fn wasn't called by the trace, or its source has changed since recording)")
       let ctx =
         PrettyPrinter.ProgramTypes.Context
           { branchId = branchId
