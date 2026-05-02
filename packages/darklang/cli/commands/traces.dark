@@ -484,7 +484,10 @@ let executeListByFn
   (limit: Int64)
   (jsonMode: Bool)
   : Cli.AppState =
-  if limit < 1L then
+  if fnName == "" then
+    Stdlib.printLine (Colors.error "--fn pattern must not be empty")
+    state
+  else if limit < 1L then
     Stdlib.printLine (Colors.error "Limit must be ≥ 1")
     state
   else
@@ -591,7 +594,10 @@ let executeFind
   (pattern: String)
   (limit: Int64)
   : Cli.AppState =
-  if limit < 1L then
+  if pattern == "" then
+    Stdlib.printLine (Colors.error "find pattern must not be empty")
+    state
+  else if limit < 1L then
     Stdlib.printLine (Colors.error "Limit must be ≥ 1")
     state
   else
@@ -619,7 +625,10 @@ let executeFindJson
   (pattern: String)
   (limit: Int64)
   : Cli.AppState =
-  if limit < 1L then
+  if pattern == "" then
+    Stdlib.printLine (Colors.error "find pattern must not be empty")
+    state
+  else if limit < 1L then
     Stdlib.printLine (Colors.error "Limit must be ≥ 1")
     state
   else
@@ -632,15 +641,19 @@ let executeFindJson
 /// the most-recent matching trace's view directly. If multiple match,
 /// the others are noted but the user gets the freshest one.
 let executeFindView (state: Cli.AppState) (pattern: String) : Cli.AppState =
-  let rows = Builtin.cliTracesFind pattern 1L
-  match rows with
-  | [] ->
-    Stdlib.printLine $"No traces match '{pattern}'."
+  if pattern == "" then
+    Stdlib.printLine (Colors.error "find pattern must not be empty")
     state
-  | row :: _ ->
-    Stdlib.printLine $"Latest trace matching '{pattern}': {row.traceId}"
-    Stdlib.printLine ""
-    executeView state row.traceId defaultViewOptions
+  else
+    let rows = Builtin.cliTracesFind pattern 1L
+    match rows with
+    | [] ->
+      Stdlib.printLine $"No traces match '{pattern}'."
+      state
+    | row :: _ ->
+      Stdlib.printLine $"Latest trace matching '{pattern}': {row.traceId}"
+      Stdlib.printLine ""
+      executeView state row.traceId defaultViewOptions
 
 
 /// `traces export <trace-id>` — print a portable JSON dump of the
@@ -1007,7 +1020,10 @@ let executeListByRoute
   (limit: Int64)
   (jsonMode: Bool)
   : Cli.AppState =
-  if limit < 1L then
+  if route == "" then
+    Stdlib.printLine (Colors.error "--route pattern must not be empty")
+    state
+  else if limit < 1L then
     Stdlib.printLine (Colors.error "Limit must be ≥ 1")
     state
   else
