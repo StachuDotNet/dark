@@ -485,6 +485,32 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       (Colors.error
         "Usage: traces clear [--before <duration>] (e.g. 30s, 5m, 1h, 2d)")
     state
+  | "tail" :: _ ->
+    Stdlib.printLine
+      (Colors.error "Usage: traces tail [N] [--route <substring>]")
+    state
+  | "list" :: _ ->
+    Stdlib.printLine
+      (Colors.error
+        "Usage: traces list [limit] | list --fn <substring> [limit] [--json] | list --route <substring> [limit] [--json]")
+    state
+  | "find" :: _ ->
+    Stdlib.printLine
+      (Colors.error
+        "Usage: traces find <pattern> [limit] [--view] [--json]")
+    state
+  | "hotspots" :: _ ->
+    Stdlib.printLine
+      (Colors.error "Usage: traces hotspots [trace-limit] [--json]")
+    state
+  | "stats" :: _ ->
+    Stdlib.printLine
+      (Colors.error "Usage: traces stats [limit] [--json]")
+    state
+  | "replay" :: _ ->
+    Stdlib.printLine
+      (Colors.error "Usage: traces replay <trace-id> [--diff]")
+    state
 
   | _ ->
     // If the first token isn't a known subcommand, surface that
