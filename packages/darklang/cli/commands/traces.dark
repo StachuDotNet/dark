@@ -212,7 +212,8 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
   | [ "list"; "--fn"; fnName; "--json"; limitStr ]
-  | [ "list"; "--fn"; fnName; limitStr; "--json" ] ->
+  | [ "list"; "--fn"; fnName; limitStr; "--json" ]
+  | [ "list"; "--json"; "--fn"; fnName; limitStr ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeListByFn state fnName limit true
     | Error _ ->
@@ -231,7 +232,8 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
   | [ "list"; "--route"; route; "--json"; limitStr ]
-  | [ "list"; "--route"; route; limitStr; "--json" ] ->
+  | [ "list"; "--route"; route; limitStr; "--json" ]
+  | [ "list"; "--json"; "--route"; route; limitStr ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeListByRoute state route limit true
     | Error _ ->
