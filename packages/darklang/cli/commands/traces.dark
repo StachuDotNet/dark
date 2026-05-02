@@ -149,6 +149,19 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     | Error _ ->
       Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
+  // Flag-without-arg cases need to be matched BEFORE
+  // `[ "list"; limitStr ]` since `--fn` / `--route` are valid one-arg
+  // tokens that the limit arm would otherwise eat.
+  | [ "list"; "--fn" ] ->
+    Stdlib.printLine
+      (Colors.error
+        "Usage: traces list --fn <name> [limit] [--json]")
+    state
+  | [ "list"; "--route" ] ->
+    Stdlib.printLine
+      (Colors.error
+        "Usage: traces list --route <substring> [limit] [--json]")
+    state
   | [ "list"; limitStr ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeList state limit
@@ -221,6 +234,12 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       state
 
   | [ "tail" ] -> executeTail state Stdlib.Option.Option.None 1L
+  // Flag-without-arg case must precede the `[ "tail"; nStr ]` arm
+  // (which would otherwise treat "--route" as a malformed N).
+  | [ "tail"; "--route" ] ->
+    Stdlib.printLine
+      (Colors.error "Usage: traces tail [N] --route <substring>")
+    state
   | [ "tail"; nStr ] ->
     match Stdlib.Int64.parse nStr with
     | Ok n -> executeTail state Stdlib.Option.Option.None n
@@ -334,6 +353,22 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     | Error _ ->
       Stdlib.printLine (Colors.error (parsePositionalErr nStr "--keep N"))
       state
+
+  // Focused usage messages for the remaining "flag without arg" cases
+  // that don't conflict with positional-catching arms higher up
+  // (the list/tail variants are handled inline above).
+  | [ "follow"; "--route" ] ->
+    Stdlib.printLine
+      (Colors.error "Usage: traces follow --route <substring> [--json]")
+    state
+  | [ "prune"; "--keep" ] ->
+    Stdlib.printLine (Colors.error "Usage: traces prune --keep <N>")
+    state
+  | [ "clear"; "--before" ] ->
+    Stdlib.printLine
+      (Colors.error
+        "Usage: traces clear --before <duration> (e.g. 30s, 5m, 1h, 2d)")
+    state
 
   // Focused usage messages for arity-1 commands when invoked with no
   // argument. Better than dumping the full multi-page help — the user
