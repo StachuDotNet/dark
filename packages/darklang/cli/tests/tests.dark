@@ -10,7 +10,8 @@ let runWithCommand (args: List<String>): String =
   let escapedArgs =
     args
     |> Stdlib.List.map (fun arg ->
-      if Stdlib.String.contains arg " " ||
+      if arg == "" then "''"
+      else if Stdlib.String.contains arg " " ||
           Stdlib.String.contains arg "|" ||
           Stdlib.String.contains arg "\""
       then
@@ -499,6 +500,35 @@ let testTracesRejectsNegativeLimit (): TestResult =
     TestResult.Fail $"Expected `Limit must be ≥ 1` from: {names}"
 
 
+/// Empty pattern in find / list --fn / list --route is rejected
+/// instead of silently matching everything. Locks in `7ca47e1b6` and
+/// `cd357484f`. Pre-fix `traces find ""` printed "Traces matching ''
+/// (last 20):" with every trace.
+let testTracesRejectsEmptyPattern (): TestResult =
+  let cases =
+    [ ("find empty", ["traces"; "find"; ""], "find pattern must not be empty")
+      ("find empty --view", ["traces"; "find"; ""; "--view"], "find pattern must not be empty")
+      ("find empty --json", ["traces"; "find"; ""; "--json"], "find pattern must not be empty")
+      ("list --fn empty", ["traces"; "list"; "--fn"; ""], "--fn pattern must not be empty")
+      ("list --route empty", ["traces"; "list"; "--route"; ""], "--route pattern must not be empty") ]
+  let failures =
+    cases
+    |> Stdlib.List.filter (fun tup ->
+      let (_, argv, expected) = tup
+      let out = runWithCommand argv
+      Stdlib.Bool.not (Stdlib.String.contains out expected))
+  match failures with
+  | [] -> TestResult.Pass
+  | _ ->
+    let names =
+      failures
+      |> Stdlib.List.map (fun tup ->
+        let (label, _, _) = tup
+        label)
+      |> Stdlib.String.join "; "
+    TestResult.Fail $"Empty-pattern rejection failed for: {names}"
+
+
 /// `view` sub-options reject negative values explicitly. Locks in
 /// `d7b7230e1` — pre-fix `--depth -1` and `--slow-ms -1` parsed as
 /// valid Int64 and were silently accepted with meaningless semantics.
@@ -633,6 +663,8 @@ let allTests (): List<String * TestFunction> =
       fun () -> testTracesClearAndPruneGrammar ())
     ("Traces View Rejects Negative Sub Options",
       fun () -> testTracesViewRejectsNegativeSubOptions ())
+    ("Traces Rejects Empty Pattern",
+      fun () -> testTracesRejectsEmptyPattern ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
