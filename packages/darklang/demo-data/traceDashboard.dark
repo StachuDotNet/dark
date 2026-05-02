@@ -1,0 +1,138 @@
+/// Self-hosted trace dashboard. A Dark HTTP handler that renders the
+/// trace store as browseable HTML. Run it on a sidecar port:
+///
+///     darklang serve Darklang.DemoData.TraceDashboard.app --port 8081
+///
+/// Browse to http://localhost:8081/ to see recent traces; click any row
+/// to open `/trace/<id>` for the full call tree.
+///
+/// Eat-your-own-dog-food: the dashboard itself is just `Stdlib.HttpServer`
+/// + `Stdlib.DB`-style data access via the existing `cliTracesList` /
+/// `cliTracesView` builtins. No new infra.
+module Darklang.DemoData.TraceDashboard
+
+
+let escapeHtml (s: String) : String =
+  s
+  |> Stdlib.String.replaceAll "&" "&amp;"
+  |> Stdlib.String.replaceAll "<" "&lt;"
+  |> Stdlib.String.replaceAll ">" "&gt;"
+  |> Stdlib.String.replaceAll "\"" "&quot;"
+
+
+let layout (title: String) (body: String) : String =
+  let head =
+    "<!doctype html><html><head><meta charset=\"utf-8\"><title>"
+    ++ (escapeHtml title)
+    ++ "</title><style>"
+    ++ "body{font:14px/1.4 -apple-system,sans-serif;margin:2rem;max-width:64rem;color:#222}"
+    ++ "h1{font-size:1.4rem;margin:0 0 1rem}"
+    ++ "h2{font-size:1.1rem;margin:1.5rem 0 .5rem;color:#555}"
+    ++ "table{border-collapse:collapse;width:100%}"
+    ++ "td,th{padding:.4rem .6rem;border-bottom:1px solid #eee;text-align:left}"
+    ++ "tr:hover{background:#f8f8f8}"
+    ++ "a{color:#0066cc;text-decoration:none}"
+    ++ "a:hover{text-decoration:underline}"
+    ++ "code{background:#f4f4f4;padding:.1rem .3rem;border-radius:3px;font:13px ui-monospace,monospace}"
+    ++ "pre{background:#f8f8f8;padding:1rem;border-radius:4px;overflow:auto;font:12px ui-monospace,monospace}"
+    ++ ".muted{color:#999}"
+    ++ ".nav{margin-bottom:1.5rem;font-size:13px}"
+    ++ "</style></head><body>"
+  let nav =
+    "<div class=\"nav\"><a href=\"/\">traces</a> · "
+    ++ "<a href=\"/stats\">stats</a></div>"
+  let foot = "</body></html>"
+  head ++ nav ++ "<h1>" ++ (escapeHtml title) ++ "</h1>" ++ body ++ foot
+
+
+let renderTracesList (rows: List<Darklang.Cli.Commands.Traces.TraceSummary>) : String =
+  match rows with
+  | [] ->
+    "<p class=\"muted\">No traces yet. Hit some endpoints on the served app, then refresh.</p>"
+  | _ ->
+    let rowsHtml =
+      rows
+      |> Stdlib.List.map (fun r ->
+        let safeHandler = escapeHtml r.handler
+        let safeId = escapeHtml r.traceId
+        let safeTime = escapeHtml r.timestamp
+        let shortId =
+          if Stdlib.String.length safeId > 12L then
+            (Stdlib.String.slice safeId 0L 12L) ++ "…"
+          else
+            safeId
+        "<tr><td><code><a href=\"/trace/" ++ safeId ++ "\">" ++ shortId ++ "</a></code></td><td>" ++ safeHandler ++ "</td><td class=\"muted\">" ++ safeTime ++ "</td></tr>")
+      |> Stdlib.String.join ""
+    "<table><thead><tr><th>id</th><th>handler</th><th>time</th></tr></thead><tbody>"
+    ++ rowsHtml
+    ++ "</tbody></table>"
+
+
+let renderStats (rows: List<Darklang.Cli.Commands.Traces.TraceSummary>) : String =
+  match rows with
+  | [] ->
+    "<p class=\"muted\">No traces yet.</p>"
+  | _ ->
+    let counts =
+      rows
+      |> Stdlib.List.fold Stdlib.Dict.empty (fun acc row ->
+        let cur =
+          match Stdlib.Dict.get acc row.handler with
+          | Some n -> n
+          | None -> 0L
+        Stdlib.Dict.setOverridingDuplicates acc row.handler (cur + 1L))
+
+    let pairs =
+      counts
+      |> Stdlib.Dict.toList
+      |> Stdlib.List.sortBy (fun pair ->
+        let (_, n) = pair
+        0L - n)
+
+    let body =
+      pairs
+      |> Stdlib.List.map (fun pair ->
+        let (handler, count) = pair
+        let safeHandler = escapeHtml handler
+        let countStr = Stdlib.Int64.toString count
+        "<tr><td>" ++ safeHandler ++ "</td><td>" ++ countStr ++ "</td></tr>")
+      |> Stdlib.String.join ""
+    let totalStr = Stdlib.Int64.toString (Stdlib.List.length rows)
+    "<h2>Recent " ++ totalStr ++ " traces by route</h2>"
+    ++ "<table><thead><tr><th>handler</th><th>count</th></tr></thead><tbody>"
+    ++ body
+    ++ "</tbody></table>"
+
+
+let renderTraceDetail (traceID: String) : String =
+  match Builtin.cliTracesExportJson traceID with
+  | None ->
+    "<p class=\"muted\">Trace not found: <code>" ++ (escapeHtml traceID) ++ "</code></p>"
+  | Some json ->
+    let safeId = escapeHtml traceID
+    "<h2>Trace <code>" ++ safeId ++ "</code></h2>"
+    ++ "<p class=\"muted\">Raw JSON dump (same as <code>traces export</code>):</p>"
+    ++ "<pre>" ++ (escapeHtml json) ++ "</pre>"
+
+
+/// The dashboard handler — dispatches by URL path. Pass to
+/// `darklang serve` directly:
+///
+///   darklang serve Darklang.DemoData.TraceDashboard.app --port 8081
+let app (req: Stdlib.Http.Request) : Stdlib.Http.Response =
+  let path = Stdlib.HttpServer.getPath req
+
+  if path == "/" then
+    let rows = Builtin.cliTracesList 50L
+    let html = layout "Traces" (renderTracesList rows)
+    Stdlib.Http.responseWithHtml html 200L
+  else if path == "/stats" then
+    let rows = Builtin.cliTracesList 200L
+    let html = layout "Stats" (renderStats rows)
+    Stdlib.Http.responseWithHtml html 200L
+  else if Stdlib.String.startsWith path "/trace/" then
+    let traceID = Stdlib.String.dropFirst path 7L
+    let html = layout ("Trace " ++ traceID) (renderTraceDetail traceID)
+    Stdlib.Http.responseWithHtml html 200L
+  else
+    Stdlib.Http.notFound ()
