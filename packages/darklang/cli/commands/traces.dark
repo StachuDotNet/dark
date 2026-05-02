@@ -477,6 +477,14 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   | "delete" :: _ ->
     Stdlib.printLine (Colors.error "Usage: traces delete <trace-id>")
     state
+  | "prune" :: _ ->
+    Stdlib.printLine (Colors.error "Usage: traces prune --keep <N>")
+    state
+  | "clear" :: _ ->
+    Stdlib.printLine
+      (Colors.error
+        "Usage: traces clear [--before <duration>] (e.g. 30s, 5m, 1h, 2d)")
+    state
 
   | _ ->
     // If the first token isn't a known subcommand, surface that
