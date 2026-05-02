@@ -456,6 +456,28 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       (Colors.error "Usage: traces follow [--route <substring>] [--json]")
     state
 
+  // Catch malformed arity-1 invocations (e.g. `traces inspect <id> --frob`)
+  // that the strict-length arms above missed. Each command takes exactly
+  // one positional and doesn't accept trailing flags.
+  | "inspect" :: _ ->
+    Stdlib.printLine (Colors.error "Usage: traces inspect <trace-id>")
+    state
+  | "values" :: _ ->
+    Stdlib.printLine (Colors.error "Usage: traces values <trace-id>")
+    state
+  | "gen-test" :: _ ->
+    Stdlib.printLine (Colors.error "Usage: traces gen-test <trace-id>")
+    state
+  | "export" :: _ ->
+    Stdlib.printLine (Colors.error "Usage: traces export <trace-id>")
+    state
+  | "import" :: _ ->
+    Stdlib.printLine (Colors.error "Usage: traces import <path>")
+    state
+  | "delete" :: _ ->
+    Stdlib.printLine (Colors.error "Usage: traces delete <trace-id>")
+    state
+
   | _ ->
     // If the first token isn't a known subcommand, surface that
     // explicitly before dumping help so a typo'd `traces lst` doesn't
