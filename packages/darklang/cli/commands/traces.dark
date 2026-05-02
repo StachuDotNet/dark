@@ -142,9 +142,14 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       state
 
   | [ "follow" ] ->
-    executeFollow state Stdlib.Option.Option.None
+    executeFollow state Stdlib.Option.Option.None false
+  | [ "follow"; "--json" ] ->
+    executeFollow state Stdlib.Option.Option.None true
   | [ "follow"; "--route"; route ] ->
-    executeFollow state (Stdlib.Option.Option.Some route)
+    executeFollow state (Stdlib.Option.Option.Some route) false
+  | [ "follow"; "--route"; route; "--json" ]
+  | [ "follow"; "--json"; "--route"; route ] ->
+    executeFollow state (Stdlib.Option.Option.Some route) true
 
   | [ "stats" ] -> executeStats state 100L
   | [ "stats"; "--json" ] -> executeStatsJson state 100L
@@ -518,10 +523,13 @@ let executeStatsJson (state: Cli.AppState) (limit: Int64) : Cli.AppState =
 
 /// One iteration of the follow loop: pull recent rows, find newer
 /// than `lastSeen`, optionally filter by route, print, then sleep.
-/// Returns the new `lastSeen` (the newest id pulled this tick).
+/// Returns the new `lastSeen` (the newest id pulled this tick). When
+/// `jsonMode`, each new trace prints as one NDJSON line; otherwise the
+/// human-readable two-space-indent form.
 let rec followLoop
   (routeFilter: Stdlib.Option.Option<String>)
   (lastSeen: String)
+  (jsonMode: Bool)
   : Unit =
   let rows = Builtin.cliTracesList 50L
 
@@ -537,7 +545,10 @@ let rec followLoop
   let chronological = filtered |> Stdlib.List.reverse
 
   Stdlib.List.iter chronological (fun row ->
-    Stdlib.printLine $"  {row.timestamp}  {row.traceId}  {row.handler}")
+    if jsonMode then
+      Stdlib.printLine (Stdlib.Json.serialize<TraceSummary> row)
+    else
+      Stdlib.printLine $"  {row.timestamp}  {row.traceId}  {row.handler}")
 
   let newLastSeen =
     match rows with
@@ -545,24 +556,28 @@ let rec followLoop
     | row :: _ -> row.traceId
 
   Stdlib.Cli.Posix.sleep 500.0
-  followLoop routeFilter newLastSeen
+  followLoop routeFilter newLastSeen jsonMode
 
 
 /// Tail-style live view: poll every 500ms, print new traces as they
 /// arrive, in chronological order. Optional `--route <substring>`
-/// filter narrows the stream.
+/// filter narrows the stream. With `--json`, output is NDJSON
+/// (one JSON object per line) for piping to log aggregators / scripts;
+/// the "Following…" banner is suppressed so consumers see only data.
 ///
 /// Hold Ctrl+C to exit (the loop never returns on its own).
 let executeFollow
   (state: Cli.AppState)
   (routeFilter: Stdlib.Option.Option<String>)
+  (jsonMode: Bool)
   : Cli.AppState =
-  let label =
-    match routeFilter with
-    | Some r -> $"route '{r}'"
-    | None -> "all routes"
-  Stdlib.printLine $"Following traces for {label}. Ctrl+C to stop."
-  Stdlib.printLine ""
+  if jsonMode == false then
+    let label =
+      match routeFilter with
+      | Some r -> $"route '{r}'"
+      | None -> "all routes"
+    Stdlib.printLine $"Following traces for {label}. Ctrl+C to stop."
+    Stdlib.printLine ""
 
   // Anchor: ignore traces that already existed when we started.
   let initialRows = Builtin.cliTracesList 1L
@@ -571,7 +586,7 @@ let executeFollow
     | [] -> ""
     | row :: _ -> row.traceId
 
-  followLoop routeFilter initialSeen
+  followLoop routeFilter initialSeen jsonMode
   state
 
 
@@ -902,7 +917,8 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
       Completion.simple "--route"
       Completion.simple "--json" ]
   | [ "tail" ] -> [ Completion.simple "--route" ]
-  | [ "follow" ] -> [ Completion.simple "--route" ]
+  | [ "follow" ] ->
+    [ Completion.simple "--route"; Completion.simple "--json" ]
   | [ "find" ] -> [ Completion.simple "--view" ]
   | [ "replay" ] -> [ Completion.simple "--diff" ]
   | [ "prune" ] -> [ Completion.simple "--keep" ]
@@ -921,7 +937,7 @@ let help (_state: Cli.AppState) : Unit =
     "  list --route <substring> [limit]  Filter by handler description substring (HTTP)"
     "  view <trace-id> [flags]       View details of a specific trace"
     "  tail [--route <substring>]    View the most-recent trace, optionally filtered"
-    "  follow [--route <substring>]  Tail-style: print new traces as they arrive"
+    "  follow [--route <substring>] [--json]  Tail-style: print new traces as they arrive (NDJSON with --json)"
     "  stats [limit]                 Count of recent traces grouped by handler"
     "  stats --json [limit]          Same data as JSON for piping"
     "  find <pattern> [limit]        List traces whose recorded values contain a substring"
