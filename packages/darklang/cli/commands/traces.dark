@@ -1336,8 +1336,13 @@ let executePruneKeep (state: Cli.AppState) (keepN: Int64) : Cli.AppState =
         $"Already at or below {Stdlib.Int64.toString keepN} traces; nothing to prune."
       state
     | _ ->
+      let traceWord = if deleted == 1L then "trace" else "traces"
+      let keptPhrase =
+        if keepN == 0L then "none kept"
+        else if keepN == 1L then "kept the most-recent"
+        else $"kept the {Stdlib.Int64.toString keepN} most-recent"
       Stdlib.printLine
-        $"Pruned {Stdlib.Int64.toString deleted} trace(s); kept the {Stdlib.Int64.toString keepN} most-recent."
+        $"Pruned {Stdlib.Int64.toString deleted} {traceWord}; {keptPhrase}."
       state
 
 
