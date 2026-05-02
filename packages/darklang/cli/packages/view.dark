@@ -177,8 +177,9 @@ let viewEntity (branchId: Uuid) (location: PackageLocation) : Unit =
 
 /// View a fn with `// = <val>` annotations next to each let binding,
 /// pulled from the recorded per-AST-node values of a specific trace.
-/// Today only `let` bindings have data (see `9ba2b40ac`); other PT
-/// cases follow the same pattern as their TraceDval emission lands.
+/// Captures `let` bindings, `if` branch results, matched `match` arms,
+/// and `|>` pipe stages. PT cases without a natural inline-annotation
+/// site (EInfix, container ctors, lambda body) stay un-annotated.
 let viewFunctionWithTrace
   (branchId: Uuid)
   (location: PackageLocation)

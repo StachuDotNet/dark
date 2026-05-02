@@ -399,7 +399,7 @@ let fns () : List<BuiltInFn> =
       parameters = [ Param.make "traceID" TString "Trace to read expr values from" ]
       returnType = TList(TTuple(TString, TVariable "a", []))
       description =
-        "Per-AST-node values recorded via the `traceDval` hook. Returns (exprId-as-string, Dval) tuples ordered by exprId. Today only `let` RHS values are captured (see `9ba2b40ac`); more PT cases will populate this table as `Expr.toRT` learns to emit `TraceDval` after them."
+        "Per-AST-node values recorded via the `traceDval` hook. Returns (exprId-as-string, Dval) tuples ordered by exprId. Captures `let` RHS, `if` branch result, matched `match` arm, and pipe-stage results — see PT2RT's `TraceDval` emissions."
       fn =
         (function
         | _, _, _, [ DString traceID ] ->

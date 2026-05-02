@@ -539,9 +539,10 @@ let executeInspect (state: Cli.AppState) (traceID: String) : Cli.AppState =
 
 
 /// `traces values <id>` — list every per-AST-node value the trace
-/// recorded (today: just `let` RHS values, see `9ba2b40ac`). Debug
-/// surface for the `view --with-trace` work-in-progress; ids are raw
-/// uuids until the renderer can correlate them back to source.
+/// recorded (let RHS, if branch result, matched arm, pipe stage —
+/// see TraceDval emission in PT2RT). Debug surface; ids are raw
+/// numeric AST ids. For human-readable annotation use
+/// `traces inspect <id>` or `view <fn> --with-trace <id>`.
 let executeValues (state: Cli.AppState) (traceID: String) : Cli.AppState =
   let pairs = Builtin.cliTracesGetExprValues traceID
   match pairs with
@@ -549,7 +550,7 @@ let executeValues (state: Cli.AppState) (traceID: String) : Cli.AppState =
     Stdlib.printLine
       "No expression values recorded for this trace."
     Stdlib.printLine
-      "(Today only `let` RHS values populate the table; more PT cases follow.)"
+      "(Populated by code that ran a `let`/`if`/`match`/`|>` — empty for traces that never reached one.)"
     state
   | _ ->
     let nStr = Stdlib.Int64.toString (Stdlib.List.length pairs)
@@ -1205,7 +1206,7 @@ let help (_state: Cli.AppState) : Unit =
     "  import <path>                 Re-create a trace from a JSON dump on disk"
     "  gen-test <trace-id>           Generate a testfiles/http-server/*.test skeleton from an HTTP trace"
     "  inspect <trace-id>            Open the recorded handler with --with-trace overlay (annotated source)"
-    "  values <trace-id>             Per-AST-node values recorded by the trace (today: let bindings only)"
+    "  values <trace-id>             Per-AST-node values (let RHS, if/match/pipe results) — debug raw"
     "  replay <trace-id> [--diff]    Re-execute a trace's code; --diff compares against the recorded output"
     "  delete <trace-id>             Delete one trace (prefix OK)"
     "  prune --keep <N>              Keep the N most-recent traces, drop the rest"
