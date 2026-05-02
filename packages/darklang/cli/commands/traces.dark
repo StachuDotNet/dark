@@ -1581,6 +1581,14 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
       Completion.simple "--exclude"
       Completion.simple "--slow"
       Completion.simple "--slow-ms" ]
+  // After a value-taking flag, the next token is a user-supplied
+  // substring/path — no canonical completion to suggest. Returning
+  // an empty list forces the user to type a value rather than
+  // tab-cycling through the wrong flags.
+  | [ "list"; "--fn" ]
+  | [ "list"; "--route" ]
+  | [ "tail"; "--route" ]
+  | [ "follow"; "--route" ] -> []
   // Post-ID flags for replay, find, list --fn/--route.
   | "replay" :: _ :: _ -> [ Completion.simple "--diff" ]
   | "find" :: _ :: _ ->
