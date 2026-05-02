@@ -580,7 +580,7 @@ let executeListByFn
   (limit: Int64)
   (jsonMode: Bool)
   : Cli.AppState =
-  if fnName == "" then
+  if Stdlib.String.trim fnName == "" then
     Stdlib.printLine (Colors.error "--fn pattern must not be empty")
     state
   else if limit < 1L then
@@ -1149,7 +1149,7 @@ let executeListByRoute
   (limit: Int64)
   (jsonMode: Bool)
   : Cli.AppState =
-  if route == "" then
+  if Stdlib.String.trim route == "" then
     Stdlib.printLine (Colors.error "--route pattern must not be empty")
     state
   else if limit < 1L then
