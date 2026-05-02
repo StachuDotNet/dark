@@ -203,6 +203,39 @@ let testTracesClearEmpties (): TestResult =
     TestResult.Fail $"After clear, expected 'No traces found.' — got: {listOut}"
 
 
+/// Specifically catches the `d2591e14c` leak: `clear` was leaving
+/// `trace_expr_values` rows orphaned. Eval a `let` (which writes
+/// expr_values), grab the id, clear, then verify `values <id>`
+/// reports no values for that id. Pre-fix this would still show
+/// the leftover values.
+let testTracesClearAlsoClearsExprValues (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "let x = 99L\nx"]
+  let listJson = runWithCommand ["traces"; "list"; "1"; "--json"]
+  match Stdlib.String.split listJson "\"traceId\":\"" with
+  | _ :: rest :: _ ->
+    match Stdlib.String.split rest "\"" with
+    | tid :: _ ->
+      // Sanity: pre-clear, the trace has the let value recorded.
+      let beforeOut = runWithCommand ["traces"; "values"; tid]
+      if Stdlib.Bool.not (Stdlib.String.contains beforeOut "→  99") then
+        TestResult.Fail
+          $"Pre-clear: expected let value 99 in values output — got: {beforeOut}"
+      else
+        let _ = runWithCommand ["traces"; "clear"]
+        let afterOut = runWithCommand ["traces"; "values"; tid]
+        // Post-clear: prefix resolution will fail (no such trace),
+        // OR the empty-state message. Either way `→  99` should
+        // not be present.
+        if Stdlib.String.contains afterOut "→  99" then
+          TestResult.Fail
+            $"Post-clear: expr_values still present (orphan!) — got: {afterOut}"
+        else
+          TestResult.Pass
+    | _ -> TestResult.Fail "Couldn't parse trace id from list"
+  | _ -> TestResult.Fail "List --json had no traceId field"
+
+
 /// `traces stats` shows the count + timing aggregates for recent
 /// traces. Eval traces all have handler "eval" so a 2-eval setup
 /// should report count=2 in the stats table.
@@ -298,6 +331,8 @@ let allTests (): List<String * TestFunction> =
     ("Traces Tail Shows Last Eval", fun () -> testTracesTailShowsLastEval ())
     ("Traces Values After Let", fun () -> testTracesValuesAfterLet ())
     ("Traces Clear Empties", fun () -> testTracesClearEmpties ())
+    ("Traces Clear Also Clears Expr Values",
+      fun () -> testTracesClearAlsoClearsExprValues ())
     ("Traces Stats Counts", fun () -> testTracesStatsCounts ())
     ("Traces Export JSON Schema", fun () -> testTracesExportJson ())
   ]
