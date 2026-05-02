@@ -679,6 +679,92 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    { name = fn "cliTracesDelete" 0
+      typeParams = []
+      parameters = [ Param.make "traceID" TString "Full trace ID to delete" ]
+      returnType = TInt64
+      description =
+        "Delete one trace (and its fn_calls). Returns 1 if a row was deleted, 0 otherwise. Caller is responsible for resolving prefixes via cliTracesResolveID first."
+      fn =
+        (function
+        | _, _, _, [ DString traceID ] ->
+          uply {
+            let! existed =
+              Sql.query "SELECT 1 AS x FROM traces WHERE id = @traceId LIMIT 1"
+              |> Sql.parameters [ "traceId", Sql.string traceID ]
+              |> Sql.executeRowOptionAsync (fun _ -> ())
+            match existed with
+            | None -> return DInt64 0L
+            | Some _ ->
+              do!
+                Sql.query
+                  "DELETE FROM trace_fn_calls WHERE trace_id = @traceId"
+                |> Sql.parameters [ "traceId", Sql.string traceID ]
+                |> Sql.executeStatementAsync
+              do!
+                Sql.query "DELETE FROM traces WHERE id = @traceId"
+                |> Sql.parameters [ "traceId", Sql.string traceID ]
+                |> Sql.executeStatementAsync
+              return DInt64 1L
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    { name = fn "cliTracesPruneKeep" 0
+      typeParams = []
+      parameters =
+        [ Param.make "keepN" TInt64 "Number of most-recent traces to keep" ]
+      returnType = TInt64
+      description =
+        "Delete all but the N most-recent traces (and their fn_calls). Returns the count deleted. Useful for bounded retention."
+      fn =
+        (function
+        | _, _, _, [ DInt64 keepN ] ->
+          uply {
+            // Subquery picks the rowids to keep; outer DELETE removes the rest.
+            // Wipe child rows first to avoid dangling fn_calls — there's no
+            // FK cascade in the schema (kept additive for migration ease).
+            let countToDelete =
+              Sql.query
+                "SELECT COUNT(*) AS c FROM traces
+                 WHERE rowid NOT IN (
+                   SELECT rowid FROM traces ORDER BY rowid DESC LIMIT @keepN
+                 )"
+              |> Sql.parameters [ "keepN", Sql.int64 keepN ]
+              |> Sql.executeRowAsync (fun read -> read.int64 "c")
+            let! count = countToDelete
+
+            if count > 0L then
+              do!
+                Sql.query
+                  "DELETE FROM trace_fn_calls WHERE trace_id IN (
+                     SELECT id FROM traces
+                     WHERE rowid NOT IN (
+                       SELECT rowid FROM traces ORDER BY rowid DESC LIMIT @keepN
+                     )
+                   )"
+                |> Sql.parameters [ "keepN", Sql.int64 keepN ]
+                |> Sql.executeStatementAsync
+              do!
+                Sql.query
+                  "DELETE FROM traces
+                   WHERE rowid NOT IN (
+                     SELECT rowid FROM traces ORDER BY rowid DESC LIMIT @keepN
+                   )"
+                |> Sql.parameters [ "keepN", Sql.int64 keepN ]
+                |> Sql.executeStatementAsync
+
+            return DInt64 count
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
       deprecated = NotDeprecated } ]
 
 

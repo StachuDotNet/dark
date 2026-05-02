@@ -197,6 +197,18 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   | [ "clear" ] ->
     executeClear state
 
+  | [ "delete"; traceID ] ->
+    match resolveTraceID traceID with
+    | Some full -> executeDelete state full
+    | None -> state
+
+  | [ "prune"; "--keep"; nStr ] ->
+    match Stdlib.Int64.parse nStr with
+    | Ok n -> executePruneKeep state n
+    | Error _ ->
+      Stdlib.printLine (Colors.error $"Invalid --keep N: {nStr}")
+      state
+
   | _ ->
     help state
     state
@@ -714,6 +726,39 @@ let executeClear (state: Cli.AppState) : Cli.AppState =
     state
 
 
+/// `traces delete <id>` — remove one trace and its fn_calls. ID accepts
+/// the same prefix-resolution as view/export/replay.
+let executeDelete (state: Cli.AppState) (traceID: String) : Cli.AppState =
+  let deleted = Builtin.cliTracesDelete traceID
+  match deleted with
+  | 0L ->
+    Stdlib.printLine (Colors.error $"Trace not found: {traceID}")
+    state
+  | _ ->
+    Stdlib.printLine $"Deleted trace {traceID}."
+    state
+
+
+/// `traces prune --keep <N>` — keep the N most-recent traces, drop the
+/// rest (with their fn_calls). For bounded retention as the trace store
+/// grows; pair with `traces clear` for a full wipe.
+let executePruneKeep (state: Cli.AppState) (keepN: Int64) : Cli.AppState =
+  if keepN < 0L then
+    Stdlib.printLine (Colors.error "--keep N must be ≥ 0")
+    state
+  else
+    let deleted = Builtin.cliTracesPruneKeep keepN
+    match deleted with
+    | 0L ->
+      Stdlib.printLine
+        $"Already at or below {Stdlib.Int64.toString keepN} traces; nothing to prune."
+      state
+    | _ ->
+      Stdlib.printLine
+        $"Pruned {Stdlib.Int64.toString deleted} trace(s); kept the {Stdlib.Int64.toString keepN} most-recent."
+      state
+
+
 let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.CompletionItem> =
   match args with
   | [] ->
@@ -727,6 +772,8 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
       Completion.simple "export"
       Completion.simple "import"
       Completion.simple "replay"
+      Completion.simple "delete"
+      Completion.simple "prune"
       Completion.simple "clear" ]
   | [ "list" ] ->
     [ Completion.simple "--fn"
@@ -734,6 +781,7 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
   | [ "tail" ] -> [ Completion.simple "--route" ]
   | [ "follow" ] -> [ Completion.simple "--route" ]
   | [ "replay" ] -> [ Completion.simple "--diff" ]
+  | [ "prune" ] -> [ Completion.simple "--keep" ]
   | _ -> []
 
 
@@ -753,6 +801,8 @@ let help (_state: Cli.AppState) : Unit =
     "  export <trace-id>             Print a portable JSON dump of the trace"
     "  import <path>                 Re-create a trace from a JSON dump on disk"
     "  replay <trace-id> [--diff]    Re-execute a trace's code; --diff compares against the recorded output"
+    "  delete <trace-id>             Delete one trace (prefix OK)"
+    "  prune --keep <N>              Keep the N most-recent traces, drop the rest"
     "  clear                         Delete all stored traces"
     ""
     "Trace IDs accept any unambiguous prefix — `view fe62`, `export fe6219e9-4705`, etc."
@@ -791,5 +841,7 @@ let help (_state: Cli.AppState) : Unit =
     "  traces import t.json                 - Re-create a trace from a JSON dump"
     "  traces replay <trace-id>             - Re-run with current code"
     "  traces replay <trace-id> --diff      - Re-run, then diff vs recorded output"
+    "  traces delete fe62                   - Delete one trace by prefix"
+    "  traces prune --keep 50               - Keep latest 50, drop the rest"
     "  traces clear                         - Delete all traces" ]
   |> Stdlib.printLines
