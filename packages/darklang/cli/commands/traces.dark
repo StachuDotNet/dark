@@ -421,28 +421,36 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
 
 
 let executeList (state: Cli.AppState) (limit: Int64) : Cli.AppState =
-  let rows = Builtin.cliTracesList limit
+  if limit < 1L then
+    Stdlib.printLine (Colors.error "Limit must be ≥ 1")
+    state
+  else
+    let rows = Builtin.cliTracesList limit
 
-  match rows with
-  | [] ->
-    Stdlib.printLine "No traces found."
-    state
-  | _ ->
-    Stdlib.printLine $"Recent traces (last {Stdlib.Int64.toString limit}):"
-    Stdlib.printLine ""
-    printTraceRows rows
-    Stdlib.printLine ""
-    Stdlib.printLine "Use 'traces view <trace-id>' to see details."
-    state
+    match rows with
+    | [] ->
+      Stdlib.printLine "No traces found."
+      state
+    | _ ->
+      Stdlib.printLine $"Recent traces (last {Stdlib.Int64.toString limit}):"
+      Stdlib.printLine ""
+      printTraceRows rows
+      Stdlib.printLine ""
+      Stdlib.printLine "Use 'traces view <trace-id>' to see details."
+      state
 
 
 /// `traces list --json [N]` — same data as `traces list` but emitted as a
 /// JSON array of `{traceId, handler, timestamp}` objects, no headers or
 /// footers. Designed for piping into jq / scripts. Empty store prints `[]`.
 let executeListJson (state: Cli.AppState) (limit: Int64) : Cli.AppState =
-  let rows = Builtin.cliTracesList limit
-  Stdlib.printLine (Stdlib.Json.serialize<List<TraceSummary>> rows)
-  state
+  if limit < 1L then
+    Stdlib.printLine (Colors.error "Limit must be ≥ 1")
+    state
+  else
+    let rows = Builtin.cliTracesList limit
+    Stdlib.printLine (Stdlib.Json.serialize<List<TraceSummary>> rows)
+    state
 
 
 let executeListByFn
