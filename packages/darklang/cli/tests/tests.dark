@@ -299,6 +299,43 @@ let testTracesFindByContent (): TestResult =
     TestResult.Fail $"Expected find result with eval handler — got: {output}"
 
 
+/// `traces prune --keep N` keeps the most-recent N and drops older
+/// traces. Locks in `ea3349481` plus the `d2591e14c` cascade fix
+/// (expr_values rows for dropped traces also get cleaned up).
+let testTracesPruneKeep (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "let a = 1L\na"]
+  let _ = runWithCommand ["eval"; "let b = 2L\nb"]
+  let _ = runWithCommand ["eval"; "let c = 3L\nc"]
+  // Three traces, three expr_values entries. Prune to 1.
+  let pruneOut = runWithCommand ["traces"; "prune"; "--keep"; "1"]
+  if Stdlib.Bool.not (Stdlib.String.contains pruneOut "Pruned 2 trace") then
+    TestResult.Fail $"Expected 'Pruned 2 trace(s)' — got: {pruneOut}"
+  else
+    let listOut = runWithCommand ["traces"; "list"]
+    // Only the most-recent trace (c=3L) should remain.
+    if Stdlib.String.contains listOut "Recent traces (last 20):"
+        && Stdlib.Bool.not (Stdlib.String.contains listOut "let a")
+        && Stdlib.Bool.not (Stdlib.String.contains listOut "let b")
+    then
+      // The remaining trace's expr_values: c bound to 3.
+      let listJson = runWithCommand ["traces"; "list"; "1"; "--json"]
+      match Stdlib.String.split listJson "\"traceId\":\"" with
+      | _ :: rest :: _ ->
+        match Stdlib.String.split rest "\"" with
+        | tid :: _ ->
+          let valuesOut = runWithCommand ["traces"; "values"; tid]
+          if Stdlib.String.contains valuesOut "→  3" then
+            TestResult.Pass
+          else
+            TestResult.Fail
+              $"Expected `→  3` in remaining trace's values — got: {valuesOut}"
+        | _ -> TestResult.Fail "Couldn't parse remaining trace id"
+      | _ -> TestResult.Fail "List --json had no traceId field"
+    else
+      TestResult.Fail $"Expected 1 remaining trace — got: {listOut}"
+
+
 /// `traces replay <id> --diff` re-runs the recorded eval with current
 /// code and confirms the output unchanged. Locks in `3f79d2148`'s
 /// `cliTracesGetExpectedOutput` round-trip via `dvalToRepr`.
@@ -400,6 +437,7 @@ let allTests (): List<String * TestFunction> =
     ("Traces Stats Counts", fun () -> testTracesStatsCounts ())
     ("Traces Export JSON Schema", fun () -> testTracesExportJson ())
     ("Traces Find By Content", fun () -> testTracesFindByContent ())
+    ("Traces Prune Keep", fun () -> testTracesPruneKeep ())
     ("Traces Replay Diff Matches", fun () -> testTracesReplayDiffMatches ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
