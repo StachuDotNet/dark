@@ -602,7 +602,7 @@ module Expr =
         Exception.raiseInternal "ESelf used outside function context" []
 
 
-    | PT.EIf(_id, cond, thenExpr, elseExpr) ->
+    | PT.EIf(id, cond, thenExpr, elseExpr) ->
       // We need a consistent result register,
       // so we'll create this, and copy to it at the end of each branch
       let resultReg, rc = rc, rc + 1
@@ -612,6 +612,11 @@ module Expr =
 
       let thenInstrs = toRT symbols cond.registerCount currentFnName thenExpr
       let copyThenToResultInstr = [ RT.CopyVal(resultReg, thenInstrs.resultIn) ]
+
+      // Trace-only: after the if completes, fire `traceDval` keyed by
+      // the if's source id so `view --with-trace` can render
+      // `// = <val>` next to the if expression.
+      let traceInstr = [ RT.TraceDval(id, resultReg) ]
 
       match elseExpr with
       | None ->
@@ -627,6 +632,7 @@ module Expr =
           )
           @ thenInstrs.instructions
           @ copyThenToResultInstr
+          @ traceInstr
 
         { registerCount = thenInstrs.registerCount
           instructions = instrs
@@ -654,6 +660,7 @@ module Expr =
           // else
           @ elseInstrs.instructions
           @ copyToResultInstr
+          @ traceInstr
 
         { registerCount = elseInstrs.registerCount
           instructions = instrs

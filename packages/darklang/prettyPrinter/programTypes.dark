@@ -722,23 +722,37 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
     | None -> $"earg{Stdlib.Int64.toString index}"
 
   // control flow
-  | EIf(_id, cond, thenBranch, elseBranch) ->
+  | EIf(id, cond, thenBranch, elseBranch) ->
     let condPart = expr ctx cond
 
     let thenPart =
       (expr ctx thenBranch) |> PrettyPrinter.indent
 
+    // `view --with-trace`: render `// = <val>` on the `if cond then` line
+    // when the trace recorded a value for this if expression.
+    let annotation =
+      match Stdlib.Dict.get ctx.traceValues (Stdlib.Int64.toString id) with
+      | Some dval ->
+        let repr = PrettyPrinter.RuntimeTypes.dval ctx.branchId dval
+        let compact =
+          repr
+          |> Stdlib.String.split "\n"
+          |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
+          |> Stdlib.String.join " "
+        $"  // = {compact}"
+      | None -> ""
+
     match elseBranch with
-    | None -> $"if {condPart} then\n{thenPart}"
+    | None -> $"if {condPart} then{annotation}\n{thenPart}"
     | Some elseBranch ->
       match elseBranch with
       | EIf(_, _, _, _) ->
         let elsePart = (expr ctx elseBranch)
-        $"if {condPart} then\n{thenPart}\nelse {elsePart}"
+        $"if {condPart} then{annotation}\n{thenPart}\nelse {elsePart}"
 
       | _ ->
         let elsePart = (expr ctx elseBranch) |> PrettyPrinter.indent
-        $"if {condPart} then\n{thenPart}\nelse\n{elsePart}"
+        $"if {condPart} then{annotation}\n{thenPart}\nelse\n{elsePart}"
 
   | EMatch(_id, arg, cases) ->
     let cases =
