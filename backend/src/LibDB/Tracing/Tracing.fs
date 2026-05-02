@@ -183,14 +183,18 @@ type PartialEvent =
 
 /// Mutable per-trace tracer state. Captures every event in execution order
 /// and tracks the open call stack so children can find their parent.
+/// `exprValues` is keyed by AST node id; later writes overwrite earlier
+/// (a recursive fn's exprIds fire repeatedly — the last value wins).
 type TracerState =
   { events : System.Collections.Generic.List<CompletedEvent>
-    stack : System.Collections.Generic.Stack<PartialEvent> }
+    stack : System.Collections.Generic.Stack<PartialEvent>
+    exprValues : System.Collections.Generic.Dictionary<id, RT.Dval> }
 
 
 let private newState () : TracerState =
   { events = System.Collections.Generic.List<CompletedEvent>()
-    stack = System.Collections.Generic.Stack<PartialEvent>() }
+    stack = System.Collections.Generic.Stack<PartialEvent>()
+    exprValues = System.Collections.Generic.Dictionary<id, RT.Dval>() }
 
 
 let private currentParentCallId (state : TracerState) : string option =
@@ -285,6 +289,13 @@ let private makeStoreLambdaResult
       )
 
 
+/// Fired for every expression evaluation. Overwrite-on-collision so a
+/// recursive fn's exprIds keep their latest value rather than the first.
+/// Powers `view <fn> --with-trace` — the inline-values overlay.
+let private makeTraceDval (state : TracerState) : RT.Tracing.TraceDval =
+  fun exprId dval -> state.exprValues[exprId] <- dval
+
+
 /// Store trace data to SQLite
 module TraceStorage =
   open LibSqlite.Db
@@ -302,6 +313,7 @@ module TraceStorage =
     (inputVarName : string)
     (inputDval : RT.Dval)
     (events : List<CompletedEvent>)
+    (exprValues : System.Collections.Generic.IDictionary<id, RT.Dval>)
     : unit =
     let traceIdStr = string traceID
     let timestamp = NodaTime.Instant.now().ToString()
@@ -360,15 +372,36 @@ module TraceStorage =
               "resultJson", Sql.string resultJson
               "durationMs", Sql.int64 ev.durationMs ]) ]
 
-    let _ = Sql.executeTransactionSync (baseStatements @ eventStmt)
+    // Per-AST-node values from the `traceDval` hook. Same DELETE-then-
+    // INSERT pattern as fn_calls so re-stores replace cleanly.
+    let exprStmts =
+      [ "DELETE FROM trace_expr_values WHERE trace_id = @traceId",
+        [ traceIdParam ] ]
+    let exprInsert =
+      if exprValues.Count = 0 then
+        []
+      else
+        [ "INSERT OR REPLACE INTO trace_expr_values
+            (trace_id, expr_id, dval_json)
+           VALUES
+            (@traceId, @exprId, @dvalJson)",
+          [ for KeyValue(exprId, dval) in exprValues ->
+              [ "traceId", Sql.string traceIdStr
+                "exprId", Sql.string (string exprId)
+                "dvalJson",
+                Sql.string (DvalReprInternalRoundtrippable.toJsonV0 dval) ] ] ]
+
+    let _ =
+      Sql.executeTransactionSync
+        (baseStatements @ eventStmt @ exprStmts @ exprInsert)
     ()
 
 
 /// Walk every captured Dval through `Blob.promote` so ephemeral blob refs
 /// resolve to persistent ones (writing the bytes into package_blobs in the
-/// process). Mutates the events list in place; returns the promoted input
-/// dval. Without this step, every trace would record blob UUIDs pointing
-/// at gone bytes, which is why HTTP `--diff` and `gen-test` are blocked.
+/// process). Mutates `state.events` and `state.exprValues` in place;
+/// returns the promoted input dval. Without this step, every trace would
+/// record blob UUIDs pointing at gone bytes.
 let private promoteBlobs
   (exeState : RT.ExecutionState)
   (inputDval : RT.Dval)
@@ -387,6 +420,14 @@ let private promoteBlobs
         LibExecution.Blob.promote exeState persist ev.result
       state.events[i] <-
         { ev with args = promotedArgs; result = promotedResult }
+
+    // Snapshot keys before mutating values so the iteration is safe.
+    let exprIds = state.exprValues.Keys |> Seq.toArray
+    for k in exprIds do
+      let! promoted =
+        LibExecution.Blob.promote exeState persist state.exprValues[k]
+      state.exprValues[k] <- promoted
+
     return promotedInput
   }
 
@@ -415,6 +456,7 @@ let private storeTrace
         inputVarName
         promotedInput
         (Seq.toList state.events)
+        state.exprValues
     with ex ->
       print $"[tracing] Failed to store trace: {ex.Message}"
   }
@@ -438,6 +480,7 @@ let createSqliteTracer
           storeFrameEntry = makeStoreFrameEntry state
           storeFnResult = makeStoreFnResult state
           storeLambdaResult = makeStoreLambdaResult state
+          traceDval = makeTraceDval state
           skipTracing = false }
     storeTraceInput =
       fun desc varname input ->
@@ -482,6 +525,7 @@ let createCliTracer
           storeFrameEntry = makeStoreFrameEntry state
           storeFnResult = makeStoreFnResult state
           storeLambdaResult = makeStoreLambdaResult state
+          traceDval = makeTraceDval state
 #endif
           skipTracing = false }
     storeTraceInput = fun _ _ _ -> ()
