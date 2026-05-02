@@ -299,6 +299,43 @@ let testTracesFindByContent (): TestResult =
     TestResult.Fail $"Expected find result with eval handler — got: {output}"
 
 
+/// `traces delete <id>` removes one trace including its expr_values.
+/// Two traces in, delete one, assert: only the other remains; its
+/// expr_values are still queryable. Locks in `ea3349481` plus the
+/// `d2591e14c` cascade specifically for the single-trace delete path.
+let testTracesDeleteSingle (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "let alpha = 11L\nalpha"]
+  let _ = runWithCommand ["eval"; "let beta = 22L\nbeta"]
+  // Latest trace = beta. Get its id, delete it; alpha should remain.
+  let listJson = runWithCommand ["traces"; "list"; "1"; "--json"]
+  match Stdlib.String.split listJson "\"traceId\":\"" with
+  | _ :: rest :: _ ->
+    match Stdlib.String.split rest "\"" with
+    | betaTid :: _ ->
+      let delOut = runWithCommand ["traces"; "delete"; betaTid]
+      if Stdlib.Bool.not (Stdlib.String.contains delOut "Deleted trace") then
+        TestResult.Fail $"Expected 'Deleted trace ...' — got: {delOut}"
+      else
+        // Now there's one trace (alpha) — its values should still be there.
+        let listJson2 = runWithCommand ["traces"; "list"; "1"; "--json"]
+        match Stdlib.String.split listJson2 "\"traceId\":\"" with
+        | _ :: rest2 :: _ ->
+          match Stdlib.String.split rest2 "\"" with
+          | alphaTid :: _ ->
+            let valuesOut = runWithCommand ["traces"; "values"; alphaTid]
+            if Stdlib.String.contains valuesOut "→  11" then
+              TestResult.Pass
+            else
+              TestResult.Fail
+                $"Expected `→  11` in alpha's values — got: {valuesOut}"
+          | _ -> TestResult.Fail "Couldn't parse alpha's id"
+        | _ ->
+          TestResult.Fail "List --json after delete had no traceId"
+    | _ -> TestResult.Fail "Couldn't parse beta's id"
+  | _ -> TestResult.Fail "List --json had no traceId field"
+
+
 /// `view <fn> --with-trace <id>` annotates a fn that the trace
 /// actually called. End-to-end test of TraceDval interpreter wiring
 /// through to the source-overlay rendering. `Stdlib.Int64.clamp` has
@@ -467,6 +504,7 @@ let allTests (): List<String * TestFunction> =
     ("Traces Stats Counts", fun () -> testTracesStatsCounts ())
     ("Traces Export JSON Schema", fun () -> testTracesExportJson ())
     ("Traces Find By Content", fun () -> testTracesFindByContent ())
+    ("Traces Delete Single", fun () -> testTracesDeleteSingle ())
     ("View With Trace Annotates", fun () -> testViewWithTraceAnnotates ())
     ("Traces Prune Keep", fun () -> testTracesPruneKeep ())
     ("Traces Replay Diff Matches", fun () -> testTracesReplayDiffMatches ())
