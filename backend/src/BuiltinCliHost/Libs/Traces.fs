@@ -237,6 +237,59 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "cliTracesStatsByHandler" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "traceLimit"
+            TInt64
+            "Aggregate over the last N traces (e.g. 100)" ]
+      returnType = TList(TTuple(TString, TInt64, [ TInt64; TInt64 ]))
+      description =
+        "Per-handler aggregate over the last N traces: (handler, traceCount, totalMs, maxMs). Total ms sums every fn-call duration in each trace; per-trace latency would need a separate column on `traces`."
+      fn =
+        (function
+        | _, _, _, [ DInt64 traceLimit ] ->
+          uply {
+            // Subquery: the last N trace IDs (and their handler_desc).
+            // LEFT JOIN so traces with zero fn_calls still get counted.
+            // SUM/MAX of NULL → 0 via COALESCE — sqlite quirk.
+            let! rows =
+              Sql.query
+                "SELECT t.handler_desc AS handler,
+                        COUNT(DISTINCT t.id) AS trace_count,
+                        COALESCE(SUM(c.duration_ms), 0) AS total_ms,
+                        COALESCE(MAX(c.duration_ms), 0) AS max_ms
+                 FROM traces t
+                 LEFT JOIN trace_fn_calls c ON c.trace_id = t.id
+                 WHERE t.id IN (
+                   SELECT id FROM traces ORDER BY rowid DESC LIMIT @traceLimit
+                 )
+                 GROUP BY t.handler_desc
+                 ORDER BY trace_count DESC, handler"
+              |> Sql.parameters [ "traceLimit", Sql.int64 traceLimit ]
+              |> Sql.executeAsync (fun read ->
+                {| handler = read.string "handler"
+                   traceCount = read.int64 "trace_count"
+                   totalMs = read.int64 "total_ms"
+                   maxMs = read.int64 "max_ms" |})
+
+            return
+              rows
+              |> List.map (fun r ->
+                DTuple(
+                  DString r.handler,
+                  DInt64 r.traceCount,
+                  [ DInt64 r.totalMs; DInt64 r.maxMs ]
+                ))
+              |> Dval.list (KTTuple(VT.string, VT.int64, [ VT.int64; VT.int64 ]))
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
     { name = fn "cliTracesHotspots" 0
       typeParams = []
       parameters =

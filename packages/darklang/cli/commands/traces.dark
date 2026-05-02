@@ -369,43 +369,29 @@ let executeTail
   | row :: _ -> executeView state row.traceId defaultViewOptions
 
 
-/// `traces stats` — count of recent traces per route, sorted by count
-/// descending. Pure Dark over `cliTracesList`. With no schema for
-/// per-trace duration we can't show latency yet; this is the count
-/// snapshot.
+/// `traces stats` — per-handler aggregate over the last N traces:
+/// trace count, total ms (sum of every fn-call duration in each trace),
+/// max single-call ms. Pairs with `traces hotspots` (per-fn aggregate)
+/// for "which routes are heavy?" vs "which fns are heavy?".
 let executeStats (state: Cli.AppState) (limit: Int64) : Cli.AppState =
-  let rows = Builtin.cliTracesList limit
+  let rows = Builtin.cliTracesStatsByHandler limit
 
   match rows with
   | [] ->
     Stdlib.printLine "No traces found."
     state
   | _ ->
-    // Group by handler description; count.
-    let counts =
-      rows
-      |> Stdlib.List.fold Stdlib.Dict.empty (fun acc row ->
-        let cur =
-          match Stdlib.Dict.get acc row.handler with
-          | Some n -> n
-          | None -> 0L
-        Stdlib.Dict.setOverridingDuplicates acc row.handler (cur + 1L))
-
-    let pairs =
-      counts
-      |> Stdlib.Dict.toList
-      |> Stdlib.List.sortBy (fun pair ->
-        let (_, n) = pair
-        // Sort descending: negate. Stdlib.List.sortBy is ascending.
-        0L - n)
-
-    let total = Stdlib.Int64.toString (Stdlib.List.length rows)
-    Stdlib.printLine $"Recent {total} traces by route:"
+    Stdlib.printLine
+      $"Per-handler stats (last {Stdlib.Int64.toString limit} traces):"
     Stdlib.printLine ""
-    Stdlib.List.iter pairs (fun pair ->
-      let (handler, count) = pair
-      let countStr = Stdlib.Int64.toString count
-      Stdlib.printLine $"  {countStr}  {handler}")
+    Stdlib.printLine "  total ms │   max ms │ count │ handler"
+    Stdlib.printLine "  ─────────┼──────────┼───────┼─────────────────────────"
+    Stdlib.List.iter rows (fun row ->
+      let (handler, count, total, max) = row
+      let totalStr = padNum total 9L
+      let maxStr = padNum max 8L
+      let countStr = padNum count 5L
+      Stdlib.printLine $"  {totalStr} │ {maxStr} │ {countStr} │ {handler}")
     Stdlib.printLine ""
     Stdlib.printLine "Use 'traces list --route <substring>' to drill into a route."
     state
