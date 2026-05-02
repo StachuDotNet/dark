@@ -516,6 +516,25 @@ let executeInspect (state: Cli.AppState) (traceID: String) : Cli.AppState =
         state.currentBranchId
         location
         traceID
+      // Footer: what came out? Pulled from the recorded top-level
+      // call's result via `cliTracesGetExpectedOutput` (same source
+      // `replay --diff` uses). Truncated to 160 chars so a giant
+      // HTML response doesn't drown the output.
+      match Builtin.cliTracesGetExpectedOutput traceID with
+      | Some result ->
+        let compact =
+          result
+          |> Stdlib.String.split "\n"
+          |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
+          |> Stdlib.String.join " "
+        let truncated =
+          if Stdlib.String.length compact > 160L then
+            (Stdlib.String.slice compact 0L 160L) ++ "…"
+          else
+            compact
+        Stdlib.printLine ""
+        Stdlib.printLine (Colors.hint $"-- → {truncated} --")
+      | None -> ()
       state
 
 
