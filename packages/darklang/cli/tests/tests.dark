@@ -500,6 +500,27 @@ let testTracesRejectsNegativeLimit (): TestResult =
     TestResult.Fail $"Expected `Limit must be ≥ 1` from: {names}"
 
 
+/// Unknown subcommand prints a clear error before the help dump.
+/// Locks in `ee648b93d`. Pre-fix `traces lst` (typo) silently dumped
+/// help with no indication the user's input was unrecognized.
+let testTracesUnknownSubcommandSurfaced (): TestResult =
+  let typoOut = runWithCommand ["traces"; "nonsense"]
+  let typoTwoOut = runWithCommand ["traces"; "lst"]
+  // Bare `traces` and `traces help` should NOT be flagged as unknown —
+  // they go straight to help.
+  let bareOut = runWithCommand ["traces"]
+  let helpOut = runWithCommand ["traces"; "help"]
+  if Stdlib.String.contains typoOut "Unknown subcommand: nonsense"
+      && Stdlib.String.contains typoTwoOut "Unknown subcommand: lst"
+      && Stdlib.Bool.not (Stdlib.String.contains bareOut "Unknown subcommand")
+      && Stdlib.Bool.not (Stdlib.String.contains helpOut "Unknown subcommand")
+  then
+    TestResult.Pass
+  else
+    TestResult.Fail
+      $"Unexpected unknown-subcommand output. typo: {typoOut}; bare: {bareOut}"
+
+
 /// `list --route` and `view --filter` match case-insensitively. Locks
 /// in `5dd80c793` and `52afd47e6` — pre-fix the user got silently
 /// empty output if their case didn't match the recorded handler /
@@ -690,6 +711,8 @@ let allTests (): List<String * TestFunction> =
       fun () -> testTracesRejectsEmptyPattern ())
     ("Traces Filters Are Case Insensitive",
       fun () -> testTracesFiltersAreCaseInsensitive ())
+    ("Traces Unknown Subcommand Surfaced",
+      fun () -> testTracesUnknownSubcommandSurfaced ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
