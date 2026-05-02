@@ -500,6 +500,38 @@ let testTracesRejectsNegativeLimit (): TestResult =
     TestResult.Fail $"Expected `Limit must be ≥ 1` from: {names}"
 
 
+/// Both arg orders work for `tail` and `list` — locks in `4528749dd`
+/// and `3d7f3528f`. Pre-fix `tail 1 --route eval` and
+/// `list --json --fn add 5` silently fell through to global help.
+let testTracesArgOrderingsWork (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "1L + 1L"]
+  // `tail` accepts both orderings.
+  let tailNFirst = runWithCommand ["traces"; "tail"; "1"; "--route"; "eval"]
+  let tailRouteFirst = runWithCommand ["traces"; "tail"; "--route"; "eval"; "1"]
+  // `list --json --fn ... <limit>` (a 5-arg form previously missing).
+  let listJsonFn = runWithCommand ["traces"; "list"; "--json"; "--fn"; "add"; "5"]
+  let checks =
+    [ ("tail N first", tailNFirst, "Trace:")
+      ("tail --route first", tailRouteFirst, "Trace:")
+      ("list --json --fn add 5", listJsonFn, "[") ]
+  let failures =
+    checks
+    |> Stdlib.List.filter (fun tup ->
+      let (_, output, expected) = tup
+      Stdlib.Bool.not (Stdlib.String.contains output expected))
+  match failures with
+  | [] -> TestResult.Pass
+  | _ ->
+    let names =
+      failures
+      |> Stdlib.List.map (fun tup ->
+        let (label, _, _) = tup
+        label)
+      |> Stdlib.String.join "; "
+    TestResult.Fail $"Arg-order forms didn't dispatch: {names}"
+
+
 /// `traces stats` hides the `--route` drill-down hint when there
 /// are no HTTP handlers (i.e., only eval/run traces). Locks in
 /// `7731c497d`.
@@ -736,6 +768,8 @@ let allTests (): List<String * TestFunction> =
       fun () -> testTracesUnknownSubcommandSurfaced ())
     ("Traces Stats Hint Hidden For Eval Only",
       fun () -> testTracesStatsHintHiddenForEvalOnly ())
+    ("Traces Arg Orderings Work",
+      fun () -> testTracesArgOrderingsWork ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
