@@ -310,6 +310,43 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       Stdlib.printLine (Colors.error $"Invalid --keep N: {nStr}")
       state
 
+  // Focused usage messages for arity-1 commands when invoked with no
+  // argument. Better than dumping the full multi-page help — the user
+  // ran a known command, just forgot the id/path.
+  | [ "view" ] ->
+    Stdlib.printLine (Colors.error "Usage: traces view <trace-id> [flags]")
+    state
+  | [ "inspect" ] ->
+    Stdlib.printLine (Colors.error "Usage: traces inspect <trace-id>")
+    state
+  | [ "values" ] ->
+    Stdlib.printLine (Colors.error "Usage: traces values <trace-id>")
+    state
+  | [ "gen-test" ] ->
+    Stdlib.printLine (Colors.error "Usage: traces gen-test <trace-id>")
+    state
+  | [ "export" ] ->
+    Stdlib.printLine (Colors.error "Usage: traces export <trace-id>")
+    state
+  | [ "import" ] ->
+    Stdlib.printLine (Colors.error "Usage: traces import <path>")
+    state
+  | [ "replay" ] ->
+    Stdlib.printLine
+      (Colors.error "Usage: traces replay <trace-id> [--diff]")
+    state
+  | [ "delete" ] ->
+    Stdlib.printLine (Colors.error "Usage: traces delete <trace-id>")
+    state
+  | [ "find" ] ->
+    Stdlib.printLine
+      (Colors.error
+        "Usage: traces find <pattern> [limit] [--view] [--json]")
+    state
+  | [ "prune" ] ->
+    Stdlib.printLine (Colors.error "Usage: traces prune --keep <N>")
+    state
+
   | _ ->
     help state
     state
