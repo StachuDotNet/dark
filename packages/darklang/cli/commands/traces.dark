@@ -557,8 +557,10 @@ let executeHotspots
       Stdlib.printLine $"No fn-call data in the last {Stdlib.Int64.toString traceLimit} traces."
       state
     | _ ->
+      let fnCount = Stdlib.List.length rows
+      let fnWord = if fnCount == 1L then "fn" else "fns"
       Stdlib.printLine
-        $"Hotspots (last {Stdlib.Int64.toString traceLimit} traces, fn calls only):"
+        $"Hotspots (last {Stdlib.Int64.toString traceLimit} traces, top {Stdlib.Int64.toString fnCount} {fnWord} by total ms):"
       Stdlib.printLine ""
       Stdlib.printLine "  total ms │   max ms │ count │ fn"
       Stdlib.printLine "  ─────────┼──────────┼───────┼─────────────────────────"
@@ -1523,7 +1525,7 @@ let help (_state: Cli.AppState) : Unit =
     "  find <pattern> [limit]        List traces whose recorded values contain a substring"
     "  find <pattern> --view         Open the latest matching trace directly"
     "  find <pattern> --json [limit] Same data as JSON for piping"
-    "  hotspots [trace-limit]        Per-fn timing aggregated across last N traces (default 100)"
+    "  hotspots [trace-limit]        Per-fn timing aggregated across last N traces (default 100; top 50 fns by total ms)"
     "  hotspots --json [trace-limit] Same data as JSON for piping"
     "  export <trace-id>             Print a portable JSON dump of the trace"
     "  import <path>                 Re-create a trace from a JSON dump on disk"
