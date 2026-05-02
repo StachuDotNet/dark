@@ -499,6 +499,32 @@ let testTracesRejectsNegativeLimit (): TestResult =
     TestResult.Fail $"Expected `Limit must be ≥ 1` from: {names}"
 
 
+/// Flag-shaped input where a trace ID was expected is rejected as a
+/// flag, not silently passed to the resolver. Locks in `f57c4aea3`.
+/// Pre-fix: `traces export --frob` said "Trace not found: --frob".
+let testTracesRejectsFlagAsTraceId (): TestResult =
+  let cases =
+    [ ["traces"; "export"; "--frob"]
+      ["traces"; "inspect"; "--frob"]
+      ["traces"; "values"; "--frob"]
+      ["traces"; "replay"; "--frob"]
+      ["traces"; "delete"; "--frob"]
+      ["traces"; "gen-test"; "--frob"] ]
+  let failures =
+    cases
+    |> Stdlib.List.filter (fun argv ->
+      let out = runWithCommand argv
+      Stdlib.Bool.not (Stdlib.String.contains out "Unknown flag: --frob"))
+  match failures with
+  | [] -> TestResult.Pass
+  | _ ->
+    let names =
+      failures
+      |> Stdlib.List.map (fun argv -> Stdlib.String.join argv " ")
+      |> Stdlib.String.join ", "
+    TestResult.Fail $"Expected `Unknown flag: --frob` from: {names}"
+
+
 type TestFunction = Unit -> TestResult
 
 let allTests (): List<String * TestFunction> =
@@ -537,6 +563,8 @@ let allTests (): List<String * TestFunction> =
     ("Traces Replay Diff Matches", fun () -> testTracesReplayDiffMatches ())
     ("Traces Rejects Negative Limit",
       fun () -> testTracesRejectsNegativeLimit ())
+    ("Traces Rejects Flag As Trace Id",
+      fun () -> testTracesRejectsFlagAsTraceId ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
