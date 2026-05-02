@@ -242,6 +242,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
     // No args - view current location
     viewEntity branchId state.packageData.currentLocation
     state
+  | [ "--with-trace" ] ->
+    Stdlib.printLine
+      (Colors.error "Usage: view <path> --with-trace <traceID>")
+    state
   | [pathArg] ->
     // Navigate to the path and view
     match Traversal.traverse branchId state.packageData.currentLocation pathArg with
@@ -265,6 +269,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
       | Ok newLocation ->
         viewFunctionWithTrace branchId newLocation fullID
         state
+  | [ _; "--with-trace" ] ->
+    Stdlib.printLine
+      (Colors.error "Usage: view <path> --with-trace <traceID>")
+    state
   | _ ->
     help state
     state
@@ -281,15 +289,17 @@ let complete (state: AppState) (args: List<String>) : List<Completion.Completion
 
 let help (_state: AppState) : Unit =
   [
-    "Usage: view [path]"
+    "Usage: view [path] [--with-trace <traceID>]"
     "View detailed information about functions, types, values, or modules."
     ""
     "With path: View the specified entity with syntax highlighting."
     "Without path: View current location."
+    "With --with-trace: Annotate each `let` binding inline with values from a recorded trace."
     ""
     "Examples:"
-    "  view                    - View current location"
-    "  view List.head          - View the List.head function"
-    "  view Option             - View the Option type"
-    "  view Stdlib.List        - View contents of Stdlib.List module"
+    "  view                              - View current location"
+    "  view List.head                    - View the List.head function"
+    "  view Option                       - View the Option type"
+    "  view Stdlib.List                  - View contents of Stdlib.List module"
+    "  view MyApp.foo --with-trace abc12 - View MyApp.foo with values from trace abc12"
   ] |> Stdlib.printLines
