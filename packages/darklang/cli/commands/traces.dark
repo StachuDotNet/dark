@@ -434,13 +434,55 @@ let executeExport (state: Cli.AppState) (traceID: String) : Cli.AppState =
 /// wire-format blocks come straight from the trace; the [http-handler]
 /// block has a TODO placeholder for the user to paste the handler body.
 /// Pipe to a file:  darklang traces gen-test <id> > testfiles/.../foo.test
+/// Resolve a recorded handler's qualified name (e.g.
+/// "Darklang.DemoData.HttpServerTest.helloHandlerFn") to its current
+/// pretty-printed body expression. Returns None if the fn was deleted,
+/// renamed, or otherwise not on the current branch — caller falls back
+/// to a TODO placeholder.
+let lookupHandlerBody
+  (branchId: Uuid)
+  (handlerName: String)
+  : Stdlib.Option.Option<String> =
+  let parts = Stdlib.String.split handlerName "."
+  match Stdlib.List.last parts with
+  | None -> Stdlib.Option.Option.None
+  | Some name ->
+    let modulePath = Stdlib.List.dropLast parts
+    let results = Packages.Query.searchExactMatch branchId modulePath name
+    match results.fns with
+    | [] -> Stdlib.Option.Option.None
+    | item :: _ ->
+      let ctx =
+        PrettyPrinter.ProgramTypes.Context
+          { branchId = branchId
+            currentModule = Stdlib.Option.Option.None
+            currentFunction = Stdlib.Option.Option.None }
+      let body = PrettyPrinter.ProgramTypes.expr ctx item.entity.body
+      Stdlib.Option.Option.Some body
+
+
 let executeGenTest (state: Cli.AppState) (traceID: String) : Cli.AppState =
   match Builtin.cliTracesGenTest traceID with
-  | Ok fixture ->
-    Stdlib.printLine fixture
-    state
   | Error msg ->
     Stdlib.printLine (Colors.error msg)
+    state
+  | Ok fixtureWithSentinel ->
+    // Try to auto-resolve the handler source. The F# builtin emits a
+    // `%%HANDLER_BODY%%` line where the body should go; we substitute
+    // either the live source or a TODO block.
+    let body =
+      match Builtin.cliTracesGetHandlerName traceID with
+      | None ->
+        "// TODO: paste the handler body. (couldn't determine name from trace)"
+      | Some handlerName ->
+        match lookupHandlerBody state.currentBranchId handlerName with
+        | Some src -> src
+        | None ->
+          "// TODO: paste the handler body that produced this trace.\n"
+          ++ $"//       Source: `darklang view {handlerName}` (handler not found on current branch)"
+    let fixture =
+      Stdlib.String.replaceAll fixtureWithSentinel "%%HANDLER_BODY%%" body
+    Stdlib.printLine fixture
     state
 
 

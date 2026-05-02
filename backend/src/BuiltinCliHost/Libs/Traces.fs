@@ -839,6 +839,35 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "cliTracesGetHandlerName" 0
+      typeParams = []
+      parameters = [ Param.make "traceID" TString "Trace to inspect" ]
+      returnType = TypeReference.option TString
+      description =
+        "Return the qualified name of the handler that produced this trace (the top-level fn_hash, post-fnNameToSimpleString resolution). Returns None for non-HTTP traces, traces with no top-level call, or top-level lambdas."
+      fn =
+        (function
+        | _, _, _, [ DString traceID ] ->
+          uply {
+            let! row =
+              Sql.query
+                "SELECT fn_hash FROM trace_fn_calls
+                 WHERE trace_id = @traceId AND parent_call_id IS NULL
+                 ORDER BY rowid DESC LIMIT 1"
+              |> Sql.parameters [ "traceId", Sql.string traceID ]
+              |> Sql.executeRowOptionAsync (fun read ->
+                read.stringOrNone "fn_hash")
+
+            match row with
+            | Some(Some name) -> return Dval.optionSome KTString (DString name)
+            | _ -> return Dval.optionNone KTString
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
     { name = fn "cliTracesGenTest" 0
       typeParams = []
       parameters =
@@ -969,7 +998,6 @@ let fns () : List<BuiltInFn> =
                   )
               | Some top ->
                 let resultJson = top.resultJson
-                let handlerName = top.fnName
                 let inputDval =
                   DvalReprInternalRoundtrippable.parseJsonV0 r.inputValueJson
                 let resultDval =
@@ -1038,15 +1066,13 @@ let fns () : List<BuiltInFn> =
                     if List.isEmpty cleanRespHeaders then ""
                     else formatHeaders cleanRespHeaders + "\n"
 
-                  let handlerHint =
-                    match handlerName with
-                    | Some n -> $"//       Source: `darklang view {n}`\n"
-                    | None -> "//       Run `darklang view <fn-path>` for the source.\n"
+                  // Sentinel — Dark side substitutes either the
+                  // auto-resolved handler body (via PackageManager
+                  // lookup + PrettyPrinter) or a TODO block if the fn
+                  // can't be found on the current branch.
                   let fixture =
                     $"[http-handler {method} {path}]\n"
-                    + "// TODO: paste the handler body that produced this trace.\n"
-                    + handlerHint
-                    + $"\"placeholder for {method} {path}\"\n"
+                    + "%%HANDLER_BODY%%\n"
                     + "\n"
                     + "[request]\n"
                     + $"{method} {path} HTTP/1.1\n"
