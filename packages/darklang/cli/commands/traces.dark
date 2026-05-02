@@ -55,6 +55,19 @@ let defaultViewOptions: ViewOptions =
       slowThresholdMs = Stdlib.Option.Option.None }
 
 
+/// English ordinal suffix for a non-negative integer. "1st", "2nd",
+/// "3rd", "4th"… honoring the 11/12/13 exception (always "th").
+let ordinalSuffix (n: Int64) : String =
+  let mod100 = n % 100L
+  if mod100 >= 11L && mod100 <= 13L then "th"
+  else
+    match n % 10L with
+    | 1L -> "st"
+    | 2L -> "nd"
+    | 3L -> "rd"
+    | _ -> "th"
+
+
 /// Format the error for a positional integer arg. Distinguishes
 /// "looks like a misplaced flag" (`-`-prefixed) from "actually
 /// non-numeric" — `traces list --frob` should say "Unknown flag",
@@ -746,12 +759,18 @@ let executeTail
     let after = Stdlib.List.drop candidates (n - 1L)
     match after with
     | [] ->
-      let nStr = Stdlib.Int64.toString n
       let suffix =
         match routeFilter with
         | Some r -> $" matching '{r}'"
         | None -> ""
-      Stdlib.printLine $"No {nStr}th-most-recent trace{suffix}."
+      // N=1 reads better as "No traces yet" — for N>1, use proper
+      // English ordinals (2nd/3rd/22nd/etc) via ordinalSuffix.
+      let msg =
+        if n == 1L then $"No traces yet{suffix}."
+        else
+          let nStr = Stdlib.Int64.toString n
+          $"No {nStr}{ordinalSuffix n}-most-recent trace{suffix}."
+      Stdlib.printLine msg
       state
     | row :: _ -> executeView state row.traceId defaultViewOptions
 
