@@ -801,10 +801,30 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
     // List<LanguageTools.ProgramTypes.PipeExpr>
     let exprPart = expr ctx e
 
+    // `view --with-trace`: each pipe stage's value is recorded via
+    // EApply (pipes desugar through it, inheriting the part's id).
+    // Look up per stage and append `// = <val>` to its line.
     let pipeParts =
       pipeExprs
       |> Stdlib.List.map (fun pe ->
-        pipeExpr ctx pe)
+        let rendered = pipeExpr ctx pe
+        let stageId =
+          match pe with
+          | EPipeVariable(id, _, _) -> id
+          | EPipeLambda(id, _, _) -> id
+          | EPipeInfix(id, _, _) -> id
+          | EPipeFnCall(id, _, _, _) -> id
+          | EPipeEnum(id, _, _, _) -> id
+        match Stdlib.Dict.get ctx.traceValues (Stdlib.Int64.toString stageId) with
+        | Some dval ->
+          let repr = PrettyPrinter.RuntimeTypes.dval ctx.branchId dval
+          let compact =
+            repr
+            |> Stdlib.String.split "\n"
+            |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
+            |> Stdlib.String.join " "
+          $"{rendered}  // = {compact}"
+        | None -> rendered)
       |> Stdlib.String.join "\n|> "
 
     $"{exprPart}\n|> {pipeParts}"

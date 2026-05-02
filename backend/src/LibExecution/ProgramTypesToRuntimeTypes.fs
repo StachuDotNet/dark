@@ -780,7 +780,7 @@ module Expr =
         resultIn = rc }
 
 
-    | PT.EApply(_id, thingToApplyExpr, typeArgs, args) ->
+    | PT.EApply(id, thingToApplyExpr, typeArgs, args) ->
       // process the arguments first, so we know how many registers we need
       let (rcAfterArgs, argInstrs, argRegs) =
         args
@@ -804,8 +804,17 @@ module Expr =
           NEList.ofListUnsafe "" [] argRegs
         )
 
+      // Trace-only: after the call returns, fire `traceDval` keyed by
+      // the EApply's source id. Most call sites already get their
+      // value through a parent `let`/match/etc, but pipe stages
+      // (`xs |> f`) desugar to EApply with the pipe-part's id — the
+      // PrettyPrinter EPipe case looks up here per stage. Storage
+      // cost is one row per fn call per trace; tolerable at our scale.
+      let traceInstr = [ RT.TraceDval(id, putResultIn) ]
+
       { registerCount = thingToApply.registerCount + 1
-        instructions = argInstrs @ thingToApply.instructions @ [ callInstr ]
+        instructions =
+          argInstrs @ thingToApply.instructions @ [ callInstr ] @ traceInstr
         resultIn = putResultIn }
 
 
