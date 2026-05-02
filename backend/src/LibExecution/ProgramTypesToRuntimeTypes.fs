@@ -849,13 +849,24 @@ module Expr =
           // compile the `rhs` of the case
           let rhs = toRT mergedSymbols rcAfterWhenCond currentFnName c.rhs
 
+          // Trace-only: after the matching arm's RHS is computed and
+          // copied to resultReg, fire `traceDval` keyed by the rhs
+          // expression's id so `view --with-trace` can annotate the
+          // matching arm. Non-matching arms never reach this — the
+          // CheckMatchPatternAndExtractVars or whenCondJump skips over
+          // their entire instruction block.
+          let rhsId = PT.Expr.toID c.rhs
+
           // return the intermediate results, as far along as they are
           { matchValueInstrFn =
               fun jumpByFail ->
                 RT.CheckMatchPatternAndExtractVars(expr.resultIn, pat, jumpByFail)
             whenCondInstructions = whenCondInstrs
             whenCondJump = whenCondJump
-            rhsInstrs = rhs.instructions @ [ RT.CopyVal(resultReg, rhs.resultIn) ]
+            rhsInstrs =
+              rhs.instructions
+              @ [ RT.CopyVal(resultReg, rhs.resultIn)
+                  RT.TraceDval(rhsId, resultReg) ]
             rc = rhs.registerCount })
 
       let countInstrsForCase (c : MatchCase.IntermediateValue) : int =

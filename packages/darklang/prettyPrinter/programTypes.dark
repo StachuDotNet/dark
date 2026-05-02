@@ -770,7 +770,23 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
         let rhsPart =
           (expr ctx case.rhs) |> PrettyPrinter.indent
 
-        $"| {patternPart}{whenPart} ->\n{rhsPart}")
+        // `view --with-trace`: only the matching arm reaches the RHS,
+        // so only the matched case picks up an annotation. Non-matching
+        // arms get no entry in traceValues — silent.
+        let rhsId = LanguageTools.ProgramTypes.Expr.toID case.rhs
+        let annotation =
+          match Stdlib.Dict.get ctx.traceValues (Stdlib.Int64.toString rhsId) with
+          | Some dval ->
+            let repr = PrettyPrinter.RuntimeTypes.dval ctx.branchId dval
+            let compact =
+              repr
+              |> Stdlib.String.split "\n"
+              |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
+              |> Stdlib.String.join " "
+            $"  // ← matched, = {compact}"
+          | None -> ""
+
+        $"| {patternPart}{whenPart} ->{annotation}\n{rhsPart}")
 
     let casesPart = Stdlib.String.join cases "\n"
 
