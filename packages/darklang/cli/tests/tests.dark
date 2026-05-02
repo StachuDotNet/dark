@@ -499,6 +499,32 @@ let testTracesRejectsNegativeLimit (): TestResult =
     TestResult.Fail $"Expected `Limit must be ≥ 1` from: {names}"
 
 
+/// `view` sub-options reject negative values explicitly. Locks in
+/// `d7b7230e1` — pre-fix `--depth -1` and `--slow-ms -1` parsed as
+/// valid Int64 and were silently accepted with meaningless semantics.
+let testTracesViewRejectsNegativeSubOptions (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "1L + 1L"]
+  let listJson = runWithCommand ["traces"; "list"; "1"; "--json"]
+  match Stdlib.String.split listJson "\"traceId\":\"" with
+  | _ :: rest :: _ ->
+    match Stdlib.String.split rest "\"" with
+    | tid :: _ ->
+      let depthOut =
+        runWithCommand ["traces"; "view"; tid; "--depth"; "-1"]
+      let slowOut =
+        runWithCommand ["traces"; "view"; tid; "--slow-ms"; "-1"]
+      if Stdlib.String.contains depthOut "--depth must be ≥ 0"
+          && Stdlib.String.contains slowOut "--slow-ms must be ≥ 0"
+      then
+        TestResult.Pass
+      else
+        TestResult.Fail
+          $"Expected `must be ≥ 0` rejection from both. depth: {depthOut}; slow-ms: {slowOut}"
+    | _ -> TestResult.Fail "Couldn't parse trace id"
+  | _ -> TestResult.Fail "List --json had no traceId field"
+
+
 /// Result-message phrasing matches the actual count: singular when
 /// 1, plural when N. And `prune --keep 0` says "none kept", not
 /// "kept the 0 most-recent". Locks in `49a0cfec9` and `3c81ed512`.
@@ -605,6 +631,8 @@ let allTests (): List<String * TestFunction> =
       fun () -> testTracesRejectsFlagAsTraceId ())
     ("Traces Clear And Prune Grammar",
       fun () -> testTracesClearAndPruneGrammar ())
+    ("Traces View Rejects Negative Sub Options",
+      fun () -> testTracesViewRejectsNegativeSubOptions ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
