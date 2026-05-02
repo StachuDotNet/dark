@@ -283,6 +283,46 @@ let testTracesExportJson (): TestResult =
   | _ -> TestResult.Fail "List --json had no traceId field"
 
 
+/// `traces find <pattern>` finds traces whose recorded values
+/// contain the substring. The unique-string approach makes the
+/// match unambiguous regardless of any other traces.
+let testTracesFindByContent (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "\"unique-token-xyz12345\""]
+  let _ = runWithCommand ["eval"; "1L + 1L"]
+  let output = runWithCommand ["traces"; "find"; "unique-token-xyz12345"]
+  if Stdlib.String.contains output "Traces matching"
+      && Stdlib.String.contains output "eval"
+  then
+    TestResult.Pass
+  else
+    TestResult.Fail $"Expected find result with eval handler — got: {output}"
+
+
+/// `traces inspect <eval-id>` errors clearly because eval traces
+/// have a builtin top-level (e.g. `int64Add`) — no source to view.
+/// Locks in the guard added in `b6d4ee657`. Without the guard, the
+/// view path tries to look up `int64Add` as a package fn and surfaces
+/// "Function '/int64Add. (fn)' not found" — confusing.
+let testTracesInspectErrorsOnBuiltinHandler (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "1L + 2L"]
+  let listJson = runWithCommand ["traces"; "list"; "1"; "--json"]
+  match Stdlib.String.split listJson "\"traceId\":\"" with
+  | _ :: rest :: _ ->
+    match Stdlib.String.split rest "\"" with
+    | tid :: _ ->
+      let output = runWithCommand ["traces"; "inspect"; tid]
+      if Stdlib.String.contains output "is a builtin"
+          && Stdlib.String.contains output "no source to view"
+      then
+        TestResult.Pass
+      else
+        TestResult.Fail $"Expected builtin-handler error — got: {output}"
+    | _ -> TestResult.Fail "Couldn't parse trace id from list"
+  | _ -> TestResult.Fail "List --json had no traceId field"
+
+
 /// `traces values <id>` lists `(exprId, dval)` pairs for a let-binding eval.
 let testTracesValuesAfterLet (): TestResult =
   let _ = runWithCommand ["traces"; "clear"]
@@ -335,6 +375,9 @@ let allTests (): List<String * TestFunction> =
       fun () -> testTracesClearAlsoClearsExprValues ())
     ("Traces Stats Counts", fun () -> testTracesStatsCounts ())
     ("Traces Export JSON Schema", fun () -> testTracesExportJson ())
+    ("Traces Find By Content", fun () -> testTracesFindByContent ())
+    ("Traces Inspect Errors On Builtin Handler",
+      fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
 
 type TestSummary =
