@@ -479,7 +479,10 @@ let executeExport (state: Cli.AppState) (traceID: String) : Cli.AppState =
 /// `traces inspect <id>` — open the recorded handler with the
 /// `view --with-trace` overlay applied. Saves "what was the handler
 /// called again?" — the trace already knows (via the recorded
-/// top-level fn_hash, same source `gen-test` uses).
+/// top-level fn_hash, same source `gen-test` uses). Prefixes the
+/// annotated source with a banner showing what triggered the trace
+/// (handler_desc + timestamp) so the user has context for the
+/// inputs they're seeing inline.
 let executeInspect (state: Cli.AppState) (traceID: String) : Cli.AppState =
   match Builtin.cliTracesGetHandlerName traceID with
   | None ->
@@ -498,6 +501,14 @@ let executeInspect (state: Cli.AppState) (traceID: String) : Cli.AppState =
           $"Trace {traceID}'s handler `{handlerName}` is a builtin — no source to view.")
       state
     else
+      // Banner: what triggered this trace? Comes before the
+      // `-- annotated with N value(s) --` line that
+      // viewFunctionWithTrace prints.
+      match Builtin.cliTracesGetSummary traceID with
+      | Some pair ->
+        let (handler, timestamp) = pair
+        Stdlib.printLine (Colors.hint $"-- {handler} at {timestamp} --")
+      | None -> ()
       let parsedLocation =
         LanguageTools.ProgramTypes.parsePackageLocation handlerName
       let location = Cli.Packages.PackageLocation.Function parsedLocation

@@ -872,6 +872,37 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "cliTracesGetSummary" 0
+      typeParams = []
+      parameters = [ Param.make "traceID" TString "Trace to inspect" ]
+      returnType = TypeReference.option (TTuple(TString, TString, []))
+      description =
+        "Top-line metadata for a trace: (handler_desc, timestamp). Used by `traces inspect` to print a context banner before the annotated source. None if the trace doesn't exist."
+      fn =
+        (function
+        | _, _, _, [ DString traceID ] ->
+          uply {
+            let! row =
+              Sql.query
+                "SELECT handler_desc, timestamp FROM traces WHERE id = @traceId"
+              |> Sql.parameters [ "traceId", Sql.string traceID ]
+              |> Sql.executeRowOptionAsync (fun read ->
+                (read.string "handler_desc", read.string "timestamp"))
+
+            match row with
+            | Some(handler, ts) ->
+              return
+                Dval.optionSome
+                  (KTTuple(VT.string, VT.string, []))
+                  (DTuple(DString handler, DString ts, []))
+            | None -> return Dval.optionNone (KTTuple(VT.string, VT.string, []))
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
     { name = fn "cliTracesGetHandlerName" 0
       typeParams = []
       parameters = [ Param.make "traceID" TString "Trace to inspect" ]
