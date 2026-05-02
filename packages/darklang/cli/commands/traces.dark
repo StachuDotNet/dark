@@ -548,6 +548,9 @@ let executeList (state: Cli.AppState) (limit: Int64) : Cli.AppState =
     match rows with
     | [] ->
       Stdlib.printLine "No traces found."
+      Stdlib.printLine
+        (Colors.dimText
+          "(Traces are recorded by `darklang eval`, `darklang run`, or HTTP handlers under `darklang serve`.)")
       state
     | _ ->
       Stdlib.printLine $"Recent traces (last {Stdlib.Int64.toString limit}):"
