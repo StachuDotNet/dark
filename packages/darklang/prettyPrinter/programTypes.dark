@@ -46,14 +46,20 @@ type Context =
     currentModule: Stdlib.Option.Option<String>
     /// Used to resolve ESelf and EArg expressions when pretty-printing function bodies.
     /// When Some, contains (functionName, argMap) where argMap maps parameter names to indices.
-    currentFunction: Stdlib.Option.Option<(String * Dict<Int64>)> }
+    currentFunction: Stdlib.Option.Option<(String * Dict<Int64>)>
+    /// Per-AST-node values for `view --with-trace`. Keys are exprIds-as-string
+    /// (matching `cliTracesGetExprValues`'s shape). Empty dict when not in
+    /// trace-overlay mode; the let pretty-printer reads this to render
+    /// `// = <val>` annotations next to bound names.
+    traceValues: Dict<LanguageTools.RuntimeTypes.Dval> }
 
 module Context =
   let forBranch (branchId: Uuid) : Context =
     Context
       { branchId = branchId
         currentModule = Stdlib.Option.Option.None
-        currentFunction = Stdlib.Option.Option.None }
+        currentFunction = Stdlib.Option.Option.None
+        traceValues = Stdlib.Dict.empty }
 
   let forMain : Context = forBranch SCM.Branch.mainBranchId
 
@@ -671,7 +677,27 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
     let patternPart = letPattern pattern
     let rhsPart = expr ctx rhs
     let bodyPart = expr ctx body
-    $"let {patternPart} =\n{PrettyPrinter.indent rhsPart}\n{bodyPart}"
+    // `view --with-trace`: if a value was recorded for this binding's
+    // pattern id, render `// = <val>` after the `let x =` line.
+    let patternId =
+      match pattern with
+      | LPUnit id -> id
+      | LPVariable(id, _) -> id
+      | LPWildcard id -> id
+      | LPTuple(id, _, _, _) -> id
+    let annotation =
+      match Stdlib.Dict.get ctx.traceValues (Stdlib.Int64.toString patternId) with
+      | Some dval ->
+        let repr = PrettyPrinter.RuntimeTypes.dval ctx.branchId dval
+        // Compact to one line so the let header stays scannable.
+        let compact =
+          repr
+          |> Stdlib.String.split "\n"
+          |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
+          |> Stdlib.String.join " "
+        $"  // = {compact}"
+      | None -> ""
+    $"let {patternPart} ={annotation}\n{PrettyPrinter.indent rhsPart}\n{bodyPart}"
 
   | ERecordFieldAccess(_id, e, fieldName) ->
     let exprPart = expr ctx e

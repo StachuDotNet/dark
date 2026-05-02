@@ -517,7 +517,8 @@ let lookupHandlerBody
         PrettyPrinter.ProgramTypes.Context
           { branchId = branchId
             currentModule = Stdlib.Option.Option.None
-            currentFunction = Stdlib.Option.Option.None }
+            currentFunction = Stdlib.Option.Option.None
+            traceValues = Stdlib.Dict.empty }
       let body = PrettyPrinter.ProgramTypes.expr ctx item.entity.body
       Stdlib.Option.Option.Some body
 

@@ -118,7 +118,8 @@ let viewEntity (branchId: Uuid) (location: PackageLocation) : Unit =
         PrettyPrinter.ProgramTypes.Context
           { branchId = branchId
             currentModule = Stdlib.Option.Option.None
-            currentFunction = Stdlib.Option.Option.None }
+            currentFunction = Stdlib.Option.Option.None
+            traceValues = Stdlib.Dict.empty }
       let prettyPrinted = PrettyPrinter.ProgramTypes.packageType ctx item.entity
       let highlighted = SyntaxHighlighting.highlightCode prettyPrinted
       Stdlib.printLine highlighted
@@ -142,7 +143,8 @@ let viewEntity (branchId: Uuid) (location: PackageLocation) : Unit =
         PrettyPrinter.ProgramTypes.Context
           { branchId = branchId
             currentModule = Stdlib.Option.Option.None
-            currentFunction = Stdlib.Option.Option.None }
+            currentFunction = Stdlib.Option.Option.None
+            traceValues = Stdlib.Dict.empty }
       let prettyPrinted = PrettyPrinter.ProgramTypes.packageFn ctx item.entity
       let highlighted = SyntaxHighlighting.highlightCode prettyPrinted
       Stdlib.printLine highlighted
@@ -166,10 +168,59 @@ let viewEntity (branchId: Uuid) (location: PackageLocation) : Unit =
         PrettyPrinter.ProgramTypes.Context
           { branchId = branchId
             currentModule = Stdlib.Option.Option.None
-            currentFunction = Stdlib.Option.Option.None }
+            currentFunction = Stdlib.Option.Option.None
+            traceValues = Stdlib.Dict.empty }
       let prettyPrinted = PrettyPrinter.ProgramTypes.packageValue ctx item.entity
       let highlighted = SyntaxHighlighting.highlightCode prettyPrinted
       Stdlib.printLine highlighted
+
+
+/// View a fn with `// = <val>` annotations next to each let binding,
+/// pulled from the recorded per-AST-node values of a specific trace.
+/// Today only `let` bindings have data (see `9ba2b40ac`); other PT
+/// cases follow the same pattern as their TraceDval emission lands.
+let viewFunctionWithTrace
+  (branchId: Uuid)
+  (location: PackageLocation)
+  (traceID: String)
+  : Unit =
+  match location with
+  | Function name ->
+    let modulePath = Stdlib.List.append [name.owner] name.modules
+    let results = Query.searchExactMatch branchId modulePath name.name
+    match results.fns with
+    | [] ->
+      let locationStr = Packages.formatLocation location
+      Stdlib.printLine $"Function '{locationStr}' not found."
+    | item :: _ ->
+      printDeprecationHeaderFor
+        branchId
+        item.entity.hash
+        LanguageTools.ProgramTypes.ItemKind.Fn
+      // Build the Dict<exprId-as-string, Dval> from the trace.
+      let pairs = Builtin.cliTracesGetExprValues traceID
+      let traceValues =
+        pairs
+        |> Stdlib.List.fold Stdlib.Dict.empty (fun acc pair ->
+          let (k, v) = pair
+          Stdlib.Dict.set acc k v)
+      let nValuesStr = Stdlib.Int64.toString (Stdlib.List.length pairs)
+      Stdlib.printLine
+        (Colors.hint $"-- annotated with {nValuesStr} value(s) from trace {traceID} --")
+      let ctx =
+        PrettyPrinter.ProgramTypes.Context
+          { branchId = branchId
+            currentModule = Stdlib.Option.Option.None
+            currentFunction = Stdlib.Option.Option.None
+            traceValues = traceValues }
+      let prettyPrinted = PrettyPrinter.ProgramTypes.packageFn ctx item.entity
+      let highlighted = SyntaxHighlighting.highlightCode prettyPrinted
+      Stdlib.printLine highlighted
+
+  | _ ->
+    Stdlib.printLine
+      (Colors.error
+        "--with-trace currently only supports functions (annotates each `let` binding inline).")
 
 
 // VIEW command - view modules, functions, types, or constants
@@ -188,6 +239,14 @@ let execute (state: AppState) (args: List<String>) : AppState =
       state
     | Ok newLocation ->
       viewEntity branchId newLocation
+      state
+  | [ pathArg; "--with-trace"; traceID ] ->
+    match Traversal.traverse branchId state.packageData.currentLocation pathArg with
+    | Error errorMsg ->
+      Stdlib.printLine (Colors.error $"Cannot view: {errorMsg}")
+      state
+    | Ok newLocation ->
+      viewFunctionWithTrace branchId newLocation traceID
       state
   | _ ->
     help state
