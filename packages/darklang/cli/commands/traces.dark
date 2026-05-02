@@ -234,6 +234,9 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   | [ "clear" ] ->
     executeClear state
 
+  | [ "clear"; "--before"; durationStr ] ->
+    executeClearBefore state durationStr
+
   | [ "delete"; traceID ] ->
     match resolveTraceID traceID with
     | Some full -> executeDelete state full
@@ -856,6 +859,57 @@ let executeClear (state: Cli.AppState) : Cli.AppState =
     state
 
 
+/// Parse a short duration string ("30s", "5m", "1h", "2d") into seconds.
+/// Single-character unit suffix; bare numbers are rejected so callers
+/// always state intent. Returns Error with a hint on malformed input.
+let parseDuration (s: String) : Stdlib.Result.Result<Int64, String> =
+  let len = Stdlib.String.length s
+  if len < 2L then
+    Stdlib.Result.Result.Error
+      $"Duration too short: '{s}'; need a number + unit (s/m/h/d), e.g. 5m"
+  else
+    let unit = Stdlib.String.last s 1L
+    let numPart = Stdlib.String.dropLast s 1L
+    match Stdlib.Int64.parse numPart with
+    | Error _ ->
+      Stdlib.Result.Result.Error
+        $"Invalid duration '{s}'; need a number + unit (s/m/h/d), e.g. 5m"
+    | Ok n ->
+      match unit with
+      | "s" -> Stdlib.Result.Result.Ok n
+      | "m" -> Stdlib.Result.Result.Ok(n * 60L)
+      | "h" -> Stdlib.Result.Result.Ok(n * 3600L)
+      | "d" -> Stdlib.Result.Result.Ok(n * 86400L)
+      | _ ->
+        Stdlib.Result.Result.Error
+          $"Unknown unit '{unit}' in '{s}'; use s, m, h, or d"
+
+
+/// `traces clear --before <duration>` — drop traces older than the
+/// given duration, complement to `prune --keep N` (count-based).
+let executeClearBefore
+  (state: Cli.AppState)
+  (durationStr: String)
+  : Cli.AppState =
+  match parseDuration durationStr with
+  | Error msg ->
+    Stdlib.printLine (Colors.error msg)
+    state
+  | Ok seconds ->
+    let now = Stdlib.DateTime.now ()
+    let cutoffDt = Stdlib.DateTime.subtractSeconds now seconds
+    let cutoff = Stdlib.DateTime.toString cutoffDt
+    let count = Builtin.cliTracesClearBefore cutoff
+    match count with
+    | 0L ->
+      Stdlib.printLine $"No traces older than {durationStr}."
+      state
+    | _ ->
+      Stdlib.printLine
+        $"Cleared {Stdlib.Int64.toString count} trace(s) older than {durationStr}."
+      state
+
+
 /// `traces delete <id>` — remove one trace and its fn_calls. ID accepts
 /// the same prefix-resolution as view/export/replay.
 let executeDelete (state: Cli.AppState) (traceID: String) : Cli.AppState =
@@ -916,6 +970,7 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
   | [ "find" ] -> [ Completion.simple "--view" ]
   | [ "replay" ] -> [ Completion.simple "--diff" ]
   | [ "prune" ] -> [ Completion.simple "--keep" ]
+  | [ "clear" ] -> [ Completion.simple "--before" ]
   | [ "stats" ] -> [ Completion.simple "--json" ]
   | [ "hotspots" ] -> [ Completion.simple "--json" ]
   | _ -> []
@@ -945,6 +1000,7 @@ let help (_state: Cli.AppState) : Unit =
     "  delete <trace-id>             Delete one trace (prefix OK)"
     "  prune --keep <N>              Keep the N most-recent traces, drop the rest"
     "  clear                         Delete all stored traces"
+    "  clear --before <duration>     Delete traces older than <duration> (s/m/h/d)"
     ""
     "Trace IDs accept any unambiguous prefix — `view fe62`, `export fe6219e9-4705`, etc."
     ""
@@ -985,5 +1041,6 @@ let help (_state: Cli.AppState) : Unit =
     "  traces replay <trace-id> --diff      - Re-run, then diff vs recorded output"
     "  traces delete fe62                   - Delete one trace by prefix"
     "  traces prune --keep 50               - Keep latest 50, drop the rest"
+    "  traces clear --before 1h             - Drop traces older than 1 hour"
     "  traces clear                         - Delete all traces" ]
   |> Stdlib.printLines

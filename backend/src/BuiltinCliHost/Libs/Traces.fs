@@ -1180,6 +1180,51 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "cliTracesClearBefore" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "cutoffISO"
+            TString
+            "ISO 8601 timestamp (e.g. 2026-05-02T01:00:00Z); traces with timestamp < cutoff are deleted." ]
+      returnType = TInt64
+      description =
+        "Delete traces older than the given cutoff (and their fn_calls). Returns count deleted. Caller is responsible for computing the cutoff (e.g. `DateTime.now() |> subtractSeconds 3600` for 'last hour')."
+      fn =
+        (function
+        | _, _, _, [ DString cutoffISO ] ->
+          uply {
+            // Timestamp column is ISO 8601 ("2026-05-02T02:03:53Z") which
+            // sorts lexicographically — string compare works as date compare.
+            let countToDelete =
+              Sql.query
+                "SELECT COUNT(*) AS c FROM traces WHERE timestamp < @cutoff"
+              |> Sql.parameters [ "cutoff", Sql.string cutoffISO ]
+              |> Sql.executeRowAsync (fun read -> read.int64 "c")
+            let! count = countToDelete
+
+            if count > 0L then
+              do!
+                Sql.query
+                  "DELETE FROM trace_fn_calls
+                   WHERE trace_id IN (
+                     SELECT id FROM traces WHERE timestamp < @cutoff
+                   )"
+                |> Sql.parameters [ "cutoff", Sql.string cutoffISO ]
+                |> Sql.executeStatementAsync
+              do!
+                Sql.query "DELETE FROM traces WHERE timestamp < @cutoff"
+                |> Sql.parameters [ "cutoff", Sql.string cutoffISO ]
+                |> Sql.executeStatementAsync
+
+            return DInt64 count
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
     { name = fn "cliTracesClear" 0
       typeParams = []
       parameters = [ Param.make "unit" TUnit "Ignored" ]
