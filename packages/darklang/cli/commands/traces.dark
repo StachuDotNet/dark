@@ -110,9 +110,12 @@ let rec parseViewOptions
   | "-d" :: n :: rest ->
     match Stdlib.Int64.parse n with
     | Ok depth ->
-      parseViewOptions
-        { opts with maxDepth = Stdlib.Option.Option.Some depth }
-        rest
+      if depth < 0L then
+        Stdlib.Result.Result.Error $"--depth must be ≥ 0 (got {n})"
+      else
+        parseViewOptions
+          { opts with maxDepth = Stdlib.Option.Option.Some depth }
+          rest
     | Error _ -> Stdlib.Result.Result.Error (parsePositionalErr n "depth")
   | "--no-builtins" :: rest ->
     parseViewOptions { opts with hideBuiltins = true } rest
@@ -134,9 +137,12 @@ let rec parseViewOptions
   | "--slow-ms" :: numStr :: rest ->
     match Stdlib.Int64.parse numStr with
     | Ok n ->
-      parseViewOptions
-        { opts with slowThresholdMs = Stdlib.Option.Option.Some n }
-        rest
+      if n < 0L then
+        Stdlib.Result.Result.Error $"--slow-ms must be ≥ 0 (got {numStr})"
+      else
+        parseViewOptions
+          { opts with slowThresholdMs = Stdlib.Option.Option.Some n }
+          rest
     | Error _ ->
       Stdlib.Result.Result.Error (parsePositionalErr numStr "--slow-ms threshold")
   | unknown :: _ ->
