@@ -14,6 +14,8 @@ module DvalReprInternalRoundtrippable = LibDB.DvalRepr.Roundtrippable
 module RT2DT = LibExecution.RuntimeTypesToDarkTypes
 module NR = LibExecution.RuntimeTypes.NameResolution
 module VT = LibExecution.ValueType
+module PT = LibExecution.ProgramTypes
+module Execution = LibExecution.Execution
 module TracesRefs = LibExecution.PackageRefs.Type.Cli.Commands.Traces
 
 let dvalTypeName () =
@@ -608,6 +610,210 @@ let fns () : List<BuiltInFn> =
               w.Flush()
               let json = UTF8.ofBytesUnsafe (stream.ToArray())
               return Dval.optionSome KTString (DString json)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
+    { name = fn "cliTracesReplayHttp" 0
+      typeParams = []
+      parameters =
+        [ Param.make "traceID" TString "HTTP trace to replay" ]
+      returnType = TypeReference.result TString TString
+      description =
+        "Replay a recorded HTTP request against the current version of the handler that produced it. Returns a formatted diff of recorded vs new (status + body). The handler is resolved by name from the trace's top-level fn_hash, then re-resolved on the current branch — so this answers 'did my refactor change behavior on this past request?'"
+      fn =
+        let resultOk = Dval.resultOk KTString KTString
+        let resultError = Dval.resultError KTString KTString
+
+        let asRecord (d : Dval) : Option<Map<string, Dval>> =
+          match d with
+          | DRecord(_, _, _, fields) -> Some fields
+          | _ -> None
+        let asInt64 (d : Dval) : Option<int64> =
+          match d with
+          | DInt64 n -> Some n
+          | _ -> None
+
+        // Body in the trace is always Persistent (post-promotion).
+        // Body in the live response is Ephemeral (just executed). Handle
+        // both.
+        let blobBytes (exeState : ExecutionState) (d : Dval) : Ply<byte[]> =
+          uply {
+            match d with
+            | DBlob(Persistent(hash, _)) ->
+              let! bs = LibDB.PackageManager.RuntimeTypes.Blob.get hash
+              return Option.defaultValue [||] bs
+            | DBlob(Ephemeral id) ->
+              let mutable bs : byte[] = null
+              if exeState.blobStore.TryGetValue(id, &bs) then return bs
+              else return [||]
+            | _ -> return [||]
+          }
+
+        // Render bytes as a string for diff display. Truncate long
+        // bodies so the diff stays scannable; full bytes still match
+        // exactly via the byte-equality check.
+        let renderBody (bytes : byte[]) : string =
+          let s = UTF8.ofBytesOpt bytes |> Option.defaultValue $"<{bytes.Length} bytes>"
+          if s.Length > 200 then s.Substring(0, 200) + "…" else s
+
+        (function
+        | exeState, _, _, [ DString traceID ] ->
+          uply {
+            let! traceRow =
+              Sql.query
+                "SELECT handler_desc, input_value_json
+                 FROM traces WHERE id = @traceId"
+              |> Sql.parameters [ "traceId", Sql.string traceID ]
+              |> Sql.executeRowOptionAsync (fun read ->
+                {| handlerDesc = read.string "handler_desc"
+                   inputValueJson = read.string "input_value_json" |})
+
+            match traceRow with
+            | None -> return resultError (DString $"Trace not found: {traceID}")
+            | Some r when not (r.handlerDesc.Contains(" /")) ->
+              return
+                resultError (
+                  DString
+                    $"Trace {traceID} isn't an HTTP trace (handler_desc: {r.handlerDesc}). Use `traces replay <id> --diff` for eval traces."
+                )
+            | Some r ->
+              let! topRow =
+                Sql.query
+                  "SELECT result_json, fn_hash FROM trace_fn_calls
+                   WHERE trace_id = @traceId AND parent_call_id IS NULL
+                   ORDER BY rowid DESC LIMIT 1"
+                |> Sql.parameters [ "traceId", Sql.string traceID ]
+                |> Sql.executeRowOptionAsync (fun read ->
+                  {| resultJson = read.string "result_json"
+                     fnName = read.stringOrNone "fn_hash" |})
+
+              match topRow with
+              | None ->
+                return
+                  resultError (
+                    DString
+                      $"Trace {traceID} has no top-level call; can't identify the handler to replay against."
+                  )
+              | Some top when top.fnName.IsNone ->
+                return
+                  resultError (
+                    DString
+                      $"Trace {traceID}'s top-level call is a lambda (no qualified name). Replay needs a named fn to re-resolve on the current branch."
+                  )
+              | Some top ->
+                // Parse the recorded fn name back into a PackageLocation.
+                // fn_hash stored the dotted name post-fnNameToSimpleString,
+                // not a hex hash.
+                let handlerName = top.fnName.Value
+                let parts = handlerName.Split('.')
+                if parts.Length < 2 then
+                  return
+                    resultError (
+                      DString
+                        $"Recorded handler name '{handlerName}' isn't a package fn (likely a builtin); can't replay."
+                    )
+                else
+                  let owner = parts[0]
+                  let name = parts[parts.Length - 1]
+                  let modules =
+                    parts[1 .. parts.Length - 2] |> Array.toList
+                  let location : PT.PackageLocation =
+                    { owner = owner; modules = modules; name = name }
+
+                  let! branchChain =
+                    LibDB.PackageManager.Branches.getBranchChain
+                      exeState.branchId
+                  let! hashOpt =
+                    LibDB.PackageManager.ProgramTypes.Fn.find branchChain location
+
+                  match hashOpt with
+                  | None ->
+                    return
+                      resultError (
+                        DString
+                          $"Handler `{handlerName}` not found on the current branch (deleted, renamed, or unlisted?)."
+                      )
+                  | Some hash ->
+                    let (PT.Hash hashStr) = hash
+                    let fqName = FQFnName.fqPackage hashStr
+                    let requestDval =
+                      DvalReprInternalRoundtrippable.parseJsonV0
+                        r.inputValueJson
+                    let! result =
+                      Execution.executeFunction
+                        exeState
+                        fqName
+                        []
+                        (NEList.singleton requestDval)
+                    match result with
+                    | Error(rte, _) ->
+                      let! errStr = Execution.runtimeErrorToString exeState rte
+                      let errMsg =
+                        match errStr with
+                        | Ok(DString s) -> s
+                        | _ -> string rte
+                      return
+                        resultError (
+                          DString $"Replay failed during execution: {errMsg}"
+                        )
+                    | Ok newRespDval ->
+                      let recordedRespDval =
+                        DvalReprInternalRoundtrippable.parseJsonV0
+                          top.resultJson
+
+                      match
+                        asRecord recordedRespDval, asRecord newRespDval
+                      with
+                      | Some oldFields, Some newFields ->
+                        let oldStatus =
+                          Map.tryFind "statusCode" oldFields
+                          |> Option.bind asInt64
+                          |> Option.defaultValue -1L
+                        let newStatus =
+                          Map.tryFind "statusCode" newFields
+                          |> Option.bind asInt64
+                          |> Option.defaultValue -1L
+                        let! oldBody =
+                          Map.tryFind "body" oldFields
+                          |> Option.map (blobBytes exeState)
+                          |> Option.defaultWith (fun () ->
+                            uply { return [||] })
+                        let! newBody =
+                          Map.tryFind "body" newFields
+                          |> Option.map (blobBytes exeState)
+                          |> Option.defaultWith (fun () ->
+                            uply { return [||] })
+
+                        let statusMatch = oldStatus = newStatus
+                        let bodyMatch = oldBody = newBody
+                        let verdict =
+                          if statusMatch && bodyMatch then "✓ matches"
+                          elif not statusMatch && not bodyMatch then
+                            "✗ status and body differ"
+                          elif not statusMatch then "✗ status differs"
+                          else "✗ body differs"
+
+                        let diff =
+                          $"Handler:  {handlerName}\n"
+                          + "\n"
+                          + $"Recorded: HTTP {oldStatus}\n"
+                          + $"  body: {renderBody oldBody}\n"
+                          + "\n"
+                          + $"Replayed: HTTP {newStatus}\n"
+                          + $"  body: {renderBody newBody}\n"
+                          + "\n"
+                          + verdict
+                        return resultOk (DString diff)
+                      | _ ->
+                        return
+                          resultError (
+                            DString
+                              "Couldn't extract Stdlib.Http.Response fields from recorded or replayed result."
+                          )
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

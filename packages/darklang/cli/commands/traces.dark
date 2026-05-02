@@ -781,12 +781,28 @@ let executeReplay
   (traceID: String)
   (diff: Bool)
   : Cli.AppState =
+  // cliTracesGetInput returns Some only for traces whose input is a
+  // String (eval/run). HTTP traces have a Request record input and
+  // come back as None — those route to the HTTP replay path.
   let input = Builtin.cliTracesGetInput traceID
 
   match input with
   | None ->
-    Stdlib.printLine (Colors.error $"Trace not found or has no replayable input: {traceID}")
-    state
+    if diff then
+      Stdlib.printLine $"Replaying HTTP trace {traceID} against current handler..."
+      Stdlib.printLine ""
+      match Builtin.cliTracesReplayHttp traceID with
+      | Ok diffStr ->
+        Stdlib.printLine diffStr
+        state
+      | Error msg ->
+        Stdlib.printLine (Colors.error msg)
+        state
+    else
+      Stdlib.printLine
+        (Colors.error
+          $"HTTP trace replay requires --diff (plain replay against the live handler isn't wired yet). Try: traces replay {traceID} --diff")
+      state
   | Some code ->
     Stdlib.printLine $"Replaying trace {traceID}..."
     Stdlib.printLine ""
