@@ -867,8 +867,11 @@ let executeTail
     let candidates =
       match routeFilter with
       | Some route ->
+        let routeUpper = Stdlib.String.toUppercase route
         allRows
-        |> Stdlib.List.filter (fun row -> Stdlib.String.contains row.handler route)
+        |> Stdlib.List.filter (fun row ->
+          Stdlib.String.contains
+            (Stdlib.String.toUppercase row.handler) routeUpper)
       | None -> allRows
 
     // Drop the first (n-1) — the Nth-most-recent is what's left at head.
@@ -963,7 +966,10 @@ let rec followLoop
   let filtered =
     match routeFilter with
     | Some r ->
-      candidates |> Stdlib.List.filter (fun row -> Stdlib.String.contains row.handler r)
+      let rUpper = Stdlib.String.toUppercase r
+      candidates
+      |> Stdlib.List.filter (fun row ->
+        Stdlib.String.contains (Stdlib.String.toUppercase row.handler) rUpper)
     | None -> candidates
 
   let chronological = filtered |> Stdlib.List.reverse
@@ -1035,9 +1041,12 @@ let executeListByRoute
     // 500 to bound the fetch.
     let overFetch = if limit < 50L then 500L else limit * 10L
     let allRows = Builtin.cliTracesList overFetch
+    let routeUpper = Stdlib.String.toUppercase route
     let matching =
       allRows
-      |> Stdlib.List.filter (fun row -> Stdlib.String.contains row.handler route)
+      |> Stdlib.List.filter (fun row ->
+        Stdlib.String.contains
+          (Stdlib.String.toUppercase row.handler) routeUpper)
       |> Stdlib.List.take limit
 
     if jsonMode then
@@ -1468,7 +1477,7 @@ let help (_state: Cli.AppState) : Unit =
     "  list [limit]                  List recent traces (default limit: 20)"
     "  list --json [limit]           Same data as JSON for piping (e.g. `| jq`)"
     "  list --fn <substring> [limit] [--json]  Filter to traces calling a fn whose name contains <substring>"
-    "  list --route <substring> [limit] [--json]  Filter by handler description substring (HTTP)"
+    "  list --route <substring> [limit] [--json]  Filter by handler description substring (HTTP, case-insensitive)"
     "  view <trace-id> [flags]       View details of a specific trace"
     "  tail [N] [--route <substring>]  View the Nth-most-recent trace (default 1, the very latest)"
     "  follow [--route <substring>] [--json]  Tail-style: print new traces as they arrive (NDJSON with --json)"
