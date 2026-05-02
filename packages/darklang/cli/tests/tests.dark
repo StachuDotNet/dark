@@ -299,6 +299,30 @@ let testTracesFindByContent (): TestResult =
     TestResult.Fail $"Expected find result with eval handler — got: {output}"
 
 
+/// `traces replay <id> --diff` re-runs the recorded eval with current
+/// code and confirms the output unchanged. Locks in `3f79d2148`'s
+/// `cliTracesGetExpectedOutput` round-trip via `dvalToRepr`.
+let testTracesReplayDiffMatches (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "1L + 2L"]
+  let listJson = runWithCommand ["traces"; "list"; "1"; "--json"]
+  match Stdlib.String.split listJson "\"traceId\":\"" with
+  | _ :: rest :: _ ->
+    match Stdlib.String.split rest "\"" with
+    | tid :: _ ->
+      let output = runWithCommand ["traces"; "replay"; tid; "--diff"]
+      // Expected: "Original output: 3", "New output: 3", "✓ unchanged"
+      if Stdlib.String.contains output "Original output: 3"
+          && Stdlib.String.contains output "New output: 3"
+          && Stdlib.String.contains output "unchanged"
+      then
+        TestResult.Pass
+      else
+        TestResult.Fail $"Expected matching replay diff — got: {output}"
+    | _ -> TestResult.Fail "Couldn't parse trace id from list"
+  | _ -> TestResult.Fail "List --json had no traceId field"
+
+
 /// `traces inspect <eval-id>` errors clearly because eval traces
 /// have a builtin top-level (e.g. `int64Add`) — no source to view.
 /// Locks in the guard added in `b6d4ee657`. Without the guard, the
@@ -376,6 +400,7 @@ let allTests (): List<String * TestFunction> =
     ("Traces Stats Counts", fun () -> testTracesStatsCounts ())
     ("Traces Export JSON Schema", fun () -> testTracesExportJson ())
     ("Traces Find By Content", fun () -> testTracesFindByContent ())
+    ("Traces Replay Diff Matches", fun () -> testTracesReplayDiffMatches ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
