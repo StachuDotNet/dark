@@ -948,8 +948,15 @@ let executeTail
   (routeFilter: Stdlib.Option.Option<String>)
   (n: Int64)
   : Cli.AppState =
+  let routeIsEmpty =
+    match routeFilter with
+    | Some r -> Stdlib.String.trim r == ""
+    | None -> false
   if n < 1L then
     Stdlib.printLine (Colors.error "tail N must be ≥ 1")
+    state
+  else if routeIsEmpty then
+    Stdlib.printLine (Colors.error "--route pattern must not be empty")
     state
   else
     // Over-fetch so route-filtered Nth candidate is reachable; the
@@ -1106,6 +1113,14 @@ let executeFollow
   (routeFilter: Stdlib.Option.Option<String>)
   (jsonMode: Bool)
   : Cli.AppState =
+  let routeIsEmpty =
+    match routeFilter with
+    | Some r -> Stdlib.String.trim r == ""
+    | None -> false
+  if routeIsEmpty then
+    Stdlib.printLine (Colors.error "--route pattern must not be empty")
+    state
+  else
   if jsonMode == false then
     let label =
       match routeFilter with
