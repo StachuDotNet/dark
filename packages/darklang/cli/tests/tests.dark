@@ -31,14 +31,18 @@ let runWithCommand (args: List<String>): String =
 
 let testHelpCommand (): TestResult =
   let output = runWithCommand ["help"]
-
-  if Stdlib.String.contains output "Available commands:" &&
+  // The help output is organized by category headers — "Packages:",
+  // "SCM:", "Execution:" etc — not the older "Available commands:"
+  // banner. Assert the structure is recognizable and a handful of
+  // representative commands appear.
+  if Stdlib.String.contains output "Packages:" &&
+      Stdlib.String.contains output "SCM:" &&
       Stdlib.String.contains output "help" &&
       Stdlib.String.contains output "version" &&
       Stdlib.String.contains output "status" then
       TestResult.Pass
   else
-    TestResult.Fail "Expected help text with available commands"
+    TestResult.Fail $"Expected help text with category headers + base commands, got: {output}"
 
 
 let testVersionCommand (): TestResult =
