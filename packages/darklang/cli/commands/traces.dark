@@ -133,7 +133,13 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       state
 
   | [ "replay"; traceID ] ->
-    executeReplay state traceID
+    executeReplay state traceID false
+
+  | [ "replay"; traceID; "--diff" ] ->
+    executeReplay state traceID true
+
+  | [ "replay"; "--diff"; traceID ] ->
+    executeReplay state traceID true
 
   | [ "clear" ] ->
     executeClear state
@@ -528,7 +534,11 @@ let executeView
     state
 
 
-let executeReplay (state: Cli.AppState) (traceID: String) : Cli.AppState =
+let executeReplay
+  (state: Cli.AppState)
+  (traceID: String)
+  (diff: Bool)
+  : Cli.AppState =
   let input = Builtin.cliTracesGetInput traceID
 
   match input with
@@ -541,10 +551,28 @@ let executeReplay (state: Cli.AppState) (traceID: String) : Cli.AppState =
     let result =  Builtin.cliEvaluateExpression state.accountID state.currentBranchId code false
     match result with
     | Ok output ->
-      Stdlib.printLine output
-      Stdlib.printLine ""
-      Stdlib.printLine "Replay complete. A new trace was created for this execution."
-      state
+      if diff then
+        match Builtin.cliTracesGetExpectedOutput traceID with
+        | None ->
+          Stdlib.printLine output
+          Stdlib.printLine ""
+          Stdlib.printLine
+            "Replay complete. (No recorded output to diff against — the trace has no top-level fn calls.)"
+          state
+        | Some expected ->
+          Stdlib.printLine $"Original output: {expected}"
+          Stdlib.printLine $"     New output: {output}"
+          Stdlib.printLine ""
+          if expected == output then
+            Stdlib.printLine (Colors.success "✓ unchanged")
+          else
+            Stdlib.printLine (Colors.error "✗ output changed")
+          state
+      else
+        Stdlib.printLine output
+        Stdlib.printLine ""
+        Stdlib.printLine "Replay complete. A new trace was created for this execution."
+        state
     | Error err ->
       Stdlib.printLine (Colors.error $"Replay failed: {Cli.ExecutionError.toString err}")
       state
@@ -578,6 +606,7 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
       Completion.simple "--route" ]
   | [ "tail" ] -> [ Completion.simple "--route" ]
   | [ "follow" ] -> [ Completion.simple "--route" ]
+  | [ "replay" ] -> [ Completion.simple "--diff" ]
   | _ -> []
 
 
@@ -594,7 +623,7 @@ let help (_state: Cli.AppState) : Unit =
     "  stats [limit]                 Count of recent traces grouped by handler"
     "  export <trace-id>             Print a portable JSON dump of the trace"
     "  import <path>                 Re-create a trace from a JSON dump on disk"
-    "  replay <trace-id>             Re-execute a trace's code with current definitions"
+    "  replay <trace-id> [--diff]    Re-execute a trace's code; --diff compares against the recorded output"
     "  clear                         Delete all stored traces"
     ""
     "View flags (combinable):"
@@ -624,5 +653,6 @@ let help (_state: Cli.AppState) : Unit =
     "  traces export <trace-id> > t.json    - Dump a trace as JSON for sharing"
     "  traces import t.json                 - Re-create a trace from a JSON dump"
     "  traces replay <trace-id>             - Re-run with current code"
+    "  traces replay <trace-id> --diff      - Re-run, then diff vs recorded output"
     "  traces clear                         - Delete all traces" ]
   |> Stdlib.printLines

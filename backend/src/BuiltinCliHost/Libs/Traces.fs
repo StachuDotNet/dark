@@ -267,6 +267,45 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "cliTracesGetExpectedOutput" 0
+      typeParams = []
+      parameters = [ Param.make "traceID" TString "The trace ID" ]
+      returnType = TypeReference.option TString
+      description =
+        "Render the trace's last top-level fn-call result as the same string format `cliEvaluateExpression` returns. Returns None when the trace has no top-level fn calls (e.g. eval of a literal)."
+      fn =
+        (function
+        | exeState, _, _, [ DString traceID ] ->
+          uply {
+            // Last top-level call's result_json is the eval expression's
+            // final value — eval wraps each top-level expression as its
+            // own top call; the displayed answer is the last one.
+            let! row =
+              Sql.query
+                "SELECT result_json FROM trace_fn_calls
+                 WHERE trace_id = @traceId AND parent_call_id IS NULL
+                 ORDER BY rowid DESC LIMIT 1"
+              |> Sql.parameters [ "traceId", Sql.string traceID ]
+              |> Sql.executeRowOptionAsync (fun read -> read.string "result_json")
+
+            match row with
+            | None -> return Dval.optionNone KTString
+            | Some resultJson ->
+              try
+                let dval = DvalReprInternalRoundtrippable.parseJsonV0 resultJson
+                let! rendered = LibExecution.Execution.dvalToRepr exeState dval
+                return Dval.optionSome KTString (DString rendered)
+              with ex ->
+                print
+                  $"[traces] Failed to parse recorded output for diff: {ex.Message}"
+                return Dval.optionNone KTString
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
     { name = fn "cliTracesExportJson" 0
       typeParams = []
       parameters = [ Param.make "traceID" TString "The trace ID to export" ]
