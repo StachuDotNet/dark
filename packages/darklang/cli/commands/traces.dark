@@ -1444,6 +1444,10 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
       Completion.simple "--exclude"
       Completion.simple "--slow"
       Completion.simple "--slow-ms" ]
+  // Post-ID flags for replay, find, list --fn/--route.
+  | "replay" :: _ :: _ -> [ Completion.simple "--diff" ]
+  | "find" :: _ :: _ ->
+    [ Completion.simple "--view"; Completion.simple "--json" ]
   | _ -> []
 
 
