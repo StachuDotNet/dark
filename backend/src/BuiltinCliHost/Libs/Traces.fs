@@ -620,10 +620,14 @@ let fns () : List<BuiltInFn> =
     { name = fn "cliTracesReplayHttp" 0
       typeParams = []
       parameters =
-        [ Param.make "traceID" TString "HTTP trace to replay" ]
+        [ Param.make "traceID" TString "HTTP trace to replay"
+          Param.make
+            "withDiff"
+            TBool
+            "When true, also load the recorded response and diff against the new one." ]
       returnType = TypeReference.result TString TString
       description =
-        "Replay a recorded HTTP request against the current version of the handler that produced it. Returns a formatted diff of recorded vs new (status + body). The handler is resolved by name from the trace's top-level fn_hash, then re-resolved on the current branch — so this answers 'did my refactor change behavior on this past request?'"
+        "Replay a recorded HTTP request against the current version of the handler that produced it. With `withDiff = true`, returns a recorded-vs-new diff (status + body); otherwise returns just the new response. The handler is resolved by name from the trace's top-level fn_hash, then re-resolved on the current branch — so this answers 'did my refactor change behavior on this past request?' (diff mode) or 'what does this trace produce now?' (run mode)."
       fn =
         let resultOk = Dval.resultOk KTString KTString
         let resultError = Dval.resultError KTString KTString
@@ -661,7 +665,7 @@ let fns () : List<BuiltInFn> =
           if s.Length > 200 then s.Substring(0, 200) + "…" else s
 
         (function
-        | exeState, _, _, [ DString traceID ] ->
+        | exeState, _, _, [ DString traceID; DBool withDiff ] ->
           uply {
             let! traceRow =
               Sql.query
@@ -761,59 +765,73 @@ let fns () : List<BuiltInFn> =
                           DString $"Replay failed during execution: {errMsg}"
                         )
                     | Ok newRespDval ->
-                      let recordedRespDval =
-                        DvalReprInternalRoundtrippable.parseJsonV0
-                          top.resultJson
-
-                      match
-                        asRecord recordedRespDval, asRecord newRespDval
-                      with
-                      | Some oldFields, Some newFields ->
-                        let oldStatus =
-                          Map.tryFind "statusCode" oldFields
-                          |> Option.bind asInt64
-                          |> Option.defaultValue -1L
+                      match asRecord newRespDval with
+                      | None ->
+                        return
+                          resultError (
+                            DString
+                              "Replayed result isn't a Stdlib.Http.Response record."
+                          )
+                      | Some newFields ->
                         let newStatus =
                           Map.tryFind "statusCode" newFields
                           |> Option.bind asInt64
                           |> Option.defaultValue -1L
-                        let! oldBody =
-                          Map.tryFind "body" oldFields
-                          |> Option.map (blobBytes exeState)
-                          |> Option.defaultWith (fun () ->
-                            uply { return [||] })
                         let! newBody =
                           Map.tryFind "body" newFields
                           |> Option.map (blobBytes exeState)
                           |> Option.defaultWith (fun () ->
                             uply { return [||] })
 
-                        let statusMatch = oldStatus = newStatus
-                        let bodyMatch = oldBody = newBody
-                        let verdict =
-                          if statusMatch && bodyMatch then "✓ matches"
-                          elif not statusMatch && not bodyMatch then
-                            "✗ status and body differ"
-                          elif not statusMatch then "✗ status differs"
-                          else "✗ body differs"
+                        if withDiff then
+                          let recordedRespDval =
+                            DvalReprInternalRoundtrippable.parseJsonV0
+                              top.resultJson
+                          match asRecord recordedRespDval with
+                          | None ->
+                            return
+                              resultError (
+                                DString
+                                  "Recorded result isn't a Stdlib.Http.Response record."
+                              )
+                          | Some oldFields ->
+                            let oldStatus =
+                              Map.tryFind "statusCode" oldFields
+                              |> Option.bind asInt64
+                              |> Option.defaultValue -1L
+                            let! oldBody =
+                              Map.tryFind "body" oldFields
+                              |> Option.map (blobBytes exeState)
+                              |> Option.defaultWith (fun () ->
+                                uply { return [||] })
 
-                        let diff =
-                          $"Handler:  {handlerName}\n"
-                          + "\n"
-                          + $"Recorded: HTTP {oldStatus}\n"
-                          + $"  body: {renderBody oldBody}\n"
-                          + "\n"
-                          + $"Replayed: HTTP {newStatus}\n"
-                          + $"  body: {renderBody newBody}\n"
-                          + "\n"
-                          + verdict
-                        return resultOk (DString diff)
-                      | _ ->
-                        return
-                          resultError (
-                            DString
-                              "Couldn't extract Stdlib.Http.Response fields from recorded or replayed result."
-                          )
+                            let statusMatch = oldStatus = newStatus
+                            let bodyMatch = oldBody = newBody
+                            let verdict =
+                              if statusMatch && bodyMatch then "✓ matches"
+                              elif not statusMatch && not bodyMatch then
+                                "✗ status and body differ"
+                              elif not statusMatch then "✗ status differs"
+                              else "✗ body differs"
+
+                            let diff =
+                              $"Handler:  {handlerName}\n"
+                              + "\n"
+                              + $"Recorded: HTTP {oldStatus}\n"
+                              + $"  body: {renderBody oldBody}\n"
+                              + "\n"
+                              + $"Replayed: HTTP {newStatus}\n"
+                              + $"  body: {renderBody newBody}\n"
+                              + "\n"
+                              + verdict
+                            return resultOk (DString diff)
+                        else
+                          let summary =
+                            $"Handler:  {handlerName}\n"
+                            + "\n"
+                            + $"Replayed: HTTP {newStatus}\n"
+                            + $"  body: {renderBody newBody}"
+                          return resultOk (DString summary)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

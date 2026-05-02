@@ -803,20 +803,14 @@ let executeReplay
 
   match input with
   | None ->
-    if diff then
-      Stdlib.printLine $"Replaying HTTP trace {traceID} against current handler..."
-      Stdlib.printLine ""
-      match Builtin.cliTracesReplayHttp traceID with
-      | Ok diffStr ->
-        Stdlib.printLine diffStr
-        state
-      | Error msg ->
-        Stdlib.printLine (Colors.error msg)
-        state
-    else
-      Stdlib.printLine
-        (Colors.error
-          $"HTTP trace replay requires --diff (plain replay against the live handler isn't wired yet). Try: traces replay {traceID} --diff")
+    Stdlib.printLine $"Replaying HTTP trace {traceID} against current handler..."
+    Stdlib.printLine ""
+    match Builtin.cliTracesReplayHttp traceID diff with
+    | Ok output ->
+      Stdlib.printLine output
+      state
+    | Error msg ->
+      Stdlib.printLine (Colors.error msg)
       state
   | Some code ->
     Stdlib.printLine $"Replaying trace {traceID}..."
