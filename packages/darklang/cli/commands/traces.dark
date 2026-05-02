@@ -38,6 +38,9 @@ type ViewOptions =
     hideBuiltins: Bool
     hideStdlib: Bool
     filter: Stdlib.Option.Option<String>
+    /// Inverse of `filter` — hide calls whose name contains this pattern.
+    /// Children still recurse so the surrounding structure stays intact.
+    exclude: Stdlib.Option.Option<String>
     /// When Some N, hide calls whose durationMs < N (keeps the slow stuff).
     slowThresholdMs: Stdlib.Option.Option<Int64> }
 
@@ -48,6 +51,7 @@ let defaultViewOptions: ViewOptions =
       hideBuiltins = false
       hideStdlib = false
       filter = Stdlib.Option.Option.None
+      exclude = Stdlib.Option.Option.None
       slowThresholdMs = Stdlib.Option.Option.None }
 
 
@@ -83,6 +87,10 @@ let rec parseViewOptions
   | "--filter" :: pattern :: rest ->
     parseViewOptions
       { opts with filter = Stdlib.Option.Option.Some pattern }
+      rest
+  | "--exclude" :: pattern :: rest ->
+    parseViewOptions
+      { opts with exclude = Stdlib.Option.Option.Some pattern }
       rest
   | "--slow" :: rest ->
     // Bare `--slow` defaults to 10ms. For a custom threshold, use --slow-ms.
@@ -736,7 +744,11 @@ let isVisible (opts: ViewOptions) (call: FnCall) (ancestorMatched: Bool) : Bool 
     match opts.slowThresholdMs with
     | Some thr -> call.durationMs < thr
     | None -> false
-  if stdlibInternal || builtinHidden || belowSlowThreshold then
+  let excluded =
+    match opts.exclude with
+    | Some pat -> Stdlib.String.contains call.fnName pat
+    | None -> false
+  if stdlibInternal || builtinHidden || belowSlowThreshold || excluded then
     false
   else
     match opts.filter with
@@ -1081,6 +1093,8 @@ let help (_state: Cli.AppState) : Unit =
     "  --no-stdlib               Hide stdlib calls below the entry point"
     "  --filter <pattern>        Show only calls whose name contains <pattern>"
     "                            (and their descendants)"
+    "  --exclude <pattern>       Hide calls whose name contains <pattern>"
+    "                            (their children still recurse at parent indent)"
     "  --slow                    Hide calls below 10ms (builtins always 0)"
     "  --slow-ms <n>             Hide calls below <n>ms"
     ""
@@ -1105,6 +1119,7 @@ let help (_state: Cli.AppState) : Unit =
     "  traces view <trace-id> -d 2          - Top two tree levels only"
     "  traces view <trace-id> --no-stdlib --no-builtins"
     "  traces view <trace-id> --filter Multiply"
+    "  traces view <trace-id> --exclude listAppend  - Hide noisy intermediate calls"
     "  traces view <trace-id> --slow              - Only calls ≥10ms"
     "  traces view <trace-id> --slow-ms 100       - Only calls ≥100ms"
     "  traces export <trace-id> > t.json    - Dump a trace as JSON for sharing"
