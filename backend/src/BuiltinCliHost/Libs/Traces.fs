@@ -206,13 +206,20 @@ let fns () : List<BuiltInFn> =
             // Both builtins and package fns store their display name in
             // fn_hash (resolved at write time), so one LIKE matches either.
             let typeName = traceSummaryTypeName ()
-            let pattern = $"%%{fnName}%%"
+            // Escape SQL LIKE wildcards so a literal `%` or `_` in the
+            // user-supplied fnName matches a literal char, not any string.
+            let escaped =
+              fnName
+              |> fun s -> s.Replace(@"\", @"\\")
+              |> fun s -> s.Replace("%", @"\%")
+              |> fun s -> s.Replace("_", @"\_")
+            let pattern = $"%%{escaped}%%"
             let! rows =
               Sql.query
                 "SELECT DISTINCT t.id, t.handler_desc, t.timestamp
                  FROM traces t
                  JOIN trace_fn_calls c ON t.id = c.trace_id
-                 WHERE c.fn_hash LIKE @pattern
+                 WHERE c.fn_hash LIKE @pattern ESCAPE '\\'
                  ORDER BY t.rowid DESC
                  LIMIT @limit"
               |> Sql.parameters
@@ -359,15 +366,24 @@ let fns () : List<BuiltInFn> =
         | _, _, _, [ DString pattern; DInt64 limit ] ->
           uply {
             let typeName = traceSummaryTypeName ()
-            let likePattern = $"%%{pattern}%%"
+            // Escape SQL LIKE wildcards (%, _) and the escape char (\)
+            // so a user pattern like `errCode_503` matches the literal
+            // string and not "errCode" + any-char + "503". Without this,
+            // `find %` and `find _` would match every trace.
+            let escaped =
+              pattern
+              |> fun s -> s.Replace(@"\", @"\\")
+              |> fun s -> s.Replace("%", @"\%")
+              |> fun s -> s.Replace("_", @"\_")
+            let likePattern = $"%%{escaped}%%"
             let! rows =
               Sql.query
                 "SELECT DISTINCT t.id, t.handler_desc, t.timestamp, t.rowid AS rid
                  FROM traces t
                  LEFT JOIN trace_fn_calls c ON t.id = c.trace_id
-                 WHERE t.input_value_json LIKE @pattern
-                    OR c.args_json LIKE @pattern
-                    OR c.result_json LIKE @pattern
+                 WHERE t.input_value_json LIKE @pattern ESCAPE '\\'
+                    OR c.args_json LIKE @pattern ESCAPE '\\'
+                    OR c.result_json LIKE @pattern ESCAPE '\\'
                  ORDER BY t.rowid DESC
                  LIMIT @limit"
               |> Sql.parameters
