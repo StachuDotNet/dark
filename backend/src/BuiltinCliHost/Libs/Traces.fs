@@ -234,6 +234,54 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "cliTracesFind" 0
+      typeParams = []
+      parameters =
+        [ Param.make "pattern" TString "Substring to find in inputs/args/results"
+          Param.make "limit" TInt64 "Max number of traces to return" ]
+      returnType = TList(TVariable "a")
+      description =
+        "List traces whose recorded input or any fn-call args/result contains the substring (case-sensitive). Searches the JSON form, so values like `\"errCode\":503` work."
+      fn =
+        (function
+        | _, _, _, [ DString pattern; DInt64 limit ] ->
+          uply {
+            let typeName = traceSummaryTypeName ()
+            let likePattern = $"%%{pattern}%%"
+            let! rows =
+              Sql.query
+                "SELECT DISTINCT t.id, t.handler_desc, t.timestamp, t.rowid AS rid
+                 FROM traces t
+                 LEFT JOIN trace_fn_calls c ON t.id = c.trace_id
+                 WHERE t.input_value_json LIKE @pattern
+                    OR c.args_json LIKE @pattern
+                    OR c.result_json LIKE @pattern
+                 ORDER BY t.rowid DESC
+                 LIMIT @limit"
+              |> Sql.parameters
+                [ "pattern", Sql.string likePattern; "limit", Sql.int64 limit ]
+              |> Sql.executeAsync (fun read ->
+                {| id = read.string "id"
+                   handler = read.string "handler_desc"
+                   timestamp = read.string "timestamp" |})
+
+            return
+              rows
+              |> List.map (fun r ->
+                let fields =
+                  Map
+                    [ "traceId", DString r.id
+                      "handler", DString r.handler
+                      "timestamp", DString r.timestamp ]
+                DRecord(typeName, typeName, [], fields))
+              |> Dval.list (KTCustomType(typeName, []))
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
     { name = fn "cliTracesGetInput" 0
       typeParams = []
       parameters = [ Param.make "traceID" TString "The trace ID to get input from" ]

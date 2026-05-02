@@ -121,6 +121,14 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   | [ "tail"; "--route"; route ] ->
     executeTail state (Stdlib.Option.Option.Some route)
 
+  | [ "find"; pattern ] -> executeFind state pattern 20L
+  | [ "find"; pattern; limitStr ] ->
+    match Stdlib.Int64.parse limitStr with
+    | Ok limit -> executeFind state pattern limit
+    | Error _ ->
+      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      state
+
   | [ "export"; traceID ] -> executeExport state traceID
 
   | [ "import"; path ] -> executeImport state path
@@ -174,6 +182,31 @@ let executeListByFn (state: Cli.AppState) (fnName: String) (limit: Int64) : Cli.
     state
   | _ ->
     Stdlib.printLine $"Traces calling '{fnName}' (last {Stdlib.Int64.toString limit}):"
+    Stdlib.printLine ""
+    printTraceRows rows
+    Stdlib.printLine ""
+    Stdlib.printLine "Use 'traces view <trace-id>' to see details."
+    state
+
+
+/// `traces find <pattern> [limit]` — list traces whose recorded input or any
+/// fn-call args/result contain the substring (case-sensitive, matches the
+/// stored JSON form). Useful for "show me everywhere user 42 was touched"
+/// or "show me traces where errCode 503 came back."
+let executeFind
+  (state: Cli.AppState)
+  (pattern: String)
+  (limit: Int64)
+  : Cli.AppState =
+  let rows = Builtin.cliTracesFind pattern limit
+
+  match rows with
+  | [] ->
+    Stdlib.printLine $"No traces match '{pattern}'."
+    state
+  | _ ->
+    Stdlib.printLine
+      $"Traces matching '{pattern}' (last {Stdlib.Int64.toString limit}):"
     Stdlib.printLine ""
     printTraceRows rows
     Stdlib.printLine ""
@@ -597,6 +630,7 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
       Completion.simple "tail"
       Completion.simple "follow"
       Completion.simple "stats"
+      Completion.simple "find"
       Completion.simple "export"
       Completion.simple "import"
       Completion.simple "replay"
@@ -621,6 +655,7 @@ let help (_state: Cli.AppState) : Unit =
     "  tail [--route <substring>]    View the most-recent trace, optionally filtered"
     "  follow [--route <substring>]  Tail-style: print new traces as they arrive"
     "  stats [limit]                 Count of recent traces grouped by handler"
+    "  find <pattern> [limit]        List traces whose recorded values contain a substring"
     "  export <trace-id>             Print a portable JSON dump of the trace"
     "  import <path>                 Re-create a trace from a JSON dump on disk"
     "  replay <trace-id> [--diff]    Re-execute a trace's code; --diff compares against the recorded output"
@@ -646,6 +681,7 @@ let help (_state: Cli.AppState) : Unit =
     "  traces follow                        - Stream new traces as they arrive"
     "  traces follow --route /api           - Stream new traces matching /api"
     "  traces stats                         - Count recent traces by handler"
+    "  traces find user-42                  - All traces touching the substring 'user-42'"
     "  traces view <trace-id>               - View full trace tree"
     "  traces view <trace-id> -d 2          - Top two tree levels only"
     "  traces view <trace-id> --no-stdlib --no-builtins"
