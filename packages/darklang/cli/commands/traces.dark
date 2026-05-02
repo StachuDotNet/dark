@@ -279,7 +279,8 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       state
   | [ "tail"; "--route"; route ] ->
     executeTail state (Stdlib.Option.Option.Some route) 1L
-  | [ "tail"; "--route"; route; nStr ] ->
+  | [ "tail"; "--route"; route; nStr ]
+  | [ "tail"; nStr; "--route"; route ] ->
     match Stdlib.Int64.parse nStr with
     | Ok n -> executeTail state (Stdlib.Option.Option.Some route) n
     | Error _ ->
