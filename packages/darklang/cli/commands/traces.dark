@@ -92,6 +92,9 @@ let resolveTraceID (input: String) : Stdlib.Option.Option<String> =
   if Stdlib.String.startsWith input "-" then
     Stdlib.printLine (Colors.error $"Unknown flag: {input}")
     Stdlib.Option.Option.None
+  else if input == "" then
+    Stdlib.printLine (Colors.error "Trace ID must not be empty")
+    Stdlib.Option.Option.None
   else
     match Builtin.cliTracesResolveID input with
     | Ok fullID -> Stdlib.Option.Option.Some fullID
