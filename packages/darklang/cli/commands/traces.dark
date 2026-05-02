@@ -241,6 +241,11 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     | Some full -> executeGenTest state full
     | None -> state
 
+  | [ "values"; traceID ] ->
+    match resolveTraceID traceID with
+    | Some full -> executeValues state full
+    | None -> state
+
   | "view" :: traceID :: flagArgs ->
     match parseViewOptions defaultViewOptions flagArgs with
     | Ok opts ->
@@ -466,6 +471,30 @@ let executeExport (state: Cli.AppState) (traceID: String) : Cli.AppState =
 /// wire-format blocks come straight from the trace; the [http-handler]
 /// block has a TODO placeholder for the user to paste the handler body.
 /// Pipe to a file:  darklang traces gen-test <id> > testfiles/.../foo.test
+/// `traces values <id>` — list every per-AST-node value the trace
+/// recorded (today: just `let` RHS values, see `9ba2b40ac`). Debug
+/// surface for the `view --with-trace` work-in-progress; ids are raw
+/// uuids until the renderer can correlate them back to source.
+let executeValues (state: Cli.AppState) (traceID: String) : Cli.AppState =
+  let pairs = Builtin.cliTracesGetExprValues traceID
+  match pairs with
+  | [] ->
+    Stdlib.printLine
+      "No expression values recorded for this trace."
+    Stdlib.printLine
+      "(Today only `let` RHS values populate the table; more PT cases follow.)"
+    state
+  | _ ->
+    let nStr = Stdlib.Int64.toString (Stdlib.List.length pairs)
+    Stdlib.printLine $"Recorded expression values ({nStr}):"
+    Stdlib.printLine ""
+    Stdlib.List.iter pairs (fun pair ->
+      let (exprId, dval) = pair
+      let repr = compactDval state.currentBranchId dval
+      Stdlib.printLine $"  {exprId}  →  {repr}")
+    state
+
+
 /// Resolve a recorded handler's qualified name (e.g.
 /// "Darklang.DemoData.HttpServerTest.helloHandlerFn") to its current
 /// pretty-printed body expression. Returns None if the fn was deleted,
@@ -1063,6 +1092,7 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
       Completion.simple "export"
       Completion.simple "import"
       Completion.simple "gen-test"
+      Completion.simple "values"
       Completion.simple "replay"
       Completion.simple "delete"
       Completion.simple "prune"
@@ -1105,6 +1135,7 @@ let help (_state: Cli.AppState) : Unit =
     "  export <trace-id>             Print a portable JSON dump of the trace"
     "  import <path>                 Re-create a trace from a JSON dump on disk"
     "  gen-test <trace-id>           Generate a testfiles/http-server/*.test skeleton from an HTTP trace"
+    "  values <trace-id>             Per-AST-node values recorded by the trace (today: let bindings only)"
     "  replay <trace-id> [--diff]    Re-execute a trace's code; --diff compares against the recorded output"
     "  delete <trace-id>             Delete one trace (prefix OK)"
     "  prune --keep <N>              Keep the N most-recent traces, drop the rest"

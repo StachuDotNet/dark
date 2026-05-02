@@ -394,6 +394,39 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "cliTracesGetExprValues" 0
+      typeParams = []
+      parameters = [ Param.make "traceID" TString "Trace to read expr values from" ]
+      returnType = TList(TTuple(TString, TVariable "a", []))
+      description =
+        "Per-AST-node values recorded via the `traceDval` hook. Returns (exprId-as-string, Dval) tuples ordered by exprId. Today only `let` RHS values are captured (see `9ba2b40ac`); more PT cases will populate this table as `Expr.toRT` learns to emit `TraceDval` after them."
+      fn =
+        (function
+        | _, _, _, [ DString traceID ] ->
+          uply {
+            let! rows =
+              Sql.query
+                "SELECT expr_id, dval_json FROM trace_expr_values
+                 WHERE trace_id = @traceId
+                 ORDER BY expr_id"
+              |> Sql.parameters [ "traceId", Sql.string traceID ]
+              |> Sql.executeAsync (fun read ->
+                {| exprId = read.string "expr_id"
+                   dvalJson = read.string "dval_json" |})
+
+            return
+              rows
+              |> List.map (fun r ->
+                let dval = parseDvalJson r.dvalJson
+                DTuple(DString r.exprId, dval, []))
+              |> Dval.list (KTTuple(VT.string, VT.unknown, []))
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
     { name = fn "cliTracesResolveID" 0
       typeParams = []
       parameters =
