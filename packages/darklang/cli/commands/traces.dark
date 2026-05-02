@@ -1540,7 +1540,8 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
       Completion.simple "replay"
       Completion.simple "delete"
       Completion.simple "prune"
-      Completion.simple "clear" ]
+      Completion.simple "clear"
+      Completion.simple "help" ]
   | [ "list" ] ->
     [ Completion.simple "--fn"
       Completion.simple "--route"
