@@ -449,6 +449,13 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     Stdlib.printLine (Colors.error "Usage: traces prune --keep <N>")
     state
 
+  // Catch any other malformed follow invocation — anything not matched
+  // by the earlier specific arms (e.g. `traces follow --frob`).
+  | "follow" :: _ ->
+    Stdlib.printLine
+      (Colors.error "Usage: traces follow [--route <substring>] [--json]")
+    state
+
   | _ ->
     // If the first token isn't a known subcommand, surface that
     // explicitly before dumping help so a typo'd `traces lst` doesn't
