@@ -123,6 +123,8 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
 
   | [ "export"; traceID ] -> executeExport state traceID
 
+  | [ "import"; path ] -> executeImport state path
+
   | "view" :: traceID :: flagArgs ->
     match parseViewOptions defaultViewOptions flagArgs with
     | Ok opts -> executeView state traceID opts
@@ -175,8 +177,8 @@ let executeListByFn (state: Cli.AppState) (fnName: String) (limit: Int64) : Cli.
 
 /// `traces export <trace-id>` — print a portable JSON dump of the
 /// trace (metadata + input + every fn call's args/result). Pipe to a
-/// file to share a repro. Roundtrip into a future `traces import` will
-/// re-create the trace row in another DB.
+/// file to share a repro. Roundtrip into `traces import` re-creates the
+/// trace row in another DB.
 let executeExport (state: Cli.AppState) (traceID: String) : Cli.AppState =
   match Builtin.cliTracesExportJson traceID with
   | None ->
@@ -185,6 +187,26 @@ let executeExport (state: Cli.AppState) (traceID: String) : Cli.AppState =
   | Some json ->
     Stdlib.printLine json
     state
+
+
+/// `traces import <path>` — read a JSON dump produced by
+/// `traces export` and re-create the trace row in this DB. Useful for
+/// reproducing a trace shared from another machine. The trace ID is
+/// preserved; an existing row with that ID is overwritten.
+let executeImport (state: Cli.AppState) (path: String) : Cli.AppState =
+  match Stdlib.Cli.File.readText path with
+  | Error e ->
+    Stdlib.printLine (Colors.error $"Could not read {path}: {e.message}")
+    state
+  | Ok json ->
+    match Builtin.cliTracesImport json with
+    | Ok traceID ->
+      Stdlib.printLine $"Imported trace {traceID}"
+      Stdlib.printLine $"  → use 'traces view {traceID}' to inspect."
+      state
+    | Error msg ->
+      Stdlib.printLine (Colors.error msg)
+      state
 
 
 /// `traces tail [--route <substring>]` — open the most-recent trace's
@@ -548,6 +570,7 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
       Completion.simple "follow"
       Completion.simple "stats"
       Completion.simple "export"
+      Completion.simple "import"
       Completion.simple "replay"
       Completion.simple "clear" ]
   | [ "list" ] ->
@@ -570,6 +593,7 @@ let help (_state: Cli.AppState) : Unit =
     "  follow [--route <substring>]  Tail-style: print new traces as they arrive"
     "  stats [limit]                 Count of recent traces grouped by handler"
     "  export <trace-id>             Print a portable JSON dump of the trace"
+    "  import <path>                 Re-create a trace from a JSON dump on disk"
     "  replay <trace-id>             Re-execute a trace's code with current definitions"
     "  clear                         Delete all stored traces"
     ""
@@ -597,6 +621,8 @@ let help (_state: Cli.AppState) : Unit =
     "  traces view <trace-id> -d 2          - Top two tree levels only"
     "  traces view <trace-id> --no-stdlib --no-builtins"
     "  traces view <trace-id> --filter Multiply"
+    "  traces export <trace-id> > t.json    - Dump a trace as JSON for sharing"
+    "  traces import t.json                 - Re-create a trace from a JSON dump"
     "  traces replay <trace-id>             - Re-run with current code"
     "  traces clear                         - Delete all traces" ]
   |> Stdlib.printLines

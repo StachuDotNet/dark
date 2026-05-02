@@ -365,6 +365,97 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "cliTracesImport" 0
+      typeParams = []
+      parameters =
+        [ Param.make "json" TString "JSON exported via cliTracesExportJson" ]
+      returnType = TypeReference.result TString TString
+      description =
+        "Import a trace from a JSON dump (the `traces export` format). Re-creates the trace row + all fn_call rows under the importing process's canvas. Returns the trace ID on success."
+      fn =
+        let resultOk = Dval.resultOk KTString KTString
+        let resultError = Dval.resultError KTString KTString
+        (function
+        | exeState, _, _, [ DString json ] ->
+          uply {
+            try
+              use doc = JsonDocument.Parse(json)
+              let root = doc.RootElement
+              let getStr (key : string) = root.GetProperty(key).GetString()
+              let nullableStr (el : JsonElement) (key : string) =
+                match el.TryGetProperty(key) with
+                | true, prop when prop.ValueKind = JsonValueKind.Null -> None
+                | true, prop -> Some(prop.GetString())
+                | false, _ -> None
+
+              let id = getStr "id"
+              let handlerDesc = getStr "handler_desc"
+              let timestamp = getStr "timestamp"
+              let inputName = getStr "input_name"
+              let inputValueJson = root.GetProperty("input_value").GetRawText()
+              let canvasIdStr = string exeState.program.canvasID
+
+              // Mirrors TraceStorage.store: INSERT OR REPLACE the trace row,
+              // DELETE-then-INSERT the fn_calls. Re-importing the same id
+              // overwrites cleanly. root_tlid is synthetic on import; the
+              // browsing layer doesn't read it.
+              let baseStatements =
+                [ "INSERT OR REPLACE INTO traces
+                    (id, canvas_id, root_tlid, handler_desc, timestamp,
+                     input_name, input_value_json)
+                   VALUES
+                    (@id, @canvasId, @rootTlid, @handlerDesc, @timestamp,
+                     @inputName, @inputValueJson)",
+                  [ [ "id", Sql.string id
+                      "canvasId", Sql.string canvasIdStr
+                      "rootTlid", Sql.int64 0L
+                      "handlerDesc", Sql.string handlerDesc
+                      "timestamp", Sql.string timestamp
+                      "inputName", Sql.string inputName
+                      "inputValueJson", Sql.string inputValueJson ] ]
+
+                  "DELETE FROM trace_fn_calls WHERE trace_id = @traceId",
+                  [ [ "traceId", Sql.string id ] ] ]
+
+              let fnCalls = root.GetProperty("fn_calls")
+              let eventStmt =
+                if fnCalls.GetArrayLength() = 0 then
+                  []
+                else
+                  let rows =
+                    fnCalls.EnumerateArray()
+                    |> Seq.toList
+                    |> List.map (fun ev ->
+                      [ "traceId", Sql.string id
+                        "callId", Sql.string (ev.GetProperty("call_id").GetString())
+                        "parentCallId",
+                        Sql.stringOrNone (nullableStr ev "parent_call_id")
+                        "kind", Sql.string (ev.GetProperty("kind").GetString())
+                        "fnHash", Sql.stringOrNone (nullableStr ev "fn_hash")
+                        "lambdaExprId",
+                        Sql.stringOrNone (nullableStr ev "lambda_expr_id")
+                        "argsJson", Sql.string (ev.GetProperty("args").GetRawText())
+                        "resultJson",
+                        Sql.string (ev.GetProperty("result").GetRawText()) ])
+                  [ "INSERT INTO trace_fn_calls
+                      (trace_id, call_id, parent_call_id, kind, fn_hash,
+                       lambda_expr_id, args_json, result_json)
+                     VALUES
+                      (@traceId, @callId, @parentCallId, @kind, @fnHash,
+                       @lambdaExprId, @argsJson, @resultJson)",
+                    rows ]
+
+              let _ = Sql.executeTransactionSync (baseStatements @ eventStmt)
+              return resultOk (DString id)
+            with ex ->
+              return resultError (DString $"Failed to import trace: {ex.Message}")
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
     { name = fn "cliTracesClear" 0
       typeParams = []
       parameters = [ Param.make "unit" TUnit "Ignored" ]
