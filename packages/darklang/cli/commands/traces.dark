@@ -91,7 +91,7 @@ let rec parseViewOptions
       parseViewOptions
         { opts with maxDepth = Stdlib.Option.Option.Some depth }
         rest
-    | Error _ -> Stdlib.Result.Result.Error $"Invalid depth: {n}"
+    | Error _ -> Stdlib.Result.Result.Error (parsePositionalErr n "depth")
   | "--no-builtins" :: rest ->
     parseViewOptions { opts with hideBuiltins = true } rest
   | "--no-stdlib" :: rest ->
@@ -116,7 +116,7 @@ let rec parseViewOptions
         { opts with slowThresholdMs = Stdlib.Option.Option.Some n }
         rest
     | Error _ ->
-      Stdlib.Result.Result.Error $"Invalid --slow-ms threshold: {numStr}"
+      Stdlib.Result.Result.Error (parsePositionalErr numStr "--slow-ms threshold")
   | unknown :: _ ->
     Stdlib.Result.Result.Error $"Unknown flag: {unknown}"
 
@@ -319,7 +319,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     match Stdlib.Int64.parse nStr with
     | Ok n -> executePruneKeep state n
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid --keep N: {nStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr nStr "--keep N"))
       state
 
   // Focused usage messages for arity-1 commands when invoked with no
