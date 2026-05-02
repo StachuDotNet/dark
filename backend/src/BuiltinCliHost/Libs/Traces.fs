@@ -726,22 +726,26 @@ let fns () : List<BuiltInFn> =
                     $"Trace {traceID} isn't an HTTP trace (handler_desc: {r.handlerDesc}). gen-test only handles HTTP for now."
                 )
             | Some r ->
-              let! topResult =
+              let! topRow =
                 Sql.query
-                  "SELECT result_json FROM trace_fn_calls
+                  "SELECT result_json, fn_hash FROM trace_fn_calls
                    WHERE trace_id = @traceId AND parent_call_id IS NULL
                    ORDER BY rowid DESC LIMIT 1"
                 |> Sql.parameters [ "traceId", Sql.string traceID ]
-                |> Sql.executeRowOptionAsync (fun read -> read.string "result_json")
+                |> Sql.executeRowOptionAsync (fun read ->
+                  {| resultJson = read.string "result_json"
+                     fnName = read.stringOrNone "fn_hash" |})
 
-              match topResult with
+              match topRow with
               | None ->
                 return
                   resultError (
                     DString
                       $"Trace {traceID} has no top-level call result; can't reconstruct response."
                   )
-              | Some resultJson ->
+              | Some top ->
+                let resultJson = top.resultJson
+                let handlerName = top.fnName
                 let inputDval =
                   DvalReprInternalRoundtrippable.parseJsonV0 r.inputValueJson
                 let resultDval =
@@ -810,10 +814,14 @@ let fns () : List<BuiltInFn> =
                     if List.isEmpty cleanRespHeaders then ""
                     else formatHeaders cleanRespHeaders + "\n"
 
+                  let handlerHint =
+                    match handlerName with
+                    | Some n -> $"//       Source: `darklang view {n}`\n"
+                    | None -> "//       Run `darklang view <fn-path>` for the source.\n"
                   let fixture =
                     $"[http-handler {method} {path}]\n"
                     + "// TODO: paste the handler body that produced this trace.\n"
-                    + "//       Run `darklang view <fn-path>` for the source, then re-run the test.\n"
+                    + handlerHint
                     + $"\"placeholder for {method} {path}\"\n"
                     + "\n"
                     + "[request]\n"
