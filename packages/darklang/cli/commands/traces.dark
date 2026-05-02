@@ -122,13 +122,19 @@ let rec parseViewOptions
   | "--no-stdlib" :: rest ->
     parseViewOptions { opts with hideStdlib = true } rest
   | "--filter" :: pattern :: rest ->
-    parseViewOptions
-      { opts with filter = Stdlib.Option.Option.Some pattern }
-      rest
+    if Stdlib.String.startsWith pattern "-" then
+      Stdlib.Result.Result.Error $"Unknown flag: {pattern}"
+    else
+      parseViewOptions
+        { opts with filter = Stdlib.Option.Option.Some pattern }
+        rest
   | "--exclude" :: pattern :: rest ->
-    parseViewOptions
-      { opts with exclude = Stdlib.Option.Option.Some pattern }
-      rest
+    if Stdlib.String.startsWith pattern "-" then
+      Stdlib.Result.Result.Error $"Unknown flag: {pattern}"
+    else
+      parseViewOptions
+        { opts with exclude = Stdlib.Option.Option.Some pattern }
+        rest
   | "--slow" :: rest ->
     // Bare `--slow` defaults to 10ms. For a custom threshold, use --slow-ms.
     parseViewOptions
