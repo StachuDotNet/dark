@@ -88,8 +88,13 @@ type T =
     /// Store the tracing input (varname + dval) for a handler execution
     storeTraceInput : PT.Handler.HandlerDesc -> string -> RT.Dval -> unit
 
-    /// Store the trace results calculated over the execution, if enabled
-    storeTraceResults : unit -> unit
+    /// Store the trace results calculated over the execution, if enabled.
+    /// Takes the live ExecutionState so ephemeral blob refs (which die
+    /// when the request scope pops) can be promoted to persistent ones
+    /// before serialization. Without that, traces would record blob refs
+    /// pointing at gone bytes and `traces view` / `gen-test` couldn't
+    /// reconstruct request/response bodies.
+    storeTraceResults : RT.ExecutionState -> Ply.Ply<unit>
 
     /// The functions to run tracing during execution
     executionTracing : RT.Tracing.Tracing
@@ -359,7 +364,36 @@ module TraceStorage =
     ()
 
 
-/// Shared helper: store a trace to SQLite with error handling
+/// Walk every captured Dval through `Blob.promote` so ephemeral blob refs
+/// resolve to persistent ones (writing the bytes into package_blobs in the
+/// process). Mutates the events list in place; returns the promoted input
+/// dval. Without this step, every trace would record blob UUIDs pointing
+/// at gone bytes, which is why HTTP `--diff` and `gen-test` are blocked.
+let private promoteBlobs
+  (exeState : RT.ExecutionState)
+  (inputDval : RT.Dval)
+  (state : TracerState)
+  : Ply.Ply<RT.Dval> =
+  uply {
+    let persist = exeState.blobs.persist
+    let! promotedInput = LibExecution.Blob.promote exeState persist inputDval
+    for i in 0 .. state.events.Count - 1 do
+      let ev = state.events[i]
+      let! promotedArgs =
+        ev.args
+        |> List.map (fun a -> LibExecution.Blob.promote exeState persist a)
+        |> Ply.List.flatten
+      let! promotedResult =
+        LibExecution.Blob.promote exeState persist ev.result
+      state.events[i] <-
+        { ev with args = promotedArgs; result = promotedResult }
+    return promotedInput
+  }
+
+
+/// Shared helper: store a trace to SQLite with error handling. Promotes
+/// every Dval through `Blob.promote` first so blob bytes survive the
+/// per-request blob scope.
 let private storeTrace
   (canvasID : CanvasID)
   (rootTLID : tlid)
@@ -368,18 +402,22 @@ let private storeTrace
   (inputVarName : string)
   (inputDval : RT.Dval)
   (state : TracerState)
-  : unit =
-  try
-    TraceStorage.store
-      canvasID
-      rootTLID
-      traceID
-      handlerDesc
-      inputVarName
-      inputDval
-      (Seq.toList state.events)
-  with ex ->
-    print $"[tracing] Failed to store trace: {ex.Message}"
+  (exeState : RT.ExecutionState)
+  : Ply.Ply<unit> =
+  uply {
+    try
+      let! promotedInput = promoteBlobs exeState inputDval state
+      TraceStorage.store
+        canvasID
+        rootTLID
+        traceID
+        handlerDesc
+        inputVarName
+        promotedInput
+        (Seq.toList state.events)
+    with ex ->
+      print $"[tracing] Failed to store trace: {ex.Message}"
+  }
 
 
 let createSqliteTracer
@@ -408,7 +446,7 @@ let createSqliteTracer
         storedInputVarName <- varname
         storedInputDval <- input
     storeTraceResults =
-      fun () ->
+      fun exeState ->
         storeTrace
           canvasID
           rootTLID
@@ -416,7 +454,8 @@ let createSqliteTracer
           handlerDesc
           storedInputVarName
           storedInputDval
-          state }
+          state
+          exeState }
 
 
 let createCliTracer
@@ -447,11 +486,19 @@ let createCliTracer
           skipTracing = false }
     storeTraceInput = fun _ _ _ -> ()
     storeTraceResults =
-      fun () ->
+      fun exeState ->
 #if DEBUG
-        storeTrace _canvasID 0UL _traceID _description _inputVarName _inputDval state
+        storeTrace
+          _canvasID
+          0UL
+          _traceID
+          _description
+          _inputVarName
+          _inputDval
+          state
+          exeState
 #else
-        ()
+        uply { return () }
 #endif
   }
 
@@ -461,7 +508,7 @@ let createNonTracer (_canvasID : CanvasID) (_traceID : AT.TraceID.T) : T =
   { enabled = false
     results = results
     executionTracing = LibExecution.Execution.noTracing
-    storeTraceResults = fun () -> ()
+    storeTraceResults = fun _ -> uply { return () }
     storeTraceInput = fun _ _ _ -> () }
 
 

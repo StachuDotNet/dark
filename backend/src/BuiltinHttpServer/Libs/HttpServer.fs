@@ -368,7 +368,7 @@ let private handleRequest
 
           let! result = dispatch perRequestState requestDval
           let! response = Http.Response.toHttpResponse perRequestState result
-          tracer.storeTraceResults ()
+          do! tracer.storeTraceResults perRequestState |> Ply.toTask
 
           let respHeaders =
             maybeInjectStandardHeaders injectStandardHeaders response.headers
