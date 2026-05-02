@@ -791,19 +791,23 @@ let executeGenTest (state: Cli.AppState) (traceID: String) : Cli.AppState =
 /// reproducing a trace shared from another machine. The trace ID is
 /// preserved; an existing row with that ID is overwritten.
 let executeImport (state: Cli.AppState) (path: String) : Cli.AppState =
-  match Stdlib.Cli.File.readText path with
-  | Error e ->
-    Stdlib.printLine (Colors.error $"Could not read {path}: {e.message}")
+  if Stdlib.String.startsWith path "-" then
+    Stdlib.printLine (Colors.error $"Unknown flag: {path}")
     state
-  | Ok json ->
-    match Builtin.cliTracesImport json with
-    | Ok traceID ->
-      Stdlib.printLine $"Imported trace {traceID}"
-      Stdlib.printLine $"  → use 'traces view {traceID}' to inspect."
+  else
+    match Stdlib.Cli.File.readText path with
+    | Error e ->
+      Stdlib.printLine (Colors.error $"Could not read {path}: {e.message}")
       state
-    | Error msg ->
-      Stdlib.printLine (Colors.error msg)
-      state
+    | Ok json ->
+      match Builtin.cliTracesImport json with
+      | Ok traceID ->
+        Stdlib.printLine $"Imported trace {traceID}"
+        Stdlib.printLine $"  → use 'traces view {traceID}' to inspect."
+        state
+      | Error msg ->
+        Stdlib.printLine (Colors.error msg)
+        state
 
 
 /// `traces tail [N] [--route <substring>]` — open the Nth-most-recent
