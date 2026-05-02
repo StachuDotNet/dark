@@ -500,6 +500,27 @@ let testTracesRejectsNegativeLimit (): TestResult =
     TestResult.Fail $"Expected `Limit must be ≥ 1` from: {names}"
 
 
+/// `traces stats` hides the `--route` drill-down hint when there
+/// are no HTTP handlers (i.e., only eval/run traces). Locks in
+/// `7731c497d`.
+let testTracesStatsHintHiddenForEvalOnly (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "1L + 1L"]
+  let _ = runWithCommand ["eval"; "2L + 2L"]
+  let statsOut = runWithCommand ["traces"; "stats"]
+  // Expect the per-handler table to render but NOT the route hint —
+  // there are no HTTP handlers in the store.
+  if Stdlib.String.contains statsOut "Per-handler stats"
+      && Stdlib.String.contains statsOut "eval"
+      && Stdlib.Bool.not
+          (Stdlib.String.contains statsOut "drill into a route")
+  then
+    TestResult.Pass
+  else
+    TestResult.Fail
+      $"Expected stats without --route hint for eval-only store. Got: {statsOut}"
+
+
 /// Unknown subcommand prints a clear error before the help dump.
 /// Locks in `ee648b93d`. Pre-fix `traces lst` (typo) silently dumped
 /// help with no indication the user's input was unrecognized.
@@ -713,6 +734,8 @@ let allTests (): List<String * TestFunction> =
       fun () -> testTracesFiltersAreCaseInsensitive ())
     ("Traces Unknown Subcommand Surfaced",
       fun () -> testTracesUnknownSubcommandSurfaced ())
+    ("Traces Stats Hint Hidden For Eval Only",
+      fun () -> testTracesStatsHintHiddenForEvalOnly ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
