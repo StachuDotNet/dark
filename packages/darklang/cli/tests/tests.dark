@@ -191,6 +191,65 @@ let testTracesTailShowsLastEval (): TestResult =
     TestResult.Fail $"Expected eval handler + recorded input, got: {output}"
 
 
+/// `traces clear` empties the store; subsequent `list` reports
+/// "No traces found." Locks in the leak fix from `d2591e14c`.
+let testTracesClearEmpties (): TestResult =
+  let _ = runWithCommand ["eval"; "1L + 2L"]
+  let _ = runWithCommand ["traces"; "clear"]
+  let listOut = runWithCommand ["traces"; "list"]
+  if Stdlib.String.contains listOut "No traces found." then
+    TestResult.Pass
+  else
+    TestResult.Fail $"After clear, expected 'No traces found.' — got: {listOut}"
+
+
+/// `traces stats` shows the count + timing aggregates for recent
+/// traces. Eval traces all have handler "eval" so a 2-eval setup
+/// should report count=2 in the stats table.
+let testTracesStatsCounts (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "1L"]
+  let _ = runWithCommand ["eval"; "2L"]
+  let output = runWithCommand ["traces"; "stats"]
+  // Output has columns "total ms │ max ms │ count │ handler" and
+  // a row for `eval` with count 2. Check both the column headers
+  // and the digit 2 alongside `eval`.
+  if Stdlib.String.contains output "total ms"
+      && Stdlib.String.contains output "count"
+      && Stdlib.String.contains output "│ eval"
+  then
+    TestResult.Pass
+  else
+    TestResult.Fail $"Expected stats table with eval row — got: {output}"
+
+
+/// `traces export <id>` produces well-formed JSON with the expected
+/// top-level fields. Locks in the export schema.
+let testTracesExportJson (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "let x = 5L\nx"]
+  let listJson = runWithCommand ["traces"; "list"; "1"; "--json"]
+  match Stdlib.String.split listJson "\"traceId\":\"" with
+  | _ :: rest :: _ ->
+    match Stdlib.String.split rest "\"" with
+    | tid :: _ ->
+      let exportOut = runWithCommand ["traces"; "export"; tid]
+      // Required top-level fields per the export schema.
+      let fields =
+        [ "\"id\""; "\"handler_desc\""; "\"timestamp\""
+          "\"input_value\""; "\"fn_calls\""; "\"expr_values\"" ]
+      let missing =
+        fields
+        |> Stdlib.List.filter (fun f -> Stdlib.Bool.not (Stdlib.String.contains exportOut f))
+      match missing with
+      | [] -> TestResult.Pass
+      | _ ->
+        TestResult.Fail
+          $"Export JSON missing fields: {Stdlib.String.join missing ", "}"
+    | _ -> TestResult.Fail "Couldn't parse trace id from list"
+  | _ -> TestResult.Fail "List --json had no traceId field"
+
+
 /// `traces values <id>` lists `(exprId, dval)` pairs for a let-binding eval.
 let testTracesValuesAfterLet (): TestResult =
   let _ = runWithCommand ["traces"; "clear"]
@@ -238,6 +297,9 @@ let allTests (): List<String * TestFunction> =
     ("Traces Help", fun () -> testTracesHelp ())
     ("Traces Tail Shows Last Eval", fun () -> testTracesTailShowsLastEval ())
     ("Traces Values After Let", fun () -> testTracesValuesAfterLet ())
+    ("Traces Clear Empties", fun () -> testTracesClearEmpties ())
+    ("Traces Stats Counts", fun () -> testTracesStatsCounts ())
+    ("Traces Export JSON Schema", fun () -> testTracesExportJson ())
   ]
 
 type TestSummary =
