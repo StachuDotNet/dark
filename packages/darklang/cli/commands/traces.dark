@@ -18,7 +18,9 @@ type FnCall =
     fnName: String
     lambdaExprId: Stdlib.Option.Option<String>
     args: List<LanguageTools.RuntimeTypes.Dval>
-    result: LanguageTools.RuntimeTypes.Dval }
+    result: LanguageTools.RuntimeTypes.Dval
+    /// Frame-entry-to-exit duration in ms. Builtins always 0 (no entry hook).
+    durationMs: Int64 }
 
 type TraceData =
   { traceId: String
@@ -35,7 +37,9 @@ type ViewOptions =
   { maxDepth: Stdlib.Option.Option<Int64>
     hideBuiltins: Bool
     hideStdlib: Bool
-    filter: Stdlib.Option.Option<String> }
+    filter: Stdlib.Option.Option<String>
+    /// When Some N, hide calls whose durationMs < N (keeps the slow stuff).
+    slowThresholdMs: Stdlib.Option.Option<Int64> }
 
 
 let defaultViewOptions: ViewOptions =
@@ -43,7 +47,8 @@ let defaultViewOptions: ViewOptions =
     { maxDepth = Stdlib.Option.Option.None
       hideBuiltins = false
       hideStdlib = false
-      filter = Stdlib.Option.Option.None }
+      filter = Stdlib.Option.Option.None
+      slowThresholdMs = Stdlib.Option.Option.None }
 
 
 /// Resolve a trace ID prefix to the full ID, printing the not-found /
@@ -79,6 +84,19 @@ let rec parseViewOptions
     parseViewOptions
       { opts with filter = Stdlib.Option.Option.Some pattern }
       rest
+  | "--slow" :: rest ->
+    // Bare `--slow` defaults to 10ms. For a custom threshold, use --slow-ms.
+    parseViewOptions
+      { opts with slowThresholdMs = Stdlib.Option.Option.Some 10L }
+      rest
+  | "--slow-ms" :: numStr :: rest ->
+    match Stdlib.Int64.parse numStr with
+    | Ok n ->
+      parseViewOptions
+        { opts with slowThresholdMs = Stdlib.Option.Option.Some n }
+        rest
+    | Error _ ->
+      Stdlib.Result.Result.Error $"Invalid --slow-ms threshold: {numStr}"
   | unknown :: _ ->
     Stdlib.Result.Result.Error $"Unknown flag: {unknown}"
 
@@ -462,7 +480,11 @@ let isVisible (opts: ViewOptions) (call: FnCall) (ancestorMatched: Bool) : Bool 
     && Stdlib.String.startsWith call.fnName "Darklang.Stdlib."
     && call.parentCallId != Stdlib.Option.Option.None
   let builtinHidden = opts.hideBuiltins && call.kind == "builtin"
-  if stdlibInternal || builtinHidden then
+  let belowSlowThreshold =
+    match opts.slowThresholdMs with
+    | Some thr -> call.durationMs < thr
+    | None -> false
+  if stdlibInternal || builtinHidden || belowSlowThreshold then
     false
   else
     match opts.filter with
@@ -508,15 +530,20 @@ let renderCall
     if visible then
       let indent = Stdlib.String.repeat "  " (depth + 1L)
       let resultRepr = compactDval branchId call.result
+      let durationSuffix =
+        if call.durationMs > 0L then
+          $"  ({Stdlib.Int64.toString call.durationMs}ms)"
+        else
+          ""
       let header =
         match call.args with
-        | [] -> $"{indent}{call.fnName} → {resultRepr}"
+        | [] -> $"{indent}{call.fnName} → {resultRepr}{durationSuffix}"
         | _ ->
           let argsRepr =
             call.args
             |> Stdlib.List.map (fun arg -> compactDval branchId arg)
             |> Stdlib.String.join ", "
-          $"{indent}{call.fnName}({argsRepr}) → {resultRepr}"
+          $"{indent}{call.fnName}({argsRepr}) → {resultRepr}{durationSuffix}"
       Stdlib.List.append [ header ] childrenRendered
     else
       childrenRendered
@@ -688,6 +715,8 @@ let help (_state: Cli.AppState) : Unit =
     "  --no-stdlib               Hide stdlib calls below the entry point"
     "  --filter <pattern>        Show only calls whose name contains <pattern>"
     "                            (and their descendants)"
+    "  --slow                    Hide calls below 10ms (builtins always 0)"
+    "  --slow-ms <n>             Hide calls below <n>ms"
     ""
     "Traces are recorded when code executes via eval, run, or HTTP handlers."
     "Each trace captures inputs, function calls with arguments, and results."
@@ -707,6 +736,8 @@ let help (_state: Cli.AppState) : Unit =
     "  traces view <trace-id> -d 2          - Top two tree levels only"
     "  traces view <trace-id> --no-stdlib --no-builtins"
     "  traces view <trace-id> --filter Multiply"
+    "  traces view <trace-id> --slow              - Only calls ≥10ms"
+    "  traces view <trace-id> --slow-ms 100       - Only calls ≥100ms"
     "  traces export <trace-id> > t.json    - Dump a trace as JSON for sharing"
     "  traces import t.json                 - Re-create a trace from a JSON dump"
     "  traces replay <trace-id>             - Re-run with current code"

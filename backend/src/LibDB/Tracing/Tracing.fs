@@ -159,7 +159,8 @@ type CompletedEvent =
     fnHash : string option // function/builtin only
     lambdaExprId : id option // lambda only
     args : List<RT.Dval>
-    result : RT.Dval }
+    result : RT.Dval
+    durationMs : int64 } // 0 for builtins (no frame-entry hook); real ms for fn/lambda
 
 
 /// Partial event held on the writer's stack between storeFrameEntry and
@@ -170,7 +171,9 @@ type PartialEvent =
     parentCallId : string option
     fnHash : string option
     lambdaExprId : id option
-    args : List<RT.Dval> }
+    args : List<RT.Dval>
+    /// Stopwatch ticks at frame-entry. Subtract at exit and convert to ms.
+    startedAtTicks : int64 }
 
 
 /// Mutable per-trace tracer state. Captures every event in execution order
@@ -192,6 +195,13 @@ let private currentParentCallId (state : TracerState) : string option =
 let private newCallId () : string = string (System.Guid.NewGuid())
 
 
+/// Convert a Stopwatch-tick delta to milliseconds, clamping at zero so a
+/// monotonic-clock blip can't surface as a negative duration.
+let private ticksToMs (deltaTicks : int64) : int64 =
+  let ms = deltaTicks * 1000L / System.Diagnostics.Stopwatch.Frequency
+  if ms < 0L then 0L else ms
+
+
 /// Fired when a Function or Lambda frame is pushed. We assign this call
 /// its own call_id immediately so children entered before this call exits
 /// can record us as their parent_call_id.
@@ -210,7 +220,8 @@ let private makeStoreFrameEntry (state : TracerState) : RT.Tracing.StoreFrameEnt
         parentCallId = currentParentCallId state
         fnHash = fnHash
         lambdaExprId = lambdaExprId
-        args = args }
+        args = args
+        startedAtTicks = System.Diagnostics.Stopwatch.GetTimestamp() }
     state.stack.Push(partial)
 
 
@@ -229,11 +240,14 @@ let private makeStoreFnResult (state : TracerState) : RT.Tracing.StoreFnResult =
           fnHash = Some(fnNameToSimpleString name)
           lambdaExprId = None
           args = NEList.toList args
-          result = result }
+          result = result
+          // No frame-entry counterpart for builtins, so no real duration.
+          durationMs = 0L }
       )
     | RT.FQFnName.Package _ ->
       if state.stack.Count > 0 then
         let partial = state.stack.Pop()
+        let endedAt = System.Diagnostics.Stopwatch.GetTimestamp()
         state.events.Add(
           { callId = partial.callId
             parentCallId = partial.parentCallId
@@ -241,7 +255,8 @@ let private makeStoreFnResult (state : TracerState) : RT.Tracing.StoreFnResult =
             fnHash = partial.fnHash
             lambdaExprId = None
             args = partial.args
-            result = result }
+            result = result
+            durationMs = ticksToMs (endedAt - partial.startedAtTicks) }
         )
 
 
@@ -252,6 +267,7 @@ let private makeStoreLambdaResult
   fun _ result ->
     if state.stack.Count > 0 then
       let partial = state.stack.Pop()
+      let endedAt = System.Diagnostics.Stopwatch.GetTimestamp()
       state.events.Add(
         { callId = partial.callId
           parentCallId = partial.parentCallId
@@ -259,7 +275,8 @@ let private makeStoreLambdaResult
           fnHash = None
           lambdaExprId = partial.lambdaExprId
           args = partial.args
-          result = result }
+          result = result
+          durationMs = ticksToMs (endedAt - partial.startedAtTicks) }
       )
 
 
@@ -316,10 +333,10 @@ module TraceStorage =
       | _ ->
         [ "INSERT INTO trace_fn_calls
             (trace_id, call_id, parent_call_id, kind, fn_hash,
-             lambda_expr_id, args_json, result_json)
+             lambda_expr_id, args_json, result_json, duration_ms)
            VALUES
             (@traceId, @callId, @parentCallId, @kind, @fnHash,
-             @lambdaExprId, @argsJson, @resultJson)",
+             @lambdaExprId, @argsJson, @resultJson, @durationMs)",
           events
           |> List.map (fun ev ->
             let argsJson =
@@ -335,7 +352,8 @@ module TraceStorage =
               "lambdaExprId",
               (ev.lambdaExprId |> Option.map string |> Sql.stringOrNone)
               "argsJson", Sql.string argsJson
-              "resultJson", Sql.string resultJson ]) ]
+              "resultJson", Sql.string resultJson
+              "durationMs", Sql.int64 ev.durationMs ]) ]
 
     let _ = Sql.executeTransactionSync (baseStatements @ eventStmt)
     ()

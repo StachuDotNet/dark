@@ -46,7 +46,7 @@ let private loadFnCalls (traceId : string) : Ply<Dval> =
     let! events =
       Sql.query
         "SELECT call_id, parent_call_id, kind, fn_hash, lambda_expr_id,
-                args_json, result_json
+                args_json, result_json, duration_ms
          FROM trace_fn_calls
          WHERE trace_id = @traceId
          ORDER BY rowid"
@@ -58,7 +58,8 @@ let private loadFnCalls (traceId : string) : Ply<Dval> =
            fnHash = read.stringOrNone "fn_hash"
            lambdaExprId = read.stringOrNone "lambda_expr_id"
            argsJson = read.string "args_json"
-           resultJson = read.string "result_json" |})
+           resultJson = read.string "result_json"
+           durationMs = read.int64 "duration_ms" |})
 
     let enriched =
       events
@@ -86,7 +87,8 @@ let private loadFnCalls (traceId : string) : Ply<Dval> =
               "fnName", DString displayName
               "lambdaExprId", lambdaExprIdDval
               "args", Dval.list dvalKT args
-              "result", result ]
+              "result", result
+              "durationMs", DInt64 ev.durationMs ]
         DRecord(typeName, typeName, [], fields))
 
     return enriched |> Dval.list (KTCustomType(typeName, []))
@@ -434,7 +436,7 @@ let fns () : List<BuiltInFn> =
               let! events =
                 Sql.query
                   "SELECT call_id, parent_call_id, kind, fn_hash,
-                          lambda_expr_id, args_json, result_json
+                          lambda_expr_id, args_json, result_json, duration_ms
                    FROM trace_fn_calls
                    WHERE trace_id = @traceId
                    ORDER BY rowid"
@@ -446,7 +448,8 @@ let fns () : List<BuiltInFn> =
                      fnHash = read.stringOrNone "fn_hash"
                      lambdaExprId = read.stringOrNone "lambda_expr_id"
                      argsJson = read.string "args_json"
-                     resultJson = read.string "result_json" |})
+                     resultJson = read.string "result_json"
+                     durationMs = read.int64 "duration_ms" |})
 
               // Build the export object as Utf8JsonWriter so the embedded
               // dval JSON strings (`input_value_json`, `args_json`,
@@ -490,6 +493,7 @@ let fns () : List<BuiltInFn> =
                 writeRaw ev.argsJson
                 w.WritePropertyName("result")
                 writeRaw ev.resultJson
+                w.WriteNumber("duration_ms", ev.durationMs)
                 w.WriteEndObject()
               w.WriteEndArray()
               w.WriteEndObject()
@@ -560,6 +564,12 @@ let fns () : List<BuiltInFn> =
                 if fnCalls.GetArrayLength() = 0 then
                   []
                 else
+                  // Older exports (pre-duration_ms) lack the field; default to 0.
+                  let durationMs (ev : JsonElement) =
+                    match ev.TryGetProperty("duration_ms") with
+                    | true, prop -> prop.GetInt64()
+                    | false, _ -> 0L
+
                   let rows =
                     fnCalls.EnumerateArray()
                     |> Seq.toList
@@ -574,13 +584,14 @@ let fns () : List<BuiltInFn> =
                         Sql.stringOrNone (nullableStr ev "lambda_expr_id")
                         "argsJson", Sql.string (ev.GetProperty("args").GetRawText())
                         "resultJson",
-                        Sql.string (ev.GetProperty("result").GetRawText()) ])
+                        Sql.string (ev.GetProperty("result").GetRawText())
+                        "durationMs", Sql.int64 (durationMs ev) ])
                   [ "INSERT INTO trace_fn_calls
                       (trace_id, call_id, parent_call_id, kind, fn_hash,
-                       lambda_expr_id, args_json, result_json)
+                       lambda_expr_id, args_json, result_json, duration_ms)
                      VALUES
                       (@traceId, @callId, @parentCallId, @kind, @fnHash,
-                       @lambdaExprId, @argsJson, @resultJson)",
+                       @lambdaExprId, @argsJson, @resultJson, @durationMs)",
                     rows ]
 
               let _ = Sql.executeTransactionSync (baseStatements @ eventStmt)
