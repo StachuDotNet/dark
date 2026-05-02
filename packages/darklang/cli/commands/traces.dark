@@ -161,6 +161,18 @@ let rec parseViewOptions
           rest
     | Error _ ->
       Stdlib.Result.Result.Error (parsePositionalErr numStr "--slow-ms threshold")
+  // Recognized value-taking flag with no value left — distinguish from the
+  // catch-all `unknown :: _` so the user gets "missing value" not the
+  // misleading "Unknown flag".
+  | [ "--depth" ]
+  | [ "-d" ] ->
+    Stdlib.Result.Result.Error "--depth requires a value (e.g. `--depth 3`)"
+  | [ "--filter" ] ->
+    Stdlib.Result.Result.Error "--filter requires a pattern (e.g. `--filter List.map`)"
+  | [ "--exclude" ] ->
+    Stdlib.Result.Result.Error "--exclude requires a pattern (e.g. `--exclude listAppend`)"
+  | [ "--slow-ms" ] ->
+    Stdlib.Result.Result.Error "--slow-ms requires a value (e.g. `--slow-ms 100`)"
   | unknown :: _ ->
     Stdlib.Result.Result.Error $"Unknown flag: {unknown}"
 
