@@ -1249,6 +1249,9 @@ let help (_state: Cli.AppState) : Unit =
     "  traces view <trace-id> --exclude listAppend  - Hide noisy intermediate calls"
     "  traces view <trace-id> --slow              - Only calls ≥10ms"
     "  traces view <trace-id> --slow-ms 100       - Only calls ≥100ms"
+    "  traces inspect <trace-id>            - Annotated handler source (auto-resolves the fn)"
+    "  traces gen-test <trace-id> > foo.test - Save trace as a wire-format test fixture"
+    "  traces values <trace-id>             - Raw (exprId, dval) pairs (debug)"
     "  traces export <trace-id> > t.json    - Dump a trace as JSON for sharing"
     "  traces import t.json                 - Re-create a trace from a JSON dump"
     "  traces replay <trace-id>             - Re-run with current code"
@@ -1256,5 +1259,10 @@ let help (_state: Cli.AppState) : Unit =
     "  traces delete fe62                   - Delete one trace by prefix"
     "  traces prune --keep 50               - Keep latest 50, drop the rest"
     "  traces clear --before 1h             - Drop traces older than 1 hour"
-    "  traces clear                         - Delete all traces" ]
+    "  traces clear                         - Delete all traces"
+    ""
+    "Workflow trio for HTTP debug:"
+    "  traces tail                          - what just ran (call tree)"
+    "  traces inspect <id>                  - how it ran (annotated source)"
+    "  traces gen-test <id>                 - save it as a fixture" ]
   |> Stdlib.printLines
