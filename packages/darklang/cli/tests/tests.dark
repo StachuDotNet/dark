@@ -500,6 +500,29 @@ let testTracesRejectsNegativeLimit (): TestResult =
     TestResult.Fail $"Expected `Limit must be ≥ 1` from: {names}"
 
 
+/// `list --route` and `view --filter` match case-insensitively. Locks
+/// in `5dd80c793` and `52afd47e6` — pre-fix the user got silently
+/// empty output if their case didn't match the recorded handler /
+/// fn name.
+let testTracesFiltersAreCaseInsensitive (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "1L + 1L"]
+  let listLower = runWithCommand ["traces"; "list"; "--route"; "eval"]
+  let listUpper = runWithCommand ["traces"; "list"; "--route"; "EVAL"]
+  let listMixed = runWithCommand ["traces"; "list"; "--route"; "Eval"]
+  // All three should find the recorded eval trace.
+  if Stdlib.String.contains listLower "eval"
+      && Stdlib.String.contains listUpper "eval"
+      && Stdlib.String.contains listMixed "eval"
+      && Stdlib.Bool.not
+          (Stdlib.String.contains listUpper "No traces found")
+  then
+    TestResult.Pass
+  else
+    TestResult.Fail
+      $"Expected case-insensitive route match. lower: {listLower}; upper: {listUpper}; mixed: {listMixed}"
+
+
 /// Empty pattern in find / list --fn / list --route is rejected
 /// instead of silently matching everything. Locks in `7ca47e1b6` and
 /// `cd357484f`. Pre-fix `traces find ""` printed "Traces matching ''
@@ -665,6 +688,8 @@ let allTests (): List<String * TestFunction> =
       fun () -> testTracesViewRejectsNegativeSubOptions ())
     ("Traces Rejects Empty Pattern",
       fun () -> testTracesRejectsEmptyPattern ())
+    ("Traces Filters Are Case Insensitive",
+      fun () -> testTracesFiltersAreCaseInsensitive ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
