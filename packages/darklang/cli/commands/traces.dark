@@ -46,6 +46,17 @@ let defaultViewOptions: ViewOptions =
       filter = Stdlib.Option.Option.None }
 
 
+/// Resolve a trace ID prefix to the full ID, printing the not-found /
+/// ambiguous-match error and returning `None` if resolution fails. The
+/// caller short-circuits on `None`.
+let resolveTraceID (input: String) : Stdlib.Option.Option<String> =
+  match Builtin.cliTracesResolveID input with
+  | Ok fullID -> Stdlib.Option.Option.Some fullID
+  | Error msg ->
+    Stdlib.printLine (Colors.error msg)
+    Stdlib.Option.Option.None
+
+
 let rec parseViewOptions
   (opts: ViewOptions)
   (args: List<String>)
@@ -129,25 +140,33 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
       state
 
-  | [ "export"; traceID ] -> executeExport state traceID
+  | [ "export"; traceID ] ->
+    match resolveTraceID traceID with
+    | Some full -> executeExport state full
+    | None -> state
 
   | [ "import"; path ] -> executeImport state path
 
   | "view" :: traceID :: flagArgs ->
     match parseViewOptions defaultViewOptions flagArgs with
-    | Ok opts -> executeView state traceID opts
+    | Ok opts ->
+      match resolveTraceID traceID with
+      | Some full -> executeView state full opts
+      | None -> state
     | Error msg ->
       Stdlib.printLine (Colors.error msg)
       state
 
   | [ "replay"; traceID ] ->
-    executeReplay state traceID false
+    match resolveTraceID traceID with
+    | Some full -> executeReplay state full false
+    | None -> state
 
-  | [ "replay"; traceID; "--diff" ] ->
-    executeReplay state traceID true
-
+  | [ "replay"; traceID; "--diff" ]
   | [ "replay"; "--diff"; traceID ] ->
-    executeReplay state traceID true
+    match resolveTraceID traceID with
+    | Some full -> executeReplay state full true
+    | None -> state
 
   | [ "clear" ] ->
     executeClear state
@@ -660,6 +679,8 @@ let help (_state: Cli.AppState) : Unit =
     "  import <path>                 Re-create a trace from a JSON dump on disk"
     "  replay <trace-id> [--diff]    Re-execute a trace's code; --diff compares against the recorded output"
     "  clear                         Delete all stored traces"
+    ""
+    "Trace IDs accept any unambiguous prefix — `view fe62`, `export fe6219e9-4705`, etc."
     ""
     "View flags (combinable):"
     "  -d, --depth <n>           Cap tree depth at <n> levels"

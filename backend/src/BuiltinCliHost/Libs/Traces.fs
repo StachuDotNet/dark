@@ -282,6 +282,57 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "cliTracesResolveID" 0
+      typeParams = []
+      parameters =
+        [ Param.make "input" TString "Full trace ID or unambiguous prefix" ]
+      returnType = TypeReference.result TString TString
+      description =
+        "Resolve a trace ID prefix to the full ID. `Ok fullID` when exactly one trace matches; `Error <message>` when zero (not-found) or multiple (ambiguous, lists candidates)."
+      fn =
+        let resultOk = Dval.resultOk KTString KTString
+        let resultError = Dval.resultError KTString KTString
+        (function
+        | _, _, _, [ DString input ] ->
+          uply {
+            // Up to 6 so we can distinguish "1 match" / "many matches"
+            // without fetching everything. The user-facing error caps the
+            // candidate list at 5 anyway.
+            let pattern = input + "%"
+            let! matches =
+              Sql.query
+                "SELECT id FROM traces
+                 WHERE id LIKE @pattern
+                 ORDER BY rowid DESC
+                 LIMIT 6"
+              |> Sql.parameters [ "pattern", Sql.string pattern ]
+              |> Sql.executeAsync (fun read -> read.string "id")
+
+            match matches with
+            | [] -> return resultError (DString $"Trace not found: {input}")
+            | [ fullID ] -> return resultOk (DString fullID)
+            | candidates ->
+              let shown = List.truncate 5 candidates
+              let suffix =
+                if List.length candidates > 5 then
+                  $"\n  - … (and {List.length candidates - 5} more)"
+                else
+                  ""
+              let body =
+                shown
+                |> List.map (fun id -> $"  - {id}")
+                |> String.concat "\n"
+              return
+                resultError (
+                  DString $"Ambiguous trace ID '{input}'. Matches:\n{body}{suffix}"
+                )
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
     { name = fn "cliTracesGetInput" 0
       typeParams = []
       parameters = [ Param.make "traceID" TString "The trace ID to get input from" ]
