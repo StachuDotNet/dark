@@ -55,6 +55,18 @@ let defaultViewOptions: ViewOptions =
       slowThresholdMs = Stdlib.Option.Option.None }
 
 
+/// Format the error for a positional integer arg. Distinguishes
+/// "looks like a misplaced flag" (`-`-prefixed) from "actually
+/// non-numeric" — `traces list --frob` should say "Unknown flag",
+/// not "Invalid limit", since the user clearly didn't intend to
+/// type a number there.
+let parsePositionalErr (input: String) (label: String) : String =
+  if Stdlib.String.startsWith input "-" then
+    $"Unknown flag: {input}"
+  else
+    $"Invalid {label}: {input}"
+
+
 /// Resolve a trace ID prefix to the full ID, printing the not-found /
 /// ambiguous-match error and returning `None` if resolution fails. The
 /// caller short-circuits on `None`.
@@ -122,13 +134,13 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeListJson state limit
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
   | [ "list"; limitStr ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeList state limit
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
 
   | [ "list"; "--fn"; fnName ] ->
@@ -140,14 +152,14 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeListByFn state fnName limit false
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
   | [ "list"; "--fn"; fnName; "--json"; limitStr ]
   | [ "list"; "--fn"; fnName; limitStr; "--json" ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeListByFn state fnName limit true
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
 
   | [ "list"; "--route"; route ] ->
@@ -159,14 +171,14 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeListByRoute state route limit false
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
   | [ "list"; "--route"; route; "--json"; limitStr ]
   | [ "list"; "--route"; route; limitStr; "--json" ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeListByRoute state route limit true
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
 
   | [ "follow" ] ->
@@ -186,13 +198,13 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeStatsJson state limit
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
   | [ "stats"; limitStr ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeStats state limit
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
 
   | [ "tail" ] -> executeTail state Stdlib.Option.Option.None 1L
@@ -200,7 +212,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     match Stdlib.Int64.parse nStr with
     | Ok n -> executeTail state Stdlib.Option.Option.None n
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid trace number: {nStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr nStr "trace number"))
       state
   | [ "tail"; "--route"; route ] ->
     executeTail state (Stdlib.Option.Option.Some route) 1L
@@ -208,7 +220,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     match Stdlib.Int64.parse nStr with
     | Ok n -> executeTail state (Stdlib.Option.Option.Some route) n
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid trace number: {nStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr nStr "trace number"))
       state
 
   | [ "find"; pattern ] -> executeFind state pattern 20L
@@ -224,13 +236,13 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeFindJson state pattern limit
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
   | [ "find"; pattern; limitStr ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeFind state pattern limit
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
 
   | [ "hotspots" ] -> executeHotspots state 100L
@@ -240,13 +252,13 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeHotspotsJson state limit
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
   | [ "hotspots"; limitStr ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeHotspots state limit
     | Error _ ->
-      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      Stdlib.printLine (Colors.error (parsePositionalErr limitStr "limit"))
       state
 
   | [ "export"; traceID ] ->
