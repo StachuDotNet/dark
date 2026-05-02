@@ -1448,6 +1448,9 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
   | "replay" :: _ :: _ -> [ Completion.simple "--diff" ]
   | "find" :: _ :: _ ->
     [ Completion.simple "--view"; Completion.simple "--json" ]
+  | "tail" :: _ :: _ -> [ Completion.simple "--route" ]
+  | "list" :: _ :: _ ->
+    [ Completion.simple "--json" ]
   | _ -> []
 
 
