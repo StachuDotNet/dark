@@ -532,6 +532,43 @@ let testTracesArgOrderingsWork (): TestResult =
     TestResult.Fail $"Arg-order forms didn't dispatch: {names}"
 
 
+/// Malformed arity-1 commands print focused usage instead of the
+/// global help dump. Locks in `d352facdc`. Pre-fix
+/// `traces export <id> --frob` (length 3) silently fell through to
+/// the multi-page help.
+let testTracesArity1Catchalls (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "1L + 1L"]
+  let listJson = runWithCommand ["traces"; "list"; "1"; "--json"]
+  match Stdlib.String.split listJson "\"traceId\":\"" with
+  | _ :: rest :: _ ->
+    match Stdlib.String.split rest "\"" with
+    | tid :: _ ->
+      let cases =
+        [ ("export", ["traces"; "export"; tid; "--frob"], "Usage: traces export <trace-id>")
+          ("inspect", ["traces"; "inspect"; tid; "--frob"], "Usage: traces inspect <trace-id>")
+          ("values", ["traces"; "values"; tid; "--frob"], "Usage: traces values <trace-id>")
+          ("delete", ["traces"; "delete"; tid; "--frob"], "Usage: traces delete <trace-id>") ]
+      let failures =
+        cases
+        |> Stdlib.List.filter (fun tup ->
+          let (_, argv, expected) = tup
+          let out = runWithCommand argv
+          Stdlib.Bool.not (Stdlib.String.contains out expected))
+      match failures with
+      | [] -> TestResult.Pass
+      | _ ->
+        let names =
+          failures
+          |> Stdlib.List.map (fun tup ->
+            let (label, _, _) = tup
+            label)
+          |> Stdlib.String.join "; "
+        TestResult.Fail $"Catch-all didn't fire for: {names}"
+    | _ -> TestResult.Fail "Couldn't parse trace id"
+  | _ -> TestResult.Fail "List --json had no traceId field"
+
+
 /// `traces stats` hides the `--route` drill-down hint when there
 /// are no HTTP handlers (i.e., only eval/run traces). Locks in
 /// `7731c497d`.
@@ -770,6 +807,8 @@ let allTests (): List<String * TestFunction> =
       fun () -> testTracesStatsHintHiddenForEvalOnly ())
     ("Traces Arg Orderings Work",
       fun () -> testTracesArgOrderingsWork ())
+    ("Traces Arity 1 Catchalls",
+      fun () -> testTracesArity1Catchalls ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
