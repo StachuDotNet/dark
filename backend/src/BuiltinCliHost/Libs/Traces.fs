@@ -615,6 +615,241 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "cliTracesGenTest" 0
+      typeParams = []
+      parameters =
+        [ Param.make "traceID" TString "Trace to generate the fixture from" ]
+      returnType = TypeReference.result TString TString
+      description =
+        "Generate a `testfiles/http-server/*.test` fixture skeleton from a recorded HTTP trace. Request + response wire-format blocks are filled in from the trace; the [http-handler] block has a TODO placeholder for the user to paste the handler body."
+      fn =
+        let resultOk = Dval.resultOk KTString KTString
+        let resultError = Dval.resultError KTString KTString
+
+        let asRecord (d : Dval) : Option<Map<string, Dval>> =
+          match d with
+          | DRecord(_, _, _, fields) -> Some fields
+          | _ -> None
+        let asString (d : Dval) : Option<string> =
+          match d with
+          | DString s -> Some s
+          | _ -> None
+        let asInt64 (d : Dval) : Option<int64> =
+          match d with
+          | DInt64 n -> Some n
+          | _ -> None
+
+        // Stdlib.Http.{Request,Response}.headers is List<String * String>:
+        // a DList of DTuple(DString key, DString value, []).
+        let asHeaders (d : Dval) : List<string * string> =
+          match d with
+          | DList(_, items) ->
+            items
+            |> List.choose (fun item ->
+              match item with
+              | DTuple(DString k, DString v, []) -> Some(k, v)
+              | _ -> None)
+          | _ -> []
+
+        // body : Blob — post-promotion, always Persistent(hash, length).
+        let blobBytes (d : Dval) : Ply<byte[]> =
+          uply {
+            match d with
+            | DBlob(Persistent(hash, _)) ->
+              let! bs = LibDB.PackageManager.RuntimeTypes.Blob.get hash
+              return Option.defaultValue [||] bs
+            | _ -> return [||]
+          }
+
+        // Common HTTP reason phrases. Unknown codes get a generic
+        // placeholder — tests don't assert against the reason anyway,
+        // but a real one keeps the fixture readable.
+        let reasonPhrase (status : int64) : string =
+          match status with
+          | 200L -> "OK"
+          | 201L -> "Created"
+          | 204L -> "No Content"
+          | 301L -> "Moved Permanently"
+          | 302L -> "Found"
+          | 304L -> "Not Modified"
+          | 400L -> "Bad Request"
+          | 401L -> "Unauthorized"
+          | 403L -> "Forbidden"
+          | 404L -> "Not Found"
+          | 413L -> "Request Entity Too Large"
+          | 500L -> "Internal Server Error"
+          | _ -> "Status"
+
+        // url is "http://host/path?q" — drop scheme+authority, return
+        // just "/path?q" which is the request-target form.
+        let urlToRequestTarget (url : string) : string =
+          let withoutScheme =
+            if url.StartsWith("http://") then url.Substring(7)
+            elif url.StartsWith("https://") then url.Substring(8)
+            else url
+          match withoutScheme.IndexOf('/') with
+          | -1 -> "/"
+          | i -> withoutScheme.Substring(i)
+
+        // Method is the first token of handler_desc ("GET /foo"); fall
+        // back to GET so a malformed desc still produces a runnable
+        // fixture skeleton.
+        let methodFromHandlerDesc (desc : string) : string =
+          match desc.Split(' ') with
+          | [||] -> "GET"
+          | parts -> parts[0]
+
+        let formatHeaders (headers : List<string * string>) : string =
+          headers
+          |> List.map (fun (k, v) -> $"{k}: {v}")
+          |> String.concat "\n"
+
+        (function
+        | _, _, _, [ DString traceID ] ->
+          uply {
+            let! row =
+              Sql.query
+                "SELECT handler_desc, timestamp, input_value_json
+                 FROM traces WHERE id = @traceId"
+              |> Sql.parameters [ "traceId", Sql.string traceID ]
+              |> Sql.executeRowOptionAsync (fun read ->
+                {| handlerDesc = read.string "handler_desc"
+                   timestamp = read.string "timestamp"
+                   inputValueJson = read.string "input_value_json" |})
+
+            match row with
+            | None -> return resultError (DString $"Trace not found: {traceID}")
+            | Some r when not (r.handlerDesc.Contains(" /")) ->
+              return
+                resultError (
+                  DString
+                    $"Trace {traceID} isn't an HTTP trace (handler_desc: {r.handlerDesc}). gen-test only handles HTTP for now."
+                )
+            | Some r ->
+              let! topResult =
+                Sql.query
+                  "SELECT result_json FROM trace_fn_calls
+                   WHERE trace_id = @traceId AND parent_call_id IS NULL
+                   ORDER BY rowid DESC LIMIT 1"
+                |> Sql.parameters [ "traceId", Sql.string traceID ]
+                |> Sql.executeRowOptionAsync (fun read -> read.string "result_json")
+
+              match topResult with
+              | None ->
+                return
+                  resultError (
+                    DString
+                      $"Trace {traceID} has no top-level call result; can't reconstruct response."
+                  )
+              | Some resultJson ->
+                let inputDval =
+                  DvalReprInternalRoundtrippable.parseJsonV0 r.inputValueJson
+                let resultDval =
+                  DvalReprInternalRoundtrippable.parseJsonV0 resultJson
+
+                match asRecord inputDval, asRecord resultDval with
+                | Some reqFields, Some respFields ->
+                  let url =
+                    Map.tryFind "url" reqFields
+                    |> Option.bind asString
+                    |> Option.defaultValue "/"
+                  let reqHeaders =
+                    Map.tryFind "headers" reqFields
+                    |> Option.map asHeaders
+                    |> Option.defaultValue []
+                  let! reqBodyBytes =
+                    Map.tryFind "body" reqFields
+                    |> Option.map blobBytes
+                    |> Option.defaultWith (fun () -> uply { return [||] })
+
+                  let statusCode =
+                    Map.tryFind "statusCode" respFields
+                    |> Option.bind asInt64
+                    |> Option.defaultValue 200L
+                  let respHeaders =
+                    Map.tryFind "headers" respFields
+                    |> Option.map asHeaders
+                    |> Option.defaultValue []
+                  let! respBodyBytes =
+                    Map.tryFind "body" respFields
+                    |> Option.map blobBytes
+                    |> Option.defaultWith (fun () -> uply { return [||] })
+
+                  let method = methodFromHandlerDesc r.handlerDesc
+                  let path = urlToRequestTarget url
+                  let reqBody = UTF8.ofBytesOpt reqBodyBytes |> Option.defaultValue ""
+                  let respBody =
+                    UTF8.ofBytesOpt respBodyBytes |> Option.defaultValue ""
+
+                  // Drop the recorded Host header (test substitutes HOST
+                  // placeholder) and any Server/Date from request side
+                  // (rare, but if present they'd confuse the harness).
+                  let cleanReqHeaders =
+                    reqHeaders
+                    |> List.filter (fun (k, _) ->
+                      let kl = k.ToLowerInvariant()
+                      kl <> "host"
+                      && kl <> "content-length"
+                      && kl <> "x-http-method")
+                  let reqHeaderBlock =
+                    if List.isEmpty cleanReqHeaders then ""
+                    else formatHeaders cleanReqHeaders + "\n"
+
+                  // Response side: handler-set headers come first, then
+                  // the test harness expects auto-injected Server/HSTS/
+                  // Content-Length. Date is the normalized placeholder.
+                  let cleanRespHeaders =
+                    respHeaders
+                    |> List.filter (fun (k, _) ->
+                      let kl = k.ToLowerInvariant()
+                      kl <> "content-length"
+                      && kl <> "date"
+                      && kl <> "server"
+                      && kl <> "strict-transport-security")
+                  let respHeaderBlock =
+                    if List.isEmpty cleanRespHeaders then ""
+                    else formatHeaders cleanRespHeaders + "\n"
+
+                  let fixture =
+                    $"[http-handler {method} {path}]\n"
+                    + "// TODO: paste the handler body that produced this trace.\n"
+                    + "//       Run `darklang view <fn-path>` for the source, then re-run the test.\n"
+                    + $"\"placeholder for {method} {path}\"\n"
+                    + "\n"
+                    + "[request]\n"
+                    + $"{method} {path} HTTP/1.1\n"
+                    + "Host: HOST\n"
+                    + $"Date: {r.timestamp}\n"
+                    + reqHeaderBlock
+                    + $"Content-Length: {reqBodyBytes.Length}\n"
+                    + "\n"
+                    + reqBody
+                    + "\n"
+                    + "\n"
+                    + "[response]\n"
+                    + $"HTTP/1.1 {statusCode} {reasonPhrase statusCode}\n"
+                    + "Date: xxx, xx xxx xxxx xx:xx:xx xxx\n"
+                    + respHeaderBlock
+                    + "Server: darklang\n"
+                    + "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload\n"
+                    + $"Content-Length: {respBodyBytes.Length}\n"
+                    + "\n"
+                    + respBody
+
+                  return resultOk (DString fixture)
+                | _ ->
+                  return
+                    resultError (
+                      DString
+                        "Trace's input or top-level result isn't a record (Stdlib.Http.{Request,Response}); gen-test can't extract fields."
+                    )
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated }
+
+
     { name = fn "cliTracesImport" 0
       typeParams = []
       parameters =

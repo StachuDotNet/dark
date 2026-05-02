@@ -200,6 +200,11 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
 
   | [ "import"; path ] -> executeImport state path
 
+  | [ "gen-test"; traceID ] ->
+    match resolveTraceID traceID with
+    | Some full -> executeGenTest state full
+    | None -> state
+
   | "view" :: traceID :: flagArgs ->
     match parseViewOptions defaultViewOptions flagArgs with
     | Ok opts ->
@@ -401,6 +406,21 @@ let executeExport (state: Cli.AppState) (traceID: String) : Cli.AppState =
     state
   | Some json ->
     Stdlib.printLine json
+    state
+
+
+/// `traces gen-test <id>` — generate a `testfiles/http-server/*.test`
+/// fixture skeleton from a recorded HTTP trace. Request/response
+/// wire-format blocks come straight from the trace; the [http-handler]
+/// block has a TODO placeholder for the user to paste the handler body.
+/// Pipe to a file:  darklang traces gen-test <id> > testfiles/.../foo.test
+let executeGenTest (state: Cli.AppState) (traceID: String) : Cli.AppState =
+  match Builtin.cliTracesGenTest traceID with
+  | Ok fixture ->
+    Stdlib.printLine fixture
+    state
+  | Error msg ->
+    Stdlib.printLine (Colors.error msg)
     state
 
 
@@ -856,6 +876,7 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
       Completion.simple "hotspots"
       Completion.simple "export"
       Completion.simple "import"
+      Completion.simple "gen-test"
       Completion.simple "replay"
       Completion.simple "delete"
       Completion.simple "prune"
@@ -893,6 +914,7 @@ let help (_state: Cli.AppState) : Unit =
     "  hotspots --json [trace-limit] Same data as JSON for piping"
     "  export <trace-id>             Print a portable JSON dump of the trace"
     "  import <path>                 Re-create a trace from a JSON dump on disk"
+    "  gen-test <trace-id>           Generate a testfiles/http-server/*.test skeleton from an HTTP trace"
     "  replay <trace-id> [--diff]    Re-execute a trace's code; --diff compares against the recorded output"
     "  delete <trace-id>             Delete one trace (prefix OK)"
     "  prune --keep <N>              Keep the N most-recent traces, drop the rest"
