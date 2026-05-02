@@ -255,6 +255,14 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       Stdlib.printLine (Colors.error (parsePositionalErr nStr "trace number"))
       state
 
+  | [ "find"; "--json" ] ->
+    Stdlib.printLine
+      (Colors.error "Usage: traces find <pattern> --json [limit]")
+    state
+  | [ "find"; "--view" ] ->
+    Stdlib.printLine
+      (Colors.error "Usage: traces find <pattern> --view")
+    state
   | [ "find"; pattern ] -> executeFind state pattern 20L
   | [ "find"; pattern; "--view" ]
   | [ "find"; "--view"; pattern ] ->
