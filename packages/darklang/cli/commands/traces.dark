@@ -159,6 +159,9 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     executeTail state (Stdlib.Option.Option.Some route)
 
   | [ "find"; pattern ] -> executeFind state pattern 20L
+  | [ "find"; pattern; "--view" ]
+  | [ "find"; "--view"; pattern ] ->
+    executeFindView state pattern
   | [ "find"; pattern; limitStr ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeFind state pattern limit
@@ -324,6 +327,21 @@ let executeFind
     Stdlib.printLine ""
     Stdlib.printLine "Use 'traces view <trace-id>' to see details."
     state
+
+
+/// `traces find <pattern> --view` — search-then-drill in one step. Opens
+/// the most-recent matching trace's view directly. If multiple match,
+/// the others are noted but the user gets the freshest one.
+let executeFindView (state: Cli.AppState) (pattern: String) : Cli.AppState =
+  let rows = Builtin.cliTracesFind pattern 1L
+  match rows with
+  | [] ->
+    Stdlib.printLine $"No traces match '{pattern}'."
+    state
+  | row :: _ ->
+    Stdlib.printLine $"Latest trace matching '{pattern}': {row.traceId}"
+    Stdlib.printLine ""
+    executeView state row.traceId defaultViewOptions
 
 
 /// `traces export <trace-id>` — print a portable JSON dump of the
@@ -784,6 +802,7 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
       Completion.simple "--json" ]
   | [ "tail" ] -> [ Completion.simple "--route" ]
   | [ "follow" ] -> [ Completion.simple "--route" ]
+  | [ "find" ] -> [ Completion.simple "--view" ]
   | [ "replay" ] -> [ Completion.simple "--diff" ]
   | [ "prune" ] -> [ Completion.simple "--keep" ]
   | _ -> []
@@ -802,6 +821,7 @@ let help (_state: Cli.AppState) : Unit =
     "  follow [--route <substring>]  Tail-style: print new traces as they arrive"
     "  stats [limit]                 Count of recent traces grouped by handler"
     "  find <pattern> [limit]        List traces whose recorded values contain a substring"
+    "  find <pattern> --view         Open the latest matching trace directly"
     "  hotspots [trace-limit]        Per-fn timing aggregated across last N traces (default 100)"
     "  export <trace-id>             Print a portable JSON dump of the trace"
     "  import <path>                 Re-create a trace from a JSON dump on disk"
@@ -835,6 +855,7 @@ let help (_state: Cli.AppState) : Unit =
     "  traces follow --route /api           - Stream new traces matching /api"
     "  traces stats                         - Count recent traces by handler"
     "  traces find user-42                  - All traces touching the substring 'user-42'"
+    "  traces find user-42 --view           - Open the latest matching trace"
     "  traces hotspots                      - Top fns by total ms across recent traces"
     "  traces view <trace-id>               - View full trace tree"
     "  traces view <trace-id> -d 2          - Top two tree levels only"
