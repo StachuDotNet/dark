@@ -167,9 +167,21 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
       state
 
-  | [ "tail" ] -> executeTail state Stdlib.Option.Option.None
+  | [ "tail" ] -> executeTail state Stdlib.Option.Option.None 1L
+  | [ "tail"; nStr ] ->
+    match Stdlib.Int64.parse nStr with
+    | Ok n -> executeTail state Stdlib.Option.Option.None n
+    | Error _ ->
+      Stdlib.printLine (Colors.error $"Invalid trace number: {nStr}")
+      state
   | [ "tail"; "--route"; route ] ->
-    executeTail state (Stdlib.Option.Option.Some route)
+    executeTail state (Stdlib.Option.Option.Some route) 1L
+  | [ "tail"; "--route"; route; nStr ] ->
+    match Stdlib.Int64.parse nStr with
+    | Ok n -> executeTail state (Stdlib.Option.Option.Some route) n
+    | Error _ ->
+      Stdlib.printLine (Colors.error $"Invalid trace number: {nStr}")
+      state
 
   | [ "find"; pattern ] -> executeFind state pattern 20L
   | [ "find"; pattern; "--view" ]
@@ -452,30 +464,47 @@ let executeImport (state: Cli.AppState) (path: String) : Cli.AppState =
       state
 
 
-/// `traces tail [--route <substring>]` — open the most-recent trace's
-/// full view in one step. Skips the list-then-copy-id round-trip you'd
-/// otherwise do with `traces list` → `traces view <id>`. Optional route
-/// filter narrows to the latest trace matching the substring.
+/// `traces tail [N] [--route <substring>]` — open the Nth-most-recent
+/// trace's full view (default N=1, the very latest). Skips the
+/// list-then-copy-id round-trip you'd otherwise do with `traces list` →
+/// `traces view <id>`. `tail 2` peeks back one without copying IDs.
+/// Optional route filter narrows to traces matching the substring
+/// before counting.
 let executeTail
   (state: Cli.AppState)
   (routeFilter: Stdlib.Option.Option<String>)
+  (n: Int64)
   : Cli.AppState =
-  let candidates =
-    match routeFilter with
-    | Some route ->
-      (Builtin.cliTracesList 200L)
-      |> Stdlib.List.filter (fun row -> Stdlib.String.contains row.handler route)
-    | None -> Builtin.cliTracesList 1L
-
-  match candidates with
-  | [] ->
-    let label =
-      match routeFilter with
-      | Some r -> $"matching '{r}'"
-      | None -> "yet"
-    Stdlib.printLine $"No traces {label}."
+  if n < 1L then
+    Stdlib.printLine (Colors.error "tail N must be ≥ 1")
     state
-  | row :: _ -> executeView state row.traceId defaultViewOptions
+  else
+    // Over-fetch so route-filtered Nth candidate is reachable; the
+    // unfiltered case picks straight from the first N rows.
+    let fetch =
+      match routeFilter with
+      | Some _ -> 500L
+      | None -> n
+    let allRows = Builtin.cliTracesList fetch
+    let candidates =
+      match routeFilter with
+      | Some route ->
+        allRows
+        |> Stdlib.List.filter (fun row -> Stdlib.String.contains row.handler route)
+      | None -> allRows
+
+    // Drop the first (n-1) — the Nth-most-recent is what's left at head.
+    let after = Stdlib.List.drop candidates (n - 1L)
+    match after with
+    | [] ->
+      let nStr = Stdlib.Int64.toString n
+      let suffix =
+        match routeFilter with
+        | Some r -> $" matching '{r}'"
+        | None -> ""
+      Stdlib.printLine $"No {nStr}th-most-recent trace{suffix}."
+      state
+    | row :: _ -> executeView state row.traceId defaultViewOptions
 
 
 /// `traces stats` — per-handler aggregate over the last N traces:
@@ -985,7 +1014,7 @@ let help (_state: Cli.AppState) : Unit =
     "  list --fn <name> [limit]      Filter to traces that called a specific function"
     "  list --route <substring> [limit]  Filter by handler description substring (HTTP)"
     "  view <trace-id> [flags]       View details of a specific trace"
-    "  tail [--route <substring>]    View the most-recent trace, optionally filtered"
+    "  tail [N] [--route <substring>]  View the Nth-most-recent trace (default 1, the very latest)"
     "  follow [--route <substring>] [--json]  Tail-style: print new traces as they arrive (NDJSON with --json)"
     "  stats [limit]                 Count of recent traces grouped by handler"
     "  stats --json [limit]          Same data as JSON for piping"
@@ -1022,6 +1051,7 @@ let help (_state: Cli.AppState) : Unit =
     "  traces list --fn List.map            - Find traces that called List.map"
     "  traces list --route /user/:id        - Find HTTP traces matching a route"
     "  traces tail                          - Open the latest trace's full view"
+    "  traces tail 2                        - Open the second-most-recent trace"
     "  traces tail --route /user            - Open the latest trace matching /user"
     "  traces follow                        - Stream new traces as they arrive"
     "  traces follow --route /api           - Stream new traces matching /api"
