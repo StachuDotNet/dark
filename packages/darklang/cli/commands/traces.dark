@@ -946,7 +946,17 @@ let executeStats (state: Cli.AppState) (limit: Int64) : Cli.AppState =
         let countStr = padNum count 5L
         Stdlib.printLine $"  {totalStr} │ {maxStr} │ {countStr} │ {handler}")
       Stdlib.printLine ""
-      Stdlib.printLine "Use 'traces list --route <substring>' to drill into a route."
+      // The route-drill hint only makes sense if there are HTTP
+      // handlers in the result; eval/run-only stores get no help
+      // from `--route`. HTTP handler descriptions look like
+      // `<METHOD> <path>` so a `/` is a reliable shibboleth.
+      let hasHttp =
+        rows
+        |> Stdlib.List.any (fun row ->
+          let (handler, _, _, _) = row
+          Stdlib.String.contains handler "/")
+      if hasHttp then
+        Stdlib.printLine "Use 'traces list --route <substring>' to drill into a route."
       state
 
 
