@@ -195,6 +195,17 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   | [ "find"; pattern; "--view" ]
   | [ "find"; "--view"; pattern ] ->
     executeFindView state pattern
+  | [ "find"; pattern; "--json" ]
+  | [ "find"; "--json"; pattern ] ->
+    executeFindJson state pattern 20L
+  | [ "find"; pattern; "--json"; limitStr ]
+  | [ "find"; pattern; limitStr; "--json" ]
+  | [ "find"; "--json"; pattern; limitStr ] ->
+    match Stdlib.Int64.parse limitStr with
+    | Ok limit -> executeFindJson state pattern limit
+    | Error _ ->
+      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      state
   | [ "find"; pattern; limitStr ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeFind state pattern limit
@@ -406,6 +417,19 @@ let executeFind
     Stdlib.printLine ""
     Stdlib.printLine "Use 'traces view <trace-id>' to see details."
     state
+
+
+/// `traces find <pattern> --json [limit]` — same data as `traces find`
+/// but as a JSON array of `{traceId, handler, timestamp}` objects, no
+/// banner. Designed for piping into jq / scripts.
+let executeFindJson
+  (state: Cli.AppState)
+  (pattern: String)
+  (limit: Int64)
+  : Cli.AppState =
+  let rows = Builtin.cliTracesFind pattern limit
+  Stdlib.printLine (Stdlib.Json.serialize<List<TraceSummary>> rows)
+  state
 
 
 /// `traces find <pattern> --view` — search-then-drill in one step. Opens
@@ -1050,7 +1074,8 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
   | [ "tail" ] -> [ Completion.simple "--route" ]
   | [ "follow" ] ->
     [ Completion.simple "--route"; Completion.simple "--json" ]
-  | [ "find" ] -> [ Completion.simple "--view" ]
+  | [ "find" ] ->
+    [ Completion.simple "--view"; Completion.simple "--json" ]
   | [ "replay" ] -> [ Completion.simple "--diff" ]
   | [ "prune" ] -> [ Completion.simple "--keep" ]
   | [ "clear" ] -> [ Completion.simple "--before" ]
@@ -1074,6 +1099,7 @@ let help (_state: Cli.AppState) : Unit =
     "  stats --json [limit]          Same data as JSON for piping"
     "  find <pattern> [limit]        List traces whose recorded values contain a substring"
     "  find <pattern> --view         Open the latest matching trace directly"
+    "  find <pattern> --json [limit] Same data as JSON for piping"
     "  hotspots [trace-limit]        Per-fn timing aggregated across last N traces (default 100)"
     "  hotspots --json [trace-limit] Same data as JSON for piping"
     "  export <trace-id>             Print a portable JSON dump of the trace"
