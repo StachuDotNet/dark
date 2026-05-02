@@ -108,6 +108,14 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     state
 
   | [ "list" ] -> executeList state 20L
+  | [ "list"; "--json" ] -> executeListJson state 20L
+  | [ "list"; "--json"; limitStr ]
+  | [ "list"; limitStr; "--json" ] ->
+    match Stdlib.Int64.parse limitStr with
+    | Ok limit -> executeListJson state limit
+    | Error _ ->
+      Stdlib.printLine (Colors.error $"Invalid limit: {limitStr}")
+      state
   | [ "list"; limitStr ] ->
     match Stdlib.Int64.parse limitStr with
     | Ok limit -> executeList state limit
@@ -228,6 +236,15 @@ let executeList (state: Cli.AppState) (limit: Int64) : Cli.AppState =
     Stdlib.printLine ""
     Stdlib.printLine "Use 'traces view <trace-id>' to see details."
     state
+
+
+/// `traces list --json [N]` — same data as `traces list` but emitted as a
+/// JSON array of `{traceId, handler, timestamp}` objects, no headers or
+/// footers. Designed for piping into jq / scripts. Empty store prints `[]`.
+let executeListJson (state: Cli.AppState) (limit: Int64) : Cli.AppState =
+  let rows = Builtin.cliTracesList limit
+  Stdlib.printLine (Stdlib.Json.serialize<List<TraceSummary>> rows)
+  state
 
 
 let executeListByFn (state: Cli.AppState) (fnName: String) (limit: Int64) : Cli.AppState =
@@ -763,7 +780,8 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
       Completion.simple "clear" ]
   | [ "list" ] ->
     [ Completion.simple "--fn"
-      Completion.simple "--route" ]
+      Completion.simple "--route"
+      Completion.simple "--json" ]
   | [ "tail" ] -> [ Completion.simple "--route" ]
   | [ "follow" ] -> [ Completion.simple "--route" ]
   | [ "replay" ] -> [ Completion.simple "--diff" ]
@@ -776,6 +794,7 @@ let help (_state: Cli.AppState) : Unit =
     ""
     "Subcommands:"
     "  list [limit]                  List recent traces (default limit: 20)"
+    "  list --json [limit]           Same data as JSON for piping (e.g. `| jq`)"
     "  list --fn <name> [limit]      Filter to traces that called a specific function"
     "  list --route <substring> [limit]  Filter by handler description substring (HTTP)"
     "  view <trace-id> [flags]       View details of a specific trace"
