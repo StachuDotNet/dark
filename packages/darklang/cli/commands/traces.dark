@@ -83,12 +83,21 @@ let parsePositionalErr (input: String) (label: String) : String =
 /// Resolve a trace ID prefix to the full ID, printing the not-found /
 /// ambiguous-match error and returning `None` if resolution fails. The
 /// caller short-circuits on `None`.
+///
+/// `-`-prefixed input is reported as "Unknown flag" before the lookup —
+/// trace IDs are UUIDs, so no real ID ever starts with `-`. This catches
+/// cases like `traces export --frob` where a misplaced flag would
+/// otherwise yield the misleading "Trace not found: --frob".
 let resolveTraceID (input: String) : Stdlib.Option.Option<String> =
-  match Builtin.cliTracesResolveID input with
-  | Ok fullID -> Stdlib.Option.Option.Some fullID
-  | Error msg ->
-    Stdlib.printLine (Colors.error msg)
+  if Stdlib.String.startsWith input "-" then
+    Stdlib.printLine (Colors.error $"Unknown flag: {input}")
     Stdlib.Option.Option.None
+  else
+    match Builtin.cliTracesResolveID input with
+    | Ok fullID -> Stdlib.Option.Option.Some fullID
+    | Error msg ->
+      Stdlib.printLine (Colors.error msg)
+      Stdlib.Option.Option.None
 
 
 let rec parseViewOptions
