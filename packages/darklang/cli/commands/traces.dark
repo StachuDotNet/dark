@@ -447,8 +447,29 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     state
 
   | _ ->
-    help state
-    state
+    // If the first token isn't a known subcommand, surface that
+    // explicitly before dumping help so a typo'd `traces lst` doesn't
+    // look like it succeeded silently.
+    let knownSubcommands =
+      [ "help"; "list"; "view"; "tail"; "follow"; "find"; "hotspots"
+        "stats"; "export"; "import"; "gen-test"; "inspect"; "values"
+        "replay"; "delete"; "prune"; "clear" ]
+    let isKnownHead =
+      match args with
+      | head :: _ ->
+        Stdlib.List.any knownSubcommands (fun s -> s == head)
+      | [] -> true
+    if Stdlib.Bool.not isKnownHead then
+      match args with
+      | head :: _ ->
+        Stdlib.printLine (Colors.error $"Unknown subcommand: {head}")
+        Stdlib.printLine ""
+        help state
+        state
+      | [] -> help state; state
+    else
+      help state
+      state
 
 
 let executeList (state: Cli.AppState) (limit: Int64) : Cli.AppState =
