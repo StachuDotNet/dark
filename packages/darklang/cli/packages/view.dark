@@ -241,13 +241,19 @@ let execute (state: AppState) (args: List<String>) : AppState =
       viewEntity branchId newLocation
       state
   | [ pathArg; "--with-trace"; traceID ] ->
-    match Traversal.traverse branchId state.packageData.currentLocation pathArg with
-    | Error errorMsg ->
-      Stdlib.printLine (Colors.error $"Cannot view: {errorMsg}")
+    // Accept any unambiguous prefix, same as `traces view` / `export` / etc.
+    match Builtin.cliTracesResolveID traceID with
+    | Error msg ->
+      Stdlib.printLine (Colors.error msg)
       state
-    | Ok newLocation ->
-      viewFunctionWithTrace branchId newLocation traceID
-      state
+    | Ok fullID ->
+      match Traversal.traverse branchId state.packageData.currentLocation pathArg with
+      | Error errorMsg ->
+        Stdlib.printLine (Colors.error $"Cannot view: {errorMsg}")
+        state
+      | Ok newLocation ->
+        viewFunctionWithTrace branchId newLocation fullID
+        state
   | _ ->
     help state
     state
