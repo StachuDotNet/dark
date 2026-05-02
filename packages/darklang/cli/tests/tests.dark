@@ -155,6 +155,63 @@ let testEvalStringExpression (): TestResult =
     TestResult.Fail $"Expected 'helloworld', got '{output}'"
 
 
+// --- Trace-surface regression tests ---
+
+/// `traces help` lists the expected subcommand surface.
+let testTracesHelp (): TestResult =
+  let output = runWithCommand ["traces"; "help"]
+  // Pick a handful of subcommands and flags shipped over the trace
+  // work — if any vanish silently the test catches it.
+  let expected =
+    [ "list"; "view"; "tail"; "follow"; "find"; "hotspots"; "inspect"
+      "gen-test"; "values"; "export"; "import"; "replay"; "delete"
+      "prune"; "clear"; "--json"; "--with-trace" ]
+  let missing =
+    expected
+    |> Stdlib.List.filter (fun s -> Stdlib.Bool.not (Stdlib.String.contains output s))
+  match missing with
+  | [] -> TestResult.Pass
+  | _ ->
+    TestResult.Fail
+      $"`traces help` missing terms: {Stdlib.String.join missing ", "}"
+
+
+/// Eval generates a trace; `traces tail` opens it and shows its input.
+/// Exercises: TraceDval emission, expr_values storage, view-with-trace
+/// renderer, traces-tail dispatch, prefix resolution.
+let testTracesTailShowsLastEval (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "let x = 7L\nx"]
+  let output = runWithCommand ["traces"; "tail"]
+  if Stdlib.String.contains output "Handler: eval"
+      && Stdlib.String.contains output "expression = \"let x = 7L"
+  then
+    TestResult.Pass
+  else
+    TestResult.Fail $"Expected eval handler + recorded input, got: {output}"
+
+
+/// `traces values <id>` lists `(exprId, dval)` pairs for a let-binding eval.
+let testTracesValuesAfterLet (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "let x = 1L + 2L\nx"]
+  let listJson = runWithCommand ["traces"; "list"; "1"; "--json"]
+  // Crude id-extract — the JSON has one trace; pull the uuid via split.
+  match Stdlib.String.split listJson "\"traceId\":\"" with
+  | _ :: rest :: _ ->
+    match Stdlib.String.split rest "\"" with
+    | tid :: _ ->
+      let valuesOut = runWithCommand ["traces"; "values"; tid]
+      // The let RHS evaluates to `3`. Look for `→  3` in the values
+      // listing (the renderer formats as "<exprId>  →  <repr>").
+      if Stdlib.String.contains valuesOut "→  3" then
+        TestResult.Pass
+      else
+        TestResult.Fail $"Expected `→  3` in values output, got: {valuesOut}"
+    | _ -> TestResult.Fail $"Couldn't parse trace id from list output"
+  | _ -> TestResult.Fail $"List --json had no traceId field: {listJson}"
+
+
 type TestFunction = Unit -> TestResult
 
 let allTests (): List<String * TestFunction> =
@@ -177,6 +234,10 @@ let allTests (): List<String * TestFunction> =
 
     ("Eval Simple Expression", fun () -> testEvalSimpleExpression ())
     ("Eval String Expression", fun () -> testEvalStringExpression ())
+
+    ("Traces Help", fun () -> testTracesHelp ())
+    ("Traces Tail Shows Last Eval", fun () -> testTracesTailShowsLastEval ())
+    ("Traces Values After Let", fun () -> testTracesValuesAfterLet ())
   ]
 
 type TestSummary =
