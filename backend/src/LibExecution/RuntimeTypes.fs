@@ -483,6 +483,14 @@ type Instruction =
 
   | CheckIfFirstExprIsUnit of Register
 
+  /// Tracing-only: read the Dval in `valueReg` and fire
+  /// `state.tracing.traceDval` with the source AST `exprId`. Used by
+  /// `view <fn> --with-trace` to look up "what value was bound here?"
+  /// at every annotated AST node. Compiled in by `Expr.toRT` only at
+  /// points worth tracing (currently: `let` RHS); skipped at runtime
+  /// when `state.tracing.skipTracing` is true.
+  | TraceDval of exprId : id * valueReg : Register
+
 and Instructions =
   {
     /// How many registers are used in evaluating these instructions

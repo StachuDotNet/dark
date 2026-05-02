@@ -543,6 +543,8 @@ and executeInstruction
   | RT.RaiseNRE _ -> Error "Name resolution errors not supported in SQL queries"
   | RT.VarNotFound(_, varName) -> Error $"This variable is not defined: {varName}"
   | RT.CheckIfFirstExprIsUnit _ -> Ok state
+  // Trace-only instruction; ignored when compiling to SQL.
+  | RT.TraceDval _ -> Ok state
 
 
 /// Compile a lambda's instructions to SQL
