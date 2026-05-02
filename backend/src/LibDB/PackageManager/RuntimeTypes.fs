@@ -154,8 +154,9 @@ module Blob =
 
   /// Delete `package_blobs` rows whose hashes aren't referenced by any
   /// materialised Dval in either `package_values.rt_dval` or in the
-  /// trace store (`traces.input_value_json` + `trace_fn_calls.{args_json,
-  /// result_json}`). Returns the count of rows deleted.
+  /// trace store (`traces.input_value_json` +
+  /// `trace_fn_calls.{args_json, result_json}` +
+  /// `trace_expr_values.dval_json`). Returns the count of rows deleted.
   ///
   /// Tracing started promoting ephemeral blobs to persistent at
   /// trace-record time (see `LibDB.Tracing.promoteBlobs`); without
@@ -241,8 +242,22 @@ module Blob =
             |> Set.union (parseAndCollect resultJson))
           Set.empty
 
+      // Per-AST-node values (let RHS, if branch result, match arm,
+      // pipe stage). The recorder runs `Blob.promote` over these too,
+      // so they can hold persistent blob refs that nothing else does.
+      let! exprValueJsons =
+        Sql.query "SELECT dval_json FROM trace_expr_values"
+        |> Sql.executeAsync (fun r -> r.string "dval_json")
+
+      let traceExprValueRefs : Set<string> =
+        exprValueJsons
+        |> List.fold (fun acc j -> Set.union acc (parseAndCollect j)) Set.empty
+
       let referenced : Set<string> =
-        valueRefs |> Set.union traceInputRefs |> Set.union traceCallRefs
+        valueRefs
+        |> Set.union traceInputRefs
+        |> Set.union traceCallRefs
+        |> Set.union traceExprValueRefs
 
       // List of candidate hashes in storage.
       let! allHashes =
