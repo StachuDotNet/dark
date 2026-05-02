@@ -499,6 +499,44 @@ let testTracesRejectsNegativeLimit (): TestResult =
     TestResult.Fail $"Expected `Limit must be ≥ 1` from: {names}"
 
 
+/// Result-message phrasing matches the actual count: singular when
+/// 1, plural when N. And `prune --keep 0` says "none kept", not
+/// "kept the 0 most-recent". Locks in `49a0cfec9` and `3c81ed512`.
+let testTracesClearAndPruneGrammar (): TestResult =
+  let _ = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "1L + 1L"]
+  let clearOne = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "1L + 1L"]
+  let _ = runWithCommand ["eval"; "2L + 2L"]
+  let clearTwo = runWithCommand ["traces"; "clear"]
+  let _ = runWithCommand ["eval"; "1L + 1L"]
+  let _ = runWithCommand ["eval"; "2L + 2L"]
+  let pruneNone = runWithCommand ["traces"; "prune"; "--keep"; "0"]
+  let _ = runWithCommand ["eval"; "3L + 3L"]
+  let _ = runWithCommand ["eval"; "4L + 4L"]
+  let pruneOne = runWithCommand ["traces"; "prune"; "--keep"; "1"]
+  let checks =
+    [ ("clear 1 → singular", clearOne, "Cleared 1 trace.")
+      ("clear 2 → plural", clearTwo, "Cleared 2 traces.")
+      ("prune keep 0 → none kept", pruneNone, "none kept")
+      ("prune keep 1 → most-recent", pruneOne, "kept the most-recent") ]
+  let failures =
+    checks
+    |> Stdlib.List.filter (fun tup ->
+      let (_, output, expected) = tup
+      Stdlib.Bool.not (Stdlib.String.contains output expected))
+  match failures with
+  | [] -> TestResult.Pass
+  | _ ->
+    let names =
+      failures
+      |> Stdlib.List.map (fun tup ->
+        let (label, _, _) = tup
+        label)
+      |> Stdlib.String.join "; "
+    TestResult.Fail $"Phrasing checks failed: {names}"
+
+
 /// Flag-shaped input where a trace ID was expected is rejected as a
 /// flag, not silently passed to the resolver. Locks in `f57c4aea3`.
 /// Pre-fix: `traces export --frob` said "Trace not found: --frob".
@@ -565,6 +603,8 @@ let allTests (): List<String * TestFunction> =
       fun () -> testTracesRejectsNegativeLimit ())
     ("Traces Rejects Flag As Trace Id",
       fun () -> testTracesRejectsFlagAsTraceId ())
+    ("Traces Clear And Prune Grammar",
+      fun () -> testTracesClearAndPruneGrammar ())
     ("Traces Inspect Errors On Builtin Handler",
       fun () -> testTracesInspectErrorsOnBuiltinHandler ())
   ]
