@@ -594,6 +594,16 @@ let fns () : List<BuiltInFn> =
                      resultJson = read.string "result_json"
                      durationMs = read.int64 "duration_ms" |})
 
+              let! exprValues =
+                Sql.query
+                  "SELECT expr_id, dval_json FROM trace_expr_values
+                   WHERE trace_id = @traceId
+                   ORDER BY expr_id"
+                |> Sql.parameters [ "traceId", Sql.string traceID ]
+                |> Sql.executeAsync (fun read ->
+                  {| exprId = read.string "expr_id"
+                     dvalJson = read.string "dval_json" |})
+
               // Build the export object as Utf8JsonWriter so the embedded
               // dval JSON strings (`input_value_json`, `args_json`,
               // `result_json`) round-trip as objects, not stringified
@@ -637,6 +647,19 @@ let fns () : List<BuiltInFn> =
                 w.WritePropertyName("result")
                 writeRaw ev.resultJson
                 w.WriteNumber("duration_ms", ev.durationMs)
+                w.WriteEndObject()
+              w.WriteEndArray()
+              // Per-AST-node values (let bindings, if results, match
+              // arms, pipe stages — see TraceDval). Required for
+              // `view --with-trace` / `traces inspect` to work after
+              // a re-import. Older exports omit this field; import
+              // tolerates absence.
+              w.WriteStartArray("expr_values")
+              for ev in exprValues do
+                w.WriteStartObject()
+                w.WriteString("expr_id", ev.exprId)
+                w.WritePropertyName("dval")
+                writeRaw ev.dvalJson
                 w.WriteEndObject()
               w.WriteEndArray()
               w.WriteEndObject()
@@ -1222,6 +1245,9 @@ let fns () : List<BuiltInFn> =
                       "inputValueJson", Sql.string inputValueJson ] ]
 
                   "DELETE FROM trace_fn_calls WHERE trace_id = @traceId",
+                  [ [ "traceId", Sql.string id ] ]
+
+                  "DELETE FROM trace_expr_values WHERE trace_id = @traceId",
                   [ [ "traceId", Sql.string id ] ] ]
 
               let fnCalls = root.GetProperty("fn_calls")
@@ -1259,7 +1285,29 @@ let fns () : List<BuiltInFn> =
                        @lambdaExprId, @argsJson, @resultJson, @durationMs)",
                     rows ]
 
-              let _ = Sql.executeTransactionSync (baseStatements @ eventStmt)
+              // expr_values is optional: pre-`709e2868e` exports won't
+              // have it. Skip silently if absent.
+              let exprValuesStmt =
+                match root.TryGetProperty("expr_values") with
+                | true, exprArr when exprArr.GetArrayLength() > 0 ->
+                  let rows =
+                    exprArr.EnumerateArray()
+                    |> Seq.toList
+                    |> List.map (fun ev ->
+                      [ "traceId", Sql.string id
+                        "exprId", Sql.string (ev.GetProperty("expr_id").GetString())
+                        "dvalJson",
+                        Sql.string (ev.GetProperty("dval").GetRawText()) ])
+                  [ "INSERT OR REPLACE INTO trace_expr_values
+                      (trace_id, expr_id, dval_json)
+                     VALUES
+                      (@traceId, @exprId, @dvalJson)",
+                    rows ]
+                | _ -> []
+
+              let _ =
+                Sql.executeTransactionSync
+                  (baseStatements @ eventStmt @ exprValuesStmt)
               return resultOk (DString id)
             with ex ->
               return resultError (DString $"Failed to import trace: {ex.Message}")
