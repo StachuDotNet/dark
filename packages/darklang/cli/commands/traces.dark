@@ -1434,6 +1434,16 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Completion.Compl
   | [ "clear" ] -> [ Completion.simple "--before" ]
   | [ "stats" ] -> [ Completion.simple "--json" ]
   | [ "hotspots" ] -> [ Completion.simple "--json" ]
+  // After `traces view <id>` the next token is a flag — surface them.
+  | "view" :: _ :: _ ->
+    [ Completion.simple "--depth"
+      Completion.simple "-d"
+      Completion.simple "--no-builtins"
+      Completion.simple "--no-stdlib"
+      Completion.simple "--filter"
+      Completion.simple "--exclude"
+      Completion.simple "--slow"
+      Completion.simple "--slow-ms" ]
   | _ -> []
 
 
