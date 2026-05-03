@@ -1,33 +1,17 @@
-/// Traces command - list and view execution traces
+/// Traces command - list and view execution traces.
+///
+/// The generic shapes (TraceSummary / InputVar / FnCall / TraceData) and
+/// trace-related helpers (Duration parsing, formatting, handler-source
+/// lookup) live under `Darklang.Tracing.*` so non-CLI consumers can
+/// reuse them. This file only holds the CLI dispatch + per-command
+/// `executeX` functions.
 module Darklang.Cli.Commands.Traces
 
 
-type TraceSummary =
-  { traceId: String
-    handler: String
-    timestamp: String }
-
-type InputVar =
-  { name: String
-    value: LanguageTools.RuntimeTypes.Dval }
-
-type FnCall =
-  { callId: String
-    parentCallId: Stdlib.Option.Option<String>
-    kind: String  // "function" | "lambda" | "builtin"
-    fnName: String
-    lambdaExprId: Stdlib.Option.Option<String>
-    args: List<LanguageTools.RuntimeTypes.Dval>
-    result: LanguageTools.RuntimeTypes.Dval
-    /// Frame-entry-to-exit duration in ms. Builtins always 0 (no entry hook).
-    durationMs: Int64 }
-
-type TraceData =
-  { traceId: String
-    handler: String
-    timestamp: String
-    inputs: List<InputVar>
-    functionCalls: List<FnCall> }
+type TraceSummary = Darklang.Tracing.TraceSummary
+type InputVar = Darklang.Tracing.InputVar
+type FnCall = Darklang.Tracing.FnCall
+type TraceData = Darklang.Tracing.TraceData
 
 
 /// Filters applied when rendering a trace tree. Each filter hides matching
@@ -679,20 +663,11 @@ let executeHotspotsJson
 /// Right-align a number in a field of `width` chars by prepending spaces.
 /// Stdlib.padStart returns Result; this helper unwraps with empty-Error
 /// fallback (only fails on bad padWith, which we hardcode here).
+// Formatting helpers moved to `Darklang.Tracing.Format`.
 let padNum (n: Int64) (width: Int64) : String =
-  let s = Stdlib.Int64.toString n
-  match Stdlib.String.padStart s " " width with
-  | Ok r -> r
-  | Error _ -> s
+  Darklang.Tracing.Format.padNum n width
 
-
-/// Escape a string for embedding in JSON. Handles backslash and double-
-/// quote — the only characters that appear in trace handler/fn names
-/// (URL paths, dotted package names, builtin identifiers).
-let jsonEscape (s: String) : String =
-  s
-  |> Stdlib.String.replaceAll "\\" "\\\\"
-  |> Stdlib.String.replaceAll "\"" "\\\""
+let jsonEscape (s: String) : String = Darklang.Tracing.Format.jsonEscape s
 
 
 /// `traces find <pattern> [limit]` — list traces whose recorded input or any
@@ -872,32 +847,12 @@ let executeValues (state: Cli.AppState) (traceID: String) : Cli.AppState =
     state
 
 
-/// Resolve a recorded handler's qualified name (e.g.
-/// "Darklang.DemoData.HttpServerTest.helloHandlerFn") to its current
-/// pretty-printed body expression. Returns None if the fn was deleted,
-/// renamed, or otherwise not on the current branch — caller falls back
-/// to a TODO placeholder.
+// `lookupHandlerBody` moved to `Darklang.Tracing.HandlerSource.lookup`.
 let lookupHandlerBody
   (branchId: Uuid)
   (handlerName: String)
   : Stdlib.Option.Option<String> =
-  let parts = Stdlib.String.split handlerName "."
-  match Stdlib.List.last parts with
-  | None -> Stdlib.Option.Option.None
-  | Some name ->
-    let modulePath = Stdlib.List.dropLast parts
-    let results = Packages.Query.searchExactMatch branchId modulePath name
-    match results.fns with
-    | [] -> Stdlib.Option.Option.None
-    | item :: _ ->
-      let ctx =
-        PrettyPrinter.ProgramTypes.Context
-          { branchId = branchId
-            currentModule = Stdlib.Option.Option.None
-            currentFunction = Stdlib.Option.Option.None
-            traceValues = Stdlib.Dict.empty }
-      let body = PrettyPrinter.ProgramTypes.expr ctx item.entity.body
-      Stdlib.Option.Option.Some body
+  Darklang.Tracing.HandlerSource.lookup branchId handlerName
 
 
 let executeGenTest (state: Cli.AppState) (traceID: String) : Cli.AppState =
@@ -1222,12 +1177,9 @@ let formatInputs (branchId: Uuid) (inputs: List<InputVar>) : String =
 /// pretty-print, split on newlines, trim each line, rejoin. We don't
 /// normalize comma spacing because that would corrupt commas inside
 /// string contents.
+// `compactDval` moved to `Darklang.Tracing.Format`.
 let compactDval (branchId: Uuid) (dv: LanguageTools.RuntimeTypes.Dval) : String =
-  let pretty = PrettyPrinter.RuntimeTypes.dval branchId dv
-  pretty
-  |> Stdlib.String.split "\n"
-  |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
-  |> Stdlib.String.join ""
+  Darklang.Tracing.Format.compactDval branchId dv
 
 
 /// Decide whether to render a given call line. Hidden lines still recurse
@@ -1459,30 +1411,9 @@ let executeClear (state: Cli.AppState) : Cli.AppState =
 /// always state intent. Returns Error with a hint on malformed input.
 /// `-`-prefixed inputs are reported as "Unknown flag" rather than
 /// "Invalid duration" — same logic as `parsePositionalErr`.
+// Duration parser moved to `Darklang.Tracing.Duration.parse`.
 let parseDuration (s: String) : Stdlib.Result.Result<Int64, String> =
-  if Stdlib.String.startsWith s "-" then
-    Stdlib.Result.Result.Error $"Unknown flag: {s}"
-  else
-    let len = Stdlib.String.length s
-    if len < 2L then
-      Stdlib.Result.Result.Error
-        $"Duration too short: '{s}'; need a number + unit (s/m/h/d), e.g. 5m"
-    else
-      let unit = Stdlib.String.last s 1L
-      let numPart = Stdlib.String.dropLast s 1L
-      match Stdlib.Int64.parse numPart with
-      | Error _ ->
-        Stdlib.Result.Result.Error
-          $"Invalid duration '{s}'; need a number + unit (s/m/h/d), e.g. 5m"
-      | Ok n ->
-        match unit with
-        | "s" -> Stdlib.Result.Result.Ok n
-        | "m" -> Stdlib.Result.Result.Ok(n * 60L)
-        | "h" -> Stdlib.Result.Result.Ok(n * 3600L)
-        | "d" -> Stdlib.Result.Result.Ok(n * 86400L)
-        | _ ->
-          Stdlib.Result.Result.Error
-            $"Unknown unit '{unit}' in '{s}'; use s, m, h, or d"
+  Darklang.Tracing.Duration.parse s
 
 
 /// `traces clear --before <duration>` — drop traces older than the
