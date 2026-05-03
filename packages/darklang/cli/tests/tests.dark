@@ -7,26 +7,13 @@ type TestResult =
 
 
 let runWithCommand (args: List<String>): String =
-  let escapedArgs =
-    args
-    |> Stdlib.List.map (fun arg ->
-      if arg == "" then "''"
-      else if Stdlib.String.contains arg " " ||
-          Stdlib.String.contains arg "|" ||
-          Stdlib.String.contains arg "\""
-      then
-        let escapedArg = Stdlib.String.replaceAll arg "\"" "\\\""
-        $"'{escapedArg}'"
-      else arg)
-
-  let argsString = Stdlib.String.join escapedArgs " "
-  let command = $"./scripts/run-cli {argsString}"
-  let result = Stdlib.Cli.Unix.executeInDirectoryWithOutput "." command
-
-  if result.exitCode == 0L then
-    Stdlib.String.trim result.stdout
-  else
-    $"ERROR: {result.stderr}"
+  // Runs the CLI dispatch in-process via the cliRunCommandWithCapture
+  // builtin — same code path as `./scripts/run-cli <args>` but no
+  // subprocess fork. This makes the test runner cwd-independent (so
+  // it works under F# Expecto, which runs from `backend/`) and keeps
+  // each command in the ~ms range instead of the ~few-second
+  // subprocess-startup hit.
+  Stdlib.String.trim (Builtin.cliRunCommandWithCapture args)
 
 
 let testHelpCommand (): TestResult =

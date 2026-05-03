@@ -434,6 +434,9 @@ module Fn =
   module Cli =
     let executeCliCommand = p [ "Cli" ] "executeCliCommand"
 
+    module Tests =
+      let runAllTests = p [ "Cli"; "Tests" ] "runAllTests"
+
   module Internal =
     let private p addl = p ("Internal" :: addl)
     module Test =

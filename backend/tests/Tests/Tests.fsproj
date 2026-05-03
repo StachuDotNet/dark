@@ -23,6 +23,7 @@
     <ProjectReference Include="../../src/LibSerialization/LibSerialization.fsproj" />
     <ProjectReference Include="../../src/BuiltinDB/BuiltinDB.fsproj" />
     <ProjectReference Include="../../src/BuiltinDarkInternal/BuiltinDarkInternal.fsproj" />
+    <ProjectReference Include="../../src/BuiltinCliHost/BuiltinCliHost.fsproj" />
 
     <!-- cross-cutting -->
     <ProjectReference Include="../TestUtils/TestUtils.fsproj" />
@@ -60,6 +61,8 @@
 
     <Compile Include="Blob.Tests.fs" />
     <Compile Include="Stream.Tests.fs" />
+
+    <Compile Include="CliTraces.Tests.fs" />
 
     <Compile Include="Tests.fs" />
   </ItemGroup>
