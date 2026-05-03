@@ -115,6 +115,14 @@ Full guide: `docs interactive-testing`
 write. Use ports 9090-9099 for demos (forwarded from devcontainer to
 host). Kill anything already on the port if needed.
 
+### Demo router (canonical for smoke tests)
+  ./scripts/run-cli serve Darklang.DemoData.HttpServerTest.router --port 9090
+Exposes `GET /`, `GET /hello`, `POST /echo`. Source at
+`packages/darklang/demo-data/httpserver-test.dark`. There's also a
+`routerWithFavicon` variant that adds `GET /favicon.ico` (used by
+the multi-handler favicon test fixture). Restart `serve` to pick up
+edits — the router is resolved once at server start.
+
 ### Performance characteristics
   - **New TCP connection per request**: ~130 ms median on loopback
     (worst case — short-lived clients like shell-script `curl` loops).
@@ -139,9 +147,72 @@ networked language (Rust/Go/OCaml/native-C) whereas `HttpListener`
 does not. Track in `notes/merge-readiness-report.md`. Do NOT switch
 to Kestrel — that re-introduces ~8 MB of `Microsoft.AspNetCore.*`.
 
+## Tracing (`darklang traces ...`)
+Every `eval`, `run`, and HTTP handler under `serve` records a trace
+into SQLite (`trace_fn_calls` + `trace_expr_values` tables, plus the
+top-level `traces` row). Reader subcommands operate on that store.
+Source: `packages/darklang/cli/commands/traces.dark` (CLI),
+`backend/src/BuiltinCliHost/Libs/Traces.fs` (builtins),
+`backend/src/LibDB/Tracing/Tracing.fs` (recorder).
+
+### When to reach for it
+Your code misbehaves and you want to see what actually happened. The
+trace store is the source of truth — `traces tail` after a failing
+run gives you the exact call tree, args, and results. `view --with-trace`
+gives you the same data inlined into the source.
+
+### 16-command surface (full list with `traces help`)
+Read commands:
+  list [N] [--fn S] [--route S] [--json]    recent traces (filterable)
+  view <id>                                 full call tree of one trace
+  tail [N] [--route S]                      Nth-most-recent trace
+  follow [--route S] [--json]               live tail (NDJSON with --json)
+  find <pattern> [--view] [--json]          substring-search recorded values
+  hotspots [N] [--json]                     per-fn timing (top 50 by ms)
+  stats [N] [--json]                        per-handler aggregate
+  inspect <id>                              annotated handler source (banner + value-overlay + result footer)
+  values <id>                               raw (exprId, dval) pairs (debug)
+  replay <id> [--diff]                      re-run trace's code; --diff vs recorded output
+  gen-test <id>                             HTTP trace → testfiles/http-server/*.test fixture
+  export <id>                               JSON dump of the trace (portable)
+Write commands:
+  import <path>                             re-create a trace from a JSON dump
+  delete <id>                               remove one trace + its calls + expr_values
+  prune --keep N                            keep N most-recent
+  clear [--before <duration>]               drop all (or older than e.g. 1h, 5m, 2d)
+
+Trace IDs accept any unambiguous prefix (`view fe62`, `export fe6219e9`).
+
+### `view --with-trace <id>` — the killer feature
+  ./scripts/run-cli view <fn-path> --with-trace <trace-id>
+Renders the function's source with `// = <value>` annotations on every
+`let` binding, `if` arm, `match` arm, and pipe stage that the trace
+recorded. Six-layer pipeline: `TraceDval` runtime instruction →
+`trace_expr_values` storage → `cliTracesGetExprValues` builtin →
+`Context.traceValues` Dict on the pretty-printer → inline annotation
+at each construct → the `view` command. Empty annotation count means
+the fn wasn't called by that trace, OR its source has changed since
+recording (exprIds are content-hashed).
+
+### Storage
+  - `traces` row: id, handler_desc, timestamp, input_value_json
+  - `trace_fn_calls`: per call (fn_hash, args_json, result_json, duration_ms, parent_call_id)
+  - `trace_expr_values`: per AST node (exprId, value_blob)
+Blobs are persistent (not ephemeral) — `dbcb4c1be` promoted blob
+references at trace-record time so `pm-sweep-blobs` doesn't reclaim
+live trace data. The sweep also scans `trace_expr_values` (`a740ee23f`).
+
+### Tests
+  ./scripts/run-cli eval "Darklang.Cli.Tests.runAllTests ()"
+38 trace-related tests (out of 39 total). Source:
+`packages/darklang/cli/tests/tests.dark`. Test framework is bespoke
+(not the F# tests) — each test calls `runWithCommand` to shell out
+to `./scripts/run-cli`.
+
 ## Debug
   Builtin.debug "label" value   # prints DEBUG: label: <repr> to stdout
   eval <expr>                   # test small pieces (uses tree-sitter parser, not F# parser)
+  traces tail                   # see what just ran (call tree + values)
 
 ## Enum case construction across modules
 To construct an enum case from outside its defining module, you must name

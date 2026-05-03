@@ -7,6 +7,23 @@ let content () : String =
   serve MyApp.router --port 8080
   http-server MyApp.router --port 8080   # alias for serve
 
+In the devcontainer, only ports 9090-9099 are forwarded to the host —
+use one of those for any demo you want to hit from the host.
+
+## Demo (smoke test)
+  serve Darklang.DemoData.HttpServerTest.router --port 9090
+Exposes `GET /`, `GET /hello`, `POST /echo`. From another shell:
+  curl -i http://localhost:9090/hello
+  curl -i -X POST -d 'ping' http://localhost:9090/echo
+  curl -i http://localhost:9090/nope    # router 404 (Stdlib.HttpServer.routeRequest)
+Restart `serve` to pick up handler edits — resolution is at server start.
+
+## Tracing
+Every request records a trace. After hitting the server:
+  traces tail --route /hello   # latest /hello trace
+  traces inspect <id>          # source + value-overlay for that handler
+  traces gen-test <id> > t.test  # save HTTP trace as a wire-format fixture
+
 ## Router function
   let router (req: Stdlib.HttpServer.Request) : Stdlib.HttpServer.Response =
     match (req.method, req.path) with

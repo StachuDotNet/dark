@@ -115,4 +115,19 @@ If commands hang or fail silently, check logs:
   rundir/logs/cli.log    # main CLI log
   rundir/logs/           # other logs
 
+## Traces (debugging your code)
+Every `eval`, `run`, and HTTP request records a trace. Inspect with:
+  traces tail              # latest trace's call tree (input, args, results)
+  traces tail 2            # 2nd-most-recent (3rd, 4th, …)
+  traces find <substring>  # search recorded values across traces
+  view <fn> --with-trace <id>  # source with `// = <value>` on each let/if/match/pipe stage
+  traces inspect <id>      # annotated handler source for HTTP traces
+
+  traces help              # full surface (16 subcommands)
+
+If your code misbehaved, `traces tail` after the failing run is the
+fastest way to see what actually happened. `view --with-trace` is the
+killer move — point it at any fn and any trace and you see the values
+that flowed through each binding inline.
+
 ## More: docs syntax|types|operators|stdlib|errors|cli|scm"""
