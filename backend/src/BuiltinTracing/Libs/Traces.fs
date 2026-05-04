@@ -1,5 +1,12 @@
-/// Builtin functions for querying traces from the CLI
-module BuiltinCliHost.Libs.Traces
+/// Builtin functions for querying the trace store. Companion to
+/// `LibDB.Tracing` (the recorder side).
+///
+/// Originally lived in `BuiltinCliHost/Libs/Traces.fs` with `cliTraces*`
+/// names, when traces were CLI-only (eval/run). Now that HTTP traces
+/// flow through the same path, the placement and naming were stale —
+/// moved here and renamed to drop the `cli` prefix. The old names are
+/// kept live for one release cycle via `BuiltinTracing.Builtin.fnRenames`.
+module BuiltinTracing.Libs.Traces
 
 open System.Text.Json
 
@@ -16,7 +23,7 @@ module NR = LibExecution.RuntimeTypes.NameResolution
 module VT = LibExecution.ValueType
 module PT = LibExecution.ProgramTypes
 module Execution = LibExecution.Execution
-module TracesRefs = LibExecution.PackageRefs.Type.Cli.Commands.Traces
+module TracesRefs = LibExecution.PackageRefs.Type.Tracing
 
 let dvalTypeName () =
   FQTypeName.fqPackage (
@@ -99,7 +106,7 @@ let private loadFnCalls (traceId : string) : Ply<Dval> =
 
 
 let fns () : List<BuiltInFn> =
-  [ { name = fn "cliTracesList" 0
+  [ { name = fn "tracesList" 0
       typeParams = []
       parameters = [ Param.make "limit" TInt64 "Max number of traces to return" ]
       returnType = TList(TVariable "a")
@@ -138,7 +145,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesView" 0
+    { name = fn "tracesView" 0
       typeParams = []
       parameters = [ Param.make "traceID" TString "The trace ID to view" ]
       returnType = TypeReference.option (TVariable "a")
@@ -192,7 +199,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesListByFn" 0
+    { name = fn "tracesListByFn" 0
       typeParams = []
       parameters =
         [ Param.make "fnName" TString "Function name to search for"
@@ -246,7 +253,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesStatsByHandler" 0
+    { name = fn "tracesStatsByHandler" 0
       typeParams = []
       parameters =
         [ Param.make
@@ -299,7 +306,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesHotspots" 0
+    { name = fn "tracesHotspots" 0
       typeParams = []
       parameters =
         [ Param.make
@@ -353,7 +360,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesFind" 0
+    { name = fn "tracesFind" 0
       typeParams = []
       parameters =
         [ Param.make "pattern" TString "Substring to find in inputs/args/results"
@@ -410,7 +417,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesGetExprValues" 0
+    { name = fn "tracesGetExprValues" 0
       typeParams = []
       parameters = [ Param.make "traceID" TString "Trace to read expr values from" ]
       returnType = TList(TTuple(TString, TVariable "a", []))
@@ -443,7 +450,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesResolveID" 0
+    { name = fn "tracesResolveID" 0
       typeParams = []
       parameters =
         [ Param.make "input" TString "Full trace ID or unambiguous prefix" ]
@@ -494,7 +501,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesGetInput" 0
+    { name = fn "tracesGetInput" 0
       typeParams = []
       parameters = [ Param.make "traceID" TString "The trace ID to get input from" ]
       returnType = TypeReference.option TString
@@ -527,7 +534,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesGetExpectedOutput" 0
+    { name = fn "tracesGetExpectedOutput" 0
       typeParams = []
       parameters = [ Param.make "traceID" TString "The trace ID" ]
       returnType = TypeReference.option TString
@@ -566,7 +573,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesExportJson" 0
+    { name = fn "tracesExportJson" 0
       typeParams = []
       parameters = [ Param.make "traceID" TString "The trace ID to export" ]
       returnType = TypeReference.option TString
@@ -689,7 +696,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesReplayHttp" 0
+    { name = fn "tracesReplayHttp" 0
       typeParams = []
       parameters =
         [ Param.make "traceID" TString "HTTP trace to replay"
@@ -911,7 +918,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesGetSummary" 0
+    { name = fn "tracesGetSummary" 0
       typeParams = []
       parameters = [ Param.make "traceID" TString "Trace to inspect" ]
       returnType = TypeReference.option (TTuple(TString, TString, []))
@@ -942,7 +949,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesGetHandlerName" 0
+    { name = fn "tracesGetHandlerName" 0
       typeParams = []
       parameters = [ Param.make "traceID" TString "Trace to inspect" ]
       returnType = TypeReference.option TString
@@ -971,7 +978,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesGenTest" 0
+    { name = fn "tracesGenTest" 0
       typeParams = []
       parameters =
         [ Param.make "traceID" TString "Trace to generate the fixture from" ]
@@ -1211,7 +1218,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesImport" 0
+    { name = fn "tracesImport" 0
       typeParams = []
       parameters =
         [ Param.make "json" TString "JSON exported via cliTracesExportJson" ]
@@ -1334,7 +1341,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesClearBefore" 0
+    { name = fn "tracesClearBefore" 0
       typeParams = []
       parameters =
         [ Param.make
@@ -1387,7 +1394,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesClear" 0
+    { name = fn "tracesClear" 0
       typeParams = []
       parameters = [ Param.make "unit" TUnit "Ignored" ]
       returnType = TInt64
@@ -1410,7 +1417,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesDelete" 0
+    { name = fn "tracesDelete" 0
       typeParams = []
       parameters = [ Param.make "traceID" TString "Full trace ID to delete" ]
       returnType = TInt64
@@ -1449,7 +1456,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliTracesPruneKeep" 0
+    { name = fn "tracesPruneKeep" 0
       typeParams = []
       parameters =
         [ Param.make "keepN" TInt64 "Number of most-recent traces to keep" ]

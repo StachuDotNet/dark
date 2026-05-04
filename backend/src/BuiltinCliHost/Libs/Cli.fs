@@ -149,13 +149,7 @@ let builtinsToUse () : RT.Builtins =
       BuiltinPM.Builtin.builtins ptPM
       BuiltinHttpServer.Builtin.builtins ()
       BuiltinDB.Builtin.builtins ()
-      // CLEANUP: `Traces.builtins ()` (the cliTraces* surface) lives
-      // under BuiltinCliHost/Libs but isn't really CliHost-specific —
-      // it's reading-side trace data, conceptually closer to BuiltinDB.
-      // Move it out as part of the trace-surface split (see
-      // notes/tracing-ux-plan.md). Keeping here for now so eval/run
-      // can call cliTraces*.
-      Traces.builtins ()
+      BuiltinTracing.Builtin.builtins ()
       // Local Libs.Cli builtins. Without this, anything called via
       // `cliEvaluateExpression` / `cliParseAndExecuteScript` (i.e.
       // `eval` / `run` / the test harness) couldn't see fns like

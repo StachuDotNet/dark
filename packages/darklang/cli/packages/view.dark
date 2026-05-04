@@ -199,7 +199,7 @@ let viewFunctionWithTrace
         item.entity.hash
         LanguageTools.ProgramTypes.ItemKind.Fn
       // Build the Dict<exprId-as-string, Dval> from the trace.
-      let pairs = Builtin.cliTracesGetExprValues traceID
+      let pairs = Builtin.tracesGetExprValues traceID
       let traceValues =
         pairs
         |> Stdlib.List.fold Stdlib.Dict.empty (fun acc pair ->
@@ -269,7 +269,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
         Stdlib.printLine (Colors.error "Trace ID must not be empty")
         state
       else
-        match Builtin.cliTracesResolveID trimmed with
+        match Builtin.tracesResolveID trimmed with
         | Error msg ->
           Stdlib.printLine (Colors.error msg)
           state

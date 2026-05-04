@@ -17,6 +17,7 @@
     <ProjectReference Include="../../src/BuiltinDB/BuiltinDB.fsproj" />
     <ProjectReference Include="../../src/BuiltinDarkInternal/BuiltinDarkInternal.fsproj" />
     <ProjectReference Include="../../src/BuiltinHttpServer/BuiltinHttpServer.fsproj" />
+    <ProjectReference Include="../../src/BuiltinTracing/BuiltinTracing.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="PTShortcuts.fs" />

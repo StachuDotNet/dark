@@ -19,6 +19,7 @@ let all () : RT.Builtins =
       BuiltinCliHost.Builtin.builtins ()
       BuiltinHttpServer.Builtin.builtins ()
       BuiltinDB.Builtin.builtins () // TODO: do we need this?
+      BuiltinTracing.Builtin.builtins ()
       TestUtils.LibTest.builtins () ] // TODO: or this?
     []
 

@@ -67,7 +67,8 @@ let builtins : RT.Builtins =
   LibExecution.Builtin.combine
     [ BuiltinCliHost.Libs.Cli.builtinsToUse ()
       BuiltinCliHost.Builtin.builtins ()
-      BuiltinCli.builtins () ]
+      BuiltinCli.builtins ()
+      BuiltinTracing.Builtin.builtins () ]
     []
 
 

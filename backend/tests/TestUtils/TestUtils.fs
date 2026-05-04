@@ -119,7 +119,8 @@ let builtins
       BuiltinHttpServer.Builtin.builtins ()
       BuiltinDB.Builtin.builtins ()
       BuiltinDarkInternal.Builtin.builtins ()
-      BuiltinCli.Builtin.builtins () ]
+      BuiltinCli.Builtin.builtins ()
+      BuiltinTracing.Builtin.builtins () ]
     []
 
 let strictBuiltIns (pm : PT.PackageManager) =

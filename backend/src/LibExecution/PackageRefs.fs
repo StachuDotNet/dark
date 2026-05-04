@@ -335,15 +335,11 @@ module Type =
     let executionError = p [ "Cli"; "ExecutionError" ] "ExecutionError"
     let script = p [ "Cli"; "Scripts" ] "Script"
 
-    module Commands =
-      module Traces =
-        // Trace types now live under `Darklang.Tracing`. Aliases re-exported
-        // from `Darklang.Cli.Commands.Traces` for backward-compatibility,
-        // but the canonical path is `Darklang.Tracing.*`.
-        let traceSummary = p [ "Tracing" ] "TraceSummary"
-        let inputVar = p [ "Tracing" ] "InputVar"
-        let fnCall = p [ "Tracing" ] "FnCall"
-        let traceData = p [ "Tracing" ] "TraceData"
+  module Tracing =
+    let traceSummary = p [ "Tracing" ] "TraceSummary"
+    let inputVar = p [ "Tracing" ] "InputVar"
+    let fnCall = p [ "Tracing" ] "FnCall"
+    let traceData = p [ "Tracing" ] "TraceData"
 
   module DarkPackages =
     let stats = p [ "DarkPackages" ] "Stats"

@@ -105,7 +105,7 @@ let renderStats (rows: List<Darklang.Cli.Commands.Traces.TraceSummary>) : String
 
 
 let renderTraceDetail (traceID: String) : String =
-  match Builtin.cliTracesExportJson traceID with
+  match Builtin.tracesExportJson traceID with
   | None ->
     "<p class=\"muted\">Trace not found: <code>" ++ (escapeHtml traceID) ++ "</code></p>"
   | Some json ->
@@ -123,11 +123,11 @@ let app (req: Stdlib.Http.Request) : Stdlib.Http.Response =
   let path = Stdlib.HttpServer.getPath req
 
   if path == "/" then
-    let rows = Builtin.cliTracesList 50L
+    let rows = Builtin.tracesList 50L
     let html = layout "Traces" (renderTracesList rows)
     Stdlib.Http.responseWithHtml html 200L
   else if path == "/stats" then
-    let rows = Builtin.cliTracesList 200L
+    let rows = Builtin.tracesList 200L
     let html = layout "Stats" (renderStats rows)
     Stdlib.Http.responseWithHtml html 200L
   else if Stdlib.String.startsWith path "/trace/" then

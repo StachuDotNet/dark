@@ -64,6 +64,7 @@
     <ProjectReference Include="../LibExecution/LibExecution.fsproj" />
     <ProjectReference Include="../LibDB/LibDB.fsproj" />
     <ProjectReference Include="../BuiltinCliHost/BuiltinCliHost.fsproj" />
+    <ProjectReference Include="../BuiltinTracing/BuiltinTracing.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="EmbeddedResources.fs" />
