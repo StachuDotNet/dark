@@ -203,11 +203,12 @@ references at trace-record time so `pm-sweep-blobs` doesn't reclaim
 live trace data. The sweep also scans `trace_expr_values` (`a740ee23f`).
 
 ### Tests
-  ./scripts/run-cli eval "Darklang.Cli.Tests.runAllTests ()"
-38 trace-related tests (out of 39 total). Source:
-`packages/darklang/cli/tests/tests.dark`. Test framework is bespoke
-(not the F# tests) — each test calls `runWithCommand` to shell out
-to `./scripts/run-cli`.
+  ./scripts/run-backend-tests --filter-test-list CliTraces
+39 Expecto tests in `backend/tests/Tests/CliTraces.Tests.fs`. Each
+calls the `executeCliCommand` package fn in-process (no subprocess
+fork) with `Console.Out` redirected to a `StringWriter`, then asserts
+on the captured stdout. Wrapped in `testSequenced` because
+`Console.SetOut` is process-global.
 
 ## Debug
   Builtin.debug "label" value   # prints DEBUG: label: <repr> to stdout

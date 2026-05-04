@@ -84,7 +84,6 @@ let main (args : string array) : int =
         Tests.Blob.tests
         Tests.Stream.tests
 
-        // Dark-side CLI tests (wraps `Darklang.Cli.Tests.runAllTests`)
         Tests.CliTraces.tests ]
 
     let cancelationTokenSource = new System.Threading.CancellationTokenSource()

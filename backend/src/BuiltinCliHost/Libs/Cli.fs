@@ -123,16 +123,13 @@ module ExecutionError =
 
 let pmRT = LibDB.PackageManager.PackageManager.rt
 
-// Mutually recursive: `builtinsToUse` needs `builtins ()` (this module's
-// own builtins) so that `eval`/`run`/test-harness can see fns like
-// `cliRunCommandWithCapture`. `builtins ()` calls `fns ()` (defined below).
-// F# forward-declaration ordering forces the rec/and binding here.
-// `builtinsToUse` needs to include this module's own builtins so user
-// `eval`/`run` can call them, but `builtins ()` (the local module's
-// fns) is defined later in the file and itself depends on `execute` /
-// `createBranchState` (which depend back on `builtinsToUse`). Rather
-// than fight F# ordering with a sprawling `let rec ... and` chain,
-// set a mutable thunk that gets populated at module init time
+// `builtinsToUse` needs to include this module's own builtins so that
+// user `eval`/`run` can re-call `cliEvaluateExpression` /
+// `cliParseAndExecuteScript` recursively. But `builtins ()` (the local
+// module's fns) is defined later in the file and itself depends on
+// `execute` / `createBranchState` (which depend back on `builtinsToUse`).
+// Rather than fight F# ordering with a sprawling `let rec ... and`
+// chain, we use a mutable thunk that gets populated at module init time
 // (assigned at the bottom of the file, after `builtins` is defined).
 let private localBuiltinsThunk : (unit -> RT.Builtins) ref =
   ref (fun () ->
@@ -150,10 +147,10 @@ let builtinsToUse () : RT.Builtins =
       BuiltinHttpServer.Builtin.builtins ()
       BuiltinDB.Builtin.builtins ()
       BuiltinTracing.Builtin.builtins ()
-      // Local Libs.Cli builtins. Without this, anything called via
-      // `cliEvaluateExpression` / `cliParseAndExecuteScript` (i.e.
-      // `eval` / `run` / the test harness) couldn't see fns like
-      // `cliRunCommandWithCapture`.
+      // Local Libs.Cli builtins. Needed so that nested `eval` / `run`
+      // (which dispatch through `cliEvaluateExpression` /
+      // `cliParseAndExecuteScript`) can recursively re-call those same
+      // builtins.
       (!localBuiltinsThunk) () ]
     []
 
@@ -325,67 +322,6 @@ let fns () : List<BuiltInFn> =
               | Error e -> return e |> RT2DT.RuntimeError.toDT |> resultError
             with e ->
               return createExceptionError e |> RT2DT.RuntimeError.toDT |> resultError
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      deprecated = NotDeprecated }
-
-
-    { name = fn "cliRunCommandWithCapture" 0
-      typeParams = []
-      parameters =
-        [ Param.make
-            "args"
-            (TList TString)
-            "Command-line args (e.g. [\"traces\"; \"list\"])" ]
-      returnType = TString
-      description =
-        "Runs the CLI dispatch in-process with the given args, captures stdout, returns the captured string. Designed for in-process testing — bypasses the subprocess shellout that `./scripts/run-cli` would do, so tests can run inside the F# Expecto harness without re-execing the CLI binary."
-      fn =
-        (function
-        | exeState, _, [], [ DList(_, argDvals) ] ->
-          uply {
-            let stringArgs =
-              argDvals
-              |> List.choose (function
-                | DString s -> Some s
-                | _ -> None)
-
-            let argsDval =
-              stringArgs
-              |> List.map DString
-              |> Dval.list KTString
-
-            let executeCliCommandFn =
-              FQFnName.fqPackage (PackageRefs.Fn.Cli.executeCliCommand ())
-
-            // Drain any queued writes from the parent context first, so
-            // they don't leak into our capture window. Then redirect,
-            // run the command, drain again, restore.
-            NonBlockingConsole.wait ()
-
-            let captured = new System.IO.StringWriter()
-            let originalOut = System.Console.Out
-
-            try
-              System.Console.SetOut(captured)
-
-              let! _execResult =
-                Exe.executeFunction
-                  exeState
-                  executeCliCommandFn
-                  []
-                  (NEList.singleton argsDval)
-
-              // `Stdlib.printLine` writes via NonBlockingConsole, which
-              // queues to a background thread. Drain the queue before
-              // reading the StringWriter, otherwise we capture nothing
-              // (or partial output).
-              NonBlockingConsole.wait ()
-              return DString(captured.ToString())
-            finally
-              System.Console.SetOut(originalOut)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
