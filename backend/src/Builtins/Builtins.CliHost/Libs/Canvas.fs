@@ -80,17 +80,15 @@ let fns () : List<BuiltInFn> =
 
     { name = fn "appGetOrCreateForAccount" 0
       typeParams = []
-      parameters =
-        [ Param.make "accountID" TUuid "The account ID"
-          Param.make "domain" TString "Domain for the app if created" ]
+      parameters = [ Param.make "accountID" TUuid "The account ID" ]
       returnType = TUuid
       description =
         "Gets the app for an account, creating one if it doesn't exist"
       fn =
         (function
-        | _, _, _, [ DUuid accountID; DString domain ] ->
+        | _, _, _, [ DUuid accountID ] ->
           uply {
-            let! appID = App.getOrCreateForAccount accountID domain
+            let! appID = App.getOrCreateForAccount accountID
             return DUuid appID
           }
         | _ -> incorrectArgs ())

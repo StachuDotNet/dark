@@ -41,9 +41,7 @@ let getCanvasID (state: Cli.AppState) : Stdlib.Option.Option<Uuid> =
   match state.accountID with
   | None -> Stdlib.Option.Option.None
   | Some accountID ->
-    let domain = $"{state.accountName}.darklang.localhost"
-    Stdlib.Option.Option.Some
-      (Builtin.appGetOrCreateForAccount accountID domain)
+    Stdlib.Option.Option.Some (Builtin.appGetOrCreateForAccount accountID)
 
 
 let requireCanvas (state: Cli.AppState) : Stdlib.Result.Result<Uuid, String> =

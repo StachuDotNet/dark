@@ -21,7 +21,6 @@ module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 let createWithExactID
   (id : uuid)
   (accountID : Option<UserID>)
-  (domain : string)
   : Task<unit> =
   task {
     do!
@@ -29,23 +28,17 @@ let createWithExactID
         "INSERT INTO apps_v0
           (id, account_id)
          VALUES
-          (@id, @accountID);
-
-         INSERT INTO domains_v0
-           (app_id, domain)
-         VALUES
-           (@id, @domain)"
+          (@id, @accountID)"
       |> Sql.parameters
         [ "id", Sql.uuid id
-          "accountID", Sql.uuidOrNone accountID
-          "domain", Sql.string domain ]
+          "accountID", Sql.uuidOrNone accountID ]
       |> Sql.executeStatementAsync
   }
 
-let create (accountID : Option<UserID>) (domain : string) : Task<uuid> =
+let create (accountID : Option<UserID>) : Task<uuid> =
   task {
     let id = System.Guid.NewGuid()
-    do! createWithExactID id accountID domain
+    do! createWithExactID id accountID
     return id
   }
 
@@ -57,12 +50,12 @@ let getAppsForAccount (accountID : UserID) : Task<List<uuid>> =
   |> Sql.parameters [ "accountID", Sql.uuid accountID ]
   |> Sql.executeAsync (fun read -> read.uuid "id")
 
-let getOrCreateForAccount (accountID : UserID) (domain : string) : Task<uuid> =
+let getOrCreateForAccount (accountID : UserID) : Task<uuid> =
   task {
     let! existing = getAppsForAccount accountID
     match existing with
     | canvasID :: _ -> return canvasID
-    | [] -> return! create (Some accountID) domain
+    | [] -> return! create (Some accountID)
   }
 
 /// <summary>

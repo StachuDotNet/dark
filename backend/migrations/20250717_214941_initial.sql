@@ -49,11 +49,6 @@ ON user_data_v0
 
 
 -- HTTP Handlers
-CREATE TABLE IF NOT EXISTS
-domains_v0
-( domain TEXT PRIMARY KEY
-, app_id TEXT NOT NULL
-, created_at TEXT NOT NULL DEFAULT (datetime('now')));
 -- TODO: extract out table of http handlers from toplevels_v0
 
 
