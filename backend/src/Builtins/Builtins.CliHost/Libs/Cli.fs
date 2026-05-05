@@ -21,7 +21,7 @@ module RT2DT = LibExecution.RuntimeTypesToDarkTypes
 module PT2DT = LibExecution.ProgramTypesToDarkTypes
 module Exe = LibExecution.Execution
 module PackageRefs = LibExecution.PackageRefs
-module Json = Builtins.Execution.Libs.Json
+module Json = Builtins.Pure.Libs.Json
 module C2DT = LibExecution.CommonToDarkTypes
 module D = LibExecution.DvalDecoder
 module Utils = Builtins.CliHost.Utils
@@ -140,7 +140,7 @@ let private localBuiltinsThunk : (unit -> RT.Builtins) ref =
 let builtinsToUse () : RT.Builtins =
   let ptPM = LibDB.PackageManager.pt
   LibExecution.Builtin.combine
-    [ Builtins.Execution.Builtin.builtins ()
+    [ Builtins.Pure.Builtin.builtins ()
       Builtins.Http.Client.Builtin.builtins
         Builtins.Http.Client.Libs.HttpClient.defaultConfig
       Builtins.Language.Builtin.builtins ()

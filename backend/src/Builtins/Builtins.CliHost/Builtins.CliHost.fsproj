@@ -15,7 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="../../Prelude/Prelude.fsproj" />
     <ProjectReference Include="../../LibExecution/LibExecution.fsproj" />
-    <ProjectReference Include="../Builtins.Execution/Builtins.Execution.fsproj" />
+    <ProjectReference Include="../Builtins.Pure/Builtins.Pure.fsproj" />
     <ProjectReference Include="../Builtins.Http.Client/Builtins.Http.Client.fsproj" />
     <ProjectReference Include="../Builtins.Language/Builtins.Language.fsproj" />
     <ProjectReference Include="../Builtins.Cli/Builtins.Cli.fsproj" />

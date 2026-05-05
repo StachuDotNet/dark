@@ -114,7 +114,7 @@ let builtins
   : RT.Builtins =
   LibExecution.Builtin.combine
     [ LibTest.builtins ()
-      Builtins.Execution.Builtin.builtins ()
+      Builtins.Pure.Builtin.builtins ()
       Builtins.Http.Client.Builtin.builtins httpConfig
       Builtins.Language.Builtin.builtins ()
       Builtins.PM.Builtin.builtins pm

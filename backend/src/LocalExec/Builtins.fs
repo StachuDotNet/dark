@@ -13,7 +13,7 @@ let ptPM = LibExecution.ProgramTypes.PackageManager.empty
 /// for parsing packages, which may reference _any_ builtin
 let all () : RT.Builtins =
   LibExecution.Builtin.combine
-    [ Builtins.Execution.Builtin.builtins ()
+    [ Builtins.Pure.Builtin.builtins ()
       Builtins.Http.Client.Builtin.builtins httpClientConfig
       Builtins.Language.Builtin.builtins ()
       Builtins.Cli.Builtin.builtins ()
