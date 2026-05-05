@@ -1268,7 +1268,7 @@ let fns () : List<BuiltInFn> =
               // browsing layer doesn't read it.
               let baseStatements =
                 [ "INSERT OR REPLACE INTO traces
-                    (id, app_id, root_tlid, handler_desc, timestamp,
+                    (id, account_id, root_tlid, handler_desc, timestamp,
                      input_name, input_value_json)
                    VALUES
                     (@id, @accountID, @rootTlid, @handlerDesc, @timestamp,
