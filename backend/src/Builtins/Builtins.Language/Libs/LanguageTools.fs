@@ -1,4 +1,4 @@
-module Builtins.Execution.Libs.LanguageTools
+module Builtins.Language.Libs.LanguageTools
 
 open Prelude
 open LibExecution.RuntimeTypes

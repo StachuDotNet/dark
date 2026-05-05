@@ -7,6 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/LibExecution/LibExecution.fsproj" />
     <ProjectReference Include="../../src/Builtins/Builtins.Execution/Builtins.Execution.fsproj" />
+    <ProjectReference Include="../../src/Builtins/Builtins.Language/Builtins.Language.fsproj" />
     <ProjectReference Include="../../src/Builtins/Builtins.Cli/Builtins.Cli.fsproj" />
     <ProjectReference Include="../../src/Builtins/Builtins.Time/Builtins.Time.fsproj" />
     <ProjectReference Include="../../src/LibDB/LibDB.fsproj" />

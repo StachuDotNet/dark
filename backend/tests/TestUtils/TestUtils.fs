@@ -115,6 +115,7 @@ let builtins
   LibExecution.Builtin.combine
     [ LibTest.builtins ()
       Builtins.Execution.Builtin.builtins httpConfig
+      Builtins.Language.Builtin.builtins ()
       Builtins.PM.Builtin.builtins pm
       Builtins.HttpServer.Builtin.builtins ()
       Builtins.DB.Builtin.builtins ()

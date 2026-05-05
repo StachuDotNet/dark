@@ -51,13 +51,8 @@ let builtins (httpConfig : Libs.HttpClient.Configuration) : Builtins =
 
       Libs.HttpClient.builtins httpConfig
 
-      Libs.LanguageTools.builtins ()
-      Libs.Parser.builtins ()
-
       Libs.Crypto.builtins ()
       Libs.X509.builtins ()
-
-      Libs.Reflection.builtins ()
 
       Libs.Builtins.builtins () ]
     fnRenames

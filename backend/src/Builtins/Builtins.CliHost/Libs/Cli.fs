@@ -142,6 +142,7 @@ let builtinsToUse () : RT.Builtins =
   LibExecution.Builtin.combine
     [ Builtins.Execution.Builtin.builtins
         Builtins.Execution.Libs.HttpClient.defaultConfig
+      Builtins.Language.Builtin.builtins ()
       Builtins.Cli.Builtin.builtins ()
       Builtins.Time.Builtin.builtins ()
       Builtins.PM.Builtin.builtins ptPM

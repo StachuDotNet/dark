@@ -1,4 +1,4 @@
-module Builtins.Execution.Libs.Reflection
+module Builtins.Language.Libs.Reflection
 
 open Prelude
 open LibExecution.RuntimeTypes

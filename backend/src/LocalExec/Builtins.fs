@@ -14,6 +14,7 @@ let ptPM = LibExecution.ProgramTypes.PackageManager.empty
 let all () : RT.Builtins =
   LibExecution.Builtin.combine
     [ Builtins.Execution.Builtin.builtins httpClientConfig
+      Builtins.Language.Builtin.builtins ()
       Builtins.Cli.Builtin.builtins ()
       Builtins.Time.Builtin.builtins ()
       Builtins.PM.Builtin.builtins ptPM

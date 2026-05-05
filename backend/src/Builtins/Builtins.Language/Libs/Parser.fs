@@ -1,4 +1,4 @@
-module Builtins.Execution.Libs.Parser
+module Builtins.Language.Libs.Parser
 
 open System.Text
 
