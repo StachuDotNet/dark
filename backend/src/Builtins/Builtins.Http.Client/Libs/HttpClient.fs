@@ -46,7 +46,7 @@
 /// Until those four are in, the buffered builtin stays. Header /
 /// URL / request-message construction are shared via the helpers
 /// below so the duplication that does remain is small.
-module Builtins.Execution.Libs.HttpClient
+module Builtins.Http.Client.Libs.HttpClient
 
 open System.IO
 open System.Net.Http

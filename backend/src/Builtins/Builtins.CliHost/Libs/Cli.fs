@@ -140,8 +140,9 @@ let private localBuiltinsThunk : (unit -> RT.Builtins) ref =
 let builtinsToUse () : RT.Builtins =
   let ptPM = LibDB.PackageManager.pt
   LibExecution.Builtin.combine
-    [ Builtins.Execution.Builtin.builtins
-        Builtins.Execution.Libs.HttpClient.defaultConfig
+    [ Builtins.Execution.Builtin.builtins ()
+      Builtins.Http.Client.Builtin.builtins
+        Builtins.Http.Client.Libs.HttpClient.defaultConfig
       Builtins.Language.Builtin.builtins ()
       Builtins.Cli.Builtin.builtins ()
       Builtins.Time.Builtin.builtins ()

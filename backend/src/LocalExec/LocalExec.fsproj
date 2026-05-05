@@ -15,6 +15,7 @@
     <ProjectReference Include="../LibSerialization/LibSerialization.fsproj" />
 
     <ProjectReference Include="../Builtins/Builtins.Execution/Builtins.Execution.fsproj" />
+    <ProjectReference Include="../Builtins/Builtins.Http.Client/Builtins.Http.Client.fsproj" />
     <ProjectReference Include="../Builtins/Builtins.Language/Builtins.Language.fsproj" />
     <ProjectReference Include="../Builtins/Builtins.Cli/Builtins.Cli.fsproj" />
     <ProjectReference Include="../Builtins/Builtins.Time/Builtins.Time.fsproj" />

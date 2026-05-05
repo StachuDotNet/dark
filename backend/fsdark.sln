@@ -52,6 +52,8 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Builtins.Time", "src\Builti
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Builtins.Language", "src\Builtins\Builtins.Language\Builtins.Language.fsproj", "{D9E6F7A2-4B0C-5D8F-B2C3-AF9F3E4D5B6C}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Builtins.Http.Client", "src\Builtins\Builtins.Http.Client\Builtins.Http.Client.fsproj", "{E8FA0B3C-5D1E-6F9A-C3D4-B0AE4F5E6C7D}"
+EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Builtins.CliHost", "src\Builtins\Builtins.CliHost\Builtins.CliHost.fsproj", "{B199C1DE-48A2-47B4-9672-BCCB7E4F8C78}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Builtins.HttpServer", "src\Builtins\Builtins.HttpServer\Builtins.HttpServer.fsproj", "{7A3E4BC2-D5F1-4A8E-9B3C-6F2D1E8A4C5B}"
@@ -160,6 +162,10 @@ Global
 		{D9E6F7A2-4B0C-5D8F-B2C3-AF9F3E4D5B6C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D9E6F7A2-4B0C-5D8F-B2C3-AF9F3E4D5B6C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D9E6F7A2-4B0C-5D8F-B2C3-AF9F3E4D5B6C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E8FA0B3C-5D1E-6F9A-C3D4-B0AE4F5E6C7D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E8FA0B3C-5D1E-6F9A-C3D4-B0AE4F5E6C7D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E8FA0B3C-5D1E-6F9A-C3D4-B0AE4F5E6C7D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E8FA0B3C-5D1E-6F9A-C3D4-B0AE4F5E6C7D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 
 	# Notes of what projects being in which folders
@@ -182,6 +188,7 @@ Global
 		{7A3E4BC2-D5F1-4A8E-9B3C-6F2D1E8A4C5B} = {F84DCF8A-FC1A-4677-AF4D-616AD7DB3470}
 		{C8D5E6F1-3A9B-4C7E-A1B2-9F8E2D3C4A5B} = {F84DCF8A-FC1A-4677-AF4D-616AD7DB3470}
 		{D9E6F7A2-4B0C-5D8F-B2C3-AF9F3E4D5B6C} = {F84DCF8A-FC1A-4677-AF4D-616AD7DB3470}
+		{E8FA0B3C-5D1E-6F9A-C3D4-B0AE4F5E6C7D} = {F84DCF8A-FC1A-4677-AF4D-616AD7DB3470}
 
     # in /tests
 		{DB61305F-4CA9-4D92-82A5-503495F515E8} = {3820D9E8-1B4E-486E-9C46-D52E3784D222}
