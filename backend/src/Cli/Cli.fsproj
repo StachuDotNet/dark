@@ -25,6 +25,15 @@
          as documentation of the dynamic call. -->
     <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
 
+    <!-- Disable optional .NET runtime subsystems we don't use under AOT.
+         Each prunes a meaningful slice of metadata + code from the published
+         binary. JIT/Debug builds: no-op (these only kick in during AOT
+         compilation; the runtime ships them by default for managed code). -->
+    <DebuggerSupport>false</DebuggerSupport>
+    <EventSourceSupport>false</EventSourceSupport>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+
     <!-- We publish these for lots of different runtimes, so leave these empty and
          then specify them in scripts/build/build-release-cli-exes.sh. The
          regular build works fine with the defaults (and will pick a runtime
