@@ -29,9 +29,20 @@ echo
 echo 'Per-builtin grep for `Builtin.<name>` (non-identifier suffix) in packages/.'
 echo
 
-all_refs=$(grep -rohP 'Builtin\.[a-zA-Z][a-zA-Z0-9]*(?=[^a-zA-Z0-9_]|$)' packages/ 2>/dev/null \
-  | sed -E 's/Builtin\.//' \
+# Capture `Builtin.<name>` optionally followed by `_v<digits>` version suffix.
+# The version is part of the dispatch but not part of the F# `name = fn "X"`
+# string, so strip it before counting.
+all_refs=$(grep -rohP 'Builtin\.[a-zA-Z][a-zA-Z0-9]*(?:_v[0-9]+)?(?=[^a-zA-Z0-9_]|$)' packages/ 2>/dev/null \
+  | sed -E 's/Builtin\.//; s/_v[0-9]+$//' \
   | sort | uniq -c | awk '{ printf "%s %s\n", $1, $2 }')
+
+# Operator-dispatched builtins (called by infix `+`, `-`, `*`, `==`, etc.
+# rather than by `Builtin.X` syntax). Source: LibExecution/
+# ProgramTypesToRuntimeTypes.fs InfixFnName.toFnName. Treat as 1+-wrapper
+# (every infix use is an implicit reference) — exclude from 0-wrapper bucket.
+operator_dispatched="int64Add int64Subtract int64Multiply int64Mod int64Power \
+  int64GreaterThan int64GreaterThanOrEqualTo int64LessThan int64LessThanOrEqualTo \
+  floatDivide stringAppend equals notEquals"
 
 zero=0
 one=0
@@ -39,13 +50,25 @@ many=0
 zero_list=""
 many_list=""
 
+is_operator_dispatched() {
+  local name="$1"
+  for op in $operator_dispatched; do
+    [ "$op" = "$name" ] && return 0
+  done
+  return 1
+}
+
 for b in $builtins; do
   count=$(echo "$all_refs" | awk -v name="$b" '$2 == name { print $1; exit }')
   count=${count:-0}
   if [ "$count" -eq 0 ]; then
-    zero=$((zero + 1))
-    zero_list="$zero_list
+    if is_operator_dispatched "$b"; then
+      one=$((one + 1))   # implicit 1-wrapper via infix operator dispatch
+    else
+      zero=$((zero + 1))
+      zero_list="$zero_list
 0 $b"
+    fi
   elif [ "$count" -eq 1 ]; then
     one=$((one + 1))
   else
