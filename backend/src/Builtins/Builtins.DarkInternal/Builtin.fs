@@ -22,9 +22,7 @@ let fnRenames : Builtin.FnRenames =
 // surface.
 let builtins () : Builtins =
   Builtin.combine
-    [ Libs.Canvases.builtins ()
-      Libs.DBs.builtins ()
-      Libs.Domains.builtins ()
+    [ Libs.DBs.builtins ()
       Libs.Infra.builtins ()
       Libs.Users.builtins () ]
     fnRenames
