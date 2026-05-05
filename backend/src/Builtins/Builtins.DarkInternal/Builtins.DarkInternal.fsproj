@@ -16,7 +16,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="paket.references" />
-    <Compile Include="Libs/DBs.fs" />
     <Compile Include="Libs/Infra.fs" />
     <Compile Include="Libs/Users.fs" />
     <Compile Include="Builtin.fs" />
