@@ -25,7 +25,7 @@ module Json = Builtins.Execution.Libs.Json
 module C2DT = LibExecution.CommonToDarkTypes
 module D = LibExecution.DvalDecoder
 module Utils = Builtins.CliHost.Utils
-module Canvas = LibCloud.Canvas
+module App = LibCloud.App
 module Tracing = LibDB.Tracing
 
 
@@ -37,11 +37,11 @@ let loadCanvasAndDBs
     match accountID with
     | None -> return (None, Map.empty)
     | Some accID ->
-      let! apps = Canvas.getAppsForAccount accID
+      let! apps = App.getAppsForAccount accID
       match apps with
       | appID :: _ ->
-        let! canvas = Canvas.loadAllDBs appID
-        let! program = Canvas.toProgram canvas
+        let! canvas = App.loadAllDBs appID
+        let! program = App.toProgram canvas
         return (Some appID, program.dbs)
       | [] -> return (None, Map.empty)
   }

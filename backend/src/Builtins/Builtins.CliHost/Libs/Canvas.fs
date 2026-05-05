@@ -12,7 +12,7 @@ module PT = LibExecution.ProgramTypes
 module PT2DT = LibExecution.ProgramTypesToDarkTypes
 module VT = LibExecution.ValueType
 module NR = LibExecution.RuntimeTypes.NameResolution
-module Canvas = LibCloud.Canvas
+module App = LibCloud.App
 module Serialize = LibCloud.Serialize
 module Account = LibCloud.Account
 module PackageLocation = LibDB.PackageLocation
@@ -68,7 +68,7 @@ let fns () : List<BuiltInFn> =
                     ) }
 
               let toplevel = PT.Toplevel.TLDB db
-              do! Canvas.saveTLIDs canvasID [ (toplevel, Serialize.NotDeleted) ]
+              do! App.saveTLIDs canvasID [ (toplevel, Serialize.NotDeleted) ]
               return Dval.resultOk KTUInt64 KTString (DUInt64 tlid)
           }
         | _ -> incorrectArgs ())
@@ -89,7 +89,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUuid accountID; DString domain ] ->
           uply {
-            let! canvasID = Canvas.getOrCreateForAccount accountID domain
+            let! canvasID = App.getOrCreateForAccount accountID domain
             return DUuid canvasID
           }
         | _ -> incorrectArgs ())
@@ -110,7 +110,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DUuid canvasID; DUuid branchId ] ->
           uply {
-            let! canvas = Canvas.loadAllDBs canvasID
+            let! canvas = App.loadAllDBs canvasID
             let pm = LibDB.PackageManager.pt
             let! dbs =
               canvas.dbs
@@ -172,7 +172,7 @@ let fns () : List<BuiltInFn> =
               do!
                 matchingTlids
                 |> Task.iterInParallel (fun tlid ->
-                  Canvas.deleteToplevelForever canvasID tlid)
+                  App.deleteToplevelForever canvasID tlid)
               // Also delete any user data for these DBs
               do!
                 matchingTlids
