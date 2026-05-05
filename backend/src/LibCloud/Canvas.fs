@@ -250,74 +250,11 @@ let loadAll (id : uuid) : Task<T> =
     return! loadFrom id tlids
   }
 
-let loadHttpHandlers (id : uuid) (path : string) (method : string) : Task<T> =
-  task {
-    let! tlids = Serialize.fetchReleventTLIDsForHTTP id path method
-    return! loadFrom id tlids
-  }
-
-let loadTLIDs (id : uuid) (tlids : tlid list) : Task<T> = loadFrom id tlids
-
-
-let loadTLIDsWithContext (id : uuid) (tlids : List<tlid>) : Task<T> =
-  task {
-    let! context = Serialize.fetchRelevantTLIDsForExecution id
-    let tlids = tlids @ context
-    return! loadFrom id tlids
-  }
-
-let loadForEvent
-  (id : uuid)
-  (module' : string)
-  (name : string)
-  (modifier : string)
-  : Task<T> =
-  task {
-    let! tlids = Serialize.fetchRelevantTLIDsForEvent id module' name modifier
-    return! loadFrom id tlids
-  }
-
 let loadAllDBs (id : uuid) : Task<T> =
   task {
     let! tlids = Serialize.fetchTLIDsForAllDBs id
     return! loadFrom id tlids
   }
-
-/// Returns a best guess at all workers (excludes what it knows not to be a worker)
-let loadAllWorkers (id : uuid) : Task<T> =
-  task {
-    let! tlids = Serialize.fetchTLIDsForAllWorkers id
-    return! loadFrom id tlids
-  }
-
-let loadTLIDsWithDBs (id : uuid) (tlids : List<tlid>) : Task<T> =
-  task {
-    let! dbTLIDs = Serialize.fetchTLIDsForAllDBs id
-    return! loadFrom id (tlids @ dbTLIDs)
-  }
-
-let getToplevel (tlid : tlid) (c : T) : Option<Serialize.Deleted * PT.Toplevel.T> =
-  let handler () =
-    Map.find tlid c.handlers
-    |> Option.map (fun h -> (Serialize.NotDeleted, PT.Toplevel.TLHandler h))
-
-  let deletedHandler () =
-    Map.find tlid c.deletedHandlers
-    |> Option.map (fun h -> (Serialize.Deleted, PT.Toplevel.TLHandler h))
-
-  let db () =
-    Map.find tlid c.dbs
-    |> Option.map (fun h -> (Serialize.NotDeleted, PT.Toplevel.TLDB h))
-
-  let deletedDB () =
-    Map.find tlid c.deletedDBs
-    |> Option.map (fun h -> (Serialize.Deleted, PT.Toplevel.TLDB h))
-
-
-  handler ()
-  |> Option.orElseWith deletedHandler
-  |> Option.orElseWith db
-  |> Option.orElseWith deletedDB
 
 
 let deleteToplevelForever (canvasID : uuid) (tlid : tlid) : Task<unit> =
