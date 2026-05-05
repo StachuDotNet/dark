@@ -118,13 +118,6 @@ let addToplevel (deleted : Serialize.Deleted) (tl : PT.Toplevel.T) (c : T) : T =
 let addToplevels (tls : List<Serialize.Deleted * PT.Toplevel.T>) (canvas : T) : T =
   List.fold (fun c (deleted, tl) -> addToplevel deleted tl c) canvas tls
 
-let toplevels (c : T) : Map<tlid, PT.Toplevel.T> =
-  let map f l = Map.map f l |> Map.toSeq
-
-  [ map PT.Toplevel.TLHandler c.handlers; map PT.Toplevel.TLDB c.dbs ]
-  |> Seq.concat
-  |> Map
-
 // NOTE: If you add a new verification here, please ensure all places that
 // load canvases/apply ops correctly load the requisite data.
 let verify (c : T) : T =
