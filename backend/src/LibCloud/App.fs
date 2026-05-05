@@ -25,7 +25,7 @@ module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 // rest of the system needs (user_data, traces, etc) and there's no real
 // app indirection to maintain. The `apps_v0` table is gone; nothing
 // reads from it. A future commit can rename `app_id` columns →
-// `account_id` and drop the dbScope plumbing entirely.
+// `account_id` and drop the accountID plumbing entirely.
 
 let create (accountID : Option<UserID>) : Task<uuid> =
   task {
@@ -232,5 +232,5 @@ let toProgram (c : T) : Ply<RT.Program> =
       |> Map.ofList
 
     return
-      { dbScope = System.Guid.Empty; dbs = dbs }
+      { accountID = System.Guid.Empty; dbs = dbs }
   }

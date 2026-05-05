@@ -1271,10 +1271,10 @@ let fns () : List<BuiltInFn> =
                     (id, app_id, root_tlid, handler_desc, timestamp,
                      input_name, input_value_json)
                    VALUES
-                    (@id, @dbScope, @rootTlid, @handlerDesc, @timestamp,
+                    (@id, @accountID, @rootTlid, @handlerDesc, @timestamp,
                      @inputName, @inputValueJson)",
                   [ [ "id", Sql.string id
-                      "dbScope", Sql.string dbScopeStr
+                      "accountID", Sql.string dbScopeStr
                       "rootTlid", Sql.int64 0L
                       "handlerDesc", Sql.string handlerDesc
                       "timestamp", Sql.string timestamp
