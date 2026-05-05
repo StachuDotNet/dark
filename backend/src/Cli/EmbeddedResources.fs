@@ -50,28 +50,54 @@ let private extractResource (resourceName : string) (targetPath : string) : unit
     use fileStream = File.Create(targetPath)
     stream.CopyTo(fileStream)
 
+/// Extract a resource that was gzip-compressed at build time.
+/// SQLite databases compress ~3-4× with gzip; we ship `data.db.gz`
+/// embedded and decompress on first extract. Saves ~7 MB on the binary.
+let private extractGzippedResource
+  (resourceName : string)
+  (targetPath : string)
+  : unit =
+  let assembly = Assembly.GetExecutingAssembly()
+
+  let targetDir = Path.GetDirectoryName(targetPath)
+  if not (Directory.Exists(targetDir)) then
+    Directory.CreateDirectory(targetDir) |> ignore
+
+  use stream = assembly.GetManifestResourceStream(resourceName)
+  if stream = null then
+    ()
+  else
+    use gzip =
+      new System.IO.Compression.GZipStream(
+        stream,
+        System.IO.Compression.CompressionMode.Decompress
+      )
+    use fileStream = File.Create(targetPath)
+    gzip.CopyTo(fileStream)
+
 let private hasEmbeddedResource (resourceName : string) : bool =
   let assembly = Assembly.GetExecutingAssembly()
   assembly.GetManifestResourceNames() |> Array.contains resourceName
 
 let extract () : unit =
-  if hasEmbeddedResource "data.db" then
+  // The embedded resource is `data.db.gz` (the seed db, gzip-compressed at
+  // build time to save ~7 MB on binary size). On first run, decompress to
+  // `~/.darklang/data.db`; on subsequent runs the file already exists and
+  // grow/init proceeds against the local copy.
+  if hasEmbeddedResource "data.db.gz" then
     let darklangDir = getDarklangDirectory ()
 
     Environment.SetEnvironmentVariable("DARK_CONFIG_RUNDIR", darklangDir)
 
     let dbPath = Path.Combine(darklangDir, "data.db")
 
-    // Only extract if data.db doesn't exist yet.
-    // If the embedded DB is a seed, the grow step in Cli.fs
-    // will apply unapplied ops to build projection tables.
     if not (File.Exists(dbPath)) then
       printfn $"Setting up Darklang CLI data directory at {darklangDir}"
 
       if not (Directory.Exists(darklangDir)) then
         Directory.CreateDirectory(darklangDir) |> ignore
 
-      extractResource "data.db" dbPath
+      extractGzippedResource "data.db.gz" dbPath
 
       let readmePath = Path.Combine(darklangDir, "README.md")
       extractResource "README.md" readmePath
