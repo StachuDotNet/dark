@@ -147,7 +147,7 @@ let builtinsToUse () : RT.Builtins =
       Builtins.Cli.Builtin.builtins ()
       Builtins.Time.Builtin.builtins ()
       Builtins.PM.Builtin.builtins ptPM
-      Builtins.HttpServer.Builtin.builtins ()
+      Builtins.Http.Server.Builtin.builtins ()
       Builtins.DB.Builtin.builtins ()
       Builtins.Tracing.Builtin.builtins ()
       // Local fns (cliEvaluateExpression, cliParseAndExecuteScript)

@@ -3,7 +3,7 @@
 ///
 /// Pulled out of `Libs/HttpServer.fs` so the listener loop's accept-and-
 /// dispatch responsibility stays separate from the per-request flow.
-module Builtins.HttpServer.Libs.HttpServerHandler
+module Builtins.Http.Server.Libs.HttpServerHandler
 
 open System.Net
 open System.Threading.Tasks
@@ -14,10 +14,10 @@ open LibExecution.RuntimeTypes
 module Dval = LibExecution.Dval
 module Execution = LibExecution.Execution
 module Blob = LibExecution.Blob
-module Http = Builtins.HttpServer.Http
+module Http = Builtins.Http.Server.Http
 module AT = LibExecution.AnalysisTypes
 module Tracing = LibDB.Tracing
-module Helpers = Builtins.HttpServer.Libs.HttpServerHelpers
+module Helpers = Builtins.Http.Server.Libs.HttpServerHelpers
 
 
 /// Execute a handler (named fn or lambda) against the given request. Lambdas

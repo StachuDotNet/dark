@@ -20,7 +20,7 @@ let all () : RT.Builtins =
       Builtins.Time.Builtin.builtins ()
       Builtins.PM.Builtin.builtins ptPM
       Builtins.CliHost.Builtin.builtins ()
-      Builtins.HttpServer.Builtin.builtins ()
+      Builtins.Http.Server.Builtin.builtins ()
       Builtins.DB.Builtin.builtins ()
       Builtins.Tracing.Builtin.builtins ()
       TestUtils.LibTest.builtins () ]

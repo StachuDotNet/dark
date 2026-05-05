@@ -56,7 +56,7 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Builtins.Http.Client", "src
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Builtins.CliHost", "src\Builtins\Builtins.CliHost\Builtins.CliHost.fsproj", "{B199C1DE-48A2-47B4-9672-BCCB7E4F8C78}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Builtins.HttpServer", "src\Builtins\Builtins.HttpServer\Builtins.HttpServer.fsproj", "{7A3E4BC2-D5F1-4A8E-9B3C-6F2D1E8A4C5B}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Builtins.Http.Server", "src\Builtins\Builtins.Http.Server\Builtins.Http.Server.fsproj", "{7A3E4BC2-D5F1-4A8E-9B3C-6F2D1E8A4C5B}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Builtins.Tracing", "src\Builtins\Builtins.Tracing\Builtins.Tracing.fsproj", "{C1D4E5F6-A7B8-4C9D-8E2F-3B4A5D6E7F8C}"
 EndProject

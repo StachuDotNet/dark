@@ -1,4 +1,4 @@
-module Builtins.HttpServer.Builtin
+module Builtins.Http.Server.Builtin
 
 open Prelude
 open LibExecution.RuntimeTypes

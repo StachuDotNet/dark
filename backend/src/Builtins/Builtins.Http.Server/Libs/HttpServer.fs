@@ -21,7 +21,7 @@
 ///   - HttpServerHelpers.fs : pure stateless transforms (body, headers, log)
 ///   - HttpServerHandler.fs : per-request dispatch + tracer wiring
 ///   - HttpServer.fs (this) : listener loop + the `httpServerServe` builtin
-module Builtins.HttpServer.Libs.HttpServer
+module Builtins.Http.Server.Libs.HttpServer
 
 open System
 open System.Net
@@ -32,8 +32,8 @@ open Prelude
 open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
 
-module Helpers = Builtins.HttpServer.Libs.HttpServerHelpers
-module Handler = Builtins.HttpServer.Libs.HttpServerHandler
+module Helpers = Builtins.Http.Server.Libs.HttpServerHelpers
+module Handler = Builtins.Http.Server.Libs.HttpServerHandler
 
 
 /// Default request body cap (30 MB). Re-exported for callers (tests, the

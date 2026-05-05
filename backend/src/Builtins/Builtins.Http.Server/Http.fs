@@ -2,7 +2,7 @@
 ///
 /// This Middleware corresponds with `HTTP` handlers
 [<RequireQualifiedAccess>]
-module Builtins.HttpServer.Http
+module Builtins.Http.Server.Http
 
 open System.Threading.Tasks
 

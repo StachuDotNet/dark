@@ -4,7 +4,7 @@
 ///
 /// Pulled out of `Libs/HttpServer.fs` so the listener-loop and
 /// per-request handler can each focus on their own concern.
-module Builtins.HttpServer.Libs.HttpServerHelpers
+module Builtins.Http.Server.Libs.HttpServerHelpers
 
 open System.IO
 open System.Net
@@ -52,7 +52,7 @@ let readRequestBodyWithLimit
 
 
 /// Flatten HttpListener's NameValueCollection of headers into the (key, value)
-/// list shape that Builtins.HttpServer.Http.Request expects. A single header key
+/// list shape that Builtins.Http.Server.Http.Request expects. A single header key
 /// with multiple values becomes multiple entries.
 let extractHeaders (req : HttpListenerRequest) : List<string * string> =
   let headers = ResizeArray<string * string>()

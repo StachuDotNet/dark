@@ -118,7 +118,7 @@ let builtins
       Builtins.Http.Client.Builtin.builtins httpConfig
       Builtins.Language.Builtin.builtins ()
       Builtins.PM.Builtin.builtins pm
-      Builtins.HttpServer.Builtin.builtins ()
+      Builtins.Http.Server.Builtin.builtins ()
       Builtins.DB.Builtin.builtins ()
       Builtins.Tracing.Builtin.builtins ()
       Builtins.Cli.Builtin.builtins ()
