@@ -64,27 +64,10 @@ let domainsForCanvasID (id : uuid) : Task<List<string>> =
   |> Sql.parameters [ "id", Sql.uuid id ]
   |> Sql.executeAsync (fun read -> read.string "domain")
 
-let addDomain (canvasID : uuid) (domain : string) : Task<unit> =
-  Sql.query
-    "INSERT INTO domains_v0
-       (canvas_id, domain)
-     VALUES
-       (@canvasID, @domain)"
-  |> Sql.parameters [ "canvasID", Sql.uuid canvasID; "domain", Sql.string domain ]
-  |> Sql.executeStatementAsync
-
 let allCanvasIDs () : Task<List<uuid>> =
   Sql.query "SELECT id FROM canvases_v0"
   |> Sql.executeAsync (fun read -> read.uuid "id")
 
-
-let getOwner (id : uuid) : Task<Option<UserID>> =
-  Sql.query
-    "SELECT account_id
-    FROM canvases_v0
-    WHERE id = @id"
-  |> Sql.parameters [ "id", Sql.uuid id ]
-  |> Sql.executeRowOptionAsync (fun read -> read.uuid "account_id")
 
 let getCanvasesForAccount (accountID : UserID) : Task<List<uuid>> =
   Sql.query
@@ -141,66 +124,6 @@ let toplevels (c : T) : Map<tlid, PT.Toplevel.T> =
   [ map PT.Toplevel.TLHandler c.handlers; map PT.Toplevel.TLDB c.dbs ]
   |> Seq.concat
   |> Map
-
-let deletedToplevels (c : T) : Map<tlid, PT.Toplevel.T> =
-  let map f l = Map.map f l |> Map.toSeq
-
-  [ map PT.Toplevel.TLHandler c.deletedHandlers; map PT.Toplevel.TLDB c.deletedDBs ]
-  |> Seq.concat
-  |> Map
-
-
-
-
-// -------------------------
-// Toplevel
-// -------------------------
-
-let setDB (db : PT.DB.T) (c : T) : T =
-  // if the db had been deleted, remove it from the deleted set. This handles
-  // a data race where a Set comes in after a Delete.
-  { c with
-      dbs = Map.add db.tlid db c.dbs
-      deletedDBs = Map.remove db.tlid c.deletedDBs }
-
-let deleteDB (tlid : tlid) c =
-  match Map.get tlid c.dbs with
-  | None -> c
-  | Some db ->
-    { c with
-        dbs = Map.remove db.tlid c.dbs
-        deletedDBs = Map.add db.tlid db c.deletedDBs }
-
-let setHandler (h : PT.Handler.T) c =
-  // if the handler had been deleted, remove it from the deleted set. This handles
-  // a data race where a Set comes in after a Delete.
-  { c with
-      handlers = Map.add h.tlid h c.handlers
-      deletedHandlers = Map.remove h.tlid c.deletedHandlers }
-
-let deleteHandler (tlid : tlid) c =
-  match Map.get tlid c.handlers with
-  | None -> c
-  | Some h ->
-    { c with
-        handlers = Map.remove h.tlid c.handlers
-        deletedHandlers = Map.add h.tlid h c.deletedHandlers }
-
-
-// CLEANUP Historically, on the backend, toplevel meant handler or DB
-// we want to de-conflate the concepts
-let deleteToplevel (tlid : tlid) (c : T) : T =
-  c |> deleteHandler tlid |> deleteDB tlid
-
-let applyToMap (tlid : tlid) (f : 'a -> 'a) (m : Map<tlid, 'a>) : Map<tlid, 'a> =
-  Map.update tlid (Option.map f) m
-
-
-
-let applyToDB (f : PT.DB.T -> PT.DB.T) (tlid : tlid) (c : T) : T =
-  { c with dbs = applyToMap tlid f c.dbs }
-
-
 
 // NOTE: If you add a new verification here, please ensure all places that
 // load canvases/apply ops correctly load the requisite data.
