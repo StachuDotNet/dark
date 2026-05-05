@@ -46,14 +46,20 @@ type Context =
     currentModule: Stdlib.Option.Option<String>
     /// Used to resolve ESelf and EArg expressions when pretty-printing function bodies.
     /// When Some, contains (functionName, argMap) where argMap maps parameter names to indices.
-    currentFunction: Stdlib.Option.Option<(String * Dict<Int64>)> }
+    currentFunction: Stdlib.Option.Option<(String * Dict<Int64>)>
+    /// Per-AST-node-id → captured Dval. Empty by default; populated by
+    /// `view --with-trace <id>` so let-bindings + match arms can render
+    /// `// = <repr>` annotations inline. Keyed by stringified exprId
+    /// (Dict needs a String key).
+    traceValues: Dict<LanguageTools.RuntimeTypes.Dval> }
 
 module Context =
   let forBranch (branchId: Uuid) : Context =
     Context
       { branchId = branchId
         currentModule = Stdlib.Option.Option.None
-        currentFunction = Stdlib.Option.Option.None }
+        currentFunction = Stdlib.Option.Option.None
+        traceValues = Stdlib.Dict.empty }
 
   let forMain : Context = forBranch SCM.Branch.mainBranchId
 
