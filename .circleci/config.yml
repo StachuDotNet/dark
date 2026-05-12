@@ -234,6 +234,23 @@ jobs:
       - run: ./scripts/build/_dotnet-wrapper tool restore
       - run: ./scripts/build/_dotnet-wrapper paket restore
 
+      # SQLite static archives for the AOT publish — built by zig cc from
+      # the amalgamation. Cache key is the build script's content (which
+      # contains the SQLite version pin); a content change always invalidates.
+      - run:
+          name: Hash build-sqlite.sh for cache key
+          command: shasum scripts/build/build-sqlite.sh > ../sqlite-checksum
+      - restore_cache:
+          keys:
+            - v1-sqlite-archives-{{ checksum "../sqlite-checksum" }}
+      - run:
+          name: Build SQLite static archives (skips on cache hit)
+          command: ./scripts/build/build-sqlite.sh
+      - save_cache:
+          paths:
+            - backend/src/Cli/lib
+          key: v1-sqlite-archives-{{ checksum "../sqlite-checksum" }}
+
       # The CLI embeds the Sqlite data.db,
       # so we need to get a copy ready first.
       - run:
@@ -250,9 +267,17 @@ jobs:
       - run:
           command: |
             if [ "${CIRCLE_BRANCH}" = "main" ]; then
+              # TODO: switch to --aot --cross-compile once cross-platform AOT
+              # publish is validated. Today only linux-x64 AOT is smoke-tested
+              # (zig produces the .a archives for 6 RIDs; the AOT publish step
+              # through ilc has only been exercised for linux-x64). Main keeps
+              # JIT cross-compile so we don't lose macOS/win/arm artifacts.
               ./scripts/build/build-release-cli-exes.sh --cross-compile
             else
-              ./scripts/build/build-release-cli-exes.sh
+              # PR validation runs AOT for the host runtime (linux-x64 in
+              # the in-container executor). Smaller binary, no .so dep, same
+              # eval semantics as JIT — verified.
+              ./scripts/build/build-release-cli-exes.sh --aot
             fi
       - persist_to_workspace:
           root: "."
