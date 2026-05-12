@@ -78,6 +78,15 @@ let private exec
 let inline private p (cmd : SqliteCommand) (name : string) (value : obj) =
   cmd.Parameters.AddWithValue(name, value) |> ignore<SqliteParameter>
 
+/// Bind a `Guid` as its canonical text representation. Without this, the
+/// default Microsoft.Data.Sqlite type mapping is `BLOB(16)`, which does
+/// not match the TEXT columns we store branch_id / location_id / etc. as
+/// — so foreign-key checks fail with "constraint violated" even though
+/// the parent row exists. (Fumble's `Sql.uuid` did this implicitly; we
+/// replicate it.)
+let inline private pUuid (cmd : SqliteCommand) (name : string) (value : System.Guid) =
+  p cmd name (string value)
+
 /// Bind a `string option` as either the string or DBNull.
 let inline private pOpt
   (cmd : SqliteCommand)
@@ -290,7 +299,7 @@ let private applySetName
           p cmd "$modules" modulesStr
           p cmd "$name" location.name
           p cmd "$item_type" itemTypeStr
-          p cmd "$branch_id" branchId)
+          pUuid cmd "$branch_id" branchId)
 
     // 2. If this is a rename (standalone SetName, not paired with Add*),
     //    also deprecate old locations pointing to the same hash.
@@ -310,7 +319,7 @@ let private applySetName
           """
           (fun cmd ->
             p cmd "$item_hash" itemHashStr
-            p cmd "$branch_id" branchId)
+            pUuid cmd "$branch_id" branchId)
 
     // 3. Insert new location entry.
     do!
@@ -321,13 +330,13 @@ let private applySetName
         VALUES ($location_id, $item_hash, $owner, $modules, $name, $item_type, $branch_id, $commit_hash)
         """
         (fun cmd ->
-          p cmd "$location_id" locationId
+          pUuid cmd "$location_id" locationId
           p cmd "$item_hash" itemHashStr
           p cmd "$owner" location.owner
           p cmd "$modules" modulesStr
           p cmd "$name" location.name
           p cmd "$item_type" itemTypeStr
-          p cmd "$branch_id" branchId
+          pUuid cmd "$branch_id" branchId
           pOpt cmd "$commit_hash" commitHash)
   }
 
@@ -380,7 +389,7 @@ let private applyDeprecate
           AND unlisted_at IS NULL
         """
         (fun cmd ->
-          p cmd "$branch_id" branchId
+          pUuid cmd "$branch_id" branchId
           p cmd "$item_hash" itemHashStr
           p cmd "$item_kind" itemKindStr)
 
@@ -394,8 +403,8 @@ let private applyDeprecate
           ($deprecation_id, $branch_id, $commit_hash, $item_hash, $item_kind, 'deprecated', $blob)
         """
         (fun cmd ->
-          p cmd "$deprecation_id" deprecationId
-          p cmd "$branch_id" branchId
+          pUuid cmd "$deprecation_id" deprecationId
+          pUuid cmd "$branch_id" branchId
           pOpt cmd "$commit_hash" commitHash
           p cmd "$item_hash" itemHashStr
           p cmd "$item_kind" itemKindStr
@@ -430,7 +439,7 @@ let private applyUndeprecate
           AND unlisted_at IS NULL
         """
         (fun cmd ->
-          p cmd "$branch_id" branchId
+          pUuid cmd "$branch_id" branchId
           p cmd "$item_hash" itemHashStr
           p cmd "$item_kind" itemKindStr)
 
@@ -444,8 +453,8 @@ let private applyUndeprecate
           ($deprecation_id, $branch_id, $commit_hash, $item_hash, $item_kind, 'undeprecated', NULL)
         """
         (fun cmd ->
-          p cmd "$deprecation_id" deprecationId
-          p cmd "$branch_id" branchId
+          pUuid cmd "$deprecation_id" deprecationId
+          pUuid cmd "$branch_id" branchId
           pOpt cmd "$commit_hash" commitHash
           p cmd "$item_hash" itemHashStr
           p cmd "$item_kind" itemKindStr)
@@ -489,7 +498,7 @@ let private applyRevertPropagation
           """
           (fun cmd ->
             p cmd "$item_hash" toHashStr
-            p cmd "$branch_id" branchId)
+            pUuid cmd "$branch_id" branchId)
 
       do!
         exec
@@ -508,7 +517,7 @@ let private applyRevertPropagation
           """
           (fun cmd ->
             p cmd "$item_hash" fromHashStr
-            p cmd "$branch_id" branchId)
+            pUuid cmd "$branch_id" branchId)
 
     // Undo source: unlist WIP location, un-unlist committed location.
     let modulesStr = String.concat "." sourceLocation.modules
@@ -534,7 +543,7 @@ let private applyRevertPropagation
           p cmd "$modules" modulesStr
           p cmd "$name" sourceLocation.name
           p cmd "$item_type" itemTypeStr
-          p cmd "$branch_id" branchId)
+          pUuid cmd "$branch_id" branchId)
 
     do!
       exec
@@ -553,7 +562,7 @@ let private applyRevertPropagation
         """
         (fun cmd ->
           p cmd "$item_hash" restoredSourceHashStr
-          p cmd "$branch_id" branchId)
+          pUuid cmd "$branch_id" branchId)
   }
 
 

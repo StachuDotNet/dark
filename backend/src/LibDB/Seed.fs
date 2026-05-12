@@ -137,6 +137,14 @@ let applyUnappliedOps () : Task<int64> =
         // takes the apply phase from ~5s to well under a second. Crash
         // safety isn't a concern here: applyOps is idempotent — if we die
         // mid-apply, the next run re-reads applied=0 and replays.
+        //
+        // FK enforcement is disabled for the duration. Microsoft.Data.Sqlite
+        // defaults `Foreign Keys=True` on the connection string; with that
+        // on, replaying ops in any order other than perfect topological
+        // tripped FK violations (locations referencing branches that arrive
+        // later in the batch, etc.). Standard bulk-load practice in SQLite
+        // is OFF-bulk-load-CHECK; we run `PRAGMA foreign_key_check` after
+        // commit and fail loudly if any actual violations were introduced.
         use conn = new SqliteConnection(LibDB.Sqlite.connString)
         do! conn.OpenAsync()
         let runRaw (sql : string) : Task<unit> =
@@ -146,11 +154,15 @@ let applyUnappliedOps () : Task<int64> =
             let! _ = cmd.ExecuteNonQueryAsync()
             return ()
           }
+        // PRAGMAs that affect transaction semantics must run *outside* a
+        // transaction. foreign_keys=OFF in particular only takes effect
+        // when not in a tx.
         do!
           runRaw
             "PRAGMA journal_mode=WAL; \
              PRAGMA synchronous=OFF; \
-             PRAGMA busy_timeout=5000;"
+             PRAGMA busy_timeout=5000; \
+             PRAGMA foreign_keys=OFF;"
         use tx = conn.BeginTransaction()
 
         for ((branchId, commitHash), ops) in groups do
@@ -162,6 +174,37 @@ let applyUnappliedOps () : Task<int64> =
         do! runRaw "UPDATE package_ops SET applied = 1 WHERE applied = 0"
 
         tx.Commit()
+
+        // Restore FK enforcement and run an integrity check. PRAGMA
+        // foreign_key_check returns a row per violating row (or nothing
+        // when the DB is clean). Anything here is a real data bug —
+        // either the seed was inconsistent or our op-replay produced
+        // dangling refs. Surface it loudly rather than persisting a
+        // silently-broken projection.
+        do! runRaw "PRAGMA foreign_keys=ON;"
+        let violations = ResizeArray<string * string * string * string>()
+        use checkCmd = conn.CreateCommand()
+        checkCmd.CommandText <- "PRAGMA foreign_key_check"
+        use! reader = checkCmd.ExecuteReaderAsync()
+        while! reader.ReadAsync() do
+          // columns: table, rowid, parent, fkid
+          violations.Add(
+            (reader.GetString(0),
+             reader.GetValue(1).ToString(),
+             reader.GetString(2),
+             reader.GetValue(3).ToString())
+          )
+        if violations.Count > 0 then
+          let summary =
+            violations
+            |> Seq.truncate 5
+            |> Seq.map (fun (t, r, p, f) ->
+              $"  {t} rowid={r} → {p} (fk_id={f})")
+            |> String.concat "\n"
+          Exception.raiseInternal
+            $"foreign_key_check reported {violations.Count} \
+              violation(s) after grow:\n{summary}"
+            [ "first_violations", summary ]
 
         return int64 (List.length unappliedOps)
   }
