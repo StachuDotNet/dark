@@ -6,7 +6,6 @@ storage: none
 
 // Basics
 nuget Ply = 0.3.1
-nuget FsRegEx = 0.7.2
 nuget FSharp.Core = 10.0.100
 nuget System.Text.Json = 10.0.0
 nuget NodaTime = 3.2.2

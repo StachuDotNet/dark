@@ -15,7 +15,6 @@ NUGET
       System.Reflection.Metadata (>= 9.0)
       System.Runtime.CompilerServices.Unsafe (>= 6.1)
     FSharp.Core (10.0.100)
-    FsRegEx (0.7.2)
     Fumble (1.0.3)
       FSharp.Core (>= 8.0.101)
       Microsoft.Data.Sqlite (>= 8.0.1)
