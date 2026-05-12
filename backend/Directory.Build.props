@@ -22,5 +22,13 @@
     <OtherFlags>$(OtherFlags) --test:GraphBasedChecking --test:ParallelOptimization --test:ParallelIlxGen</OtherFlags>
     <!-- warnings - https://learn.microsoft.com/en-us/dotnet/fsharp/language-reference/compiler-options#opt-in-warnings -->
     <OtherFlags>$(OtherFlags) --warnaserror --warnon:1182,3387,3366</OtherFlags>
+    <!-- NU1510: "PackageReference X will not be pruned." Fires when a
+         transitive (or explicit) dep is a package whose contents the
+         net10.0 shared framework already provides (System.Memory,
+         System.Threading.Tasks.Extensions, etc.). The chain usually goes
+         through Fumble / NodaTime / SQLitePCLRaw — we don't control those
+         versions. Suppressing globally; revisit if any *explicit* refs in
+         paket.references could be dropped. -->
+    <NoWarn>$(NoWarn);NU1510</NoWarn>
   </PropertyGroup>
 </Project>
