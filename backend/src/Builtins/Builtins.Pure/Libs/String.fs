@@ -53,9 +53,17 @@ let fns () : List<BuiltInFn> =
               Ply(DString replace)
             else
               // .Net Replace doesn't allow empty string, but we do.
-              String.toEgcSeq s
-              |> Seq.toList
-              |> FSharpPlus.List.intersperse replace
+              // intersperse `replace` between each grapheme cluster, then
+              // wrap with `replace` on both ends. Hand-rolled to avoid
+              // pulling in FSharpPlus just for one function.
+              let interspersed =
+                String.toEgcSeq s
+                |> Seq.toList
+                |> function
+                  | [] -> []
+                  | head :: tail ->
+                    head :: (tail |> List.collect (fun y -> [ replace; y ]))
+              interspersed
               |> (fun l -> replace :: l @ [ replace ])
               |> String.concat ""
               |> DString
