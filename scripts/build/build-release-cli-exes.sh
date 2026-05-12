@@ -53,6 +53,8 @@ rm -rf clis/.darklang
 
 # Export a seed (smaller DB) and use it as the embedded data.db for smaller exes.
 # The seed has full schema but no derived data — the grow step rebuilds on first run.
+# We intentionally ship the slim seed (not a pre-projected DB) so every user
+# has the same boot path and the ops are present for rewind/inspection.
 echo "Exporting seed for embedding..."
 sqlite3 rundir/data.db "PRAGMA wal_checkpoint(TRUNCATE);" || true
 scripts/run-local-exec export-seed rundir/seed.db
