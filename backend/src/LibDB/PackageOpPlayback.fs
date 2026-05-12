@@ -26,19 +26,49 @@ open LibSerialization.Hashing
 
 
 // ------------------------------------------------------------------
-// Low-level helpers — raw Microsoft.Data.Sqlite on a shared connection.
+// Low-level helpers — raw Microsoft.Data.Sqlite on a shared connection
+// with per-SQL-template SqliteCommand caching.
 // ------------------------------------------------------------------
+
+/// Per-batch context: holds the open connection plus a cache of
+/// SqliteCommand objects keyed by SQL text. First time we see a given
+/// SQL, we build + Prepare() the command; subsequent calls clear the
+/// parameter collection and reuse the same prepared command. Avoids
+/// re-allocating SqliteCommand and re-parsing SQL on each of the ~20k
+/// statements that fly during a 9845-op grow.
+type private Ctx =
+  { conn : SqliteConnection
+    cmds : System.Collections.Generic.Dictionary<string, SqliteCommand> }
+
+let private newCtx (conn : SqliteConnection) : Ctx =
+  { conn = conn
+    cmds = System.Collections.Generic.Dictionary<string, SqliteCommand>() }
+
+let private disposeCtx (ctx : Ctx) : unit =
+  for KeyValue(_, cmd) in ctx.cmds do
+    cmd.Dispose()
+  ctx.cmds.Clear()
 
 /// Run a non-query SQL statement on the shared connection.
 /// `setParams` populates the SqliteCommand's parameters (named with `$name`).
+/// On first call for a given `sql`, the command is built and Prepare()'d;
+/// later calls reuse the same SqliteCommand (clearing + re-adding params).
 let private exec
-  (conn : SqliteConnection)
+  (ctx : Ctx)
   (sql : string)
   (setParams : SqliteCommand -> unit)
   : Task<unit> =
   task {
-    use cmd = conn.CreateCommand()
-    cmd.CommandText <- sql
+    let cmd =
+      match ctx.cmds.TryGetValue(sql) with
+      | true, c -> c
+      | false, _ ->
+        let c = ctx.conn.CreateCommand()
+        c.CommandText <- sql
+        c.Prepare()
+        ctx.cmds[sql] <- c
+        c
+    cmd.Parameters.Clear()
     setParams cmd
     let! _ = cmd.ExecuteNonQueryAsync()
     return ()
@@ -67,7 +97,7 @@ let inline private pOpt
 /// Clears existing dependencies and stores new ones in a single statement
 /// (a multi-statement script — SQLite runs them in order on the same command).
 let private updateDependencies
-  (conn : SqliteConnection)
+  (ctx : Ctx)
   (itemHash : string)
   (deps : List<DE.Dependency>)
   : Task<unit> =
@@ -75,7 +105,7 @@ let private updateDependencies
     if List.isEmpty deps then
       do!
         exec
-          conn
+          ctx
           "DELETE FROM package_dependencies WHERE item_hash = $item_hash"
           (fun cmd -> p cmd "$item_hash" itemHash)
     else
@@ -94,7 +124,7 @@ let private updateDependencies
         + placeholders
 
       do!
-        exec conn sql (fun cmd ->
+        exec ctx sql (fun cmd ->
           p cmd "$item_hash" itemHash
           deps
           |> List.iteri (fun i dep ->
@@ -119,7 +149,7 @@ let private updateDependencies
 
 /// Apply a single AddType op to the package_types table.
 let private applyAddType
-  (conn : SqliteConnection)
+  (ctx : Ctx)
   (typ : PT.PackageType.PackageType)
   : Task<unit> =
   task {
@@ -137,7 +167,7 @@ let private applyAddType
 
     do!
       exec
-        conn
+        ctx
         """
         INSERT OR REPLACE INTO package_types (hash, pt_def, rt_def)
         VALUES ($hash, $pt_def, $rt_def)
@@ -150,7 +180,7 @@ let private applyAddType
     // Extract and store dependency references atomically. Each
     // Dependency carries its own location (populated by the resolver).
     let refs = DE.extractFromType typ
-    do! updateDependencies conn hashStr refs
+    do! updateDependencies ctx hashStr refs
   }
 
 /// Apply a single AddValue op to the package_values table.
@@ -158,7 +188,7 @@ let private applyAddType
 /// in Phase 3 by Seed.evaluateAllValues after all ops are applied, so cross-
 /// package references resolve correctly.
 let private applyAddValue
-  (conn : SqliteConnection)
+  (ctx : Ctx)
   (value : PT.PackageValue.PackageValue)
   : Task<unit> =
   task {
@@ -175,7 +205,7 @@ let private applyAddValue
     // the same hash via re-applied or duplicated ops.
     do!
       exec
-        conn
+        ctx
         """
         INSERT INTO package_values (hash, pt_def, rt_dval, value_type)
         VALUES ($hash, $pt_def, NULL, NULL)
@@ -187,12 +217,12 @@ let private applyAddValue
           p cmd "$pt_def" ptDef)
 
     let refs = DE.extractFromValue value
-    do! updateDependencies conn hashStr refs
+    do! updateDependencies ctx hashStr refs
   }
 
 /// Apply a single AddFn op to the package_functions table.
 let private applyAddFn
-  (conn : SqliteConnection)
+  (ctx : Ctx)
   (fn : PT.PackageFn.PackageFn)
   : Task<unit> =
   task {
@@ -208,7 +238,7 @@ let private applyAddFn
 
     do!
       exec
-        conn
+        ctx
         """
         INSERT OR REPLACE INTO package_functions (hash, pt_def, rt_instrs)
         VALUES ($hash, $pt_def, $rt_instrs)
@@ -219,7 +249,7 @@ let private applyAddFn
           p cmd "$rt_instrs" rtInstrs)
 
     let refs = DE.extractFromFn fn
-    do! updateDependencies conn hashStr refs
+    do! updateDependencies ctx hashStr refs
   }
 
 /// Apply a Set*Name op to the locations table.
@@ -227,7 +257,7 @@ let private applyAddFn
 /// isRename = true when this SetName is a standalone rename (not paired with Add*),
 ///   meaning old locations for the same hash should be deprecated.
 let private applySetName
-  (conn : SqliteConnection)
+  (ctx : Ctx)
   (branchId : PT.BranchId)
   (commitHash : Option<string>)
   (isRename : bool)
@@ -244,7 +274,7 @@ let private applySetName
     // 1. Deprecate any existing location at the target path (handles updates)
     do!
       exec
-        conn
+        ctx
         """
         UPDATE locations
         SET unlisted_at = datetime('now')
@@ -270,7 +300,7 @@ let private applySetName
     if isRename then
       do!
         exec
-          conn
+          ctx
           """
           UPDATE locations
           SET unlisted_at = datetime('now')
@@ -285,7 +315,7 @@ let private applySetName
     // 3. Insert new location entry.
     do!
       exec
-        conn
+        ctx
         """
         INSERT INTO locations (location_id, item_hash, owner, modules, name, item_type, branch_id, commit_hash)
         VALUES ($location_id, $item_hash, $owner, $modules, $name, $item_type, $branch_id, $commit_hash)
@@ -325,7 +355,7 @@ let private serializeAnnotation
 /// table) to carry location, then teach the query to filter by
 /// `(owner, modules, name)` like dependent lookups do.
 let private applyDeprecate
-  (conn : SqliteConnection)
+  (ctx : Ctx)
   (branchId : PT.BranchId)
   (commitHash : Option<string>)
   (target : PT.Reference)
@@ -340,7 +370,7 @@ let private applyDeprecate
 
     do!
       exec
-        conn
+        ctx
         """
         UPDATE deprecations
         SET unlisted_at = datetime('now')
@@ -356,7 +386,7 @@ let private applyDeprecate
 
     do!
       exec
-        conn
+        ctx
         """
         INSERT INTO deprecations
           (deprecation_id, branch_id, commit_hash, item_hash, item_kind, state, annotation_blob)
@@ -378,7 +408,7 @@ let private applyDeprecate
 /// same (branch, item_hash, item_kind). This is how child branches override
 /// ancestor-branch deprecations.
 let private applyUndeprecate
-  (conn : SqliteConnection)
+  (ctx : Ctx)
   (branchId : PT.BranchId)
   (commitHash : Option<string>)
   (target : PT.Reference)
@@ -390,7 +420,7 @@ let private applyUndeprecate
 
     do!
       exec
-        conn
+        ctx
         """
         UPDATE deprecations
         SET unlisted_at = datetime('now')
@@ -406,7 +436,7 @@ let private applyUndeprecate
 
     do!
       exec
-        conn
+        ctx
         """
         INSERT INTO deprecations
           (deprecation_id, branch_id, commit_hash, item_hash, item_kind, state, annotation_blob)
@@ -425,7 +455,7 @@ let private applyUndeprecate
 /// Apply a RevertPropagation op — undoes the source's WIP location and the
 /// dependents' repointed locations, restoring the previous state.
 let private applyRevertPropagation
-  (conn : SqliteConnection)
+  (ctx : Ctx)
   (branchId : PT.BranchId)
   (sourceLocation : PT.PackageLocation)
   (restoredSourceRef : PT.Reference)
@@ -449,7 +479,7 @@ let private applyRevertPropagation
 
       do!
         exec
-          conn
+          ctx
           """
           UPDATE locations
           SET unlisted_at = datetime('now')
@@ -463,7 +493,7 @@ let private applyRevertPropagation
 
       do!
         exec
-          conn
+          ctx
           """
           UPDATE locations
           SET unlisted_at = NULL
@@ -487,7 +517,7 @@ let private applyRevertPropagation
 
     do!
       exec
-        conn
+        ctx
         """
         UPDATE locations
         SET unlisted_at = datetime('now')
@@ -508,7 +538,7 @@ let private applyRevertPropagation
 
     do!
       exec
-        conn
+        ctx
         """
         UPDATE locations
         SET unlisted_at = NULL
@@ -535,7 +565,7 @@ let private applyRevertPropagation
 /// addedHashes = hashes of items added by Add* ops earlier in this batch
 ///   (used to distinguish "add + name" from "rename").
 let private applyOp
-  (conn : SqliteConnection)
+  (ctx : Ctx)
   (branchId : PT.BranchId)
   (commitHash : Option<string>)
   (addedHashes : Set<Hash>)
@@ -543,16 +573,16 @@ let private applyOp
   : Task<unit> =
   task {
     match op with
-    | PT.PackageOp.AddType typ -> do! applyAddType conn typ
-    | PT.PackageOp.AddValue value -> do! applyAddValue conn value
-    | PT.PackageOp.AddFn fn -> do! applyAddFn conn fn
+    | PT.PackageOp.AddType typ -> do! applyAddType ctx typ
+    | PT.PackageOp.AddValue value -> do! applyAddValue ctx value
+    | PT.PackageOp.AddFn fn -> do! applyAddFn ctx fn
     | PT.PackageOp.SetName(loc, target) ->
       let isRename = not (Set.contains target.hash addedHashes)
-      do! applySetName conn branchId commitHash isRename target.hash loc target.kind
+      do! applySetName ctx branchId commitHash isRename target.hash loc target.kind
     | PT.PackageOp.Deprecate(target, kind, message) ->
-      do! applyDeprecate conn branchId commitHash target kind message
+      do! applyDeprecate ctx branchId commitHash target kind message
     | PT.PackageOp.Undeprecate target ->
-      do! applyUndeprecate conn branchId commitHash target
+      do! applyUndeprecate ctx branchId commitHash target
     | PT.PackageOp.PropagateUpdate _ ->
       // Location changes are already handled by the individual SetName ops that
       // accompany this op in the propagation batch. Applying them here too would
@@ -565,7 +595,7 @@ let private applyOp
                                      revertedRepoints) ->
       do!
         applyRevertPropagation
-          conn
+          ctx
           branchId
           sourceLocation
           restoredSourceRef
@@ -593,7 +623,10 @@ let private collectAddedHashes (ops : List<PT.PackageOp>) : Set<Hash> =
 
 /// Apply a list of PackageOps using a caller-provided open SqliteConnection.
 /// The caller controls transaction boundaries — wrap the call in BEGIN/COMMIT
-/// for a bulk-replay or use auto-commit for a small commit-time batch.
+/// for a bulk-replay or use auto-commit for a small commit-time batch. A
+/// fresh prepared-statement cache (Ctx) is created and disposed per call;
+/// callers running many small batches in one big tx can call
+/// `applyOpsWithCtx` instead to keep the cache hot across calls.
 ///
 /// Dep-edge location columns are populated directly from each `Dependency`'s
 /// `location` field (the resolver stashes it onto `NameResolution<_>` at
@@ -605,9 +638,13 @@ let applyOpsOnConnection
   (ops : List<PT.PackageOp>)
   : Task<unit> =
   task {
-    let addedHashes = collectAddedHashes ops
-    for op in ops do
-      do! applyOp conn branchId commitHash addedHashes op
+    let ctx = newCtx conn
+    try
+      let addedHashes = collectAddedHashes ops
+      for op in ops do
+        do! applyOp ctx branchId commitHash addedHashes op
+    finally
+      disposeCtx ctx
   }
 
 
