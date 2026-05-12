@@ -116,8 +116,13 @@ let rec private toJsonV0
       else if System.Double.IsPositiveInfinity f then
         w.WriteStringValue "Infinity"
       else
-        let result = sprintf "%.12g" f
-        let result = if result.Contains "." then result else $"{result}.0"
+        // Avoid `sprintf "%.12g"` — PrintfImpl uses MakeGenericMethod on
+        // Double at runtime, which Native AOT can't satisfy after trimming.
+        // ToString("G12", InvariantCulture) gives the same canonical output
+        // with no reflection.
+        let result =
+          f.ToString("G12", System.Globalization.CultureInfo.InvariantCulture)
+        let result = if result.Contains "." then result else result + ".0"
         w.WriteRawValue result
 
     | DChar c -> w.WriteStringValue c

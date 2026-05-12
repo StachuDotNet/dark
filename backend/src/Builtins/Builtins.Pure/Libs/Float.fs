@@ -323,8 +323,16 @@ let fns () : List<BuiltInFn> =
             else if System.Double.IsNaN f then
               "NaN"
             else
-              let result = sprintf "%.12g" f
-              if result.Contains "." then result else $"{result}.0"
+              // Avoid `sprintf "%.12g"` — PrintfImpl uses MakeGenericMethod
+              // on Double at runtime, which Native AOT can't satisfy after
+              // trimming. ToString("G12", InvariantCulture) is the same
+              // canonical output with no reflection.
+              let result =
+                f.ToString(
+                  "G12",
+                  System.Globalization.CultureInfo.InvariantCulture
+                )
+              if result.Contains "." then result else result + ".0"
           Ply(DString result)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

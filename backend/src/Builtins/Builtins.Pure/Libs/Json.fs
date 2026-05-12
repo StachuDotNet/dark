@@ -112,8 +112,14 @@ let rec serialize (threadID : ThreadID) (w : Utf8JsonWriter) (dv : Dval) : unit 
     else if System.Double.IsPositiveInfinity f then
       w.WriteStringValue "Infinity"
     else
-      let result = sprintf "%.16g" f
-      let result = if result.Contains "." then result else $"{result}.0"
+      // Avoid `sprintf "%.16g"` — it goes through FSharp.Core's PrintfImpl
+      // which uses MakeGenericMethod on Double at runtime; Native AOT
+      // can't satisfy that after the type's metadata gets trimmed.
+      // ToString("G16", InvariantCulture) is the same canonical output,
+      // zero reflection.
+      let result =
+        f.ToString("G16", System.Globalization.CultureInfo.InvariantCulture)
+      let result = if result.Contains "." then result else result + ".0"
       w.WriteRawValue result
 
   | DChar c -> w.WriteStringValue c
