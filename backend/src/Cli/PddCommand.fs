@@ -238,11 +238,23 @@ and private dvalPendings (dv : RT.Dval) : List<RT.FQFnName.Pending> =
 /// some other computation, we record "?" and let the LLM guess.
 let rec private inferArgTypeHints
   (instrs : RT.Instructions)
-  : Map<System.Guid, List<string>> =
+  : Map<System.Guid, List<string> * List<string>> =
+  // Returns (types, values) per handle. Values are pretty-printed
+  // truncated to ~400 chars to keep prompts focused.
   let arr = List.toArray instrs.instructions
-  // Maps registers to a Dval *if* that register was last set by a LoadVal.
   let regLastLoad = System.Collections.Generic.Dictionary<int, RT.Dval>()
-  let mutable acc : Map<System.Guid, List<string>> = Map.empty
+  let mutable acc : Map<System.Guid, List<string> * List<string>> = Map.empty
+  let truncate (s : string) =
+    if s.Length > 400 then s.Substring(0, 400) + "…(truncated)" else s
+  let valueRepr (dv : RT.Dval) : string =
+    match dv with
+    | RT.DInt64 n -> sprintf "%dL" n
+    | RT.DString s -> sprintf "\"%s\"" (truncate s)
+    | RT.DBool b -> string b
+    | RT.DFloat f -> string f
+    | RT.DChar c -> sprintf "'%s'" c
+    | RT.DUnit -> "()"
+    | _ -> truncate (sprintf "%A" dv)
   for i in 0 .. arr.Length - 1 do
     match arr[i] with
     | RT.LoadVal(reg, dv) -> regLastLoad[reg] <- dv
@@ -261,9 +273,13 @@ let rec private inferArgTypeHints
             | true, RT.DChar _ -> "Char"
             | true, RT.DUnit -> "Unit"
             | _ -> "?"
-          let argTypes =
-            NEList.toList argRegs |> List.map typeName
-          acc <- Map.add p.handle argTypes acc
+          let valueOrEmpty (r : int) =
+            match regLastLoad.TryGetValue r with
+            | true, dv -> valueRepr dv
+            | _ -> "?"
+          let argTypes = NEList.toList argRegs |> List.map typeName
+          let argValues = NEList.toList argRegs |> List.map valueOrEmpty
+          acc <- Map.add p.handle (argTypes, argValues) acc
         | _ -> ()
       | _ -> ()
     | RT.CreateLambda(_, lambdaImpl) ->
@@ -371,8 +387,9 @@ let private handleRun
     // Stash arg-type hints derived from literal call-site args so the LLM
     // gets a richer prompt instead of just the bare fn name.
     let hints = inferArgTypeHints instrs
-    for KeyValue(handle, types) in hints do
+    for KeyValue(handle, (types, values)) in hints do
       Mat.setArgTypeHint handle types
+      Mat.setArgValueHint handle values
     let inFlight =
       System.Collections.Concurrent.ConcurrentDictionary<
         System.Guid,

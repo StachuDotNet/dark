@@ -412,18 +412,36 @@ let argTypeHints :
   System.Collections.Concurrent.ConcurrentDictionary<System.Guid, List<string>> =
   System.Collections.Concurrent.ConcurrentDictionary()
 
+/// Stashed actual literal arg VALUES per Pending handle. When the call
+/// site passes literal arguments (e.g. a long CSV string), include them
+/// in the materialize prompt so the LLM can see what data it operates on.
+/// Truncated to ~400 chars per arg to keep the prompt focused.
+let argValueHints :
+  System.Collections.Concurrent.ConcurrentDictionary<System.Guid, List<string>> =
+  System.Collections.Concurrent.ConcurrentDictionary()
+
 let setArgTypeHint (handle : System.Guid) (types : List<string>) : unit =
   argTypeHints[handle] <- types
+
+let setArgValueHint (handle : System.Guid) (values : List<string>) : unit =
+  argValueHints[handle] <- values
 
 let private getArgTypeHint (handle : System.Guid) : List<string> =
   match argTypeHints.TryGetValue handle with
   | true, t -> t
   | _ -> []
 
+let private getArgValueHint (handle : System.Guid) : List<string> =
+  match argValueHints.TryGetValue handle with
+  | true, v -> v
+  | _ -> []
+
 /// Build the user-side prompt for a given pending fn name. Includes
-/// arg-type hints from `argTypeHints` when present.
+/// arg-type hints + actual arg values (when available) so the LLM can
+/// reason about the concrete data it operates on.
 let buildUserPrompt (p : RT.FQFnName.Pending) : string =
   let hints = getArgTypeHint p.handle
+  let values = getArgValueHint p.handle
   if List.isEmpty hints then
     sprintf "Function: %s. Description: implement a sensible default body." p.name
   else
@@ -432,10 +450,19 @@ let buildUserPrompt (p : RT.FQFnName.Pending) : string =
       hints
       |> List.mapi (fun i t -> sprintf "%s: %s" names[i % 6] t)
       |> String.concat ", "
+    let valuesBlock =
+      if List.isEmpty values then ""
+      else
+        let pairs =
+          values
+          |> List.mapi (fun i v -> sprintf "  %s = %s" names[i % 6] v)
+          |> String.concat "\n"
+        sprintf "\n\nCalled at this site with literal arguments:\n%s\n\nWrite a body that produces the right answer FOR THESE INPUTS (and similar ones). The function should generalize, but ground your reasoning in this concrete example." pairs
     sprintf
-      "Function: %s. Called at this site with args of types: (%s). Use those as the parameter types in your sig. Description: implement a sensible default body."
+      "Function: %s. Called at this site with args of types: (%s). Use those as the parameter types in your sig.%s"
       p.name
       argSig
+      valuesBlock
 
 
 /// Fix-up prompt used when the mini-parser rejects the LLM's first body.
@@ -555,6 +582,26 @@ Return ONLY the JSON. No markdown fences, no prose."""
 
 let buildTestGenPrompt (name : string) (sig_ : string) : string =
   sprintf "Function: %s\nSignature: %s\nReturn the JSON {tests: [...]} per the instructions." name sig_
+
+let buildTestGenPromptWithCallsite
+  (name : string)
+  (sig_ : string)
+  (callsiteArgs : List<string>)
+  : string =
+  if List.isEmpty callsiteArgs then
+    buildTestGenPrompt name sig_
+  else
+    let names = [| "x"; "y"; "z"; "w"; "u"; "v" |]
+    let block =
+      callsiteArgs
+      |> List.mapi (fun i v -> sprintf "  %s = %s" names[i % 6] v)
+      |> String.concat "\n"
+    sprintf
+      "Function: %s\nSignature: %s\n\nAt one call site, this function is invoked with these LITERAL arguments:\n%s\n\nUse those concrete values as the basis for at least one test case. The test should reflect what `%s` should return when given those literal inputs — based on the function name's standard meaning. Then 1-2 more boundary/varied cases.\n\nReturn the JSON {tests: [...]} per the instructions."
+      name
+      sig_
+      block
+      name
 
 let parseTestGenResponse (raw : string) : List<ClaimedTest> =
   try
@@ -1485,7 +1532,11 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                         return gen.tests
                       else
                         let _ = incrementLlmCalls p.handle
-                        let testPrompt = buildTestGenPrompt p.name gen.sig_
+                        let testPrompt =
+                          buildTestGenPromptWithCallsite
+                            p.name
+                            gen.sig_
+                            (getArgValueHint p.handle)
                         let! resp =
                           callOpenAI apiKey testGenSystemPrompt testPrompt
                           |> Async.AwaitTask
