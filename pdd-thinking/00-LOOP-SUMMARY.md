@@ -81,7 +81,17 @@ Wake cadence: tightened to 270s (4.5 min) per user request mid-night — stays i
 - **Tolerant runtime** — at first, very. Tighten over time.
 - **Builtin restrictions early.** CLI installers should let users pick what agents can do (HttpClient yes/no, file access yes/no, etc.). Don't punt on this.
 
-## Endgame for this session — STATUS as of iter 20 (02:24 EDT)
+## CURRENT PLAN OF RECORD
+
+**See `21-heavy-hitters-plan.md`** — that's the working plan as of 2026-05-13 ~16:00 EDT. The design loop (iters 0-29) produced docs 00-20. The coding loop has been delivering F# on top.
+
+Heavy-hitters in flight:
+- H1: `dark pdd run <expr>` CLI command
+- H2: implicit `Pending` from unresolved parser names (makes any .dark file PDD-capable)
+- H3: **interactive annotated HTML code view** with logs side-panel — green/yellow/gray/red state badges per name
+- H4: promotion of materialized fns to the durable package tree
+
+## Endgame for this session — STATUS as of iter 20 (02:24 EDT, design loop)
 
 When Stachu sits down at his desk at 8am:
 
