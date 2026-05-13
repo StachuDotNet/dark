@@ -43,6 +43,8 @@
     <Compile Include="CommonToDarkTypes.fs" />
     <Compile Include="RuntimeTypesToDarkTypes.fs" />
     <Compile Include="ProgramTypesToDarkTypes.fs" />
+    <!-- PDD (pseudocode-driven dev) materializer — opt-in -->
+    <Compile Include="PDDMaterializer.fs" />
     <!-- Expose the runtime to the outside world /-->
     <Compile Include="Execution.fs" />
   </ItemGroup>

@@ -214,5 +214,90 @@ module Integration =
   let tests = testList "Integration" [ pendingFnGoesThroughInterpreter ]
 
 
+// ---------------------------------------------------------------------------
+// Day-2b: PDDMaterializer — parser for LLM JSON responses
+// ---------------------------------------------------------------------------
+
+module LLMParser =
+  module M = LibExecution.PDDMaterializer
+
+  let parsesCleanJson =
+    test "parseLLMResponse handles clean {sig, body} JSON" {
+      let input = """{"sig":"(x: Int64): Int64","body":"x"}"""
+      match M.parseLLMResponse input with
+      | Ok gen ->
+        Expect.equal gen.sig_ "(x: Int64): Int64" "sig"
+        Expect.equal gen.body "x" "body"
+      | Error e -> Expect.equal 1 2 (sprintf "expected Ok, got Error: %s" e)
+    }
+
+  let parsesMarkdownFencedJson =
+    test "parseLLMResponse strips ```json fences" {
+      let input = "```json\n{\"sig\":\"foo\",\"body\":\"bar\"}\n```"
+      match M.parseLLMResponse input with
+      | Ok gen ->
+        Expect.equal gen.sig_ "foo" "sig"
+        Expect.equal gen.body "bar" "body"
+      | Error e -> Expect.equal 1 2 (sprintf "expected Ok, got Error: %s" e)
+    }
+
+  let parsesPlainFencedJson =
+    test "parseLLMResponse strips ``` (no lang tag) fences" {
+      let input = "```\n{\"sig\":\"a\",\"body\":\"b\"}\n```"
+      match M.parseLLMResponse input with
+      | Ok gen -> Expect.equal gen.sig_ "a" "sig"
+      | Error e -> Expect.equal 1 2 (sprintf "expected Ok, got Error: %s" e)
+    }
+
+  let errorsOnMissingField =
+    test "parseLLMResponse errors when 'body' field is missing" {
+      let input = """{"sig":"(x: Int64): Int64"}"""
+      match M.parseLLMResponse input with
+      | Ok _ -> Expect.equal 1 2 "expected Error"
+      | Error e -> Expect.isTrue (e.Contains("body")) e
+    }
+
+  let errorsOnNonJson =
+    test "parseLLMResponse errors on non-JSON input" {
+      match M.parseLLMResponse "just some text" with
+      | Ok _ -> Expect.equal 1 2 "expected Error"
+      | Error _ -> ()
+    }
+
+  let buildUserPromptIsTerse =
+    test "buildUserPrompt produces a short directive" {
+      let p = M.buildUserPrompt "fib"
+      Expect.isTrue (p.Contains("fib")) "contains the name"
+      Expect.isTrue (p.Length < 200) "stays short"
+    }
+
+  let v4SystemPromptIsComplete =
+    test "v4 system prompt mentions key syntax rules" {
+      let p = M.v4SystemPrompt
+      // spot-check that v4-specific rules are present
+      Expect.isTrue (p.Contains("Int64")) "Int64 mentioned"
+      Expect.isTrue (p.Contains("fun x ->")) "lambda syntax"
+      Expect.isTrue (p.Contains("PREFIX")) "prefix-app rule"
+      Expect.isTrue (p.Contains("Stdlib")) "stdlib prefix"
+    }
+
+  let tests =
+    testList
+      "LLMParser"
+      [ parsesCleanJson
+        parsesMarkdownFencedJson
+        parsesPlainFencedJson
+        errorsOnMissingField
+        errorsOnNonJson
+        buildUserPromptIsTerse
+        v4SystemPromptIsComplete ]
+
+
 let tests =
-  testList "PDD" [ Defaults.tests; Pending.tests; PMField.tests; Integration.tests ]
+  testList
+    "PDD"
+    [ Defaults.tests
+      Pending.tests
+      PMField.tests
+      Integration.tests
+      LLMParser.tests ]
