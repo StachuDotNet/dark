@@ -1,10 +1,10 @@
-# CLI NativeAOT — session progress report
+# CLI NativeAOT + cold-start — session progress report
 
 **Date:** 2026-05-12
-**Branch:** `aot-and-cold-start-improvements` (10 commits ahead of `main`)
-**Scope:** Unblock + harden the NativeAOT CLI publish path. Static-link
-SQLite, tighten trim/AOT settings, accelerate cold start, drop unused
-heavyweight packages, surface latent AOT bugs.
+**Branch:** `aot-and-cold-start-improvements` (14 commits ahead of `main`)
+**Scope:** Tried to make AOT the publish path. Discovered the cross-OS
+blocker; pivoted back to JIT. Took the size/perf/correctness wins on the
+way out. AOT infrastructure stays in tree for the day multi-OS CI lands.
 
 ---
 
@@ -12,48 +12,51 @@ heavyweight packages, surface latent AOT bugs.
 
 | Metric                         | Pre-session         | End of session     | Delta             |
 |--------------------------------|---------------------|--------------------|-------------------|
-| AOT publishable                | ❌ (sqlite blocker) | ✅                 | unblocked         |
-| Binary size                    | n/a (failed)        | **27 MB**          | JITs were 46–77   |
-| Runtime deps (`ldd`)           | n/a                 | libc/libm/ld-linux | no libe_sqlite3   |
-| Cold start (`eval "1L+2L"`)    | 5.55 s              | **1.49 s**         | **−3.7×**         |
+| Shipping path                  | JIT only            | **JIT (AOT parked)** | unchanged form  |
+| JIT binary size                | 46–77 MB            | **46 MB**          | hovering at low  |
+| JIT cold start                 | ~5.5 s              | **2.4 s**          | **−57%**          |
+| JIT warm start                 | ~0.5 s              | ~0.5 s             | unchanged        |
+| AOT binary size (parked)       | n/a                 | **27 MB**          | proves the path  |
+| AOT cold start (parked)        | n/a                 | **1.5 s**          | −73% vs old JIT  |
 | `seed.applyOps` phase          | 5.25 s              | **1.18 s**         | **−4.4×**         |
-| Warm start                     | 0.20 s              | 0.21 s             | unchanged         |
-| AOT build warnings             | ~30 (NU1510 noise)  | 48 (all FSharp.Core) | now visible    |
-| Float ops under AOT            | crashes             | works              | sprintf fix       |
+| AOT build warnings             | hidden behind rollup | 49 (all FSharp.Core, visible) | now actionable |
+| Float ops under AOT            | crashed             | works              | sprintf fix       |
+| FK integrity                   | silent corruption under AOT | verified clean | Guid→TEXT + check |
 
-The 27 MB AOT binary is smaller than every JIT release in `clis/` today
-(range 46–77 MB) and starts in 1.5 s cold / 0.2 s warm.
-
-```
-Round 1 — SQLite static-link via zig cc                 32 MB  cold 5.6 s
-Round 2 — AOT subsystem switches + apply batching       31 MB  cold 1.5 s
-Round 3 — drop FSharpPlus / FSharpx / FSharp.STJ        27 MB  cold 1.6 s
-Round 4 — fix sprintf "%.Ng" PrintfImpl crash           27 MB  cold 1.5 s
-Round 5 — prep-stmt cache + IL warnings unsuppressed    28 MB  cold 1.5 s
-```
+Two genuine bugs surfaced and fixed along the way — both were *latent
+under JIT*; we only hit them faster because we tried AOT. The fixes
+ship in the JIT path too.
 
 ---
 
-## 1. SQLite static-linked into the AOT binary
+## 1. The cross-OS blocker
 
-### Decision
+Microsoft's docs are unambiguous:
 
-Pre-session, the AOT binary crashed at the first SQL call with
-`DllNotFoundException: libe_sqlite3.so`. Two fix paths sat in a TODO:
-sidecar the `.so`, or static-link via `<DirectPInvoke>` +
-`<NativeLibrary>`. We picked static-link: "not looking to poison the
-user's filesystem with our dependencies."
+> "Native AOT does not support cross-OS compilation. Cross-OS
+> compilation with Native AOT requires some form of emulation, like a
+> virtual machine or Windows WSL."
+> — [cross-compile](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/cross-compile)
 
-### Research summary
+Same-OS cross-arch (linux x64↔arm64, etc.) is fine and we *could* light
+up 4 of our 8 RIDs. Cross-OS (linux→osx, linux→win) needs runners on
+those hosts.
 
-- No NuGet package ships a desktop `libe_sqlite3.a`.
-  `SQLitePCLRaw.lib.e_sqlite3.*` ships only `.so` / `.dll` / `.dylib`;
-  the only `.static` variant is iOS-only.
-- Canonical recipes (e.g. [pileofhacks walkthrough](https://pileofhacks.dev/post/a-native-static-binary-with-sqlite-support-in-c/))
-  use the distro's `sqlite-static`. Bad for cross-compile.
-- The clean recipe: build our own archive from the SQLite amalgamation
-  via a single C compile. We already have zig 0.11 in the devcontainer
-  driving tree-sitter; same pattern works for SQLite.
+[PublishAotCross](https://github.com/MichalStrehovsky/PublishAotCross)
+(third-party) bridges Windows→Linux but explicitly cannot do →Windows
+or →macOS due to MSVC/MinGW ABI differences.
+
+**Practical implication:** the AOT branch's `--aot` flag works for
+`linux-x64` today; the other unix RIDs are doable with toolchain bumps;
+osx/win cannot be done from our Linux devcontainer at all.
+
+---
+
+## 2. SQLite static-linked into the AOT binary
+
+Pre-session: AOT binary crashed at the first SQL call with
+`DllNotFoundException: libe_sqlite3.so`. Picked the static-link path:
+"we're not looking to poison the user's filesystem."
 
 ### What we built
 
@@ -67,99 +70,83 @@ osx-x64         osx-arm64
 ```
 
 Output: `backend/src/Cli/lib/libe_sqlite3-<rid>.a` (~3.6–5.2 MB each).
-**Gitignored** — built locally / in CI on demand. Cache check at top of
-script skips when all artifacts already present.
+Gitignored — built locally / in CI on demand. The script's own
+"all artifacts present" check makes it a cheap cache miss.
 
-Final compile flags:
+Flags:
 
 ```
--Os
--fPIC
--DSQLITE_THREADSAFE=1
--DSQLITE_ENABLE_COLUMN_METADATA      # SQLitePCL binds *_column_*_name unconditionally
+-Os -fPIC -DSQLITE_THREADSAFE=1 -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_DQS=0
+-DSQLITE_ENABLE_COLUMN_METADATA       # SQLitePCL binds these unconditionally
 -DSQLITE_ENABLE_MATH_FUNCTIONS
--DSQLITE_DEFAULT_MEMSTATUS=0
--DSQLITE_DQS=0                       # reject double-quoted string literals
 ```
 
-**`backend/src/Cli/Cli.fsproj`** — adds under AOT-conditional ItemGroups:
+**`Cli.fsproj`** — under AOT-conditional ItemGroups:
 
 ```xml
 <ItemGroup Condition="'$(PublishAot)' == 'true'">
   <DirectPInvoke Include="e_sqlite3" />
 </ItemGroup>
-<ItemGroup Condition="... And '$(RuntimeIdentifier)' == 'linux-x64'">
+<ItemGroup Condition="... '$(RuntimeIdentifier)' == 'linux-x64'">
   <NativeLibrary Include="lib/libe_sqlite3-linux-x64.a" />
 </ItemGroup>
 ... (one per RID)
 ```
 
-### Gotchas + how to handle each
+### Gotchas — and what to do about each
 
-**1. `OMIT_LOAD_EXTENSION` breaks the AOT link.** SQLitePCLRaw's
-provider includes `[DllImport("e_sqlite3")]` for
-`sqlite3_load_extension` and `sqlite3_enable_load_extension`
-*unconditionally*. Under JIT they're lazy lookups — never hit if F#
-doesn't call them. Under NativeAOT + DirectPInvoke they're hard link
-references; missing → linker error.
+1. **`OMIT_LOAD_EXTENSION` breaks the AOT link.** SQLitePCLRaw binds
+   `sqlite3_load_extension` + `sqlite3_enable_load_extension`
+   unconditionally. **What to do**: keep extension loading compiled in;
+   it's disabled at runtime by default. ~50 KB cost.
 
-**What to do:** keep extension loading compiled in (don't add the
-OMIT). It's disabled at runtime by default; our code never calls
-`sqlite3_enable_load_extension(db, 1)` so the security posture is
-unchanged. Costs ~50 KB on the archive — accept it. The only way to
-recover the symbols-OFF size would be a fork of SQLitePCLRaw that
-omits these `[DllImport]`s, which isn't worth it.
+2. **`ENABLE_COLUMN_METADATA` is required** (off by default in stock
+   SQLite). **What to do**: keep `-DSQLITE_ENABLE_COLUMN_METADATA`.
+   Same reason; same cost.
 
-**2. `ENABLE_COLUMN_METADATA` is required (off by default).** Same
-pattern. The provider binds `sqlite3_column_{database,origin,table}_name`.
-Off by default in stock SQLite builds.
+3. **`OMIT_AUTOINIT` causes a segfault** on first `sqlite3_open`.
+   SQLitePCL relies on SQLite's default auto-init-on-first-API-call.
+   **What to do**: don't suppress AUTOINIT. To recover the ~5 KB you'd
+   need to inject an explicit `sqlite3_initialize()` somewhere; not
+   worth the wiring.
 
-**What to do:** keep `-DSQLITE_ENABLE_COLUMN_METADATA` in build-sqlite.sh.
-Same trade-off as above; ~10 KB cost. Don't try to remove without
-auditing SQLitePCLRaw's `[DllImport]` surface for any other unconditionally-bound symbols.
+4. **`tee | tail -1` hides linker failures.** The pipe exit code is
+   `tail`'s, not `dotnet publish`'s. **What to do**: always
+   `set -o pipefail` around `dotnet publish` invocations.
 
-**3. `OMIT_AUTOINIT` causes a segfault on first `sqlite3_open`.** The
-provider doesn't call `sqlite3_initialize()` explicitly; relies on
-SQLite's default auto-init-on-first-API-call.
+### Bonus brainstorm — shrinking the `.a` further (not actioned)
 
-**What to do:** don't add `-DSQLITE_OMIT_AUTOINIT`. If we ever want to
-save the bytes (auto-init code is tiny, ~5 KB), we'd need to also patch
-in an explicit `sqlite3_initialize()` call at process startup. Not
-worth it.
-
-**4. `tee | tail -1` hides linker failures.** Build script's pipe exit
-code defaults to `tail`'s, not `dotnet publish`'s.
-
-**What to do:** always `set -o pipefail` when chaining `dotnet publish`
-through pipes. The build script itself has `set -euo pipefail` at the
-top — the trap is in invoking scripts. Built into our muscle memory now;
-also documented in this report.
+- `-Oz` instead of `-Os` — usually 1–3% smaller.
+- More `SQLITE_OMIT_*` candidates exist (TRIGGER, VIEW, SUBQUERY,
+  WINDOWFUNC) — but each removes a symbol that SQLitePCL's
+  `[DllImport]`s reference unconditionally, so removing them breaks the
+  AOT link. **The real lever is a SQLitePCLRaw fork** that drops the
+  unused `[DllImport]`s; otherwise the `OMIT_*` choices are constrained
+  by what the provider binds. Not worth the fork for ~0.5–1 MB savings.
 
 ### Cross-compilation status
 
 ```
-linux-x64        ✅  built + smoke-tested
-linux-musl-x64   ✅  archive built; AOT binary not yet
-linux-arm64      ✅  archive built; AOT binary not yet
-linux-arm        ✅  archive built; AOT binary not yet
-osx-x64          ✅  archive built; AOT binary not yet
-osx-arm64        ✅  archive built; AOT binary not yet
-win-x64          ❌  archive not built (`.lib` convention; zig can produce
-                     it; deferred because the win AOT path through ilc is
-                     also unproven)
-win-arm64        ❌  same as win-x64
+linux-x64        ✅  built + smoke-tested + AOT-published + JIT-validated
+linux-musl-x64   ✅  archive built; AOT publish not tried
+linux-arm64      ✅  archive built; needs nativeaot runtime nuget pack
+linux-arm        ✅  archive built; needs runtime nuget pack
+osx-x64          ✅  archive built; AOT publish impossible from Linux
+osx-arm64        ✅  archive built; AOT publish impossible from Linux
+win-x64          ❌  archive not built (`.lib`); cross-OS blocker anyway
+win-arm64        ❌  same
 ```
 
-The bundle's `libe_sqlite3.so` still lands in the AOT `publish/` dir
-(the SDK copies it as a runtime asset of `bundle_e_sqlite3`). Doesn't
-matter — the build script moves only the bare `Cli` binary into `clis/`;
-the `.so` stays in `publish/` and never reaches the user. `ldd` on the
-shipped binary confirms no `libe_sqlite3.so` dependency. **Per your
-direction, leaving the build-output noise alone.**
+### What about the bundle's `.so`?
+
+Microsoft.Data.Sqlite → `SQLitePCLRaw.bundle_e_sqlite3` transitively
+drops `libe_sqlite3.so` into the AOT `publish/` dir. **Per your
+direction, leaving it.** Doesn't reach the user — build script moves
+only the bare binary into `clis/`.
 
 ---
 
-## 2. Trimming + AOT subsystem switches
+## 3. Trimming + AOT subsystem switches
 
 ### Re-added settings that the squash dropped
 
@@ -168,72 +155,63 @@ direction, leaving the build-output noise alone.**
 <IlcFoldIdenticalMethodBodies>true</IlcFoldIdenticalMethodBodies>
 ```
 
-Per `1b32e0827`, both retained as "safe AOT optimizations" but didn't
-survive into `Cli.fsproj` after the merge of #5649.
+Per `1b32e0827`. Lost in the squash; restored. AOT-only effect.
 
 ### New .NET subsystem switches
 
+CLI doesn't hot-reload, doesn't run startup hooks, doesn't use built-in
+COM, isn't macOS-Cocoa, etc.:
+
 ```xml
-<MetadataUpdaterSupport>false</MetadataUpdaterSupport>          <!-- no hot-reload -->
-<StartupHookSupport>false</StartupHookSupport>                  <!-- no startup hooks -->
+<MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+<StartupHookSupport>false</StartupHookSupport>
 <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
-<AutoreleasePoolSupport>false</AutoreleasePoolSupport>          <!-- not macOS-Cocoa -->
+<AutoreleasePoolSupport>false</AutoreleasePoolSupport>
 <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
 <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
-<CustomResourceTypesSupport>false</CustomResourceTypesSupport>  <!-- InvariantGlob is on -->
+<CustomResourceTypesSupport>false</CustomResourceTypesSupport>
 ```
+
+Each prunes metadata + code from AOT publish; no effect on JIT.
 
 ### Warning visibility
 
-**Pre-session:** `SuppressTrimAnalysisWarnings=true` — all warnings
-hidden behind a single rolled-up `IL3053` for FSharp.Core.
+Pre-session: `SuppressTrimAnalysisWarnings=true` — all warnings hidden
+under one IL3053 rollup.
 
-**Now:** `SuppressTrimAnalysisWarnings=false` + `TrimmerSingleWarn=false`.
-48 individual warnings surface. Categorized:
+Now: `SuppressTrimAnalysisWarnings=false` + `TrimmerSingleWarn=false`.
+49 warnings visible. **All originate inside FSharp.Core itself**
+(`sformat.fs` 21, `printf.fs` 13, `reflect.fs` 13, `prim-types.fs` 1, +
+1 from the FK-fix). Zero in our code.
 
 ```
-21 sformat.fs     — F# StructuredFormat (used by `%A` / `%O`-with-records)
-13 printf.fs      — F# PrintfImpl (sprintf "%.Ng" etc.)
-13 reflect.fs     — F# reflection helpers
- 1 prim-types.fs
-
-By code:
-14 IL2070  DAM (DynamicallyAccessedMembers) annotation mismatch on `this`
- 9 IL3050  RequiresDynamicCode on a reachable method
- 9 IL2067  DAM on a parameter
- 5 IL2060  MakeGenericMethod with no static type info
- 5 IL2075  GetType() returning a type with no DAM annotation
- 3 IL2072 / 1 IL2091 / 1 IL2080 / 1 IL2055
+IL2070 (14)  DAM annotation mismatch on `this`
+IL3050 (9)   RequiresDynamicCode on a reachable method
+IL2067 (9)   DAM on a parameter
+IL2060 (5)   MakeGenericMethod with no static type info
+IL2075 (5)   GetType() with no DAM annotation
+IL2072/91/80/55 — smaller categories
 ```
 
-**Crucially: all 48 are inside FSharp.Core itself.** Zero originate in
-our code. They flag F#'s internal reflective/dynamic-code patterns the
-trimmer can't reason about. Most are pessimism; the dangerous ones are
-where our code happens to call into a flagged path.
+Most are pessimism the trimmer can't reason through. The dangerous ones
+are where our code happens to *call into* the flagged path. **Visibility
+is load-bearing**: a new warning in CI is a signal to investigate
+whether it's pessimism or a real landmine.
 
-We found one such site in the wild (Float toString, see §3 below).
-The others may be latent landmines if we add code paths that exercise
-F#'s `%A`-style formatters on user types. With the warnings now
-visible, a new occurrence in CI is a signal to investigate.
+We hit one such landmine (§6). Without unsuppressing we'd never have
+known to look.
 
 ### Warning hygiene (NU1510)
 
-Added to `backend/Directory.Build.props`:
-
-```xml
-<NoWarn>$(NoWarn);NU1510</NoWarn>
-```
-
-NU1510 fires for transitive package refs that are now shipped by the
-net10.0 shared framework (System.Memory etc.). Not actionable from our
-side — paket pulls them via Fumble / NodaTime / SQLitePCLRaw. 28
-warnings of pure noise pre-fix.
+28 pre-session warnings were `NU1510` ("PackageReference X will not be
+pruned") from transitive deps that the net10.0 shared framework now
+provides. Suppressed globally via `Directory.Build.props`.
 
 ---
 
-## 3. Cold start — 5.6 s → 1.5 s
+## 4. Cold start: 5.6 s → 1.5 s (AOT) / 2.4 s (JIT)
 
-### Telemetry before
+### Before
 
 ```
 seed.applyOps        5252 ms   ← 97% of the cost
@@ -244,195 +222,296 @@ seed.walCheckpoint      7 ms
 total                5551 ms
 ```
 
-`applyOps` for 9845 ops = 0.53 ms/op. Bottleneck was Fumble's
-per-statement connection-from-pool model: each of the ~20k SQL
-statements in playback ran on a fresh connection in its own implicit
-transaction. Even with `synchronous=NORMAL` + WAL, that's ~20k tiny
-WAL commits.
+9845 ops × 0.53 ms/op. Bottleneck was Fumble's per-statement
+connection-from-pool model: each of ~20k SQL statements ran on a fresh
+connection in its own implicit transaction. ~20k tiny WAL commits.
 
-### What we changed
+### What changed
 
-**Rewrote `backend/src/LibDB/PackageOpPlayback.fs` against raw
-`Microsoft.Data.Sqlite`** (no Fumble). Every apply* function takes a
-`Ctx` bundling a `SqliteConnection` + a `Dictionary<string,
-SqliteCommand>` prepared-statement cache. Public surface:
+**Rewrote `LibDB/PackageOpPlayback.fs` against raw
+`Microsoft.Data.Sqlite`** (no Fumble). All apply* helpers take a `Ctx`
+bundling `SqliteConnection` + a `Dictionary<string, SqliteCommand>`
+prepared-statement cache.
 
-```fsharp
-val applyOpsOnConnection :
-  SqliteConnection -> BranchId -> string option -> PackageOp list -> Task<unit>
-val applyOps :
-  BranchId -> string option -> PackageOp list -> Task<unit>
-```
-
-**`Seed.applyUnappliedOps`** now opens one connection, sets
-`PRAGMA synchronous=OFF` for the duration of the bulk apply, wraps the
-whole thing in one `BEGIN ... COMMIT`, runs all op-groups via
-`applyOpsOnConnection`, and ends with the bulk
-`UPDATE applied=1 WHERE applied=0`. Crash safety isn't a concern:
-`applyOps` is idempotent; a mid-batch crash re-replays on next run.
-
-The single-shot `applyOps` wrapper (used by `Inserts.fs`) also got a
-transaction by default. Same atomic semantics as before, but one conn
-+ one tx instead of one conn per statement.
+**`Seed.applyUnappliedOps`** opens one connection, sets
+`PRAGMA synchronous=OFF` + `PRAGMA foreign_keys=OFF` for the duration
+(standard SQLite bulk-load practice), wraps in one BEGIN/COMMIT, runs
+all op-groups, then re-enables FK enforcement and runs
+`PRAGMA foreign_key_check` — failing loudly if any dangling refs
+slipped through.
 
 ### Prepared-statement cache
 
-The `Ctx` caches SqliteCommands by SQL text. First call to a given
-SQL builds and `Prepare()`s the command; subsequent calls clear the
-parameter collection and reuse. Saves ~70 ms (1251 → 1184 in
-`applyOps`).
+First call to a given SQL → build + `Prepare()`. Subsequent calls clear
+the parameter collection and reuse the same command. Saves ~70 ms
+(1251 → 1184 in `applyOps`). Smaller than hoped — SQLite's internal
+C-side statement cache was already handling SQL-plan reuse.
 
-Smaller than hoped — SQLite's internal C-side statement cache was
-already handling the SQL-plan-reuse half; we just shaved the
-managed-side allocation half.
+### Batched dep inserts — tried, reverted
 
-### Telemetry after
+Collected `updateDependencies` calls into per-batch chunks (DELETE all
+affected hashes + 1024-row chunked INSERT). Math suggested 20k SQL
+statements → 20. **Actual result: 1184 ms → 2132 ms.** The new code
+path is dominated by 6 KB SQL strings, `Parameters.Clear()` on
+6144-param collections, and 6144 `AddWithValue` calls per chunk. The
+per-item path's small parameter sets and SQLite's internal cache beat
+the naive batched approach.
+
+Reverted. If revisited: cache the chunk-size-N SQL once at module init,
+use parameter slot reuse (`Parameters[N].Value`), try smaller chunks
+(64 or 256).
+
+### Final telemetry (AOT)
 
 ```
 seed.applyOps        1184 ms   ← 4.4× faster
 seed.generateRefs      21 ms
-seed.evaluateValues   101 ms   (unchanged — untouched path)
+seed.evaluateValues   101 ms   (untouched)
 seed.walCheckpoint     15 ms
 ─────────────────────────────
 total                1494 ms
 ```
 
-The remaining 1.18 s in `applyOps` is real work: deserializing 9845
-op blobs, computing/checking hashes, PT→RT translation, raw SQL
-execution.
-
-### A failed experiment: batched dep inserts
-
-Tried collecting all per-item `updateDependencies` calls into a
-batch, then running one chunked DELETE + chunked INSERT at the end
-of `applyOpsOnConnection`. The math suggested 20k statements → 20.
-
-**Result: 2.5 s cold start (slower than the per-item path).** DB
-integrity intact (same row counts), but the new code path was
-dominated by:
-- Building a 6 KB SQL string per chunk (per call, even on cache hit)
-- `Parameters.Clear()` on 6144-param collections
-- 6144 `AddWithValue` calls per chunk
-
-The per-item path's small parameter sets and SQLite's internal cache
-beat the naive batched approach. Reverted.
-
-**If revisited**: cache the SQL string per chunk-size at module init;
-pre-add parameters to the cached command once and reuse parameter
-*slots* (set `Parameters[N].Value` instead of `Clear()` + `Add`);
-consider smaller chunk sizes (64 or 256). Or accept that the per-item
-path is fine and pick a different lever.
+The remaining 1.18 s in `applyOps` is real work: deserializing 9845 op
+blobs, computing hashes, PT→RT translation, raw SQL execution.
 
 ---
 
-## 4. Package drops — 4 MB off the binary
+## 5. Package drops — 4 MB off the binary
 
-A grep audit showed **zero `open FSharpPlus`** statements anywhere in
-the backend, despite the package being listed in 10 different
-`paket.references` files. Only 9 callsites used qualified names — all
-trivially replaceable with stdlib or 4-line hand-rolled equivalents.
-Same pattern for `FSharpx.Extras`, plus `FSharp.SystemTextJson` +
+A grep audit found **zero `open FSharpPlus`** anywhere in the backend,
+despite the package being listed in 10 `paket.references` files. Same
+for `FSharpx.Extras`. `FSharp.SystemTextJson` +
 `NodaTime.Serialization.SystemTextJson` were stale carryovers from
 when `Json.Vanilla` existed.
 
-Replacements:
+9 callsites used qualified names — all trivially replaced:
 
 ```
-Prelude/Dictionary.fs        FSharpPlus.Dictionary.tryGetValue/keys/values
-                             → TryGetValue + .Keys + .Values
-Prelude/Map.fs               FSharpPlus.Map.union (×2 via mergeFavoring*)
-                             → Map.fold (fun acc k v -> Map.add k v acc) ...
-Prelude/ResizeArray.fs       FSharpx.Collections.ResizeArray.{iter,map,
-                             toList,toSeq} → for-loop / List.ofSeq / cast
-Builtins.Pure/Libs/String.fs FSharpPlus.List.intersperse
-                             → 4-line inline implementation
-```
-
-Packages dropped from `paket.dependencies`:
-
-```
-- FSharpPlus
-- FSharpx.Extras
-- FSharp.SystemTextJson           (stale; Json.Vanilla was deleted)
-- NodaTime.Serialization.SystemTextJson  (stale; only Json.Vanilla used it)
+Prelude/Dictionary.fs        tryGetValue/keys/values → TryGetValue + .Keys + .Values
+Prelude/Map.fs               Map.union (×2)            → Map.fold (...) ...
+Prelude/ResizeArray.fs       iter/map/toList/toSeq     → for-loop / List.ofSeq / cast
+Builtins.Pure/Libs/String.fs intersperse               → 4-line inline
 ```
 
 Then a separate audit caught `FsRegEx` + `System.Diagnostics.DiagnosticSource`
-listed in `paket.references` files with **zero callsites** in the source.
-Already trim-removed from the binary, but cleaning the manifest is tidy.
+listed in `paket.references` with zero callsites. Already trim-removed
+from the binary; cleaning the manifest is tidy.
 
-**Size impact**: 31.4 MB → 27.1 MB (−4.3 MB / −14%).
-
-The historical size analysis put FSharpPlus alone at 7.6 MB of
-metadata; the trim-mode AOT compiler was pulling all of them into
-`.rodata` for no runtime benefit.
+**Size impact**: 31.4 MB → 27.1 MB (AOT, **−14%**). The wins carry over
+to JIT (smaller IL → less ReadyToRun expansion).
 
 ---
 
-## 5. Float crash fix — sprintf "%.Ng" goes through PrintfImpl
+## 6. The two bugs we found by accident
 
-Broader smoke-testing the AOT binary surfaced a runtime crash on
-*any* Float operation that rendered through `Stdlib.Float.toString`
-or JSON-serialize-of-DFloat:
+Both were latent in JIT — we just hit them faster under AOT.
+
+### sprintf "%.Ng" PrintfImpl crash on Float ops
+
+Found by smoke-testing AOT:
 
 ```
 NotSupportedException: MakeGenericMethod_NoMetadata,
   Microsoft.FSharp.Core.PrintfImpl+Specializations`3
-    [Microsoft.FSharp.Core.Unit,System.String,System.String]
-    .CaptureFinal1[System.Double](Microsoft.FSharp.Core.PrintfImpl+Step[])
+    [Unit,String,String].CaptureFinal1[System.Double](...)
 ```
 
-3 call sites, identical pattern:
+3 sites, all using `sprintf "%.Ng"` to format Float→string:
 
 ```
-Builtins.Pure/Libs/Float.fs    Stdlib.Float.toString (`sprintf "%.12g" f`)
-Builtins.Pure/Libs/Json.fs     Stdlib.Json.serialize on DFloat (`%.16g`)
-LibSerialization/DvalReprInternalQueryable.fs                   (`%.12g`)
+Builtins.Pure/Libs/Float.fs    Stdlib.Float.toString
+Builtins.Pure/Libs/Json.fs     Stdlib.Json.serialize on DFloat
+LibSerialization/DvalReprInternalQueryable.fs
 ```
 
 `sprintf "%.Ng"` compiles to FSharp.Core PrintfImpl, which uses
 `MakeGenericMethod` on `Double` at runtime — Native AOT can't satisfy
 that once the type's metadata is trimmed. Replaced each with
-`f.ToString("GN", InvariantCulture)` for the same canonical output
-and zero reflection.
+`f.ToString("GN", InvariantCulture)`. Same canonical output, zero
+reflection.
 
-Found exactly by unsuppressing the AOT analysis warnings: the
-`SuppressTrimAnalysisWarnings=true` setting we just turned off would
-have flagged these via IL3050 ("RequiresDynamicCode in PrintfImpl").
+Would have been a latent JIT bug too if AOT had ever been turned on.
+Now fixed for both paths.
 
-Verified: `eval "10.0 / 3.0"` → 3.33333333333; list/dict/Json paths
-through DFloat all render correctly.
+### Guid bound as BLOB instead of TEXT → broken FK constraints
 
----
+Found by JIT smoke-testing post-pivot. SQLite error 19, FK constraint
+failed during `growIfNeeded`.
 
-## 6. CI changes
+Root cause: `cmd.Parameters.AddWithValue("$branch_id", branchId)` where
+`branchId` is `System.Guid`. Microsoft.Data.Sqlite's default type
+mapping for Guid is **BLOB(16)**, not the canonical text representation.
+Our schema stores branch_id (and location_id, deprecation_id) as TEXT.
+SQLite's FK check compared 16-byte BLOB against the TEXT-stored
+`'89282547-...'` UUID, never matched, raised.
 
-`build-cli` job now:
+**The AOT binary silently succeeded with this bug** because
+Microsoft.Data.Sqlite's `Foreign Keys=True` default (set via the
+connection-string parser) was apparently being trim-stripped — so AOT
+skipped FK enforcement entirely and persisted ~5000 dangling
+location→branch refs. The trimmer was *masking* the bug; JIT exposed
+it.
 
-1. **Caches SQLite static archives.** New step before the publish:
-   shasum `scripts/build/build-sqlite.sh` (which has the SQLite
-   version pinned) as the cache key. On hit, `restore_cache` populates
-   `backend/src/Cli/lib/` and the script's own "all artifacts present"
-   check short-circuits. On miss, `zig cc` builds the six archives
-   (~5 s each) and `save_cache` stashes them. Same pattern as the
-   tree-sitter cache, smaller payload.
-
-2. **PRs use `--aot`.** Per-PR validation now exercises the AOT
-   publish chain end-to-end. Main keeps `--cross-compile` (JIT) for
-   the moment — cross-target AOT publish through ilc hasn't been
-   validated for osx/win/musl/arm, so flipping main would drop
-   those release artifacts. Once cross-target is proven, the if
-   collapses to one branch and `--aot` becomes the only path.
-
-`.gitignore` excludes `backend/src/Cli/lib/libe_sqlite3-*.a` so the
-build artifacts don't show up in `assert-clean-worktree`.
+Fix: a `pUuid` helper that binds `.ToString()` instead of the raw Guid
+(matches what Fumble's `Sql.uuid` did internally). 14 callsites
+converted. Plus `foreign_key_check` in `Seed.fs` now fires after every
+grow, so this category of bug can't silently persist again.
 
 ---
 
-## 7. Commits on this branch
+## 7. JIT size breakdown (companion: cli-jit-size-breakdown-2026-05-12.md)
+
+Detailed in the companion doc. Summary:
 
 ```
-e6a252b10  ci: build SQLite static archives + AOT-publish on PRs
+Total shipped JIT single-file       46 MB
+Unbundled publish/                  51 MB (no .dbg)
+
+Where it goes (unbundled, % of non-debug):
+  .NET native runtime               19.6 MB   38%   libcoreclr/clrjit/etc.
+  Our F# code (incl embedded seed)   9.3 MB   18%   3.6 MB is seed; ~6 MB code
+  System.Private.CoreLib            5.7 MB    11%
+  LibTreeSitter.dll                 4.7 MB    9%   embeds ALL RIDs' tree-sitter
+  Other .NET framework DLLs         4.5 MB    9%   ~30 small files
+  System.Private.Xml                1.5 MB    3%
+  libe_sqlite3.so                   1.3 MB   2.5%
+  NodaTime                          1.2 MB   2.3%
+  Crypto                            1.1 MB    2%
+  F# Core + Ply                     0.7 MB   1.5%
+```
+
+**Single biggest lever for JIT size beyond what we've done:**
+`LibTreeSitter.dll` embeds all 9 RIDs' tree-sitter native libs as
+resources. Making that RID-conditional would shave 3–4 MB. Cheap fix.
+
+Second-biggest: the embedded `data.db.gz` is 3.6 MB. Could be ~2.5 MB
+with zstd-19 instead of gzip-9.
+
+---
+
+## 8. AOT vs JIT — broad numbers
+
+Recording the order-of-magnitude differences:
+
+| Dimension | AOT | JIT | Note |
+|---|---|---|---|
+| Cold start | 1.5 s | 2.4 s | AOT 2–5× faster generally; ours is bound by grow |
+| Warm start | 0.21 s | ~0.5 s | AOT wins on small invocations |
+| Steady-state throughput | -0–20% | baseline | JIT can profile-guided-optimize; AOT can't |
+| Memory at startup | -20–40% | baseline | No JIT working set |
+| Binary size | 27 MB | 46 MB | ~40% smaller |
+
+**For our CLI specifically:** the warm-start gap (-0.3 s) is what users
+would feel most — ~100 invocations/day = 30 s saved. The cold-start gap
+is small in absolute terms because both paths spend most time in
+`growIfNeeded`.
+
+---
+
+## 9. Strategic recommendations — next moves
+
+### (a) Mature `--aot` into a per-RID mode-picker
+
+The flag exists. Next iteration: have the script *auto-select* the
+right mode per RID rather than all-or-nothing.
+
+```
+default     per-RID best available (mix of AOT + JIT)
+--all-jit   force JIT everywhere (today's behavior, kept for legacy)
+--all-aot   force AOT everywhere (fails on osx/win from Linux)
+--aot       only target RIDs that can AOT from current host
+```
+
+Per-RID matrix today (Linux-host):
+
+```
+linux-x64       AOT ✅ proven
+linux-arm64     AOT — needs `Microsoft.NETCore.App.Runtime.nativeaot.linux-arm64` nuget
+linux-musl-x64  AOT — zig may unblock the musl-cross failure from 1b32e0827
+linux-arm       AOT — needs the runtime nuget
+osx-x64         JIT — cross-OS not supported
+osx-arm64       JIT — cross-OS not supported
+win-x64         JIT — cross-OS not supported
+win-arm64       JIT — cross-OS not supported
+```
+
+Cost: ~30 lines in `build-release-cli-exes.sh` + 1–2 paket entries +
+testing each linux variant. **~hour of work.** Lights up 4 of 8 RIDs on
+AOT.
+
+### (b) Multi-OS CI — when and how
+
+**Yes, you eventually need a Mac for code signing.** Apple Developer ID
+Application cert ($99/yr) + `codesign` + `notarytool` only run on
+macOS. Pre-existing TODO in `vault/.../Code-Signing.md` (issue #5307):
+without it, macOS users get "killed: zsh" on download.
+
+Options for adding macOS to CI:
+
+1. **CircleCI macOS executor** — `macos: xcode: 16.x`. Native arm64
+   since 2024. ~7× the per-minute cost of Linux. Rough budget:
+   $50–200/month depending on PR volume. Simplest if you stay on
+   CircleCI.
+
+2. **GitHub Actions** — free macOS runners for public repos; cheaper
+   paid tier for private. Strong multi-OS story is GHA's specialty.
+   Migration from CircleCI is a non-trivial one-time cost but probably
+   the right long-term move.
+
+3. **Self-hosted Mac runner** — a Mac mini pointed at CircleCI/GHA.
+   ~$600 one-time + minor maintenance. Viable if you already have one.
+
+Once you have macOS CI, you get **macOS AOT publish for free** as a
+side effect — and you've already solved the signing problem.
+
+Windows CI is the same shape but ~3× Linux cost on CircleCI. Lower
+priority — Windows users will accept "downloaded a big JIT binary"
+more readily than macOS users will accept "binary, Gatekeeper killed
+it."
+
+### (c) Order of operations I'd suggest
+
+1. **Land the mode-picker** (~1 hr). Lights up 4 linux AOT variants
+   from the existing devcontainer. Validates cross-arch AOT without
+   any CI changes.
+2. **Decide on macOS CI** (decision, not work). Commit to the spend,
+   or accept that macOS users live with JIT + manual codesign
+   workarounds for the foreseeable future.
+3. **If yes to macOS CI** → set up signing first (cert, keychain,
+   notarytool config), then enable macOS AOT as a bonus.
+4. **Windows AOT** stays deferred unless there's a specific
+   user-visible reason to act.
+
+---
+
+## 10. Files changed on this branch
+
+```
+M  .circleci/config.yml                              (reverted to JIT)
+M  .gitignore                                         (libe_sqlite3-*.a)
+M  backend/Directory.Build.props                      (NoWarn NU1510)
+M  backend/paket.dependencies + paket.lock            (4 packages dropped)
+M  10 × backend/src/.../paket.references              (cleanup)
+M  backend/src/Cli/Cli.fsproj                         (AOT items, subsystem switches)
+M  backend/src/Prelude/{Dictionary, Map, ResizeArray}.fs  (inline replacements)
+M  backend/src/Builtins/Builtins.Pure/Libs/{String, Float, Json}.fs  (sprintf fix)
+M  backend/src/LibSerialization/DvalReprInternalQueryable.fs  (sprintf fix)
+M  backend/src/LibDB/PackageOpPlayback.fs             (raw Sqlite + pUuid)
+M  backend/src/LibDB/Seed.fs                          (one-tx grow + FK check)
+M  scripts/build/{build-sqlite.sh, build-release-cli-exes.sh}
+?? thinking/cli-aot-progress-2026-05-12.md            (this doc)
+?? thinking/cli-aot-status-2026-05-12.md              (earlier snapshot)
+?? thinking/cli-jit-size-breakdown-2026-05-12.md      (size companion)
+```
+
+## 11. Commit ledger
+
+```
+2ef0a59ad  ci: revert to JIT publish; add JIT size-breakdown doc
+813d526c3  fix: bind UUIDs as TEXT, not BLOB, in raw-Sqlite playback
+83418522a  docs: comprehensive progress report (superseded by this update)
+e6a252b10  ci: build SQLite static archives + AOT-publish on PRs   ← reverted in 2ef0a59ad
 6873bf210  build: drop unused FsRegEx + DiagnosticSource refs
 a41741f97  perf: cache prepared SqliteCommands across the playback batch
 a526c12cf  aot: unsuppress trim/AOT warnings so latent issues surface
@@ -447,112 +526,15 @@ a7b6a11b9  perf: rewrite package-op playback against raw Sqlite; one tx for cold
 
 ---
 
-## 8. What's still on the table
+## 12. Sources
 
-### Ready to land (medium effort, validated value)
-
-- **Cross-target AOT publish for the other 5 RIDs.** Static archives
-  exist for linux-musl/arm64/arm and osx-x64/arm64; just need to run
-  `./scripts/build/build-release-cli-exes.sh --aot --runtimes=…` on
-  each and validate. linux-musl-x64 in particular: the last attempt
-  (`1b32e0827`) hit a missing musl-cross CRT; zig might "just work"
-  now. Once these pass, flip CI's main branch from JIT-cross-compile
-  to AOT-cross-compile, and remove the `--aot` flag from the scripts
-  (it becomes the only path).
-
-- **Win-x64 / win-arm64 archives + AOT path.** Needs zig cc → `.lib`
-  for those targets, plus validating the Windows AOT publish through
-  ilc / link.exe. Lower priority than the unix RIDs.
-
-### Ideas for shrinking SQLite static archive further (currently ~5 MB each)
-
-Not acted on yet; just thinking.
-
-- **`-Oz` instead of `-Os`.** clang/zig support `-Oz` for "optimize
-  for size even harder than -Os". Worth a try; usually 1-3% smaller.
-- **Audit SQLitePCLRaw's `[DllImport]` surface and OMIT what's truly
-  unused.** Today we keep load_extension + column-metadata in because
-  SQLitePCL binds them unconditionally. A diff of every DllImport in
-  SQLitePCLRaw.provider.e_sqlite3.NativeMethods against what
-  Microsoft.Data.Sqlite actually calls would show which features could
-  be `SQLITE_OMIT_*`-ed if we patched the provider (fork or
-  source-include) to drop the unused imports.
-- **`SQLITE_OMIT_*` candidates** — TRIGGER, VIEW, SUBQUERY,
-  WINDOWFUNC, GET_TABLE, AUTHORIZATION, INTROSPECTION_PRAGMAS,
-  PROGRESS_CALLBACK, DECLTYPE. Each needs to be checked against (a)
-  SQLitePCL bindings, (b) `backend/migrations/schema.sql`, and (c)
-  any Dark-side SQL we run. Probably 0.5-1 MB combined if applicable.
-- **Strip symbols from the `.a` more aggressively** — `zig ar` likely
-  retains some symbol info. `strip --strip-unneeded` post-build.
-
-### Other potential wins (parked per your direction)
-
-- **Decouple `Builtins.Matter` (and `Builtins.CliHost`) from `LibCloud`.**
-  Both `open LibCloud.Toplevels`, pulling LibCloud (`IsTrimmable=false`)
-  into the AOT closure. After the "drop Cloud branding" pass, LibCloud
-  is essentially a stub — moving Toplevels into `LibDB` (where it
-  morally belongs) would let us drop LibCloud from the CLI graph
-  entirely.
-
-- **Replace Ply with the built-in F# `task` CE.** F# 6+ has a native
-  `task` CE; Ply was a stopgap. The codebase still does
-  `open FSharp.Control.Tasks` and uses `uply { }` in ~12 projects.
-  Ply is ~12 KB on disk, but one fewer top-level dep and fewer
-  computation-expression types in metadata. Touches every `uply { }`
-  block — large mechanical refactor.
-
-- **`IlcGenerateMapFile=true` closure analysis.** Adds ~30 s to the
-  AOT build and emits a map showing which types/methods contributed
-  what to the final binary. Best tool for "where else is the fat?"
-  None of the ad-hoc switches will help past a certain point — the
-  next layer of wins requires data on what's actually filling the
-  `.rodata` (21 MB) and `.hydrated` (7 MB) sections.
-
-- **macOS code signing** is still a pre-existing problem (issue
-  #5307, vault `Code-Signing.md`). The AOT binary inherits it.
-
-- **Linux back-compat.** A NativeAOT binary built on Linux N only
-  runs on Linux ≥ N. CI strategy: build on the oldest target distro
-  we support, or accept that AOT serves only modern Linux and fall
-  back to JIT for older distros.
-
-### Cross-cutting
-
-- **`SuppressTrimAnalysisWarnings=false` is now load-bearing.**
-  Treat any new trim/AOT warning surfacing in CI as a signal to
-  investigate. We found the sprintf "%.Ng" crash exactly this way.
-
-- **The `--aot` flag should go away** once cross-target AOT is
-  validated. Both `build-release-cli-exes.sh` and
-  `build-and-install-cli-on-host` accept it; once it's the only path,
-  drop the flag, drop the `if` branches, drop the warning comments.
-
----
-
-## 9. Sources + breadcrumbs
-
-**Modified files** (committed on the branch):
-- `.circleci/config.yml`
-- `.gitignore`
-- `backend/Directory.Build.props`
-- `backend/paket.dependencies` + `backend/paket.lock`
-- 10 × `backend/src/.../paket.references`
-- `backend/src/Cli/Cli.fsproj`
-- `backend/src/Prelude/{Dictionary.fs, Map.fs, ResizeArray.fs}`
-- `backend/src/Builtins/Builtins.Pure/Libs/{String.fs, Float.fs, Json.fs}`
-- `backend/src/LibSerialization/DvalReprInternalQueryable.fs`
-- `backend/src/LibDB/{PackageOpPlayback.fs, Seed.fs}`
-- `scripts/build/{build-sqlite.sh, build-release-cli-exes.sh}`
-
-**External:**
-- [SQLite amalgamation 3.46.0](https://www.sqlite.org/2024/sqlite-amalgamation-3460000.zip) (SHA256-pinned)
+- [SQLite amalgamation 3.46.0](https://www.sqlite.org/2024/sqlite-amalgamation-3460000.zip) (SHA256-pinned in build-sqlite.sh)
 - [zig 0.11.0](https://ziglang.org/) — devcontainer at `~/zig/zig`
-- [DirectPInvoke + NativeLibrary docs](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/interop)
-- [SQLitePCL.raw](https://github.com/ericsink/SQLitePCL.raw) — provider supplying the `[DllImport]`s
-- [pileofhacks SQLite-AOT walkthrough](https://pileofhacks.dev/post/a-native-static-binary-with-sqlite-support-in-c/) — recipe we adapted
-- [Trim analysis warnings reference](https://learn.microsoft.com/en-us/dotnet/core/deploying/trimming/trim-warnings/) — for the IL2xxx / IL3xxx codes
-
-**Companion docs in `thinking/`:**
-- `cli-aot-status-2026-05-12.md` — pre-cold-start-optimization snapshot.
-  Superseded by this report; left in place for context if you want the
-  earlier framing.
+- [.NET Cross-compilation docs](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/cross-compile) — definitive "no cross-OS AOT" statement
+- [SQLitePCL.raw](https://github.com/ericsink/SQLitePCL.raw) — supplies the `[DllImport]`s we satisfy
+- [DirectPInvoke + NativeLibrary](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/interop)
+- [PublishAotCross](https://github.com/MichalStrehovsky/PublishAotCross) — third-party, Windows→Linux only
+- [pileofhacks SQLite-AOT walkthrough](https://pileofhacks.dev/post/a-native-static-binary-with-sqlite-support-in-c/) — the recipe we adapted
+- [Trim analysis warnings reference](https://learn.microsoft.com/en-us/dotnet/core/deploying/trimming/trim-warnings/)
+- Companion docs: `cli-aot-status-2026-05-12.md` (initial snapshot, superseded), `cli-jit-size-breakdown-2026-05-12.md` (size detail)
+- Vault: `05.Implementation/CLI/The Executable/Code-Signing.md` (pre-existing TODO on macOS signing), `notes from trying to AOT-build.md` (2024 reconnaissance)
