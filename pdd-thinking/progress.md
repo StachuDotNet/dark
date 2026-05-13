@@ -280,4 +280,11 @@ Format:
 - Re-ran `print-md --no-print`: still exactly 5 pages.
 - Time check: 05:48 EDT. ~2h 12m to 8am.
 - Plan: schedule next at ~45 min, then 06:30 print run, then idle until 8am if desired.
+- Commits: 1 pending (iter 27).
+
+### 2026-05-13 06:32 — iteration 28 (PRINT)
+- 🖨️ **Printed both `FINAL-REPORT-2026-05-13.md` (5 pages) and `17-day-1-quick-reference.md` (4 pages)** to Brother MFC-J5330DW. Jobs 361 + 362 in queue. Two-sided long-edge by default.
+- Cheat sheet ended up at 4 pages despite the "single page" aspiration — too dense to fit on one. Still useful as a desk reference; Stachu can keep page 1 (the v4 prompt + line numbers) front-and-center.
+- Time check: 06:32 EDT. ~88 min to 8am.
+- Plan: idle iteration in ~45 min to do a final state check at ~07:15.
 - Commits: 1 pending.
