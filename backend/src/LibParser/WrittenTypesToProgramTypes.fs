@@ -298,25 +298,40 @@ module Expr =
             NR.resolveValueName
               (builtins.values |> Map.keys |> Set)
               pm
-              onMissing
+              NR.OnMissing.Allow
               currentModule
               (WT.Unresolved(NEList.singleton var))
           match value.resolved with
           | Ok _ -> return PT.EValue(id, value)
           | Error _ ->
-            // Try to resolve as a function reference. Thread the outer
-            // onMissing so AllowPending here converts the Error to a
-            // Pending fn ref instead of falling back to EVariable.
+            // Try to resolve as a function reference. Use Allow internally
+            // (regardless of outer onMissing) — this is a fallback chain
+            // (variable → value → fn → bare variable). Package loaders
+            // run under ThrowError outer policy and depend on this NOT
+            // throwing when the name is genuinely just a bare variable.
+            //
+            // PDD: if AllowPending is in effect AND fn-lookup failed,
+            // convert the bare name to a Pending fn ref. The interpreter
+            // will materialize it at call time.
             let! fnResult =
               NR.resolveFnName
                 (builtins.fns |> Map.keys |> Set)
                 pm
-                onMissing
+                NR.OnMissing.Allow
                 currentModule
                 (WT.Unresolved(NEList.singleton var))
             match fnResult.resolved with
             | Ok _ -> return PT.EFnName(id, fnResult)
-            | Error _ -> return PT.EVariable(id, var)
+            | Error _ ->
+              match onMissing with
+              | NR.OnMissing.AllowPending ->
+                let pendingFqn = PT.FQFnName.fqPending var
+                let nr : PT.NameResolution<PT.FQFnName.FQFnName> =
+                  { originalName = [ var ]
+                    location = None
+                    resolved = Ok pendingFqn }
+                return PT.EFnName(id, nr)
+              | _ -> return PT.EVariable(id, var)
       | WT.ERecordFieldAccess(id, obj, fieldname) ->
         // When we have field access like `Module.fn`, try to resolve as qualified
         // function or value name first, since the parser treats dotted identifiers
@@ -345,36 +360,63 @@ module Expr =
               NR.resolveValueName
                 (builtins.values |> Map.keys |> Set)
                 pm
-                onMissing
+                NR.OnMissing.Allow
                 currentModule
                 (WT.Unresolved fullPath)
             match valueResult.resolved with
             | Ok _ -> return PT.EValue(id, valueResult)
             | Error _ ->
-              // Try to resolve as a function reference
+              // Try to resolve as a function reference. Stays Allow
+              // (not the outer onMissing) because this is a try/fallback
+              // chain inside ERecordFieldAccess — package loaders use
+              // ThrowError outer policy and depend on this NOT throwing
+              // when a name is genuinely just field access.
+              //
+              // PDD note: AllowPending callers (the CLI's pdd run path)
+              // *do* want unresolved qualified fn names like
+              // `Stdlib.Int64.mul` to become Pending. We special-case
+              // this AFTER the field-access fallback: if the surrounding
+              // toPT was called with AllowPending and we're falling back,
+              // convert the unresolved name to a Pending fn ref using
+              // the last segment.
               let! fnResult =
                 NR.resolveFnName
                   (builtins.fns |> Map.keys |> Set)
                   pm
-                  onMissing
+                  NR.OnMissing.Allow
                   currentModule
                   (WT.Unresolved fullPath)
               match fnResult.resolved with
               | Ok _ -> return PT.EFnName(id, fnResult)
               | Error _ ->
-                // Fall back to actual field access
-                let! obj = toPT context obj
-                return PT.ERecordFieldAccess(id, obj, fieldname)
+                // PDD: if AllowPending is in effect, convert to Pending.
+                match onMissing with
+                | NR.OnMissing.AllowPending ->
+                  let pendingName = NEList.last fullPath
+                  let pendingFqn = PT.FQFnName.fqPending pendingName
+                  let nr : PT.NameResolution<PT.FQFnName.FQFnName> =
+                    { originalName = NEList.toList fullPath
+                      location = None
+                      resolved = Ok pendingFqn }
+                  return PT.EFnName(id, nr)
+                | _ ->
+                  // Fall back to actual field access
+                  let! obj = toPT context obj
+                  return PT.ERecordFieldAccess(id, obj, fieldname)
         | None ->
           // Not a simple path, treat as field access
           let! obj = toPT context obj
           return PT.ERecordFieldAccess(id, obj, fieldname)
       | WT.EApply(id, (WT.EFnName(_, name)), [], { head = WT.EPlaceHolder }) ->
+        // Pipe placeholder: try fn-name, fall back to value-name. Both
+        // use Allow internally (regardless of outer onMissing) — package
+        // loaders use ThrowError outer policy. AllowPending special-cases
+        // unresolved fn-names by converting to Pending.
         let! fnName =
           NR.resolveFnName
             (builtins.fns |> Map.keys |> Set)
             pm
-            onMissing
+            NR.OnMissing.Allow
             currentModule
             name
         match fnName.resolved with
@@ -384,10 +426,24 @@ module Expr =
             NR.resolveValueName
               (builtins.values |> Map.keys |> Set)
               pm
-              onMissing
+              NR.OnMissing.Allow
               currentModule
               name
-          return PT.EValue(id, valueName)
+          match valueName.resolved with
+          | Ok _ -> return PT.EValue(id, valueName)
+          | Error _ ->
+            match onMissing, name with
+            | NR.OnMissing.AllowPending, WT.Unresolved given ->
+              let pendingFqn = PT.FQFnName.fqPending (NEList.last given)
+              let nr : PT.NameResolution<PT.FQFnName.FQFnName> =
+                { originalName = NEList.toList given
+                  location = None
+                  resolved = Ok pendingFqn }
+              return PT.EFnName(id, nr)
+            | _ ->
+              // Preserve old behavior: emit EValue with the unresolved
+              // valueName (the original code did so unconditionally).
+              return PT.EValue(id, valueName)
       | WT.EApply(id, (WT.EFnName(_, name) as fnName), typeArgs, args) ->
         let! processedTypeArgs =
           Ply.List.mapSequentially
@@ -408,16 +464,25 @@ module Expr =
                 NR.resolveFnName
                   (builtins.fns |> Map.keys |> Set)
                   pm
-                  onMissing
+                  NR.OnMissing.Allow
                   currentModule
                   name
               let expr =
                 match fnName.resolved with
                 | Ok _ -> PT.EFnName(id, fnName)
                 | Error _ ->
-                  match Map.tryFind varName context.argMap with
-                  | Some index -> PT.EArg(id, index)
-                  | None -> PT.EVariable(id, varName)
+                  match onMissing, Map.tryFind varName context.argMap with
+                  | _, Some index -> PT.EArg(id, index)
+                  | NR.OnMissing.AllowPending, None ->
+                    // PDD: unresolved bare fn-name → Pending ref
+                    let pendingFqn = PT.FQFnName.fqPending varName
+                    PT.EFnName(
+                      id,
+                      { originalName = [ varName ]
+                        location = None
+                        resolved = Ok pendingFqn }
+                    )
+                  | _, None -> PT.EVariable(id, varName)
               return PT.EApply(id, expr, processedTypeArgs, processedArgs)
           | None when context.isInFunction ->
             // Inside a function, prioritize variables for unqualified calls (allows shadowing)
@@ -432,16 +497,24 @@ module Expr =
               NR.resolveFnName
                 (builtins.fns |> Map.keys |> Set)
                 pm
-                onMissing
+                NR.OnMissing.Allow
                 currentModule
                 name
             let expr =
               match fnName.resolved with
               | Ok _ -> PT.EFnName(id, fnName)
               | Error _ ->
-                match Map.tryFind varName context.argMap with
-                | Some index -> PT.EArg(id, index)
-                | None -> PT.EVariable(id, varName)
+                match onMissing, Map.tryFind varName context.argMap with
+                | _, Some index -> PT.EArg(id, index)
+                | NR.OnMissing.AllowPending, None ->
+                  let pendingFqn = PT.FQFnName.fqPending varName
+                  PT.EFnName(
+                    id,
+                    { originalName = [ varName ]
+                      location = None
+                      resolved = Ok pendingFqn }
+                  )
+                | _, None -> PT.EVariable(id, varName)
             return PT.EApply(id, expr, processedTypeArgs, processedArgs)
         | _ ->
           // For qualified names, process as normal function name
@@ -461,7 +534,7 @@ module Expr =
           NR.resolveFnName
             (builtins.fns |> Map.keys |> Set)
             pm
-            onMissing
+            NR.OnMissing.Allow
             currentModule
             name
         return PT.EFnName(id, fnName)
@@ -628,7 +701,7 @@ module Expr =
               NR.resolveFnName
                 (builtins.fns |> Map.keys |> Set)
                 pm
-                onMissing
+                NR.OnMissing.Allow
                 currentModule
                 asUserFnName
             return
@@ -642,7 +715,7 @@ module Expr =
               NR.resolveFnName
                 (builtins.fns |> Map.keys |> Set)
                 pm
-                onMissing
+                NR.OnMissing.Allow
                 currentModule
                 asUserFnName
             return
@@ -658,7 +731,7 @@ module Expr =
             NR.resolveFnName
               (builtins.fns |> Map.keys |> Set)
               pm
-              onMissing
+              NR.OnMissing.Allow
               currentModule
               asUserFnName
           return
@@ -700,7 +773,7 @@ module Expr =
           NR.resolveFnName
             (builtins.fns |> Map.keys |> Set)
             pm
-            onMissing
+            NR.OnMissing.Allow
             currentModule
             name
         let! args = Ply.List.mapSequentially (toPT context) args
