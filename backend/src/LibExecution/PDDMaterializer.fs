@@ -373,6 +373,72 @@ let private fnFromBody
     body = instructions }
 
 
+// ---------------------------------------------------------------------------
+// Promotion cache — H4
+//
+// On successful materialization we persist {name, sig, body} to a JSONL
+// file. On lookup we check this cache before calling the LLM. Re-runs
+// of the same prompt are then ~free (no API call, no waiting).
+//
+// Format (one line per cached fn):
+//   {"name": "addOne", "sig": "(x: Int64): Int64", "body": "x + 1L"}
+//
+// File: rundir/pdd-cache/promoted.jsonl
+//
+// This is the spike's lightweight promotion. A real production version
+// inserts into the package store with a content-addressed hash + branch
+// awareness; that's deferred.
+// ---------------------------------------------------------------------------
+
+let private cachePath = "rundir/pdd-cache/promoted.jsonl"
+
+/// In-memory mirror of the cache file. Loaded lazily on first lookup;
+/// updated on every successful materialization.
+let private promotedCache : System.Collections.Concurrent.ConcurrentDictionary<string, GeneratedFn> =
+  System.Collections.Concurrent.ConcurrentDictionary()
+
+let private cacheLoaded : bool ref = ref false
+
+let private loadCacheOnce () : unit =
+  if not cacheLoaded.Value then
+    cacheLoaded.Value <- true
+    try
+      if System.IO.File.Exists cachePath then
+        let lines = System.IO.File.ReadAllLines cachePath
+        for line in lines do
+          if not (System.String.IsNullOrWhiteSpace line) then
+            try
+              let doc = JsonDocument.Parse(line)
+              let r = doc.RootElement
+              let name = r.GetProperty("name").GetString()
+              // `sig` is a reserved word in F#, so the serializer field
+              // is `sig_`. Read it back under the same name.
+              let sig_ = r.GetProperty("sig_").GetString()
+              let body = r.GetProperty("body").GetString()
+              promotedCache[name] <- { sig_ = sig_; body = body }
+            with _ -> ()
+    with _ -> ()
+
+let tryLookupPromoted (name : string) : GeneratedFn option =
+  loadCacheOnce ()
+  match promotedCache.TryGetValue name with
+  | true, gen -> Some gen
+  | false, _ -> None
+
+let private persistPromoted (name : string) (gen : GeneratedFn) : unit =
+  try
+    let dir = System.IO.Path.GetDirectoryName cachePath
+    if not (System.IO.Directory.Exists dir) then
+      System.IO.Directory.CreateDirectory dir |> ignore<System.IO.DirectoryInfo>
+    let payload =
+      JsonSerializer.Serialize(
+        {| name = name; sig_ = gen.sig_; body = gen.body |}
+      )
+    System.IO.File.AppendAllText(cachePath, payload + "\n")
+    promotedCache[name] <- gen
+  with _ -> ()
+
+
 /// The materializer entry point — plug into PackageManager.materializeFn or
 /// ExecutionState.fns.materialize. Reads OPENAI_API_KEY from env; if not
 /// set, returns None immediately.
@@ -390,6 +456,24 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
     let model = "gpt-4o-mini"
     emit (MaterializeStart(p.name, model))
     let elapsedMs () = int (DateTime.UtcNow - startedAt).TotalMilliseconds
+
+    // H4: check promoted cache first. If we've materialized this name
+    // before AND the body still parses with the mini-parser, return the
+    // cached PackageFn without calling the LLM.
+    let cachedHit =
+      match tryLookupPromoted p.name with
+      | Some gen ->
+        match parseMinimalBody "x" gen.body with
+        | Some instrs ->
+          emit (CompileBody(p.name, "cached", instrs.registerCount))
+          emit (MaterializeDone(p.name, Cached, elapsedMs ()))
+          Some(fnFromBody p.name "x" instrs)
+        | None -> None
+      | None -> None
+    if cachedHit.IsSome then
+      return cachedHit
+    else
+
     let apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
     if String.IsNullOrEmpty(apiKey) then
       logResult logPath p.name None None (Some "OPENAI_API_KEY not set")
@@ -434,9 +518,13 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                 else "arith"
               emit (CompileBody(p.name, kind, instrs.registerCount))
               emit (MaterializeDone(p.name, Real, elapsedMs ()))
+              // H4: promote to persistent cache so the next session skips
+              // the LLM call for the same name.
+              persistPromoted p.name gen
               return Some(fnFromBody p.name "x" instrs)
             | None ->
               emit (CompileBody(p.name, "fallback-identity", 1))
               emit (MaterializeDone(p.name, Fake, elapsedMs ()))
+              // Don't promote — the body wasn't parseable.
               return Some(hardcodedIdentityFn p.name)
   }
