@@ -668,6 +668,10 @@ let private httpClient : Lazy<HttpClient> =
 
 /// The raw LLM call. Returns the JSON body string (or Error). API key is
 /// read from OPENAI_API_KEY env each call so a test can rotate it.
+///
+/// Model selection: PDD_MODEL env override (default gpt-4o-mini for cost).
+/// Set to "gpt-4o" or other model name to upgrade — useful when picky
+/// syntax (list ops, lambdas, prefix application) trips up mini.
 let callOpenAI
   (apiKey : string)
   (systemPrompt : string)
@@ -675,9 +679,13 @@ let callOpenAI
   : Task<Result<string, string>> =
   task {
     try
+      let model =
+        match System.Environment.GetEnvironmentVariable("PDD_MODEL") with
+        | null | "" -> "gpt-4o-mini"
+        | m -> m
       let payload =
         JsonSerializer.Serialize(
-          {| model = "gpt-4o-mini"
+          {| model = model
              messages =
                [| {| role = "system"; content = systemPrompt |}
                   {| role = "user"; content = userPrompt |} |]
@@ -1236,7 +1244,10 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
   uply {
     let logPath = "rundir/logs/pdd-materialize.jsonl"
     let startedAt = DateTime.UtcNow
-    let model = "gpt-4o-mini"
+    let model =
+      match System.Environment.GetEnvironmentVariable("PDD_MODEL") with
+      | null | "" -> "gpt-4o-mini"
+      | m -> m
     emit (MaterializeStart(p.name, model))
     let elapsedMs () = int (DateTime.UtcNow - startedAt).TotalMilliseconds
 
