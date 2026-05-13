@@ -209,6 +209,168 @@ let private getOrCreateFn (session : Session) (name : string) : FnRecord =
     fn
 
 
+let private jsonEscape (s : string) : string =
+  s
+    .Replace("\\", "\\\\")
+    .Replace("\"", "\\\"")
+    .Replace("\n", "\\n")
+    .Replace("\r", "")
+    .Replace("\t", "\\t")
+
+let private writeSidecar (session : Session) : unit =
+  try
+    let dir = Path.GetDirectoryName session.htmlPath
+    let sidecar = Path.Combine(dir, sprintf "%s.json" session.id)
+    let countByState (s : M.FnState) =
+      session.fns
+      |> Seq.filter (fun kv -> kv.Value.state = s)
+      |> Seq.length
+    let llmCalls =
+      session.events
+      |> Seq.filter (fun (_, t) -> t.Contains "llm-rsp")
+      |> Seq.length
+    let elapsedMs =
+      int (DateTime.UtcNow - session.startedAt).TotalMilliseconds
+    let sb = StringBuilder()
+    sb.Append("{") |> ignore<StringBuilder>
+    sb.AppendFormat("\"id\":\"{0}\",", jsonEscape session.id)
+    |> ignore<StringBuilder>
+    sb.AppendFormat(
+      "\"startedAt\":\"{0}\",",
+      session.startedAt.ToString("o")
+    )
+    |> ignore<StringBuilder>
+    sb.AppendFormat("\"closed\":{0},", (if session.closed then "true" else "false"))
+    |> ignore<StringBuilder>
+    sb.AppendFormat("\"elapsedMs\":{0},", elapsedMs) |> ignore<StringBuilder>
+    sb.AppendFormat("\"topLevel\":\"{0}\",", jsonEscape session.topLevel)
+    |> ignore<StringBuilder>
+    sb.AppendFormat("\"fnCount\":{0},", session.fns.Count) |> ignore<StringBuilder>
+    sb.AppendFormat("\"real\":{0},", countByState M.Real) |> ignore<StringBuilder>
+    sb.AppendFormat("\"fake\":{0},", countByState M.Fake) |> ignore<StringBuilder>
+    sb.AppendFormat("\"cached\":{0},", countByState M.Cached) |> ignore<StringBuilder>
+    sb.AppendFormat("\"failed\":{0},", countByState M.Failed) |> ignore<StringBuilder>
+    sb.AppendFormat("\"inProgress\":{0},", countByState M.InProgress)
+    |> ignore<StringBuilder>
+    sb.AppendFormat("\"llmCalls\":{0}", llmCalls) |> ignore<StringBuilder>
+    sb.Append("}") |> ignore<StringBuilder>
+    File.WriteAllText(sidecar, sb.ToString())
+  with _ -> ()
+
+/// Scan rundir/pdd-view/*.json and emit index.html listing all sessions
+/// newest-first with description, fn-state counts, llm calls, status.
+let private writeIndex (dir : string) : unit =
+  try
+    if not (Directory.Exists dir) then
+      ()
+    else
+      let files = Directory.GetFiles(dir, "*.json")
+      let entries =
+        files
+        |> Array.choose (fun f ->
+          try
+            use doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText f)
+            let root = doc.RootElement
+            let getString (k : string) =
+              match root.TryGetProperty k with
+              | true, v -> v.GetString()
+              | _ -> ""
+            let getInt (k : string) =
+              match root.TryGetProperty k with
+              | true, v -> v.GetInt32()
+              | _ -> 0
+            let getBool (k : string) =
+              match root.TryGetProperty k with
+              | true, v -> v.GetBoolean()
+              | _ -> false
+            Some(
+              {| id = getString "id"
+                 startedAt = getString "startedAt"
+                 closed = getBool "closed"
+                 elapsedMs = getInt "elapsedMs"
+                 topLevel = getString "topLevel"
+                 fnCount = getInt "fnCount"
+                 real = getInt "real"
+                 fake = getInt "fake"
+                 cached = getInt "cached"
+                 failed = getInt "failed"
+                 inProgress = getInt "inProgress"
+                 llmCalls = getInt "llmCalls" |}
+            )
+          with _ -> None)
+        |> Array.sortByDescending (fun e -> e.startedAt)
+      let sb = StringBuilder()
+      sb.Append "<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
+      |> ignore<StringBuilder>
+      sb.Append "<title>PDD sessions</title>" |> ignore<StringBuilder>
+      sb.Append "<meta http-equiv=\"refresh\" content=\"3\">" |> ignore<StringBuilder>
+      sb.AppendFormat("<style>{0}</style>", cssStyles) |> ignore<StringBuilder>
+      sb.Append """<style>
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a2a2a; vertical-align: top; }
+        th { color: #888; font-weight: normal; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+        td.expr { color: #d4d4d4; font-family: "SF Mono", Consolas, monospace; max-width: 480px; word-break: break-word; }
+        td.id a { color: #6080d0; text-decoration: none; font-weight: bold; }
+        td.id a:hover { text-decoration: underline; }
+        .pill { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; margin-right: 4px; }
+        .pill-real    { background: #053515; color: #6fcf90; }
+        .pill-fake    { background: #2a2a2a; color: #888; }
+        .pill-cached  { background: #002545; color: #6080d0; }
+        .pill-failed  { background: #4a0010; color: #e07080; }
+        .pill-prog    { background: #4a3a00; color: #e0c060; }
+        .status-live  { color: #e0c060; }
+        .status-done  { color: #6fcf90; }
+        .empty        { color: #555; }
+      </style>"""
+      |> ignore<StringBuilder>
+      sb.Append "</head><body>" |> ignore<StringBuilder>
+      sb.AppendFormat(
+        "<h1>PDD sessions <span class=\"header-stamp\">— {0} total · refreshed {1}</span></h1>",
+        entries.Length,
+        DateTime.UtcNow.ToString("HH:mm:ss")
+      )
+      |> ignore<StringBuilder>
+      if entries.Length = 0 then
+        sb.Append "<p class=\"empty\">no sessions yet — run <code>dark prompt \"...\"</code></p>"
+        |> ignore<StringBuilder>
+      else
+        sb.Append "<table><thead><tr>"
+        |> ignore<StringBuilder>
+        sb.Append
+          "<th>id</th><th>status</th><th>top-level</th><th>fns</th><th>llm</th><th>elapsed</th>"
+        |> ignore<StringBuilder>
+        sb.Append "</tr></thead><tbody>" |> ignore<StringBuilder>
+        for e in entries do
+          let statusCls = if e.closed then "status-done" else "status-live"
+          let statusText = if e.closed then "done" else "live"
+          let pill cls n label =
+            if n > 0 then sprintf "<span class=\"pill pill-%s\">%d %s</span>" cls n label
+            else ""
+          let pills =
+            pill "real" e.real "real"
+            + pill "cached" e.cached "cached"
+            + pill "fake" e.fake "fake"
+            + pill "failed" e.failed "failed"
+            + pill "prog" e.inProgress "...."
+          let displayExpr =
+            if String.IsNullOrEmpty e.topLevel then "(no top-level)"
+            else htmlEscape e.topLevel
+          sb.AppendFormat(
+            "<tr><td class=\"id\"><a href=\"{0}.html\">{0}</a></td><td class=\"{1}\">{2}</td><td class=\"expr\">{3}</td><td>{4}</td><td>{5}</td><td>{6} ms</td></tr>",
+            htmlEscape e.id,
+            statusCls,
+            statusText,
+            displayExpr,
+            (if pills = "" then "<span class=\"empty\">—</span>" else pills),
+            (if e.llmCalls > 0 then string e.llmCalls else "<span class=\"empty\">0</span>"),
+            e.elapsedMs
+          )
+          |> ignore<StringBuilder>
+        sb.Append "</tbody></table>" |> ignore<StringBuilder>
+      sb.Append "</body></html>" |> ignore<StringBuilder>
+      File.WriteAllText(Path.Combine(dir, "index.html"), sb.ToString())
+  with _ -> ()
+
 let private writeFile (session : Session) : unit =
   try
     let html = renderHtml session
@@ -216,6 +378,8 @@ let private writeFile (session : Session) : unit =
     if not (String.IsNullOrEmpty dir) && not (Directory.Exists dir) then
       Directory.CreateDirectory dir |> ignore<DirectoryInfo>
     File.WriteAllText(session.htmlPath, html)
+    writeSidecar session
+    if not (String.IsNullOrEmpty dir) then writeIndex dir
   with _ -> ()  // never break a run on a render failure
 
 
