@@ -90,6 +90,7 @@
     <ProjectReference Include="../LibDB/LibDB.fsproj" />
     <ProjectReference Include="../Builtins/Builtins.CliHost/Builtins.CliHost.fsproj" />
     <ProjectReference Include="../Builtins/Builtins.Pure/Builtins.Pure.fsproj" />
+    <ProjectReference Include="../Builtins/Builtins.Http.Server/Builtins.Http.Server.fsproj" />
     <ProjectReference Include="../LibParser/LibParser.fsproj" />
   </ItemGroup>
   <ItemGroup>

@@ -346,7 +346,8 @@ let private handleRun
     // Builtins needed: int64-arith for arithmetic bodies + general utility.
     let allBuiltins : RT.Builtins =
       LibExecution.Builtin.combine
-        [ Builtins.Pure.Builtin.builtins () ]
+        [ Builtins.Pure.Builtin.builtins ()
+          Builtins.Http.Server.Builtin.builtins () ]
         []
     // Parse the expression with AllowPending. Wrap in try/catch because
     // LibParser raises on shapes it can't handle (some nested-pipe-in-
