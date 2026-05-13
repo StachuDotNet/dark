@@ -592,6 +592,48 @@ module MinimalBody =
         "no match on ~"
     }
 
+  let parsesUnaryMinusOnParam =
+    test "parseMinimalBody 'if x < 0L then -x else x' (abs via unary minus)" {
+      match M.parseMinimalBody "x" "if x < 0L then -x else x" with
+      | Some instrs ->
+        let hasNegate =
+          instrs.instructions
+          |> List.exists (fun i ->
+            match i with
+            | RT.LoadVal(_, RT.DApplicable(RT.AppNamedFn app)) ->
+              match app.name with
+              | RT.FQFnName.Builtin b -> b.name = "int64Negate"
+              | _ -> false
+            | _ -> false)
+        Expect.isTrue hasNegate "uses int64Negate for `-x`"
+      | None -> Expect.equal 1 2 "expected Some for unary-minus abs"
+    }
+
+  let parsesAbsViaSubtraction =
+    test "parseMinimalBody 'if x < 0L then 0L - x else x' (abs idiom)" {
+      match M.parseMinimalBody "x" "if x < 0L then 0L - x else x" with
+      | Some instrs ->
+        // The then-branch should contain a Subtract Apply.
+        let subtractAppears =
+          instrs.instructions
+          |> List.exists (fun i ->
+            match i with
+            | RT.LoadVal(_, RT.DApplicable(RT.AppNamedFn app)) ->
+              match app.name with
+              | RT.FQFnName.Builtin b -> b.name = "int64Subtract"
+              | _ -> false
+            | _ -> false)
+        Expect.isTrue subtractAppears "then-branch uses int64Subtract"
+      | None -> Expect.equal 1 2 "expected Some for abs idiom"
+    }
+
+  let parsesIfWithArithInBranchesAndCond =
+    test "parseMinimalBody handles arith in cond and branches" {
+      match M.parseMinimalBody "x" "if x + 1L > 0L then x * 2L else 0L - x" with
+      | Some _ -> ()
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
   let tests =
     testList
       "MinimalBody"
@@ -616,7 +658,10 @@ module MinimalBody =
         parsesIfClampPositive
         parsesIfLessThan
         parsesIfGreaterEqual
-        ifElseUnknownCompFails ]
+        ifElseUnknownCompFails
+        parsesAbsViaSubtraction
+        parsesIfWithArithInBranchesAndCond
+        parsesUnaryMinusOnParam ]
 
 
 // ---------------------------------------------------------------------------

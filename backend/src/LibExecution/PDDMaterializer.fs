@@ -419,13 +419,86 @@ let parseMinimalBodyN (paramNames : List<string>) (body : string) : Option<RT.In
         resultIn = idx }
 
   else
-    // Case 4: if <cond-operand> <cmp> <cond-operand> then <branch> else <branch>
-    // where operands are param names or Int64 literals (no nested arith).
-    // Compiles to `cmp` builtin Apply + JumpByIfFalse + branches + CopyVal.
+    // Compile a sub-expression (`atom` | `atom <op> atom`) returning
+    // (resultReg, instructions, nextFreeReg).
+    //   atom = param-name | -?\d+L
+    //   op   = + | - | *
+    let compileExpr (raw : string) (nextReg : int) =
+      let raw = raw.Trim()
+      let compileAtom (s : string) (nReg : int) =
+        match argIndex s with
+        | Some i -> Some(i, [], nReg)
+        | None ->
+          if System.Text.RegularExpressions.Regex.IsMatch(s, @"^-?\d+L$") then
+            let n = System.Int64.Parse(s.TrimEnd('L'))
+            Some(nReg, [ RT.LoadVal(nReg, RT.DInt64 n) ], nReg + 1)
+          // Unary minus on a param: `-x` → Apply(int64Negate, [x])
+          elif s.StartsWith "-" && (argIndex (s.Substring 1)).IsSome then
+            let inner = (argIndex (s.Substring 1)).Value
+            let appReg = nReg
+            let outReg = nReg + 1
+            let app : RT.ApplicableNamedFn =
+              { name = RT.FQFnName.fqBuiltin "int64Negate" 0
+                typeSymbolTable = Map.empty
+                typeArgs = []
+                argsSoFar = [] }
+            let args : NEList<int> = NEList.ofList inner []
+            Some(
+              outReg,
+              [ RT.LoadVal(appReg, RT.DApplicable(RT.AppNamedFn app))
+                RT.Apply(outReg, appReg, [], args) ],
+              outReg + 1
+            )
+          else
+            None
+      // Try atom-only first.
+      match compileAtom raw nextReg with
+      | Some r -> Some r
+      | None ->
+        let arithMatch =
+          System.Text.RegularExpressions.Regex.Match(
+            raw,
+            @"^(\w+|-?\d+L)\s*([+\-*])\s*(\w+|-?\d+L)$"
+          )
+        if not arithMatch.Success then
+          None
+        else
+          let lhsRaw = arithMatch.Groups[1].Value
+          let opRaw = arithMatch.Groups[2].Value
+          let rhsRaw = arithMatch.Groups[3].Value
+          match opBuiltin opRaw with
+          | None -> None
+          | Some bname ->
+            match compileAtom lhsRaw nextReg with
+            | None -> None
+            | Some(lReg, lIns, r1) ->
+              match compileAtom rhsRaw r1 with
+              | None -> None
+              | Some(rReg, rIns, r2) ->
+                let appReg = r2
+                let outReg = r2 + 1
+                let app : RT.ApplicableNamedFn =
+                  { name = RT.FQFnName.fqBuiltin bname 0
+                    typeSymbolTable = Map.empty
+                    typeArgs = []
+                    argsSoFar = [] }
+                let args : NEList<int> = NEList.ofList lReg [ rReg ]
+                Some(
+                  outReg,
+                  lIns
+                  @ rIns
+                  @ [ RT.LoadVal(appReg, RT.DApplicable(RT.AppNamedFn app))
+                      RT.Apply(outReg, appReg, [], args) ],
+                  outReg + 1
+                )
+
+    // Case 4: if <cond-lhs> <cmp> <cond-rhs> then <then-branch> else <else-branch>
+    // where each sub-expr is `atom` or `atom <op> atom`.
+    // Use non-greedy captures so multi-word arith subexprs fit.
     let ifMatch =
       System.Text.RegularExpressions.Regex.Match(
         trimmed,
-        @"^if\s+(\w+|-?\d+L)\s+(>=|<=|>|<)\s+(\w+|-?\d+L)\s+then\s+(\w+|-?\d+L)\s+else\s+(\w+|-?\d+L)$"
+        @"^if\s+(.+?)\s+(>=|<=|>|<)\s+(.+?)\s+then\s+(.+?)\s+else\s+(.+)$"
       )
     if not ifMatch.Success then
       None
@@ -437,39 +510,26 @@ let parseMinimalBodyN (paramNames : List<string>) (body : string) : Option<RT.In
         | ">=" -> Some "int64GreaterThanOrEqualTo"
         | "<=" -> Some "int64LessThanOrEqualTo"
         | _ -> None
-      // Compile an operand to: register-holding-the-value, optional load instr.
-      // For a param: returns existing register, no instr.
-      // For a literal: returns a fresh register with a LoadVal.
-      let compileOperand (raw : string) (nextReg : int) =
-        match argIndex raw with
-        | Some i -> Ok(i, [], nextReg)
-        | None ->
-          if System.Text.RegularExpressions.Regex.IsMatch(raw, @"^-?\d+L$") then
-            let n = System.Int64.Parse(raw.TrimEnd('L'))
-            Ok(nextReg, [ RT.LoadVal(nextReg, RT.DInt64 n) ], nextReg + 1)
-          else
-            Error()
       match cmpBuiltin with
       | None -> None
       | Some bname ->
         let arity = List.length paramNames
         let resultReg = arity
         let r0 = arity + 1
-        match compileOperand ifMatch.Groups[1].Value r0 with
-        | Error _ -> None
-        | Ok(lhsReg, lhsInstrs, r1) ->
-          match compileOperand ifMatch.Groups[3].Value r1 with
-          | Error _ -> None
-          | Ok(rhsReg, rhsInstrs, r2) ->
+        match compileExpr ifMatch.Groups[1].Value r0 with
+        | None -> None
+        | Some(lhsReg, lhsInstrs, r1) ->
+          match compileExpr ifMatch.Groups[3].Value r1 with
+          | None -> None
+          | Some(rhsReg, rhsInstrs, r2) ->
             let cmpAppReg = r2
             let condReg = r2 + 1
-            let branchScratch = r2 + 2
-            match compileOperand ifMatch.Groups[4].Value branchScratch with
-            | Error _ -> None
-            | Ok(thenReg, thenInstrs, r3) ->
-              match compileOperand ifMatch.Groups[5].Value r3 with
-              | Error _ -> None
-              | Ok(elseReg, elseInstrs, r4) ->
+            match compileExpr ifMatch.Groups[4].Value (r2 + 2) with
+            | None -> None
+            | Some(thenReg, thenInstrs, r3) ->
+              match compileExpr ifMatch.Groups[5].Value r3 with
+              | None -> None
+              | Some(elseReg, elseInstrs, r4) ->
                 let cmpApp : RT.ApplicableNamedFn =
                   { name = RT.FQFnName.fqBuiltin bname 0
                     typeSymbolTable = Map.empty
@@ -478,11 +538,6 @@ let parseMinimalBodyN (paramNames : List<string>) (body : string) : Option<RT.In
                 let cmpArgs : NEList<int> = NEList.ofList lhsReg [ rhsReg ]
                 let copyThen = [ RT.CopyVal(resultReg, thenReg) ]
                 let copyElse = [ RT.CopyVal(resultReg, elseReg) ]
-                // After cmp, we have: [cmpApp, Apply→condReg].
-                // Then: JumpByIfFalse(thenLen+1, condReg)   -- +1 skips the JumpBy
-                //       <thenInstrs>; CopyVal(resultReg, thenReg)
-                //       JumpBy(elseLen+1)                   -- +1 skips else copy
-                //       <elseInstrs>; CopyVal(resultReg, elseReg)
                 let thenBlock = thenInstrs @ copyThen
                 let elseBlock = elseInstrs @ copyElse
                 let instructions =
