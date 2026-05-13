@@ -543,6 +543,14 @@ Available Stdlib (use the EXACT names — these exist):
 - Stdlib.Int64.add / subtract / multiply / divide / mod / negate / equals / greaterThan / lessThan
 - Stdlib.String.append / length / toUppercase / toLowercase
 - Stdlib.String.split: splits a String on a separator → List<String>.
+- **Result/Option unwrapping.** Stdlib has functions that return
+  `Result<T, _>` or `Option<T>`. To get the bare value, pipe through
+  `Stdlib.Result.withDefault` or `Stdlib.Option.withDefault`:
+    `Stdlib.Int64.parse s |> Stdlib.Result.withDefault 0L`
+    `Stdlib.List.head lst |> Stdlib.Option.withDefault ""`
+  `Stdlib.Int64.parse: String -> Result<Int64, ParseError>` —
+  returns Result; ALWAYS wrap with withDefault when chaining to arithmetic.
+  `Stdlib.List.head`, `Stdlib.List.tail`, `Stdlib.List.getAt` return Option.
 
 Do NOT use Haskell-style names: there is no foldl, foldr, fold_left,
 sum (use fold with add), map2, zip — invent your own name if you need
