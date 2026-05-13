@@ -62,11 +62,11 @@ OpenAI key at `~/.config/darklang/llm-keys.env` (mode 600). On run, sourced via 
 - **PT + RT:** `FQFnName.Pending` variant in both layers, with PT2RT lowering. Match-exhaustiveness fixes across ~13 sites (LibExecution + LibDB + LibSerialization).
 - **Interpreter:** `Function(Pending p)` arm in both executionPoint match and the big Apply match. Two cache layers: `packageFnInstrCache` (by hash) + `pendingFnInstrCache` (by handle) to skip re-materialization.
 - **Parser:** `OnMissing.AllowPending` policy in `NameResolver`. Fn-name fallback chains in `WT2PT` check `AllowPending` after exhausting normal lookups; convert unresolved name → `PT.FQFnName.Pending`.
-- **Materializer (`PDDMaterializer.fs`):** real OpenAI HTTP call via `System.Net.Http`. JSON-response parser tolerant of ```json fences. Mini-body-parser handles `42L`, `"x"` identity, `x + 1L` / `-` / `*` arithmetic. Persists successful materializations to `rundir/pdd-cache/promoted.jsonl`; checks cache first on subsequent calls.
+- **Materializer (`PDDMaterializer.fs`):** real OpenAI HTTP call via `System.Net.Http`. JSON-response parser tolerant of ```json fences. Mini-body-parser handles `42L` constants, `"x"` identity, `<param> <op> <int>L` arith (e.g. `x + 1L`), AND `<param1> <op> <param2>` multi-arg arith (e.g. `x * y` for `mul`). Auto-detects param count from sig. Persists successful materializations to `rundir/pdd-cache/promoted.jsonl`; checks cache first on subsequent calls.
 - **HTML view (`PDDHTMLView.fs`):** session-keyed, two-pane, 5 state badges. Updates per event; ~1s meta-refresh.
 - **EventSink:** `currentSink : PDDEvent -> unit` with 6 lifecycle events. CLI installs combined stderr+HTML sink.
 - **CLI (`Cli/PddCommand.fs`):** `dark prompt`, `dark pdd run`, `dark pdd demo`. Decompose-cache + materialize-cache transparent. Parallel scheduler walks instructions pre-eval, fires `Task.Run` per Pending.
-- **Tests:** 39/39 PDD tests green (`./scripts/run-backend-tests --filter-test-list PDD`).
+- **Tests:** 46/46 PDD tests green (`./scripts/run-backend-tests --filter-test-list PDD`).
 
 ## What's *not* yet built
 

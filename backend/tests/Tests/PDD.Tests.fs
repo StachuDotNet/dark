@@ -445,6 +445,73 @@ module MinimalBody =
       Expect.isNone (M.parseMinimalBody "x" "y + 1L") "should not match"
     }
 
+  let parsesTwoParamArith =
+    test "parseMinimalBodyN ['x';'y'] 'x * y' → Apply with both arg regs" {
+      match M.parseMinimalBodyN [ "x"; "y" ] "x * y" with
+      | Some instrs ->
+        Expect.equal instrs.resultIn 3 "result is reg 3 (arity + 1)"
+        Expect.equal instrs.registerCount 4 "4 regs total"
+        Expect.equal instrs.instructions.Length 2 "load builtin + apply"
+        match instrs.instructions[1] with
+        | RT.Apply(_, _, _, args) ->
+          let argList = NEList.toList args
+          Expect.equal argList [ 0; 1 ] "apply with arg regs 0 and 1"
+        | other -> Expect.equal 1 2 (sprintf "wrong second instr: %A" other)
+      | None -> Expect.equal 1 2 "expected Some for 'x * y'"
+    }
+
+  let twoParamArithUsesBuiltin =
+    test "parseMinimalBodyN 'x + y' uses int64Add builtin" {
+      match M.parseMinimalBodyN [ "x"; "y" ] "x + y" with
+      | Some instrs ->
+        match instrs.instructions[0] with
+        | RT.LoadVal(_, RT.DApplicable(RT.AppNamedFn app)) ->
+          match app.name with
+          | RT.FQFnName.Builtin b ->
+            Expect.equal b.name "int64Add" "int64Add"
+          | _ -> Expect.equal 1 2 "expected Builtin"
+        | _ -> Expect.equal 1 2 "expected LoadVal"
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
+  let twoParamArithReversedOrder =
+    test "parseMinimalBodyN 'y - x' applies in the right register order" {
+      match M.parseMinimalBodyN [ "x"; "y" ] "y - x" with
+      | Some instrs ->
+        match instrs.instructions[1] with
+        | RT.Apply(_, _, _, args) ->
+          // 'y - x' → y (reg 1) minus x (reg 0); arg order is [lhs; rhs] = [1; 0]
+          Expect.equal (NEList.toList args) [ 1; 0 ] "y first, then x"
+        | _ -> Expect.equal 1 2 "expected Apply"
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
+  let parseParamNamesSingle =
+    test "parseParamNames extracts one name" {
+      match M.parseParamNames "(x: Int64): Int64" with
+      | Some [ "x" ] -> ()
+      | other -> Expect.equal 1 2 (sprintf "wrong: %A" other)
+    }
+
+  let parseParamNamesMulti =
+    test "parseParamNames extracts multiple names" {
+      match M.parseParamNames "(x: Int64, y: Int64): Int64" with
+      | Some [ "x"; "y" ] -> ()
+      | other -> Expect.equal 1 2 (sprintf "wrong: %A" other)
+    }
+
+  let parseParamNamesEmpty =
+    test "parseParamNames returns Some [] for nullary sig" {
+      match M.parseParamNames "(): Int64" with
+      | Some [] -> ()
+      | other -> Expect.equal 1 2 (sprintf "wrong: %A" other)
+    }
+
+  let parseParamNamesMalformed =
+    test "parseParamNames returns None for non-sig input" {
+      Expect.isNone (M.parseParamNames "just text") ""
+    }
+
   let tests =
     testList
       "MinimalBody"
@@ -457,7 +524,14 @@ module MinimalBody =
         parsesAddition
         parsesSubtraction
         parsesMultiplication
-        arithmeticRespectsParamName ]
+        arithmeticRespectsParamName
+        parsesTwoParamArith
+        twoParamArithUsesBuiltin
+        twoParamArithReversedOrder
+        parseParamNamesSingle
+        parseParamNamesMulti
+        parseParamNamesEmpty
+        parseParamNamesMalformed ]
 
 
 // ---------------------------------------------------------------------------
