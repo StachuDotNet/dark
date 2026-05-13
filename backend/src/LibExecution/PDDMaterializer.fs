@@ -120,7 +120,21 @@ Darklang syntax for the body content:
 - Integers are SIZED: Int64 (default), Int8, Int32, etc. Never bare int. Literals end in L: 5L, -3L.
 - Generics use ANGLE BRACKETS: List<Int64>, Option<String>. Not List(...).
 - Type variables use ML-style apostrophes: 'a, 'b, 'k, 'v. Not <a> or <b>.
-- Bindings: let x = expr in rest_of_expr (in is required).
+- Bindings: `let x = expr in rest_of_expr` (in is required).
+
+  CRITICAL: the body you write is an INNER EXPRESSION (it's the body of
+  the function we're defining). NOT a top-level Dark file. So:
+    - `let myFn (x: Int64): Int64 = x * 2L` ← NO. Top-level fn def syntax.
+    - `let f x = body in rest`             ← NO. Statement-let-fn form
+                                               is unsupported as an inner
+                                               expression.
+    - `let f = fun x -> body in rest`      ← YES. Bind a lambda to a name.
+    - `let f = fun x y -> body in rest`    ← YES, for multi-arg locals.
+
+  Example of a valid multi-step BODY EXPRESSION:
+    let parseLine = fun line -> Stdlib.String.split line "," in
+    let parts = parseLine input in
+    Stdlib.List.head parts
 - Lambdas: `fun x -> body` (one arg) or `fun x y -> body` (multi-arg in ONE
   fun). NEVER use `=>`. NEVER curry: `fun x -> fun y -> ...` is two
   lambdas; use `fun x y -> ...` instead.
@@ -1485,15 +1499,22 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                   uply {
                     match bodyParser, parseFullSig gen.sig_ with
                     | Some parser, Some(typedParams, returnType) ->
+                      // LibParser parses multi-line let-chains as separate
+                      // top-level exprs. Normalize to single-line so a body
+                      // like `let x = .. in\nlet y = .. in\nresult` parses.
+                      let normalizedBody =
+                        gen.body
+                          .Replace("\r\n", " ")
+                          .Replace("\n", " ")
                       let toParse =
                         if List.isEmpty typedParams then
-                          gen.body
+                          normalizedBody
                         else
                           let paramList =
                             typedParams
                             |> List.map fst
                             |> String.concat " "
-                          sprintf "fun %s -> %s" paramList gen.body
+                          sprintf "fun %s -> %s" paramList normalizedBody
                       let! parsed = parser toParse
                       match parsed with
                       | Ok ptExpr ->
