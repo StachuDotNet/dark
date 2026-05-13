@@ -109,7 +109,7 @@ NOT:
 
 The `body` value must be a valid JSON string: surrounded by double quotes, with any inner quotes escaped (\\"). Even if the body is a single identifier or arithmetic expression, wrap it in quotes.
 
-The `tests` field is REQUIRED. Provide 2-3 representative input/output examples that verify the body does what the function name suggests. For Int64 args/returns, use JSON numbers. For String args/returns, use JSON strings. Tests cover BOUNDARY cases (zero, negative, edge) when relevant.
+The `tests` field is REQUIRED. Provide 2-3 representative input/output examples that verify the body does what the function name suggests. Use plain JSON numbers (5, not 5L), plain JSON strings, and plain JSON booleans inside `args` and `expect`. The `L` suffix is ONLY for the Dark BODY string — never for JSON values. Tests cover BOUNDARY cases (zero, negative, edge) when relevant.
 
 Darklang syntax for the body content:
 - Integers are SIZED: Int64 (default), Int8, Int32, etc. Never bare int. Literals end in L: 5L, -3L.
@@ -1249,6 +1249,17 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
               return None
             | Ok content ->
               match parseLLMResponse content with
+              | Error e when n < maxAttempts ->
+                // Malformed JSON — retry with a fix-up prompt that
+                // emphasizes well-formed JSON output.
+                logResult logPath p.name None (Some content) (Some e)
+                emit (CompileBody(p.name, sprintf "json-retry-%d" n, 0))
+                let fixUp =
+                  sprintf
+                    "Function: %s\nYour previous response was not valid JSON: %s\n\nReturn ONLY a JSON object {\"sig\": \"...\", \"body\": \"...\", \"tests\": [...]} with no fences, no prose, no trailing L on numbers inside the JSON (use 5, not 5L), no unquoted code. Both `sig` and `body` are quoted strings; `tests` is an array of {\"args\": [...], \"expect\": ...}."
+                    p.name
+                    e
+                return! attempt (n + 1) fixUp
               | Error e ->
                 logResult logPath p.name None (Some content) (Some e)
                 emit (MaterializeFailed(p.name, e))
