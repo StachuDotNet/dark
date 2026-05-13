@@ -331,3 +331,13 @@ Format:
   - Commit `615c846d9`.
 - Time: 07:48 EDT (took ~20 min from start of coding loop including build cycles).
 - Next: Phase C (task #3) — add `materializeFn` field to PackageManager.
+
+### 2026-05-13 08:00 — coding iter 2 (Phase C + D folded into one commit)
+- Did:
+  - Phase C: added `materializeFn : Pending -> Ply<Option<PackageFn>>` to PackageManager. Updated all 3 construction sites (empty, withExtras, LibDB/PackageManager.rt, ProgramTypesToRuntimeTypes.PackageManager.toRT).
+  - Phase D: added `materialize` field to `Functions` record on ExecutionState. Execution.createState wires it through. The interpreter's `Function(Pending p)` arm now actually calls `exeState.fns.materialize p` instead of just erroring — Some → use body, None → raise FnNotFound.
+  - Caching: materialized fn's body is cached under its real `.hash` in `packageFnInstrCache`, so subsequent calls to the same hash hit the fast path.
+- Build green: 0 errors, 70 NU1510 warnings.
+- Commit `09fb8538a`.
+- Now task #5 (Phase E — Dval.defaultFor). May be the easiest phase — small, additive.
+- Time: 08:00 EDT.
