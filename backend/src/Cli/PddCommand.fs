@@ -333,6 +333,70 @@ let private handlePrompt
   }
 
 
+/// Handle `dark pdd cache list` / `clear` / `paths`.
+let private handleCache (subcmd : string) : Task<int> =
+  task {
+    let prefix = dim "[pdd]"
+    let promotedPath = "rundir/pdd-cache/promoted.jsonl"
+    let decomposedPath = "rundir/pdd-cache/decomposed.jsonl"
+    match subcmd with
+    | "list" ->
+      eprintfn "%s %s" prefix (dim "promoted (Pending → PackageFn cache):")
+      if System.IO.File.Exists promotedPath then
+        let lines = System.IO.File.ReadAllLines promotedPath
+        for line in lines do
+          if not (System.String.IsNullOrWhiteSpace line) then
+            try
+              let doc = System.Text.Json.JsonDocument.Parse line
+              let r = doc.RootElement
+              let name = r.GetProperty("name").GetString()
+              let body = r.GetProperty("body").GetString()
+              eprintfn "  %s %s %s" (green name) (dim "←") body
+            with _ -> ()
+        eprintfn "  %s %s" (dim (sprintf "%d entries" lines.Length)) (dim promotedPath)
+      else
+        eprintfn "  %s" (dim "(no cache file)")
+      eprintfn ""
+      eprintfn "%s %s" prefix (dim "decomposed (free-text → expr cache):")
+      if System.IO.File.Exists decomposedPath then
+        let lines = System.IO.File.ReadAllLines decomposedPath
+        for line in lines do
+          if not (System.String.IsNullOrWhiteSpace line) then
+            try
+              let doc = System.Text.Json.JsonDocument.Parse line
+              let r = doc.RootElement
+              let prompt = r.GetProperty("prompt").GetString()
+              let expr = r.GetProperty("expr").GetString()
+              eprintfn "  %s" (green prompt)
+              eprintfn "    %s %s" (dim "→") expr
+            with _ -> ()
+        eprintfn "  %s %s" (dim (sprintf "%d entries" lines.Length)) (dim decomposedPath)
+      else
+        eprintfn "  %s" (dim "(no cache file)")
+      return 0
+    | "clear" ->
+      for path in [ promotedPath; decomposedPath ] do
+        if System.IO.File.Exists path then
+          System.IO.File.Delete path
+          eprintfn "%s %s %s" prefix (dim "deleted") path
+        else
+          eprintfn "%s %s %s" prefix (dim "skipped (not found)") path
+      return 0
+    | "paths" ->
+      eprintfn "%s promoted    %s" prefix promotedPath
+      eprintfn "%s decomposed  %s" prefix decomposedPath
+      eprintfn "%s pdd-view    %s" prefix "rundir/pdd-view/<sessionId>.html"
+      eprintfn "%s materialize %s" prefix "rundir/logs/pdd-materialize.jsonl"
+      return 0
+    | other ->
+      eprintfn "%s unknown cache subcommand: %s" prefix other
+      eprintfn "%s   dark pdd cache list   - show entries" prefix
+      eprintfn "%s   dark pdd cache clear  - delete both caches" prefix
+      eprintfn "%s   dark pdd cache paths  - print file locations" prefix
+      return 1
+  }
+
+
 /// Entry point for `dark pdd ...` and `dark prompt ...` commands.
 /// Returns Some exitCode if the arg list matched; None to fall through
 /// to the normal CLI dispatch.
@@ -368,11 +432,18 @@ let tryHandle
       else
         let! code = handleRun packageManager exprStr
         return Some code
+    | "pdd" :: "cache" :: subcmd :: _ ->
+      let! code = handleCache subcmd
+      return Some code
+    | "pdd" :: "cache" :: [] ->
+      let! code = handleCache "list"
+      return Some code
     | "pdd" :: _ ->
       eprintfn "[pdd] usage:"
       eprintfn "[pdd]   dark prompt \"<free-text request>\""
       eprintfn "[pdd]   dark pdd run <dark-expression>"
       eprintfn "[pdd]   dark pdd demo <fnName> <Int64-arg>"
+      eprintfn "[pdd]   dark pdd cache (list|clear|paths)"
       return Some 1
     | _ -> return None
   }
