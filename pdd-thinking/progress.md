@@ -404,3 +404,10 @@ Format:
 - Deferred: full interpreter-through-arithmetic integration test (would need to wire Stdlib builtins into the test exeState). Unit tests verify instruction shape.
 - New task #10 from Stachu: materialized fns should be **promoted to the durable package tree** so future sessions reference them by hash. Captured as Day-3 work.
 - Commit `4a714d1f2` (mini-parser arithmetic).
+
+### 2026-05-13 15:52 — coding iter 9 (Task #9b: addOne 5L → 6L end-to-end)
+- Did: wrote `addOnePendingActuallyComputes` test. Uses `TestUtils.executionStateFor` for a real exeState with Stdlib builtins. Stub materializer returns a PackageFn whose body comes from `parseMinimalBody "x" "x + 1L"`. Asserts result is `DInt64 6L`.
+- **The wire is now complete end-to-end for the addOne shape.** Plug a real LLM materializer in place of the stub and the same test would call OpenAI, get "x + 1L" back, build instructions, and compute 6.
+- F# gotcha: F# couldn't infer the type of `state` from `let! state = executionStateFor ...` — needed explicit `RT.ExecutionState` annotation to access the `fns` field.
+- Total PDD tests: **35/35 green**.
+- Commit `<arith-e2e>`.
