@@ -317,24 +317,26 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
               | None -> return raiseRTE (RTE.FnNotFound(FQFnName.Package fn))
           }
 
-        // PDD: a pending fn. Ask the materializer to provide a body.
-        // If it succeeds, we cache the resulting instructions just like a
-        // package fn and execute them. If it fails (None), raise FnNotFound
-        // — Day-5 will route this through a tolerance/recovery policy.
+        // PDD: a pending fn. The Apply path may have already materialized
+        // and cached InstrData under fn.hash; check that index first by
+        // looking for any matching cached entry. If nothing cached, ask the
+        // materializer fresh (this is the lazy-materialization path; eager
+        // happens from Apply). On miss we raise FnNotFound — Day-5 wires
+        // RecoveryPolicy.EmptyBody here.
         | Function(FQFnName.Pending p) ->
           uply {
-            match! exeState.fns.materialize p with
-            | Some fn ->
-              let instrData =
-                { instructions = List.toArray fn.body.instructions
-                  resultReg = fn.body.resultIn }
-              // Reuse the package cache keyed by the materialized fn's hash —
-              // subsequent calls to the *same* hash are fast paths. The Pending
-              // handle itself isn't cached since fresh handles point to fresh
-              // session-local entries.
-              exeState.packageFnInstrCache[fn.hash] <- instrData
-              return instrData
-            | None -> return raiseRTE (RTE.FnNotFound(FQFnName.Pending p))
+            match exeState.pendingFnInstrCache.TryGetValue p.handle with
+            | true, cached -> return cached
+            | false, _ ->
+              match! exeState.fns.materialize p with
+              | Some fn ->
+                let instrData =
+                  { instructions = List.toArray fn.body.instructions
+                    resultReg = fn.body.resultIn }
+                exeState.packageFnInstrCache[fn.hash] <- instrData
+                exeState.pendingFnInstrCache[p.handle] <- instrData
+                return instrData
+              | None -> return raiseRTE (RTE.FnNotFound(FQFnName.Pending p))
           }
 
 
@@ -1041,10 +1043,63 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
                       executionPoint = pkgEp }
                     |> Some
 
-            // PDD: applying a Pending fn-value. Day-1: just error.
-            // Day-D will fold this into the materialization path.
+            // PDD: applying a Pending fn-value. Materialize, then push a
+            // frame mirroring the Package path (minus type-arg handling —
+            // Day-1 Pending has no typeParams; that comes when SignatureHint
+            // lands). The frame's executionPoint uses the *materialized*
+            // hash so the cached instructions are re-used cleanly.
             | FQFnName.Pending p ->
-              return RTE.FnNotFound(FQFnName.Pending p) |> raiseRTE
+              match! exeState.fns.materialize p with
+              | None -> return RTE.FnNotFound(FQFnName.Pending p) |> raiseRTE
+              | Some fn ->
+                let allArgs =
+                  match applicable.argsSoFar with
+                  | [] -> newArgDvals
+                  | prev -> prev @ newArgDvals
+                let paramCount, argCount =
+                  (NEList.length fn.parameters, List.length allArgs)
+                if argCount > paramCount then
+                  return handleTooManyArgs paramCount argCount
+                else if argCount < paramCount then
+                  registers[putResultIn] <-
+                    { applicable with
+                        typeArgs = typeArgs
+                        argsSoFar = allArgs
+                        typeSymbolTable = tst }
+                    |> AppNamedFn
+                    |> DApplicable
+                else
+                  // Pre-cache instrs under both the materialized fn's hash
+                  // and the Pending handle. The executionPoint match for
+                  // Pending will check the handle cache first and skip
+                  // re-materializing — important when materialize is a real
+                  // LLM call.
+                  let instrData =
+                    { instructions = List.toArray fn.body.instructions
+                      resultReg = fn.body.resultIn }
+                  exeState.packageFnInstrCache[fn.hash] <- instrData
+                  exeState.pendingFnInstrCache[p.handle] <- instrData
+                  let newFrameId = guuid ()
+                  if vm.stats.enabled then
+                    vm.stats.packageCallCount <- vm.stats.packageCallCount + 1L
+                    vm.stats.framePushCount <- vm.stats.framePushCount + 1L
+                  // executionPoint stays as Pending so the frame-return type
+                  // check arm (which has a Pending case returning a TVariable)
+                  // doesn't try to fetch from pm.getFn — the materialized fn
+                  // isn't in the actual package store.
+                  let pdEp = Function(FQFnName.Pending p)
+                  frameToPush <-
+                    { id = newFrameId
+                      parent =
+                        Some(vm.currentFrameID, putResultIn, counter + 1)
+                      programCounter = 0
+                      registers =
+                        let r = Array.zeroCreate fn.body.registerCount
+                        allArgs |> List.iteri (fun i arg -> r[i] <- arg)
+                        r
+                      typeSymbolTable = currentFrame.typeSymbolTable
+                      executionPoint = pdEp }
+                    |> Some
 
         | RaiseNRE(names, nre) -> raiseRTE (RTE.ParseTimeNameResolution(names, nre))
 

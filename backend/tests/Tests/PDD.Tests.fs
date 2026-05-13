@@ -126,4 +126,93 @@ module PMField =
   let tests = testList "PMField" [ emptyMaterializeReturnsNone; stubMaterializerHooksIn ]
 
 
-let tests = testList "PDD" [ Defaults.tests; Pending.tests; PMField.tests ]
+// ---------------------------------------------------------------------------
+// Day-2a: integration — Apply a Pending fn, the interpreter materializes
+// it via a stub, runs the body, returns the result.
+// ---------------------------------------------------------------------------
+
+module Integration =
+
+  /// Build a hardcoded "identity" PackageFn: takes one Int64 arg and returns
+  /// it unchanged. body has 0 instructions and resultIn = 0 (the arg register).
+  let identityFn : RT.PackageFn.PackageFn =
+    { hash = RT.Hash "stub-identity-pdd-hash"
+      typeParams = []
+      parameters =
+        NEList.singleton { name = "x"; typ = RT.TInt64 }
+      returnType = RT.TInt64
+      body =
+        { registerCount = 1
+          instructions = []
+          resultIn = 0 } }
+
+  /// Build the materializer stub: returns identityFn for any Pending called
+  /// "myIdentity", else None. Counts calls.
+  let buildStubMaterializer () =
+    let mutable callCount = 0
+    let materialize : RT.FQFnName.Pending -> Ply<RT.PackageFn.PackageFn option> =
+      fun p ->
+        callCount <- callCount + 1
+        if p.name = "myIdentity" then Ply(Some identityFn) else Ply None
+    materialize, (fun () -> callCount)
+
+  /// Build an RT.Instructions block that loads a Pending fn ref + arg into
+  /// registers and Apply's them. Returns the instruction set + the names of
+  /// the registers used.
+  let buildApplyPendingProgram (pendingName : string) (arg : int64) =
+    let pending = RT.FQFnName.fqPending pendingName
+    let applicable : RT.ApplicableNamedFn =
+      { name = pending
+        typeSymbolTable = Map.empty
+        typeArgs = []
+        argsSoFar = [] }
+    let fnReg = 0
+    let argReg = 1
+    let resultReg = 2
+    let instrs : RT.Instructions =
+      { registerCount = 3
+        resultIn = resultReg
+        instructions =
+          [ RT.LoadVal(fnReg, RT.DApplicable(RT.AppNamedFn applicable))
+            RT.LoadVal(argReg, RT.DInt64 arg)
+            RT.Apply(resultReg, fnReg, [], NEList.singleton argReg) ] }
+    instrs
+
+  let pendingFnGoesThroughInterpreter =
+    testTask "Apply of Pending fn materializes via stub and returns DInt64 arg" {
+      let instrs = buildApplyPendingProgram "myIdentity" 42L
+      let materialize, getCallCount = buildStubMaterializer ()
+
+      // Build minimum ExecutionState by overriding fns.materialize on top of
+      // a default-empty state. We don't go through Execution.createState
+      // because that needs a builtins map and PT PackageManager — overkill
+      // for a hand-built RT-only test.
+      let exeState : RT.ExecutionState =
+        let pm = { RT.PackageManager.empty with materializeFn = materialize }
+        let noOpReport : RT.ExceptionReporter = fun _ _ _ _ -> uply { return () }
+        let noOpNotify : RT.Notifier = fun _ _ _ _ -> uply { return () }
+        LibExecution.Execution.createState
+          { values = Map.empty; fns = Map.empty }
+          pm
+          LibExecution.Execution.noTracing
+          noOpReport
+          noOpNotify
+          (System.Guid.NewGuid())
+          { dbs = Map.empty }
+
+      let! result =
+        LibExecution.Execution.execute exeState (None, instrs)
+
+      match result with
+      | Ok dv ->
+        Expect.equal dv (RT.DInt64 42L) "Pending fn applied to 42 → returns 42"
+      | Error(rte, _) ->
+        Expect.equal 1 2 (sprintf "Expected success, got RTE: %A" rte)
+      Expect.equal (getCallCount ()) 1 "materializer called exactly once"
+    }
+
+  let tests = testList "Integration" [ pendingFnGoesThroughInterpreter ]
+
+
+let tests =
+  testList "PDD" [ Defaults.tests; Pending.tests; PMField.tests; Integration.tests ]

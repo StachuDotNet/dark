@@ -40,6 +40,7 @@ let createState
 
     lambdaInstrCache = System.Collections.Concurrent.ConcurrentDictionary()
     packageFnInstrCache = System.Collections.Concurrent.ConcurrentDictionary()
+    pendingFnInstrCache = System.Collections.Concurrent.ConcurrentDictionary()
 
     branchId = branchId
     program = program

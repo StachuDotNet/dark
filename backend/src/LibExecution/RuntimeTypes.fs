@@ -1689,6 +1689,13 @@ and ExecutionState =
     packageFnInstrCache :
       System.Collections.Concurrent.ConcurrentDictionary<FQFnName.Package, InstrData>
 
+    /// PDD: same idea as packageFnInstrCache but keyed by Pending.handle —
+    /// once a pending fn is materialized (via Apply or the executionPoint
+    /// match), its InstrData is cached here so subsequent frame-enters for
+    /// the same handle skip re-materializing (which can be a real LLM call).
+    pendingFnInstrCache :
+      System.Collections.Concurrent.ConcurrentDictionary<System.Guid, InstrData>
+
     /// Called to report exceptions
     reportException : ExceptionReporter
 
