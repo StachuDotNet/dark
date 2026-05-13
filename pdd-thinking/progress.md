@@ -145,4 +145,11 @@ Format:
 - Total spend tonight so far: ~$0.0005. Negligible vs $10 budget.
 - Time check: 01:46 EDT, 6h 14m to 8am. Plan: 2-3 more design iterations, then start final report by 04:30-05:00 to have plenty of time to refine + print at 06:30-07:00.
 - Next: write `17-day-1-quick-reference.md` — a single-page at-the-desk cheat sheet with all file:line pointers, key commands, sample F# diffs, the v3 system prompt verbatim. Make Day 1 turn-key.
+- Commits: 1 pending (iter 13).
+
+### 2026-05-13 01:50 — iteration 14 (write 17 — single-page quick-reference card)
+- Did: wrote `17-day-1-quick-reference.md`, designed to be printed and taped to keyboard. Single page (fits on letter portrait). Contains: 60-sec orientation, five claims, the pivot line (`Interpreter.fs:317`), the three surgical edits with line numbers, the carving steps with `fsdark.sln:44,61`, two-pass build instructions, OpenAI key location + budget, **the full v3 system prompt verbatim** (ready to paste), the 6 day-1 phases with green-check criteria, acceptance checks for Day 1 + Day 3, when-stuck protocol, telemetry-to-capture, and "Push? No."
+- Decided: this card is the single most useful doc for tomorrow morning. Everything else can be skimmed-or-skipped, but this one should be on the desk.
+- Time check: 01:51 EDT. About 6h 9m to 8am.
+- Next: write `18-the-narrative.md` — a paragraph-by-paragraph "story to tell when explaining PDD to someone." Then start outlining the final report (`FINAL-REPORT-2026-05-13.md`). Plan: 2 more design iterations max, then draft final report around 03:00-04:00, polish 04:00-06:00, print 06:30.
 - Commits: 1 pending.
