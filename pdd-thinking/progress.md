@@ -65,3 +65,8 @@ Each coding-loop iteration appends a 2-3 line entry to this file with: time, wha
 - Trimmed this `progress.md` aggressively (was 6831 words, target ~600).
 - Adding HISTORICAL banners to docs whose plan is now superseded.
 - Tightening prose where stale.
+
+### 2026-05-13 16:06 — coding iter 11 (Task #14: EventSink)
+- Did: added `PDDEvent` union (6 variants: MaterializeStart, LLMResponse, ParseOk, CompileBody, MaterializeDone, MaterializeFailed) + `FnState` (InProgress/Real/Fake/Cached/Failed) + mutable `currentSink`. `materialize` emits events at each step. 4 new Events tests.
+- Total PDD: **39/39 green**.
+- Commit `<eventsink>`. Precondition for H1 (CLI streaming) and H3 (HTML view).
