@@ -460,6 +460,67 @@ module MinimalBody =
         arithmeticRespectsParamName ]
 
 
+// ---------------------------------------------------------------------------
+// EventSink (Task #14)
+// ---------------------------------------------------------------------------
+
+module Events =
+  module M = LibExecution.PDDMaterializer
+
+  let captureSink () =
+    let captured = System.Collections.Generic.List<M.PDDEvent>()
+    let sink : M.EventSink = fun ev -> captured.Add ev
+    sink, (fun () -> List.ofSeq captured)
+
+  let nullSinkIsNoop =
+    test "nullSink swallows all events without error" {
+      M.nullSink (M.MaterializeStart("foo", "gpt-4o-mini"))
+      M.nullSink (M.MaterializeDone("foo", M.Real, 0))
+      ()
+    }
+
+  let captureSinkCollects =
+    test "a capture sink records events in order" {
+      let sink, get = captureSink ()
+      sink (M.MaterializeStart("foo", "m"))
+      sink (M.ParseOk("foo", "(): Int64", "0L"))
+      let events = get ()
+      Expect.equal events.Length 2 "two events"
+      match events[0] with
+      | M.MaterializeStart("foo", "m") -> ()
+      | _ -> Expect.equal 1 2 "wrong first event"
+    }
+
+  let currentSinkIsSettable =
+    test "currentSink can be swapped and restored" {
+      let sink, get = captureSink ()
+      let saved = M.currentSink
+      try
+        M.currentSink <- sink
+        // emit via the internal helper indirectly — use the public sink:
+        M.currentSink (M.MaterializeDone("foo", M.Cached, 12))
+        let events = get ()
+        Expect.equal events.Length 1 "captured one"
+      finally
+        M.currentSink <- saved
+    }
+
+  let fnStateValuesExhaustive =
+    test "FnState covers the documented set" {
+      // Just a smoke test that we can construct each variant.
+      let _ = [ M.InProgress; M.Real; M.Fake; M.Cached; M.Failed ]
+      ()
+    }
+
+  let tests =
+    testList
+      "Events"
+      [ nullSinkIsNoop
+        captureSinkCollects
+        currentSinkIsSettable
+        fnStateValuesExhaustive ]
+
+
 let tests =
   testList
     "PDD"
@@ -468,4 +529,5 @@ let tests =
       PMField.tests
       Integration.tests
       LLMParser.tests
-      MinimalBody.tests ]
+      MinimalBody.tests
+      Events.tests ]

@@ -27,6 +27,60 @@ open Prelude
 module RT = LibExecution.RuntimeTypes
 
 
+// ---------------------------------------------------------------------------
+// Event sink — structured lifecycle events the CLI / HTML view consume.
+// ---------------------------------------------------------------------------
+
+/// State badges for the interactive HTML view (per H3 in 21-heavy-hitters).
+type FnState =
+  | InProgress   // currently materializing (LLM in flight)
+  | Real         // materialized OK, body translated, executed (or executable)
+  | Fake         // returned identity / EmptyBody fallback — body wasn't parsable
+  | Cached       // hit pendingFnInstrCache; skipped LLM
+  | Failed       // materialization errored or aborted
+
+
+/// Discrete events emitted during a PDD run. Consumers translate these
+/// into stderr lines, HTML updates, JSONL log lines, etc.
+type PDDEvent =
+  /// Materialization started for this Pending. Includes the model name
+  /// so the UI can show "addOne ▸ gpt-4o-mini …".
+  | MaterializeStart of name : string * model : string
+
+  /// LLM call returned its body. `body` is the raw text from
+  /// `choices[0].message.content` (may include code-fences etc.).
+  | LLMResponse of name : string * elapsedMs : int * body : string
+
+  /// `parseLLMResponse` succeeded — we have a clean (sig, body) pair.
+  | ParseOk of name : string * sig_ : string * body : string
+
+  /// Mini-parser ran on the body. `kind` is "constant" | "identity" |
+  /// "arith-add" | "arith-sub" | "arith-mul" | "fallback-identity".
+  | CompileBody of name : string * kind : string * registerCount : int
+
+  /// Materialization finished. `state` summarizes the outcome.
+  | MaterializeDone of name : string * state : FnState * elapsedMs : int
+
+  /// Materialization failed for some specific reason.
+  | MaterializeFailed of name : string * reason : string
+
+/// Where events go. Default is no-op; the CLI installs a sink that
+/// writes to stderr (colored) + appends to an HTML view file (H3).
+type EventSink = PDDEvent -> unit
+
+let nullSink : EventSink = fun _ -> ()
+
+/// The currently-installed sink. Set by callers (CLI, tests) before
+/// invoking `materialize`. Implemented as a mutable ref to avoid
+/// plumbing through every signature; PDD is single-threaded today.
+let mutable currentSink : EventSink = nullSink
+
+let private emit (ev : PDDEvent) : unit =
+  try
+    currentSink ev
+  with _ -> ()  // sink failures never propagate
+
+
 /// The v4 system prompt — verified empirically during the design loop.
 /// See pdd-thinking/16-prompt-shapes.md and pdd-thinking/17-day-1-quick-reference.md.
 let v4SystemPrompt = """You generate Darklang function bodies. Reply with ONLY a JSON object {"sig": "(<params>): <ReturnType>", "body": "<Darklang expression>"}.
@@ -291,9 +345,14 @@ let private fnFromBody
 let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> =
   uply {
     let logPath = "rundir/logs/pdd-materialize.jsonl"
+    let startedAt = DateTime.UtcNow
+    let model = "gpt-4o-mini"
+    emit (MaterializeStart(p.name, model))
+    let elapsedMs () = int (DateTime.UtcNow - startedAt).TotalMilliseconds
     let apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
     if String.IsNullOrEmpty(apiKey) then
       logResult logPath p.name None None (Some "OPENAI_API_KEY not set")
+      emit (MaterializeFailed(p.name, "OPENAI_API_KEY not set"))
       return None
     else
       let userPrompt = buildUserPrompt p.name
@@ -304,24 +363,39 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
       match resp with
       | Error e ->
         logResult logPath p.name None None (Some e)
+        emit (MaterializeFailed(p.name, e))
         return None
       | Ok body ->
+        emit (LLMResponse(p.name, elapsedMs (), body))
         match extractContent body with
         | Error e ->
           logResult logPath p.name None None (Some e)
+          emit (MaterializeFailed(p.name, e))
           return None
         | Ok content ->
           match parseLLMResponse content with
           | Error e ->
             logResult logPath p.name None (Some content) (Some e)
+            emit (MaterializeFailed(p.name, e))
             return None
           | Ok gen ->
             logResult logPath p.name (Some gen.sig_) (Some gen.body) None
+            emit (ParseOk(p.name, gen.sig_, gen.body))
             // Try the minimal-body parser first; if it recognizes the shape
             // we build a PackageFn that actually executes the LLM's intent.
             // Otherwise fall back to identity-shape (the LLM body is still
             // logged for inspection).
             match parseMinimalBody "x" gen.body with
-            | Some instrs -> return Some(fnFromBody p.name "x" instrs)
-            | None -> return Some(hardcodedIdentityFn p.name)
+            | Some instrs ->
+              let kind =
+                if instrs.instructions.Length = 0 then "identity"
+                elif instrs.instructions.Length = 1 then "constant"
+                else "arith"
+              emit (CompileBody(p.name, kind, instrs.registerCount))
+              emit (MaterializeDone(p.name, Real, elapsedMs ()))
+              return Some(fnFromBody p.name "x" instrs)
+            | None ->
+              emit (CompileBody(p.name, "fallback-identity", 1))
+              emit (MaterializeDone(p.name, Fake, elapsedMs ()))
+              return Some(hardcodedIdentityFn p.name)
   }
