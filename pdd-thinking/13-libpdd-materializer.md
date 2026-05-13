@@ -49,7 +49,25 @@ backend/src/LibPDD/
 
 Note: `Materializer.fs` is last because it depends on everything else.
 
-`paket.references` will need to include the Anthropic SDK package (or whatever Feriel set up — check what's already in `LibAI` if it exists, otherwise add a fresh ref).
+`paket.references` will need to include the LLM provider SDK package (or whatever Feriel set up — check what's already in `LibAI` if it exists, otherwise add a fresh ref).
+
+### Provider config & keys
+
+API keys live **outside the repo** at `~/.config/darklang/llm-keys.env` (mode 600, dir mode 700). The CLI reads them at startup via either:
+
+```bash
+set -a; source ~/.config/darklang/llm-keys.env; set +a
+dark pdd run …
+```
+
+…or by the CLI itself reading the file (since the location is fixed).
+
+**Default model choice (Stachu 2026-05-13):** *cheap + fast.* Spike budget is $10 of OpenAI credits, so:
+- **OpenAI** default: `gpt-4o-mini` (cheap, ~$0.15/1M input). Hardcode for the spike.
+- **Anthropic** default (if/when we test): `claude-haiku-4-5` (cheap, fast).
+- The "deep materialize" path (`@deep_materialize` annotation, 60s budget) can opt into Sonnet/4o-full but **defaults to the cheap model** to protect the budget.
+
+Wire the provider through `Generate.LLMProvider` so the test harness can swap in a deterministic fake without burning credits.
 
 ## `Defaults.fs`
 
