@@ -311,3 +311,9 @@ Format:
 - **Stopping the loop now** (no ScheduleWakeup). Stachu wakes up to physical paper on the desk + clean branch + all the design docs.
 - Have a good morning, Stachu. ☕
 - Commits: 1 pending (this entry).
+
+### 2026-05-13 07:23 — bonus (post-loop): wrote `~/bin/pdd-materialize`
+- User asked what they could test interactively. Wrote `~/bin/pdd-materialize <name> <description> [extra_context]` — wraps the v4 prompt + gpt-4o-mini call so you can poke at the materializer without F# scaffolding.
+- Loads the OpenAI key from `~/.config/darklang/llm-keys.env`, calls the API, pretty-prints the JSON response + token counts + cost + round-trip latency. Appends each call to `~/.config/darklang/pdd-materialize.log` as JSONL and prints running total.
+- Verified end-to-end with two calls (`fib`, `doubleAll`). Both returned compilable-looking Dark. Cumulative cost across the tool's calls: $0.000189.
+- Script is in `~/bin/`, not in the repo — like `print-md`. Easy to delete or modify, never touches the F# build.
