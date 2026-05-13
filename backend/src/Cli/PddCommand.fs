@@ -338,20 +338,47 @@ let private handleRun
       }
     Mat.installTestRunner testRunner
 
-    let! result = Exe.execute state (None, instrs)
+    // Wall-clock budget: abort the whole run if it takes longer than
+    // PDD_BUDGET_MS env (default 300s = 5min). Prevents runaway
+    // materialization loops from burning unbounded LLM cost.
+    let budgetMs =
+      match System.Environment.GetEnvironmentVariable("PDD_BUDGET_MS") with
+      | null | "" -> 300_000
+      | s ->
+        match System.Int32.TryParse s with
+        | true, v -> v
+        | _ -> 300_000
+    let runTask : Task<_> = Exe.execute state (None, instrs)
+    let budgetTask = Task.Delay(budgetMs)
+    let! finished = Task.WhenAny(runTask, budgetTask)
+    let timedOut = obj.ReferenceEquals(finished, budgetTask)
 
     View.close session
     Mat.currentSink <- Mat.nullSink
 
     eprintfn ""
-    match result with
-    | Ok dv ->
-      eprintfn "%s %s %A" prefix (green "result:") dv
-      print (sprintf "%A" dv)
-      return 0
-    | Error(rte, _) ->
-      eprintfn "%s %s %A" prefix (red "error:") rte
-      return 1
+    if timedOut then
+      eprintfn
+        "%s %s %s"
+        prefix
+        (red "budget exceeded:")
+        (dim (sprintf "%d ms" budgetMs))
+      eprintfn
+        "%s %s %s"
+        prefix
+        (dim "trace:")
+        (dim (sprintf "rundir/pdd-view/%s.html" sessionId))
+      return 124
+    else
+      let! result = runTask
+      match result with
+      | Ok dv ->
+        eprintfn "%s %s %A" prefix (green "result:") dv
+        print (sprintf "%A" dv)
+        return 0
+      | Error(rte, _) ->
+        eprintfn "%s %s %A" prefix (red "error:") rte
+        return 1
   }
 
 

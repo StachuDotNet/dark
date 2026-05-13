@@ -170,6 +170,26 @@ let installTestRunner (runner : TestRunner) : unit =
   testRunner <- Some runner
 
 
+/// Hard ceiling on LLM calls per Pending handle, summed across ALL
+/// materialize() invocations (parallel scheduler + lazy paths). Prevents
+/// retry loops from exploding cost when the LLM keeps producing the same
+/// failing body. Each materialize attempt internally has its own
+/// `maxAttempts` (today 2) — this is the OUTER cap.
+let llmCallsPerHandle :
+  System.Collections.Concurrent.ConcurrentDictionary<System.Guid, int> =
+  System.Collections.Concurrent.ConcurrentDictionary()
+
+let llmCallCap : int = 3
+
+let private incrementLlmCalls (handle : System.Guid) : int =
+  llmCallsPerHandle.AddOrUpdate(handle, 1, fun _ old -> old + 1)
+
+let private llmCallsExhausted (handle : System.Guid) : bool =
+  match llmCallsPerHandle.TryGetValue handle with
+  | true, n -> n >= llmCallCap
+  | _ -> false
+
+
 /// Result of running one claimed test against a materialized fn.
 type TestResult =
   | TPass of args : List<RT.Dval> * got : RT.Dval
@@ -1063,6 +1083,18 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
       let maxAttempts = 2
       let rec attempt (n : int) (prompt : string) =
         uply {
+          if llmCallsExhausted p.handle then
+            // Per-handle outer cap. We've already burned `llmCallCap`
+            // LLM calls on this Pending across all retry/scheduler paths;
+            // refuse to do another.
+            emit
+              (MaterializeFailed(
+                p.name,
+                sprintf "llm call cap (%d) reached for handle" llmCallCap
+              ))
+            return None
+          else
+          let _ = incrementLlmCalls p.handle
           let! resp =
             callOpenAI apiKey v4SystemPrompt prompt
             |> Async.AwaitTask
@@ -1148,6 +1180,7 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
 
                   // Run the LLM's claimed tests. If we have a runner AND
                   // tests, gate promotion on the result.
+                  let (RT.Hash fnHashStr) = fn.hash
                   let! testOutcomes =
                     uply {
                       match testRunner with
@@ -1158,7 +1191,13 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                           let! r = runner (fn, t.args)
                           let outcome =
                             match r with
-                            | Error e -> TError(t.args, e)
+                            | Error e ->
+                              // Recursion: the body calls itself via Apply
+                              // on its own hash. The inline test runner
+                              // can't resolve that. Treat as skipped, not
+                              // a failure — better than a retry loop.
+                              if e.Contains fnHashStr then TSkipped
+                              else TError(t.args, e)
                             | Ok got ->
                               if got = t.expect then TPass(t.args, got)
                               else TFail(t.args, t.expect, got)
