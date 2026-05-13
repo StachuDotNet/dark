@@ -25,6 +25,8 @@ open FSharp.Control.Tasks
 
 open Prelude
 module RT = LibExecution.RuntimeTypes
+module PT = LibExecution.ProgramTypes
+module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 
 
 // ---------------------------------------------------------------------------
@@ -121,6 +123,112 @@ Darklang syntax for the body content:
   a double-quoted string literal. Example: `x ++ "!"` or `"hi " ++ x`.
 
 Return ONLY the JSON object. No markdown fences, no prose."""
+
+
+// ---------------------------------------------------------------------------
+// LibParser hook — the materializer's *real* body parser.
+//
+// PDDMaterializer lives in LibExecution, which sits BELOW LibParser in the
+// dependency graph, so we can't import LibParser directly. Instead the CLI
+// installs a callback at startup that wraps `LibParser.Parser.parsePTExpr`.
+// When installed, the materializer routes LLM-generated bodies through it
+// first; the regex mini-parser stays as a fast/fallback path only.
+// ---------------------------------------------------------------------------
+
+/// Result-shaped to keep error messages visible in the HTML view.
+type BodyParser = string -> Ply<Result<PT.Expr, string>>
+
+let mutable bodyParser : BodyParser option = None
+
+let installBodyParser (parser : BodyParser) : unit =
+  bodyParser <- Some parser
+
+/// Parse a simple type-name (Int64, String, ...) → RT.TypeReference.
+/// Returns None for anything more elaborate; callers fall back to TInt64
+/// or surface a parse error.
+let parseSimpleType (raw : string) : Option<RT.TypeReference> =
+  match raw.Trim() with
+  | "Int64" -> Some RT.TInt64
+  | "Int32" -> Some RT.TInt32
+  | "Int16" -> Some RT.TInt16
+  | "Int8" -> Some RT.TInt8
+  | "UInt64" -> Some RT.TUInt64
+  | "UInt32" -> Some RT.TUInt32
+  | "String" -> Some RT.TString
+  | "Bool" -> Some RT.TBool
+  | "Float" -> Some RT.TFloat
+  | "Char" -> Some RT.TChar
+  | "Unit" -> Some RT.TUnit
+  | _ -> None
+
+/// Parse a full sig string `(x: Int64, y: String): Bool` to a structured
+/// param list + return type. Tolerant of whitespace but requires the
+/// `(...): T` shape exactly.
+let parseFullSig
+  (raw : string)
+  : Option<List<string * RT.TypeReference> * RT.TypeReference> =
+  let m =
+    System.Text.RegularExpressions.Regex.Match(
+      raw.Trim(),
+      @"^\(([^)]*)\)\s*:\s*(\w+)$"
+    )
+  if not m.Success then
+    None
+  else
+    let paramsRaw = m.Groups[1].Value
+    let returnRaw = m.Groups[2].Value
+    match parseSimpleType returnRaw with
+    | None -> None
+    | Some returnType ->
+      // Parse each param "name: Type"
+      let parts =
+        paramsRaw.Split([| ',' |], StringSplitOptions.RemoveEmptyEntries)
+        |> Array.map (fun s -> s.Trim())
+        |> Array.toList
+      let parsed =
+        parts
+        |> List.map (fun p ->
+          let mp = System.Text.RegularExpressions.Regex.Match(p, @"^(\w+)\s*:\s*(\w+)$")
+          if mp.Success then
+            match parseSimpleType mp.Groups[2].Value with
+            | Some t -> Some(mp.Groups[1].Value, t)
+            | None -> None
+          else
+            None)
+      if List.forall Option.isSome parsed then
+        Some(parsed |> List.map Option.get, returnType)
+      else
+        None
+
+/// Build an RT.PackageFn from a parsed PT.Expr body and typed params.
+/// Uses PT2RT.Expr.toRT with the param-name → register-index symbol map
+/// the runtime expects.
+let private fnFromTypedBody
+  (name : string)
+  (typedParams : List<string * RT.TypeReference>)
+  (returnType : RT.TypeReference)
+  (ptBody : PT.Expr)
+  : RT.PackageFn.PackageFn =
+  // Symbol table: each param name maps to its register index.
+  let (rcAfterParams, symbols) : (int * Map<string, int>) =
+    typedParams
+    |> List.fold
+      (fun (rc, syms) (n, _) -> (rc + 1, Map.add n rc syms))
+      (0, Map.empty)
+  let instructions = PT2RT.Expr.toRT symbols rcAfterParams None ptBody
+  let hashKey = sprintf "pdd-llm-%s-%d" name (hash instructions.instructions)
+  let mkParam (n : string) (t : RT.TypeReference) : RT.PackageFn.Parameter =
+    { name = n; typ = t }
+  let paramRecords =
+    match typedParams with
+    | [] -> NEList.singleton (mkParam "_unit" RT.TUnit)
+    | (n, t) :: rest ->
+      NEList.ofList (mkParam n t) (rest |> List.map (fun (n, t) -> mkParam n t))
+  { hash = RT.Hash hashKey
+    typeParams = []
+    parameters = paramRecords
+    returnType = returnType
+    body = instructions }
 
 
 /// Stashed call-site context per Pending handle. The CLI parallel
@@ -900,28 +1008,85 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                 let paramNames =
                   parseParamNames gen.sig_
                   |> Option.defaultValue [ "x" ]
-                match parseMinimalBodyN paramNames gen.body with
-                | Some instrs ->
+
+                // ============================================================
+                // PRIMARY PATH: LibParser. Routes the full Dark language
+                // through the real parser + PT2RT lowering.
+                //
+                // Requires the CLI to have installed `bodyParser`. Also
+                // requires a parseable sig (with typed params + return type).
+                // Falls back to the regex mini-parser when either is missing.
+                // ============================================================
+                let! libParserResult =
+                  uply {
+                    match bodyParser, parseFullSig gen.sig_ with
+                    | Some parser, Some(typedParams, returnType) ->
+                      // Wrap the body in a `fun <params> -> <body>` lambda so
+                      // LibParser treats x/y as bound vars instead of
+                      // unresolved fn names (which AllowPending would turn
+                      // into Pendings). We then peel off the lambda after
+                      // parsing — our own symbols map handles the binding
+                      // at lowering time.
+                      let toParse =
+                        if List.isEmpty typedParams then
+                          gen.body
+                        else
+                          let paramList =
+                            typedParams
+                            |> List.map fst
+                            |> String.concat " "
+                          sprintf "fun %s -> %s" paramList gen.body
+                      let! parsed = parser toParse
+                      match parsed with
+                      | Ok ptExpr ->
+                        try
+                          let bodyExpr =
+                            if List.isEmpty typedParams then ptExpr
+                            else
+                              match ptExpr with
+                              | PT.ELambda(_, _, inner) -> inner
+                              | _ -> ptExpr
+                          let fn =
+                            fnFromTypedBody p.name typedParams returnType bodyExpr
+                          return Some fn
+                        with _ ->
+                          // PT2RT lowering can throw on unsupported PT shapes.
+                          return None
+                      | Error _ -> return None
+                    | _ -> return None
+                  }
+
+                match libParserResult with
+                | Some fn ->
                   let kind =
-                    if instrs.instructions.Length = 0 then "identity"
-                    elif instrs.instructions.Length = 1 then "constant"
-                    else "arith"
-                  let labelledKind =
-                    if n > 1 then sprintf "%s (retry %d)" kind (n - 1) else kind
-                  emit (CompileBody(p.name, labelledKind, instrs.registerCount))
+                    if n > 1 then sprintf "libparser (retry %d)" (n - 1)
+                    else "libparser"
+                  emit (CompileBody(p.name, kind, fn.body.registerCount))
                   emit (MaterializeDone(p.name, Real, elapsedMs ()))
                   persistPromoted p.name gen
-                  return Some(fnFromBodyN p.name paramNames instrs)
-                | None when n < maxAttempts ->
-                  // Mini-parser refused: feed the failed body back to the
-                  // LLM with an explicit grammar and ask for a simpler body.
-                  emit (CompileBody(p.name, sprintf "retry-%d" n, 0))
-                  let fixUp = buildFixUpPrompt p.name gen.sig_ gen.body
-                  return! attempt (n + 1) fixUp
+                  return Some fn
                 | None ->
-                  emit (CompileBody(p.name, "fallback-identity", 1))
-                  emit (MaterializeDone(p.name, Fake, elapsedMs ()))
-                  return Some(hardcodedIdentityFn p.name)
+                  // FALLBACK PATH: regex mini-parser (the original 5 cases).
+                  match parseMinimalBodyN paramNames gen.body with
+                  | Some instrs ->
+                    let kind =
+                      if instrs.instructions.Length = 0 then "identity"
+                      elif instrs.instructions.Length = 1 then "constant"
+                      else "arith"
+                    let labelledKind =
+                      if n > 1 then sprintf "%s (retry %d)" kind (n - 1) else kind
+                    emit (CompileBody(p.name, labelledKind, instrs.registerCount))
+                    emit (MaterializeDone(p.name, Real, elapsedMs ()))
+                    persistPromoted p.name gen
+                    return Some(fnFromBodyN p.name paramNames instrs)
+                  | None when n < maxAttempts ->
+                    emit (CompileBody(p.name, sprintf "retry-%d" n, 0))
+                    let fixUp = buildFixUpPrompt p.name gen.sig_ gen.body
+                    return! attempt (n + 1) fixUp
+                  | None ->
+                    emit (CompileBody(p.name, "fallback-identity", 1))
+                    emit (MaterializeDone(p.name, Fake, elapsedMs ()))
+                    return Some(hardcodedIdentityFn p.name)
         }
       let initialPrompt = buildUserPrompt p
       return! attempt 1 initialPrompt

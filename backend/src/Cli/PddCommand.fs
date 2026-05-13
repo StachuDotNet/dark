@@ -23,6 +23,7 @@ open FSharp.Control.Tasks
 
 open Prelude
 module RT = LibExecution.RuntimeTypes
+module PT = LibExecution.ProgramTypes
 module Exe = LibExecution.Execution
 module View = LibExecution.PDDHTMLView
 module Mat = LibExecution.PDDMaterializer
@@ -484,6 +485,34 @@ let private handleTrace (subcmd : string) : Task<int> =
   }
 
 
+/// One-time install of the LibParser-backed body parser into
+/// `PDDMaterializer.bodyParser`. Calling repeatedly is harmless; the last
+/// installation wins. Done lazily so unrelated CLI invocations don't pay
+/// the cost of constructing builtins + PM.
+let private installLibParserHook () : unit =
+  match Mat.bodyParser with
+  | Some _ -> () // already installed
+  | None ->
+    let allBuiltins : RT.Builtins =
+      LibExecution.Builtin.combine [ Builtins.Pure.Builtin.builtins () ] []
+    let ptPm = LibDB.PackageManager.pt
+    let parser (body : string) : Ply<Result<PT.Expr, string>> =
+      uply {
+        try
+          let! expr =
+            LibParser.Parser.parsePTExpr
+              allBuiltins
+              ptPm
+              LibParser.NameResolver.OnMissing.AllowPending
+              "<pdd materialize body>"
+              body
+          return Ok expr
+        with ex ->
+          return Error ex.Message
+      }
+    Mat.installBodyParser parser
+
+
 /// Entry point for `dark pdd ...` and `dark prompt ...` commands.
 /// Returns Some exitCode if the arg list matched; None to fall through
 /// to the normal CLI dispatch.
@@ -492,6 +521,7 @@ let tryHandle
   (args : List<string>)
   : Task<int option> =
   task {
+    installLibParserHook ()
     match args with
     | "prompt" :: rest ->
       // `dark prompt "..."` — high-level surface: free-text in,
