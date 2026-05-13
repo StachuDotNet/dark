@@ -1473,7 +1473,10 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
       // Round-trip with the LLM. On parse failure we retry once with a
       // grammar-explicit fix-up prompt before falling back to identity.
       // Cap: 2 LLM calls total per materialization.
-      let maxAttempts = 2
+      // Creative fns can take an extra attempt: their bodies sometimes
+      // need (a) a libparser-friendly rewrite, then (b) a thin-retry
+      // pushing toward richer HTML. Verifiable fns stay at 2.
+      let maxAttempts = if isCreativeFnName p.name then 3 else 2
       let rec attempt (n : int) (prompt : string) =
         uply {
           if llmCallsExhausted p.handle then
@@ -1608,6 +1611,30 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                   if isCreative && not envSkip then
                     // Note in events so the HTML view shows why QA was skipped.
                     emit (CompileBody(p.name, "creative-fn (no QA)", 0))
+
+                  // For creative fns, self-check: is the BODY structured or
+                  // a thin echo like `x ++ "..."`? If thin and we have
+                  // retries, push back with feedback (and skip the rest of
+                  // this attempt's work).
+                  let creativeThinRetry =
+                    if isCreative && n < maxAttempts then
+                      let body = gen.body.ToLowerInvariant()
+                      let looksThin =
+                        body.Length < 60 ||
+                        (body.StartsWith "x" && not (body.Contains "<")) ||
+                        not (body.Contains "<")
+                      if looksThin then Some gen.body else None
+                    else None
+                  match creativeThinRetry with
+                  | Some priorBody ->
+                    emit (CompileBody(p.name, sprintf "thin-retry-%d" n, 0))
+                    let fixUp =
+                      sprintf
+                        "Function: %s\nYour previous attempt was a thin echo:\n  body: %s\n\nThis is a CREATIVE/page-rendering fn. Return RICH semantic HTML wrapping the input content in <html><head><title>...</title></head><body><h1>...</h1><section><h2>...</h2><ul><li>...</li></ul></section>... structure. Use the literal arg content to populate sections meaningfully. Return JSON {sig, body, tests:[]} with body as a multi-line Dark string-concat expression using ++ and the named param to splice content."
+                        p.name
+                        priorBody
+                    return! attempt (n + 1) fixUp
+                  | None ->
                   let! verificationTests =
                     uply {
                       if skipQA then
