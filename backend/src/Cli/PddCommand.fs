@@ -493,7 +493,7 @@ let private handlePrompt
       else
         let userPrompt = Mat.buildDecomposePrompt request
         let! resp =
-          Mat.callOpenAI apiKey Mat.decomposeSystemPrompt userPrompt
+          Mat.callOpenAIWithMode apiKey Mat.decomposeSystemPrompt userPrompt false
         match resp with
         | Error e ->
           eprintfn "%s %s %s" prefix (red "decompose http error:") e

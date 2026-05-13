@@ -681,10 +681,11 @@ let private httpClient : Lazy<HttpClient> =
 /// Model selection: PDD_MODEL env override (default gpt-4o-mini for cost).
 /// Set to "gpt-4o" or other model name to upgrade — useful when picky
 /// syntax (list ops, lambdas, prefix application) trips up mini.
-let callOpenAI
+let callOpenAIWithMode
   (apiKey : string)
   (systemPrompt : string)
   (userPrompt : string)
+  (forceJson : bool)
   : Task<Result<string, string>> =
   task {
     try
@@ -693,18 +694,28 @@ let callOpenAI
         | null | "" -> "gpt-4o-mini"
         | m -> m
       // response_format=json_object forces the model to emit valid JSON.
-      // Saves a retry round-trip when the model would otherwise produce
-      // a malformed test array or stray prose.
+      // Skipped for prose-output calls (like decompose) since OpenAI
+      // requires the word "json" in messages when json_object is on.
       let payload =
-        JsonSerializer.Serialize(
-          {| model = model
-             messages =
-               [| {| role = "system"; content = systemPrompt |}
-                  {| role = "user"; content = userPrompt |} |]
-             max_tokens = 800
-             temperature = 0
-             response_format = {| ``type`` = "json_object" |} |}
-        )
+        if forceJson then
+          JsonSerializer.Serialize(
+            {| model = model
+               messages =
+                 [| {| role = "system"; content = systemPrompt |}
+                    {| role = "user"; content = userPrompt |} |]
+               max_tokens = 800
+               temperature = 0
+               response_format = {| ``type`` = "json_object" |} |}
+          )
+        else
+          JsonSerializer.Serialize(
+            {| model = model
+               messages =
+                 [| {| role = "system"; content = systemPrompt |}
+                    {| role = "user"; content = userPrompt |} |]
+               max_tokens = 800
+               temperature = 0 |}
+          )
       let req =
         new HttpRequestMessage(
           HttpMethod.Post,
@@ -723,6 +734,15 @@ let callOpenAI
           Error(sprintf "HTTP %d: %s" (int resp.StatusCode) body)
     with ex -> return Error(sprintf "request failed: %s" ex.Message)
   }
+
+/// Default callOpenAI uses json_object response mode. For prose-output
+/// callers (like decompose), use callOpenAIWithMode with forceJson=false.
+let callOpenAI
+  (apiKey : string)
+  (systemPrompt : string)
+  (userPrompt : string)
+  : Task<Result<string, string>> =
+  callOpenAIWithMode apiKey systemPrompt userPrompt true
 
 
 /// Pull the `content` string out of a successful chat-completion response.
