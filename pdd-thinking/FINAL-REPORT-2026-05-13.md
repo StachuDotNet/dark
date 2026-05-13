@@ -75,7 +75,7 @@ Commit after every phase. The branch is throwaway — commits are free.
 ## Spike budget envelopes
 
 - **Engineering time**: 2-week target. **Day 3 is the health checkpoint** — Demos 1 + 4 green by then means the spike is on track. **Day 10**: Demo 6 (HN headline sentiment) green. **Day 14**: hard stop — write a postmortem, pivot or abandon.
-- **OpenAI $$**: Hardcode `gpt-4o-mini`. Trip-wire at $7 spent. Hard stop at $9.50. (Today's exploratory calls cost ~$0.0005 total — leaving ~$9.9995 of $10.)
+- **OpenAI $$**: Hardcode `gpt-4o-mini`. Trip-wire at $7 spent. Hard stop at $9.50. (Tonight's exploratory calls — ~20 sanity checks across v1/v2/v3/v4 prompt iterations — cost ~$0.0012 total. ~$9.998 of $10 remains.)
 - **Cognitive load**: If you're reading 4 docs to remember why X, stop and re-read `12-glossary.md` + `00-LOOP-SUMMARY.md`.
 
 ## Demos (acceptance gates)
@@ -121,7 +121,7 @@ Full source sketches in `pdd-thinking/14-demo-programs.md`. **Demo 6 is the elev
 | 13 | `13-libpdd-materializer.md` | F# project structure for new LibPDD (7 files) |
 | 14 | `14-demo-programs.md` | 6 demos w/ source sketches + acceptance criteria |
 | 15 | `15-spike-budgets.md` | Engineering time / API $ / cognitive load envelopes |
-| 16 | `16-prompt-shapes.md` | Verbatim gpt-4o-mini outputs + v3 system prompt |
+| 16 | `16-prompt-shapes.md` | Verbatim gpt-4o-mini outputs (v1→v4 prompt iterations); v4 is the keeper |
 | 17 | `17-day-1-quick-reference.md` | **★ Single-page at-the-desk cheat sheet** |
 | 18 | `18-minimum-viable-spike.md` | 4-hour cut: smallest path to Demo 1 |
 | 19 | `19-red-team.md` | 14 risks across design / impl / project + smoke detectors |

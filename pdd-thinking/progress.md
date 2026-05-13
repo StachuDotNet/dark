@@ -272,3 +272,12 @@ Format:
 - Time check: 04:46 EDT. ~3h 14m to 8am.
 - Next: idle iteration at 60min, then 06:00ish iteration to start print prep.
 - Commits: 1 pending (just the progress.md update).
+
+### 2026-05-13 05:46 — iteration 27 (proof-read, 2 stale-number fixes)
+- Did: proof-read of FINAL-REPORT. Spotted two stale numbers:
+  - "Today's exploratory calls cost ~$0.0005 total" — outdated, actual is ~$0.0012 after iter 23-25 tests. Fixed + reworded to "~20 sanity checks across v1/v2/v3/v4 prompt iterations".
+  - "v3 system prompt" in pointer table — should be v4 (v3 was deprecated mid-night). Fixed to "v1→v4 prompt iterations; v4 is the keeper."
+- Re-ran `print-md --no-print`: still exactly 5 pages.
+- Time check: 05:48 EDT. ~2h 12m to 8am.
+- Plan: schedule next at ~45 min, then 06:30 print run, then idle until 8am if desired.
+- Commits: 1 pending.
