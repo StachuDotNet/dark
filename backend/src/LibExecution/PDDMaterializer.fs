@@ -133,8 +133,11 @@ Darklang syntax for the body content:
     Stdlib.List.reverse, Stdlib.List.fold (NOT fold_left), Stdlib.List.map,
     Stdlib.List.filter, Stdlib.List.length, Stdlib.List.isEmpty,
     Stdlib.List.sort.
-  Stdlib.List.fold signature: `fold (list) (init) (fn: acc -> elem -> acc)`.
-  Argument order is list first, then init, then folder.
+  **All take the list as the FIRST argument** (not Haskell-style fn-first):
+    Stdlib.List.map  list (fn: elem -> result)
+    Stdlib.List.filter list (fn: elem -> Bool)
+    Stdlib.List.fold list init (fn: acc elem -> acc)
+  Example: `Stdlib.List.map lst (fun x -> x * 2L)` NOT `Stdlib.List.map (fun x -> x * 2L) lst`.
 - Function application is PREFIX, NOT parenthesized:
     Stdlib.List.map f lst       (correct)
     Stdlib.List.map(f, lst)     (WRONG)
@@ -689,6 +692,9 @@ let callOpenAI
         match System.Environment.GetEnvironmentVariable("PDD_MODEL") with
         | null | "" -> "gpt-4o-mini"
         | m -> m
+      // response_format=json_object forces the model to emit valid JSON.
+      // Saves a retry round-trip when the model would otherwise produce
+      // a malformed test array or stray prose.
       let payload =
         JsonSerializer.Serialize(
           {| model = model
@@ -696,7 +702,8 @@ let callOpenAI
                [| {| role = "system"; content = systemPrompt |}
                   {| role = "user"; content = userPrompt |} |]
              max_tokens = 800
-             temperature = 0 |}
+             temperature = 0
+             response_format = {| ``type`` = "json_object" |} |}
         )
       let req =
         new HttpRequestMessage(
