@@ -112,6 +112,11 @@ Darklang syntax for the body content:
 - Records: Type { a = 1L; b = 2L }.
 - Recursion: call the function by its short name inside the body.
 - Prefer the simplest possible implementation.
+- Conditionals (single-line shape, NO parentheses around the cond):
+    if x > 0L then x else 0L
+    if x < y then x else y
+    if a >= b then a else b
+  Use `>`, `<`, `>=`, or `<=`. Operands must be a param name or Int64 literal.
 
 Return ONLY the JSON object. No markdown fences, no prose."""
 
@@ -414,7 +419,85 @@ let parseMinimalBodyN (paramNames : List<string>) (body : string) : Option<RT.In
         resultIn = idx }
 
   else
-    None
+    // Case 4: if <cond-operand> <cmp> <cond-operand> then <branch> else <branch>
+    // where operands are param names or Int64 literals (no nested arith).
+    // Compiles to `cmp` builtin Apply + JumpByIfFalse + branches + CopyVal.
+    let ifMatch =
+      System.Text.RegularExpressions.Regex.Match(
+        trimmed,
+        @"^if\s+(\w+|-?\d+L)\s+(>=|<=|>|<)\s+(\w+|-?\d+L)\s+then\s+(\w+|-?\d+L)\s+else\s+(\w+|-?\d+L)$"
+      )
+    if not ifMatch.Success then
+      None
+    else
+      let cmpBuiltin =
+        match ifMatch.Groups[2].Value with
+        | ">" -> Some "int64GreaterThan"
+        | "<" -> Some "int64LessThan"
+        | ">=" -> Some "int64GreaterThanOrEqualTo"
+        | "<=" -> Some "int64LessThanOrEqualTo"
+        | _ -> None
+      // Compile an operand to: register-holding-the-value, optional load instr.
+      // For a param: returns existing register, no instr.
+      // For a literal: returns a fresh register with a LoadVal.
+      let compileOperand (raw : string) (nextReg : int) =
+        match argIndex raw with
+        | Some i -> Ok(i, [], nextReg)
+        | None ->
+          if System.Text.RegularExpressions.Regex.IsMatch(raw, @"^-?\d+L$") then
+            let n = System.Int64.Parse(raw.TrimEnd('L'))
+            Ok(nextReg, [ RT.LoadVal(nextReg, RT.DInt64 n) ], nextReg + 1)
+          else
+            Error()
+      match cmpBuiltin with
+      | None -> None
+      | Some bname ->
+        let arity = List.length paramNames
+        let resultReg = arity
+        let r0 = arity + 1
+        match compileOperand ifMatch.Groups[1].Value r0 with
+        | Error _ -> None
+        | Ok(lhsReg, lhsInstrs, r1) ->
+          match compileOperand ifMatch.Groups[3].Value r1 with
+          | Error _ -> None
+          | Ok(rhsReg, rhsInstrs, r2) ->
+            let cmpAppReg = r2
+            let condReg = r2 + 1
+            let branchScratch = r2 + 2
+            match compileOperand ifMatch.Groups[4].Value branchScratch with
+            | Error _ -> None
+            | Ok(thenReg, thenInstrs, r3) ->
+              match compileOperand ifMatch.Groups[5].Value r3 with
+              | Error _ -> None
+              | Ok(elseReg, elseInstrs, r4) ->
+                let cmpApp : RT.ApplicableNamedFn =
+                  { name = RT.FQFnName.fqBuiltin bname 0
+                    typeSymbolTable = Map.empty
+                    typeArgs = []
+                    argsSoFar = [] }
+                let cmpArgs : NEList<int> = NEList.ofList lhsReg [ rhsReg ]
+                let copyThen = [ RT.CopyVal(resultReg, thenReg) ]
+                let copyElse = [ RT.CopyVal(resultReg, elseReg) ]
+                // After cmp, we have: [cmpApp, Apply→condReg].
+                // Then: JumpByIfFalse(thenLen+1, condReg)   -- +1 skips the JumpBy
+                //       <thenInstrs>; CopyVal(resultReg, thenReg)
+                //       JumpBy(elseLen+1)                   -- +1 skips else copy
+                //       <elseInstrs>; CopyVal(resultReg, elseReg)
+                let thenBlock = thenInstrs @ copyThen
+                let elseBlock = elseInstrs @ copyElse
+                let instructions =
+                  lhsInstrs
+                  @ rhsInstrs
+                  @ [ RT.LoadVal(cmpAppReg, RT.DApplicable(RT.AppNamedFn cmpApp))
+                      RT.Apply(condReg, cmpAppReg, [], cmpArgs)
+                      RT.JumpByIfFalse(List.length thenBlock + 1, condReg) ]
+                  @ thenBlock
+                  @ [ RT.JumpBy(List.length elseBlock) ]
+                  @ elseBlock
+                Some
+                  { registerCount = r4
+                    instructions = instructions
+                    resultIn = resultReg }
 
 
 /// One-param convenience wrapper.

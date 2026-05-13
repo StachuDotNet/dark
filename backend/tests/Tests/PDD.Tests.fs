@@ -512,6 +512,86 @@ module MinimalBody =
       Expect.isNone (M.parseParamNames "just text") ""
     }
 
+  // -- if-else body shape ---------------------------------------------------
+
+  let parsesIfMaxOfTwoParams =
+    test "parseMinimalBodyN ['x';'y'] 'if x > y then x else y' → if-else" {
+      match M.parseMinimalBodyN [ "x"; "y" ] "if x > y then x else y" with
+      | Some instrs ->
+        // arity=2 so resultReg=2
+        Expect.equal instrs.resultIn 2 "result reg is arity (2)"
+        // Should have: load cmp builtin, Apply→cond, JumpByIfFalse,
+        //              CopyVal(thenBranch), JumpBy, CopyVal(elseBranch)
+        Expect.isGreaterThan instrs.instructions.Length 4 "non-trivial instr list"
+        // Find the comparison builtin in the load instrs
+        let hasGt =
+          instrs.instructions
+          |> List.exists (fun i ->
+            match i with
+            | RT.LoadVal(_, RT.DApplicable(RT.AppNamedFn app)) ->
+              match app.name with
+              | RT.FQFnName.Builtin b -> b.name = "int64GreaterThan"
+              | _ -> false
+            | _ -> false)
+        Expect.isTrue hasGt "uses int64GreaterThan builtin"
+        let hasJumpIfFalse =
+          instrs.instructions
+          |> List.exists (fun i ->
+            match i with
+            | RT.JumpByIfFalse _ -> true
+            | _ -> false)
+        Expect.isTrue hasJumpIfFalse "has JumpByIfFalse"
+      | None -> Expect.equal 1 2 "expected Some for if-else max"
+    }
+
+  let parsesIfClampPositive =
+    test "parseMinimalBody 'if x > 0L then x else 0L' parses" {
+      match M.parseMinimalBody "x" "if x > 0L then x else 0L" with
+      | Some _ -> ()
+      | None -> Expect.equal 1 2 "expected Some for clampPositive"
+    }
+
+  let parsesIfLessThan =
+    test "parseMinimalBody 'if x < 5L then 0L else x' uses int64LessThan" {
+      match M.parseMinimalBody "x" "if x < 5L then 0L else x" with
+      | Some instrs ->
+        let hasLt =
+          instrs.instructions
+          |> List.exists (fun i ->
+            match i with
+            | RT.LoadVal(_, RT.DApplicable(RT.AppNamedFn app)) ->
+              match app.name with
+              | RT.FQFnName.Builtin b -> b.name = "int64LessThan"
+              | _ -> false
+            | _ -> false)
+        Expect.isTrue hasLt "uses int64LessThan"
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
+  let parsesIfGreaterEqual =
+    test "parseMinimalBody 'if x >= 0L then x else 0L' uses GTE builtin" {
+      match M.parseMinimalBody "x" "if x >= 0L then x else 0L" with
+      | Some instrs ->
+        let hasGte =
+          instrs.instructions
+          |> List.exists (fun i ->
+            match i with
+            | RT.LoadVal(_, RT.DApplicable(RT.AppNamedFn app)) ->
+              match app.name with
+              | RT.FQFnName.Builtin b -> b.name = "int64GreaterThanOrEqualTo"
+              | _ -> false
+            | _ -> false)
+        Expect.isTrue hasGte "uses GTE"
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
+  let ifElseUnknownCompFails =
+    test "parseMinimalBody declines if-else with bogus operator" {
+      Expect.isNone
+        (M.parseMinimalBody "x" "if x ~ 0L then x else 0L")
+        "no match on ~"
+    }
+
   let tests =
     testList
       "MinimalBody"
@@ -531,7 +611,12 @@ module MinimalBody =
         parseParamNamesSingle
         parseParamNamesMulti
         parseParamNamesEmpty
-        parseParamNamesMalformed ]
+        parseParamNamesMalformed
+        parsesIfMaxOfTwoParams
+        parsesIfClampPositive
+        parsesIfLessThan
+        parsesIfGreaterEqual
+        ifElseUnknownCompFails ]
 
 
 // ---------------------------------------------------------------------------
