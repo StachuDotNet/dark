@@ -394,10 +394,22 @@ let private handleRun
       System.Collections.Concurrent.ConcurrentDictionary<
         System.Guid,
         Task<Option<RT.PackageFn.PackageFn>>>()
-    if not (List.isEmpty pendings) then
+    // Pre-fetch ONLY pendings whose call-site has fully-resolved literal
+    // arg types. Pendings whose args come from another Pending's result
+    // (arg type "?") get deferred — the interpreter sets the runtime
+    // arg-type hint at Apply time and materialize uses it for a richer
+    // prompt. Avoids pre-baking the wrong type info into a downstream fn.
+    let prefetchable =
+      pendings
+      |> List.filter (fun p ->
+        match hints.TryFind p.handle with
+        | Some(types, _) ->
+          types |> List.forall (fun t -> t <> "?")
+        | None -> true)
+    if not (List.isEmpty prefetchable) then
       eprintfn "%s %s %s" prefix (dim "kick-off")
-        (dim (sprintf "%d pendings in parallel" (List.length pendings)))
-      for p in pendings do
+        (dim (sprintf "%d pendings in parallel" (List.length prefetchable)))
+      for p in prefetchable do
         let t = Task.Run<Option<RT.PackageFn.PackageFn>>(fun () ->
           Mat.materialize p |> Ply.toTask)
         inFlight[p.handle] <- t

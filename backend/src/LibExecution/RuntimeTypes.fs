@@ -123,6 +123,15 @@ module FQFnName =
     Pending { handle = System.Guid.NewGuid(); name = name }
 
 
+/// PDD: runtime arg-type hints, written by the interpreter just BEFORE a
+/// Pending fn is materialized, and read by PDDMaterializer when building
+/// the LLM prompt. Lives here (vs. PDDMaterializer.fs) because Interpreter
+/// is compiled before PDDMaterializer. Strings like "Int64", "List<String>",
+/// "List<List<String>>", "?".
+let pendingArgTypeHints :
+  System.Collections.Concurrent.ConcurrentDictionary<System.Guid, List<string>> =
+  System.Collections.Concurrent.ConcurrentDictionary()
+
 
 /// TODO include "ParseTime" in name (requires a lot of boring work in many files)
 type NameResolutionError =

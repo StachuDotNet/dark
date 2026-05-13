@@ -1049,6 +1049,27 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
             // lands). The frame's executionPoint uses the *materialized*
             // hash so the cached instructions are re-used cleanly.
             | FQFnName.Pending p ->
+              // PDD: propagate runtime arg types into the materialize prompt
+              // BEFORE calling materialize. If a previous Pending in the
+              // pipeline returned a different type than what the parse-time
+              // hint thought, this is our chance to correct it.
+              let rec runtimeArgTypeStr (vt : ValueType) : string =
+                match vt with
+                | ValueType.Known KTInt64 -> "Int64"
+                | ValueType.Known KTInt32 -> "Int32"
+                | ValueType.Known KTString -> "String"
+                | ValueType.Known KTBool -> "Bool"
+                | ValueType.Known KTFloat -> "Float"
+                | ValueType.Known KTChar -> "Char"
+                | ValueType.Known KTUnit -> "Unit"
+                | ValueType.Known(KTList inner) ->
+                  sprintf "List<%s>" (runtimeArgTypeStr inner)
+                | _ -> "?"
+              let runtimeTypes =
+                newArgDvals
+                |> List.map (fun dv ->
+                  runtimeArgTypeStr (Dval.toValueType dv))
+              pendingArgTypeHints[p.handle] <- runtimeTypes
               match! exeState.fns.materialize p with
               | None -> return RTE.FnNotFound(FQFnName.Pending p) |> raiseRTE
               | Some fn ->

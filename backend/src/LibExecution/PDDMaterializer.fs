@@ -451,9 +451,14 @@ let setArgValueHint (handle : System.Guid) (values : List<string>) : unit =
   argValueHints[handle] <- values
 
 let private getArgTypeHint (handle : System.Guid) : List<string> =
-  match argTypeHints.TryGetValue handle with
-  | true, t -> t
-  | _ -> []
+  // Runtime hint (written by interpreter just before materialize) wins if
+  // present; otherwise fall back to the parse-time literal-arg hint.
+  match RT.pendingArgTypeHints.TryGetValue handle with
+  | true, t when not (List.isEmpty t) -> t
+  | _ ->
+    match argTypeHints.TryGetValue handle with
+    | true, t -> t
+    | _ -> []
 
 let private getArgValueHint (handle : System.Guid) : List<string> =
   match argValueHints.TryGetValue handle with
