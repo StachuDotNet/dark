@@ -230,8 +230,13 @@ let testResultLabel (r : TestResult) : string =
   | TSkipped -> "skipped"
 
 /// Parse a type-name (Int64, String, List<Int64>, Option<String>, ...)
-/// → RT.TypeReference. Recursive on `<>` arguments. Returns None for
-/// anything more elaborate.
+/// → RT.TypeReference. Recursive on `<>` arguments.
+///
+/// For unrecognized types (e.g. Option<T>, Result<T,E>, custom records,
+/// tuples), returns `TVariable "_pdd_unknown"` — a polymorphic placeholder
+/// that the runtime's type-checker accepts. This is intentionally
+/// permissive: better to materialize a fn with a loose-typed param than
+/// to fall through to identity-fn for the entire materialization.
 let rec parseSimpleType (raw : string) : Option<RT.TypeReference> =
   let s = raw.Trim()
   match s with
@@ -247,22 +252,20 @@ let rec parseSimpleType (raw : string) : Option<RT.TypeReference> =
   | "Char" -> Some RT.TChar
   | "Unit" -> Some RT.TUnit
   | _ ->
-    // Generic forms: List<T>, Option<T>, etc. Greedy match: outermost <…>.
+    // Generic forms: List<T>, Option<T>, etc.
     let m =
-      System.Text.RegularExpressions.Regex.Match(s, @"^(\w+)\s*<\s*(.+?)\s*>$")
-    if not m.Success then None
-    else
+      System.Text.RegularExpressions.Regex.Match(s, @"^(\w+)\s*<\s*(.+)\s*>$")
+    if m.Success then
       let outer = m.Groups[1].Value
       let inner = m.Groups[2].Value
       match parseSimpleType inner, outer with
       | Some t, "List" -> Some(RT.TList t)
-      | Some _, "Option" ->
-        // PDD-Option is the Stdlib.Option<T> custom type; we don't have
-        // direct access to its type name from here, so treat any Option<T>
-        // as TCustomType(Option-built-in, [t]). Punt for now — return None
-        // and let the materializer fall through to mini-parser / identity.
-        None
-      | _ -> None
+      | _, _ ->
+        // Unknown generic — treat as polymorphic placeholder.
+        Some(RT.TVariable "_pdd_unknown")
+    else
+      // Non-generic unknown — also polymorphic.
+      Some(RT.TVariable "_pdd_unknown")
 
 /// Parse a full sig string `(x: Int64, y: String): Bool` to a structured
 /// param list + return type. Tolerant of whitespace but requires the
@@ -484,6 +487,16 @@ Darklang syntax:
 - Pipe: value |> fn
 - Function application is PREFIX, NOT parenthesized: f x y, not f(x, y)
 - String concat: ++
+
+Available Stdlib (use the EXACT names — these exist):
+- Stdlib.List.map / filter / fold / head / tail / append / reverse / length / isEmpty / sort
+- Stdlib.List.fold signature: `fold list init (fun acc elem -> acc)` (list first).
+- Stdlib.Int64.add / subtract / multiply / divide / mod / negate / equals / greaterThan / lessThan
+- Stdlib.String.append / length / toUppercase / toLowercase
+
+Do NOT use Haskell-style names: there is no foldl, foldr, fold_left,
+sum (use fold with add), map2, zip — invent your own name if you need
+those and the runtime will materialize it.
 """
 
 /// Build a user-side prompt for the decompose call. Just the request,

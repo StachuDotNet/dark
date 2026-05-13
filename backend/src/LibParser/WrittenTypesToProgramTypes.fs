@@ -700,6 +700,19 @@ module Expr =
     let toPT ctx = toPT builtins pm onMissing currentModule ctx
 
     uply {
+      // PDD: helper that wraps an unresolved name as a Pending fn-call when
+      // outer policy is AllowPending; otherwise falls back to a pipe-variable.
+      let pendingFallback (id : id) (name : string) : PT.PipeExpr =
+        match onMissing with
+        | NR.OnMissing.AllowPending ->
+          let pendingFqn = PT.FQFnName.fqPending name
+          let nameRes : PT.NameResolution<PT.FQFnName.FQFnName> =
+            { originalName = [ name ]
+              location = None
+              resolved = Ok pendingFqn }
+          PT.EPipeFnCall(id, nameRes, [], [])
+        | _ -> PT.EPipeVariable(id, name, [])
+
       match pipeExpr with
       | WT.EPipeVariableOrFnCall(id, name) ->
         match context.currentFnName with
@@ -719,7 +732,7 @@ module Expr =
             return
               match resolved.resolved with
               | Ok _ -> PT.EPipeFnCall(id, resolved, [], [])
-              | Error _ -> PT.EPipeVariable(id, name, [])
+              | Error _ -> pendingFallback id name
           | _ ->
             // Not a self-reference - try function resolution first, fall back to variable
             let! resolved =
@@ -733,7 +746,7 @@ module Expr =
             return
               match resolved.resolved with
               | Ok _ -> PT.EPipeFnCall(id, resolved, [], [])
-              | Error _ -> PT.EPipeVariable(id, name, [])
+              | Error _ -> pendingFallback id name
         | None when context.isInFunction ->
           // When inside a function with no self context, prioritize variables to allow shadowing
           return PT.EPipeVariable(id, name, [])
@@ -749,7 +762,7 @@ module Expr =
           return
             match resolved.resolved with
             | Ok _ -> PT.EPipeFnCall(id, resolved, [], [])
-            | Error _ -> PT.EPipeVariable(id, name, [])
+            | Error _ -> pendingFallback id name
 
       | WT.EPipeLambda(id, pats, body) ->
         // Start with a clean argMap to prevent lambda params from being converted to EArg
