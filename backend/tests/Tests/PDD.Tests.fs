@@ -211,7 +211,51 @@ module Integration =
       Expect.equal (getCallCount ()) 1 "materializer called exactly once"
     }
 
-  let tests = testList "Integration" [ pendingFnGoesThroughInterpreter ]
+  /// Real arithmetic — uses the mini-parser's "x + 1L" output as a body
+  /// and runs it through an interpreter with full Stdlib builtins available.
+  /// Proves end-to-end: LLM-style body string → instructions → executes
+  /// correctly with builtin calls.
+  let addOnePendingActuallyComputes =
+    testTask "Apply of Pending addOne (body 'x + 1L') with 5L → DInt64 6L" {
+      let instrs = buildApplyPendingProgram "addOne" 5L
+
+      // Build addOne fn using the mini-parser — same path the real
+      // materializer takes.
+      let addOneBody =
+        match LibExecution.PDDMaterializer.parseMinimalBody "x" "x + 1L" with
+        | Some b -> b
+        | None -> Exception.raiseInternal "mini-parser failed" []
+      let addOneFn : RT.PackageFn.PackageFn =
+        { hash = RT.Hash "stub-addone-arith-hash"
+          typeParams = []
+          parameters = NEList.singleton { name = "x"; typ = RT.TInt64 }
+          returnType = RT.TInt64
+          body = addOneBody }
+
+      let materialize : RT.FQFnName.Pending -> Ply<RT.PackageFn.PackageFn option> =
+        fun p -> if p.name = "addOne" then Ply(Some addOneFn) else Ply None
+
+      // Use the full test harness so Stdlib builtins are available
+      // (int64Add lives in Builtins.Pure).
+      let! (state : RT.ExecutionState) =
+        TestUtils.TestUtils.executionStateFor TestValues.pm false Map.empty
+      let exeState : RT.ExecutionState =
+        { state with fns = { state.fns with materialize = materialize } }
+
+      let! result =
+        LibExecution.Execution.execute exeState (None, instrs)
+
+      match result with
+      | Ok dv ->
+        Expect.equal dv (RT.DInt64 6L) "addOne 5 = 6"
+      | Error(rte, _) ->
+        Expect.equal 1 2 (sprintf "Expected success, got RTE: %A" rte)
+    }
+
+  let tests =
+    testList
+      "Integration"
+      [ pendingFnGoesThroughInterpreter; addOnePendingActuallyComputes ]
 
 
 // ---------------------------------------------------------------------------
