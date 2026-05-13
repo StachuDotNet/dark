@@ -166,4 +166,10 @@ Format:
 - Decided: smallest-possible-spike skips parking, capabilities, recovery, find, trace, even JSON parsing — proves only the pipeline. Everything else is iteration on top.
 - Time check: 02:05 EDT. ~6h to 8am. I'm slightly ahead of my "stop iterating at 6am" goal — could potentially do 2-3 more iterations of polish, then a final-report polish pass, then print.
 - Next: polish the final report. Specifically: add a "one-sentence" claim at the very top, tighten the prose, verify the page count after rendering. Maybe write `19-red-team.md` (what could go wrong / common LLM-spike pitfalls) for one more iteration. Then commit, polish, print.
+- Commits: 1 pending (iter 16).
+
+### 2026-05-13 02:07 — iteration 17 (write 19-red-team)
+- Did: wrote `19-red-team.md`. 14 categorized risks: design-level (trace not really replayable; tolerance hiding logic bugs; sig consensus thrashing; the spike succeeds but feels wrong), implementation-level (match-exhaustiveness eating Day 1; two-pass build forgotten; Ply cancellation subtleties; slow find path without name index; defaultFor wrong for custom types; LLM syntactically-invalid outputs), project-level (tarpit; demo-cadence divergence; burnout; cherry-pick-vs-rewrite). Plus a "we should have known" list. Plus smoke detectors to wire up Day 4 — one-liner shell + jq for tracking model upgrades / recovery rate / trace bloat / spend.
+- Most valuable insight: **R4 — the spike succeeds but feels wrong** = most valuable failure mode (write up why).
+- Time check: 02:08 EDT. About 5h 52m to 8am. Plenty of time. Plan: 1-2 more design iterations of polish + the final report tightening. Maybe write `20-the-elevator.md` (one-paragraph pitches for different audiences). Then polish final, print at ~06:30.
 - Commits: 1 pending.

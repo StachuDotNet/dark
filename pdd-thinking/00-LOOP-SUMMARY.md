@@ -44,6 +44,7 @@ Read in order:
 17. `16-prompt-shapes.md` — actual prompt templates with gpt-4o-mini outputs (v3 prompt is the keeper)
 18. `17-day-1-quick-reference.md` — **single-page at-the-desk cheat sheet** (print this!)
 19. `18-minimum-viable-spike.md` — if you only have 4 hours: the tightest possible Demo-1 path
+20. `19-red-team.md` — what could go wrong: design risks, impl footguns, project risks, smoke detectors
 17. `progress.md` — running log of each loop iteration
 18. `FINAL-REPORT-2026-05-13.md` — written + printed at 8am (don't read mid-loop, it doesn't exist yet)
 
