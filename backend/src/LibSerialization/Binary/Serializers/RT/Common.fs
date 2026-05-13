@@ -76,6 +76,13 @@ module FQFnName =
     | FQFnName.Package h ->
       w.Write 1uy
       Hash.write w h
+    | FQFnName.Pending p ->
+      // PDD: Pending fn refs aren't normally persisted (they're session-local).
+      // We still need a tag for completeness; round-trip uses name only,
+      // generates a fresh Guid on read. Don't rely on Guid stability across
+      // serialize/deserialize boundaries for PDD purposes.
+      w.Write 2uy
+      String.write w p.name
 
   let read (r : BinaryReader) : FQFnName.FQFnName =
     match r.ReadByte() with
@@ -86,6 +93,9 @@ module FQFnName =
     | 1uy ->
       let h = Hash.read r
       FQFnName.Package h
+    | 2uy ->
+      let name = String.read r
+      FQFnName.fqPending name
     | b -> raiseFormatError $"Invalid FQFnName tag: {b}"
 
 

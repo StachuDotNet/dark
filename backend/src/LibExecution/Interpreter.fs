@@ -317,6 +317,13 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
               | None -> return raiseRTE (RTE.FnNotFound(FQFnName.Package fn))
           }
 
+        // PDD: a pending fn. Real materialization wiring lives in Phase D
+        // (replace this with a call to exeState.fns.materialize once that
+        // field exists on ExecutionState). For Phase B we just error so the
+        // build stays correct.
+        | Function(FQFnName.Pending p) ->
+          raiseRTE (RTE.FnNotFound(FQFnName.Pending p))
+
 
       let mutable frameToPush = None
 
@@ -1021,6 +1028,11 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
                       executionPoint = pkgEp }
                     |> Some
 
+            // PDD: applying a Pending fn-value. Day-1: just error.
+            // Day-D will fold this into the materialization path.
+            | FQFnName.Pending p ->
+              return RTE.FnNotFound(FQFnName.Pending p) |> raiseRTE
+
         | RaiseNRE(names, nre) -> raiseRTE (RTE.ParseTimeNameResolution(names, nre))
 
         // CLEANUP: consider renaming this to something like "RequireExprToReturnUnit"
@@ -1077,6 +1089,12 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
               | FQFnName.Builtin builtin ->
                 let fn = Map.findUnsafe builtin exeState.fns.builtIn
                 Ply fn.returnType
+
+              // PDD: type-checking a return from a materialized Pending fn isn't
+              // wired yet. Skip the check by returning a free type-var; the type
+              // checker accepts anything. Phase D will improve this once we
+              // know the sig.
+              | FQFnName.Pending _ -> Ply (TVariable "pdd_pending_return")
 
             let tst = currentFrame.typeSymbolTable
             match!

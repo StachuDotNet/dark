@@ -142,12 +142,16 @@ module FQFnName =
       match u with
       | FQFnName.Builtin u -> "Builtin", [ Builtin.toDT u ]
       | FQFnName.Package u -> "Package", [ Package.toDT u ]
+      // PDD: Pending fn refs aren't yet round-tripped to/from DT.
+      // Serialize as a plain string for now; deserialization not supported.
+      | FQFnName.Pending p -> "Pending", [ DString p.name ]
     DEnum(typeName (), typeName (), [], caseName, fields)
 
   let fromDT (d : Dval) : FQFnName.FQFnName =
     match d with
     | DEnum(_, _, [], "Builtin", [ u ]) -> FQFnName.Builtin(Builtin.fromDT u)
     | DEnum(_, _, [], "Package", [ u ]) -> FQFnName.Package(Package.fromDT u)
+    | DEnum(_, _, [], "Pending", [ DString name ]) -> FQFnName.fqPending name
     | _ -> Exception.raiseInternal "Invalid FQFnName" []
 
 

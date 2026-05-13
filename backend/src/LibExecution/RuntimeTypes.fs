@@ -91,9 +91,17 @@ module FQFnName =
 
   type Package = Hash
 
+  /// PDD: a reference to a function whose body hasn't been materialized
+  /// yet. The interpreter pauses on these, asks the PackageManager to
+  /// materialize (via find/generate/human), then resumes the call.
+  /// `handle` is stable across the lifetime of a session.
+  /// Day-1 keeps this minimal — no SignatureHint yet (see 02-libexecution-changes.md).
+  type Pending = { handle : System.Guid; name : string }
+
   type FQFnName =
     | Builtin of Builtin
     | Package of Package
+    | Pending of Pending
 
   let assertBuiltinFnName (name : string) : unit =
     assertRe $"Fn name must match" builtinNamePattern name
@@ -108,6 +116,11 @@ module FQFnName =
     Builtin { name = name; version = version }
 
   let fqPackage (h : string) : FQFnName = Package(Hash h)
+
+  /// Construct a new Pending reference. Fresh Guid each call — caller
+  /// is responsible for handle-stability (e.g. same name + scope → reuse).
+  let fqPending (name : string) : FQFnName =
+    Pending { handle = System.Guid.NewGuid(); name = name }
 
 
 

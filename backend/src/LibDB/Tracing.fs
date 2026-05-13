@@ -181,6 +181,9 @@ let private fnNameToSimpleString (name : RT.FQFnName.FQFnName) : string =
   | RT.FQFnName.Builtin b ->
     if b.version = 0 then b.name else $"{b.name}_v{b.version}"
   | RT.FQFnName.Package(RT.Hash h) -> FnNameCache.resolve h
+  // PDD: pending fns surface as "pending:name" in traces. Day-D will
+  // promote these to real package fn hashes after materialization.
+  | RT.FQFnName.Pending p -> $"pending:{p.name}"
 
 
 /// Completed call event ready to emit to trace_fn_calls.
@@ -279,6 +282,23 @@ let private makeStoreFnResult (state : TracerState) : RT.Tracing.StoreFnResult =
           durationMs = 0L }
       )
     | RT.FQFnName.Package _ ->
+      if state.stack.Count > 0 then
+        let partial = state.stack.Pop()
+        let endedAt = System.Diagnostics.Stopwatch.GetTimestamp()
+        state.events.Add(
+          { callId = partial.callId
+            parentCallId = partial.parentCallId
+            kind = "function"
+            fnHash = partial.fnHash
+            lambdaExprId = None
+            args = partial.args
+            result = result
+            durationMs = ticksToMs (endedAt - partial.startedAtTicks) }
+        )
+    // PDD: tracing for pending fns mirrors the Package case. The fnHash
+    // entry will read "pending:<name>" until promoted to a real package
+    // fn after materialization.
+    | RT.FQFnName.Pending _ ->
       if state.stack.Count > 0 then
         let partial = state.stack.Pop()
         let endedAt = System.Diagnostics.Stopwatch.GetTimestamp()

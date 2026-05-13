@@ -315,6 +315,8 @@ let executionPointToString
       return $"Package Function {prettyName}"
     | RT.Function(RT.FQFnName.Builtin fnName) ->
       return $"Builtin Function {fnName.name}" // TODO actually fetch the fn, etc
+    | RT.Function(RT.FQFnName.Pending p) ->
+      return $"Pending Function {p.name}"
     | RT.Lambda(_parent, exprId) -> return ("Lambda " + string exprId)
   }
 

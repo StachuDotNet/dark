@@ -70,6 +70,8 @@ let getSqlSpec
   | RT.FQFnName.Package _ ->
     // Package functions don't have SqlSpec - they delegate to builtins
     None
+  // PDD: pending fns can't be SQL-compiled (no body yet).
+  | RT.FQFnName.Pending _ -> None
 
 /// Look up a package function's body for inlining
 let getFnBody
@@ -389,6 +391,9 @@ and executeInstruction
         else
           // Not all args are Literals - try to inline package functions
           match fnName with
+          // PDD: can't inline a pending fn — body doesn't exist yet.
+          // Fall through to the catch-all below by treating like Builtin.
+          | RT.FQFnName.Pending _ -> Ok state
           | RT.FQFnName.Package pkgId ->
             match
               inlineAndExecute
