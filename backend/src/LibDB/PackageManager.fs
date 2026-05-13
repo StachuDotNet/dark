@@ -44,6 +44,9 @@ let rt : RT.PackageManager =
   { getType = withCache PMRT.Type.get
     getFn = withCache PMRT.Fn.get
     getValue = withCache PMRT.Value.get
+    // PDD: default stub. Real impl (LLM-driven materializer) is installed
+    // by callers that opt in to PDD mode.
+    materializeFn = fun _ -> Ply None
     getBlob = PMRT.Blob.get
     persistBlob = PMRT.Blob.insert
 

@@ -1256,6 +1256,10 @@ module PackageManager =
           |> Ply.map (Option.map (PackageValue.toRT builtinValues))
       getFn = fun id -> pm.getFn (toPT id) |> Ply.map (Option.map PackageFn.toRT)
 
+      // PDD: PT-side PackageManager doesn't have a materializer concept yet.
+      // Transient wrappers (tests, in-memory flows) return None.
+      materializeFn = fun _ -> Ply None
+
       // PT PackageManager has no blob channel — it's purely location-
       // based name resolution. Transient wrappers return None; the
       // real blob lookup comes from the canonical RT PM.

@@ -50,6 +50,7 @@ let createState
     fns =
       { builtIn = builtins.fns
         package = pm.getFn
+        materialize = pm.materializeFn
         isHarmful = fun pkg -> pm.isHarmful branchId pkg }
 
     allowHarmful = false

@@ -317,12 +317,25 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
               | None -> return raiseRTE (RTE.FnNotFound(FQFnName.Package fn))
           }
 
-        // PDD: a pending fn. Real materialization wiring lives in Phase D
-        // (replace this with a call to exeState.fns.materialize once that
-        // field exists on ExecutionState). For Phase B we just error so the
-        // build stays correct.
+        // PDD: a pending fn. Ask the materializer to provide a body.
+        // If it succeeds, we cache the resulting instructions just like a
+        // package fn and execute them. If it fails (None), raise FnNotFound
+        // — Day-5 will route this through a tolerance/recovery policy.
         | Function(FQFnName.Pending p) ->
-          raiseRTE (RTE.FnNotFound(FQFnName.Pending p))
+          uply {
+            match! exeState.fns.materialize p with
+            | Some fn ->
+              let instrData =
+                { instructions = List.toArray fn.body.instructions
+                  resultReg = fn.body.resultIn }
+              // Reuse the package cache keyed by the materialized fn's hash —
+              // subsequent calls to the *same* hash are fast paths. The Pending
+              // handle itself isn't cached since fresh handles point to fresh
+              // session-local entries.
+              exeState.packageFnInstrCache[fn.hash] <- instrData
+              return instrData
+            | None -> return raiseRTE (RTE.FnNotFound(FQFnName.Pending p))
+          }
 
 
       let mutable frameToPush = None

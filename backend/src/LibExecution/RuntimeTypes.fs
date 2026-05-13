@@ -1266,6 +1266,12 @@ type PackageManager =
     getValue : FQValueName.Package -> Ply<Option<PackageValue.PackageValue>>
     getFn : FQFnName.Package -> Ply<Option<PackageFn.PackageFn>>
 
+    /// PDD: Materialize a pending fn into a concrete PackageFn. Real impls
+    /// race a find-in-corpus path against an LLM generate path; Day-1
+    /// default is a no-op stub that returns None (caller treats as
+    /// FnNotFound). Phase-D wires the interpreter to call this.
+    materializeFn : FQFnName.Pending -> Ply<Option<PackageFn.PackageFn>>
+
     /// Content-addressed blob bytes by SHA-256 hash. Returns [None]
     /// for missing hashes.
     getBlob : string -> Ply<Option<byte[]>>
@@ -1288,6 +1294,7 @@ type PackageManager =
     { getType = (fun _ -> Ply None)
       getFn = (fun _ -> Ply None)
       getValue = (fun _ -> Ply None)
+      materializeFn = (fun _ -> Ply None)
       getBlob = (fun _ -> Ply None)
       persistBlob = (fun _ _ -> uply { return () })
       isHarmful = (fun _ _ -> Ply false)
@@ -1321,6 +1328,7 @@ type PackageManager =
           match Map.tryFind id fnMap with
           | Some f -> Some f |> Ply
           | None -> pm.getFn id
+      materializeFn = pm.materializeFn
       getBlob = pm.getBlob
       persistBlob = pm.persistBlob
       isHarmful = pm.isHarmful
@@ -1777,6 +1785,10 @@ and Functions =
   {
     builtIn : Map<FQFnName.Builtin, BuiltInFn>
     package : FQFnName.Package -> Ply<Option<PackageFn.PackageFn>>
+    /// PDD: materialize a pending fn into a concrete PackageFn. Returns
+    /// None if no body is available (interpreter raises FnNotFound).
+    /// Mirrors `package` but takes a Pending handle instead of a Hash.
+    materialize : FQFnName.Pending -> Ply<Option<PackageFn.PackageFn>>
     /// `PackageManager.isHarmful` with the state's branchId pre-applied.
     isHarmful : FQFnName.Package -> Ply<bool>
   }
