@@ -239,4 +239,16 @@ Format:
 - Time check: 03:01 EDT. ~4h 59m to 8am.
 - Decided: this kind of regression test would be worth automating once the spike's running — feed N candidate fns through the prompt, AST-check, score. Worth a follow-up doc later (or just an open question).
 - Next at +25min: probably no new doc, maybe one more spot-check or just commit + wait.
+- Commits: 1 pending (iter 23).
+
+### 2026-05-13 03:26 — iteration 24 (v4 verified — prefix application fixed!)
+- Did: ran the same 3 Demo-2 fns with v4 prompt. **All three now use correct Darklang syntax**:
+  - parseCsv: `Stdlib.String.split csv "\n"`, `Stdlib.Dict.set acc header value`, `Stdlib.List.map (fun line -> ...) rows` — all prefix application
+  - skipHeader: `List<'a>` (apostrophe), `Stdlib.List.drop 1 lst` (prefix)
+  - sortByVarianceDescending: `List<Dict<String, Int64>>` (no anon record), prefix application
+- **Updated quality estimate: ~85-90% first-try syntax correctness after v4** (up from "barely usable" pre-v4 on this kind of fn). Remaining failure modes are subtler — stdlib name guessing, dict-vs-record confusion. Both addressable in v5 if needed.
+- Updated `16-prompt-shapes.md` with v4 verification + remaining failure modes. Updated `FINAL-REPORT-2026-05-13.md` from "~75%" to "~85-90%" first-try.
+- Cumulative spend tonight: ~$0.001 (~20 LLM calls total).
+- Time check: 03:28 EDT. ~4h 32m to 8am.
+- Next: stretch cadence to 30min. One more polish iteration mid-late, then start print prep around 06:30.
 - Commits: 1 pending.

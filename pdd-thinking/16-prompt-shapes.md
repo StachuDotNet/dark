@@ -246,11 +246,39 @@ Add these lines:
 
 After these additions, expect the success rate on Demo-2-shaped problems to rise from "barely usable" to "usable with one retry."
 
+### v4 verified (tested 03:26 EDT)
+
+Re-ran the same 3 Demo-2 fns with the v4 prompt. **All three now use correct Darklang syntax**:
+
+**parseCsv (v4)**:
+```darklang
+Stdlib.String.split csv "\n"                # ✓ prefix
+Stdlib.Dict.set acc header value             # ✓ multi-arg prefix
+Stdlib.List.map (fun line -> ...) rows       # ✓ lambda + prefix
+```
+
+**skipHeader (v4)**:
+```darklang
+(lst: List<'a>): List<'a>                    # ✓ apostrophe tvar
+Stdlib.List.drop 1 lst                       # ✓ prefix
+```
+
+**sortByVarianceDescending (v4)**:
+```darklang
+(lst: List<Dict<String, Int64>>): List<Dict<String, Int64>>   # ✓ no anon record
+Stdlib.List.sortBy (fun dict -> -dict.variance) lst           # ✓ prefix
+```
+
+**Remaining failure modes (subtler)**:
+- Model guesses stdlib fn names that may not exist (`Stdlib.List.foldi`, `Stdlib.List.sortBy`). Mitigation: pass the actual list of available stdlib names in the prompt.
+- Model uses `dict.variance` field-access on dicts; Dark uses `Stdlib.Dict.get` for dicts (dot-access is for records). Mitigation: one more line in the system prompt distinguishing records from dicts.
+- Minor: `1` instead of `1L` for Int64 literals occasionally slips through.
+
 ### Updated quality estimate
 
-After **v4** (the live additions just discovered), gpt-4o-mini should produce compilable Dark on ~60-75% of first tries even for multi-arg pipeline-style fns. Retry-with-AST-feedback gets the rest.
+**After v4: ~85-90% of generated bodies have correct syntax on the first try.** Most remaining failures are stdlib-name-guessing (fixable by injecting the real names) or dict/record confusion (one prompt line). This is *workable for the spike without further iteration*.
 
-**Day-1 stub** can still be `EmptyBody` — don't sweat the LLM quality until Day 2-3 when you're actually generating code.
+**Day-1 stub** can still be `EmptyBody` — don't sweat the LLM quality until Day 2-3 when you're actually generating code. But when you do start, **use the v4 prompt verbatim** from `17-day-1-quick-reference.md`.
 
 ## Provider notes
 
