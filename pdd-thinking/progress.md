@@ -39,3 +39,12 @@ Format:
 - Decided: if carving burns >1 hr, revert sln/CliHost changes and proceed with full build. Carving is optimization, not prerequisite.
 - Next: deepen `10-day-1-hacking-plan.md` into a literal step-by-step with grep/sed/git commands. Then deepen `06-builtin-permissions.md`. Then deepen `07-human-in-loop.md`.
 - Commits: pending iter-2 commit after this entry.
+
+### 2026-05-13 01:00 — iteration 3 (deepen 10-day-1-hacking-plan)
+- User pinged: tighten loop to 10min.
+- Did: rewrote `10-day-1-hacking-plan.md` as a literal step-by-step. 6 phases (A-F): carve sln, add Pending variant, materializeFn stub, interpreter arm, Dval.defaultFor, first passing test. Each phase has explicit commands + line numbers + commit messages. Verified line numbers against `RuntimeTypes.fs:88-110` and `fsdark.sln:44,61`.
+- Decided: skip typed `SignatureHint` on Day 1 — use raw strings to avoid forward-decl headache; promote to typed in Day 2.
+- Decided: `WarningsAsErrors=FS0025` trick to force every match-exhaustiveness site to show up. 74 FQFnName match sites in LibExecution alone, more elsewhere.
+- Decided: Phase A (carving) has a 60-min stop-loss → revert if needed.
+- Next: deepen `06-builtin-permissions.md` (capability model concrete sketch), then `07-human-in-loop.md`, then `08-tracing-as-artifact.md`. Then write a glossary doc (`12-glossary.md`?) and concrete `LibPDD/Materializer.fs` sketch (`13-libpdd-materializer.md`?).
+- Commits: 1 pending.
