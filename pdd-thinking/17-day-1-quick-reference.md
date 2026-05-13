@@ -73,7 +73,7 @@ set -a; source ~/.config/darklang/llm-keys.env; set +a
 
 **Budget:** $10 total. Hardcode `gpt-4o-mini`. ~$0.00005 per cheap call. ~300K calls available.
 
-## The v3 system prompt for `Generate.fs`
+## The v4 system prompt for `Generate.fs`
 
 ```
 You generate Darklang function bodies. Reply with ONLY a JSON object
@@ -82,6 +82,7 @@ You generate Darklang function bodies. Reply with ONLY a JSON object
 Darklang syntax notes:
 - Integers are SIZED: Int64 (default), Int8, Int32, etc. Never bare int.
 - Generics use ANGLE BRACKETS: List<Int64>, Option<String>. Not List(...).
+- Type variables use ML-style apostrophes: 'a, 'b, 'k, 'v. Not <a> or <b>.
 - Bindings: let x = expr in rest_of_expr (in is required).
 - Lambdas: fun x -> body. NEVER use =>.
 - Lists: [1L; 2L; 3L] (semicolons).
@@ -89,7 +90,13 @@ Darklang syntax notes:
 - String concat: ++.
 - Int division: Stdlib.Int64.divide. Not /.
 - Stdlib: prefix with Stdlib. (e.g. Stdlib.List.map, Stdlib.Int64.add).
+- Function application is PREFIX, NOT parenthesized:
+    Stdlib.List.map f lst       (correct)
+    Stdlib.List.map(f, lst)     (WRONG — JS/Python style, don't do this)
+- Multi-arg: Stdlib.String.split text "\n", NOT split(text, "\n").
 - Records: Type { a = 1L; b = 2L }. Field access: value.a.
+- No anonymous record types like List<Type {...}>. Define a named type
+  first, or use Dict<String, T> for string-keyed maps.
 - Enums: construct Option.Some 5L, match | Some x -> ...
 - Recursion: call the function by its short name inside the body.
 - Whitespace-sensitive (Python-like).

@@ -229,3 +229,14 @@ Format:
 - Time check: 02:35 EDT. ~5h 25m to 8am.
 - **Switching to longer cadence now.** Diminishing returns on more iterations. Next wake in ~25 min for one more polish/check, then likely longer fallback until ~06:00 EDT for the actual print.
 - This is iter 22 (no commit needed beyond progress.md update).
+
+### 2026-05-13 03:00 — iteration 23 (v3 prompt regression test → v4 fixes)
+- Did: ran v3 prompt against 4 Demo-2 fns (`parseCsv`, `skipHeader`, `sortByVarianceDescending`, `getDateField`). Cost ~$0.0003.
+- Found a **big new failure mode**: gpt-4o-mini consistently writes parenthesized function-application syntax like `Stdlib.String.split(csv, "\n")` (JS/Python style) instead of Darklang's prefix application `Stdlib.String.split csv "\n"` (F#/ML style). All four outputs had this.
+- Two more issues: `<a>` instead of `<'a>` for type variables; invented anonymous record types like `List<Type {...}>`.
+- Produced **v4 system prompt** with three new lines covering these failure modes. Updated `16-prompt-shapes.md` with v3 test data + v4 prompt. Updated `17-day-1-quick-reference.md` to use v4 as the paste-ready prompt.
+- Cumulative LLM spend tonight: ~$0.0008. Trivial fraction of $10.
+- Time check: 03:01 EDT. ~4h 59m to 8am.
+- Decided: this kind of regression test would be worth automating once the spike's running — feed N candidate fns through the prompt, AST-check, score. Worth a follow-up doc later (or just an open question).
+- Next at +25min: probably no new doc, maybe one more spot-check or just commit + wait.
+- Commits: 1 pending.

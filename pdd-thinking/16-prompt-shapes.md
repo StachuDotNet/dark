@@ -217,6 +217,41 @@ Cheaper-than-Sonnet model **with the v2 prompt** generates plausibly-compilable 
 
 The verdict: **v2/v3 prompt + gpt-4o-mini is workable for the spike**. Don't waste budget upgrading to 4o or Sonnet yet. The retry-on-AST-error path will catch the remaining 25%.
 
+## v3 verification — Demo 2 fns (tested 02:59 EDT)
+
+Pushed v3 prompt against `parseCsv`, `skipHeader`, `sortByVarianceDescending`, `getDateField` (~$0.0003).
+
+**Big new failure mode**: gpt-4o-mini consistently writes **parenthesized function application** (`Stdlib.String.split(csv, "\n")` — JS/Python style) instead of Darklang's **prefix application** (`Stdlib.String.split csv "\n"` — F#/ML style). All four outputs had this issue.
+
+Two more issues observed:
+- **Type variables**: model writes `List<a>` instead of `List<'a>` (no apostrophe).
+- **Anonymous record types**: model invented `List<Type { variance: Int64 }>` syntax — doesn't exist in Dark.
+
+### v4 system prompt additions
+
+Add these lines:
+
+```
+- Function application is PREFIX, NOT parenthesized. Write:
+    Stdlib.List.map f lst       (correct)
+  NOT:
+    Stdlib.List.map(f, lst)     (wrong — JS/Python style)
+- Multi-arg fns: Stdlib.String.split text "\n"
+  NOT: Stdlib.String.split(text, "\n")
+- Type variables use ML-style apostrophes: 'a, 'b, 'k, 'v.
+  NOT: <a>, <b>.
+- No anonymous record types like List<Type {...}>. Define a named type
+  first, or use Dict<String, T> for string-keyed maps.
+```
+
+After these additions, expect the success rate on Demo-2-shaped problems to rise from "barely usable" to "usable with one retry."
+
+### Updated quality estimate
+
+After **v4** (the live additions just discovered), gpt-4o-mini should produce compilable Dark on ~60-75% of first tries even for multi-arg pipeline-style fns. Retry-with-AST-feedback gets the rest.
+
+**Day-1 stub** can still be `EmptyBody` — don't sweat the LLM quality until Day 2-3 when you're actually generating code.
+
 ## Provider notes
 
 - **OpenAI gpt-4o-mini** (verified tonight): works for the JSON-out shape, deterministic at temperature=0, decent at recursion, has the syntax-confusion issues above.
