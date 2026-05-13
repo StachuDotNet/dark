@@ -106,4 +106,13 @@ Format:
 - Decided: **the five claims** are the durable summary to memorize. (1) source is lazy, (2) trace is the program, (3) types coordinate, (4) runtime is tolerant, (5) human is a materializer.
 - Decided: anti-summary — don't pitch PDD as "Copilot for runtime." That misses the trace claim, the type-coordination claim, and the human-as-materializer claim. The right summary is "the runtime materializes its own source."
 - Next: write `15-spike-budgets.md` (cost/time/risk envelopes for the spike — both engineering time and API dollars). Then verify Sonnet/Haiku key works similarly (optional — for cross-provider coverage). Then possibly write `16-prompt-shapes.md` with the actual prompt templates we'd use for generate (now that we know the JSON-shape model works).
+- Commits: 1 pending (iter 10).
+
+### 2026-05-13 01:39 — iteration 11 (write 15-spike-budgets)
+- Did: wrote `15-spike-budgets.md`. Three axes: engineering time (14 days target, Day 3 is the health checkpoint, Day 10 for Demo 6, Day 14 hard-stop); OpenAI $ ($10 buys ~300K cheap calls — basically unrunnable-out unless someone hits Sonnet); cognitive load (signals = "I'm reading 4 docs to remember why"). Stop-when criteria. Three success levels: Bronze (one fn materialized), Silver (multi-step demo), Gold (Demo 6 + trace-as-artifact feels natural). Telemetry: every LLM call's `usage` becomes a `cost` trace event; `dark pdd trace cost <id>` sums + breaks down. Decision: never push the branch during the spike.
+- Updated `00-LOOP-SUMMARY.md` file listing (now has 13, 14, 15).
+- Decided: Day 3 is the single most important indicator — if Demos 1 + 4 are green by Day 3, the spike is healthy. If not, back up to day-1 plan and figure out which phase didn't actually finish.
+- Decided: hardcode `gpt-4o-mini`, no model override flag yet. Add live $-counter. Abort if estimated spend ever crosses $5 in a single session.
+- Decided: "spike succeeds but paradigm feels wrong" = most valuable failure mode. Write down why.
+- Next: write `16-prompt-shapes.md` (actual prompt templates for `generate`, given that gpt-4o-mini-with-JSON works). Then write a `17-llm-provider-comparison.md` (or fold into 13/16) reflecting on Haiku vs gpt-4o-mini tradeoffs. Then start thinking about `FINAL-REPORT-2026-05-13.md` outline — need to start that by 06:00 EDT to make 08:00 print deadline comfortably.
 - Commits: 1 pending.
