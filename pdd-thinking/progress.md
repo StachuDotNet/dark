@@ -358,3 +358,12 @@ Format:
 - Day-1 minimum-viable acceptance criterion **met**.
 - Branch state: 7 phase-related commits on `pdd`, 0 errors, branch never pushed.
 - Next (task #7): real LLM call. The harder integration test (Apply a real Pending through the interpreter, get a materialized body back) is deferred until the real LLM call exists, since that's when there's actually a non-stub materializer to test against.
+
+### 2026-05-13 09:46 — coding iter 4 (scoping snag → split task #7 → iter ends planning)
+- Spent ~15 min trying to build a real end-to-end Pending integration test. Discovered:
+  - **The Apply-of-Pending path is incomplete.** Phase D wired the executionPoint match (frame-enter); but to *reach* that, you need Apply to push a frame with `executionPoint = Function(Pending p)`. My Phase B Pending arm in the big Apply match (line ~1031) just raises FnNotFound — doesn't push a frame.
+  - **Filling the gap = ~100 lines mirroring the Package arm**: type-arg resolution, type inference from args, frame push, register init. Too much for a single iteration if I also want to do real-LLM work.
+- Decision: split task #7 into 7a (build the Apply→materialize→push wiring) and 7b (real OpenAI call). Renamed task #7. Created task #8.
+- Plan for next iteration: focus on **7a** — extend the Apply Pending arm to actually push a frame after materialization. Then a real end-to-end test becomes writable. Save 7b for a later iteration where we just call `pdd-materialize` from a script (avoids the test-env-OPENAI_API_KEY plumbing).
+- No code changes this iteration. Build still green from iter 3.
+- Time: 09:48 EDT.
