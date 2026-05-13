@@ -379,3 +379,21 @@ Format:
   - Final state: `./scripts/run-backend-tests --filter-test-list PDD` → **17/17 green** (12 defaults, 2 pending, 2 PM-field, 1 integration).
 - **Day-2a acceptance criterion met.**
 - Time: 10:02 EDT. ~2h 15min total in coding loop.
+
+### 2026-05-13 14:50 — coding iter 6 (Task #8: real HTTP call to OpenAI from F#)
+- Did: wrote `backend/src/LibExecution/PDDMaterializer.fs` — System.Net.Http POST to OpenAI's chat/completions API, JSON parse (tolerant of ```json fences), JSONL logging of every response to `rundir/logs/pdd-materialize.jsonl`. Entry point: `materialize : Pending -> Ply<Option<PackageFn>>`. Reads OPENAI_API_KEY from env per call. Returns None if unset or any step fails.
+- Day-2b shortcut: success path returns hardcoded identity-shaped PackageFn; LLM body is *logged* but not yet translated to RT instructions.
+- 7 LLMParser unit tests for `parseLLMResponse` (clean JSON, ```json fences, plain fences, missing field, non-JSON, prompt content checks). Total PDD tests: 24/24 green.
+- Commit `0cd224ada`.
+- Time: 14:32 EDT. Coding-loop time: ~3h cumulative.
+
+### 2026-05-13 15:10 — coding iter 7 (Task #8c: mini-parser bridges body → instructions)
+- Did: added `parseMinimalBody` + `fnFromBody` to PDDMaterializer.fs. Handles two body shapes:
+  - `"42L"` (or any `-?\d+L`) → 1-instruction body loading the literal into result reg.
+  - `"x"` (or any identifier matching the param name) → identity (empty instructions, resultIn = arg reg).
+  - Everything else → returns None, materialize falls back to identity placeholder (LLM body still logged for inspection).
+- `materialize` now consults the mini-parser; if it matches, the program runs the LLM's actual intent (e.g. constant return). If not, falls back to identity (eval still completes).
+- 6 new MinimalBody tests. Total PDD tests: **30/30 green**.
+- **Headline**: a Pending fn whose LLM-generated body is `"42L"` now causes the runtime to return 42L. That's the smallest version of the PDD claim.
+- Commit `4a714d1f2`.
+- Time: 15:11 EDT.
