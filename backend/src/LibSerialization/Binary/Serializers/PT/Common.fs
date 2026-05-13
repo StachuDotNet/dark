@@ -165,11 +165,18 @@ module FQFnName =
     | FQFnName.Package p ->
       w.Write(1uy)
       Package.write w p
+    | FQFnName.Pending p ->
+      // PDD: Pending fn refs are session-local; serializing is
+      // best-effort. Just persist the name; reload will treat as a fresh
+      // Pending (which is fine — they're materialized on call).
+      w.Write(2uy)
+      String.write w p.name
 
   let read (r : BinaryReader) : FQFnName.FQFnName =
     match r.ReadByte() with
     | 0uy -> FQFnName.Builtin(Builtin.read r)
     | 1uy -> FQFnName.Package(Package.read r)
+    | 2uy -> FQFnName.fqPending (String.read r)
     | b -> raiseFormatError $"Invalid FQFnName tag: {b}"
 
 

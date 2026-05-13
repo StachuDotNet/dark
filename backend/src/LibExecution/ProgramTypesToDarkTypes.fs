@@ -109,12 +109,14 @@ module FQFnName =
       match u with
       | PT.FQFnName.Builtin u -> "Builtin", [ Builtin.toDT u ]
       | PT.FQFnName.Package u -> "Package", [ Package.toDT u ]
+      | PT.FQFnName.Pending p -> "Pending", [ DString p.name ]
     DEnum(typeName (), typeName (), [], caseName, fields)
 
   let fromDT (d : Dval) : PT.FQFnName.FQFnName =
     match d with
     | DEnum(_, _, [], "Builtin", [ u ]) -> PT.FQFnName.Builtin(Builtin.fromDT u)
     | DEnum(_, _, [], "Package", [ u ]) -> PT.FQFnName.Package(Package.fromDT u)
+    | DEnum(_, _, [], "Pending", [ DString name ]) -> PT.FQFnName.fqPending name
     | _ -> Exception.raiseInternal "Invalid FQFnName" []
 
 

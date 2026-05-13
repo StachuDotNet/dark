@@ -9,6 +9,9 @@ let fnPackageHash (fn : PT.FQFnName.FQFnName) : Option<Hash> =
   match fn with
   | PT.FQFnName.Package hash -> Some hash
   | PT.FQFnName.Builtin _ -> None
+  // PDD: Pending fns don't have package hashes yet — they're materialized
+  // at call time and only get a hash after promotion.
+  | PT.FQFnName.Pending _ -> None
 
 
 let typePackageHash (typ : PT.FQTypeName.FQTypeName) : Option<Hash> =

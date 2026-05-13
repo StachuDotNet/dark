@@ -130,6 +130,13 @@ let writeFQFnName
     | None ->
       w.Write(1uy)
       PTC.FQFnName.Package.write w (resolveHash mode loc p)
+  // PDD: Pending fn refs don't participate in content-addressed hashing
+  // — they're session-local and not part of the canonical package
+  // store's hash space. Tag 3 + name; readers should treat as
+  // unhashable (won't appear in real PackageOps).
+  | PT.FQFnName.Pending p ->
+    w.Write(3uy)
+    Common.String.write w p.name
 
 
 /// Write FQValueName, resolving deps and checking SCC substitution

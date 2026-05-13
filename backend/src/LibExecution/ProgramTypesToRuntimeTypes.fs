@@ -46,6 +46,11 @@ module FQFnName =
     match fqfn with
     | PT.FQFnName.Builtin s -> RT.FQFnName.Builtin(Builtin.toRT s)
     | PT.FQFnName.Package p -> RT.FQFnName.Package(Package.toRT p)
+    // PDD: PT-level Pending lowers to RT-level Pending. Each lowering
+    // creates a fresh Guid handle — call-site identity is preserved
+    // since a single PT Pending appears once at one site (unlike a
+    // package fn which can be referenced N times).
+    | PT.FQFnName.Pending p -> RT.FQFnName.fqPending p.name
 
 
 module NameResolutionError =

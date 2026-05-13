@@ -154,9 +154,16 @@ module FQFnName =
   /// The hash of a function in the package manager
   type Package = Hash
 
+  /// PDD: a name the parser saw but couldn't resolve. With
+  /// `OnMissing.AllowPending`, unresolved fn references in source become
+  /// these instead of NotFound errors. The interpreter materializes via
+  /// the LLM at call time.
+  type Pending = { name : string }
+
   type FQFnName =
     | Builtin of Builtin
     | Package of Package
+    | Pending of Pending
 
   let assertFnName (name : string) : unit =
     assertRe $"Fn name must match" fnNamePattern name
@@ -167,6 +174,8 @@ module FQFnName =
 
   let fqBuiltIn (name : string) (version : int) : FQFnName =
     Builtin(builtIn name version)
+
+  let fqPending (name : string) : FQFnName = Pending { name = name }
 
   let package (h : string) : Package = Hash h
 
