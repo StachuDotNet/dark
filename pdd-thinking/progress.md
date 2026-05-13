@@ -32,3 +32,10 @@ Format:
 - Decided: eager materialization at load is the default; lazy is the interpreter-side fallback path.
 - Next: deepen stubs in priority order — `09-carving-the-codebase.md` (concrete list of what to disable, with paths) first, since that's what unblocks day-1 hacking; then `10-day-1-hacking-plan.md` made literally step-by-step with specific commands; then `06-builtin-permissions.md` deepening. After that, iterate on whatever's thin.
 - Commits: 2 so far on pdd (initial seed + move-to-pdd-thinking).
+
+### 2026-05-13 01:18 — iteration 2 (deepen 09 — carving)
+- Did: enumerated the actual `fsdark.sln` projects + dep graph (verified from `.fsproj`s). Deepened `09-carving-the-codebase.md` with a project-by-project keep/disable table, the exact procedure (edit `fsdark.sln`, trim `Builtins.CliHost.fsproj`, rebuild, smoke-test), notes on `LibTreeSitter` and `LocalExec`, tests subset, structure of the new `LibPDD/` project, and a stop-loss escape hatch.
+- Decided: critical cuts = `LibCloud`, `Builtins.Http.Server`. Probable cuts = `LibTreeSitter`, `LocalExec`. Probable adds = `LibPDD/` (new) with files `Materializer.fs`, `TraceEvents.fs`, `Capability.fs`, `Find.fs`, `Generate.fs`, `Defaults.fs`.
+- Decided: if carving burns >1 hr, revert sln/CliHost changes and proceed with full build. Carving is optimization, not prerequisite.
+- Next: deepen `10-day-1-hacking-plan.md` into a literal step-by-step with grep/sed/git commands. Then deepen `06-builtin-permissions.md`. Then deepen `07-human-in-loop.md`.
+- Commits: pending iter-2 commit after this entry.

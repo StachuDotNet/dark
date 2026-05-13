@@ -2,62 +2,168 @@
 
 > Stachu's directive: "cut all corners as you see fit. any 'packages' or F# that's not needed for this experiment, cut. remove, delete, comment out, I don't care. tighten things so you can work efficiently"
 
-**Status:** Stub. To be deepened with a concrete list.
+This is intentionally a *first pass* — verify each disable in a build sweep before claiming it works.
 
-## Principle
+## The current shape (verified 2026-05-13 ~01:15 EDT)
 
-We need: a CLI that can parse Dark code, build a PT, lower to RT, execute. Plus LLM bindings. Plus package store reads/writes.
+`backend/fsdark.sln` projects:
 
-We **don't** need: BwdServer, ProdExec, QueueWorker, CronChecker, anything cloud, anything K8s, anything web, anything wasm, anything VS Code extension publishing, anything pretty-printing-for-LSP, anything tree-sitter, etc.
+| Project | Keep? | Notes |
+|---|---|---|
+| `Prelude` | **Keep** | Everything depends on it |
+| `LibConfig` | **Keep** | Trivially small, depended on |
+| `LibDB` | **Keep** | SQLite playback, package store |
+| `LibSerialization` | **Keep** | Serializing RT/PT |
+| `LibExecution` | **Keep** | We're modifying this |
+| `LibParser` | **Keep** | Parsing pseudocode/Dark |
+| `LibPackageManager` | **Keep** | Package CRUD |
+| `LibCloud` | **Disable** | GCP / cloud — unrelated to PDD spike |
+| `LibTreeSitter` | **Maybe disable** | Verify nothing in keepers depends on it |
+| `LocalExec` | **Maybe disable** | Verify Cli doesn't need it for our flow |
+| `Builtins.Pure` | **Keep** | Basic ops — needed everywhere |
+| `Builtins.Cli` | **Keep** | CLI builtins |
+| `Builtins.CliHost` | **Keep** (trimmed) | The orchestrator — keep but cut LibCloud dep |
+| `Builtins.Http.Client` | **Keep** | Needed for LLM API calls (gate by capability) |
+| `Builtins.Http.Server` | **Disable** | No server in spike |
+| `Builtins.Language` | **Keep** | Parser / reflection builtins |
+| `Builtins.Matter` | **Keep** | Package + branch ops (we save materializations as packages) |
+| `Builtins.Random` | **Keep** | Cheap; useful |
+| `Builtins.Time` | **Keep** | Cheap; useful |
+| `Tests` | **Trimmed-keep** | Disable most subdirs; keep LibExecution-relevant |
+| `TestUtils` | **Keep** | Support library |
 
-## First pass — what to disable in `.sln`
+## Dep graph (verified from `.fsproj` files)
 
-(Verify each in a build sweep before disabling — some may be transitively needed.)
+- `Cli` → `LibExecution`, `LibDB`, `Builtins.CliHost`
+- `Builtins.CliHost` → `Prelude`, `LibExecution`, `Pure`, `Http.Client`, `Language`, `Cli`-builtins, `Time`, `Random`, **`Http.Server`**, **`Matter`**, `LibDB`, **`LibCloud`** ← bold = candidate cuts
+- `LibParser` → `Prelude`, `LibExecution`, `LibDB`
 
-Candidates to disable at the `.sln` level (don't delete, just exclude from build):
+So the critical path-to-spike:
+```
+Cli → CliHost → LibCloud (CUT)
+            → Http.Server (CUT)
+```
 
-- `backend/src/BwdServer/`
-- `backend/src/LibCloud/` and `LibCloudExecution/`
-- `backend/src/LibClientTypes/` (if still present)
-- Anything under `backend/src/CronChecker/`, `QueueWorker/`, `ProdExec/` (per the memory: LibCloud-style, prefer disable at sln/fsproj over delete)
-- Most `backend/tests/` — keep only the test project that exercises LibExecution + the new PDD bits
-- `vscode-extension/`
-- `tree-sitter-darklang/` (compilation only — Darklang code itself stays)
-- `wasm/` if it exists
+We need to **trim `Builtins.CliHost.fsproj`** to remove the two cut deps, then **disable LibCloud + Http.Server** at sln level.
 
-Per the **LibCloud — disable, don't delete** memory: prefer disabling at fsproj/sln level rather than removing source. Quick toggle if we need to bring things back.
+## The carving procedure (when you sit down)
 
-## Second pass — what NuGet refs to drop
+```bash
+# 0. Make sure we're on pdd, clean
+cd /home/stachu/code/dark/main
+git checkout pdd
+git status
 
-- `Microsoft.Extensions.*` cloud stuff if not used by anything we keep
-- Pubsub, Rollbar, OpenTelemetry, LaunchDarkly, etc. (most already dropped on AOT branch — check)
-- Anything related to PostgreSQL, Yugabyte
+# 1. Edit fsdark.sln — comment out / remove these Project blocks:
+#    - LibCloud
+#    - Builtins.Http.Server
+#    (search "LibCloud", "Http.Server" in fsdark.sln)
+#
+#    Equivalently, delete the lines using a text editor. The sln is regenerable.
 
-## Third pass — what to add
+# 2. Edit backend/src/Builtins/Builtins.CliHost/Builtins.CliHost.fsproj:
+#    Remove the two ProjectReference lines:
+#    - <ProjectReference Include="../Builtins.Http.Server/..." />
+#    - <ProjectReference Include="../../LibCloud/LibCloud.fsproj" />
+#
+#    Then find references to LibCloud / Http.Server symbols in CliHost source and
+#    stub them out (probably an init / builtin registration table; remove the
+#    server/cloud entries).
 
-- An LLM-provider abstraction (probably already exists from Feriel's work — `LibAI`?). Check `backend/src/LibAI/` or wherever the Anthropic/OpenAI bindings live.
-- A `LibPDD` project, parallel to `LibExecution`, for:
-  - `materializeFn` implementation
-  - find / generate coroutines
-  - trace event types
-  - capability check hooks
+# 3. Rebuild
+./scripts/compile
 
-## What stays untouched
+# 4. Confirm CLI still works
+./scripts/run-cli docs for-ai
 
-- `backend/src/LibExecution/` (we're modifying it but not gutting)
-- `backend/src/Cli/` (the CLI, our main surface)
-- `backend/src/Tests/` (just the LibExecution-relevant subset)
-- The Darklang package source files (the `.dark` files) — but we may add a `pdd_demos/` subdir
-- `scripts/` — keep, they're well-curated. Don't break `_assert-in-container` (memory).
+# 5. Run a narrow test
+./scripts/run-backend-tests --filter Tests.LibExecution
+```
 
-## Order of operations
+**Per the "Dark type changes need two F# build passes" memory:** if we touch any package-referenced types (we will, in Day 1), expect to `touch backend/src/LibExecution/package-ref-hashes.txt` and rebuild once. The first build regenerates the hashes; the second picks them up.
 
-1. Disable in `.sln` first (safest reversal).
-2. Confirm build succeeds.
-3. Confirm `./scripts/run-cli` still works (CLI hasn't been damaged).
-4. Run `./scripts/run-backend-tests` with just the LibExecution-relevant filter (see memory: `--filter` wants exact prefix path; use `--filter-test-list <name>` for substring).
-5. Then start adding the PDD bits.
+## What about `LibTreeSitter`?
 
-## A note on the memory
+It's listed in `backend/src/` and as a sln project. None of our keepers reference it directly (verified via `grep "ProjectReference.*LibTreeSitter"`). Almost certainly safe to disable, but verify with a build sweep first. If something breaks, re-enable.
 
-The "LibCloud — disable, don't delete" memory says prefer disabling at fsproj/sln level. This applies to the standard codebase, but this is an experimental branch that won't be pushed — the user said "cut all corners as you see fit." So actually deleting is acceptable. But disabling first is faster to do and faster to reverse, so we still default to disabling.
+## What about `LocalExec`?
+
+Used historically for parsing Dark scripts and executing them outside the package context. Cli might depend on it indirectly. Verify before disabling.
+
+```bash
+grep -r "LocalExec" backend/src/Cli backend/src/Builtins 2>/dev/null
+```
+
+## Tests subset
+
+Most tests will rot when LibCloud goes. To compile, **disable individual test files** rather than the whole `Tests` project:
+
+In `backend/tests/Tests/Tests.fsproj`, comment out `<Compile Include="...">` lines for test files that import LibCloud or do HTTP-server testing. Keep the LibExecution-relevant tests.
+
+Likely safe-to-keep:
+- `Tests/LibExecution.Tests.fs` (the core interpreter tests)
+- `Tests/Parser.Tests.fs` (if it doesn't pull anything cloud)
+- `Tests/Builtin.Pure.Tests.fs`
+- `Tests/Builtin.Time.Tests.fs`
+- `Tests/Tests.fs` (the runner)
+
+Likely safe to disable:
+- `Tests/BwdServer.Tests.fs` (if exists)
+- `Tests/HttpClient.Tests.fs` (or do we want it?)
+- `Tests/CliTraces.Tests.fs` (already disabled per recent commit `9ca0d855d`)
+- Anything mentioning HttpHandler
+
+## What we're adding back (PDD bits)
+
+Once carving is done, add:
+
+### `backend/src/LibPDD/` (new project)
+
+```
+LibPDD/
+  LibPDD.fsproj
+  paket.references
+  Materializer.fs       — find + generate coroutines + race
+  TraceEvents.fs        — new event kinds
+  Capability.fs         — capability tags + checks
+  Find.fs               — corpus search (name + arity for v0)
+  Generate.fs           — LLM call wrapper
+  Defaults.fs           — defaultFor : TypeReference -> Dval (for tolerant mode)
+```
+
+Add it to `fsdark.sln`. Reference it from `Builtins.CliHost` and `Cli`.
+
+### `LibExecution` additions
+
+Per `02-libexecution-changes.md`:
+- New `FQFnName.Pending` variant in `RuntimeTypes.fs`
+- New `PackageManager.materializeFn` field
+- New `VMState.pendingFrames` + scheduler in `Interpreter.fs`
+- New `RTE.MaterializationFailed` error
+- Trace event hooks
+
+### `Cli` additions
+
+- `dark pdd run <expr>` command
+- `--tolerance strict|loose|debug` flag
+- `--allow http,fileread,...` flag (capabilities)
+- `dark trace show <id>` command
+
+## What we are NOT touching
+
+- `backend/src/Prelude/` — Don't even open it.
+- `scripts/` — Don't touch the `_assert-in-container` shim (memory).
+- `package-ref-hashes.txt` — embedded; touch only when forced by type changes.
+- Dark `.dark` files — they parse fine; we may add new ones under a `pdd_demos/` subdir later.
+
+## Stop-loss
+
+If carving breaks something subtle and we burn an hour, **revert and proceed without carving**. The spike can run with the existing full F# build — just slower iteration cycles. The carving is an optimization, not a prerequisite.
+
+```bash
+# Escape hatch:
+git checkout main -- backend/fsdark.sln backend/src/Builtins/Builtins.CliHost/Builtins.CliHost.fsproj
+./scripts/compile
+```
+
+Done. We're back to a full build, with our `pdd-thinking/` notes still in place.
