@@ -37,6 +37,7 @@ module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 type FnState =
   | InProgress   // currently materializing (LLM in flight)
   | Real         // materialized OK, body translated, executed (or executable)
+  | Provisional  // works (returns something usable) but is rough; can be improved
   | Fake         // returned identity / EmptyBody fallback — body wasn't parsable
   | Cached       // hit pendingFnInstrCache; skipped LLM
   | Failed       // materialization errored or aborted
@@ -836,7 +837,7 @@ let callOpenAIWithMode
                messages =
                  [| {| role = "system"; content = systemPrompt |}
                     {| role = "user"; content = userPrompt |} |]
-               max_tokens = 800
+               max_tokens = 2000
                temperature = 0
                response_format = {| ``type`` = "json_object" |} |}
           )
@@ -846,7 +847,7 @@ let callOpenAIWithMode
                messages =
                  [| {| role = "system"; content = systemPrompt |}
                     {| role = "user"; content = userPrompt |} |]
-               max_tokens = 800
+               max_tokens = 2000
                temperature = 0 |}
           )
       let req =
@@ -1383,6 +1384,54 @@ let private persistPromoted (name : string) (gen : GeneratedFn) : unit =
   with _ -> ()
 
 
+/// Refine an existing promoted fn: ask the LLM to improve its body
+/// (richer HTML, more sections, more content coverage) without
+/// breaking parse. Compares old vs new by a simple "richer" heuristic
+/// (more tags + longer body); keeps whichever wins. Returns
+/// Ok(newBody, oldBody, improved-flag) or Error message.
+let refineFn (name : string) : Task<Result<string * string * bool, string>> =
+  task {
+    loadCacheOnce ()
+    match promotedCache.TryGetValue name with
+    | false, _ -> return Error(sprintf "no promoted fn named '%s'" name)
+    | true, gen ->
+      let apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
+      if String.IsNullOrEmpty apiKey then
+        return Error "OPENAI_API_KEY not set"
+      else
+        let refinePrompt =
+          sprintf
+            "Function: %s\nSignature: %s\nCurrent body: %s\n\nYour task: IMPROVE this body. The previous version works but is rough — it may echo input verbatim, have minimal HTML structure, or miss content from the literal arg. Produce a RICHER body: more semantic HTML tags (<section>, <article>, <nav>, <header>, <footer>), more <ul>/<li> structure, headings (<h1>-<h3>), and full coverage of the content. Keep the same sig. Use the named param (x usually) for input. Return JSON {sig, body, tests:[]} — body as a Dark string-concat expression using ++."
+            name
+            gen.sig_
+            gen.body
+        let! resp =
+          callOpenAI apiKey v4SystemPrompt refinePrompt
+          |> Async.AwaitTask
+          |> Async.StartAsTask
+        match resp with
+        | Error e -> return Error e
+        | Ok body ->
+          match extractContent body with
+          | Error e -> return Error e
+          | Ok content ->
+            match parseLLMResponse content with
+            | Error e -> return Error e
+            | Ok newGen ->
+              // Score = tag count + length/100. Higher = richer.
+              let score (b : string) : int =
+                let tags =
+                  System.Text.RegularExpressions.Regex.Matches(b, "<[a-z][^>]*>").Count
+                tags * 100 + b.Length
+              let oldScore = score gen.body
+              let newScore = score newGen.body
+              let improved = newScore > oldScore
+              if improved then
+                persistPromoted name newGen
+              return Ok(newGen.body, gen.body, improved)
+  }
+
+
 // Decompose cache — maps a free-text prompt to the Dark expression the
 // LLM produced last time. Hit means we skip the decompose LLM call entirely.
 
@@ -1447,19 +1496,49 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
     emit (MaterializeStart(p.name, model))
     let elapsedMs () = int (DateTime.UtcNow - startedAt).TotalMilliseconds
 
-    // H4: check promoted cache first. If we've materialized this name
-    // before AND the body still parses with the mini-parser, return the
-    // cached PackageFn without calling the LLM.
-    let cachedHit =
-      match tryLookupPromoted p.name with
-      | Some gen ->
-        match parseMinimalBody "x" gen.body with
-        | Some instrs ->
-          emit (CompileBody(p.name, "cached", instrs.registerCount))
-          emit (MaterializeDone(p.name, Cached, elapsedMs ()))
-          Some(fnFromBody p.name "x" instrs)
-        | None -> None
-      | None -> None
+    // Check promoted cache. Routes through LibParser (if installed) so
+    // bodies that use the full Dark language (not just mini-parser cases)
+    // still hit cache. Falls through to mini-parser otherwise.
+    let! cachedHit =
+      uply {
+        match tryLookupPromoted p.name with
+        | None -> return None
+        | Some gen ->
+          // Try LibParser path first if installed.
+          match bodyParser, parseFullSig gen.sig_ with
+          | Some parser, Some(typedParams, returnType) ->
+            let toParse =
+              if List.isEmpty typedParams then gen.body
+              else
+                let paramList = typedParams |> List.map fst |> String.concat " "
+                sprintf "fun %s -> %s" paramList
+                  (gen.body.Replace("\r\n", " ").Replace("\n", " "))
+            let! parsed = parser toParse
+            match parsed with
+            | Ok ptExpr ->
+              try
+                let bodyExpr =
+                  if List.isEmpty typedParams then ptExpr
+                  else
+                    match ptExpr with
+                    | PT.ELambda(_, _, inner) -> inner
+                    | _ -> ptExpr
+                let fn =
+                  fnFromTypedBody p.name p.handle typedParams returnType bodyExpr
+                emit
+                  (CompileBody(p.name, "cached (libparser)", fn.body.registerCount))
+                emit (MaterializeDone(p.name, Cached, elapsedMs ()))
+                return Some fn
+              with _ -> return None
+            | Error _ -> return None
+          | _ ->
+            match parseMinimalBody "x" gen.body with
+            | Some instrs ->
+              emit (CompileBody(p.name, "cached", instrs.registerCount))
+              emit (MaterializeDone(p.name, Cached, elapsedMs ()))
+              return Some(fnFromBody p.name "x" instrs)
+            | None -> return None
+      }
     if cachedHit.IsSome then
       return cachedHit
     else
@@ -1738,12 +1817,32 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                     emit (CompileBody(p.name, sprintf "test-retry-%d" n, 0))
                     return! attempt (n + 1) fixUp
                   else
+                    // Provisional scoring for creative fns: count HTML tags
+                    // + body length. Below thresholds → still works, but
+                    // mark Provisional so `dark pdd refine` (or a future
+                    // background loop) can improve it.
+                    let isProvisional =
+                      if not isCreative then false
+                      else
+                        let body = gen.body
+                        let tagCount =
+                          System.Text.RegularExpressions.Regex.Matches(body, "<[a-z][^>]*>").Count
+                        // Heuristic: real-rich page bodies have ≥6 tags +
+                        // ≥250 chars. Below that = improvable.
+                        tagCount < 6 || body.Length < 250
                     let finalState =
-                      if testCount = 0 then Real
-                      elif failCount = 0 then Real
-                      else Fake  // we exhausted retries with failing tests
+                      if testCount > 0 && failCount > 0 then
+                        Fake  // exhausted retries with failing tests
+                      elif isProvisional then
+                        Provisional
+                      else
+                        Real
                     emit (MaterializeDone(p.name, finalState, elapsedMs ()))
-                    if finalState = Real then persistPromoted p.name gen
+                    // Persist anything that works (Real OR Provisional) so
+                    // requests are served; refine path will update the
+                    // cache entry if/when an improvement lands.
+                    if finalState = Real || finalState = Provisional then
+                      persistPromoted p.name gen
                     return Some fn
                 | Error libParserErr ->
                   // Surface why LibParser declined, so the HTML view shows

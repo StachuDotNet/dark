@@ -73,6 +73,7 @@ let private stateBadge (s : M.FnState) : string * string * string =
   match s with
   | M.InProgress -> "⋯", "in-progress", "in-progress"
   | M.Real -> "✓", "real", "real"
+  | M.Provisional -> "~", "provisional", "provisional"
   | M.Fake -> "▼", "fake", "fake"
   | M.Cached -> "↻", "cached", "cached"
   | M.Failed -> "✗", "failed", "failed"
@@ -87,6 +88,7 @@ let private cssStyles = """
   .badge { font-weight: bold; padding: 1px 6px; border-radius: 3px; font-size: 11px; }
   .badge.in-progress { background: #4a3a00; color: #e0c060; }
   .badge.real { background: #053515; color: #6fcf90; }
+  .badge.provisional { background: #3a2a00; color: #d0a040; }
   .badge.fake { background: #2a2a2a; color: #888; }
   .badge.cached { background: #002545; color: #6080d0; }
   .badge.failed { background: #4a0010; color: #e07080; }
@@ -108,6 +110,7 @@ let private cssStyles = """
   .annot { padding: 0 4px; border-radius: 3px; font-weight: bold; }
   .annot.in-progress { background: #4a3a00; color: #e0c060; }
   .annot.real { background: #053515; color: #6fcf90; }
+  .annot.provisional { background: #3a2a00; color: #d0a040; }
   .annot.fake { background: #2a2a2a; color: #888; }
   .annot.cached { background: #002545; color: #6080d0; }
   .annot.failed { background: #4a0010; color: #e07080; }

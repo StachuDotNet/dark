@@ -74,6 +74,7 @@ let private stderrSink : Mat.EventSink =
       let badge =
         match state with
         | Mat.Real -> green "✓ real"
+        | Mat.Provisional -> yellow "~ provisional"
         | Mat.Fake -> dim "▼ fake"
         | Mat.Cached -> blue "↻ cached"
         | Mat.Failed -> red "✗ failed"
@@ -139,6 +140,7 @@ let private printSummary (acc : System.Collections.Generic.Dictionary<string, Fn
       let badge =
         match s.state with
         | Mat.Real -> green "  ✓ real"
+        | Mat.Provisional -> yellow "  ~ provisional"
         | Mat.Fake -> dim "  ▼ fake"
         | Mat.Cached -> blue "  ↻ cached"
         | Mat.Failed -> red "  ✗ failed"
@@ -407,12 +409,31 @@ let private handleRun
         | Some(types, _) ->
           types |> List.forall (fun t -> t <> "?")
         | None -> true)
+    // Cap concurrent in-flight materializations to avoid OpenAI 429s.
+    // PDD_PARALLEL env override (default 3).
+    let parallelCap =
+      match System.Environment.GetEnvironmentVariable("PDD_PARALLEL") with
+      | null | "" -> 3
+      | s ->
+        match System.Int32.TryParse s with
+        | true, v when v > 0 -> v
+        | _ -> 3
     if not (List.isEmpty prefetchable) then
       eprintfn "%s %s %s" prefix (dim "kick-off")
-        (dim (sprintf "%d pendings in parallel" (List.length prefetchable)))
+        (dim (sprintf "%d pendings (cap %d in-flight)"
+                (List.length prefetchable) parallelCap))
+      let gate = new System.Threading.SemaphoreSlim(parallelCap, parallelCap)
       for p in prefetchable do
-        let t = Task.Run<Option<RT.PackageFn.PackageFn>>(fun () ->
-          Mat.materialize p |> Ply.toTask)
+        let t =
+          Task.Run<Option<RT.PackageFn.PackageFn>>(fun () ->
+            task {
+              do! gate.WaitAsync()
+              try
+                let! fn = Mat.materialize p |> Ply.toTask
+                return fn
+              finally
+                gate.Release() |> ignore<int>
+            })
         inFlight[p.handle] <- t
 
     // Build ExecutionState with the parallel materializer.
@@ -637,6 +658,60 @@ let private handleCache (subcmd : string) : Task<int> =
   }
 
 
+/// Handle `dark pdd refine <fnName>` or `dark pdd refine --all`.
+/// Calls the LLM with the current cached body + "improve this"
+/// instructions. Replaces the cached entry if the new version scores
+/// higher on the richness heuristic (tag count + length).
+let private handleRefine (args : List<string>) : Task<int> =
+  task {
+    let prefix = dim "[pdd]"
+    let names =
+      match args with
+      | [ "--all" ] ->
+        // refine all Provisional-looking (heuristically: render*) fns
+        let path = "rundir/pdd-cache/promoted.jsonl"
+        if not (System.IO.File.Exists path) then []
+        else
+          System.IO.File.ReadAllLines path
+          |> Array.toList
+          |> List.choose (fun line ->
+            try
+              let doc = System.Text.Json.JsonDocument.Parse line
+              let r = doc.RootElement
+              Some(r.GetProperty("name").GetString())
+            with _ -> None)
+          |> List.distinct
+          |> List.filter (fun n -> Mat.isCreativeFnName n)
+      | _ -> args
+    if List.isEmpty names then
+      eprintfn "%s usage: dark pdd refine <fnName> | dark pdd refine --all" prefix
+      return 1
+    else
+      let mutable improved = 0
+      let mutable unchanged = 0
+      for name in names do
+        eprintfn "%s %s %s" prefix (dim "refining") (green name)
+        let! r = Mat.refineFn name
+        match r with
+        | Error e ->
+          eprintfn "%s %s %s" prefix (red "  error") (dim e)
+        | Ok(newBody, oldBody, didImprove) ->
+          if didImprove then
+            improved <- improved + 1
+            let preview = newBody.Substring(0, min 80 newBody.Length)
+            eprintfn "%s %s %s %s" prefix
+              (green "  improved")
+              (dim (sprintf "(%d → %d chars)" oldBody.Length newBody.Length))
+              (dim preview)
+          else
+            unchanged <- unchanged + 1
+            eprintfn "%s %s" prefix (dim "  unchanged (new body not richer)")
+      eprintfn ""
+      eprintfn "%s %s %d improved, %d unchanged" prefix (dim "summary:") improved unchanged
+      return 0
+  }
+
+
 /// Handle `dark pdd trace list` / `last`.
 let private handleTrace (subcmd : string) : Task<int> =
   task {
@@ -749,6 +824,9 @@ let tryHandle
     | "pdd" :: "trace" :: [] ->
       let! code = handleTrace "list"
       return Some code
+    | "pdd" :: "refine" :: rest ->
+      let! code = handleRefine rest
+      return Some code
     | "pdd" :: _ ->
       eprintfn "[pdd] usage:"
       eprintfn "[pdd]   dark prompt \"<free-text request>\""
@@ -756,6 +834,7 @@ let tryHandle
       eprintfn "[pdd]   dark pdd demo <fnName> <Int64-arg>"
       eprintfn "[pdd]   dark pdd cache (list|clear|paths)"
       eprintfn "[pdd]   dark pdd trace (list|last)"
+      eprintfn "[pdd]   dark pdd refine <fnName> | --all"
       return Some 1
     | _ -> return None
   }
