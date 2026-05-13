@@ -317,3 +317,17 @@ Format:
 - Loads the OpenAI key from `~/.config/darklang/llm-keys.env`, calls the API, pretty-prints the JSON response + token counts + cost + round-trip latency. Appends each call to `~/.config/darklang/pdd-materialize.log` as JSONL and prints running total.
 - Verified end-to-end with two calls (`fib`, `doubleAll`). Both returned compilable-looking Dark. Cumulative cost across the tool's calls: $0.000189.
 - Script is in `~/bin/`, not in the repo — like `print-md`. Easy to delete or modify, never touches the F# build.
+
+---
+
+## CODING LOOP — Session 2 (Stachu afk, building real F#)
+
+### 2026-05-13 07:48 — coding iter 1 (Phase B: FQFnName.Pending green)
+- Did:
+  - Skipped Phase A (task #1 → completed-via-skip per CODING-LOOP.md).
+  - Phase B (task #2): added `FQFnName.Pending of { handle: Guid; name: string }` + `fqPending` constructor in RuntimeTypes.fs:88.
+  - Hit FS0025 exhaustiveness errors at 9 sites total (Interpreter.fs ×3, RTQueryCompiler.fs ×2, RuntimeTypesToDarkTypes.fs, Execution.fs, LibDB/Tracing.fs ×2, LibSerialization Binary Common). All added Pending arms with sensible defaults (mostly raise FnNotFound or render "pending:<name>"). **Way fewer sites than the ~74 the doc predicted** — most matches were wildcard-friendly.
+  - Build green: 70 warnings (all pre-existing NU1510), 0 errors. 40s compile.
+  - Commit `615c846d9`.
+- Time: 07:48 EDT (took ~20 min from start of coding loop including build cycles).
+- Next: Phase C (task #3) — add `materializeFn` field to PackageManager.
