@@ -2,42 +2,179 @@
 
 > Stachu's directive: "sometimes we need the human - for what? how will that fit in?"
 
-**Status:** Stub. To be deepened.
+## The core stance
 
-## When does the human enter?
+**The human is a fallback materializer.** Same protocol as find/generate: they produce a `MaterializeResult`. Their output is first-class — cached as a real `PackageFn`, re-used forever, becomes part of the trace.
 
-Candidate triggers (each one merits a paragraph in the deepened version):
+This framing is the load-bearing thing in this doc. Most "human in the loop" systems make humans a *workflow step*. PDD makes them an *execution participant*. That changes the design surface.
 
-1. **Ambiguity at materialization** — sigHint says nothing; multiple find candidates with different sigs; LLM hallucinated.
-2. **High-stakes effects** — about to call a builtin tagged `Destructive` (delete file, post to network, etc.). Per `06-builtin-permissions.md`.
-3. **Repeated failure** — same pending fn has failed materialization N times in a row.
-4. **Trace divergence** — same trace input now produces a different output than last run.
-5. **Explicit annotation** — `@ask_user` on a fn forces interaction every time.
-6. **Speculation budget exhausted** — N concurrent pendings, none resolved.
-7. **Type mismatch unresolvable** — sig consensus couldn't reconcile.
+## When the runtime asks for a human
 
-## How does the human enter?
+Concrete triggers, with the RTE / RecoveryPolicy outcome that gets us there:
 
-Modes:
+### 1. Materialization fully fails
 
-- **Async** — runtime pauses the parked frame, writes a "needs human" entry to a queue; user sees it next time they open the CLI. Good for batch sessions.
-- **Sync (interactive)** — runtime prompts in the terminal: "fn `foo` needs disambiguation, here are the candidates. Pick 1/2/3 or write your own."
-- **Out-of-band** — webhook / phone push for serious things (production). Not for PoC.
+Both `find` and `generate` failed (timeouts, parse errors, sig conflicts), and `allowEmptyBody = false` for this call (e.g. the user marked it `@must_materialize`).
 
-## Surfaces
+**Trigger event:** `MaterializationFailed` RTE → `AskUser` policy.
 
-- A `frameParkedForHuman` event in the trace.
-- A CLI command `pdd inbox` listing pending decisions.
-- A "review trace" UI (later) that highlights human-decision points.
+### 2. Capability not yet granted, `--ask` mode
 
-## The right default for the PoC
+A builtin needs `CapWriteNet`, and the session's mode is "ask on first use." First call surfaces a prompt:
 
-Sync mode, prompting in the terminal, for these triggers only:
-- Builtin capability not yet granted
-- Pending fn that failed twice
+```
+[pdd] fn `fetchAndPost` wants to call HttpClient.post.
+      Capability CapWriteNet is not granted.
+      Allow this call? [y]es / [a]lways / [n]o / [N]ever
+```
 
-Everything else falls through to tolerant defaults.
+**Trigger event:** `CapabilityDeniedAsk` RTE → `AskUser` policy (per `06-builtin-permissions.md`).
 
-## The deeper question
+### 3. Signature consensus disagreement
 
-The right vibe is: **the human is a fallback materializer.** When find fails and generate fails, ask the human. They're slow but high-quality. Same protocol — they produce a `MaterializeResult`, the runtime caches it forever (it becomes a real package fn). Human's contributions are first-class.
+`find` returned `foo: List<'a> -> 'a` and `generate` returned `foo: Int -> String`. Both within budget. Default policy is first-wins, but for cases marked `@require_consensus`, the runtime asks:
+
+```
+[pdd] Two materializations for `foo`:
+  [1] From package store:  foo: List<'a> -> 'a   (used 12× in stdlib)
+  [2] From LLM:            foo: Int -> String    (description matched call-site context)
+  [w] Write it yourself
+Pick one:
+```
+
+**Trigger event:** `ConsensusRequired` → `AskUser`.
+
+### 4. Repeated materialization failure on the same handle
+
+Third time `foo` fails — we stop trying and ask. The session may be wrong about something (wrong corpus, missing context).
+
+**Trigger event:** `RepeatedFailure(handle, attempts: 3)` → `AskUser`.
+
+### 5. Trace divergence
+
+Re-running the same input produces a different result. Common cause: LLM nondeterminism on materialization. The user should pick which is canonical.
+
+**Trigger event:** `TraceDivergent(traceA, traceB)` → `AskUser`. (This is a *post-run* trigger, not mid-run.)
+
+### 6. Explicit annotation
+
+`@ask_user` on a fn → always pause at first call, even if find/generate succeed:
+
+```
+[pdd] `criticalDecision` is annotated @ask_user. The runtime synthesized this body:
+  fun (n: Int) -> ...
+Run it? [y]es / [n]o / [e]dit
+```
+
+**Trigger event:** `AskUserAnnotation(fn)` → unconditional `AskUser`.
+
+### 7. The `breakpoint()` analogue
+
+User-inserted in source: `Pdd.pause "explain this"`. Like `breakpoint()` in Python but with a free-form message.
+
+## How the human enters — three modes
+
+### Mode A: Synchronous (interactive CLI)
+
+The default for the spike. Runtime pauses the parked frame, writes a prompt to stdout, reads from stdin. Other parked frames keep running if they have unrelated dependencies (the scheduler skips around the blocked one).
+
+Implementation hook: a `humanResolver : HumanQuery -> Ply<HumanResponse>` field on `ExecutionState`. The default impl is a TTY prompt; tests inject a deterministic fake.
+
+```fsharp
+type HumanQuery =
+  | AskMaterialize of Pending * candidates : List<MaterializeCandidate>
+  | AskCapability of fn : FQFnName.FQFnName * cap : Capability
+  | AskTraceDivergence of traceA : TraceId * traceB : TraceId
+  | AskAnnotation of fn : FQFnName.FQFnName * synthesizedBody : Instructions
+  | AskBreakpoint of message : string * locals : Map<string, Dval>
+
+type HumanResponse =
+  | RespAccept of MaterializeResult option
+  | RespReject of reason : string
+  | RespEdit of newBody : string
+  | RespGrant of cap : Capability * scope : GrantScope
+  | RespAlways of decision : string
+```
+
+### Mode B: Asynchronous (queue + inbox)
+
+For longer sessions / batch jobs. Runtime parks the frame, writes a `pending-decision` record to `rundir/inbox/<sessionId>/<queryId>.json`. User runs `dark pdd inbox` later, answers each one, resumes:
+
+```
+$ dark pdd inbox
+2 pending decisions for session abc123:
+  [1] criticalDecision: 3 candidates  (parked 4m ago)
+  [2] HttpClient.post: capability ask  (parked 2m ago)
+
+$ dark pdd resolve 1
+... interactive picker ...
+
+$ dark pdd resume abc123
+... runtime picks up parked frames ...
+```
+
+For PoC: Mode A only. Mode B is built on the same primitive — just an alternate `humanResolver` that persists queries instead of prompting.
+
+### Mode C: Out-of-band (webhook / push)
+
+Production-shaped: the runtime POSTs the query to a configured webhook (Slack, email, mobile push). User responds via reply or web UI. Runtime polls or receives webhook.
+
+Out of scope for the experiment.
+
+## What the human's answer *becomes*
+
+The crucial design choice. Three options:
+
+### Option 1: One-shot
+The answer is used for this call, then discarded. Re-running the same program asks again.
+
+### Option 2: Cached in the session
+The answer is remembered for this session. Same call later → same answer, silently.
+
+### Option 3: Cached in the package store (recommended)
+The answer becomes a real `PackageFn`. The next run of *any* program that calls this name finds it via the normal find path. Persistent across sessions.
+
+**Default for the spike:** Option 3 for materialization decisions. Option 2 for capability grants (sessions get to re-decide HTTP access; we don't want one "Always" to silently leak across days/projects). Option 1 for breakpoints.
+
+## The trace shape
+
+```
+human_ask    queryId=q4f2 kind=AskMaterialize fnName=foo candidates=[...] elapsedSoFarMs=120
+human_answer queryId=q4f2 chose=candidate2 response=Accept latencyMs=8400
+materialize_done handle=h7a8 winningSource=Human hash=...
+```
+
+Note the latency — human responses are *slow*. The trace makes this visible so optimization later can target "fns that always need the human" for review-and-promotion.
+
+## CLI commands (target)
+
+```
+dark pdd inbox                  # list pending decisions
+dark pdd resolve <queryId>      # interactive resolution
+dark pdd resume <sessionId>     # un-park frames after resolutions
+dark pdd review <traceId>       # walk through trace, see all human-decision points
+dark pdd promote <fnHash>       # mark a human-authored body as 'official' (becomes default for find)
+```
+
+## What about the inverse — when does the human ask the runtime?
+
+The flip side. The user types in the CLI:
+- "Materialize all pending fns" — force eager.
+- "Show me the current state of `foo`" — dump candidate set.
+- "Re-materialize `foo` with model=sonnet" — explicit upgrade.
+- "Reject the current materialization of `foo`, try again" — invalidate cache.
+
+This is the *control* side of the human-runtime interface. It's symmetric — the runtime asks queries, the user issues commands. Same data shape.
+
+## Skipping it on Day 1
+
+For Day 1 of hacking, you can ignore this entire doc. The default policy is `EmptyBody` on materialization failure, full grants on all capabilities. The human-resolver is just `failwith "TODO"`. Add the infra later when the cases come up.
+
+But: **building the `humanResolver` field on `ExecutionState` is cheap** (one record field, one impl, one test). Putting it in early means later additions don't need an interpreter change. Worth doing in week 1.
+
+## Connection to other docs
+
+- `02-libexecution-changes.md` — add `humanResolver : HumanQuery -> Ply<HumanResponse>` to `ExecutionState`.
+- `05-tolerant-runtime.md` — `AskUser` is one of the four recovery policies.
+- `06-builtin-permissions.md` — capability-ask is the main human-trigger.
+- `08-tracing-as-artifact.md` — `human_ask` / `human_answer` are trace events. The trace records human contribution alongside find/generate.

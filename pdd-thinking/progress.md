@@ -47,7 +47,7 @@ Format:
 - Decided: `WarningsAsErrors=FS0025` trick to force every match-exhaustiveness site to show up. 74 FQFnName match sites in LibExecution alone, more elsewhere.
 - Decided: Phase A (carving) has a 60-min stop-loss → revert if needed.
 - Next: deepen `06-builtin-permissions.md` (capability model concrete sketch), then `07-human-in-loop.md`, then `08-tracing-as-artifact.md`. Then write a glossary doc (`12-glossary.md`?) and concrete `LibPDD/Materializer.fs` sketch (`13-libpdd-materializer.md`?).
-- Commits: 1 pending.
+- Commits: 1 pending (carving plan).
 
 ### 2026-05-13 01:13 — iteration 4 (deepen 06 — capabilities)
 - Did: rewrote `06-builtin-permissions.md`. Concrete capability tag list (CapPure, CapReadTime, CapReadRandom, CapReadEnv, CapReadFile, CapReadNet, CapWriteFile, CapWriteNet, CapWriteDB, CapExec, CapSendSecret, CapAny). Maps to existing `Previewable` + `Harmful` patterns in `RuntimeTypes.fs:1340` for continuity. Enforcement happens at call site in `Apply` in `Interpreter.fs`. CLI surface: install-time defaults, per-invocation `--allow X,Y,Z`, per-call escalation in `--ask` mode. LLM-side: hide ungranted-cap builtins from the prompt.
@@ -56,4 +56,11 @@ Format:
 - Decided: don't try to compute caps at PT2RT for PoC; rely on runtime checks. Recovery for `CapabilityDenied` follows the `RecoveryPolicy` model from #05.
 - Decided: defer domain-restricted capabilities ("HTTP to anthropic.com only") + time-bound capabilities ("allow for 5 min") to post-PoC.
 - Next: deepen `07-human-in-loop.md` (concrete sketch of where the human enters + the CLI surface for that), then `08-tracing-as-artifact.md` (trace event schema + replay design), then a new `12-glossary.md` (terminology), then a `13-libpdd-materializer.md` (full F# sketch of the new LibPDD project).
+- Commits: 1 pending (iter 4).
+
+### 2026-05-13 01:17 — iteration 5 (deepen 07 — human in loop)
+- Did: rewrote `07-human-in-loop.md`. Core framing: **the human is a fallback materializer** (same protocol as find/generate, output becomes a real PackageFn). 7 concrete trigger types: MaterializationFailed, CapabilityDeniedAsk, ConsensusRequired, RepeatedFailure, TraceDivergent, AskUserAnnotation, breakpoint. 3 modes: sync TTY (Mode A, the spike default), async inbox (Mode B, same primitive), webhook (Mode C, out of scope). Designed `humanResolver : HumanQuery -> Ply<HumanResponse>` field for `ExecutionState`. Trace events `human_ask`/`human_answer` capture latency. CLI commands: `pdd inbox`, `resolve`, `resume`, `review`, `promote`.
+- Decided: caching of human answers — Option 3 (cached in package store) for materialization, Option 2 (cached in session) for capabilities, Option 1 (one-shot) for breakpoints.
+- Decided: build `humanResolver` field early even if first impl is `failwith "TODO"` — cheap insurance against later interpreter changes.
+- Next: deepen `08-tracing-as-artifact.md` (full event schema + replay semantics + diff design), then write a `12-glossary.md`, then a `13-libpdd-materializer.md` (concrete F# sketch of LibPDD project structure).
 - Commits: 1 pending.
