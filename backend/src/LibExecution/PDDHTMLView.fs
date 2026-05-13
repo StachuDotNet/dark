@@ -53,6 +53,7 @@ type Session =
     htmlPath : string
     fns : Dictionary<string, FnRecord>
     events : List<string * string>  // (timestamp, html-escaped text)
+    mutable topLevel : string
     mutable closed : bool }
 
 
@@ -102,6 +103,14 @@ let private cssStyles = """
   .event { padding: 3px 0; border-bottom: 1px solid #2a2a2a; }
   .event-ts { color: #666; margin-right: 8px; }
   .header-stamp { color: #555; font-size: 11px; }
+  .top-level { background: #0f1f0f; border: 1px solid #305030; padding: 14px 16px; margin-bottom: 20px; border-radius: 4px; font-size: 15px; white-space: pre-wrap; }
+  .top-level .label { color: #555; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+  .annot { padding: 0 4px; border-radius: 3px; font-weight: bold; }
+  .annot.in-progress { background: #4a3a00; color: #e0c060; }
+  .annot.real { background: #053515; color: #6fcf90; }
+  .annot.fake { background: #2a2a2a; color: #888; }
+  .annot.cached { background: #002545; color: #6080d0; }
+  .annot.failed { background: #4a0010; color: #e07080; }
 """
 
 let private renderHtml (session : Session) : string =
@@ -125,6 +134,23 @@ let private renderHtml (session : Session) : string =
       stamp
       session.fns.Count
       session.events.Count)
+
+  // Top-level expression with inline pending-fn annotations.
+  // Walk each fn name in session.fns and wrap matches in <span class="annot ...">.
+  if not (String.IsNullOrWhiteSpace session.topLevel) then
+    let mutable rendered = htmlEscape session.topLevel
+    for kv in session.fns do
+      let fn = kv.Value
+      let _, _, cls = stateBadge fn.state
+      // Word-boundary regex on the (escaped) name avoids partial-token highlights.
+      let escapedName = System.Text.RegularExpressions.Regex.Escape(htmlEscape fn.name)
+      let pattern = @"\b" + escapedName + @"\b"
+      let replacement = sprintf "<span class=\"annot %s\">%s</span>" cls (htmlEscape fn.name)
+      rendered <- System.Text.RegularExpressions.Regex.Replace(rendered, pattern, replacement)
+    append "<div class=\"top-level\">\n"
+    append "<div class=\"label\">top-level expression</div>\n"
+    append rendered
+    append "\n</div>\n"
 
   append "<div class=\"layout\">\n"
 
@@ -211,9 +237,17 @@ let createSession (id : string) (path : string) : Session =
       htmlPath = path
       fns = Dictionary<string, FnRecord>()
       events = List<string * string>()
+      topLevel = ""
       closed = false }
   writeFile s
   s
+
+/// Set / replace the top-level expression text shown at the top of the view.
+/// Annotations on Pending fn names are computed on each render from current
+/// session state.
+let setTopLevel (session : Session) (expr : string) : unit =
+  session.topLevel <- expr
+  writeFile session
 
 let defaultPathFor (sessionId : string) : string =
   Path.Combine("rundir", "pdd-view", sprintf "%s.html" sessionId)

@@ -99,6 +99,7 @@ let private handleDemo
     let sessionId = (System.Guid.NewGuid().ToString("N")).Substring(0, 8)
     let htmlPath = View.defaultPathFor sessionId
     let session = View.createSession sessionId htmlPath
+    View.setTopLevel session (sprintf "%s %dL" fnName arg)
     let htmlSink = View.sinkFor session
     Mat.currentSink <- combinedSink htmlSink
 
@@ -197,6 +198,7 @@ let private handleRun
     let sessionId = (System.Guid.NewGuid().ToString("N")).Substring(0, 8)
     let htmlPath = View.defaultPathFor sessionId
     let session = View.createSession sessionId htmlPath
+    View.setTopLevel session exprStr
     let htmlSink = View.sinkFor session
     Mat.currentSink <- combinedSink htmlSink
 
