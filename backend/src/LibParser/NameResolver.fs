@@ -25,7 +25,13 @@ type NRE = PT.NameResolutionError
 [<RequireQualifiedAccess>]
 type OnMissing =
   | ThrowError
+  /// Return the NotFound error untouched; caller decides what to do
+  /// (e.g. fall back to a variable name).
   | Allow
+  /// PDD: instead of NotFound, return a Pending fn ref so the runtime
+  /// materializes via the LLM at call time. Only meaningful for fn
+  /// resolution; Type/Value resolvers fall back to Allow behavior.
+  | AllowPending
 
 // TODO: we should probably just return the Result, and let the caller
 // handle the error if they want to...
@@ -44,7 +50,8 @@ let throwIfRelevant
             Exception.raiseInternal
               "Unresolved name when not allowed"
               [ "error", err; "given", given; "currentModule", currentModule ]
-          | OnMissing.Allow -> err) }
+          | OnMissing.Allow -> err
+          | OnMissing.AllowPending -> err) }  // handled at fn-specific call site
 
 
 type GenericName = LibDB.NameLookup.GenericName
@@ -210,13 +217,26 @@ let resolveFnName
       : PT.NameResolution<_>
     )
   | WT.Unresolved given ->
-    resolveGenericName
-      (Some builtinFns)
-      onMissing
-      currentModule
-      given
-      FS2WT.Expr.parseFnName
-      packageManager.findFn
-      PT.FQFnName.FQFnName.Package
-      (fun (n, v) -> PT.FQFnName.Builtin { name = n; version = v })
-      (fun (n, v) -> { RT.FQFnName.Builtin.name = n; version = v })
+    uply {
+      let! nr =
+        resolveGenericName
+          (Some builtinFns)
+          onMissing
+          currentModule
+          given
+          FS2WT.Expr.parseFnName
+          packageManager.findFn
+          PT.FQFnName.FQFnName.Package
+          (fun (n, v) -> PT.FQFnName.Builtin { name = n; version = v })
+          (fun (n, v) -> { RT.FQFnName.Builtin.name = n; version = v })
+      // PDD: if resolution failed and AllowPending is set, convert the
+      // error into a Pending fn ref. The runtime materializes via LLM
+      // when the call site fires. Use the last segment of the given path
+      // as the name (e.g. given = ["addOne"] → Pending "addOne").
+      match nr.resolved, onMissing with
+      | Error _, OnMissing.AllowPending ->
+        let name = NEList.last given
+        return
+          { nr with resolved = Ok(PT.FQFnName.fqPending name) }
+      | _ -> return nr
+    }
