@@ -64,13 +64,16 @@ HTML view at `rundir/pdd-view/<sessionId>.html` shows annotated function cards (
 | `dark prompt "compute the square of 7L plus the cube of 3L"` | `DInt64 76L` | multi-fn decompose |
 | `PDD_MODEL=gpt-4o dark pdd run "sumList [1L;...;5L]"` | `DInt64 15L` | List<Int64> + lambda + Stdlib.List.fold; 3 indep tests pass |
 | `PDD_MODEL=gpt-4o dark pdd run "doubleAll [3L;5L;7L]"` | `[6L;10L;14L]` | List<Int64>→List<Int64> via Stdlib.List.map |
+| `PDD_MODEL=gpt-4o dark pdd run "longestRow \"alice,30\\nbob-smith,25\\n…\""` | `"daniel-johnson,35"` | First **end-to-end String CSV demo**: split + fold + max-by-length. 6s. 3 QA tests pass. |
+| `PDD_MODEL=gpt-4o dark pdd run "parseRows \"date,open,close\\n…\""` | `[[date,open,close],[2024-01-01,100,108],…]` | CSV → List<List<String>>. ✓ real with 3 QA tests. |
 
 ### Demos that still trip the system (gaps surfaced)
 
 | Prompt | Failure | Reason |
 |---|---|---|
 | `filter the even numbers from [...] then sum them` | parse error (LibParser declines) | Decompose produced nested-pipe-in-lambda LibParser doesn't handle |
-| `compute the mean of [10L, 20L, 30L]` | Fake `divideBy` | LLM proposed `(x:Int64,y:Int64): Option<Int64>` sig; `Option<T>` not in `parseSimpleType` yet |
+| `compute the mean of [10L, 20L, 30L]` | Fake `divideBy` | LLM proposed `Option<Int64>` return; tuple destructuring + Option arithmetic |
+| **CSV-variance demo** (`getDate(findMaxVarianceRow(parseRows csv))`) | `parseRows` works; downstream fns produce tuple-heavy bodies LibParser declines | Real progress: runtime-type-propagation gives downstream fns the right sig (List<List<String>> not String). But LLM-natural FP idioms use `(a,b)` tuples + pattern destructuring + non-existent Stdlib names (List.foldi, List.nth, Tuple.second), each of which trips LibParser or runtime. Would need: tuple support in PT/LibParser, or stricter prompt convincing the LLM to avoid the pattern. |
 
 ## CLI surface
 
