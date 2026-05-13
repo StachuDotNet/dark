@@ -155,6 +155,14 @@ Darklang syntax for the body content:
 - String concat: `<atom> ++ <atom>` where each atom is a param name or
   a double-quoted string literal. Example: `x ++ "!"` or `"hi " ++ x`.
 
+IMPORTANT — KEEP TYPES CONCRETE. Do NOT wrap return types in Option<T>,
+Result<T,E>, or other "could-fail" containers. If the input is bad, use
+a sensible default (0L, "", []) instead. The runtime composes
+helper functions; wrapper types break the chain.
+
+If you're given an arg type hint List<List<String>> or similar nested
+generics, that's fine — match it exactly in your sig.
+
 Return ONLY the JSON object. No markdown fences, no prose."""
 
 
@@ -493,10 +501,17 @@ Available Stdlib (use the EXACT names — these exist):
 - Stdlib.List.fold signature: `fold list init (fun acc elem -> acc)` (list first).
 - Stdlib.Int64.add / subtract / multiply / divide / mod / negate / equals / greaterThan / lessThan
 - Stdlib.String.append / length / toUppercase / toLowercase
+- Stdlib.String.split: splits a String on a separator → List<String>.
 
 Do NOT use Haskell-style names: there is no foldl, foldr, fold_left,
 sum (use fold with add), map2, zip — invent your own name if you need
 those and the runtime will materialize it.
+
+IMPORTANT — do NOT wrap intermediate results in Option<T> / Result<T,E>.
+Keep types CONCRETE (Int64, String, List<Int64>, List<String>, List<List<String>>).
+The runtime materializes these helpers straightforwardly; Option/Result
+wrappers force every downstream stage to unwrap and break composition.
+If a value could fail, use a sensible default instead of Option.None.
 """
 
 /// Build a user-side prompt for the decompose call. Just the request,
@@ -572,14 +587,17 @@ let parseTestGenResponse (raw : string) : List<ClaimedTest> =
           let items = [ for x in e.EnumerateArray() -> parseDval x ]
           if List.forall Option.isSome items then
             let vals = items |> List.map Option.get
-            // Best-effort element type from first item; default Int64 for empty.
-            let kt =
+            // Element type from the first item via the runtime's own
+            // toValueType helper. Handles nested DList correctly so a
+            // list-of-lists doesn't get KTInt64 as its outer type.
+            let elemVT =
               match vals with
-              | (RT.DInt64 _) :: _ -> RT.KTInt64
-              | (RT.DString _) :: _ -> RT.KTString
-              | (RT.DBool _) :: _ -> RT.KTBool
+              | first :: _ ->
+                match RT.Dval.toValueType first with
+                | RT.ValueType.Known kt -> kt
+                | _ -> RT.KTInt64
               | _ -> RT.KTInt64
-            Some(RT.DList(RT.ValueType.Known kt, vals))
+            Some(RT.DList(RT.ValueType.Known elemVT, vals))
           else None
         | _ -> None
       let mutable acc = []
