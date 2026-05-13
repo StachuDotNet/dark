@@ -127,6 +127,30 @@ let buildUserPrompt (name : string) : string =
   sprintf "Function: %s. Description: implement a sensible default body." name
 
 
+/// Fix-up prompt used when the mini-parser rejects the LLM's first body.
+/// Restates the grammar explicitly and asks for a simpler equivalent body.
+let buildFixUpPrompt (name : string) (sig_ : string) (failedBody : string) : string =
+  sprintf
+    "Function: %s
+Your previous attempt was:
+  sig: %s
+  body: %s
+
+Our mini-parser couldn't lower that body. The mini-parser ONLY accepts these body shapes:
+- atom:        a parameter name (e.g. x, y)  OR  an Int64 literal (e.g. 42L, -7L)
+- arith:       <atom> <op> <atom>  where op is +, -, *
+- unary minus: -<param-name>  (e.g. -x)
+- if-else:     if <expr> <cmp> <expr> then <expr> else <expr>
+               where cmp is one of >, <, >=, <=
+               and each <expr> is itself an atom, arith, or unary-minus.
+
+Return JSON {\"sig\": \"%s\", \"body\": \"...\"} with a body that matches the grammar above. Keep the function's intended semantics if possible; otherwise, return the closest simple approximation."
+    name
+    sig_
+    failedBody
+    sig_
+
+
 /// System prompt for the high-level "decompose a user request into a
 /// Darklang expression" path. The output expression may reference fn
 /// names the LLM invents; those names become Pending refs, materialized
@@ -769,52 +793,63 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
       emit (MaterializeFailed(p.name, "OPENAI_API_KEY not set"))
       return None
     else
-      let userPrompt = buildUserPrompt p.name
-      let! resp =
-        callOpenAI apiKey v4SystemPrompt userPrompt
-        |> Async.AwaitTask
-        |> Async.StartAsTask
-      match resp with
-      | Error e ->
-        logResult logPath p.name None None (Some e)
-        emit (MaterializeFailed(p.name, e))
-        return None
-      | Ok body ->
-        emit (LLMResponse(p.name, elapsedMs (), body))
-        match extractContent body with
-        | Error e ->
-          logResult logPath p.name None None (Some e)
-          emit (MaterializeFailed(p.name, e))
-          return None
-        | Ok content ->
-          match parseLLMResponse content with
+      // Round-trip with the LLM. On parse failure we retry once with a
+      // grammar-explicit fix-up prompt before falling back to identity.
+      // Cap: 2 LLM calls total per materialization.
+      let maxAttempts = 2
+      let rec attempt (n : int) (prompt : string) =
+        uply {
+          let! resp =
+            callOpenAI apiKey v4SystemPrompt prompt
+            |> Async.AwaitTask
+            |> Async.StartAsTask
+          match resp with
           | Error e ->
-            logResult logPath p.name None (Some content) (Some e)
+            logResult logPath p.name None None (Some e)
             emit (MaterializeFailed(p.name, e))
             return None
-          | Ok gen ->
-            logResult logPath p.name (Some gen.sig_) (Some gen.body) None
-            emit (ParseOk(p.name, gen.sig_, gen.body))
-            // Try the minimal-body parser using the actual sig param names.
-            // Falls back to single-param "x" if the sig isn't parseable.
-            let paramNames =
-              parseParamNames gen.sig_
-              |> Option.defaultValue [ "x" ]
-            match parseMinimalBodyN paramNames gen.body with
-            | Some instrs ->
-              let kind =
-                if instrs.instructions.Length = 0 then "identity"
-                elif instrs.instructions.Length = 1 then "constant"
-                else "arith"
-              emit (CompileBody(p.name, kind, instrs.registerCount))
-              emit (MaterializeDone(p.name, Real, elapsedMs ()))
-              // H4: promote to persistent cache so the next session skips
-              // the LLM call for the same name.
-              persistPromoted p.name gen
-              return Some(fnFromBodyN p.name paramNames instrs)
-            | None ->
-              emit (CompileBody(p.name, "fallback-identity", 1))
-              emit (MaterializeDone(p.name, Fake, elapsedMs ()))
-              // Don't promote — the body wasn't parseable.
-              return Some(hardcodedIdentityFn p.name)
+          | Ok body ->
+            emit (LLMResponse(p.name, elapsedMs (), body))
+            match extractContent body with
+            | Error e ->
+              logResult logPath p.name None None (Some e)
+              emit (MaterializeFailed(p.name, e))
+              return None
+            | Ok content ->
+              match parseLLMResponse content with
+              | Error e ->
+                logResult logPath p.name None (Some content) (Some e)
+                emit (MaterializeFailed(p.name, e))
+                return None
+              | Ok gen ->
+                logResult logPath p.name (Some gen.sig_) (Some gen.body) None
+                emit (ParseOk(p.name, gen.sig_, gen.body))
+                let paramNames =
+                  parseParamNames gen.sig_
+                  |> Option.defaultValue [ "x" ]
+                match parseMinimalBodyN paramNames gen.body with
+                | Some instrs ->
+                  let kind =
+                    if instrs.instructions.Length = 0 then "identity"
+                    elif instrs.instructions.Length = 1 then "constant"
+                    else "arith"
+                  let labelledKind =
+                    if n > 1 then sprintf "%s (retry %d)" kind (n - 1) else kind
+                  emit (CompileBody(p.name, labelledKind, instrs.registerCount))
+                  emit (MaterializeDone(p.name, Real, elapsedMs ()))
+                  persistPromoted p.name gen
+                  return Some(fnFromBodyN p.name paramNames instrs)
+                | None when n < maxAttempts ->
+                  // Mini-parser refused: feed the failed body back to the
+                  // LLM with an explicit grammar and ask for a simpler body.
+                  emit (CompileBody(p.name, sprintf "retry-%d" n, 0))
+                  let fixUp = buildFixUpPrompt p.name gen.sig_ gen.body
+                  return! attempt (n + 1) fixUp
+                | None ->
+                  emit (CompileBody(p.name, "fallback-identity", 1))
+                  emit (MaterializeDone(p.name, Fake, elapsedMs ()))
+                  return Some(hardcodedIdentityFn p.name)
+        }
+      let initialPrompt = buildUserPrompt p.name
+      return! attempt 1 initialPrompt
   }
