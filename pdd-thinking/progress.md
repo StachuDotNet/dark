@@ -192,4 +192,14 @@ Format:
 - Time check: 02:20 EDT. ~5h 40m to 8am.
 - Plan: STOP creating new docs. Final 3-5 iterations are polish + final report tightening + print prep.
 - Next: pass over `00-LOOP-SUMMARY.md` to make sure it's still useful (it's grown a lot since iter 0). Then one more polish on the final report. Then print at ~06:30.
+- Commits: 1 pending (iter 19).
+
+### 2026-05-13 02:24 — iteration 20 (polish 00-LOOP-SUMMARY)
+- Did: fixed `00-LOOP-SUMMARY.md` stale-ness:
+  - Renumbered the file list — `progress.md` and `FINAL-REPORT` had wrong indices.
+  - Updated cadence note from "20-30 min" to "270s (4.5 min)" reflecting the actual cadence chosen mid-night.
+  - Replaced "UTC… need to figure that out" with concrete "08:00 EDT (12:00 UTC) 2026-05-13".
+  - Replaced "Endgame: 10+ design files (claims)" with **STATUS section** showing actual progress against goals — ✅ for done, ⏳ for the pending print.
+- Time check: 02:24 EDT. ~5h 36m to 8am.
+- Next: re-read the final report once more, look for any awkward phrasing or stale info. After that, possibly add a small inline FAQ to the final report based on questions Stachu might ask in the morning. Then print prep around 06:00-06:30.
 - Commits: 1 pending.
