@@ -115,4 +115,20 @@ Format:
 - Decided: hardcode `gpt-4o-mini`, no model override flag yet. Add live $-counter. Abort if estimated spend ever crosses $5 in a single session.
 - Decided: "spike succeeds but paradigm feels wrong" = most valuable failure mode. Write down why.
 - Next: write `16-prompt-shapes.md` (actual prompt templates for `generate`, given that gpt-4o-mini-with-JSON works). Then write a `17-llm-provider-comparison.md` (or fold into 13/16) reflecting on Haiku vs gpt-4o-mini tradeoffs. Then start thinking about `FINAL-REPORT-2026-05-13.md` outline — need to start that by 06:00 EDT to make 08:00 print deadline comfortably.
+- Commits: 1 pending (iter 11).
+
+### 2026-05-13 01:41 — iteration 12 (write 16-prompt-shapes — verified prompts)
+- Did: ran four real gpt-4o-mini calls (takeHead, calculateVariance, fib, sentimentScore). Total cost: ~$0.0002. Wrote `16-prompt-shapes.md` with the verbatim outputs and per-output critique.
+- Key empirical findings:
+  - **JSON shape works**: every call returned valid JSON.
+  - **Sig and body can disagree** (takeHead returned `Option<'a>` sig but body unwrapped it). Post-materialization type-check is essential.
+  - **Model uses wrong types**: `int` instead of `Int64`. Fix in system prompt v2.
+  - **Lambda confusion**: model used `=>` instead of `fun -> `. Fix in system prompt v2.
+  - **Recursion works**: model happily wrote `fib(n-1) + fib(n-2)` referencing itself.
+  - **`max_tokens=150` is too small**: `sentimentScore` got truncated. Bump to 800 default.
+  - **Model invents stdlib fns**: needs post-AST-walk validation.
+  - **Model over-engineers**: write "prefer simplest correct body" in the prompt.
+- Produced a v2 system prompt with explicit Darklang syntax notes. Ready to paste into `Generate.fs`.
+- Total LLM spend tonight: roughly $0.0002. Trivial fraction of $10.
+- Next: write `17-llm-provider-comparison.md` or fold into 16, OR start outlining `FINAL-REPORT-2026-05-13.md`. It's 01:43 — about 6h 17min until 8am. Need to start the final report by ~06:00 EDT (4h 17m from now) to have time to print. Probably 2-3 more design iterations then start drafting the final.
 - Commits: 1 pending.
