@@ -172,4 +172,15 @@ Format:
 - Did: wrote `19-red-team.md`. 14 categorized risks: design-level (trace not really replayable; tolerance hiding logic bugs; sig consensus thrashing; the spike succeeds but feels wrong), implementation-level (match-exhaustiveness eating Day 1; two-pass build forgotten; Ply cancellation subtleties; slow find path without name index; defaultFor wrong for custom types; LLM syntactically-invalid outputs), project-level (tarpit; demo-cadence divergence; burnout; cherry-pick-vs-rewrite). Plus a "we should have known" list. Plus smoke detectors to wire up Day 4 — one-liner shell + jq for tracking model upgrades / recovery rate / trace bloat / spend.
 - Most valuable insight: **R4 — the spike succeeds but feels wrong** = most valuable failure mode (write up why).
 - Time check: 02:08 EDT. About 5h 52m to 8am. Plenty of time. Plan: 1-2 more design iterations of polish + the final report tightening. Maybe write `20-the-elevator.md` (one-paragraph pitches for different audiences). Then polish final, print at ~06:30.
+- Commits: 1 pending (iter 17).
+
+### 2026-05-13 02:14 — iteration 18 (polish final report)
+- Did: tightened `FINAL-REPORT-2026-05-13.md`:
+  - Added a **TL;DR paragraph** right at the top, summarizing the whole spike in a few sentences.
+  - Updated docs pointer table from "18 docs" to "20 docs" — added rows for `18-minimum-viable-spike.md` and `19-red-team.md`.
+  - Marked the two most-likely-to-be-opened docs with ★ (02 LibExecution changes and 17 quick reference).
+  - Adjusted companion-docs reference to span 00-19.
+- Word count: 1773 → ~3 printed pages. Comfortably under 5.
+- Time check: 02:15 EDT. ~5h 45m to 8am.
+- Next: one more polish pass + maybe write a short `20-elevator-pitches.md` (60s/3-min/10-min variants). Then verify final report renders well. Print around 06:30.
 - Commits: 1 pending.

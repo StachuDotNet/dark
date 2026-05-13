@@ -1,10 +1,12 @@
 # PDD Spike — Overnight Design Report
 
 **For:** Stachu, waking up 2026-05-13 around 8am EDT
-**By:** Claude, working the `pdd` branch from ~00:48 to ~07:30 EDT
+**By:** Claude, working the `pdd` branch ~00:48 → ~07:30 EDT
 **Branch:** `pdd` (local-only, off `main`, never pushed)
-**Companion docs:** `pdd-thinking/00-LOOP-SUMMARY.md` through `pdd-thinking/17-day-1-quick-reference.md`
-**Open at the desk:** `pdd-thinking/17-day-1-quick-reference.md` — it's a single page, tape it down.
+**Companion docs:** `pdd-thinking/00-LOOP-SUMMARY.md` through `pdd-thinking/19-red-team.md`
+**Open at the desk:** `pdd-thinking/17-day-1-quick-reference.md` — single page, tape it down.
+
+**TL;DR:** This branch contains 20 design docs (and this report) describing a Darklang fork where the interpreter materializes its own source code at runtime via LLM, in parallel + speculatively, with traces as the durable artifact. Pivot point: `Interpreter.fs:317`. Day-1 plan: 6 phases, ~4-6 hours, ends with one passing F# test. OpenAI key is set up (`~/.config/darklang/llm-keys.env`, mode 600). gpt-4o-mini at ~$0.00005/call → effectively unbounded $10 budget. Verified the JSON-prompt path works tonight (~75% first-try success). Demos 1-7 are documented; Demo 6 (HN headline sentiment) is the north star.
 
 ---
 
@@ -99,30 +101,32 @@ Full source sketches in `pdd-thinking/14-demo-programs.md`. **Demo 6 is the elev
 5. **Recovered-value quarantine** (DRecovered tag)? Defer; rely on trace inspection instead.
 6. **What does "review" mean for a trace?** Real UX question. Defer until Demo 6 trace exists.
 
-## Pointers to the 18 design docs
+## Pointers to the 20 design docs
 
-| File | What's in it |
-|---|---|
-| `00-LOOP-SUMMARY.md` | Loop entry point (used during the night) |
-| `01-vision.md` | Algorithm + paradigm + 5-claim summary |
-| `02-libexecution-changes.md` | **The most important file** — concrete F# sketch of interpreter changes |
-| `03-find-vs-generate.md` | Scheduler design (1s budgets, race policy) |
-| `04-signature-consensus.md` | Strategy A (first-wins); B (constraint-driven, v2) |
-| `05-tolerant-runtime.md` | RecoveryPolicy enum + tolerant defaults |
-| `06-builtin-permissions.md` | Capability tags + enforcement at call site |
-| `07-human-in-loop.md` | Human as fallback materializer + 7 triggers |
-| `08-tracing-as-artifact.md` | JSONL event schema + replay/diff/promote |
-| `09-carving-the-codebase.md` | What to disable in `fsdark.sln`; parser open question (chose P3) |
-| `10-day-1-hacking-plan.md` | Literal step-by-step with `git`/`grep`/edit commands |
-| `11-open-questions.md` | What I'm unsure about |
-| `12-glossary.md` | Terminology + anti-glossary + F# nouns table |
-| `13-libpdd-materializer.md` | F# project structure for new LibPDD (7 files) |
-| `14-demo-programs.md` | 6 demos w/ source sketches + acceptance criteria |
-| `15-spike-budgets.md` | Engineering time / API $ / cognitive load envelopes |
-| `16-prompt-shapes.md` | Verbatim gpt-4o-mini outputs + v3 system prompt |
-| `17-day-1-quick-reference.md` | **Single-page at-the-desk cheat sheet** |
+| # | File | What's in it |
+|---|---|---|
+| 00 | `00-LOOP-SUMMARY.md` | Loop entry point (used during the night) |
+| 01 | `01-vision.md` | Algorithm + paradigm + 5-claim summary |
+| 02 | `02-libexecution-changes.md` | **★ The most important file** — concrete F# sketch of interpreter changes |
+| 03 | `03-find-vs-generate.md` | Scheduler design (1s budgets, race policy) |
+| 04 | `04-signature-consensus.md` | Strategy A (first-wins); B (constraint-driven, v2) |
+| 05 | `05-tolerant-runtime.md` | RecoveryPolicy enum + tolerant defaults |
+| 06 | `06-builtin-permissions.md` | Capability tags + enforcement at call site |
+| 07 | `07-human-in-loop.md` | Human as fallback materializer + 7 triggers |
+| 08 | `08-tracing-as-artifact.md` | JSONL event schema + replay/diff/promote |
+| 09 | `09-carving-the-codebase.md` | What to disable in `fsdark.sln`; parser open question (chose P3) |
+| 10 | `10-day-1-hacking-plan.md` | Literal step-by-step with `git`/`grep`/edit commands |
+| 11 | `11-open-questions.md` | What I'm unsure about |
+| 12 | `12-glossary.md` | Terminology + anti-glossary + F# nouns table |
+| 13 | `13-libpdd-materializer.md` | F# project structure for new LibPDD (7 files) |
+| 14 | `14-demo-programs.md` | 6 demos w/ source sketches + acceptance criteria |
+| 15 | `15-spike-budgets.md` | Engineering time / API $ / cognitive load envelopes |
+| 16 | `16-prompt-shapes.md` | Verbatim gpt-4o-mini outputs + v3 system prompt |
+| 17 | `17-day-1-quick-reference.md` | **★ Single-page at-the-desk cheat sheet** |
+| 18 | `18-minimum-viable-spike.md` | 4-hour cut: smallest path to Demo 1 |
+| 19 | `19-red-team.md` | 14 risks across design / impl / project + smoke detectors |
 
-Plus `progress.md` (running log of the 15 overnight loop iterations) and this `FINAL-REPORT-2026-05-13.md`.
+Plus `progress.md` (running log of the overnight iterations) and this `FINAL-REPORT-2026-05-13.md`.
 
 ## When you sit down
 
