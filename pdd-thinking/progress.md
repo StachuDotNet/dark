@@ -262,4 +262,13 @@ Format:
 - Cumulative tonight spend: ~$0.0012.
 - Time check: 04:01 EDT. ~3h 59m to 8am.
 - Next: stretch cadence to 45-60min, occasional polish, then start print prep around 06:30.
-- Commits: 1 pending.
+- Commits: 1 pending (iter 25).
+
+### 2026-05-13 04:45 — iteration 26 (PDF dry-run, verified 5 pages exactly)
+- Did: discovered `print-md --no-print` generates the PDF without sending to the physical printer. Ran it on `FINAL-REPORT-2026-05-13.md`.
+- **Result: exactly 5 pages.** Letter portrait, WeasyPrint 61.1, 67KB. Right at the user-imposed limit. If I add any more content, it will overflow to 6.
+- Decision: don't add anything to the final report. Keep it at 5. Polish only via word substitution if needed.
+- Won't print yet — user wanted print by 8am, currently 04:46. Plan: print at ~06:30 as originally scheduled.
+- Time check: 04:46 EDT. ~3h 14m to 8am.
+- Next: idle iteration at 60min, then 06:00ish iteration to start print prep.
+- Commits: 1 pending (just the progress.md update).
