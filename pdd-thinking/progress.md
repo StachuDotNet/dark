@@ -48,3 +48,12 @@ Format:
 - Decided: Phase A (carving) has a 60-min stop-loss → revert if needed.
 - Next: deepen `06-builtin-permissions.md` (capability model concrete sketch), then `07-human-in-loop.md`, then `08-tracing-as-artifact.md`. Then write a glossary doc (`12-glossary.md`?) and concrete `LibPDD/Materializer.fs` sketch (`13-libpdd-materializer.md`?).
 - Commits: 1 pending.
+
+### 2026-05-13 01:13 — iteration 4 (deepen 06 — capabilities)
+- Did: rewrote `06-builtin-permissions.md`. Concrete capability tag list (CapPure, CapReadTime, CapReadRandom, CapReadEnv, CapReadFile, CapReadNet, CapWriteFile, CapWriteNet, CapWriteDB, CapExec, CapSendSecret, CapAny). Maps to existing `Previewable` + `Harmful` patterns in `RuntimeTypes.fs:1340` for continuity. Enforcement happens at call site in `Apply` in `Interpreter.fs`. CLI surface: install-time defaults, per-invocation `--allow X,Y,Z`, per-call escalation in `--ask` mode. LLM-side: hide ungranted-cap builtins from the prompt.
+- Decided: extend `BuiltInFn` with `capabilities : Set<Capability>` field (~5 lines of type, then default everything to `{CapPure}` and bump the dozen builtins that need more).
+- Decided: package fns inherit caps transitively but for PoC we just check at the leaf builtin call. Sound + cheap.
+- Decided: don't try to compute caps at PT2RT for PoC; rely on runtime checks. Recovery for `CapabilityDenied` follows the `RecoveryPolicy` model from #05.
+- Decided: defer domain-restricted capabilities ("HTTP to anthropic.com only") + time-bound capabilities ("allow for 5 min") to post-PoC.
+- Next: deepen `07-human-in-loop.md` (concrete sketch of where the human enters + the CLI surface for that), then `08-tracing-as-artifact.md` (trace event schema + replay design), then a new `12-glossary.md` (terminology), then a `13-libpdd-materializer.md` (full F# sketch of the new LibPDD project).
+- Commits: 1 pending.
