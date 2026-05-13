@@ -117,6 +117,8 @@ Darklang syntax for the body content:
     if x < y then x else y
     if a >= b then a else b
   Use `>`, `<`, `>=`, or `<=`. Operands must be a param name or Int64 literal.
+- String concat: `<atom> ++ <atom>` where each atom is a param name or
+  a double-quoted string literal. Example: `x ++ "!"` or `"hi " ++ x`.
 
 Return ONLY the JSON object. No markdown fences, no prose."""
 
@@ -471,6 +473,49 @@ let parseMinimalBodyN (paramNames : List<string>) (body : string) : Option<RT.In
         resultIn = idx }
 
   else
+    // String concat: `<atom> ++ <atom>` where atom is a param or
+    // double-quoted string literal (no internal escapes for now).
+    //
+    // Lowers to Apply(Stdlib.String.append, [lhs; rhs]).
+    let concatMatch =
+      System.Text.RegularExpressions.Regex.Match(
+        trimmed,
+        "^(\"[^\"]*\"|\\w+)\\s*\\+\\+\\s*(\"[^\"]*\"|\\w+)$"
+      )
+    if concatMatch.Success then
+      let arity = List.length paramNames
+      let r0 = arity
+      let strAtom (raw : string) (nReg : int) =
+        if raw.StartsWith "\"" && raw.EndsWith "\"" then
+          let inner = raw.Substring(1, raw.Length - 2)
+          Some(nReg, [ RT.LoadVal(nReg, RT.DString inner) ], nReg + 1)
+        else
+          match argIndex raw with
+          | Some i -> Some(i, [], nReg)
+          | None -> None
+      match strAtom concatMatch.Groups[1].Value r0 with
+      | None -> None
+      | Some(lhsReg, lhsIns, r1) ->
+        match strAtom concatMatch.Groups[2].Value r1 with
+        | None -> None
+        | Some(rhsReg, rhsIns, r2) ->
+          let appReg = r2
+          let outReg = r2 + 1
+          let app : RT.ApplicableNamedFn =
+            { name = RT.FQFnName.fqBuiltin "stringAppend" 0
+              typeSymbolTable = Map.empty
+              typeArgs = []
+              argsSoFar = [] }
+          let args : NEList<int> = NEList.ofList lhsReg [ rhsReg ]
+          Some
+            { registerCount = outReg + 1
+              instructions =
+                lhsIns
+                @ rhsIns
+                @ [ RT.LoadVal(appReg, RT.DApplicable(RT.AppNamedFn app))
+                    RT.Apply(outReg, appReg, [], args) ]
+              resultIn = outReg }
+    else
     // Compile a sub-expression (`atom` | `atom <op> atom`) returning
     // (resultReg, instructions, nextFreeReg).
     //   atom = param-name | -?\d+L

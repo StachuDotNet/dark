@@ -605,6 +605,37 @@ module MinimalBody =
         "no match on ~"
     }
 
+  let parsesStringConcatLiteralRhs =
+    test "parseMinimalBody 'x ++ \"!\"' → Apply(stringAppend, [x, \"!\"])" {
+      match M.parseMinimalBody "x" "x ++ \"!\"" with
+      | Some instrs ->
+        let hasAppend =
+          instrs.instructions
+          |> List.exists (fun i ->
+            match i with
+            | RT.LoadVal(_, RT.DApplicable(RT.AppNamedFn app)) ->
+              match app.name with
+              | RT.FQFnName.Builtin b -> b.name = "stringAppend"
+              | _ -> false
+            | _ -> false)
+        Expect.isTrue hasAppend "uses stringAppend builtin"
+        let hasBangLit =
+          instrs.instructions
+          |> List.exists (fun i ->
+            match i with
+            | RT.LoadVal(_, RT.DString "!") -> true
+            | _ -> false)
+        Expect.isTrue hasBangLit "loads the string literal"
+      | None -> Expect.equal 1 2 "expected Some for x ++ \"!\""
+    }
+
+  let parsesStringConcatTwoParams =
+    test "parseMinimalBodyN ['x';'y'] 'x ++ y' parses to stringAppend" {
+      match M.parseMinimalBodyN [ "x"; "y" ] "x ++ y" with
+      | Some _ -> ()
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
   let parsesUnaryMinusOnParam =
     test "parseMinimalBody 'if x < 0L then -x else x' (abs via unary minus)" {
       match M.parseMinimalBody "x" "if x < 0L then -x else x" with
@@ -674,7 +705,9 @@ module MinimalBody =
         ifElseUnknownCompFails
         parsesAbsViaSubtraction
         parsesIfWithArithInBranchesAndCond
-        parsesUnaryMinusOnParam ]
+        parsesUnaryMinusOnParam
+        parsesStringConcatLiteralRhs
+        parsesStringConcatTwoParams ]
 
 
 // ---------------------------------------------------------------------------
