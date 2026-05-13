@@ -54,6 +54,9 @@
     <Compile Include="Blob.Tests.fs" />
     <Compile Include="Stream.Tests.fs" />
 
+    <!-- PDD -->
+    <Compile Include="PDD.Tests.fs" />
+
     <Compile Include="Tests.fs" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
