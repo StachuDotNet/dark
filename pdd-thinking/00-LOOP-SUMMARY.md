@@ -37,8 +37,10 @@ Read in order:
 10. `09-carving-the-codebase.md` — what F# / packages to cut for this experiment
 11. `10-day-1-hacking-plan.md` — what to actually type when you sit down
 12. `11-open-questions.md` — things I (Claude) am unsure about
-13. `progress.md` — running log of each loop iteration
-14. `FINAL-REPORT-2026-05-13.md` — written + printed at 8am (don't read mid-loop, it doesn't exist yet)
+13. `12-glossary.md` — terminology (pin these names down)
+14. `13-libpdd-materializer.md` — concrete F# shape of the new `LibPDD` project (still to be written as of 2026-05-13 01:25)
+15. `progress.md` — running log of each loop iteration
+16. `FINAL-REPORT-2026-05-13.md` — written + printed at 8am (don't read mid-loop, it doesn't exist yet)
 
 ## What "iterate" means in this loop
 

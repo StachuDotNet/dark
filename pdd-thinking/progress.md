@@ -73,4 +73,10 @@ Format:
 - Decided: trace format = JSONL with versioned event kinds. Don't pre-optimize to binary. Don't even add zstd until disk hurts.
 - Decided: Day-1 tracing surface is just `materialize_start`, `materialize_done`, `recovery` writing to a file + a `--no-trace` flag. Replay/diff/promote come later.
 - Next: write a new `12-glossary.md` (consistent terminology for the docs), then a `13-libpdd-materializer.md` (concrete F# structure of the new LibPDD project), then revisit `01-vision.md` to incorporate the parser question and the trace-replay framing.
+- Commits: 1 pending (iter 6 fold-in).
+
+### 2026-05-13 01:25 — iteration 7 (write 12-glossary; lock terminology)
+- Did: wrote `12-glossary.md`. Pins core terms (PDD, sketch, cache, trace, materialization, pending, handle, pinned hash), the two-paths terms (find/generate/race/budget/EmptyBody), runtime concepts (tolerant runtime, strict mode, RecoveryPolicy, recovered value), capability terms (capability/grant/grant scope/capability check), sig + consensus terms (SignatureHint/constraint/Strategy A,B), human-in-loop terms (HumanQuery/Response/Resolver/Inbox), trace terms (event/session/replay/diff/promote), F# nouns table (every new type and where it lives), anti-glossary (terms we're deliberately NOT using: agent, hole, stub, lazy, sketch-as-verb), and style notes. Updated `00-LOOP-SUMMARY.md` to include 12 and 13 in the file listing.
+- Decided: anti-glossary explicit — "agent" and "stub" are forbidden in PDD docs because they pull in baggage; "deferred" or "pending" beats "lazy" because we're talking about source-level laziness not value-level.
+- Next: write `13-libpdd-materializer.md` (concrete F# project structure for new LibPDD — Materializer.fs, Find.fs, Generate.fs, Capability.fs, Defaults.fs, TraceEvents.fs — with shapes of each module). Then iterate on 01-vision.md to absorb the parser open question + trace-replay framing.
 - Commits: 1 pending.
