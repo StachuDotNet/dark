@@ -173,3 +173,42 @@ let dlistToByteArray (dvalList : List<Dval>) : byte[] =
     | DUInt8 b -> b
     | _ -> (Exception.raiseInternal "Invalid type in byte list") [])
   |> Array.ofList
+
+
+/// PDD: produce a default Dval for a TypeReference, used by the tolerant
+/// runtime when a Pending fn fails to materialize and the recovery policy
+/// is EmptyBody. Day-1 covers the common base types; custom types and
+/// generics fall through to DUnit (subsequent type-checking will catch any
+/// downstream confusion). Phase D doesn't yet route through this — the
+/// interpreter still raises FnNotFound — but it's wired up for the
+/// recovery work in a later phase.
+let rec defaultFor (t : TypeReference) : Dval =
+  match t with
+  | TUnit -> DUnit
+  | TBool -> DBool false
+  | TInt8 -> DInt8 0y
+  | TUInt8 -> DUInt8 0uy
+  | TInt16 -> DInt16 0s
+  | TUInt16 -> DUInt16 0us
+  | TInt32 -> DInt32 0
+  | TUInt32 -> DUInt32 0u
+  | TInt64 -> DInt64 0L
+  | TUInt64 -> DUInt64 0UL
+  | TInt128 -> DInt128 System.Int128.Zero
+  | TUInt128 -> DUInt128 System.UInt128.Zero
+  | TFloat -> DFloat 0.0
+  | TChar -> DChar ""
+  | TString -> DString ""
+  | TUuid -> DUuid(System.Guid.Empty)
+  | TList _ -> DList(VT.unknown, [])
+  | TDict _ -> DDict(VT.unknown, Map.empty)
+  | TTuple(a, b, rest) ->
+    DTuple(defaultFor a, defaultFor b, rest |> List.map defaultFor)
+  // Option<'a> -> None. We don't know the inner type concretely so use VT.unknown.
+  | TCustomType(_, _) -> DUnit
+  | TVariable _ -> DUnit
+  | TFn _ -> DUnit
+  | TStream _ -> DUnit
+  | TDateTime -> DDateTime(DarkDateTime.fromDateTime System.DateTime.UnixEpoch)
+  | TBlob -> DUnit // PDD: deferred — TBlob requires a BlobRef
+  | TDB _ -> DUnit // not a value the LLM should produce
