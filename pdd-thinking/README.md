@@ -63,6 +63,14 @@ HTML view at `rundir/pdd-view/<sessionId>.html` shows annotated function cards (
 | `dark prompt "compute fibonacci of 8 plus factorial of 5"` | `DInt64 141L` | parallel materialization of two recursive fns |
 | `dark prompt "compute the square of 7L plus the cube of 3L"` | `DInt64 76L` | multi-fn decompose |
 | `PDD_MODEL=gpt-4o dark pdd run "sumList [1L;...;5L]"` | `DInt64 15L` | List<Int64> + lambda + Stdlib.List.fold; 3 indep tests pass |
+| `PDD_MODEL=gpt-4o dark pdd run "doubleAll [3L;5L;7L]"` | `[6L;10L;14L]` | List<Int64>→List<Int64> via Stdlib.List.map |
+
+### Demos that still trip the system (gaps surfaced)
+
+| Prompt | Failure | Reason |
+|---|---|---|
+| `filter the even numbers from [...] then sum them` | parse error (LibParser declines) | Decompose produced nested-pipe-in-lambda LibParser doesn't handle |
+| `compute the mean of [10L, 20L, 30L]` | Fake `divideBy` | LLM proposed `(x:Int64,y:Int64): Option<Int64>` sig; `Option<T>` not in `parseSimpleType` yet |
 
 ## CLI surface
 
