@@ -92,7 +92,7 @@ Format:
 
 ### 2026-05-13 01:30 — iteration 9 (write 14-demo-programs; absorb key + budget feedback)
 - Did: wrote `14-demo-programs.md` — six concrete demo programs in increasing difficulty: (1) `addOne` trivial, (2) Stock variance pipeline from F# blog post, (3) recursive Fibonacci, (4) Mixed materialized + pending, (5) Tolerance under failure, (6) HN headline sentiment (the headliner / Stachu's chat-fragment vision), plus a stretch (7) Recursive descent. Each has source sketch, expected result, what it stresses, day-N acceptance criterion, and connection to other docs.
-- Stored OpenAI key at `~/.config/darklang/llm-keys.env` (mode 600, dir mode 700) — Stachu said it's OK to put on disk now that conv-context isn't durable. Repo confirmed clean of any `sk-proj` strings.
+- Stored OpenAI key at `~/.config/darklang/llm-keys.env` (mode 600, dir mode 700) — Stachu said it's OK to put on disk now that conv-context isn't durable. Repo confirmed clean of any key-prefix strings (grep over pdd-thinking returns no matches).
 - Absorbed Stachu's $10 budget directive: spike defaults to **cheap fast models** (`gpt-4o-mini` for OpenAI, `claude-haiku-4-5` for Anthropic). `@deep_materialize` still defaults to cheap; opt-in to richer. Updated `13-libpdd-materializer.md` with provider-config section.
 - Decided: F# unit-test path (Phase F of Day 1) is the *first* validation. `.dark`-file demos come Day 3+. Programs live in `backend/dark-packages/pdd_demos/` (TBD path).
 - Decided: storytelling order for video/blog — start with Demo 1, end with Demo 6.
