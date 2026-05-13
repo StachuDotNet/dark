@@ -45,6 +45,7 @@ Read in order:
 18. `17-day-1-quick-reference.md` — **single-page at-the-desk cheat sheet** (print this!)
 19. `18-minimum-viable-spike.md` — if you only have 4 hours: the tightest possible Demo-1 path
 20. `19-red-team.md` — what could go wrong: design risks, impl footguns, project risks, smoke detectors
+21. `20-elevator-pitches.md` — 60s / 3-min / 10-min pitches for different audiences
 17. `progress.md` — running log of each loop iteration
 18. `FINAL-REPORT-2026-05-13.md` — written + printed at 8am (don't read mid-loop, it doesn't exist yet)
 

@@ -125,6 +125,7 @@ Full source sketches in `pdd-thinking/14-demo-programs.md`. **Demo 6 is the elev
 | 17 | `17-day-1-quick-reference.md` | **★ Single-page at-the-desk cheat sheet** |
 | 18 | `18-minimum-viable-spike.md` | 4-hour cut: smallest path to Demo 1 |
 | 19 | `19-red-team.md` | 14 risks across design / impl / project + smoke detectors |
+| 20 | `20-elevator-pitches.md` | 60s / 3min / 10min pitches for different audiences |
 
 Plus `progress.md` (running log of the overnight iterations) and this `FINAL-REPORT-2026-05-13.md`.
 

@@ -183,4 +183,13 @@ Format:
 - Word count: 1773 → ~3 printed pages. Comfortably under 5.
 - Time check: 02:15 EDT. ~5h 45m to 8am.
 - Next: one more polish pass + maybe write a short `20-elevator-pitches.md` (60s/3-min/10-min variants). Then verify final report renders well. Print around 06:30.
+- Commits: 1 pending (iter 18).
+
+### 2026-05-13 02:19 — iteration 19 (write 20-elevator-pitches)
+- Did: wrote `20-elevator-pitches.md`. Three lengths (60s / 3min / 10min), all with the same structure (claim → algorithm → why-it's-new → ask). The 60s is the durable elevator one — usable in tweets, hallway, dinner. The 3min is for technically-curious-but-not-an-expert. The 10min is the deep dive (LibExecution intervention, capability model, trace format, three-tier success criteria). Plus a pitch-picker table by audience.
+- Updated `00-LOOP-SUMMARY.md` and `FINAL-REPORT-2026-05-13.md` pointer table for 20 → 21 docs.
+- Decided: "the 60s is what to practice" — if you can't defend it, the longer versions won't help.
+- Time check: 02:20 EDT. ~5h 40m to 8am.
+- Plan: STOP creating new docs. Final 3-5 iterations are polish + final report tightening + print prep.
+- Next: pass over `00-LOOP-SUMMARY.md` to make sure it's still useful (it's grown a lot since iter 0). Then one more polish on the final report. Then print at ~06:30.
 - Commits: 1 pending.
