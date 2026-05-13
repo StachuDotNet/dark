@@ -97,4 +97,13 @@ Format:
 - Decided: F# unit-test path (Phase F of Day 1) is the *first* validation. `.dark`-file demos come Day 3+. Programs live in `backend/dark-packages/pdd_demos/` (TBD path).
 - Decided: storytelling order for video/blog — start with Demo 1, end with Demo 6.
 - Next: iterate on `01-vision.md` to absorb everything we've decided (parser P3, human-as-materializer, $10 cheap-model default, the demo-6 north star). Then write a short `15-spike-budgets.md` to pin down what we're optimizing for in terms of dollar/time/token.
+- Commits: 2 (iter 9 + key-prefix scrub).
+
+### 2026-05-13 01:35 — iteration 10 (vision addendum + API sanity check)
+- Did:
+  1. Sanity-tested the OpenAI key with one cheap call: gpt-4o-mini, `temperature=0`, `max_tokens=80`, system prompt asking for `{"sig": ..., "body": ...}` JSON shape. **Result: model returned exact shape on first try, deterministically.** `{"sig":"(x: Int64) -> Int64","body":"x + 1"}`. 66 input + 20 output tokens, ~$0.00003 spent. This proves parser-option P3 is viable.
+  2. Added addendum to `01-vision.md` consolidating tonight's decisions: north-star demo (#6), parser P3 (LLM emits JSON, no Dark-parser needed for generate path), human-as-materializer, cheap-by-default ($10 budget protection), four runtime knobs (`--tolerance`, `--allow`, `--materialize-budget`, `--model`), and the five-claim summary.
+- Decided: **the five claims** are the durable summary to memorize. (1) source is lazy, (2) trace is the program, (3) types coordinate, (4) runtime is tolerant, (5) human is a materializer.
+- Decided: anti-summary — don't pitch PDD as "Copilot for runtime." That misses the trace claim, the type-coordination claim, and the human-as-materializer claim. The right summary is "the runtime materializes its own source."
+- Next: write `15-spike-budgets.md` (cost/time/risk envelopes for the spike — both engineering time and API dollars). Then verify Sonnet/Haiku key works similarly (optional — for cross-provider coverage). Then possibly write `16-prompt-shapes.md` with the actual prompt templates we'd use for generate (now that we know the JSON-shape model works).
 - Commits: 1 pending.
