@@ -146,6 +146,45 @@ let private handleDemo
   }
 
 
+/// Walk RT.Instructions and collect every Pending fn reference. Used to
+/// kick off parallel materializations before the interpreter runs.
+let rec private collectPendings (instrs : RT.Instructions) : List<RT.FQFnName.Pending> =
+  let fromInstr (i : RT.Instruction) : List<RT.FQFnName.Pending> =
+    match i with
+    | RT.LoadVal(_, dv) -> dvalPendings dv
+    | RT.CreateLambda(_, lambdaImpl) -> collectPendings lambdaImpl.instructions
+    | _ -> []
+  instrs.instructions |> List.collect fromInstr
+
+and private dvalPendings (dv : RT.Dval) : List<RT.FQFnName.Pending> =
+  match dv with
+  | RT.DApplicable(RT.AppNamedFn app) ->
+    match app.name with
+    | RT.FQFnName.Pending p -> [ p ]
+    | _ -> []
+  | _ -> []
+
+
+/// Build a materializer wrapper that consults an in-flight cache before
+/// calling the real materializer. Each pending's materialization runs as
+/// a Task started ahead of time; the wrapper awaits the existing Task.
+let private parallelMaterializer
+  (inFlight : System.Collections.Concurrent.ConcurrentDictionary<System.Guid, Task<Option<RT.PackageFn.PackageFn>>>)
+  : RT.FQFnName.Pending -> Ply<Option<RT.PackageFn.PackageFn>> =
+  fun p ->
+    uply {
+      match inFlight.TryGetValue p.handle with
+      | true, t ->
+        let! fn = t |> Async.AwaitTask |> Async.StartAsTask
+        return fn
+      | false, _ ->
+        // Wasn't pre-kicked-off (e.g. recursive materialization). Fall
+        // back to the standard materializer; this preserves correctness.
+        let! fn = Mat.materialize p
+        return fn
+    }
+
+
 /// Handle `dark pdd run "<dark expression>"`.
 /// Parses the expression with OnMissing.AllowPending so unresolved fn
 /// names become PT.FQFnName.Pending; the runtime then materializes via
@@ -189,8 +228,25 @@ let private handleRun
     let instrs =
       LibExecution.ProgramTypesToRuntimeTypes.Expr.toRT Map.empty 0 None ptExpr
 
-    // Build ExecutionState with the real materializer.
-    let pm = { packageManager with materializeFn = Mat.materialize }
+    // PDD parallel scheduler: walk the instructions, find every Pending
+    // fn ref, and kick off materializations in parallel (Task.Run). The
+    // interpreter's wrapper materializer then awaits the in-flight Task
+    // instead of calling the LLM serially.
+    let pendings = collectPendings instrs
+    let inFlight =
+      System.Collections.Concurrent.ConcurrentDictionary<
+        System.Guid,
+        Task<Option<RT.PackageFn.PackageFn>>>()
+    if not (List.isEmpty pendings) then
+      eprintfn "%s %s %s" prefix (dim "kick-off")
+        (dim (sprintf "%d pendings in parallel" (List.length pendings)))
+      for p in pendings do
+        let t = Task.Run<Option<RT.PackageFn.PackageFn>>(fun () ->
+          Mat.materialize p |> Ply.toTask)
+        inFlight[p.handle] <- t
+
+    // Build ExecutionState with the parallel materializer.
+    let pm = { packageManager with materializeFn = parallelMaterializer inFlight }
     let program : RT.Program = { dbs = Map.empty }
     let notify _ _ _ _ = uply { return () }
     let reportException _ _ (_ : Metadata) (_ : exn) = uply { return () }
