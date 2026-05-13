@@ -185,8 +185,7 @@ let private logResult
 
 
 /// Day-2b identity-shaped PackageFn. Body is empty; resultIn=0 (the arg
-/// register) → returns its single Int64 arg unchanged. This is a
-/// PLACEHOLDER until we translate the LLM body string to real RT.
+/// register) → returns its single Int64 arg unchanged.
 let private hardcodedIdentityFn (name : string) : RT.PackageFn.PackageFn =
   { hash = RT.Hash(sprintf "pdd-llm-identity-%s" name)
     typeParams = []
@@ -197,6 +196,55 @@ let private hardcodedIdentityFn (name : string) : RT.PackageFn.PackageFn =
       { registerCount = 1
         instructions = []
         resultIn = 0 } }
+
+
+/// A tiny parser for LLM body strings — handles the simplest two cases so
+/// we can stand up a real "LLM controls the runtime value" demo. Both
+/// kinds of body produce a one-instruction PackageFn that takes a single
+/// Int64 arg.
+///
+/// Cases handled:
+///   "42L"     → constant: returns DInt64 42 regardless of arg
+///   "-7L"     → constant: returns DInt64 (-7)
+///   "x"       → identity: returns the arg unchanged (assumes param name "x")
+///   <other>   → returns None (caller falls back to hardcodedIdentityFn)
+let parseMinimalBody (paramName : string) (body : string) : Option<RT.Instructions> =
+  let trimmed = body.Trim()
+  // Int64 literal: optional minus, digits, trailing 'L'
+  let m = System.Text.RegularExpressions.Regex.Match(trimmed, "^(-?\d+)L$")
+  if m.Success then
+    let n = System.Int64.Parse(m.Groups[1].Value)
+    Some
+      { registerCount = 2
+        // arg goes into register 0 (interpreter places args first); load
+        // the constant into register 1 and return that.
+        instructions = [ RT.LoadVal(1, RT.DInt64 n) ]
+        resultIn = 1 }
+  elif trimmed = paramName then
+    // Identity: return arg unchanged. Body has no instructions; resultIn
+    // points at the arg register.
+    Some
+      { registerCount = 1
+        instructions = []
+        resultIn = 0 }
+  else
+    None
+
+
+/// Build a PackageFn around a parsed body. Single Int64 parameter, Int64
+/// return type. Hash is deterministic from name+body so retries hit cache.
+let private fnFromBody
+  (name : string)
+  (paramName : string)
+  (instructions : RT.Instructions)
+  : RT.PackageFn.PackageFn =
+  let hashKey = sprintf "pdd-llm-%s-%d" name (hash instructions.instructions)
+  { hash = RT.Hash hashKey
+    typeParams = []
+    parameters =
+      NEList.singleton { RT.PackageFn.name = paramName; typ = RT.TInt64 }
+    returnType = RT.TInt64
+    body = instructions }
 
 
 /// The materializer entry point — plug into PackageManager.materializeFn or
@@ -238,5 +286,11 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
             return None
           | Ok gen ->
             logResult logPath p.name (Some gen.sig_) (Some gen.body) None
-            return Some(hardcodedIdentityFn p.name)
+            // Try the minimal-body parser first; if it recognizes the shape
+            // we build a PackageFn that actually executes the LLM's intent.
+            // Otherwise fall back to identity-shape (the LLM body is still
+            // logged for inspection).
+            match parseMinimalBody "x" gen.body with
+            | Some instrs -> return Some(fnFromBody p.name "x" instrs)
+            | None -> return Some(hardcodedIdentityFn p.name)
   }

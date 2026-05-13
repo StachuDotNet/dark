@@ -293,6 +293,77 @@ module LLMParser =
         v4SystemPromptIsComplete ]
 
 
+// ---------------------------------------------------------------------------
+// Day-2c: PDDMaterializer minimal-body parser → real RT.Instructions
+// ---------------------------------------------------------------------------
+
+module MinimalBody =
+  module M = LibExecution.PDDMaterializer
+
+  let parsesInt64Literal =
+    test "parseMinimalBody '42L' → loads DInt64 42 into result reg" {
+      match M.parseMinimalBody "x" "42L" with
+      | Some instrs ->
+        Expect.equal instrs.resultIn 1 "result reg is 1"
+        Expect.equal instrs.registerCount 2 "2 registers"
+        match instrs.instructions with
+        | [ RT.LoadVal(1, RT.DInt64 42L) ] -> ()
+        | other -> Expect.equal 1 2 (sprintf "wrong instrs: %A" other)
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
+  let parsesNegativeInt64 =
+    test "parseMinimalBody '-7L' → DInt64 -7" {
+      match M.parseMinimalBody "x" "-7L" with
+      | Some instrs ->
+        match instrs.instructions with
+        | [ RT.LoadVal(_, RT.DInt64 -7L) ] -> ()
+        | other -> Expect.equal 1 2 (sprintf "wrong instrs: %A" other)
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
+  let parsesIdentity =
+    test "parseMinimalBody 'x' → identity (resultIn=0, no instructions)" {
+      match M.parseMinimalBody "x" "x" with
+      | Some instrs ->
+        Expect.equal instrs.resultIn 0 "result reg is arg reg"
+        Expect.equal instrs.instructions [] "no instructions"
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
+  let stripsWhitespace =
+    test "parseMinimalBody handles surrounding whitespace" {
+      match M.parseMinimalBody "x" "  42L  " with
+      | Some _ -> ()
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
+  let returnsNoneOnUnknown =
+    test "parseMinimalBody returns None on unrecognized body" {
+      match M.parseMinimalBody "x" "complicated stuff" with
+      | None -> ()
+      | Some _ -> Expect.equal 1 2 "expected None"
+    }
+
+  let respectsParamName =
+    test "identity respects the given param name (not just 'x')" {
+      match M.parseMinimalBody "input" "input" with
+      | Some instrs ->
+        Expect.equal instrs.resultIn 0 "result reg is arg reg"
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
+  let tests =
+    testList
+      "MinimalBody"
+      [ parsesInt64Literal
+        parsesNegativeInt64
+        parsesIdentity
+        stripsWhitespace
+        returnsNoneOnUnknown
+        respectsParamName ]
+
+
 let tests =
   testList
     "PDD"
@@ -300,4 +371,5 @@ let tests =
       Pending.tests
       PMField.tests
       Integration.tests
-      LLMParser.tests ]
+      LLMParser.tests
+      MinimalBody.tests ]
