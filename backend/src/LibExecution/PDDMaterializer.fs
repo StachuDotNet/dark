@@ -66,6 +66,9 @@ type PDDEvent =
   /// Materialization failed for some specific reason.
   | MaterializeFailed of name : string * reason : string
 
+  /// LLM-claimed test ran. `result` is pass/fail/error/skipped.
+  | TestRan of name : string * label : string * detail : string
+
 /// Where events go. Default is no-op; the CLI installs a sink that
 /// writes to stderr (colored) + appends to an HTML view file (H3).
 type EventSink = PDDEvent -> unit
@@ -87,16 +90,26 @@ let private emit (ev : PDDEvent) : unit =
 /// over v4: explicit instruction that BOTH JSON values must be quoted
 /// strings (v4 callers sometimes returned `"body": x * 2L` unquoted).
 /// Keeps the v4 Darklang syntax rules.
-let v4SystemPrompt = """You generate Darklang function bodies.
+let v4SystemPrompt = """You generate Darklang function bodies AND example tests.
 
-Your output is JSON. Both fields are QUOTED STRINGS.
+Your output is JSON with three fields, ALL QUOTED STRINGS or arrays:
 
-  {"sig": "(x: Int64): Int64", "body": "x + 1L"}
+  {
+    "sig":  "(x: Int64): Int64",
+    "body": "x + 1L",
+    "tests": [
+      {"args": [0],  "expect": 1},
+      {"args": [5],  "expect": 6},
+      {"args": [-3], "expect": -2}
+    ]
+  }
 
 NOT:
   {"sig": (x: Int64): Int64, "body": x + 1L}   ← unquoted = invalid JSON
 
 The `body` value must be a valid JSON string: surrounded by double quotes, with any inner quotes escaped (\\"). Even if the body is a single identifier or arithmetic expression, wrap it in quotes.
+
+The `tests` field is REQUIRED. Provide 2-3 representative input/output examples that verify the body does what the function name suggests. For Int64 args/returns, use JSON numbers. For String args/returns, use JSON strings. Tests cover BOUNDARY cases (zero, negative, edge) when relevant.
 
 Darklang syntax for the body content:
 - Integers are SIZED: Int64 (default), Int8, Int32, etc. Never bare int. Literals end in L: 5L, -3L.
@@ -142,6 +155,35 @@ let mutable bodyParser : BodyParser option = None
 
 let installBodyParser (parser : BodyParser) : unit =
   bodyParser <- Some parser
+
+
+/// Test-runner callback — invokes a materialized PackageFn with concrete
+/// Dval args and returns the resulting Dval (or an error message). The
+/// CLI installs a runner that builds a tiny Apply-of-fn program and runs
+/// it through the real interpreter, so test execution matches production.
+type TestRunner =
+  RT.PackageFn.PackageFn * List<RT.Dval> -> Ply<Result<RT.Dval, string>>
+
+let mutable testRunner : TestRunner option = None
+
+let installTestRunner (runner : TestRunner) : unit =
+  testRunner <- Some runner
+
+
+/// Result of running one claimed test against a materialized fn.
+type TestResult =
+  | TPass of args : List<RT.Dval> * got : RT.Dval
+  | TFail of args : List<RT.Dval> * expect : RT.Dval * got : RT.Dval
+  | TError of args : List<RT.Dval> * reason : string
+  | TSkipped // no test runner installed
+
+/// Pretty short label for an event-stream / HTML entry.
+let testResultLabel (r : TestResult) : string =
+  match r with
+  | TPass _ -> "pass"
+  | TFail _ -> "fail"
+  | TError(_, _) -> "error"
+  | TSkipped -> "skipped"
 
 /// Parse a simple type-name (Int64, String, ...) → RT.TypeReference.
 /// Returns None for anything more elaborate; callers fall back to TInt64
@@ -330,8 +372,17 @@ let buildDecomposePrompt (request : string) : string =
   sprintf "User: %s\nOutput:" request
 
 
+/// One LLM-claimed example. Args + expected result are stored as Dvals so
+/// we can dispatch on type. Int64 / String / Bool covered today.
+type ClaimedTest =
+  { args : List<RT.Dval>
+    expect : RT.Dval }
+
 /// Parsed shape of the LLM's JSON response.
-type GeneratedFn = { sig_ : string; body : string }
+type GeneratedFn =
+  { sig_ : string
+    body : string
+    tests : List<ClaimedTest> }
 
 
 /// Parse the model's response (the `content` string from OpenAI's chat
@@ -361,8 +412,40 @@ let parseLLMResponse (raw : string) : Result<GeneratedFn, string> =
         else Error(sprintf "field '%s' is not a string" name)
       else
         Error(sprintf "missing field '%s'" name)
+    // tests is optional — older cached LLM responses don't include it
+    let parseDval (e : JsonElement) : Option<RT.Dval> =
+      match e.ValueKind with
+      | JsonValueKind.Number ->
+        // Default JSON numbers to Int64 (the bulk of our demos).
+        let mutable v = 0L
+        if e.TryGetInt64(&v) then Some(RT.DInt64 v) else None
+      | JsonValueKind.String -> Some(RT.DString(e.GetString()))
+      | JsonValueKind.True -> Some(RT.DBool true)
+      | JsonValueKind.False -> Some(RT.DBool false)
+      | _ -> None
+    let parseTests () : List<ClaimedTest> =
+      let mutable arr = Unchecked.defaultof<JsonElement>
+      if not (root.TryGetProperty("tests", &arr)) then []
+      elif arr.ValueKind <> JsonValueKind.Array then []
+      else
+        let mutable acc = []
+        for item in arr.EnumerateArray() do
+          let mutable argsEl = Unchecked.defaultof<JsonElement>
+          let mutable expectEl = Unchecked.defaultof<JsonElement>
+          if item.TryGetProperty("args", &argsEl)
+             && item.TryGetProperty("expect", &expectEl)
+             && argsEl.ValueKind = JsonValueKind.Array then
+            let parsedArgs =
+              [ for a in argsEl.EnumerateArray() -> parseDval a ]
+            let parsedExpect = parseDval expectEl
+            if List.forall Option.isSome parsedArgs && parsedExpect.IsSome then
+              acc <-
+                { args = parsedArgs |> List.map Option.get
+                  expect = parsedExpect.Value }
+                :: acc
+        List.rev acc
     match getString "sig", getString "body" with
-    | Ok s, Ok b -> Ok { sig_ = s; body = b }
+    | Ok s, Ok b -> Ok { sig_ = s; body = b; tests = parseTests () }
     | Error e, _
     | _, Error e -> Error e
   with ex -> Error(sprintf "JSON parse failed: %s" ex.Message)
@@ -866,7 +949,7 @@ let private loadCacheOnce () : unit =
               // is `sig_`. Read it back under the same name.
               let sig_ = r.GetProperty("sig_").GetString()
               let body = r.GetProperty("body").GetString()
-              promotedCache[name] <- { sig_ = sig_; body = body }
+              promotedCache[name] <- { sig_ = sig_; body = body; tests = [] }
             with _ -> ()
     with _ -> ()
 
@@ -1062,9 +1145,76 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                     if n > 1 then sprintf "libparser (retry %d)" (n - 1)
                     else "libparser"
                   emit (CompileBody(p.name, kind, fn.body.registerCount))
-                  emit (MaterializeDone(p.name, Real, elapsedMs ()))
-                  persistPromoted p.name gen
-                  return Some fn
+
+                  // Run the LLM's claimed tests. If we have a runner AND
+                  // tests, gate promotion on the result.
+                  let! testOutcomes =
+                    uply {
+                      match testRunner with
+                      | None -> return List.replicate gen.tests.Length TSkipped
+                      | Some runner ->
+                        let mutable acc = []
+                        for t in gen.tests do
+                          let! r = runner (fn, t.args)
+                          let outcome =
+                            match r with
+                            | Error e -> TError(t.args, e)
+                            | Ok got ->
+                              if got = t.expect then TPass(t.args, got)
+                              else TFail(t.args, t.expect, got)
+                          let detail =
+                            match outcome with
+                            | TPass(a, g) ->
+                              sprintf "%A → %A" a g
+                            | TFail(a, e, g) ->
+                              sprintf "%A → %A (expected %A)" a g e
+                            | TError(a, e) -> sprintf "%A → ERR %s" a e
+                            | TSkipped -> ""
+                          emit
+                            (TestRan(p.name, testResultLabel outcome, detail))
+                          acc <- outcome :: acc
+                        return List.rev acc
+                    }
+
+                  let testCount = gen.tests.Length
+                  let failCount =
+                    testOutcomes
+                    |> List.filter (fun r ->
+                      match r with
+                      | TFail _
+                      | TError _ -> true
+                      | _ -> false)
+                    |> List.length
+
+                  if testCount > 0 && failCount > 0 && n < maxAttempts then
+                    // At least one test failed AND we have retries left.
+                    // Feed the failing test back to the LLM for a fix-up.
+                    let failingDetail =
+                      testOutcomes
+                      |> List.tryPick (fun r ->
+                        match r with
+                        | TFail(a, e, g) ->
+                          Some(sprintf "args=%A, expected=%A, got=%A" a e g)
+                        | TError(a, e) -> Some(sprintf "args=%A errored: %s" a e)
+                        | _ -> None)
+                      |> Option.defaultValue ""
+                    let fixUp =
+                      sprintf
+                        "Function: %s\nYour previous attempt was:\n  sig: %s\n  body: %s\n\nIt parsed and lowered correctly, but a test failed:\n  %s\n\nReturn another {sig, body, tests} with a body that produces the expected output for this test (and your other claimed tests). Keep the body simple."
+                        p.name
+                        gen.sig_
+                        gen.body
+                        failingDetail
+                    emit (CompileBody(p.name, sprintf "test-retry-%d" n, 0))
+                    return! attempt (n + 1) fixUp
+                  else
+                    let finalState =
+                      if testCount = 0 then Real
+                      elif failCount = 0 then Real
+                      else Fake  // we exhausted retries with failing tests
+                    emit (MaterializeDone(p.name, finalState, elapsedMs ()))
+                    if finalState = Real then persistPromoted p.name gen
+                    return Some fn
                 | None ->
                   // FALLBACK PATH: regex mini-parser (the original 5 cases).
                   match parseMinimalBodyN paramNames gen.body with

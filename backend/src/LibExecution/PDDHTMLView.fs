@@ -445,6 +445,16 @@ let sinkFor (session : Session) : M.EventSink =
       fn.state <- M.Failed
       fn.error <- Some reason
       logEvent session (sprintf "<b style=\"color:#e07080\">failed</b> %s &middot; %s" name reason)
+    | M.TestRan(name, label, detail) ->
+      let color =
+        match label with
+        | "pass" -> "#6fcf90"
+        | "fail" -> "#e07080"
+        | "error" -> "#e07080"
+        | _ -> "#888"
+      logEvent session
+        (sprintf "<b style=\"color:%s\">test %s</b> %s &middot; <span style=\"color:#888\">%s</span>"
+          color label name (htmlEscape detail))
     writeFile session
 
 /// Install this session's sink as the global currentSink. Returns the

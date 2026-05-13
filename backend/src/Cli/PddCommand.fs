@@ -81,6 +81,14 @@ let private stderrSink : Mat.EventSink =
       eprintfn "%s %s %s %s" prefix badge name (dim (sprintf "%dms" elapsed))
     | Mat.MaterializeFailed(name, reason) ->
       eprintfn "%s %s %s %s" prefix (red "✗ failed") name (dim reason)
+    | Mat.TestRan(name, label, detail) ->
+      let badge =
+        match label with
+        | "pass" -> green "  test ✓"
+        | "fail" -> red "  test ✗"
+        | "error" -> red "  test !"
+        | _ -> dim "  test -"
+      eprintfn "%s %s %s %s" prefix badge name (dim detail)
 
 
 /// Combined sink: writes to stderr AND updates the HTML view.
@@ -305,6 +313,30 @@ let private handleRun
     let state =
       Exe.createState allBuiltins pm Exe.noTracing reportException notify
         (System.Guid.NewGuid()) program
+
+    // Install a TestRunner so the materializer can verify LLM-claimed
+    // tests before declaring a fn Real. Uses an Apply-of-fn shape built
+    // inline, run through the same interpreter.
+    let testRunner (fn : RT.PackageFn.PackageFn, args : List<RT.Dval>) =
+      uply {
+        try
+          // Inline the fn body into a top-level instruction block: load
+          // args at registers 0..N-1, then run the body's instructions
+          // verbatim. Avoids needing to register the fn for Apply lookup.
+          let argLoads =
+            args |> List.mapi (fun i v -> RT.LoadVal(i, v))
+          let combined : RT.Instructions =
+            { registerCount = fn.body.registerCount
+              instructions = argLoads @ fn.body.instructions
+              resultIn = fn.body.resultIn }
+          let! r = Exe.execute state (None, combined)
+          match r with
+          | Ok dv -> return Ok dv
+          | Error(rte, _) -> return Error(sprintf "%A" rte)
+        with ex ->
+          return Error ex.Message
+      }
+    Mat.installTestRunner testRunner
 
     let! result = Exe.execute state (None, instrs)
 
