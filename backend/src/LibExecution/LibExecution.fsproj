@@ -45,6 +45,7 @@
     <Compile Include="ProgramTypesToDarkTypes.fs" />
     <!-- PDD (pseudocode-driven dev) materializer — opt-in -->
     <Compile Include="PDDMaterializer.fs" />
+    <Compile Include="PDDHTMLView.fs" />
     <!-- Expose the runtime to the outside world /-->
     <Compile Include="Execution.fs" />
   </ItemGroup>
