@@ -146,6 +146,75 @@ let private handleDemo
   }
 
 
+/// Handle `dark pdd run "<dark expression>"`.
+/// Parses the expression with OnMissing.AllowPending so unresolved fn
+/// names become PT.FQFnName.Pending; the runtime then materializes via
+/// the LLM at call time.
+let private handleRun
+  (packageManager : RT.PackageManager)
+  (exprStr : string)
+  : Task<int> =
+  task {
+    let sessionId = (System.Guid.NewGuid().ToString("N")).Substring(0, 8)
+    let htmlPath = View.defaultPathFor sessionId
+    let session = View.createSession sessionId htmlPath
+    let htmlSink = View.sinkFor session
+    Mat.currentSink <- combinedSink htmlSink
+
+    let prefix = dim "[pdd]"
+    eprintfn ""
+    eprintfn "%s %s %s = %s" prefix (dim "session") (green sessionId) (dim htmlPath)
+    eprintfn "%s %s %s" prefix (dim "running") (green exprStr)
+    eprintfn ""
+
+    // Build PT PackageManager from the RT one for the parser.
+    let ptPm = LibDB.PackageManager.pt
+
+    // Builtins needed: int64-arith for arithmetic bodies + general utility.
+    let allBuiltins : RT.Builtins =
+      LibExecution.Builtin.combine
+        [ Builtins.Pure.Builtin.builtins () ]
+        []
+    // Parse the expression with AllowPending.
+    let! ptExpr =
+      LibParser.Parser.parsePTExpr
+        allBuiltins
+        ptPm
+        LibParser.NameResolver.OnMissing.AllowPending
+        "<dark pdd run>"
+        exprStr
+      |> Ply.toTask
+
+    // Lower PT → RT instructions.
+    let instrs =
+      LibExecution.ProgramTypesToRuntimeTypes.Expr.toRT Map.empty 0 None ptExpr
+
+    // Build ExecutionState with the real materializer.
+    let pm = { packageManager with materializeFn = Mat.materialize }
+    let program : RT.Program = { dbs = Map.empty }
+    let notify _ _ _ _ = uply { return () }
+    let reportException _ _ (_ : Metadata) (_ : exn) = uply { return () }
+    let state =
+      Exe.createState allBuiltins pm Exe.noTracing reportException notify
+        (System.Guid.NewGuid()) program
+
+    let! result = Exe.execute state (None, instrs)
+
+    View.close session
+    Mat.currentSink <- Mat.nullSink
+
+    eprintfn ""
+    match result with
+    | Ok dv ->
+      eprintfn "%s %s %A" prefix (green "result:") dv
+      print (sprintf "%A" dv)
+      return 0
+    | Error(rte, _) ->
+      eprintfn "%s %s %A" prefix (red "error:") rte
+      return 1
+  }
+
+
 /// Entry point for `dark pdd ...` commands. Returns Some exitCode if
 /// the arg list matched a pdd subcommand; None to fall through to the
 /// normal CLI dispatch.
@@ -163,11 +232,21 @@ let tryHandle
       | false, _ ->
         eprintfn "[pdd] arg must be an Int64 (got: %s)" argStr
         return Some 1
+    | "pdd" :: "run" :: rest ->
+      // Join remaining args as the expression source — supports both
+      // `dark pdd run "addOne 5L"` (quoted, one arg) and
+      // `dark pdd run addOne 5L` (multiple args concatenated with spaces).
+      let exprStr = String.concat " " rest
+      if String.IsNullOrWhiteSpace exprStr then
+        eprintfn "[pdd] usage: dark pdd run <dark-expression>"
+        return Some 1
+      else
+        let! code = handleRun packageManager exprStr
+        return Some code
     | "pdd" :: _ ->
-      eprintfn "[pdd] usage: dark pdd demo <fnName> <Int64>"
-      eprintfn "[pdd]   Materializes the named Pending fn via gpt-4o-mini and"
-      eprintfn "[pdd]   applies it to the given Int64 arg. Logs events to stderr"
-      eprintfn "[pdd]   and writes an HTML view to rundir/pdd-view/<id>.html"
+      eprintfn "[pdd] usage:"
+      eprintfn "[pdd]   dark pdd run <dark-expression>"
+      eprintfn "[pdd]   dark pdd demo <fnName> <Int64-arg>"
       return Some 1
     | _ -> return None
   }

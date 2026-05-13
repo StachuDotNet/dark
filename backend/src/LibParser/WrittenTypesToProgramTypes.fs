@@ -304,12 +304,14 @@ module Expr =
           match value.resolved with
           | Ok _ -> return PT.EValue(id, value)
           | Error _ ->
-            // Try to resolve as a function reference
+            // Try to resolve as a function reference. Thread the outer
+            // onMissing so AllowPending here converts the Error to a
+            // Pending fn ref instead of falling back to EVariable.
             let! fnResult =
               NR.resolveFnName
                 (builtins.fns |> Map.keys |> Set)
                 pm
-                NR.OnMissing.Allow
+                onMissing
                 currentModule
                 (WT.Unresolved(NEList.singleton var))
             match fnResult.resolved with
@@ -406,7 +408,7 @@ module Expr =
                 NR.resolveFnName
                   (builtins.fns |> Map.keys |> Set)
                   pm
-                  NR.OnMissing.Allow
+                  onMissing
                   currentModule
                   name
               let expr =
@@ -430,7 +432,7 @@ module Expr =
               NR.resolveFnName
                 (builtins.fns |> Map.keys |> Set)
                 pm
-                NR.OnMissing.Allow
+                onMissing
                 currentModule
                 name
             let expr =
