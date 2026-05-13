@@ -81,12 +81,23 @@ let private emit (ev : PDDEvent) : unit =
   with _ -> ()  // sink failures never propagate
 
 
-/// The v4 system prompt — verified empirically during the design loop.
-/// See pdd-thinking/16-prompt-shapes.md and pdd-thinking/17-day-1-quick-reference.md.
-let v4SystemPrompt = """You generate Darklang function bodies. Reply with ONLY a JSON object {"sig": "(<params>): <ReturnType>", "body": "<Darklang expression>"}.
+/// The v5 system prompt — tightens v4's output format. The big change
+/// over v4: explicit instruction that BOTH JSON values must be quoted
+/// strings (v4 callers sometimes returned `"body": x * 2L` unquoted).
+/// Keeps the v4 Darklang syntax rules.
+let v4SystemPrompt = """You generate Darklang function bodies.
 
-Darklang syntax notes:
-- Integers are SIZED: Int64 (default), Int8, Int32, etc. Never bare int.
+Your output is JSON. Both fields are QUOTED STRINGS.
+
+  {"sig": "(x: Int64): Int64", "body": "x + 1L"}
+
+NOT:
+  {"sig": (x: Int64): Int64, "body": x + 1L}   ← unquoted = invalid JSON
+
+The `body` value must be a valid JSON string: surrounded by double quotes, with any inner quotes escaped (\\"). Even if the body is a single identifier or arithmetic expression, wrap it in quotes.
+
+Darklang syntax for the body content:
+- Integers are SIZED: Int64 (default), Int8, Int32, etc. Never bare int. Literals end in L: 5L, -3L.
 - Generics use ANGLE BRACKETS: List<Int64>, Option<String>. Not List(...).
 - Type variables use ML-style apostrophes: 'a, 'b, 'k, 'v. Not <a> or <b>.
 - Bindings: let x = expr in rest_of_expr (in is required).

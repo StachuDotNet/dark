@@ -537,7 +537,19 @@ module Expr =
             NR.OnMissing.Allow
             currentModule
             name
-        return PT.EFnName(id, fnName)
+        // PDD: if the resolver couldn't find this and we're in
+        // AllowPending mode, convert the unresolved name to a Pending
+        // fn ref. Otherwise pass through (the Error will surface as
+        // RaiseNRE at runtime).
+        match fnName.resolved, onMissing, name with
+        | Error _, NR.OnMissing.AllowPending, WT.Unresolved given ->
+          let pendingFqn = PT.FQFnName.fqPending (NEList.last given)
+          let nr : PT.NameResolution<PT.FQFnName.FQFnName> =
+            { originalName = NEList.toList given
+              location = None
+              resolved = Ok pendingFqn }
+          return PT.EFnName(id, nr)
+        | _ -> return PT.EFnName(id, fnName)
       | WT.ELambda(id, pats, body) ->
         // Start with a clean argMap to prevent lambda params from being converted to EArg
         // Keep localBindings - outer scope variables should still be visible inside lambdas
