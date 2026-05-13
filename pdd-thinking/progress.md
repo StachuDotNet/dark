@@ -367,3 +367,15 @@ Format:
 - Plan for next iteration: focus on **7a** — extend the Apply Pending arm to actually push a frame after materialization. Then a real end-to-end test becomes writable. Save 7b for a later iteration where we just call `pdd-materialize` from a script (avoids the test-env-OPENAI_API_KEY plumbing).
 - No code changes this iteration. Build still green from iter 3.
 - Time: 09:48 EDT.
+
+### 2026-05-13 10:00 — coding iter 5 (Task 7a: integration test green 🎉)
+- Did:
+  - Extended Apply's Pending arm to materialize → cache → push a frame. Mirrors the Package arm (sans type-arg/inference work — Day-1 Pending has no typeParams).
+  - Frame's executionPoint stays as **Pending** (not Package fn.hash). This dodges a bug where the frame-return type-check at Interpreter.fs:1148 would try `exeState.fns.package` for the materialized hash and miss (since the materialized fn isn't in the actual package store).
+  - Added new cache: `ExecutionState.pendingFnInstrCache` keyed by `Pending.handle`. Both Apply and the executionPoint match check it first. Important for Day-2+ when materialize is a real LLM call.
+  - Wrote the integration test in PDD.Tests.fs: hand-built RT.Instructions Apply a Pending with one Int64 arg, stub materializer returns an identity-shaped PackageFn (registers=1, instructions=[], resultIn=0 → returns arg unchanged). Asserts result is `DInt64 42L` AND materializer called exactly once.
+  - Hit two F# gotchas along the way: `ApplicableNamedFn` record literal needed type annotation (was conflicting with Expecto's `FlatTest.name`); and `Execution.execute` returns `Task` directly, not via `Async.AwaitTask`.
+  - Hit one INTERPRETER bug: first attempt set executionPoint = `Function(Package fn.hash)` thinking the cache hit would handle it. Cache hit DID work for loading instructions, but the frame-return type-check arm at line 1148 separately fetches via `fns.package id` and got None → FnNotFound. Fix: executionPoint stays as Pending. Diagnosed via two `System.Console.Error.WriteLine` debug prints, then removed.
+  - Final state: `./scripts/run-backend-tests --filter-test-list PDD` → **17/17 green** (12 defaults, 2 pending, 2 PM-field, 1 integration).
+- **Day-2a acceptance criterion met.**
+- Time: 10:02 EDT. ~2h 15min total in coding loop.
