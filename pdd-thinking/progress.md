@@ -159,4 +159,11 @@ Format:
 - Plenty of room left (5 pages = ~3000-3500 words rendered).
 - Decided: don't print yet. Refine in later iterations. Final print around 06:30-07:00 EDT.
 - Time check: 02:00 EDT. 6h to 8am. Plan: 1-2 more design iterations max (maybe stretch goals: write `18-narrative.md` if time, or just keep polishing 17 and the final report). Final report polish at ~04:00. Print at 06:30.
+- Commits: 1 pending (iter 15).
+
+### 2026-05-13 02:01 — iteration 16 (write 18-minimum-viable-spike)
+- Did: wrote `18-minimum-viable-spike.md`. The "4-hour cut" — what to skip from the full Day-1 plan to reach Demo 1 quickly. Four surgical edits (Pending variant, materializeFn field, interpreter arm, test). Concrete F# for each. Two failure modes to watch (match-exhaustiveness explosion; PackageManager construction sites). Three intensity levels: <4hr (just scaffolding), 4hr (Demo 1), >4hr (layer in real LLM call + trace + recovery + capabilities). Ends with "the runtime can call code it doesn't have yet" as the single load-bearing learning.
+- Decided: smallest-possible-spike skips parking, capabilities, recovery, find, trace, even JSON parsing — proves only the pipeline. Everything else is iteration on top.
+- Time check: 02:05 EDT. ~6h to 8am. I'm slightly ahead of my "stop iterating at 6am" goal — could potentially do 2-3 more iterations of polish, then a final-report polish pass, then print.
+- Next: polish the final report. Specifically: add a "one-sentence" claim at the very top, tighten the prose, verify the page count after rendering. Maybe write `19-red-team.md` (what could go wrong / common LLM-spike pitfalls) for one more iteration. Then commit, polish, print.
 - Commits: 1 pending.
