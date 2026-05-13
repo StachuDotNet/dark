@@ -397,3 +397,10 @@ Format:
 - **Headline**: a Pending fn whose LLM-generated body is `"42L"` now causes the runtime to return 42L. That's the smallest version of the PDD claim.
 - Commit `4a714d1f2`.
 - Time: 15:11 EDT.
+
+### 2026-05-13 15:36 — coding iter 8 (Task #9: arithmetic in mini-parser)
+- Did: extended `parseMinimalBody` to handle `<param> <op> <int>L` where op ∈ {+, -, *}. Generates 3 instructions: load builtin Applicable, load constant, Apply. Uses `int64Add` / `int64Subtract` / `int64Multiply`.
+- 4 new MinimalBody tests; total PDD: **34/34 green**.
+- Deferred: full interpreter-through-arithmetic integration test (would need to wire Stdlib builtins into the test exeState). Unit tests verify instruction shape.
+- New task #10 from Stachu: materialized fns should be **promoted to the durable package tree** so future sessions reference them by hash. Captured as Day-3 work.
+- Commit `4a714d1f2` (mini-parser arithmetic).
