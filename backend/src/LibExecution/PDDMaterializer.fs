@@ -253,6 +253,12 @@ let rec parseSimpleType (raw : string) : Option<RT.TypeReference> =
       let inner = m.Groups[2].Value
       match parseSimpleType inner, outer with
       | Some t, "List" -> Some(RT.TList t)
+      | Some _, "Option" ->
+        // PDD-Option is the Stdlib.Option<T> custom type; we don't have
+        // direct access to its type name from here, so treat any Option<T>
+        // as TCustomType(Option-built-in, [t]). Punt for now — return None
+        // and let the materializer fall through to mini-parser / identity.
+        None
       | _ -> None
 
 /// Parse a full sig string `(x: Int64, y: String): Bool` to a structured
@@ -764,6 +770,36 @@ let private hardcodedIdentityFn (name : string) : RT.PackageFn.PackageFn =
     returnType = RT.TInt64
     body =
       { registerCount = 1
+        instructions = []
+        resultIn = 0 } }
+
+/// Identity-shaped fn with a specific arity. Used when LibParser+sig
+/// parsing succeeded enough to extract param count but the body itself
+/// failed to lower — we still want an N-arg fn the runtime can call
+/// without "wrong arg count" exploding the chain. Returns the first arg
+/// (always Int64-typed in this stub).
+let private hardcodedIdentityFnArity
+  (name : string)
+  (arity : int)
+  : RT.PackageFn.PackageFn =
+  let mkParam (n : string) : RT.PackageFn.Parameter =
+    { name = n; typ = RT.TInt64 }
+  let names = [| "x"; "y"; "z"; "w"; "u"; "v" |]
+  let paramNames =
+    if arity <= 0 then [ "x" ]
+    else [ for i in 0 .. arity - 1 -> names[i % 6] ]
+  let parameters =
+    match paramNames with
+    | [ n ] -> NEList.singleton (mkParam n)
+    | h :: tail -> NEList.ofList (mkParam h) (tail |> List.map mkParam)
+    | _ -> NEList.singleton (mkParam "x")
+  { hash =
+      RT.Hash(sprintf "pdd-llm-identity-%s-%d" name (max 1 arity))
+    typeParams = []
+    parameters = parameters
+    returnType = RT.TInt64
+    body =
+      { registerCount = max 1 arity
         instructions = []
         resultIn = 0 } }
 
@@ -1511,9 +1547,20 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                     let fixUp = buildFixUpPrompt p.name gen.sig_ gen.body
                     return! attempt (n + 1) fixUp
                   | None ->
-                    emit (CompileBody(p.name, "fallback-identity", 1))
+                    // Pick the arity from sig-derived params if we have
+                    // them, else from the arg-type hints, else 1. Avoids
+                    // returning a 1-arg identity for a fn the caller will
+                    // hit with N args (TooManyArgsForFn).
+                    let arity =
+                      match parseFullSig gen.sig_ with
+                      | Some(typedParams, _) -> List.length typedParams
+                      | None ->
+                        match argTypeHints.TryGetValue p.handle with
+                        | true, hints -> List.length hints
+                        | _ -> 1
+                    emit (CompileBody(p.name, "fallback-identity", arity))
                     emit (MaterializeDone(p.name, Fake, elapsedMs ()))
-                    return Some(hardcodedIdentityFn p.name)
+                    return Some(hardcodedIdentityFnArity p.name arity)
         }
       let initialPrompt = buildUserPrompt p
       return! attempt 1 initialPrompt
