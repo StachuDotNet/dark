@@ -341,3 +341,20 @@ Format:
 - Commit `09fb8538a`.
 - Now task #5 (Phase E — Dval.defaultFor). May be the easiest phase — small, additive.
 - Time: 08:00 EDT.
+
+### 2026-05-13 08:15 — coding iter 3 (Phase E + F: defaultFor + first 16 tests green!)
+- Did:
+  - Phase E (task #5): added `Dval.defaultFor : TypeReference -> Dval`. Covers TUnit/TBool/TInt8..128/TUInt8..128/TFloat/TChar/TString/TUuid/TList/TDict/TTuple/TDateTime. Custom types/generics fall through to DUnit.
+  - Phase F (task #6): wrote `backend/tests/Tests/PDD.Tests.fs` with 16 tests across 3 groups:
+    - Defaults (12): defaultFor for every primitive + collections.
+    - Pending (2): fqPending unique-handles + name preservation.
+    - PMField (2): empty PM materializeFn returns None; record-with stub injection works.
+  - Wired up: added to Tests.fsproj `<Compile>` list, added to Tests.fs runner.
+  - **First gotcha**: `failwith` is banned in this codebase — use `Exception.raiseInternal`. Fixed.
+  - **Second gotcha**: `--filter` wants exact prefix; needed `--filter-test-list PDD` per memory.
+  - Final state: `./scripts/run-backend-tests --filter-test-list PDD` → **16/16 green**.
+- Commit `bb8c29f54`.
+- Time: 08:15 EDT. ~45 min from start of coding loop. **All 6 phases A-F done in one sitting.**
+- Day-1 minimum-viable acceptance criterion **met**.
+- Branch state: 7 phase-related commits on `pdd`, 0 errors, branch never pushed.
+- Next (task #7): real LLM call. The harder integration test (Apply a real Pending through the interpreter, get a materialized body back) is deferred until the real LLM call exists, since that's when there's actually a non-stub materializer to test against.
