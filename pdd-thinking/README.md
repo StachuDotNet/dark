@@ -16,41 +16,75 @@
 
 **Anti-pitch:** don't say "Copilot for runtime" — that misses every interesting claim.
 
-## Current plan of record (heavy-hitters H1–H4)
+## The one demo
 
-What's needed for users to build & visualize full Dark programs that take advantage of this:
+```bash
+$ dark prompt "compute doubleIt of 4"
+[pdd] prompt: compute doubleIt of 4
+[pdd] decomposing via gpt-4o-mini...
+[pdd] decomposed → doubleIt 4L
+[pdd] kick-off 1 pendings in parallel
+[pdd] ▸ start doubleIt gpt-4o-mini
+[pdd] ▸ llm   doubleIt 1492ms
+[pdd] ▸ parsed (x: Int64): Int64  x * 2L
+[pdd] ✓ real  doubleIt 1714ms
+[pdd] result: DInt64 8L
+DInt64 8L
+```
+
+Free-text → LLM decomposes to a Dark expression → unresolved fn names auto-materialize via LLM → interpreter runs the result → answer. Second run of the same prompt hits both caches and skips LLM entirely (sub-100ms).
+
+HTML view at `rundir/pdd-view/<sessionId>.html` shows annotated function cards (✓ real / ⋯ in-progress / ▼ fake / ↻ cached / ✗ failed) + chronological event log, self-refreshing every 1s.
+
+## Heavy-hitters status (all done)
 
 | # | Goal | Status |
 |---|---|---|
-| **H1** | `dark pdd run <expr>` CLI command | Not yet wired |
-| **H2** | Implicit `Pending` from unresolved parser names — turns any `.dark` file into a PDD program | Not yet wired |
-| **H3** | Interactive annotated HTML view (code with state badges + log side-panel) | Module exists (`PDDHTMLView.fs`); CLI installs it as default sink |
-| **H4** | Promotion of materialized fns to the durable package tree | Not yet wired |
+| **H1** | `dark prompt "<freeform>"` CLI command | ✅ Live |
+| **H2** | Implicit `Pending` from unresolved parser names | ✅ Live (qualified + unqualified) |
+| **H3** | Interactive annotated HTML view | ✅ Live (zero deps; meta-refresh) |
+| **H4** | Promotion of materialized fns to durable cache | ✅ Live (`rundir/pdd-cache/promoted.jsonl`) |
+| **bonus** | Parallel materialization scheduler | ✅ Live (all pendings kick off pre-eval) |
+| **bonus** | Decompose-step cache | ✅ Live (`rundir/pdd-cache/decomposed.jsonl`) |
 
-H3 details (the visualization payoff): a live HTML file that shows function cards with state badges (✓ real / ⋯ in-progress / ▼ fake / ↻ cached / ✗ failed), an event log side-panel, self-refreshing every 1s. Zero browser deps. See `DESIGN.md` §HTML View for the architecture.
+## CLI surface
 
-**The single sentence:** *A user should be able to type `dark pdd run "<some pseudocode>"`, open the HTML view in their browser, and watch their code light up — green for real, yellow for materializing, gray for fake — with logs streaming to the side.*
+```
+dark prompt "<free-text request>"        # decompose + run + visualize
+dark pdd run <dark-expression>           # skip decompose, parse user-written Dark
+dark pdd demo <fnName> <Int64-arg>       # hand-built Apply-of-Pending (test surface)
+```
 
-## What's already built (live in code)
+OpenAI key at `~/.config/darklang/llm-keys.env` (mode 600). On run, sourced via `set -a; source <key file>; set +a` then `dark prompt ...`.
 
-- `FQFnName.Pending` variant + `PackageManager.materializeFn` field (mechanism layer).
-- `Interpreter` arms for `Function(Pending p)` execution-point + apply paths.
-- `Dval.defaultFor : TypeReference -> Dval` for tolerant-runtime fallback.
-- `PDDMaterializer.fs` — real OpenAI HTTP call + JSON-response parser + mini-body-parser handling `42L`, `"x"` identity, `x + 1L` / `-` / `*` arithmetic.
-- `PDDHTMLView.fs` — interactive HTML renderer with EventSink integration.
-- `PDDMaterializer.PDDEvent` + `currentSink` — lifecycle event stream.
-- 39/39 PDD unit + integration tests (`./scripts/run-backend-tests --filter-test-list PDD`).
+## What's built (live in code)
+
+- **PT + RT:** `FQFnName.Pending` variant in both layers, with PT2RT lowering. Match-exhaustiveness fixes across ~13 sites (LibExecution + LibDB + LibSerialization).
+- **Interpreter:** `Function(Pending p)` arm in both executionPoint match and the big Apply match. Two cache layers: `packageFnInstrCache` (by hash) + `pendingFnInstrCache` (by handle) to skip re-materialization.
+- **Parser:** `OnMissing.AllowPending` policy in `NameResolver`. Fn-name fallback chains in `WT2PT` check `AllowPending` after exhausting normal lookups; convert unresolved name → `PT.FQFnName.Pending`.
+- **Materializer (`PDDMaterializer.fs`):** real OpenAI HTTP call via `System.Net.Http`. JSON-response parser tolerant of ```json fences. Mini-body-parser handles `42L`, `"x"` identity, `x + 1L` / `-` / `*` arithmetic. Persists successful materializations to `rundir/pdd-cache/promoted.jsonl`; checks cache first on subsequent calls.
+- **HTML view (`PDDHTMLView.fs`):** session-keyed, two-pane, 5 state badges. Updates per event; ~1s meta-refresh.
+- **EventSink:** `currentSink : PDDEvent -> unit` with 6 lifecycle events. CLI installs combined stderr+HTML sink.
+- **CLI (`Cli/PddCommand.fs`):** `dark prompt`, `dark pdd run`, `dark pdd demo`. Decompose-cache + materialize-cache transparent. Parallel scheduler walks instructions pre-eval, fires `Task.Run` per Pending.
+- **Tests:** 39/39 PDD tests green (`./scripts/run-backend-tests --filter-test-list PDD`).
 
 ## What's *not* yet built
 
-H1, H2, H4 above. Plus deferred design-spec stuff: parked-frame scheduler, find path, capability gates, recovery policy beyond raise-FnNotFound, real `trace show` viewer, sig consensus, deep-materialize annotation. None blocks H1–H4.
+- Parked-frame scheduler for eval that proceeds in parallel with materialization (today: pendings materialize before eval starts; eval is serial).
+- Find path (corpus search). Generate-only.
+- Capability gates. CapAny implicit.
+- Recovery policy beyond raise-FnNotFound. EmptyBody/tolerant-runtime is design only.
+- Sig consensus (Strategy B). Strategy A (first-wins) in spirit.
+- `trace show` / `replay` / `diff` / `promote` CLI commands. JSONL log exists but no viewer.
+- v5 LLM prompt: more rigorous JSON quoting (occasional non-quoted body returns).
+- Real package-store promotion (today it's a JSONL sidecar, not the durable `package_fns` table).
 
 ## Hard rules
 
 - **Never push `pdd`.** Local-only by design. Cherry-pick later if anything ships.
 - **Commit after every successful compile.** Free, atomic, easy to revert.
 - **30-minute rule on stuck:** revert and try a different angle.
-- **OpenAI key** lives at `~/.config/darklang/llm-keys.env` (mode 600). Never written to any repo file. Spend so far ≈ $0.0012 of the $10 budget.
+- **OpenAI key** lives at `~/.config/darklang/llm-keys.env` (mode 600). Never written to any repo file. Cumulative spend ≈ $0.005 of the $10 budget (mostly prompt-iteration during the design loop; live runs are sub-$0.0001 each thanks to caching).
 - Build is two-pass after Dark type changes: `touch backend/src/LibExecution/package-ref-hashes.txt && build`.
 
 ## How to enter
