@@ -251,4 +251,15 @@ Format:
 - Cumulative spend tonight: ~$0.001 (~20 LLM calls total).
 - Time check: 03:28 EDT. ~4h 32m to 8am.
 - Next: stretch cadence to 30min. One more polish iteration mid-late, then start print prep around 06:30.
+- Commits: 1 pending (iter 24).
+
+### 2026-05-13 03:58 — iteration 25 (v4 stress test on Demo-6 fns; honest revision)
+- Did: tested v4 prompt on Demo-6 fns (`extractTopHeadline`, `sentimentScore`, `summarize`). Cost ~$0.0004.
+- Found a **regression**: `extractTopHeadline` used `Stdlib.String.index_of(html, "<h2>")` — back to parenthesized calls. gpt-4o-mini has a strong prior toward OO method-call shape for string operations, even with explicit prefix-application instructions.
+- `sentimentScore` and `summarize` were mostly clean (Int64 literals, prefix multi-arg, `++` for concat).
+- **Honest revised estimate**: ~75-85% first-try correctness, with **wide variance by category** (collection/arithmetic ~85-90%, string-ops ~50-65%). Updated both `16-prompt-shapes.md` and `FINAL-REPORT-2026-05-13.md` with the more honest number.
+- v5 prompt suggestion: include explicit examples for string-op syntax (~150 extra input tokens, ~$0.00002 per call).
+- Cumulative tonight spend: ~$0.0012.
+- Time check: 04:01 EDT. ~3h 59m to 8am.
+- Next: stretch cadence to 45-60min, occasional polish, then start print prep around 06:30.
 - Commits: 1 pending.

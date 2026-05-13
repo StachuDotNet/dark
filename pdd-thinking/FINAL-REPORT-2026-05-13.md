@@ -42,7 +42,7 @@ Default policy: **1s budget per path, both fire, first-non-failure wins, cancel 
 
 Find priority: pinned hashes (manually promoted) → exact package store name match → name+arity loose match. No embeddings for v0; keyword match suffices.
 
-Generate: one LLM call with the v4 system prompt (full text in `17-day-1-quick-reference.md`). Verified tonight: gpt-4o-mini, temperature=0, returns valid JSON `{sig: ..., body: ...}` with correct Darklang syntax on **~85-90% of first tries** for Demo-1 and Demo-2 fns. Remaining failures are subtle (stdlib fn name guessing, dict-vs-record confusion) — addressable by retry-with-AST-feedback or by injecting real stdlib names into the prompt. Cost: ~$0.00005 per call.
+Generate: one LLM call with the v4 system prompt (full text in `17-day-1-quick-reference.md`). Verified tonight: gpt-4o-mini, temperature=0, returns valid JSON `{sig: ..., body: ...}` with correct Darklang syntax on **~75-85% of first tries**, with variance by fn category (collection/arithmetic ~85-90%, string-ops ~50-65% due to strong model priors toward `str.method()` syntax). Mitigations: AST-feedback retry; few-shot examples in the prompt; injecting real stdlib names. Cost: ~$0.00005 per call.
 
 `@deep_materialize` annotation opts into 60s budget and (later) Sonnet. Default stays cheap.
 

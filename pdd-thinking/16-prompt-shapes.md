@@ -276,7 +276,23 @@ Stdlib.List.sortBy (fun dict -> -dict.variance) lst           # ✓ prefix
 
 ### Updated quality estimate
 
-**After v4: ~85-90% of generated bodies have correct syntax on the first try.** Most remaining failures are stdlib-name-guessing (fixable by injecting the real names) or dict/record confusion (one prompt line). This is *workable for the spike without further iteration*.
+**After v4: ~75-85% of generated bodies have correct syntax on the first try, with variance by fn category.** Demo-1 / Demo-2 style (collection ops, arithmetic) hit ~85-90%. String-heavy operations regress to ~50-65% — gpt-4o-mini has a STRONG prior toward parenthesized calls for `String.indexOf`, `String.slice`, etc. (OO method-call shape). Multi-arg signatures and string concat with `++` work fine.
+
+Verified at 03:58 EDT with Demo-6-style fns (`extractTopHeadline`, `sentimentScore`, `summarize`):
+- `extractTopHeadline`: regressed — `Stdlib.String.index_of(html, "<h2>")` parenthesized.
+- `sentimentScore`: mostly correct — prefix application, Int64 literals.
+- `summarize`: clean — multi-arg sig, `++` concat.
+
+**v5 prompt suggestion** (for when you actually start hitting these in real demos):
+
+```
+- Example: Stdlib.String.indexOf html "<h2>"      (correct, prefix)
+           Stdlib.String.indexOf(html, "<h2>")     (WRONG, JS style)
+- Example: Stdlib.String.slice text 4 10           (correct, three args, no parens)
+- This applies to ALL stdlib functions including String operations.
+```
+
+Few-shot examples might be needed for string ops. Cost: ~150 extra input tokens per call (~$0.00002).
 
 **Day-1 stub** can still be `EmptyBody` — don't sweat the LLM quality until Day 2-3 when you're actually generating code. But when you do start, **use the v4 prompt verbatim** from `17-day-1-quick-reference.md`.
 
