@@ -150,6 +150,17 @@ let main (args : string[]) =
 
     Telemetry.time "cli.pmInit" [] (fun () -> cliPackageManager.init.Result)
 
+    // PDD: intercept `pdd ...` subcommands before normal CLI dispatch.
+    let pddResult =
+      Cli.PddCommand.tryHandle cliPackageManager (Array.toList args) |> _.Result
+    match pddResult with
+    | Some code ->
+      NonBlockingConsole.wait ()
+      code |> ignore<int>
+      // exit early
+      System.Environment.Exit code
+    | None -> ()
+
     let result =
       Telemetry.time "cli.execute" [] (fun () ->
         let result = execute cliPackageManager (Array.toList args)
