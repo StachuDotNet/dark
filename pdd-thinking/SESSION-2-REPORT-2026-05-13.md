@@ -1,3 +1,5 @@
+> 📸 **CODING-LOOP SNAPSHOT** (~10:35 EDT) — captures state after the first round of F# wiring. Numbers (24/24 tests) are stale: now 35/35 with arithmetic mini-parser + end-to-end addOne test. Current plan-of-record: `21-heavy-hitters-plan.md`.
+
 # PDD Coding Session 2 — Report
 
 **For:** Stachu, returning from afk

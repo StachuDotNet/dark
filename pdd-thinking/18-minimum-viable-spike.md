@@ -1,3 +1,5 @@
+> 📚 **HISTORICAL** — this doc describes plans from the design loop. The work is now either done or superseded by `21-heavy-hitters-plan.md` (current plan of record). Keeping for the trail-of-thought.
+
 # 18 — Minimum Viable Spike
 
 > If you only have 4 hours tomorrow, here's the smallest possible subset of all this design that reaches Demo 1 (`addOne` materialized via LLM, returning 6).

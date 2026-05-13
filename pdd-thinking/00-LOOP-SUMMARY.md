@@ -1,107 +1,93 @@
-# PDD Experiment — Loop Entrypoint
+# PDD — Documentation Index
 
-> This is the file the `/loop` command points to. Read it first each iteration.
-
-## Branch
-
-`pdd` (local-only, off `main`, **never push**)
+> The complete `pdd-thinking/` directory, organized by status.
 
 ## What this is
 
-An experimental fork of the Darklang F# codebase to prototype **pseudocode-driven development as a runtime feature**. Not "AI-generated stubs the human fills in later" — but "the interpreter itself drives the LLM to materialize code on demand, in parallel, speculatively."
+An experimental fork of the Darklang F# codebase implementing **pseudocode-driven development as a runtime feature**: the interpreter materializes its own source code on demand via LLM, in parallel, speculatively, with traces as the durable artifact.
 
-Background and full thinking: `thinking/pseudocode-driven-dev-2026-05-13.md` (already on the AOT branch, also accessible here on `pdd` if you cherry-picked).
+**Branch:** `pdd` (local-only, off `main`, **never pushed**)
+**Current state:** 47+ commits, 35/35 PDD tests green, end-to-end addOne (5L → 6L) demo works through real interpreter with real Stdlib builtins.
 
-## Optimization target
+## The five claims (memorize)
 
-**Make Stachu happy at 8am with a good start to a few days of hacking on this.**
+1. **The source is lazy.** Names + signatures; bodies materialize on demand.
+2. **The trace is the program.** Source files are sketches; the trace is the authoritative record.
+3. **Types are the coordination protocol.** Pending references carry sig hints; parallel materializations agree via type unification.
+4. **The runtime is tolerant.** Missing things substitute defaults; eval keeps moving; recoveries are auditable.
+5. **The human is a materializer.** When find and generate fail, the human is the third path.
 
-Design > code. Cut corners. Don't push. Commit often.
+Anti-pitch: don't say "Copilot for runtime" — that misses every interesting claim. Right framing: "the runtime materializes its own source on demand."
 
-## Files in this directory (`pdd-thinking/` at repo root)
+---
 
-Originally placed in `notes/pdd/` but moved here so they're tracked
-(repo's `notes/` is gitignored, this branch wants them committed).
+## 📋 Current plan of record
 
-Read in order:
+**[`21-heavy-hitters-plan.md`](21-heavy-hitters-plan.md)** — H1–H4 (CLI command, implicit Pending, interactive HTML view, promotion to package tree).
 
-1. `00-LOOP-SUMMARY.md` — this file (entry point)
-2. `01-vision.md` — algorithm + paradigm (what we're building)
-3. `02-libexecution-changes.md` — **the most important file** — F# interpreter changes
-4. `03-find-vs-generate.md` — the two-coroutine scheduler, <1s default budgets
-5. `04-signature-consensus.md` — coordinating parallel attempts on the same name
-6. `05-tolerant-runtime.md` — partial values, holes, recovery
-7. `06-builtin-permissions.md` — capability model for wild generated code
-8. `07-human-in-loop.md` — when does the human enter
-9. `08-tracing-as-artifact.md` — the trace *is* the program
-10. `09-carving-the-codebase.md` — what F# / packages to cut for this experiment
-11. `10-day-1-hacking-plan.md` — what to actually type when you sit down
-12. `11-open-questions.md` — things I (Claude) am unsure about
-13. `12-glossary.md` — terminology (pin these names down)
-14. `13-libpdd-materializer.md` — concrete F# shape of the new `LibPDD` project
-15. `14-demo-programs.md` — six end-to-end test programs (Demo 6 is the north star)
-16. `15-spike-budgets.md` — engineering time / API $ / cognitive budgets
-17. `16-prompt-shapes.md` — actual prompt templates with gpt-4o-mini outputs (v3 prompt is the keeper)
-18. `17-day-1-quick-reference.md` — **single-page at-the-desk cheat sheet** (print this!)
-19. `18-minimum-viable-spike.md` — if you only have 4 hours: the tightest possible Demo-1 path
-20. `19-red-team.md` — what could go wrong: design risks, impl footguns, project risks, smoke detectors
-21. `20-elevator-pitches.md` — 60s / 3-min / 10-min pitches for different audiences
+Working through:
+| Iter | Task |
+|---|---|
+| Next | Task #14 (EventSink) → Task #11 (CLI) → Task #13 (HTML view) → Task #12 (implicit Pending) → Task #10 (promotion) |
 
-Plus:
-- `progress.md` — running log of each loop iteration (20+ iterations as of 02:23 EDT)
-- `FINAL-REPORT-2026-05-13.md` — **the durable summary**, drafted iter 15, polished after
+## 📚 Read in this order (if printing for reading)
 
-## What "iterate" means in this loop
+### Vision & framing (durable)
+| # | What |
+|---|---|
+| 01 | `01-vision.md` — five claims, algorithm, paradigm |
+| 12 | `12-glossary.md` — pinned terminology + anti-glossary |
+| 20 | `20-elevator-pitches.md` — 60s / 3min / 10min for different audiences |
 
-Each wake-up:
-1. Read `progress.md` to see where I am.
-2. Pick the next file/topic to deepen. Order is a guide, not a rule.
-3. Write/refine substantive content. **Concrete sketches > generalities.**
-4. Commit with a descriptive message.
-5. Append a 2-3 line entry to `progress.md`.
-6. Schedule the next wakeup.
+### Core design (durable; partially implemented)
+| # | What | Status |
+|---|---|---|
+| 02 | `02-libexecution-changes.md` — interpreter changes | Done (RuntimeTypes + Interpreter live in code) |
+| 03 | `03-find-vs-generate.md` — scheduler | Mostly speculative; only generate is wired |
+| 04 | `04-signature-consensus.md` — coordinating parallel attempts | Strategy A in spirit; not formally exercised |
+| 05 | `05-tolerant-runtime.md` — recovery policies | Stub: raise FnNotFound on None |
+| 06 | `06-builtin-permissions.md` — capability gates | Design only |
+| 07 | `07-human-in-loop.md` — human as third path | Design only |
+| 08 | `08-tracing-as-artifact.md` — JSONL trace + replay | JSONL log lands in rundir/; replay deferred |
+| 11 | `11-open-questions.md` — what I'm unsure about | Ongoing |
+| 14 | `14-demo-programs.md` — 6+ demos to build toward | Demo 1 (addOne) and a fragment of Demo 2 work |
+| 15 | `15-spike-budgets.md` — eng-time / API$ / cognitive | Still relevant |
+| 16 | `16-prompt-shapes.md` — empirical gpt-4o-mini outputs | v4 prompt in code |
+| 19 | `19-red-team.md` — what could go wrong | Several risks not yet hit |
+| 21 | **`21-heavy-hitters-plan.md`** — **current plan of record** | In flight |
 
-Wake cadence: tightened to 270s (4.5 min) per user request mid-night — stays inside the prompt-cache TTL so each iteration re-uses warm context.
+### 📚 Historical (superseded by the heavy-hitters plan, kept for trail-of-thought)
+| # | What |
+|---|---|
+| 09 | `09-carving-the-codebase.md` — sln carving (was skipped) |
+| 10 | `10-day-1-hacking-plan.md` — Day-1 6-phase plan (done) |
+| 13 | `13-libpdd-materializer.md` — separate-project plan (we kept it inline) |
+| 17 | `17-day-1-quick-reference.md` — cheat sheet (Day-1 done) |
+| 18 | `18-minimum-viable-spike.md` — 4-hour fallback path (done in 1 day) |
 
-## Hard rules
+### 📸 Snapshots (point-in-time reports)
+| File | What |
+|---|---|
+| `FINAL-REPORT-2026-05-13.md` | End of design loop (~07:30 EDT). Was printed at 06:32. |
+| `SESSION-2-REPORT-2026-05-13.md` | End of first coding session (~10:35). |
+| `progress.md` | Trimmed iteration log. Full granular history in `git log pdd ^main`. |
 
-- **Never push** this branch.
-- **Commit frequently** — every meaningful chunk of writing, even mid-doc.
-- **Cut whatever you want** from F# code. Disable projects in `.sln`, delete dirs, comment out builtins. This is throwaway.
-- Respect the no-stash / no-hard-rebase / keep-`_assert-in-container` rules from memory.
-- **By 08:00 EDT (12:00 UTC) 2026-05-13**, stop iterating, finalize `FINAL-REPORT-2026-05-13.md` (≤5 printed pages), and call `~/bin/print-md` on it.
+---
 
-## Stachu's specific guidance this session
+## Hard rules (still in force)
 
-- **Fork the F# codebase here.** Branch `pdd`. Commit a lot, never push.
-- **Cut corners freely.** Anything not needed for this experiment — delete, comment out, disable in fsproj/sln.
-- **LibExecution is the key.** If we figure that out, the rest follows. **Spend the bulk of design effort here.**
-- **Expand on the algorithm.** Human-in-loop, sig consensus — both deserve their own files.
-- **Both `find` and `generate` should give up in <1s** by default. Configurable up to ~1min for "I care about this fn". Empty body is fine. Just signature is fine. Anything to keep moving.
-- **Tolerant runtime** — at first, very. Tighten over time.
-- **Builtin restrictions early.** CLI installers should let users pick what agents can do (HttpClient yes/no, file access yes/no, etc.). Don't punt on this.
+- **Never push** `pdd`. Cherry-pick later if anything's worth keeping.
+- **Commit after every successful compile.** Free, atomic, easy to revert.
+- **30-minute rule on stuck:** revert and try a different angle.
+- **No `--no-verify`, no destructive rebases.** (Standing memory.)
+- **Keep the `_assert-in-container` shim** in any script that has it.
+- **OpenAI key lives at `~/.config/darklang/llm-keys.env`** (mode 600, outside the repo). Never written to repo files.
+- **Spend tracking**: ~$0.0012 of the $10 budget used to date.
 
-## CURRENT PLAN OF RECORD
+## How to enter a workstream
 
-**See `21-heavy-hitters-plan.md`** — that's the working plan as of 2026-05-13 ~16:00 EDT. The design loop (iters 0-29) produced docs 00-20. The coding loop has been delivering F# on top.
-
-Heavy-hitters in flight:
-- H1: `dark pdd run <expr>` CLI command
-- H2: implicit `Pending` from unresolved parser names (makes any .dark file PDD-capable)
-- H3: **interactive annotated HTML code view** with logs side-panel — green/yellow/gray/red state badges per name
-- H4: promotion of materialized fns to the durable package tree
-
-## Endgame for this session — STATUS as of iter 20 (02:24 EDT, design loop)
-
-When Stachu sits down at his desk at 8am:
-
-- ✅ This directory has 21 design files + final report + progress log, all substantive.
-- ✅ `02-libexecution-changes.md` has concrete F# code sketches with line numbers (`Interpreter.fs:317`, `RuntimeTypes.fs:88,1250`).
-- ✅ `09-carving-the-codebase.md` has a precise list of what to disable first (`fsdark.sln:44,61`).
-- ✅ `10-day-1-hacking-plan.md` gives a step-by-step "what do I type first" plan, 6 phases.
-- ✅ `17-day-1-quick-reference.md` is a **single-page at-the-desk cheat sheet** with v3 prompt verbatim.
-- ✅ `18-minimum-viable-spike.md` has the 4-hour fast cut if morning is short.
-- ⏳ Printed final report on desk — pending the 06:30-07:00 EDT print run.
-- ✅ All 20 iterations committed on `pdd`. Never pushed. AOT branch backed up to `origin/aot-and-cold-start-improvements`.
-- ✅ OpenAI key safely at `~/.config/darklang/llm-keys.env` (mode 600, outside repo).
-- ✅ ~$0.001 spent verifying the JSON-prompt path works with gpt-4o-mini. ~$9.999 of $10 remains.
+Next session, read in this order:
+1. This file (you're here).
+2. `21-heavy-hitters-plan.md` — current plan.
+3. `SESSION-2-REPORT-2026-05-13.md` (with caveats — stale test counts) for what's-in-code.
+4. Pull other docs in only when a specific need surfaces.

@@ -1,3 +1,5 @@
+> 📚 **HISTORICAL** — this doc describes plans from the design loop. The work is now either done or superseded by `21-heavy-hitters-plan.md` (current plan of record). Keeping for the trail-of-thought.
+
 # 17 — Day-1 Quick Reference Card
 
 Print this. Tape it next to your keyboard. **One page** of everything you need at the desk on Day 1.

@@ -1,3 +1,5 @@
+> 📚 **HISTORICAL** — this doc describes plans from the design loop. The work is now either done or superseded by `21-heavy-hitters-plan.md` (current plan of record). Keeping for the trail-of-thought.
+
 # 10 — Day-1 Hacking Plan (literal)
 
 > What you type, in order, on Day 1. Copy-paste friendly.

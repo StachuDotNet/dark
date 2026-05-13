@@ -1,3 +1,5 @@
+> 📸 **DESIGN-LOOP SNAPSHOT** (~07:30 EDT) — captures what we *planned* end of overnight design loop. Many predictions held (mini-parser handles 75-85%) but several got refined. Current plan-of-record: `21-heavy-hitters-plan.md`. Current state: `SESSION-2-REPORT-2026-05-13.md`.
+
 # PDD Spike — Overnight Design Report
 
 **For:** Stachu, waking up 2026-05-13 around 8am EDT

@@ -1,3 +1,5 @@
+> 📚 **HISTORICAL** — this doc describes plans from the design loop. The work is now either done or superseded by `21-heavy-hitters-plan.md` (current plan of record). Keeping for the trail-of-thought.
+
 # 13 — `LibPDD` Project Sketch
 
 Concrete F# shape of the new project. Read alongside `02-libexecution-changes.md` (the LibExecution side) and `10-day-1-hacking-plan.md` (the order of operations).

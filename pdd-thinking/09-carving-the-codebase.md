@@ -1,3 +1,5 @@
+> 📚 **HISTORICAL** — this doc describes plans from the design loop. The work is now either done or superseded by `21-heavy-hitters-plan.md` (current plan of record). Keeping for the trail-of-thought.
+
 # 09 — Carving the Codebase
 
 > Stachu's directive: "cut all corners as you see fit. any 'packages' or F# that's not needed for this experiment, cut. remove, delete, comment out, I don't care. tighten things so you can work efficiently"
