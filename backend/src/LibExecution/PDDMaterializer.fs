@@ -111,6 +111,47 @@ let buildUserPrompt (name : string) : string =
   sprintf "Function: %s. Description: implement a sensible default body." name
 
 
+/// System prompt for the high-level "decompose a user request into a
+/// Darklang expression" path. The output expression may reference fn
+/// names the LLM invents; those names become Pending refs, materialized
+/// by `materialize` at call time. This is the PDD blog-post pseudocode
+/// shape (https://stachu.net/psuedocode-driven-development).
+let decomposeSystemPrompt =
+  """You decompose a user's request into a single Darklang expression that fulfills it.
+
+The expression should read like the user's intent in pipeline form. Use Stdlib functions you know exist (Stdlib.List.map, Stdlib.Int64.add, etc.). For everything else — fetching URLs, parsing CSVs, computing variance, summarizing text, ANYTHING — just invent a name that describes what it does and use it. The runtime materializes those at call time via LLM.
+
+Output ONLY the Darklang expression, no prose, no markdown fences, no comments.
+
+Examples:
+
+User: compute 2+3
+Output: Stdlib.Int64.add 2L 3L
+
+User: from a CSV, find the date with biggest variance between open and close
+Output: csv |> parseCsv |> skipHeader |> Stdlib.List.map calculateVariance |> sortByVarianceDescending |> takeHead |> getDateField
+
+User: fetch the top HN headline and sentiment-score it
+Output: fetchUrl "https://news.ycombinator.com" |> extractTopHeadline |> sentimentScore
+
+User: port haskell's `nub` to Dark for a List<Int64>
+Output: fun lst -> nub lst
+
+Darklang syntax:
+- Int64 literals end in L: 5L, -3L
+- Lists: [1L; 2L; 3L]
+- Strings: double-quoted
+- Pipe: value |> fn
+- Function application is PREFIX, NOT parenthesized: f x y, not f(x, y)
+- String concat: ++
+"""
+
+/// Build a user-side prompt for the decompose call. Just the request,
+/// rendered straight.
+let buildDecomposePrompt (request : string) : string =
+  sprintf "User: %s\nOutput:" request
+
+
 /// Parsed shape of the LLM's JSON response.
 type GeneratedFn = { sig_ : string; body : string }
 

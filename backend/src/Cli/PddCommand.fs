@@ -271,15 +271,76 @@ let private handleRun
   }
 
 
-/// Entry point for `dark pdd ...` commands. Returns Some exitCode if
-/// the arg list matched a pdd subcommand; None to fall through to the
-/// normal CLI dispatch.
+/// Handle `dark prompt "<free-text request>"`. Calls the LLM to decompose
+/// the request into a Darklang expression, then runs it through the
+/// pdd pipeline (parser with AllowPending + materializer + interpreter).
+let private handlePrompt
+  (packageManager : RT.PackageManager)
+  (request : string)
+  : Task<int> =
+  task {
+    let prefix = dim "[pdd]"
+    eprintfn ""
+    eprintfn "%s %s %s" prefix (dim "prompt") (green request)
+    eprintfn "%s %s" prefix (dim "decomposing via gpt-4o-mini...")
+
+    let apiKey = System.Environment.GetEnvironmentVariable("OPENAI_API_KEY")
+    if System.String.IsNullOrEmpty(apiKey) then
+      eprintfn "%s %s" prefix (red "OPENAI_API_KEY not set")
+      return 1
+    else
+      let userPrompt = Mat.buildDecomposePrompt request
+      let! resp =
+        Mat.callOpenAI apiKey Mat.decomposeSystemPrompt userPrompt
+      match resp with
+      | Error e ->
+        eprintfn "%s %s %s" prefix (red "decompose http error:") e
+        return 1
+      | Ok body ->
+        match Mat.extractContent body with
+        | Error e ->
+          eprintfn "%s %s %s" prefix (red "decompose content error:") e
+          return 1
+        | Ok exprStr ->
+          let trimmed = exprStr.Trim()
+          let cleaned =
+            // strip markdown fences if any
+            if trimmed.StartsWith("```") then
+              let after = trimmed.Substring(3)
+              let stripLang =
+                if after.StartsWith("dark") || after.StartsWith("darklang") then
+                  after.Substring(after.IndexOf('\n') + 1)
+                else after
+              let endIdx = stripLang.LastIndexOf("```")
+              if endIdx >= 0 then stripLang.Substring(0, endIdx).Trim()
+              else stripLang.Trim()
+            else trimmed
+          eprintfn "%s %s" prefix (dim "decomposed →")
+          eprintfn "%s   %s" prefix (green cleaned)
+          let! code = handleRun packageManager cleaned
+          return code
+  }
+
+
+/// Entry point for `dark pdd ...` and `dark prompt ...` commands.
+/// Returns Some exitCode if the arg list matched; None to fall through
+/// to the normal CLI dispatch.
 let tryHandle
   (packageManager : RT.PackageManager)
   (args : List<string>)
   : Task<int option> =
   task {
     match args with
+    | "prompt" :: rest ->
+      // `dark prompt "..."` — high-level surface: free-text in,
+      // Dark-expression-via-LLM-decompose, then materialized + run.
+      let request = String.concat " " rest
+      if String.IsNullOrWhiteSpace request then
+        eprintfn "[pdd] usage: dark prompt \"<free-text request>\""
+        return Some 1
+      else
+        let! code = handlePrompt packageManager request
+        return Some code
     | "pdd" :: "demo" :: name :: argStr :: _ ->
       match System.Int64.TryParse(argStr.TrimEnd('L', 'l')) with
       | true, v ->
@@ -289,9 +350,6 @@ let tryHandle
         eprintfn "[pdd] arg must be an Int64 (got: %s)" argStr
         return Some 1
     | "pdd" :: "run" :: rest ->
-      // Join remaining args as the expression source — supports both
-      // `dark pdd run "addOne 5L"` (quoted, one arg) and
-      // `dark pdd run addOne 5L` (multiple args concatenated with spaces).
       let exprStr = String.concat " " rest
       if String.IsNullOrWhiteSpace exprStr then
         eprintfn "[pdd] usage: dark pdd run <dark-expression>"
@@ -301,6 +359,7 @@ let tryHandle
         return Some code
     | "pdd" :: _ ->
       eprintfn "[pdd] usage:"
+      eprintfn "[pdd]   dark prompt \"<free-text request>\""
       eprintfn "[pdd]   dark pdd run <dark-expression>"
       eprintfn "[pdd]   dark pdd demo <fnName> <Int64-arg>"
       return Some 1
