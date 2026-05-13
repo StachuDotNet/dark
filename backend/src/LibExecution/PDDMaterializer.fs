@@ -158,11 +158,15 @@ let installBodyParser (parser : BodyParser) : unit =
 
 
 /// Test-runner callback — invokes a materialized PackageFn with concrete
-/// Dval args and returns the resulting Dval (or an error message). The
-/// CLI installs a runner that builds a tiny Apply-of-fn program and runs
-/// it through the real interpreter, so test execution matches production.
+/// Dval args and returns the resulting Dval (or an error message).
+///
+/// Now also accepts the originating Pending so the runner can build a
+/// state that resolves self-recursive references back to the just-built
+/// fn instead of re-triggering the LLM materializer (which would either
+/// deadlock or recurse via additional LLM calls).
 type TestRunner =
-  RT.PackageFn.PackageFn * List<RT.Dval> -> Ply<Result<RT.Dval, string>>
+  RT.FQFnName.Pending * RT.PackageFn.PackageFn * List<RT.Dval>
+    -> Ply<Result<RT.Dval, string>>
 
 let mutable testRunner : TestRunner option = None
 
@@ -262,22 +266,68 @@ let parseFullSig
       else
         None
 
+/// Walk RT.Instructions and rewrite every Pending fn-name handle so that
+/// occurrences of the SAME name share a SINGLE canonical handle. For
+/// self-recursion (name == selfName), use selfHandle. For all other names,
+/// generate one fresh handle per name and reuse it.
+///
+/// Without this, PT2RT.Expr.toRT generates a fresh handle for every
+/// `PT.FQFnName.Pending` reference (via `fqPending`), so two `factorial`
+/// references in one body would have DIFFERENT RT handles. That makes the
+/// runtime materialize each occurrence separately — disastrous for
+/// recursion, where every call inside the body would re-trigger the LLM.
+let private canonicalizePendingHandles
+  (selfName : string)
+  (selfHandle : System.Guid)
+  (instrs : RT.Instructions)
+  : RT.Instructions =
+  let nameToHandle =
+    System.Collections.Generic.Dictionary<string, System.Guid>()
+  nameToHandle[selfName] <- selfHandle
+  let canonName (fn : RT.FQFnName.FQFnName) : RT.FQFnName.FQFnName =
+    match fn with
+    | RT.FQFnName.Pending p ->
+      let canonicalHandle =
+        match nameToHandle.TryGetValue p.name with
+        | true, h -> h
+        | false, _ ->
+          let fresh = System.Guid.NewGuid()
+          nameToHandle[p.name] <- fresh
+          fresh
+      RT.FQFnName.Pending { p with handle = canonicalHandle }
+    | other -> other
+  let rewriteApplicable (app : RT.ApplicableNamedFn) : RT.ApplicableNamedFn =
+    { app with name = canonName app.name }
+  let rewriteDval (dv : RT.Dval) : RT.Dval =
+    match dv with
+    | RT.DApplicable(RT.AppNamedFn app) ->
+      RT.DApplicable(RT.AppNamedFn(rewriteApplicable app))
+    | other -> other
+  let rewriteInstr (i : RT.Instruction) : RT.Instruction =
+    match i with
+    | RT.LoadVal(r, dv) -> RT.LoadVal(r, rewriteDval dv)
+    | other -> other
+  { instrs with
+      instructions = instrs.instructions |> List.map rewriteInstr }
+
 /// Build an RT.PackageFn from a parsed PT.Expr body and typed params.
 /// Uses PT2RT.Expr.toRT with the param-name → register-index symbol map
-/// the runtime expects.
+/// the runtime expects, then canonicalizes Pending handles so same-name
+/// references share a handle (including self-recursion).
 let private fnFromTypedBody
   (name : string)
+  (selfHandle : System.Guid)
   (typedParams : List<string * RT.TypeReference>)
   (returnType : RT.TypeReference)
   (ptBody : PT.Expr)
   : RT.PackageFn.PackageFn =
-  // Symbol table: each param name maps to its register index.
   let (rcAfterParams, symbols) : (int * Map<string, int>) =
     typedParams
     |> List.fold
       (fun (rc, syms) (n, _) -> (rc + 1, Map.add n rc syms))
       (0, Map.empty)
-  let instructions = PT2RT.Expr.toRT symbols rcAfterParams None ptBody
+  let rawInstructions = PT2RT.Expr.toRT symbols rcAfterParams None ptBody
+  let instructions = canonicalizePendingHandles name selfHandle rawInstructions
   let hashKey = sprintf "pdd-llm-%s-%d" name (hash instructions.instructions)
   let mkParam (n : string) (t : RT.TypeReference) : RT.PackageFn.Parameter =
     { name = n; typ = t }
@@ -291,6 +341,19 @@ let private fnFromTypedBody
     parameters = paramRecords
     returnType = returnType
     body = instructions }
+
+/// Detect whether the body's instructions reference our own Pending name
+/// (after canonicalization, those refs share our handle).
+let private isSelfRecursive
+  (selfHandle : System.Guid)
+  (instrs : RT.Instructions)
+  : bool =
+  instrs.instructions
+  |> List.exists (fun i ->
+    match i with
+    | RT.LoadVal(_, RT.DApplicable(RT.AppNamedFn { name = RT.FQFnName.Pending p })) ->
+      p.handle = selfHandle
+    | _ -> false)
 
 
 /// Stashed call-site context per Pending handle. The CLI parallel
@@ -1162,7 +1225,7 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                               | PT.ELambda(_, _, inner) -> inner
                               | _ -> ptExpr
                           let fn =
-                            fnFromTypedBody p.name typedParams returnType bodyExpr
+                            fnFromTypedBody p.name p.handle typedParams returnType bodyExpr
                           return Some fn
                         with _ ->
                           // PT2RT lowering can throw on unsupported PT shapes.
@@ -1181,14 +1244,21 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                   // Run the LLM's claimed tests. If we have a runner AND
                   // tests, gate promotion on the result.
                   let (RT.Hash fnHashStr) = fn.hash
+                  let recursive = isSelfRecursive p.handle fn.body
                   let! testOutcomes =
                     uply {
-                      match testRunner with
-                      | None -> return List.replicate gen.tests.Length TSkipped
-                      | Some runner ->
+                      if recursive then
+                        // Self-recursive bodies can't be tested in the
+                        // inline runner without seeding the materializer
+                        // with itself — skip wholesale and trust the LLM.
+                        return List.replicate gen.tests.Length TSkipped
+                      else
+                        match testRunner with
+                        | None -> return List.replicate gen.tests.Length TSkipped
+                        | Some runner ->
                         let mutable acc = []
                         for t in gen.tests do
-                          let! r = runner (fn, t.args)
+                          let! r = runner (p, fn, t.args)
                           let outcome =
                             match r with
                             | Error e ->

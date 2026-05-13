@@ -317,19 +317,36 @@ let private handleRun
     // Install a TestRunner so the materializer can verify LLM-claimed
     // tests before declaring a fn Real. Uses an Apply-of-fn shape built
     // inline, run through the same interpreter.
-    let testRunner (fn : RT.PackageFn.PackageFn, args : List<RT.Dval>) =
+    let testRunner
+      (
+        self : RT.FQFnName.Pending,
+        fn : RT.PackageFn.PackageFn,
+        args : List<RT.Dval>
+      ) =
       uply {
         try
-          // Inline the fn body into a top-level instruction block: load
-          // args at registers 0..N-1, then run the body's instructions
-          // verbatim. Avoids needing to register the fn for Apply lookup.
+          // Self-aware materializer: if the body recurses via the SAME
+          // canonical handle as `self`, return the just-built fn instead
+          // of calling the LLM again. Falls through to the production
+          // materializer for any other handle.
+          let selfAwareMaterialize (q : RT.FQFnName.Pending) =
+            uply {
+              if q.handle = self.handle then
+                return Some fn
+              else
+                return! parallelMaterializer inFlight q
+            }
+          let testPm = { pm with materializeFn = selfAwareMaterialize }
+          let testState =
+            Exe.createState allBuiltins testPm Exe.noTracing reportException
+              notify (System.Guid.NewGuid()) program
           let argLoads =
             args |> List.mapi (fun i v -> RT.LoadVal(i, v))
           let combined : RT.Instructions =
             { registerCount = fn.body.registerCount
               instructions = argLoads @ fn.body.instructions
               resultIn = fn.body.resultIn }
-          let! r = Exe.execute state (None, combined)
+          let! r = Exe.execute testState (None, combined)
           match r with
           | Ok dv -> return Ok dv
           | Error(rte, _) -> return Error(sprintf "%A" rte)
