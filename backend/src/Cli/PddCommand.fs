@@ -166,6 +166,50 @@ and private dvalPendings (dv : RT.Dval) : List<RT.FQFnName.Pending> =
   | _ -> []
 
 
+/// A best-effort, AST-style inference: scan the instruction list once and,
+/// for every Apply targeting a LoadVal-of-Pending, derive simple arg-type
+/// hints by inspecting prior LoadVals into the arg registers.
+///
+/// Limitations: literals only. If an arg register was set by an Apply or
+/// some other computation, we record "?" and let the LLM guess.
+let rec private inferArgTypeHints
+  (instrs : RT.Instructions)
+  : Map<System.Guid, List<string>> =
+  let arr = List.toArray instrs.instructions
+  // Maps registers to a Dval *if* that register was last set by a LoadVal.
+  let regLastLoad = System.Collections.Generic.Dictionary<int, RT.Dval>()
+  let mutable acc : Map<System.Guid, List<string>> = Map.empty
+  for i in 0 .. arr.Length - 1 do
+    match arr[i] with
+    | RT.LoadVal(reg, dv) -> regLastLoad[reg] <- dv
+    | RT.Apply(_, appReg, _, argRegs) ->
+      match regLastLoad.TryGetValue appReg with
+      | true, RT.DApplicable(RT.AppNamedFn app) ->
+        match app.name with
+        | RT.FQFnName.Pending p ->
+          let typeName (r : int) =
+            match regLastLoad.TryGetValue r with
+            | true, RT.DInt64 _ -> "Int64"
+            | true, RT.DInt32 _ -> "Int32"
+            | true, RT.DString _ -> "String"
+            | true, RT.DBool _ -> "Bool"
+            | true, RT.DFloat _ -> "Float"
+            | true, RT.DChar _ -> "Char"
+            | true, RT.DUnit -> "Unit"
+            | _ -> "?"
+          let argTypes =
+            NEList.toList argRegs |> List.map typeName
+          acc <- Map.add p.handle argTypes acc
+        | _ -> ()
+      | _ -> ()
+    | RT.CreateLambda(_, lambdaImpl) ->
+      let inner = inferArgTypeHints lambdaImpl.instructions
+      for kv in inner do
+        acc <- Map.add kv.Key kv.Value acc
+    | _ -> ()
+  acc
+
+
 /// Build a materializer wrapper that consults an in-flight cache before
 /// calling the real materializer. Each pending's materialization runs as
 /// a Task started ahead of time; the wrapper awaits the existing Task.
@@ -235,6 +279,11 @@ let private handleRun
     // interpreter's wrapper materializer then awaits the in-flight Task
     // instead of calling the LLM serially.
     let pendings = collectPendings instrs
+    // Stash arg-type hints derived from literal call-site args so the LLM
+    // gets a richer prompt instead of just the bare fn name.
+    let hints = inferArgTypeHints instrs
+    for KeyValue(handle, types) in hints do
+      Mat.setArgTypeHint handle types
     let inFlight =
       System.Collections.Concurrent.ConcurrentDictionary<
         System.Guid,

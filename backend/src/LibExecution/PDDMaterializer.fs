@@ -121,10 +121,38 @@ Darklang syntax for the body content:
 Return ONLY the JSON object. No markdown fences, no prose."""
 
 
-/// Build the user-side prompt for a given pending fn name. Day-1: only uses
-/// the name. Day-N adds sig hints, surrounding-context, etc.
-let buildUserPrompt (name : string) : string =
-  sprintf "Function: %s. Description: implement a sensible default body." name
+/// Stashed call-site context per Pending handle. The CLI parallel
+/// scheduler walks the Instructions, infers literal arg-types, and writes
+/// hints here BEFORE kicking off the LLM call. The materializer reads them
+/// when building the user prompt.
+let argTypeHints :
+  System.Collections.Concurrent.ConcurrentDictionary<System.Guid, List<string>> =
+  System.Collections.Concurrent.ConcurrentDictionary()
+
+let setArgTypeHint (handle : System.Guid) (types : List<string>) : unit =
+  argTypeHints[handle] <- types
+
+let private getArgTypeHint (handle : System.Guid) : List<string> =
+  match argTypeHints.TryGetValue handle with
+  | true, t -> t
+  | _ -> []
+
+/// Build the user-side prompt for a given pending fn name. Includes
+/// arg-type hints from `argTypeHints` when present.
+let buildUserPrompt (p : RT.FQFnName.Pending) : string =
+  let hints = getArgTypeHint p.handle
+  if List.isEmpty hints then
+    sprintf "Function: %s. Description: implement a sensible default body." p.name
+  else
+    let names = [| "x"; "y"; "z"; "w"; "u"; "v" |]
+    let argSig =
+      hints
+      |> List.mapi (fun i t -> sprintf "%s: %s" names[i % 6] t)
+      |> String.concat ", "
+    sprintf
+      "Function: %s. Called at this site with args of types: (%s). Use those as the parameter types in your sig. Description: implement a sensible default body."
+      p.name
+      argSig
 
 
 /// Fix-up prompt used when the mini-parser rejects the LLM's first body.
@@ -850,6 +878,6 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                   emit (MaterializeDone(p.name, Fake, elapsedMs ()))
                   return Some(hardcodedIdentityFn p.name)
         }
-      let initialPrompt = buildUserPrompt p.name
+      let initialPrompt = buildUserPrompt p
       return! attempt 1 initialPrompt
   }

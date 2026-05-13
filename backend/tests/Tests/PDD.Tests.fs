@@ -310,9 +310,21 @@ module LLMParser =
 
   let buildUserPromptIsTerse =
     test "buildUserPrompt produces a short directive" {
-      let p = M.buildUserPrompt "fib"
+      let pending : RT.FQFnName.Pending =
+        { handle = System.Guid.NewGuid(); name = "fib" }
+      let p = M.buildUserPrompt pending
       Expect.isTrue (p.Contains("fib")) "contains the name"
       Expect.isTrue (p.Length < 200) "stays short"
+    }
+
+  let buildUserPromptIncludesArgTypes =
+    test "buildUserPrompt picks up stashed arg-type hints" {
+      let handle = System.Guid.NewGuid()
+      let pending : RT.FQFnName.Pending = { handle = handle; name = "myAdd" }
+      M.setArgTypeHint handle [ "Int64"; "Int64" ]
+      let p = M.buildUserPrompt pending
+      Expect.isTrue (p.Contains("Int64")) "mentions Int64"
+      Expect.isTrue (p.Contains("(x: Int64, y: Int64)")) "renders sig hint"
     }
 
   let v4SystemPromptIsComplete =
@@ -334,6 +346,7 @@ module LLMParser =
         errorsOnMissingField
         errorsOnNonJson
         buildUserPromptIsTerse
+        buildUserPromptIncludesArgTypes
         v4SystemPromptIsComplete ]
 
 
