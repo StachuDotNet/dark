@@ -314,7 +314,7 @@ let private hardcodedIdentityFn (name : string) : RT.PackageFn.PackageFn =
 ///   "-7L"     → constant: returns DInt64 (-7)
 ///   "x"       → identity: returns the arg unchanged (assumes param name "x")
 ///   <other>   → returns None (caller falls back to hardcodedIdentityFn)
-let parseMinimalBody (paramName : string) (body : string) : Option<RT.Instructions> =
+let parseMinimalBodyN (paramNames : List<string>) (body : string) : Option<RT.Instructions> =
   let trimmed = body.Trim()
   let opBuiltin (sym : string) : Option<string> =
     match sym with
@@ -322,66 +322,162 @@ let parseMinimalBody (paramName : string) (body : string) : Option<RT.Instructio
     | "-" -> Some "int64Subtract"
     | "*" -> Some "int64Multiply"
     | _ -> None
-  // Case 1: <param> <op> <int>L — e.g. "x + 1L", "input * 2L"
-  let opMatch =
+  let argIndex (name : string) : Option<int> =
+    paramNames |> List.tryFindIndex (fun p -> p = name)
+
+  // Case 1a: <param> <op> <int>L — e.g. "x + 1L"
+  let opLiteralMatch =
     System.Text.RegularExpressions.Regex.Match(
       trimmed,
       @"^(\w+)\s*([+\-*])\s*(-?\d+)L$"
     )
-  if opMatch.Success && opMatch.Groups[1].Value = paramName then
-    match opBuiltin (opMatch.Groups[2].Value) with
+
+  // Case 1b: <param> <op> <param> — e.g. "x * y"
+  let opTwoParamsMatch =
+    System.Text.RegularExpressions.Regex.Match(
+      trimmed,
+      @"^(\w+)\s*([+\-*])\s*(\w+)$"
+    )
+
+  if opLiteralMatch.Success && (argIndex opLiteralMatch.Groups[1].Value).IsSome then
+    match opBuiltin (opLiteralMatch.Groups[2].Value) with
     | Some builtinName ->
-      let n = System.Int64.Parse(opMatch.Groups[3].Value)
+      let n = System.Int64.Parse(opLiteralMatch.Groups[3].Value)
+      let argReg = (argIndex opLiteralMatch.Groups[1].Value).Value
+      let arity = List.length paramNames
       // Registers:
-      //   0: arg (paramName)
-      //   1: DApplicable wrapping the int64 builtin
-      //   2: DInt64 n (the constant)
-      //   3: result of Apply
+      //   0..arity-1: args
+      //   arity:     DApplicable wrapping the int64 builtin
+      //   arity+1:   DInt64 n (the constant)
+      //   arity+2:   result of Apply
+      let appReg = arity
+      let constReg = arity + 1
+      let resultReg = arity + 2
       let builtinApp : RT.ApplicableNamedFn =
         { name = RT.FQFnName.fqBuiltin builtinName 0
           typeSymbolTable = Map.empty
           typeArgs = []
           argsSoFar = [] }
-      let nargs : NEList<int> = NEList.ofList 0 [ 2 ]
+      let nargs : NEList<int> = NEList.ofList argReg [ constReg ]
       Some
-        { registerCount = 4
+        { registerCount = resultReg + 1
           instructions =
-            [ RT.LoadVal(1, RT.DApplicable(RT.AppNamedFn builtinApp))
-              RT.LoadVal(2, RT.DInt64 n)
-              RT.Apply(3, 1, [], nargs) ]
-          resultIn = 3 }
+            [ RT.LoadVal(appReg, RT.DApplicable(RT.AppNamedFn builtinApp))
+              RT.LoadVal(constReg, RT.DInt64 n)
+              RT.Apply(resultReg, appReg, [], nargs) ]
+          resultIn = resultReg }
     | None -> None
-  // Case 2: Int64 literal
+
+  elif opTwoParamsMatch.Success then
+    let lhsIdx = argIndex opTwoParamsMatch.Groups[1].Value
+    let rhsIdx = argIndex opTwoParamsMatch.Groups[3].Value
+    match lhsIdx, rhsIdx, opBuiltin opTwoParamsMatch.Groups[2].Value with
+    | Some lhs, Some rhs, Some builtinName ->
+      let arity = List.length paramNames
+      // Registers:
+      //   0..arity-1: args
+      //   arity:      DApplicable wrapping the int64 builtin
+      //   arity+1:    result of Apply
+      let appReg = arity
+      let resultReg = arity + 1
+      let builtinApp : RT.ApplicableNamedFn =
+        { name = RT.FQFnName.fqBuiltin builtinName 0
+          typeSymbolTable = Map.empty
+          typeArgs = []
+          argsSoFar = [] }
+      let nargs : NEList<int> = NEList.ofList lhs [ rhs ]
+      Some
+        { registerCount = resultReg + 1
+          instructions =
+            [ RT.LoadVal(appReg, RT.DApplicable(RT.AppNamedFn builtinApp))
+              RT.Apply(resultReg, appReg, [], nargs) ]
+          resultIn = resultReg }
+    | _ -> None
+
+  // Case 2: Int64 literal — return constant regardless of args
   elif (System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^-?\d+L$")) then
     let n = System.Int64.Parse(trimmed.TrimEnd('L'))
+    let arity = List.length paramNames
+    let constReg = arity
     Some
-      { registerCount = 2
-        instructions = [ RT.LoadVal(1, RT.DInt64 n) ]
-        resultIn = 1 }
-  // Case 3: identity — variable that matches paramName
-  elif trimmed = paramName then
+      { registerCount = constReg + 1
+        instructions = [ RT.LoadVal(constReg, RT.DInt64 n) ]
+        resultIn = constReg }
+
+  // Case 3: identity — variable matches a param name
+  elif (argIndex trimmed).IsSome then
+    let idx = (argIndex trimmed).Value
+    let arity = List.length paramNames
     Some
-      { registerCount = 1
+      { registerCount = max 1 arity
         instructions = []
-        resultIn = 0 }
+        resultIn = idx }
+
   else
     None
 
 
-/// Build a PackageFn around a parsed body. Single Int64 parameter, Int64
-/// return type. Hash is deterministic from name+body so retries hit cache.
+/// One-param convenience wrapper.
+let parseMinimalBody (paramName : string) (body : string) : Option<RT.Instructions> =
+  parseMinimalBodyN [ paramName ] body
+
+
+/// Extract parameter names from a sig string like
+///   "(x: Int64): Int64"          → ["x"]
+///   "(x: Int64, y: Int64): Int64" → ["x"; "y"]
+/// Returns None if it can't make sense of the format.
+let parseParamNames (sig_ : string) : Option<List<string>> =
+  let m = System.Text.RegularExpressions.Regex.Match(sig_, @"^\(([^)]*)\)")
+  if not m.Success then None
+  else
+    let inside = m.Groups[1].Value.Trim()
+    if inside = "" then Some []
+    else
+      let parts = inside.Split(',') |> Array.map (fun s -> s.Trim())
+      let names =
+        parts
+        |> Array.map (fun p ->
+          // Split on `:` to get "name: type" → just "name"
+          let nameAndType = p.Split(':') |> Array.map (fun s -> s.Trim())
+          if nameAndType.Length >= 1 then nameAndType[0] else "")
+        |> Array.toList
+      if names |> List.forall (fun n -> n <> "") then Some names else None
+
+
+/// Build a PackageFn around a parsed body. All params are Int64; return
+/// type Int64. Hash is deterministic from name+body so retries hit cache.
+let private fnFromBodyN
+  (name : string)
+  (paramNames : List<string>)
+  (instructions : RT.Instructions)
+  : RT.PackageFn.PackageFn =
+  let hashKey = sprintf "pdd-llm-%s-%d" name (hash instructions.instructions)
+  let mkParam (n : string) (t : RT.TypeReference) : RT.PackageFn.Parameter =
+    { name = n; typ = t }
+  let parameters =
+    match paramNames with
+    | [] ->
+      // Zero-arg fns aren't supported by NEList; pretend it's one Unit
+      // arg. Real zero-arg fns wouldn't hit the mini-parser anyway.
+      NEList.singleton (mkParam "_unit" RT.TUnit)
+    | head :: tail ->
+      NEList.ofList
+        (mkParam head RT.TInt64)
+        (tail |> List.map (fun n -> mkParam n RT.TInt64))
+  { hash = RT.Hash hashKey
+    typeParams = []
+    parameters = parameters
+    returnType = RT.TInt64
+    body = instructions }
+
+
+/// One-param convenience wrapper.
 let private fnFromBody
   (name : string)
   (paramName : string)
   (instructions : RT.Instructions)
   : RT.PackageFn.PackageFn =
-  let hashKey = sprintf "pdd-llm-%s-%d" name (hash instructions.instructions)
-  { hash = RT.Hash hashKey
-    typeParams = []
-    parameters =
-      NEList.singleton { RT.PackageFn.name = paramName; typ = RT.TInt64 }
-    returnType = RT.TInt64
-    body = instructions }
+  fnFromBodyN name [ paramName ] instructions
 
 
 // ---------------------------------------------------------------------------
@@ -561,11 +657,12 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
           | Ok gen ->
             logResult logPath p.name (Some gen.sig_) (Some gen.body) None
             emit (ParseOk(p.name, gen.sig_, gen.body))
-            // Try the minimal-body parser first; if it recognizes the shape
-            // we build a PackageFn that actually executes the LLM's intent.
-            // Otherwise fall back to identity-shape (the LLM body is still
-            // logged for inspection).
-            match parseMinimalBody "x" gen.body with
+            // Try the minimal-body parser using the actual sig param names.
+            // Falls back to single-param "x" if the sig isn't parseable.
+            let paramNames =
+              parseParamNames gen.sig_
+              |> Option.defaultValue [ "x" ]
+            match parseMinimalBodyN paramNames gen.body with
             | Some instrs ->
               let kind =
                 if instrs.instructions.Length = 0 then "identity"
@@ -576,7 +673,7 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
               // H4: promote to persistent cache so the next session skips
               // the LLM call for the same name.
               persistPromoted p.name gen
-              return Some(fnFromBody p.name "x" instrs)
+              return Some(fnFromBodyN p.name paramNames instrs)
             | None ->
               emit (CompileBody(p.name, "fallback-identity", 1))
               emit (MaterializeDone(p.name, Fake, elapsedMs ()))
