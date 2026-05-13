@@ -465,14 +465,31 @@ let private getArgValueHint (handle : System.Guid) : List<string> =
   | true, v -> v
   | _ -> []
 
+/// Heuristic for "creative" fns whose output isn't objectively-correct
+/// (HTML renderers, text synthesizers). Used to skip QA tests AND to
+/// tune the body-gen prompt with creative-specific guidance.
+let isCreativeFnName (name : string) : bool =
+  let lname = name.ToLowerInvariant()
+  [ "render"; "generate"; "synthesize"; "format"; "describe"
+    "summarize"; "write"; "pretty"; "compose"; "build"; "draft" ]
+  |> List.exists (fun pfx -> lname.StartsWith pfx)
+
 /// Build the user-side prompt for a given pending fn name. Includes
 /// arg-type hints + actual arg values (when available) so the LLM can
 /// reason about the concrete data it operates on.
 let buildUserPrompt (p : RT.FQFnName.Pending) : string =
   let hints = getArgTypeHint p.handle
   let values = getArgValueHint p.handle
+  let creativeGuidance =
+    if isCreativeFnName p.name then
+      "\n\nThis is a CREATIVE function — its output is rendered or displayed, not tested for exact equality. Produce a RICH body, not a thin echo. If the return type is String and the function looks like a page/HTML renderer, wrap content in semantic HTML5 (`<html>`, `<head>`, `<title>`, `<body>`, `<h1>`, `<h2>`, `<section>`, `<p>`, `<ul>`/`<li>`, etc). Use the literal arg content to populate sections. Don't just echo the input."
+    else
+      ""
   if List.isEmpty hints then
-    sprintf "Function: %s. Description: implement a sensible default body." p.name
+    sprintf
+      "Function: %s. Description: implement a sensible default body.%s"
+      p.name
+      creativeGuidance
   else
     let names = [| "x"; "y"; "z"; "w"; "u"; "v" |]
     let argSig =
@@ -488,10 +505,11 @@ let buildUserPrompt (p : RT.FQFnName.Pending) : string =
           |> String.concat "\n"
         sprintf "\n\nCalled at this site with literal arguments:\n%s\n\nWrite a body that produces the right answer FOR THESE INPUTS (and similar ones). The function should generalize, but ground your reasoning in this concrete example." pairs
     sprintf
-      "Function: %s. Called at this site with args of types: (%s). Use those as the parameter types in your sig.%s"
+      "Function: %s. Called at this site with args of types: (%s). Use those as the parameter types in your sig.%s%s"
       p.name
       argSig
       valuesBlock
+      creativeGuidance
 
 
 /// Fix-up prompt used when the mini-parser rejects the LLM's first body.
@@ -1570,9 +1588,31 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                   // tests reflect the standard meaning of the fn name
                   // rather than the (possibly wrong) body the LLM wrote.
                   // Falls back to the body-call's claimed tests on error.
+                  //
+                  // PDD_SKIP_QA=true env disables this — useful for
+                  // creative/generative fns (HTML rendering, text
+                  // synthesis) where "expected output" is poorly defined
+                  // and the QA LLM hallucinates wrong expectations.
+                  // Fn classifier: "Verifiable" fns (arithmetic, parsers,
+                  // validators) get QA tests; "Creative" fns (render/generate/
+                  // synthesize/...) skip QA because their output isn't
+                  // objectively-correct and the QA LLM hallucinates wrong
+                  // expected strings.
+                  let isCreative = isCreativeFnName p.name
+                  let envSkip =
+                    match Environment.GetEnvironmentVariable("PDD_SKIP_QA") with
+                    | null | "" -> false
+                    | "false" | "0" -> false
+                    | _ -> true
+                  let skipQA = envSkip || isCreative
+                  if isCreative && not envSkip then
+                    // Note in events so the HTML view shows why QA was skipped.
+                    emit (CompileBody(p.name, "creative-fn (no QA)", 0))
                   let! verificationTests =
                     uply {
-                      if llmCallsExhausted p.handle then
+                      if skipQA then
+                        return []
+                      elif llmCallsExhausted p.handle then
                         return gen.tests
                       else
                         let _ = incrementLlmCalls p.handle
