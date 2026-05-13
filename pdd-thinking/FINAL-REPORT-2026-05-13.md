@@ -3,10 +3,10 @@
 **For:** Stachu, waking up 2026-05-13 around 8am EDT
 **By:** Claude, working the `pdd` branch ~00:48 → ~07:30 EDT
 **Branch:** `pdd` (local-only, off `main`, never pushed)
-**Companion docs:** `pdd-thinking/00-LOOP-SUMMARY.md` through `pdd-thinking/19-red-team.md`
+**Companion docs:** `pdd-thinking/00-LOOP-SUMMARY.md` through `pdd-thinking/20-elevator-pitches.md`
 **Open at the desk:** `pdd-thinking/17-day-1-quick-reference.md` — single page, tape it down.
 
-**TL;DR:** This branch contains 20 design docs (and this report) describing a Darklang fork where the interpreter materializes its own source code at runtime via LLM, in parallel + speculatively, with traces as the durable artifact. Pivot point: `Interpreter.fs:317`. Day-1 plan: 6 phases, ~4-6 hours, ends with one passing F# test. OpenAI key is set up (`~/.config/darklang/llm-keys.env`, mode 600). gpt-4o-mini at ~$0.00005/call → effectively unbounded $10 budget. Verified the JSON-prompt path works tonight (~75% first-try success). Demos 1-7 are documented; Demo 6 (HN headline sentiment) is the north star.
+**TL;DR:** This branch contains 21 design docs (and this report) describing a Darklang fork where the interpreter materializes its own source code at runtime via LLM, in parallel + speculatively, with traces as the durable artifact. Pivot point: `Interpreter.fs:317`. Day-1 plan: 6 phases, ~4-6 hours, ends with one passing F# test. OpenAI key is set up (`~/.config/darklang/llm-keys.env`, mode 600). gpt-4o-mini at ~$0.00005/call → effectively unbounded $10 budget. Verified the JSON-prompt path works tonight (~75% first-try success). Demos 1-7 are documented; Demo 6 (HN headline sentiment) is the north star.
 
 ---
 
@@ -101,7 +101,7 @@ Full source sketches in `pdd-thinking/14-demo-programs.md`. **Demo 6 is the elev
 5. **Recovered-value quarantine** (DRecovered tag)? Defer; rely on trace inspection instead.
 6. **What does "review" mean for a trace?** Real UX question. Defer until Demo 6 trace exists.
 
-## Pointers to the 20 design docs
+## Pointers to the 21 design docs
 
 | # | File | What's in it |
 |---|---|---|
@@ -129,13 +129,27 @@ Full source sketches in `pdd-thinking/14-demo-programs.md`. **Demo 6 is the elev
 
 Plus `progress.md` (running log of the overnight iterations) and this `FINAL-REPORT-2026-05-13.md`.
 
+## A note on what *not* to do
+
+- **Don't read all 21 docs in sequence.** Read this report + `17-day-1-quick-reference.md`. Pull in the others only when you need them.
+- **Don't push the `pdd` branch.** Ever. Cherry-pick later if needed.
+- **Don't upgrade to a pricier LLM** before you've burned through $1 of cheap calls and *still* hit a quality ceiling. The cheap path was verified to work.
+- **Don't try to make `defaultFor` complete on Day 1.** Cover `TUnit`/`TBool`/`TInt64`/`TFloat`/`TString` and stop. The rest can crash, you'll add them as you need them.
+- **Don't fight match-exhaustiveness errors thoughtfully.** Mechanically add `Pending _ -> failwith "TODO pending"` everywhere. Come back later if specific cases need handling.
+- **Don't worry about real cancellation in the scheduler** for v1. Ignore the loser's result rather than truly cancelling. Cleaner cancellation comes after Demo 1.
+- **Don't add observability before there's signal to observe.** A `printfn` is fine until Day 4-5. Then upgrade to JSONL.
+
 ## When you sit down
 
 1. Coffee.
 2. Read `17-day-1-quick-reference.md`. Skim this report.
-3. `cd /home/stachu/code/dark/main && git checkout pdd && git log --oneline -20`.
+3. `cd /home/stachu/code/dark/main && git checkout pdd && git log --oneline -25`.
 4. Phase A from the cheat sheet. Sixty-minute clock on carving.
 5. Commit after every phase. Test after each.
 6. By end of day: Phase F green, ~6 commits on top of main, branch local.
+
+If you have less than 4 hours total: see `18-minimum-viable-spike.md`. There's a tighter cut.
+
+If anything in any doc contradicts another doc, **trust the most recent commit** — design evolved across the night. The final report is the canonical synthesis.
 
 Have fun.

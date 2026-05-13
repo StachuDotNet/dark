@@ -202,4 +202,16 @@ Format:
   - Replaced "Endgame: 10+ design files (claims)" with **STATUS section** showing actual progress against goals — ✅ for done, ⏳ for the pending print.
 - Time check: 02:24 EDT. ~5h 36m to 8am.
 - Next: re-read the final report once more, look for any awkward phrasing or stale info. After that, possibly add a small inline FAQ to the final report based on questions Stachu might ask in the morning. Then print prep around 06:00-06:30.
+- Commits: 1 pending (iter 20).
+
+### 2026-05-13 02:28 — iteration 21 (final report polish 2)
+- Did: refined `FINAL-REPORT-2026-05-13.md`:
+  - Updated TL;DR companion-docs span to `00 → 20-elevator-pitches.md`
+  - Updated "20 design docs" → "21 design docs" in TL;DR and pointer-table header
+  - Added a new section "A note on what *not* to do" with 7 anti-patterns to avoid on Day 1 (don't read all docs, don't push, don't upgrade model, don't fight match-exhaustiveness thoughtfully, etc.)
+  - Added fallback in "When you sit down" pointing at `18-minimum-viable-spike.md` if time is short
+  - Added "trust the most recent commit" guidance for resolving any cross-doc contradictions
+- Word count: 1990 → still well under 5 printed pages.
+- Time check: 02:30 EDT. ~5h 30m to 8am.
+- Next: maybe one more polish + verify everything renders OK. Could even do a dry-run on `print-md` if the tool has a preview mode, but I don't think it does. Possible next: write a short FAQ section in the final report or just wait and print.
 - Commits: 1 pending.
