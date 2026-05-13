@@ -36,16 +36,33 @@ Free-text → LLM decomposes to a Dark expression → unresolved fn names auto-m
 
 HTML view at `rundir/pdd-view/<sessionId>.html` shows annotated function cards (✓ real / ⋯ in-progress / ▼ fake / ↻ cached / ✗ failed) + chronological event log, self-refreshing every 1s.
 
-## Heavy-hitters status (all done)
+## Heavy-hitters status
 
 | # | Goal | Status |
 |---|---|---|
 | **H1** | `dark prompt "<freeform>"` CLI command | ✅ Live |
 | **H2** | Implicit `Pending` from unresolved parser names | ✅ Live (qualified + unqualified) |
-| **H3** | Interactive annotated HTML view | ✅ Live (zero deps; meta-refresh) |
+| **H3** | Interactive annotated HTML view | ✅ Live (zero deps; meta-refresh) + rich index.html |
 | **H4** | Promotion of materialized fns to durable cache | ✅ Live (`rundir/pdd-cache/promoted.jsonl`) |
+| **H5** | LibParser as primary body-parse path | ✅ Live (mini-parser is fallback only) |
+| **H6** | Tests-as-gate: LLM-claimed + independent verification | ✅ Live (recursion-aware skip) |
+| **H7** | Recursion via canonicalized handles + self-aware test runner | ✅ Live |
+| **H8** | Safety rails: wall-clock budget, per-handle LLM cap | ✅ Live (`PDD_BUDGET_MS`, cap=3) |
+| **H9** | Model override | ✅ Live (`PDD_MODEL`, defaults gpt-4o-mini) |
 | **bonus** | Parallel materialization scheduler | ✅ Live (all pendings kick off pre-eval) |
 | **bonus** | Decompose-step cache | ✅ Live (`rundir/pdd-cache/decomposed.jsonl`) |
+
+### Demos verified live (latest branch state)
+
+| Prompt | Result | Notes |
+|---|---|---|
+| `dark prompt "compute doubleIt of 4"` | `DInt64 8L` | original 1-fn demo |
+| `dark pdd run "myAbs (-7L)"` | `DInt64 7L` | if-else + unary minus |
+| `dark pdd run "myMaxOf 4L 9L"` | `DInt64 9L` | 2-arg comparison |
+| `dark pdd run "factorial 6L"` | `DInt64 720L` | recursion, tests skipped on self-ref |
+| `dark prompt "compute fibonacci of 8 plus factorial of 5"` | `DInt64 141L` | parallel materialization of two recursive fns |
+| `dark prompt "compute the square of 7L plus the cube of 3L"` | `DInt64 76L` | multi-fn decompose |
+| `PDD_MODEL=gpt-4o dark pdd run "sumList [1L;...;5L]"` | `DInt64 15L` | List<Int64> + lambda + Stdlib.List.fold; 3 indep tests pass |
 
 ## CLI surface
 
@@ -62,11 +79,11 @@ OpenAI key at `~/.config/darklang/llm-keys.env` (mode 600). On run, sourced via 
 - **PT + RT:** `FQFnName.Pending` variant in both layers, with PT2RT lowering. Match-exhaustiveness fixes across ~13 sites (LibExecution + LibDB + LibSerialization).
 - **Interpreter:** `Function(Pending p)` arm in both executionPoint match and the big Apply match. Two cache layers: `packageFnInstrCache` (by hash) + `pendingFnInstrCache` (by handle) to skip re-materialization.
 - **Parser:** `OnMissing.AllowPending` policy in `NameResolver`. Fn-name fallback chains in `WT2PT` check `AllowPending` after exhausting normal lookups; convert unresolved name → `PT.FQFnName.Pending`.
-- **Materializer (`PDDMaterializer.fs`):** real OpenAI HTTP call via `System.Net.Http`. JSON-response parser tolerant of ```json fences. Mini-body-parser handles `42L` constants, `"x"` identity, `<param> <op> <int>L` arith (e.g. `x + 1L`), AND `<param1> <op> <param2>` multi-arg arith (e.g. `x * y` for `mul`). Auto-detects param count from sig. Persists successful materializations to `rundir/pdd-cache/promoted.jsonl`; checks cache first on subsequent calls.
+- **Materializer (`PDDMaterializer.fs`):** real OpenAI HTTP call via `System.Net.Http`. Body is parsed via LibParser (dependency-injected `BodyParser` hook installed by CLI; the body is wrapped in `fun <params> -> body` so identifiers bind correctly). Lowered via `PT2RT.Expr.toRT`, then `canonicalizePendingHandles` rewrites all Pending refs so same-name → same-handle (so self-recursion and shared sub-fns dedupe). Mini-parser remains as fallback for trivial bodies. Tests-as-gate: independent test generation via a second LLM call framed as a QA reviewer that hasn't seen the body. Tests run via a CLI-installed `TestRunner` callback that builds a state with a self-aware materializer (self-recursive refs resolve to the just-built fn, no LLM loop). Self-recursive bodies trust-without-test. Failed tests trigger fix-up retries up to maxAttempts. Three safety rails: wall-clock budget, per-handle LLM cap, recursion-skip. Promotes to `rundir/pdd-cache/promoted.jsonl` only when tests pass.
 - **HTML view (`PDDHTMLView.fs`):** session-keyed, two-pane, 5 state badges. Updates per event; ~1s meta-refresh.
 - **EventSink:** `currentSink : PDDEvent -> unit` with 6 lifecycle events. CLI installs combined stderr+HTML sink.
-- **CLI (`Cli/PddCommand.fs`):** `dark prompt`, `dark pdd run`, `dark pdd demo`. Decompose-cache + materialize-cache transparent. Parallel scheduler walks instructions pre-eval, fires `Task.Run` per Pending.
-- **Tests:** 46/46 PDD tests green (`./scripts/run-backend-tests --filter-test-list PDD`).
+- **CLI (`Cli/PddCommand.fs`):** `dark prompt`, `dark pdd run`, `dark pdd demo`, `dark pdd cache`, `dark pdd trace`. Decompose-cache + materialize-cache transparent. Parallel scheduler walks instructions pre-eval, fires `Task.Run` per Pending, stashes arg-type hints from literal call-sites. Installs the LibParser body-parser + the test runner. Wall-clock budget enforced (default 5min, override via `PDD_BUDGET_MS`).
+- **Tests:** 57/57 PDD tests green (`./scripts/run-backend-tests --filter-test-list PDD`).
 
 ## What's *not* yet built
 
@@ -76,8 +93,9 @@ OpenAI key at `~/.config/darklang/llm-keys.env` (mode 600). On run, sourced via 
 - Recovery policy beyond raise-FnNotFound. EmptyBody/tolerant-runtime is design only.
 - Sig consensus (Strategy B). Strategy A (first-wins) in spirit.
 - `trace show` / `replay` / `diff` / `promote` CLI commands. JSONL log exists but no viewer.
-- v5 LLM prompt: more rigorous JSON quoting (occasional non-quoted body returns).
 - Real package-store promotion (today it's a JSONL sidecar, not the durable `package_fns` table).
+- Option<T>, Tuple, Record types in `parseSimpleType` (today: only primitive types + List<T>). LLM-produced bodies that touch these fall through to mini-parser → fallback-identity.
+- Mid-program fn iteration (per user feedback: materialized fns should be re-derivable if their results don't satisfy downstream constraints). Today: one-shot per materialization, with retry only on test-fail.
 
 ## Hard rules
 
