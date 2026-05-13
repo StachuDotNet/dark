@@ -332,15 +332,32 @@ let private handleRun
       LibExecution.Builtin.combine
         [ Builtins.Pure.Builtin.builtins () ]
         []
-    // Parse the expression with AllowPending.
-    let! ptExpr =
-      LibParser.Parser.parsePTExpr
-        allBuiltins
-        ptPm
-        LibParser.NameResolver.OnMissing.AllowPending
-        "<dark pdd run>"
-        exprStr
-      |> Ply.toTask
+    // Parse the expression with AllowPending. Wrap in try/catch because
+    // LibParser raises on shapes it can't handle (some nested-pipe-in-
+    // lambda combos), and we want a clean error rather than a CLI crash.
+    let! parseResult =
+      task {
+        try
+          let! e =
+            LibParser.Parser.parsePTExpr
+              allBuiltins
+              ptPm
+              LibParser.NameResolver.OnMissing.AllowPending
+              "<dark pdd run>"
+              exprStr
+            |> Ply.toTask
+          return Ok e
+        with ex -> return Error ex.Message
+      }
+    match parseResult with
+    | Error msg ->
+      View.close session
+      Mat.currentSink <- Mat.nullSink
+      eprintfn ""
+      eprintfn "%s %s %s" prefix (red "parse error:") (dim msg)
+      eprintfn "%s %s %s" prefix (dim "  expr:") (dim exprStr)
+      return 1
+    | Ok ptExpr ->
 
     // Lower PT → RT instructions.
     let instrs =
