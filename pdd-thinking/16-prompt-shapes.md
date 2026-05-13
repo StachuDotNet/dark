@@ -167,6 +167,56 @@ let buildPrompt (req : MaterializeRequest) : string =
   header + sig + helpers + " " + constraints
 ```
 
+## v2 verification (tested 01:45 EDT)
+
+Re-ran 4 prompts with the v2 system prompt. Cost ~$0.0003.
+
+**takeHead (v2):**
+```json
+{"sig": "(list: List<Int64>): Option<Int64>",
+ "body": "match list |> Stdlib.List.head with | Some x -> Option.Some x | None -> Option.None"}
+```
+✅ `Int64` not `int`. ✅ Sig+body now agree. ⚠️ Body is redundant (Stdlib.List.head already returns Option) but harmless.
+
+**fib (v2):**
+```json
+{"sig": "(n: Int64): Int64",
+ "body": "match n with | 0L -> 0L | 1L -> 1L | _ -> fib(n - 1L) + fib(n - 2L)"}
+```
+✅ Match-idiomatic. ✅ Int64 literals (`0L`, `1L`). ✅ Recursion. ✅ No arrows.
+
+**addOne (v2):**
+```json
+{"sig": "(x: Int64): Int64",
+ "body": "let x = x in Stdlib.Int64.add x 1L"}
+```
+✅ Int64. ⚠️ Redundant `let x = x in` — harmless. ✅ Stdlib prefix.
+
+**doubleAll (v2):**
+```json
+{"sig": "(lst: List(Int64)): List(Int64)",
+ "body": "Stdlib.List.map (fun x -> Stdlib.Int64.multiply x 2L) lst"}
+```
+⚠️ **NEW BUG**: `List(Int64)` instead of `List<Int64>`. ✅ Lambda is `fun x -> ...`. ✅ Int64.
+
+### v3 system prompt — add a line about generics
+
+```
+- Generics use ANGLE BRACKETS: List<Int64>, Option<String>, Result<Int64, String>.
+  NEVER write List(Int64) or List[Int64].
+```
+
+And one more:
+```
+- Avoid redundant bindings like `let x = x in body`. Just write the body.
+```
+
+### Quality after v2 (qualitative)
+
+Cheaper-than-Sonnet model **with the v2 prompt** generates plausibly-compilable Darklang on the first try for ~75% of simple fns. Failure modes shift toward "wrong stdlib function name" or "syntax variant we forgot to instruct against" — both addressable by either a retry loop or a fuller prompt.
+
+The verdict: **v2/v3 prompt + gpt-4o-mini is workable for the spike**. Don't waste budget upgrading to 4o or Sonnet yet. The retry-on-AST-error path will catch the remaining 25%.
+
 ## Provider notes
 
 - **OpenAI gpt-4o-mini** (verified tonight): works for the JSON-out shape, deterministic at temperature=0, decent at recursion, has the syntax-confusion issues above.

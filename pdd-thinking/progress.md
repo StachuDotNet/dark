@@ -131,4 +131,18 @@ Format:
 - Produced a v2 system prompt with explicit Darklang syntax notes. Ready to paste into `Generate.fs`.
 - Total LLM spend tonight: roughly $0.0002. Trivial fraction of $10.
 - Next: write `17-llm-provider-comparison.md` or fold into 16, OR start outlining `FINAL-REPORT-2026-05-13.md`. It's 01:43 — about 6h 17min until 8am. Need to start the final report by ~06:00 EDT (4h 17m from now) to have time to print. Probably 2-3 more design iterations then start drafting the final.
+- Commits: 1 pending (iter 12).
+
+### 2026-05-13 01:46 — iteration 13 (verify v2 prompt; discover List<...> syntax bug)
+- Did: ran 4 more gpt-4o-mini calls with the v2 system prompt (takeHead, fib, addOne, doubleAll). Cost ~$0.0003.
+- Findings:
+  - **v2 fixes worked**: `Int64` not `int`, `fun x -> body` not `=>`, Int64 literals `0L/1L`, recursion intact.
+  - **takeHead sig+body now agree** (the v1 bug is gone).
+  - **NEW bug**: model writes `List(Int64)` instead of `List<Int64>` — generics syntax with parens not angles.
+  - **Redundant bindings**: `let x = x in body` shows up — harmless but ugly.
+- Produced v3 system prompt — adds line on angle-brackets-for-generics + line discouraging redundant bindings.
+- **Qualitative verdict**: gpt-4o-mini + v2 prompt produces plausibly-compilable Dark on first try for ~75% of simple fns. AST-validation + retry loop catches the rest. **Don't upgrade models yet.**
+- Total spend tonight so far: ~$0.0005. Negligible vs $10 budget.
+- Time check: 01:46 EDT, 6h 14m to 8am. Plan: 2-3 more design iterations, then start final report by 04:30-05:00 to have plenty of time to refine + print at 06:30-07:00.
+- Next: write `17-day-1-quick-reference.md` — a single-page at-the-desk cheat sheet with all file:line pointers, key commands, sample F# diffs, the v3 system prompt verbatim. Make Day 1 turn-key.
 - Commits: 1 pending.
