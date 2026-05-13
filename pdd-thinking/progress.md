@@ -63,4 +63,14 @@ Format:
 - Decided: caching of human answers — Option 3 (cached in package store) for materialization, Option 2 (cached in session) for capabilities, Option 1 (one-shot) for breakpoints.
 - Decided: build `humanResolver` field early even if first impl is `failwith "TODO"` — cheap insurance against later interpreter changes.
 - Next: deepen `08-tracing-as-artifact.md` (full event schema + replay semantics + diff design), then write a `12-glossary.md`, then a `13-libpdd-materializer.md` (concrete F# sketch of LibPDD project structure).
+- Commits: 1 pending (iter 5).
+
+### 2026-05-13 01:21 — iteration 6 (deepen 08 — tracing; absorb user feedback on LocalExec + parser)
+- Did: rewrote `08-tracing-as-artifact.md` with full event schema (JSONL, per-event JSON shape, `t`-ms-since-session-start). Listed the new fields to add to existing `Tracing` struct. Replay procedure (cache pre-populate + intercept builtins). Diff design (align by t/ev). Promote command (writes to `pdd_pinned_fns`). SCM connection (branches diverge on sketches + hashes + traces).
+- Absorbed Stachu's mid-iteration feedback:
+  - **LocalExec must stay** (at least the package-reload bits) — updated `09-carving-the-codebase.md` table row + dedicated section. PDD materializations land in the package store via this pipeline.
+  - **Parser uncertainty** (LibParser vs new) — added a "Parser open question" section to `09-carving-the-codebase.md` with three real options (P1 LibParser + lenient post-processor; P2 new combinator-based tolerant parser; P3 skip parsing, LLM emits structured JSON). Tentative rec: P3 for spike, P1 later. Cross-referenced into `11-open-questions.md` Q0.
+- Decided: trace format = JSONL with versioned event kinds. Don't pre-optimize to binary. Don't even add zstd until disk hurts.
+- Decided: Day-1 tracing surface is just `materialize_start`, `materialize_done`, `recovery` writing to a file + a `--no-trace` flag. Replay/diff/promote come later.
+- Next: write a new `12-glossary.md` (consistent terminology for the docs), then a `13-libpdd-materializer.md` (concrete F# structure of the new LibPDD project), then revisit `01-vision.md` to incorporate the parser question and the trace-replay framing.
 - Commits: 1 pending.

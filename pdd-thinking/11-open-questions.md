@@ -6,7 +6,9 @@
 
 ## Architectural
 
-1. **Should `Pending` live in PT or only in RT?** I argued RT-only in `02-libexecution-changes.md`, but PT-side might make parsing easier. If the parser can emit `Pending` directly, no lowering wrinkles. Counter: it pollutes the source-level type with a runtime concept.
+0. **Parser: LibParser, or a new thing?** Stachu raised 2026-05-13. See deepened analysis in `09-carving-the-codebase.md` — three options (P1 use LibParser + lenient post-processor; P2 new combinator-based tolerant parser; P3 skip parsing, LLM emits structured JSON). **Tentative answer: P3 for spike, P1 for users who write pseudocode in source files later.**
+
+1. **Should `Pending` live in PT or only in RT?** I argued RT-only in `02-libexecution-changes.md`, but PT-side might make parsing easier. If the parser can emit `Pending` directly, no lowering wrinkles. Counter: it pollutes the source-level type with a runtime concept. *Update: if P3 is the parser strategy, the LLM emits PT directly with Pending references already shaped — so PT-side starts looking right.*
 
 2. **Eager vs lazy materialization defaults.** I said "eager with lazy fallback." But eager has cost — every `Pending` triggers an LLM call at load even if it's never called. Maybe lazy is fine for most fns and eager only for marked-hot ones?
 

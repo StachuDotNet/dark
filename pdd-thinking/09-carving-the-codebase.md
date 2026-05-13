@@ -15,11 +15,11 @@ This is intentionally a *first pass* — verify each disable in a build sweep be
 | `LibDB` | **Keep** | SQLite playback, package store |
 | `LibSerialization` | **Keep** | Serializing RT/PT |
 | `LibExecution` | **Keep** | We're modifying this |
-| `LibParser` | **Keep** | Parsing pseudocode/Dark |
+| `LibParser` | **Keep, *but uncertain***. Stachu 2026-05-13: not sure if we use LibParser or a new thing. See "Parser open question" below. |
 | `LibPackageManager` | **Keep** | Package CRUD |
 | `LibCloud` | **Disable** | GCP / cloud — unrelated to PDD spike |
 | `LibTreeSitter` | **Maybe disable** | Verify nothing in keepers depends on it |
-| `LocalExec` | **Maybe disable** | Verify Cli doesn't need it for our flow |
+| `LocalExec` | **Keep (at least partially)** | Stachu confirms: needed to **reload packages from `.dark` files**. The CLI relies on it for the parse-Dark-source-and-import pipeline that PDD will lean on (materializations have to land in the package store, and re-loading after edits is a normal dev flow). |
 | `Builtins.Pure` | **Keep** | Basic ops — needed everywhere |
 | `Builtins.Cli` | **Keep** | CLI builtins |
 | `Builtins.CliHost` | **Keep** (trimmed) | The orchestrator — keep but cut LibCloud dep |
@@ -82,16 +82,56 @@ git status
 
 **Per the "Dark type changes need two F# build passes" memory:** if we touch any package-referenced types (we will, in Day 1), expect to `touch backend/src/LibExecution/package-ref-hashes.txt` and rebuild once. The first build regenerates the hashes; the second picks them up.
 
+## Parser open question (Stachu 2026-05-13)
+
+> *"I'm not sure if we should use LibParser or use some new thing"*
+
+Three real options:
+
+### Option P1 — Use LibParser as-is
+- It exists. It parses Dark. Cli already depends on it.
+- **But:** PDD wants to ingest "mostly garbage" — pseudocode that may fail Dark's parser. LibParser is strict by design.
+- A possible bridge: catch the parser error, capture the offending region as a `Pending` reference at the AST level, continue with the surrounding code parsed normally. The parser stays unchanged; we add a *lenient post-processor*.
+
+### Option P2 — A new tolerant parser
+- Likely built with combinators (matches Stachu's `dl-mar15-advisor-call.md` thinking on combinators vs tree-sitter — "combinators written in Dark might be OK for our use case").
+- Designed to return partial trees on failure rather than reject.
+- Each unrecognized name becomes a `Pending` reference automatically.
+- More work to build. Bigger surface area.
+
+### Option P3 — Skip parsing for the LLM path entirely
+- Have the LLM emit *already-shaped* PT, as JSON or structured output.
+- The "parse pseudocode" step becomes "deserialize JSON."
+- The "find" path can still consult LibParser-parsed `.dark` source.
+- **Easiest** option for the spike. The LLM is the source of truth for shape; the JSON serializer guarantees well-formed PT.
+
+### Recommendation
+
+**Start with P3 for the spike.** Skip parsing pseudocode entirely; have the LLM emit JSON shaped like `Pending` references + body. Use LibParser only for loading existing `.dark` files (which it already does).
+
+Move to P1 (LibParser + lenient post-processor) when you want users to actually *write* pseudocode in source files. Skip P2 until P1 proves insufficient.
+
+This decision interacts with `02-libexecution-changes.md`'s `SignatureHint`: in P3, the LLM produces well-typed hints directly. In P1, the lenient post-processor has to guess.
+
 ## What about `LibTreeSitter`?
 
 It's listed in `backend/src/` and as a sln project. None of our keepers reference it directly (verified via `grep "ProjectReference.*LibTreeSitter"`). Almost certainly safe to disable, but verify with a build sweep first. If something breaks, re-enable.
 
 ## What about `LocalExec`?
 
-Used historically for parsing Dark scripts and executing them outside the package context. Cli might depend on it indirectly. Verify before disabling.
+**Keep — at least the package-reload bits.** (Stachu confirmed 2026-05-13.)
+
+LocalExec is what reloads packages from `.dark` files into the runtime package store. This is the normal "I edited a `.dark` file, re-import it" pipeline, and PDD will lean on it heavily: every materialization either comes from the package store (find path) or *becomes* a package store entry (after generation + commit). The reload path is therefore on the critical path.
+
+What you can probably still trim inside LocalExec:
+- One-shot execution scripts unrelated to package management (look for `Scripts/`, `Bench/`, etc.)
+- Anything that runs a CronChecker / QueueWorker style flow (already gone from this sln but check)
+
+But the parse-Dark-source → PT → import-into-package-store pipeline stays. When in doubt, leave it.
 
 ```bash
 grep -r "LocalExec" backend/src/Cli backend/src/Builtins 2>/dev/null
+# Map the references; keep the ones tied to package import/reload.
 ```
 
 ## Tests subset
