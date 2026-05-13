@@ -210,19 +210,50 @@ let private hardcodedIdentityFn (name : string) : RT.PackageFn.PackageFn =
 ///   <other>   → returns None (caller falls back to hardcodedIdentityFn)
 let parseMinimalBody (paramName : string) (body : string) : Option<RT.Instructions> =
   let trimmed = body.Trim()
-  // Int64 literal: optional minus, digits, trailing 'L'
-  let m = System.Text.RegularExpressions.Regex.Match(trimmed, "^(-?\d+)L$")
-  if m.Success then
-    let n = System.Int64.Parse(m.Groups[1].Value)
+  let opBuiltin (sym : string) : Option<string> =
+    match sym with
+    | "+" -> Some "int64Add"
+    | "-" -> Some "int64Subtract"
+    | "*" -> Some "int64Multiply"
+    | _ -> None
+  // Case 1: <param> <op> <int>L — e.g. "x + 1L", "input * 2L"
+  let opMatch =
+    System.Text.RegularExpressions.Regex.Match(
+      trimmed,
+      @"^(\w+)\s*([+\-*])\s*(-?\d+)L$"
+    )
+  if opMatch.Success && opMatch.Groups[1].Value = paramName then
+    match opBuiltin (opMatch.Groups[2].Value) with
+    | Some builtinName ->
+      let n = System.Int64.Parse(opMatch.Groups[3].Value)
+      // Registers:
+      //   0: arg (paramName)
+      //   1: DApplicable wrapping the int64 builtin
+      //   2: DInt64 n (the constant)
+      //   3: result of Apply
+      let builtinApp : RT.ApplicableNamedFn =
+        { name = RT.FQFnName.fqBuiltin builtinName 0
+          typeSymbolTable = Map.empty
+          typeArgs = []
+          argsSoFar = [] }
+      let nargs : NEList<int> = NEList.ofList 0 [ 2 ]
+      Some
+        { registerCount = 4
+          instructions =
+            [ RT.LoadVal(1, RT.DApplicable(RT.AppNamedFn builtinApp))
+              RT.LoadVal(2, RT.DInt64 n)
+              RT.Apply(3, 1, [], nargs) ]
+          resultIn = 3 }
+    | None -> None
+  // Case 2: Int64 literal
+  elif (System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^-?\d+L$")) then
+    let n = System.Int64.Parse(trimmed.TrimEnd('L'))
     Some
       { registerCount = 2
-        // arg goes into register 0 (interpreter places args first); load
-        // the constant into register 1 and return that.
         instructions = [ RT.LoadVal(1, RT.DInt64 n) ]
         resultIn = 1 }
+  // Case 3: identity — variable that matches paramName
   elif trimmed = paramName then
-    // Identity: return arg unchanged. Body has no instructions; resultIn
-    // points at the arg register.
     Some
       { registerCount = 1
         instructions = []

@@ -353,6 +353,54 @@ module MinimalBody =
       | None -> Expect.equal 1 2 "expected Some"
     }
 
+  let parsesAddition =
+    test "parseMinimalBody 'x + 1L' → Apply(int64Add, [x, 1L])" {
+      match M.parseMinimalBody "x" "x + 1L" with
+      | Some instrs ->
+        Expect.equal instrs.resultIn 3 "result reg is 3"
+        Expect.equal instrs.registerCount 4 "4 registers"
+        // Expect 3 instructions: load builtin, load constant, apply
+        Expect.equal instrs.instructions.Length 3 "3 instructions"
+        match instrs.instructions[1] with
+        | RT.LoadVal(2, RT.DInt64 1L) -> ()
+        | other -> Expect.equal 1 2 (sprintf "constant load wrong: %A" other)
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
+  let parsesSubtraction =
+    test "parseMinimalBody 'x - 3L' → uses int64Subtract" {
+      match M.parseMinimalBody "x" "x - 3L" with
+      | Some instrs ->
+        match instrs.instructions[0] with
+        | RT.LoadVal(_, RT.DApplicable(RT.AppNamedFn app)) ->
+          match app.name with
+          | RT.FQFnName.Builtin b ->
+            Expect.equal b.name "int64Subtract" "uses subtract builtin"
+          | _ -> Expect.equal 1 2 "expected Builtin"
+        | other -> Expect.equal 1 2 (sprintf "wrong instr: %A" other)
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
+  let parsesMultiplication =
+    test "parseMinimalBody 'x * 7L' → uses int64Multiply" {
+      match M.parseMinimalBody "x" "x * 7L" with
+      | Some instrs ->
+        match instrs.instructions[0] with
+        | RT.LoadVal(_, RT.DApplicable(RT.AppNamedFn app)) ->
+          match app.name with
+          | RT.FQFnName.Builtin b ->
+            Expect.equal b.name "int64Multiply" "uses multiply builtin"
+          | _ -> Expect.equal 1 2 "expected Builtin"
+        | _ -> Expect.equal 1 2 "expected LoadVal"
+      | None -> Expect.equal 1 2 "expected Some"
+    }
+
+  let arithmeticRespectsParamName =
+    test "arithmetic only matches when LHS is the param name" {
+      // 'y + 1L' should not match when paramName is 'x'
+      Expect.isNone (M.parseMinimalBody "x" "y + 1L") "should not match"
+    }
+
   let tests =
     testList
       "MinimalBody"
@@ -361,7 +409,11 @@ module MinimalBody =
         parsesIdentity
         stripsWhitespace
         returnsNoneOnUnknown
-        respectsParamName ]
+        respectsParamName
+        parsesAddition
+        parsesSubtraction
+        parsesMultiplication
+        arithmeticRespectsParamName ]
 
 
 let tests =
