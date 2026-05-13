@@ -109,18 +109,32 @@ NOT:
 
 The `body` value must be a valid JSON string: surrounded by double quotes, with any inner quotes escaped (\\"). Even if the body is a single identifier or arithmetic expression, wrap it in quotes.
 
-The `tests` field is REQUIRED. Provide 2-3 representative input/output examples that verify the body does what the function name suggests. Use plain JSON numbers (5, not 5L), plain JSON strings, and plain JSON booleans inside `args` and `expect`. The `L` suffix is ONLY for the Dark BODY string — never for JSON values. Tests cover BOUNDARY cases (zero, negative, edge) when relevant.
+The `tests` field is REQUIRED. Provide 2-3 representative input/output examples that verify the body does what the function name suggests. Use plain JSON values: numbers (5, NOT 5L), strings, booleans, and JSON arrays (USE COMMAS — `[1, 2, 3]`, NOT `[1; 2; 3]`).
+
+Example for a List<Int64> → Int64 function:
+  {"args": [[1, 2, 3, 4, 5]], "expect": 15}
+
+The `L` suffix and `;` separator are ONLY for the Dark BODY string — never for JSON values. Tests cover BOUNDARY cases (zero, negative, edge) when relevant.
 
 Darklang syntax for the body content:
 - Integers are SIZED: Int64 (default), Int8, Int32, etc. Never bare int. Literals end in L: 5L, -3L.
 - Generics use ANGLE BRACKETS: List<Int64>, Option<String>. Not List(...).
 - Type variables use ML-style apostrophes: 'a, 'b, 'k, 'v. Not <a> or <b>.
 - Bindings: let x = expr in rest_of_expr (in is required).
-- Lambdas: fun x -> body. NEVER use =>.
+- Lambdas: `fun x -> body` (one arg) or `fun x y -> body` (multi-arg in ONE
+  fun). NEVER use `=>`. NEVER curry: `fun x -> fun y -> ...` is two
+  lambdas; use `fun x y -> ...` instead.
 - Lists: [1L; 2L; 3L] (semicolons).
 - Pipe: value |> fn. Parens for complex: (complex expr) |> fn.
 - String concat: ++.
 - Stdlib: prefix with Stdlib. (e.g. Stdlib.List.map, Stdlib.Int64.add).
+- The CANONICAL Stdlib.List operations are:
+    Stdlib.List.head, Stdlib.List.tail, Stdlib.List.append,
+    Stdlib.List.reverse, Stdlib.List.fold (NOT fold_left), Stdlib.List.map,
+    Stdlib.List.filter, Stdlib.List.length, Stdlib.List.isEmpty,
+    Stdlib.List.sort.
+  Stdlib.List.fold signature: `fold (list) (init) (fn: acc -> elem -> acc)`.
+  Argument order is list first, then init, then folder.
 - Function application is PREFIX, NOT parenthesized:
     Stdlib.List.map f lst       (correct)
     Stdlib.List.map(f, lst)     (WRONG)
@@ -212,11 +226,12 @@ let testResultLabel (r : TestResult) : string =
   | TError(_, _) -> "error"
   | TSkipped -> "skipped"
 
-/// Parse a simple type-name (Int64, String, ...) → RT.TypeReference.
-/// Returns None for anything more elaborate; callers fall back to TInt64
-/// or surface a parse error.
-let parseSimpleType (raw : string) : Option<RT.TypeReference> =
-  match raw.Trim() with
+/// Parse a type-name (Int64, String, List<Int64>, Option<String>, ...)
+/// → RT.TypeReference. Recursive on `<>` arguments. Returns None for
+/// anything more elaborate.
+let rec parseSimpleType (raw : string) : Option<RT.TypeReference> =
+  let s = raw.Trim()
+  match s with
   | "Int64" -> Some RT.TInt64
   | "Int32" -> Some RT.TInt32
   | "Int16" -> Some RT.TInt16
@@ -228,7 +243,17 @@ let parseSimpleType (raw : string) : Option<RT.TypeReference> =
   | "Float" -> Some RT.TFloat
   | "Char" -> Some RT.TChar
   | "Unit" -> Some RT.TUnit
-  | _ -> None
+  | _ ->
+    // Generic forms: List<T>, Option<T>, etc. Greedy match: outermost <…>.
+    let m =
+      System.Text.RegularExpressions.Regex.Match(s, @"^(\w+)\s*<\s*(.+?)\s*>$")
+    if not m.Success then None
+    else
+      let outer = m.Groups[1].Value
+      let inner = m.Groups[2].Value
+      match parseSimpleType inner, outer with
+      | Some t, "List" -> Some(RT.TList t)
+      | _ -> None
 
 /// Parse a full sig string `(x: Int64, y: String): Bool` to a structured
 /// param list + return type. Tolerant of whitespace but requires the
@@ -239,7 +264,7 @@ let parseFullSig
   let m =
     System.Text.RegularExpressions.Regex.Match(
       raw.Trim(),
-      @"^\(([^)]*)\)\s*:\s*(\w+)$"
+      @"^\(([^)]*)\)\s*:\s*(.+)$"
     )
   if not m.Success then
     None
@@ -257,7 +282,7 @@ let parseFullSig
       let parsed =
         parts
         |> List.map (fun p ->
-          let mp = System.Text.RegularExpressions.Regex.Match(p, @"^(\w+)\s*:\s*(\w+)$")
+          let mp = System.Text.RegularExpressions.Regex.Match(p, @"^(\w+)\s*:\s*(.+)$")
           if mp.Success then
             match parseSimpleType mp.Groups[2].Value with
             | Some t -> Some(mp.Groups[1].Value, t)
@@ -513,7 +538,7 @@ let parseTestGenResponse (raw : string) : List<ClaimedTest> =
     if not (root.TryGetProperty("tests", &arr)) then []
     elif arr.ValueKind <> JsonValueKind.Array then []
     else
-      let parseDval (e : JsonElement) : Option<RT.Dval> =
+      let rec parseDval (e : JsonElement) : Option<RT.Dval> =
         match e.ValueKind with
         | JsonValueKind.Number ->
           let mutable v = 0L
@@ -521,6 +546,19 @@ let parseTestGenResponse (raw : string) : List<ClaimedTest> =
         | JsonValueKind.String -> Some(RT.DString(e.GetString()))
         | JsonValueKind.True -> Some(RT.DBool true)
         | JsonValueKind.False -> Some(RT.DBool false)
+        | JsonValueKind.Array ->
+          let items = [ for x in e.EnumerateArray() -> parseDval x ]
+          if List.forall Option.isSome items then
+            let vals = items |> List.map Option.get
+            // Best-effort element type from first item; default Int64 for empty.
+            let kt =
+              match vals with
+              | (RT.DInt64 _) :: _ -> RT.KTInt64
+              | (RT.DString _) :: _ -> RT.KTString
+              | (RT.DBool _) :: _ -> RT.KTBool
+              | _ -> RT.KTInt64
+            Some(RT.DList(RT.ValueType.Known kt, vals))
+          else None
         | _ -> None
       let mutable acc = []
       for item in arr.EnumerateArray() do
@@ -569,7 +607,7 @@ let parseLLMResponse (raw : string) : Result<GeneratedFn, string> =
       else
         Error(sprintf "missing field '%s'" name)
     // tests is optional — older cached LLM responses don't include it
-    let parseDval (e : JsonElement) : Option<RT.Dval> =
+    let rec parseDval (e : JsonElement) : Option<RT.Dval> =
       match e.ValueKind with
       | JsonValueKind.Number ->
         // Default JSON numbers to Int64 (the bulk of our demos).
@@ -578,6 +616,18 @@ let parseLLMResponse (raw : string) : Result<GeneratedFn, string> =
       | JsonValueKind.String -> Some(RT.DString(e.GetString()))
       | JsonValueKind.True -> Some(RT.DBool true)
       | JsonValueKind.False -> Some(RT.DBool false)
+      | JsonValueKind.Array ->
+        let items = [ for x in e.EnumerateArray() -> parseDval x ]
+        if List.forall Option.isSome items then
+          let vals = items |> List.map Option.get
+          let kt =
+            match vals with
+            | (RT.DInt64 _) :: _ -> RT.KTInt64
+            | (RT.DString _) :: _ -> RT.KTString
+            | (RT.DBool _) :: _ -> RT.KTBool
+            | _ -> RT.KTInt64
+          Some(RT.DList(RT.ValueType.Known kt, vals))
+        else None
       | _ -> None
     let parseTests () : List<ClaimedTest> =
       let mutable arr = Unchecked.defaultof<JsonElement>
@@ -1283,12 +1333,6 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                   uply {
                     match bodyParser, parseFullSig gen.sig_ with
                     | Some parser, Some(typedParams, returnType) ->
-                      // Wrap the body in a `fun <params> -> <body>` lambda so
-                      // LibParser treats x/y as bound vars instead of
-                      // unresolved fn names (which AllowPending would turn
-                      // into Pendings). We then peel off the lambda after
-                      // parsing — our own symbols map handles the binding
-                      // at lowering time.
                       let toParse =
                         if List.isEmpty typedParams then
                           gen.body
@@ -1310,16 +1354,16 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                               | _ -> ptExpr
                           let fn =
                             fnFromTypedBody p.name p.handle typedParams returnType bodyExpr
-                          return Some fn
-                        with _ ->
-                          // PT2RT lowering can throw on unsupported PT shapes.
-                          return None
-                      | Error _ -> return None
-                    | _ -> return None
+                          return Ok fn
+                        with ex ->
+                          return Error(sprintf "lower: %s" ex.Message)
+                      | Error e -> return Error(sprintf "parse: %s" e)
+                    | None, _ -> return Error "bodyParser not installed"
+                    | _, None -> return Error(sprintf "sig parse failed: %s" gen.sig_)
                   }
 
                 match libParserResult with
-                | Some fn ->
+                | Ok fn ->
                   let kind =
                     if n > 1 then sprintf "libparser (retry %d)" (n - 1)
                     else "libparser"
@@ -1434,7 +1478,10 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                     emit (MaterializeDone(p.name, finalState, elapsedMs ()))
                     if finalState = Real then persistPromoted p.name gen
                     return Some fn
-                | None ->
+                | Error libParserErr ->
+                  // Surface why LibParser declined, so the HTML view shows
+                  // the actual reason instead of a silent fallback.
+                  emit (CompileBody(p.name, sprintf "libparser-fail: %s" libParserErr, 0))
                   // FALLBACK PATH: regex mini-parser (the original 5 cases).
                   match parseMinimalBodyN paramNames gen.body with
                   | Some instrs ->
