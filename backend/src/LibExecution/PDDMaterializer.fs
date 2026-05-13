@@ -156,6 +156,16 @@ Darklang syntax for the body content:
     Stdlib.List.map f lst       (correct)
     Stdlib.List.map(f, lst)     (WRONG)
 - Records: Type { a = 1L; b = 2L }.
+- DO NOT USE TUPLES inside a body. `(a, b)` syntax + pattern destructuring
+  is not yet supported in the body parser. If you need to pair values,
+  use a String "key|value" or two parallel Lists or wrap in a record.
+- Use ACTUAL stdlib fn names:
+    `Stdlib.Int64.parse s |> Stdlib.Result.withDefault 0L`  (NOT ofString / fromString)
+    `Stdlib.String.length s` (NOT lengthOf)
+    `Stdlib.List.head l |> Stdlib.Option.withDefault default_value`
+  When in doubt about a Stdlib name, prefer the simpler shape: invent a
+  Pending name and call it. Better one materialization step than a wrong
+  Stdlib invocation.
 - Recursion: call the function by its short name inside the body — e.g.
   the body of `factorial` recurses by calling `factorial(n - 1L)`. There
   is NO `let rec`. There is NO local mutual recursion. The ONLY way to
