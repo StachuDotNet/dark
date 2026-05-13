@@ -98,6 +98,61 @@ let private combinedSink (htmlSink : Mat.EventSink) : Mat.EventSink =
     htmlSink ev
 
 
+/// Per-run summary collector. Records each fn's final state + test result
+/// counts so the CLI can print a one-line-per-fn report at end-of-run,
+/// even when the HTML view isn't being watched.
+type private FnSummary =
+  { mutable state : Mat.FnState
+    mutable passed : int
+    mutable failed : int
+    mutable skipped : int }
+
+let private summaryFor (acc : System.Collections.Generic.Dictionary<string, FnSummary>) (name : string) : FnSummary =
+  match acc.TryGetValue name with
+  | true, s -> s
+  | _ ->
+    let s = { state = Mat.InProgress; passed = 0; failed = 0; skipped = 0 }
+    acc[name] <- s
+    s
+
+let private summarySink (acc : System.Collections.Generic.Dictionary<string, FnSummary>) : Mat.EventSink =
+  fun ev ->
+    match ev with
+    | Mat.MaterializeDone(name, state, _) ->
+      (summaryFor acc name).state <- state
+    | Mat.TestRan(name, label, _) ->
+      let s = summaryFor acc name
+      match label with
+      | "pass" -> s.passed <- s.passed + 1
+      | "fail" -> s.failed <- s.failed + 1
+      | "error" -> s.failed <- s.failed + 1
+      | _ -> s.skipped <- s.skipped + 1
+    | _ -> ()
+
+let private printSummary (acc : System.Collections.Generic.Dictionary<string, FnSummary>) : unit =
+  if acc.Count = 0 then ()
+  else
+    let prefix = dim "[pdd]"
+    eprintfn "%s %s" prefix (dim "summary:")
+    for kv in acc do
+      let s = kv.Value
+      let badge =
+        match s.state with
+        | Mat.Real -> green "  ✓ real"
+        | Mat.Fake -> dim "  ▼ fake"
+        | Mat.Cached -> blue "  ↻ cached"
+        | Mat.Failed -> red "  ✗ failed"
+        | Mat.InProgress -> yellow "  ⋯ in-progress"
+      let tests =
+        if s.passed + s.failed + s.skipped = 0 then dim "(no tests)"
+        elif s.failed > 0 then
+          red (sprintf "%d✓ %d✗ %d-" s.passed s.failed s.skipped)
+        elif s.skipped > 0 then
+          dim (sprintf "%d✓ %d-" s.passed s.skipped)
+        else green (sprintf "%d✓" s.passed)
+      eprintfn "%s %s %s %s" prefix badge kv.Key tests
+
+
 /// Handle `dark pdd demo <fnName> <int64>`.
 let private handleDemo
   (packageManager : RT.PackageManager)
@@ -253,7 +308,15 @@ let private handleRun
     let session = View.createSession sessionId htmlPath
     View.setTopLevel session exprStr
     let htmlSink = View.sinkFor session
-    Mat.currentSink <- combinedSink htmlSink
+    let summaryAcc =
+      System.Collections.Generic.Dictionary<string, FnSummary>()
+    let summarize = summarySink summaryAcc
+    let triSink : Mat.EventSink =
+      fun ev ->
+        stderrSink ev
+        htmlSink ev
+        summarize ev
+    Mat.currentSink <- triSink
 
     let prefix = dim "[pdd]"
     eprintfn ""
@@ -373,6 +436,8 @@ let private handleRun
     View.close session
     Mat.currentSink <- Mat.nullSink
 
+    eprintfn ""
+    printSummary summaryAcc
     eprintfn ""
     if timedOut then
       eprintfn
