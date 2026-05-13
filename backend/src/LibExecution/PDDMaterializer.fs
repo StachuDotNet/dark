@@ -125,7 +125,10 @@ Darklang syntax for the body content:
     Stdlib.List.map f lst       (correct)
     Stdlib.List.map(f, lst)     (WRONG)
 - Records: Type { a = 1L; b = 2L }.
-- Recursion: call the function by its short name inside the body.
+- Recursion: call the function by its short name inside the body — e.g.
+  the body of `factorial` recurses by calling `factorial(n - 1L)`. There
+  is NO `let rec`. There is NO local mutual recursion. The ONLY way to
+  recurse is to reference the function you are defining by its name.
 - Prefer the simplest possible implementation.
 - Conditionals (single-line shape, NO parentheses around the cond):
     if x > 0L then x else 0L
@@ -466,6 +469,76 @@ type GeneratedFn =
   { sig_ : string
     body : string
     tests : List<ClaimedTest> }
+
+
+// ---------------------------------------------------------------------------
+// Test-gen (second LLM call, framed as a QA reviewer who hasn't seen body)
+// ---------------------------------------------------------------------------
+
+/// Test-only system prompt. Used in a SECOND LLM call (after the body is
+/// materialized) to generate independent verification tests. The LLM is
+/// framed as a QA reviewer who has not seen the body, so tests reflect
+/// the standard meaning of the fn name rather than the (possibly wrong)
+/// body the LLM wrote.
+let testGenSystemPrompt = """You are a QA reviewer. You have been given a function NAME and SIGNATURE, but NOT the implementation. Your job is to write 3 concrete input/output test cases that reflect the FUNCTION NAME'S STANDARD MEANING — what a senior engineer would expect the function to do.
+
+For example, if asked for `factorial: (n: Int64): Int64`, you should write tests that match the standard mathematical definition: factorial(0)=1, factorial(1)=1, factorial(5)=120, factorial(6)=720. NOT whatever a junior dev's wrong implementation would return.
+
+Respond with JSON, exactly:
+  {"tests": [{"args": [5], "expect": 120}, {"args": [0], "expect": 1}, ...]}
+
+Use JSON numbers for Int64 args/results. Use JSON strings for String args/results. Use JSON booleans for Bool. Pick boundary cases (zero, negative, one, edge values) where they're meaningful.
+
+Return ONLY the JSON. No markdown fences, no prose."""
+
+let buildTestGenPrompt (name : string) (sig_ : string) : string =
+  sprintf "Function: %s\nSignature: %s\nReturn the JSON {tests: [...]} per the instructions." name sig_
+
+let parseTestGenResponse (raw : string) : List<ClaimedTest> =
+  try
+    let trimmed = raw.Trim()
+    let stripped =
+      if trimmed.StartsWith("```") then
+        let after = trimmed.Substring(3)
+        let withoutLang =
+          if after.StartsWith("json") then after.Substring(4) else after
+        let endIdx = withoutLang.LastIndexOf("```")
+        if endIdx >= 0 then withoutLang.Substring(0, endIdx).Trim()
+        else withoutLang.Trim()
+      else
+        trimmed
+    let doc = JsonDocument.Parse(stripped)
+    let root = doc.RootElement
+    let mutable arr = Unchecked.defaultof<JsonElement>
+    if not (root.TryGetProperty("tests", &arr)) then []
+    elif arr.ValueKind <> JsonValueKind.Array then []
+    else
+      let parseDval (e : JsonElement) : Option<RT.Dval> =
+        match e.ValueKind with
+        | JsonValueKind.Number ->
+          let mutable v = 0L
+          if e.TryGetInt64(&v) then Some(RT.DInt64 v) else None
+        | JsonValueKind.String -> Some(RT.DString(e.GetString()))
+        | JsonValueKind.True -> Some(RT.DBool true)
+        | JsonValueKind.False -> Some(RT.DBool false)
+        | _ -> None
+      let mutable acc = []
+      for item in arr.EnumerateArray() do
+        let mutable argsEl = Unchecked.defaultof<JsonElement>
+        let mutable expectEl = Unchecked.defaultof<JsonElement>
+        if item.TryGetProperty("args", &argsEl)
+           && item.TryGetProperty("expect", &expectEl)
+           && argsEl.ValueKind = JsonValueKind.Array then
+          let parsedArgs =
+            [ for a in argsEl.EnumerateArray() -> parseDval a ]
+          let parsedExpect = parseDval expectEl
+          if List.forall Option.isSome parsedArgs && parsedExpect.IsSome then
+            acc <-
+              { args = parsedArgs |> List.map Option.get
+                expect = parsedExpect.Value }
+              :: acc
+      List.rev acc
+  with _ -> []
 
 
 /// Parse the model's response (the `content` string from OpenAI's chat
@@ -1241,8 +1314,34 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                     else "libparser"
                   emit (CompileBody(p.name, kind, fn.body.registerCount))
 
-                  // Run the LLM's claimed tests. If we have a runner AND
-                  // tests, gate promotion on the result.
+                  // INDEPENDENT TEST GENERATION: make a second LLM call
+                  // framed as a QA reviewer who has NOT seen the body, so
+                  // tests reflect the standard meaning of the fn name
+                  // rather than the (possibly wrong) body the LLM wrote.
+                  // Falls back to the body-call's claimed tests on error.
+                  let! verificationTests =
+                    uply {
+                      if llmCallsExhausted p.handle then
+                        return gen.tests
+                      else
+                        let _ = incrementLlmCalls p.handle
+                        let testPrompt = buildTestGenPrompt p.name gen.sig_
+                        let! resp =
+                          callOpenAI apiKey testGenSystemPrompt testPrompt
+                          |> Async.AwaitTask
+                          |> Async.StartAsTask
+                        match resp with
+                        | Error _ -> return gen.tests
+                        | Ok body ->
+                          match extractContent body with
+                          | Error _ -> return gen.tests
+                          | Ok content ->
+                            let parsed = parseTestGenResponse content
+                            if List.isEmpty parsed then return gen.tests
+                            else return parsed
+                    }
+                  let testsToRun = verificationTests
+
                   let (RT.Hash fnHashStr) = fn.hash
                   let recursive = isSelfRecursive p.handle fn.body
                   let! testOutcomes =
@@ -1251,13 +1350,13 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                         // Self-recursive bodies can't be tested in the
                         // inline runner without seeding the materializer
                         // with itself — skip wholesale and trust the LLM.
-                        return List.replicate gen.tests.Length TSkipped
+                        return List.replicate testsToRun.Length TSkipped
                       else
                         match testRunner with
-                        | None -> return List.replicate gen.tests.Length TSkipped
+                        | None -> return List.replicate testsToRun.Length TSkipped
                         | Some runner ->
                         let mutable acc = []
-                        for t in gen.tests do
+                        for t in testsToRun do
                           let! r = runner (p, fn, t.args)
                           let outcome =
                             match r with
@@ -1285,7 +1384,7 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
                         return List.rev acc
                     }
 
-                  let testCount = gen.tests.Length
+                  let testCount = testsToRun.Length
                   let failCount =
                     testOutcomes
                     |> List.filter (fun r ->
