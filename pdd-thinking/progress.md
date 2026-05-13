@@ -214,4 +214,18 @@ Format:
 - Word count: 1990 → still well under 5 printed pages.
 - Time check: 02:30 EDT. ~5h 30m to 8am.
 - Next: maybe one more polish + verify everything renders OK. Could even do a dry-run on `print-md` if the tool has a preview mode, but I don't think it does. Possible next: write a short FAQ section in the final report or just wait and print.
-- Commits: 1 pending.
+- Commits: 1 pending (iter 21).
+
+### 2026-05-13 02:33 — iteration 22 (full inventory + cross-reference verification)
+- Did: inventoried everything. Verified all the cross-references in the docs match real file content:
+  - `Interpreter.fs:317` = `raiseRTE (RTE.FnNotFound(FQFnName.Package fn))` ✓
+  - `RuntimeTypes.fs:88` = `module FQFnName =` ✓
+  - `RuntimeTypes.fs:1250` = `type PackageManager =` ✓
+  - `fsdark.sln:44` = LibCloud project line ✓
+  - `fsdark.sln:61` = Builtins.Http.Server project line ✓
+- Verified `~/bin/print-md` exists and is executable.
+- Inventory: 24 commits on `pdd` ahead of `main`; 21 numbered design docs + FINAL-REPORT + progress + 00-LOOP-SUMMARY; ~32K words total across all docs; final report 1990 words.
+- Branch state clean. No uncommitted changes.
+- Time check: 02:35 EDT. ~5h 25m to 8am.
+- **Switching to longer cadence now.** Diminishing returns on more iterations. Next wake in ~25 min for one more polish/check, then likely longer fallback until ~06:00 EDT for the actual print.
+- This is iter 22 (no commit needed beyond progress.md update).
