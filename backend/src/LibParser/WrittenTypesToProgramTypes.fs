@@ -298,7 +298,7 @@ module Expr =
             NR.resolveValueName
               (builtins.values |> Map.keys |> Set)
               pm
-              NR.OnMissing.Allow
+              onMissing
               currentModule
               (WT.Unresolved(NEList.singleton var))
           match value.resolved with
@@ -345,7 +345,7 @@ module Expr =
               NR.resolveValueName
                 (builtins.values |> Map.keys |> Set)
                 pm
-                NR.OnMissing.Allow
+                onMissing
                 currentModule
                 (WT.Unresolved fullPath)
             match valueResult.resolved with
@@ -356,7 +356,7 @@ module Expr =
                 NR.resolveFnName
                   (builtins.fns |> Map.keys |> Set)
                   pm
-                  NR.OnMissing.Allow
+                  onMissing
                   currentModule
                   (WT.Unresolved fullPath)
               match fnResult.resolved with
@@ -374,7 +374,7 @@ module Expr =
           NR.resolveFnName
             (builtins.fns |> Map.keys |> Set)
             pm
-            NR.OnMissing.Allow
+            onMissing
             currentModule
             name
         match fnName.resolved with
@@ -461,7 +461,7 @@ module Expr =
           NR.resolveFnName
             (builtins.fns |> Map.keys |> Set)
             pm
-            NR.OnMissing.Allow
+            onMissing
             currentModule
             name
         return PT.EFnName(id, fnName)
@@ -628,7 +628,7 @@ module Expr =
               NR.resolveFnName
                 (builtins.fns |> Map.keys |> Set)
                 pm
-                NR.OnMissing.Allow
+                onMissing
                 currentModule
                 asUserFnName
             return
@@ -642,7 +642,7 @@ module Expr =
               NR.resolveFnName
                 (builtins.fns |> Map.keys |> Set)
                 pm
-                NR.OnMissing.Allow
+                onMissing
                 currentModule
                 asUserFnName
             return
@@ -658,7 +658,7 @@ module Expr =
             NR.resolveFnName
               (builtins.fns |> Map.keys |> Set)
               pm
-              NR.OnMissing.Allow
+              onMissing
               currentModule
               asUserFnName
           return
@@ -700,7 +700,7 @@ module Expr =
           NR.resolveFnName
             (builtins.fns |> Map.keys |> Set)
             pm
-            NR.OnMissing.Allow
+            onMissing
             currentModule
             name
         let! args = Ply.List.mapSequentially (toPT context) args
