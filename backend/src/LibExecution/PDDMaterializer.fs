@@ -391,6 +391,7 @@ let private fnFromBody
 // ---------------------------------------------------------------------------
 
 let private cachePath = "rundir/pdd-cache/promoted.jsonl"
+let private decomposeCachePath = "rundir/pdd-cache/decomposed.jsonl"
 
 /// In-memory mirror of the cache file. Loaded lazily on first lookup;
 /// updated on every successful materialization.
@@ -436,6 +437,49 @@ let private persistPromoted (name : string) (gen : GeneratedFn) : unit =
       )
     System.IO.File.AppendAllText(cachePath, payload + "\n")
     promotedCache[name] <- gen
+  with _ -> ()
+
+
+// Decompose cache — maps a free-text prompt to the Dark expression the
+// LLM produced last time. Hit means we skip the decompose LLM call entirely.
+
+let private decomposeCache : System.Collections.Concurrent.ConcurrentDictionary<string, string> =
+  System.Collections.Concurrent.ConcurrentDictionary()
+
+let private decomposeCacheLoaded : bool ref = ref false
+
+let private loadDecomposeCacheOnce () : unit =
+  if not decomposeCacheLoaded.Value then
+    decomposeCacheLoaded.Value <- true
+    try
+      if System.IO.File.Exists decomposeCachePath then
+        let lines = System.IO.File.ReadAllLines decomposeCachePath
+        for line in lines do
+          if not (System.String.IsNullOrWhiteSpace line) then
+            try
+              let doc = JsonDocument.Parse(line)
+              let r = doc.RootElement
+              let prompt = r.GetProperty("prompt").GetString()
+              let expr = r.GetProperty("expr").GetString()
+              decomposeCache[prompt] <- expr
+            with _ -> ()
+    with _ -> ()
+
+let tryLookupDecomposed (prompt : string) : string option =
+  loadDecomposeCacheOnce ()
+  match decomposeCache.TryGetValue(prompt.Trim()) with
+  | true, expr -> Some expr
+  | false, _ -> None
+
+let persistDecomposed (prompt : string) (expr : string) : unit =
+  try
+    let dir = System.IO.Path.GetDirectoryName decomposeCachePath
+    if not (System.IO.Directory.Exists dir) then
+      System.IO.Directory.CreateDirectory dir |> ignore<System.IO.DirectoryInfo>
+    let payload =
+      JsonSerializer.Serialize({| prompt = prompt.Trim(); expr = expr |})
+    System.IO.File.AppendAllText(decomposeCachePath, payload + "\n")
+    decomposeCache[prompt.Trim()] <- expr
   with _ -> ()
 
 

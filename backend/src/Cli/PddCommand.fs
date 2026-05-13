@@ -282,43 +282,54 @@ let private handlePrompt
     let prefix = dim "[pdd]"
     eprintfn ""
     eprintfn "%s %s %s" prefix (dim "prompt") (green request)
-    eprintfn "%s %s" prefix (dim "decomposing via gpt-4o-mini...")
 
-    let apiKey = System.Environment.GetEnvironmentVariable("OPENAI_API_KEY")
-    if System.String.IsNullOrEmpty(apiKey) then
-      eprintfn "%s %s" prefix (red "OPENAI_API_KEY not set")
-      return 1
-    else
-      let userPrompt = Mat.buildDecomposePrompt request
-      let! resp =
-        Mat.callOpenAI apiKey Mat.decomposeSystemPrompt userPrompt
-      match resp with
-      | Error e ->
-        eprintfn "%s %s %s" prefix (red "decompose http error:") e
+    // Check decompose cache first.
+    match Mat.tryLookupDecomposed request with
+    | Some cachedExpr ->
+      eprintfn "%s %s %s" prefix (blue "decompose ↻ cached") (dim "(no LLM call)")
+      eprintfn "%s %s" prefix (dim "expr →")
+      eprintfn "%s   %s" prefix (green cachedExpr)
+      let! code = handleRun packageManager cachedExpr
+      return code
+    | None ->
+      eprintfn "%s %s" prefix (dim "decomposing via gpt-4o-mini...")
+      let apiKey = System.Environment.GetEnvironmentVariable("OPENAI_API_KEY")
+      if System.String.IsNullOrEmpty(apiKey) then
+        eprintfn "%s %s" prefix (red "OPENAI_API_KEY not set")
         return 1
-      | Ok body ->
-        match Mat.extractContent body with
+      else
+        let userPrompt = Mat.buildDecomposePrompt request
+        let! resp =
+          Mat.callOpenAI apiKey Mat.decomposeSystemPrompt userPrompt
+        match resp with
         | Error e ->
-          eprintfn "%s %s %s" prefix (red "decompose content error:") e
+          eprintfn "%s %s %s" prefix (red "decompose http error:") e
           return 1
-        | Ok exprStr ->
-          let trimmed = exprStr.Trim()
-          let cleaned =
-            // strip markdown fences if any
-            if trimmed.StartsWith("```") then
-              let after = trimmed.Substring(3)
-              let stripLang =
-                if after.StartsWith("dark") || after.StartsWith("darklang") then
-                  after.Substring(after.IndexOf('\n') + 1)
-                else after
-              let endIdx = stripLang.LastIndexOf("```")
-              if endIdx >= 0 then stripLang.Substring(0, endIdx).Trim()
-              else stripLang.Trim()
-            else trimmed
-          eprintfn "%s %s" prefix (dim "decomposed →")
-          eprintfn "%s   %s" prefix (green cleaned)
-          let! code = handleRun packageManager cleaned
-          return code
+        | Ok body ->
+          match Mat.extractContent body with
+          | Error e ->
+            eprintfn "%s %s %s" prefix (red "decompose content error:") e
+            return 1
+          | Ok exprStr ->
+            let trimmed = exprStr.Trim()
+            let cleaned =
+              // strip markdown fences if any
+              if trimmed.StartsWith("```") then
+                let after = trimmed.Substring(3)
+                let stripLang =
+                  if after.StartsWith("dark") || after.StartsWith("darklang") then
+                    after.Substring(after.IndexOf('\n') + 1)
+                  else after
+                let endIdx = stripLang.LastIndexOf("```")
+                if endIdx >= 0 then stripLang.Substring(0, endIdx).Trim()
+                else stripLang.Trim()
+              else trimmed
+            eprintfn "%s %s" prefix (dim "decomposed →")
+            eprintfn "%s   %s" prefix (green cleaned)
+            // Persist for next time
+            Mat.persistDecomposed request cleaned
+            let! code = handleRun packageManager cleaned
+            return code
   }
 
 
