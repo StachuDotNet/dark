@@ -397,6 +397,42 @@ let private handleCache (subcmd : string) : Task<int> =
   }
 
 
+/// Handle `dark pdd trace list` / `last`.
+let private handleTrace (subcmd : string) : Task<int> =
+  task {
+    let prefix = dim "[pdd]"
+    let viewDir = "rundir/pdd-view"
+    if not (System.IO.Directory.Exists viewDir) then
+      eprintfn "%s %s" prefix (dim "no sessions yet")
+      return 0
+    else
+      let files =
+        System.IO.Directory.GetFiles(viewDir, "*.html")
+        |> Array.map (fun p -> p, System.IO.File.GetLastWriteTime p)
+        |> Array.sortByDescending snd
+      match subcmd with
+      | "last" ->
+        if files.Length = 0 then
+          eprintfn "%s %s" prefix (dim "no sessions yet")
+          return 1
+        else
+          let path, _ = files[0]
+          print path
+          return 0
+      | "list" | _ ->
+        if files.Length = 0 then
+          eprintfn "%s %s" prefix (dim "no sessions yet")
+        else
+          eprintfn "%s %s" prefix (dim (sprintf "%d sessions in %s" files.Length viewDir))
+          for (path, ts) in files |> Array.truncate 20 do
+            let sessionId = System.IO.Path.GetFileNameWithoutExtension path
+            eprintfn "  %s %s %s" (dim (ts.ToString("HH:mm:ss"))) (green sessionId) (dim path)
+          if files.Length > 20 then
+            eprintfn "  %s" (dim (sprintf "... and %d more" (files.Length - 20)))
+        return 0
+  }
+
+
 /// Entry point for `dark pdd ...` and `dark prompt ...` commands.
 /// Returns Some exitCode if the arg list matched; None to fall through
 /// to the normal CLI dispatch.
@@ -438,12 +474,19 @@ let tryHandle
     | "pdd" :: "cache" :: [] ->
       let! code = handleCache "list"
       return Some code
+    | "pdd" :: "trace" :: subcmd :: _ ->
+      let! code = handleTrace subcmd
+      return Some code
+    | "pdd" :: "trace" :: [] ->
+      let! code = handleTrace "list"
+      return Some code
     | "pdd" :: _ ->
       eprintfn "[pdd] usage:"
       eprintfn "[pdd]   dark prompt \"<free-text request>\""
       eprintfn "[pdd]   dark pdd run <dark-expression>"
       eprintfn "[pdd]   dark pdd demo <fnName> <Int64-arg>"
       eprintfn "[pdd]   dark pdd cache (list|clear|paths)"
+      eprintfn "[pdd]   dark pdd trace (list|last)"
       return Some 1
     | _ -> return None
   }
