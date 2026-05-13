@@ -152,4 +152,11 @@ Format:
 - Decided: this card is the single most useful doc for tomorrow morning. Everything else can be skimmed-or-skipped, but this one should be on the desk.
 - Time check: 01:51 EDT. About 6h 9m to 8am.
 - Next: write `18-the-narrative.md` — a paragraph-by-paragraph "story to tell when explaining PDD to someone." Then start outlining the final report (`FINAL-REPORT-2026-05-13.md`). Plan: 2 more design iterations max, then draft final report around 03:00-04:00, polish 04:00-06:00, print 06:30.
+- Commits: 1 pending (iter 14).
+
+### 2026-05-13 01:55 — iteration 15 (DRAFT THE FINAL REPORT)
+- Did: wrote first draft of `FINAL-REPORT-2026-05-13.md`. 1619 words, ~2.5-3 printed pages. Sections: 5 claims, algorithm in 1 paragraph, LibExecution changes (the pivot + 3 surgical edits), find-vs-generate scheduler, day-1 hacking plan table, decisions made tonight (parser P3, keep LocalExec, carve LibCloud + Http.Server, tolerant default, sig-consensus Strategy A, human-as-materializer, capabilities at builtin granularity, gpt-4o-mini default, trace JSONL, never push), spike budget envelopes, demo acceptance gates, open questions, pointers to all 18 design docs, "when you sit down" closing.
+- Plenty of room left (5 pages = ~3000-3500 words rendered).
+- Decided: don't print yet. Refine in later iterations. Final print around 06:30-07:00 EDT.
+- Time check: 02:00 EDT. 6h to 8am. Plan: 1-2 more design iterations max (maybe stretch goals: write `18-narrative.md` if time, or just keep polishing 17 and the final report). Final report polish at ~04:00. Print at 06:30.
 - Commits: 1 pending.
