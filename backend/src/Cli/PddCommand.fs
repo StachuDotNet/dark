@@ -928,6 +928,91 @@ let private handleHistory (args : List<string>) : Task<int> =
   }
 
 
+/// Read all body versions for a given fn name from promoted.jsonl in
+/// chronological order. Used by history + diff.
+let private allWorkingRevs (name : string) : List<string> =
+  let p = "rundir/pdd-cache/promoted.jsonl"
+  if not (System.IO.File.Exists p) then []
+  else
+    System.IO.File.ReadAllLines p
+    |> Array.toList
+    |> List.choose (fun line ->
+      try
+        let doc = System.Text.Json.JsonDocument.Parse line
+        let r = doc.RootElement
+        if r.GetProperty("name").GetString() = name then
+          Some(r.GetProperty("body").GetString())
+        else None
+      with _ -> None)
+
+
+/// Tokenize a Dark body string for diffing. Split on `++` (the string-
+/// concat operator the LLM uses pervasively) so each tag-fragment is a
+/// distinct token. Also normalize whitespace inside each token.
+let private tokenizeBody (s : string) : List<string> =
+  s.Split([| "++" |], System.StringSplitOptions.None)
+  |> Array.map (fun t -> t.Trim())
+  |> Array.filter (fun t -> t.Length > 0)
+  |> Array.toList
+
+
+/// Crude line-diff: show tokens that exist only in OLD (red) or only in
+/// NEW (green). Order-preserving via two passes against a set. Not a
+/// true LCS-based unified diff, but useful for surfacing what `refine`
+/// actually changed.
+let private printTokenDiff (oldBody : string) (newBody : string) : unit =
+  let oldToks = tokenizeBody oldBody
+  let newToks = tokenizeBody newBody
+  let oldSet = Set.ofList oldToks
+  let newSet = Set.ofList newToks
+  let removed = oldToks |> List.filter (fun t -> not (newSet.Contains t))
+  let added = newToks |> List.filter (fun t -> not (oldSet.Contains t))
+  if List.isEmpty removed && List.isEmpty added then
+    eprintfn "  %s" (dim "(no token-level change)")
+  else
+    for t in removed do
+      let p = if t.Length > 100 then t.Substring(0, 100) + "…" else t
+      eprintfn "  %s %s" (red "-") (dim p)
+    for t in added do
+      let p = if t.Length > 100 then t.Substring(0, 100) + "…" else t
+      eprintfn "  %s %s" (green "+") (dim p)
+
+
+/// Handle `dark pdd diff <fnName> [revA] [revB]`.
+/// Default: diff latest vs previous working rev.
+let private handleDiff (args : List<string>) : Task<int> =
+  task {
+    let prefix = dim "[pdd]"
+    match args with
+    | [ name ] ->
+      let revs = allWorkingRevs name
+      match revs with
+      | []
+      | [ _ ] ->
+        eprintfn "%s '%s' has < 2 working revs" prefix name
+        return 1
+      | _ ->
+        let oldBody = revs[revs.Length - 2]
+        let newBody = revs[revs.Length - 1]
+        eprintfn "%s %s %s (rev %d → rev %d)" prefix
+          (dim "diff")
+          (green name)
+          (revs.Length - 1)
+          revs.Length
+        eprintfn "%s   %s → %s chars (%+d)"
+          prefix
+          (dim (string oldBody.Length))
+          (dim (string newBody.Length))
+          (newBody.Length - oldBody.Length)
+        eprintfn ""
+        printTokenDiff oldBody newBody
+        return 0
+    | _ ->
+      eprintfn "%s usage: dark pdd diff <fnName>" prefix
+      return 1
+  }
+
+
 /// Handle `dark pdd trace list` / `last`.
 let private handleTrace (subcmd : string) : Task<int> =
   task {
@@ -1053,6 +1138,9 @@ let tryHandle
     | "pdd" :: "history" :: rest ->
       let! code = handleHistory rest
       return Some code
+    | "pdd" :: "diff" :: rest ->
+      let! code = handleDiff rest
+      return Some code
     | "pdd" :: _ ->
       eprintfn "[pdd] usage:"
       eprintfn "[pdd]   dark prompt \"<free-text request>\""
@@ -1063,6 +1151,7 @@ let tryHandle
       eprintfn "[pdd]   dark pdd refine <fnName> | --all | --watch [sec]"
       eprintfn "[pdd]   dark pdd promote <fnName> | --all | list"
       eprintfn "[pdd]   dark pdd history <fnName>"
+      eprintfn "[pdd]   dark pdd diff <fnName>"
       return Some 1
     | _ -> return None
   }
