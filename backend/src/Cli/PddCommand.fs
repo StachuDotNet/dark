@@ -662,53 +662,122 @@ let private handleCache (subcmd : string) : Task<int> =
 /// Calls the LLM with the current cached body + "improve this"
 /// instructions. Replaces the cached entry if the new version scores
 /// higher on the richness heuristic (tag count + length).
+let private creativeFnNamesInCache () : List<string> =
+  let path = "rundir/pdd-cache/promoted.jsonl"
+  if not (System.IO.File.Exists path) then []
+  else
+    System.IO.File.ReadAllLines path
+    |> Array.toList
+    |> List.choose (fun line ->
+      try
+        let doc = System.Text.Json.JsonDocument.Parse line
+        let r = doc.RootElement
+        Some(r.GetProperty("name").GetString())
+      with _ -> None)
+    |> List.distinct
+    |> List.filter (fun n -> Mat.isCreativeFnName n)
+
 let private handleRefine (args : List<string>) : Task<int> =
   task {
     let prefix = dim "[pdd]"
-    let names =
-      match args with
-      | [ "--all" ] ->
-        // refine all Provisional-looking (heuristically: render*) fns
-        let path = "rundir/pdd-cache/promoted.jsonl"
-        if not (System.IO.File.Exists path) then []
-        else
-          System.IO.File.ReadAllLines path
-          |> Array.toList
-          |> List.choose (fun line ->
-            try
-              let doc = System.Text.Json.JsonDocument.Parse line
-              let r = doc.RootElement
-              Some(r.GetProperty("name").GetString())
-            with _ -> None)
-          |> List.distinct
-          |> List.filter (fun n -> Mat.isCreativeFnName n)
-      | _ -> args
-    if List.isEmpty names then
-      eprintfn "%s usage: dark pdd refine <fnName> | dark pdd refine --all" prefix
-      return 1
-    else
-      let mutable improved = 0
-      let mutable unchanged = 0
-      for name in names do
-        eprintfn "%s %s %s" prefix (dim "refining") (green name)
-        let! r = Mat.refineFn name
-        match r with
-        | Error e ->
-          eprintfn "%s %s %s" prefix (red "  error") (dim e)
-        | Ok(newBody, oldBody, didImprove) ->
-          if didImprove then
-            improved <- improved + 1
-            let preview = newBody.Substring(0, min 80 newBody.Length)
-            eprintfn "%s %s %s %s" prefix
-              (green "  improved")
-              (dim (sprintf "(%d → %d chars)" oldBody.Length newBody.Length))
-              (dim preview)
-          else
-            unchanged <- unchanged + 1
-            eprintfn "%s %s" prefix (dim "  unchanged (new body not richer)")
-      eprintfn ""
-      eprintfn "%s %s %d improved, %d unchanged" prefix (dim "summary:") improved unchanged
+    match args with
+    // --watch [intervalSec=30]: background loop. Picks one creative fn
+    // per tick, refines, sleeps, repeats. Stops on SIGINT. Tracks per-fn
+    // refine count + "stuck" count (unchanged in a row); skips fns that
+    // settle.
+    | "--watch" :: rest ->
+      let intervalSec =
+        match rest with
+        | [] -> 30
+        | sec :: _ ->
+          match System.Int32.TryParse sec with
+          | true, n when n > 0 -> n
+          | _ -> 30
+      eprintfn "%s %s every %ds (Ctrl-C to stop)" prefix (dim "refine --watch") intervalSec
+      let counts = System.Collections.Generic.Dictionary<string, int * int>()
+      // counts[name] = (refineCount, stuckCount)
+      let mutable cycle = 0
+      while true do
+        cycle <- cycle + 1
+        let names = creativeFnNamesInCache ()
+        // Filter out fns that have settled (5+ refines OR 2+ stuck-in-a-row).
+        let candidates =
+          names
+          |> List.filter (fun n ->
+            match counts.TryGetValue n with
+            | true, (refines, stuck) -> refines < 5 && stuck < 2
+            | _ -> true)
+        match candidates with
+        | [] ->
+          eprintfn "%s %s %s" prefix
+            (dim (sprintf "cycle %d:" cycle))
+            (dim "no candidates (all settled or empty cache)")
+        | _ ->
+          // Pick the candidate with the FEWEST refines (round-robin).
+          let pick =
+            candidates
+            |> List.minBy (fun n ->
+              match counts.TryGetValue n with
+              | true, (r, _) -> r
+              | _ -> 0)
+          let prevR, prevS =
+            match counts.TryGetValue pick with
+            | true, x -> x
+            | _ -> (0, 0)
+          eprintfn "%s %s %s %s"
+            prefix
+            (dim (sprintf "cycle %d:" cycle))
+            (dim "refining")
+            (green pick)
+          let! r = Mat.refineFn pick
+          match r with
+          | Error e ->
+            eprintfn "%s %s %s" prefix (red "  error") (dim e)
+            counts[pick] <- (prevR, prevS + 1)
+          | Ok(newBody, oldBody, didImprove) ->
+            if didImprove then
+              let preview = newBody.Substring(0, min 80 newBody.Length)
+              eprintfn "%s %s %s %s" prefix
+                (green "  improved")
+                (dim (sprintf "(%d → %d chars)" oldBody.Length newBody.Length))
+                (dim preview)
+              counts[pick] <- (prevR + 1, 0)
+            else
+              eprintfn "%s %s" prefix (dim "  unchanged")
+              counts[pick] <- (prevR, prevS + 1)
+        do! System.Threading.Tasks.Task.Delay(intervalSec * 1000)
       return 0
+    | _ ->
+      let names =
+        match args with
+        | [ "--all" ] -> creativeFnNamesInCache ()
+        | _ -> args
+      if List.isEmpty names then
+        eprintfn "%s usage: dark pdd refine <fnName> | --all | --watch [sec]" prefix
+        return 1
+      else
+        let mutable improved = 0
+        let mutable unchanged = 0
+        for name in names do
+          eprintfn "%s %s %s" prefix (dim "refining") (green name)
+          let! r = Mat.refineFn name
+          match r with
+          | Error e ->
+            eprintfn "%s %s %s" prefix (red "  error") (dim e)
+          | Ok(newBody, oldBody, didImprove) ->
+            if didImprove then
+              improved <- improved + 1
+              let preview = newBody.Substring(0, min 80 newBody.Length)
+              eprintfn "%s %s %s %s" prefix
+                (green "  improved")
+                (dim (sprintf "(%d → %d chars)" oldBody.Length newBody.Length))
+                (dim preview)
+            else
+              unchanged <- unchanged + 1
+              eprintfn "%s %s" prefix (dim "  unchanged (new body not richer)")
+        eprintfn ""
+        eprintfn "%s %s %d improved, %d unchanged" prefix (dim "summary:") improved unchanged
+        return 0
   }
 
 
@@ -838,7 +907,7 @@ let tryHandle
       eprintfn "[pdd]   dark pdd demo <fnName> <Int64-arg>"
       eprintfn "[pdd]   dark pdd cache (list|clear|paths)"
       eprintfn "[pdd]   dark pdd trace (list|last)"
-      eprintfn "[pdd]   dark pdd refine <fnName> | --all"
+      eprintfn "[pdd]   dark pdd refine <fnName> | --all | --watch [sec]"
       return Some 1
     | _ -> return None
   }
