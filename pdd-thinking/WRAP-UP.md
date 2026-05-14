@@ -149,19 +149,18 @@ pipe-in-lambda), tuple-heavy bodies + invented stdlib names
    source. Should have been an EmbeddedResource from day 1.
 5. **No LLM stub harness.** Means CI can't test materialization
    end-to-end. Every CI run skips the most important code path.
-6. **Conflating Pending with "no fn at all" for the first two
-   weeks.** Adding PackageID late meant the runtime briefly had a
-   confused mental model where "fn missing" and "fn pending"
-   weren't distinct. PackageID-first would have been cleaner.
+6. **Conflating Pending with "no fn at all" early on.** Adding
+   PackageID late meant the runtime briefly had a confused mental
+   model where "fn missing" and "fn pending" weren't distinct.
+   PackageID-first would have been cleaner.
 
 ## Surprises
 
-1. **Match-site work was 15+ sites — better than the predicted 74,
-   worse than the first count of 9.** Pending alone needed 9 arms
-   (vs the panicked 74 we feared). Adding PackageID alongside
-   roughly doubled that. Mechanical but non-trivial — and that's
-   *with* a sympathetic type system. A less-mature one would have
-   meant 30+ sites.
+1. **The match-site work was 15+ sites — less explosive than
+   feared (we predicted 74), but more than the first count of 9
+   for Pending alone.** Adding PackageID alongside roughly doubled
+   the arms. Mechanical but non-trivial — and that's *with* a
+   sympathetic type system. A less-mature one would have meant 30+.
 2. **Recursion was easier than expected.** Canonicalized handles
    alone solve it. No cycle-detection, no depth limit, no
    `currentlyMaterializing` set. The handle-identity is the trick.
