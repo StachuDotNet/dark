@@ -303,7 +303,16 @@ let private parallelMaterializer
       match inFlight.TryGetValue p.handle with
       | true, t ->
         let! fn = t |> Async.AwaitTask |> Async.StartAsTask
-        return fn
+        // If the in-flight task failed (rate limit, network, etc.) and
+        // returned None, drop the entry so the NEXT request retries
+        // instead of permanently caching the failure.
+        if Option.isNone fn then
+          inFlight.TryRemove(p.handle) |> ignore<bool * Task<_>>
+          // Retry lazily via the materializer directly.
+          let! retry = Mat.materialize p
+          return retry
+        else
+          return fn
       | false, _ ->
         // Wasn't pre-kicked-off (e.g. recursive materialization). Fall
         // back to the standard materializer; this preserves correctness.
