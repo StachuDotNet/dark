@@ -1108,6 +1108,69 @@ let private handleStatus () : Task<int> =
   }
 
 
+/// Handle `dark pdd revert <fnName> [rev]`.
+/// Rev: 1-indexed working rev to restore. Default: previous (rev count - 1).
+/// Appends the chosen body as a NEW rev (so history stays complete) —
+/// effectively "redo at older point". Hot-reload propagates immediately.
+let private handleRevert (args : List<string>) : Task<int> =
+  task {
+    let prefix = dim "[pdd]"
+    match args with
+    | [ name ] | [ name; _ ] ->
+      let revs = allWorkingRevs name
+      match revs with
+      | []
+      | [ _ ] ->
+        eprintfn "%s '%s' has < 2 revs, nothing to revert to" prefix name
+        return 1
+      | _ ->
+        let target =
+          match args with
+          | [ _ ] -> revs.Length - 2 + 1  // 1-indexed previous
+          | [ _; r ] ->
+            match System.Int32.TryParse r with
+            | true, n -> n
+            | _ -> -1
+          | _ -> -1
+        if target < 1 || target > revs.Length then
+          eprintfn "%s rev %d out of range (1..%d)" prefix target revs.Length
+          return 1
+        else
+          let body = revs[target - 1]
+          // Read the latest sig from promoted.jsonl for this name.
+          let path = "rundir/pdd-cache/promoted.jsonl"
+          let latestSig =
+            System.IO.File.ReadAllLines path
+            |> Array.toList
+            |> List.choose (fun line ->
+              try
+                let doc = System.Text.Json.JsonDocument.Parse line
+                let r = doc.RootElement
+                if r.GetProperty("name").GetString() = name then
+                  Some(r.GetProperty("sig_").GetString())
+                else None
+              with _ -> None)
+            |> List.tryLast
+            |> Option.defaultValue ""
+          // Append the chosen body as the newest rev.
+          let payload =
+            System.Text.Json.JsonSerializer.Serialize(
+              {| name = name; sig_ = latestSig; body = body |}
+            )
+          System.IO.File.AppendAllText(path, payload + "\n")
+          eprintfn "%s %s reverted to rev %d (%d chars)" prefix
+            (green "✓") target body.Length
+          eprintfn "%s   %s" prefix
+            (dim (body.Substring(0, min 100 body.Length)))
+          eprintfn "%s   (appended as new rev %d; hot-reload will pick up)" prefix
+            (revs.Length + 1)
+          return 0
+    | _ ->
+      eprintfn "%s usage: dark pdd revert <fnName> [rev=previous]" prefix
+      return 1
+  }
+
+
 /// Handle `dark pdd trace list` / `last`.
 let private handleTrace (subcmd : string) : Task<int> =
   task {
@@ -1239,6 +1302,9 @@ let tryHandle
     | "pdd" :: "status" :: _ ->
       let! code = handleStatus ()
       return Some code
+    | "pdd" :: "revert" :: rest ->
+      let! code = handleRevert rest
+      return Some code
     | "pdd" :: _ ->
       eprintfn "[pdd] usage:"
       eprintfn "[pdd]   dark prompt \"<free-text request>\""
@@ -1251,6 +1317,7 @@ let tryHandle
       eprintfn "[pdd]   dark pdd history <fnName>"
       eprintfn "[pdd]   dark pdd diff <fnName>"
       eprintfn "[pdd]   dark pdd status"
+      eprintfn "[pdd]   dark pdd revert <fnName> [rev]"
       return Some 1
     | _ -> return None
   }
