@@ -359,7 +359,17 @@ let private writeIndex (dir : string) : unit =
             + pill "prog" e.inProgress "...."
           let displayExpr =
             if String.IsNullOrEmpty e.topLevel then "(no top-level)"
-            else htmlEscape e.topLevel
+            else
+              // Truncate long top-levels (e.g. the 32-route http-server
+              // expression is 24K chars). Keep the head + a "… (Nk total)"
+              // marker so the index stays compact.
+              let s = e.topLevel
+              if s.Length <= 200 then htmlEscape s
+              else
+                let kb = s.Length / 1024
+                sprintf "%s<span style=\"color:#666\">… (%dk total)</span>"
+                  (htmlEscape (s.Substring(0, 200)))
+                  kb
           sb.AppendFormat(
             "<tr><td class=\"id\"><a href=\"{0}.html\">{0}</a></td><td class=\"{1}\">{2}</td><td class=\"expr\">{3}</td><td>{4}</td><td>{5}</td><td>{6} ms</td></tr>",
             htmlEscape e.id,
