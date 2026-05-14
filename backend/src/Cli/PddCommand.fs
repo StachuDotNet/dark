@@ -842,6 +842,92 @@ let private handlePromote (args : List<string>) : Task<int> =
   }
 
 
+/// Handle `dark pdd history <fnName>` — show every body this fn has had.
+/// Reads both the working-copy stream (promoted.jsonl, append-only) and
+/// the committed-snapshot stream (promoted_hashes.jsonl). Prints a unified
+/// timeline: oldest first, with `~` for working versions and `✓` + hash
+/// for committed ones.
+let private handleHistory (args : List<string>) : Task<int> =
+  task {
+    let prefix = dim "[pdd]"
+    match args with
+    | [ name ] ->
+      let promotedPath = "rundir/pdd-cache/promoted.jsonl"
+      let hashesPath = "rundir/pdd-cache/promoted_hashes.jsonl"
+
+      // Working-copy revisions (in order of appearance)
+      let working =
+        if not (System.IO.File.Exists promotedPath) then []
+        else
+          System.IO.File.ReadAllLines promotedPath
+          |> Array.toList
+          |> List.choose (fun line ->
+            try
+              let doc = System.Text.Json.JsonDocument.Parse line
+              let r = doc.RootElement
+              if r.GetProperty("name").GetString() = name then
+                Some(r.GetProperty("body").GetString())
+              else None
+            with _ -> None)
+
+      // Committed snapshots (in order)
+      let committed =
+        if not (System.IO.File.Exists hashesPath) then []
+        else
+          System.IO.File.ReadAllLines hashesPath
+          |> Array.toList
+          |> List.choose (fun line ->
+            try
+              let doc = System.Text.Json.JsonDocument.Parse line
+              let r = doc.RootElement
+              if r.GetProperty("name").GetString() = name then
+                Some
+                  ( r.GetProperty("hash").GetString(),
+                    r.GetProperty("body").GetString(),
+                    r.GetProperty("promotedAt").GetString())
+              else None
+            with _ -> None)
+
+      if List.isEmpty working && List.isEmpty committed then
+        eprintfn "%s no history for '%s'" prefix name
+        return 1
+      else
+        eprintfn "%s %s %s" prefix (dim "history for") (green name)
+        eprintfn "%s   %s %d working revs, %d committed snapshots"
+          prefix
+          (dim "→")
+          (List.length working)
+          (List.length committed)
+        eprintfn ""
+
+        // Print working revs (refines)
+        for i, body in List.indexed working do
+          let marker = if i = working.Length - 1 then green " (current)" else ""
+          let preview = body.Substring(0, min 100 body.Length)
+          eprintfn "  %s %s  (%d chars)%s"
+            (yellow "~")
+            (dim (sprintf "rev %d" (i + 1)))
+            body.Length
+            marker
+          eprintfn "    %s" (dim preview)
+
+        if not (List.isEmpty committed) then
+          eprintfn ""
+          for h, body, ts in committed do
+            let preview = body.Substring(0, min 100 body.Length)
+            eprintfn "  %s %s %s  (%d chars)"
+              (green "✓")
+              (green h)
+              (dim ts)
+              body.Length
+            eprintfn "    %s" (dim preview)
+        return 0
+    | _ ->
+      eprintfn "%s usage: dark pdd history <fnName>" prefix
+      return 1
+  }
+
+
 /// Handle `dark pdd trace list` / `last`.
 let private handleTrace (subcmd : string) : Task<int> =
   task {
@@ -964,6 +1050,9 @@ let tryHandle
     | "pdd" :: "promote" :: rest ->
       let! code = handlePromote rest
       return Some code
+    | "pdd" :: "history" :: rest ->
+      let! code = handleHistory rest
+      return Some code
     | "pdd" :: _ ->
       eprintfn "[pdd] usage:"
       eprintfn "[pdd]   dark prompt \"<free-text request>\""
@@ -973,6 +1062,7 @@ let tryHandle
       eprintfn "[pdd]   dark pdd trace (list|last)"
       eprintfn "[pdd]   dark pdd refine <fnName> | --all | --watch [sec]"
       eprintfn "[pdd]   dark pdd promote <fnName> | --all | list"
+      eprintfn "[pdd]   dark pdd history <fnName>"
       return Some 1
     | _ -> return None
   }
