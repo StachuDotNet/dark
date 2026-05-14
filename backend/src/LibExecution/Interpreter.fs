@@ -325,6 +325,16 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
         // RecoveryPolicy.EmptyBody here.
         | Function(FQFnName.Pending p) ->
           uply {
+            // PDD hot-reload: ask the refresh hook for any fn bodies
+            // updated by `dark pdd refine` in another process. Mirrors
+            // them into pddIDFnCache so the next Apply uses the new body.
+            for (changedName, newFn) in pddRefreshHook () do
+              let cid =
+                pddIDRegistry.GetOrAdd(
+                  changedName,
+                  System.Func<string, System.Guid>(fun _ ->
+                    System.Guid.NewGuid()))
+              exeState.pddIDFnCache[cid] <- newFn
             // PDD: hot-reload check. If pddIDFnCache has a NEWER fn for this
             // name (set by refine), use that instead of the stale Pending
             // cache. This is what makes refine show up in a running server

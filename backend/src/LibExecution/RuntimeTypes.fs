@@ -158,6 +158,9 @@ let pddIDRegistry :
   System.Collections.Concurrent.ConcurrentDictionary<string, System.Guid> =
   System.Collections.Concurrent.ConcurrentDictionary()
 
+// pddRefreshHook is defined further down (after PackageFn) so it can
+// return PackageFn typed values without forward-ref gymnastics.
+
 
 /// TODO include "ParseTime" in name (requires a lot of boring work in many files)
 type NameResolutionError =
@@ -1655,6 +1658,18 @@ type BuiltInValue =
     description : string
     deprecated : Deprecation<FQValueName.FQValueName>
     body : Dval }
+
+/// PDD hot-reload hook. PDDMaterializer installs a callback here that
+/// (a) detects if rundir/pdd-cache/promoted.jsonl has been mutated since
+/// last check, and (b) returns (name × fresh PackageFn) for any entry
+/// that changed. The Interpreter calls this on each Pending Apply so
+/// `dark pdd refine` (running in a separate process) shows up in a
+/// running server without restart.
+///
+/// Default: no-op. PDDMaterializer overwrites at startup.
+let mutable pddRefreshHook : unit -> List<string * PackageFn.PackageFn> =
+  fun () -> []
+
 
 /// A built-in standard library function
 ///

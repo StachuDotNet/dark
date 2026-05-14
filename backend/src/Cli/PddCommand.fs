@@ -785,6 +785,10 @@ let tryHandle
   : Task<int option> =
   task {
     installLibParserHook ()
+    // PDD hot-reload: have the running server poll promoted.jsonl on
+    // every Pending Apply so `dark pdd refine` in another process
+    // becomes visible without a restart.
+    Mat.installPddRefreshHook ()
     match args with
     | "prompt" :: rest ->
       // `dark prompt "..."` — high-level surface: free-text in,

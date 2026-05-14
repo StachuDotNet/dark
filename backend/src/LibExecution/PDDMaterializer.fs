@@ -1337,6 +1337,13 @@ let private fnFromBody
 let private cachePath = "rundir/pdd-cache/promoted.jsonl"
 let private decomposeCachePath = "rundir/pdd-cache/decomposed.jsonl"
 
+/// Hot-reload bookkeeping. `pddRefreshHook` (from RuntimeTypes) is set by
+/// `installPddRefreshHook` to: check the cachePath's mtime; if newer than
+/// last poll, re-read new entries, lower their bodies, return (name, fn)
+/// pairs for the Interpreter to write into pddIDFnCache.
+let mutable private lastCacheMtime : DateTime = DateTime.MinValue
+let mutable private hookInstalled = false
+
 /// In-memory mirror of the cache file. Loaded lazily on first lookup;
 /// updated on every successful materialization.
 let private promotedCache : System.Collections.Concurrent.ConcurrentDictionary<string, GeneratedFn> =
@@ -1884,3 +1891,84 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
       let initialPrompt = buildUserPrompt p
       return! attempt 1 initialPrompt
   }
+
+
+/// Install the hot-reload hook (idempotent). Polls the cache file's
+/// mtime. On every Pending Apply, returns (name, PackageFn) pairs for
+/// entries that have appeared OR changed since the last poll. The
+/// Interpreter writes these into pddIDFnCache so the running server
+/// picks up `dark pdd refine`-mutated bodies without restart.
+let installPddRefreshHook () : unit =
+  if not hookInstalled then
+    hookInstalled <- true
+    RT.pddRefreshHook <- fun () ->
+      try
+        if not (System.IO.File.Exists cachePath) then []
+        else
+          let mtime = System.IO.File.GetLastWriteTimeUtc cachePath
+          if mtime <= lastCacheMtime then []
+          else
+            lastCacheMtime <- mtime
+            // Re-read whole file; collect latest entry per name (the
+            // file is append-only; later entries override earlier ones).
+            let latest = System.Collections.Generic.Dictionary<string, GeneratedFn>()
+            for line in System.IO.File.ReadAllLines cachePath do
+              if not (System.String.IsNullOrWhiteSpace line) then
+                try
+                  let doc = JsonDocument.Parse(line)
+                  let r = doc.RootElement
+                  let name = r.GetProperty("name").GetString()
+                  let sig_ = r.GetProperty("sig_").GetString()
+                  let body = r.GetProperty("body").GetString()
+                  latest[name] <- { sig_ = sig_; body = body; tests = [] }
+                with _ -> ()
+            // For each entry, build a PackageFn via the body parser (if
+            // installed). Skip entries we can't lower. Only return ones
+            // that differ from the in-memory promotedCache.
+            let mutable changed = []
+            for kv in latest do
+              let name = kv.Key
+              let gen = kv.Value
+              let cached =
+                match promotedCache.TryGetValue name with
+                | true, c -> Some c
+                | _ -> None
+              if Option.map (fun (c : GeneratedFn) -> c.body) cached <> Some gen.body then
+                // Lower via LibParser if installed.
+                match bodyParser, parseFullSig gen.sig_ with
+                | Some parser, Some(typedParams, returnType) ->
+                  let toParse =
+                    if List.isEmpty typedParams then gen.body
+                    else
+                      let paramList =
+                        typedParams |> List.map fst |> String.concat " "
+                      sprintf "fun %s -> %s" paramList
+                        (gen.body.Replace("\r\n", " ").Replace("\n", " "))
+                  // Run the parser synchronously (it's a Ply<Result<>>).
+                  let parsed =
+                    parser toParse |> Ply.toTask |> _.Result
+                  match parsed with
+                  | Ok ptExpr ->
+                    try
+                      let bodyExpr =
+                        if List.isEmpty typedParams then ptExpr
+                        else
+                          match ptExpr with
+                          | PT.ELambda(_, _, inner) -> inner
+                          | _ -> ptExpr
+                      // Use the existing pddIDRegistry to find the stable
+                      // handle for this name.
+                      let stableId =
+                        RT.pddIDRegistry.GetOrAdd(
+                          name,
+                          System.Func<string, System.Guid>(fun _ ->
+                            System.Guid.NewGuid()))
+                      let fn =
+                        fnFromTypedBody name stableId typedParams returnType bodyExpr
+                      promotedCache[name] <- gen
+                      changed <- (name, fn) :: changed
+                    with _ -> ()
+                  | Error _ -> ()
+                | _ -> ()
+            changed
+      with _ -> []
