@@ -1013,6 +1013,101 @@ let private handleDiff (args : List<string>) : Task<int> =
   }
 
 
+/// Handle `dark pdd status` — read-only health snapshot.
+/// Shows: how many fns are in the cache, how many revs total, how many
+/// committed snapshots, recent session HTML paths.
+let private handleStatus () : Task<int> =
+  task {
+    let prefix = dim "[pdd]"
+    let promotedPath = "rundir/pdd-cache/promoted.jsonl"
+    let hashesPath = "rundir/pdd-cache/promoted_hashes.jsonl"
+    let decomposedPath = "rundir/pdd-cache/decomposed.jsonl"
+    let viewDir = "rundir/pdd-view"
+
+    // Working-copy state: per-fn rev count.
+    let workingByName =
+      System.Collections.Generic.Dictionary<string, int>()
+    if System.IO.File.Exists promotedPath then
+      for line in System.IO.File.ReadAllLines promotedPath do
+        if not (System.String.IsNullOrWhiteSpace line) then
+          try
+            let doc = System.Text.Json.JsonDocument.Parse line
+            let n = doc.RootElement.GetProperty("name").GetString()
+            workingByName[n] <-
+              (if workingByName.ContainsKey n then workingByName[n] else 0) + 1
+          with _ -> ()
+    let totalRevs =
+      workingByName.Values |> Seq.sum
+    let multiRevFns =
+      workingByName |> Seq.filter (fun kv -> kv.Value > 1) |> Seq.length
+
+    // Committed snapshots
+    let committedByName =
+      System.Collections.Generic.Dictionary<string, int>()
+    if System.IO.File.Exists hashesPath then
+      for line in System.IO.File.ReadAllLines hashesPath do
+        if not (System.String.IsNullOrWhiteSpace line) then
+          try
+            let doc = System.Text.Json.JsonDocument.Parse line
+            let n = doc.RootElement.GetProperty("name").GetString()
+            committedByName[n] <-
+              (if committedByName.ContainsKey n then committedByName[n] else 0) + 1
+          with _ -> ()
+    let totalCommitted = committedByName.Values |> Seq.sum
+
+    // Decompose entries
+    let decomposes =
+      if System.IO.File.Exists decomposedPath then
+        System.IO.File.ReadAllLines decomposedPath |> Array.length
+      else 0
+
+    // Sessions
+    let sessions =
+      if System.IO.Directory.Exists viewDir then
+        System.IO.Directory.GetFiles(viewDir, "*.html").Length
+      else 0
+    let latestSession =
+      if System.IO.Directory.Exists viewDir then
+        System.IO.Directory.GetFiles(viewDir, "*.html")
+        |> Array.map (fun p -> p, System.IO.File.GetLastWriteTime p)
+        |> Array.sortByDescending snd
+        |> Array.tryHead
+      else None
+
+    eprintfn "%s %s" prefix (green "PDD status")
+    eprintfn ""
+    eprintfn "%s %s" prefix (dim "fns in working cache (promoted.jsonl):")
+    eprintfn "%s   %d unique fns, %d total revs" prefix workingByName.Count totalRevs
+    eprintfn "%s   %d fns have > 1 rev (have been refined)" prefix multiRevFns
+    eprintfn ""
+    eprintfn "%s %s" prefix (dim "committed snapshots (promoted_hashes.jsonl):")
+    eprintfn "%s   %d unique fns, %d total snapshots" prefix committedByName.Count totalCommitted
+    eprintfn ""
+    eprintfn "%s %s" prefix (dim "decompose-cache (free-text → expr):")
+    eprintfn "%s   %d entries" prefix decomposes
+    eprintfn ""
+    eprintfn "%s %s" prefix (dim "sessions (HTML views):")
+    eprintfn "%s   %d total" prefix sessions
+    match latestSession with
+    | Some(p, t) ->
+      eprintfn "%s   latest: %s (%s)" prefix (dim p) (dim (t.ToString("HH:mm:ss")))
+    | None -> ()
+
+    // Top 5 most-refined fns
+    if multiRevFns > 0 then
+      eprintfn ""
+      eprintfn "%s %s" prefix (dim "most-refined fns:")
+      workingByName
+      |> Seq.sortByDescending (fun kv -> kv.Value)
+      |> Seq.truncate 5
+      |> Seq.iter (fun kv ->
+        eprintfn "%s   %s %s" prefix
+          (green (sprintf "%2d" kv.Value))
+          (dim kv.Key))
+    return 0
+  }
+
+
 /// Handle `dark pdd trace list` / `last`.
 let private handleTrace (subcmd : string) : Task<int> =
   task {
@@ -1141,6 +1236,9 @@ let tryHandle
     | "pdd" :: "diff" :: rest ->
       let! code = handleDiff rest
       return Some code
+    | "pdd" :: "status" :: _ ->
+      let! code = handleStatus ()
+      return Some code
     | "pdd" :: _ ->
       eprintfn "[pdd] usage:"
       eprintfn "[pdd]   dark prompt \"<free-text request>\""
@@ -1152,6 +1250,7 @@ let tryHandle
       eprintfn "[pdd]   dark pdd promote <fnName> | --all | list"
       eprintfn "[pdd]   dark pdd history <fnName>"
       eprintfn "[pdd]   dark pdd diff <fnName>"
+      eprintfn "[pdd]   dark pdd status"
       return Some 1
     | _ -> return None
   }
