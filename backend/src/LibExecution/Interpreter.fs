@@ -1112,7 +1112,31 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
                 |> List.map (fun dv ->
                   runtimeArgTypeStr (Dval.toValueType dv))
               pendingArgTypeHints[p.handle] <- runtimeTypes
-              match! exeState.fns.materialize p with
+              // PDD hot-reload: call the refresh hook FIRST and check
+              // pddIDFnCache before materializing. If refine updated the
+              // body in another process, we use the new version. Without
+              // this, materialize might return a stale fn from its own
+              // in-memory promotedCache and overwrite our hot-reloaded
+              // pddIDFnCache entry.
+              for (changedName, newFn) in pddRefreshHook () do
+                let cid =
+                  pddIDRegistry.GetOrAdd(
+                    changedName,
+                    System.Func<string, System.Guid>(fun _ ->
+                      System.Guid.NewGuid()))
+                exeState.pddIDFnCache[cid] <- newFn
+              let stableId =
+                pddIDRegistry.GetOrAdd(
+                  p.name,
+                  System.Func<string, System.Guid>(fun _ ->
+                    System.Guid.NewGuid()))
+              let! materialized =
+                uply {
+                  match exeState.pddIDFnCache.TryGetValue stableId with
+                  | true, fn -> return Some fn
+                  | false, _ -> return! exeState.fns.materialize p
+                }
+              match materialized with
               | None -> return RTE.FnNotFound(FQFnName.Pending p) |> raiseRTE
               | Some fn ->
                 let allArgs =
