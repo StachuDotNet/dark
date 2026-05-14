@@ -105,8 +105,11 @@ let private cssStyles = """
   .event { padding: 3px 0; border-bottom: 1px solid #2a2a2a; }
   .event-ts { color: #666; margin-right: 8px; }
   .header-stamp { color: #555; font-size: 11px; }
-  .top-level { background: #0f1f0f; border: 1px solid #305030; padding: 14px 16px; margin-bottom: 20px; border-radius: 4px; font-size: 15px; white-space: pre-wrap; }
+  .top-level { background: #0f1f0f; border: 1px solid #305030; padding: 14px 16px; margin-bottom: 20px; border-radius: 4px; font-size: 15px; white-space: pre-wrap; word-break: break-word; }
   .top-level .label { color: #555; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+  details.top-level summary { cursor: pointer; list-style: none; }
+  details.top-level summary::-webkit-details-marker { display: none; }
+  details.top-level[open] summary { margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #2a3a2a; }
   .annot { padding: 0 4px; border-radius: 3px; font-weight: bold; }
   .annot.in-progress { background: #4a3a00; color: #e0c060; }
   .annot.real { background: #053515; color: #6fcf90; }
@@ -141,6 +144,7 @@ let private renderHtml (session : Session) : string =
   // Top-level expression with inline pending-fn annotations.
   // Walk each fn name in session.fns and wrap matches in <span class="annot ...">.
   if not (String.IsNullOrWhiteSpace session.topLevel) then
+    let originalLen = session.topLevel.Length
     let mutable rendered = htmlEscape session.topLevel
     for kv in session.fns do
       let fn = kv.Value
@@ -150,10 +154,20 @@ let private renderHtml (session : Session) : string =
       let pattern = @"\b" + escapedName + @"\b"
       let replacement = sprintf "<span class=\"annot %s\">%s</span>" cls (htmlEscape fn.name)
       rendered <- System.Text.RegularExpressions.Regex.Replace(rendered, pattern, replacement)
-    append "<div class=\"top-level\">\n"
-    append "<div class=\"label\">top-level expression</div>\n"
-    append rendered
-    append "\n</div>\n"
+    // Long top-levels (e.g. the 24K-char http-server expression) collapse
+    // by default; user clicks to expand. Short ones render inline as before.
+    if originalLen <= 800 then
+      append "<div class=\"top-level\">\n"
+      append "<div class=\"label\">top-level expression</div>\n"
+      append rendered
+      append "\n</div>\n"
+    else
+      append "<details class=\"top-level\">\n"
+      append (sprintf
+        "<summary><span class=\"label\">top-level expression</span> <span style=\"color:#888\">(%d chars · click to expand)</span></summary>\n"
+        originalLen)
+      append rendered
+      append "\n</details>\n"
 
   append "<div class=\"layout\">\n"
 
