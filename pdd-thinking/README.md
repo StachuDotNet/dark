@@ -171,7 +171,7 @@ OpenAI key at `~/.config/darklang/llm-keys.env` (mode 600). On run, sourced via 
 8. `EMPIRICAL.md` — what we verified empirically about LLM behavior + open questions + red-team.
 9. `DEMOS-AND-BUDGETS.md` — concrete programs to build toward + spike envelopes.
 10. `PDD-CLI-REFERENCE.md` — every `dark pdd ...` command.
-11. `REAL-PACKAGE-FNS.md`, `SCM-INTEGRATION.md` — scope sketches for Wave 3.
-12. `archive/` — earlier iteration-by-iteration docs. Don't read unless tracing a specific decision.
+11. `REAL-PACKAGE-FNS.md` — scope sketch for Wave 3.
+12. `archive/` — historical session reports, the original SCM-INTEGRATION sketch, and earlier iter-by-iter docs. Don't read unless tracing a specific decision.
 
 When in doubt: `git log pdd ^main` for the total diff. The total diff is the source of truth.

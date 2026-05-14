@@ -125,10 +125,11 @@ What goes:
 
 What we hold off on:
 
-- **The PackageID-on-promote forwarding question** (REPORT-overnight).
-  Whichever answer we pick, we live with for a long time. Best to
-  decide explicitly with a one-page design doc + discussion, not
-  let it leak in via implementation.
+- **The PackageID-on-promote forwarding question** (see Decision 2
+  in Cross-cutting decisions below). Whichever answer we pick, we
+  live with for a long time. Best to decide explicitly with a
+  one-page design doc + discussion, not let it leak in via
+  implementation.
 
 Why third: hardest, smallest. By the time we get here, Wave 1+2
 have been on main for a bit; we know what's actually used.
@@ -166,14 +167,22 @@ canonical types. Worth pinning before the first PR.
    (it's an ID); the alternatives stress the *role* (it's the working
    state). The latter reads better in match arms.
 
-2. **PackageID forwarding semantics** (REPORT-overnight's open question).
-   On promote, does the PackageID:
-   (a) stay alive forever (git working-copy semantics — committed hash
-       is just an *additional* state)
-   (b) become a redirect to the hash (subsequent edits fork to a new
-       PackageID — git branch semantics)
+2. **PackageID forwarding semantics.** When a PackageID is promoted to
+   a hash, what happens to in-flight callers that still hold a
+   reference to the PackageID's Guid?
+   - (a) **Stay alive forever.** PackageID slot persists; promote just
+     *adds* a hash-locked copy. Old refs keep working with the body as
+     it was at promote time. New refs can target the hash directly.
+     Git working-copy semantics — after `git commit`, the working copy
+     isn't frozen; it remains the live editable state, but HEAD now
+     points at the commit.
+   - (b) **Forward to hash.** PackageID becomes a redirect: any lookup
+     resolves to the hash from then on. Editing requires forking
+     (new PackageID), like branching.
    Lock before Wave 3 starts. My read: **(a)** is more honest to how
-   git actually behaves and lets the runtime stay simple.
+   git actually behaves and lets the runtime stay simple. The "ID
+   stays mutable until explicitly stopped" framing matches git's
+   working-copy model better than the "promote freezes the ID" framing.
 
 3. **Namespace for promoted fns.** `Stdlib.PDD.X`? `User.PDD.X`?
    `Pdd.X`? Or thread through whatever module the original Pending was

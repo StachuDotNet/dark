@@ -121,9 +121,10 @@ as a focused branch off `pdd`, with the dev DB isolated.
 
 Hold off until two things land:
 
-1. **A decision** on the PackageID-on-promote question
-   (REPORT-overnight.md): does the working copy stay editable
-   forever, or does promote forward all callers to the hash?
+1. **A decision** on the PackageID-on-promote question (see
+   `INTEGRATION-PLAN.md` §"Cross-cutting decisions", Decision 2):
+   does the working copy stay editable forever, or does promote
+   forward all callers to the hash?
 2. **A namespace strategy** for PDD-promoted fns. `Stdlib.PDD.X` or
    `User.PDD.X` or something — to keep promoted PDD fns from
    colliding with hand-authored ones.

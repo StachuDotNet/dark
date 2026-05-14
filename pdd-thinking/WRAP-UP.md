@@ -66,14 +66,15 @@ that are more interesting.
 - `EMPIRICAL.md` — LLM-behavior observations
 - `DEMOS-AND-BUDGETS.md` — concrete programs + envelopes
 - `PDD-CLI-REFERENCE.md` — every CLI command
-- `REAL-PACKAGE-FNS.md`, `SCM-INTEGRATION.md` — scope sketches
-- `REPORT-*.md` — historical session reports
-- **NEW reflection layer (this spike-end pass):**
+- `REAL-PACKAGE-FNS.md` — scope sketch for Wave 3
+- **Reflection layer (this spike-end pass):**
+  - `WRAP-UP.md` (this doc)
   - `SPIKE-LEARNINGS.md`
   - `INTEGRATION-PLAN.md`
   - `BIG-PICTURE.md`
   - `F-SHARP-TO-DARK.md`
-  - `WRAP-UP.md` (this doc)
+- `archive/` — historical session reports, the original SCM-INTEGRATION
+  sketch, and earlier iter-by-iter notes
 
 ## Prioritized TODOs — pick by time budget
 

@@ -287,9 +287,12 @@ small.
 
 ## See also (in this directory)
 
-- `SCM-INTEGRATION.md` — the architectural pivot
-- `REAL-PACKAGE-FNS.md` — what real promote integration needs
-- `REPORT-overnight.md` — the 7-iter overnight arc
+- `WRAP-UP.md` — closure doc + prioritized roadmap (start here)
+- `INTEGRATION-PLAN.md` — 3-wave plan to merge onto `main`
+- `BIG-PICTURE.md` — horizon scan: strategies, recursion, Dark strengths
+- `F-SHARP-TO-DARK.md` — self-hosting roadmap (F# → Dark)
+- `REAL-PACKAGE-FNS.md` — what real promote integration needs (Wave 3)
 - `PDD-CLI-REFERENCE.md` — every command
-- `INTEGRATION-PLAN.md` — what to merge into mainline (next iter)
-- `F-SHARP-TO-DARK.md` — self-hosting roadmap (next iter)
+- `archive/` — historical session reports + the SCM-INTEGRATION sketch
+  (the architectural pivot is captured live in the code + Decision 2
+  of INTEGRATION-PLAN)
