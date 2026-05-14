@@ -333,6 +333,8 @@ let private writeIndex (dir : string) : unit =
         DateTime.UtcNow.ToString("HH:mm:ss")
       )
       |> ignore<StringBuilder>
+      sb.Append "<p><a href=\"fns.html\">fn registry →</a></p>"
+      |> ignore<StringBuilder>
       if entries.Length = 0 then
         sb.Append "<p class=\"empty\">no sessions yet — run <code>dark prompt \"...\"</code></p>"
         |> ignore<StringBuilder>
@@ -374,6 +376,104 @@ let private writeIndex (dir : string) : unit =
       File.WriteAllText(Path.Combine(dir, "index.html"), sb.ToString())
   with _ -> ()
 
+/// Build a registry of PDD fns across all sessions. Reads
+/// `rundir/pdd-cache/promoted.jsonl` (working revs, append-only) and
+/// `rundir/pdd-cache/promoted_hashes.jsonl` (committed snapshots).
+/// Emits `<viewDir>/fns.html` — one row per unique fn with rev count,
+/// latest body length, committed-hash count + most recent hash.
+let private writeFnsIndex (viewDir : string) : unit =
+  try
+    let promotedPath = "rundir/pdd-cache/promoted.jsonl"
+    let hashesPath = "rundir/pdd-cache/promoted_hashes.jsonl"
+    if not (File.Exists promotedPath) then () else
+    // Per-fn aggregate: rev count, latest body length, latest body sample
+    let revs = System.Collections.Generic.Dictionary<string, int * int * string>()
+    for line in File.ReadAllLines promotedPath do
+      if not (String.IsNullOrWhiteSpace line) then
+        try
+          let doc = System.Text.Json.JsonDocument.Parse line
+          let r = doc.RootElement
+          let n = r.GetProperty("name").GetString()
+          let b = r.GetProperty("body").GetString()
+          let (c, _, _) =
+            match revs.TryGetValue n with
+            | true, x -> x
+            | _ -> (0, 0, "")
+          revs[n] <- (c + 1, b.Length, b)
+        with _ -> ()
+    let committed = System.Collections.Generic.Dictionary<string, int * string>()
+    if File.Exists hashesPath then
+      for line in File.ReadAllLines hashesPath do
+        if not (String.IsNullOrWhiteSpace line) then
+          try
+            let doc = System.Text.Json.JsonDocument.Parse line
+            let r = doc.RootElement
+            let n = r.GetProperty("name").GetString()
+            let h = r.GetProperty("hash").GetString()
+            let (c, _) =
+              match committed.TryGetValue n with
+              | true, x -> x
+              | _ -> (0, "")
+            committed[n] <- (c + 1, h)
+          with _ -> ()
+    let sb = StringBuilder()
+    sb.Append "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+    |> ignore<StringBuilder>
+    sb.Append "<title>PDD fns</title><meta http-equiv=\"refresh\" content=\"5\">"
+    |> ignore<StringBuilder>
+    sb.AppendFormat("<style>{0}</style>", cssStyles) |> ignore<StringBuilder>
+    sb.Append """<style>
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a2a2a; vertical-align: top; }
+      th { color: #888; font-weight: normal; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+      td.name a { color: #d4d4d4; font-weight: bold; text-decoration: none; }
+      td.body { color: #b0b0b0; font-family: "SF Mono", Consolas, monospace; max-width: 480px; word-break: break-word; }
+      .pill { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; margin-right: 4px; }
+      .pill-rev { background: #002545; color: #6080d0; }
+      .pill-hash { background: #053515; color: #6fcf90; }
+      .pill-fresh { background: #4a3a00; color: #e0c060; }
+    </style></head><body>"""
+    |> ignore<StringBuilder>
+    sb.AppendFormat(
+      "<h1>PDD fns <span class=\"header-stamp\">— {0} unique · refreshed {1}</span></h1>",
+      revs.Count,
+      DateTime.UtcNow.ToString("HH:mm:ss"))
+    |> ignore<StringBuilder>
+    if revs.Count = 0 then
+      sb.Append "<p class=\"empty\">no fns yet</p>" |> ignore<StringBuilder>
+    else
+      sb.Append "<p><a href=\"index.html\">← sessions</a></p>"
+      |> ignore<StringBuilder>
+      sb.Append "<table><thead><tr><th>name</th><th>revs</th><th>committed</th><th>size</th><th>preview</th></tr></thead><tbody>"
+      |> ignore<StringBuilder>
+      let sorted =
+        revs
+        |> Seq.sortBy (fun kv -> kv.Key)
+        |> Seq.toList
+      for kv in sorted do
+        let name = kv.Key
+        let revCount, latestLen, latestBody = kv.Value
+        let preview =
+          if latestBody.Length > 200 then latestBody.Substring(0, 200) + "…"
+          else latestBody
+        let commitInfo =
+          match committed.TryGetValue name with
+          | true, (n, h) ->
+            sprintf "<span class=\"pill pill-hash\">✓ %d</span> <span style=\"color:#888;font-family:monospace\">%s</span>" n h
+          | _ -> "<span class=\"pill pill-fresh\">~ working</span>"
+        sb.AppendFormat(
+          "<tr><td class=\"name\">{0}</td><td><span class=\"pill pill-rev\">{1}</span></td><td>{2}</td><td>{3}</td><td class=\"body\">{4}</td></tr>",
+          htmlEscape name,
+          revCount,
+          commitInfo,
+          latestLen,
+          htmlEscape preview)
+        |> ignore<StringBuilder>
+      sb.Append "</tbody></table>" |> ignore<StringBuilder>
+    sb.Append "</body></html>" |> ignore<StringBuilder>
+    File.WriteAllText(Path.Combine(viewDir, "fns.html"), sb.ToString())
+  with _ -> ()
+
 let private writeFile (session : Session) : unit =
   try
     let html = renderHtml session
@@ -382,6 +482,7 @@ let private writeFile (session : Session) : unit =
       Directory.CreateDirectory dir |> ignore<DirectoryInfo>
     File.WriteAllText(session.htmlPath, html)
     writeSidecar session
+    if not (String.IsNullOrEmpty dir) then writeFnsIndex dir
     if not (String.IsNullOrEmpty dir) then writeIndex dir
   with _ -> ()  // never break a run on a render failure
 
