@@ -49,7 +49,11 @@ HTML view at `rundir/pdd-view/<sessionId>.html` shows annotated function cards (
 | **H7** | Recursion via canonicalized handles + self-aware test runner | ✅ Live |
 | **H8** | Safety rails: wall-clock budget, per-handle LLM cap | ✅ Live (`PDD_BUDGET_MS`, cap=3) |
 | **H9** | Model override | ✅ Live (`PDD_MODEL`, defaults gpt-4o-mini) |
-| **bonus** | Parallel materialization scheduler | ✅ Live (all pendings kick off pre-eval) |
+| **H10** | `FQFnName.PackageID` variant — equal treatment to Package(hash) | ✅ Live (PT+RT, threaded through 15+ sites) |
+| **H11** | Hot-reload: refine in one process → running server picks up | ✅ Live (pddRefreshHook + file mtime polling) |
+| **H12** | `dark pdd refine --watch` background daemon | ✅ Live (round-robin, settle at 5 refines / 2 stuck) |
+| **H13** | `dark pdd promote <name>` — SCM commit step (PackageID → Package(hash)) | ✅ Live (28 fns promoted in demo) |
+| **bonus** | Parallel materialization scheduler | ✅ Live (cap via PDD_PARALLEL, retries on failure) |
 | **bonus** | Decompose-step cache | ✅ Live (`rundir/pdd-cache/decomposed.jsonl`) |
 
 ### Demos verified live (latest branch state)
@@ -112,6 +116,10 @@ Architecture:
 dark prompt "<free-text request>"        # decompose + run + visualize
 dark pdd run <dark-expression>           # skip decompose, parse user-written Dark
 dark pdd demo <fnName> <Int64-arg>       # hand-built Apply-of-Pending (test surface)
+dark pdd cache (list | clear | paths)    # promoted/decompose admin
+dark pdd trace (list | last)             # session HTML index
+dark pdd refine <name> | --all | --watch [sec]   # iterate creative fns
+dark pdd promote <name> | --all | list   # SCM commit step (PackageID → hash)
 ```
 
 OpenAI key at `~/.config/darklang/llm-keys.env` (mode 600). On run, sourced via `set -a; source <key file>; set +a` then `dark prompt ...`.
