@@ -120,6 +120,10 @@ dark pdd cache (list | clear | paths)    # promoted/decompose admin
 dark pdd trace (list | last)             # session HTML index
 dark pdd refine <name> | --all | --watch [sec]   # iterate creative fns
 dark pdd promote <name> | --all | list   # SCM commit step (PackageID → hash)
+dark pdd history <name>                  # working revs + committed snapshots
+dark pdd diff <name>                     # what `refine` last changed
+dark pdd revert <name> [rev]             # roll back to an earlier rev
+dark pdd status                          # one-glance environment snapshot
 ```
 
 OpenAI key at `~/.config/darklang/llm-keys.env` (mode 600). On run, sourced via `set -a; source <key file>; set +a` then `dark prompt ...`.

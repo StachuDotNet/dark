@@ -163,6 +163,21 @@ $ dark pdd diff renderForAI
   + ...
 ```
 
+### `dark pdd revert <fnName> [rev]`
+
+Roll back to an earlier working rev. Default `rev` is the previous
+(rev N-1). The chosen body is appended as the NEW current rev (so
+history stays complete) — effectively "redo at older point". Hot-reload
+propagates immediately to a running server.
+
+```
+$ dark pdd revert renderForAI 1
+[pdd] ✓ reverted to rev 1 (742 chars)
+[pdd]   "<html>" ++ "<head>" ++ ...
+[pdd]   (appended as new rev 4; hot-reload will pick up)
+```
+
+
 ### `dark pdd status`
 
 One-glance health snapshot:
