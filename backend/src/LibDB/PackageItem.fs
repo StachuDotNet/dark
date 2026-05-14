@@ -12,6 +12,9 @@ let fnPackageHash (fn : PT.FQFnName.FQFnName) : Option<Hash> =
   // PDD: Pending fns don't have package hashes yet — they're materialized
   // at call time and only get a hash after promotion.
   | PT.FQFnName.Pending _ -> None
+  // PDD: PackageID is mutable-by-name; no canonical content hash. Promotion
+  // would mint one (via the hash regime).
+  | PT.FQFnName.PackageID _ -> None
 
 
 let typePackageHash (typ : PT.FQTypeName.FQTypeName) : Option<Hash> =

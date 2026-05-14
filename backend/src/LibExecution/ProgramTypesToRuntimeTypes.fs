@@ -51,6 +51,15 @@ module FQFnName =
     // since a single PT Pending appears once at one site (unlike a
     // package fn which can be referenced N times).
     | PT.FQFnName.Pending p -> RT.FQFnName.fqPending p.name
+    // PDD: PT-level PackageID has only a name; PT2RT mints a stable
+    // Guid via the runtime's pddIDRegistry (name → Guid mapping).
+    | PT.FQFnName.PackageID p ->
+      let id =
+        LibExecution.RuntimeTypes.pddIDRegistry.GetOrAdd(
+          p.name,
+          System.Func<string, System.Guid>(fun _ -> System.Guid.NewGuid())
+        )
+      RT.FQFnName.PackageID { id = id; name = p.name }
 
 
 module NameResolutionError =

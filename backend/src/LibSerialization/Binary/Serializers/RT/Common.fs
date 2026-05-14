@@ -83,6 +83,11 @@ module FQFnName =
       // serialize/deserialize boundaries for PDD purposes.
       w.Write 2uy
       String.write w p.name
+    | FQFnName.PackageID p ->
+      // PDD: PackageID refs persisted by name; Guid re-minted via the
+      // name → Guid registry on read.
+      w.Write 3uy
+      String.write w p.name
 
   let read (r : BinaryReader) : FQFnName.FQFnName =
     match r.ReadByte() with
@@ -96,6 +101,9 @@ module FQFnName =
     | 2uy ->
       let name = String.read r
       FQFnName.fqPending name
+    | 3uy ->
+      let name = String.read r
+      FQFnName.fqPackageID name
     | b -> raiseFormatError $"Invalid FQFnName tag: {b}"
 
 

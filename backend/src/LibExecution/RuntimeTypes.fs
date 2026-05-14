@@ -98,9 +98,22 @@ module FQFnName =
   /// Day-1 keeps this minimal — no SignatureHint yet (see 02-libexecution-changes.md).
   type Pending = { handle : System.Guid; name : string }
 
+  /// An ID-resolved fn reference. Unlike Package (content-addressed by
+  /// hash, immutable), PackageID resolves to the CURRENT version of a
+  /// fn keyed by stable ID. Refining via `dark pdd refine` mutates the
+  /// body the ID points at; callers automatically use the new version
+  /// on next invocation. The ID-vs-hash distinction makes "evolving"
+  /// fns first-class alongside settled, hash-locked ones.
+  ///
+  /// Lifecycle:
+  ///   Pending (LLM in flight) → PackageID (materialized, evolving)
+  ///                          → Package (hash-locked, promoted)
+  type PackageID = { id : System.Guid; name : string }
+
   type FQFnName =
     | Builtin of Builtin
     | Package of Package
+    | PackageID of PackageID
     | Pending of Pending
 
   let assertBuiltinFnName (name : string) : unit =
@@ -117,6 +130,11 @@ module FQFnName =
 
   let fqPackage (h : string) : FQFnName = Package(Hash h)
 
+  /// Construct a fresh PackageID. Caller is responsible for ID-stability
+  /// (e.g. same name → reuse the same ID via a registry).
+  let fqPackageID (name : string) : FQFnName =
+    PackageID { id = System.Guid.NewGuid(); name = name }
+
   /// Construct a new Pending reference. Fresh Guid each call — caller
   /// is responsible for handle-stability (e.g. same name + scope → reuse).
   let fqPending (name : string) : FQFnName =
@@ -130,6 +148,14 @@ module FQFnName =
 /// "List<List<String>>", "?".
 let pendingArgTypeHints :
   System.Collections.Concurrent.ConcurrentDictionary<System.Guid, List<string>> =
+  System.Collections.Concurrent.ConcurrentDictionary()
+
+/// PDD: stable name → Guid mapping for PackageID refs. PT.PackageID has
+/// only a name; PT2RT looks up (or creates) the Guid here. Same name in
+/// different lowering passes → same Guid. Survives across runs via the
+/// pdd-cache JSONL writers below (loaded at startup).
+let pddIDRegistry :
+  System.Collections.Concurrent.ConcurrentDictionary<string, System.Guid> =
   System.Collections.Concurrent.ConcurrentDictionary()
 
 
@@ -1704,6 +1730,12 @@ and ExecutionState =
     /// the same handle skip re-materializing (which can be a real LLM call).
     pendingFnInstrCache :
       System.Collections.Concurrent.ConcurrentDictionary<System.Guid, InstrData>
+
+    /// PDD: PackageID fn cache. Maps ID → current PackageFn. Mutated by
+    /// the materializer (Pending → first version) and `dark pdd refine`
+    /// (subsequent versions). Lookups serve "the current body for this ID".
+    pddIDFnCache :
+      System.Collections.Concurrent.ConcurrentDictionary<System.Guid, PackageFn.PackageFn>
 
     /// Called to report exceptions
     reportException : ExceptionReporter

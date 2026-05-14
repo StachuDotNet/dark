@@ -339,6 +339,20 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
               | None -> return raiseRTE (RTE.FnNotFound(FQFnName.Pending p))
           }
 
+        // PDD: a PackageID fn (mutable by ID). Resolve to current version
+        // via pddIDFnCache (set by the materializer / refine path). Falls
+        // back to Pending semantics if not yet materialized.
+        | Function(FQFnName.PackageID p) ->
+          uply {
+            match exeState.pddIDFnCache.TryGetValue p.id with
+            | true, fn ->
+              return
+                { instructions = List.toArray fn.body.instructions
+                  resultReg = fn.body.resultIn }
+            | false, _ ->
+              return raiseRTE (RTE.FnNotFound(FQFnName.PackageID p))
+          }
+
 
       let mutable frameToPush = None
 
@@ -1122,6 +1136,51 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
                       executionPoint = pdEp }
                     |> Some
 
+            // PDD: applying a PackageID fn-value. Look up current version
+            // via pddIDFnCache. Mirrors Pending shape but skips
+            // materialization (PackageID is already-materialized; refine
+            // updates the cache entry).
+            | FQFnName.PackageID p ->
+              match exeState.pddIDFnCache.TryGetValue p.id with
+              | false, _ ->
+                return RTE.FnNotFound(FQFnName.PackageID p) |> raiseRTE
+              | true, fn ->
+                let allArgs =
+                  match applicable.argsSoFar with
+                  | [] -> newArgDvals
+                  | prev -> prev @ newArgDvals
+                let paramCount, argCount =
+                  (NEList.length fn.parameters, List.length allArgs)
+                if argCount > paramCount then
+                  return handleTooManyArgs paramCount argCount
+                else if argCount < paramCount then
+                  registers[putResultIn] <-
+                    { applicable with
+                        typeArgs = typeArgs
+                        argsSoFar = allArgs
+                        typeSymbolTable = tst }
+                    |> AppNamedFn
+                    |> DApplicable
+                else
+                  exeState.pddIDFnCache[p.id] <- fn
+                  let newFrameId = guuid ()
+                  if vm.stats.enabled then
+                    vm.stats.packageCallCount <- vm.stats.packageCallCount + 1L
+                    vm.stats.framePushCount <- vm.stats.framePushCount + 1L
+                  let pdEp = Function(FQFnName.PackageID p)
+                  frameToPush <-
+                    { id = newFrameId
+                      parent =
+                        Some(vm.currentFrameID, putResultIn, counter + 1)
+                      programCounter = 0
+                      registers =
+                        let r = Array.zeroCreate fn.body.registerCount
+                        allArgs |> List.iteri (fun i arg -> r[i] <- arg)
+                        r
+                      typeSymbolTable = currentFrame.typeSymbolTable
+                      executionPoint = pdEp }
+                    |> Some
+
         | RaiseNRE(names, nre) -> raiseRTE (RTE.ParseTimeNameResolution(names, nre))
 
         // CLEANUP: consider renaming this to something like "RequireExprToReturnUnit"
@@ -1184,6 +1243,13 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
               // checker accepts anything. Phase D will improve this once we
               // know the sig.
               | FQFnName.Pending _ -> Ply (TVariable "pdd_pending_return")
+
+              // PDD: PackageID return type — look up the current body in
+              // pddIDFnCache; otherwise accept-anything.
+              | FQFnName.PackageID p ->
+                match exeState.pddIDFnCache.TryGetValue p.id with
+                | true, fn -> Ply fn.returnType
+                | false, _ -> Ply (TVariable "pdd_packageid_return")
 
             let tst = currentFrame.typeSymbolTable
             match!

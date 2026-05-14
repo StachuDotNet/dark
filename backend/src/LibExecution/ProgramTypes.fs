@@ -160,9 +160,16 @@ module FQFnName =
   /// the LLM at call time.
   type Pending = { name : string }
 
+  /// PDD: a materialized fn referenced by stable ID rather than by
+  /// content-hash. The body the ID points at can change over time
+  /// (e.g. via `dark pdd refine`); callers see the current version.
+  /// At PT level there's no ID yet — just the name. PT2RT mints a Guid.
+  type PackageID = { name : string }
+
   type FQFnName =
     | Builtin of Builtin
     | Package of Package
+    | PackageID of PackageID
     | Pending of Pending
 
   let assertFnName (name : string) : unit =
@@ -176,6 +183,8 @@ module FQFnName =
     Builtin(builtIn name version)
 
   let fqPending (name : string) : FQFnName = Pending { name = name }
+
+  let fqPackageID (name : string) : FQFnName = PackageID { name = name }
 
   let package (h : string) : Package = Hash h
 

@@ -110,6 +110,7 @@ module FQFnName =
       | PT.FQFnName.Builtin u -> "Builtin", [ Builtin.toDT u ]
       | PT.FQFnName.Package u -> "Package", [ Package.toDT u ]
       | PT.FQFnName.Pending p -> "Pending", [ DString p.name ]
+      | PT.FQFnName.PackageID p -> "PackageID", [ DString p.name ]
     DEnum(typeName (), typeName (), [], caseName, fields)
 
   let fromDT (d : Dval) : PT.FQFnName.FQFnName =

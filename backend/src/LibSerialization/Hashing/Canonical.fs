@@ -137,6 +137,11 @@ let writeFQFnName
   | PT.FQFnName.Pending p ->
     w.Write(3uy)
     Common.String.write w p.name
+  | PT.FQFnName.PackageID p ->
+    // PDD: PackageID refs ARE mutable by design; their identity is the
+    // name, not the body hash. Hash includes only the name.
+    w.Write(4uy)
+    Common.String.write w p.name
 
 
 /// Write FQValueName, resolving deps and checking SCC substitution

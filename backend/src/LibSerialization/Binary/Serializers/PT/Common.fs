@@ -171,12 +171,18 @@ module FQFnName =
       // Pending (which is fine — they're materialized on call).
       w.Write(2uy)
       String.write w p.name
+    | FQFnName.PackageID p ->
+      // PDD: PackageID refs are name-keyed too; the Guid is minted from
+      // the name registry on reload.
+      w.Write(3uy)
+      String.write w p.name
 
   let read (r : BinaryReader) : FQFnName.FQFnName =
     match r.ReadByte() with
     | 0uy -> FQFnName.Builtin(Builtin.read r)
     | 1uy -> FQFnName.Package(Package.read r)
     | 2uy -> FQFnName.fqPending (String.read r)
+    | 3uy -> FQFnName.fqPackageID (String.read r)
     | b -> raiseFormatError $"Invalid FQFnName tag: {b}"
 
 

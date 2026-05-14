@@ -41,6 +41,7 @@ let createState
     lambdaInstrCache = System.Collections.Concurrent.ConcurrentDictionary()
     packageFnInstrCache = System.Collections.Concurrent.ConcurrentDictionary()
     pendingFnInstrCache = System.Collections.Concurrent.ConcurrentDictionary()
+    pddIDFnCache = System.Collections.Concurrent.ConcurrentDictionary()
 
     branchId = branchId
     program = program
@@ -319,6 +320,8 @@ let executionPointToString
       return $"Builtin Function {fnName.name}" // TODO actually fetch the fn, etc
     | RT.Function(RT.FQFnName.Pending p) ->
       return $"Pending Function {p.name}"
+    | RT.Function(RT.FQFnName.PackageID p) ->
+      return $"PackageID Function {p.name}"
     | RT.Lambda(_parent, exprId) -> return ("Lambda " + string exprId)
   }
 

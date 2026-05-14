@@ -145,6 +145,7 @@ module FQFnName =
       // PDD: Pending fn refs aren't yet round-tripped to/from DT.
       // Serialize as a plain string for now; deserialization not supported.
       | FQFnName.Pending p -> "Pending", [ DString p.name ]
+      | FQFnName.PackageID p -> "PackageID", [ DString p.name ]
     DEnum(typeName (), typeName (), [], caseName, fields)
 
   let fromDT (d : Dval) : FQFnName.FQFnName =
