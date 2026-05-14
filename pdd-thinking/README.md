@@ -161,10 +161,17 @@ OpenAI key at `~/.config/darklang/llm-keys.env` (mode 600). On run, sourced via 
 
 ## How to enter
 
-1. Read this file (you're here).
-2. `DESIGN.md` — sectioned design depth (LibExecution, scheduler, sig, tolerance, capabilities, human, tracing, HTML view).
-3. `EMPIRICAL.md` — what we verified empirically about LLM behavior + open questions + red-team.
-4. `DEMOS-AND-BUDGETS.md` — concrete programs to build toward + spike envelopes.
-5. `archive/` — earlier iteration-by-iteration docs. Don't read unless tracing a specific decision.
+1. Read this file (you're here) — *what's built and live*.
+2. **`WRAP-UP.md`** — spike closure document. Read second; it tells you what to do next.
+3. **`SPIKE-LEARNINGS.md`** — what worked, what didn't, surprises.
+4. **`INTEGRATION-PLAN.md`** — 3-wave plan to merge the spike onto `main`.
+5. **`BIG-PICTURE.md`** — horizon scan: what we haven't thought about, the recursive nature, Dark's strengths.
+6. **`F-SHARP-TO-DARK.md`** — 6-phase self-hosting roadmap (F# → Dark library).
+7. `DESIGN.md` — sectioned design depth (LibExecution, scheduler, sig, tolerance, capabilities, human, tracing, HTML view).
+8. `EMPIRICAL.md` — what we verified empirically about LLM behavior + open questions + red-team.
+9. `DEMOS-AND-BUDGETS.md` — concrete programs to build toward + spike envelopes.
+10. `PDD-CLI-REFERENCE.md` — every `dark pdd ...` command.
+11. `REAL-PACKAGE-FNS.md`, `SCM-INTEGRATION.md` — scope sketches for Wave 3.
+12. `archive/` — earlier iteration-by-iteration docs. Don't read unless tracing a specific decision.
 
 When in doubt: `git log pdd ^main` for the total diff. The total diff is the source of truth.
