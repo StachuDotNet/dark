@@ -325,18 +325,36 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
         // RecoveryPolicy.EmptyBody here.
         | Function(FQFnName.Pending p) ->
           uply {
-            match exeState.pendingFnInstrCache.TryGetValue p.handle with
-            | true, cached -> return cached
+            // PDD: hot-reload check. If pddIDFnCache has a NEWER fn for this
+            // name (set by refine), use that instead of the stale Pending
+            // cache. This is what makes refine show up in a running server
+            // without restart.
+            let stableId =
+              pddIDRegistry.GetOrAdd(
+                p.name,
+                System.Func<string, System.Guid>(fun _ ->
+                  System.Guid.NewGuid()))
+            match exeState.pddIDFnCache.TryGetValue stableId with
+            | true, fn ->
+              let instrData =
+                { instructions = List.toArray fn.body.instructions
+                  resultReg = fn.body.resultIn }
+              exeState.pendingFnInstrCache[p.handle] <- instrData
+              return instrData
             | false, _ ->
-              match! exeState.fns.materialize p with
-              | Some fn ->
-                let instrData =
-                  { instructions = List.toArray fn.body.instructions
-                    resultReg = fn.body.resultIn }
-                exeState.packageFnInstrCache[fn.hash] <- instrData
-                exeState.pendingFnInstrCache[p.handle] <- instrData
-                return instrData
-              | None -> return raiseRTE (RTE.FnNotFound(FQFnName.Pending p))
+              match exeState.pendingFnInstrCache.TryGetValue p.handle with
+              | true, cached -> return cached
+              | false, _ ->
+                match! exeState.fns.materialize p with
+                | Some fn ->
+                  let instrData =
+                    { instructions = List.toArray fn.body.instructions
+                      resultReg = fn.body.resultIn }
+                  exeState.packageFnInstrCache[fn.hash] <- instrData
+                  exeState.pendingFnInstrCache[p.handle] <- instrData
+                  exeState.pddIDFnCache[stableId] <- fn
+                  return instrData
+                | None -> return raiseRTE (RTE.FnNotFound(FQFnName.Pending p))
           }
 
         // PDD: a PackageID fn (mutable by ID). Resolve to current version
@@ -1114,6 +1132,16 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
                       resultReg = fn.body.resultIn }
                   exeState.packageFnInstrCache[fn.hash] <- instrData
                   exeState.pendingFnInstrCache[p.handle] <- instrData
+                  // PDD: also publish to pddIDFnCache keyed by the stable
+                  // name→Guid registry. This is what makes PackageID refs
+                  // resolve, and what the refine path will mutate.
+                  let stableId =
+                    pddIDRegistry.GetOrAdd(
+                      p.name,
+                      System.Func<string, System.Guid>(fun _ ->
+                        System.Guid.NewGuid())
+                    )
+                  exeState.pddIDFnCache[stableId] <- fn
                   let newFrameId = guuid ()
                   if vm.stats.enabled then
                     vm.stats.packageCallCount <- vm.stats.packageCallCount + 1L
