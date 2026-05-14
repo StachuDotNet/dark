@@ -1,5 +1,12 @@
 # PDD Design
 
+> **STATUS:** Written mid-spike. Sections describing design *intent*
+> are still accurate; sections describing *implementation status*
+> (especially §8 "promote/diff/replay are deferred" and §9 "not yet
+> wired to a CLI command") are out of date — `promote`, `diff`,
+> `refine`, `revert`, `history`, `status` shipped. For current state,
+> see `WRAP-UP.md` and the live capability table in `README.md`.
+
 Consolidated design notes. Sections roughly correspond to the original numbered docs (in `archive/` if you want trail-of-thought).
 
 ---

@@ -1,5 +1,13 @@
 # PDD Empirical Findings
 
+> **STATUS:** Written mid-spike. Findings on prompt iteration and
+> LLM behavior are durable; specifics like "cumulative ~$0.0012" and
+> "match-site count = 9" are stale (current: ~$0.30, 15+ sites with
+> PackageID). Several "open questions" in §4 are now answered:
+> Q10 (recursion termination) — solved via canonicalized handles;
+> Q1 (Pending in PT) — yes, lives in both PT and RT. For current
+> state see `WRAP-UP.md`.
+
 What we actually verified by running real LLM calls + what we're still unsure about + where the spike could fail.
 
 ---

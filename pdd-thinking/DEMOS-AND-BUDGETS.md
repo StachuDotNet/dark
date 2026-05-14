@@ -1,5 +1,14 @@
 # Demos & Spike Budgets
 
+> **STATUS:** Written mid-spike. Demo 1-3 + variants shipped (see
+> README.md "Live demos verified"). Demo 6 (HN headline sentiment)
+> still aspirational. Day-N target dates are obsolete (spike ran
+> ~2-3 days, not 14). Current verified demos: addOne, myAbs,
+> myMaxOf, factorial, fibonacci+factorial parallel, sumList,
+> doubleAll, longestRow, parseRows, 32-route darklang.com clone.
+> "Current spend" line is also stale (~$0.30 now, not $0.0012).
+> For current state see `WRAP-UP.md` and `README.md`.
+
 What we're building toward + the envelopes that keep the spike healthy.
 
 ---

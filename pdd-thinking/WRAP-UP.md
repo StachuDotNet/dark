@@ -9,23 +9,38 @@ it up; decide next moves. Supersedes the per-topic reflection docs
 
 ## TL;DR
 
-The interpreter materializes its own source code on demand via LLM.
-Pending fn references resolve to working `PackageID` slots; refining
-mutates the slot; `promote` snapshots a hash. 131 commits on the
-`pdd` branch (never pushed). Working end-to-end on creative HTML
-rendering, recursion, and CSV parsing. 57/57 tests green. ~$0.30
-spent across the whole spike.
+Source files are sketches; the LLM materializes function bodies on
+first call; the runtime caches, refines, and hot-reloads. End-to-end
+live across HTML rendering, recursion, and CSV parsing. 131 commits,
+57/57 tests, ~$0.30 total LLM spend. Branch never pushed.
 
-**The spike answered: can this work?** Yes.
-**The spike did not answer:** scale, multi-user UX, naming-vs-
-mechanism debates, the real `package_functions` integration, or
-whether the recursive UX delights or confuses. Those become the
-post-spike roadmap.
+**Three-state lifecycle:** `Pending` (unresolved name) → `PackageID`
+(working-copy slot, mutable) → `Package(hash)` (committed, immutable).
+`promote` is the boundary, like `git commit`.
+
+**Spike answered:** can this work? Yes.
+**Spike didn't answer:** does it scale, does the UX delight, does
+the recursive nature confuse, what's the right model tier, and
+which of the dozens of follow-ons matters most.
 
 **Bottom line:** Merge in 3 sequential waves (~3-4 weeks).
 Self-host the materializer in Dark itself over the following ~3
 months. Beyond that: PDD-as-build-tool, PDD-on-PDD recursion,
 `Pending` types, multi-LLM consensus, SCM-style branches and bisect.
+
+## Terminology (pinned)
+
+- **Sketch** — user-written source: names + sigs + (maybe) bodies, with holes
+- **Pending** — a fn reference without a body yet; identified by stable `handle : Guid`
+- **PackageID** — a materialized but mutable fn slot (the working copy)
+- **Package(hash)** — a committed, content-addressed fn (immutable)
+- **Materialize** — turn a `Pending` into a `PackageID` (typically via LLM)
+- **Refine** — mutate the body of a `PackageID` in place
+- **Promote** — snapshot a `PackageID`'s current body and mint a `Package(hash)`
+- **Trace** — append-only JSONL of execution events; the authoritative record
+- **Handle** — stable Guid identifying a Pending across speculation attempts
+- **Verifiable vs Creative** — fn classifier (by name prefix + return type)
+  that decides QA-test-gate vs thin-body retry policy
 
 ---
 
@@ -91,38 +106,40 @@ pipe-in-lambda), tuple-heavy bodies + invented stdlib names
 1. **The Pending → PackageID → Package(hash) lifecycle.** Three
    states map cleanly onto git's "unborn / working / commit" model.
    The naming hints at the role; the implementation respects it.
-   This is the architectural keeper.
+   The architectural keeper.
 2. **LibParser as the primary body parser, mini-parser as fallback.**
-   The mini-parser bought velocity early; switching primary-path to
+   The mini-parser bought velocity early; switching primary path to
    LibParser unlocked everything from `sumList` onward. Anything
    richer than `x + 1L` needs LibParser.
 3. **Canonicalized Pending handles.** name → single Guid per body.
    Without this, self-recursion thrashes the LLM endlessly. With it,
-   `factorial` materializes once and references itself.
-4. **Tests-as-gate, only for verifiable fns.** The verifiable/
-   creative classifier (`render*`/`generate*` heuristic + return
-   type) decides whether to gate on independent QA tests or just
-   thin-body retry. Wrong classification stalls; right
-   classification ships.
-5. **JSONL append-only cache (`promoted.jsonl`, `promoted_hashes.
-   jsonl`).** Crash-safe, log-structured, last-write-wins on read.
-   Hot-reload via mtime polling. Cheap and correct.
+   `factorial` materializes once and references itself — no
+   cycle-detection, no depth limit, no `currentlyMaterializing` set.
+   The handle-identity is enough.
+4. **Verifiable vs creative classifier + dual-gate policy.** Name-
+   prefix heuristic (`render*`, `generate*`) + return type splits
+   fns into two streams. Verifiable: independent QA tests gate
+   acceptance. Creative: thin-body retry only (no QA — hallucinated
+   "should contain 'Welcome'!" expectations destroy creative output).
+   The single most leverage-creating decision; without it every
+   creative renderer fails the gate and gets retried into junk.
+5. **JSONL append-only cache** (`promoted.jsonl`,
+   `promoted_hashes.jsonl`). Crash-safe, log-structured, last-write-
+   wins on read. Hot-reload via mtime polling. Cheap and correct.
 6. **Hot-reload via `pddRefreshHook`.** Refining in one process →
    running server picks up on next request. Surprisingly easy to
    wire; transformative for the demo loop.
-7. **The verifiable vs creative classifier.** The single most
-   leverage-creating heuristic. Without it, every creative renderer
-   fails the QA gate and gets retried into junk. With it, creative
-   fns ship rich bodies on first try.
-8. **The decompose cache.** Free-text "compute factorial of 5" →
+7. **The decompose cache.** Free-text "compute factorial of 5" →
    Dark expression. Caching this means second runs are sub-100ms
    and skip the LLM entirely.
 
 ## What didn't work
 
-1. **The first three weeks of regex mini-parser.** ~330 LoC across
-   5 cases. Every case was a workaround for "we don't have
-   LibParser yet." Should have been LibParser from week 1.
+1. **The regex mini-parser era.** ~330 LoC across 5 cases. Every
+   case was a workaround for "we don't have LibParser wired yet."
+   Each new shape (literal, identity, `x + 1L`, lambdas, lists)
+   needed its own regex. Should have skipped to LibParser
+   immediately.
 2. **Hardcoding everything to OpenAI's HTTP shape.** No abstraction.
    Should have been a `Stdlib.LLM.complete` shim from day 1.
 3. **The JSONL paths hardcoded in PDDMaterializer.fs.** Should
@@ -139,24 +156,24 @@ pipe-in-lambda), tuple-heavy bodies + invented stdlib names
 
 ## Surprises
 
-1. **The match-site work was 15+ sites, not the predicted 9.**
-   Adding PackageID alongside Pending meant nearly every place that
-   matched on `FQFnName` needed two new arms. Mechanical but
-   non-trivial — and that's *with* a sympathetic type system. A
-   less-mature one would have meant 30+ sites.
-2. **Recursion was easier than expected.** Once handles are
-   canonicalized by name, the "build a self-aware test runner"
-   pattern just falls out. No cycle-detection, no depth limit, no
-   `currentlyMaterializing` set. The handle-identity is enough.
-3. **Creative fns are *much* better when QA tests are skipped.**
-   QA tests for `renderHome` are LLM-hallucinated expectations
-   ("should contain 'Welcome'!"); enforcing them destroys the
-   real output. The verifiable/creative split isn't optional; it's
-   load-bearing.
-4. **Refine is more useful than initial generate.** First-shot
-   `renderHome` is OK; after 3 refine cycles it has nav,
-   structured sections, and richer semantics. The iteration loop
-   is where PDD earns its keep.
+1. **Match-site work was 15+ sites — better than the predicted 74,
+   worse than the first count of 9.** Pending alone needed 9 arms
+   (vs the panicked 74 we feared). Adding PackageID alongside
+   roughly doubled that. Mechanical but non-trivial — and that's
+   *with* a sympathetic type system. A less-mature one would have
+   meant 30+ sites.
+2. **Recursion was easier than expected.** Canonicalized handles
+   alone solve it. No cycle-detection, no depth limit, no
+   `currentlyMaterializing` set. The handle-identity is the trick.
+3. **Refine is more useful than initial generate.** First-shot
+   `renderHome` is OK; after 3 refine cycles it has nav, structured
+   sections, richer semantics. The iteration loop is where PDD earns
+   its keep — not the first materialization.
+4. **The match between LLM creative-fn behavior and `<details>`
+   collapse in the HTML view.** Long creative bodies are useful when
+   you want them but visually disruptive otherwise. `<details>` makes
+   the view scannable without losing information. Discovered late
+   (iter 12); should have been baseline.
 
 ---
 
@@ -774,15 +791,17 @@ expanded form: `pdd-thinking/archive/reflection-layer/`.
 Eat the spike. Pieces worth keeping → merge plan. Pieces worth
 dropping → archive. Horizon → mapped. Close the loop.
 
-The spike was the first 10% (proof). Integration plan is the next
-30% (foundation). Self-hosting roadmap is the next 40% (Dark-
-native). Big-picture roadmap is the last 20% (the recursive
-vision).
+| Time from now | State |
+|---|---|
+| 3 weeks | PDD opt-in on mainline |
+| 3 months | Prompts user-customizable (Phase 2 of self-host) |
+| 6 months | Materializer is Dark code; PDD-on-PDD real |
+| 1 year | PDD has its own SCM tooling, build mode, strategies beyond LLM |
 
-Three weeks from now: PDD opt-in on mainline.
-Three months from now: prompts user-customizable.
-Six months from now: materializer is Dark code; PDD-on-PDD real.
-One year from now: PDD has its own SCM tooling, build mode, and
-strategies beyond LLM.
+The spike was the proof. The integration plan is the foundation.
+The self-hosting roadmap is what makes PDD a *Dark* feature, not an
+F# feature. The big-picture roadmap is the recursive vision —
+where the materializer materializes itself, and SCM concepts (bisect,
+blame, branches) gain per-function granularity.
 
 The branch never pushed; the code merges deliberately.
