@@ -1893,6 +1893,90 @@ let materialize (p : RT.FQFnName.Pending) : Ply<Option<RT.PackageFn.PackageFn>> 
   }
 
 
+// --------------------------------------------------------------------
+// SCM-style promote: PackageID (working) → Package(hash) (committed)
+// --------------------------------------------------------------------
+
+let private promotedHashesPath = "rundir/pdd-cache/promoted_hashes.jsonl"
+
+/// Compute a SHA-256 hex digest of a body string. Used as the
+/// content-address of a promoted PDD fn. Truncated to 16 chars for
+/// readability; full hash retained internally.
+let private bodyHash (body : string) : string =
+  use sha = System.Security.Cryptography.SHA256.Create()
+  let bytes = System.Text.Encoding.UTF8.GetBytes(body)
+  let digest = sha.ComputeHash(bytes)
+  digest
+  |> Array.map (fun b -> b.ToString("x2"))
+  |> String.concat ""
+  |> fun s -> s.Substring(0, 16)
+
+type PromotedSnapshot =
+  { name : string
+    sig_ : string
+    body : string
+    hash : string
+    promotedAt : DateTime }
+
+/// Promote a PackageID-stage fn to a hash-locked Package. Reads the
+/// current cached body, computes its content hash, appends a snapshot
+/// to `promoted_hashes.jsonl`. The fn STAYS in promoted.jsonl too (so
+/// the running server can still serve it via PackageID); the snapshot
+/// is the immutable commit record. Returns Ok(snapshot) or Error.
+let promoteFn (name : string) : Task<Result<PromotedSnapshot, string>> =
+  task {
+    loadCacheOnce ()
+    match promotedCache.TryGetValue name with
+    | false, _ -> return Error(sprintf "no promoted fn named '%s'" name)
+    | true, gen ->
+      try
+        let h = bodyHash gen.body
+        let snap =
+          { name = name
+            sig_ = gen.sig_
+            body = gen.body
+            hash = h
+            promotedAt = DateTime.UtcNow }
+        let dir = System.IO.Path.GetDirectoryName promotedHashesPath
+        if not (System.IO.Directory.Exists dir) then
+          System.IO.Directory.CreateDirectory dir |> ignore<System.IO.DirectoryInfo>
+        let payload =
+          JsonSerializer.Serialize(
+            {| name = snap.name
+               sig_ = snap.sig_
+               body = snap.body
+               hash = snap.hash
+               promotedAt = snap.promotedAt.ToString("o") |}
+          )
+        System.IO.File.AppendAllText(promotedHashesPath, payload + "\n")
+        return Ok snap
+      with ex ->
+        return Error(sprintf "promote failed: %s" ex.Message)
+  }
+
+
+/// List all promoted snapshots (one per name × time). Returns newest-first.
+let listPromoted () : List<PromotedSnapshot> =
+  try
+    if not (System.IO.File.Exists promotedHashesPath) then []
+    else
+      System.IO.File.ReadAllLines promotedHashesPath
+      |> Array.toList
+      |> List.choose (fun line ->
+        try
+          let doc = JsonDocument.Parse(line)
+          let r = doc.RootElement
+          Some
+            { name = r.GetProperty("name").GetString()
+              sig_ = r.GetProperty("sig_").GetString()
+              body = r.GetProperty("body").GetString()
+              hash = r.GetProperty("hash").GetString()
+              promotedAt = DateTime.Parse(r.GetProperty("promotedAt").GetString()) }
+        with _ -> None)
+      |> List.sortByDescending (fun s -> s.promotedAt)
+  with _ -> []
+
+
 /// Install the hot-reload hook (idempotent). Polls the cache file's
 /// mtime. On every Pending Apply, returns (name, PackageFn) pairs for
 /// entries that have appeared OR changed since the last poll. The

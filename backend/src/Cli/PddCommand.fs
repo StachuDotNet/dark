@@ -781,6 +781,58 @@ let private handleRefine (args : List<string>) : Task<int> =
   }
 
 
+/// Handle `dark pdd promote <fnName>` / `--all` / `list`.
+/// PackageID (working/mutable) → Package(hash) (committed/immutable).
+/// Writes a snapshot to rundir/pdd-cache/promoted_hashes.jsonl.
+let private handlePromote (args : List<string>) : Task<int> =
+  task {
+    let prefix = dim "[pdd]"
+    match args with
+    | [ "list" ] ->
+      let snaps = Mat.listPromoted ()
+      if List.isEmpty snaps then
+        eprintfn "%s %s" prefix (dim "no promoted snapshots yet")
+        return 0
+      else
+        eprintfn "%s %s" prefix (dim "promoted snapshots (newest first):")
+        for s in snaps do
+          eprintfn "  %s %s %s %s"
+            (green s.hash)
+            (dim s.name)
+            (dim (s.promotedAt.ToString("HH:mm:ss")))
+            (dim (sprintf "(%d chars)" s.body.Length))
+        return 0
+    | _ ->
+      let names =
+        match args with
+        | [ "--all" ] -> creativeFnNamesInCache ()
+        | _ -> args
+      if List.isEmpty names then
+        eprintfn "%s usage: dark pdd promote <fnName> | --all | list" prefix
+        return 1
+      else
+        let mutable ok = 0
+        let mutable failed = 0
+        for name in names do
+          let! r = Mat.promoteFn name
+          match r with
+          | Error e ->
+            eprintfn "%s %s %s %s" prefix (red "  ✗") (dim name) (dim e)
+            failed <- failed + 1
+          | Ok snap ->
+            eprintfn "%s %s %s → %s %s"
+              prefix
+              (green "  ✓ promoted")
+              (dim snap.name)
+              (green snap.hash)
+              (dim (sprintf "(%d chars)" snap.body.Length))
+            ok <- ok + 1
+        eprintfn ""
+        eprintfn "%s %s %d promoted, %d failed" prefix (dim "summary:") ok failed
+        return (if failed = 0 then 0 else 1)
+  }
+
+
 /// Handle `dark pdd trace list` / `last`.
 let private handleTrace (subcmd : string) : Task<int> =
   task {
@@ -900,6 +952,9 @@ let tryHandle
     | "pdd" :: "refine" :: rest ->
       let! code = handleRefine rest
       return Some code
+    | "pdd" :: "promote" :: rest ->
+      let! code = handlePromote rest
+      return Some code
     | "pdd" :: _ ->
       eprintfn "[pdd] usage:"
       eprintfn "[pdd]   dark prompt \"<free-text request>\""
@@ -908,6 +963,7 @@ let tryHandle
       eprintfn "[pdd]   dark pdd cache (list|clear|paths)"
       eprintfn "[pdd]   dark pdd trace (list|last)"
       eprintfn "[pdd]   dark pdd refine <fnName> | --all | --watch [sec]"
+      eprintfn "[pdd]   dark pdd promote <fnName> | --all | list"
       return Some 1
     | _ -> return None
   }
