@@ -1,287 +1,788 @@
-# PDD Spike — Wrap-Up & Prioritized Roadmap
+# PDD Spike — Consolidated Wrap-Up
 
-*The "we're done with the spike" closure document. Reads the four
-reflection docs as one and tells you what to do next at each time
-budget.*
+*Single dense doc covering: what we built, what we learned, how to
+merge it, where it could go, how to self-host it. Print this; mark
+it up; decide next moves. Supersedes the per-topic reflection docs
+(archived).*
 
-## What this document is
+---
 
-The PDD spike ran for 131 commits on the `pdd` branch (local, never
-pushed). It answered the core question: **can the runtime materialize
-its own source code on demand?** Yes. End-to-end. Across creative
-HTML rendering, recursive math, and CSV parsing. With a working
-HTML view, hot-reload, refine loop, and SCM-style promote.
+## TL;DR
 
-By the end of the spike we had a working artifact AND a set of
-reflections about what to do with it. Four docs to read in order:
+The interpreter materializes its own source code on demand via LLM.
+Pending fn references resolve to working `PackageID` slots; refining
+mutates the slot; `promote` snapshots a hash. 131 commits on the
+`pdd` branch (never pushed). Working end-to-end on creative HTML
+rendering, recursion, and CSV parsing. 57/57 tests green. ~$0.30
+spent across the whole spike.
 
-1. **[SPIKE-LEARNINGS.md](SPIKE-LEARNINGS.md)** — what worked, what
-   didn't, surprises, what we're still missing
-2. **[INTEGRATION-PLAN.md](INTEGRATION-PLAN.md)** — 3 waves to merge
-   the spike's good parts onto `main`
-3. **[BIG-PICTURE.md](BIG-PICTURE.md)** — what we haven't thought
-   about; the recursive nature; how to use Dark's strengths
-4. **[F-SHARP-TO-DARK.md](F-SHARP-TO-DARK.md)** — 6-phase self-
-   hosting roadmap (F# → Dark)
+**The spike answered: can this work?** Yes.
+**The spike did not answer:** scale, multi-user UX, naming-vs-
+mechanism debates, the real `package_functions` integration, or
+whether the recursive UX delights or confuses. Those become the
+post-spike roadmap.
 
-This doc sits on top of those four. Read those for depth; read this
-for orientation + the prioritized next-step list.
+**Bottom line:** Merge in 3 sequential waves (~3-4 weeks).
+Self-host the materializer in Dark itself over the following ~3
+months. Beyond that: PDD-as-build-tool, PDD-on-PDD recursion,
+`Pending` types, multi-LLM consensus, SCM-style branches and bisect.
 
-## The story in one paragraph
+---
 
-We started with the bet: **Pending fns + LLM materializer + Dark
-runtime + caching + a feedback loop = code that writes itself.** We
-built the type-system substrate (15+ match sites threaded through PT
-+ RT + binary serializer + interpreter), the runtime (cache, hooks,
-hot-reload), the LLM machinery (prompt builder, response parser, QA
-test gate, fix-up retries, refine loop), and the SCM-style commit
-step (`pdd promote`). It works. The artifact runs. We then took two
-days off the keyboard to reflect: **what did we actually learn? How
-do we land it on `main`? Where could this go in a year?**
+## The five claims (memorize)
 
-The answers were unexpectedly rich. The merge plan is bounded
-(3 waves, ~3-4 weeks). The horizon plan is vast (PDD as build tool,
-PDD-on-PDD recursion, type-level Pending, multi-LLM consensus,
-branches + bisect + blame). The F# code is on a path to becoming a
-~250-LoC substrate with a ~2500-LoC Dark library on top.
+1. **The source is lazy.** Names + sigs; bodies materialize on demand.
+2. **The trace is the program.** Source files are sketches; the
+   trace is the authoritative record.
+3. **Types are the coordination protocol.** Pending refs carry sig
+   hints; parallel materializations agree via type unification.
+4. **The runtime is tolerant.** Missing things substitute defaults;
+   eval keeps moving; recoveries are auditable.
+5. **The human is a materializer.** When find/generate fail, the
+   human is the third path.
 
-The spike answered "can it work?" We have four docs of new questions
-that are more interesting.
+Anti-pitch: don't say "Copilot for runtime" — misses every
+interesting claim.
 
-## Where we landed
+---
 
-**Code state:**
+## What got built (state of the branch)
 
-- ~4,000 LoC F# across PDDMaterializer, PDDHTMLView, PddCommand
-- 131 commits, never pushed
-- 57/57 PDD unit tests green
-- 100+ successful materializations across the demos
-- Working 32-route darklang.com clone with `render*Page` Pendings
-- HTML view + sessions index + fn registry all live
+| # | Capability | Status |
+|---|---|---|
+| H1 | `dark prompt "<freeform>"` CLI | ✅ |
+| H2 | Implicit `Pending` from unresolved parser names | ✅ |
+| H3 | Interactive annotated HTML view (zero deps) | ✅ + sessions index + fns registry |
+| H4 | Promotion of materialized fns to cache | ✅ (sidecar JSONL) |
+| H5 | LibParser as primary body-parse path | ✅ (mini-parser fallback only) |
+| H6 | Tests-as-gate with independent verification | ✅ (recursion-aware skip) |
+| H7 | Recursion via canonicalized handles | ✅ |
+| H8 | Safety rails (wall-clock budget, per-handle LLM cap) | ✅ |
+| H9 | Model override (`PDD_MODEL`) | ✅ |
+| H10 | `FQFnName.PackageID` variant — equal treatment | ✅ (15+ match sites) |
+| H11 | Hot-reload on `promoted.jsonl` mtime | ✅ |
+| H12 | `dark pdd refine --watch` background daemon | ✅ |
+| H13 | `dark pdd promote` — SCM commit step | ✅ |
+| bonus | Parallel materialization scheduler | ✅ |
+| bonus | Decompose-step cache | ✅ |
+| bonus | `dark pdd refine/history/diff/revert/status` | ✅ |
 
-**Document state (this directory):**
+**Live demos verified:** `addOne`, `myAbs`, `myMaxOf`, `factorial`,
+`fibonacci+factorial` (parallel), `sumList`, `doubleAll`, CSV
+`longestRow` + `parseRows` (gpt-4o), 32-route darklang.com clone
+(render*Page Pendings, hot-reload propagation, refine watcher
+running in parallel).
 
-- `README.md` — top-level entry, what's built
-- `DESIGN.md` — sectioned design depth
-- `EMPIRICAL.md` — LLM-behavior observations
-- `DEMOS-AND-BUDGETS.md` — concrete programs + envelopes
-- `PDD-CLI-REFERENCE.md` — every CLI command
-- `REAL-PACKAGE-FNS.md` — scope sketch for Wave 3
-- **Reflection layer (this spike-end pass):**
-  - `WRAP-UP.md` (this doc)
-  - `SPIKE-LEARNINGS.md`
-  - `INTEGRATION-PLAN.md`
-  - `BIG-PICTURE.md`
-  - `F-SHARP-TO-DARK.md`
-- `archive/` — historical session reports, the original SCM-INTEGRATION
-  sketch, and earlier iter-by-iter notes
+**Still trips:** filter+sum in pipes (LibParser declines nested
+pipe-in-lambda), tuple-heavy bodies + invented stdlib names
+(List.foldi, Tuple.second, etc.), Option<Int64> arithmetic chains.
 
-## Prioritized TODOs — pick by time budget
+**Code surface:**
+- `PDDMaterializer.fs` — 2058 LoC
+- `PDDHTMLView.fs` — 597 LoC
+- `Cli/PddCommand.fs` — 1323 LoC
+- Plus ~50 LoC scattered through Interpreter, RuntimeTypes,
+  binary serializer for the 15+ match arms.
 
-What to do next, indexed by how much time you have.
+---
 
-### If you have 1 hour
+## What worked (the wins worth keeping)
 
-**Stop. The spike is done. Read this doc + SPIKE-LEARNINGS.md.**
+1. **The Pending → PackageID → Package(hash) lifecycle.** Three
+   states map cleanly onto git's "unborn / working / commit" model.
+   The naming hints at the role; the implementation respects it.
+   This is the architectural keeper.
+2. **LibParser as the primary body parser, mini-parser as fallback.**
+   The mini-parser bought velocity early; switching primary-path to
+   LibParser unlocked everything from `sumList` onward. Anything
+   richer than `x + 1L` needs LibParser.
+3. **Canonicalized Pending handles.** name → single Guid per body.
+   Without this, self-recursion thrashes the LLM endlessly. With it,
+   `factorial` materializes once and references itself.
+4. **Tests-as-gate, only for verifiable fns.** The verifiable/
+   creative classifier (`render*`/`generate*` heuristic + return
+   type) decides whether to gate on independent QA tests or just
+   thin-body retry. Wrong classification stalls; right
+   classification ships.
+5. **JSONL append-only cache (`promoted.jsonl`, `promoted_hashes.
+   jsonl`).** Crash-safe, log-structured, last-write-wins on read.
+   Hot-reload via mtime polling. Cheap and correct.
+6. **Hot-reload via `pddRefreshHook`.** Refining in one process →
+   running server picks up on next request. Surprisingly easy to
+   wire; transformative for the demo loop.
+7. **The verifiable vs creative classifier.** The single most
+   leverage-creating heuristic. Without it, every creative renderer
+   fails the QA gate and gets retried into junk. With it, creative
+   fns ship rich bodies on first try.
+8. **The decompose cache.** Free-text "compute factorial of 5" →
+   Dark expression. Caching this means second runs are sub-100ms
+   and skip the LLM entirely.
 
-That's it. Don't write code. The right move is to internalize the
-learnings before any new code lands.
+## What didn't work
 
-### If you have 1 day
+1. **The first three weeks of regex mini-parser.** ~330 LoC across
+   5 cases. Every case was a workaround for "we don't have
+   LibParser yet." Should have been LibParser from week 1.
+2. **Hardcoding everything to OpenAI's HTTP shape.** No abstraction.
+   Should have been a `Stdlib.LLM.complete` shim from day 1.
+3. **The JSONL paths hardcoded in PDDMaterializer.fs.** Should
+   route through LibConfig for path resolution. Today they're
+   string literals.
+4. **Inline CSS in PDDHTMLView.fs.** It's a 200-line CSS block in F#
+   source. Should have been an EmbeddedResource from day 1.
+5. **No LLM stub harness.** Means CI can't test materialization
+   end-to-end. Every CI run skips the most important code path.
+6. **Conflating Pending with "no fn at all" for the first two
+   weeks.** Adding PackageID late meant the runtime briefly had a
+   confused mental model where "fn missing" and "fn pending"
+   weren't distinct. PackageID-first would have been cleaner.
 
-**Lock cross-cutting decisions (INTEGRATION-PLAN §"Cross-cutting
-decisions to lock"):**
+## Surprises
 
-1. **Naming.** Is the new variant `FQFnName.PackageID` or
-   `FQFnName.Working`? Pick one; document why. (My read:
-   `Working` reads cleaner in match arms but `PackageID` is more
-   honest about the mechanism. Probably `PackageID`.)
-2. **PackageID-on-promote forwarding semantics.** Does promote
-   leave the PackageID alive (option a, git-working-copy) or
-   redirect to the hash (option b, git-branch)? (My read: option
-   a — more honest, keeps the runtime simple.)
-3. **Namespace for promoted PDD fns.** `Stdlib.PDD.X`?
-   `User.PDD.X`? (My read: `Stdlib.PDD.X` if the cache is shared
-   across users; `User.PDD.X` if user-local.)
-4. **`AllowPending` lexical scope.** Variables not Pending (only
-   fn-names go Pending). (My read: confirmed; document.)
+1. **The match-site work was 15+ sites, not the predicted 9.**
+   Adding PackageID alongside Pending meant nearly every place that
+   matched on `FQFnName` needed two new arms. Mechanical but
+   non-trivial — and that's *with* a sympathetic type system. A
+   less-mature one would have meant 30+ sites.
+2. **Recursion was easier than expected.** Once handles are
+   canonicalized by name, the "build a self-aware test runner"
+   pattern just falls out. No cycle-detection, no depth limit, no
+   `currentlyMaterializing` set. The handle-identity is enough.
+3. **Creative fns are *much* better when QA tests are skipped.**
+   QA tests for `renderHome` are LLM-hallucinated expectations
+   ("should contain 'Welcome'!"); enforcing them destroys the
+   real output. The verifiable/creative split isn't optional; it's
+   load-bearing.
+4. **Refine is more useful than initial generate.** First-shot
+   `renderHome` is OK; after 3 refine cycles it has nav,
+   structured sections, and richer semantics. The iteration loop
+   is where PDD earns its keep.
 
-Output: a one-page decisions doc that Wave 1 PR can reference.
+---
 
-### If you have 1 week
+## Cross-cutting decisions to lock before any wave merges
 
-**Wave 1 PR (INTEGRATION-PLAN.md).** The bedrock. ~400 LoC of
-type-system + parser scaffolding. PT/RT `PackageID` + `Pending`
-variants. Match-arm threading. `OnMissing.AllowPending` policy.
-PT2RT.Expr lowering for the new variants.
+These shape the canonical types and must be pinned before Wave 1.
 
-Self-contained, mechanical, no behavior change unless invoked.
-Reviewable by a competent reviewer in 1-2 sittings. Tests: existing
-57 PDD tests + smoke "AllowPending parses pending; default doesn't."
+**1. Naming.** `FQFnName.PackageID` vs `FQFnName.Working` vs
+`FQFnName.Mutable`. Current name stresses *mechanism* (it's an ID);
+alternatives stress *role* (it's the working state). Recommendation:
+`PackageID`. It's the more honest name once you understand the
+implementation; "Working" is friendlier but pushes a metaphor.
 
-Doesn't unlock anything user-visible yet. But it's a strict
-prerequisite for everything else.
+**2. PackageID forwarding semantics on promote.** When a PackageID
+is promoted to a hash, what happens to in-flight callers holding
+the Guid?
 
-### If you have 1 month
+- (a) **Stay alive forever.** PackageID slot persists; promote just
+  *adds* a hash-locked copy. Old refs keep working. New refs target
+  the hash directly. Git working-copy semantics — after `git
+  commit`, the working copy isn't frozen; it remains live-editable.
+- (b) **Forward to hash.** PackageID becomes a redirect; subsequent
+  edits fork to a new PackageID. Git branch semantics.
 
-**Land Wave 1 + Wave 2 + (start) Wave 3** (INTEGRATION-PLAN.md).
+Recommendation: **(a)**. More honest to git; runtime stays simple.
 
-- Wave 1: bedrock (week 1)
-- Wave 2: opt-in materializer module + CLI shim (weeks 2-3)
-  - Drop the regex mini-parser (we have LibParser)
-  - Route JSONL through LibConfig (configurable paths)
-  - Move prompts to EmbeddedResources
-  - LLM-stub harness for CI tests
-- Wave 3 (start): real `package_functions` SQLite integration. May
-  ship by end of month, may slip — depends on resolving the
-  PackageID-on-promote question with conviction.
+**3. Namespace for promoted PDD fns.** `Stdlib.PDD.X`? `User.PDD.X`?
+`Pdd.X`? Or thread through whatever module the original Pending was
+in (today: no module info)? Recommendation: `Stdlib.PDD.X` if the
+cache is shared cross-user; `User.PDD.X` if user-local. Lock before
+Wave 3.
 
-At the end of this month: PDD merged on main, opt-in via env flag,
-no surprises, three reviewed PRs.
+**4. `AllowPending` lexical scope.** Today `let x = 5L in x + y`
+with AllowPending: `y` is treated as a free variable, not Pending
+(EVariable, not EFnName). Recommendation: confirmed correct; missing
+variable in a let-scope is a bug, not an opportunity to materialize.
+Document explicitly.
 
-### If you have 3 months
+---
 
-**Full INTEGRATION-PLAN + Phases 0-2 of F-SHARP-TO-DARK.**
+## 3-wave integration plan
 
-- All three waves merged + soaked for a few weeks
-- `Stdlib.LLM.complete` lives (Phase 1 — F# delegates HTTP to Dark)
-- All prompts move to Dark (Phase 2 — users can override prompts
-  without rebuilding F#)
-- Optionally: response parsing + body scoring move to Dark (Phase 3)
+### Wave 1 — Bedrock (no behavior change)
 
-User-visible: prompt updates ship as Dark package updates. The
-materializer's behavior is partly user-modifiable.
+Land type-system + parser scaffolding. New variants exist; nothing
+in mainline references them; all match sites have arms that no-op
+or raise. ~400 LoC across 13 files. Mechanical, review-friendly.
 
-### If you have 6 months
+- `PT.FQFnName.Pending`/`PackageID` + `RT.FQFnName.Pending`/
+  `PackageID` variants
+- `RT.pddIDRegistry` (name → Guid stable map)
+- `RT.pddIDFnCache` on ExecutionState (Guid → PackageFn)
+- `RT.pddRefreshHook` (mutable, default no-op)
+- Match-exhaustiveness arms in: Interpreter, RTQueryCompiler,
+  RT/PT→DarkTypes, Binary serializer, LibDB/PackageItem, LibDB/
+  Tracing, Execution.fs prettyName
+- `NameResolver.OnMissing.AllowPending`
+- WT2PT threading of `onMissing` through EApply, EFnName, pipe
+  stage, EVariable fallback chains
+- PT2RT.Expr lowering for new variants
 
-**INTEGRATION-PLAN + F-SHARP-TO-DARK Phases 0-4.**
+**Risk:** binary-compat on Canonical hashing? No — new tag bytes
+(3 + 4) added; existing hashes don't shift.
 
-- Orchestrator is now Dark code (`Stdlib.PDD.materializeOne`)
-- F# substrate ~300 LoC: registry + hooks + interpreter dispatch
-- The materializer is reading-friendly Dark code that users can
-  fork and refine
+**Tests:** existing 57 PDD tests pass + smoke "AllowPending parses
+pending; default doesn't."
 
-**This is the unlock point for PDD-on-PDD recursion.**
+### Wave 2 — Materializer (opt-in module)
 
-Once `Stdlib.PDD.materializeOne` is a Dark fn, a user can
-`dark pdd refine Stdlib.PDD.materializeOne` and the materializer
-materializes its own next version. The fixed point matters here:
-materializer-improving-materializer is *the* recursive vision.
+Land `LibExecution.PDDMaterializer` + CLI surface, gated by a
+flag (env var, build flag). Default CLI doesn't load it.
 
-### If you have a year
+- `LibExecution/PDDMaterializer.fs` — orchestrator + body-parser
+  hook + test-runner hook + refine + promote. ~1900 LoC.
+- `LibExecution/PDDHTMLView.fs` — view + session sidecar + index +
+  fns registry. ~520 LoC.
+- `Cli/PddCommand.fs` — `dark pdd ...` dispatcher. ~900 LoC.
+- Drop regex mini-parser cases (LibParser is primary path; ~330 LoC
+  dies).
+- Route JSONL through `LibConfig` (configurable + versioned
+  `version: 1` field per line).
+- Move prompts to `EmbeddedResources` (no F# rebuild for prompt
+  edits).
 
-**Full F-SHARP-TO-DARK + select BIG-PICTURE items.**
+**Tests:** LLM-stub harness exercising 10 integration cases:
+materialize-end-to-end, retry-on-thin-body, retry-on-JSON-fail,
+recursion-skip, refine, promote.
 
-By priority (my guess):
+### Wave 3 — SCM integration
 
-1. **Materializer-as-`List<Strategy>`** (BIG-PICTURE 1.1). Each
-   strategy is a Dark fn. Cache → corpus → human → LLM. Cheap fast
-   path before any LLM call. Maybe 60% of materializations hit
-   cache or corpus and never burn a token.
-2. **PDD-on-PDD recursion infrastructure** (BIG-PICTURE 2.4). A
-   `dark pdd refine` of the materializer itself. Once Phase 4
-   lands, this is doable in days.
-3. **Branches + bisect + blame** (BIG-PICTURE 2.1, 2.2, 2.3). The
-   SCM analogues we missed. The mechanism is simple (per-branch
-   manifests, binary search on history); the UX is the value.
-4. **PDD as build artifact** (BIG-PICTURE 1.5). `dark pdd build`
-   walks the source, materializes every Pending, writes committed
-   snapshots. Production runs a no-materializer Dark binary. This
-   is the production story.
-5. **Test-as-spec generative loop** (BIG-PICTURE 2.5). LLM
-   generates more tests; user curates; bodies converge. Reverses
-   the QA-test-gate from "lock body to fixed tests" to "tests
-   themselves are part of the iteration."
-6. **`Pending` for types** (BIG-PICTURE 1.2). The hardest, biggest
-   win. Materializer infers a type from usage sites.
+Land `dark pdd promote` writing to the real `package_functions`
+SQLite table. Smallest wave, hardest by requiring Decisions 2 and 3
+above.
 
-Each of these is 1-3 weeks of focused work after the foundation
-exists. At a year out, we'd have a story that *most* of the
-materializer is Dark code, the architecture supports multiple
-strategies, the SCM-style tooling actually matches git's depth, and
-there's an emerging "Stdlib.PDD" package ecosystem.
+- `parseFullSigPT : string → Option<List<...> × PT.TypeReference>`
+- `ptPackageFnOf : name → sig → body → Task<Option<PT.PackageFn>>`
+- Expose `applyAddFn` from LibDB/PackageOpPlayback
+- Invoke `applySetName` for `name → hash`
 
-## What's *not* on the roadmap (and why)
+**Risk:** dev DB contamination. Want a "PDD scratch branch"
+pattern or a `dark pdd unpromote <hash>` surgical-delete.
 
-A few features the spike could grow but probably shouldn't:
+### What does NOT merge
 
-- **Multi-user PDD cloud cache.** Tempting (network-effect
-  dedup); messy (auth, billing, trust). Defer until there's
-  proven single-user value.
-- **PDD-LSP IDE integration.** Big surface area. Wait for the
-  Dark LSP to land in its own right.
-- **Speculative materialization on keypress** (BIG-PICTURE 1.8).
-  Cool but wasteful in tokens. Experiment, don't productize.
-- **Fine-tuned per-user models** (BIG-PICTURE 1.6). Real value, but
-  *not* a Darklang-team capability. Partner with an inference vendor
-  for this.
-- **Mid-program fn iteration** (results-don't-satisfy → re-derive).
-  Important but the design space is murky. Needs its own spike.
+- Inline CSS in PDDHTMLView (replace via EmbeddedResources or
+  extract to dev-only package)
+- 32-route darklang.com demo router + the Python script (stays
+  in `pdd-thinking/scripts/`)
+- Hardcoded JSONL paths (Wave 2 routes through LibConfig)
+- Direct OpenAI HTTP call in F# (route through `Stdlib.LLM` —
+  see F# → Dark roadmap below)
 
-## The "what we'd do differently" list
+### Order of operations
 
-If we ran this spike again from scratch, knowing what we know now:
+```
+Decisions → Wave 1 → Wave 2 → Wave 3
+(1-2 days)  (1 wk)   (1-2 wks) (1-2 wks)
+                      │            │
+                      │            └→ user-visible: PDD fns in `dark search`
+                      └→ user-visible: `dark pdd ...` commands live
+Wave 1 is invisible at user level.
+```
 
-1. **Start with `FQFnName.PackageID`, not `Pending`.** The
-   PackageID concept (working-copy fn before commit) is the harder
-   one and was added late. Building Pending without PackageID meant
-   Pending was conflated with "no fn at all" for a long time.
-2. **LibParser from day one, not as a follow-up.** The regex
-   mini-parser cases ate ~330 LoC and were never the right call.
-3. **HTML view should have used `<details>` from day one.** Long
-   expressions exposed an ugly view; we patched it at iter 12+.
+Full integration realistic in 3-4 focused weeks, or quarter-paced
+if not on the critical path.
+
+---
+
+## Big picture — what we haven't thought about
+
+### Materializer as `List<Strategy>`, not LLM-only
+
+Today: LLM is the only path. Should be:
+
+```
+cache → corpus search → synthesis from examples → human → LLM
+```
+
+Each strategy = a predicate ("can I produce a body?") + an action
+("here's the body"). LLM becomes last-resort. Probably 60% of
+materializations hit cache/corpus and never burn a token.
+
+### `Pending` for types, not just fns
+
+`FQTypeName.Pending` is conspicuously absent. Pending types
+materialize a type definition + default value + common typeclass
+fns (Eq, Show, Json codec) in one shot from usage. *Much harder*
+(infer structure from multiple sites) but where the real
+ergonomic win lives. `Pending fn` = productivity; `Pending type` =
+paradigm shift.
+
+### `dark pdd demote` — the reverse of promote
+
+Set body to `Pending`; re-trigger on next call. Lets users
+A/B-compare an old body against a fresh materialization. Trivial
+to add; would change how people iterate.
+
+### Multi-LLM consensus
+
+N parallel LLM calls (4o-mini + gpt-4o + claude-haiku +
+claude-sonnet), pick the body that passes the most QA tests +
+shortest length. Self-consistency decoding at the architecture
+level. 3-4× cost; *much* higher first-try success rates. Matters
+in long pipelines (10 fns × 90% = 35% one-failure; 10 fns × 99% =
+90% all-pass).
+
+### PDD as build artifact, not runtime decision
+
+`dark pdd build` walks source, finds every Pending, batch-
+materializes all, writes committed snapshots. Production runs a
+no-materializer binary. **Production doesn't want surprise LLM
+calls** (latency, billing, non-determinism). PDD = code generator.
+Same machinery, hoisted out of request path.
+
+### PDD audit logs as training data
+
+Every materialization writes `(name, sig, prompt → body, QA-pass,
+refines, finalBody)`. After 10K uses, that's a training set.
+Fine-tuned small model beats generic LLM at "produce a body in
+*my* style" within months. Spike has the data pipeline; nothing
+captures it.
+
+### Versioned migrations
+
+`let MyConfig = Pending(reason = "schema-changed-2026-05-14")`.
+When loading old persistent state shaped by *old* `MyConfig`, the
+materializer is invoked with old × new shape, generates a migration
+fn. Solves a real pain using exactly the spike's machinery.
+
+### Speculative materialization
+
+User typing `let html = renderHo` — kick off materialization for
+`renderHome`, `renderHomepage`, `renderHotProduct`. By the time
+they hit enter, one is ready. Wasteful in tokens; fast in UX.
+
+### PDD-as-LSP
+
+Editor code action for "this fn is Pending"; inline materialize;
+ghost-suggestion preview; QA tests in side pane. **Where Dark
+competes with Copilot/Cursor.** Fundamental PDD advantage: the
+result is *evaluated*, not just suggested.
+
+### Pricing model (unresolved)
+
+Local-only with user-provided keys = simple; multi-tenant
+Darklang Cloud caching = network effects + ops complexity. Spike
+deferred this; needs answering eventually.
+
+---
+
+## Making the recursive nature better
+
+The spike's most interesting moment: realizing `pdd promote` is
+`git commit`. The cascade — every SCM concept maps onto PDD —
+remains underused.
+
+### Branches
+
+Today: one `promoted.jsonl`. One "branch."
+`dark pdd branch experimental` forks working state; iterate freely;
+`dark pdd merge experimental → main`. Mechanism: append-only files
++ per-branch manifest. UX: "trying a riskier prompt for
+`renderHome` — let me do it on a branch." **Missing primitive for
+serious experimentation.**
+
+### Bisect
+
+`dark pdd bisect <fnName> <test>` — given a failing test today
+that passed at some prior snapshot, binary-search history. Unique
+to PDD: **per-fn body history**, finer-grained than git's per-file.
+
+### Blame
+
+`dark pdd blame <fnName> <line>` — which refine introduced this
+line. `diff` gets halfway; attribution to session/timestamp is
+missing.
+
+### PDD-on-PDD: the materializer materializes the materializer
+
+*The most recursive thought.* `materializeFn : (Name × Sig ×
+Hints) → Task<Body>` is itself a function. Today it's F# with
+hand-tuned prompts. Should be a *Dark fn the user can refine*.
+
+`Stdlib.PDD.materialize` = Pending fn with thin F# wrapper. User
+runs `dark pdd refine Stdlib.PDD.materialize` to change *their*
+strategy — better prompts, different model, retry logic,
+multi-LLM consensus. **Their materializer evolves with their
+codebase.**
+
+This is the path to making PDD a Dark library that's user-
+modifiable, not an F# subsystem.
+
+### Test-as-spec, body-as-prediction
+
+Today QA tests = gate ("did LLM get it right?"). Tests are also a
+*spec*. Recursive use:
+
+1. User writes 3 in/out examples for `factorial`.
+2. PDD materializes body.
+3. QA runner *generates* more tests by mutation.
+4. PDD materializes a body passing both user's + generated tests.
+5. User curates generated tests; promotes ones that capture
+   intent; deletes ones that don't.
+6. Loop.
+
+**Hindley-Milner-meets-LLM.** Specs grow alongside bodies. Spike
+has the test runner; doesn't generate; doesn't ask user to curate.
+
+### Refine-on-failure (not just on-demand)
+
+`pdd refine --watch` picks least-refined fn — naïve. Better: refine
+the fn that **most recently failed in production** (caught error,
+budget overrun, QA test regressed). Runtime has all this signal;
+isn't fed back. **RL at the codebase level.**
+
+### Cross-fn refactor as single PDD call
+
+"Make these 5 fns more consistent" — bundle 5 bodies into one
+prompt + 5 in response. Multi-body refine. New shape, same
+machinery.
+
+### History-as-explanation
+
+`dark pdd history` shows working revs + snapshots. Missing: **why**
+each rev exists. If every refine recorded its triggering prompt,
+history becomes a self-documenting changelog at *fn level* —
+better than git log.
+
+---
+
+## How Dark's strengths get used (and don't, yet)
+
+### PT.PackageFn.Hash is content-addressable — use it for dedup
+
+Today: cache keys on name. Should: key on **structural hash**. Two
+users writing `factorial` in different projects share a cache
+entry. **Network-effect benefits compound** — every user makes
+everyone faster.
+
+### `package_functions` is the registry; PDD should use it
+
+Today: PDD fns in `promoted_hashes.jsonl` sidecar. Wave 3 moves to
+the real table. Deeper move: every materialized PDD fn flows
+through one store. Hand-authored + PDD-materialized share storage;
+queries don't distinguish; tooling (search, blame, package install)
+Just Works.
+
+### Dark's tracing system is built for this
+
+`Tracing` struct on ExecutionState records package + builtin
+calls. Materializer = perfect tracing consumer — every
+materialization leaves a trace; failures at T+3 can be
+explained as "materialized at T0 by prompt P, called at T1 with
+V, failed at T2." Currently logged to JSONL by hand.
+
+### Dark's types as the prompt's grounding
+
+Today: fn signature in prompt = string. Should: **Dark type
+expression**, plus links to other types in `package_functions`.
+LLM resolves references by name-lookup, not by guessing. Hard in
+F#; one-liner in Dark (`prettyPrintType ty`). The materializer
+*wants* to be in Dark.
+
+### HTTP server makes the materializer addressable
+
+```dark
+let materialize = fun req →
+  let body = req.body |> parseJson<MatRequest>
+  Stdlib.PDD.materialize body.name body.sig body.hints |> Json.print
+```
+
+6 lines of Dark = materializer as a service. Other services/
+languages call it without caring it's F#. Eventually: this **is**
+the materializer, hosted on Dark Cloud, multi-tenant.
+
+### Hash-as-identity makes the cache a CDN
+
+`fnHash → body` cache key + bodies are strings → cache IS a CDN.
+Different users hit same hash, same cached body, no LLM call.
+Darklang Cloud could host shared cache; opt-in; the long tail of
+"we all write factorial" goes from $0.0002/call to free.
+
+---
+
+## F# → Dark self-hosting roadmap
+
+Today: ~4,000 LoC F# (PDDMaterializer 2058, PDDHTMLView 597,
+PddCommand 1323).
+
+End-state: **F# substrate ~250 LoC** (registry, hooks, interpreter
+dispatch), **Dark library ~2,500 LoC**. 90% reduction in F#.
+
+### Layering
+
+```
+       Application code (Dark) — uses Pending fn
+                      │
+       ┌──────────────────────────────┐
+       │   Stdlib.PDD (Dark library)  │  ← all moveable logic
+       │     materialize / refine /    │
+       │     promote / generateTests /  │
+       │     pickStrategy / buildPrompt /│
+       │     parseLLMResponse / scoreBody│
+       │     / decomposeFreeText        │
+       └──────────────┬───────────────┘
+                      │
+       ┌──────────────────────────────┐
+       │   Stdlib.LLM (Dark library)  │  ← thin shim, swappable
+       │     complete / stream         │
+       └──────────────┬───────────────┘
+                      │ HTTP
+                      ▼
+              (OpenAI / Anthropic / local)
+
+       ┌──────────────────────────────┐
+       │   F# substrate                │  ← what stays
+       │     FQFnName.Pending variant  │
+       │     FQFnName.PackageID         │
+       │     pddIDRegistry              │
+       │     pddIDFnCache               │
+       │     pddRefreshHook             │
+       │     bodyParser hook            │
+       │     testRunner hook            │
+       └──────────────────────────────┘
+```
+
+**Rule:** if it touches runtime state, it stays F#. Logic moves.
+
+### 6-phase migration
+
+| # | Phase | F# shrink | Dark grow | Time | User-visible |
+|---|---|---|---|---|---|
+| 0 | Prereqs (HttpClient/Json/File audit) | 0 | +50 | 1d | no |
+| 1 | `Stdlib.LLM.complete` shim | –95 | +80 | 1-2d | indirect |
+| 2 | Prompts → Dark | –570 | +570 | 1d | prompts user-overridable |
+| 3 | Response parsing + scoring → Dark | –200 + –330 mini-parser | +150 | 2d | mini-parser drops |
+| 4 | Orchestrator → Dark (~400 LoC fn) | –1200 | +400 | 3-5d | **PDD-on-PDD unlocked** |
+| 5 | CLI subcommand dispatch → Dark | –1200 | +700 | 2d | each cmd overridable |
+| 6 | HTMLView → Dark HTTP handler | –600 | +500 | 1-2d | view = live Dark service |
+
+Total: ~3 weeks of focused work. End state unlocks PDD-on-PDD —
+user refines the materializer with the materializer.
+
+### Trade-offs
+
+- **Latency:** Dark→F# Dark-fn call adds 1-10ms. LLM call dominates
+  at 1-10s. Irrelevant in practice; measure.
+- **Debuggability:** F# stack traces > Dark error messages today.
+  Until Dark traces match, debugging is harder in Dark.
+- **CI mocking:** F# unit tests stub `callOpenAI` directly. Dark
+  needs a stub builtin under test harness control.
+- **Boot ordering:** `Stdlib.PDD.materializeOne` is itself a Dark
+  fn loaded before any Pending dispatches. Package load order
+  matters. **Real foot-gun.** Needs design before Phase 4.
+
+---
+
+## Prioritized TODOs by time budget
+
+### 1 hour
+Stop. Print this doc. Read on paper. Don't write code.
+
+### 1 day
+Lock the 4 cross-cutting decisions (naming, forwarding, namespace,
+AllowPending scope). Write a one-page decisions doc Wave 1 PR
+references.
+
+### 1 week
+**Wave 1 PR.** Bedrock. ~400 LoC mechanical. No user-visible
+change. Unblocks everything else.
+
+### 1 month
+Wave 1 + Wave 2 + start of Wave 3. PDD opt-in on main. Drop mini-
+parser; route JSONL through LibConfig; prompts → EmbeddedResources.
+LLM-stub harness for CI.
+
+### 3 months
++ F# → Dark Phases 0-2. `Stdlib.LLM.complete` lives. Prompts move
+to Dark. Users override prompts without F# rebuild.
+
+### 6 months
++ Phase 4. Orchestrator is Dark code. F# substrate ~300 LoC.
+**PDD-on-PDD unlocks** — user refines materializer with
+materializer.
+
+### 1 year
++ Selected BIG-PICTURE items, by priority:
+1. `List<Strategy>` materializer (cache → corpus → human → LLM)
+2. PDD-on-PDD recursion infrastructure
+3. Branches + bisect + blame
+4. `dark pdd build` (PDD as build artifact)
+5. Test-as-spec generative loop
+6. `Pending` for types (hardest, biggest)
+
+Each 1-3 weeks of focused work once foundation exists.
+
+### Not on the roadmap (deferred, with reasons)
+
+- **Multi-user cloud cache.** Auth/billing/trust mess. Defer until
+  single-user value proven.
+- **PDD-LSP IDE integration.** Wait for Dark LSP to land in its
+  own right.
+- **Speculative materialization on keypress.** Wasteful tokens.
+  Experiment, don't productize.
+- **Fine-tuned per-user models.** Real value but not a Darklang-
+  team capability. Partner with inference vendor.
+- **Mid-program fn iteration** (re-derive when result doesn't
+  satisfy downstream). Important but design-space murky. Own spike.
+
+---
+
+## What we'd do differently
+
+1. **Start with `FQFnName.PackageID`, not `Pending`.** PackageID is
+   harder conceptually; we added it late. Pending alone briefly
+   meant "no fn at all," wrong mental model.
+2. **LibParser from day 1.** Regex mini-parser ate 330 LoC and was
+   never the right call.
+3. **HTML view `<details>` from day 1.** Long expressions exposed
+   an ugly view; patched at iter 12+.
 4. **Decide PackageID-forwarding semantics on paper before coding
-   promote.** We have working promote that hasn't committed to a
-   forwarding model. That decision will be load-bearing for years.
-5. **Build the test-stub framework early.** The reason CI doesn't
-   exercise materialization today is that there's no LLM stub. With
-   one, we could've had ~30 more integration tests.
-6. **Don't reinvent `pdd promoted_hashes.jsonl`.** Real
-   `package_functions` was always the destination; the JSONL
-   sidecar bought velocity but locked in a path we now have to
-   migrate from.
+   `promote`.** Today's working `promote` hasn't committed to a
+   model. Load-bearing for years.
+5. **Build the LLM-stub harness early.** No CI integration tests
+   means materialization is the most-important untestable code
+   path.
+6. **Don't reinvent `promoted_hashes.jsonl`.** `package_functions`
+   was always the destination; sidecar bought velocity but locks
+   in a path we now have to migrate from.
 
-## Open meta-question: when does the spike merge?
+---
 
-The spike branch has 131 commits and is never pushed. Two options:
+## Open meta-question — single PR vs 3-PR sequence
 
-**Option A — merge as one big PR.** Pro: closure. Con: 4,000+ LoC of
-review with two ongoing parallel rewrites (Wave 1 → 2 → 3 in the
-INTEGRATION-PLAN map cleanly onto coherent slices, but a single PR
-ignores them). Reviewers will glaze.
+**Option A** — merge spike as one big PR. Closure, but reviewers
+glaze at 4000+ LoC with mixed bedrock/opt-in/experimental edges.
 
-**Option B — three sequential PRs per INTEGRATION-PLAN.** Pro:
-reviewable; landable; spike branch stays as a *reference* but the
-mainline diff doesn't carry the spike's experimental edges. Con: 3x
-the PR overhead, more days of context-switching.
+**Option B** — 3 sequential PRs per integration plan. Reviewable;
+spike branch stays as reference; mainline absorbs only what
+survived reflection. Higher PR overhead, more context-switching.
 
-**Recommendation: Option B.** The integration plan was written
-precisely to make this tractable. The spike branch becomes a
-historical artifact — like a research paper — and the mainline
-absorbs only the parts that survived reflection.
+**Recommendation: Option B.** The integration plan was written to
+make this tractable. Spike becomes a historical artifact like a
+research paper; mainline takes the survivors.
 
-## Bottom line
+---
 
-The spike is **done**. Not "abandoned" — done. We built the thing,
-we proved it works, we have a defensible merge plan, we have a
-direction for the year ahead.
+## What the spike did and didn't answer
 
-The next move is **not** "more spike work." The next move is:
+**Answered:**
+- Can the runtime materialize source on demand via LLM? **Yes.**
+- Can it handle recursion? **Yes** (canonicalized handles).
+- Can it handle creative vs verifiable fns differently? **Yes**
+  (classifier + thin-body retry vs QA gate).
+- Does hot-reload work in a live HTTP server? **Yes.**
+- Does the SCM-style promote step work? **Yes** (JSONL sidecar
+  today; real `package_functions` is Wave 3).
 
-1. Stop hacking on `pdd` branch.
-2. Lock the cross-cutting decisions (a day's work).
-3. Open Wave 1 PR (a week's work).
-4. Re-read the four reflection docs in 3 weeks before opening Wave 2.
+**Not answered:**
+- Can PDD scale beyond ~50 pending fns at once?
+- Is the workflow good for users other than me?
+- What's the right model size/cost tier? (Several burned through;
+  no rigorous comparison.)
+- How does PDD interact with `package_functions` at scale? (Wave
+  3 will tell.)
+- Does the recursive UX (materializer-refines-materializer)
+  delight or confuse? Untested.
+- Branches? Bisect? Blame? All unbuilt.
+- LSP integration. Build artifact mode. Speculative
+  materialization. Pricing.
 
-Three weeks from now, PDD is opt-in on mainline. Three months from
-now, the materializer's prompts are user-customizable. Six months
-from now, the materializer is Dark code and PDD-on-PDD is real.
+---
 
-That's the shape. The spike was the first 10% (proof). The
-integration plan is the next 30% (foundation). The self-hosting
-roadmap is the next 40% (Dark-native). The big-picture roadmap is
-the last 20% (the recursive vision).
+## Hard rules (from CLAUDE.md / branch hygiene)
 
-Eat the spike. The pieces worth keeping are in the merge plan; the
-pieces worth dropping are tagged for `pdd-thinking/`'s archive; the
-horizon is mapped. Close the loop.
+- **Never push `pdd`.** Local-only. Cherry-pick later via the
+  3-wave integration plan, not by pushing.
+- **Commit after every successful compile.** Free, atomic, easy
+  to revert.
+- **30-min stuck rule:** revert and try a different angle.
+- **OpenAI key** at `~/.config/darklang/llm-keys.env` (mode 600).
+  Never in any repo file. Pass via `docker exec -e
+  OPENAI_API_KEY=...`.
+- **Build is two-pass** after Dark type changes: `touch backend/
+  src/LibExecution/package-ref-hashes.txt && build`.
+- **No `failwith`** — `Exception.raiseInternal "msg" []`.
+- **No `printfn`** — `Prelude.print`.
+- **Cumulative spend ~$0.30** of $10 budget. Effectively
+  inexhaustible at cheap-model rates.
+
+---
+
+## CLI reference (terse)
+
+```
+dark prompt "<free-text>"        # decompose + run + visualize
+dark pdd run "<expr>"            # parse user-written Dark + run
+dark pdd demo <fn> <Int64-arg>   # hand-built Apply test surface
+dark pdd cache (list|clear|paths)
+dark pdd trace (list|last)
+dark pdd refine <fn> | --all | --watch [sec]
+dark pdd promote <fn> | --all | list
+dark pdd history <fn>            # working + committed revs
+dark pdd diff <fn>               # what `refine` last changed
+dark pdd revert <fn> [rev]       # roll back; appended as new rev
+dark pdd status                  # one-glance health
+```
+
+**Env vars:**
+
+| Var | Default | Meaning |
+|---|---|---|
+| `OPENAI_API_KEY` | — | required |
+| `PDD_MODEL` | `gpt-4o-mini` | LLM (gpt-4o for picky syntax) |
+| `PDD_BUDGET_MS` | 300000 | wall-clock per run |
+| `PDD_PARALLEL` | 3 | concurrent materializations |
+| `PDD_SKIP_QA` | unset | skip QA gate for all fns |
+
+**Files:**
+
+| Path | Role |
+|---|---|
+| `rundir/pdd-cache/promoted.jsonl` | working-copy stream (append-only) |
+| `rundir/pdd-cache/promoted_hashes.jsonl` | committed snapshots |
+| `rundir/pdd-cache/decomposed.jsonl` | free-text → Dark-expr cache |
+| `rundir/pdd-view/<id>.html` | per-session HTML view |
+| `rundir/pdd-view/index.html` | sessions index |
+| `rundir/pdd-view/fns.html` | fn registry across sessions |
+| `rundir/logs/pdd-materialize.jsonl` | every LLM call |
+
+---
+
+## See also (deep-dives still in this directory)
+
+- `README.md` — top-level entry, build state
+- `DESIGN.md` — sectioned design depth (LibExecution, scheduler,
+  sig, tolerance, capabilities, human, tracing, HTML view)
+- `EMPIRICAL.md` — LLM-behavior observations, prompt iteration,
+  cost numbers, red-team risks
+- `DEMOS-AND-BUDGETS.md` — concrete programs + envelopes
+- `PDD-CLI-REFERENCE.md` — every CLI command in detail
+- `REAL-PACKAGE-FNS.md` — Wave 3 scope
+- `archive/` — historical session reports + earlier iter-by-iter
+  notes + the original SCM-INTEGRATION pivot sketch
+
+The four per-topic reflection docs (SPIKE-LEARNINGS,
+INTEGRATION-PLAN, BIG-PICTURE, F-SHARP-TO-DARK) have been
+consolidated into this file and archived. If you need the
+expanded form: `pdd-thinking/archive/reflection-layer/`.
+
+---
+
+## Closing
+
+Eat the spike. Pieces worth keeping → merge plan. Pieces worth
+dropping → archive. Horizon → mapped. Close the loop.
+
+The spike was the first 10% (proof). Integration plan is the next
+30% (foundation). Self-hosting roadmap is the next 40% (Dark-
+native). Big-picture roadmap is the last 20% (the recursive
+vision).
+
+Three weeks from now: PDD opt-in on mainline.
+Three months from now: prompts user-customizable.
+Six months from now: materializer is Dark code; PDD-on-PDD real.
+One year from now: PDD has its own SCM tooling, build mode, and
+strategies beyond LLM.
+
+The branch never pushed; the code merges deliberately.

@@ -162,16 +162,12 @@ OpenAI key at `~/.config/darklang/llm-keys.env` (mode 600). On run, sourced via 
 ## How to enter
 
 1. Read this file (you're here) — *what's built and live*.
-2. **`WRAP-UP.md`** — spike closure document. Read second; it tells you what to do next.
-3. **`SPIKE-LEARNINGS.md`** — what worked, what didn't, surprises.
-4. **`INTEGRATION-PLAN.md`** — 3-wave plan to merge the spike onto `main`.
-5. **`BIG-PICTURE.md`** — horizon scan: what we haven't thought about, the recursive nature, Dark's strengths.
-6. **`F-SHARP-TO-DARK.md`** — 6-phase self-hosting roadmap (F# → Dark library).
-7. `DESIGN.md` — sectioned design depth (LibExecution, scheduler, sig, tolerance, capabilities, human, tracing, HTML view).
-8. `EMPIRICAL.md` — what we verified empirically about LLM behavior + open questions + red-team.
-9. `DEMOS-AND-BUDGETS.md` — concrete programs to build toward + spike envelopes.
-10. `PDD-CLI-REFERENCE.md` — every `dark pdd ...` command.
-11. `REAL-PACKAGE-FNS.md` — scope sketch for Wave 3.
-12. `archive/` — historical session reports, the original SCM-INTEGRATION sketch, and earlier iter-by-iter docs. Don't read unless tracing a specific decision.
+2. **`WRAP-UP.md`** — **the single consolidated doc.** What worked, what didn't, decisions to lock, 3-wave merge plan, big-picture roadmap, F# → Dark self-hosting plan, prioritized TODOs by time budget. Print this and mark it up.
+3. `DESIGN.md` — sectioned design depth (LibExecution, scheduler, sig, tolerance, capabilities, human, tracing, HTML view).
+4. `EMPIRICAL.md` — what we verified empirically about LLM behavior + open questions + red-team.
+5. `DEMOS-AND-BUDGETS.md` — concrete programs to build toward + spike envelopes.
+6. `PDD-CLI-REFERENCE.md` — every `dark pdd ...` command in detail.
+7. `REAL-PACKAGE-FNS.md` — scope sketch for Wave 3 (real `package_functions` integration).
+8. `archive/` — historical session reports, the original SCM-INTEGRATION pivot, earlier iter-by-iter docs, and `reflection-layer/` (the four per-topic reflection docs consolidated into `WRAP-UP.md`). Don't read unless tracing a specific decision.
 
 When in doubt: `git log pdd ^main` for the total diff. The total diff is the source of truth.

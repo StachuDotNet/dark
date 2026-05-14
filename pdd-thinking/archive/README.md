@@ -4,7 +4,7 @@ Working notes from the spike that have been *superseded* by the
 reflection-layer docs in the parent directory. Kept for tracing the
 provenance of decisions; not needed to understand the current state.
 
-## Two waves of archival
+## Three waves of archival
 
 ### Wave 1 (mid-spike, ~2026-05-13 midday)
 
@@ -35,8 +35,23 @@ BIG-PICTURE.md, F-SHARP-TO-DARK.md).
 - `REPORT-morning.md` (2026-05-14 ~2:30am wake-up brief — 126 commits)
 - `SCM-INTEGRATION.md` — the "ID until commit, then hash" pivot.
   The insight (PackageID = working copy; Package(hash) = commit;
-  `promote` = boundary) is captured live in the code, in
-  SPIKE-LEARNINGS, and in the lifecycle diagram in INTEGRATION-PLAN.
+  `promote` = boundary) is captured live in the code and in
+  `../WRAP-UP.md` (the lifecycle + Decision 2 forwarding-semantics
+  discussion).
+
+### Wave 3 (consolidation, ~2026-05-14)
+
+The per-topic reflection layer (SPIKE-LEARNINGS, INTEGRATION-PLAN,
+BIG-PICTURE, F-SHARP-TO-DARK) was distilled into a single dense
+`../WRAP-UP.md`. The originals live in `reflection-layer/` for
+anyone who wants the expanded form.
+
+- `reflection-layer/SPIKE-LEARNINGS.md` — what worked / didn't / surprises
+- `reflection-layer/INTEGRATION-PLAN.md` — 3-wave merge plan
+- `reflection-layer/BIG-PICTURE.md` — horizon scan
+- `reflection-layer/F-SHARP-TO-DARK.md` — self-hosting roadmap
+
+`WRAP-UP.md` is the canonical version; these are the source material.
 
 ## When to read these
 
