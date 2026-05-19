@@ -16,8 +16,8 @@
 > 6. Update the `NEXT:` line to the next unchecked bucket — or
 >    `DONE` if all done.
 > 7. Commit (bucket-named message). Don't push.
-> 8. Schedule the next wake (10 min). If `NEXT: DONE`, run B7
->    verify and **stop scheduling**.
+> 8. Schedule the next wake (10 min). If `NEXT: DONE`, **stop
+>    scheduling** (B10 is the user-facing propose-push terminus).
 >
 > **The headline:** conflicts+resolutions (B2) is the most important
 > sketch — **it's the gating piece for the SCM + sync work the user
@@ -63,10 +63,11 @@ material; `-old.md` suffixes and undated docs are suspect.
 
 ## In-conversation source thoughts to address
 
-These are the user's thoughts from this session, copied here so the
-looper can verify nothing is dropped. **Every item below must be
-addressed by some bucket.**
+These are the user's thoughts from this session + the gaps surfaced
+by auditing `feedback-original.md` against already-done work.
+**Every item below must be addressed by some bucket.**
 
+From this session's substrate-sketch request:
 - [ ] **Sketch capabilities** — covered by B5 (CAPABILITIES.md)
 - [ ] **Sketch conflicts+resolutions system** — covered by B2 (CONFLICTS-AND-RESOLUTIONS.md). User said *especially* focus here.
 - [ ] **Sketch event/parking substrate** — covered by B4 (EVENT-STREAMS-AND-PARKING.md)
@@ -74,9 +75,29 @@ addressed by some bucket.**
 - [ ] **"Stability and sharing"** as the right framing — covered by B3
 - [ ] **Removing .dark files from the codebase / package bootstrapping** — covered by B3
 - [ ] **Rely on more recent vault thoughts; some notes are old/dumb** — protocol applied in every read-vault step
-- [ ] **Is `build-serve-expr.py` still referenced/needed?** — covered by B6 (decide + act)
-- [ ] **Sketches go in `.md` files** — every B2-B5 produces an `.md`
-- [ ] **The system runs as a loop, 10 min cadence, for ~an hour** — set up B1; will end naturally at B7
+- [ ] **Is `build-serve-expr.py` still referenced/needed?** — covered by B8 (decide + act)
+- [ ] **Sketches go in `.md` files** — every sketch bucket produces an `.md`
+- [ ] **The system runs as a loop, 10 min cadence, for ~an hour** — set up B1; will end naturally at B10
+
+From feedback-original.md audit — gaps not yet handled:
+- [ ] **Highest-level fn in focus view sketches** ("at various points in time," "high-level pretty sketches") — covered by B7 (VIEW-SKETCHES.md, new). FRONTIER mentions the idea but doesn't sketch the views.
+- [ ] **Hot reloading from first principles, tight .md** — covered by B6 (HOT-RELOAD.md, new). FRONTIER has a placeholder; user wanted a dedicated doc.
+- [ ] **End goal: push the branch so user can pick back up** — covered by B10 (propose-push, new). My memory says never push pdd, but user's feedback explicitly states pushing is the end goal — surface for user confirmation, don't unilaterally push.
+- [ ] **Composable MVU apps infra** (feedback line 31) — explicitly deprioritized by user ("not worth digging too deep rn"). Left as the FRONTIER mention; no bucket.
+
+Already addressed by the prior consolidation loop (B1–B9 of feedback.md):
+- claims extraction + reframe, algorithm extraction, all deletions
+  (anti-pitch, time markers, glossaries, heavy-hitters, project-
+  level/smoke-detectors/pithy, acceptance summary, v1/v2/v3
+  history, FINAL-REPORT), archive tidy, pitches tightened, FRONTIER
+  written (covering 404-event idea, JSONL→SQLite, refactors in lang,
+  CSV smarter defaults, done-ness tracking, WIP-by-location,
+  WIP→hash on commit, speed benchmarks, Prompt as pinned type,
+  search-by-type, daemon viewer, coordinator core, Dark interpreter
+  in Dark, HTML view in Dark, darklang.com/gradual placeholder,
+  highest-level-fn idea, re-eval-until-feels-good, eval-debuggable,
+  HITL broader framing, Tracing surface reduction, pdd-command
+  reconsidering, fewer pdd commands).
 
 ## B1 — Setup (done)
 
@@ -176,7 +197,84 @@ Doc structure:
 - [ ] **Open question**: how do user-defined fns declare effective caps? (Sum of cap-uses in body? Explicit annotation? Inferred?)
 - [ ] Commit
 
-## B6 — Decision: build-serve-expr.py
+## B6 — HOT-RELOAD.md (tight, from first principles)
+
+Deliverable: `pdd-thinking/HOT-RELOAD.md`. Tight — keep it to one
+page worth of dense prose. User said "think on this from 'first
+principles' towards the end of this, add a .md, tight."
+
+Read first:
+- This repo's FRONTIER.md §"Hot reloading — from first principles"
+  (the placeholder paragraph)
+- B4's EVENT-STREAMS-AND-PARKING.md (just-written; hot-reload is
+  effectively a publishing event on the event bus)
+
+Structure:
+
+- [ ] **What hot-reload is for**: in the recursive live-development
+  experience, the user is steering a process; the code under their
+  cursor changes mid-execution; the runtime should pick up changes
+  without restart.
+- [ ] **What triggers a reload**: a package item committed (SCM
+  op), a WIP edit, a PDD materialization, a remote sync. All
+  reduce to "this hash/name now refers to a different body."
+- [ ] **The granularity question**: per-fn? Per-module? Per-DB?
+  Per-trace-replay-boundary?
+- [ ] **The interaction with parked frames**: a frame parked on a
+  Pending wakes when materialized. What about a frame *already in
+  the middle of executing* an old body when a new body is
+  published? Continue with old body until current frame exits, or
+  preempt? Need to decide.
+- [ ] **The contract**: are bodies updated atomically? Are tests
+  re-run? Are dependents invalidated?
+- [ ] **Connection to SCM branch ops**: switching branches is a
+  bulk hot-reload — same machinery.
+- [ ] **Connection to the viewer**: the viewer should hot-reload
+  too — fn states update live as materializations complete.
+- [ ] **Open question**: how does this play with the conflicts +
+  resolutions system (B2)? A reload that would break callers
+  should trigger conflict-resolution, not silently break them.
+- [ ] Commit
+
+## B7 — VIEW-SKETCHES.md (high-level pretty sketches)
+
+Deliverable: `pdd-thinking/VIEW-SKETCHES.md`. User asked for
+"various versions of [the in-progress fn view/experience] at
+various points in time. High-level pretty sketches. Don't need
+anything real yet."
+
+Read first:
+- FRONTIER.md §"Recursive live-development experience" — the
+  vibe is established there; this doc draws the actual views
+
+Sketch with ASCII (or descriptive prose if ASCII gets unwieldy)
+the in-focus-fn view at multiple moments:
+
+- [ ] **t=0 — just after the user typed a prompt.** What does the
+  viewer show? Maybe just: prompt text, the top-level fn skeleton
+  (name + sig, no body yet), a "decomposing..." indicator.
+- [ ] **t=1 — decompose has produced a Dark expression.** Shows
+  the expression. Sub-fns marked Pending. Visible signatures.
+- [ ] **t=2 — materializations in flight.** Each Pending sub-fn
+  has a status badge: ⋯ in-progress, ✓ real, ▼ fake, ↻ cached, ✗
+  failed. Maybe live LLM-call timings.
+- [ ] **t=3 — first eval running.** Top-level fn executes; values
+  start propagating. Trace events stream in a side panel.
+- [ ] **t=4 — refining.** User saw a body and wants it better.
+  Triggers a refine; viewer shows the old body, the new body, and
+  the score-delta.
+- [ ] **t=5 — committed.** Some fns promoted to hashes. Other
+  callers' refs updated. Viewer reflects this.
+- [ ] **The dive-in mechanic**: clicking a fn shows its body, its
+  trace, tests, dependents. Clicking a trace event jumps to that
+  step. Clicking a Pending shows the materialization attempts.
+- [ ] **Multiple zoom levels** (whole-program → fn → expression →
+  value) — sketch what the navigation feels like.
+- [ ] **Note**: this doc is intentionally vague on tech. It's a
+  *visual brief* for whoever builds the viewer eventually.
+- [ ] Commit
+
+## B8 — Decision: build-serve-expr.py
 
 Tiny bucket — answer the deferred question and act.
 
@@ -185,18 +283,34 @@ Tiny bucket — answer the deferred question and act.
 - [ ] Default unless told otherwise: **delete both**. The spike's darklang.com demo was a moment-in-time artifact; FRONTIER captures the "live HTML view in Dark" target.
 - [ ] Commit
 
-## B7 — Cross-reference + tidy
+## B9 — Cross-reference + tidy
 
-- [ ] Update FRONTIER.md to point at the new sketches (CAPABILITIES, CONFLICTS-AND-RESOLUTIONS, EVENT-STREAMS-AND-PARKING, SYNC-AND-STABILITY) and prune duplicate content
-- [ ] Update README.md "How to enter" pointer list to include the 4 new sketches
+- [ ] Update FRONTIER.md to point at the new sketches (CONFLICTS-AND-RESOLUTIONS, SYNC-AND-STABILITY, EVENT-STREAMS-AND-PARKING, CAPABILITIES, HOT-RELOAD, VIEW-SKETCHES) and prune duplicate content
+- [ ] Update README.md "How to enter" pointer list to include the new sketches
 - [ ] Verify no dangling cross-references (grep for filenames)
 - [ ] Re-run snapshot; record final file count + LOC
-- [ ] Set status to `DONE`
 - [ ] Append "After" section below with numbers
-- [ ] Final commit
+- [ ] Commit
+
+## B10 — Propose pushing the branch (end-goal)
+
+User's stated end goal: push the branch with notes so they can
+pick the topic back up later. Memory says never push pdd — so
+this is a propose-to-user step, not a unilateral push.
+
+- [ ] Set this file's `NEXT:` to `DONE`
+- [ ] Surface the proposal to the user with a tight summary:
+  - total LoC + file count post-sketch-loop
+  - the new docs added (CONFLICTS-AND-RESOLUTIONS, SYNC-AND-
+    STABILITY, EVENT-STREAMS-AND-PARKING, CAPABILITIES,
+    HOT-RELOAD, VIEW-SKETCHES)
+  - the build-serve-expr.py decision outcome
+  - ask: ready to push the pdd branch? `git push -u origin pdd`?
+- [ ] Wait for user confirmation before any push.
+- [ ] Final commit (just this loop.md update if nothing else changed).
 
 ---
 
 ## After
 
-*Filled in by B7.*
+*Filled in by B9 + B10.*
