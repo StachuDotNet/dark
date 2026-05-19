@@ -28,7 +28,7 @@
 
 ## Status
 
-**NEXT:** `B2` — Sketch CONFLICTS-AND-RESOLUTIONS.md
+**NEXT:** `B3` — Sketch SYNC-AND-STABILITY.md
 
 ## Vault notes worth reading
 
@@ -129,15 +129,15 @@ Read first (skim 2–3 of these):
 
 Doc structure to sketch:
 
-- [ ] **What is a conflict** (LibMatter sense + extended runtime sense)
-- [ ] **Where conflicts arise**: SCM op-vs-op, runtime Pending unresolvable, capability denied, human-input timeout, type-mismatch on materialization, sync disagreement
-- [ ] **The resolution dispatch**: hierarchy — auto rules → policy → human → fail loudly. Who decides, in what order.
-- [ ] **Resolution outcomes**: substitute default / park-and-wait / ask human / retry with different strategy / fail loudly / pick-a-side
-- [ ] **LibExecution integration**: conflicts as a low-level primitive used by Interpreter + LibMatter + PDD + sync
-- [ ] **F#-shaped type signature** for the resolver dispatch (kept high-level, not committal)
-- [ ] **Examples** mapped to today's behavior: how `FnNotFound` becomes a conflict, how Pending unresolved is one, how op-vs-op is one
-- [ ] **Forward link to B3**: "this primitive is what makes sync feasible"
-- [ ] Commit
+- [x] **What is a conflict** (LibMatter sense + extended runtime sense)
+- [x] **Where conflicts arise**: SCM op-vs-op, runtime Pending unresolvable, capability denied, human-input timeout, type-mismatch on materialization, sync disagreement, WIP-would-be-overwritten, resource-exhausted
+- [x] **The resolution dispatch**: 4-layer hierarchy — auto rules → policy → park+ask → fail loudly
+- [x] **Resolution outcomes**: Substitute / Park / PickSide / RetryWith / AskHuman / FailLoudly
+- [x] **LibExecution integration**: Conflict + ConflictDispatch as base primitive, Interpreter emits-then-awaits
+- [x] **F# type signature** sketched (Conflict sum, Resolution sum, ConflictDispatch fn)
+- [x] **Examples** mapped: FnNotFound, Pending-unresolved, TwoNamesPointedToSameThing, CapabilityDenied, SyncDivergence
+- [x] **Forward link to B3**: "Why this is gating for SCM + sync" section ties it to broader project
+- [x] Commit
 
 ## B3 — SYNC-AND-STABILITY.md
 
