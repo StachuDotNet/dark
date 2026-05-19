@@ -28,7 +28,7 @@
 
 ## Status
 
-**NEXT:** `B4` — Sketch EVENT-STREAMS-AND-PARKING.md
+**NEXT:** `B5` — Sketch CAPABILITIES.md
 
 ## Vault notes worth reading
 
@@ -175,14 +175,15 @@ Read first (skim 2–3):
 
 Doc structure:
 
-- [ ] **Event streams as a primitive**: typed streams, subscribers register interest, streams compose into graphs (waiters, joins, fan-out)
-- [ ] **Concrete event kinds**: materialize-done, capability-denied, fn-not-found-but-still-resolvable, sync-changed-this-fn, human-asked-question
-- [ ] **Parking**: a frame parks on an event-stream subscription; scheduler runs other ready frames; relevant event wakes parked frames
-- [ ] **F# substrate sketch**: tight signature for the event-stream primitive
-- [ ] **Tie to PDD**: Pending materialization parks on "name was resolved"; cap request parks on "approved/denied"; SCM sync parks on "remote agrees"
-- [ ] **Tie to conflicts**: conflicts emit events; subscribers (humans, agents, retry-engines) react
-- [ ] **Async execution model**: parking is the F#-level primitive; Dark-level code uses higher-level futures/channels (sketch shape, don't commit)
-- [ ] Commit
+- [x] **Event streams as a primitive**: typed Stream<T>, multi-subscriber, with map/filter/merge/zip/until/first composers
+- [x] **Concrete event kinds**: 10-row table with producers/subscribers per kind
+- [x] **Parking semantics**: 8-step walkthrough (emit conflict → dispatch returns Park → scheduler subscribes frame → ... → wake)
+- [x] **F# substrate sketch**: Stream<T>, EventSelector, Scheduler types
+- [x] **Tie to PDD/conflicts/sync/caps/hot-reload/viewer**: all unified under stream subscription model
+- [x] **Async execution model**: vault's "all values are promises" maps to Stream.first; Dark-level `!` operator is the visible park-point
+- [x] **Compared to spike's EventSink**: typed/multi-subscriber/compositional/integrated-with-scheduler/error-propagating
+- [x] Open questions: backpressure, cancellation, ordering, persistence, GC of parked frames, multi-emit-vs-single-emit, Stdlib shapes
+- [x] Commit
 
 ## B5 — CAPABILITIES.md
 
