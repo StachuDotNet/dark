@@ -82,46 +82,26 @@ Architecture:
 | `compute the mean of [10L, 20L, 30L]` | Fake `divideBy` | LLM proposed `Option<Int64>` return; tuple destructuring + Option arithmetic |
 | **CSV-variance demo** (`getDate(findMaxVarianceRow(parseRows csv))`) | `parseRows` works; downstream fns produce tuple-heavy bodies LibParser declines | Real progress: runtime-type-propagation gives downstream fns the right sig (List<List<String>> not String). But LLM-natural FP idioms use `(a,b)` tuples + pattern destructuring + non-existent Stdlib names (List.foldi, List.nth, Tuple.second), each of which trips LibParser or runtime. Would need: tuple support in PT/LibParser, or stricter prompt convincing the LLM to avoid the pattern. |
 
-## CLI surface
+## CLI
 
 ```
-dark prompt "<free-text request>"        # decompose + run + visualize
-dark pdd run <dark-expression>           # skip decompose, parse user-written Dark
-dark pdd demo <fnName> <Int64-arg>       # hand-built Apply-of-Pending (test surface)
-dark pdd cache (list | clear | paths)    # promoted/decompose admin
-dark pdd trace (list | last)             # session HTML index
-dark pdd refine <name> | --all | --watch [sec]   # iterate creative fns
-dark pdd promote <name> | --all | list   # SCM commit step (PackageID → hash)
-dark pdd history <name>                  # working revs + committed snapshots
-dark pdd diff <name>                     # what `refine` last changed
-dark pdd revert <name> [rev]             # roll back to an earlier rev
-dark pdd status                          # one-glance environment snapshot
+dark prompt "<free-text request>"   # decompose + materialize + run + visualize
 ```
 
-OpenAI key at `~/.config/darklang/llm-keys.env` (mode 600). On run, sourced via `set -a; source <key file>; set +a` then `dark prompt ...`.
+The spike had a thicket of `dark pdd ...` subcommands. Per feedback,
+most should be automatic (cache, demo) or part of normal SCM
+(promote, history, diff, revert) rather than a separate PDD surface.
+What survives, and in what shape, is open. See `FRONTIER.md`.
 
-## What's built (live in code)
+OpenAI key lives at `~/.config/darklang/llm-keys.env` (mode 600).
 
-- **PT + RT:** `FQFnName.Pending` variant in both layers, with PT2RT lowering. Match-exhaustiveness fixes across ~13 sites (LibExecution + LibDB + LibSerialization).
-- **Interpreter:** `Function(Pending p)` arm in both executionPoint match and the big Apply match. Two cache layers: `packageFnInstrCache` (by hash) + `pendingFnInstrCache` (by handle) to skip re-materialization.
-- **Parser:** `OnMissing.AllowPending` policy in `NameResolver`. Fn-name fallback chains in `WT2PT` check `AllowPending` after exhausting normal lookups; convert unresolved name → `PT.FQFnName.Pending`.
-- **Materializer (`PDDMaterializer.fs`):** real OpenAI HTTP call via `System.Net.Http`. Body is parsed via LibParser (dependency-injected `BodyParser` hook installed by CLI; the body is wrapped in `fun <params> -> body` so identifiers bind correctly). Lowered via `PT2RT.Expr.toRT`, then `canonicalizePendingHandles` rewrites all Pending refs so same-name → same-handle (so self-recursion and shared sub-fns dedupe). Mini-parser remains as fallback for trivial bodies. Tests-as-gate: independent test generation via a second LLM call framed as a QA reviewer that hasn't seen the body. Tests run via a CLI-installed `TestRunner` callback that builds a state with a self-aware materializer (self-recursive refs resolve to the just-built fn, no LLM loop). Self-recursive bodies trust-without-test. Failed tests trigger fix-up retries up to maxAttempts. Three safety rails: wall-clock budget, per-handle LLM cap, recursion-skip. Promotes to `rundir/pdd-cache/promoted.jsonl` only when tests pass.
-- **HTML view (`PDDHTMLView.fs`):** session-keyed, two-pane, 5 state badges. Updates per event; ~1s meta-refresh.
-- **EventSink:** `currentSink : PDDEvent -> unit` with 6 lifecycle events. CLI installs combined stderr+HTML sink.
-- **CLI (`Cli/PddCommand.fs`):** `dark prompt`, `dark pdd run`, `dark pdd demo`, `dark pdd cache`, `dark pdd trace`. Decompose-cache + materialize-cache transparent. Parallel scheduler walks instructions pre-eval, fires `Task.Run` per Pending, stashes arg-type hints from literal call-sites. Installs the LibParser body-parser + the test runner. Wall-clock budget enforced (default 5min, override via `PDD_BUDGET_MS`).
-- **Tests:** 57/57 PDD tests green (`./scripts/run-backend-tests --filter-test-list PDD`).
+## What's live in code
 
-## What's *not* yet built
-
-- Parked-frame scheduler for eval that proceeds in parallel with materialization (today: pendings materialize before eval starts; eval is serial).
-- Find path (corpus search). Generate-only.
-- Capability gates. CapAny implicit.
-- Recovery policy beyond raise-FnNotFound. EmptyBody/tolerant-runtime is design only.
-- Sig consensus (Strategy B). Strategy A (first-wins) in spirit.
-- `trace show` / `replay` / `diff` / `promote` CLI commands. JSONL log exists but no viewer.
-- Real package-store promotion (today it's a JSONL sidecar, not the durable `package_fns` table).
-- Option<T>, Tuple, Record types in `parseSimpleType` (today: only primitive types + List<T>). LLM-produced bodies that touch these fall through to mini-parser → fallback-identity.
-- Mid-program fn iteration (per user feedback: materialized fns should be re-derivable if their results don't satisfy downstream constraints). Today: one-shot per materialization, with retry only on test-fail.
+`FQFnName.Pending` + `PackageID` variants in PT/RT, `OnMissing.AllowPending`
+parser policy, `PDDMaterializer.fs` (OpenAI + LibParser + tests-as-gate
++ canonicalized handles + hot-reload), `PDDHTMLView.fs`, `Cli/PddCommand.fs`,
+57/57 PDD tests green. See `WRAP-UP.md` for the retrospective, `FRONTIER.md`
+for what the F# substrate should grow into.
 
 ## How to enter
 

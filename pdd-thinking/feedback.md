@@ -6,7 +6,7 @@ Original feedback (verbatim): `feedback-original.md`.
 
 ## Status
 
-**NEXT:** `B6` — DESIGN.md + PDD-CLI-REFERENCE.md (absorb/delete)
+**NEXT:** `B7` — WRAP-UP.md final pass (trim, de-dupe with new docs)
 
 _Note: reordered after B3 so CLAIMS/ALGORITHM/FRONTIER exist before B6 wants to absorb DESIGN sections into them. New order: B4=extract → B5=FRONTIER → B6=DESIGN+CLI-REF absorb → B7=WRAP-UP final → B8=archive tidy → B9=verify._
 
@@ -91,21 +91,10 @@ After B2 these are mostly empty. Decide: keep as slim files, or absorb-and-delet
 
 ## B6 — DESIGN.md + PDD-CLI-REFERENCE.md (absorb/delete)
 
-- [ ] **DESIGN.md**: redistribute remaining sections
-  - §1 Vision → already in CLAIMS (deferred to B5)
-  - §2 LibExecution changes → kill per feedback ("LibExecution shouldn't know about PDD") + extract to FRONTIER as "what F# changes would need to happen"
-  - §3 Find vs Generate scheduler → ALGORITHM.md (B5)
-  - §4 Sig consensus → ALGORITHM.md
-  - §5 Tolerant runtime → FRONTIER (it's design-only; needs more thought per feedback)
-  - §6 Capabilities → FRONTIER, framed as "MUST happen before PDD" per feedback
-  - §7 HITL → FRONTIER, rewritten per feedback ("not really a fallback materializer")
-  - §8 Tracing → FRONTIER, reduced surface area per feedback
-  - §9 HTML view → FRONTIER, "should be served via dark" per feedback
-  - §10 EventSink → FRONTIER, "lower-level concept; event graphs with waiters"
-  - §12 5-claim summary → CLAIMS
-- [ ] Delete DESIGN.md
-- [ ] **PDD-CLI-REFERENCE.md**: most commands killed per feedback (`pdd run`, `pdd demo`, `pdd cache`, `pdd promote`, `pdd history` should be auto / part of SCM). Delete file; surviving commands (`dark prompt` + whatever) go into README as a small block.
-- [ ] Commit: "absorb DESIGN + CLI-REF; both deleted"
+- [x] **DESIGN.md**: deleted. §1 (Vision) + §12 (5-claim) already extracted to CLAIMS in B4. §2 (specific F# pivot points) deliberately dropped — they wire PDD *into* LibExecution, which contradicts the "LibExecution shouldn't know about PDD" feedback; the right F# substrate concepts (events, conflicts, capabilities, parking, removing PDD-knowledge) are in FRONTIER. §3 (scheduler) + §4 (sig consensus) in ALGORITHM. §5-§10 (tolerant, caps, HITL, tracing, HTML view, EventSink) all in FRONTIER.
+- [x] **PDD-CLI-REFERENCE.md**: deleted. Most commands killed per feedback. README's CLI section trimmed to just `dark prompt` + a note that everything else is being reconsidered.
+- [x] README also slimmed: dropped "What's built (live in code)" detail block + "What's not yet built" (latter overlaps with FRONTIER).
+- [x] Commit: "absorb DESIGN + CLI-REF; both deleted"
 
 Raw feedback motivating these:
 > the real implementation of materialization and such should really be fully written in Dark... lower-level F# core stuff will need to change to allow for this
