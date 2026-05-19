@@ -6,7 +6,7 @@ Original feedback (verbatim): `feedback-original.md`.
 
 ## Status
 
-**NEXT:** `B9` — Verify + final report
+**NEXT:** `DONE`
 
 _Note: reordered after B3 so CLAIMS/ALGORITHM/FRONTIER exist before B6 wants to absorb DESIGN sections into them. New order: B4=extract → B5=FRONTIER → B6=DESIGN+CLI-REF absorb → B7=WRAP-UP final → B8=archive tidy → B9=verify._
 
@@ -193,15 +193,37 @@ Archive has a lot already absorbed into WRAP-UP. Prune.
 
 ## B9 — Verify + final report
 
-- [ ] Re-run snapshot (top-level + archive)
-- [ ] Compute before/after delta (files, LOC)
-- [ ] Update this file's status to `DONE`
-- [ ] Append "After" section to this file with final numbers
-- [ ] Final commit: "consolidation done — N files, M LOC (from 27/6023)"
+- [x] Re-run snapshot (top-level + archive)
+- [x] Compute before/after delta (files, LOC)
+- [x] Update this file's status to `DONE`
+- [x] Append "After" section to this file with final numbers
+- [x] Final commit: "consolidation done — 7 files, 1150 LOC (from 27/6023)"
 - [ ] Propose to user: push branch?
 
 ---
 
 ## After consolidation
 
-*Filled in by B9.*
+|  | Before | After | Delta |
+|---|---|---|---|
+| **Top-level files** | 7 | 5 | –2 |
+| **Top-level LOC** | 2098 | 1347 | –751 (–36%) |
+| **Archive files** | 20 (incl reflection-layer/) | 2 | –18 |
+| **Archive LOC** | 4065 | 80 | –3985 (–98%) |
+| **Grand total files** | 27 | 7 | –20 (–74%) |
+| **Grand total LOC** | 6023 | 1150 | –4873 (–81%) |
+
+Final top-level structure:
+
+- `README.md` (114 LoC) — slim entry, what's live
+- `CLAIMS.md` (80 LoC) — the 5 claims, reframed per feedback
+- `ALGORITHM.md` (117 LoC) — high-level sketch, marked INCOMPLETE
+- `FRONTIER.md` (349 LoC) — speculative + source-code thoughts
+- `WRAP-UP.md` (410 LoC) — spike retrospective + 3-wave integration
+
+Archive: just `archive/README.md` (12 LoC explainer) +
+`archive/20-elevator-pitches.md` (68 LoC, tightened).
+
+Loop ran for 9 buckets (B1 setup → B2 deletions → B3 small-file
+trims → B4 extract CLAIMS+ALGORITHM → B5 FRONTIER → B6 DESIGN+CLI
+absorb → B7 WRAP-UP final pass → B8 archive tidy → B9 verify).
