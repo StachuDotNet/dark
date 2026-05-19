@@ -14,8 +14,6 @@
 
 **Pitch:** *"The runtime materializes its own source code on demand, in parallel, speculatively, with the LLM as both author and search index — and traces are the artifact."*
 
-**Anti-pitch:** don't say "Copilot for runtime" — that misses every interesting claim.
-
 ## The one demo
 
 ```bash
@@ -36,27 +34,7 @@ Free-text → LLM decomposes to a Dark expression → unresolved fn names auto-m
 
 HTML view at `rundir/pdd-view/<sessionId>.html` shows annotated function cards (✓ real / ⋯ in-progress / ▼ fake / ↻ cached / ✗ failed) + chronological event log, self-refreshing every 1s.
 
-## Heavy-hitters status
-
-| # | Goal | Status |
-|---|---|---|
-| **H1** | `dark prompt "<freeform>"` CLI command | ✅ Live |
-| **H2** | Implicit `Pending` from unresolved parser names | ✅ Live (qualified + unqualified) |
-| **H3** | Interactive annotated HTML view | ✅ Live (zero deps; meta-refresh) + rich index.html |
-| **H4** | Promotion of materialized fns to durable cache | ✅ Live (`rundir/pdd-cache/promoted.jsonl`) |
-| **H5** | LibParser as primary body-parse path | ✅ Live (mini-parser is fallback only) |
-| **H6** | Tests-as-gate: LLM-claimed + independent verification | ✅ Live (recursion-aware skip) |
-| **H7** | Recursion via canonicalized handles + self-aware test runner | ✅ Live |
-| **H8** | Safety rails: wall-clock budget, per-handle LLM cap | ✅ Live (`PDD_BUDGET_MS`, cap=3) |
-| **H9** | Model override | ✅ Live (`PDD_MODEL`, defaults gpt-4o-mini) |
-| **H10** | `FQFnName.PackageID` variant — equal treatment to Package(hash) | ✅ Live (PT+RT, threaded through 15+ sites) |
-| **H11** | Hot-reload: refine in one process → running server picks up | ✅ Live (pddRefreshHook + file mtime polling) |
-| **H12** | `dark pdd refine --watch` background daemon | ✅ Live (round-robin, settle at 5 refines / 2 stuck) |
-| **H13** | `dark pdd promote <name>` — SCM commit step (PackageID → Package(hash)) | ✅ Live (28 fns promoted in demo) |
-| **bonus** | Parallel materialization scheduler | ✅ Live (cap via PDD_PARALLEL, retries on failure) |
-| **bonus** | Decompose-step cache | ✅ Live (`rundir/pdd-cache/decomposed.jsonl`) |
-
-### Demos verified live (latest branch state)
+## Demos verified live
 
 | Prompt | Result | Notes |
 |---|---|---|

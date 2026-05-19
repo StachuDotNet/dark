@@ -230,35 +230,6 @@ Sink failures are swallowed — a buggy view never takes down the runtime.
 
 ---
 
-## §11 Glossary (terminology, pinned)
-
-| Term | Meaning |
-|---|---|
-| **PDD** | Pseudocode-Driven Development — the approach. |
-| **Sketch** | The user-written or LLM-emitted source: names + sigs + (maybe) bodies, with holes. Contrast cache. |
-| **Cache** | Package store's collection of materialized fns/types/values, content-addressed. Derived from past materializations. |
-| **Trace** | Append-only JSONL of execution events. The authoritative record. |
-| **Materialization** | The act of turning a `Pending` reference into a concrete `PackageFn` (or `EmptyBody`, or `Failed`). |
-| **Pending** | A reference in source/RT to a fn without a body yet. Identified by stable `handle : Guid`. |
-| **Handle** | The stable Guid of a Pending. Survives speculation attempts. |
-| **Pinned hash** | A `name → hash` mapping declaring "this is the canonical materialization." Written by `dark pdd promote`. |
-| **Find / Generate** | The two materialization paths: search corpus / call LLM. |
-| **Race** | Default scheduling: both paths fire, first-non-failure wins. |
-| **EmptyBody** | Synthetic body returning `Dval.defaultFor returnType`. Tolerant fallback. |
-| **Tolerant runtime** | The default execution mode: substitute defaults on errors, record in trace. |
-| **RecoveryPolicy** | `KillFrame | EmptyBody | EmptyFrame | AskUser` — per-RTE decision. |
-| **Capability** | An effect tag on a builtin: `CapReadNet`, `CapWriteFile`, etc. |
-| **Grant** | A capability the current session can use. |
-| **EventSink** | `PDDEvent → unit`. Mutable global. CLI / HTML view / tests install their own. |
-| **FnState** | Badge in the HTML view: `InProgress | Real | Fake | Cached | Failed`. |
-
-**Anti-glossary** (terms we *don't* use, by design):
-- "Agent" — overloaded; the materializer isn't an agent in the multi-turn sense.
-- "Stub" — implies "human will fill this in." Pending bodies are filled by the runtime by default.
-- "Lazy" alone — overloaded with normal lazy eval. Say "deferred" or "pending."
-
----
-
 ## §12 The five-claim summary (memorize)
 
 1. The source is lazy.

@@ -6,7 +6,7 @@ Original feedback (verbatim): `feedback-original.md`.
 
 ## Status
 
-**NEXT:** `B2` — pure deletions across top-level
+**NEXT:** `B3` — small-file trims (README, EMPIRICAL, DEMOS-AND-BUDGETS)
 
 ## Snapshot — before consolidation
 
@@ -54,19 +54,19 @@ Original feedback (verbatim): `feedback-original.md`.
 
 Low-risk cuts. Each is a delete or one-line replacement.
 
-- [ ] **README.md**: kill "heavy-hitters status" table section
-- [ ] **WRAP-UP.md**: remove "anti-pitch: don't say 'Copilot for runtime'..." (no "anti-vision" mentions)
-- [ ] **WRAP-UP.md**: kill the "Terminology (pinned)" glossary block
-- [ ] **WRAP-UP.md**: kill "See also (deep-dives still in this directory)" section
-- [ ] **DESIGN.md**: kill §11 Glossary entirely
-- [ ] **DESIGN.md**: kill "anti-glossary" sub-block
-- [ ] **EMPIRICAL.md**: kill §1 (v1→v4 prompt iteration history — user doesn't care about v1/v2/v3)
-- [ ] **EMPIRICAL.md**: kill §5's project-level R11-R14 + smoke detectors sub-section
-- [ ] **EMPIRICAL.md**: kill §6 (pithy line worth keeping)
-- [ ] **DEMOS-AND-BUDGETS.md**: kill §2 "Acceptance summary" through end of file
-- [ ] Grep for "by 8am" / "by Day N" / "tonight" style time markers; remove
-- [ ] Grep for any remaining "anti-vision" / "anti-pitch" / "anti-X" framing; remove
-- [ ] Commit: "trim — pure deletions per feedback"
+- [x] **README.md**: kill "heavy-hitters status" table section
+- [x] **WRAP-UP.md**: remove "anti-pitch: don't say 'Copilot for runtime'..." (no "anti-vision" mentions)
+- [x] **WRAP-UP.md**: kill the "Terminology (pinned)" glossary block
+- [x] **WRAP-UP.md**: kill "See also (deep-dives still in this directory)" section
+- [x] **DESIGN.md**: kill §11 Glossary entirely
+- [x] **DESIGN.md**: kill "anti-glossary" sub-block
+- [x] **EMPIRICAL.md**: kill §1 (v1→v4 prompt iteration history — user doesn't care about v1/v2/v3)
+- [x] **EMPIRICAL.md**: kill §5's project-level R11-R14 + smoke detectors sub-section
+- [x] **EMPIRICAL.md**: kill §6 (pithy line worth keeping)
+- [x] **DEMOS-AND-BUDGETS.md**: kill §2 "Acceptance summary" through end of file
+- [x] Grep for "by 8am" / "by Day N" / "tonight" style time markers; remove
+- [x] Grep for any remaining "anti-vision" / "anti-pitch" / "anti-X" framing; remove
+- [x] Commit: "trim — pure deletions per feedback"
 
 Raw feedback motivating these:
 > don't mention "anti-vision" anywhere

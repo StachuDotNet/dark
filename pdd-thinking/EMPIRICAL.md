@@ -12,31 +12,6 @@ What we actually verified by running real LLM calls + what we're still unsure ab
 
 ---
 
-## §1 The v4 system prompt (verified, in code)
-
-The v4 prompt lives in `backend/src/LibExecution/PDDMaterializer.fs` as `v4SystemPrompt`. It went through four iterations during prompt-shape verification:
-
-| Version | Discovery |
-|---|---|
-| v1 | Worked but model used `int` instead of `Int64`, `=>` instead of `fun ->`, and over-engineered every fn |
-| v2 | Added rules for sized ints, ML-style lambdas, "prefer simplest implementation" — fixed the `int`/`=>` issues; recursion now works |
-| v3 | Added rule: generics use `<…>` not `(…)`. Fixed `List(Int64)` → `List<Int64>`. ML-tvar apostrophes too: `'a` not `<a>` |
-| v4 | Added rules for prefix application (`f x` not `f(x)`) and no anonymous record types in sigs. **In production.** |
-
-**v4 quality** (measured against four Demo-2-shape fns, gpt-4o-mini, T=0):
-- Collection / arithmetic fns: ~85-90% correct Darklang syntax on first try
-- String-op fns: ~50-65% — model has a strong prior toward `str.method()` syntax for strings even with explicit instructions
-- Multi-arg sigs and `++` concat: clean
-- Aggregate across fn categories: **~75-85% first-try success**
-
-**Remaining failure modes:**
-- Model invents stdlib fn names that don't exist (`Stdlib.List.foldi`, `Stdlib.String.indexOf`). Mitigation: inject actual stdlib names into prompt context.
-- `dict.variance` field-access on dicts (Dark uses `Stdlib.Dict.get` for dicts; dot-access is records-only). Mitigation: one more prompt line.
-- Occasional `1` instead of `1L` for Int64 literals. Mitigation: AST-feedback retry.
-
-**v5 prompt idea** (untested): include 1-2 few-shot examples showing prefix-application string ops. Cost: ~150 extra input tokens (~$0.00002/call).
-
----
 
 ## §2 Cost numbers (verified)
 
@@ -94,7 +69,7 @@ Anything else falls back to an identity-shaped `PackageFn` (returns arg unchange
 
 ### Design-level
 
-**R1 — Traces aren't actually replayable in practice.** If too much context isn't captured (LLM nondeterminism, time, network), replays diverge and "trace is the program" is rhetoric. **Test by Day 5-7:** take a trace, replay 10×, count matches. If <9/10 match, the framing is broken.
+**R1 — Traces aren't actually replayable in practice.** If too much context isn't captured (LLM nondeterminism, time, network), replays diverge and "trace is the program" is rhetoric. **Test:** take a trace, replay 10×, count matches. If <9/10 match, the framing is broken.
 
 **R2 — Tolerance hides logic bugs, not just hallucinations.** Loose mode lets your own division-by-zero return 0; you think the program works; it's silently wrong. **Mitigation:** run tests in strict periodically. Don't let `EmptyBody` cover non-materialization errors.
 
@@ -116,33 +91,3 @@ Anything else falls back to an identity-shaped `PackageFn` (returns arg unchange
 
 **R10 — LLM returns syntactically invalid Dark.** Already seen for string ops (~50-65% first-try). Mitigation: retry-with-AST-feedback. 2× cost; ~halves failure rate.
 
-### Project-level
-
-**R11 — The branch becomes a tarpit.** After 2 weeks, 200 commits, Demo 6 still not green. Mitigation: every 3-4 days, check if Day-3 health criterion (Demos 1+4 green) holds. If not, stop adding features.
-
-**R12 — Demo cadence diverges from design cadence.** Demos 1-3 ship but each takes so long to set up that Demo 4 means redoing the harness. Mitigation: invest in a *demo runner* CLI early (`dark pdd run <file>`).
-
-**R13 — Cherry-picking from `pdd` → `main` is harder than rewriting.** Cross-cutting concerns make clean extraction painful. **Plan: rewrite from scratch on a fresh branch** when extracting. Use spike's notes + commits as reference; don't surgically extract.
-
-**R14 — Burnout.** Spike no longer fun. **Stop. Take a day.** If the five claims still feel right when you come back, resume. If not, write the postmortem.
-
-### Smoke detectors to wire up
-
-Once H1/H3 are live (CLI + HTML view), bolt these on:
-
-```bash
-# Are we leaking $$ to expensive models?
-grep '"model": "gpt-4' rundir/logs/pdd-materialize.jsonl | grep -v 'gpt-4o-mini' | head
-
-# Are we recovering more than succeeding?
-jq -r '.result' rundir/logs/pdd-materialize.jsonl | sort | uniq -c | sort -rn
-
-# Total spend across the session?
-jq '[.[] | select(.ev=="cost") | .cost_usd] | add' rundir/traces/*.jsonl
-```
-
----
-
-## §6 The pithy line worth keeping
-
-If forced into one sentence about LLM behavior: **gpt-4o-mini + v4 prompt + mini-parser + tolerant runtime = enough.** The runtime materializes; sometimes the LLM is right, sometimes it's "make-believe-identity," but eval always reaches the end. That's the floor.

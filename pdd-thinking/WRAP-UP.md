@@ -28,22 +28,6 @@ Self-host the materializer in Dark itself over the following ~3
 months. Beyond that: PDD-as-build-tool, PDD-on-PDD recursion,
 `Pending` types, multi-LLM consensus, SCM-style branches and bisect.
 
-## Terminology (pinned)
-
-- **Sketch** — user-written source: names + sigs + (maybe) bodies, with holes
-- **Pending** — a fn reference without a body yet; identified by stable `handle : Guid`
-- **PackageID** — a materialized but mutable fn slot (the working copy)
-- **Package(hash)** — a committed, content-addressed fn (immutable)
-- **Materialize** — turn a `Pending` into a `PackageID` (typically via LLM)
-- **Refine** — mutate the body of a `PackageID` in place
-- **Promote** — snapshot a `PackageID`'s current body and mint a `Package(hash)`
-- **Trace** — append-only JSONL of execution events; the authoritative record
-- **Handle** — stable Guid identifying a Pending across speculation attempts
-- **Verifiable vs Creative** — fn classifier (by name prefix + return type)
-  that decides QA-test-gate vs thin-body retry policy
-
----
-
 ## The five claims (memorize)
 
 1. **The source is lazy.** Names + sigs; bodies materialize on demand.
@@ -55,9 +39,6 @@ months. Beyond that: PDD-as-build-tool, PDD-on-PDD recursion,
    eval keeps moving; recoveries are auditable.
 5. **The human is a materializer.** When find/generate fail, the
    human is the third path.
-
-Anti-pitch: don't say "Copilot for runtime" — misses every
-interesting claim.
 
 ---
 
@@ -762,26 +743,6 @@ dark pdd status                  # one-glance health
 | `rundir/pdd-view/index.html` | sessions index |
 | `rundir/pdd-view/fns.html` | fn registry across sessions |
 | `rundir/logs/pdd-materialize.jsonl` | every LLM call |
-
----
-
-## See also (deep-dives still in this directory)
-
-- `README.md` — top-level entry, build state
-- `DESIGN.md` — sectioned design depth (LibExecution, scheduler,
-  sig, tolerance, capabilities, human, tracing, HTML view)
-- `EMPIRICAL.md` — LLM-behavior observations, prompt iteration,
-  cost numbers, red-team risks
-- `DEMOS-AND-BUDGETS.md` — concrete programs + envelopes
-- `PDD-CLI-REFERENCE.md` — every CLI command in detail
-- `REAL-PACKAGE-FNS.md` — Wave 3 scope
-- `archive/` — historical session reports + earlier iter-by-iter
-  notes + the original SCM-INTEGRATION pivot sketch
-
-The four per-topic reflection docs (SPIKE-LEARNINGS,
-INTEGRATION-PLAN, BIG-PICTURE, F-SHARP-TO-DARK) have been
-consolidated into this file and archived. If you need the
-expanded form: `pdd-thinking/archive/reflection-layer/`.
 
 ---
 
