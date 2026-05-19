@@ -28,7 +28,7 @@
 
 ## Status
 
-**NEXT:** `B3` — Sketch SYNC-AND-STABILITY.md
+**NEXT:** `B4` — Sketch EVENT-STREAMS-AND-PARKING.md
 
 ## Vault notes worth reading
 
@@ -153,16 +153,15 @@ Read first (skim 2–3):
 
 Doc structure:
 
-- [ ] **Stability** defined: a thing is named, hashed, validated, and persistent enough for other consumers to rely on
-- [ ] **Sharing** defined: handing a stable thing to another instance / human / agent, conflicts-machinery handling disagreement
-- [ ] **Sync model**: content-addressable package items + locations-table-with-branch-overlay. What crosses the wire — ops or content?
-- [ ] **Removing `.dark` files (package bootstrapping)**: today's bootstrap replays `.dark` source files; the target is to bootstrap from a content snapshot (SQLite blob or equivalent) — no source-file parsing on first run. Same content-addressable model that powers sync powers bootstrap.
-- [ ] **Open questions on bootstrap**: what ships in the snapshot, how upgrades layer on, how local edits diff against the baseline
-- [ ] **How PDD fits**: WIP refs by location; on commit, refs become by hash; synced PDD work flows over the same channel as hand-authored items
-- [ ] **Conflicts gate sync**: a sync that would introduce a conflict triggers the resolution policy (B2) instead of failing
-- [ ] **WIP sync tension** (carried from feedback): does WIP sync, or stay local? Likely WIP stays local by default, with explicit promote-to-shared on demand
-- [ ] **What this unlocks**: removing .dark files entirely; cross-instance share; pair-programming on the same package store; PDD-on-a-server materializing for many clients
-- [ ] Commit
+- [x] **Stability** + **Sharing** defined at top
+- [x] **Sync model**: events not entities; three streams (Branch/Patch/Package); idempotent append-only
+- [x] **Removing `.dark` files**: content-snapshot bootstrap from `matter.darklang.com/data.db`; LibParser only at edit-time; .dark files gone from repo
+- [x] **Open questions on bootstrap**: snapshot contents, upgrade migrations, snapshot-vs-event diff, reproducibility, trust
+- [x] **How PDD fits**: Pending→PackageID→Package(hash) maps to WIP→committed-snapshot in SCM; same wire format
+- [x] **Conflicts gate sync**: sync routes conflicts through the B2 dispatch
+- [x] **WIP sync tension**: hybrid — WIP local by default, explicit "share my WIP" promotes to a named-draft branch
+- [x] **What this unlocks**: bullet list at end (`.dark` gone, central canvas, pair programming, daemon-for-many, fast onboarding, branch-as-namespace)
+- [x] Commit
 
 ## B4 — EVENT-STREAMS-AND-PARKING.md
 
