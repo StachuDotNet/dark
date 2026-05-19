@@ -151,7 +151,13 @@ The consolidated "things to think about / build" doc. Pull from current docs and
   - **Done-ness tracking** — idea → name → sig → body → tests → connected code → description; iterate until "feels good"
   - **WIP refs by location**, not new ID concept (simplification)
   - **WIP → committed**: update refs to hash for long-term stability
-  - **WIP separated from committed**, syncs with branch ops / package ops
+  - **WIP separated from committed**, syncs with branch ops / package ops.
+    Open tension: WIP doesn't *need* to get synced — keeping it
+    unsynced sidesteps a lot of op-semantics questions, *as long as*
+    WIP is stored separately from ops. But what if you want to share
+    your WIP with yourself on another machine, or with a coworker?
+    Then you need some sync story — maybe lightweight (gist-like
+    snapshots), maybe full ops semantics. Worth thinking through.
   - **Speed benchmarks** — searching dark matter, drafting v0
   - **Prompt as low-level pinned type** (`Prompt`) — not in F#, in Dark
   - **Search-by-type** + surrounding values; supports agent
