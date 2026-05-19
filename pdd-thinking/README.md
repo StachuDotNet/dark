@@ -4,15 +4,9 @@
 
 **Branch:** `pdd` (local-only, off `main`, **never pushed**)
 
-## The five claims (memorize these)
+## Claims
 
-1. **The source is lazy.** Names + signatures; bodies materialize on demand.
-2. **The trace is the program.** Source files are sketches; the trace is the authoritative record.
-3. **Types are the coordination protocol.** Pending references carry sig hints; parallel materializations agree via type unification.
-4. **The runtime is tolerant.** Missing things substitute defaults; eval keeps moving; recoveries are auditable.
-5. **The human is a materializer.** When find and generate fail, the human is the third path.
-
-**Pitch:** *"The runtime materializes its own source code on demand, in parallel, speculatively, with the LLM as both author and search index — and traces are the artifact."*
+See `CLAIMS.md` for the five core claims (reframed since the spike).
 
 ## The one demo
 

@@ -28,17 +28,9 @@ Self-host the materializer in Dark itself over the following ~3
 months. Beyond that: PDD-as-build-tool, PDD-on-PDD recursion,
 `Pending` types, multi-LLM consensus, SCM-style branches and bisect.
 
-## The five claims (memorize)
+## Claims
 
-1. **The source is lazy.** Names + sigs; bodies materialize on demand.
-2. **The trace is the program.** Source files are sketches; the
-   trace is the authoritative record.
-3. **Types are the coordination protocol.** Pending refs carry sig
-   hints; parallel materializations agree via type unification.
-4. **The runtime is tolerant.** Missing things substitute defaults;
-   eval keeps moving; recoveries are auditable.
-5. **The human is a materializer.** When find/generate fail, the
-   human is the third path.
+See `CLAIMS.md` (reframed since the spike).
 
 ---
 

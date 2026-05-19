@@ -11,27 +11,6 @@ Consolidated design notes. Sections roughly correspond to the original numbered 
 
 ---
 
-## §1 Vision
-
-The interpreter materializes its own source code on demand, in parallel, speculatively, with the LLM as both author and search index.
-
-Three claims that make this a paradigm, not a feature:
-
-**Source is lazy.** Traditional dev: source is the slowest-moving artifact. PDD: source is computed at runtime speed by the runtime itself. The artifact you ship is a *sketch + a cache*.
-
-**Trace is the program.** If source is materialized on demand, what *ran* is more durable than what's written. The trace — input, every call, every body materialized, every find-vs-generate result — is the canonical artifact. SCM tracks traces; reviews diff traces; distribution ships sketch + cache.
-
-**Types are the coordination protocol.** When parallel materializations race on the same name, they need to coordinate without sharing a body. The signature is the contract: "I promise to produce a fn with this name and this type." Types are how speculative threads handshake.
-
-Two subclaims that follow:
-
-**Runtime is tolerant.** Anything that would have crashed substitutes a default and records the substitution in the trace. The program reaches the end; the user iterates on what was substituted. Like NaN propagation but for "made-up values."
-
-**Human is a materializer.** When find and generate both fail, the human is the third path. Their answers cache as real package fns. Don't build a separate "ask the user" workflow — fold it into the existing surface.
-
-The algorithm, one paragraph: the interpreter parses pseudocode; for each unrecognized name it races find (corpus search) against generate (LLM); first non-failure wins; eval starts as soon as anything is runnable; when a call hits an unresolved name the frame parks and the scheduler runs other ready frames; when materialization completes parked frames wake; if both paths fail within budget, the runtime substitutes `defaultFor returnType` and keeps going. Generated bodies are themselves pseudocode → recursive → fractal.
-
----
 
 ## §2 LibExecution changes (the load-bearing part)
 
@@ -230,12 +209,3 @@ Sink failures are swallowed — a buggy view never takes down the runtime.
 
 ---
 
-## §12 The five-claim summary (memorize)
-
-1. The source is lazy.
-2. The trace is the program.
-3. Types are the coordination protocol.
-4. The runtime is tolerant.
-5. The human is a materializer.
-
-If you can defend the 60-second pitch using just these five sentences, the rest of the design follows. If you can't, no amount of doc-reading will help — go re-read §1.

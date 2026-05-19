@@ -6,7 +6,7 @@ Original feedback (verbatim): `feedback-original.md`.
 
 ## Status
 
-**NEXT:** `B4` — Extract CLAIMS.md + ALGORITHM.md from existing docs
+**NEXT:** `B5` — Write FRONTIER.md (consolidating speculative items + source-code thoughts)
 
 _Note: reordered after B3 so CLAIMS/ALGORITHM/FRONTIER exist before B6 wants to absorb DESIGN sections into them. New order: B4=extract → B5=FRONTIER → B6=DESIGN+CLI-REF absorb → B7=WRAP-UP final → B8=archive tidy → B9=verify._
 
@@ -122,22 +122,11 @@ Raw feedback motivating these:
 
 ## B4 — Extract CLAIMS.md and ALGORITHM.md
 
-- [ ] Write **CLAIMS.md**: the 5 claims, reframed per feedback:
-  - "The source is lazy" → "The source often starts as lazy. Gradually existent, expanded, typed."
-  - "The trace is the program" → reframe: "The trace is used in conjunction with the interpreter and agent to turn the initial prompt gradually into working software. The program is still a growing set of package items."
-  - "Types are the coordination protocol" — keep
-  - "The runtime is tolerant" — keep but reframe slightly (per FRONTIER's HITL/conflicts rethink)
-  - "The human is a materializer" → reframe: "The human is involved throughout — review, prompting, spec, type choices, code, parking (humans are more async than other materializers)."
-  - Also from elevator-pitches: bring in the best pitches (per feedback "elevator pitches are nice")
-- [ ] Write **ALGORITHM.md**: the algorithm sketch
-  - Mark **INCOMPLETE** at top
-  - High-level pseudocode, NOT F#y
-  - Note: "Really we're building a recursive coding agent. Find and Generate are some strategies; we'll need more. Think ground-up."
-  - Pull in algorithm wording from archive/FINAL-REPORT-2026-05-13.md (feedback liked it)
-  - Include scheduler + sig consensus from DESIGN
-- [ ] Remove claim duplication from WRAP-UP, README, DESIGN (DESIGN will be deleted in B4)
-- [ ] Replace duplicated content with single one-line link to CLAIMS / ALGORITHM
-- [ ] Commit: "extract CLAIMS.md + ALGORITHM.md; reframe per feedback"
+- [x] Write **CLAIMS.md** with all 5 claims reframed per feedback + 60-sec pitch
+- [x] Write **ALGORITHM.md** (high-level, marked INCOMPLETE, recursive-coding-agent framing, coordinator + strategies + parking + conflicts sketches)
+- [x] Remove claim duplication from README, WRAP-UP, DESIGN
+- [x] Replace duplicated content with one-line link to CLAIMS / ALGORITHM
+- [x] Commit: "extract CLAIMS.md + ALGORITHM.md; reframe per feedback"
 
 Raw feedback:
 > we should extract the core claims (e.g. source is lazy) to its own document, and remove from others. lots of duplication currently, and some conflicts
