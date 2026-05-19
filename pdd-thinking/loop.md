@@ -28,7 +28,7 @@
 
 ## Status
 
-**NEXT:** `B6` — Sketch HOT-RELOAD.md (tight, from first principles)
+**NEXT:** `B7` — Sketch COMPOSABLE-MVU.md (apps infra)
 
 ## Vault notes worth reading
 
@@ -225,30 +225,17 @@ Read first:
 
 Structure:
 
-- [ ] **What hot-reload is for**: in the recursive live-development
-  experience, the user is steering a process; the code under their
-  cursor changes mid-execution; the runtime should pick up changes
-  without restart.
-- [ ] **What triggers a reload**: a package item committed (SCM
-  op), a WIP edit, a PDD materialization, a remote sync. All
-  reduce to "this hash/name now refers to a different body."
-- [ ] **The granularity question**: per-fn? Per-module? Per-DB?
-  Per-trace-replay-boundary?
-- [ ] **The interaction with parked frames**: a frame parked on a
-  Pending wakes when materialized. What about a frame *already in
-  the middle of executing* an old body when a new body is
-  published? Continue with old body until current frame exits, or
-  preempt? Need to decide.
-- [ ] **The contract**: are bodies updated atomically? Are tests
-  re-run? Are dependents invalidated?
-- [ ] **Connection to SCM branch ops**: switching branches is a
-  bulk hot-reload — same machinery.
-- [ ] **Connection to the viewer**: the viewer should hot-reload
-  too — fn states update live as materializations complete.
-- [ ] **Open question**: how does this play with the conflicts +
-  resolutions system (B2)? A reload that would break callers
-  should trigger conflict-resolution, not silently break them.
-- [ ] Commit
+- [x] **What hot-reload is for**: recursive live-dev; runtime picks up changes without restart. Framed as a consumer of `BodyChanged hash` (no separate subsystem).
+- [x] **What triggers a reload**: local edit, refine, materialization, SCM commit, remote sync, branch switch, bootstrap (all reduce to one event kind)
+- [x] **Granularity**: per-fn-by-location for user code; per-hash for committed; falls out for free from PackageID/Package(hash) model
+- [x] **Parked-frames interaction**: trivial wake-on-event case + the harder mid-execution case (finish-then-update default, preempt option, both-race niche)
+- [x] **The contract**: atomic update, causal ordering, idempotence, trace recording. NOT auto-rerun-tests, NOT auto-flush-caches.
+- [x] **SCM branch ops**: bulk reload via batched BodyChanged with transaction-end markers
+- [x] **Viewer**: heavy subscriber to BodyChanged + FrameParked/Woken + ConflictResolved
+- [x] **Capabilities interaction**: cap surface might change; flow into B5 dispatch (AskHuman if caps grew)
+- [x] **Conflicts interaction**: type/sig changes emit Conflict.TypeMismatch via B2; dispatched (substitute/park/ask/fail)
+- [x] **Open questions**: cross-instance latency, preempt knob, GC of old bodies, hot-reload of runtime itself, type-change migration as separate flow
+- [x] Commit
 
 ## B7 — COMPOSABLE-MVU.md (apps infra sketch)
 
