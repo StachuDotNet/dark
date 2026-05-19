@@ -57,6 +57,16 @@ material; `-old.md` suffixes and undated docs are suspect.
 - `~/vaults/Darklang Dev/05.Implementation/Execution/dl-runtime-obs.md`
 - `~/vaults/Darklang Dev/05.Implementation/Execution/Interpreter/interpreter rewrite/bonus, follow-ups/parallelism.md`
 
+**Composable MVU / Apps / UI:** (user warned: old thoughts, treat critically)
+- `~/vaults/Darklang Dev/05.Implementation/CLI/Apps/README.md`
+- `~/vaults/Darklang Dev/05.Implementation/CLI/Apps/dl-frp-mvu.md`
+- `~/vaults/Darklang Dev/05.Implementation/CLI/Apps/dl-mvu-frp-impl.md`
+- `~/vaults/Darklang Dev/05.Implementation/Future Environments/Canvas UIs/dl-composable-ui.md`
+- `~/vaults/Darklang Dev/05.Implementation/Future Environments/Canvas UIs/UIs.md`
+
+**Hot-reload (relevant to B6):**
+- `~/vaults/Darklang Dev/05.Implementation/CLI/Apps/Hot-reloading.md`
+
 **Capabilities:**
 - `~/vaults/2026-04-19_20darklang_20advisor_20call_20notes.md` (brief — has the "no safety, capabilities model, builtins are the only impure boundary" line)
 - No explicit capability spec found in vaults — synthesize from FRONTIER + feedback + first principles
@@ -77,13 +87,13 @@ From this session's substrate-sketch request:
 - [ ] **Rely on more recent vault thoughts; some notes are old/dumb** — protocol applied in every read-vault step
 - [ ] **Is `build-serve-expr.py` still referenced/needed?** — covered by B8 (decide + act)
 - [ ] **Sketches go in `.md` files** — every sketch bucket produces an `.md`
-- [ ] **The system runs as a loop, 10 min cadence, for ~an hour** — set up B1; will end naturally at B10
+- [ ] **The system runs as a loop, 10 min cadence, for ~an hour** — set up B1; will end naturally at B11 (now ~110 min total)
 
 From feedback-original.md audit — gaps not yet handled:
 - [ ] **Highest-level fn in focus view sketches** ("at various points in time," "high-level pretty sketches") — covered by B7 (VIEW-SKETCHES.md, new). FRONTIER mentions the idea but doesn't sketch the views.
 - [ ] **Hot reloading from first principles, tight .md** — covered by B6 (HOT-RELOAD.md, new). FRONTIER has a placeholder; user wanted a dedicated doc.
 - [ ] **End goal: push the branch so user can pick back up** — covered by B10 (propose-push, new). My memory says never push pdd, but user's feedback explicitly states pushing is the end goal — surface for user confirmation, don't unilaterally push.
-- [ ] **Composable MVU apps infra** (feedback line 31) — explicitly deprioritized by user ("not worth digging too deep rn"). Left as the FRONTIER mention; no bucket.
+- [ ] **Composable MVU apps infra** (feedback line 31) — covered by B7 (COMPOSABLE-MVU.md, new). User upgraded from "not worth digging too deep" → "some composable MVU thinking could be good." Old vault thoughts exist in `CLI/Apps/` — treat critically.
 
 Already addressed by the prior consolidation loop (B1–B9 of feedback.md):
 - claims extraction + reframe, algorithm extraction, all deletions
@@ -236,7 +246,59 @@ Structure:
   should trigger conflict-resolution, not silently break them.
 - [ ] Commit
 
-## B7 — VIEW-SKETCHES.md (high-level pretty sketches)
+## B7 — COMPOSABLE-MVU.md (apps infra sketch)
+
+Deliverable: `pdd-thinking/COMPOSABLE-MVU.md`. Tight — the
+viewer + traces + apps experience all sit on top of this; the
+sketch is "what's the right substrate?" not "here's an
+implementation."
+
+Read first (treat critically — user warned these are old):
+- `~/vaults/Darklang Dev/05.Implementation/CLI/Apps/README.md`
+- `~/vaults/Darklang Dev/05.Implementation/CLI/Apps/dl-frp-mvu.md`
+- `~/vaults/Darklang Dev/05.Implementation/CLI/Apps/dl-mvu-frp-impl.md`
+- `~/vaults/Darklang Dev/05.Implementation/Future Environments/Canvas UIs/dl-composable-ui.md`
+- `~/vaults/Darklang Dev/05.Implementation/Future Environments/Canvas UIs/UIs.md`
+
+Structure:
+
+- [ ] **Why MVU as the substrate**: deterministic, replayable
+  state evolution (Model + update fn + view fn). Pairs naturally
+  with traces — every Msg → Model transition is recorded; replay
+  is free. Pairs naturally with hot-reload — swap the update or
+  view fn, keep the Model.
+- [ ] **Composable**: apps nest. A bigger app's Model contains
+  sub-app Models; bigger update routes Msgs to sub-update fns;
+  bigger view composes sub-views. Standard Elm/Bonsai-shape stuff.
+- [ ] **What composes**: Models compose by product (record/struct).
+  Msgs compose by sum (variant). Views compose by parent-passes-
+  child-view. Effects/commands compose by interleaving.
+- [ ] **Distinguish from React-style**: explicit Msg → update.
+  No hidden state. Time-travel debugging falls out.
+- [ ] **What old vault thoughts say** — summary of the
+  `dl-frp-mvu.md` and `dl-mvu-frp-impl.md` framings, what feels
+  still-right, what feels dated.
+- [ ] **Connection to PDD viewer**: the in-focus-fn view
+  (sketched in B8) is an MVU app. PDD events arrive as Msgs.
+  Materializations update the Model. Hot-reload swaps the body
+  of a refined fn but keeps user navigation state.
+- [ ] **Connection to traces**: a Msg log is a trace. Replaying a
+  trace = re-applying Msgs to the initial Model. Diffing two
+  traces = aligning their Msg sequences.
+- [ ] **Connection to events (B4)**: MVU Msgs can come from
+  event-stream subscriptions. The event bus feeds the update
+  loop.
+- [ ] **F#-side primitives** vs **Dark-side composition**: F#
+  provides the runtime (Model storage, update dispatch, view
+  rendering) — small surface. Dark provides the apps. Sketch the
+  thin F# substrate.
+- [ ] **Open questions**: how does this play with multiple
+  concurrent apps (e.g., the PDD viewer + a SCM view + the user's
+  own app)? Are they truly separate Models, or one big composed
+  Model?
+- [ ] Commit
+
+## B8 — VIEW-SKETCHES.md (high-level pretty sketches)
 
 Deliverable: `pdd-thinking/VIEW-SKETCHES.md`. User asked for
 "various versions of [the in-progress fn view/experience] at
@@ -274,7 +336,7 @@ the in-focus-fn view at multiple moments:
   *visual brief* for whoever builds the viewer eventually.
 - [ ] Commit
 
-## B8 — Decision: build-serve-expr.py
+## B9 — Decision: build-serve-expr.py
 
 Tiny bucket — answer the deferred question and act.
 
@@ -283,16 +345,16 @@ Tiny bucket — answer the deferred question and act.
 - [ ] Default unless told otherwise: **delete both**. The spike's darklang.com demo was a moment-in-time artifact; FRONTIER captures the "live HTML view in Dark" target.
 - [ ] Commit
 
-## B9 — Cross-reference + tidy
+## B10 — Cross-reference + tidy
 
-- [ ] Update FRONTIER.md to point at the new sketches (CONFLICTS-AND-RESOLUTIONS, SYNC-AND-STABILITY, EVENT-STREAMS-AND-PARKING, CAPABILITIES, HOT-RELOAD, VIEW-SKETCHES) and prune duplicate content
+- [ ] Update FRONTIER.md to point at the new sketches (CONFLICTS-AND-RESOLUTIONS, SYNC-AND-STABILITY, EVENT-STREAMS-AND-PARKING, CAPABILITIES, HOT-RELOAD, COMPOSABLE-MVU, VIEW-SKETCHES) and prune duplicate content
 - [ ] Update README.md "How to enter" pointer list to include the new sketches
 - [ ] Verify no dangling cross-references (grep for filenames)
 - [ ] Re-run snapshot; record final file count + LOC
 - [ ] Append "After" section below with numbers
 - [ ] Commit
 
-## B10 — Propose pushing the branch (end-goal)
+## B11 — Propose pushing the branch (end-goal)
 
 User's stated end goal: push the branch with notes so they can
 pick the topic back up later. Memory says never push pdd — so
@@ -313,4 +375,4 @@ this is a propose-to-user step, not a unilateral push.
 
 ## After
 
-*Filled in by B9 + B10.*
+*Filled in by B10 + B11.*
