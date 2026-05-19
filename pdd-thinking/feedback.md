@@ -6,7 +6,7 @@ Original feedback (verbatim): `feedback-original.md`.
 
 ## Status
 
-**NEXT:** `B8` — Archive tidy (delete absorbed reflection-layer + REPORT-* + early planning; process FINAL-REPORT; tighten elevator-pitches)
+**NEXT:** `B9` — Verify + final report
 
 _Note: reordered after B3 so CLAIMS/ALGORITHM/FRONTIER exist before B6 wants to absorb DESIGN sections into them. New order: B4=extract → B5=FRONTIER → B6=DESIGN+CLI-REF absorb → B7=WRAP-UP final → B8=archive tidy → B9=verify._
 
@@ -181,25 +181,15 @@ After CLAIMS + ALGORITHM + FRONTIER exist, WRAP-UP should be much smaller — ju
 
 Archive has a lot already absorbed into WRAP-UP. Prune.
 
-- [ ] `archive/reflection-layer/` — these 4 docs (SPIKE-LEARNINGS, INTEGRATION-PLAN, BIG-PICTURE, F-SHARP-TO-DARK) were absorbed into WRAP-UP per the consolidation a week ago. Delete the subdirectory entirely.
-- [ ] `REPORT-state.md`, `REPORT-thoughts.md`, `REPORT-overnight.md`, `REPORT-morning.md` — session reports, all absorbed. Delete.
-- [ ] `SESSION-2-REPORT-2026-05-13.md`, `CODING-LOOP.md` — historical session notes, absorbed. Delete.
-- [ ] `SCM-INTEGRATION.md` — captured in CLAIMS/ALGORITHM/code. Delete.
-- [ ] `09-carving-the-codebase.md`, `10-day-1-hacking-plan.md`, `13-libpdd-materializer.md`, `17-day-1-quick-reference.md`, `18-minimum-viable-spike.md` — early planning, all absorbed. Delete.
-- [ ] `FINAL-REPORT-2026-05-13.md` — per feedback:
-  - Remove For + TLDR opening
-  - Extract claims → already in CLAIMS via B5
-  - Extract algorithm → already in ALGORITHM via B5 (feedback liked this wording)
-  - Remove LibExe changes section
-  - Remove everything after "find vs generate — the scheduler"
-  - Whatever remains: delete (per "eventually consolidate into other doc(s)")
-- [ ] `20-elevator-pitches.md` — keep, tighten:
-  - Remove "what I'm not claiming" / anti-pitch content
-  - Keep just the pitches
-  - Move to top level as `PITCHES.md`? Or leave in archive? Feedback says "could tighten" not "move."
-  - Leave in archive, tighten.
-- [ ] Update `archive/README.md` to reflect what remains
-- [ ] Commit: "archive tidy — prune absorbed docs"
+- [x] `archive/reflection-layer/` — deleted (-1506 LoC, 5 files)
+- [x] `REPORT-{state,thoughts,overnight,morning}.md` — deleted (-486 LoC)
+- [x] `SESSION-2-REPORT-2026-05-13.md`, `CODING-LOOP.md` — deleted (-210 LoC)
+- [x] `SCM-INTEGRATION.md` — deleted (-106 LoC)
+- [x] `09-carving-the-codebase.md`, `10-day-1-hacking-plan.md`, `13-libpdd-materializer.md`, `17-day-1-quick-reference.md`, `18-minimum-viable-spike.md` — deleted (-1395 LoC)
+- [x] `FINAL-REPORT-2026-05-13.md` — deleted (-157 LoC); algorithm wording already captured in ALGORITHM per feedback
+- [x] `20-elevator-pitches.md` — tightened: kept 60-sec + 3-min pitch (with reframed lazy/gradual line per CLAIMS feedback); dropped 10-min deep dive (duplicates CLAIMS/ALGORITHM), "what I'm not claiming", spike-era day targets, pitch-picker. 144 → 68 LoC.
+- [x] `archive/README.md` rewritten — brief explainer of what remains and where everything else went.
+- [x] Commit: "archive tidy — prune absorbed docs"
 
 ## B9 — Verify + final report
 
