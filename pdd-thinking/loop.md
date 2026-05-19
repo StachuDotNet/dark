@@ -28,7 +28,7 @@
 
 ## Status
 
-**NEXT:** `B9` — Decision: build-serve-expr.py
+**NEXT:** `DONE`
 
 ## Vault notes worth reading
 
@@ -301,19 +301,19 @@ the in-focus-fn view at multiple moments:
 
 Tiny bucket — answer the deferred question and act.
 
-- [ ] Re-check: is `build-serve-expr.py` still referenced? (Only by README's darklang.com block, which documents a workflow using sunset `dark pdd run`.)
-- [ ] **Decide**: delete the script + the README darklang.com block (option b — both are dead workflow), OR keep both as historical evidence (option a).
-- [ ] Default unless told otherwise: **delete both**. The spike's darklang.com demo was a moment-in-time artifact; FRONTIER captures the "live HTML view in Dark" target.
-- [ ] Commit
+- [x] Re-check: only one place referenced the script (README's darklang.com block); workflow used sunset `dark pdd run`
+- [x] Decided: delete both (option b — both are dead workflow)
+- [x] Deleted `pdd-thinking/scripts/build-serve-expr.py` (script + empty scripts/ dir gone)
+- [x] Removed README's `### darklang.com port — WORKING (live)` block (40 lines)
+- [x] Commit
 
 ## B10 — Cross-reference + tidy
 
-- [ ] Update FRONTIER.md to point at the new sketches (CONFLICTS-AND-RESOLUTIONS, SYNC-AND-STABILITY, EVENT-STREAMS-AND-PARKING, CAPABILITIES, HOT-RELOAD, COMPOSABLE-MVU, VIEW-SKETCHES) and prune duplicate content
-- [ ] Update README.md "How to enter" pointer list to include the new sketches
-- [ ] Verify no dangling cross-references (grep for filenames)
-- [ ] Re-run snapshot; record final file count + LOC
-- [ ] Append "After" section below with numbers
-- [ ] Commit
+- [x] FRONTIER updated: replaced 5 duplicate substrate sections with one-line pointers; pruned hot-reload placeholder; preserved tracing-surface + JSONL-sidecar inline notes
+- [x] README "How to enter" updated with 7-doc substrate-sketch block
+- [x] Dangling refs check: only `loop.md` still mentions build-serve-expr (as process record); no live docs do
+- [x] Final snapshot recorded in "After" section
+- [x] Commit
 
 ## B11 — Propose pushing the branch (end-goal)
 
@@ -321,19 +321,45 @@ User's stated end goal: push the branch with notes so they can
 pick the topic back up later. Memory says never push pdd — so
 this is a propose-to-user step, not a unilateral push.
 
-- [ ] Set this file's `NEXT:` to `DONE`
-- [ ] Surface the proposal to the user with a tight summary:
-  - total LoC + file count post-sketch-loop
-  - the new docs added (CONFLICTS-AND-RESOLUTIONS, SYNC-AND-
-    STABILITY, EVENT-STREAMS-AND-PARKING, CAPABILITIES,
-    HOT-RELOAD, VIEW-SKETCHES)
-  - the build-serve-expr.py decision outcome
-  - ask: ready to push the pdd branch? `git push -u origin pdd`?
-- [ ] Wait for user confirmation before any push.
-- [ ] Final commit (just this loop.md update if nothing else changed).
+- [x] Set this file's `NEXT:` to `DONE`
+- [x] Final commit
+- [ ] **Proposal surfaced to user in chat. Awaiting confirmation before any push.**
 
 ---
 
 ## After
 
-*Filled in by B10 + B11.*
+**Before substrate-sketch loop** (end of consolidation): 7 working
+files, 1150 LoC at top level (plus 2 archive entries).
+
+**After substrate-sketch loop:**
+
+| File | LoC | Role |
+|---|---|---|
+| README.md | 93 | slim entry; pointers |
+| WRAP-UP.md | 410 | spike retro + integration plan |
+| CLAIMS.md | 80 | 5 claims, reframed |
+| ALGORITHM.md | 117 | high-level sketch (incomplete) |
+| FRONTIER.md | 235 | speculative + source-code thoughts (pruned of duplicates) |
+| CONFLICTS-AND-RESOLUTIONS.md | 221 | the headline — conflicts as base LibExe primitive, gates SCM+sync |
+| SYNC-AND-STABILITY.md | 250 | events-not-entities; removes .dark files |
+| EVENT-STREAMS-AND-PARKING.md | 246 | typed streams + scheduler parking |
+| CAPABILITIES.md | 273 | cap tags on builtins; must precede PDD |
+| HOT-RELOAD.md | 202 | first-principles; consumer of BodyChanged |
+| COMPOSABLE-MVU.md | 256 | apps infra; viewer/trace/SCM all MVU apps |
+| VIEW-SKETCHES.md | 320 | 6 ASCII sketches of in-progress fn viewer |
+| archive/20-elevator-pitches.md | 68 | (unchanged) |
+| archive/README.md | 12 | (unchanged) |
+| **TOTAL** | **2783** | **14 working files** |
+
+Net delta: +7 substrate-sketch docs, +1688 LoC of new substrate
+thinking. Decision: deleted build-serve-expr.py + the README
+darklang.com block (both relied on the sunset `dark pdd run`
+workflow).
+
+Loop ran 11 buckets at 5-min cadence (~55 min): B1 setup → B2-B5
+the four substrate sketches → B6 hot-reload → B7 MVU → B8 view
+sketches → B9 build-serve-expr decision → B10 tidy → B11
+propose-push. Headline doc per user emphasis: **B2
+CONFLICTS-AND-RESOLUTIONS.md** — gating piece for SCM + sync work
+broadly, not just PDD.

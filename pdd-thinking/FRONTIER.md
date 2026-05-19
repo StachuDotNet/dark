@@ -19,81 +19,47 @@ Two big framings up front:
 
 ---
 
-## Pre-PDD: capabilities-first
+## Substrate sketches (separate docs)
 
-Builtin permissions / capabilities must land **before** real PDD
-work. LLM-generated code will try `File.delete "*"` or
-`HttpClient.post` to random places. Cap tags gate this.
+The load-bearing substrate work — each has its own dedicated
+sketch since this version of FRONTIER was written:
 
-- Each `BuiltInFn` gains `capabilities : Set<Capability>`
-- Cap decisions live on `ExecutionState.capabilityCheck` —
-  `Granted | Denied of reason | DeniedAsk`
-- Cap grant is interactive (install-time / per-invocation / `--ask`)
-- The generate-prompt only lists builtins the session has granted —
-  belt-and-suspenders with the runtime gate
-- PDD hooks into the cap-request flow throughout: as the agent
-  decides to materialize something that needs new caps, it pauses
-  and surfaces a grant request
+- **`CONFLICTS-AND-RESOLUTIONS.md`** — conflicts+resolutions as a
+  base LibExecution primitive. Headline: gates SCM + sync work
+  broadly, not just PDD.
+- **`SYNC-AND-STABILITY.md`** — events-not-entities sync, leads
+  to removing `.dark` files via content-snapshot bootstrap.
+- **`EVENT-STREAMS-AND-PARKING.md`** — typed event streams +
+  scheduler parking. The substrate for promises, materialization,
+  sync, capability requests.
+- **`CAPABILITIES.md`** — cap tags on builtins. Must precede
+  PDD. Cap denials flow into the conflict dispatch.
+- **`HOT-RELOAD.md`** — first-principles. One consumer of
+  `BodyChanged` event, not a separate subsystem.
+- **`COMPOSABLE-MVU.md`** — apps infra. PDD viewer, trace
+  inspector, SCM UI are all MVU apps.
+- **`VIEW-SKETCHES.md`** — visual brief for the in-progress fn
+  viewer at multiple time points.
 
-Once this lands, PDD layers on top of it cleanly.
-
----
-
-## Low-level substrate (what F# should grow)
-
-### Conflicts + resolutions, as a base concept
-
-Today an unresolved call mostly fails. We need a richer system:
-
-- Per-call/per-RTE policy: substitute default, park-and-wait, ask
-  human, retry with new strategy, fail loudly
-- `RecoveryPolicy` is the right *shape* but needs to be a
-  first-class LibExecution concept, not a side door
-- Resolutions are pluggable — Dark-level code installs handlers
-- Same machinery serves PDD (unresolved name) **and** SCM (merge
-  conflict, mismatch between WIP and committed) — both are
-  "something is unresolved, decide what to do"
-
-The conflicts+resolutions system should thread through all of
-LibExecution as a low-level primitive, used by both PDD and SCM.
-
-### Event streams (and graphs)
-
-`EventSink` today is a single `PDDEvent -> unit` mutable global.
-That's a starting shape; the real thing wants to be:
-
-- Multiple streams (materialization, capability, SCM, user-input,
-  trace-replay, ...)
-- Subscribers register interest by kind + filter
-- Events can compose into **graphs**: waiters, joins, fan-out
-- Both the agent infra and SCM sync sit on top
-- 404 events from "unresolved/unfound name was about to be
-  evaluated" plug in directly — some higher-level listener
-  catches them, decides whether to materialize, park, or fail
-
-Event-graphs-with-waiters might be a thing. Composable MVU-style.
+Open inline notes worth keeping:
 
 ### Tracing: less surface, more primitive
 
-`Tracing.fs` got changed quite wildly during the spike. The
-right move is **fewer F# changes, more exposure via builtins**.
-Reduce the F# surface area; expose what Dark needs to read/write
-traces from inside Dark code. Treat traces like values: they live
-in the DB, they're queryable, they can be replayed.
+`Tracing.fs` got changed quite wildly during the spike. The right
+move is **fewer F# changes, more exposure via builtins**. Reduce
+the F# surface area; expose what Dark needs to read/write traces
+from inside Dark code. Treat traces like values: they live in the
+DB, they're queryable, they can be replayed. (Per
+`COMPOSABLE-MVU.md`, traces are also Msg logs — the trace and the
+viewer's Msg stream are the same artifact.)
 
 ### Storage: kill the JSONL sidecar
 
 Everything currently in `rundir/pdd-cache/*.jsonl` and friends
 should live in the SQLite DB. Either raw tables, or — more likely —
 a `UserDB`-like construct (a new persistence primitive we'd build
-out). One source of truth. No sidecars.
-
-### Composable MVU apps infra
-
-This system should sit on some composable MVU apps infrastructure.
-We have relevant notes elsewhere on this machine. The PDD viewer,
-the trace inspector, the SCM UI — these are all MVU apps. The
-infra is the shared primitive.
+out). One source of truth. No sidecars. (Implied by
+`SYNC-AND-STABILITY.md`'s content-addressable-store framing.)
 
 ---
 
@@ -122,37 +88,22 @@ infra is the shared primitive.
 
 ## The recursive live-development experience
 
-The user prompts for some software. A daemon spawns to build it,
-returns a thread id. The user attaches to a viewer.
+The high-level vision: user prompts → daemon spawns → user
+attaches to a viewer → sees highest-level fn being filled in →
+dives into anything (AI threads, traces, tests, materializations,
+cap requests). Beautiful, customizable.
 
-In the viewer they see the **highest-level function in focus** —
-the one they prompted for — with parts of it being filled in:
-which sub-fns are resolved, which are materializing, which are
-parked. They can dive into any of it:
-
-- Which AI threads are running, on what
-- What traces have run
-- What tests are being added
-- What code is being materialized
-- What capabilities are being requested
-
-Beautiful sketches needed at multiple zoom levels. We don't need
-anything real yet — high-level visual designs of what this looks
-like across time.
-
-**Re-eval until results feel good.** Keep faking implementations
-and "continuing" traces (or starting fresh) as needed. The user
-isn't waiting on a build; they're steering a process.
-
-**Each eval is separately debuggable as it goes.** Traces can be
-replayed and debugged like a movie scrub. This is a real
-differentiator from "wait for codegen, run, iterate."
+Visual brief at multiple time points: see `VIEW-SKETCHES.md`.
+The MVU substrate that makes it implementable: see
+`COMPOSABLE-MVU.md`. Re-eval-until-feels-good and
+each-eval-separately-debuggable are first-class affordances.
 
 ### Coordinator
 
-The coordinator is super-core (see ALGORITHM.md). It's the
-single dispatch point that decides which strategy to run, in what
-order, and how to combine results. Sketches needed.
+The coordinator is super-core (see `ALGORITHM.md`). Single
+dispatch point that decides which strategy to run, in what order,
+and how to combine results. Threads through the conflict-
+resolution dispatch (`CONFLICTS-AND-RESOLUTIONS.md`).
 
 ### CSV example: smarter defaults
 
@@ -290,21 +241,11 @@ somewhere — possibly in a vault note. Should communicate:
 
 ---
 
-## Hot reloading — from first principles
+## Hot reloading
 
-The spike has hot-reload via `pddRefreshHook` + mtime polling on
-JSONL files. Cute but not principled. We need to think this
-through:
-
-- What changes trigger reload?
-- What's the granularity (per-fn, per-module, per-DB)?
-- How does it interact with parked frames mid-execution?
-- How does it relate to SCM branch ops?
-- Does the viewer get hot-reload too?
-- What's the contract: bodies updated atomically? Tests re-run?
-
-Add a tight `HOT-RELOAD.md` later, or just an expanded section
-here. For now: open.
+See `HOT-RELOAD.md` for the from-first-principles sketch. Framed
+as one consumer of `BodyChanged` events from the event bus, not
+a separate subsystem.
 
 ---
 

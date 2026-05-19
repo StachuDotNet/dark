@@ -43,37 +43,6 @@ HTML view at `rundir/pdd-view/<sessionId>.html` shows annotated function cards (
 | `PDD_MODEL=gpt-4o dark pdd run "longestRow \"alice,30\\nbob-smith,25\\n…\""` | `"daniel-johnson,35"` | First **end-to-end String CSV demo**: split + fold + max-by-length. 6s. 3 QA tests pass. |
 | `PDD_MODEL=gpt-4o dark pdd run "parseRows \"date,open,close\\n…\""` | `[[date,open,close],[2024-01-01,100,108],…]` | CSV → List<List<String>>. ✓ real with 3 QA tests. |
 
-### darklang.com port — WORKING (live)
-
-The "user hits a route → materialize on demand" vision is real. 10
-routes from darklang.com serve real semantic HTML via gpt-4o-materialized
-Dark functions. Run:
-
-```bash
-PDD_BUDGET_MS=3600000 PDD_MODEL=gpt-4o PDD_PARALLEL=3 \
-  dark pdd run "$(cat /tmp/serve-expr.txt)"
-# starts an HTTP server on :9876 inside the container; curl http://172.17.0.2:9876/{ , /no, /cli, /packages, /ai, /our-cloud, /backends, /editing, /getting-started, /language }
-```
-
-Each route handler is a `render*Page` Pending. The CLI walks the React
-source under `~/code/darklang.com/src/pages/<X>/index.tsx`, extracts
-visible text content, and embeds it as a literal arg to the route's
-`render*Page` call. PDD then materializes each fn with that arg-value
-in the LLM prompt — output is semantic HTML5 (`<html><head><title>...
-<body><h1>...<section><h2>...<ul><li>...`).
-
-Architecture:
-- **Verifiable vs Creative fn classification.** Heuristic by name prefix
-  (`render*`, `generate*`, `synthesize*`, etc) + return type. Creative
-  fns SKIP independent QA tests (whose hallucinated expectations
-  destroy creative output) and instead get a **thin-body detector**:
-  if the body looks like an echo (no `<`, or starts with the param +
-  has no HTML), re-materialize with explicit "return rich semantic
-  HTML" guidance. Up to 3 attempts (vs 2 for verifiable).
-- **Per-route literal context.** Page text extracted from TSX, passed
-  as a String arg to each Pending. The LLM sees the actual content,
-  not just the fn name.
-
 ### Demos that still trip the system (gaps surfaced)
 
 | Prompt | Failure | Reason |
@@ -110,5 +79,15 @@ for what the F# substrate should grow into.
 3. `CLAIMS.md` — the claims, reframed.
 4. `ALGORITHM.md` — high-level sketch (incomplete).
 5. `FRONTIER.md` — speculative + source-code-changes thoughts.
+
+**Substrate sketches** (the load-bearing pre-PDD work):
+
+6. `CONFLICTS-AND-RESOLUTIONS.md` — **the headline.** Gating piece for SCM + sync.
+7. `SYNC-AND-STABILITY.md` — events-not-entities; removes `.dark` files from the repo.
+8. `EVENT-STREAMS-AND-PARKING.md` — typed streams + scheduler parking.
+9. `CAPABILITIES.md` — cap tags on builtins; must precede PDD.
+10. `HOT-RELOAD.md` — first-principles; one consumer of `BodyChanged`.
+11. `COMPOSABLE-MVU.md` — apps infra; viewer/trace/SCM are all MVU apps.
+12. `VIEW-SKETCHES.md` — pretty sketches of the in-progress fn viewer at t=0…5.
 
 When in doubt: `git log pdd ^main` for the total diff. The total diff is the source of truth.
