@@ -11,6 +11,10 @@ store*). Traditional dev treats source as the slowest-moving thing.
 PDD treats it as something that grows alongside execution, becoming
 more concrete with each call, edit, refinement.
 
+> Source code is gradually thought of, written, tested, typed,
+> iterated, completed, distributed, available — all in branches,
+> sandboxed and available to everywhere you want it to be.
+
 ## 2. Traces, interpreter, and agent gradually turn a prompt into working software
 
 Not "the trace is the program" — that's overstated. The program is
