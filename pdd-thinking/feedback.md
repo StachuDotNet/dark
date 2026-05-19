@@ -6,7 +6,9 @@ Original feedback (verbatim): `feedback-original.md`.
 
 ## Status
 
-**NEXT:** `B4` — DESIGN.md + PDD-CLI-REFERENCE.md (absorb/delete)
+**NEXT:** `B4` — Extract CLAIMS.md + ALGORITHM.md from existing docs
+
+_Note: reordered after B3 so CLAIMS/ALGORITHM/FRONTIER exist before B6 wants to absorb DESIGN sections into them. New order: B4=extract → B5=FRONTIER → B6=DESIGN+CLI-REF absorb → B7=WRAP-UP final → B8=archive tidy → B9=verify._
 
 ## Snapshot — before consolidation
 
@@ -87,7 +89,7 @@ After B2 these are mostly empty. Decide: keep as slim files, or absorb-and-delet
 - [x] **README.md**: removed "Hard rules" (repo-local context, not deliverable); updated "How to enter" pointer list to the target 5-file structure.
 - [x] Commit: "absorb EMPIRICAL + DEMOS into WRAP-UP/README; slim README"
 
-## B4 — DESIGN.md + PDD-CLI-REFERENCE.md (absorb/delete)
+## B6 — DESIGN.md + PDD-CLI-REFERENCE.md (absorb/delete)
 
 - [ ] **DESIGN.md**: redistribute remaining sections
   - §1 Vision → already in CLAIMS (deferred to B5)
@@ -118,7 +120,7 @@ Raw feedback motivating these:
 > event streams should be a lower-level thing in LibExe as well
 > LibExecution shouldn't know anything about PDD
 
-## B5 — Extract CLAIMS.md and ALGORITHM.md
+## B4 — Extract CLAIMS.md and ALGORITHM.md
 
 - [ ] Write **CLAIMS.md**: the 5 claims, reframed per feedback:
   - "The source is lazy" → "The source often starts as lazy. Gradually existent, expanded, typed."
@@ -146,7 +148,7 @@ Raw feedback:
 > the pseudocode we include, anywhere, should be higher-level and not very F#y
 > elevator pitches are nice. could tighten a bit. just keep that doc to just the pitch(es) though, without "what I'm not claiming"
 
-## B6 — Write FRONTIER.md
+## B5 — Write FRONTIER.md
 
 The consolidated "things to think about / build" doc. Pull from current docs and the feedback's "misc notes" list.
 
