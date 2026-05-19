@@ -28,7 +28,7 @@
 
 ## Status
 
-**NEXT:** `B7` — Sketch COMPOSABLE-MVU.md (apps infra)
+**NEXT:** `B8` — Sketch VIEW-SKETCHES.md (high-level pretty sketches)
 
 ## Vault notes worth reading
 
@@ -253,41 +253,20 @@ Read first (treat critically — user warned these are old):
 
 Structure:
 
-- [ ] **Why MVU as the substrate**: deterministic, replayable
-  state evolution (Model + update fn + view fn). Pairs naturally
-  with traces — every Msg → Model transition is recorded; replay
-  is free. Pairs naturally with hot-reload — swap the update or
-  view fn, keep the Model.
-- [ ] **Composable**: apps nest. A bigger app's Model contains
-  sub-app Models; bigger update routes Msgs to sub-update fns;
-  bigger view composes sub-views. Standard Elm/Bonsai-shape stuff.
-- [ ] **What composes**: Models compose by product (record/struct).
-  Msgs compose by sum (variant). Views compose by parent-passes-
-  child-view. Effects/commands compose by interleaving.
-- [ ] **Distinguish from React-style**: explicit Msg → update.
-  No hidden state. Time-travel debugging falls out.
-- [ ] **What old vault thoughts say** — summary of the
-  `dl-frp-mvu.md` and `dl-mvu-frp-impl.md` framings, what feels
-  still-right, what feels dated.
-- [ ] **Connection to PDD viewer**: the in-focus-fn view
-  (sketched in B8) is an MVU app. PDD events arrive as Msgs.
-  Materializations update the Model. Hot-reload swaps the body
-  of a refined fn but keeps user navigation state.
-- [ ] **Connection to traces**: a Msg log is a trace. Replaying a
-  trace = re-applying Msgs to the initial Model. Diffing two
-  traces = aligning their Msg sequences.
-- [ ] **Connection to events (B4)**: MVU Msgs can come from
-  event-stream subscriptions. The event bus feeds the update
-  loop.
-- [ ] **F#-side primitives** vs **Dark-side composition**: F#
-  provides the runtime (Model storage, update dispatch, view
-  rendering) — small surface. Dark provides the apps. Sketch the
-  thin F# substrate.
-- [ ] **Open questions**: how does this play with multiple
-  concurrent apps (e.g., the PDD viewer + a SCM view + the user's
-  own app)? Are they truly separate Models, or one big composed
-  Model?
-- [ ] Commit
+- [x] **Why MVU as the substrate**: 3 properties — pairs with traces, pairs with hot-reload, pairs with event streams
+- [x] **The shape**: `App<Model, Msg>` record (init/update/view/effects)
+- [x] **Composable**: Models by product, Msgs by variant, view assembles, effects interleave
+- [x] **"Default view per thing"**: polymorphic `Stdlib.UI.view` per type; package-store-overridable
+- [x] **Mapping spike's PDD viewer**: hand-written F# → Dark MVU app with subscribe-via-effects
+- [x] **F# substrate vs Dark composition**: ~500 LoC F# runtime (Elmish loop + effects executor + view adapter + Model persistence); rest is Dark
+- [x] **Msg log = trace**: same artifact, two consumption patterns; replay scrubber as slider over Msg log
+- [x] **Events (B4) bridge**: subscriptions are Effects; emits become Msgs
+- [x] **Multiple concurrent apps**: hybrid root with `List<RunningApp>` + typed sub-Models
+- [x] **What this unlocks**: PDD viewer + trace inspector + SCM UI + user apps + free hot-reload + polymorphic views
+- [x] **Old vault thoughts**: synthesized into "default view per thing" framing; bookmarks captured
+- [x] **Open questions**: render target, effects discipline, trace replay with different update fn, real-time collab, state persistence, Stdlib.UI content
+- [x] **Compared to Elm / Bonsai / React / SwiftUI**: closest to Bonsai (composable as values); differs from React (no implicit state)
+- [x] Commit
 
 ## B8 — VIEW-SKETCHES.md (high-level pretty sketches)
 
