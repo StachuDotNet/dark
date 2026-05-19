@@ -6,7 +6,7 @@ Original feedback (verbatim): `feedback-original.md`.
 
 ## Status
 
-**NEXT:** `B5` — Write FRONTIER.md (consolidating speculative items + source-code thoughts)
+**NEXT:** `B6` — DESIGN.md + PDD-CLI-REFERENCE.md (absorb/delete)
 
 _Note: reordered after B3 so CLAIMS/ALGORITHM/FRONTIER exist before B6 wants to absorb DESIGN sections into them. New order: B4=extract → B5=FRONTIER → B6=DESIGN+CLI-REF absorb → B7=WRAP-UP final → B8=archive tidy → B9=verify._
 
@@ -141,42 +141,8 @@ Raw feedback:
 
 The consolidated "things to think about / build" doc. Pull from current docs and the feedback's "misc notes" list.
 
-- [ ] Sections to include:
-  - **Capabilities first** — must precede PDD; PDD hooks into capability requests throughout
-  - **Conflicts + resolutions** — low-level LibExe concept; default resolutions; some scenarios fail, others park-and-wait
-  - **Event streams (graphs)** — low-level concept; waiters; agent infra + SCM sync rest on top. 404 events for unresolved names that get evaluated.
-  - **Composable MVU apps infra** — whatever it means; cross-ref relevant notes
-  - **Recursive live development** — not just fns; AI, notes, types, values, traces; full-stack
-  - **Refactors in the lang** — built into PDD process
-  - **Done-ness tracking** — idea → name → sig → body → tests → connected code → description; iterate until "feels good"
-  - **WIP refs by location**, not new ID concept (simplification)
-  - **WIP → committed**: update refs to hash for long-term stability
-  - **WIP separated from committed**, syncs with branch ops / package ops.
-    Open tension: WIP doesn't *need* to get synced — keeping it
-    unsynced sidesteps a lot of op-semantics questions, *as long as*
-    WIP is stored separately from ops. But what if you want to share
-    your WIP with yourself on another machine, or with a coworker?
-    Then you need some sync story — maybe lightweight (gist-like
-    snapshots), maybe full ops semantics. Worth thinking through.
-  - **Speed benchmarks** — searching dark matter, drafting v0
-  - **Prompt as low-level pinned type** (`Prompt`) — not in F#, in Dark
-  - **Search-by-type** + surrounding values; supports agent
-  - **`dark prompt` as daemon** — thread id, watcher, viewer; beautiful + customizable
-  - **Coordinator** — super-core; sketches needed
-  - **Dark interpreter in Dark** — default one + fancy expanding one
-  - **Hot-reload from first principles** — tight section
-  - **HTML view in Dark, served by Dark**
-  - **darklang.com/gradual** — sketch content (maybe in vault)
-  - **Highest-level fn in focus view** — sketches at various points in time; "see what's going on"
-  - **Re-eval until results feel good** — keep faking impl and "continuing" traces
-  - **CSV example: implicit early extraction** of csv as value/file
-  - **Each eval is separately debuggable as it's going**; traces can be replayed + debugged
-  - **F# substrate changes needed** to allow Dark-hosted materializer:
-    - LibExecution shouldn't know about PDD
-    - Tracing surface area reduced; exposed via builtins
-    - SQLite-only state (no JSONL sidecars); UserDB-like construct
-    - Conflicts/resolutions + event streams as low-level LibExe primitives
-- [ ] Commit: "write FRONTIER.md — speculative + source-code thoughts"
+- [x] All sections included (capabilities-first, conflicts+resolutions, event streams, MVU, recursive live dev, refactors, done-ness, WIP refs by location, WIP→hash on commit, WIP sync tension, speed, Prompt type, search-by-type, daemon viewer, coordinator, Dark interpreter in Dark, hot-reload, HTML view in Dark, darklang.com/gradual, highest-level fn in focus, re-eval, CSV example, debuggable evals, F# substrate changes, risks from EMPIRICAL).
+- [x] Commit: "write FRONTIER.md — speculative + source-code thoughts"
 
 Raw feedback (heavy):
 > an unresolved/unfound name that we try to run the body of should likely yield some sort of 404 'event' in some broad 'event stream'
