@@ -20,8 +20,11 @@
 >    verify and **stop scheduling**.
 >
 > **The headline:** conflicts+resolutions (B2) is the most important
-> sketch. B3 (sync + stability + bootstrap-without-.dark-files)
-> rides on top of it. Lean weight there.
+> sketch — **it's the gating piece for the SCM + sync work the user
+> needs to take care of in the broader project**, not just a PDD
+> concern. B3 (sync + stability + bootstrap-without-.dark-files)
+> rides directly on top of it. Lean weight there; if the iter runs
+> short, prioritize B2 depth over B4/B5.
 
 ## Status
 
