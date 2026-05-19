@@ -6,7 +6,7 @@ Original feedback (verbatim): `feedback-original.md`.
 
 ## Status
 
-**NEXT:** `B7` — WRAP-UP.md final pass (trim, de-dupe with new docs)
+**NEXT:** `B8` — Archive tidy (delete absorbed reflection-layer + REPORT-* + early planning; process FINAL-REPORT; tighten elevator-pitches)
 
 _Note: reordered after B3 so CLAIMS/ALGORITHM/FRONTIER exist before B6 wants to absorb DESIGN sections into them. New order: B4=extract → B5=FRONTIER → B6=DESIGN+CLI-REF absorb → B7=WRAP-UP final → B8=archive tidy → B9=verify._
 
@@ -168,15 +168,14 @@ Raw feedback (heavy):
 
 After CLAIMS + ALGORITHM + FRONTIER exist, WRAP-UP should be much smaller — just the spike-end retrospective + integration plan, with claims/algorithm/frontier content removed.
 
-- [ ] Remove all 5-claim repetition (point to CLAIMS)
-- [ ] Remove algorithm-shape descriptions (point to ALGORITHM)
-- [ ] Remove big-picture / frontier sections (point to FRONTIER)
-- [ ] Remove "F# → Dark roadmap" (now part of FRONTIER)
-- [ ] Trim the integration plan — calm down on `dark pdd` command-by-command listing; commands per feedback are killed
-- [ ] Remove the "Hard rules" section (this is repo-local context, doesn't belong in a deliverable doc)
-- [ ] Remove the CLI Reference at bottom (per B4 — most commands gone)
-- [ ] Keep: what got built, what worked, what didn't, surprises, decisions to lock, 3-wave merge plan, prioritized TODOs, what we'd do differently, what spike did/didn't answer, closing time-horizon table
-- [ ] Commit: "WRAP-UP final pass — de-dup with CLAIMS/ALGORITHM/FRONTIER, trim"
+- [x] 5-claim repetition removed in B4 (points to CLAIMS).
+- [x] Big-picture (~80L), recursive-nature (~80L), Dark-strengths (~55L), F#→Dark roadmap (~75L) sections deleted; one-line "see FRONTIER" pointer in their place.
+- [x] Integration plan trimmed — no more `dark pdd` command-by-command listings; Wave 2 reframed as "materializer + viewer behind a flag"; Wave 3 reframed as "commit step as part of normal SCM."
+- [x] "Hard rules" section deleted (repo-local context).
+- [x] CLI reference at bottom deleted (most commands killed per feedback).
+- [x] Kept: TL;DR, Claims-link, what got built, what worked / didn't / surprises, decisions to lock, slimmed 3-wave plan, prioritized TODOs, what we'd do differently, single-vs-3-PR meta-question, did/didn't answer, closing time-horizon table.
+- [x] **Bonus:** REAL-PACKAGE-FNS.md also deleted — overlaps with WRAP-UP Wave 3 + FRONTIER storage section; its specific F# pivot-point code is wrong-direction per feedback.
+- [x] Commit: "WRAP-UP final pass — de-dup, trim; also delete REAL-PACKAGE-FNS"
 
 ## B8 — Archive tidy
 
