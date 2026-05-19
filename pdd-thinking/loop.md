@@ -28,7 +28,7 @@
 
 ## Status
 
-**NEXT:** `B8` — Sketch VIEW-SKETCHES.md (high-level pretty sketches)
+**NEXT:** `B9` — Decision: build-serve-expr.py
 
 ## Vault notes worth reading
 
@@ -282,29 +282,20 @@ Read first:
 Sketch with ASCII (or descriptive prose if ASCII gets unwieldy)
 the in-focus-fn view at multiple moments:
 
-- [ ] **t=0 — just after the user typed a prompt.** What does the
-  viewer show? Maybe just: prompt text, the top-level fn skeleton
-  (name + sig, no body yet), a "decomposing..." indicator.
-- [ ] **t=1 — decompose has produced a Dark expression.** Shows
-  the expression. Sub-fns marked Pending. Visible signatures.
-- [ ] **t=2 — materializations in flight.** Each Pending sub-fn
-  has a status badge: ⋯ in-progress, ✓ real, ▼ fake, ↻ cached, ✗
-  failed. Maybe live LLM-call timings.
-- [ ] **t=3 — first eval running.** Top-level fn executes; values
-  start propagating. Trace events stream in a side panel.
-- [ ] **t=4 — refining.** User saw a body and wants it better.
-  Triggers a refine; viewer shows the old body, the new body, and
-  the score-delta.
-- [ ] **t=5 — committed.** Some fns promoted to hashes. Other
-  callers' refs updated. Viewer reflects this.
-- [ ] **The dive-in mechanic**: clicking a fn shows its body, its
-  trace, tests, dependents. Clicking a trace event jumps to that
-  step. Clicking a Pending shows the materialization attempts.
-- [ ] **Multiple zoom levels** (whole-program → fn → expression →
-  value) — sketch what the navigation feels like.
-- [ ] **Note**: this doc is intentionally vague on tech. It's a
-  *visual brief* for whoever builds the viewer eventually.
-- [ ] Commit
+- [x] **Layout principle** at top: 3-region (top strip / focus + dive-in / event timeline)
+- [x] **t=0** prompt-received sketch
+- [x] **t=1** decompose-produced sketch (5 fn refs annotated with status)
+- [x] **t=2** materializations-in-flight (with dive-in showing parseRows detail + Refine/Pin actions)
+- [x] **t=3** first-eval-running (inline values propagating; pause/skip controls)
+- [x] **t=4** refining (diff view + score delta + Accept/Reject)
+- [x] **t=5** committed (hash-stamped; commit-preview in dive-in; ready-to-send)
+- [x] **Dive-in mechanic** described (8 click-targets: fn / event / value / hash / Pending / cap / conflict)
+- [x] **Multiple zoom levels** (whole-program ↕ module ↕ fn ↕ expression ↕ value) with status badges propagating up
+- [x] **Concurrent threads** sketch (sessions strip)
+- [x] **What the viewer is NOT** (not IDE, test runner, SCM tool, deploy surface)
+- [x] **Implementation vagueness** preserved as intended (note at end)
+- [x] **Aspirational closing**: viewer as cockpit; system produces decisions, not source files
+- [x] Commit
 
 ## B9 — Decision: build-serve-expr.py
 
