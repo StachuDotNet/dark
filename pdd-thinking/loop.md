@@ -2,7 +2,7 @@
 
 > **PREAMBLE FOR THE LOOPER (read this first, every iter):**
 >
-> You are an iter of a 10-minute self-paced loop. Your job is to
+> You are an iter of a **5-minute** self-paced loop. Your job is to
 > sketch the substrate concepts PDD really needs, one bucket per
 > iter, into `.md` files in this directory. Concretely:
 >
@@ -16,7 +16,7 @@
 > 6. Update the `NEXT:` line to the next unchecked bucket — or
 >    `DONE` if all done.
 > 7. Commit (bucket-named message). Don't push.
-> 8. Schedule the next wake (10 min). If `NEXT: DONE`, **stop
+> 8. Schedule the next wake (**5 min**). If `NEXT: DONE`, **stop
 >    scheduling** (B10 is the user-facing propose-push terminus).
 >
 > **The headline:** conflicts+resolutions (B2) is the most important
@@ -87,7 +87,7 @@ From this session's substrate-sketch request:
 - [ ] **Rely on more recent vault thoughts; some notes are old/dumb** — protocol applied in every read-vault step
 - [ ] **Is `build-serve-expr.py` still referenced/needed?** — covered by B8 (decide + act)
 - [ ] **Sketches go in `.md` files** — every sketch bucket produces an `.md`
-- [ ] **The system runs as a loop, 10 min cadence, for ~an hour** — set up B1; will end naturally at B11 (now ~110 min total)
+- [ ] **The system runs as a loop, 5 min cadence** — set up B1; will end naturally at B11 (~50-60 min remaining after B2)
 
 From feedback-original.md audit — gaps not yet handled:
 - [ ] **Highest-level fn in focus view sketches** ("at various points in time," "high-level pretty sketches") — covered by B7 (VIEW-SKETCHES.md, new). FRONTIER mentions the idea but doesn't sketch the views.
