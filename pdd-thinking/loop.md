@@ -28,7 +28,7 @@
 
 ## Status
 
-**NEXT:** `B5` — Sketch CAPABILITIES.md
+**NEXT:** `B6` — Sketch HOT-RELOAD.md (tight, from first principles)
 
 ## Vault notes worth reading
 
@@ -195,17 +195,21 @@ Read first:
 
 Doc structure:
 
-- [ ] **Why capabilities first** (per feedback): LLM-generated code will try bad things; ungated runtime is a footgun
-- [ ] **Capability tags**: `CapPure`, `CapReadFile`, `CapWriteFile`, `CapReadNet`, `CapWriteNet`, `CapReadEnv`, `CapReadTime`, `CapReadRandom`, `CapWriteDB`, `CapExec`, `CapSendSecret`, `CapAny` (forbidden in production)
-- [ ] **Where checked**: at the call site in `Apply` for builtin calls
-- [ ] **`BuiltInFn` declarations**: each builtin declares its caps; default `{CapPure}`; opt-in the impure
-- [ ] **Result type**: `Granted | Denied of reason | DeniedAsk`
-- [ ] **Denial → conflict-resolution**: a denial flows into the B2 resolver (substitute default, park-and-ask, or fail)
-- [ ] **Grant model**: install-time defaults, per-session granted set, per-invocation `--allow`/`--deny`, interactive `--ask`
-- [ ] **LLM-prompt side**: the generate-prompt sees only granted caps; belt-and-suspenders with the runtime gate
-- [ ] **Sequencing**: ships before real PDD; PDD layers on top (a materialization needing new caps surfaces a grant request)
-- [ ] **Open question**: how do user-defined fns declare effective caps? (Sum of cap-uses in body? Explicit annotation? Inferred?)
-- [ ] Commit
+- [x] **Why capabilities first** + framing (LLM footgun)
+- [x] **Capability tags** sketched as a sum (incl. CapSendSecret + CapReadDB/CapWriteDB split)
+- [x] **Where checked**: at Apply for builtin calls; pseudocode shown
+- [x] **`BuiltInFn` declarations**: default `{CapPure}`, opt-in the impure
+- [x] **Result type**: Granted | Denied | DeniedAsk
+- [x] **Denial → conflict-resolution**: routes through B2 dispatch
+- [x] **Grant model**: 5-layer (per-invocation / interactive / session / install / system floor)
+- [x] **Interactive grants over the event bus**: 7-step flow connecting B2 + B4
+- [x] **LLM-prompt side**: generate-prompt filtered by granted caps; belt-and-suspenders
+- [x] **User-defined fn effective caps**: walkExprs computation; 3 sub-open-questions
+- [x] **Sequencing**: 10-step integration order (caps land before PDD wiring)
+- [x] **What this unlocks**: safe LLM-code exec, auditable trust, composable trust, sandboxing-built-in, cap-aware refactoring
+- [x] **Open questions beyond effective-caps**: per-user-vs-session, cap-state sync, mid-session revocation, granularity, network targets, package-store caps, test mode
+- [x] **Compared to existing systems** (Joe-E, Pony, WASM Component Model — we're cap-tags-on-builtins, not value-passing)
+- [x] Commit
 
 ## B6 — HOT-RELOAD.md (tight, from first principles)
 
