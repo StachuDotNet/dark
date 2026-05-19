@@ -129,23 +129,12 @@ OpenAI key at `~/.config/darklang/llm-keys.env` (mode 600). On run, sourced via 
 - Option<T>, Tuple, Record types in `parseSimpleType` (today: only primitive types + List<T>). LLM-produced bodies that touch these fall through to mini-parser → fallback-identity.
 - Mid-program fn iteration (per user feedback: materialized fns should be re-derivable if their results don't satisfy downstream constraints). Today: one-shot per materialization, with retry only on test-fail.
 
-## Hard rules
-
-- **Never push `pdd`.** Local-only by design. Cherry-pick later if anything ships.
-- **Commit after every successful compile.** Free, atomic, easy to revert.
-- **30-minute rule on stuck:** revert and try a different angle.
-- **OpenAI key** lives at `~/.config/darklang/llm-keys.env` (mode 600). Never written to any repo file. Cumulative spend ≈ $0.005 of the $10 budget (mostly prompt-iteration during the design loop; live runs are sub-$0.0001 each thanks to caching).
-- Build is two-pass after Dark type changes: `touch backend/src/LibExecution/package-ref-hashes.txt && build`.
-
 ## How to enter
 
-1. Read this file (you're here) — *what's built and live*.
-2. **`WRAP-UP.md`** — **the single consolidated doc.** What worked, what didn't, decisions to lock, 3-wave merge plan, big-picture roadmap, F# → Dark self-hosting plan, prioritized TODOs by time budget. Print this and mark it up.
-3. `DESIGN.md` — sectioned design depth (LibExecution, scheduler, sig, tolerance, capabilities, human, tracing, HTML view).
-4. `EMPIRICAL.md` — what we verified empirically about LLM behavior + open questions + red-team.
-5. `DEMOS-AND-BUDGETS.md` — concrete programs to build toward + spike envelopes.
-6. `PDD-CLI-REFERENCE.md` — every `dark pdd ...` command in detail.
-7. `REAL-PACKAGE-FNS.md` — scope sketch for Wave 3 (real `package_functions` integration).
-8. `archive/` — historical session reports, the original SCM-INTEGRATION pivot, earlier iter-by-iter docs, and `reflection-layer/` (the four per-topic reflection docs consolidated into `WRAP-UP.md`). Don't read unless tracing a specific decision.
+1. Read this file — what's live in code.
+2. `WRAP-UP.md` — spike retrospective + 3-wave integration plan.
+3. `CLAIMS.md` — the claims, reframed.
+4. `ALGORITHM.md` — high-level sketch (incomplete).
+5. `FRONTIER.md` — speculative + source-code-changes thoughts.
 
 When in doubt: `git log pdd ^main` for the total diff. The total diff is the source of truth.

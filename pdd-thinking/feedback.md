@@ -6,7 +6,7 @@ Original feedback (verbatim): `feedback-original.md`.
 
 ## Status
 
-**NEXT:** `B3` — small-file trims (README, EMPIRICAL, DEMOS-AND-BUDGETS)
+**NEXT:** `B4` — DESIGN.md + PDD-CLI-REFERENCE.md (absorb/delete)
 
 ## Snapshot — before consolidation
 
@@ -82,10 +82,10 @@ Raw feedback motivating these:
 
 After B2 these are mostly empty. Decide: keep as slim files, or absorb-and-delete?
 
-- [ ] **EMPIRICAL.md**: after B2 deletions, what remains? Move useful bits (cost numbers, failure-mode list, recursion-termination Q if not answered elsewhere) into WRAP-UP or FRONTIER. Delete EMPIRICAL.md.
-- [ ] **DEMOS-AND-BUDGETS.md**: after B2 deletion of §2+, only §1 demos remain. Move concrete-demo list into README (live state) as a compact table. Delete DEMOS-AND-BUDGETS.md.
-- [ ] **README.md**: trim to essentials — five-claim link → CLAIMS, live demos compact table, demo cmd, links to other docs. Remove the long "what's built" / "what's not yet built" / heavy-hitters columns.
-- [ ] Commit: "absorb EMPIRICAL + DEMOS into WRAP-UP/README; slim README"
+- [x] **EMPIRICAL.md**: deleted. Failure-mode R1-R10 and a few open Qs can be re-extracted from git if needed in B6 (FRONTIER). The cost numbers and v4-prompt findings are noise per feedback.
+- [x] **DEMOS-AND-BUDGETS.md**: deleted. Live demos already in README's "Demos verified live" + "Demos that still trip"; aspirational demos (Demo 5/6/7) skipped per feedback to skip "spike-budget" framing.
+- [x] **README.md**: removed "Hard rules" (repo-local context, not deliverable); updated "How to enter" pointer list to the target 5-file structure.
+- [x] Commit: "absorb EMPIRICAL + DEMOS into WRAP-UP/README; slim README"
 
 ## B4 — DESIGN.md + PDD-CLI-REFERENCE.md (absorb/delete)
 
