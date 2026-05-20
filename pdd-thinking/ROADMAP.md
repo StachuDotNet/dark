@@ -592,8 +592,15 @@ P3-11 *is* the demo. Hitting that chunk is the goal-line.
 
 ## Open decisions
 
-*Accumulates as TODOs surface decisions worth flagging. Final
-pass in T27.*
+T27: consolidated across loop iters. Each item is prefixed by
+topic (bs=bootstrap, ss=sharing, id=identity, cr=conflicts,
+caps=capabilities, sch=schema, ev=event-streams, hr=hot-reload,
+mvu=composable-MVU, fd=f#-vs-dark, mig=migration, ra=remote-access).
+Items are decisions worth pinning before the load-bearing work
+they affect ships.
+
+**Decision-ranking:** Q-bs-* and Q-id-* land first (they're in
+the critical path's earliest phases); Q-ra-* last (Phase 3+).
 
 ### From T14 deepening + errors-as-conflicts framing
 
@@ -653,11 +660,166 @@ pass in T27.*
 - **Q-bs-6** Fate of `packages/*.dark` post-removal — archive
   repo? Tagged release? Documentation reference?
 
+### From T15 (capabilities) — full list in CAPABILITIES.md
+
+- **Q-caps-1** Per-builtin caps storage: on `BuiltInFn` record
+  (proposed) vs separate registry table?
+- **Q-caps-2** When does CapInvokeLLM grant happen? Install-time
+  opt-out (recommend) vs first-use-prompt vs never-auto.
+- **Q-caps-3** Cap revocation mid-session: prompt active frames
+  to wind down vs hard kill.
+- **Q-caps-4** User-defined fn effective-caps computation
+  (sum-of-builtin-caps walk): cached on hash, eagerly at parse,
+  or lazily on first call?
+
+### From T16 (event-streams)
+
+- **Q-ev-1** EventBus persistence per-bus (in EVENT-STREAMS-AND-
+  PARKING). Which buses get tables?
+- **Q-ev-2** Subscription priority + ordering across multiple
+  subscribers to one bus.
+- **Q-ev-3** Backpressure when a slow subscriber falls behind.
+
+### From T17 (hot-reload)
+
+- **Q-hr-1** Mid-execution policy default (FinishThenUpdate vs
+  Preempt vs Race). Lean FinishThenUpdate; per-session
+  configurable.
+- **Q-hr-2** Bus-transactional `BodyChanged` batching for
+  branch-switch. Acceptable latency vs simplicity.
+- **Q-hr-3** Hot-reload + capability surface change: route
+  through B2 dispatch (recommend) vs special-case path.
+
+### From T18 (composable MVU)
+
+- **Q-mvu-1** Msg type per-app vs globally-shared sum type.
+  Likely per-app for type safety + composability.
+- **Q-mvu-2** View tree primitives: how many built-in vs deferred
+  to user definition.
+- **Q-mvu-3** Time-travel debugging UX: scrub via the trace, or
+  separate replay tool.
+
+### From T19 (schema)
+
+- **Q-sch-1** Sync table for cross-instance state. Probably one
+  more table (last_sync_sequence per peer).
+- **Q-sch-2** Event-bus persistence. Most buses don't need
+  dedicated tables; durable ones reuse existing.
+- **Q-sch-3** `_v0` suffix retirement. Tied to Phase 1 + Phase 2.
+- **Q-sch-4** Audit-log retention. Probably forever; revisit at
+  scale.
+- **Q-sch-5** Cross-instance schema versioning. Reject events
+  targeting unknown tables; bootstrap upgrade resolves.
+
+### From T20 (F#/Dark line)
+
+- **Q-fd-1** When materializer becomes a Dark fn. After Phase 2;
+  not on critical path.
+- **Q-fd-2** Parser at edit-time only after Phase 1 ships.
+  Confirmed.
+- **Q-fd-3** Per-builtin `capabilities` field origin. F# declares
+  + Dark reads.
+- **Q-fd-4** `Stdlib.*` organization (substrate vs sugar).
+  Probably split: `Stdlib.Internal.*` for cap-checked privileged
+  ops; `Stdlib.*` for ergonomic.
+
+### From T21 (migration)
+
+- **Q-mig-1** P0 parallelism with P1: yes; audits don't block.
+- **Q-mig-2** Phase 2 timing pressure (4-6 weeks real, may
+  need to split further).
+- **Q-mig-3** matter.darklang.com hosting: tailnet-only first;
+  GCP later.
+- **Q-mig-4** Phase 4 ordering within: probably hot-reload first
+  (highest leverage).
+- **Q-mig-5** Where PDD-spike code goes: archived per
+  WRAP-UP; Phase 4 P4-7 lands the substrate-correct shape.
+- **Q-mig-6** Beyond Phase 4: substrate stable, never "done."
+
+### From T22+T22b (agent runtime + remote access)
+
+- **Q-ra-1** Process model: thread (default) vs subprocess
+  (specific cases).
+- **Q-ra-2** `dark on` syntax (`dark on major <cmd>` recommended).
+- **Q-ra-3** `/exec` response streaming: chunked HTTP (simple,
+  through Tailscale).
+- **Q-ra-4** Pair-share device control between unrelated tailnet
+  members: default deny; explicit grant required.
+- **Q-ra-5** Agent state migration mid-execution: not v1.
+- **Q-ra-6** Tailnet-vs-internet boundary (public funnel timing):
+  Phase 4.
+
 ---
 
 ## Risks
 
-*Filled in by T26.*
+Per T26. Honest audit, not bullish. What kills this, what's
+hard, what's optimistic, what's tested vs hypothetical.
+
+### Risks that could kill the substrate
+
+| Risk | Probability | Impact | Mitigation |
+|---|---|---|---|
+| **The whole cohabitation framing is wrong** — users don't want a substrate; they want a fancier IDE | medium | fatal to product positioning | MVP-cohabitation demo *with real users* is the gate. Don't build Phase 4+ without P3-11 user-validation. |
+| **Tailscale dependency is a poison pill** — Tailscale changes terms / goes away / becomes commercially hostile | low | high | The substrate works without Tailscale (token auth fallback). Tailscale is the *default*, not a requirement. |
+| **matter.darklang.com hosting becomes operational burden** — single point of failure; we don't have ops bandwidth | high | medium | Start tailnet-only (Stachu's personal server). Public funnel deferred to Phase 4. Operational complexity scales with usage. |
+| **AI-opt-in undermines product story** — investors / users expect "AI everywhere" | low | medium | Honest positioning: Darklang is AI-friendly, not AI-mandatory. Users who want AI opt in. This is a *feature*, not a deficit. |
+
+### Risks that slow the work
+
+| Risk | Probability | Impact | Mitigation |
+|---|---|---|---|
+| **Phase 2a cap-check has performance regressions** | medium | medium | Fast-path empty-required set; benchmark on tight arithmetic loops; gate strict-mode short-circuit. (Already in CAPABILITIES design.) |
+| **Conflict dispatch latency on every builtin call** | medium | medium | Same as above. Default dispatch is one match-arm return. |
+| **The materializer-in-Dark migration is harder than expected** | high | low-medium | Phase 4 work; not on critical path. If it's hard, defer further. |
+| **Per-builtin cap annotation is more invasive than predicted** | medium | low | 9 assemblies × maybe 50 fns each = ~450 fns max. Mechanical pass; default per-assembly = right for ~80%. |
+| **schema kill-and-fill becomes a footgun** as more peers join | medium | medium | Already a known limitation. Need an upgrade-flow story before Phase 3 deploy. (Captured in Q-bs-3.) |
+
+### What's tested vs hypothetical
+
+| Claim | Status |
+|---|---|
+| Bootstrap removal works (snapshot extract + grow) | **half-tested** — `LibDB.Seed` exists on main; round-trip not explicitly tested per-CI |
+| Sync over Tailscale works | **hypothetical** — never tested end-to-end with Dark |
+| Cap-check at Apply is fast enough | **hypothetical** — no benchmark yet |
+| Conflict dispatch can serve both SCM + runtime | **partial** — Rebase.getConflicts exists; unified Conflict type doesn't |
+| EventBus + parking serves PDD + sync + caps | **hypothetical** — no integrated prototype |
+| MVU substrate scales to "real" apps | **partial** — outliner/review/views work; viewer/diff/etc. are extrapolations |
+| Identity binding (Tailscale ↔ account_id) | **hypothetical** — flow design exists; no impl |
+| Cross-instance agent identity | **hypothetical** — depends on delegation sync working |
+| The PDD viewer renders smoothly across event volume | **hypothetical** — spike viewer worked at small scale |
+
+**A lot of the substrate is hypothetical.** This roadmap is
+mostly *designs*, not *de-risked implementations*. P0 + early
+P1 work should include benchmarks for the load-bearing assumptions.
+
+### What's optimistic
+
+- **13-week timeline to MVP-cohabitation** assumes focused dev,
+  no major refactors discovered en route, no surprise schema
+  contention. Realistic per the buffer analysis: ~14-15 weeks.
+- **Aggressive compression to 8-9 weeks** assumes skipping
+  Phase 2b + cap annotation + approval flow. Possible but the
+  resulting demo is weaker (single-user only).
+- **Phase 4 timeline open-ended**. Hot-reload + agent-runtime +
+  multi-peer + materializer-in-Dark are each 2-4 weeks; not all
+  parallel.
+
+### What we've learned about ourselves (process risks)
+
+- **Sketches were stale**: most of the substrate was further
+  along on main than the pre-loop sketches assumed.
+  Reality-grounding rule (added mid-loop) is now load-bearing.
+- **AI-opt-in constraint surfaced late** but threads cleanly
+  through the design. Future constraint-discovery should happen
+  earlier.
+- **Cross-doc linking is fragile**: lots of "per T-X" references.
+  Some go stale as docs evolve. Need a cross-ref audit before
+  any of these docs ship publicly.
+
+---
+
+
 
 ---
 

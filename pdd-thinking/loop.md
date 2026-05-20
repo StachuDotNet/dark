@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T26 + T27` (risks audit + open decisions consolidation)
+**NEXT:** `T28 + T29 + T30` (final pass + next-loop note + propose-push terminus)
 
 ## Reference docs in this directory
 
@@ -398,13 +398,27 @@ applicable.
   P3-6 POST /sync/events) with buffer 1-2 weeks each → realistic
   ~14-15 weeks.
 
-- [ ] **T26: Risks audit.** What kills this? What's hard? What's
-  optimistic? What's tested vs hypothetical? Append to ROADMAP.
-  Be honest, not bullish.
+- [x] **T26: Risks audit.** ROADMAP §"Risks" populated. Honest,
+  not bullish. 4-row "could kill the substrate" table (cohabitation-
+  framing-wrong; Tailscale dependency; matter.darklang.com
+  ops burden; AI-opt-in undermines positioning). 5-row "slow the
+  work" table (cap-check perf; dispatch latency; materializer-in-
+  Dark; per-builtin cap-annotation; schema kill-and-fill).
+  9-row "tested vs hypothetical" table (most claims hypothetical
+  or partial — explicitly: most of the substrate is *designs*,
+  not de-risked impls). What's optimistic: 13-week timeline
+  realistic ~14-15 with buffers. Aggressive compression to 8-9wk
+  weakens the demo. Process-risk meta: sketches were stale;
+  reality-grounding rule now load-bearing; cross-doc linking
+  fragile; AI-opt-in constraint surfaced late.
 
-- [ ] **T27: Open decisions.** List every decision the substrate
-  needs to lock that isn't yet locked. Per decision: options,
-  recommendation, blocker if any. Append to ROADMAP.
+- [x] **T27: Open decisions consolidation.** ROADMAP §"Open
+  decisions" already had Q-bs-* / Q-ss-* / Q-id-* / Q-cr-*.
+  Added: Q-caps-1..4, Q-ev-1..3, Q-hr-1..3, Q-mvu-1..3, Q-sch-1..5,
+  Q-fd-1..4, Q-mig-1..6, Q-ra-1..6. Total now ~45 open decisions
+  across 12 topic groups. Prefix legend added. Decision-ranking
+  note: Q-bs-* and Q-id-* land first (critical path); Q-ra-*
+  last.
 
 ## Phase H — Final pass
 
