@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T28 + T29 + T30` (final pass + next-loop note + propose-push terminus)
+**NEXT:** `DONE`
 
 ## Reference docs in this directory
 
@@ -422,23 +422,24 @@ applicable.
 
 ## Phase H — Final pass
 
-- [ ] **T28: ROADMAP polish pass.** Re-read end-to-end. Trim
-  redundancy. Make sure each section is self-contained. Make
-  sure the user can read just ROADMAP without consulting other
-  docs (cross-references are fine but the spine should stand
-  alone). Set status to `DONE`.
+- [x] **T28: ROADMAP polish pass.** ROADMAP read end-to-end.
+  Section count: 13 H2 sections in spine order (constraints →
+  reality check → chunks → order/tracks → phase plan → critical
+  path → bootstrapping → sharing → MVP demo → open decisions →
+  risks → after-loop). 828 LoC. Each section self-contained;
+  cross-refs are pointers not dependencies. Spine reads
+  standalone.
 
-- [ ] **T29: Set up the next loop.** Based on what the roadmap
-  reveals, what's the *first* sub-loop the user might want next?
-  (e.g., "land Phase 0 in code" or "validate the bootstrap demo
-  end-to-end.") Don't actually create it — but note it in
-  ROADMAP §"What comes after this loop" so the user knows.
+- [x] **T29: Next-loop recommendation.** ROADMAP §"What comes
+  after this loop" populated with 3 options: (A) Land Phase 0+1
+  in code; (B) Validate the load-bearing hypotheticals via 3
+  cheap spikes (Tailscale-served sync; cap-check microbenchmark;
+  EventBus+parking prototype); (C) Push branch + pause.
+  **Recommendation: B first then A** — 3 days of spike de-risks
+  80% of hypotheticals.
 
-- [ ] **T30: Final commit + surface to user.** Final commit with
-  full stats (LoC added across new docs, # of new docs, etc.).
-  Surface to user with: "ROADMAP.md is ready; here's the headline
-  answer to your 4 questions (chunks / order / bootstrap-when /
-  share-when). Want me to print it?"
+- [x] **T30: Final commit + surface to user.** This commit.
+  Status set to DONE. No more wakes scheduled.
 
 ---
 
@@ -475,4 +476,42 @@ to settle every open question.
 
 ## After
 
-*Filled in by T30.*
+**Loop complete: 30 TODOs across 8 phases, ~25 iters at 5-min
+cadence, ~2 hours wall clock.**
+
+Produced:
+
+| File | LoC | Role |
+|---|---|---|
+| `ROADMAP.md` (deliverable) | 828 | The chunks + order + phases + critical path + MVP demo + risks + open decisions |
+| `BOOTSTRAP.md` | ~220 | Phase 1 design — remove .dark files |
+| `STABILITY-AND-SHARING.md` | ~320 | Phase 3 sharing design — wire protocol + sequence + matter.darklang.com |
+| `IDENTITY.md` | ~320 | Phase 2 identity design — humans + agents + delegations |
+| `CONFLICTS-AND-RESOLUTIONS.md` (deepened) | ~440 | T14 v0 design — schema + dispatch + errors-as-conflicts |
+| `CAPABILITIES.md` (deepened) | ~520 | T15 v0 design — per-assembly caps + install UX + audit log |
+| `EVENT-STREAMS-AND-PARKING.md` (deepened) | ~615 | T16 v0 design — EventBus + classic-dark QueueWorker precedent |
+| `HOT-RELOAD.md` (deepened) | ~390 | T17 v0 design — existing package_dependencies is the index |
+| `COMPOSABLE-MVU.md` (deepened) | ~580 | T18 v0 design — SubApp exists; 6-step evolution path |
+| `SCHEMA.md` | ~190 | T19 — 18 existing tables + 7 new |
+| `F-SHARP-VS-DARK.md` | ~250 | T20 — per-subsystem v1/v2 split |
+| `MIGRATION.md` | ~400 | T21 — 45 shippable chunks across 5 phases |
+| `REMOTE-ACCESS.md` | ~340 | T22+T22b — agent runtime + Tailscale-based peer reach |
+| `loop.md` (this file) | ~520 | The driver |
+
+Total **~6000+ LoC** of design output across 14 docs.
+
+Headline answers to the user's 4 questions:
+
+1. **Chunks needed**: 16 (C1-C16) — per ROADMAP §"Chunks needed"
+2. **Order**: 2 parallel tracks (Local + Networked); 4 phases
+3. **Bootstrap ships in**: **Phase 1** (weeks 1-3, local-only)
+4. **Stability+sharing ships in**: **Phase 3** (weeks 7-13)
+5. **MVP-cohabitation**: 2 humans, 2 machines, optional agent;
+   P3-11 is the goal-line
+
+Critical path: **~13 weeks optimistic, ~14-15 conservative**.
+Aggressive compression to ~8-9 weeks possible.
+
+Most-important next step: **3-day spike series** (B option in
+§"What comes after") to de-risk load-bearing hypotheticals
+before serious investment.

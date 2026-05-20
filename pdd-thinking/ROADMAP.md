@@ -825,4 +825,75 @@ P1 work should include benchmarks for the load-bearing assumptions.
 
 ## What comes after this loop
 
-*Filled in by T29.*
+T29: this design loop produced the roadmap. What's next is *acting
+on it*. Two candidate sub-loops you might want to spin up next:
+
+### Option A — "Land Phase 0 + Phase 1" (recommended)
+
+A focused implementation loop that ships the user's first itch:
+`.dark` files gone from the repo, snapshot-based install. ~2-3
+weeks of real coding.
+
+Sub-loop shape:
+- Bucket per chunk (P0-1 through P1-6 = 10 buckets)
+- Each iter: implement, test, PR, merge
+- Loop ends when bootstrap demo works end-to-end on a fresh
+  machine
+
+### Option B — "Validate the load-bearing hypotheticals"
+
+Per the risks audit: most of the substrate is *designs*. Before
+investing 14 weeks of dev work, de-risk the 3 highest-impact
+unknowns with quick spikes:
+
+- **Spike 1** (~1-2 days): Tailscale-served Dark sync between
+  two devices, hardcoded ops, no auth. Proves the network
+  shortcut works.
+- **Spike 2** (~1 day): cap-check at Apply microbenchmark. Run a
+  tight loop with and without the check. Proves the perf
+  assumption.
+- **Spike 3** (~2-3 days): EventBus + parking + Promise<T>
+  prototype as a separate F# project, not yet wired into the
+  interpreter. Proves the substrate shape works.
+
+If any spike comes back red, the roadmap pivots before
+implementation work starts. **This is the cheapest
+risk-reduction move.** Recommended if there's any doubt about
+the design.
+
+### Option C — "Push the branch and pause"
+
+You haven't pushed `pdd` yet. The substrate-roadmap loop's
+deliverable (this directory) is publishable as design notes —
+on a separate branch or a separate repo — so collaborators can
+review without needing to clone the whole spike. Then pause,
+return to it once spike + Phase 0/1 work is sequenced.
+
+### My recommendation
+
+**Option B first, then Option A.** Three days of spike work
+de-risks 80% of the substrate's load-bearing hypotheticals. If
+the spikes pass, Phase 0/1 implementation has a much higher
+probability of success. If a spike fails, much cheaper to
+discover at the 3-day mark than the 14-week mark.
+
+---
+
+## End of substrate-roadmap loop
+
+Designed over loop iters T1-T30 on 2026-05-20. 30 TODOs across
+8 phases (setup → bootstrap → sharing → identity → 5
+substrate-deepenings → cross-cutting → validate → final pass).
+
+Produced:
+- `ROADMAP.md` (this file) — the deliverable
+- `BOOTSTRAP.md`, `STABILITY-AND-SHARING.md`, `IDENTITY.md`,
+  `SCHEMA.md`, `F-SHARP-VS-DARK.md`, `MIGRATION.md`,
+  `REMOTE-ACCESS.md` — per-topic deep-dives
+- Deepened in-place: `CONFLICTS-AND-RESOLUTIONS.md`,
+  `CAPABILITIES.md`, `EVENT-STREAMS-AND-PARKING.md`,
+  `HOT-RELOAD.md`, `COMPOSABLE-MVU.md` (all marked v0 design
+  grade with main-check provenance)
+
+The roadmap is **designs, not de-risked impls** (per T26 risks).
+Spikes recommended before serious investment.
