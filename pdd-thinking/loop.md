@@ -22,17 +22,43 @@
 > **Each iter:**
 >
 > 1. Find the next-unchecked TODO (or batch of related TODOs) below.
-> 2. Read the 1-3 most-relevant vault notes for that TODO (do NOT
+> 2. **Ground every batch in `main`'s reality, not in what the
+>    sketches imply.** This branch (`pdd`) carries spike code the
+>    user has disowned as wrong-direction; the design docs live
+>    here, but the **authoritative current code state is `main`**.
+>    Plans must reflect what *actually* exists, not what's
+>    documented.
+>
+>    **At the start of every batch**, spend ~30 seconds checking
+>    main's relevant code. Don't skip this — sketches can be
+>    months out of sync; plans built on stale assumptions will
+>    misroute the roadmap.
+>
+>    Useful one-liners:
+>      - `git ls-tree -r main --name-only | grep -E '<pattern>'`
+>        — find files matching a pattern in main
+>      - `git show main:path/to/file.fs | head -80`
+>        — read a specific file as-of main
+>      - `git show main:path/to/file.fs | grep -nE '<symbol>'`
+>        — find a symbol in main
+>      - `git log main --oneline -- path/to/dir | head -10`
+>        — recent changes in main to a dir
+>      - `git diff main..HEAD -- backend/ | wc -l`
+>        — total LoC delta vs main (mostly for awareness)
+>
+>    When in doubt about *anything* the codebase claims to do:
+>    confirm against main. Don't assume.
+> 3. Read the 1-3 most-relevant vault notes for that TODO (do NOT
 >    deep-dive endlessly — skim the load-bearing claims, then think).
-> 3. Do the thinking. Produce concrete output:
+> 4. Do the thinking. Produce concrete output:
 >    - Most TODOs append a section to **`ROADMAP.md`** (the growing
 >      deliverable; create it the first iter).
 >    - Some TODOs produce their own new doc (e.g. `IDENTITY.md`,
 >      `MIGRATION.md`). The TODO says which.
 >    - Some TODOs update an existing substrate sketch.
-> 4. Tick the TODO(s) off.
-> 5. Commit with a short message naming the TODO(s) processed.
-> 6. Schedule the next wake at 10 min (or stop if all TODOs done +
+> 5. Tick the TODO(s) off.
+> 6. Commit with a short message naming the TODO(s) processed.
+> 7. Schedule the next wake at 10 min (or stop if all TODOs done +
 >    the validation pass at the end is also done).
 >
 > **Batch sizing:** prefer batching 2-4 related TODOs into one iter
