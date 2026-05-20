@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T7 + T8` (sharing wire protocol batch)
+**NEXT:** `T11 + T12 + T13` (identity batch)
 
 ## Reference docs in this directory
 
@@ -174,26 +174,20 @@ appends to or references the structure laid down here.
 
 ## Phase C — Stability + sharing focus (other itch)
 
-- [ ] **T7: Read vault `Sync and Distribution/` + `CRDTs/` + the
-  recent `dl-2025-11-12-ux-thinking.md` thoroughly.** Capture
-  in `STABILITY-AND-SHARING.md` (new): what "stable" means
-  concretely (named, hashed, validated, durable); what "sharing"
-  means (events crossing the wire to who, with what permissions);
-  the namespace-owner model from 2025-11-12; the approval flow.
-
-- [ ] **T8: Design the wire protocol.** What endpoints does
-  `matter.darklang.com` expose? What's the auth shape? What's the
-  schema for the events crossing the wire (PackageOpEvent,
-  BranchOpEvent, etc.)? Reuse the LibMatter spec; refine where
-  unclear. Append to STABILITY-AND-SHARING.md.
-
-- [ ] **T9: Sequence the sharing work.** Concrete steps from
-  "local-only" → "ocean and stachu both push to matter.darklang.com"
-  → "any user can join." Identify blockers. ~6-10 named steps.
-  Append to STABILITY-AND-SHARING.md.
-
-- [ ] **T10: Decide phase for stability+sharing.** Same shape as
-  T6: pick a phase, justify, cross-link. Append to ROADMAP.
+- [x] **T7+T8+T9+T10: Sharing batch — all done.** From 30-sec
+  main check: no sync code on main; HTTP server/client builtins
+  exist; package_ops table has propagation_id for PropagateUpdate;
+  Dark-side `cli/scm/commit.dark` + `status.dark` already mature.
+  STABILITY-AND-SHARING.md produced (~320 LoC): stable + sharing
+  definitions (3 modes: self/pair/public); namespace-ownership
+  model from 2025-11-12; **wire protocol — 6 endpoints (snapshot,
+  events, whoami, live ws) + 5 SyncEvent variants** leaning on
+  Tailscale per vault stance; replication topology (matter.darklang.com
+  + optional p2p); **share-1 through share-10** sequencing with
+  dep graph; **phase decision: Phase 3** (share-1 belongs to
+  Phase 2 alongside identity; share-9 + share-10 are the
+  goal-line). 6 open decisions (Q-ss-1 to Q-ss-6) appended to
+  ROADMAP. ROADMAP §Stability+sharing milestone populated.
 
 ## Phase D — Identity + permissions (gates everything)
 

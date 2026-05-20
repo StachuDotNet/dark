@@ -203,7 +203,38 @@ test-file fate (Q-bs-5), and fate of removed `.dark` files
 
 ## Stability + sharing milestone
 
-*Filled in by T10. Cross-links to STABILITY-AND-SHARING.md.*
+**Stability + sharing ships in Phase 3.** This is the user's
+primary milestone.
+
+Full design in `STABILITY-AND-SHARING.md`.
+
+Lands work-units **share-1 through share-10**:
+
+- share-1 — identity binding (Tailscale login ↔ account_id);
+  technically belongs to Phase 2 alongside identity work
+- share-2 + share-3 — GET /sync/snapshot + GET /sync/events
+  (localhost-first, no auth)
+- share-4 — Tailscale identity-binding via header injection
+- share-5 — POST /sync/events with idempotent apply
+- share-6 — autosync cron (Dark-side)
+- share-7 + share-8 — approval-request ops + approve CLI
+- share-9 — deploy matter.darklang.com (the central hosted instance)
+- **share-10 — first 2nd-user onboarding** — the goal-line; MVP-
+  cohabitation is roughly this.
+
+Phase-4 deferred: share-11 (WebSocket live-push), share-12 (public
+funnel), multi-peer p2p sync topologies.
+
+The wire protocol leans on Tailscale (per the vault Tailscale.md
+doc) for peer addressing + TLS + identity + ACL. Substrate doesn't
+*require* Tailscale; it's the convenient default. **Network stack
+isn't being built from scratch.**
+
+Sharing depends on:
+- Bootstrap Phase 1 (so the seed exists to share)
+- Identity (T11-T12) for the account-id binding
+- Conflict-resolution dispatch (T14) so arriving ops have a place
+  to route disagreements
 
 ---
 
@@ -217,6 +248,21 @@ test-file fate (Q-bs-5), and fate of removed `.dark` files
 
 *Accumulates as TODOs surface decisions worth flagging. Final
 pass in T27.*
+
+### From T7-T10 (stability + sharing)
+
+- **Q-ss-1** Default sync target. Auto-sync to
+  matter.darklang.com vs opt-in. Probably opt-in (git-style
+  `remote add`).
+- **Q-ss-2** Cross-namespace ops auto-approval-request vs
+  fail-loudly. Per 2025-11-12: approval request. Confirm.
+- **Q-ss-3** Sync granularity (per-branch, per-namespace,
+  always-all). Likely per-branch with namespace filter.
+- **Q-ss-4** Public funnel vs tailnet-only. Phase 4 decision.
+- **Q-ss-5** Conflict resolution latency on arrival (immediate
+  dispatch vs batched-on-next-interaction).
+- **Q-ss-6** WIP cross-instance sync (local-by-default vs
+  always-share). Hybrid: local default + `share-wip` opt-in.
 
 ### From T3-T6 (bootstrap)
 
