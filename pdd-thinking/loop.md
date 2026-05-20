@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T16` (deepen EVENT-STREAMS-AND-PARKING)
+**NEXT:** `T17` (deepen HOT-RELOAD — dependency-tracking index)
 
 ## Reference docs in this directory
 
@@ -254,11 +254,21 @@ applicable.
   (CapInvokeLLM never auto-prompts); (g) Previewable vs
   Capability orthogonality clarified (don't conflate).
 
-- [ ] **T16: Deepen EVENT-STREAMS-AND-PARKING.** Add: the F#
-  Stream<T> impl shape, the scheduler's wait-list data
-  structure, the Promise<T> / `!` surface in Dark. Persistence
-  question — durable streams vs ephemeral. Update sketch in
-  place.
+- [x] **T16: Deepen EVENT-STREAMS-AND-PARKING.** v0 design grade.
+  Big finding from main check: `backend/src/LibExecution/Stream.fs`
+  already exists (~292 LoC) — but it's for **data streams**
+  (lazy, single-consumer, pull-based, IO body iter). The
+  event-coordination substrate is different (push, multi-sub,
+  control-plane). **Renamed to `EventBus<T>`** to avoid the
+  collision. Added: (a) reality check + Stream-vs-EventBus
+  comparison table; (b) concrete F# EventBus<T> shape +
+  Subscription + waitForOne; (c) `RuntimeBuses` record on
+  ExecutionState (8 system buses); (d) `Scheduler` with parked-
+  frame wait-list + EventSelector sum; (e) 8-step park-and-wake
+  walkthrough; (f) Dark-side Promise<T> + `!` compiling to
+  `waitForOne`; (g) persistence-per-bus table (which durable to
+  which sqlite table); (h) Ply coexistence (park inserts inside
+  a Ply, doesn't replace).
 
 - [ ] **T17: Deepen HOT-RELOAD.** Add: the dependency-tracking
   index needed for "find all dependents of fn X." Concrete API.

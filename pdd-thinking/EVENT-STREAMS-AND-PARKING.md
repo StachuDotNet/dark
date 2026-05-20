@@ -1,9 +1,63 @@
 # Event Streams + Parking
 
+> **v0 design — deepened from sketch via loop T16 (2026-05-20).**
+> Grounded in main: `backend/src/LibExecution/Stream.fs` exists
+> (~292 LoC) but it's for **data streams** (lazy, single-consumer,
+> pull-based — HTTP body iter, file streaming, etc.) —
+> *different* from the event-coordination substrate this doc
+> describes. The two should not share a name. This doc renames
+> the event substrate to `EventBus`.
+
 The third substrate piece. **What `await` should look like** in a
 Darklang runtime that wants to coordinate materialization, sync,
 human review, and capability requests under one model — without
 F#-level callback soup.
+
+## What exists on main — and what doesn't
+
+### `Stream.fs` already exists (but for data, not events)
+
+Confirmed via `git show main:backend/src/LibExecution/Stream.fs`.
+It's a lazy, single-consumer, non-persistable `DStream<'a>`
+Dval type built on `StreamImpl` (`FromIO | Mapped | Filtered |
+Take | Concat`). Pull-based; consumer calls `streamNext` to draw
+one element. GC-backed disposer cleans up IO sources.
+
+This is for **data**: HTTP response body iteration, file reads,
+generator-shaped builtin returns. Single consumer because draining
+is destructive — you can't replay a `Stream` because the source
+is consumed.
+
+The event-coordination substrate is *different*:
+
+| Aspect | `Stream.fs` (exists) | EventBus (new, design below) |
+|---|---|---|
+| Direction | pull-based (consumer pulls) | push-based (producer publishes) |
+| Consumers | single | many (broadcast) |
+| Replayability | one-shot (consumed = gone) | append-only or replayable |
+| Use case | streaming a request body | "materialization done", "cap denied" |
+| Lives in | `Dval` (user value) | runtime substrate (system-level) |
+
+**Naming:** the doc previously called this primitive `Stream<T>`,
+which collides with main's `DStream`. Renaming to **`EventBus<T>`**.
+The Dark-side wrapper (single-shot `Stream.first`-style semantics)
+gets called `Promise<T>` per the original sketch.
+
+### What main does NOT have (this doc designs)
+
+- A push-based multi-subscriber bus
+- A frame-parking scheduler beyond F#-level `Ply.Ply`
+- The Dark-side `Promise<T>` user surface with explicit `!`
+  dereference
+- Connection between events and the conflict-resolution dispatch
+  (T14)
+
+`Ply` is the F# substrate concurrency primitive — every fn returns
+`Ply.Ply<Dval>`. Parking is added on top of Ply, not replacing it.
+
+## EventBus — design
+
+Renamed from `Stream<T>` to avoid conflict with main's `Stream.fs`.
 
 Read with `CONFLICTS-AND-RESOLUTIONS.md` (the dispatch model) and
 `SYNC-AND-STABILITY.md` (the network application). Conflicts emit
@@ -201,6 +255,235 @@ stream's first emission).
 This makes await-points *explicit* in Dark. No hidden suspension
 points. Helps debugging, helps tracing, helps materialization
 ("I park here, I unpark here").
+
+## Concrete F# shape (the substrate)
+
+### EventBus primitive
+
+```fsharp
+// In LibExecution.EventBus (new module)
+module LibExecution.EventBus
+
+open Prelude
+
+/// One bus per event kind. Producers publish; subscribers
+/// register interest via filter; a publish runs all matching
+/// subscribers synchronously (each on its own Ply continuation).
+type EventBus<'T> = {
+  // Active subscribers, keyed by subscription id.
+  subscribers : System.Collections.Concurrent.ConcurrentDictionary<Guid, Subscription<'T>>
+
+  // History buffer for late subscribers + replay. Capped at a
+  // configurable size; older entries roll off. NULL for buses
+  // that don't need replay (e.g. high-frequency materialization
+  // events that the viewer subscribes-and-forgets to).
+  history : RingBuffer<'T> option
+
+  // For sync-out: events optionally append to package_ops-style
+  // tables for cross-instance replication. Mostly NULL today.
+  persistTo : EventPersistence option
+}
+
+and Subscription<'T> = {
+  id : Guid
+  predicate : 'T -> bool                            // selector
+  handler : 'T -> Ply.Ply<unit>                     // run on match
+  oneShot : bool                                    // unsubscribe after one match
+}
+
+and EventPersistence =
+  | NotPersisted
+  | PersistedAsBlob of tableName : string           // serialize + INSERT
+
+/// Publish: synchronously notify all matching subscribers.
+/// One-shot subscribers are removed after their handler runs.
+let publish (bus : EventBus<'T>) (event : 'T) : Ply.Ply<unit> = ...
+
+/// Subscribe with a predicate + handler. Returns the subscription
+/// id for later unsubscribe.
+let subscribe
+  (bus : EventBus<'T>)
+  (predicate : 'T -> bool)
+  (handler : 'T -> Ply.Ply<unit>)
+  : Subscription<'T> = ...
+
+/// First-match-only: returns a Ply that completes on the next
+/// matching event, then unsubscribes. The frame-parking primitive.
+let waitForOne
+  (bus : EventBus<'T>)
+  (predicate : 'T -> bool)
+  : Ply.Ply<'T> = ...
+```
+
+### System EventBuses (instances live on ExecutionState)
+
+```fsharp
+type RuntimeBuses = {
+  materialization : EventBus<MaterializationEvent>
+  bodyChanged     : EventBus<BodyChangedEvent>
+  conflict        : EventBus<ConflictResolvedEvent>
+  capability      : EventBus<CapabilityEvent>
+  syncIn          : EventBus<SyncEvent>           // events arriving via /sync/events
+  syncOut         : EventBus<SyncEvent>           // events to push out
+  humanQuery      : EventBus<HumanQueryEvent>
+  frameLifecycle  : EventBus<FrameLifecycleEvent> // for viewer + debugger
+}
+
+type ExecutionState = {
+  // ...existing fields...
+  buses : RuntimeBuses
+  scheduler : Scheduler                           // see below
+}
+```
+
+### Scheduler — the parked-frame wait list
+
+```fsharp
+type Scheduler = {
+  // Frames currently parked, keyed by what they're waiting on.
+  // The key is opaque - it's whatever EventSelector value the
+  // dispatch used to park.
+  parked : Dictionary<EventSelector, List<ParkedFrame>>
+
+  // Frames ready to run. Picked up by the eval loop.
+  ready : Queue<CallFrameId>
+}
+
+and ParkedFrame = {
+  frameId : CallFrameId
+  continuation : Dval -> Ply.Ply<Dval>  // what to do when an event wakes us
+  parkedAt : DateTime
+  timeout : Option<DateTime>             // if set, frame fails on timeout
+}
+
+and EventSelector =
+  | ByMaterializedName of FQFnName.T
+  | ByConflictId of ConflictId
+  | ByCapability of Capability * forAgent: AccountId
+  | ByHumanQuery of QueryId
+  | Custom of (RTEvent -> bool)         // escape hatch
+```
+
+### How parking works (the wake protocol)
+
+Step-by-step when a frame parks:
+
+1. Frame `F` evaluates an expression needing `Pending(handle)` body.
+2. Body isn't materialized → `Conflict.PendingUnresolved(handle)`.
+3. Dispatch returns `Resolution.Park selector` where `selector =
+   ByMaterializedName name`.
+4. Scheduler:
+   - Records `parked[selector] += { frameId; continuation; ... }`
+   - Removes `F` from `ready`
+   - Subscribes once to `buses.materialization` with predicate
+     "event.name == name"
+5. Eval loop picks the next `ready` frame.
+6. Eventually materializer publishes `MaterializationEvent { name;
+   body }` on `buses.materialization`.
+7. The bus's subscription fires; its handler:
+   - Looks up `parked[ByMaterializedName name]` → finds `F`
+   - Removes `F` from `parked`
+   - Calls `continuation body` to build the resumed Ply
+   - Adds the resulting frame back to `ready`
+8. Eval loop picks `F` up; it resumes from the same call site
+   with the materialized body in hand.
+
+The continuation is a closure over the frame's register state at
+park time. F# closures + the existing `CallFrame` machinery in
+`VMState` make this tractable.
+
+### Dark-side `Promise<T>` and `!`
+
+The user surface is much simpler. From the vault's async note:
+
+```dark
+let urls : List<String> = [ "http://...", ... ]
+let results : List<Promise<HttpResult>> =
+  urls |> List.map HttpClient.get      // returns Promise, doesn't block
+let first : HttpResult = (results |> List.head)!   // ! forces; frame parks here
+first.body
+```
+
+The `!` is the only park-point at the Dark level. It compiles to
+`EventBus.waitForOne busForThisPromise (fun ev -> ev.id = thisPromise)`.
+
+Promise internals (F# side):
+
+```fsharp
+// In Stdlib.Promise builtins:
+type PromiseSlot = {
+  id : Guid
+  resolved : Dval option ref    // None = unresolved, Some = ready
+}
+
+// When a producing builtin returns a Promise:
+// - Returns Dval = DPromise slot
+// - Internally publishes to a per-promise EventBus<Dval> when done
+
+// When user code writes `myPromise!`:
+// - Compiles to a builtin call `Stdlib.Promise.force` that:
+//   1. checks slot.resolved (fast-path if already ready)
+//   2. otherwise: state.scheduler.park (ByPromise slot.id); ply continues on wake
+```
+
+This gives the substrate **explicit await points** in Dark code.
+No hidden suspensions. Debugger can see where every frame parks.
+Traces show every `!`.
+
+## Persistence question
+
+Some events want to be durable; most don't.
+
+| Bus | Persistence | Why |
+|---|---|---|
+| `materialization` | not | high frequency; replay would re-trigger LLM calls |
+| `bodyChanged` | not directly (the `commits` table is the durable form) | hot-reload doesn't need replay |
+| `conflict` | YES (`conflicts_v0` table) | audit + sync |
+| `capability` | YES (`capability_log_v0` table) | audit + security |
+| `syncIn` / `syncOut` | YES (package_ops / branch_ops) | the canonical form of sync |
+| `humanQuery` | YES (new table?) | so a session restart resurfaces pending questions |
+| `frameLifecycle` | not | volume too high; viewer subscribes in real-time |
+
+The `persistTo` field on each `EventBus<'T>` controls this. Buses
+that persist append a row on every `publish`; replay reads back
+from the table.
+
+## Connection to existing main code
+
+### Where to plug in
+
+- `LibExecution.RuntimeTypes` — add `RuntimeBuses` + `Scheduler`
+  to `ExecutionState`. New module declarations.
+- `LibExecution.Interpreter.fs` — eval-loop tick reads from
+  `ready` + writes to `parked` on `Resolution.Park`.
+- The conflict-resolution dispatch (T14) is the producer of park
+  decisions; the bus + scheduler are the *consumers*.
+- `LibExecution.Stream.fs` (existing!) stays unchanged. EventBus
+  is a separate primitive.
+
+### Coexisting with Ply
+
+Every fn still returns `Ply.Ply<Dval>`. Park doesn't replace Ply;
+it inserts a wait-step *inside* a Ply. A parked frame's
+continuation is a `Dval -> Ply.Ply<Dval>` closure — standard Ply
+shape. The scheduler dispatches Ply runs from `ready`; the bus
+adds to `ready` on event match.
+
+No async/await on the F# side beyond what Ply already provides.
+
+## Connection to other substrate sketches
+
+- **CONFLICTS-AND-RESOLUTIONS (T14)** — `Resolution.Park selector`
+  uses an `EventSelector`. The dispatch decides what selector to
+  park on; the scheduler handles the wake.
+- **CAPABILITIES (T15)** — cap denials surface via the bus to the
+  agent's owner (`buses.capability` → `buses.humanQuery`).
+- **SYNC-AND-STABILITY** — `syncIn` + `syncOut` carry SyncEvents
+  from share-3 / share-5 endpoints.
+- **HOT-RELOAD** — `buses.bodyChanged` is the bus hot-reload
+  publishes on.
+- **COMPOSABLE-MVU** — apps subscribe to buses via the Effects
+  channel. MVU Msgs derive from bus events.
 
 ## Open questions
 
