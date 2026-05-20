@@ -13,6 +13,31 @@ Cross-link to substrate sketches in this directory (`COHABITATION.md`,
 
 ---
 
+## Foundational constraints
+
+**Constraints, not preferences.** Design choices that violate these
+must be rejected even if convenient.
+
+- **AI involvement is wholly opt-in.** Darklang must work fully
+  without any AI. PDD, the materializer, the LLM agent, the
+  prompt daemon — every AI-flavored feature is opt-in, behind
+  an explicit grant from the user. Someone running Dark for the
+  first time should see no LLM call, no prompt for an API key,
+  no degraded experience for refusing. The substrate is
+  AI-friendly, not AI-mandatory.
+  - Implication: capability tags include AI ones (`CapInvokeLLM`,
+    `CapSendSecret`) — denied by default.
+  - Implication: every chunk in the roadmap must have a non-AI
+    path. If a feature only works with AI on, it's not a
+    Darklang feature — it's a separate experience layered on top.
+  - Implication: the "agent is just an app" framing in
+    `COHABITATION.md` is correct because agents are *opt-in
+    inhabitants*, not foundational ones.
+- **Local-first.** (From ethos.) Software runs on your machine;
+  no cloud-mandatory features.
+- **Open + transparent.** (From ethos.) Show what the system is
+  doing; default to making things inspectable.
+
 ## How to read this doc
 
 The roadmap is built up across loop iters. Each iter appends to or

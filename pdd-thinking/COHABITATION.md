@@ -70,9 +70,26 @@ This shifts how to think about everything:
 - **The materializer** isn't a special subsystem; it's an agent
   app running inside the substrate. Same vocabulary as you.
 
-Critically: agents and people are the same kind of inhabitant.
-Both have *intent*. Both produce ops. Both observe events. Both
-get permission-checked. The substrate doesn't distinguish.
+Critically: agents and people are the same *kind* of inhabitant
+— both have intent, both produce ops, both observe events, both
+get permission-checked. The substrate doesn't distinguish at the
+mechanism level.
+
+**But: AI agents are opt-in inhabitants, not foundational ones.**
+A Darklang instance with no AI is still a complete instance —
+the human-only cohabitation case (single user, no agents, or
+multiple humans, no agents) is the *primary* configuration, not
+a degraded one. AI agents enter the substrate only when the user
+explicitly grants `CapInvokeLLM` (and any associated caps). The
+substrate's mechanism doesn't care; the substrate's *defaults*
+do. See `ROADMAP.md` §"Foundational constraints."
+
+This is why the framing works: cohabitation isn't "humans + AIs
+forced together"; it's "*whoever is present* operates by the
+same rules." Sometimes that's one human. Sometimes it's two
+humans pair-programming. Sometimes it's a human with one or
+more agents they've opted into. The substrate is the same in
+each case.
 
 ## Vault material this builds on
 
@@ -459,6 +476,7 @@ composable to arbitrary nesting, simple in its five core
 primitives.
 
 The reframing in one sentence: **Darklang is not a place where
-you write code; it's a place where you and your agents work,
-together, on the same evolving thing — locally-first, accessibly,
-openly, immediately, malleably, composably, simply.**
+you write code; it's a place where you (and, if you opt in, your
+agents) work, together, on the same evolving thing — locally-
+first, accessibly, openly, immediately, malleably, composably,
+simply.**

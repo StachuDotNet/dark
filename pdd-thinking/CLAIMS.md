@@ -66,15 +66,48 @@ call must wait for a human review — but with different SLAs.
 
 ---
 
+## Foundational constraint — AI is opt-in
+
+The five claims above describe what becomes *possible* when AI
+participation is enabled. **None of them imply AI participation
+is mandatory.** Darklang must work fully without any AI
+involvement:
+
+- A user installs Dark, never touches an LLM key, has a complete
+  development experience. The package store, the SCM, the
+  viewer, the language all function.
+- "The source often starts as lazy" doesn't require AI to fill in
+  the body. The human can. So can a corpus search. So can a
+  test-driven synthesis tool. LLM is one materializer; the human
+  is another; future strategies are others.
+- "The trace + interpreter + agent" framing in claim 2 — "agent"
+  there generalizes: it could be a human stepping through the
+  code, a non-LLM tool, or an LLM. Same machinery; different
+  participants.
+- "The runtime is tolerant" doesn't say *who* the recovery asks.
+  The conflict-resolution dispatch lets the user choose:
+  fail-loud-by-default in production, ask-human in dev, ask-LLM
+  only when the user has opted into that strategy.
+- "The human is involved throughout" is the *minimum*; AI
+  involvement is layered on top.
+
+PDD and related AI features are an opt-in extension to the
+substrate, not the substrate itself. See `ROADMAP.md`
+§"Foundational constraints."
+
+---
+
 ## Pitch (60s)
 
-> Pseudocode-Driven Development: the interpreter materializes its
-> own source code on demand, in parallel, speculatively, with the
-> LLM as both author and search index. You write names and
-> signatures. The runtime races corpus search against LLM
-> generation. Tolerant: if both fail, returns a typed default
-> and keeps moving. Recursive: generated bodies have their own
-> holes. The trace records every materialization, every
-> substitution, every human decision — the artifact you commit
-> and share is sketch + trace + accepted package items, not
-> source files alone.
+> Pseudocode-Driven Development: an *opt-in* layer over Darklang
+> where the interpreter materializes its own source code on
+> demand, in parallel, speculatively, with the LLM as both
+> author and search index. You write names and signatures. The
+> runtime races corpus search against LLM generation. Tolerant:
+> if both fail, returns a typed default and keeps moving.
+> Recursive: generated bodies have their own holes. The trace
+> records every materialization, every substitution, every
+> human decision — the artifact you commit and share is sketch
+> + trace + accepted package items, not source files alone.
+> Darklang itself works without any of this; PDD is one
+> extension layered on top.

@@ -77,6 +77,19 @@
 > - When does **stability and sharing** ship? (same)
 > - What's the smallest end-to-end demo that proves cohabitation
 >   works? (i.e., what's "MVP-cohabitation"?)
+>
+> **HARD CONSTRAINTS** (do not propose designs that violate these):
+>
+> - **AI is wholly opt-in.** Every AI-flavored feature requires
+>   an explicit user grant. Dark must work fully without any AI —
+>   no LLM call by default, no degraded experience for refusing.
+>   PDD is one opt-in feature; the substrate isn't built around
+>   it. Every roadmap chunk needs a non-AI path; flag if any
+>   chunk implicitly assumes AI.
+> - **Local-first.** No cloud-mandatory features.
+> - **Open + transparent.** Default to inspectable.
+>
+> See ROADMAP §"Foundational constraints" for the full list.
 
 ## Status
 
