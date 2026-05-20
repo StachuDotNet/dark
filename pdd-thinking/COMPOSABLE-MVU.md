@@ -1,8 +1,103 @@
 # Composable MVU
 
+> **v0 design — deepened from sketch via loop T18 (2026-05-20).**
+> Big finding: main **already has a SubApp/MVU framework in Dark**
+> at `packages/darklang/cli/`. Confirmed via `git show
+> main:packages/darklang/cli/core.dark`. The substrate work is
+> evolving the existing shape — adding Msg type + subscriptions
+> + Effects + composition — not building from scratch.
+
 The fifth substrate piece. **What apps look like** in this system —
 viewers, editors, traces, the PDD-daemon UI, eventually
 darklang.com itself.
+
+## What exists on main today
+
+From the 30-sec main check:
+
+### `SubApp` is already a real type
+
+```dark
+// packages/darklang/cli/core.dark
+type SubAppAction = Continue | Save | Exit
+
+type SubApp =
+  { onKey: Key -> Modifiers -> Option<String> -> (SubAppAction * SubApp)
+    onDisplay: Unit -> String
+    onSave: Unit -> Unit }
+```
+
+This is **already an MVU framework**, just folded:
+- `onKey` is the update fn — except input is a key, not a Msg sum
+- `onDisplay` is the view fn — returns a String (terminal output)
+- `onSave` is one specific Effect
+- `SubAppAction` is the result of update: Continue with new state,
+  trigger Save effect, or Exit
+
+### `AppState` is the model of the top-level CLI shell
+
+```dark
+type AppState =
+  { isExiting: Bool
+    prompt: Prompt.State              // sub-state for the prompt input
+    needsFullRedraw: Bool
+    packageData: Packages.State       // sub-state for package browsing
+    currentPage: Page                 // which "page" is in focus
+    currentBranchId: Uuid             // SCM context
+    accountID: Option<Uuid>           // identity (per IDENTITY.md)
+    accountName: String
+    previousRenderedRows: Int64       // render bookkeeping
+    nonInteractive: Bool
+    cachedHintInput, cachedHintValue: String     // caches
+    allCommandsCache, commandOptionsCache: ...
+    cachedStatusBar, cachedStatusBarBranch: ...
+    telemetryEnabled: Bool }
+
+type Page =
+  | InteractiveNav of Packages.NavInteractive.State
+  | CompletionPicker of CompletionPicker.State
+  | SubApp of SubApp                   // delegated to a child app
+```
+
+`Page` is a sum — multiple "kinds of screen" already supported.
+`SubApp` is one variant, so the host's update-fn delegates key
+events to the active SubApp.
+
+### Apps already exist
+
+`packages/darklang/cli/apps/` directory contains:
+
+- **`outliner/app.dark`** — interactive tree outliner. Full
+  Model + onKey + render. Per-document persistence.
+- **`review/app.dark`** — review interface for SCM patches.
+- **`views/app.dark`** — view selector for browsing.
+
+Each app:
+- Has its own State module (`Main.State`)
+- Has its own action sum (`Continue s | Save s | Exit s`)
+- Has its own `handleKey` (the update fn)
+- Wraps itself in `makeSubApp` to be a `SubApp` value the host
+  can run
+
+This is mature. The framework is **proven**, not theoretical.
+
+### What's *not* on main yet
+
+- A separate `Msg` type per app (today, keys go directly into
+  onKey; Msgs would be more general — KeyPress | TimerTick |
+  EventFromBus | UserSelection).
+- An `Effects` channel for general I/O (today: save is the only
+  built-in effect; others would require leaking out through
+  global mutation).
+- Subscriptions to EventBuses (T16 work). Apps can't yet listen
+  for "materialization-done" events.
+- Composition primitives beyond `Page` variants. Sub-apps as
+  *values that compose by product/sum* (vs as one-of-three Page
+  variants) — would let any app embed any other.
+- Trace replay (Msg log replay) — there's no Msg log because
+  there's no Msg type.
+- Cross-target rendering (today: terminal only; web/HTML/voice
+  would need a View abstraction).
 
 Vault material is thin and old. The relevant bits: user wants
 "elm-beautiful" TUI FRPs in Darklang, with F# knowing about the
@@ -206,6 +301,211 @@ when you need it.
   re-load `view` or `update`, the Model survives
 - Polymorphic views mean adding a new type comes with a working
   view "for free" (derived) until you write a custom one
+
+## Evolution path — from SubApp to full composable MVU
+
+The existing SubApp framework is the **right starting point**.
+Evolution is incremental:
+
+### Step 1 — Add `Msg` as a type alongside Key events
+
+```dark
+type AppMsg =
+  | KeyPressed of Key * Modifiers * Option<String>
+  | TimerTick of Stdlib.DateTime
+  | EventArrived of Bus.Name * Bus.Event
+  | UserAction of String          // generic for future expansion
+  | CompletionDone
+
+// SubApp evolves to:
+type SubApp =
+  { onMsg: AppMsg -> (SubAppAction * SubApp)        // generalized from onKey
+    onDisplay: Unit -> View                          // returns structured View, not String
+    subscribes: List<Subscription> }                 // what events to receive
+```
+
+This is **backward-compatible**: existing apps wrap key events
+into `KeyPressed` Msgs. New apps can dispatch on Msg variants
+directly.
+
+### Step 2 — Structured `View`
+
+```dark
+type View =
+  | Text of String * Style
+  | Row of List<View>
+  | Column of List<View>
+  | Bordered of View
+  | KeyHints of List<(String * String)>
+  | ScrollableList of List<View> * focused: Int64
+  | Input of String * placeholder: String
+  | Empty
+```
+
+A View tree renders to different targets:
+- Terminal: walks the tree, emits ANSI
+- Web (later): walks the tree, emits HTML
+- Voice (later): walks the tree, narrates structure
+- reMarkable (later): walks the tree, emits svg/pdf
+
+Same `View` tree, different renderer. The renderer is a
+substrate function, not per-app code.
+
+### Step 3 — Subscriptions to EventBuses (T16)
+
+```dark
+type Subscription =
+  | OnBus of Bus.Name * (Bus.Event -> AppMsg)
+  | OnTimer of intervalMs: Int64 * (Stdlib.DateTime -> AppMsg)
+  | OnExternal of waitOn: WaitOn * (Result<'a, String> -> AppMsg)
+
+// In the viewer:
+let subscribes = [
+  OnBus "materialization" (fun ev ->
+    EventArrived ("materialization", ev))
+  OnBus "bodyChanged" (fun ev ->
+    EventArrived ("bodyChanged", ev))
+  OnTimer 1000L (fun t -> TimerTick t)
+]
+```
+
+The CLI host loop runs subscriptions in the background and
+delivers their resulting Msgs to the active SubApp. Connects
+directly to EventBus from T16.
+
+### Step 4 — Effects channel
+
+Today's `onSave` is one effect. Generalize:
+
+```dark
+type Effect =
+  | SaveState of bytes: Bytes
+  | PublishToBus of name: Bus.Name * event: Bus.Event
+  | SubscribeTo of Subscription
+  | Spawn of subApp: SubApp                    // sub-app composition
+  | Exec of cmd: String * args: List<String>   // capability-gated
+  | None_                                       // no effect
+
+type SubApp =
+  { onMsg: AppMsg -> (SubAppAction * SubApp * List<Effect>)
+    onDisplay: Unit -> View
+    subscribes: List<Subscription> }
+```
+
+The host runs effects per the granted caps (per CAPABILITIES);
+some effects (e.g., `Exec`) need explicit grants and route
+through the conflict dispatch.
+
+### Step 5 — Real composition
+
+Today: SubApp is a leaf — one of Page variants. With Step 4's
+`Spawn` effect, an app can embed another:
+
+```dark
+type DiffViewer.Model = {
+  left: ContentViewer.Model
+  right: ContentViewer.Model
+  highlighted: Set<Int64>
+}
+
+let update msg model =
+  match msg with
+  | LeftSubMsg sub ->
+    let (action, newLeft, fx) = ContentViewer.update sub model.left
+    (action, { model with left = newLeft }, mapEffects LeftSubMsg fx)
+  | RightSubMsg sub -> ...
+  | ...
+```
+
+Standard Elm composition. Sub-apps are first-class. Diff viewer
+contains two content viewers; trace inspector contains a diff
+viewer + a sidebar; etc.
+
+### Step 6 — Trace replay
+
+Once Msgs exist, the Msg log per session is the trace. Replaying
+a trace = re-feeding Msgs to a fresh model:
+
+```dark
+let replay (initialModel: Model) (msgs: List<Msg>) : Model =
+  Stdlib.List.fold msgs initialModel (fun m msg ->
+    let (_action, m', _fx) = update msg m
+    m')
+```
+
+Time-travel debugging falls out: pause, scrub, replay-to-point.
+
+## F# substrate sketch (~500 LoC)
+
+What the F# side provides for the substrate (Dark apps don't see this):
+
+```fsharp
+// LibExecution.Mvu (new module)
+
+/// The runtime loop. Picks the active SubApp; routes Msgs from
+/// subscriptions + user input + bus events to its onMsg.
+type Loop = {
+  activeApp : SubApp
+  msgQueue : Queue<AppMsg>
+  subscriptions : List<ActiveSubscription>
+  renderTarget : RenderTarget
+}
+
+/// One iteration: drain queue, apply Msgs, render if changed.
+let tick (loop : Loop) : Ply<Loop> = uply {
+  if loop.msgQueue.IsEmpty then
+    return loop
+  else
+    let msg = loop.msgQueue.Dequeue()
+    let (action, newApp, effects) = invokeOnMsg loop.activeApp msg
+    let! loop' = applyEffects loop effects        // can grow queue, spawn subs
+    match action with
+    | Continue -> return { loop' with activeApp = newApp }
+    | Save -> ... // run onSave; persist Model
+    | Exit -> ... // teardown
+}
+
+/// Hook subscriptions to EventBuses (T16).
+let activateSubscription (sub : Subscription) (loop : Loop) : Ply<Loop> = ...
+
+/// Effects executor.
+let applyEffects (loop : Loop) (effects : List<Effect>) : Ply<Loop> = ...
+
+/// Renderer per RenderTarget.
+type RenderTarget =
+  | Terminal of ITerminal
+  | Web of IWebSocket            // later
+  | VsCodeWebview of IPipe       // later
+```
+
+Stays small. Most logic is Dark-side; the F# substrate just
+runs the loop + executes effects.
+
+## How this lands against existing main code
+
+| Today on main | After this evolution |
+|---|---|
+| `SubApp.onKey: Key -> Modifiers -> ... -> SubAppAction * SubApp` | `SubApp.onMsg: Msg -> ... -> SubAppAction * SubApp * List<Effect>` |
+| `SubApp.onDisplay: Unit -> String` | `SubApp.onDisplay: Unit -> View` |
+| `SubApp.onSave: Unit -> Unit` | (subsumed by Effects.SaveState) |
+| `Page = ... | SubApp` (one slot) | Multiple sub-apps composable via Effects.Spawn + product-Models |
+| Apps in `apps/` (outliner, review, views) | Same apps + new ones (viewer, trace-inspector, conflict-merge, agent-watcher) |
+| Terminal-only rendering | Multi-target via View tree |
+| No event subscriptions | Subscriptions to EventBuses (T16) |
+
+The migration is mechanical:
+
+1. Add Msg type to each existing app
+2. Wrap key handling in a `KeyPressed` Msg variant
+3. Change onKey signature to onMsg (backward-compat shim wraps
+   keys)
+4. Introduce View tree gradually (start: a View.Text wrapping
+   the existing String output; refactor per app over time)
+5. Add subscription support (new field, defaults to empty list)
+6. Add Effects (new return value, defaults to empty list)
+
+None of this requires migrating all apps at once. Each app moves
+when convenient.
 
 ## Open questions
 

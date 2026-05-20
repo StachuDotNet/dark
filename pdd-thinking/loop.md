@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T18` (deepen COMPOSABLE-MVU)
+**NEXT:** `T19 + T20` (SQLite schema + F#/Dark line)
 
 ## Reference docs in this directory
 
@@ -286,9 +286,20 @@ applicable.
   NOT hot-reload" disambiguation (schema migrations / identity
   changes / config — separate machinery).
 
-- [ ] **T18: Deepen COMPOSABLE-MVU.** Add: the F# Elmish-loop
-  runtime sketch (the ~500-LoC substrate). The View tree types.
-  Dark-side `Stdlib.UI` primitive list. Update sketch in place.
+- [x] **T18: Deepen COMPOSABLE-MVU.** v0 design grade. Huge
+  main-check finding: **MVU framework already exists** at
+  `packages/darklang/cli/`. `SubApp` type with onKey/onDisplay/
+  onSave + SubAppAction sum + Page sum + AppState fat record +
+  apps/{outliner, review, views} all real and working.
+  Substrate work is *evolution*, not greenfield. Added: (a)
+  what exists on main; (b) 6-step evolution path (Msg type →
+  structured View → subscriptions → Effects channel → real
+  composition via Spawn → trace replay via Msg-log replay);
+  (c) F# substrate sketch (~500 LoC Loop/tick/applyEffects/
+  RenderTarget); (d) **before-vs-after migration table**
+  showing each existing field's evolved form; (e) per-app
+  migration is mechanical and incremental (each moves when
+  convenient).
 
 ## Phase F — Cross-cutting design
 
