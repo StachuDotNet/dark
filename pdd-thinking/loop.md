@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T15` (deepen CAPABILITIES)
+**NEXT:** `T16` (deepen EVENT-STREAMS-AND-PARKING)
 
 ## Reference docs in this directory
 
@@ -236,10 +236,23 @@ applicable.
   FnNotFound, SCM op-vs-op (mapped to existing RebaseConflict),
   CapabilityDenied (new), SyncDivergence (post-share-5).
 
-- [ ] **T15: Deepen CAPABILITIES.** Add: the install-time grant
-  UX, the per-session granted set storage, the per-builtin
-  declaration site, the conflict-routing impl, the audit-log
-  schema. Update sketch in place.
+- [x] **T15: Deepen CAPABILITIES.** v0 design grade. Main check:
+  no caps on main, but `Previewable` enum is adjacent + Builtins
+  already split into 9 assemblies (Pure / Http.Client /
+  Http.Server / Random / Time / Cli / CliHost / Language /
+  Matter). Cap retrofit = per-assembly defaults + per-fn
+  overrides, not from-scratch annotation. Added: (a) what
+  exists on main; (b) **per-assembly default caps table** + 4
+  new cap tags (CapBindPort, CapWriteStdout, CapReadStdin,
+  CapInvokeLLM-as-AI-opt-in-gatekeeper); (c) **schema**:
+  `capability_grants_v0` + `capability_log_v0` tables (audit
+  pivots fall out); (d) **F# integration** at Apply for builtin
+  calls — concrete code sketch wiring cap-check into the
+  conflict dispatch from T14; (e) BuiltInFn gets a
+  `capabilities` field + per-assembly helper defaults;
+  (f) install-time grant UX flow with AI-opt-in honored
+  (CapInvokeLLM never auto-prompts); (g) Previewable vs
+  Capability orthogonality clarified (don't conflate).
 
 - [ ] **T16: Deepen EVENT-STREAMS-AND-PARKING.** Add: the F#
   Stream<T> impl shape, the scheduler's wait-list data

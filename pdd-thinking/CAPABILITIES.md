@@ -1,9 +1,46 @@
 # Capabilities
 
+> **v0 design — deepened from sketch via loop T15 (2026-05-20).**
+> Grounded in main: `BuiltInFn` shape in
+> `LibExecution/RuntimeTypes.fs:1607` (no caps field today, but
+> `Previewable` enum is adjacent), 9-assembly Builtins layout
+> (`Builtins.Pure / Http.Client / Http.Server / Random / Time /
+> Cli / CliHost / Language / Matter`), the AI-opt-in
+> foundational constraint, and the conflict dispatch from
+> `CONFLICTS-AND-RESOLUTIONS.md`.
+
 The fourth substrate piece. **Must land before real PDD work.**
 LLM-generated code will try to delete files, hit random network
 endpoints, exfiltrate secrets. An ungated runtime is a footgun;
 shipping PDD on top of one would be reckless.
+
+## What exists on main today
+
+- **No capability tags** on `BuiltInFn`. The field doesn't exist
+  yet.
+- **`Previewable` enum** (`Pure | ImpurePreviewable | Impure`)
+  *is* on the BuiltInFn — it's adjacent to capabilities but
+  coarser. It answers "can we safely preview" (caching question),
+  not "what effects does this have" (security question). Both
+  signals are useful; keep both.
+- **9 Builtin assemblies, domain-split**:
+  - `Builtins.Pure` — already declares purity in the name
+  - `Builtins.Http.Client` — outbound network
+  - `Builtins.Http.Server` — inbound network + server lifecycle
+  - `Builtins.Random` — non-deterministic randomness
+  - `Builtins.Time` — non-deterministic clock
+  - `Builtins.Cli` — CLI-shape stuff (stdin/stdout/args)
+  - `Builtins.CliHost` — host-side process management
+  - `Builtins.Language` — language reflection (typecheck, parse,
+    eval) — mostly pure but eval grants the caller's caps
+  - `Builtins.Matter` — package store ops (PM, SCM)
+- **No grant flow.** No install-time UX, no `--allow` flags, no
+  `--ask` mode. Builtin calls are always permitted.
+
+**Implication for cap retrofit:** the assembly split *already*
+implies effect categories. The work is **per-assembly defaults +
+per-fn overrides** — not a per-builtin-from-scratch annotation
+pass. Much smaller than the sketch implied.
 
 Read with `CONFLICTS-AND-RESOLUTIONS.md` (denials are conflicts)
 and `EVENT-STREAMS-AND-PARKING.md` (grants flow over the event
@@ -226,6 +263,261 @@ the existing event bus + dispatch.
 - **Cap-aware refactoring.** Tools can "show me fns that touch
   `CapSendSecret`" — useful for security review, license
   compliance, dependency analysis.
+
+## Per-assembly default caps
+
+Concrete retrofit table. One row per existing Builtins assembly,
+its default cap-set, and the per-fn overrides (where most fns in
+the assembly are pure but a few aren't, or vice versa).
+
+| Assembly | Default caps | Override examples |
+|---|---|---|
+| `Builtins.Pure` | `{CapPure}` | none (all should be pure) |
+| `Builtins.Http.Client` | `{CapReadNet, CapWriteNet}` | distinguish GET (Read) vs POST/PUT/DELETE (Write); `CapSendSecret` on any fn that ships auth headers |
+| `Builtins.Http.Server` | `{CapBindPort, CapReadNet, CapWriteNet}` | server-bind needs `CapBindPort` (new cap); per-request handlers run with caller's caps |
+| `Builtins.Random` | `{CapReadRandom}` | n/a |
+| `Builtins.Time` | `{CapReadTime}` | n/a |
+| `Builtins.Cli` | `{CapPure}` mostly | `printLine` → `{CapWriteStdout}`; `readLine` → `{CapReadStdin}`; arg-access → `{CapReadEnv}` |
+| `Builtins.CliHost` | `{CapExec, CapReadFile, CapWriteFile}` | spawn-subprocess is the heaviest; most-fns need ≤ 1 of these |
+| `Builtins.Language` | `{CapPure}` (mostly reflection) | `evaluate` grants the *caller*'s caps to the evaluated code |
+| `Builtins.Matter` | `{CapReadPackage}` | write-ops (`AddFunction`, `MoveItem`, etc.) → `{CapWritePackage}`; PDD-related → `{CapInvokeLLM, CapSendSecret}` (AI-opt-in) |
+
+New cap tags introduced here (beyond the original list in the
+sketch):
+
+- `CapBindPort` — Http.Server-style port-binding (escalated from
+  `CapWriteNet` since it's a long-running surface)
+- `CapWriteStdout`, `CapReadStdin` — split from CLI-generic
+  (helps detect "this code prints things" without granting
+  full CLI access)
+- `CapReadPackage`, `CapWritePackage` — for the SCM op surface;
+  most users have read; only owners get write to their namespace
+- `CapInvokeLLM` — **the AI-opt-in gatekeeper**. Denied by
+  default. Granting it unlocks PDD + materialization +
+  agent-spawn.
+
+The cap tag list is **deliberately open-ended**. New caps get
+added when new builtin assemblies arrive. The check is uniform
+regardless of cap count.
+
+## Schema — grants + audit log
+
+Two new SQLite tables. Schema-hash bumps; kill-and-fill replays.
+
+```sql
+-- Per-account default grants. Loaded into the session's
+-- granted-set on login.
+CREATE TABLE IF NOT EXISTS capability_grants_v0 (
+  account_id    TEXT NOT NULL REFERENCES accounts_v0(id),
+  capability    TEXT NOT NULL,           -- 'CapReadFile' | 'CapWriteNet' | ...
+  scope         TEXT,                    -- NULL = global; or namespace-glob like 'User.Stachu.*'
+  granted_at    TIMESTAMP NOT NULL DEFAULT (datetime('now')),
+  granted_by    TEXT REFERENCES accounts_v0(id),
+  revoked_at    TIMESTAMP,
+  expires_at    TIMESTAMP,               -- NULL = no expiry
+  PRIMARY KEY (account_id, capability, scope)
+);
+CREATE INDEX IF NOT EXISTS idx_caps_grants_active
+  ON capability_grants_v0(account_id)
+  WHERE revoked_at IS NULL;
+
+
+-- Audit log: every cap check + outcome.
+-- Append-only. The "decision recording" path for both
+-- granted-and-fine and denied-and-conflict cases.
+CREATE TABLE IF NOT EXISTS capability_log_v0 (
+  id              TEXT PRIMARY KEY,                -- random uuid
+  account_id      TEXT NOT NULL REFERENCES accounts_v0(id),
+  delegation_id   TEXT REFERENCES delegations(id), -- if agent: under what delegation
+  capability      TEXT NOT NULL,
+  decision        TEXT NOT NULL,                   -- 'Granted' | 'Denied' | 'DeniedAsk'
+  conflict_id     TEXT REFERENCES conflicts_v0(id),-- if decision was a conflict
+  call_site       TEXT,                            -- optional caller hint
+  builtin_name    TEXT NOT NULL,
+  branch_id       TEXT REFERENCES branches(id),
+  checked_at      TIMESTAMP NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_caplog_account_time
+  ON capability_log_v0(account_id, checked_at DESC);
+CREATE INDEX IF NOT EXISTS idx_caplog_capability
+  ON capability_log_v0(capability, checked_at DESC);
+```
+
+**Audit pivots that fall out for free:**
+
+- `SELECT capability, COUNT(*) FROM capability_log_v0 WHERE
+  account_id=? GROUP BY capability` — what caps does my agent
+  actually use?
+- `SELECT * FROM capability_log_v0 WHERE decision='Denied'` —
+  what cap-grants would unblock current work?
+- `SELECT * FROM capability_log_v0 WHERE capability='CapSendSecret'
+  AND checked_at > ?` — security audit: who recently exfil'd what?
+- per-`delegation_id` slice = "what did this agent do under this
+  authority?"
+
+**Sync:** grants are syncable (per-account ⇒ content-addressable
+via account_id + cap + scope hash). The log is local-by-default;
+explicitly sharable for audit but probably not on every sync
+cycle. (Open decision Q-caps-1 below.)
+
+## Where checked — F# integration
+
+In `LibExecution.Interpreter` (specifically the Apply path for
+`Builtin` calls), insert the cap check before invocation:
+
+```fsharp
+let executeBuiltinCall
+  (state : ExecutionState)
+  (vmState : VMState)
+  (fn : BuiltInFn)
+  (args : List<Dval>)
+  : DvalTask =
+  uply {
+    // ─── new: cap check ────────────────────────────────
+    let required = fn.capabilities                    // new field on BuiltInFn
+    let granted = state.session.capsGranted
+    let missing = required - granted
+
+    if not (Set.isEmpty missing) then
+      // Route through the dispatch (per CONFLICTS-AND-RESOLUTIONS)
+      let conflict =
+        Conflict.CapabilityDenied
+          { caps = missing
+            site = currentCallSite vmState
+            builtin = fn.name }
+      let! resolution = state.conflictDispatch conflict (callContext state vmState)
+      match resolution with
+      | Resolution.Substitute dval ->
+        // The dispatch decided to skip the call and substitute.
+        logCapDecision state fn "Substitute" conflict
+        return dval
+      | Resolution.FailLoudly err ->
+        logCapDecision state fn "Denied" conflict
+        return! raiseRTE err
+      | Resolution.Park selector ->
+        // Wait for a grant event; on wake re-enter this fn.
+        return! park selector
+      | Resolution.AskHuman query ->
+        // Same as Park but the wait is on the human-answer event.
+        return! askThenResume query
+      | _ -> ... // RetryWith / PickSide n/a for caps
+    else
+      // ─── existing path ──────────────────────────────
+      logCapDecision state fn "Granted" None
+      return! fn.fn (state, vmState, [], args)
+  }
+```
+
+The strict-mode default for `Conflict.CapabilityDenied` is
+`FailLoudly` (matching today's "always-permitted" behavior is
+fully reverse-compat: until you add caps to a fn, the missing
+set is empty and the check fast-paths through).
+
+## Per-builtin declaration site
+
+Add `capabilities : Set<Capability>` to `BuiltInFn`:
+
+```fsharp
+type BuiltInFn = {
+  // existing fields...
+  capabilities : Set<Capability>      // new
+}
+```
+
+Provide a default in the assembly's fn-builder helpers so
+existing builtins default to their assembly's default cap-set
+without per-fn edits:
+
+```fsharp
+// in Builtins.Pure helpers:
+let pureFn name params returnType description fn = {
+  // ...
+  capabilities = Set.singleton Capability.CapPure
+}
+
+// in Builtins.Http.Client helpers:
+let httpClientReadFn ... = { capabilities = Set.ofList [CapReadNet] }
+let httpClientWriteFn ... = { capabilities = Set.ofList [CapReadNet; CapWriteNet] }
+```
+
+Per-assembly retrofit ~9 helper changes + a per-fn audit for
+exceptions = small mechanical PR.
+
+## Install-time grant UX
+
+First-run on a fresh install:
+
+```
+$ dark
+Welcome to Darklang. Setting up your install.
+
+Some operations need explicit permission to run. We'll ask once
+per category; you can change these later with `dark caps`.
+
+  Network access (read + write):
+    [Y/n/ask] y          # always allow
+
+  File system access (read + write):
+    [Y/n/ask] ask        # ask each session
+
+  Run subprocesses (e.g. git, ssh):
+    [Y/n/ask] n          # never; deny silently
+
+  Send secrets across the network (e.g. LLM keys):
+    [y/N/ask] n          # never (AI-opt-in default!)
+
+  Read the system clock (non-deterministic):
+    [Y/n/ask] y
+
+  Generate randomness (non-deterministic):
+    [Y/n/ask] y
+
+  Read/write the package store:
+    Read: [Y]
+    Write: only in `User.Stachu.*` (auto-set from your account)
+
+Saved to ~/.config/darklang/caps.toml.
+```
+
+This populates `capability_grants_v0` for the user's account.
+
+**AI-opt-in gating**: `CapInvokeLLM` and `CapSendSecret` default
+to **never**. The user has to deliberately go in and enable them
+(or accept the prompt when an opt-in flow asks). The install
+flow never even mentions them by default — they're prompted only
+when an explicit AI feature is first invoked.
+
+Granular controls layered on top:
+
+- `dark caps list` — show current grants
+- `dark caps grant <cap> [--scope=X] [--expires=Y]`
+- `dark caps revoke <cap>`
+- `dark caps ask <cap>` — set policy to prompt on next use
+- Per-invocation: `dark --allow=ReadFile,WriteNet -- run myFn`
+- Per-invocation deny: `dark --deny=Exec`
+
+## Connection to Previewable (don't conflate)
+
+`Previewable` and `Capability` are **orthogonal**:
+
+- `Previewable.Pure` = same inputs → same output (cacheable)
+- `Previewable.ImpurePreviewable` = output varies but safely
+  previewable (DateTime.now)
+- `Previewable.Impure` = not previewable
+- `Capability` = what *effects* this fn has on the world
+
+A fn can be:
+
+- Pure + `{CapPure}` — most pure fns
+- Pure + `{CapReadEnv}` — reads env once but always the same
+  during a session (configurable: cache yes, since the env is
+  stable; cap-check yes because reading env is an effect)
+- Impure + `{CapReadTime}` — DateTime.now
+- Impure + `{CapWriteFile}` — File.write
+
+The cap signals "do I have permission?" The previewable signals
+"can I show a result without running the side-effect?" Both
+useful; both stay on `BuiltInFn`.
 
 ## Open questions (beyond the three on effective caps)
 
