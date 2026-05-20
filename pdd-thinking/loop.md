@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T19 + T20` (SQLite schema + F#/Dark line)
+**NEXT:** `T21` (MIGRATION.md — current state → substrate state)
 
 ## Reference docs in this directory
 
@@ -303,19 +303,31 @@ applicable.
 
 ## Phase F — Cross-cutting design
 
-- [ ] **T19: SQLite schema for the substrate.** One doc:
-  `SCHEMA.md` (new). All tables: package_fns / package_types /
-  package_values / locations / patches / patch_parts / branches /
-  branch_patches / ops / events / agents / capabilities_log /
-  conflicts_log / trace_events. Per table: columns + indexes +
-  invariants. Mark which tables exist today vs new.
-
-- [ ] **T20: The F#-vs-Dark line.** One doc: `F-SHARP-VS-DARK.md`
-  (new). For each subsystem (interpreter, parser, materializer,
-  PM, sync, caps, events, UI), what's the irreducible F# bit and
-  what's Dark code on top. Per FRONTIER's "what F# should stop
-  knowing" but more concrete. The line moves over time; capture
-  v1 split and v2 (post-Dark-interpreter-in-Dark) split.
+- [x] **T19+T20 batch: SCHEMA.md + F-SHARP-VS-DARK.md.** Both done
+  in one iter (same main-check data).
+  
+  SCHEMA.md: 18 tables on main inventoried by role
+  (bookkeeping / branches+commits+ops / projections / traces /
+  legacy); 7 new tables proposed across substrate sketches
+  (account_identities, delegations, conflicts_v0,
+  conflict_resolutions_v0, capability_grants_v0,
+  capability_log_v0) + 1 column add (package_ops.delegation_id);
+  cross-table relationships graph; invariants (one-concern-per-
+  table, content-addressed where possible, append-only logs
+  separate from mutable state, NULL conventions, indexes match
+  query shape, kill-and-fill stays); 5 open decisions Q-sch-1
+  to Q-sch-5.
+  
+  F-SHARP-VS-DARK.md: 11 F# projects + ~16 Dark subdirs on main
+  (much more Dark-side than sketches assumed — scm/tracing/
+  llm/cli all already Dark). v1 split table per subsystem
+  (interpreter / storage / identity / bootstrap / apps /
+  materializer / tracing). v2 split (post Dark-in-Dark, years
+  out — just leaves space). 'What stays F# forever' list
+  (Prelude, bottom-of-interpreter, DB driver, tree-sitter,
+  network primitives, cap-check at Apply, scheduler
+  primitives). Migration shape: gradual + per-subsystem; 3
+  examples. 4 open decisions Q-fd-1 to Q-fd-4.
 
 - [ ] **T21: Migration path from current state.** One doc:
   `MIGRATION.md` (new). Starting state = today's `main` branch
