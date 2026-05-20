@@ -124,11 +124,12 @@ Status reflects `main` as of 2026-05-20.
 | C13 | **The PDD materializer** | LLM-driven body materialization for Pending fns; eventually a Dark fn | **DEFERRED** (spike on pdd branch; not on main) | ALGORITHM |
 | C14 | **Viewer (in-focus-fn UI)** | The cockpit; MVU app over the event bus | **NEEDS BUILD** | VIEW-SKETCHES |
 | C15 | **matter.darklang.com server** | Central instance for sharing; hosts snapshot + event stream | **NEEDS BUILD** | SYNC-AND-STABILITY |
+| C16 | **Remote access + control** | Reach Dark instances you own / have permission for, across devices, peer-to-peer. Vault says lean on Tailscale (peer addressing + identity + TLS + auth headers all free). | **NEEDS DESIGN** | (new) REMOTE-ACCESS.md |
 
-**Counts:** 4 EXISTS-or-mature · 6 PARTIAL · 4 NEEDS-DESIGN/BUILD · 1 DEFERRED.
+**Counts:** 4 EXISTS-or-mature · 6 PARTIAL · 5 NEEDS-DESIGN/BUILD · 1 DEFERRED.
 
 The substrate is **more than half there**. The roadmap focuses on
-the 6 partials + 4 needs-design/build, in dependency order.
+the 6 partials + 5 needs-design/build, in dependency order.
 
 ---
 

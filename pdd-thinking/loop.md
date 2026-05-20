@@ -122,6 +122,7 @@ are suspect.)
 - `~/vaults/Darklang Dev/05.Implementation/Queues, Workers, Feeds/`
 - `~/vaults/Darklang Dev/05.Implementation/Remote Access and Control/`
 - `~/vaults/Darklang Dev/05.Implementation/Networking and Internet/`
+  - **`Tailscale.md` is highly relevant + recent.** Vault stance: lean on Tailscale for peer addressing + identity + TLS + auth headers; don't build a networking stack. Read for T22b.
 - `~/vaults/Darklang Dev/05.Implementation/Future Environments/`
 
 ---
@@ -275,6 +276,27 @@ applicable.
   like? One section in COHABITATION.md (extend) or a new
   `AGENT-RUNTIME.md`. (Decide which based on size.)
 
+- [ ] **T22b: Remote access + control.** One doc:
+  `REMOTE-ACCESS.md` (new). Cover: (i) the goal — reach Dark
+  instances you own / have permission for, across devices,
+  peer-to-peer (Plan 9 vibes); (ii) the vault stance — lean on
+  Tailscale (`Networking and Internet/Tailscale.md`) rather than
+  build a networking stack; (iii) how Tailscale primitives map
+  to substrate needs (peer addressing via MagicDNS, identity via
+  WhoIs + HTTP headers, TLS via `tailscale serve`, public surface
+  via `tailscale funnel`, ACL via tags+grants); (iv) what Dark
+  still has to build on top (the wire protocol from T7-T9, the
+  identity-to-tailnet-user binding from T11-T12, app-level
+  permissions for "this remote agent can run on my instance");
+  (v) deployment shape — every user's machine is a peer; one
+  user can have N peers; matter.darklang.com is a special peer;
+  (vi) how this interacts with the cohabitation model — agents
+  spawned remotely, viewers attached remotely, sessions
+  spanning multiple peers. Append a row to ROADMAP §"Chunks
+  needed" if not already there (C16). Decide phase ordering —
+  this likely lands *with or after* sharing (T10) since both
+  rely on the wire protocol + identity.
+
 ## Phase G — Validate + decide
 
 - [ ] **T23: MVP-cohabitation demo.** Define the smallest demo
@@ -331,6 +353,7 @@ The TODOs are roughly ordered by dependency. Some batching guides:
 - **T1+T2** together — both bootstrap the roadmap structure
 - **T3+T4+T5** together — all about bootstrap design
 - **T7+T8** together — both about wire protocol
+- **T22+T22b** can chain — agent runtime + remote access share concerns (process model, peer addressing, cross-instance identity)
 - **T11+T12** together — both about identity
 - **T19+T20** together — both schema/architecture, similar reading
 - **T23+T24+T25** together — closing strategic synthesis
