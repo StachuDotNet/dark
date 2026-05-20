@@ -448,6 +448,81 @@ The `persistTo` field on each `EventBus<'T>` controls this. Buses
 that persist append a row on every `publish`; replay reads back
 from the table.
 
+## Precedent — classic-dark's QueueWorker / EventQueueV2
+
+Classic-dark (`~/code/classic-dark/`) had a real working event
+system: `LibBackend/EventQueueV2.fs` (~465 LoC) + `QueueWorker/
+QueueWorker.fs` (~381 LoC), per `docs/eventsV2.md` (May 2022).
+Worth studying as we design EventBus — much of the shape applies.
+
+### What classic-dark did
+
+- **Two-part system**: durable `events_v2` SQL table is the
+  source of truth; Google PubSub is **only** a notification
+  channel that says "now would be a good time to check the
+  table." DB row is canonical; PubSub message is ephemeral.
+- **Notifications are tiny** — just `eventID` + `canvasID` +
+  `deliveryAttempt`. Actual event data loaded from DB on
+  receive.
+- **At-least-once execution** with explicit lock claims
+  (`claimLock`) so multiple workers don't double-process.
+- **Retry policy**: 5 min later, up to 2 retries, then drop.
+- **Worker handlers** are named by Dark users (`WORKER` handler
+  with the matching event name) — so subscribing to an event
+  stream from Dark code is the *original ergonomic move*.
+- **Crons** flow through the same pipeline (`CronChecker`
+  enqueues events; QueueWorker processes them uniformly).
+- **Per-handler pause/block** without losing already-queued
+  events.
+
+### What to borrow for EventBus
+
+The EventBus design above can absorb several of these patterns
+**without complicating the F# surface**:
+
+| Classic pattern | EventBus adoption |
+|---|---|
+| DB table as source-of-truth, ephemeral signal | exactly the `EventPersistence` design: durable buses write to SQLite; the F# subscriber dispatch is the "signal." When matter.darklang.com is the persistence target, the SQL table is shared (synced); the signal is HTTP/WS. |
+| Tiny notification payload | When events go cross-instance via sync, ship the ID + minimal metadata; receiver loads from local op tables. Saves bandwidth. |
+| Lock claim before processing | For durable buses (conflict, capability, syncIn), grab a row-level "claimed_by + claimed_at" before invoking the handler. Same shape: prevents double-processing in multi-peer setups. |
+| Retry policy | Failed handlers get re-enqueued with backoff. Encode as a bus-level policy, not a per-handler concern. |
+| Named WORKER handlers (Dark-side) | Dark code subscribes via `Stdlib.Bus.subscribe "materialization" (fun ev -> ...)`. The handler-name *is* the subscription. Reuse the ergonomic shape. |
+| Per-handler pause/block | Same: `Stdlib.Bus.pause "materialization"` blocks new handler invocations without losing in-flight or queued events. |
+| Crons enqueueing into the same pipeline | A cron tick = `Bus.publish "cron-tick" ()`. Subscribers run on each tick. No separate cron-specific infrastructure. |
+
+### What's new in EventBus vs classic-dark
+
+- **Multi-bus instead of one global queue.** Classic had a single
+  pubsub topic per canvas; the new design has typed buses per
+  event kind. Better type safety + observability.
+- **Composition operators.** Classic had `name == 'foo'` routing
+  via WORKER handler name; new design has filter/map/join/zip
+  per-stream. (Selectors are richer.)
+- **Frame parking.** Classic was for *user-emitted events*;
+  it had no concept of an in-flight expression that pauses on
+  an event. Parking is genuinely new.
+- **Promise<T> + `!` user surface.** Classic exposed `emit` for
+  producing + WORKER handlers for consuming. New design adds
+  explicit await points at the Dark layer.
+- **Cross-instance via sync.** Classic was per-canvas. New design
+  spans peers via the wire protocol from SYNC-AND-STABILITY.
+
+### Migration path implication
+
+The Phase 2/3 work to build EventBus is *not* greenfield in
+spirit — classic-dark's experience says:
+
+- Don't build a custom infra dependency (PubSub is GCP-specific
+  and a real ops burden). Use SQLite as truth + in-process
+  notifications for v1; add cross-instance HTTP/WS later.
+- At-least-once + lock-claim is the right delivery semantic for
+  the durable buses.
+- The named-subscriber UX is what users will reach for; keep it.
+
+This precedent makes EventBus feel **incremental, not novel**.
+The shape was working on classic-dark; we're translating it to
+the new substrate with better typing and better composition.
+
 ## Connection to existing main code
 
 ### Where to plug in
