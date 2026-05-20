@@ -249,6 +249,21 @@ Sharing depends on:
 *Accumulates as TODOs surface decisions worth flagging. Final
 pass in T27.*
 
+### From T11-T13 (identity)
+
+- **Q-id-1** Token format. Random opaque + revocation table
+  (recommended) vs JWT-shaped. JWT is overkill.
+- **Q-id-2** Multiple agents per delegation. Probably no —
+  1-to-1; spawn N for N parallel workers.
+- **Q-id-3** Cross-instance agent identity. Verified via
+  delegation chain content-addressed + signed by owner.
+- **Q-id-4** Ad-hoc LLM use without an agent. Probably attributed
+  to human with "via LLM" tag, not a separate identity.
+- **Q-id-5** Long-running agents on matter.darklang.com. Owner-
+  offline-pause-on-cap-denial story needed.
+- **Q-id-6** Identity for the substrate itself. The Darklang
+  seeded account (uuid 0...001) serves this role. Confirm.
+
 ### From T7-T10 (stability + sharing)
 
 - **Q-ss-1** Default sync target. Auto-sync to

@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T11 + T12 + T13` (identity batch)
+**NEXT:** `T14` (deepen CONFLICTS-AND-RESOLUTIONS — first deepening)
 
 ## Reference docs in this directory
 
@@ -191,22 +191,28 @@ appends to or references the structure laid down here.
 
 ## Phase D — Identity + permissions (gates everything)
 
-- [ ] **T11: Read vault `Accounts and Auth/` + `Purity, Effects,
-  and Sandboxing/`.** Capture in `IDENTITY.md` (new): the
-  agent-and-human identity model from COHABITATION + how it maps
-  onto Accounts and Auth + how it threads through CAPABILITIES.
-  Sketch the Agent data shape (id, identity, currentGoal, plan,
-  permissionSet, traceHead — from COHABITATION).
-
-- [ ] **T12: Design permission delegation.** A human owns
-  namespace `User.Stachu`. They run an agent. The agent acts
-  *as* them with bounded caps. How is the delegation modeled?
-  What's recorded in the trace? How is it revoked? Append to
-  IDENTITY.md.
-
-- [ ] **T13: Decide phase for identity.** Identity gates sharing
-  (T7-T10) and capabilities-meaningful (T15). Where does it land?
-  Append to ROADMAP.
+- [x] **T11+T12+T13: Identity batch — all done.** Main check:
+  accounts_v0 + 4 seeded humans + login.dark exist but no auth,
+  no agent kinds, no delegation, no external-id binding. 53
+  account_id refs across backend. IDENTITY.md (~320 LoC):
+  - `IdentityKind = Human | Agent of owner: AccountId` typed sum
+    plus `TrustProfile = Untrusted | Basic | Trusted | System`.
+  - **`account_identities` table** for binding to Tailscale /
+    OAuth / tokens (multiple identities → one account).
+  - **`Agent` shape**: account + currentGoal + plan + traceHead
+    + status (Running/Paused/Done/Failed/Revoked).
+  - **Delegation contract** with triple-intersection
+    effective_caps (agent.trust ∩ delegation.caps ∩ owner.session).
+  - Sub-delegation chain (must be ⊆ parent; revoked transitively).
+  - Delegations are content-addressed ops on the wire (sync just
+    like package ops).
+  - Cap-denials route through B2 dispatch to the agent's owner.
+  - Phase decision: **Phase 2 (Identity + caps + conflicts)**,
+    optionally split 2a (humans + sharing-blocking) / 2b
+    (agents + PDD-blocking).
+  - AI-opt-in honored: agent identities are opt-in; reverting
+    Phase 2b leaves a fully human-only Darklang.
+  - 6 open decisions Q-id-1 to Q-id-6 added to ROADMAP.
 
 ## Phase E — Substrate-piece deepening (each sketch → design-grade)
 
