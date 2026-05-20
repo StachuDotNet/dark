@@ -436,6 +436,173 @@ merge halts.
    *not* a blocker (per STABILITY-AND-SHARING 2025-11-12 stance).
 ```
 
+## Errors-as-conflicts (the bigger move)
+
+> Added 2026-05-20 per user direction: *"some of the existing
+> things that are 'built in' as runtime errors or parse-time
+> errors should perhaps be abstracted in a way such that someone
+> can decide how such conflicts should be resolved/handled."*
+
+Today, dozens of error sites in the interpreter and type-checker
+unconditionally raise:
+
+- `Interpreter.fs` has **~35 `raiseRTE` call sites**
+- `TypeChecker.fs` has **~26** more
+- `RuntimeError` on main is already a typed hierarchy
+  (`Ints.DivideByZeroError`, `Lists.TriedToAddMismatchedData`,
+  `Lets.PatternDoesNotMatch`, `Strings.NonStringInInterpolation`,
+  `Bools.AndOnlySupportsBooleans`, etc.) — organized by domain,
+  each with specific variants
+
+The shape is *already* configuration-ready. What's missing is the
+*configurability*: every raise becomes "emit a Conflict; let the
+dispatch decide; act on the resolution."
+
+### The move
+
+Replace every `raiseRTE (RuntimeError.Ints DivideByZeroError)`
+with:
+
+```fsharp
+let! resolution =
+  state.conflictDispatch
+    (Conflict.RuntimeError (RuntimeError.Ints DivideByZeroError))
+    callContext
+
+match resolution with
+| Resolution.Substitute dval -> return dval     // e.g. return DInt64 0L
+| Resolution.FailLoudly err  -> raiseRTE err     // honor the original behavior
+| Resolution.Park selector   -> return! park selector
+| Resolution.AskHuman query  -> return! askThenResume query
+| Resolution.RetryWith _     -> // doesn't apply to RTEs; treat as FailLoudly
+```
+
+The default dispatch in strict mode (production, tests) is
+`FailLoudly` — **identical behavior to today**. The substrate
+isn't changing semantics; it's adding a hook.
+
+In loose/dev mode, the dispatch can substitute defaults (1/0 →
+0, unwrap None → unit, etc.) and record the substitution. The
+trace shows what got recovered.
+
+In ask-human mode, the developer is the dispatch — the program
+pauses on division-by-zero with "0 here? abort? retry with
+different input?" Useful for active dev.
+
+### Categorization — what's configurable, what isn't
+
+**Configurable (becomes Conflict.RuntimeError):**
+
+- `Ints.DivideByZeroError`, `NegativeExponent`, `ZeroModulus`,
+  `OutOfRange`
+- `Lists.TriedToAddMismatchedData`, list-index-out-of-bounds
+- `Dicts.TriedToAddKeyAfterAlreadyPresent`,
+  `TriedToAddMismatchedData`
+- `Lets.PatternDoesNotMatch`
+- `Matches.NoMatchingPattern`
+- `Strings.NonStringInInterpolation`
+- `Bools.AndOnlySupportsBooleans` etc. (probably; debatable)
+- `Stdlib.Option.unwrap` on None
+- `Stdlib.Result.unwrap` on Error
+- Type-checker mismatches at call sites (per-arg)
+- Type-checker mismatches at let-bindings
+- Missing builtin (FnNotFound — already covered as a Conflict)
+- Recursion / stack overflow (could substitute default; usually
+  better to fail)
+
+**Not configurable (stays an unconditional raise — these are
+substrate bugs, not program errors):**
+
+- Internal invariant violations (`Exception.raiseInternal "msg"`)
+- Anything in the F# substrate that's "this should never happen"
+- OOM, stack-machine corruption, serializer failures
+- Operating-system-level errors (file-handle exhaustion, etc.)
+
+The distinction: **a configurable error is one where a user
+might reasonably want a different policy than "halt."** A
+non-configurable error is one where halting is the *only* sane
+response — because the substrate itself is in an undefined state.
+
+### Parse-time errors
+
+Parse errors are trickier — they happen *before* the dispatch is
+even instantiated. The CallContext doesn't exist yet; there's no
+agent identified; the toleranceMode is undefined.
+
+Two approaches:
+
+- **(a) Defer to a parser-policy struct.** The CLI / editor /
+  agent that invoked the parser passes a `ParsePolicy` along
+  with the source: `Strict | Loose | AskHuman | UseFallback`.
+  `Strict` is today. `Loose` substitutes a "syntactic
+  placeholder" expression and emits a Conflict.ParseFailed for
+  the runtime dispatch to handle when the expression is
+  evaluated. This is the same shape as Pending — parse-time
+  fails become runtime conflicts.
+- **(b) Always try a fallback.** LibParser already has
+  `OnMissing.Allow` / `OnMissing.AllowPending` / `OnMissing.Strict`
+  policies for unresolved names. Extend the same mechanism to
+  *syntactic* failures: emit a `Pending`-shaped expression at
+  every unparseable region; the runtime dispatch decides what
+  to do when execution reaches it.
+
+(b) is more uniform. (a) is less invasive. Open decision.
+
+### What this enables
+
+- **PDD-style tolerance** without PDD: a developer running in
+  loose mode sees division-by-zero return 0, with a trace
+  annotation; they review the trace, decide whether to fix the
+  source. No LLM involvement required (per the AI-opt-in
+  constraint).
+- **Test modes**: tests run with strict dispatch. CI gets
+  identical-to-today behavior.
+- **Refactor-aware execution**: a refactor that changes a fn's
+  type signature triggers `TypeMismatch` conflicts at each call
+  site; the dispatch can park-and-ask the human to choose
+  per-call ("update this call to the new signature, or revert
+  the refactor").
+- **Live-development workflow**: while editing, the program
+  keeps running — div-by-zero substitutes, pattern-mismatch
+  substitutes, missing-fn substitutes. The trace builds up the
+  list of substitutions. You fix them when you're ready.
+
+This is the original *tolerant runtime* claim from CLAIMS §4,
+now mechanically achievable.
+
+### Sequencing — when this work happens
+
+This isn't a separate chunk in ROADMAP §"Chunks needed" — it's a
+**deepening of C4 (conflict resolution dispatch)**. The work
+is:
+
+1. Land the dispatch + tables (Phase 2 — alongside identity +
+   capabilities).
+2. Pick the first few raise sites to migrate (probably the Ints
+   ones; smallest blast radius).
+3. Migrate each `raiseRTE` site to use the dispatch. ~35 + 26 =
+   ~60 sites; each is a 4-line diff (emit Conflict, match
+   Resolution, act).
+4. Auto-rule defaults stay "FailLoudly" so behavior matches
+   today by default.
+
+This can ship incrementally — sites migrate one by one, with
+auto-rule preserving current behavior until policies are
+deliberately added.
+
+### Risk — dispatch latency on the hot path
+
+Every runtime call site that *might* error now does an
+extra-cheap dispatch lookup. Today's raise is a stack-unwind; the
+new path is a dictionary lookup + branch.
+
+Probably negligible: the dispatch's auto-rule fast-path is a
+single match arm returning `FailLoudly`. We're not adding
+allocations or async hops. Measure on the hot loop (integer
+arithmetic in tight loops); if there's a regression, gate the
+dispatch behind a "tolerance mode" check and short-circuit when
+strict.
+
 ## Open questions
 
 - **Who installs the auto-rules?** Per-namespace? Per-session?

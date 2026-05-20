@@ -249,6 +249,18 @@ Sharing depends on:
 *Accumulates as TODOs surface decisions worth flagging. Final
 pass in T27.*
 
+### From T14 deepening + errors-as-conflicts framing
+
+- **Q-cr-1** Parse-time errors: ParsePolicy struct (option a) vs
+  uniform "syntactic Pending" placeholders (option b). (b) is
+  more uniform; (a) less invasive. Lean (b) but worth a real
+  call.
+- **Q-cr-2** Which existing `raiseRTE` sites are
+  configurable-conflicts vs "internal-invariant" must-fail. ~35
+  + ~26 sites to triage.
+- **Q-cr-3** Dispatch latency on the hot path. Measure on tight
+  arithmetic loops; gate strict-mode short-circuit if needed.
+
 ### From T11-T13 (identity)
 
 - **Q-id-1** Token format. Random opaque + revocation table
