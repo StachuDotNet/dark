@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T17` (deepen HOT-RELOAD — dependency-tracking index)
+**NEXT:** `T18` (deepen COMPOSABLE-MVU)
 
 ## Reference docs in this directory
 
@@ -270,9 +270,21 @@ applicable.
   which sqlite table); (h) Ply coexistence (park inserts inside
   a Ply, doesn't replace).
 
-- [ ] **T17: Deepen HOT-RELOAD.** Add: the dependency-tracking
-  index needed for "find all dependents of fn X." Concrete API.
-  Update sketch in place.
+- [x] **T17: Deepen HOT-RELOAD.** v0 design grade. Big main-check
+  finding: `package_dependencies` table + 4 indexes (incl partial
+  index for the location-dependents query); `PropagateUpdate` op
+  + `RevertPropagation` op already in PT enum; `Queries.fs` has
+  the dependent-finder SQL; `PackageManager.fs` has caches with
+  explicit invalidation TODOs. **The dependency-tracking index
+  isn't something we build — it exists.** Hot-reload work is
+  *connecting* existing dep-tracking → event-bus publication.
+  Added: reality-check section, publish-on-op-apply F# sketch
+  (PackageOpPlayback.fs gets the publish step), subscriber-side
+  cache invalidation + frame-policy, type-sig-change /
+  cap-surface-change → B2 conflict dispatch routing, branch-
+  switch as bulk reload with transactionEnd markers, "what's
+  NOT hot-reload" disambiguation (schema migrations / identity
+  changes / config — separate machinery).
 
 - [ ] **T18: Deepen COMPOSABLE-MVU.** Add: the F# Elmish-loop
   runtime sketch (the ~500-LoC substrate). The View tree types.

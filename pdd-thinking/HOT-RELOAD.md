@@ -1,7 +1,58 @@
 # Hot Reload — From First Principles
 
+> **v0 design — deepened from sketch via loop T17 (2026-05-20).**
+> Grounded in main: `package_dependencies` table + indexes (incl.
+> partial index for "who depends on this location?"),
+> `PropagateUpdate` + `RevertPropagation` ops, `Queries.fs`
+> dependent-finder, `PackageManager.fs` harmfulCache (with
+> invalidation TODO marker).
+
 The spike had hot-reload via mtime polling on JSONL files. Worked
 for a demo; not principled. This is the from-scratch version.
+
+## What exists on main today
+
+Hot-reload's "dependency-tracking index" requirement is **already
+built**. From the 30-sec main check:
+
+- **`package_dependencies` table** with 4 indexes:
+  - `idx_package_dependencies_depends_on` (hash index)
+  - `idx_package_dependencies_item` (reverse index)
+  - `idx_package_dependencies_depends_on_location` — partial
+    index excluding NULL backlog so it stays small; **optimized
+    for the "who depends on this location?" query** (exactly
+    what hot-reload needs)
+  - `idx_package_dependencies_unique` (uniqueness)
+- **`PropagateUpdate` op** in `ProgramTypes.fs`:
+  `propagationId * sourceLocation * fromRefs * toRef * repoints`
+  — when something updates, an explicit op carries the
+  before-refs + after-ref + repoint list. Atomic.
+- **`RevertPropagation` op**: full revert of a propagation, with
+  `revertedPropagationIds` referencing the originals. **Reverse
+  reload is a first-class concept.**
+- **`Queries.fs:80-100`** has the "find all dependents at item
+  hash X within branch chain Y" SQL query — used to compute
+  the repoint list for PropagateUpdate.
+- **`PackageManager.fs` harmfulCache**: an example of an
+  in-memory cache that needs invalidation; the file has an
+  explicit TODO ("Long-lived processes ... should invalidate
+  by evicting the branch's entry — not implemented yet").
+
+**Implication for hot-reload work**: connecting existing
+dependency-tracking → event-bus publication. The hard SQL +
+op-shape parts are done. The new work is:
+
+1. When a `PropagateUpdate` op is applied, publish a
+   `BodyChanged` event on `buses.bodyChanged` for each repoint
+   (per `EVENT-STREAMS-AND-PARKING.md`).
+2. Add detection for "frame is currently executing an old
+   body that just got reloaded" — the mid-execution policy
+   (finish-then-update vs preempt vs race).
+3. Wire cap-surface-change and type-sig-change into the conflict
+   dispatch (T14).
+4. Invalidate F#-side in-memory caches on `BodyChanged`
+   (`harmfulCache` and any siblings the PR-time CLEANUP TODO
+   already flagged).
 
 ## What hot-reload is for
 
@@ -178,6 +229,131 @@ silently break things. Mechanically:
 This makes "I changed my fn's signature" into a manageable
 flow, not a sudden runtime explosion. Same dispatch, different
 producer.
+
+## Concrete F# integration
+
+### Publish on op apply
+
+`PackageOpPlayback.fs` already runs op-application; add a
+publish-after-apply step:
+
+```fsharp
+let applyOp (op : PackageOp) : Ply<unit> = uply {
+  // existing: apply op to package_* tables
+  do! applyOpToTables op
+
+  // existing: update package_dependencies
+  do! updateDependencies op
+
+  // NEW: publish BodyChanged events
+  let changed = locationsAffectedByOp op
+  for location in changed do
+    let event = BodyChangedEvent {
+      location = location
+      newHash = currentHashAt location
+      causedBy = op.id
+      author = op.authorAccountId
+    }
+    do! state.buses.bodyChanged.publish event
+}
+```
+
+`locationsAffectedByOp` reads the same `repoints` list that's
+already on `PropagateUpdate` ops; for simpler ops (AddFunction,
+Deprecate, etc.) it's the location(s) directly mentioned in the
+op.
+
+### Dependent invalidation chain
+
+When a `BodyChanged` event fires for hash X:
+
+```fsharp
+// Subscribed inside ExecutionState's setup:
+state.buses.bodyChanged.subscribe (fun ev -> uply {
+  // Find F#-side caches that hold X
+  invalidateCache state.packageManager.harmfulCache ev.location.branchId
+  invalidateCache state.packageManager.deprecationCache ev.location.branchId
+  invalidateCache state.packageManager.fnCache ev.newHash
+
+  // Find frames currently executing at this hash
+  let affectedFrames =
+    state.scheduler.activeFrames
+    |> List.filter (fun f -> f.executingHash = ev.newHash)
+
+  // Apply the configured mid-execution policy
+  match state.config.midExecutionPolicy with
+  | FinishThenUpdate -> ()                       // do nothing; new calls use new body
+  | Preempt -> affectedFrames |> List.iter killFrame
+  | Race -> affectedFrames |> List.iter (forkWith ev.newHash)
+})
+```
+
+The mid-execution policy is per-session config (probably; see
+open Q below) — strict default is FinishThenUpdate.
+
+### Type-sig-change as conflict
+
+A reload that changes a sig flows through B2 dispatch:
+
+```fsharp
+state.buses.bodyChanged.subscribe (fun ev -> uply {
+  let oldSig = sigOf ev.oldHash
+  let newSig = sigOf ev.newHash
+  if oldSig <> newSig then
+    // For each caller that referenced the old sig:
+    let! callers = findCallersOf ev.location
+    for caller in callers do
+      let conflict =
+        Conflict.TypeMismatch {
+          expected = oldSig    // what the caller expected
+          got      = newSig    // what the location now has
+          callerLocation = caller
+        }
+      let! _ = state.conflictDispatch conflict ctx
+      // Dispatch decides: substitute (assume Ok), park (await user fix),
+      // ask-human, fail-loudly
+})
+```
+
+### Cap-surface change as conflict
+
+Same shape: if `newCapEffective > oldCapEffective`, callers that
+don't have the new caps get `Conflict.CapabilityDenied` on next
+invocation. The dispatch's normal flow handles it.
+
+## Branch switch as bulk reload
+
+Switching branches is N location-level BodyChanged events fired
+in one transaction. The bus protocol should support a
+"transaction-end" marker so subscribers can batch:
+
+```fsharp
+do! state.buses.bodyChanged.publishBatch [
+  BodyChanged loc1 ...
+  BodyChanged loc2 ...
+  // ... N events
+  TransactionEnd { txId = ... }
+]
+```
+
+The viewer subscriber accumulates events between TransactionEnd
+markers, rerenders once per batch. The cap-checker subscriber
+processes each individually (no batching speedup).
+
+## What's NOT a hot-reload
+
+Things the user might call "reload" that flow through different
+machinery:
+
+- **Schema migrations** — kill-and-fill via `Migrations.fs`.
+  Hot-reload doesn't apply; the runtime restarts.
+- **Account / identity changes** — also not hot-reload; affects
+  the session's cap set + ownership.
+- **Configuration changes** (e.g., tolerance mode) — session-
+  config, not body changes.
+
+Hot-reload is specifically about **executable body changes** to
+package items.
 
 ## Open questions
 
