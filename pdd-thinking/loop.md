@@ -80,7 +80,7 @@
 
 ## Status
 
-**NEXT:** `T1 + T2` (bootstrap-the-roadmap batch)
+**NEXT:** `T3 + T4 + T5 + T6` (bootstrap focus batch)
 
 ## Reference docs in this directory
 
@@ -133,21 +133,16 @@ are suspect.)
 These bootstrap the deliverable. Don't skip; everything else
 appends to or references the structure laid down here.
 
-- [ ] **T1: Create ROADMAP.md.** Initial structure: H1 title; H2
-  sections for (i) Stance / goal / how to read, (ii) Chunks
-  needed, (iii) Order + blockers + parallel tracks, (iv) Phase
-  plan (Phase 0 / 1 / 2 / 3 …), (v) Bootstrapping milestone, (vi)
-  Stability+sharing milestone, (vii) MVP-cohabitation demo, (viii)
-  Open decisions, (ix) Risks. Mostly empty H2s; later TODOs fill
-  each.
-
-- [ ] **T2: Enumerate chunks.** In ROADMAP §"Chunks needed," list
-  every subsystem that has to exist for the substrate to be real.
-  Use the existing substrate sketches as the chunk list — plus
-  identity, the schema, the bootstrap mechanism, the agent runtime,
-  the matter.darklang.com server. For each chunk: one-line role
-  description + which sketch doc(s) cover it. Aim for a tight 12–
-  16-row table.
+- [x] **T1: Create ROADMAP.md.** Done. Includes critical
+  "Reality check: what main actually has today" section
+  documenting the schema (18 tables, kill-and-fill, accounts_v0
+  seeded, branches/commits/package_ops/branch_ops all exist),
+  the F# substrate (PackageManager.fs + Op*Playback.fs), and the
+  Dark-side code (cli/scm/* all in Dark, llm/agent.dark, etc.).
+- [x] **T2: Enumerate chunks.** 15-row table (C1-C15) with status
+  per chunk: 4 EXISTS, 6 PARTIAL, 4 NEEDS-DESIGN/BUILD, 1
+  DEFERRED. Key finding: the substrate is **more than half there**.
+  Roadmap focuses on the partials + needs-build, in dep order.
 
 ## Phase B — Bootstrapping focus (the user is itching)
 
