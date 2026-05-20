@@ -2,7 +2,7 @@
 
 > **PREAMBLE FOR THE LOOPER (read this first, every iter):**
 >
-> You are an iter of a 10-minute self-paced loop. Your job is to
+> You are an iter of a **5-minute** self-paced loop. Your job is to
 > design the roadmap to make Darklang **the distributed software
 > substrate** described in `COHABITATION.md` — built on the 7-pillar
 > ethos (Local-First / Accessible / Open / Immediate / Malleable /
@@ -58,7 +58,7 @@
 >    - Some TODOs update an existing substrate sketch.
 > 5. Tick the TODO(s) off.
 > 6. Commit with a short message naming the TODO(s) processed.
-> 7. Schedule the next wake at 10 min (or stop if all TODOs done +
+> 7. Schedule the next wake at **5 min** (or stop if all TODOs done +
 >    the validation pass at the end is also done).
 >
 > **Batch sizing:** prefer batching 2-4 related TODOs into one iter
