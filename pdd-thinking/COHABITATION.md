@@ -12,6 +12,42 @@ This is the unifying vision. Every substrate doc we've written is
 one slice of it. Worth naming and stating clearly so future
 design decisions can be checked against it.
 
+## Built on the existing ethos
+
+This isn't a new direction — it's the **realization** of the ethos
+already documented in `~/vaults/Darklang Dev/04.Ethos/`. Seven
+pillars, plus a coherent top-level vision. Cohabitation is what
+all seven point at when taken together.
+
+| Pillar | Ethos says | What cohabitation makes concrete |
+|---|---|---|
+| **Local-First** | Software runs on your machine; you own your data. Personal, private+secure. | Each inhabitant's substrate runs locally. Sync is *additive* — agents and people can collaborate, but the local store is yours. BYODs concurrently (per `Ethos.md`). |
+| **Accessible** | Voice, low-floor, non-traditional inputs. Everyone-can-understand-PT. | Apps render to many surfaces (TUI, web, voice, reMarkable). Agents become a *primary input device* for users who can't / don't want to type code. |
+| **Open** | Transparency, evaluating-ideas-on-merit, no walled garden. | The substrate is FOSS-shaped. Anyone can write an app or run an agent on the substrate. The system shows you what's happening, by default. |
+| **Immediate** | Deployless. No compile-wait. Direct, universal access. | Hot-reload everywhere (per `HOT-RELOAD.md`). Materializations land mid-eval. Agents see your edits as they happen. Re-eval-until-feels-good (per FRONTIER). |
+| **Malleable** | Alternative clients (greasemonkey-style). User-customizable. Reshape the tools. | Every app is a Dark program you can fork and refine. Default views per type are *overridable* (per `COMPOSABLE-MVU.md`). Your viewer doesn't have to look like mine. |
+| **Composable** | Apps share fns. Sub-apps in big apps. MVU everywhere. | Composable MVU is the *only* surface every app + agent uses. Models compose by product; Msgs by sum; effects interleave. Recursion through composition. |
+| **Simple** | PT-comprehensible. Small base language. Deployless. | The substrate's five primitives (ops/updates/conflicts/views/resolutions) are the entire vocabulary. Everything else is built from them. |
+
+And the top-level `Ethos.md` lines that land hardest here:
+
+> "Darklang is the whole thing, while entirely composable,
+> extensible, and malleable."
+>
+> "A Distributed personal OS and sidekick, across all of your devices."
+>
+> "I want direct, immediate, universal access to my software and
+> data and computers."
+>
+> "Remove as much glue code as possible."
+>
+> "If we can host such eternal elmish apps, the PM is just one of
+> them." (from `MVU Everywhere.md`)
+
+Cohabitation is the operating model that lets *all of these* be
+true simultaneously. Without it, "PM is just one of them" remains
+an aspiration; with it, it's mechanically achievable.
+
 ## The reframing
 
 Darklang isn't *a language with apps built on it*. Darklang is
@@ -360,6 +396,43 @@ the language itself works.
   The line moves over time (per `FRONTIER.md`'s "what F# should
   stop knowing").
 
+## Vault landscape — where this work already has homes
+
+A quick glance at `~/vaults/Darklang Dev/` shows substrate work
+is *already organized by exactly the right concerns*. Each
+substrate doc maps to existing vault territory:
+
+| Substrate concept (this dir) | Vault home (preexisting) |
+|---|---|
+| CONFLICTS-AND-RESOLUTIONS | `05.Implementation/Ops and Playback/`, `WIP/specs/LibMatter/`, `WIP/specs/flows/conflict-resolution.md` |
+| SYNC-AND-STABILITY | `05.Implementation/Sync and Distribution/`, `05.Implementation/CRDTs/`, `05.Implementation/Package Bootstrapping/` |
+| EVENT-STREAMS-AND-PARKING | `05.Implementation/Execution/`, `05.Implementation/Queues, Workers, Feeds/` |
+| CAPABILITIES | `05.Implementation/Purity, Effects, and Sandboxing/`, `05.Implementation/Accounts and Auth/` (identity side) |
+| HOT-RELOAD | `04.Ethos/Composable/MVU everywhere/`, `05.Implementation/CLI/Apps/Hot-reloading.md` |
+| COMPOSABLE-MVU | `04.Ethos/Composable/` (whole subtree), `05.Implementation/CLI/Apps/` |
+| VIEW-SKETCHES | `05.Implementation/Editing/`, `05.Implementation/VS Code/`, `05.Implementation/Web/` |
+| GRAPH-PROJECTION | `05.Implementation/Hashing and References/`, `05.Implementation/Matter Analysis/`, `05.Implementation/Matter Organization/` |
+| COHABITATION (this doc) | `04.Ethos/` (the 7 pillars), `05.Implementation/AI/`, `05.Implementation/Remote Access and Control/` |
+| ALGORITHM | `05.Implementation/AI/`, `05.Implementation/WIP/specs/ai-agent/` |
+| CLAIMS | `04.Ethos/Ethos.md`, `04.Ethos/dl-ethos-vision.md`, `04.Ethos/Phrases, Slogans, etc..md` |
+| (PDD work generally) | `05.Implementation/Metaprogramming and Reflection/`, `05.Implementation/Malleable and Mutable/` |
+
+The Dev vault is **already organized around the substrate** —
+sync, caps, MVU, hot-reload, ops/conflicts, AI/agents,
+malleability all have dedicated folders. The sketches in
+`pdd-thinking/` aren't introducing new concerns; they're stating
+how the concerns connect. That convergence is itself evidence the
+framing is right.
+
+Folders relevant to cohabitation specifically that we haven't yet
+threaded through: `Accounts and Auth` (identity model for
+agents + humans), `Remote Access and Control` (cross-device
+participation), `Crons / Queues, Workers, Feeds` (long-running
+agents, scheduled apps), `Networking and Internet` (the
+cross-instance fabric), `Future Environments` (Canvas UIs,
+reMarkable, WASM — surfaces apps can render onto). All on the
+roadmap implicitly; each becomes its own sketch when needed.
+
 ## Closing
 
 The cohabitation framing isn't an extra layer of vocabulary —
@@ -377,8 +450,15 @@ piece we've sketched makes coherent sense:
 - Graph projection (GRAPH-PROJECTION) is the unifying data
   shape.
 
-Build for cohabitation, and the rest follows.
+Build for cohabitation, and the rest follows. Each of the seven
+ethos pillars (`04.Ethos/`) is consistent with — and accelerated
+by — this framing: local-first inhabitants on each machine,
+accessible to anyone (humans + agents alike), open about who's
+doing what, immediate in feedback, malleable in every surface,
+composable to arbitrary nesting, simple in its five core
+primitives.
 
 The reframing in one sentence: **Darklang is not a place where
 you write code; it's a place where you and your agents work,
-together, on the same evolving thing.**
+together, on the same evolving thing — locally-first, accessibly,
+openly, immediately, malleably, composably, simply.**
