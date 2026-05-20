@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T22 + T22b` (agent runtime + remote access — chained per batching guide)
+**NEXT:** `T23 + T24 + T25` (strategic closing — MVP demo + phase plan + critical path)
 
 ## Reference docs in this directory
 
@@ -353,32 +353,27 @@ applicable.
   reality grounding) maintained across phases. 6 open
   decisions Q-mig-1 to Q-mig-6.
 
-- [ ] **T22: Agent runtime.** How does an agent actually *run*?
-  Is it a process? A thread? A frame on the same VM as the
-  user's CLI? What does spawning + observing + cancelling look
-  like? One section in COHABITATION.md (extend) or a new
-  `AGENT-RUNTIME.md`. (Decide which based on size.)
-
-- [ ] **T22b: Remote access + control.** One doc:
-  `REMOTE-ACCESS.md` (new). Cover: (i) the goal — reach Dark
-  instances you own / have permission for, across devices,
-  peer-to-peer (Plan 9 vibes); (ii) the vault stance — lean on
-  Tailscale (`Networking and Internet/Tailscale.md`) rather than
-  build a networking stack; (iii) how Tailscale primitives map
-  to substrate needs (peer addressing via MagicDNS, identity via
-  WhoIs + HTTP headers, TLS via `tailscale serve`, public surface
-  via `tailscale funnel`, ACL via tags+grants); (iv) what Dark
-  still has to build on top (the wire protocol from T7-T9, the
-  identity-to-tailnet-user binding from T11-T12, app-level
-  permissions for "this remote agent can run on my instance");
-  (v) deployment shape — every user's machine is a peer; one
-  user can have N peers; matter.darklang.com is a special peer;
-  (vi) how this interacts with the cohabitation model — agents
-  spawned remotely, viewers attached remotely, sessions
-  spanning multiple peers. Append a row to ROADMAP §"Chunks
-  needed" if not already there (C16). Decide phase ordering —
-  this likely lands *with or after* sharing (T10) since both
-  rely on the wire protocol + identity.
+- [x] **T22+T22b: combined REMOTE-ACCESS.md.** Both done in one
+  iter (they share concerns: process model + peer addressing +
+  cross-instance identity). Main check: `packages/darklang/llm/
+  agent.dark` exists (provider-agnostic agent framework over
+  Anthropic/OpenAI/Ollama with tool-call loop + retries) but no
+  long-running daemon; no peer access on main. Tailscale.md
+  vault stance: lean on Tailscale, don't build a network
+  stack. **Doc covers**: agent runtime as long-running thread
+  (AgentProcess + AgentThreadHandle types; spawn/observe/cancel/
+  revoke flow; sub-agents per IDENTITY); wire endpoints
+  (POST /exec, GET /agents, POST /agent/<id>/cancel, GET
+  /devices); `dark on <peer> <cmd>` flow with Tailscale-User-
+  Login auth; offline-queue resilience via package_ops with
+  target_peer; new caps (CapRemoteExec / CapRemoteObserveAgents /
+  CapRemoteControlAgents / CapPeerSync) defaulting to
+  same-owner=granted, others=denied; cross-instance agent
+  identity (delegation ops sync; major recognizes csv-helper
+  by account_id); what's out-of-scope for v1 (F# tsnet
+  binding, public funnel, multi-tenant cross-org isolation,
+  agent state migration); 7-chunk sequencing RA-1 to RA-7
+  across Phase 2b-3-4; 6 open decisions Q-ra-1 to Q-ra-6.
 
 ## Phase G — Validate + decide
 
