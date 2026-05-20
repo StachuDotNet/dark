@@ -160,14 +160,242 @@ the 6 partials + 5 needs-design/build, in dependency order.
 
 ## Order + blockers + parallel tracks
 
-*Filled in by T6 (bootstrap phase) and T10 (sharing phase) and
-T24 (overall phase ordering) and T25 (critical path).*
+Filled by T25 (critical path).
+
+The substrate is structured so that two largely-independent
+tracks run in parallel:
+
+```
+TRACK A (LOCAL)                    TRACK B (NETWORKED)
+─────────────────                   ─────────────────────
+Phase 0 (audits)                    [waits for Phase 2]
+   ↓
+Phase 1 (bootstrap)
+   .dark files gone
+   ↓
+Phase 2a (humans + dispatch)        Phase 3 (sharing + viewer)
+   identity binding ──────────────→ depends on identity binding
+   cap-check infra                  + dispatch infra
+   conflict dispatch
+   ↓
+Phase 2b (agents + LLM gate) ─────→ Phase 3 (agent identity sync)
+   ↓
+                                    Phase 3 P3-11
+                                    MVP-COHABITATION DEMO
+                                    ↓
+Phase 4 (frontier)                  Phase 4 (frontier)
+   hot-reload, RTE migration        WebSocket, p2p, public funnel
+```
+
+**Track A** is local: bootstrap, dispatch, caps, agents.
+Runs without network. Can ship on a single machine.
+
+**Track B** depends on Track A's primitives (identity, dispatch,
+caps) but adds the wire protocol + matter.darklang.com.
+
+**Parallelism** is real: while Phase 2a is being implemented,
+Phase 1 can ship; Phase 3 design work can be ongoing (it's been
+done in this loop). Multiple devs / multiple weeks of focused
+work can run in parallel within and across phases.
 
 ---
 
 ## Phase plan
 
-*Filled in by T24.*
+Provisional ordering from earlier docs, now locked. Filled by
+T24.
+
+### Phase 0 — Readiness (1 week, parallel-able)
+
+Audit + doc-comment pass. No code change. Can run alongside
+Phase 1.
+
+- Per MIGRATION P0-1 to P0-4.
+
+### Phase 1 — Bootstrap (~2-3 weeks)
+
+Removes `.dark` files from the repo. Local-only; no identity /
+sharing / cap dependency.
+
+- Per MIGRATION P1-1 to P1-6.
+- Outcome: snapshot-based install; LibParser edit-time-only;
+  CI faster; repo smaller.
+- **Lands the user's first itch.**
+
+### Phase 2 — Identity + capabilities + conflicts (~4-6 weeks)
+
+The bridging phase. Two sub-phases.
+
+**Phase 2a — Humans + dispatch foundation** (~2-3 weeks)
+- Per MIGRATION P2a-1 to P2a-10.
+- Conflict types + dispatch field (default = FailLoudly preserves
+  behavior)
+- conflicts_v0 + conflict_resolutions_v0 tables
+- Capability field on BuiltInFn (default empty)
+- Cap-check in Apply (fast-path empty set)
+- Per-assembly cap annotations
+- Install-time grant UX
+- **Outcome**: identity + cap-check + dispatch wired; existing
+  behavior preserved by defaults.
+
+**Phase 2b — Agents + LLM gating** (~2 weeks)
+- Per MIGRATION P2b-1 to P2b-5.
+- `kind=Agent` accounts + delegations + per-agent caps
+- `CapInvokeLLM` + `CapSendSecret` as AI-opt-in gatekeepers
+- First errors-as-conflicts migration (DivideByZero as pattern)
+- **Outcome**: agents become first-class but opt-in. AI-features
+  gated.
+
+### Phase 3 — Sharing + remote access + viewer (~4-6 weeks)
+
+The **user's primary milestone**. P3-11 = MVP-cohabitation demo.
+
+- Per MIGRATION P3-1 to P3-13.
+- EventBus<T> in F#
+- Sync endpoints (Dark HTTP handlers)
+- Autosync cron + ApprovalRequest ops + approve CLI
+- Deploy matter.darklang.com
+- Bootstrap-from-network (BOOTSTRAP bootstrap-8)
+- PDD viewer app (behind CapInvokeLLM)
+- Remote-access primitives + `dark on <peer>` (per
+  REMOTE-ACCESS.md)
+- **Outcome**: two humans on two machines sharing a substrate.
+  matter.darklang.com hosts. Both itches scratched.
+
+### Phase 4 — Frontier (open-ended)
+
+Per MIGRATION P4-1 to P4-7.
+
+- Long-running agent runtime
+- Hot-reload via BodyChanged subscriber + mid-execution policy
+- WebSocket sync live-push
+- Public funnel for matter.darklang.com
+- Multi-peer p2p sync topologies
+- Remaining ~55 raiseRTE sites migrated to dispatch
+- Materializer-as-Dark-fn (`Stdlib.PDD.materialize`)
+- Composable MVU evolution (Msg type, Effects channel,
+  subscriptions, View tree)
+- View sketches realized as a real app
+
+### Timeline (very approximate)
+
+- Phase 0: week 0 (parallel)
+- Phase 1: weeks 1-3 (bootstrap)
+- Phase 2a: weeks 3-5 (humans)
+- Phase 2b: weeks 5-7 (agents)
+- Phase 3: weeks 7-13 (MVP-cohabitation goal-line)
+- Phase 4: weeks 13+ (open-ended frontier)
+
+**~13 weeks to MVP-cohabitation** in optimistic-but-realistic
+focused-work terms. ~3 months from start to demo. Could compress
+or stretch by 30-50%.
+
+---
+
+
+
+---
+
+## Critical path to MVP-cohabitation
+
+Per T25. The minimum sequence of work to hit P3-11 (the demo).
+Skip phases not on it; parallelize what can be parallel.
+
+The critical path is **all of Phase 1 + Phase 2a + Phase 3.1-3.11**
+(skipping Phase 2b for the demo's basic human-only variant —
+agents are the optional step at t=15-30 in the demo script).
+
+```
+[Phase 1 bootstrap]           [Phase 2a humans+dispatch]
+P1-1 build-seed CLI           P2a-1 account_identities
+   ↓                              ↓
+P1-2 CI builds seed           P2a-2 Conflict + dispatch field
+   ↓                              ↓
+P1-3 first-run install        P2a-3 conflicts_v0 schema
+   ↓                              ↓
+P1-4 LoadPM relocate           P2a-4 Rebase → Conflict.OpVsOp
+   ↓                              ↓
+P1-5 delete .dark             P2a-5 Capability field
+   ↓                              ↓
+P1-6 LibParser edit-only       P2a-6 capability_grants_v0
+                                  ↓
+                              P2a-7 cap-check in Apply
+                                  ↓
+                              P2a-8 Pure cap annotation
+                                  ↓
+                              P2a-9 Http.Client + CliHost caps
+                                  ↓
+                              P2a-10 install-time grant UX
+
+         [Phase 1 + Phase 2a converge at this point]
+                              ↓
+                         [Phase 3 share work]
+                              ↓
+                         P3-1 EventBus F# infra
+                              ↓
+                         P3-2 conflicts/cap → persistence-bus
+                              ↓
+                         P3-3 GET /sync/snapshot
+                              ↓
+                         P3-4 GET /sync/events
+                              ↓
+                         P3-5 GET /sync/whoami + Tailscale
+                              ↓
+                         P3-6 POST /sync/events
+                              ↓
+                         P3-7 autosync cron
+                              ↓
+                         P3-8 ApprovalRequest ops + CLI
+                              ↓
+                         P3-9 deploy matter.darklang.com
+                              ↓
+                         P3-10 bootstrap-from-network
+                              ↓
+                         P3-11 onboard Ocean → MVP demo
+```
+
+**Off the critical path** (can land anytime after their deps):
+
+- Phase 0 audits — pure parallel
+- Phase 2b agent work — needed only for demo step t=15+
+  (optional)
+- P3-12 PDD viewer — optional polish for the demo
+- P3-13 REMOTE-ACCESS docs + Tailscale-based peer-reach UX —
+  optional polish
+- Phase 4 entirely — frontier work
+
+### Compression opportunities
+
+If we wanted to ship MVP-cohabitation **faster**:
+
+- **Skip Phase 2b entirely** for the demo. The basic two-human
+  case works without agents. Reduces critical path to ~10 weeks.
+- **Skip P2a-8/-9/-10 cap annotations** in the critical path —
+  caps can stay empty (always-permitted) for the demo. Ship the
+  *infrastructure* in P2a-2/-5/-7; defer real enforcement.
+  Reduces by 1 week.
+- **Single-user demo first** (Stachu + matter.darklang.com).
+  Cuts P3-7/-8 (approval flow) from the critical path. Reduces
+  by 1 week.
+
+Aggressive compression gets MVP-cohabitation to **~8-9 weeks**.
+
+### Critical-path risk concentration
+
+The most-likely-to-slip chunks (rank ordered):
+
+1. **P3-9 (deploy matter.darklang.com)** — first deploy of a
+   real Dark instance behind Tailscale + sync. Lots of unknowns
+   (DNS, auth, persistence, monitoring). Buffer 1-2 weeks.
+2. **P2a-7 (cap-check in Apply)** — touching the hot path in
+   the interpreter. Performance and correctness both at stake.
+   Buffer 1 week.
+3. **P3-6 (POST /sync/events with idempotent apply)** — first
+   real test of the conflict dispatch's role in handling
+   inbound state. Concurrent-safety edge cases. Buffer 1 week.
+
+Add these buffers: realistic critical path is **~14-15 weeks**
+to MVP-cohabitation in conservative-but-honest terms.
 
 ---
 
@@ -240,7 +468,125 @@ Sharing depends on:
 
 ## MVP-cohabitation demo
 
-*Filled in by T23.*
+The smallest end-to-end demo proving the substrate works. Filled
+by T23.
+
+### The scenario
+
+**Two humans, two machines, one shared substrate, one optional
+agent.**
+
+- **Stachu** at his desktop (`major`).
+- **Ocean** at her laptop.
+- Both on the same Tailscale tailnet.
+- Both have Dark installed via the seed (per Bootstrap Phase 1).
+- Both linked their accounts via `dark link --tailscale`.
+- `matter.darklang.com` is up, hosting the canonical snapshot +
+  sync stream.
+
+### What happens (the demo script)
+
+```
+t=0  Stachu edits a fn in his namespace (User.Stachu.Util.format).
+     Commits. The commit is a normal package_op.
+
+t=2  Ocean's autosync polls matter; sees the new commit; applies
+     it. Her viewer shows "User.Stachu.Util.format updated by
+     stachu, 2s ago."
+
+t=5  Ocean tries to edit Stachu's fn (cross-namespace).
+     Substrate emits an ApprovalRequest op instead of applying
+     directly. The op syncs to Stachu.
+
+t=8  Stachu's viewer surfaces the approval request. He reviews
+     side-by-side, accepts.
+
+t=10 ApprovalDecided op syncs back; Ocean's edit lands in
+     Stachu's namespace.
+
+t=15 (Optional, requires CapInvokeLLM granted by Stachu)
+     Stachu spawns a csv-helper agent:
+       dark agent spawn --caps CapInvokeLLM,CapReadFile \
+                        --scope "User.Stachu.CSV.*"
+     The delegation syncs to Ocean's instance.
+
+t=18 Stachu does:
+       dark on major run csv-helper.process inputs/big.csv
+     (Pretend his desktop has the GPU.) Tailscale auth carries
+     identity; major recognizes csv-helper; runs the call.
+     Result streams back.
+
+t=25 Ocean curious: `dark devices`. Sees Stachu's machines + her
+     own + the running csv-helper agent with CapRemoteObserveAgents
+     scoped to her (default for same-tailnet-paired-users).
+
+t=30 Stachu revokes the agent. `dark agent revoke csv-helper`.
+     Delegation revokes; sync propagates; Ocean's view updates.
+```
+
+### What this demo exercises
+
+- **Bootstrap Phase 1** — both users running snapshot-based
+  installs, no `.dark` parse on startup
+- **Sharing (Phase 3 share-1 through share-10)** — Ocean's edit
+  + the cross-namespace approval round-trip
+- **Identity (Phase 2a + 2b)** — Tailscale-bound accounts,
+  per-account scopes, agent kind
+- **Capabilities (Phase 2a)** — CapInvokeLLM as the AI-opt-in
+  gate; cross-peer caps for observation
+- **Conflicts dispatch (Phase 2a)** — cross-namespace op produces
+  an ApprovalRequest, surfaces to owner
+- **Agent runtime + remote access (Phase 2b + Phase 3 + T22b)**
+  — agent spawn + `dark on major run X` + delegation propagation
+- **Event bus (Phase 3 P3-1+)** — viewer subscribes to
+  materialization + bodyChanged + agent events
+- **Hot-reload (Phase 4)** — Ocean's running session picks up
+  Stachu's edit live (if she has any in-flight code referencing it)
+- **AI-opt-in constraint** — the agent step is *optional*; the
+  human-only part of the demo works without any LLM grant
+
+### Acceptance criteria
+
+A successful MVP-cohabitation demo:
+
+- (a) Stachu's commit reaches Ocean's instance within 5 seconds
+- (b) Ocean's cross-namespace edit produces an approval request,
+  not a silent overwrite or hard fail
+- (c) The agent (if spawned) runs scoped + caps work; remote
+  execution via `dark on major run ...` lands the call with
+  the agent's identity
+- (d) Revocation propagates; Ocean's view reflects the change
+  within sync latency
+- (e) Tests pass throughout
+
+### Why this is "MVP"
+
+This is the smallest demo that proves the substrate's value
+prop. It exercises the load-bearing primitives end-to-end.
+**Does not require**: PDD materialization, the in-progress fn
+viewer (`VIEW-SKETCHES`), public funnel, multi-peer p2p, or
+hot-reload (those are Phase 4+).
+
+A user seeing this demo should understand: "Darklang is where my
+team works together on the same evolving code, with or without
+agents, locally-first."
+
+### Demo dependencies (what must be done first)
+
+| Required | Source |
+|---|---|
+| Phase 1 complete (bootstrap) | BOOTSTRAP P1-1 to P1-6 |
+| Phase 2a complete (humans + dispatch) | MIGRATION P2a-1 to P2a-10 |
+| Phase 3 P3-1 to P3-11 | MIGRATION |
+| Tailscale tailnet set up | external dep |
+| matter.darklang.com hosted | MIGRATION P3-9 |
+| (Optional) Phase 2b for the agent step | MIGRATION P2b-1 to P2b-5 |
+
+P3-11 *is* the demo. Hitting that chunk is the goal-line.
+
+---
+
+
 
 ---
 

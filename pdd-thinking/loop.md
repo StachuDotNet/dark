@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T23 + T24 + T25` (strategic closing — MVP demo + phase plan + critical path)
+**NEXT:** `T26 + T27` (risks audit + open decisions consolidation)
 
 ## Reference docs in this directory
 
@@ -377,22 +377,26 @@ applicable.
 
 ## Phase G — Validate + decide
 
-- [ ] **T23: MVP-cohabitation demo.** Define the smallest demo
-  that proves the substrate works for cohabitation. Probably:
-  "Stachu and Ocean each on their own machine, on a shared
-  branch, with one agent helping; an op produced by Stachu shows
-  up in Ocean's viewer within 5s; if Ocean is also editing, a
-  conflict surfaces and gets resolved." Specify the demo
-  precisely + what it requires. Append to ROADMAP.
-
-- [ ] **T24: Phase ordering.** Lay out Phases 0/1/2/3/… in
-  ROADMAP. Each phase has: what's in it, what it unlocks, what
-  blocks the next phase. Make sure bootstrapping (T6) and
-  stability+sharing (T10) have explicit phase numbers, not "TBD."
-
-- [ ] **T25: Critical path.** What's the absolute shortest
-  sequence to MVP-cohabitation? Skip phases not on it. Identify
-  which work can be parallel. Append to ROADMAP.
+- [x] **T23+T24+T25: strategic closing batch — all done.**
+  ROADMAP §"MVP-cohabitation demo" populated with full demo
+  script (t=0-30 scenario across bootstrap-Phase-1 +
+  sharing-Phase-3 + identity-Phase-2 + caps + conflicts +
+  agent runtime + AI-opt-in demonstrated as optional);
+  acceptance criteria 5 items; "demo dependencies" mapping back
+  to MIGRATION chunks; framed as "smallest demo proving the
+  substrate's value prop." ROADMAP §"Order + blockers + parallel
+  tracks" filled with 2-track diagram (Track A LOCAL + Track B
+  NETWORKED) showing parallelism. ROADMAP §"Phase plan"
+  finalized with 4 phases + sub-phasing 2a/2b + week estimates
+  (Phase 1: weeks 1-3, Phase 2a: weeks 3-5, Phase 2b: weeks 5-7,
+  Phase 3: weeks 7-13 with MVP at end). ROADMAP §"Critical path"
+  enumerates P1-1...P1-6 + P2a-1...P2a-10 + P3-1...P3-11 as the
+  minimum sequence; lists what's off the path; documents 3
+  compression opportunities (skip 2b, skip cap annotations,
+  single-user-first) for ~8-9 weeks aggressive; lists 3 risk
+  concentration chunks (P3-9 deploy, P2a-7 cap-check at Apply,
+  P3-6 POST /sync/events) with buffer 1-2 weeks each → realistic
+  ~14-15 weeks.
 
 - [ ] **T26: Risks audit.** What kills this? What's hard? What's
   optimistic? What's tested vs hypothetical? Append to ROADMAP.
