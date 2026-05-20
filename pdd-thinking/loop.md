@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T14` (deepen CONFLICTS-AND-RESOLUTIONS — first deepening)
+**NEXT:** `T15` (deepen CAPABILITIES)
 
 ## Reference docs in this directory
 
@@ -221,11 +221,20 @@ turns it into a design-grade doc with concrete F# substrate
 changes, concrete Dark code shapes, concrete SQLite schema where
 applicable.
 
-- [ ] **T14: Deepen CONFLICTS-AND-RESOLUTIONS.** Add: precise
-  Conflict variants list, the ConflictDispatch signature on
-  ExecutionState, concrete examples for each variant, the
-  recording table schema (conflict_log? resolution_log?). Update
-  the sketch in place; mark "v0 design" at top.
+- [x] **T14: Deepen CONFLICTS-AND-RESOLUTIONS.** Marked "v0
+  design" at top. Added: (a) "What exists on main today" —
+  grounded against `LibDB/Rebase.fs` RebaseConflict + Merge.fs
+  + ProgramTypes.fs:670-722 Constraints comments. (b) New
+  schema: `conflicts_v0` + `conflict_resolutions_v0` tables,
+  content-addressable + syncable. (c) Concrete F# shape:
+  `ConflictDispatch = Conflict -> CallContext -> Ply<Resolution>`
+  field on ExecutionState; `CallContext` carries agent +
+  delegation + tolerance + capsGranted + callSite + trace.
+  3-layer dispatch chain (auto-rule → policy → park+ask).
+  `whoToAsk` routes per IDENTITY: agent-cap-deny → owner;
+  SCM-op-conflict-in-Y's-namespace → Y. (d) Concrete examples:
+  FnNotFound, SCM op-vs-op (mapped to existing RebaseConflict),
+  CapabilityDenied (new), SyncDivergence (post-share-5).
 
 - [ ] **T15: Deepen CAPABILITIES.** Add: the install-time grant
   UX, the per-session granted set storage, the per-builtin

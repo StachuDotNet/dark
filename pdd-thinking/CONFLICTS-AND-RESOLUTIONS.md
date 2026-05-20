@@ -1,10 +1,52 @@
 # Conflicts + Resolutions
 
+> **v0 design — deepened from sketch via loop T14 (2026-05-20).**
+> Grounded in main: `LibDB/Rebase.fs` (RebaseConflict type +
+> getConflicts), `LibDB/Merge.fs`, `LibDB/PackageOpPlayback.fs`
+> (validation flow), `ProgramTypes.fs:670-722` (Constraints +
+> commented BranchMergeConflict reference).
+
 The load-bearing substrate. The same primitive handles SCM merge
 conflicts, runtime missing-name conflicts, capability denials,
 type-mismatch-on-materialization, sync disagreements, and human
 review timeouts. **Building this well unlocks SCM + sync work
 broadly — not just PDD.**
+
+## What exists on main today
+
+Concrete check via `git show main:...`:
+
+- **`LibDB/Rebase.fs`** has `RebaseConflict = { owner; modules;
+  name; itemType }` — narrow shape, just the *location* of a
+  conflict. `getConflicts` queries: "same (owner, modules, name,
+  itemType) modified on both sides since fork point."
+- **`LibDB/Merge.fs`** has the merge-into-parent flow. Likely
+  calls into Rebase's conflict detection.
+- **`LibDB/PackageOpPlayback.fs`** applies ops to projection
+  tables; validation is implicit (the op shapes are typed; broken
+  refs flow through `package_dependencies` propagation).
+- **`ProgramTypes.fs:670-722`** has a comment block describing
+  "Constraints alongside merge and propagation conflicts, routed
+  through the same `status` / `review` / LSP flow." Mentions a
+  commented-out `BranchMergeConflict` type. The vision is
+  *already* "unify conflict surfacing"; nothing has crossed F#
+  module boundaries yet.
+
+What's *missing* relative to this design:
+
+- A unified `Conflict` type covering SCM + runtime + capability
+  + sync. Today only `RebaseConflict`.
+- A `ConflictDispatch` field on `ExecutionState`. Today no such
+  hook; SCM goes one way, runtime errors raise.
+- Persistence of conflicts + resolutions as auditable rows.
+  Today the conflicts are computed on demand from `locations`
+  joins, not stored.
+- The Park outcome — main has no parking primitive, full stop.
+  (See `EVENT-STREAMS-AND-PARKING.md`.)
+
+Design below assumes the existing SCM conflict detection
+(Rebase.fs's `getConflicts`) becomes a *producer* of unified
+Conflict values, feeding the new dispatch.
 
 Today: when something is missing or two things disagree, we mostly
 `raise` and unwind. That works for a happy-path interpreter but
@@ -203,6 +245,196 @@ either bottoms out at "fail" (useless) or "silently overwrite"
   worry about* — anything ambiguous flows through the dispatch.
 
 `SYNC-AND-STABILITY.md` picks up from here.
+
+## Persistence — `conflicts_v0` + `conflict_resolutions_v0`
+
+Two new SQLite tables. Schema-hash bumps; kill-and-fill replays.
+
+```sql
+-- A conflict that was detected (auto-resolved or surfaced).
+-- Content-addressable: the id is sha256 of (kind || canonical-payload || created_at-bucket).
+-- This makes the conflict syncable like any other op.
+CREATE TABLE IF NOT EXISTS conflicts_v0 (
+  id              TEXT PRIMARY KEY,             -- content hash
+  kind            TEXT NOT NULL,                -- 'FnNotFound' | 'PendingUnresolved' | ...
+  payload_blob    BLOB NOT NULL,                -- binary-serialized Conflict variant
+  detected_by     TEXT NOT NULL                 -- which subsystem emitted it
+                    REFERENCES accounts_v0(id),
+  call_context    BLOB,                         -- serialized CallContext (frame, branch, agent)
+  created_at      TIMESTAMP NOT NULL DEFAULT (datetime('now')),
+  status          TEXT NOT NULL DEFAULT 'Open'  -- 'Open' | 'Resolved' | 'Abandoned'
+);
+CREATE INDEX IF NOT EXISTS idx_conflicts_status
+  ON conflicts_v0(status) WHERE status = 'Open';
+CREATE INDEX IF NOT EXISTS idx_conflicts_kind ON conflicts_v0(kind);
+
+
+-- The resolution chosen for a conflict.
+-- One conflict can have one resolution (1:1) — but the row records
+-- the path: auto-rule / policy / human-asked / fail.
+CREATE TABLE IF NOT EXISTS conflict_resolutions_v0 (
+  conflict_id     TEXT PRIMARY KEY
+                    REFERENCES conflicts_v0(id),
+  outcome         TEXT NOT NULL,                -- 'Substitute' | 'Park' | 'PickSide' | 'RetryWith' | 'AskHuman' | 'FailLoudly'
+  outcome_blob    BLOB NOT NULL,                -- serialized Resolution variant
+  decided_by_rule TEXT,                         -- 'AutoRule:<name>' | 'Policy:<name>' | 'Human' | 'Default'
+  decided_by      TEXT REFERENCES accounts_v0(id),   -- who picked, if Human
+  decided_at      TIMESTAMP NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Optional later: conflict_log_v0 (history of repeated occurrences;
+-- a conflict that fires N times gets one row in conflicts_v0 + N in
+-- the log, to track frequency without bloating the main table).
+```
+
+Auto-resolutions get a row too — that's the audit trail. "Why
+did this conflict not surface to me?" — because rule X fired
+automatically. Recorded.
+
+**Sync:** `conflicts_v0` and `conflict_resolutions_v0` rows are
+content-addressable and syncable. When a remote peer surfaces a
+conflict, it lands on the local instance via the same op stream.
+This is how cross-instance conflict-resolution works without
+extra plumbing.
+
+## ConflictDispatch — concrete F# shape
+
+On `ExecutionState`:
+
+```fsharp
+type ExecutionState = {
+  // ...existing fields...
+  conflictDispatch : ConflictDispatch
+}
+
+and ConflictDispatch =
+  Conflict -> CallContext -> Ply<Resolution>
+
+and CallContext = {
+  agent       : AccountId         // who's doing this (per IDENTITY.md)
+  agentKind   : IdentityKind      // Human or Agent (different defaults)
+  delegation  : Option<DelegationId>   // if agent: under what authority
+  branchId    : BranchId
+  toleranceMode : ToleranceMode   // Strict | Loose | Debug
+  capsGranted : Set<Capability>
+  callSite    : CallSite          // where in the program
+  trace       : TraceId           // active trace
+}
+```
+
+The dispatch is **one fn**; internal pattern-match on Conflict
+variant routes to per-kind handlers. Each handler is configurable
+(installed by LibMatter for SCM kinds, by capability machinery
+for cap kinds, by PDD for materialization kinds).
+
+```fsharp
+// Default dispatch chain inside the fn:
+let dispatch : ConflictDispatch = fun conflict ctx -> uply {
+  // Layer 1: per-kind auto-rule
+  match! tryAutoRule conflict ctx with
+  | Some res -> recordConflict conflict ctx res "AutoRule"; return res
+  | None ->
+
+  // Layer 2: declared policy (per session / per branch / per namespace)
+  match! tryPolicy conflict ctx with
+  | Some res -> recordConflict conflict ctx res "Policy"; return res
+  | None ->
+
+  // Layer 3: park + ask the relevant agent
+  let askedAgent = whoToAsk conflict ctx
+  let! res = parkAndAsk conflict ctx askedAgent
+  recordConflict conflict ctx res "Human"
+  return res
+  // (FailLoudly is the parkAndAsk timeout / decline path)
+}
+```
+
+`whoToAsk` picks the right human:
+- Cap denial for agent X owned by human Y → ask Y
+- SCM op-vs-op in Y's namespace → ask Y
+- FnNotFound in agent X's code → ask X's owner
+- Unknown / can't route → fail loudly to the active session user
+
+This is what makes the dispatch agent-aware (per IDENTITY.md).
+
+## Examples mapped to today + the new design
+
+### FnNotFound: a builtin call references something unknown
+
+**Today:** `LibExecution.Interpreter` calls
+`raiseRTE (RTE.FnNotFound ...)`.
+
+**New:**
+
+```
+1. Conflict emitted:
+     Conflict.FnNotFound { name = "Foo.bar"; site = ... }
+
+2. Dispatch checks auto-rule:
+     toleranceMode = Strict  → no auto-rule
+     toleranceMode = Loose   → AutoRule "substitute-default"
+     PDD-mode               → AutoRule "retry-via-materializer"
+
+3. Records the conflict + chosen resolution in conflicts_v0 +
+   conflict_resolutions_v0.
+
+4. Returns the Resolution to the caller (which acts on it).
+```
+
+### SCM op-vs-op: two patches both add Foo.bar
+
+**Today:** `Rebase.fs.getConflicts` returns `RebaseConflict`;
+merge halts.
+
+**New:**
+
+```
+1. Rebase.fs.getConflicts now produces Conflict values:
+     Conflict.OpVsOp { location = ...; current = ...; proposed = ... }
+   for each RebaseConflict.
+
+2. Each Conflict goes through dispatch:
+     auto-rule "namespace-owner-wins" → if proposer != owner,
+       resolution = PickSide owner
+     no auto-rule fires → AskHuman (the side-by-side webview)
+
+3. Resolution recorded. The owner sees the request via the
+   event bus; their decision becomes a new op.
+```
+
+### Capability denial (NEW — main has no cap system)
+
+**New:**
+
+```
+1. agent X's frame: call HttpClient.post
+2. cap-check: needs CapWriteNet; agent doesn't have it.
+3. Conflict.CapabilityDenied { cap = CapWriteNet; site = ... }
+4. Dispatch:
+     auto-rule: if agent has 'ask-on-deny' policy → AskHuman
+     else → FailLoudly (typed RTE)
+5. AskHuman routes to agent X's owner via the event bus.
+   Owner sees: "csv-helper wants CapWriteNet. Allow / Allow once
+   / Deny." Their click produces a delegation update op.
+6. Agent's frame parks (per EVENT-STREAMS-AND-PARKING) on the
+   delegation-updated event; wakes when owner decides.
+```
+
+### Sync divergence
+
+**New (after share-5 lands per STABILITY-AND-SHARING):**
+
+```
+1. Sync inbound: op O arrives at this peer; targets location L
+2. Local state: L already points at different hash H'.
+3. Conflict.SyncDivergence { location = L; local = H'; remote = O.hash }
+4. Dispatch:
+     auto-rule "namespace-owner-wins": if O.author owns L, accept;
+       else convert O into ApprovalRequest op
+     else → Park (wait for owner decision)
+5. Either way recorded. The sync proceeds; the conflict is
+   *not* a blocker (per STABILITY-AND-SHARING 2025-11-12 stance).
+```
 
 ## Open questions
 
