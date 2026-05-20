@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T3 + T4 + T5 + T6` (bootstrap focus batch)
+**NEXT:** `T7 + T8` (sharing wire protocol batch)
 
 ## Reference docs in this directory
 
@@ -160,31 +160,17 @@ appends to or references the structure laid down here.
 
 ## Phase B — Bootstrapping focus (the user is itching)
 
-- [ ] **T3: Read vault `Package Bootstrapping/` and `Sync and
-  Distribution/` thoroughly.** Capture in `BOOTSTRAP.md` (new):
-  current state ("how does an install work today, exactly"),
-  target state (snapshot-based, no `.dark` parse on first run),
-  delta between them. Include open questions on snapshot
-  granularity, signing/trust, upgrade migrations.
-
-- [ ] **T4: Design the snapshot format.** What goes in the
-  content snapshot (SQLite blob or other)? Include: package_fns
-  table + locations table + dependencies. Exclude: WIP, traces,
-  per-user state. Specify the bootstrap protocol (GET
-  /data.db + GET /events?since=ts). Append to BOOTSTRAP.md.
-
-- [ ] **T5: Sequence the bootstrap work.** What concrete commits
-  in what order get `.dark` files out of the repo? Aim for
-  ~6-10 named PRs / branches with explicit dependencies. Include
-  the LibParser-only-at-edit-time decoupling. Append to
-  BOOTSTRAP.md.
-
-- [ ] **T6: Decide which phase bootstrapping ships in.** Look at
-  the chunk-order from T2 — does bootstrap depend on conflicts +
-  sync + ops being solid first? Or can a v0 bootstrap (no sync,
-  just snapshot-replace-on-install) ship earlier as a separate
-  track? Pick + justify. Append to ROADMAP's "Bootstrapping
-  milestone" section + cross-link to BOOTSTRAP.md.
+- [x] **T3+T4+T5+T6: Bootstrap focus batch — all done.**
+  Headline finding from main check: `LibDB.Seed.export` +
+  `growIfNeeded` already exist; kill-and-fill schema mature;
+  remaining work is decoupling end-user bootstrap from
+  `LoadPackagesFromDisk`. BOOTSTRAP.md produced (220 LoC):
+  current state walkthrough, target state, snapshot format
+  (Option A vs B), 9-step work sequencing (bootstrap-1 through
+  bootstrap-9) with dep graph, **phase decision: Phase 1 (local,
+  ~2-3 wks) + Phase 3 (networked, depends on T7-T10)**,
+  6 open questions (Q-bs-1 to Q-bs-6) added to ROADMAP §Open
+  decisions. ROADMAP §Bootstrapping milestone now populated.
 
 ## Phase C — Stability + sharing focus (other itch)
 

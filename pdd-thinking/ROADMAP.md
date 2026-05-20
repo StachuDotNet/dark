@@ -173,7 +173,31 @@ T24 (overall phase ordering) and T25 (critical path).*
 
 ## Bootstrapping milestone
 
-*Filled in by T6. Cross-links to BOOTSTRAP.md.*
+**Bootstrapping ships in Phase 1 (local) + Phase 3 (networked).**
+
+Full design in `BOOTSTRAP.md`.
+
+**Phase 1 — "Remove `.dark` files from the repo."** Local-only;
+no sharing dependency. ~2-3 weeks of focused work. Lands work-
+units bootstrap-1 through bootstrap-7. End state:
+`packages/*.dark` is gone, the runtime path never invokes
+LibParser, new installs do schema bootstrap + open the bundled
+seed (carried alongside the binary). **Already half-built** —
+`LibDB.Seed.export` + `LibDB.Seed.growIfNeeded` exist; the work
+is decoupling them from the legacy `LoadPackagesFromDisk` runtime
+path.
+
+**Phase 3 — "Install Dark over the network."** Lands bootstrap-8
++ bootstrap-9. Depends on the sharing wire protocol (T7-T10).
+End state: `dark install` fetches the seed from
+matter.darklang.com; upgrades use the event stream rather than
+fresh seeds.
+
+Open decisions affecting bootstrap (carried below): snapshot file
+naming (Q-bs-1), derived-data-in-seed yes/no (Q-bs-2),
+versioning binding (Q-bs-3), signing (Q-bs-4, deferred to v2),
+test-file fate (Q-bs-5), and fate of removed `.dark` files
+(Q-bs-6, lock before bootstrap-7).
 
 ---
 
@@ -191,8 +215,24 @@ T24 (overall phase ordering) and T25 (critical path).*
 
 ## Open decisions
 
-*Accumulates as TODOs surface decisions worth flagging. Filled
-across many iters; final pass in T27.*
+*Accumulates as TODOs surface decisions worth flagging. Final
+pass in T27.*
+
+### From T3-T6 (bootstrap)
+
+- **Q-bs-1** Snapshot file naming (`seed.db` vs `data.db` vs
+  `dark.db`). Probably keep both names with the export/runtime
+  distinction.
+- **Q-bs-2** Ship derived data in the seed, or regrow on import.
+  Default to current behavior (strip derived, regrow); measure;
+  flip if slow.
+- **Q-bs-3** Version-binding between binary and seed. Embed
+  expected seed-hash in binary?
+- **Q-bs-4** Sign seeds? Deferred to v2.
+- **Q-bs-5** Test-file `.dark` files stay (test inputs, not
+  package source). Confirm.
+- **Q-bs-6** Fate of `packages/*.dark` post-removal — archive
+  repo? Tagged release? Documentation reference?
 
 ---
 
