@@ -93,7 +93,7 @@
 
 ## Status
 
-**NEXT:** `T21` (MIGRATION.md — current state → substrate state)
+**NEXT:** `T22 + T22b` (agent runtime + remote access — chained per batching guide)
 
 ## Reference docs in this directory
 
@@ -329,12 +329,29 @@ applicable.
   primitives). Migration shape: gradual + per-subsystem; 3
   examples. 4 open decisions Q-fd-1 to Q-fd-4.
 
-- [ ] **T21: Migration path from current state.** One doc:
-  `MIGRATION.md` (new). Starting state = today's `main` branch
-  (CLI runs on `.dark` files + the existing LibMatter ops + the
-  in-progress PDD spike, ignored). Ending state = the substrate
-  per ROADMAP. List the ordered transitions in feature-shippable
-  chunks (no "big bang" rewrites). Include rollback notes.
+- [x] **T21: MIGRATION.md.** ~400 LoC. Ordered shippable-chunk
+  plan from main (commit 61cb32ac7) to substrate state. 5 phases
+  with rollback notes per chunk: **P0** readiness (4 chunks —
+  audit + verify Seed.export + inventory RTE/cap sites), **P1**
+  bootstrap (6 chunks — separate build-seed CLI, CI builds seed,
+  first-run detection, relocate LoadPackagesFromDisk to
+  LibBuildTools, delete packages/*.dark, edit-time-only LibParser),
+  **P2a** humans+conflict-dispatch (10 chunks — Conflict types,
+  dispatch field, Rebase.getConflicts migration, Capability field
+  on BuiltInFn, per-assembly cap annotation, install-time grant UX),
+  **P2b** agents+LLM-gating (5 chunks — kind column, agent
+  spawn/list/revoke, triple-intersection cap-check,
+  CapInvokeLLM/CapSendSecret as AI-opt-in gatekeepers, first
+  errors-as-conflicts migration), **P3** sharing+remote-access+
+  viewer (13 chunks — EventBus, sync endpoints, autosync,
+  approval ops, matter.darklang.com deploy, MVP-cohabitation
+  goal-line as P3-11, viewer app, remote-access doc), **P4**
+  frontier (7 chunks — agent runtime, hot-reload subscriber,
+  WebSocket, public funnel, multi-peer p2p, remaining RTE
+  migrations, materializer-in-Dark). Cross-cutting principles
+  (AI-opt-in, local-first, reversibility, tests, kill-and-fill,
+  reality grounding) maintained across phases. 6 open
+  decisions Q-mig-1 to Q-mig-6.
 
 - [ ] **T22: Agent runtime.** How does an agent actually *run*?
   Is it a process? A thread? A frame on the same VM as the
