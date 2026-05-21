@@ -178,105 +178,21 @@ Source: REMOTE-ACCESS.md RA-3 → RA-7.
 
 ## The DAG
 
-The most-load-bearing reading. Items in `[brackets]` are
-*spike-recommended-first* (E4 specifically).
+### Themes overview — which areas depend on which
 
-```
-LAYER 0 (start day 1 — leaf nodes, no upstream deps)
-═════════════════════════════════════════════════════════════════
-  A1   A2   A3   A4    ← audits / CI test / inventories (1d each)
-  T1                   ← Tailscale builtins
-  O1   O2              ← Conflict types + tables
-  C1   C2              ← Cap field + grant tables
-  E1                   ← EventBus<T> F# primitive
-  S1   S2              ← /sync/snapshot + /sync/events (localhost)
+![](/home/stachu/code/dark/main/pdd-thinking/assets/dag-themes.png)
 
-      ↓             ↓                ↓               ↓
-══════════════════════════════════════════════════════════════════
-LAYER 1
-══════════════════════════════════════════════════════════════════
-              ┌──── T1 ────┬───── T1 ───┐
-              ▼            ▼            ▼
-             T2           I1           T3
-          ping/pong    account_   /devices+
-          (1ST NET    identities  dark devices
-           MILESTONE)  +link
-              │            │
-              │            ▼
-              │           I2
-              │         dark link
-              │         --tailscale
-              │
-   ┌── A1 ─── B1 ─── B2 ─── B3 ───┐
-   │   audit  build-  CI    first-│
-   │          seed    builds run  │
-   │          CLI     seed   inst │
-   │                              │
-   └──────────── B4 ──────────────┤  (relocate loadPM)
-                                  │
-                                  ▼
-                                 B5  delete packages/*.dark
-                                  │
-                                  ▼
-                                 B6  LibParser edit-time-only
-                                ↑
-                          (B5 needs tagged release first)
+Green = mostly-leaf themes (independent starters). Lines = "this
+theme produces something the other theme needs."
 
-  C1 ─┬─ C4    Builtins.Pure annotation
-      ├─ C5    Http.Client + CliHost annotation
-      │
-      └─ + O1 ─→ C3  cap-check at Apply
-                  │
-                  └──────┐
-                         ▼
-                        C6  install-time grant UX
-                          (depends on C2)
+### Full chunk DAG
 
-  O1 + O2 ─→ O3       Rebase.getConflicts → OpVsOp
-                       (FIRST DISPATCH PROOF)
-                       │
-                       ▼
-              ─→ O4   first raiseRTE migration
-                       │  (also wants E2 for Park outcome)
-                       ▼
-                      O5    migrate next 5-10 sites
+![](/home/stachu/code/dark/main/pdd-thinking/assets/dag-full.png)
 
-  E1 ─→ E2  scheduler+parking
-        │
-        ├──→ E3   Promise<T> + !
-        │
-        └──→ E4   trace resuming    [SPIKE FIRST — biggest unknown,
-                  long-pause case    serves human-await flow]
-
-  I1 ─→ S3   /sync/whoami
-  S2 ─→ S4   POST /sync/events
-  S2 + S4 ─→ S5   autosync cron
-
-══════════════════════════════════════════════════════════════════
-LAYER 2 (mostly higher-order, downstream of multiple items)
-══════════════════════════════════════════════════════════════════
-
-  S1+S2+S4 + I1 + B5 ─→ M3   deploy matter.darklang.com
-                              │
-                              ▼
-                             M4    bootstrap-from-network
-
-  O1 ─→ M1   ApprovalRequest op variants
-         ↓
-         M2   dark approve CLI
-
-  T1 + I1 + C3 ─→ R1   POST /exec + dark on <peer>
-                       │
-                       ▼
-                      R2   offline-queue support
-                            (needs S4 + S5)
-
-  E2 + existing llm/agent.dark ─→ R3   agent runtime as thread
-                                       │
-                                       ▼
-                                      R4   dark on <peer> agent
-                                            (needs R1 + R3 + I1)
-```
+**Legend**
+- 🟢 **Green** = leaf nodes (no upstream deps; start day 1)
+- 🟡 **Yellow** = milestones (chronological landing points)
+- 🔴 **Red** = spike-recommended-first (highest unknowns)
 
 **Layer 0 leaves** (can start in parallel, day 1):
 `A1 A2 A3 A4 T1 O1 O2 C1 C2 E1 S1 S2` = **12 starter nodes**.
