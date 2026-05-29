@@ -6,6 +6,7 @@ The keystone is [distributed-event-sourcing.md](distributed-event-sourcing.md) �
 ## 1. Stable & Syncing (priority)
 
 - [distributed-event-sourcing.md](distributed-event-sourcing.md) — the keystone: ops, projections, the thin `App` type
+- [example-app.md](example-app.md) — a worked non-trivial App (KV store) exercising conflict/resolve/invariants
 - [apps-surface.md](apps-surface.md) — `dark apps`: install/fork/run an App (the north-star surface)
 - [event-bus.md](event-bus.md) — the op/event substrate + frame parking
 - [conflicts.md](conflicts.md) — reconciliation, organized by evaluation-time

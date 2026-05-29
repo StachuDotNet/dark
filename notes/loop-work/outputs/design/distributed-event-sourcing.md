@@ -64,6 +64,11 @@ let counter : App<Int64, CounterOp> =
     invariants = fun _ -> [] }
 ```
 
+The counter is deliberately the *minimum* — its `conflict`/`resolve`/`invariants` are
+trivial. For a worked App where those members do real work (concurrent same-key
+clashes, surface-as-data resolution, a hard invariant), see
+[example-app.md](example-app.md).
+
 ### How it distributes
 
 - Ops arrive locally or stream in from a peer over the event bus. The **op
