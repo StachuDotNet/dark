@@ -2,6 +2,14 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Theme restructure + re-grounding (morning, user-prompted):** (1) Reorganized `outputs/` by THEME
+  (stable-and-syncing / removing-dark-files / pdd / good-for-ai-agents / editing-software / later-other
+  / meta); 175 files moved, all links rewritten, 0 broken. Added `meta/overwrite-map.md`. (2) Caught
+  that the overnight "grounding against main" actually read the `pdd` **spike** working tree (~368
+  files differ from `main`). Re-checked via `git show main:`. Most claims hold on `main`; **spike-only
+  artifacts** (`EventSink`/`currentSink`, `EmptyBody`, `defaultFor`, `OnMissing.AllowPending`) relabeled;
+  `main` has `OnMissing = ThrowError | Allow`. Grounding ledger rewritten with a `[main]`/`[spike]` axis.
+
 - **Pass 88 (~08:00 — SECTION 11 FINAL PRINT, loop complete):** It reached ~08:00, so the terminal
   step ran: `print-md` of the full curated deliverable — **52 docs in reading order** (orientation aids
   → keystone → rest of design → issues → meta → results → projects index), deliberately excluding the
