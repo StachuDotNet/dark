@@ -14,7 +14,8 @@ below is the prose/design content actually worth reviewing on paper (~40 files).
 1. `README.md` — how to review this tree; structure
 2. `STATUS.md` — per-pass log of what changed
 3. `feedback-coverage.md` — every feedback.md point → status + home
-4. `vault-organization.md` — section 10 recommendation (vault is off-limits to the loop)
+4. `open-decisions.md` — every unsettled design decision, triaged by leverage
+5. `vault-organization.md` — section 10 recommendation (vault is off-limits to the loop)
 
 ## design/ (in thematic / priority order)
 
