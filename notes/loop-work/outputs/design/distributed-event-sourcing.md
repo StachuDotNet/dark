@@ -136,9 +136,50 @@ We need recovery for distribution races — e.g. two branches on different
 instances pointing the same name to different hashes. That is resolved through
 the [conflicts](conflicts.md) system, not by trying to keep projections in lockstep.
 
-How to split the two cleanly — what lives in the canonical op tables vs. what is
-a regenerable projection cache — is still open. The rule of thumb: **if losing it
-costs only CPU to rebuild, it is a projection.**
+### How to split the two cleanly
+
+The rule of thumb decides membership: **if losing it costs only CPU to rebuild, it
+is a projection.** What follows from taking that seriously:
+
+**Two stores, and the boundary is physical.** Keep the op log and the projection
+cache in *separate SQLite files*, not just separate tables:
+
+- **`ops.db`** — append-only, content-addressed ops + commits. Global, durable,
+  the only thing sync touches. This is the canonical state.
+- **`projections.db`** — every materialized view: the `name → hash` resolution
+  table, package-item bodies by location, dependency graphs, the file view, the
+  conflict list, search indexes. Branch- and session-scoped, `DROP`-able,
+  rebuilt by folding `ops.db`.
+
+Two files rather than two table-groups because the boundary then can't be crossed
+by accident: sync ships `ops.db` deltas and *physically cannot* ship a projection;
+`projections.db` can be deleted at any time and rebuilt with zero information loss.
+(It is the natural thing to `.gitignore` and to exclude from backups.)
+
+**A projection declares three things**, and nothing else couples it to the core:
+
+1. **Which op kinds it folds** (so the cache knows what's relevant).
+2. **Its scope** — global, per-branch, or per-session.
+3. **Its invalidation trigger** — which incoming op kinds dirty it.
+
+On op arrival, mark dependent projection entries dirty; rebuild lazily on next
+read (incremental view maintenance). A branch switch re-points or rebuilds the
+per-branch caches; a session ends and its session-scoped projections evaporate.
+No projection is ever authoritative, so none of them can be "wrong" in a way that
+needs distributed repair.
+
+**Why the distribution race is now a non-problem.** Two instances binding the same
+name to different hashes is *not* two projections that disagree and must be
+reconciled — the `name → hash` binding is a projection on both sides, derived from
+each instance's ops. What actually exists is two ops in the log. When both ops fold
+on one instance, the disagreement surfaces as the `Name → two hashes` conflict
+([conflicts.md](conflicts.md)) and the dispatch resolves it. Recovery is re-fold +
+dispatch over `ops.db`, never a distributed lock on `projections.db`. Keeping the
+projection non-authoritative is exactly what makes races cheap.
+
+The open part is now narrow: the precise table shapes inside `projections.db` and
+how aggressively to cache per-branch (rebuild-on-switch vs. keep N warm) — a
+performance tuning question, not an architectural one.
 
 ## Event-streaming *is* sync
 
