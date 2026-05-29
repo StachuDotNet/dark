@@ -25,8 +25,8 @@ type App<'state, 'op> =
     empty      : 'state                     // starting state
     apply      : 'op -> 'state -> 'state     // play ONE op back — the only way state moves
     conflict   : 'op -> 'op -> Bool          // do two concurrent ops clash?
-    resolve    : 'op * 'op -> List<'op>      // reconcile a clash
-    views      : 'state -> List<View>        // projections to render
+    resolve    : 'op * 'op -> List<'op>      // reconcile a clash (auto where it can)
+    views      : 'state -> List<View>        // projections to render (each by id/hash)
     invariants : 'state -> List<Violation> } // at-rest / runtime constraints
 ```
 
