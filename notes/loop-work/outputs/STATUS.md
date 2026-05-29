@@ -2,6 +2,12 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 31 (grounding verification, round 4):** Verified more bench-facing citations. ACCURATE:
+  telemetry `cli.total`/`commandExec`/`httpserver.*`/`seed.*`, `package-ref-hashes.txt` (the two-pass
+  build), `docs for-ai`/`for-ai-internal`, `SubApp` `onKey`/`onDisplay`/`onSave` + `AppState` + `Page`.
+  Softened TWO unconfirmed claims in `ai-coding-target.md` — `view --with-trace` (flag not found in
+  the CLI) and `test.suite.*` telemetry (not found) — now marked candidate/assumed rather than
+  confirmed strengths. Confirmed-vs-assumed is now explicit wherever the bench leans on a capability.
 - **Pass 30 (grounding verification, round 3 — biggest catch):** Verified the actual `traces`
   command surface (`cli/commands/traces.dark`): `list/view/tail/follow/stats/find/hotspots/replay/
   delete`. The docs over-claimed several **non-existent** capabilities as existing strengths —
