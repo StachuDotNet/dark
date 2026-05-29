@@ -255,8 +255,8 @@ am."
 
 ## Concurrent threads / multiple in-flight workflows
 
-Per FRONTIER's "dark prompt as daemon" idea: a user can have
-multiple in-progress sessions at once. The viewer shows them in
+Per the "`dark prompt` as daemon" idea (see [cli-daemon.md](cli-daemon.md)):
+a user can have multiple in-progress sessions at once. The viewer shows them in
 a sessions strip:
 
 ```

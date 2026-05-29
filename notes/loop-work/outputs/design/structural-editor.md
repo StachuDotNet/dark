@@ -125,7 +125,7 @@ keyboard-to-op mapping is data the editor can edit.**
 ## UI design
 
 The view is a `View` tree (the same algebra as
-[composable-mvu.md], shared across the codebase):
+[composable-mvu.md](composable-mvu.md), shared across the codebase):
 
 ```fsharp
 type View =
@@ -160,7 +160,7 @@ differs (terminal → ANSI, web → HTML/flexbox, later → svg/voice).
 - **Hole / completion popover** — when the cursor is on a hole, the candidates the
   expected type admits (and the tiny-loop's suggested op).
 - **Dive-in panel (optional, right)** — detail for the selected node: its sig,
-  body, dependents, trace — mirrors the VIEW-SKETCHES dive-in mechanic.
+  body, dependents, trace — mirrors the [view-sketches.md](view-sketches.md) dive-in mechanic.
 - **Key hints bar** — context-sensitive shortcuts for the current node kind,
   populated from the cache/keymap (so it shows *real* current bindings, including
   user-forked ones).
@@ -254,8 +254,8 @@ declarative (Clay-style sizing/flow), the editor targets:
   a fork of the editor.
 
 The renderer is a substrate function, not per-editor code — exactly the
-COMPOSABLE-MVU stance, so the structural editor inherits multi-target rendering
-for free.
+[composable-mvu.md](composable-mvu.md) stance, so the structural editor inherits
+multi-target rendering for free.
 
 ## Open questions
 
@@ -270,3 +270,8 @@ for free.
 - **Conflict shape for concurrent structural edits.** Two people wrapping the
   same node — defer to the [conflicts](conflicts.md) timing model (a dev-time
   conflict), don't special-case it here.
+- **Parser / `compile` dependency.** Editing is parse-free, but two enabling
+  primitives from the keystone still matter: a **composable Dark parser** for
+  importing/pasting text into the AST, and the **`compile` builtin** for turning
+  the edited AST into runnable code. See the parser/`ref`/`compile` thread in
+  [distributed-event-sourcing.md](distributed-event-sourcing.md).
