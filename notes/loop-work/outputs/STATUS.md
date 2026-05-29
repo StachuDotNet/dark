@@ -2,6 +2,11 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 43 (recover a dropped feedback concern):** The master feedback flagged brownfield-work
+  emulation as "very important" but "unsolved"; all 125 specs ended up greenfield and the meta-gap
+  was tracked nowhere. Recovered it — `projects/README.md` now states all-greenfield is by-nature
+  (not oversight) and names brownfield as the open gap, and `open-decisions.md` gained a "Projects &
+  bench" entry (add brownfield projects, score the diff; plus size-tier tuning). (Passes 41-42 held.)
 - **Pass 40 (duplicated-type consistency):** Diffed the type definitions that appear in more than
   one doc. `View` already byte-identical (composable-mvu == structural-editor); the `App` type's
   signatures matched but composable-mvu's inline comments were terser than the keystone canonical —
