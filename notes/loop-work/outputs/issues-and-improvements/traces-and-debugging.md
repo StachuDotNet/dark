@@ -1,6 +1,6 @@
 # Traces and debugging
 
-Dark's trace surface is far more developed than commonly assumed — sixteen-plus `traces` subcommands including `replay --diff`, `gen-test`, `hotspots`, and `inspect`. The work here is almost never about building new primitives. It's about making the agent **reach for the projections that already exist** by default, and closing the one or two real `--json` gaps. The lens: the ops (recorded executions) are all there; the agent just doesn't consume the projections without a cue.
+Dark's trace surface is more developed than commonly assumed — the real `traces` command (verified against `cli/commands/traces.dark`) already ships `list`, `view`, `tail`/`follow`, `stats`, `find`, `hotspots`, `replay`, and `delete`. So much of the work here is making the agent **reach for the projections that already exist** by default, plus closing `--json` gaps. But a few genuinely-missing pieces are proposals below, *not* existing commands: a `--diff` mode on `replay`, a `gen-test`, and `inspect`. The lens: the ops (recorded executions) are all there; the agent doesn't consume the projections without a cue, and a couple of high-value projections still need building.
 
 ## Auto-attach the latest trace to a failing `run`
 
@@ -8,17 +8,17 @@ Dark's trace surface is far more developed than commonly assumed — sixteen-plu
 
 **Candidate fix**: on a failing `run`, the wrapper (or the agent prompt) follows up with `traces tail` automatically and feeds it into the next turn. Surfaces *for the agent* what Dark already has *for the human*. This is the expected single biggest win in this category.
 
-## `run --replay <trace-id>` shorthand
+## `replay --diff` + a `run --replay <trace-id>` shorthand
 
-**Issue**: re-running the same inputs against fixed code today means `traces replay <id> --diff` — long, two-step, with a manual ID hand-off.
+**Issue**: `traces replay <id>` exists, but it has **no `--diff` mode** today — it re-runs but doesn't diff the new output against the recorded one, so the regression-test value isn't there. And re-running the same inputs against fixed code is a long, two-step, manual-ID-hand-off path regardless.
 
-**Candidate fix**: every failing `run` returns its trace ID prominently, and `dark run --replay <prefix>` is sugar for "re-run the same inputs against current code, diff against recorded output." The bug-fix loop compresses to one command per fix attempt. Twin signal with auto-attach above — the two together are the headline movement for this category.
+**Candidate fix**: two parts. (1) Add a `--diff` to `traces replay` that compares the fresh result against the recorded one — this is the actual regression-testing primitive, and it does not exist yet. (2) Have every failing `run` return its trace ID prominently, and add `dark run --replay <prefix>` as sugar for "re-run the same inputs against current code and diff against the recorded output." The bug-fix loop then compresses to one command per fix attempt. Twin signal with auto-attach above — together the headline movement for this category.
 
-## Promote `gen-test <trace-id>` in agent docs
+## Build `gen-test <trace-id>`, then promote it in agent docs
 
-**Issue**: `traces gen-test <id>` already turns a recorded execution into a regression test, but the agent has no reason to know it exists, so even agents that reach for traces don't capture them as tests.
+**Issue**: turning a recorded execution into a regression test is the natural capstone of the trace loop — but `traces gen-test` **does not exist yet** (the name appears only in a code comment in `Tracing.fs`, not as a command). So there is nothing for the agent to reach for.
 
-**Candidate fix**: a line in `docs for-ai` — "after any successful `run` of a non-trivial fn, consider `traces gen-test <id>` to capture it as a regression test." Turns "did I write a test?" into a one-token answer. Zero Dark-code change; bundles into a prompt-only wave.
+**Candidate fix**: (1) build `traces gen-test <id>` — emit a test that pins the recorded inputs to the recorded output, using the `replay --diff` machinery above. (2) *Then* add a line to the composed `docs for-ai`: "after any successful `run` of a non-trivial fn, consider `traces gen-test <id>` to capture it as a regression test." Part 1 is a real Dark-code change (not the zero-code prompt tweak this was mis-filed as); part 2 bundles into a prompt-only wave once part 1 lands.
 
 ## `hotspots` as a built-in review pass
 

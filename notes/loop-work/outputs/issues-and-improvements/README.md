@@ -11,7 +11,7 @@ The unifying lens across categories: most of these are missing or human-only **p
 - [publishing-and-sharing.md](publishing-and-sharing.md) — the friend-can-run promise: `dark publish`, reproducible builds, `dark export` / `import`, and a deferred WASM target.
 - [diagnostics-and-errors.md](diagnostics-and-errors.md) — actionable failure messages: parse-error suggestions, auto-emitted diagnostics after each write, "did you mean" on a runtime not-found.
 - [cli-ergonomics.md](cli-ergonomics.md) — cross-cutting CLI friction: non-TTY orientation, the `--json` audit and roll-out, sticky branch context.
-- [traces-and-debugging.md](traces-and-debugging.md) — reaching for the trace primitives that already exist: auto-attach trace on failure, `run --replay`, `gen-test` promotion, `hotspots` review pass, `traces view --json`.
+- [traces-and-debugging.md](traces-and-debugging.md) — surfacing the trace primitives that exist (auto-attach trace on failure, `hotspots` review pass, `traces view --json`) and building the missing ones (`replay --diff`, `run --replay` shorthand, `gen-test`).
 - [agent-workflow.md](agent-workflow.md) — orienting, recording, and handing work to a reviewer: the composed/expanding `dark docs for-ai` doc, end-of-run change summary, headless flags on `dark review`, `dark show --json`, deprecation audit trail, `dark review-mark`.
 
 ## Notes

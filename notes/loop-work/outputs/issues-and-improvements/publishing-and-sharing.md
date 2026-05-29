@@ -18,7 +18,7 @@ The most user-visible gap on the list. The promise: an agent builds a thing in D
 
 **Issue**: the simplest share is "the friend already has Dark and runs the same code." Dark's package-tree-first model supports this, but there's no canonical "export this project as one thing / import it" pair.
 
-**Candidate fix**: `dark export <project> > project.darkpack` and `dark import < project.darkpack`, reusing the existing `traces export`/`import` machinery. Smaller than a published binary. Complementary to `dark publish`, not a replacement: `publish` is for "friend has nothing," `export`/`import` is for "friend has Dark." Both should ship.
+**Candidate fix**: `dark export <project> > project.darkpack` and `dark import < project.darkpack`, building on the existing seed export/import machinery (`LibDB.Seed.export` and the `pmSeedExport` builtin — verified to exist; note there is *no* `traces export`/`import` to reuse, despite an earlier assumption). Smaller than a published binary. Complementary to `dark publish`, not a replacement: `publish` is for "friend has nothing," `export`/`import` is for "friend has Dark." Both should ship.
 
 ## `dark publish --target wasm` — browser distribution (deferred)
 

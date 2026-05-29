@@ -38,4 +38,4 @@ Whole-body rewrite stays as the fallback when no structured operation fits. Pure
 
 **Issue**: both commands already exist — `merge --dry-run` checks whether a merge is clean without doing it, `rebase --status` checks for conflicts without rebasing — but agents don't reach for them, so cross-branch operations stall or get abandoned. This is a strength to surface, not a gap to build.
 
-**Candidate fix**: a prompt-template line that mentions both commands when the agent is about to merge or pre-flight a branch move. Zero Dark-code change; bundles into a prompt-only wave alongside the gen-test promotion in traces-and-debugging.md.
+**Candidate fix**: a prompt-template line that mentions both commands when the agent is about to merge or pre-flight a branch move. Zero Dark-code change; bundles into a prompt-only wave (the kind described in traces-and-debugging.md).
