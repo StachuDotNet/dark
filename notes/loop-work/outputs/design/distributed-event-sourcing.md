@@ -314,6 +314,19 @@ they land:
 
 Scriptorium is the reference for how these read and report.
 
+**What happens when an invariant is violated.** `invariants` returns a
+`List<Violation>`, and a violation is *not* a special case — it folds into the same
+conflict model as everything else. Each kind is checked at its matching timing
+([conflicts.md](conflicts.md)): at-rest invariants after the fold reaches a resting
+state, runtime invariants during evaluation. A non-empty result is a
+`ConstraintViolated` conflict handed to the dispatch. Consistent with "most
+conflicts are OK," the default is to **surface, not block**: the current set of
+violations is itself a projection — the "violations list," a sibling of the
+conflict list — that the App can render and a human can act on later. Only an
+invariant deliberately declared *hard* resolves to `FailLoudly` and blocks the op
+that would breach it. So `invariants` is to at-rest/runtime constraints what
+`conflict` is to op clashes: a producer of standard conflicts, not new machinery.
+
 ## Most conflicts are OK
 
 A recurring stance worth stating once, here, and referencing elsewhere: **most

@@ -226,6 +226,12 @@ over local state.
 - **Bootstrap from a content snapshot** has *no* implicit name-resolution
   conflicts to worry about — there are no `.dark` files to re-resolve. Anything
   ambiguous flows through the same dispatch.
+- **`ConstraintViolated` (at-rest)** — when the fold reaches a resting state, an
+  `App`'s `invariants` ([distributed-event-sourcing.md](distributed-event-sourcing.md))
+  run over it; a returned `Violation` becomes a `ConstraintViolated` conflict.
+  Runtime invariants produce the same conflict at run-time instead. Default is
+  surface-not-block (the violations list is a projection); only a *hard* invariant
+  resolves to `FailLoudly`.
 
 Because conflicts and resolutions are ops, cross-instance conflict resolution
 needs no extra plumbing: a remote peer's conflict and its resolution land
@@ -291,6 +297,7 @@ type Conflict =
   | ParseFailed       of region: SourceSpan
   | HumanTimedOut     of query: HumanQuery * elapsed: Duration
   | ResourceExhausted of kind: ResourceKind
+  | ConstraintViolated of violation: Violation * timing: EvalTiming  // an App.invariants result
   // extensible
 
 type Resolution =
