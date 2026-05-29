@@ -2,6 +2,12 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 32 (grounding ledger + classic-dark precedent):** Verified the classic-dark precedent is
+  *exact* — `EventQueueV2.fs` = 465 LoC, `QueueWorker.fs` = 381 LoC (event-bus.md's numbers), plus
+  algorithm internals (`EmptyBody`/`defaultFor`/`currentSink`/`EventSink`) and `LocalExec/Migrations.fs`.
+  Consolidated all of passes 28-32 into `grounding-against-main.md` — a ledger of every checked claim
+  with status (~19 verified accurate, 6 corrected, 3 flagged-unconfirmed), separating
+  verified-strengths from proposed/assumed. Wired into PRINT-LIST + README.
 - **Pass 31 (grounding verification, round 4):** Verified more bench-facing citations. ACCURATE:
   telemetry `cli.total`/`commandExec`/`httpserver.*`/`seed.*`, `package-ref-hashes.txt` (the two-pass
   build), `docs for-ai`/`for-ai-internal`, `SubApp` `onKey`/`onDisplay`/`onSave` + `AppState` + `Page`.
