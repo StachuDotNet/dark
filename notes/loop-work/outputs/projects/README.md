@@ -7,6 +7,14 @@ not in the individual specs.
 
 Projects are grouped by category below.
 
+**All 125 are currently tagged `greenfield`** — building something new, not modifying
+existing Dark code. That is not an oversight: the catalog is CLI tools and libraries,
+which are greenfield by nature. But **emulating *brownfield* work well (an agent
+changing an existing codebase) is an explicitly important, still-unsolved problem**
+(per the master feedback) — the bench is currently blind to it. Adding brownfield
+projects, and figuring out how to evaluate "changed existing code correctly," is a
+tracked open item (see [../open-decisions.md](../open-decisions.md)).
+
 ## Pure computation & text toys
 
 - [hello-cli](hello-cli.md)

@@ -105,6 +105,17 @@ interaction, reserved-name/case handling, write-back dances). They live in
 [dark-virtual-files.md](design/dark-virtual-files.md) and don't gate anything else —
 decide them when that doc is picked up.
 
+## Projects & bench
+
+- **Brownfield emulation.** All 125 project specs are `greenfield`; the bench currently
+  cannot measure an agent *changing existing code* — yet the master feedback calls this
+  "very important" and "unsolved." Open: add brownfield projects (start from a seeded
+  prior state, score the *diff* against a gold change) and figure out how to evaluate
+  "modified existing code correctly." Flagged in [projects/README.md](projects/README.md).
+- **Bench size-tiers.** The harness assigns trivial/small/medium/large buckets for
+  balancing ([ai-coding-target.md](design/ai-coding-target.md)) — how to assign them and
+  how many per tier is unsettled (a tuning question, not a spec field).
+
 ---
 
 **Blocked (need an external input, not a decision):** the HttpClient restriction-spec
