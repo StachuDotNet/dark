@@ -2,6 +2,17 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 10 (iteration) — FULL-TREE REVIEW COMPLETE / saturation reached:** Read and verified the
+  last unseen content (hot-reload, cohabitation, remote-access; agent-workflow; the meta-reflections
+  detail; `_cross-cutting-test-criteria.md`; `benchmark-targets.md`). All excellent, consistent, and
+  feedback-addressing. **Every file in `outputs/` has now been reviewed.** Honest state: the wave has
+  reached the diminishing-returns point its own `meta-reflections/where-the-loop-struggles.md`
+  predicts — net-new value per pass is now near zero. The deliverable is complete and clean
+  (0 broken links, 0 bare stale refs, 0 section-signs; all of feedback.md addressed or flagged-blocked).
+  Remaining genuine work = the two deferred end-steps only: write `next-steps.md` (5i) and run the
+  final print (section 11), both at ~08:00 / on the user's return. Subsequent passes are a holding
+  pattern — light re-verification, not manufactured rewrites (per this tree's own "throughput is not
+  progress" caution). The loop stays alive for the 08:00 end-steps; the user can `CronDelete` early.
 - **Pass 9 (iteration):** Verified `identity.md` (all feedback addressed). Broad cross-link sweep
   across ALL of `outputs/` — clean. Produced `PRINT-LIST.md`: a curated ~40-file final-review set
   in reading order for the section-11 print, deliberately excluding the 125 mechanical project specs
