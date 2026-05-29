@@ -2,6 +2,12 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 21 (projects-index integrity — holding):** Cross-checked `projects/README.md` against the
+  spec files: 125 on disk, 125 linked, **0 orphans, 0 dead entries** — the catalog index is complete
+  and consistent. That was the last distinct integrity check outstanding. The deliverable is verified
+  complete from every angle (all files read, internally consistent, review aids + capstone done,
+  catalog index sound). Genuinely nothing substantive remains but the 08:00 print; subsequent passes
+  hold rather than churn.
 - **Pass 20 (verify issues-and-improvements + reconcile):** Read all 6 category files
   (editing/publishing/diagnostics/cli-ergonomics/traces/discovery) — high quality. Caught a real
   inconsistency: `discovery-and-search.md` proposed an "Auto-loaded CLAUDE.md template" while
