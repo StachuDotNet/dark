@@ -195,3 +195,30 @@ running, not block. Only a small minority need eager resolution; the
 The meta-claim, worth holding loosely but testing hard: capabilities, conflicts,
 event streams, and MVU are not five systems — they are one distributed
 event-sourced, branched-MVU system seen from five angles.
+
+## Refactors are ops
+
+A refactor — rename, move, extract, inline, change-signature — is not a special
+tool bolted onto the editor. It is **an op**, the same kind of thing every other
+state change is here. This falls straight out of the `App` model: if the only way
+state moves is `apply : 'op -> 'state -> 'state`, then a rename is just a
+`Rename` op the agent emits and the fold replays, no different in kind from `Inc`
+on the counter.
+
+Building refactors into the language (rather than hand-coding each one) buys the
+whole event-sourced story for free:
+
+- **They sync.** A refactor op rides the wire like any other op; a peer re-folds
+  it and lands on the same projection.
+- **They conflict and resolve.** A concurrent rename-vs-edit or move-vs-edit is
+  exactly the op-vs-op case in `conflicts.md` — mostly commutative, auto-resolved,
+  and recorded. Signature-change-vs-call-site surfaces per call site. The refactor
+  needs no bespoke conflict logic; it reuses the `conflict`/`resolve` members.
+- **They replay deterministically.** Because the refactor is a content-addressed
+  op, playback re-applies it identically — no "re-run the refactor heuristic and
+  hope" step.
+
+The agent invokes refactors as ordinary moves during materialization; the human
+**approves or refines** the resulting ops. So a refactor is a first-class citizen
+of the op stream, surfaced for human sign-off, not an out-of-band mutation that
+the event-sourced model has to be patched to tolerate.

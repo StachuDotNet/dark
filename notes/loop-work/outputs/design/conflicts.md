@@ -380,3 +380,37 @@ The conflicts-and-resolutions primitive **is the contract that lets two parties
 - **Parse-time uniformity.** Defer-to-runtime (placeholder + run-time conflict)
   is the uniform path; an explicit `ParsePolicy` on the parser is the less-
   invasive path. Open which becomes primary.
+
+## Open decision: does WIP sync, and how does it fold?
+
+WIP is working state — uncommitted ops, speculative candidates mid-race, a body
+the human hasn't accepted (see "stable" in `design/algorithm.md`). Whether WIP
+crosses instances is unsettled, and the answer reshapes the dev-time and at-rest
+conflict story above, so it belongs here as a real open decision rather than a
+sync footnote.
+
+The tension:
+
+- **(a) WIP doesn't sync.** Cleaner: WIP stays local, sidesteps a pile of op-
+  semantics questions — *as long as* WIP is stored separately from the committed
+  op stream. Under this reading WIP never enters the fold that produces dev-time
+  conflicts, so the conflict dispatch only ever sees committed ops.
+- **(b) WIP needs a sync story.** You may want your own WIP on a second machine,
+  or to hand a coworker an unfinished body. Then either:
+  - **Lightweight** — gist-like snapshots, no full op semantics. WIP travels as
+    opaque blobs that never participate in conflict folding.
+  - **Heavyweight** — WIP gets the full op treatment and syncs exactly like
+    committed package items, which means WIP ops *do* fold into the op-vs-op
+    conflict table above and can clash across instances.
+
+We have not picked (a) vs (b). The choice decides whether WIP is inside or
+outside the conflict fold, and therefore whether the dev-time op-vs-op rules
+apply to in-flight work or only to committed work. (`design/sync.md` records the
+matching wire-side lean: WIP local by default, opt-in to share.)
+
+The one thing that holds **regardless** of (a)/(b): **whenever WIP becomes
+real/committed, references to it rewrite from by-location to by-hash**, so a
+committed body is stable long-term and folds deterministically on every instance
+(the playback constraint above). Separating WIP from committed is therefore not a
+flag on a row — it determines which ops apply, which sync, and which show up in
+`dark search`.

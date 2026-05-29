@@ -195,3 +195,37 @@ minimum (read-only).
   interaction? A per-session policy.
 - **WIP across instances.** Does WIP on one machine sync to another?
   Leaning hybrid: WIP stays local by default, opt-in to share it.
+
+## Persistence: ops in SQLite, no sidecars
+
+The wire carries only ops and commits — and locally those ops and commits should
+have exactly **one** durable home: the SQLite DB. Today PDD scatters state across
+`rundir/pdd-cache/*.jsonl`, `promoted.jsonl`, `promoted_hashes.jsonl`, and
+friends. Those JSONL sidecars are a second source of truth living next to the op
+tables, and they have to be killed.
+
+The ops-vs-projections lens makes the rule sharp: the **op stream is the only
+durable thing**, and it lives in SQLite. Everything currently in a sidecar is
+either an op (so it belongs in the op tables) or a projection (so it should be
+*regenerated*, never persisted as a separate file). A JSONL cache is the worst of
+both — durable enough to drift, derived enough to be wrong.
+
+Concretely:
+
+- **Everything in SQLite.** Traces, WIP, promoted bodies, the materialization
+  cache — all move into the DB. Either raw tables or, more likely, a `UserDB`-like
+  persistence primitive we build out: a typed, content-addressable store usable
+  from Dark code, so PDD persistence is not bespoke F# but an ordinary Dark
+  consumer of the same store.
+- **One source of truth.** With ops in SQLite, the snapshot/bootstrap path and
+  the wire protocol both read from one place. No file has to be reconciled against
+  the tables.
+- **Content-addressable store.** This is the same content-addressed-store framing
+  that lets the wire carry only ops and commits: if bodies and traces are
+  addressed by hash in the DB, replication is idempotent and projections rebuild
+  locally for free. The sidecars are exactly the non-content-addressed state that
+  blocks that, which is why they go.
+
+So the storage stance and the wire stance are the same stance seen at two scales:
+on disk, ops in SQLite with no sidecars; on the wire, ops and commits with no
+derived data.

@@ -342,6 +342,35 @@ level — belongs in its own design (`design/async.md`). EventBus should depend 
 - **Dark-side library** — what do `Stdlib.Bus` and `Stdlib.Promise` look like in
   full? Sketch later.
 
+## Tracing as events on the substrate
+
+Traces want to ride this same bus rather than being a parallel F# subsystem.
+`Tracing.fs` got reworked heavily during the PDD spike; the corrective is **fewer
+F# changes, more exposure via builtins.** Shrink the F# surface to the minimum —
+the bus already emits `EvalStepped frame` — and expose trace read/write to Dark
+code through `Stdlib.Trace` builtins. Then a trace is not a special artifact; it
+is the recorded projection of the `EvalStepped` (and friends) event stream.
+
+The ops-vs-projections lens makes the equivalence exact:
+
+- **A trace is a Msg log.** Per the composable-MVU framing, the viewer's Msg
+  stream and the recorded eval-event stream are the *same artifact* folded two
+  ways — one into a rendered pane, one into a stored trace. There is no separate
+  "trace store" to keep in sync with the bus; the trace *is* a durable fold of
+  bus events.
+- **Traces are values.** They live in the DB (the content-addressable store, not
+  a sidecar), so they are queryable like any other value, diffable, and
+  **replayable** — replay is just re-folding the event stream through the same
+  scheduler. "Find traces that touched fn X" is a predicate query over those
+  stored events.
+- **Read and write from Dark.** Because the surface is builtins over the bus, the
+  agent, the viewer, and the debugger all read/write traces without new F#
+  plumbing — exactly the thin-substrate stance this doc takes for the bus itself.
+
+This is why `EvalStepped` is a first-class event kind above and not an
+afterthought: the trace recorder is just another subscriber, and the durable
+trace is one more projection of the op stream.
+
 ## Related docs
 
 The conflict-resolution dispatch produces `Resolution.Park selector`; the bus and

@@ -152,7 +152,7 @@ property of the op that defines the body, not of the values it
 produces.)
 
 (This definition is the PDD-facing half of the "stable" notion in
-`STABILITY-AND-SHARING.md`; that doc carries the sharing/wire side.)
+`design/sync.md`; that doc carries the sharing/wire side.)
 
 ## Parking and event flow
 
@@ -205,3 +205,74 @@ that hosts it. We want as much of the algorithm as possible written
 in Dark itself, with the F# substrate doing only what it must:
 low-level event/wait primitives, conflict-resolution plumbing, and
 capability checks at builtin call sites.
+
+## Done-ness as a gradient, not a flag
+
+"Stable" (above) is the committed-and-durable end state. Getting there is not a
+binary flip — done-ness is a **gradient** a fn moves along. A fn starts as just
+**an idea with a name**, then accretes, roughly in order:
+
+idea → name → signature → body → tests → connected (callers, callees,
+integration) → description.
+
+The PDD loop iterates across *all* of these dimensions until the fn feels good;
+done-ness is the (multi-axis) position along them, not a single done bit. A fn
+can have a body but no tests, or a signature and tests but no connected callers —
+each is a different point on the gradient, and the coordinator's judge (above)
+reads these axes as signals.
+
+This is **not** quite the `PackageID` vs `Package(hash)` split. It is more
+nuanced, and it raises a simplifying question: maybe we need no new ID concept at
+all. While a fn is WIP it can just refer to other things **by location** (owner +
+modules + name); when it gets committed, those references are rewritten **by
+hash** for long-term stability. The gradient lives in working state; crossing
+into stable is the by-location → by-hash rewrite. (The WIP-vs-committed line and
+its sync consequences are an open decision in `design/conflicts.md`.)
+
+## Prompts as a pinned type
+
+This sits next to the forever-lazy / LLM-wrapper bodies above: when a body *is* a
+delegated model call, the prompt is load-bearing source and must be first-class,
+not an F# string buried in the substrate (and not even a raw Dark string).
+
+A **`Prompt`** is a pinned type the language recognizes, carrying structure:
+
+- The prompt text itself.
+- Metadata — model, params.
+- The code/types it grounds against (the sig + nearby defs the coordinator feeds
+  the LLM).
+- Version + provenance.
+- Usable in ordinary Dark code: `let p : Prompt = ...`.
+
+Pinned types are special-cased: the language knows them, the SCM treats them as
+first-class content-addressed objects, and queries can target them (`search-by-
+type` over prompts, "which prompts ground against fn X"). For a forever-lazy
+body, the `Prompt` *is* the diffable, refinable, versioned artifact standing in
+for the body that never crystallizes — so making it first-class is what keeps the
+wrapper case from being an opaque blob. The materializer reads and rewrites
+`Prompt` values like any other op.
+
+## The F#/Dark split for PDD
+
+Restating the substrate stance specifically for PDD: **LibExecution should stop
+knowing about PDD.** The F# substrate provides general primitives — events,
+conflicts, capabilities, frame parking — and PDD is just *one consumer* of them;
+any agent infrastructure could be another. Concretely:
+
+- **Materializer in Dark.** `Stdlib.PDD.materialize` (name TBD) is a Dark
+  function the user can refine — the same point as "the materializer itself
+  should be materializable" above. The F# side is only the dispatch hook plus the
+  lookup cache.
+- **No PDD types in LibExecution.** PDD-specific logic and types move to Dark; the
+  F# layer carries only the substrate primitives that are not PDD-shaped.
+- **HTML view served by Dark.** The current F# HTML view becomes a Dark HTTP
+  handler — `dark prompt` starts a daemon that *is* the viewer, minimal and
+  user-customizable, rather than F#-rendered.
+- **Long-term: Dark interpreter in Dark.** A default interpreter written in Dark
+  that fails-on-missing, plus the fancy expanding one (this system —
+  materializes on demand). Bootstrapping is hard and worth a first-principles
+  pass, but it is the natural endpoint of pushing policy out of F# and into Dark.
+
+The dividing test is the same one used elsewhere: the F# substrate does only what
+it *must* (event/wait primitives, conflict plumbing, capability checks); the PDD
+*algorithm* — strategies, weighing, materialization, the viewer — is Dark.

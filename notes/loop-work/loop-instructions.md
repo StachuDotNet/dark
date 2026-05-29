@@ -120,11 +120,11 @@ only after Stachu reviews it. (Originals in `pdd-thinking/` and the vault stay u
 - [x] `design/` — durable design docs.
 - [x] `projects/` — spec files: each a simple **goal line** + **acceptance-criteria list**, tagged
   greenfield/brownfield. No phases, no iteration logs, no cross-cutting test criteria.
-- [ ] `results/` — **raw** bench data + per-sweep report summaries. One report per sweep (or a dir per
+- [x] `results/` — **raw** bench data + per-sweep report summaries. One report per sweep (or a dir per
   sweep with a single final summary). **Never** keep the intermediary per-iteration summaries.
-- [ ] `issues-and-improvements/` — one `.md` per category of issue-space, each with subsections for
+- [x] `issues-and-improvements/` — one `.md` per category of issue-space, each with subsections for
   candidate fixes. Most of REFLECTION.md lands here.
-- [ ] `meta-reflections/` — how the *process* itself is going; feeds back into design. Some of
+- [x] `meta-reflections/` — how the *process* itself is going; feeds back into design. Some of
   REFLECTION.md lands here.
 
 The work below is grouped under six themes (also the reading/priority order):
@@ -295,12 +295,12 @@ These recur across many docs; settle each in **one** place, then reference it.
 ## 5. Theme: PDD (resting — clean & tighten only, don't advance the program)
 
 ### 5a. REFLECTION.md
-- [ ] **Kill the numbers** (Stachu generates good ones later). Consolidate tighter. **Remove all
+- [x] **Kill the numbers** (Stachu generates good ones later). Consolidate tighter. **Remove all
   reflection from the SUMMARY.md docs.** Move most content into `issues-and-improvements/`; some into
   `meta-reflections/`.
 
 ### 5b. SUMMARY.md docs (split & mostly retire)
-- [ ] Split each into **(1) a long-lived spec** (simple goal line + acceptance-criteria list) and
+- [x] Split each into **(1) a long-lived spec** (simple goal line + acceptance-criteria list) and
   **(2) learnings extracted separately** from the design/desire. **No need to mention other systems.**
   Net intent: these shouldn't really exist — replace with per-project specs + per-sweep results docs;
   don't keep intermediary summaries.
@@ -330,7 +330,7 @@ These recur across many docs; settle each in **one** place, then reference it.
 
 ### 5f. FRONTIER.md (distribute its notes, then delete)
 *(It's a "design backlog" of post-spike problems — valuable inline notes that belong in topic docs.)*
-- [ ] **Distribute the inline notes to their real homes, then delete the file:**
+- [x] **Distribute the inline notes to their real homes, then delete the file:**
   - "Tracing: less surface, more primitive" (expose via builtins; traces as queryable/replayable values)
     → async/substrate (section 2).
   - "Storage: kill the JSONL sidecar" (everything in SQLite) → sync/persistence (section 4) + EVENT-STREAMS.
@@ -341,7 +341,7 @@ These recur across many docs; settle each in **one** place, then reference it.
   - "Prompts as a pinned type" (`Prompt` first-class) → CLAIMS/ALGORITHM.
   - "Search-by-type & agent helpers", "Refactors as a language primitive (a refactor is an op)" → section 7 / section 2.
   - "Risks to watch" (trace-replay divergence, tolerance-hides-bugs, sig thrash) → `meta-reflections/`.
-- [ ] Fix its dead links (`SYNC-AND-STABILITY.md`, `EMPIRICAL.md`) as part of the move.
+- [x] Fix its dead links (`SYNC-AND-STABILITY.md`, `EMPIRICAL.md`) as part of the move.
 
 ### 5g. CLAIMS.md
 *(5 claims + "AI is opt-in" + a 60s pitch; references a dead `ROADMAP.md`.)*
@@ -425,13 +425,13 @@ These recur across many docs; settle each in **one** place, then reference it.
 
 ### 7a. improvements.md (vault `even-newer/ai-devloop/improvements.md`)
 *(Preamble blockquote @L3; first numbered heading is "3.1 Discovery"; `dark suggest` @L18; "Known runtime gaps" @L160.)*
-- [ ] **Remove the early preamble gray text.** **Consolidate issues & suggestions** into
+- [x] **Remove the early preamble gray text.** **Consolidate issues & suggestions** into
   `issues-and-improvements/`.
-- [ ] **Don't build a big CLAUDE.md.** Make **`dark docs for-ai` much more helpful**, removing most need
+- [x] **Don't build a big CLAUDE.md.** Make **`dark docs for-ai` much more helpful**, removing most need
   for follow-up calls — a **composed document** with dynamic/expanding content that loops in other docs,
   eventually informed by the specific project/task/user. Possible mechanism: the core `for-ai` doc lists
   **doc hashes + names**, and a follow-up `dark docs hash1 hash2 hash3` **concatenates them beautifully.**
-- [ ] **Kill `dark suggest`.** Fix the numbering (don't start at **3.1**). **Kill the "Known runtime
+- [x] **Kill `dark suggest`.** Fix the numbering (don't start at **3.1**). **Kill the "Known runtime
   gaps" section.**
 - [ ] Cross-link (don't duplicate) the related topics for this theme: `feedback-from-agent.md`
   (*location still to find*), plus reviewing / managing / running / editing-software.
@@ -441,12 +441,12 @@ These recur across many docs; settle each in **one** place, then reference it.
 ## 8. New documents to write
 
 ### 8a. "CLI structural Dark ProgramTypes editor"
-- [ ] Structural / projectional editor in the spirit of **dark-classic** or **Hazel** (cross-ref vault
+- [x] Structural / projectional editor in the spirit of **dark-classic** or **Hazel** (cross-ref vault
   `05.Implementation/Editing/structured and projectional editing.md`).
-- [ ] Powered by a **tiny LLM loop**: given *this keyboard shortcut* + *the current state*, **(how) should
+- [x] Powered by a **tiny LLM loop**: given *this keyboard shortcut* + *the current state*, **(how) should
   the rendering of this view change?** **Caching** to make it fast. **The editor's own model is editable
   in the editor** (self-hosting).
-- [ ] **Design the UI; produce fake "views" to review;** list the components top-to-bottom as high-level
+- [x] **Design the UI; produce fake "views" to review;** list the components top-to-bottom as high-level
   bullets. **Steal from generic component-UI lib ideas** like **Clay.** Should **eventually work for
   HTML too.**
 
@@ -483,28 +483,28 @@ These recur across many docs; settle each in **one** place, then reference it.
 ## 9. Docs to update in place (lower priority / research)
 
 ### 9a. VIEW-SKETCHES.md
-- [ ] **"Beautiful — extend it wildly"** with more recent ideas. **Do not remove anything already perfect.**
+- [x] **"Beautiful — extend it wildly"** with more recent ideas. **Do not remove anything already perfect.**
 
 ### 9b. COMPOSABLE-MVU.md
-- [ ] **One big composed App, not a composed Model** (section 2 App type) with a runner (F#/Dark/combo) fitting
+- [x] **One big composed App, not a composed Model** (section 2 App type) with a runner (F#/Dark/combo) fitting
   the sync picture; relates to op-playback. May flatten into the section 8b distributed-op-playback doc.
 
 ### 9c. package-system-layers.md (vault `Current Experiment/`)
-- [ ] Feels outdated — salvage the useful. Redesign: the **"layers" should be composed/composable
+- [x] Feels outdated — salvage the useful. Redesign: the **"layers" should be composed/composable
   ops/apps/projections.** Iterate heavily.
-- [ ] **"Harmful" notifications** (flagging bad fns) = an event-stream/system (opt-in extension or
+- [x] **"Harmful" notifications** (flagging bad fns) = an event-stream/system (opt-in extension or
   built-in). **Package dependencies are just one projection.** Ops can be communicated **through an
   instance even if** a specific extension/runner isn't activated on it. **Drop the "shared table
   shape"** — each thing may need its own projection considerations.
 
 ### 9d. research/beam-vs-dark.md
-- [ ] Update given thoughts elsewhere; **make it shorter.** **Do this in a background agent** so it can't
+- [x] Update given thoughts elsewhere; **make it shorter.** **Do this in a background agent** so it can't
   accidentally update other docs. Develop the **mailbox** idea — F#'s mailbox processor, used
   plan9/Smalltalk-style, distributed for Dark.
 
 ### 9e. Coworker's "Dark Async Plan.md" (review only — **DO NOT EDIT her doc**)
 *(`Current Experiment/Design/Dark Async Plan.md`; related: `Execution/Design - Async Execution.md`, `90.Stachu/newest/ply-replacement/`.)*
-- [ ] Read & form an opinion: how does it relate to event streams, playback/projections, sync? Use it
+- [x] Read & form an opinion: how does it relate to event streams, playback/projections, sync? Use it
   (and the `ply-replacement/` notes) to inform **our** async doc (8c) — not hers. Do it in a background
   agent if it risks touching other docs.
 
