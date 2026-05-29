@@ -191,6 +191,38 @@ package corpus is just an op stream with projections, the checked-in files are
 redundant. (That removal is itself punted until baseline sync + stability —
 see [bootstrap.md](bootstrap.md).)
 
+## Replay and nondeterminism — an op records the result, not the intent to call
+
+Replay is "re-fold `apply` over the op stream," and several docs lean on it being
+**deterministic**: [conflicts.md](conflicts.md) requires resolutions to resolve to
+"the recorded choice"; [async.md](async.md) calls playback deterministic because
+await points are explicit. That seems to clash with two facts — some bodies are
+"forever lazy" LLM calls that are *nondeterministic* on every invocation
+([algorithm.md](algorithm.md)), and the materialization event bus is marked **not
+durable** ([event-bus.md](event-bus.md)). The reconciliation is one rule:
+
+> **An op records the *result*, not the *intent to call*.** When a materializer
+> (an LLM, a corpus search, a network fetch) produces a value, the op appended to
+> the stream carries the produced value — already content-addressed. Replay folds
+> that recorded value; it never re-invokes the producer.
+
+So the materialization *bus* being ephemeral is not a contradiction: the bus is a
+high-frequency live signal you don't persist, but the **committed result** of a
+materialization is an ordinary durable op. Live evaluation calls the LLM; replay
+reuses the committed output. Effects work the same way — a `Promise` resolves
+once, live; the resolved value is what lands in the op, so the re-fold is pure.
+
+The one genuine exception is exactly the flagged risk: a **forever-lazy body that
+is never committed** — a fn whose body *stays* a delegated LLM call and is re-run
+on every invocation. That body cannot replay deterministically, because there is
+no recorded result to fold; re-running it is re-rolling the dice. That is the
+"trace-replay divergence" hazard in
+[meta-reflections/process-risks.md](../meta-reflections/process-risks.md), and the
+mitigation is the same rule applied to traces: **capture the LLM's output in the
+trace** so a replay of *that run* folds the captured output, while a fresh live run
+is free to differ. Determinism is a property of folding recorded results, not of
+the producers that first generated them.
+
 ## The App is live, forkable, and self-managing
 
 - **The App value is editable** — by people (via the CLI) or by agents. The App

@@ -71,7 +71,11 @@ model call. But it has a cost. A forever-lazy body re-runs the model
 on every call, so its behaviour can drift between invocations, it
 can't be statically read or diffed, and tightening it means more
 iterations and real rework rather than a one-time crystallization.
-Plan for that rework; it's not a transient.
+Plan for that rework; it's not a transient. It is also the one body
+shape that does not replay deterministically — a run is reproducible
+only if its model output was captured in the trace (see the
+replay-and-nondeterminism rule in
+[distributed-event-sourcing.md](distributed-event-sourcing.md)).
 
 (This mirrors [claims.md](claims.md) Claim 1, "the source often starts as
 lazy": lazy is not merely an early phase that always burns off — for

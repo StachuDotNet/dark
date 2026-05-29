@@ -246,6 +246,13 @@ durable buses append a row on every `publish` and replay reads back from the tab
 | `humanQuery` | yes | so a session restart resurfaces pending questions |
 | `frameLifecycle` | no | volume too high; viewer subscribes in real time |
 
+The `materialization` bus being non-durable does **not** make replay
+nondeterministic. The bus is a live, high-frequency signal; the *committed result*
+of a materialization is an ordinary durable op. Replay folds the recorded result,
+never re-invokes the producer — the rule is stated in
+[distributed-event-sourcing.md](distributed-event-sourcing.md) ("an op records the
+result, not the intent to call").
+
 ## Precedent — classic-dark's QueueWorker / EventQueueV2
 
 This is incremental, not novel. Classic-dark (`~/code/classic-dark/`) shipped a
