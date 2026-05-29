@@ -69,6 +69,10 @@ of quietly damaging an original.
 *(Not todos — the standing constraints and the lay of the land. Read once, then keep in mind.)*
 
 **Hard rules**
+- **Print ONLY at the very end.** Do **not** `print-md` any doc mid-loop, no matter how meaningfully
+  created or revised. This loop runs for hours/overnight and docs get revised repeatedly; per-pass
+  printing floods the physical printer. All printing happens once, in section 11, after every checkmark
+  is done.
 - **Never push to upstream git remotes.** Local branches and commits only. Track and commit freely.
 - **Never** `git stash`, `git reset --hard`, or destructive-rebase to dodge an error.
 - **Bias to fewer, smaller, tighter `.md` files.** Less repetition, less garbage, no outdated phrasing.
@@ -538,8 +542,9 @@ blockers), then continue through ALL remaining todos. In outputs/, build the new
 (design/, projects/, results/, issues-and-improvements/, meta-reflections/) — create, rename, dissolve,
 rewrite as each todo says — and check items off here as you complete them. Do a LARGE batch each pass:
 keep working until a natural stopping point, then commit locally (never push) and leave a one-line
-status. When a doc is meaningfully created or revised, print-md it (from outputs/). Prioritize
-thoroughness and correctness over speed — do NOT cut any corners to save time; it is fine for this to
+status. DO NOT print-md anything mid-loop — printing happens ONLY at the very end (section 11), once
+every checkmark is done. This loop runs for HOURS/overnight; per-pass printing would flood the printer.
+Prioritize thoroughness and correctness over speed — do NOT cut any corners to save time; it is fine for this to
 run into tomorrow. Surface blockers. Only stop when every todo is done or genuinely blocked.
 Rules: never use the section-sign symbol in prose (write "section N"); never git stash or reset --hard.
 ```
