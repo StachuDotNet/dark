@@ -2,6 +2,16 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 30 (grounding verification, round 3 — biggest catch):** Verified the actual `traces`
+  command surface (`cli/commands/traces.dark`): `list/view/tail/follow/stats/find/hotspots/replay/
+  delete`. The docs over-claimed several **non-existent** capabilities as existing strengths —
+  `gen-test` (only a code comment), `inspect`, `replay --diff`, `traces export/import`, `values`.
+  Corrected `ai-coding-target.md` (dropped the false "regression-testing built in"), reframed
+  `traces-and-debugging.md`'s `replay --diff`/`gen-test` entries as build-it proposals (not
+  promote-existing), fixed `publishing-and-sharing.md` ("no traces export/import; build on real
+  seed-export"), and the issues README + editing cross-ref. Separately verified ACCURATE and left
+  alone: deprecation kinds, `accounts_v0` seeds, `merge --dry-run`, `rebase --status`, `branch
+  rename`, `findValues`. The grounding sweep's biggest payoff yet — a whole over-stated strength corrected.
 - **Pass 29 (grounding verification, round 2 — found a real error):** Extended the main-citation
   check to more docs. Accurate: RuntimeError variants (DivideByZeroError/PatternDoesNotMatch/
   NonStringInInterpolation), `Previewable`/`ImpurePreviewable`, `package_ops`/`branch_ops`,
