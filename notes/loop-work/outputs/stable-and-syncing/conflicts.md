@@ -63,8 +63,9 @@ no tolerance mode, no call site. The fold from text to expression tree simply
 can't complete over some region.
 
 The composable move: a parse failure does not raise. It folds the unparseable
-region into a **placeholder expression** — the same shape PDD uses for a
-`Pending` body — and the failure becomes a run-time conflict that fires *if and
+region into a **placeholder expression** — a deferred-body concept (the PDD spike
+realized one version of this as its `Pending` body; it is a design idea here, not a
+`main` primitive) — and the failure becomes a run-time conflict that fires *if and
 when* evaluation reaches that region. Parse-time defers to run-time.
 
 LibParser already carries the seed of this. On `main`, `OnMissing` is

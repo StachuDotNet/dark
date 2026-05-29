@@ -5,6 +5,13 @@
 > Darklang's strengths — types, package store, traces, capabilities,
 > SCM. Find and Generate are two strategies among many we'll need.
 > Think ground-up.
+>
+> **Spike caveat.** This describes the `pdd` research spike's approach. Its concrete
+> primitives — `EmptyBody`, `defaultFor`, `EventSink`, the `Pending` body,
+> `MaterializeResult` — are **spike-only, not on `main`** (see
+> [grounding-against-main.md](../meta/grounding-against-main.md)). Treat them as the
+> experiment's scaffolding, not foundations to build on; the durable ideas are the
+> strategy/coordinator shape, not these types.
 
 ## In one paragraph
 

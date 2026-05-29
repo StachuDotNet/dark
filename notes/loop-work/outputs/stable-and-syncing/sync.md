@@ -199,10 +199,12 @@ minimum (read-only).
 ## Persistence: ops in SQLite, no sidecars
 
 The wire carries only ops and commits — and locally those ops and commits should
-have exactly **one** durable home: the SQLite DB. Today PDD scatters state across
-`rundir/pdd-cache/*.jsonl`, `promoted.jsonl`, `promoted_hashes.jsonl`, and
-friends. Those JSONL sidecars are a second source of truth living next to the op
-tables, and they have to be killed.
+have exactly **one** durable home: the SQLite DB. The PDD *spike* scattered state
+across `rundir/pdd-cache/*.jsonl`, `promoted.jsonl`, `promoted_hashes.jsonl`, and
+friends — note these JSONL sidecars are **spike-only, not on `main`**, so this is a
+caution about a pattern to avoid as the real thing is built, not a description of
+shipped state. Such sidecars are a second source of truth living next to the op
+tables, and they must not return.
 
 The ops-vs-projections lens makes the rule sharp: the **op stream is the only
 durable thing**, and it lives in SQLite. Everything currently in a sidecar is

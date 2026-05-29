@@ -1,6 +1,10 @@
 # Claims
 
-Five claims that make PDD a paradigm rather than a feature.
+Five claims that make PDD a paradigm rather than a feature. These are **bets the
+`pdd` spike is testing**, not validated results — and the spike primitives they lean
+on (`EmptyBody`, `defaultFor`, the `Pending` body) are spike-only, not on `main` (see
+[grounding-against-main.md](../meta/grounding-against-main.md)). Read them as
+hypotheses about the model, not facts about shipped Dark.
 
 ## 1. The source often starts as lazy
 

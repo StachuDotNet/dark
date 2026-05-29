@@ -48,6 +48,11 @@ for shipped reality:
 | `EmptyBody` (PDD empty-body materialization result) | algorithm, claims | spike materialization concept |
 | `defaultFor` (substitute-a-default helper) | algorithm, claims | spike helper; not on `main` |
 | `OnMissing.AllowPending` | conflicts (now labeled) | the spike *added* this third case; `main` has only `ThrowError \| Allow` |
+| `Pending` body (deferred/not-yet-materialized body) | conflicts, event-bus, algorithm (labeled) | spike concept; `Pending` on `main` exists only in unrelated SCM propagation |
+| `MaterializeResult`, the materializer (`PDDMaterializer.fs`) | algorithm (labeled) | new spike file; absent on `main` |
+| `PDDEvent`, the spike event sink | algorithm/event-bus (labeled) | spike-only |
+| PDD storage `promoted.jsonl` / `promoted_hashes.jsonl` / `rundir/pdd-cache/*.jsonl` | sync (now labeled), conflicts | spike-only JSONL sidecars; not on `main` |
+| `PddCommand.fs`, `PDDHTMLView.fs`, `RTQueryCompiler.fs` | (spike implementation files) | new on the spike; absent on `main` |
 
 ## Corrected (claim was wrong; fixed in the doc)
 
