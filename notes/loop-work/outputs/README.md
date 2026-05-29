@@ -1,64 +1,60 @@
-# Dark working notes — reorganized
+# Dark working notes — reorganized (by theme)
 
-This is the cleaned, reorganized notes tree being built in the loop sandbox. Once
-reviewed, it is promoted into the real repo `notes/` tree. The frozen "before"
-lives in `../source/`.
+This whole `outputs/` tree is the deliverable. Review it here, then copy/overwrite
+into the long-term locations (see `meta/overwrite-map.md` for exactly which output
+maps to which original). `../source/` holds frozen safety copies of every original —
+nothing is lost.
 
-## How to review this (read first)
+The north star it all serves: Stachu's `print-md` script lives in Dark, edits sync
+to his other machines, Ocean can fork it, and it shows up under `dark apps`.
 
-**This whole `outputs/` tree IS the deliverable** — "results of this overnight wave."
-Review it here, then copy/overwrite the files into their long-term locations once you're
-happy. `../source/` holds the frozen, untouched safety copies of every original — nothing
-is lost, so the docs here are edited fully freely.
+## Read in this order
 
-`outputs/results/` is a separate, nested dir holding the **PDD-specific bench results**
-(raw bench data + one report per sweep). The actual numbers are generated later; for now
-it carries the convention only.
+1. **`next-steps.md`** — what to build first (the Stable & Syncing path to the north star).
+2. **`open-decisions.md`** — every unsettled decision, triaged by leverage.
+3. **`meta/grounding-against-main.md`** — which design claims are verified against the
+   live codebase vs. proposed/assumed.
+4. Then dive into the theme dirs below, keystone first.
 
-The north star this all serves: Stachu's `print-md` script lives in Dark, edits
-sync to his other machines, Ocean can fork it, and it shows up under `dark apps`.
+## Themes (top-level dirs)
 
-## Structure
+### `stable-and-syncing/` — the priority cluster
+The substrate spine. Keystone first:
+- [distributed-event-sourcing.md](stable-and-syncing/distributed-event-sourcing.md) — **the keystone**: ops, projections, the thin `App` type
+- [example-app.md](stable-and-syncing/example-app.md) — a worked non-trivial App (KV store)
+- [apps-surface.md](stable-and-syncing/apps-surface.md) — `dark apps`: install/fork/run (the north-star surface)
+- [event-bus.md](stable-and-syncing/event-bus.md), [conflicts.md](stable-and-syncing/conflicts.md), [sync.md](stable-and-syncing/sync.md), [async.md](stable-and-syncing/async.md)
+- [cli-daemon.md](stable-and-syncing/cli-daemon.md), [hot-reload.md](stable-and-syncing/hot-reload.md), [cohabitation.md](stable-and-syncing/cohabitation.md), [remote-access.md](stable-and-syncing/remote-access.md)
+- [capabilities.md](stable-and-syncing/capabilities.md), [identity.md](stable-and-syncing/identity.md), [package-system-layers.md](stable-and-syncing/package-system-layers.md), [composable-mvu.md](stable-and-syncing/composable-mvu.md)
 
-- **`design/`** — durable design docs. The spine: distributed event sourcing,
-  the thin `App` type, ops vs. projections, sync, conflicts, capabilities,
-  identity, async.
-- **`projects/`** — spec files: each a goal line + acceptance-criteria list,
-  tagged greenfield/brownfield. No phases, no iteration logs.
-- **`results/`** — raw bench data + one report per sweep. No per-iteration
-  intermediaries.
-- **`issues-and-improvements/`** — one file per category of issue-space, each
-  with candidate-fix subsections.
-- **`meta-reflections/`** — how the *process* is going; feeds back into design.
+### `removing-dark-files/`
+- [bootstrap.md](removing-dark-files/bootstrap.md) — the blockers (punted until sync + stability land)
 
-Top-level review aids: `next-steps.md` (what to build first), `open-decisions.md`
-(every unsettled decision, triaged), `grounding-against-main.md` (which claims are
-verified against the live codebase vs. proposed/assumed), `feedback-coverage.md`
-(feedback.md → status), `vault-organization.md` (vault recommendation), `PRINT-LIST.md`
-and `STATUS.md`.
+### `pdd/` — resting (clean & tightened, not advanced)
+- [pdd.md](pdd/pdd.md) (overview), [algorithm.md](pdd/algorithm.md), [claims.md](pdd/claims.md), [pdd-elevator-pitches.md](pdd/pdd-elevator-pitches.md)
+- [ai-coding-target.md](pdd/ai-coding-target.md) — Dark as the optimal AI coding target (the eval bench)
+- [projects/](pdd/projects/) — 125 project specs + category index + cross-cutting test criteria
+- [results/](pdd/results/) — the PDD bench-results convention (numbers generated later)
 
-## design/ — what's there
+### `good-for-ai-agents/` — CLI/agent tooling improvements
+- [README.md](good-for-ai-agents/README.md) + 7 category docs (agent-workflow, discovery-and-search,
+  editing-and-refactor, diagnostics-and-errors, cli-ergonomics, publishing-and-sharing, traces-and-debugging)
 
-| File | Was | Theme |
-|---|---|---|
-| `distributed-event-sourcing.md` | new (keystone) | the unifying frame: ops, projections, the `App` type |
-| `event-bus.md` | EVENT-STREAMS-AND-PARKING | the op/event substrate + parking |
-| `conflicts.md` | CONFLICTS-AND-RESOLUTIONS | reconciliation, organized by evaluation-time |
-| `sync.md` | STABILITY-AND-SHARING | wire protocol + sharing over Tailscale |
-| `async.md` | new (from section 2 + the coworker's plan) | kill Task/Ply, explicit parking |
-| `capabilities.md` | CAPABILITIES | per-category effect permissions |
-| `identity.md` | IDENTITY | the `Identity` model + intent |
-| `bootstrap.md` | BOOTSTRAP | the blockers to removing `.dark` files (punted) |
-| `cli-daemon.md` | improvements/cli-daemon | the resident host for the live substrate |
-| `ai-coding-target.md` | vault plan.md | Dark as the optimal AI coding target |
+### `editing-software/`
+- [structural-editor.md](editing-software/structural-editor.md), [dark-virtual-files.md](editing-software/dark-virtual-files.md), [view-sketches.md](editing-software/view-sketches.md)
 
-Still to migrate into `design/` (later passes): ALGORITHM, CLAIMS,
-pdd-elevator-pitches, COMPOSABLE-MVU, VIEW-SKETCHES, package-system-layers,
-research/*, and the new structural-editor doc.
+### `later-other/`
+- research comparisons: [beam-vs-dark.md](later-other/beam-vs-dark.md), [swamp-vs-dark.md](later-other/swamp-vs-dark.md), [visibility-vs-dark.md](later-other/visibility-vs-dark.md)
+
+### `meta/` — process + provenance (how the work was made and verified)
+- [README.md](meta/README.md) + the meta-reflections (what-the-loop-is-good-at, where-it-struggles, process-risks, loop-operations)
+- review aids: [grounding-against-main.md](meta/grounding-against-main.md), [feedback-coverage.md](meta/feedback-coverage.md),
+  [vault-organization.md](meta/vault-organization.md), [overwrite-map.md](meta/overwrite-map.md), [STATUS.md](meta/STATUS.md), [PRINT-LIST.md](meta/PRINT-LIST.md), `feedback.md` (the master spec, frozen)
+
+`../source/` is the frozen "before"; `vault/` holds the coworker's review-only async plan.
 
 ## Conventions
 
-- New files use lowercase-kebab names.
-- "Ops vs. projections" is the lens applied throughout: state is a timestamped op
-  stream; everything visible is a projection of it.
+- Lowercase-kebab filenames; theme-based top-level dirs.
+- "Ops vs. projections" is the lens throughout: state is a timestamped op stream; everything visible is a projection of it.
 - Prose never uses the section-sign symbol — it writes "section N".
