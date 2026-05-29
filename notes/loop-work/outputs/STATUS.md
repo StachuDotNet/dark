@@ -2,6 +2,11 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 8 (iteration):** Verified `async.md`, `composable-mvu.md`, `structural-editor.md` thorough
+  and consistent with the keystone `App` type. Caught link defects a `.md`-only grep can't see:
+  a malformed `[composable-mvu.md]` (no target) and bare UPPERCASE prose refs (`VIEW-SKETCHES`,
+  `COMPOSABLE-MVU`, `FRONTIER`) — all fixed. Added a parser/`compile` dependency note to the editor.
+  design/ re-confirmed: 0 bare refs, 0 broken links, 0 section-signs.
 - **Pass 7 (iteration):** Deepened the keystone's ops-vs-projections storage split — the one
   spot feedback.md explicitly said "please think on this." Replaced the "still open" note with a
   concrete clean split: two SQLite files (`ops.db` synced/canonical vs `projections.db`
