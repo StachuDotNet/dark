@@ -529,6 +529,34 @@ These recur across many docs; settle each in **one** place, then reference it.
 
 ---
 
+## 12. Iteration & deepening — keep running until ~8am
+
+This loop is meant to run **all night** (until at least ~08:00), doing **many** passes.
+Completing the section 1-11 checkboxes once is **not** the end — it is the start of the
+deepening phase. Do **not** print and do **not** stop just because boxes are checked.
+
+After the first full sweep, each pass should pick the weakest/thinnest area and make it
+better. Rotate through:
+
+- [ ] **Re-review every doc against `source/feedback.md`** — the master spec. Verify each
+  bullet there is genuinely addressed; deepen anywhere that's thin. Re-read feedback.md
+  every few passes.
+- [ ] **Tighten + de-duplicate** — hunt repeated content across `design/`; consolidate so
+  little lives in more than one place. Fewer, smaller, tighter files.
+- [ ] **Cross-link cleanup** — fix any links pointing at old UPPERCASE names or dissolved
+  files; make `design/` self-consistent.
+- [ ] **Deepen the keystone thinking** — the `App` type's full field set (msg/cmd as the
+  MVU layer, autoResolutions, constraints, projections/DBs), hot-swappable op-playback,
+  the ops-vs-projections storage split. Push these further each pass.
+- [ ] **Dissolve remaining un-todo'd source copies** — COHABITATION, HOT-RELOAD,
+  REMOTE-ACCESS, TOC, research/swamp-vs-dark, research/visibility-vs-dark have no explicit
+  todo: decide per-doc to migrate-as-is into `design/` (tightened) or drop, and note why.
+
+**Only run section 11 (final print) when it is genuinely ~08:00 (or the user returns).**
+Until then, keep iterating — quality over completion.
+
+---
+
 ## Running the loop
 
 When it's time to execute (the long process), point a fresh session's loop at this file:
