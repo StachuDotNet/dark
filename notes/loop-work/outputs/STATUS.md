@@ -2,6 +2,10 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 9 (iteration):** Verified `identity.md` (all feedback addressed). Broad cross-link sweep
+  across ALL of `outputs/` — clean. Produced `PRINT-LIST.md`: a curated ~40-file final-review set
+  in reading order for the section-11 print, deliberately excluding the 125 mechanical project specs
+  to avoid a paper flood. Nothing printed — held for ~08:00 once `next-steps.md` exists.
 - **Pass 8 (iteration):** Verified `async.md`, `composable-mvu.md`, `structural-editor.md` thorough
   and consistent with the keystone `App` type. Caught link defects a `.md`-only grep can't see:
   a malformed `[composable-mvu.md]` (no target) and bare UPPERCASE prose refs (`VIEW-SKETCHES`,
