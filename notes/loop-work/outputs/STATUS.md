@@ -2,6 +2,12 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 16 (coherence check — no edit):** Read the full keystone end-to-end after five passes of
+  additions. Verdict: coherent, well-ordered, no bloat or redundancy warranting a rewrite — the
+  adversarial additions integrate cleanly into the distribution-semantics cluster. Made **no change**
+  (the honest call when none is warranted). Genuine end-game now: the design is complete and
+  internally consistent; the adversarial gap-hunt has bottomed out (passes 11-15 fixed the real
+  ones); remaining work is solely the deferred end-steps (`next-steps.md` + final print) at ~08:00.
 - **Pass 15 (adversarial deepening):** Reconciled an intra-doc mismatch in `capabilities.md`: it
   decided the representation is a `checkCapabilities` *function* (no `Set`), but `effectiveCaps`
   unioned an undefined static `.requirement`. Resolved: a `BuiltInFn` declares **both** a static
