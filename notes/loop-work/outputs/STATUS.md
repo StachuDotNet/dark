@@ -2,6 +2,10 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 19 (additive review aid):** Built `open-decisions.md` — harvested every unsettled
+  decision across the 15 design docs into one leverage-ordered triage register (Stable & Syncing
+  gating decisions first), each with its home doc + current lean, blocked items flagged. A genuine
+  synthesis artifact that aids review without touching existing docs. Wired into PRINT-LIST + README.
 - **Pass 18 (final verification — holding):** Full-tree link sweep clean (0 broken md/png links,
   incl. after the READY-WORK/DAG-assets deletion); all 11 `next-steps.md` design links resolve; a
   7-spec sample across `projects/` categories conforms to the goal+kind+acceptance format.
