@@ -168,6 +168,24 @@ implementation collapses most of it. So: `BuiltInFn` gains a `checkCapabilities`
 function (not a `Set`), the interpreter calls it at the gate, and the result flows
 into the conflict dispatch as above.
 
+**Two things, not one — a static category plus the dynamic check.** The function
+alone is not enough, because prompt-filtering, effective-caps, and static audit all
+need an answer *without args*. So a `BuiltInFn` declares both:
+
+- A static **`caps : Set<CapCategory>`** — the coarse categories the builtin may
+  touch (`HttpClient`, `FileSystem`, …). Arg-independent, cheap to read, this is
+  what gets unioned for effective-caps and shown to a prompt filter. It answers
+  "what *could* this need?"
+- The dynamic **`checkCapabilities : granted -> args -> CapDecision`** — run only at
+  the gate, with args in hand, for the precise decision ("is `example.com` in the
+  allowed-host list?"). It answers "given *these* args, allowed?"
+
+The static category is a sound over-approximation of the dynamic check: if `caps`
+omits `HttpClient`, the builtin provably never needs it, so inspection is safe. A
+pure builtin has `caps = {}` and no `checkCapabilities`. This is the split the
+effective-caps computation below relies on — it unions the static `caps`, never the
+dynamic predicate.
+
 ## Human interaction is async — and, for now, absent
 
 The sketch's `--ask` flag undersells the problem. Asking a human is not a
@@ -208,15 +226,20 @@ the builtin requirements are the ops; a function's effective set is a projection
 over its call graph.
 
 ```fsharp
-effectiveCaps fn =
+effectiveCaps fn =                                  // : Set<CapCategory>
   fn.body
   |> walkCalls
   |> unionOver (function
-       | Builtin name      -> (lookupBuiltin name).requirement
+       | Builtin name      -> (lookupBuiltin name).caps  // the static category set
        | Package hash      -> effectiveCaps (lookup hash)   // memoize by hash
        | PackageID id      -> effectiveCaps (lookupById id) // recompute on change
        | _                 -> empty)
 ```
+
+It unions the static `caps` categories, never the dynamic `checkCapabilities` — so
+the effective set is "which categories could this reach," not "is this specific call
+allowed." The latter stays a runtime decision at the gate. This is exactly why the
+two-part declaration above is needed.
 
 Open within this: recursion is a fixed point (start empty, iterate to convergence
 — one pass in practice); `Package(hash)` bodies are immutable so cache by hash;
