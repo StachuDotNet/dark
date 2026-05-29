@@ -2,6 +2,14 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 88 (~08:00 — SECTION 11 FINAL PRINT, loop complete):** It reached ~08:00, so the terminal
+  step ran: `print-md` of the full curated deliverable — **52 docs in reading order** (orientation aids
+  → keystone → rest of design → issues → meta → results → projects index), deliberately excluding the
+  125 mechanical project specs (paper-flood; they read on screen, `projects/README` is printed). All
+  queued to the Brother printer in one batch. **The loop's mission is complete:** every actionable todo
+  is checked; the only 2 unchecked are genuinely blocked — `feedback-from-agent.md` (not locatable) and
+  executing the vault reorg (vault off-limits; recommendation in `vault-organization.md`). Passes 54-87
+  were holding watches awaiting this print window.
 - **Pass 53 (ground the async foundation):** Verified the premise async.md/event-bus.md rest on —
   `BuiltInFn` runs through `Ply<Dval>`/`DvalTask` (`BuiltInFnSig`) and `Execution.execute` returns
   `Task<ExecutionResult>`. The "kill Task/Ply" design is built on accurate facts. Recorded in the

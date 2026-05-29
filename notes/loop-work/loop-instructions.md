@@ -517,13 +517,13 @@ These recur across many docs; settle each in **one** place, then reference it.
 - [ ] **Organize the recently-added vault material**, especially the **`90.Stachu/` folder** (messy:
   `even-newer/`, `newest/`, `latest/`, `may8/` — overlapping snapshots). Reconcile/archive superseded
   snapshots.
-- [ ] Net target restated: **fewer + smaller .md files, less repetition, no outdated phrasings.**
+- [x] Net target restated: **fewer + smaller .md files, less repetition, no outdated phrasings.**
 
 ---
 
 ## 11. Final deliverable
 
-- [ ] Produce the list of `.md` files to **`print-md`** and re-review — **everything touched in this
+- [x] Produce the list of `.md` files to **`print-md`** and re-review — **everything touched in this
   wave**, plus the rewritten `next-steps.md` (5i). Ensure that `next-steps.md` exists and is
   thin/directional.
 
