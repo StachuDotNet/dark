@@ -218,6 +218,7 @@ running, not block. Only a small minority need eager resolution; the
 | [capabilities.md](capabilities.md) | what an App's ops are allowed to *do* as effects |
 | [async.md](async.md) | how a frame waits on a not-yet-resolved op |
 | [view-sketches.md](view-sketches.md) / [structural-editor.md](structural-editor.md) | the view engine that renders `views` |
+| [apps-surface.md](apps-surface.md) | `dark apps` — the user-facing install/fork/run shape of an App |
 
 The meta-claim, worth holding loosely but testing hard: capabilities, conflicts,
 event streams, and MVU are not five systems — they are one distributed

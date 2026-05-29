@@ -56,9 +56,10 @@ Six responsibilities, roughly in order of how much they *need* a resident proces
    on the same bus pipeline — a cron tick is just another publish.
 5. **Warm projections.** The package tree and other derived views are built once
    and updated incrementally as ops arrive, instead of replayed per call.
-6. **The apps surface.** Serving running Darklang apps (HTTP handlers, the
-   eventual app runtime) needs an always-on host. **The apps work likely depends
-   on this daemon** — there is no per-call model for "serve an HTTP endpoint."
+6. **The apps surface** (see [apps-surface.md](apps-surface.md)). Serving running
+   Darklang apps (HTTP handlers, the eventual app runtime) needs an always-on host.
+   **The apps work likely depends on this daemon** — there is no per-call model for
+   "serve an HTTP endpoint."
 
 Cold-start amortization and instant autocomplete (the original doc's whole case)
 fall out of items 1 and 5 for free: the client talks to a warm process, so it
