@@ -237,6 +237,34 @@ trace** so a replay of *that run* folds the captured output, while a fresh live 
 is free to differ. Determinism is a property of folding recorded results, not of
 the producers that first generated them.
 
+## Convergence precondition: shared App logic
+
+Replay-determinism handles the *result* of an op. There is a second, easy-to-miss
+precondition for two *instances* to converge: they must fold the same op stream
+with the **same `apply`/`conflict`/`resolve`**. These functions are part of the
+`App`, and the `App` is editable and forkable — so two instances could be running
+*different* reconciliation logic, reach different `resolve` outputs for the same
+clash, and diverge.
+
+This does not need a new guard, because the App's own functions are themselves
+**content-addressed package items in the op stream**. So:
+
+- "Same logic" = "same hashes." Two instances that resolved from the same
+  `apply`/`conflict`/`resolve` hashes are guaranteed to fold to the same state;
+  that *is* the convergence guarantee.
+- A fork of the reconciliation logic (someone edits `resolve`) is not silent drift
+  — it is a new hash for that package item, which shows up as an ordinary
+  `Name → two hashes` conflict ([conflicts.md](conflicts.md)) on the App's *own*
+  definition. The system surfaces "you two are running different resolvers" as the
+  same kind of data it surfaces any other divergence.
+- Divergence by fork is therefore *deliberate and visible*, never accidental.
+  Whoever wants to converge re-points to a shared hash; whoever wants to keep their
+  fork keeps it, and the two are simply different Apps.
+
+This is why the App logic living *in* the synced stream (not as privileged F#) is
+load-bearing: it makes "do we even agree on how to merge?" a first-class, inspectable
+conflict rather than an invisible assumption.
+
 ## The App is live, forkable, and self-managing
 
 - **The App value is editable** — by people (via the CLI) or by agents. The App
