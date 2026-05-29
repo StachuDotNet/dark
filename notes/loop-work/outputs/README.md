@@ -32,8 +32,10 @@ sync to his other machines, Ocean can fork it, and it shows up under `dark apps`
 - **`meta-reflections/`** — how the *process* is going; feeds back into design.
 
 Top-level review aids: `next-steps.md` (what to build first), `open-decisions.md`
-(every unsettled decision, triaged), `feedback-coverage.md` (feedback.md → status),
-`vault-organization.md` (vault recommendation), `PRINT-LIST.md` and `STATUS.md`.
+(every unsettled decision, triaged), `grounding-against-main.md` (which claims are
+verified against the live codebase vs. proposed/assumed), `feedback-coverage.md`
+(feedback.md → status), `vault-organization.md` (vault recommendation), `PRINT-LIST.md`
+and `STATUS.md`.
 
 ## design/ — what's there
 

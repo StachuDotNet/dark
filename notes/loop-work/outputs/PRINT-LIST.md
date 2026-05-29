@@ -15,7 +15,8 @@ below is the prose/design content actually worth reviewing on paper (~40 files).
 2. `STATUS.md` — per-pass log of what changed
 3. `feedback-coverage.md` — every feedback.md point → status + home
 4. `open-decisions.md` — every unsettled design decision, triaged by leverage
-5. `vault-organization.md` — section 10 recommendation (vault is off-limits to the loop)
+5. `grounding-against-main.md` — design claims checked against the live codebase (ok/fixed/flag)
+6. `vault-organization.md` — section 10 recommendation (vault is off-limits to the loop)
 
 ## design/ (in thematic / priority order)
 
