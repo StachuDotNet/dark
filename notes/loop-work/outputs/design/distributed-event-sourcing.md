@@ -136,25 +136,39 @@ We need recovery for distribution races — e.g. two branches on different
 instances pointing the same name to different hashes. That is resolved through
 the [conflicts](conflicts.md) system, not by trying to keep projections in lockstep.
 
-### How to split the two cleanly
+### How to split it cleanly
 
 The rule of thumb decides membership: **if losing it costs only CPU to rebuild, it
 is a projection.** What follows from taking that seriously:
 
-**Two stores, and the boundary is physical.** Keep the op log and the projection
-cache in *separate SQLite files*, not just separate tables:
+**Separate stores, and the boundary is physical.** Keep these in *separate SQLite
+files* (or the config dir), not just separate tables:
 
 - **`ops.db`** — append-only, content-addressed ops + commits. Global, durable,
-  the only thing sync touches. This is the canonical state.
+  the only thing sync touches. This is the canonical *shared* state.
 - **`projections.db`** — every materialized view: the `name → hash` resolution
   table, package-item bodies by location, dependency graphs, the file view, the
   conflict list, search indexes. Branch- and session-scoped, `DROP`-able,
   rebuilt by folding `ops.db`.
+- **`local.db` / the `.darklang` config** — local-authoritative state that is
+  *neither synced nor derived*: capability grants (instance-specific —
+  [capabilities.md](capabilities.md)), sync-remote config and the tailnet-login →
+  account binding ([sync.md](sync.md)), and WIP *if* the "WIP stays local" option
+  wins ([conflicts.md](conflicts.md)). This is the category the two-store split
+  would otherwise have no home for: it is authoritative (losing it loses
+  information, so not a projection) yet private (it must never ride the wire, so
+  not `ops.db`). The user backs it up; sync ignores it.
 
-Two files rather than two table-groups because the boundary then can't be crossed
-by accident: sync ships `ops.db` deltas and *physically cannot* ship a projection;
-`projections.db` can be deleted at any time and rebuilt with zero information loss.
-(It is the natural thing to `.gitignore` and to exclude from backups.)
+Separate files rather than table-groups because the boundary then can't be crossed
+by accident: sync ships `ops.db` deltas and *physically cannot* ship a projection
+or a local grant; `projections.db` can be deleted any time and rebuilt with zero
+information loss; `local.db` is the one a careful user backs up but never shares.
+(`projections.db` is the natural thing to `.gitignore`.)
+
+A note on WIP: the local-vs-synced choice for WIP ([conflicts.md](conflicts.md)) is
+exactly the question of whether WIP lives in `local.db` (option a, never folds into
+cross-instance conflicts) or in `ops.db` as non-committed ops (option b, folds and
+can clash). The three-store model makes that choice concrete: it is "which file."
 
 **A projection declares three things**, and nothing else couples it to the core:
 
