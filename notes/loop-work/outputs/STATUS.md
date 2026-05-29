@@ -2,6 +2,10 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 44 (explicit feedback verification):** Feedback line 118 asked to *confirm* `DARK_ACCOUNT`
+  is gone (and add a todo if not). Verified against the repo — 0 occurrences in `backend/src` +
+  `packages/darklang`; confirmed removed, no todo needed. Recorded in the grounding ledger so the
+  feedback check is provably satisfied.
 - **Pass 43 (recover a dropped feedback concern):** The master feedback flagged brownfield-work
   emulation as "very important" but "unsolved"; all 125 specs ended up greenfield and the meta-gap
   was tracked nowhere. Recovered it — `projects/README.md` now states all-greenfield is by-nature
