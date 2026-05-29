@@ -2,6 +2,14 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 17 (capstone — 5i done):** Wrote `next-steps.md` — the thin, priority-ordered Stable &
+  Syncing path to the north star (Tailscale ping/pong → conflict-dispatch skeleton → event-bus core
+  → sync read/write → identity → autosync → print-md as an App), with bootstrap punted and PDD
+  resting, cross-linked to design/. Dissolved the old READY-WORK + its DAG assets; `pdd-thinking/`
+  is now empty and gone. Checked off 5i, the reorg item, the completed section-12 iteration tasks,
+  and the vault-decide item. **Only 4 todos remain: 2 blocked (feedback-from-agent.md not found;
+  vault execution off-limits), 1 standing goal, and the final print (section 11, at ~08:00).** The
+  deliverable is now complete end to end including its capstone.
 - **Pass 16 (coherence check — no edit):** Read the full keystone end-to-end after five passes of
   additions. Verdict: coherent, well-ordered, no bloat or redundancy warranting a rewrite — the
   adversarial additions integrate cleanly into the distribution-semantics cluster. Made **no change**
