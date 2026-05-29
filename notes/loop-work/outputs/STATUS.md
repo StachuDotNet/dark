@@ -2,6 +2,12 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 14 (adversarial deepening):** Wired `App.invariants` into the conflict model. The member
+  returned `List<Violation>` but nothing said what the runtime does with one, and `conflicts.md`'s
+  `Conflict` type had no constraint-violation kind. Now: violations fold into the same conflict model
+  (checked at their timing, surfaced as a "violations list" projection, only *hard* invariants
+  `FailLoudly`) — `invariants` is to constraints what `conflict` is to op clashes. Added a
+  `ConstraintViolated` conflict kind grounded in the at-rest/run-time timings.
 - **Pass 13 (adversarial deepening):** Stated the sync **convergence precondition**. Replay-
   determinism (pass 11) covers an op's result, but two *instances* converge only if they fold with
   the same `apply`/`conflict`/`resolve` — which are editable, forkable App logic. Added a keystone
