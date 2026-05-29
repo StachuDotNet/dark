@@ -168,8 +168,9 @@ wake.
 The wait/wake protocol wants to be a low-level Darklang concept —
 ideally event streams or event graphs with waiters — so the same
 machinery serves the materializer, the SCM sync, the human-async
-flow, and (eventually) other agentic operations. The current F#
-`EventSink` is a simpler shape; [event-bus.md](../stable-and-syncing/event-bus.md) sketches
+flow, and (eventually) other agentic operations. The PDD spike's F#
+`EventSink` (a spike artifact, not on `main`) is a simpler shape;
+[event-bus.md](../stable-and-syncing/event-bus.md) sketches
 what it should become.
 
 ## Conflicts and resolutions

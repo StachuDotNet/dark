@@ -67,11 +67,13 @@ region into a **placeholder expression** — the same shape PDD uses for a
 `Pending` body — and the failure becomes a run-time conflict that fires *if and
 when* evaluation reaches that region. Parse-time defers to run-time.
 
-LibParser already carries the seed of this with `OnMissing.ThrowError /
-Allow / AllowPending` for unresolved *names*. Extend the same mechanism to
-*syntactic* failures: every unparseable region yields a placeholder; the
-run-time dispatch decides what to do when execution reaches it. `ThrowError`
-(today's strict behavior) keeps raising at parse-time for callers who want it.
+LibParser already carries the seed of this. On `main`, `OnMissing` is
+`ThrowError | Allow` for unresolved *names*; the PDD spike already extended it with
+a third case, `AllowPending` (defer a missing name as a pending placeholder) —
+which is exactly the move generalized here. Extend the same mechanism to *syntactic*
+failures: every unparseable region yields a placeholder; the run-time dispatch
+decides what to do when execution reaches it. `ThrowError` (today's strict behavior
+on `main`) keeps raising at parse-time for callers who want it.
 
 This means parse-time has essentially **one** conflict shape — "this region
 didn't fold" — and it is uniformly reduced to a run-time conflict. The timing
