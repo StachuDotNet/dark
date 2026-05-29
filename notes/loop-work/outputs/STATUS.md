@@ -2,6 +2,14 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 11 (adversarial deepening):** Not churn — found and resolved a genuine cross-doc design
+  tension. `conflicts.md`/`async.md` assert deterministic replay, but `event-bus.md` marks the
+  materialization bus non-durable and `algorithm.md` has forever-lazy (nondeterministic) LLM bodies.
+  Added a keystone section stating the reconciling rule — **an op records the result, not the intent
+  to call**; replay folds recorded values and never re-invokes producers; the lone exception (an
+  uncommitted forever-lazy body) IS the flagged trace-replay-divergence risk, mitigated by capturing
+  model output in the trace. Cross-linked the rule from event-bus's persistence note and algorithm's
+  forever-lazy section. This is the kind of real gap an adversarial read surfaces that link-checking can't.
 - **Pass 10 (iteration) — FULL-TREE REVIEW COMPLETE / saturation reached:** Read and verified the
   last unseen content (hot-reload, cohabitation, remote-access; agent-workflow; the meta-reflections
   detail; `_cross-cutting-test-criteria.md`; `benchmark-targets.md`). All excellent, consistent, and
