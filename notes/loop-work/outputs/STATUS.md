@@ -2,6 +2,13 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 29 (grounding verification, round 2 — found a real error):** Extended the main-citation
+  check to more docs. Accurate: RuntimeError variants (DivideByZeroError/PatternDoesNotMatch/
+  NonStringInInterpolation), `Previewable`/`ImpurePreviewable`, `package_ops`/`branch_ops`,
+  `growIfNeeded`, `pmSeedExport`, `Rebase.getConflicts`. **Caught one genuine error:** conflicts.md
+  cited `OnMissing.Strict`, but the real LibParser type is `ThrowError | Allow | AllowPending` — no
+  `Strict` variant. Fixed both references to `ThrowError`. This is exactly the over-claim the
+  grounding exercise exists to catch.
 - **Pass 28 (grounding verification — main citations):** Checked the design docs' load-bearing
   factual claims about main against the real repo (read-only). All verified accurate:
   `LibExecution/Stream.fs` is exactly 292 LoC with `DStream`/`StreamImpl` (event-bus.md); the
