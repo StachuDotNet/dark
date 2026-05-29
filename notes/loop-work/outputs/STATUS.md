@@ -2,6 +2,10 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 5 (iteration):** Verified `sync.md` thorough. Fixed a real cross-doc inconsistency:
+  `ai-coding-target.md` described the bench `spec.md` with stale `title/tier/modules/languages`
+  frontmatter — realigned to the `notes/projects/` shape (goal + acceptance-criteria +
+  greenfield/brownfield; modules/language dropped), and reframed size tiers as sweep bookkeeping.
 - **Pass 4 (iteration):** Verified `capabilities.md` (all 13 feedback bullets) and `identity.md`
   are thorough. Wrote `feedback-coverage.md` — a systematic map of every `source/feedback.md` point
   to its status + home. Net: all actionable points addressed; 2 genuinely blocked (HttpClient vault
