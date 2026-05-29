@@ -32,6 +32,7 @@ Legend: **[ok]** verified accurate · **[fixed]** was wrong, corrected in the do
 | telemetry `cli.total`, `commandExec`, `httpserver.*`, `seed.*` | ai-coding-target | all emitted |
 | `package-ref-hashes.txt` two-pass build (`PackageRefs.fs`, `PackageRefsGenerator.fs`) | ai-coding-target | file + generators present |
 | algorithm internals `EmptyBody`, `defaultFor`, `currentSink`/`EventSink` | algorithm | all present |
+| `Execution.execute` returns `Task<…>`; builtins run through `Ply<Dval>`/`DvalTask` (`BuiltInFnSig`) | async / event-bus | confirmed in `Execution.fs` + `RuntimeTypes.fs` — the kill-Task/Ply premise is accurate |
 | `DARK_ACCOUNT` env var is gone (feedback asked to confirm) | ai-coding-target | 0 occurrences in `backend/src` + `packages/darklang` — confirmed removed, no follow-up todo needed |
 
 ## Corrected (claim was wrong; fixed in the doc)
