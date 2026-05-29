@@ -2,6 +2,12 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 13 (adversarial deepening):** Stated the sync **convergence precondition**. Replay-
+  determinism (pass 11) covers an op's result, but two *instances* converge only if they fold with
+  the same `apply`/`conflict`/`resolve` — which are editable, forkable App logic. Added a keystone
+  section: since those functions are content-addressed package items in the op stream, same-logic =
+  same-hashes IS the convergence guarantee, and a forked resolver surfaces as an ordinary
+  `Name → two hashes` conflict on the App's own definition (deliberate, visible — never silent drift).
 - **Pass 12 (adversarial deepening):** Completed the storage model. The pass-7 two-store split
   (`ops.db` synced + `projections.db` derived) had no home for **local-authoritative state that is
   neither synced nor derivable** — capability grants, sync-remote config + tailnet binding, local-WIP.
