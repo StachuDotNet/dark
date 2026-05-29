@@ -2,6 +2,13 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 7 (iteration):** Deepened the keystone's ops-vs-projections storage split — the one
+  spot feedback.md explicitly said "please think on this." Replaced the "still open" note with a
+  concrete clean split: two SQLite files (`ops.db` synced/canonical vs `projections.db`
+  local/rebuildable, a *physical* boundary so derived data can't sync by accident); a projection
+  declares fold-kinds/scope/invalidation; the distribution race (name→two-hashes) reframed as a
+  non-problem (re-fold + conflict dispatch, never a distributed lock). Open part narrowed to
+  cache tuning. Verified `bootstrap.md` (section 3) thorough.
 - **Pass 6 (iteration):** PDD-name consistency + a stale-reference sweep the markdown
   link-checker had missed (backtick prose, not links). pdd.md title aligned to the canonical
   source spelling "Pseudocode-Driven Development" (flagged the possible "Prompt-Driven" rename
