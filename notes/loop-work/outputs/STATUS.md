@@ -2,6 +2,12 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 2 (iteration):** Cross-link audit — fixed the one broken link (composable-mvu -> hot-reload);
+  0 broken `.md` links tree-wide. Migrated `dark-virtual-files.md` into `design/` (state-as-filesystem;
+  ops-vs-projections framing; kept distinct from bootstrap). Deepened the keystone with the fuller `App`
+  field-set table (msg/cmd/autoResolutions/constraints placed at their proper layers) and the
+  hot-swappable / conflict-blind-core note. Workspace fully reorganized now (only READY-WORK + the
+  coworker's review-only async plan remain).
 - **Pass 1 (initial, long):** Built the whole structure and the bulk of the content in one
   extended session — `design/` (21 docs incl. the keystone distributed-event-sourcing,
   event-bus, sync, conflicts, async, capabilities, identity, bootstrap, cli-daemon,
