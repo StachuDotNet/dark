@@ -116,7 +116,7 @@ of quietly damaging an original.
 The new structure takes shape **inside `outputs/` first**; it's promoted into the real `notes/` tree
 only after Stachu reviews it. (Originals in `pdd-thinking/` and the vault stay untouched.)
 
-- [ ] Reorganize the copied docs in `outputs/` into the dirs below. Track + commit as you go (never push).
+- [x] Reorganize the copied docs in `outputs/` into the dirs below. Track + commit as you go (never push).
 - [x] `design/` — durable design docs.
 - [x] `projects/` — spec files: each a simple **goal line** + **acceptance-criteria list**, tagged
   greenfield/brownfield. No phases, no iteration logs, no cross-cutting test criteria.
@@ -362,7 +362,7 @@ These recur across many docs; settle each in **one** place, then reference it.
   vs TOC.md). **Don't keep a README at the end — or make it really thin.**
 
 ### 5i. READY-WORK.md
-- [ ] **Kill theme A** and **theme B** (reasons elsewhere). **Kill this doc**, and **fully rewrite it at
+- [x] **Kill theme A** and **theme B** (reasons elsewhere). **Kill this doc**, and **fully rewrite it at
   the very end** of the whole process as a thin **`next-steps.md`**.
 
 ### 5j. pdd-elevator-pitches.md (already renamed from `20-elevator-pitches.md`)
@@ -512,7 +512,7 @@ These recur across many docs; settle each in **one** place, then reference it.
 
 ## 10. Vault organization & cross-system hygiene
 
-- [ ] Decide what migrates from the repo into the Obsidian vault vs stays in-repo (default: in-repo
+- [x] Decide what migrates from the repo into the Obsidian vault vs stays in-repo (default: in-repo
   `notes/`, per the settled decision).
 - [ ] **Organize the recently-added vault material**, especially the **`90.Stachu/` folder** (messy:
   `even-newer/`, `newest/`, `latest/`, `may8/` — overlapping snapshots). Reconcile/archive superseded
@@ -538,17 +538,17 @@ deepening phase. Do **not** print and do **not** stop just because boxes are che
 After the first full sweep, each pass should pick the weakest/thinnest area and make it
 better. Rotate through:
 
-- [ ] **Re-review every doc against `source/feedback.md`** — the master spec. Verify each
+- [x] **Re-review every doc against `source/feedback.md`** — the master spec. Verify each
   bullet there is genuinely addressed; deepen anywhere that's thin. Re-read feedback.md
   every few passes.
-- [ ] **Tighten + de-duplicate** — hunt repeated content across `design/`; consolidate so
+- [x] **Tighten + de-duplicate** — hunt repeated content across `design/`; consolidate so
   little lives in more than one place. Fewer, smaller, tighter files.
-- [ ] **Cross-link cleanup** — fix any links pointing at old UPPERCASE names or dissolved
+- [x] **Cross-link cleanup** — fix any links pointing at old UPPERCASE names or dissolved
   files; make `design/` self-consistent.
-- [ ] **Deepen the keystone thinking** — the `App` type's full field set (msg/cmd as the
+- [x] **Deepen the keystone thinking** — the `App` type's full field set (msg/cmd as the
   MVU layer, autoResolutions, constraints, projections/DBs), hot-swappable op-playback,
   the ops-vs-projections storage split. Push these further each pass.
-- [ ] **Dissolve remaining un-todo'd source copies** — COHABITATION, HOT-RELOAD,
+- [x] **Dissolve remaining un-todo'd source copies** — COHABITATION, HOT-RELOAD,
   REMOTE-ACCESS, TOC, research/swamp-vs-dark, research/visibility-vs-dark have no explicit
   todo: decide per-doc to migrate-as-is into `design/` (tightened) or drop, and note why.
 

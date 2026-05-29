@@ -61,10 +61,11 @@ below is the prose/design content actually worth reviewing on paper (~40 files).
 41. `projects/README.md` (category index)
 42. `projects/_cross-cutting-test-criteria.md`
 
-## Pending — written last (section 5i)
+## Capstone
 
-- `next-steps.md` — the thin successor to READY-WORK, written at the very end of the
-  wave. **Must exist and be on this list before the final print.**
+- `next-steps.md` — the thin successor to READY-WORK (themes A/B killed, bootstrap
+  punted): the priority-ordered Stable & Syncing path to the north star. **Written;
+  on the list.** May get a light final refresh at print time if anything shifted.
 
 ## Print command (for the end)
 
