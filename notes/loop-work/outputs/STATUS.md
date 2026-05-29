@@ -2,6 +2,12 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 27 (genuine deepening — worked example):** Added `design/example-app.md`: a shared
+  key-value store App where `conflict`/`resolve`/`invariants` finally do real work — disjoint keys
+  commute (auto-merge), same-key clashes surface both sides as `.conflict.*` data (no blocking, no
+  loss), a hard no-empty-key invariant. Walks the convergence / real-clash / replay / forked-resolver
+  stories on a concrete App, filling the gap that the only prior example (the counter) was trivial on
+  exactly those members. Pointered from the keystone + indexed. (Passes 22-26 were holding watches.)
 - **Pass 21 (projects-index integrity — holding):** Cross-checked `projects/README.md` against the
   spec files: 125 on disk, 125 linked, **0 orphans, 0 dead entries** — the catalog index is complete
   and consistent. That was the last distinct integrity check outstanding. The deliverable is verified
