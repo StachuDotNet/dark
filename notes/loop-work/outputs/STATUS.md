@@ -2,6 +2,13 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 12 (adversarial deepening):** Completed the storage model. The pass-7 two-store split
+  (`ops.db` synced + `projections.db` derived) had no home for **local-authoritative state that is
+  neither synced nor derivable** — capability grants, sync-remote config + tailnet binding, local-WIP.
+  Added the third store (`local.db` / `.darklang` config) to the keystone, reframed the WIP
+  local-vs-sync open decision as concretely "which file," and reconciled it with capabilities.md
+  (grants don't sync), sync.md (.darklang config), and conflicts.md (WIP). Another real gap an
+  adversarial read surfaces.
 - **Pass 11 (adversarial deepening):** Not churn — found and resolved a genuine cross-doc design
   tension. `conflicts.md`/`async.md` assert deterministic replay, but `event-bus.md` marks the
   materialization bus non-durable and `algorithm.md` has forever-lazy (nondeterministic) LLM bodies.
