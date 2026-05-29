@@ -50,7 +50,7 @@ Legend: **[ok]** verified accurate · **[fixed]** was wrong, corrected in the do
 |---|---|---|
 | `view --with-trace` overlay flag | no `with-trace`/`--trace`/overlay found in the cli | ai-coding-target (flagged) |
 | `test.suite.*` telemetry stream | not found (other four event families confirmed) | ai-coding-target (flagged) |
-| `dark uncommit` / `dark revert` | appear only as prose mentions, not command literals — so proposing them as new is correct | editing-and-refactor (proposal stands) |
+| `dark uncommit` / `dark revert` | **confirmed absent** — `cli/scm/` has `commit`/`discard`/`rebase`/`merge`/`branch`/`log`/`status`/`showCommit`, no `uncommit`/`revert`. Proposing them as new is correct. | editing-and-refactor (proposal validated) |
 
 ## How to use this
 
