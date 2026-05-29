@@ -2,6 +2,11 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 37 (resolve a flagged grounding item):** Deeper check of the 3 ledger-flagged items —
+  confirmed `dark uncommit`/`revert` are genuinely absent (`cli/scm/` has commit/discard/rebase/merge/
+  branch/log/status/showCommit, no uncommit/revert), validating the editing-and-refactor proposal;
+  upgraded that ledger row to "confirmed absent." `view --with-trace` and `test.suite.*` stay correctly
+  flagged (the `test.*` strings are fixtures, not a telemetry stream). (Passes 33-36 were holding watches.)
 - **Pass 32 (grounding ledger + classic-dark precedent):** Verified the classic-dark precedent is
   *exact* — `EventQueueV2.fs` = 465 LoC, `QueueWorker.fs` = 381 LoC (event-bus.md's numbers), plus
   algorithm internals (`EmptyBody`/`defaultFor`/`currentSink`/`EventSink`) and `LocalExec/Migrations.fs`.
