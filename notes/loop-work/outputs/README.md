@@ -4,6 +4,17 @@ This is the cleaned, reorganized notes tree being built in the loop sandbox. Onc
 reviewed, it is promoted into the real repo `notes/` tree. The frozen "before"
 lives in `../source/`.
 
+## How to review this (read first)
+
+**This whole `outputs/` tree IS the deliverable** — "results of this overnight wave."
+Review it here, then copy/overwrite the files into their long-term locations once you're
+happy. `../source/` holds the frozen, untouched safety copies of every original — nothing
+is lost, so the docs here are edited fully freely.
+
+`outputs/results/` is a separate, nested dir holding the **PDD-specific bench results**
+(raw bench data + one report per sweep). The actual numbers are generated later; for now
+it carries the convention only.
+
 The north star this all serves: Stachu's `print-md` script lives in Dark, edits
 sync to his other machines, Ocean can fork it, and it shows up under `dark apps`.
 
