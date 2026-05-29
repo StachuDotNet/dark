@@ -134,17 +134,17 @@ plus *Later/Other*.
 
 These recur across many docs; settle each in **one** place, then reference it.
 
-- [ ] **Ops vs projections split.** Model + view are distributed, but *projections* of an update likely
+- [x] **Ops vs projections split.** Model + view are distributed, but *projections* of an update likely
   happen on specific instances. Need recovery for distribution races (e.g. branches across instances
   pointing a name to different hashes), resolved via the conflicts/resolutions system. The **core
   SQLite DB for sync** is probably separate from branch-/session-specific projections (package items,
   etc.). How to split this cleanly is open — think it through and write it down (home: the new design
   doc in section 8).
-- [ ] **Event-streaming as the sync substrate.** Pursue the layering where event-streaming *is* sync:
+- [x] **Event-streaming as the sync substrate.** Pursue the layering where event-streaming *is* sync:
   stream events, replay them, detect conflicts (maybe themselves streams), compose. Least total code.
   Once set, this is the path to removing `.dark` files.
 
-- [ ] **The one thin `App` type.** The sync primitive is a single, deliberately *low and thin* generic
+- [x] **The one thin `App` type.** The sync primitive is a single, deliberately *low and thin* generic
   shape — just enough to serve the core goals (replay, distribution, reconciliation), with everything
   richer built on top in Dark. It does **not** hold a *list* of ops; it declares the **op type** and how
   to **play an op back**. Think Elm/Elmish, but where the update unit (`'op`) is the thing that syncs and
@@ -196,21 +196,21 @@ These recur across many docs; settle each in **one** place, then reference it.
   (`conflict`/`resolve`) and `invariants` are the additions that make it work across instances. We
   rebuild the current CLI experience as one such App, and users build their own on top.
 
-  - [ ] Decide, during design, whether generic op-playback is **conflict-blind** (each projection owns
+  - [x] Decide, during design, whether generic op-playback is **conflict-blind** (each projection owns
     conflict handling) or the App carries `conflict`/`resolve` as above. Leaning toward carrying it for
     ergonomics; settle it when the first real App is built.
 
-- [ ] **Async / concurrency at the language level.** Open thread (touches EVENT-STREAMS, cli-daemon,
+- [x] **Async / concurrency at the language level.** Open thread (touches EVENT-STREAMS, cli-daemon,
   COMPOSABLE-MVU, beam-vs-dark, the coworker's async doc): **kill Task/Ply and roll our own async** so we
   can really control async behavior — park threads, manage nested processes, let Dark UXs inspect what's
   running via opt-in debug symbols. Write it up as one async doc (design **+** a concrete migration
   sketch; no heavy .NET reading for now). Don't scatter async decisions across docs.
-- [ ] **`ref` keyword + composable parser + `compile` builtin.** A `ref` keyword to get a reference to
+- [x] **`ref` keyword + composable parser + `compile` builtin.** A `ref` keyword to get a reference to
   e.g. a hash — probably just a global function like `print` that we teach the parser/name-resolver. A
   **composable parser written in Darklang**, compilable to tree-sitter or similar (a DSL of types/fns +
   Dark code that compiles down). Get **`compile` as a builtin asap.** Enabling primitives for the
   App/editor work — design inputs, not immediate builds.
-- [ ] **Crons / daemons as distributed apps.** Crons modeled as a distributed app we officially support,
+- [x] **Crons / daemons as distributed apps.** Crons modeled as a distributed app we officially support,
   as an extension of the default CLI. Daemons via something like `start()`. One projection is "the list
   of conflicts" (usually ignorable). Folds into the App-type thinking.
 
@@ -218,9 +218,9 @@ These recur across many docs; settle each in **one** place, then reference it.
 
 ## 3. Theme: Removing .dark files — **PUNT, and consolidate the blockers**
 
-- [ ] **Propagate the decision:** removing `.dark` files is **punted until after baseline sync +
+- [x] **Propagate the decision:** removing `.dark` files is **punted until after baseline sync +
   stability**. Not realistic short/medium term — F# and Dark code reference each other tightly/often.
-- [ ] **Consolidate all blockers in repo `BOOTSTRAP.md`** (package bootstrapping). *(Note:
+- [x] **Consolidate all blockers in repo `BOOTSTRAP.md`** (package bootstrapping). *(Note:
   `dark-virtual-files.md` is a different concept — Dark state projected *as* a filesystem; keep it
   separate.)* Enumerate the blockers explicitly:
   - Stable environment.
@@ -229,7 +229,7 @@ These recur across many docs; settle each in **one** place, then reference it.
     while still using a backed-up / dev-ready DB of old package code.
   - F#↔Dark mutual references when **lang/ops change**: how does local dev keep old stuff running while
     adding package + F# code back and forth, affecting only the local machine? What about **CI**?
-- [ ] **BOOTSTRAP.md edits:** lead with the hard part (F#→Dark→F# mutual reference under lang/ops change;
+- [x] **BOOTSTRAP.md edits:** lead with the hard part (F#→Dark→F# mutual reference under lang/ops change;
   local dev; CI). State plainly: **get sync working first, then worry about this; assume a central
   server.** Define or kill the unclear **T3/T4/etc.** tier labels.
 
@@ -239,14 +239,14 @@ These recur across many docs; settle each in **one** place, then reference it.
 
 ### 4a. EVENT-STREAMS-AND-PARKING.md (rename Stream → **EventBus**)
 *(Verified: "v0 design" blurb @L3; "third substrate piece" @L11; "Compared to the spike's EventSink" @L221; ~67 "stream" occurrences — the rename is a real sweep.)*
-- [ ] Remove the **v0 design** blurb and the **"the third substrate piece"** sentence.
-- [ ] Remove **all PDD mentions** — this doc is fully within the "syncing & stable" portion, *before* PDD.
-- [ ] **Rename `Stream` → `EventBus`** throughout; remove the **"compared to event sink"** section and the
+- [x] Remove the **v0 design** blurb and the **"the third substrate piece"** sentence.
+- [x] Remove **all PDD mentions** — this doc is fully within the "syncing & stable" portion, *before* PDD.
+- [x] **Rename `Stream` → `EventBus`** throughout; remove the **"compared to event sink"** section and the
   connections to other substrate sketches / main code.
-- [ ] **Iterate the implementation design:** does it fit cleanly into **LibExecution**, the **ProgramTypes**
+- [x] **Iterate the implementation design:** does it fit cleanly into **LibExecution**, the **ProgramTypes**
   vibe, and what the CLI wants to be? Make the **F#-side thin but tight and well-designed — "enough" but
   minimal**, with the rest in Dark.
-- [ ] Make the **sync/stability story explicit:** stream events, replay, detect conflicts as streams,
+- [x] Make the **sync/stability story explicit:** stream events, replay, detect conflicts as streams,
   compose → eventually remove `.dark` files (least total code). Think about whether async/concurrency
   must be solved at the core language level first (Ply replacement; section 2 async).
 
@@ -258,32 +258,32 @@ These recur across many docs; settle each in **one** place, then reference it.
 
 ### 4c. CONFLICTS-AND-RESOLUTIONS.md
 *(Verified: "SCM op-vs-op" is only a single example @L384 — needs expansion; "Parse-time errors" @L526; "Persistence — conflicts_v0 …" @L249 is the one to kill.)*
-- [ ] Expand **SCM op-vs-op** — the most important conflict category. Add the concrete conflicts possible
+- [x] Expand **SCM op-vs-op** — the most important conflict category. Add the concrete conflicts possible
   there + related thoughts.
-- [ ] Frame conflicts by the **states where evaluation happens**: parse-time, run-time, dev-time, at-rest
+- [x] Frame conflicts by the **states where evaluation happens**: parse-time, run-time, dev-time, at-rest
   (and maybe a **playback variant of run-time**). The hypothesis: **conflict *timings* are really the
   conflict *types*.**
-- [ ] **Don't get bogged down in SQL schemas.** Model conflicts in a **core, composable** way that works
+- [x] **Don't get bogged down in SQL schemas.** Model conflicts in a **core, composable** way that works
   for all kinds of Dark apps (sync, stability, AI-agent dev — separate *and* composable). **Kill the
   persistence section.** Reinforce: projection is separate from ops, composably.
 
 ### 4d. plan.md (the two vault snapshots)
 *(Checked both: same "Dark as the optimal AI coding target" doc at two times. `even-newer/` (May 5) is refined; `newest/` (May 3) is the fatter older basis.)*
-- [ ] Keep `even-newer/ai-devloop/plan.md` as **canonical**; mine `newest/` for anything unique, then
+- [x] Keep `even-newer/ai-devloop/plan.md` as **canonical**; mine `newest/` for anything unique, then
   archive/delete the older snapshot. Treat the canonical one as **~weeks outdated** — evaluate against
   current thinking. *(`DARK_ACCOUNT` confirmed gone from the repo — no follow-up.)*
-- [ ] **Remove sections:** key files; "schema facts worth remembering"; **step 0** of impl order; open
+- [x] **Remove sections:** key files; "schema facts worth remembering"; **step 0** of impl order; open
   questions; specific metrics shortlist; phasing; risks/failure modes; references.
-- [ ] **Adopt simple client/server** (server = always-on desktop on tailscale). **No env vars** — prefer
+- [x] **Adopt simple client/server** (server = always-on desktop on tailscale). **No env vars** — prefer
   config in the **CLI-adjacent `.darklang` dir** (sweep other docs for env-var assumptions too).
-- [ ] **Iterate + tighten the impl-order suggestions**, set the goal line to the north-star sync goal,
+- [x] **Iterate + tighten the impl-order suggestions**, set the goal line to the north-star sync goal,
   and keep the surviving text **well-represented somewhere**, then tighten.
 
 ### 4e. cli-daemon-mode.md
-- [ ] Re-think given recent ops / sync / projections / **async** developments (async especially).
-- [ ] Resolve: do we need a `.sock` / `.pid` / `.version` set **per session/branch** running? **per
+- [x] Re-think given recent ops / sync / projections / **async** developments (async especially).
+- [x] Resolve: do we need a `.sock` / `.pid` / `.version` set **per session/branch** running? **per
   background service**?
-- [ ] Reframe beyond perf: perf to CLI interactions is **one** benefit — think through the others. (The
+- [x] Reframe beyond perf: perf to CLI interactions is **one** benefit — think through the others. (The
   apps surface may depend on this work.)
 
 ---
@@ -371,9 +371,9 @@ These recur across many docs; settle each in **one** place, then reference it.
 
 ### 6a. CAPABILITIES.md
 *(~566 lines, very heavy. Has the "v0 design"/"fourth substrate piece" framing; "LLM-prompt side", "Sequencing", "What this unlocks", "Per-assembly default caps", "Schema", "Connection to Previewable" sections; two "Where checked" sections; already presupposes `--ask`/interactive grants.)*
-- [ ] Remove the **"v0 design" blurb** and **"fourth substrate piece"** framing (consistency with 4a).
-- [ ] **Pure fns are always allowed** (no cap needed).
-- [ ] **Iterate the `Capabilities` type** with real nuance:
+- [x] Remove the **"v0 design" blurb** and **"fourth substrate piece"** framing (consistency with 4a).
+- [x] **Pure fns are always allowed** (no cap needed).
+- [x] **Iterate the `Capabilities` type** with real nuance:
   - **HttpClient** — sophisticated (pull the specific restrictions from the vault notes — *location still
     to find*).
   - **HttpServer** — probably inspired by the HttpClient model.
@@ -382,37 +382,37 @@ These recur across many docs; settle each in **one** place, then reference it.
   - **Language** — pure/safe things need no perms; analyze how to reflectively eval, etc.
   - **Matter** — same shape as Language.
   - **Other CLI stuff** — same? needs more investigation.
-- [ ] **Re-design the implications to LibExecution top to bottom** after settling the nuance.
-- [ ] Question the model: is **`Set<Capability>`** right? Maybe builtins don't register publicly — they
+- [x] **Re-design the implications to LibExecution top to bottom** after settling the nuance.
+- [x] Question the model: is **`Set<Capability>`** right? Maybe builtins don't register publicly — they
   reach into `state.`. Maybe the **Interpreter checks nothing** and only the builtin does — or builtins
   register a **`checkCapabilities` function** (cacheable, but possible code/redundancy cost). **Think
   through both, then decide — leaning toward the registered `checkCapabilities` fn.**
-- [ ] **More nuance than `--ask`:** human interactions are async — may **timeout and fall back** to
+- [x] **More nuance than `--ask`:** human interactions are async — may **timeout and fall back** to
   non-human options. **For now: NO interactive grants** (they complicate things and make testing hard) —
   but **sketch the structure**. Maybe builtin grants are **instance-specific** for now.
-- [ ] Address **how frame-parking works** (ties to EVENT-STREAMS parking + section 2 async). Keep & build out
+- [x] Address **how frame-parking works** (ties to EVENT-STREAMS parking + section 2 async). Keep & build out
   **"user-defined fns"** (buildable quickly; part of ops-vs-projections).
-- [ ] **Remove sections:** "llm prompt-side"; "sequencing"; "what this unlocks"; the **schema** section
+- [x] **Remove sections:** "llm prompt-side"; "sequencing"; "what this unlocks"; the **schema** section
   (do schema after the design is nice); "connection to previewable". Replace the **per-assembly
   default-caps** table with a **more nuanced section**, written once.
-- [ ] Note the meta-connection: this may really be "distributed event sourcing + branched MVU" (section 2 / section 8).
+- [x] Note the meta-connection: this may really be "distributed event sourcing + branched MVU" (section 2 / section 8).
 
 ### 6b. IDENTITY.md
 *(~400 lines — full Delegation contracts, Agent types, SQL schemas, Phase-2a/2b plan, open decisions, a Cross-cutting section. Far heavier than "thin + directional".)*
-- [ ] **Thin it out hard, make it directional** — cut the delegation/schema/phasing bulk; keep the core
+- [x] **Thin it out hard, make it directional** — cut the delegation/schema/phasing bulk; keep the core
   model + the intent idea.
-- [ ] **Rename `IdentityKind` → `Identity`.** Account does **not** include identity as a field. Shape
+- [x] **Rename `IdentityKind` → `Identity`.** Account does **not** include identity as a field. Shape
   (note the recursive `owner`):
   ```fsharp
   type Identity =
     | Human of AccountID
     | Agent of id * owner: Identity
   ```
-- [ ] **Kill `TrustProfile`.** In the **account record**, drop: `kind`, `ownerID`, `trustProfile`,
+- [x] **Kill `TrustProfile`.** In the **account record**, drop: `kind`, `ownerID`, `trustProfile`,
   `archivedAt`.
-- [ ] Tracing cares about the **identity / source of *intent***; strip the rest. Model **Intent
+- [x] Tracing cares about the **identity / source of *intent***; strip the rest. Model **Intent
   (/reason/context) per Identity + (Dark) Instance.**
-- [ ] **Kill the "cross-cutting" section** and any phasing / larger-process framing — keep the document
+- [x] **Kill the "cross-cutting" section** and any phasing / larger-process framing — keep the document
   **pure**.
 
 ---
@@ -447,7 +447,7 @@ These recur across many docs; settle each in **one** place, then reference it.
   HTML too.**
 
 ### 8b. "Distributed event sourcing + branched MVU"
-- [ ] Home for the **App-type** thinking (section 2), the ops-vs-projections split, op-playback, and how
+- [x] Home for the **App-type** thinking (section 2), the ops-vs-projections split, op-playback, and how
   EVENT-STREAMS / CONFLICTS / COMPOSABLE-MVU / CAPABILITIES compose. Capture these raw ideas — don't lose
   them:
   - **"Simplify Darklang greatly."** For now support only: a **timestamped set of ops**, a **modeling of
@@ -470,7 +470,7 @@ These recur across many docs; settle each in **one** place, then reference it.
   - Respect special types: **runtime tests/constraints**, **at-rest constraints/tests** (cf. Scriptorium).
 
 ### 8c. Async design doc
-- [ ] One place for the Task/Ply-replacement: the consolidated design **and** a concrete migration
+- [x] One place for the Task/Ply-replacement: the consolidated design **and** a concrete migration
   sketch, thread parking, nested-process management, opt-in debug symbols. Informed by the coworker's
   async doc (8e/9e below). **No heavy .NET reading for now.** Don't scatter async decisions elsewhere.
 
