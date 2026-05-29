@@ -2,6 +2,12 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 6 (iteration):** PDD-name consistency + a stale-reference sweep the markdown
+  link-checker had missed (backtick prose, not links). pdd.md title aligned to the canonical
+  source spelling "Pseudocode-Driven Development" (flagged the possible "Prompt-Driven" rename
+  given the ask-for-software framing — your call); repointed `CLAIMS.md`/`FRONTIER.md`/`TOC.md`
+  and other UPPERCASE prose refs across pdd/claims/algorithm/view-sketches/beam-vs-dark to the
+  kebab design names. design/ now has 0 stale refs, 0 broken links, 0 section-signs.
 - **Pass 5 (iteration):** Verified `sync.md` thorough. Fixed a real cross-doc inconsistency:
   `ai-coding-target.md` described the bench `spec.md` with stale `title/tier/modules/languages`
   frontmatter — realigned to the `notes/projects/` shape (goal + acceptance-criteria +
