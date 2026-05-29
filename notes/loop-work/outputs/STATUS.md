@@ -2,6 +2,11 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 40 (duplicated-type consistency):** Diffed the type definitions that appear in more than
+  one doc. `View` already byte-identical (composable-mvu == structural-editor); the `App` type's
+  signatures matched but composable-mvu's inline comments were terser than the keystone canonical —
+  aligned them so the quoted block is byte-identical. example-app correctly *uses* `App` as a value
+  rather than redefining it. No type-definition drift remains. (Passes 38-39 were holding watches.)
 - **Pass 37 (resolve a flagged grounding item):** Deeper check of the 3 ledger-flagged items —
   confirmed `dark uncommit`/`revert` are genuinely absent (`cli/scm/` has commit/discard/rebase/merge/
   branch/log/status/showCommit, no uncommit/revert), validating the editing-and-refactor proposal;
