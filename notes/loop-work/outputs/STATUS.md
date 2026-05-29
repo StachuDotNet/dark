@@ -2,6 +2,10 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 53 (ground the async foundation):** Verified the premise async.md/event-bus.md rest on —
+  `BuiltInFn` runs through `Ply<Dval>`/`DvalTask` (`BuiltInFnSig`) and `Execution.execute` returns
+  `Task<ExecutionResult>`. The "kill Task/Ply" design is built on accurate facts. Recorded in the
+  ledger. (Passes 45-52 were holding watches.)
 - **Pass 44 (explicit feedback verification):** Feedback line 118 asked to *confirm* `DARK_ACCOUNT`
   is gone (and add a todo if not). Verified against the repo — 0 occurrences in `backend/src` +
   `packages/darklang`; confirmed removed, no todo needed. Recorded in the grounding ledger so the
