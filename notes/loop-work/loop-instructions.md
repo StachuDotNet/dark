@@ -117,8 +117,8 @@ The new structure takes shape **inside `outputs/` first**; it's promoted into th
 only after Stachu reviews it. (Originals in `pdd-thinking/` and the vault stay untouched.)
 
 - [ ] Reorganize the copied docs in `outputs/` into the dirs below. Track + commit as you go (never push).
-- [ ] `design/` — durable design docs.
-- [ ] `projects/` — spec files: each a simple **goal line** + **acceptance-criteria list**, tagged
+- [x] `design/` — durable design docs.
+- [x] `projects/` — spec files: each a simple **goal line** + **acceptance-criteria list**, tagged
   greenfield/brownfield. No phases, no iteration logs, no cross-cutting test criteria.
 - [ ] `results/` — **raw** bench data + per-sweep report summaries. One report per sweep (or a dir per
   sweep with a single final summary). **Never** keep the intermediary per-iteration summaries.
@@ -256,7 +256,7 @@ These recur across many docs; settle each in **one** place, then reference it.
 
 ### 4b. STABILITY-AND-SHARING.md (mostly dissolve)
 *(Verified: "Definitions (T7)/Stable" @L19-36; "Wire protocol (T8)" @L96 is the keeper; "SyncEvent" schema @L124 is droppable.)*
-- [ ] The "definitions > stable" idea was really about **PDD stability** — what the algorithm reaches for
+- [x] The "definitions > stable" idea was really about **PDD stability** — what the algorithm reaches for
   during iterative development. **Migrate that to the PDD/ALGORITHM side**, then **kill the rest of this
   file.** **Keep the wire-protocol section** somewhere (it was good); drop the **SYNCEVENT SCHEMA** section.
 
@@ -307,24 +307,24 @@ These recur across many docs; settle each in **one** place, then reference it.
 
 ### 5c. projects.md (vault `even-newer/ai-devloop/projects.md`)
 *(Verified: "Suggested first-pass ordering" @L482; "Sources" @L503; `modules:`/`languages:` fields; grouped by Phase 1/Phase 2; iteration tags throughout.)*
-- [ ] **Kill sections:** sources; suggested first-pass ordering. Move **cross-cutting test criteria**
+- [x] **Kill sections:** sources; suggested first-pass ordering. Move **cross-cutting test criteria**
   elsewhere (consolidated, not in a design file). **Remove all mentions of specific iterations** ("added
   iter 28"). **Group projects by category only**, not by phase.
-- [ ] **Format change:** remove `modules` and `language` fields; **add greenfield/brownfield** (most are
+- [x] **Format change:** remove `modules` and `language` fields; **add greenfield/brownfield** (most are
   greenfield). *(Emulating brownfield work well is unsolved and important, but don't worry about it much
   for now.)* Fold the projects into `notes/projects/`.
 
 ### 5d. ALGORITHM.md
 *(Self-labels INCOMPLETE; has a "Sig consensus" section with first-non-failure-wins + constraint-driven.)*
-- [ ] **"First non-failure wins" is too blunt** — nuance it beyond the two-mode sig-consensus (the
+- [x] **"First non-failure wins" is too blunt** — nuance it beyond the two-mode sig-consensus (the
   coordinator should weigh more than race-order).
-- [ ] Add: a fn **body itself** might be an **LLM wrapper**, an **LLM-agent wrapper**, or **text with an
+- [x] Add: a fn **body itself** might be an **LLM wrapper**, an **LLM-agent wrapper**, or **text with an
   expected type (dummy value)** — materialization doesn't always crystallize into Dark code; some bodies
   *stay* a delegated LLM/agent call ("forever lazy"; keep in sync with CLAIMS). More iterations — real rework.
-- [ ] Absorb the migrated "definitions > stable = PDD stability" thought from STABILITY-AND-SHARING (4b).
+- [x] Absorb the migrated "definitions > stable = PDD stability" thought from STABILITY-AND-SHARING (4b).
 
 ### 5e. CLI-PROJECT-SURVEY.md (vault `Current Experiment/project-survey.md`)
-- [ ] **Kill section 1 "what darklang gives you."** Fold **just the projects** into `notes/projects/`.
+- [x] **Kill section 1 "what darklang gives you."** Fold **just the projects** into `notes/projects/`.
   **No letters assigned to classes.** **Remove the suggested-ordering section.** Move the meta
   (cross-cutting test criteria) **out** of this design file.
 
@@ -345,19 +345,19 @@ These recur across many docs; settle each in **one** place, then reference it.
 
 ### 5g. CLAIMS.md
 *(5 claims + "AI is opt-in" + a 60s pitch; references a dead `ROADMAP.md`.)*
-- [ ] Extend **Claim 1 ("source often starts as lazy")**: some fns are **fully delegated to an LLM
+- [x] Extend **Claim 1 ("source often starts as lazy")**: some fns are **fully delegated to an LLM
   system** and so are **"forever lazy"** — the body never crystallizes into Dark code (pairs with
   ALGORITHM 5d).
-- [ ] In the **60s pitch**, change **"You write names and signatures" → "You ask for software"** (same as
+- [x] In the **60s pitch**, change **"You write names and signatures" → "You ask for software"** (same as
   the elevator pitches, 5j). Fix the dead `ROADMAP.md` reference.
 
 ### 5h. README.md (the PDD one)
 *(Big "Demos verified live" table full of timings; a thicket of `dark pdd …` refs; dead links.)*
-- [ ] Reframe: we **don't anticipate many PDD commands** — `dark prompt` just **starts a background agent
+- [x] Reframe: we **don't anticipate many PDD commands** — `dark prompt` just **starts a background agent
   that builds the thing**, and the **CLI enters a watching state** (with an option to run it in the
   background). *(The PDD command itself waits for real implementation — this branch is a spike. Don't
   over-build the command surface now.)*
-- [ ] **Kill the numbers** in the demo tables (keep at most a tiny qualitative example). Fix/remove dead
+- [x] **Kill the numbers** in the demo tables (keep at most a tiny qualitative example). Fix/remove dead
   links (`WRAP-UP.md`, `SYNC-AND-STABILITY.md`, `ROADMAP.md`) and the stale "How to enter" order (dedupe
   vs TOC.md). **Don't keep a README at the end — or make it really thin.**
 
@@ -366,7 +366,7 @@ These recur across many docs; settle each in **one** place, then reference it.
   the very end** of the whole process as a thin **`next-steps.md`**.
 
 ### 5j. pdd-elevator-pitches.md (already renamed from `20-elevator-pitches.md`)
-- [ ] Change **"You write names + signatures" → "You ask for software"** and adjust the pitch. General
+- [x] Change **"You write names + signatures" → "You ask for software"** and adjust the pitch. General
   update — it's a bit outdated; fold in other feedback + your own thoughts.
 
 ---
