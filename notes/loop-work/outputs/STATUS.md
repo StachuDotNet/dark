@@ -2,6 +2,11 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 4 (iteration):** Verified `capabilities.md` (all 13 feedback bullets) and `identity.md`
+  are thorough. Wrote `feedback-coverage.md` — a systematic map of every `source/feedback.md` point
+  to its status + home. Net: all actionable points addressed; 2 genuinely blocked (HttpClient vault
+  restriction notes, `feedback-from-agent.md` — neither locatable), vault-reorg is off-limits
+  (recommendation written), final print held for section 11.
 - **Pass 3 (iteration):** Critical re-review of the Stable & Syncing cluster against feedback.md —
   event-bus and conflicts verified thorough and fully addressing their feedback; project specs
   spot-checked (clean, concrete acceptance criteria). Filled the one real north-star GAP: wrote
