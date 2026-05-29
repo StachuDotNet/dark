@@ -531,14 +531,16 @@ When it's time to execute (the long process), point a fresh session's loop at th
 
 ```
 /loop 5m Execute the open todos in this plan (notes/loop-work/loop-instructions.md). SANDBOX RULES:
-edit ONLY files under notes/loop-work/outputs/; read notes/loop-work/source/ as frozen reference
-(never edit it); NEVER touch the real pdd-thinking/ or the Obsidian vault. Work top priority first:
-Stable & Syncing, then the Removing-.dark blockers, then the rest. In outputs/, build the new notes
-structure (design/, projects/, results/, issues-and-improvements/, meta-reflections/) — create,
-rename, dissolve, rewrite as each todo says — and check items off here as you complete them. Do a
-LARGE batch each pass: keep working through todos until you hit a natural stopping point, then commit
-locally (never push) and leave a one-line status. When a doc is meaningfully created or revised,
-print-md it (from outputs/). Surface blockers. Stop when the priority todos are done or blocked.
+edit ONLY files under notes/loop-work/outputs/ (plus this loop-instructions.md, for check-offs and
+status); read notes/loop-work/source/ as frozen reference (never edit it); NEVER touch the real
+pdd-thinking/ or the Obsidian vault. Work top priority first (Stable & Syncing, then the Removing-.dark
+blockers), then continue through ALL remaining todos. In outputs/, build the new notes structure
+(design/, projects/, results/, issues-and-improvements/, meta-reflections/) — create, rename, dissolve,
+rewrite as each todo says — and check items off here as you complete them. Do a LARGE batch each pass:
+keep working until a natural stopping point, then commit locally (never push) and leave a one-line
+status. When a doc is meaningfully created or revised, print-md it (from outputs/). Prioritize
+thoroughness and correctness over speed — do NOT cut any corners to save time; it is fine for this to
+run into tomorrow. Surface blockers. Only stop when every todo is done or genuinely blocked.
 Rules: never use the section-sign symbol in prose (write "section N"); never git stash or reset --hard.
 ```
 
