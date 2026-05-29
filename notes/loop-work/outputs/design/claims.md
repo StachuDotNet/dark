@@ -45,8 +45,8 @@ end; the user iterates on what was substituted. NaN-propagation for
 "made-up values."
 
 But tolerance is intentional, not blind. A robust conflicts +
-resolutions system (which we still need to design properly — see
-`FRONTIER.md`) decides per-call whether to: substitute a default,
+resolutions system (see [conflicts.md](conflicts.md)) decides
+per-call whether to: substitute a default,
 park and wait, ask a human, or fail loudly. Loose-mode-by-default
 hides bugs; the policy must be deliberate.
 
@@ -68,7 +68,8 @@ agent's collaborator for:
 Crucially, humans are *async* on a different cadence than other
 materializers. The same parking mechanism that waits for an LLM
 call must wait for a human review — but with different SLAs.
-`FRONTIER.md` has more on what this implies for the eval scheduler.
+See [event-bus.md](event-bus.md) and [async.md](async.md) for what
+this implies for the eval scheduler.
 
 ---
 

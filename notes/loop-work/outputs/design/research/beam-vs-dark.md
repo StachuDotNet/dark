@@ -60,7 +60,7 @@ How it relates to the **event-bus + parking** model we're leaning toward:
 
 - **Mailbox = addressed/point-to-point; bus = published/broadcast.** A mailbox targets one recipient (`appId`); the event-bus publishes to a stream many subscribers can read. Our `Bus.send appId msg` is already mailbox-shaped; `Bus.publish stream event` is the broadcast complement. The two aren't rivals so much as the addressed and broadcast ends of one routing substrate.
 - **Parking ≈ selective receive.** Erlang's `receive` can match on message shape and leave others in the mailbox; our parking holds a frame until an awaited event arrives. Parking is selective-receive expressed over durable events rather than transient messages — which is the key difference: **our messages are durable, content-addressed ops/events, not transient mailbox sends.** A parked frame survives disconnect; a message sitting in a dead process's mailbox does not.
-- **Location-transparency is the shared win.** If the substrate routes by `appId`, a remote `appId` is the same code path as local — exactly BEAM's superpower, and exactly what the wire protocol wants (see `STABILITY-AND-SHARING.md`).
+- **Location-transparency is the shared win.** If the substrate routes by `appId`, a remote `appId` is the same code path as local — exactly BEAM's superpower, and exactly what the wire protocol wants (see [sync.md](../sync.md)).
 
 Where the analogy stops: we are deliberately **not** adopting Ply or a generic async/await for the wait. Dark uses its **own async/parking** so that a suspended computation is a first-class, inspectable, syncable thing — a parked frame in the substrate, not an opaque continuation on a thread. F#'s `MailboxProcessor` is a fine *implementation* primitive for the F# layer's per-app Msg queue, but the *semantics* we expose to Dark are bus + parking, not raw mailboxes. The lesson to steal is the **discipline**: make message-passing the only cross-app channel — no direct calls between apps, no reference-equality on another app's Model — so location-transparency stays cheap.
 
@@ -78,7 +78,7 @@ This is exactly the BEAM/OTP playbook: ~100K lines of C under ~500K lines of Erl
 The F# layer should do only:
 
 1. **Op application + persistence** — validate, apply to SQLite, fire `BodyChanged`.
-2. **Event dispatch + bus routing** — subscribers, batches, transaction-end markers (see `EVENT-STREAMS-AND-PARKING.md`).
+2. **Event dispatch + bus routing** — subscribers, batches, transaction-end markers (see [event-bus.md](../event-bus.md)).
 3. **The MVU loop + async/parking** — drain a Msg queue, call `onMsg`, apply effects, park/resume frames, render deltas. (`MailboxProcessor` is a reasonable host for the per-app queue.)
 4. **Effects executor** — a small routed set: `PublishToBus` / `SubscribeTo` / `SaveState` / `Spawn` / `Exec` (cap-gated).
 5. **Capability check** — set-difference at the call site; denials through conflict dispatch.
@@ -104,4 +104,4 @@ BEAM solves runtime mutation per node and message-passing between nodes — not 
 - https://blog.appsignal.com/2021/09/14/application-code-upgrades-in-elixir.html
 - https://elixirschool.com/en/lessons/advanced/otp_distribution
 - F# `MailboxProcessor` (FSharp.Control)
-- `HOT-RELOAD.md`, `COMPOSABLE-MVU.md`, `STABILITY-AND-SHARING.md`, `IDENTITY.md`, `EVENT-STREAMS-AND-PARKING.md`
+- [hot-reload.md](../hot-reload.md), [composable-mvu.md](../composable-mvu.md), [sync.md](../sync.md), [identity.md](../identity.md), [event-bus.md](../event-bus.md)

@@ -4,7 +4,7 @@
 > we're really building is a *recursive coding agent* on top of
 > Darklang's strengths — types, package store, traces, capabilities,
 > SCM. Find and Generate are two strategies among many we'll need.
-> Think ground-up. See `FRONTIER.md` for the broader strategy space.
+> Think ground-up.
 
 ## In one paragraph
 
@@ -73,7 +73,7 @@ can't be statically read or diffed, and tightening it means more
 iterations and real rework rather than a one-time crystallization.
 Plan for that rework; it's not a transient.
 
-(This mirrors `CLAIMS.md` Claim 1, "the source often starts as
+(This mirrors [claims.md](claims.md) Claim 1, "the source often starts as
 lazy": lazy is not merely an early phase that always burns off — for
 wrapper bodies it's the resting state. Keep the two in sync.)
 
@@ -165,8 +165,8 @@ The wait/wake protocol wants to be a low-level Darklang concept —
 ideally event streams or event graphs with waiters — so the same
 machinery serves the materializer, the SCM sync, the human-async
 flow, and (eventually) other agentic operations. The current F#
-`EventSink` is a simpler shape; `FRONTIER.md` sketches what it
-should become.
+`EventSink` is a simpler shape; [event-bus.md](event-bus.md) sketches
+what it should become.
 
 ## Conflicts and resolutions
 
@@ -181,7 +181,7 @@ behaviour is mostly "fail." We need a richer system that can:
 - Fail loudly with a typed error
 
 This conflicts + resolutions system should be a base concept inside
-LibExecution, used by both PDD and SCM ops. `FRONTIER.md` has more.
+LibExecution, used by both PDD and SCM ops. See [conflicts.md](conflicts.md).
 
 ## What's recursive
 

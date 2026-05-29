@@ -5,9 +5,9 @@ High-level visual brief for the recursive-live-development viewer.
 shape; whoever builds the viewer takes these as inputs, not
 specifications.
 
-The viewer is one MVU app (see `COMPOSABLE-MVU.md`) subscribed to
-the event bus (see `EVENT-STREAMS-AND-PARKING.md`), surfacing the
-in-focus fn as it gets shaped.
+The viewer is one MVU app (see [composable-mvu.md](composable-mvu.md))
+subscribed to the event bus (see [event-bus.md](event-bus.md)),
+surfacing the in-focus fn as it gets shaped.
 
 ## Layout principle
 
@@ -283,7 +283,7 @@ shared).
 - **Not a SCM tool.** SCM ops surface here, but the main SCM UI
   is its own app (using the same composable-MVU substrate).
 - **Not a deployment surface.** No deploy buttons; PDD work
-  becomes shareable through sync (`SYNC-AND-STABILITY.md`), not
+  becomes shareable through sync ([sync.md](sync.md)), not
   deploy.
 
 It's purposefully focused: **the in-progress fn + everything you
@@ -298,11 +298,11 @@ need to steer it**.
   difference.
 - State: lives in the Model of one MVU app. Survives hot-reload.
 - Events come from the bus (B4).
-- Polymorphic views (per `COMPOSABLE-MVU.md`) mean a Pending
-  renders one way, a fn body another, a trace another — all
+- Polymorphic views (per [composable-mvu.md](composable-mvu.md)) mean
+  a Pending renders one way, a fn body another, a trace another — all
   out of the box, customizable per user.
 - The whole thing should be Dark code on top of the substrate
-  (`FRONTIER.md` framing).
+  (see the keystone [distributed-event-sourcing.md](distributed-event-sourcing.md)).
 
 ## Aspirational closing
 
@@ -445,7 +445,7 @@ different values.
 
 ## "List of conflicts" as a standard view
 
-Conflicts (see `CONFLICTS-AND-RESOLUTIONS.md`) are not a modal
+Conflicts (see [conflicts.md](conflicts.md)) are not a modal
 interruption — they are a projection of state, so they get a
 standard view like anything else. The set of unresolved conflicts
 is `fold(ops) |> filter unresolved`; render that list.

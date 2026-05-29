@@ -1,6 +1,8 @@
-# PDD (prompt-driven development)
+# PDD (Pseudocode-Driven Development)
 
 > An experimental fork of Darklang where the interpreter materializes its own source code on demand via LLM, in parallel, speculatively, with traces as the durable artifact.
+
+> **Naming flag (for Stachu):** the canonical expansion is *Pseudocode-Driven Development*, but the current framing — "you ask for software," `dark prompt` starting a background agent — points more at *Prompt-Driven Development*. Kept canonical here; rename deliberately if the prompt-driven framing wins.
 
 **Branch:** `pdd` (local-only, off `main`, never pushed).
 
@@ -13,7 +15,7 @@ $ dark prompt "compute doubleIt of 4"
 DInt64 8L
 ```
 
-It works end-to-end today on real cases — recursion, list transforms, even a CSV column demo — and there are known gaps (LLM-natural FP idioms with tuples and non-existent Stdlib names still trip the parser). See `CLAIMS.md` for the reframed core claims and `FRONTIER.md` for where the F# substrate should grow.
+It works end-to-end today on real cases — recursion, list transforms, even a CSV column demo — and there are known gaps (LLM-natural FP idioms with tuples and non-existent Stdlib names still trip the parser). See [claims.md](claims.md) for the reframed core claims; where the thin F# substrate should grow is covered across the design docs — [event-bus.md](event-bus.md), [conflicts.md](conflicts.md), and the keystone [distributed-event-sourcing.md](distributed-event-sourcing.md).
 
 ## Where it stands
 
@@ -21,4 +23,4 @@ This is a spike, currently resting. We do **not** anticipate a wide surface of P
 
 ## Reading order
 
-See `TOC.md` for the full design loop. `git log pdd ^main` is the source of truth for the actual diff.
+See [README.md](README.md) for the design index. `git log pdd ^main` is the source of truth for the actual diff.
