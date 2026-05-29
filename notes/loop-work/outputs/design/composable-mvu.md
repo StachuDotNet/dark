@@ -200,7 +200,7 @@ dict. The right version is the PDD viewer expressed as a facet of the composed
 
 The viewer subscribes to streams via effects; ops flow in; `apply` folds; `views`
 re-renders. Hot-reloadable (swap `views` or the translator, keep the op stream;
-see [HOT-RELOAD.md](../pdd-thinking/HOT-RELOAD.md)). Replayable (re-fold the op
+see [hot-reload.md](hot-reload.md)). Replayable (re-fold the op
 stream). The viewer is a Dark `App`, not F# code.
 
 ## Replay, traces, and time-travel — all one fold

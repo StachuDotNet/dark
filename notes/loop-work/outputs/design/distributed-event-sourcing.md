@@ -94,6 +94,33 @@ Leaning toward carrying it — it is more ergonomic and keeps reconciliation nex
 to the op definition that needs it. Settle this when the first real App is built;
 the counter above assumes carrying.
 
+There is a real pull the other way, worth stating: **op-playback itself should be
+hot-swappable, and the generic playback engine arguably shouldn't have to think
+about conflicts at all** — each *projection* deals with the conflicts it cares
+about. That argues for a conflict-blind core with `conflict`/`resolve` living on
+the projection rather than the App. The counter keeps them on the App for
+ergonomics; a projection-heavy App (say, the package manager) might push them down.
+This is the same tension, seen from the playback side.
+
+### The fuller field set (and where each piece lives)
+
+Earlier sketches of `App` carried more fields — `msg`, `cmd`, `autoResolutions`,
+`constraints`, explicit `projections`/`DBs`. They are not dropped; they are *placed*:
+
+| Sketch field | Where it lives in the thin model |
+|---|---|
+| `data` / `state` | `'state` — the fold target |
+| `ops` | `'op` — the op type; the stream is external (synced), not a field |
+| `msg`, `cmd` | the MVU layer *on top* (see [composable-mvu.md](composable-mvu.md)); UI intent → ops, effects via [capabilities](capabilities.md) — kept out of the thin core |
+| `conflicts` | `conflict` (or pushed to the projection, per above) |
+| `resolutions` + `autoResolutions` | `resolve` — auto-resolution is just the subset of `resolve` that needs no human; "most conflicts are OK" makes this the common path |
+| `views` | `views` — projections to render |
+| `projections`, `DBs` | the storage split below — regenerable projection caches, not core fields |
+| `constraints` | `invariants` — runtime + at-rest constraints |
+
+The thin core stays `name/empty/apply/conflict/resolve/views/invariants`; the
+richer vocabulary is these same ideas at their proper layer.
+
 ## Ops vs. projections — the split that has to stay clean
 
 Model and view are distributed, but a **projection of an update very likely

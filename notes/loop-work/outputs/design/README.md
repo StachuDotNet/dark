@@ -37,6 +37,7 @@ The keystone is [distributed-event-sourcing.md](distributed-event-sourcing.md) �
 - [composable-mvu.md](composable-mvu.md) — MVU on top of the `App` type
 - [view-sketches.md](view-sketches.md) — the fn viewer, extended
 - [structural-editor.md](structural-editor.md) — projectional ProgramTypes editor
+- [dark-virtual-files.md](dark-virtual-files.md) — Dark state projected as a filesystem (distinct from removing `.dark` files)
 
 ## Research / comparisons
 
