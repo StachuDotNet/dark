@@ -2,6 +2,11 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 3 (iteration):** Critical re-review of the Stable & Syncing cluster against feedback.md —
+  event-bus and conflicts verified thorough and fully addressing their feedback; project specs
+  spot-checked (clean, concrete acceptance criteria). Filled the one real north-star GAP: wrote
+  `design/apps-surface.md` (the `dark apps` install/fork/run surface, anchored on the print-md
+  walkthrough end-to-end), cross-linked from the keystone, cli-daemon, and the design index. 0 broken links.
 - **Pass 2 (iteration):** Cross-link audit — fixed the one broken link (composable-mvu -> hot-reload);
   0 broken `.md` links tree-wide. Migrated `dark-virtual-files.md` into `design/` (state-as-filesystem;
   ops-vs-projections framing; kept distinct from bootstrap). Deepened the keystone with the fuller `App`
