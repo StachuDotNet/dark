@@ -8,7 +8,9 @@ Discovery is the first friction every agent loop hits. If the agent can't find w
 
 **Issue**: agents start cold. Every session begins with three-to-five orientation calls — `dark tree`, `dark status`, `docs for-ai` — before any task work.
 
-**Candidate fix**: Dark ships a `CLAUDE.md` (with an `AGENTS.md` alias) template at any Dark project root, picked up automatically. It carries a one-line workflow reminder (`fn → run → commit`), a freshly-rendered `dark tree` snapshot, the current branch from `dark status`, and a pointer to `docs for-ai` for deep dives. A `dark commit` hook rewrites the snapshot section. The win: the agent's first tool call shifts from "orient" to "task," and tokens-to-first-fn drops on the trivial tier.
+**Candidate fix**: Dark ships a deliberately **thin**, auto-generated `CLAUDE.md` (with an `AGENTS.md` alias) at any Dark project root, picked up automatically. It carries only a one-line workflow reminder (`fn → run → commit`), a freshly-rendered `dark tree` snapshot, the current branch from `dark status`, and a pointer to `docs for-ai`. A `dark commit` hook rewrites the snapshot section.
+
+**Reconciliation (important):** this is *not* the "big CLAUDE.md" the master feedback rejects — Stachu's stance is "make `for-ai` much more helpful," not "hand-maintain a fat instruction file." The two are complementary: the thin shim exists *only* to solve auto-pickup (agents read `CLAUDE.md`/`AGENTS.md` automatically, whereas `for-ai` is a command they must know to call), and it immediately defers to the **composed, expanding `dark docs for-ai`** doc (see [agent-workflow.md](agent-workflow.md)) for all real content. The shim points; `for-ai` carries the substance. The win: the agent's first tool call shifts from "orient" to "task," and tokens-to-first-fn drops on the trivial tier.
 
 ## `dark search` ranking + structured output
 
