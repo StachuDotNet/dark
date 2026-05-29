@@ -2,6 +2,12 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 18 (final verification — holding):** Full-tree link sweep clean (0 broken md/png links,
+  incl. after the READY-WORK/DAG-assets deletion); all 11 `next-steps.md` design links resolve; a
+  7-spec sample across `projects/` categories conforms to the goal+kind+acceptance format.
+  **The deliverable is verifiably complete and clean end to end.** Nothing substantive remains but
+  the 08:00 print. Entering a true holding pattern: future passes will not manufacture edits to
+  already-good docs (per this tree's own "throughput is not progress" caution); they verify and wait.
 - **Pass 17 (capstone — 5i done):** Wrote `next-steps.md` — the thin, priority-ordered Stable &
   Syncing path to the north star (Tailscale ping/pong → conflict-dispatch skeleton → event-bus core
   → sync read/write → identity → autosync → print-md as an App), with bootstrap punted and PDD
