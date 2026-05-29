@@ -2,6 +2,12 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 15 (adversarial deepening):** Reconciled an intra-doc mismatch in `capabilities.md`: it
+  decided the representation is a `checkCapabilities` *function* (no `Set`), but `effectiveCaps`
+  unioned an undefined static `.requirement`. Resolved: a `BuiltInFn` declares **both** a static
+  `caps : Set<CapCategory>` (coarse, inspectable — what effective-caps/prompt-filtering union) and
+  the dynamic `checkCapabilities` (arg-specific gate decision); the static set is a sound
+  over-approximation. Fixed the `effectiveCaps` code and added the reconciling paragraph.
 - **Pass 14 (adversarial deepening):** Wired `App.invariants` into the conflict model. The member
   returned `List<Violation>` but nothing said what the runtime does with one, and `conflicts.md`'s
   `Conflict` type had no constraint-violation kind. Now: violations fold into the same conflict model
