@@ -2,6 +2,14 @@
 
 One-line-per-pass status of the overnight refactor. Newest at top.
 
+- **Pass 28 (grounding verification — main citations):** Checked the design docs' load-bearing
+  factual claims about main against the real repo (read-only). All verified accurate:
+  `LibExecution/Stream.fs` is exactly 292 LoC with `DStream`/`StreamImpl` (event-bus.md); the
+  "9-assembly Builtin split" is exactly right — 9 `.fsproj`s named `Builtins.{Pure, Http.Client,
+  Http.Server, Random, Time, Cli, CliHost, Language, Matter}` (capabilities.md); `packages/darklang/cli`
+  has `SubApp` (composable-mvu.md); `schema.sql` + `LoadPackagesFromDisk` exist (bootstrap.md). The
+  scaffold's claims are grounded, not over-claims — closes the meta-reflection "over-claiming
+  propagates until checked" risk by actually checking. No doc edit needed.
 - **Pass 27 (genuine deepening — worked example):** Added `design/example-app.md`: a shared
   key-value store App where `conflict`/`resolve`/`invariants` finally do real work — disjoint keys
   commute (auto-merge), same-key clashes surface both sides as `.conflict.*` data (no blocking, no
