@@ -199,8 +199,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 - [ ] **`remote-access.md`:** rename → `remote-access-and-control.md`; migrate the core
   Tailscale bits into the pre-S&S Tailscale doc; migrate the *rest* (remote control) →
   `later/`.
-- [ ] **`package-system-layers.md`:** fold its ideas *wholly* into other docs; retire
-  the file.
 - [ ] **Thread the DB model consistently through all docs.** The canonical model now lives
   in `distributed-event-sourcing.md` (Storage section): `core.db` (ops + sync coord) ·
   `apps/<app>.db` (per-app, GC'd) · `branches/<branch>.db` (projection cache, DROP-able) ·

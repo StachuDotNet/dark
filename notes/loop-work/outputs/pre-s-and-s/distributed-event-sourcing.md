@@ -68,6 +68,11 @@ invariant), see [example-app.md](example-app.md).
 - `views` are projections for the CLI/UI; `invariants` are runtime/at-rest constraints.
 - A msg/cmd UI loop (the Elmish part) is a *layer on top* — UI intent → ops — kept out of the
   thin core ([composable-mvu.md](composable-mvu.md)).
+- **Ops flow through instances that don't run the consumer.** An instance relays and stores
+  ops for Apps/extensions it isn't itself running — they sit in its stream as inert,
+  well-formed data. Participation is a *local* choice about which projections you materialize,
+  **not** a gate on which ops cross your boundary. So an extension adopted later still sees the
+  complete history, and a fleet adopts incrementally with no lockstep upgrade.
 
 ### Versus Elmish
 
@@ -248,6 +253,40 @@ Dark-written parser, `compile` as a builtin).
 The higher layers — sync (move the op stream between instances), the conflict-resolution
 dispatch (by evaluation-time), bootstrap, the view engine, the live/forkable app story —
 build on this keystone and are specified in their own (higher-bucket) docs.
+
+## Worked lens: the package system is just Apps over the op stream
+
+The package system is not special — it's the clearest worked example of the four primitives.
+There is no "stack of layers." Every annotation is an **op kind**; every catalog view is a
+**projection**; a coherent bundle of the two is an **App**.
+
+| Package concern | Ops appended | Projections folded out |
+|---|---|---|
+| body / definition | `AddFunction/Type/Value` | content-addressed store; the dependency graph |
+| names | `SetName loc hash`, `Unbind` | name→hash resolution per branch |
+| deprecation / harmful / stability | `Deprecate`, `Flag reason`, `SetStability` | latest-wins flagged set + a bus event on flag |
+| descriptions | `SetDescription item path text` | rendered docs; a search index |
+| tests / samples | `DeclareTest`, `DeclareSample` | reverse indexes ("what tests X?") |
+| comments | `Comment`, `Reply`, `Resolve` | threaded tree per item |
+
+Three consequences worth stating:
+
+- **No shared table shape.** Deprecation wants latest-wins; comments want an append-only
+  tree; dependencies want a doubly-indexed edge set. These aren't variations on one schema —
+  they're different structures folding the same stream. A consumer reading several depends on
+  all their shapes, openly; there's no `annotation_blob` to hide the coupling. **Dependencies
+  are just one projection** (folded from bodies), not a foundational tier.
+- **Runtime checks are subscribers, not core toggles.** `main` today bakes "harmful" into the
+  core: `ExecutionState.allowHarmful : bool` + `fns.isHarmful` plumbing (RuntimeTypes.fs). The
+  reframe: "harmful" is a `Flag` op stream; "refuse to invoke flagged code" is one Dark
+  **subscriber** on the bus ([event-bus.md](event-bus.md)) that parks/refuses — and a runtime
+  that doesn't care never subscribes. No core flag, no bespoke `PackageManager` query. Same
+  machinery serves deprecation/stability warnings. (This is the path off `allowHarmful`.)
+- **Declared vs inferred is two op sources, not two tiers.** An author's `DeclareEffects` and a
+  background analysis stream feed two projections a consumer may read together; when they
+  disagree, the disagreement is itself a projection — a conflict surfaced as data. Inferred
+  facts carry `computed_at`/staleness because they fold a high-churn source; declared facts
+  don't.
 
 The meta-claim, held loosely but tested hard: capabilities, conflicts, event streams, and MVU
 aren't four systems — they're one distributed event-sourced, branched-MVU system seen from

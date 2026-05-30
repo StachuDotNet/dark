@@ -116,8 +116,8 @@ and are not expected to converge until one re-points to a shared hash.
 ## Why this is the shape every App takes
 
 Nothing here is kv-specific machinery. Swap `KvOp`/`Kv` for `PackageOp`/the package
-tree and you have the SCM; swap for `EditOp`/an AST and you have the
-[structural editor](../later/structural-editor.md); swap for the CLI's own ops and you have the
+tree and you have the SCM; swap for `EditOp`/an AST and you have a structural
+editor; swap for the CLI's own ops and you have the
 [apps surface](apps-surface.md). The members are always the same seven, and the
 substrate (sync, conflict dispatch, replay, the event bus) treats every App
 identically. The counter shows the *minimum*; this shows the members earning their
