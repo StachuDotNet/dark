@@ -199,12 +199,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 - [ ] **`remote-access.md`:** rename → `remote-access-and-control.md`; migrate the core
   Tailscale bits into the pre-S&S Tailscale doc; migrate the *rest* (remote control) →
   `later/`.
-- [ ] **Thread the DB model consistently through all docs.** The canonical model now lives
-  in `distributed-event-sourcing.md` (Storage section): `core.db` (ops + sync coord) ·
-  `apps/<app>.db` (per-app, GC'd) · `branches/<branch>.db` (projection cache, DROP-able) ·
-  `settings` (serialized Dark-value blob, not SQL). Already reflected in cli-daemon.md.
-  Sweep sync.md, bootstrap.md, conflicts and others to match (and stop referencing the old
-  `ops.db`/`projections.db`/`local.db` three-store names).
 - [ ] **Integrate the emailed thoughts** (below) into the right pre-S&S/architecture
   docs; flag anything not represented.
 
@@ -233,11 +227,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 
 ## 2. S&S
 
-- [ ] **`identity.md`:** probably **punt to later** (likely not needed for S&S yet).
-  Keep only what's needed to sync safely between Stachu + coworkers. `Intent` should be
-  a reasonably **structured** thing, known in **PT** in a nice, stable way.
-- [ ] **`bootstrap.md`:** think for a while — once S&S is done, what are the steps here?
-  We can't *start* yet, but start thinking.
 
 ## 3. good-for-ai-agents (the tool; base for PDD)
 

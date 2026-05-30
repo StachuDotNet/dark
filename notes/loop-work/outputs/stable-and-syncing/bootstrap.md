@@ -87,6 +87,31 @@ See `sync.md` — sync is the prerequisite, not a parallel track.
 
 ---
 
+## The eventual sequence (once the blockers clear — start thinking now)
+
+Not startable yet, but the ordered shape is worth naming so the work is ready when sync +
+a stable env exist. Each step leans on a mechanism that already exists on `main`:
+
+1. **Seed becomes canonical.** Build the corpus as a seed with all package ops already
+   applied (`LibDB.Seed.export` already strips derived data + VACUUMs). Ship the seed, not
+   the `.dark` files.
+2. **First-run bootstraps from the seed, no parse.** A new instance loads the snapshot;
+   `LoadPackagesFromDisk` stops running on the end-user runtime (`Seed.growIfNeeded` already
+   reapplies unapplied ops + rebuilds projections on startup).
+3. **Local dev pulls deltas from the server.** A dev changing the language pulls the migrated
+   package state over sync instead of re-parsing — the step that *needs* working sync + env
+   migrations (blockers 2, 3).
+4. **CI builds against a known baseline.** CI loads the seed and builds F# against it rather
+   than re-parsing source; `LoadPackagesFromDisk` survives only as the **seed-builder** for
+   CI/release — the one place `.dark` parsing remains.
+5. **Archive `packages/*.dark`.** The final removal (archive vs. tag-and-delete decided then).
+
+The gating blocker (4 above — F#↔Dark mutual reference under language change) sits *under*
+steps 3–4: until a dev can move the language forward locally without re-parsing, those steps
+can't land. So the sequence is real but strictly downstream of [sync.md](sync.md).
+
+---
+
 ## What already exists (carried forward, not yet load-bearing)
 
 These mechanisms are on `main` today and reduce the eventual work, but none of
