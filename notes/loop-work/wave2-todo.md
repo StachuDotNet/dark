@@ -222,9 +222,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 
 ## 6. meta (cleanup — do the kills only after section-0 extraction; consolidate at the very end)
 
-- [ ] **Consolidate `vault-organization.md` + `overwrite-map.md` into one.** At the **end
-  of EVERYTHING**, re-evaluate its content from scratch (the dir structure will have
-  changed a lot).
 
 ## Cross-cutting (ongoing every pass)
 

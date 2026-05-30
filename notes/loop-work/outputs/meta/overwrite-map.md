@@ -1,114 +1,99 @@
-# Overwrite map — which output replaces which original
+# Promotion & vault map — where each output goes, what it retires
 
-What to copy where when you promote this wave. The deliverable lives in
-`notes/loop-work/outputs/`; the settled home is the repo **`notes/`** tree. So the
-promotion is: **copy each `outputs/<theme>/` file to `notes/<theme>/`, then retire the
-original** it supersedes (delete the repo `pdd-thinking/` copy, or archive the vault
-copy). Filenames changed (UPPERCASE → kebab, several renamed), so this is
-supersede-and-retire, not same-name in-place overwrite.
+The single guide for promoting this wave. The deliverable lives in `notes/loop-work/outputs/`;
+the settled home is the repo **`notes/`** tree. Promotion = **copy each `outputs/<bucket>/` file
+to `notes/<bucket>/`, then retire the original it supersedes** (delete the repo `pdd-thinking/`
+copy, or archive the vault copy). Filenames + structure changed in wave 2, so this is
+supersede-and-retire, not same-name in-place. (Consolidates the old overwrite-map +
+vault-organization docs, refreshed to the wave-2 bucket structure.)
 
-Origin legend: **[repo]** = `pdd-thinking/<NAME>` at the repo root (untouched by the
-loop). **[vault]** = a file in the Obsidian vault (`~/vaults/Darklang Dev/…`).
-**[new]** = net-new synthesis, no original to retire.
+**Legend.** **[repo]** = `pdd-thinking/<NAME>` at the repo root (untouched by the loop).
+**[vault]** = a file under `~/vaults/Darklang Dev/…` (read-only to the loop). **[new]** =
+net-new wave-2 synthesis, no original to retire.
+
+## pre-s-and-s/ (foundations)
+
+| Output | Origin | Action |
+|---|---|---|
+| `distributed-event-sourcing.md` (keystone) | **[new]** (App-type synthesis; absorbed `package-system-layers`) | place new |
+| `event-bus.md` | **[repo]** `EVENT-STREAMS-AND-PARKING.md` | delete original |
+| `async.md` | **[new]** (informed by the coworker's async plan — *do not touch* below) | place new |
+| `capabilities.md` | **[repo]** `CAPABILITIES.md` | delete original |
+| `composable-mvu.md` | **[repo]** `COMPOSABLE-MVU.md` | delete original |
+| `cli-daemon.md` | **[vault]** `90.Stachu/…/improvements/cli-daemon.md` | archive vault copy |
+| `apps-surface.md`, `example-app.md` | **[new]** | place new |
+| `tailscale.md` | **[new]** (informed by vault `…/Networking/Tailscale.md`, not overwriting it) | place new |
+| `pr-eventbus.md`, `pr-ops-projections.md`, `pr-async-stage-a.md` | **[new]** (PR specs) | place new |
 
 ## stable-and-syncing/
 
-| Output (`outputs/stable-and-syncing/…`) | Origin | Action on the original |
-|---|---|---|
-| `distributed-event-sourcing.md` | **[new]** (synthesizes the App-type notes + feedback) | none — place new |
-| `event-bus.md` | **[repo]** `EVENT-STREAMS-AND-PARKING.md` | delete original |
-| `conflicts.md` | **[repo]** `CONFLICTS-AND-RESOLUTIONS.md` | delete original |
-| `sync.md` | **[repo]** `STABILITY-AND-SHARING.md` | delete original (its stable-def went to `pdd/algorithm.md`) |
-| `capabilities.md` | **[repo]** `CAPABILITIES.md` | delete original |
-| `identity.md` | **[repo]** `IDENTITY.md` | delete original |
-| `hot-reload.md` | **[repo]** `HOT-RELOAD.md` | delete original |
-| `cohabitation.md` | **[repo]** `COHABITATION.md` | delete original |
-| `remote-access.md` | **[repo]** `REMOTE-ACCESS.md` | delete original |
-| `composable-mvu.md` | **[repo]** `COMPOSABLE-MVU.md` | delete original |
-| `cli-daemon.md` | **[vault]** `90.Stachu/even-newer/ai-devloop/improvements/cli-daemon.md` | archive vault copy |
-| `package-system-layers.md` | **[vault]** `02.Project Management/Current Experiment/package-system-layers.md` | archive vault copy |
-| `apps-surface.md` | **[new]** | none — place new |
-| `example-app.md` | **[new]** | none — place new |
-| `async.md` | **[new]** (informed by the coworker's async plan — see "do not touch" below) | none — place new |
-
-## removing-dark-files/
-
 | Output | Origin | Action |
 |---|---|---|
+| `sync.md` | **[repo]** `STABILITY-AND-SHARING.md` | delete original |
+| `conflicts-and-resolutions.md` | **[repo]** `CONFLICTS-AND-RESOLUTIONS.md` | delete original |
 | `bootstrap.md` | **[repo]** `BOOTSTRAP.md` | delete original |
-
-## pdd/
-
-| Output | Origin | Action |
-|---|---|---|
-| `pdd.md` | **[repo]** `README.md` (the PDD one) + deduped vs `TOC.md` | delete both originals |
-| `algorithm.md` | **[repo]** `ALGORITHM.md` | delete original |
-| `claims.md` | **[repo]** `CLAIMS.md` | delete original |
-| `pdd-elevator-pitches.md` | **[repo]** `pdd-elevator-pitches.md` (was `20-elevator-pitches.md` in vault) | delete original |
-| `ai-coding-target.md` | **[vault]** `90.Stachu/even-newer/ai-devloop/plan.md` (mined `newest/…/plan.md`) | archive both vault `plan.md` snapshots |
-| `projects/*.md` (125 specs) | **[vault]** `even-newer/ai-devloop/projects/*` + `projects.md` + `Current Experiment/project-survey.md` | archive those vault sources |
-| `projects/README.md`, `projects/_cross-cutting-test-criteria.md` | **[new]** (derived) | none |
-| `results/*.md` | **[new]** (convention; numbers come later) | none — `specs/SUMMARY.md` in vault can be archived |
+| `steps-towards-print-md-sync.md` (the spine) | **[new]** (replaces `READY-WORK.md`/next-steps) | place new |
+| `pr-conflict-dispatch.md`, `pr-sync-read-write.md`, `pr-print-md-app.md` | **[new]** (PR specs) | place new |
 
 ## good-for-ai-agents/
 
 | Output | Origin | Action |
 |---|---|---|
-| `README.md` + 7 category docs | **[vault]** `even-newer/ai-devloop/improvements.md` + `improvements/*.md` (consolidated) | archive the vault `improvements/` set |
+| `README.md` + 7 category docs + `ai-coding-target.md` | **[vault]** `…/ai-devloop/improvements*` + `plan.md` (consolidated + tightened) | archive the vault sources |
 
-(Note: `dark suggest` was intentionally dropped per your feedback; the `dark docs for-ai`
-composed-doc idea is in `agent-workflow.md`.)
-
-## editing-software/
+## pdd/
 
 | Output | Origin | Action |
 |---|---|---|
-| `view-sketches.md` | **[repo]** `VIEW-SKETCHES.md` (extended) | delete original |
+| `pdd.md` | **[repo]** PDD `README.md` + `TOC.md` (deduped) | delete both |
+| `algorithm.md`, `claims.md`, `cohabitation.md`, `view-sketches.md` | **[repo]** `ALGORITHM/CLAIMS/COHABITATION/VIEW-SKETCHES.md` | delete originals |
+| `pdd-elevator-pitches.md` | **[repo]** `pdd-elevator-pitches.md` | delete original |
+| `projects/*.md` (127) | **[vault]** `…/ai-devloop/projects/*` + survey | archive vault sources |
+
+## later/
+
+| Output | Origin | Action |
+|---|---|---|
+| `identity.md`, `hot-reload.md` | **[repo]** `IDENTITY.md`, `HOT-RELOAD.md` | delete originals |
+| `remote-access-and-control.md` | **[repo]** `REMOTE-ACCESS.md` | delete original |
+| `beam-/swamp-/visibility-vs-dark.md` | **[repo]** `research/*-vs-dark.md` | delete originals |
 | `dark-virtual-files.md` | **[vault]** `Current Experiment/dark-virtual-files.md` | archive vault copy |
-| `structural-editor.md` | **[new]** (cross-refs the vault editing note — not overwritten) | none — place new |
+| `structural-editor.md` | **[new]** | place new |
 
-## later-other/
+## meta/ (loop artifacts — keep as wave records, not the long-term tree)
 
-| Output | Origin | Action |
-|---|---|---|
-| `beam-vs-dark.md` | **[repo]** `research/beam-vs-dark.md` | delete original |
-| `swamp-vs-dark.md` | **[repo]** `research/swamp-vs-dark.md` | delete original |
-| `visibility-vs-dark.md` | **[repo]** `research/visibility-vs-dark.md` | delete original |
+`sanity-check.md` (the review verdict — worth keeping), this map, and `feedback.md` (the frozen
+master input). Not promoted into `notes/<bucket>/` unless you want the wave record.
 
-## meta/
+## Originals fully absorbed (no successor — retire after promoting)
 
-| Output | Origin | Action |
-|---|---|---|
-| meta-reflections (`what-the-loop-is-good-at`, `where-the-loop-struggles`, `process-risks`, `loop-operations`, `README`) | **[vault]** `even-newer/ai-devloop/` reflection-template + plan-analysis + phasing + research-log + samples/historical + orchestration/queue docs; `newest/…/research-log.md` | archive those vault sources |
-| `grounding-against-main.md`, `feedback-coverage.md`, `vault-organization.md`, `overwrite-map.md`, `STATUS.md`, `PRINT-LIST.md` | **[new]** (loop artifacts) | keep as wave records; not for the long-term notes tree unless you want them |
-| `feedback.md` | your master spec input | leave as the frozen record |
+- **[repo]** `FRONTIER.md` — dissolved into event-bus / sync / algorithm / conflicts / discovery.
+- **[repo]** `TOC.md` — obsolete index, replaced by the bucket READMEs + the spine.
+- **[repo]** `READY-WORK.md` — replaced by the spine (fresh rewrite).
+- **[repo]** `pdd-thinking/assets/` (DAG PNGs) — only READY-WORK used them; drop.
 
-## Originals to retire with NO direct successor (already absorbed)
+## Vault hygiene (recommendation — the loop never edits the vault)
 
-These were dissolved into other docs — delete the repo/vault originals after promoting:
-
-- **[repo]** `FRONTIER.md` — distributed into event-bus, sync, algorithm, conflicts, discovery-and-search, process-risks, benchmark-targets.
-- **[repo]** `TOC.md` — obsolete index; replaced by the new `README.md`s.
-- **[repo]** `READY-WORK.md` — replaced by `next-steps.md` (a fresh rewrite; themes A/B killed).
-- **[repo]** `pdd-thinking/assets/` (the DAG PNGs) — only READY-WORK used them; drop.
-- **[vault]** `90.Stachu/newest/ai-devloop/*` — the older (May-3) snapshot; archive whole.
-- **[vault]** dropped orchestration docs (`tonights-queue`, `launch-checklist`, `feedback-plan`,
-  `for-feriel`, the devloop `README`, `samples/dashboard-mock.html`) — ephemeral run-state; archive/drop.
+**Rule:** design/project/results notes live in the repo `notes/` tree (tracked, PR-reviewable);
+the vault keeps personal/cross-cutting/long-horizon thinking + coworker-owned docs (cited by
+name, not copied). **`90.Stachu/` cleanup:** it holds overlapping ai-devloop snapshots
+(`even-newer/` May 5, `newest/` May 3, `latest/`, `may8/`) — treat **`even-newer/` as canonical**
+(already mined into this tree), archive the older snapshots under `90.Stachu/_archive/`, and if
+`may8/` is newer, reconcile its genuinely-new bits first. **Still-to-locate** (referenced, not
+found — confirm or point): the HttpClient-restriction notes (capabilities) and
+`feedback-from-agent.md`.
 
 ## Do NOT touch
 
-- **[vault]** `02.Project Management/Current Experiment/Design/Dark Async Plan.md` — the coworker's
-  doc. Review-only; `async.md` was *informed by* it, never edits it. (Kept under `outputs/vault/` here
-  only as a reading reference.)
-- The Obsidian vault generally is off-limits to the loop — the moves above are *recommendations* for
-  you to run; see `vault-organization.md` for the broader vault cleanup (esp. the messy `90.Stachu/`).
+- **[vault]** `…/Design/Dark Async Plan.md` — the coworker's doc. Read-only; `async.md` was
+  *informed by* it, never edits it.
+- The vault generally is off-limits to the loop — every "archive/delete" above is a
+  **recommendation for you to run**, not an action the loop took.
 
-## Net effect after promotion
+## Net effect
 
-- The entire repo `pdd-thinking/` directory is **fully superseded** — every file is either
-  promoted (renamed) into `notes/<theme>/` or dissolved. After promotion, `pdd-thinking/` can be
-  deleted (or git-tagged then deleted).
-- The vault loses its scattered ai-devloop snapshots to the consolidated repo `notes/` tree; keep in
-  the vault only what's genuinely vault-shaped (personal/cross-cutting), per `vault-organization.md`.
-- Two blocked items remain regardless: the HttpClient restriction notes and `feedback-from-agent.md`
-  were never located (see `grounding-against-main.md` / `feedback-coverage.md`).
+After promotion, the repo `pdd-thinking/` is **fully superseded** (every file promoted-and-renamed
+into `notes/<bucket>/` or dissolved) and can be deleted (or git-tagged then deleted). The vault
+loses its scattered ai-devloop snapshots to the consolidated repo tree, keeping only genuinely
+vault-shaped material. The wave-2 net-new product (the keystone, the spine, the 6 PR specs,
+tailscale, the apps surface) has no originals to retire — it's the new substance.
