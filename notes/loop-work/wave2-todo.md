@@ -24,9 +24,12 @@ and prereqs to pull out into *earlier* efforts. Iterate on those sketches hard.
   durable state. Each pass commits, so an interruption loses at most the current
   uncommitted chunk; on restart, re-read this file and continue from the remaining todos.
   Quota exhaustion usually just *pauses* (the process stays alive) → the in-session loop
-  resumes on its own when the limit resets. For a hard process death, the durable backstop
-  is the OS-cron watchdog `notes/loop-work/loop-watchdog.sh` (if enabled), which relaunches
-  a headless chunk every 5 min and reads this worklist to resume.
+  resumes on its own when the limit resets. For a hard process death, the backstop is the
+  OS-cron watchdog `notes/loop-work/loop-watchdog.sh` (if enabled) — it **resumes this
+  session warm** (`--resume`, full context, not cold) and only fires when the live loop's
+  heartbeat is stale, so it never double-runs.
+- **Each pass, `touch /tmp/dark-wave2-loop.heartbeat`** — this tells the watchdog the live
+  session is alive so it stays out of the way. (Cheap; do it with the pass's commit.)
 - **When a todo is genuinely done — well and correctly — DELETE it from this doc.**
   This file shrinks toward empty; empty = done.
 - **Add** newly-surfaced todos under "Discovered" as you go; check/delete them too.
