@@ -152,9 +152,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 - [ ] **`remote-access.md`:** rename → `remote-access-and-control.md`; migrate the core
   Tailscale bits into the pre-S&S Tailscale doc; migrate the *rest* (remote control) →
   `later/`.
-- [ ] **`event-bus.md`:** keep focused — split/punt into "needed for S&S" vs "later";
-  enough to get by. **Stop mentioning the `Stream` thing**; talk about EventBus
-  independently. Keep iterating re App / async / MVU. Tighten.
 - [ ] **`cli-daemon.md`:** drop the doc-history framing. **Split** into (1) supporting
   long-running daemons in the CLI, and (2) the specific per-branch(?) daemon — what it
   needs, its projections, how it interacts with everything. Reconsider
