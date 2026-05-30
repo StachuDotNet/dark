@@ -141,7 +141,7 @@ The orchestrator (queue schema, branch isolation, telemetry correlation, rate-li
 
 ## Implementation order
 
-The target is the north-star above: two local release builds syncing, one server and one client, with branches, efforts, and experiments completed, all written in Dark using AI. The harness is what tells us whether each step toward that target actually helped. Work it in roughly this order:
+The target is the north-star above: release builds syncing across the tailnet (an always-on hub plus its clients — two machines as the first proof), with branches, efforts, and experiments completed, all written in Dark using AI. The harness is what tells us whether each step toward that target actually helped. Work it in roughly this order:
 
 1. **Skeleton harness, end-to-end.** Collect one trustworthy row of Dark-vs-TS-vs-Py data on a tiny project subset (`hello-cli`, `csv-to-json`, `url-shortener-cli` — the last is the only one that puts Dark in a winning posture). It need not be parallel, fast, or pretty; it needs to produce real numbers. Sequential runs, prompt caching off for honest first-pass numbers, strict constraint mode, per-run telemetry isolation via `.darklang` config. Done when a sweep runs to completion, writes its rows, and the report renders the populated headline metrics — the numbers don't have to look good, they have to be real.
 
