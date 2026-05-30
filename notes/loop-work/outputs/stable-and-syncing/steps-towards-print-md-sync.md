@@ -80,7 +80,7 @@ the floor sync path (poll + fold) does not** — so this comes after the floor w
 **7. Sync read + write. [floor]** `GET /sync/snapshot`, `GET /sync/events`, then `POST /sync/events`
 with idempotent apply through the existing op-playback path — localhost first, then over
 Tailscale. The durable `syncIn`/`syncOut` buses (from (1)) flip to persisted here.
-→ design: [sync.md](sync.md)
+→ spec: [pr-sync-read-write.md](pr-sync-read-write.md) · design: [sync.md](sync.md)
 
 **8. Identity binding (thin). [floor]** Just enough to sync safely between *any* tailnet
 members: a `Tailscale-User-Login` → account mapping and `dark link --tailscale`, so synced ops
