@@ -75,6 +75,9 @@ add tables before a consumer reads them.
 | bad subscriber isolated | a handler that throws; assert `publish` still fires the others + `reportException` called | siblings ran |
 | cross-VM | publish in a spawned VM, subscribe in parent; shared `buses` delivers | handler ran (proves shared-state placement) |
 
+**`.dark` tests: none this PR** — the bus has no Dark surface yet (`Stdlib.Bus` is a later PR);
+all coverage is `.fs`. **CLI impact: none** beyond the optional `dark debug buses` peek below.
+
 ## UX touchpoints
 
 None yet — F#-internal. The Dark-facing `Stdlib.Bus` surface is a later PR. A debug peek:

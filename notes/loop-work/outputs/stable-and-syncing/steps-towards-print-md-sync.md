@@ -57,7 +57,8 @@ floor sync path (which just folds ops).
 
 **2. async Stage A. [vision]** Effect metadata on the 9 builtin assemblies + child-VM isolation
 + structured cancellation — the shared prereq for the scheduler (and for concurrent sessions).
-Async stays *invisible* at the Dark surface. → design: [async.md](../pre-s-and-s/async.md)
+Async stays *invisible* at the Dark surface. → spec:
+[pr-async-stage-a.md](../pre-s-and-s/pr-async-stage-a.md) · design: [async.md](../pre-s-and-s/async.md)
 
 **3. Separate ops from their projections. [floor]** The data-model split the whole design rests on:
 make the **op stream canonical** and every view a **regenerable projection**. Physically split

@@ -254,13 +254,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
   that no doc/effort *requires the whole cathedral* — each primitive must ship independently.
   Flag any that don't. (The spine's floor/vision split is the first cut of this.)
 
-- [ ] **First PR specs (async + event-bus are solid enough).** Their substrate shape is
-  settled; write PR specs per the template. (a) **EventBus primitive** — DRAFTED at
-  `pre-s-and-s/pr-eventbus.md`; still needs the newer template sections back-applied:
-  **.dark tests** (add/adjust, not just .fs), an explicit **CLI impact** line, and a
-  concrete **UX change** (before/after). (b) **async Stage A** — effect metadata on the 9
-  builtin assemblies + child-VM isolation + cancellation (the shared prereq). Ground each
-  `.fs` path against `main`.
 - [ ] **Per-PR-spec contract (apply to every spec; see the template).** Each spec must
   model: LibExecution changes first (esp. **ProgramTypes** where relevant — serialization +
   package-ref-hash ripple); **SQL/schema** only when durable state changes; **both .fs and
