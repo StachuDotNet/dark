@@ -71,8 +71,34 @@ here. Rotate through these (and write what you do as new "Discovered" todos):
   touchpoints, the exact prereqs to pull into earlier efforts — **and a visual** (a fake
   CLI/TUI session, a dense code block, a small diagram) wherever it shows the design better
   than prose. These sketches are the product — they get *sharper*, not longer.
-- **Build out the spine.** `steps-towards-print-md-sync.md` should grow into a sequence
-  a future AI can execute step-by-step, each step linking the doc + sketch it needs.
+- **When a design is ~100% solid → escalate the sketch into a PR spec.** This is where the
+  real time goes; it's the highest-value perpetual work. Once a design is genuinely settled
+  (not before — half-baked specs waste the effort), write/expand a **per-PR spec** using the
+  template below. Iterate on them: compare an above-PR against the below-PR it depends on
+  (do they hand off cleanly? is a prereq missing from the lower one?), and **think through
+  problems Stachu hasn't raised** (failure modes, migration order, data shape, perf cliffs).
+  A PR spec is *concrete*: which `.fs` files change and how, which `.dark` files change, the
+  test plan for each step. Don't pad — concrete and dense, still <1000 LOC.
+
+  **PR-spec template** (one per intended PR; lives in the effort's own bucket so the spine
+  links *down* to it):
+  ```
+  # PR: <name>     (effort N of the spine)
+  Goal            one sentence; what's true after this merges that wasn't before.
+  Prereqs         which earlier PRs must land first; what to pull *into* them.
+  .fs changes     each file + how it changes (new type, changed signature, new module).
+                  Ground every file path against `main` (git show main:path).
+  .dark changes   which package items / .dark files change; new builtins exposed.
+  New types/fns   the key type defs + empty fn bodies / pseudocode (the shape).
+  Test plan       per step: unit (which test file), integration, and the observable
+                  done-signal. "How do we know step K works?"
+  UX touchpoints  CLI/TUI surface that changes — with a fake-session visual.
+  Risks/unknowns  problems not yet raised; failure modes; what could force a redesign.
+  Above/below     what the PR above expects from this one; what this expects from below.
+  ```
+- **Build out the spine.** `steps-towards-print-md-sync.md` is the ordered list of those
+  PRs — a sequence a future AI can execute step-by-step, each step linking *down* to the
+  PR spec + design doc it needs. Spine = the index; PR specs = the detail.
 - **Adversarial gap-hunt.** Re-read across docs for cross-doc tensions, missing pieces,
   unstated assumptions, and dependency-rule violations. Fix what you find.
 - **Tighten + consolidate.** Reduce lines, merge overlapping docs, fewer files.
@@ -266,4 +292,14 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 
 ## Discovered (add todos here as they surface)
 
-- (none yet)
+- [ ] **First PR specs (async + event-bus are solid enough).** Their substrate shape is
+  settled; write PR specs per the template: (a) **EventBus primitive** — new
+  `LibExecution/EventBus.fs`, `ExecutionState` gains `buses`, persistence to SQLite, tests;
+  (b) **async Stage A** — effect metadata on the 9 builtin assemblies + child-VM isolation +
+  cancellation (the prereq everything else needs). Ground each `.fs` path against `main`.
+- [ ] **Conflict-dispatch bucket placement** (from capabilities.md): the deny→resolution
+  "conflict dispatch" is shared by caps + sync + runtime errors. It may be a pre-S&S
+  substrate primitive so pre-S&S docs reference it without an up-link — decide + move.
+- [ ] **async ↔ event-bus are mutually referencing** (both pre-S&S, allowed). Keep the
+  boundary clean: async owns suspension (scheduler/Promise/force), event-bus owns delivery.
+  Re-check on each edit that neither re-derives the other's content.
