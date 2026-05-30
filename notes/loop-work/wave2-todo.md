@@ -22,9 +22,11 @@ and prereqs to pull out into *earlier* efforts. Iterate on those sketches hard.
 - 5-min loop, work in **chunks**, commit along the way, **never push**.
 - **Recovery (if interrupted — quota, crash, reboot):** this file + git history ARE the
   durable state. Each pass commits, so an interruption loses at most the current
-  uncommitted chunk. On restart, re-read this file and continue from the remaining todos.
-  The cron is **durable** (persisted to disk), so the schedule auto-resumes when Claude
-  Code next runs — no need to recreate it.
+  uncommitted chunk; on restart, re-read this file and continue from the remaining todos.
+  Quota exhaustion usually just *pauses* (the process stays alive) → the in-session loop
+  resumes on its own when the limit resets. For a hard process death, the durable backstop
+  is the OS-cron watchdog `notes/loop-work/loop-watchdog.sh` (if enabled), which relaunches
+  a headless chunk every 5 min and reads this worklist to resume.
 - **When a todo is genuinely done — well and correctly — DELETE it from this doc.**
   This file shrinks toward empty; empty = done.
 - **Add** newly-surfaced todos under "Discovered" as you go; check/delete them too.
