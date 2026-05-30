@@ -104,7 +104,8 @@ Stachu's machines is the first proof; the *same* loop syncs any tailnet member a
 
 **10. `print-md` as an App + the `dark apps` surface. [floor]** Declare print-md as an App,
 install/list via `dark apps`, and get an edit on the desktop to surface on the laptop through
-sync. The north star. → design: [apps-surface.md](../pre-s-and-s/apps-surface.md),
+sync. The north star. → spec: [pr-print-md-app.md](pr-print-md-app.md) · design:
+[apps-surface.md](../pre-s-and-s/apps-surface.md),
 [distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md)
 
 ## Recommended first chunk
