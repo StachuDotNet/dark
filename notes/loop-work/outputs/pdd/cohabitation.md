@@ -108,8 +108,8 @@ An *agent* (human or AI) carries:
 
 This isn't optional metadata. "Why is this op being produced?" should be
 answerable by walking back to the agent's intent. This is exactly the `Intent`
-shape that rides on every op in [identity.md](../later/identity.md): identity (chaining
-to a responsible human), originating instance, reason, context.
+shape that rides on every op: identity (chaining to a responsible human),
+originating instance, reason, context. (The fuller identity model is a later concern.)
 
 **Humans and AIs are both agents.** Same data shape, same permissioning.
 Different speed, reliability, and cost. The substrate doesn't care.
@@ -147,7 +147,7 @@ we use and talk about the system, not how the language itself works.
   [capabilities.md](../pre-s-and-s/capabilities.md)).
 - **Identity at scale.** A trusted agent run by user A is one thing; an
   autonomously-running agent is another. The identity model for agents is in
-  [identity.md](../later/identity.md); scale is still open.
+  its own (later) concern; scale is still open.
 - **What constitutes "an app"?** The boundary is fuzzy — likely a continuum from
   a session-scoped one-shot action, through a long-running daemon, to an
   always-on background app.
