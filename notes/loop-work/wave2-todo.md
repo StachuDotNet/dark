@@ -52,19 +52,16 @@ Lower buckets may not reference higher ones.
 
 ## 0. Setup / structure (do first — unblocks the dependency + dedup work)
 
-- [ ] **Establish the bucket dirs** above and move docs into them. Create `pre-s-and-s/`
-  and `later/`; fold `removing-dark-files/`, `editing-software/`, `later-other/` into
-  the new buckets as appropriate.
-- [ ] **Kill** the top-level `README.md` ("Dark working notes"). (Replace with a thin
-  index only if genuinely needed; the spine doc + bucket order carry the structure.)
-- [ ] **Kill `open-decisions.md`.** Open decisions live only inside their specific doc,
-  never in a summary doc.
-- [ ] **Move `ai-coding-target.md`** → `good-for-ai-agents/` (it's not PDD; think of it
-  independently).
-- [ ] **Move `view-sketches.md`** → `pdd/` (belongs to PDD).
-- [ ] **Move `cohabitation.md`** → `pdd/` (belongs in the PDD world; puntable).
+> Buckets established + all moves/kills done (pre-s-and-s/, stable-and-syncing/,
+> good-for-ai-agents/, pdd/, later/, meta/). README + open-decisions killed; conflicts →
+> conflicts-and-resolutions; next-steps → steps-towards-print-md-sync. Remaining structure work:
+
 - [ ] **Dependency pass.** Identify the buckets + their dependencies, then read and
   reread all `.md` until you're *sure* no doc references a higher bucket (S&S ↛ PDD, etc.).
+  **Known violations to fix now:** pre-s-and-s docs (esp. distributed-event-sourcing, apps-surface,
+  composable-mvu, package-system-layers, capabilities, event-bus, async) currently link UP to
+  `stable-and-syncing/` (sync, conflicts), `pdd/`, and `later/` — invert or remove those refs
+  (the lower doc should be referenced BY the higher one, not reference it).
 - [ ] **Dedup pass.** Same thoroughness: ensure little content lives in multiple files;
   reduce total lines; consolidate/split where clear; end with fewer files.
 
