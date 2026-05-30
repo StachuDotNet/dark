@@ -30,6 +30,11 @@ and prereqs to pull out into *earlier* efforts. Iterate on those sketches hard.
 - **TIGHT docs, not long.** Dense and short beats thorough-but-bloated. Reduce total lines;
   little content should live in >1 file; consolidate/split where the line is clear; end with
   *fewer* `.md` files than we started. If a doc is getting long, tighten or split it — don't grow it.
+- **Show, don't just tell — include VISUALS.** Embed fake **CLI/TUI experiences** (ASCII mockups of
+  the actual terminal session a user would see), **dense code snippets** that show off the design
+  (real type definitions, the shape of a fn, an op-stream fold), and small diagrams. These are tight
+  and high-signal — they *are* the tight-doc style, not padding. A spec should be reviewable by
+  *looking* at it. Prefer a 12-line mocked `dark apps` session over a paragraph describing it.
 - Sandbox: edit only under `notes/loop-work/` (the `outputs/` tree + this file). Never
   touch the real `pdd-thinking/` or the Obsidian vault. Never use the section-sign in
   prose (write "section N"). Never `git stash`/`reset --hard`.
@@ -43,10 +48,11 @@ them. The deadline is a complete, review-ready spec by **6pm Sunday**; pace towa
 When the explicit list is empty, the work is not done — there is always genuine depth
 here. Rotate through these (and write what you do as new "Discovered" todos):
 
-- **Deepen the PR-shape sketches.** For every effort, push the sketch further: fuller
-  pseudocode, real type definitions, the test list, the UX touchpoints, the exact
-  prereqs to pull into earlier efforts. These sketches are the product — they're never
-  "done," only deeper.
+- **Deepen the PR-shape sketches.** For every effort, push the sketch further: real type
+  definitions, the shape of key fns (empty bodies / pseudocode), the test list, UX
+  touchpoints, the exact prereqs to pull into earlier efforts — **and a visual** (a fake
+  CLI/TUI session, a dense code block, a small diagram) wherever it shows the design better
+  than prose. These sketches are the product — they get *sharper*, not longer.
 - **Build out the spine.** `steps-towards-print-md-sync.md` should grow into a sequence
   a future AI can execute step-by-step, each step linking the doc + sketch it needs.
 - **Adversarial gap-hunt.** Re-read across docs for cross-doc tensions, missing pieces,

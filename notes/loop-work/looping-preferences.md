@@ -36,6 +36,16 @@ the start of a loop and keep it in mind.
 6. **Surface blockers** rather than guessing past them. Flag what's genuinely blocked on
    my input vs. what's just more mechanical work.
 
+## Show, don't just tell — I like visuals
+
+- **Embedded fake CLI/TUI experiences.** ASCII mockups of the actual terminal session a
+  user would see beat a paragraph describing it. A 12-line mocked session is worth more
+  than three paragraphs of prose.
+- **Dense code snippets that show off the design** — real type definitions, the shape of
+  a fn, an op-stream fold. Dense and high-signal, not toy.
+- Small diagrams where they clarify. These are *tight* — they fit the "short, not long"
+  bar, they don't violate it. A spec should be reviewable by looking at it.
+
 ## Habits that earned their keep
 
 - **Adversarial / completeness reads** find real gaps that link-checking can't —
