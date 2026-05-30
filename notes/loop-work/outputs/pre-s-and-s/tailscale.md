@@ -60,6 +60,12 @@ caller ──HTTPS──► tailscale (terminates TLS, injects Tailscale-User-Lo
               receiver: login → account_id → op authorship
 ```
 
+`serve` can also inject `Tailscale-User-Name` and **`Tailscale-App-Capabilities`** (grants
+declared in the tailnet's HuJSON policy). The app-capabilities header is a useful *input* to
+the capability gate ([capabilities.md](capabilities.md)) — a network-level hint about what a
+peer may do — but it is **not** authority: grants are per-instance settings, so the receiving
+instance still decides. Read it, don't obey it.
+
 ## First move: ping/pong
 
 The single most confidence-building first step — it proves the whole stance end-to-end before

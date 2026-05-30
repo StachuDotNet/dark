@@ -248,6 +248,16 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 
 ## Discovered (add todos here as they surface)
 
+- [ ] **Vault-reference sweep (in progress).** Reading `~/vaults/Darklang Dev` for cross-check
+  (favor local + main where conflicting). **Done:** Networking/`Tailscale.md` — strongly
+  *confirms* local tailscale.md/sync (lean-on-TS, serve, MagicDNS, User-Login header, no-tsnet,
+  star, no-L2); its "poll every 2s" smallest-bet reinforces the floor=poll finding. Integrated
+  the one addition (`Tailscale-App-Capabilities` header as a cap *input*). Superseded by local:
+  vault's WIP-streaming (we punt WIP) and rebase-before-push (we use surface-as-data) — no
+  change. **Still to skim** (lower priority, may be stale): `Sync and Distribution/`
+  (Sync.md, next-steps), `Ops and Playback/Notes/` (Offline Operations, Branch Syncing, Name
+  Resolution), `User Data/dl-distributed-dbs.md`. Pull only genuinely-additive bits; don't churn.
+
 - [ ] **Sharpen the no-daemon-default stance** (sanity-check finding #2). For "universal as
   git/sqlite," the boring local floor must be *complete without a daemon* (like sqlite
   in-process); the daemon is opt-in for sync/apps/live features, not the default path. Make
