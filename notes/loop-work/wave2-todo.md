@@ -91,20 +91,43 @@ Guardrail (per `looping-preferences.md`): don't *churn* already-good prose for i
 sake. The design space is large, but the product is a tight spec — prefer making
 pre-S&S / S&S sharper and shorter over adding surface. Leave a one-line status each pass.
 
-## Bucket / dependency order (the dir structure to converge on)
+## The shape: one goal, what's below it, what's above it
 
-Lower buckets may not reference higher ones.
+The buckets aren't a flat list — they're **a goal with a stack under it and a stack on
+top.** Read them that way:
 
-1. **`pre-s-and-s/`** — foundations that must exist before sync: the App model,
-   ops+db architecture, capabilities, core Tailscale, the apps surface, event-bus,
-   async, cli-daemon. (This is also the "good-for-AI-agents-as-a-cohesive-tool" base.)
-2. **`stable-and-syncing/`** — sync, conflicts-and-resolutions, bootstrap-thinking,
-   and the `steps-towards-print-md-sync.md` spine.
-3. **`good-for-ai-agents/`** — the CLI *as a tool* (they own the loop). Base for PDD.
-   `ai-coding-target.md` lives here, thought of independently.
-4. **`pdd/`** — where *we* own the loop. Resting; rough-in only.
-5. **`later/`** — hot-reload, remote-control, P2P, app-fork, distributed-app liveness.
-6. **`meta/`** — kill almost everything (after extracting the one looping-prefs doc).
+```
+            ┌─────────────────── above the goal (built ON it) ───────────────────┐
+   later/             remote-control, P2P, app-fork, hot-reload, distributed liveness
+   pdd/               we own the loop (resting — rough-in only)
+   good-for-ai-agents/ the CLI as a cohesive tool: AI agents own the loop
+            └────────────────────────────────────────────────────────────────────┘
+   ════════════════════════ THE GOAL ════════════════════════
+   stable-and-syncing/   print-md edited on one Dark instance, SYNCING to the others.
+                         (sync, conflicts-and-resolutions, bootstrap; spine threads it all)
+   ════════════════════════════════════════════════════════════
+            ┌─────────────────── below the goal (the goal NEEDS) ────────────────┐
+   pre-s-and-s/          the App model, ops+db architecture, capabilities, core
+                         Tailscale, the apps surface, event-bus, async, cli-daemon
+            └────────────────────────────────────────────────────────────────────┘
+```
+
+- **The goal** is `stable-and-syncing/` — everything is measured against "is print-md
+  syncing yet?" The **spine** (`steps-towards-print-md-sync.md`) is the through-line: it
+  names the efforts in order and points down into the docs that detail each.
+- **Below** (`pre-s-and-s/`) is what the goal *rests on* — foundations that must exist
+  before sync is even meaningful. This is also the base that makes the CLI a cohesive tool.
+  **Tighten this hardest** — it's the load-bearing layer and the priority.
+- **Above** (`good-for-ai-agents/` → `pdd/` → `later/`) is what gets *built on* a syncing
+  substrate. Real, but secondary; rough-in and think ahead, don't polish.
+- **`meta/`** is off to the side — scratch/cleanup; kill almost all of it after extracting
+  the one looping-prefs doc.
+
+**How docs fit together = the dependency rule.** A doc may reference only its own layer or
+a *lower* one — never up. So the goal's docs may lean on `pre-s-and-s/`, but `pre-s-and-s/`
+must stand alone; `pdd/` may lean on everything under it but nothing leans up into it. The
+spine reads top-down (goal → foundations); dependencies point down. Same arrow, both ways:
+**lower is more fundamental.**
 
 ---
 
