@@ -53,6 +53,10 @@ shape. Instead a `BuiltInFn` carries **two** things:
 The static set is a sound over-approximation (omitting `HttpClient` ⇒ provably never
 needs it). A pure builtin has `caps = {}` and no `checkCapabilities`.
 
+`caps` is the resource **domain** axis (for *gating*); it is *orthogonal* to the concurrency
+**character** (`Pure`/`AsyncRead`/`Blocking`…) that [async.md](async.md) puts in a separate
+`effects` field (for *scheduling*). A builtin declares both; they're not the same metadata.
+
 ## The gate
 
 The interpreter doesn't invent errors — at a builtin call it runs the builtin's

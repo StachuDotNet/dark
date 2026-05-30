@@ -9,9 +9,16 @@ changes no observable behavior on its own.
 VM**; (3) execution carries a **cancellation** signal. Metadata + plumbing only — nothing parks
 yet, async stays invisible at the Dark surface.
 
-**Prereqs.** None (leaf). Unblocks: the scheduler (effort 6, consumes all three) and tightens
-[capabilities.md](capabilities.md) (effects and caps are cousins — the cap gate can read the
-same effect metadata).
+**Prereqs.** None (leaf). Unblocks the scheduler (effort 6, consumes all three).
+
+> **`effects` vs `caps` — two orthogonal axes, not redundant.** A builtin now carries *both*
+> `caps : Set<CapCategory>` ([capabilities.md](capabilities.md)) and `effects : Effect` (here).
+> They answer different questions: **`caps` = resource *domain*** (HttpClient / FileSystem /
+> CliHost …), read by the **gate** (security: may this code touch that domain?); **`effects` =
+> concurrency *character*** (Pure / AsyncRead / OrderedIO / Blocking …), read by the
+> **scheduler** (perf: can these overlap, must this stay ordered?). E.g. `HttpClient.get` is
+> `caps={HttpClient}` *and* `effects=AsyncRead`. They correlate only at the edges — `Pure`
+> effect ⟺ `caps={}`, and `Harmful` lives in both — so they stay two fields, not one.
 
 ## .fs changes — the important part
 
