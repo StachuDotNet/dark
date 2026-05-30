@@ -211,10 +211,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 
 ## 4. PDD (we own the loop; resting — rough-in only)
 
-- [ ] **`pdd.md`:** PDD = *we* own the loop. Maybe **no `prompt` command** — just
-  `dark "request"` and it goes; some requests are "build/run software that…", some are
-  "cd to wherever the json stdlib is." Open intent, we figure it out. **Fold the PDD
-  README into `pdd.md`** (or vice-versa).
 
 ## 5. later
 

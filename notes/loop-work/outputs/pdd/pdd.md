@@ -19,8 +19,10 @@ It works end-to-end today on real cases — recursion, list transforms, even a C
 
 ## Where it stands
 
-This is a spike, currently resting. We do **not** anticipate a wide surface of PDD commands. The shape we expect: `dark prompt "<request>"` starts a **background agent** that builds the thing, and the CLI drops into a **watching** state (with the option to let it keep running in the background). The command itself is waiting on real implementation — so we are deliberately **not** over-building the command surface now. Most of what the early spike spread across `dark pdd ...` subcommands should instead be automatic (cache) or fold into normal SCM (promote, history, diff, revert).
+This is a spike, currently resting. We do **not** anticipate a wide surface of PDD commands. The shape we expect: a request starts a **background agent** that builds the thing, and the CLI drops into a **watching** state (with the option to let it keep running). The command is waiting on real implementation — so we are deliberately **not** over-building the surface now. Most of what the early spike spread across `dark pdd ...` subcommands should instead be automatic (cache) or fold into normal SCM (promote, history, diff, revert).
+
+The entry may not even be a `prompt` keyword. The likely surface is a **bare `dark "<request>"`** that infers **open intent** — the system figures out what you mean rather than making you pick a subcommand. Some requests are "build/run software that…"; others are navigational ("go to wherever the JSON stdlib is"). One door, intent inferred behind it.
 
 ## Reading order
 
-See README.md for the design index. `git log pdd ^main` is the source of truth for the actual diff.
+This doc is the index. Then [claims.md](claims.md) (the reframed core claims), [algorithm.md](algorithm.md) (how materialization works), [cohabitation.md](cohabitation.md), [view-sketches.md](view-sketches.md), and [pdd-elevator-pitches.md](pdd-elevator-pitches.md). `git log pdd ^main` is the source of truth for the actual spike diff.
