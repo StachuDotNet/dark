@@ -66,7 +66,12 @@ done, keep working — *forever, until ~18:00 Sunday* — and **add new todos** 
 them. The deadline is a complete, review-ready spec by **6pm Sunday**; pace toward that.
 
 When the explicit list is empty, the work is not done — there is always genuine depth
-here. Rotate through these (and write what you do as new "Discovered" todos):
+here. **Stay BROAD — don't tunnel into any one mode (especially not just coding prototypes).**
+Rotate deliberately across all of: **specs** (PR specs + tightening design docs — these are
+the core product), **prototyping** (the loop-fun clone, when a design is solid enough to test
+in real code), and **broad-picture thinking** (step back, reflect on the whole design, run the
+sanity check). A good run mixes all three; a run that's all-code or all-one-doc has lost the
+plot. Rotate through these (and write what you do as new "Discovered" todos):
 
 - **Deepen the PR-shape sketches.** For every effort, push the sketch further: real type
   definitions, the shape of key fns (empty bodies / pseudocode), the test list, UX

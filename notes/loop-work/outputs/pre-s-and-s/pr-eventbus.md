@@ -4,6 +4,20 @@ First concrete spec built from [event-bus.md](event-bus.md), in the PR-spec shap
 the foundational coordination substrate; the async scheduler (separate PR) parks frames *on*
 these buses. Ships **in-process only** — durable tables come with the sync PR.
 
+> **Validated in prework** (real code on `loop-fun:prework/event-bus-primitive`, against real
+> `main` source). Findings that refine this spec:
+> - **Generic/typed split is real.** `EventBus.fs` must be **generic + RT-independent** so it
+>   compiles *before* `RuntimeTypes.fs`. The **typed** `RuntimeBuses` + event kinds live *in*
+>   `RuntimeTypes.fs`, because e.g. `MaterializationEvent` mentions `Dval` (defined there). The
+>   `.fs` table below reflects this.
+> - **Integration blast radius is one site.** Adding `buses : RuntimeBuses` to `ExecutionState`
+>   required updating **only `createState`** (Execution.fs) — every other touch point
+>   (`HttpServer.fs`, `Cli.fs`) uses `{ state with … }` copies that inherit it. Minimal risk.
+> - **`waitForOne` = a `TaskCompletionSource` + a one-shot subscription** whose handler sets the
+>   result; `publish` fires it and removes it. Real, working parking primitive.
+> - Not yet compiled (loop-fun needs its isolated devcontainer build); types written against
+>   real source and cross-checked by hand.
+
 **Goal.** `ExecutionState` carries a set of typed, multi-subscriber buses; F# code can
 `publish`/`subscribe`/`waitForOne`; nothing about the serialized program changes. After this
 merges, a producer can emit an event and a subscriber handler runs — same runtime, one VM or
