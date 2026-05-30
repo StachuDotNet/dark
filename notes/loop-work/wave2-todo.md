@@ -233,8 +233,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 
 ## 2. S&S
 
-- [ ] **`conflicts.md` → `conflicts-and-resolutions.md`:** keep **just enough** for S&S;
-  split/punt the rest. Good core ideas — but don't go overboard.
 - [ ] **`identity.md`:** probably **punt to later** (likely not needed for S&S yet).
   Keep only what's needed to sync safely between Stachu + coworkers. `Intent` should be
   a reasonably **structured** thing, known in **PT** in a nice, stable way.
