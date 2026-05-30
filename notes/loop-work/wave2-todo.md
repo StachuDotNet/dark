@@ -61,9 +61,21 @@ and prereqs to pull out into *earlier* efforts. Iterate on those sketches hard.
 
 ## Keep going until Sunday 6pm — perpetual mode (read every pass)
 
-**Do not stop or go idle when the listed todos run out.** Once the initial work is
-done, keep working — *forever, until ~18:00 Sunday* — and **add new todos** as you find
-them. The deadline is a complete, review-ready spec by **6pm Sunday**; pace toward that.
+> **SATURATION STATE (read first).** The discrete deliverable is **complete and validated**:
+> pre-S&S + S&S tight/grounded/dependency-clean, all 6 PR specs written + mutually consistent +
+> 3 prototype-validated (loop-fun) + builtin-count-grounded, 2 sanity passes, coherence + compose
+> checks, full vault sweep, promotion map. The remaining `[ ]` items below are **standing
+> quality-checks that currently PASS** — they are *not* TODO work. **Do NOT manufacture edits
+> over the solid deliverable** — that degrades it (the cardinal sin per looping-preferences). A
+> quiet verification-only pass with **no commit** is the *correct* outcome at saturation. Only
+> commit on: a genuine adversarial find, a new steer from Stachu, or the **user-triggered**
+> loop-fun compile (`devcontainer up --workspace-folder ~/code/dark/loop-fun`). When in doubt,
+> verify + report, don't edit.
+
+**Do not go idle, but do not churn either.** Keep the loop *alive* until ~18:00 Sunday (touch
+the heartbeat, stay ready), and add real todos as genuine work surfaces — but per the
+saturation note above, "keep working" means *stay available for genuine work*, not manufacture
+marginal edits. The deadline is a complete, review-ready spec by **6pm Sunday** — already met.
 
 When the explicit list is empty, the work is not done — there is always genuine depth
 here. **Stay BROAD — don't tunnel into any one mode (especially not just coding prototypes).**
