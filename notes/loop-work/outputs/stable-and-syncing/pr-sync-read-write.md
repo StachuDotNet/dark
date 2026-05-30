@@ -15,6 +15,10 @@ existing playback path. A remote op and a local op are the same thing — no sep
 **Prereqs.** ops⊥projections (effort 3 — `core.db` is what syncs) and Tailscale transport
 (effort 5 — addressing + the `Tailscale-User-Login` header). Conflict-dispatch (4) handles
 `SyncDivergence`, but the floor can ship before rich resolution (last-writer / surface-as-data).
+**Identity (8) is *not* a prereq:** the first proof attributes ops by the **raw
+`Tailscale-User-Login` string** (the login *is* the author id — no mapping table), which is why
+sync (7) can precede identity (8). Effort 8 then replaces the raw login with a proper
+login→account binding + structured `Intent`.
 
 ## The wire flow
 
@@ -30,6 +34,10 @@ existing playback path. A remote op and a local op are the same thing — no sep
 
 The wire carries **serialized `PackageOp`/`BranchOp` blobs** (exactly what `op_blob` already
 stores) + authorship — never derived state. Receivers regenerate projections locally.
+
+A **new** tailnet member joining (relevant now that scope is tailnet-wide) first
+`GET /sync/snapshot` once — a consistent point-in-time read — to bootstrap, then polls
+`/sync/events` from the snapshot's cursor. Existing peers only ever do the incremental poll.
 
 ## .fs changes
 
@@ -49,8 +57,8 @@ solved here; the floor assumes same-version peers.
 ```fsharp
 // Dark HTTP handlers (sync.md lists the endpoints) — one small App, cap-gated.
 let syncEvents (req: HttpRequest) : HttpResponse =       // GET /sync/events?since=&branch=
-  let account = req |> Tailscale.loginHeader |> accountForLogin   // auth = the header
-  Sync.opsSince req.branch req.since |> asOpStream
+  let author = req |> Tailscale.loginHeader              // first proof: the login IS the author
+  Sync.opsSince req.branch req.since |> asOpStream       // (effort 8 maps login → account)
 let postEvents (req: HttpRequest) : HttpResponse =       // POST /sync/events
   let r = Sync.applyRemoteOps (req.body |> decodeOps)
   { accepted = r.accepted; assigned = r.seqs; conflicts = r.conflicts }   // never blocks
