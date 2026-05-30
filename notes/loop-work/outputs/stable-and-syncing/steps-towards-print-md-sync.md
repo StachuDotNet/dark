@@ -117,6 +117,14 @@ and **ops⊥projections (3)** — are independent work others can start the same
 **[vision]** substrate (EventBus, scheduler) is deliberately *not* in the first chunk; it
 follows once the floor syncs.
 
+> **Merge-sequencing note** (verified in prework by composing two leaf branches): the
+> LibExecution-type leaves — EventBus, async Stage A, conflict-dispatch — are *logically*
+> independent but each inserts at the **same two spots** (the `RuntimeTypes.fs` and-chain just
+> before `ExecutionState`, and `createState` right after `notify`). So landing several produces
+> **trivial keep-both textual conflicts** (the `ExecutionState` *fields* auto-merge; only the
+> type-blocks + `createState` collide) — ~2-min resolutions, no semantic conflict. Land them in
+> any order; just expect a quick keep-both at merge, or rebase each on the prior.
+
 ## What's punted (and why)
 
 Removing the `.dark` files (needs working sync + a stable env — [bootstrap.md](bootstrap.md));
