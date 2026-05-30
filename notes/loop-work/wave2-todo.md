@@ -33,6 +33,32 @@ and prereqs to pull out into *earlier* efforts. Iterate on those sketches hard.
   touch the real `pdd-thinking/` or the Obsidian vault. Never use the section-sign in
   prose (write "section N"). Never `git stash`/`reset --hard`.
 
+## Keep going until Sunday 6pm — perpetual mode (read every pass)
+
+**Do not stop or go idle when the listed todos run out.** Once the initial work is
+done, keep working — *forever, until ~18:00 Sunday* — and **add new todos** as you find
+them. The deadline is a complete, review-ready spec by **6pm Sunday**; pace toward that.
+
+When the explicit list is empty, the work is not done — there is always genuine depth
+here. Rotate through these (and write what you do as new "Discovered" todos):
+
+- **Deepen the PR-shape sketches.** For every effort, push the sketch further: fuller
+  pseudocode, real type definitions, the test list, the UX touchpoints, the exact
+  prereqs to pull into earlier efforts. These sketches are the product — they're never
+  "done," only deeper.
+- **Build out the spine.** `steps-towards-print-md-sync.md` should grow into a sequence
+  a future AI can execute step-by-step, each step linking the doc + sketch it needs.
+- **Adversarial gap-hunt.** Re-read across docs for cross-doc tensions, missing pieces,
+  unstated assumptions, and dependency-rule violations. Fix what you find.
+- **Tighten + consolidate.** Reduce lines, merge overlapping docs, fewer files.
+- **Re-verify against `main`** (not the spike tree) any codebase claim a sketch leans on.
+
+Guardrail (per `looping-preferences.md`): don't *churn* already-good prose for its own
+sake. But the design space — "everything between main and print-md sync," with a shape
+sketched for every PR — is genuinely large; there is real work here right up to 6pm
+Sunday. Prefer deepening the highest-leverage pre-S&S / S&S efforts over polishing low
+ones. Leave a one-line status each pass so progress is legible.
+
 ## Bucket / dependency order (the dir structure to converge on)
 
 Lower buckets may not reference higher ones.
@@ -71,10 +97,6 @@ Lower buckets may not reference higher ones.
 - [ ] **`remote-access.md`:** rename → `remote-access-and-control.md`; migrate the core
   Tailscale bits into the pre-S&S Tailscale doc; migrate the *rest* (remote control) →
   `later/`.
-- [ ] **`apps-surface.md`:** `dark apps fork` → punt (later). Kill the 2nd sentence
-  ("the notion of stable" — useless here). `dark app install` should be simple/boring:
-  basically create an **alias** pointing at a call to some Dark fn, so typing `print-md`
-  runs through Dark. Kill the "How it rests on the substrate" section.
 - [ ] **`capabilities.md`:** a capability grant is **NOT** an op — grants are more like
   **per-instance settings**, separate from ops and projections. Keep iterating the
   nuanced `Capabilities` type — explicit + thorough, work on the shapes. On the
