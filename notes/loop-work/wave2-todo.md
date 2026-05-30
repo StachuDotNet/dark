@@ -205,17 +205,14 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
   event-sourced MVU apps actually work, or need refinement? Iterate, iterate. Replace
   "mapping the PDD viewer onto this model" with the **outliner** (a better, real,
   composed focus); bring it to this world, then `print-md` is easy.
-- [ ] **`distributed-event-sourcing.md`:** maybe **merge** with another file. DB model:
-  think **one DB per branch/session** we're working with (maybe per dev server), maybe
-  **one per active/long-running app**, plus a **core ops/sync DB** (call it `dark.db` /
-  `core.db`). The outlined `local.db` may not be ideal — many simple fields aren't great
-  in SQL; maybe **JSON / a serialized Dark-value blob** instead. **Punt** the "the App
-  is live, forkable" section.
 - [ ] **`package-system-layers.md`:** fold its ideas *wholly* into other docs; retire
   the file.
-- [ ] **Ops & playback / DB architecture:** imagine a `.db` per **branch**, per
-  **branch+app**, plus the **core ops-and-sync DB**. Thread this consistently through
-  the docs above.
+- [ ] **Thread the DB model consistently through all docs.** The canonical model now lives
+  in `distributed-event-sourcing.md` (Storage section): `core.db` (ops + sync coord) ·
+  `apps/<app>.db` (per-app, GC'd) · `branches/<branch>.db` (projection cache, DROP-able) ·
+  `settings` (serialized Dark-value blob, not SQL). Already reflected in cli-daemon.md.
+  Sweep sync.md, bootstrap.md, conflicts and others to match (and stop referencing the old
+  `ops.db`/`projections.db`/`local.db` three-store names).
 - [ ] **Integrate the emailed thoughts** (below) into the right pre-S&S/architecture
   docs; flag anything not represented.
 
