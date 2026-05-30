@@ -195,31 +195,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 
 ## 1. pre-S&S (foundations) — PRIORITY, tighten hard
 
-- [ ] **Integrate the emailed thoughts** (below) into the right pre-S&S/architecture
-  docs; flag anything not represented.
-
-### Emailed thoughts to integrate (architecture — mostly pre-S&S)
-
-- Each **app has its own DB**. Most are temporary / GC'd; some stick around.
-- **Sync is built on top of** this per-app-DB system.
-- There are **core internal tables** that own others. What's the **minimum F#** we
-  need? What does **PT** look like? How does this inform the plan toward print-md sync?
-- An **instance per app** (maybe); a **core instance coordinates the rest and sync** —
-  that's its only job.
-- Maybe everything lives in the **root `.darklang` dir** — imagine the whole folder
-  structure.
-- **Install** first = a boring CLI with a **seed DB** and a few **capabilities**. Then
-  add **extensions** / install the **sync app** and other apps, built on each other.
-  Could even **remove SCM and rebuild it as a Dark app** — same with PDD, outliner, and
-  all sorts of terminal apps / websites / scripts / reMarkable stuff.
-- Each **"repo" is an ops DB**. We exist in the central install; for some people, also
-  as **other repos across the filesystem**. A system for syncing data **just the way I
-  want** — set upstream, etc.
-- **Load builtins optionally**, including their capability structure — like **DLLs**.
-  What's reasonable/common, where do they live, are these "extensions" / "platforms"?
-- Each extension comes with **runners that respect special types**, or just bindings +
-  mappings.
-- **Skills, MCP servers, and "evals" are dumb** — we just need functions, data, and tests.
 
 ## 2. S&S
 
@@ -289,3 +264,11 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 - [ ] **async ↔ event-bus are mutually referencing** (both pre-S&S, allowed). Keep the
   boundary clean: async owns suspension (scheduler/Promise/force), event-bus owns delivery.
   Re-check on each edit that neither re-derives the other's content.
+- [ ] **Minimum F# / PT for the core ops+storage layer** (emailed thought #3). What are the
+  "core internal tables that own others," the *smallest* F# to support ops+projections+sync,
+  and what the **PT** for an op looks like? This is the substance of the ops⊥projections PR
+  (spine effort 3) + the EventBus/storage specs — flesh it out as those PR specs deepen.
+- [ ] **good-for-ai-agents stance: "skills, MCP servers, evals are dumb"** (emailed thought
+  #10). The cohesive-tool framing should land the claim: we don't need new bespoke
+  abstractions — just **functions, data, and tests**. A skill is a fn + its data; an eval is
+  a test. Fold into the good-for-ai-agents bucket when that section is worked (secondary).

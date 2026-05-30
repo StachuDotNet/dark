@@ -56,6 +56,37 @@ The cross-machine part — the same edit showing up on the laptop — is the **s
 (in the S&S bucket, which references this doc, not the other way round). Ocean forking it
 is the **later** layer. Both are built *on* this surface.
 
+## Install is a floor; everything else is an app
+
+A fresh install is deliberately boring: **a CLI with a seed DB and a few capabilities.**
+That's the floor. Everything else — including things that *feel* built-in — is an app you add
+on top, each built on the ones below:
+
+```
+fresh install ─► boring CLI + seed DB + a few caps          (the floor)
+      │ dark apps install sync
+      ▼
+   + sync app ─► dark apps install scm / pdd / outliner / print-md / my-website
+      │
+      ▼
+   your environment = a composable, syncable stack of Dark apps
+```
+
+The point: **SCM, PDD, and the outliner aren't privileged subsystems — they're (or become)
+Dark apps too**, no different in kind from `print-md` or a personal website, script, or
+reMarkable tool. "Rebuild SCM as a Dark app" is the same move as installing any other. So
+`dark apps` isn't a feature *of* the CLI — it's how you assemble the whole environment.
+
+### Extensions: optional builtins (like DLLs)
+
+Some apps need new **effectful primitives** (builtins). Those load **optionally, like DLLs**:
+an *extension* is a bundle of builtins plus **its own capability structure**
+([capabilities.md](capabilities.md)) and the **runners that respect its special types** (or
+just bindings + mappings). The boring install ships a common core; an app that needs more
+pulls in the extension that provides it. *Open:* where extensions live, what the reasonable
+common set is, and whether these are better called "platforms." (Pure-Dark apps need no
+extension — only ones reaching new effects do.)
+
 ## Open questions (in this doc only)
 
 - **App declaration.** Is "this set of package items is an app named X with these caps"
