@@ -246,6 +246,15 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 
 ## Discovered (add todos here as they surface)
 
+- [ ] **Sharpen the no-daemon-default stance** (sanity-check finding #2). For "universal as
+  git/sqlite," the boring local floor must be *complete without a daemon* (like sqlite
+  in-process); the daemon is opt-in for sync/apps/live features, not the default path. Make
+  `cli-daemon.md` say this explicitly, and confirm the spine's floor truly runs daemon-free
+  (autosync as a plain poll). First top-to-bottom sanity check written → `meta/sanity-check.md`.
+- [ ] **Standing: does each PR stand alone?** (sanity-check finding #3). On each pass, spot-check
+  that no doc/effort *requires the whole cathedral* — each primitive must ship independently.
+  Flag any that don't. (The spine's floor/vision split is the first cut of this.)
+
 - [ ] **First PR specs (async + event-bus are solid enough).** Their substrate shape is
   settled; write PR specs per the template. (a) **EventBus primitive** — DRAFTED at
   `pre-s-and-s/pr-eventbus.md`; still needs the newer template sections back-applied:
