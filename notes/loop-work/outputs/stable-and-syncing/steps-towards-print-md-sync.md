@@ -56,13 +56,15 @@ Async stays *invisible* at the Dark surface. → design: [async.md](../pre-s-and
 make the **op stream canonical** and every view a **regenerable projection**. Physically split
 today's single `data.db` into `core.db` (ordered, content-addressed ops + sync coordination)
 and per-branch projection caches. *This is foundational and was the missing piece* — sync,
-replay, and conflict all assume it. → design:
+replay, and conflict all assume it. → spec:
+[pr-ops-projections.md](../pre-s-and-s/pr-ops-projections.md) · design:
 [distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md) (Storage)
 
 **4. Conflict-dispatch skeleton. [floor]** `Conflict` + `Resolution` sum types and a `conflictDispatch`
 field on `ExecutionState`, defaulting to `FailLoudly` — a hook that changes no behavior until a
 policy is installed. Sync, caps, and runtime errors all route through it later.
-→ design: [conflicts-and-resolutions.md](conflicts-and-resolutions.md)
+→ spec: [pr-conflict-dispatch.md](pr-conflict-dispatch.md) · design:
+[conflicts-and-resolutions.md](conflicts-and-resolutions.md)
 
 **5. Tailscale transport + ping/pong. [floor]** A `Builtins.Tailscale` package (`status --json`,
 `serve` shell-out, `Tailscale-User-Login` header parsing), then a two-machine ping/pong over
