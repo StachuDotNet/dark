@@ -18,21 +18,34 @@ EventBus PR is not a hard prereq for the skeleton.
 `main` raises via `raiseRTE (threadId) (rte : RuntimeError.Error)` →
 `RuntimeErrorException`, caught at `Execution.fs`. The skeleton wraps that.
 
+> **Validated in prework** (real code on `loop-fun:prework/conflict-dispatch`, off clean `main`).
+> Findings that *correct* this spec:
+> - **Types live IN `RuntimeTypes.fs` (the and-chain), NOT a separate `ConflictTypes.fs`.** They
+>   mention `RuntimeError.Error`/`Dval` (defined there) *and* `ExecutionState` references
+>   `ConflictDispatch` — a later file can't satisfy both. (Same circular constraint the EventBus
+>   PR hit with `RuntimeBuses`.) The original "new ConflictTypes.fs after RuntimeTypes" was wrong.
+> - **`Resolution.Park` is omitted from the skeleton** — it needs the scheduler's `EventSelector`
+>   (vision-domain, doesn't exist yet). Skeleton ships `Substitute`/`FailLoudly`; `Park` lands with
+>   the scheduler PR. Confirms "the default never Parks, so EventBus isn't a hard prereq."
+> - **The `FnNotFound` seam site resolves *instructions*, not values** — so `Substitute(Dval)`
+>   doesn't fit *there* (the site returns `InstrData`); it only meaningfully honors `FailLoudly`.
+>   `Substitute` belongs at value-producing fail sites. The site also needs `vm` threaded for
+>   `CallContext.threadID`. So the "one representative site" is real but FailLoudly-only.
+
 | File (on `main`) | Change |
 |---|---|
-| `LibExecution/ConflictTypes.fs` *(new)* | `Conflict`, `Resolution`, `CallContext`, `ConflictDispatch` (the type shapes from the design doc). ~60 LoC, RT-light — compile after `RuntimeTypes.fs` (it mentions `RuntimeError.Error`/`Dval`). |
-| `LibExecution/RuntimeTypes.fs` | `ExecutionState` gains `conflictDispatch : ConflictDispatch` (per-execution group). **PT untouched** — a runtime hook, not serialized; no hash churn. |
-| `LibExecution/Execution.fs` (`createState`) | Default: `fun conflict _ctx -> Ply(Resolution.FailLoudly (Conflict.toRTE conflict))`. The one construction site (others are `with`-copies — see the EventBus PR). |
-| `LibExecution/Interpreter.fs` | At **one** representative site (`FnNotFound`, line ~302), replace `raiseRTE (RTE.FnNotFound n)` with: ask the dispatch, then act on the `Resolution`. Every other `raiseRTE` stays untouched this PR. |
+| `LibExecution/RuntimeTypes.fs` | Add `Conflict`/`Resolution`/`CallContext`/`ConflictDispatch` **to the `ExecutionState` and-chain** (they mention `Dval`/`RuntimeError`); `ExecutionState` gains `conflictDispatch : ConflictDispatch`. **PT untouched** — runtime hook, no hash churn. |
+| `LibExecution/Execution.fs` (`createState`) | Default: `fun conflict _ctx -> uply { match conflict with CRuntimeError e -> return RFailLoudly e \| CFnNotFound n -> return RFailLoudly (RTE.FnNotFound n) }`. The one construction site (others are `with`-copies). |
+| `LibExecution/Interpreter.fs` | At **one** async fail site (the *package*-`FnNotFound`, ~line 317, inside `uply` — the builtin one at ~302 is sync) route the raise through the dispatch, honoring `FailLoudly` (= today). Other `raiseRTE` sites untouched. |
 
 ```fsharp
-// the seam at a fail site — proof shape, applied to FnNotFound only this PR
-let! resolution = state.conflictDispatch (Conflict.RuntimeError (RTE.FnNotFound n)) (ctx vm)
+// the seam at the package-FnNotFound site (async, ~317) — FailLoudly-only this PR
+let! resolution = state.conflictDispatch (Conflict.FnNotFound n) { branchId = state.branchId; threadID = vm.threadID }
 match resolution with
-| Resolution.FailLoudly rte -> return raiseRTE vm.threadID rte   // == today's behavior
-| Resolution.Substitute dval -> return dval                       // dev/loose mode
-| Resolution.Park selector   -> return! park selector             // later (needs the bus)
+| Resolution.FailLoudly rte -> return raiseRTE vm.threadID rte   // == today's behavior (the default)
 | _                          -> return raiseRTE vm.threadID (RTE.FnNotFound n)
+// Substitute(Dval) doesn't fit here (this site returns InstrData, not a value); it applies at
+// value-producing fail sites. Park lands with the scheduler PR (needs EventSelector).
 ```
 
 `CallContext` is assembled from what's already on hand — `ExecutionState.branchId` + the
