@@ -4,6 +4,14 @@ The load-bearing substrate. One primitive handles SCM merge conflicts, runtime m
 conflicts, capability denials, type-mismatch-on-materialization, sync disagreements, and
 human-review timeouts. Building it well unlocks SCM and sync broadly.
 
+> **Bucket note (layering).** The conflict-*dispatch* is really a **runtime primitive** — a
+> `conflictDispatch` hook on `ExecutionState` (see [pr-conflict-dispatch.md](pr-conflict-dispatch.md)),
+> used by capabilities, the interpreter, *and* sync. So the **parse/dev/run/playback** timings
+> below are pre-S&S substrate; only the **at-rest (sync) conflicts** (SyncDivergence, merge) are
+> S&S-specific. The doc is kept whole here for readability; pre-S&S docs (capabilities, async)
+> reference the *concept* inline rather than linking up. Extract the primitive into pre-S&S
+> only if a pre-S&S doc ever needs a hard link to it — not needed today.
+
 ## A conflict is any place a fold can't proceed
 
 State is a timestamped op stream; everything you see is a projection folded from it (the

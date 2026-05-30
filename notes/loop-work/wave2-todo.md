@@ -275,9 +275,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
   package-ref-hash ripple); **SQL/schema** only when durable state changes; **both .fs and
   .dark tests** (which file, add vs adjust); **CLI impact** checked every time; and the
   concrete **UX change** (what the user sees before/after). Sweep existing and future specs.
-- [ ] **Conflict-dispatch bucket placement** (from capabilities.md): the deny→resolution
-  "conflict dispatch" is shared by caps + sync + runtime errors. It may be a pre-S&S
-  substrate primitive so pre-S&S docs reference it without an up-link — decide + move.
 - [ ] **async ↔ event-bus are mutually referencing** (both pre-S&S, allowed). Keep the
   boundary clean: async owns suspension (scheduler/Promise/force), event-bus owns delivery.
   Re-check on each edit that neither re-derives the other's content.
