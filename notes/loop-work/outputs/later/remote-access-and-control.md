@@ -18,25 +18,12 @@ The goals:
 - **Offline resilience** — `dark on offline-box ...` queues the call and replays
   when the peer reconnects.
 
-## Stance: lean on Tailscale, don't build a network stack
+## Transport
 
-The same stance as [sync.md](../stable-and-syncing/sync.md). Tailscale gives us, for free:
-
-- Stable per-device addressing (MagicDNS `<machine>.<tailnet>.ts.net`).
-- TLS (`tailscale serve --https=443`).
-- Identity via the `Tailscale-User-Login` HTTP header.
-- E2E-encrypted transport between peers.
-- NAT traversal with DERP relay fallback.
-- ACLs via tags + grants in HuJSON policy.
-- Public exposure via `tailscale funnel` (rate-limited, deliberate).
-
-What Tailscale does *not* give us: no L2 peer discovery (use the API/gossip); no
-`tsnet` F# SDK (F# speaks via HTTP plus the `tailscale` CLI); a small free-tier
-user limit (fine for personal/small-team); occasional DERP-fallback latency.
-
-The substrate **doesn't require** Tailscale — over the open internet the same
-protocol works with normal TLS plus a bearer-token header. Tailscale is the
-convenient default for tailnet members.
+Same transport as sync: Tailscale ([tailscale.md](../pre-s-and-s/tailscale.md)) for addressing,
+TLS, and the `Tailscale-User-Login` identity header — remote-control is just a different set
+of HTTP handlers on the same `serve`d server. The Tailscale capabilities and limits live in
+that doc; this one covers only the control wire on top.
 
 ## The wire
 

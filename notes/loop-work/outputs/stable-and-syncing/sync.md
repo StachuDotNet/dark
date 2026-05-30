@@ -19,12 +19,13 @@ are a deliberate later concern — punted to a later bucket.)
 
 ## Wire protocol
 
-### Stance: lean on Tailscale, don't build a network stack
+### Transport: Tailscale
 
-Let Tailscale handle peer addressing, identity, TLS, and auth. The wire protocol then
-reduces to an HTTP-over-Tailscale exchange of ops. (The substrate is not *bound* to
-Tailscale — over the open internet the same endpoints work with ordinary TLS — but the
-tailnet is the only target we design for now.)
+The transport is Tailscale ([tailscale.md](../pre-s-and-s/tailscale.md)) — it gives peer
+addressing, TLS, and the `Tailscale-User-Login` identity header. The wire protocol here is
+just the HTTP-over-Tailscale exchange of ops on top. (Not *bound* to Tailscale — the same
+endpoints work over the open internet with ordinary TLS — but the tailnet is the only target
+we design for now.)
 
 ### Default model: client/server
 

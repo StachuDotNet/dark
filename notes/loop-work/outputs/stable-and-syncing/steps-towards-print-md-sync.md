@@ -54,7 +54,8 @@ policy is installed. Sync, caps, and runtime errors all route through it later.
 **5. Tailscale transport + ping/pong.** A `Builtins.Tailscale` package (`status --json`,
 `serve` shell-out, `Tailscale-User-Login` header parsing), then a two-machine ping/pong over
 `https://<peer>.<tailnet>.ts.net`. The single most confidence-building first move — it proves
-the "lean on Tailscale" stance end-to-end. → design: [sync.md](sync.md)
+the "lean on Tailscale" stance end-to-end. → design:
+[tailscale.md](../pre-s-and-s/tailscale.md), [sync.md](sync.md)
 
 **6. Scheduler core.** The parked-frame scheduler (`ready`/`parked`, keyed by event selector)
 on top of (1)+(2) — async Stage C. Sync, hot-reload, and await all rest on it.

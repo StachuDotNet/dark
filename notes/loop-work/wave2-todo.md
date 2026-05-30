@@ -195,10 +195,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 
 ## 1. pre-S&S (foundations) — PRIORITY, tighten hard
 
-- [ ] **Core Tailscale doc** in `pre-s-and-s/` — only what S&S needs, no more.
-- [ ] **`remote-access.md`:** rename → `remote-access-and-control.md`; migrate the core
-  Tailscale bits into the pre-S&S Tailscale doc; migrate the *rest* (remote control) →
-  `later/`.
 - [ ] **Integrate the emailed thoughts** (below) into the right pre-S&S/architecture
   docs; flag anything not represented.
 
@@ -251,7 +247,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 - [ ] **`hot-reload.md` → `later/`** (punt). You *may* think about hot-reload needs and
   shape `async` / projections / op-playback toward a solution that will support
   hot-reloading — but **don't mention hot-reloading** in those docs.
-- [ ] **remote-control** (the non-core half of `remote-access-and-control.md`) → `later/`.
 - [ ] **P2P sync, `dark apps fork`, "the App is live/forkable", distributed-app
   liveness** → `later/`.
 
