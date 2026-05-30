@@ -10,6 +10,10 @@ dependency: queued local ops push when a peer is reachable, remote ops pull and 
 disconnected instance is a fully working instance, exactly as `git` keeps working without a
 remote. This is the same property the floor's daemon-free, off-by-default stance already buys.
 
+And like git, **replication *is* backup**: because every synced peer holds the full op stream,
+losing one machine loses nothing recoverable — the ops live on the hub and the other clients.
+(A lone, never-synced instance still wants a plain `core.db` file copy; SQLite makes that trivial.)
+
 ## Sharing, kept simple
 
 **Sharing** is an op authored on instance X becoming observable on instance Y, by
