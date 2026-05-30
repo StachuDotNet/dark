@@ -30,8 +30,10 @@ let printMdApp : AppManifest =
   { name = "print-md"
     entrypoint = fqfn "Darklang.Stachu.PrintMd.main"
     caps = { fileSystem = true                                  // read the .md
-             cli = Some { spawn = ["weasyprint"; "lp"] }        // render + print
+             cliHost = true                                     // spawn weasyprint + lp
              httpClient = None; httpServer = None; random = false; time = false } }
+  // cliHost is boolean now (capabilities.md); print-md wants the *structured* form — a spawn
+  // allow-list ["weasyprint"; "lp"] — which is the "structured later" cliHost refinement.
 ```
 
 The entrypoint, reusing the outliner's `markdown.dark` for render:

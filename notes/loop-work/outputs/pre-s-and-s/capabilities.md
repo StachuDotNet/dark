@@ -27,12 +27,13 @@ type Capabilities =
   { httpClient : HttpClientCap option   // structured: allowed hosts, methods, secret-bearing?
     httpServer : HttpServerCap option   // structured: bind targets/ports (HttpClient-shaped)
     fileSystem : bool                   // yes/no now; future: per-dir, read/write, quota
+    cliHost    : bool                   // stdin/args + subprocess spawn; yes/no now,
+                                        //   structured later (a spawn allow-list, e.g. print-md)
     random     : bool                   // yes/no
     time       : bool }                 // yes/no
 // Language & Matter need no grant token: their reflective surface is free, and
 // anything that RUNS code (eval, materialize) PROPAGATES the caller's caps — never
 // amplifies. eval cannot launder an effect the caller lacks.
-// Cli/CliHost (stdin/args, subprocess spawn): boolean now, structured later — flagged.
 
 and HttpClientCap = { hosts : HostPattern list; methods : Method list; allowSecrets : bool }
 ```
