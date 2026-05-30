@@ -240,13 +240,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
   a reasonably **structured** thing, known in **PT** in a nice, stable way.
 - [ ] **`bootstrap.md`:** think for a while — once S&S is done, what are the steps here?
   We can't *start* yet, but start thinking.
-- [ ] **`next-steps.md` → `steps-towards-print-md-sync.md`:** detailed, step-by-step,
-  referencing other docs so a future AI can follow it. Make sure **"separating ops from
-  their projections"** is present (it's currently missing). Address **where/how the
-  event bus fits** into LibExecution, ProgramTypes, etc. **Identity binding:** punt or
-  keep very thin (just enough to sync safely between Stachu + coworkers). **Remove the
-  "explicitly not next" section.** Open decisions only in specific docs, not here.
-  **WIP sync** is ideal but we don't know how to do it safely → punt.
 
 ## 3. good-for-ai-agents (the tool; base for PDD)
 
