@@ -208,9 +208,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 
 ## 3. good-for-ai-agents (the tool; base for PDD)
 
-- [ ] Make this a **cohesive dir** for "good for AI agents (like Claude Code) using Dark
-  as a tool, where *they* own the loop." `ai-coding-target.md` belongs here, considered
-  independently of PDD. (The existing `good-for-ai-agents/` improvement docs stay.)
 
 ## 4. PDD (we own the loop; resting — rough-in only)
 
@@ -299,7 +296,3 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
   "core internal tables that own others," the *smallest* F# to support ops+projections+sync,
   and what the **PT** for an op looks like? This is the substance of the ops⊥projections PR
   (spine effort 3) + the EventBus/storage specs — flesh it out as those PR specs deepen.
-- [ ] **good-for-ai-agents stance: "skills, MCP servers, evals are dumb"** (emailed thought
-  #10). The cohesive-tool framing should land the claim: we don't need new bespoke
-  abstractions — just **functions, data, and tests**. A skill is a fn + its data; an eval is
-  a test. Fold into the good-for-ai-agents bucket when that section is worked (secondary).

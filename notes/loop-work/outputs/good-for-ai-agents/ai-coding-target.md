@@ -8,7 +8,7 @@ A user opens a fresh Claude Code session in any directory and says:
 
 …and the agent does a great job — better than building the same thing in TypeScript or Python. "Better" measured by tokens and wall time to first-working and to done; output artifact size on disk; runtime perf on representative workloads; pass rate against a per-project rubric; and the edit cost of a small follow-up change. Optimizing for the agent loop also tightens the loop for humans, especially during code review.
 
-The north-star deliverable: **two local release builds syncing — one server (an always-on desktop on the Tailscale network), one client — with branches, efforts, and experiments completed, all written in Dark using AI.** Sync rides the substrate described in [sync.md](../stable-and-syncing/sync.md): the wire carries only ops and commits, and every receiver regenerates its projections locally.
+The north-star deliverable: **release builds syncing across the Tailscale tailnet — an always-on desktop hub plus any number of clients (two machines is the first proof, not the limit) — with branches, efforts, and experiments completed, all written in Dark using AI.** Sync rides the substrate described in [sync.md](../stable-and-syncing/sync.md): the wire carries only ops and commits, and every receiver regenerates its projections locally.
 
 ## Why Dark plausibly wins
 
@@ -35,7 +35,8 @@ Things Dark does *not* yet have that competing stacks do (the improvement backlo
 - **Branch context doesn't persist between invocations.** Agents thread `--branch <name>` on every call; easy to forget and silently land on `main`.
 - **No async / concurrency primitives, no native test support.** A parallel downloader isn't directly expressible; agents roll their own assertion code per project.
 - **Familiarity gap in training data.** Agents have seen far more TS/Py than Dark, so first-pass quality will trail for the same prompt. Tight feedback loops mitigate but don't erase this — Dark's expected early win is a *fix-iteration* advantage, not a *pass@1* one.
-- **No reactive queries, no MCP server or bundled skills.** Out of scope for the bench but real for ecosystem reach.
+- **No reactive queries.** Out of scope for the bench but real for ecosystem reach.
+- **No MCP server or bundled skills — partly by design** (see the bucket README's thesis). The bet is that agents don't need them: a skill is a function + data, an eval is a test, and Dark provides those natively. Real gap only insofar as the *ecosystem* expects MCP/skills as table stakes; not a capability the agent loop itself lacks.
 
 ## Eval harness — measure that we're getting better
 
@@ -148,4 +149,4 @@ The target is the north-star above: two local release builds syncing, one server
 
 3. **First improvement waves (the A/B protocol).** Convert "we shipped a Dark improvement" into "we have data showing it helped." One backlog hypothesis per wave, landed on a branch off `main`; baseline sweep (reuse a recent `main` sweep when fresh enough), candidate sweep against the branch's rebuilt CLI, then an A/B report with per-metric deltas, significance, and per-project regression flags. Merge only if enough headline metrics move positively and none regress meaningfully; otherwise keep the branch open and write the retro anyway — negative results are data. Order waves cheapest-first: a **prompt-only** bundle first (zero Dark code — also a harness sanity check: if the bench can't detect a prompt change, it's too noisy to drive Dark investment), then a parseable-output rollout, then the authoring headliners (`dark edit` + auto-diagnostics, the biggest predicted token win), then an error-UX bundle, then a `dark publish` MVP that unlocks the share-with-a-friend narrative. Each wave runs the protocol independently; a failed wave re-baselines before the next starts.
 
-4. **Sync to the north-star.** With the loop proven on greenfield builds, turn it on the deliverable itself: two release builds — an always-on desktop server on the Tailscale network and a client — syncing branches, efforts, and experiments over the [sync.md](../stable-and-syncing/sync.md) substrate, all of it authored in Dark by the agent. The wire carries only ops and commits; both ends regenerate their projections locally; remotes are configured through `.darklang` config, never environment variables.
+4. **Sync to the north-star.** With the loop proven on greenfield builds, turn it on the deliverable itself: release builds syncing across the tailnet — an always-on desktop hub and its clients (two machines first, then any tailnet member) — syncing branches, efforts, and experiments over the [sync.md](../stable-and-syncing/sync.md) substrate, all of it authored in Dark by the agent. The wire carries only ops and commits; both ends regenerate their projections locally; remotes are configured through `.darklang` config, never environment variables.

@@ -4,6 +4,8 @@ What to change in Dark to compress the AI dev loop, organized by where the loop 
 
 The unifying lens across categories: most of these are missing or human-only **projections** of state the CLI already holds as **ops** — the package tree, the changeset, recorded traces, the deprecation list, the current branch. The work is rarely new machinery; it's exposing what exists in an agent- or reviewer-consumable shape.
 
+**The thesis (why this bucket is small, not a platform):** agents don't need bespoke "agent" abstractions — **skills, MCP servers, and "evals" are dumb**. What an agent actually needs is **functions, data, and tests**, surfaced well. A skill is just a function plus its data; an eval is just a test. Dark already *is* functions + data (the package tree) + tests (traces, runtime/at-rest constraints) — so making Dark a great agent tool is mostly *exposing* those three things cleanly, not building an agent platform on the side. Every doc here is an instance of that: turn a thing Dark already has into a function/data/test an agent can reach.
+
 ## Categories
 
 - [discovery-and-search.md](discovery-and-search.md) — finding what already exists in the package tree: auto-loaded `CLAUDE.md` template, ranked structured search, "did you mean" on a search miss.
