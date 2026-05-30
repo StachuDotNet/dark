@@ -115,6 +115,16 @@ return when the real thing is built.)
 - **Capabilities** — what a synced/remote action may *do* is gated by capabilities,
   which are per-instance settings, not ops (see [capabilities.md](../pre-s-and-s/capabilities.md)).
 
+## Sync modes — off by default, opt in by kind
+
+Sync is **off by default**; you opt in, and you can opt in *narrowly*:
+
+- **Full** — pull + push ops for the branches you've subscribed (the autosync case).
+- **Fetch-only** — pull, never push (consume upstream without contributing).
+- **Security-notices-only** — even with sync otherwise off, opt in to pull *just*
+  security/`harmful` deprecation ops. Safety without committing to full sync — it rides
+  the same op stream, filtered to the harmful-flag op kind ([distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md)).
+
 ## Open decisions
 
 - **Default sync target.** Explicit, opt-in autosync — the user adds remotes

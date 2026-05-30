@@ -105,6 +105,9 @@ makes it appear — the goal's first observable proof.
 
 - **Op-format stability.** Serialized `PackageOp` is the wire format; mismatched peer versions
   can't interop. Floor assumes same-version peers; long-term needs a versioned op encoding.
+  *Concrete handle:* carry a **hash of the current PT shape** in the handshake (`/sync/whoami`)
+  — peers compare PT-hashes and refuse / negotiate on mismatch, rather than corrupting on a
+  silent encoding drift. (The versioned encoding is the real fix; the PT-hash is the cheap guard.)
 - **Seq monotonicity across sources.** Each store's `seq` is local; a global order needs the
   `(timestamp, author_id)` tiebreak. Fine for a star (everyone orders against the hub).
 - **Concurrent write during snapshot.** `GET /sync/snapshot` must be a consistent read (a
