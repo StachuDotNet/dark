@@ -1,12 +1,30 @@
 # CLI daemon — hosting the live substrate
 
 A per-call `dark <cmd>` boots the runtime, loads the package tree from `data.db`, does one
-thing, and exits. That's fine for stateless reads. But the substrate from
-[event-bus.md](event-bus.md) and [async.md](async.md) is **not** stateless — it needs a
-resident host. This doc splits into two parts: (1) generic long-running-daemon support in
-the CLI, and (2) which daemons actually exist and how they're shaped.
+thing, and exits. The *live* substrate from [event-bus.md](event-bus.md) and
+[async.md](async.md) wants a resident host instead. This doc splits into two parts: (1) generic
+long-running-daemon support in the CLI, and (2) which daemons actually exist and how they're
+shaped.
 
 `main` has no daemon today (no `dark daemon`, no socket host) — this is all new surface.
+
+## The floor is daemon-free; the daemon is opt-in
+
+To be **as universal as git and sqlite, the boring local path must work with no daemon at
+all** — per-call, in-process, like `git` and `sqlite`. That floor is *complete*: edit, run,
+search, and even **poll-based sync** (`dark sync` as a plain command / cron) need no resident
+process. The daemon is a strictly **opt-in** layer you add for the *live* features — push
+sync, cross-session await, hot-reload, warm-projection speed, hosting apps/crons. So:
+
+| Works daemon-free (the floor) | Wants the daemon (the vision layer) |
+|---|---|
+| edit / run / search / `view` | live **push** sync (vs poll) |
+| **poll-based sync** + print-md syncing | cross-session `await` / parked frames |
+| one-shot commands | hot-reload; warm projections (speed) |
+| | hosting HTTP apps, crons, `start()` daemons |
+
+Nothing below makes the daemon a *dependency* of the floor — it's an accelerator and a host
+for the live surface, never the only way to use Dark.
 
 ---
 
@@ -20,8 +38,9 @@ Four things can't live in a process that exits after one command:
   process to live in.
 - **The scheduler** — parked frames (continuations awaiting a promise, a conflict, a human
   answer) must outlive the command that spawned them.
-- **Long-lived external connections** — anything holding an open socket/poll loop (the
-  future sync layer is the headline consumer, built *on top* of this).
+- **Long-lived external connections** — anything holding an *open* socket (push sync's
+  WebSocket is the headline consumer). Poll-based sync doesn't need this — it's a periodic
+  command — which is exactly why the floor can sync daemon-free.
 - **Crons + `start()` background work** — a cron tick is `Bus.publish "cron-tick" ()`, which
   presupposes a process alive to receive it.
 
@@ -77,9 +96,10 @@ client keeps working or subscribes to the wake event, and the result streams on 
 blocking `readKey`/`watchLoop` problem dissolves — the loop lives in the daemon, clients get
 events.
 
-**Fallback:** stateless reads (`view`, one-shot `search`) still run in-process if no daemon
-is present. Only the live surface (background loops, open connections, cross-session parked
-frames) *requires* the host.
+**Not a fallback — the floor:** per-call in-process is the *default*, not a degraded mode. The
+whole floor (edit, run, search, **poll-based sync**, print-md syncing) runs daemon-free. Only
+the live surface (push sync, background loops, open connections, cross-session parked frames)
+*requires* the host. The daemon accelerates and extends; it is never a dependency of the floor.
 
 ---
 

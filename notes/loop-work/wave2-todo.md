@@ -273,11 +273,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
   (Sync.md, next-steps), `Ops and Playback/Notes/` (Offline Operations, Branch Syncing, Name
   Resolution), `User Data/dl-distributed-dbs.md`. Pull only genuinely-additive bits; don't churn.
 
-- [ ] **Sharpen the no-daemon-default stance** (sanity-check finding #2). For "universal as
-  git/sqlite," the boring local floor must be *complete without a daemon* (like sqlite
-  in-process); the daemon is opt-in for sync/apps/live features, not the default path. Make
-  `cli-daemon.md` say this explicitly, and confirm the spine's floor truly runs daemon-free
-  (autosync as a plain poll). First top-to-bottom sanity check written → `meta/sanity-check.md`.
 - [ ] **Standing: does each PR stand alone?** (sanity-check finding #3). On each pass, spot-check
   that no doc/effort *requires the whole cathedral* — each primitive must ship independently.
   Flag any that don't. (The spine's floor/vision split is the first cut of this.)
