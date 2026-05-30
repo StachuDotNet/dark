@@ -52,10 +52,6 @@ Lower buckets may not reference higher ones.
 
 ## 0. Setup / structure (do first — unblocks the dependency + dedup work)
 
-- [ ] **Extract the looping-prefs doc.** Before killing meta-reflections, pull out
-  **one** `.md` capturing Stachu's preferences for *looping work* (how to run these
-  loops well, given his style) — usable for all sorts of future looping jobs. Keep it
-  (e.g. `meta/looping-preferences.md` or at the sandbox root). THEN the meta kills (section 6) are unblocked.
 - [ ] **Establish the bucket dirs** above and move docs into them. Create `pre-s-and-s/`
   and `later/`; fold `removing-dark-files/`, `editing-software/`, `later-other/` into
   the new buckets as appropriate.
@@ -204,7 +200,8 @@ Lower buckets may not reference higher ones.
 - [ ] **Kill:** `meta-reflections/README.md`, `PRINT-LIST.md`, `STATUS.md`,
   `feedback-coverage.md`, `grounding-against-main.md`, `loop-operations.md`,
   `process-risks.md`, `where-the-loop-struggles.md`, `what-the-loop-is-good-at.md`.
-  (Only after the looping-prefs doc is extracted in section 0.)
+  (The looping-prefs doc is already extracted → `notes/loop-work/looping-preferences.md`,
+  so these kills are unblocked.)
 - [ ] **Consolidate `vault-organization.md` + `overwrite-map.md` into one.** At the **end
   of EVERYTHING**, re-evaluate its content from scratch (the dir structure will have
   changed a lot).
