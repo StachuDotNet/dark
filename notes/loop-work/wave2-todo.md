@@ -199,12 +199,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 - [ ] **`remote-access.md`:** rename → `remote-access-and-control.md`; migrate the core
   Tailscale bits into the pre-S&S Tailscale doc; migrate the *rest* (remote control) →
   `later/`.
-- [ ] **`composable-mvu.md`:** fold into 1+ other docs (per its own preamble). Rename
-  `App.empty` → `init` (and maybe it takes args). **Compare the App structure to mature
-  systems (Elm, F#, …)** — is ours reasonable? Does it make distribution of
-  event-sourced MVU apps actually work, or need refinement? Iterate, iterate. Replace
-  "mapping the PDD viewer onto this model" with the **outliner** (a better, real,
-  composed focus); bring it to this world, then `print-md` is easy.
 - [ ] **`package-system-layers.md`:** fold its ideas *wholly* into other docs; retire
   the file.
 - [ ] **Thread the DB model consistently through all docs.** The canonical model now lives
