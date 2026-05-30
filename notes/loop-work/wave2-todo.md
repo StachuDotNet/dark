@@ -34,14 +34,22 @@ and prereqs to pull out into *earlier* efforts. Iterate on those sketches hard.
   implement." Everything else can rest / be roughed-in.
 - **Dependency rule (enforce constantly):** a doc may only reference its own bucket or
   *earlier* buckets. S&S must not reference PDD; etc. (See bucket order below.)
-- **TIGHT docs, not long.** Dense and short beats thorough-but-bloated. Reduce total lines;
-  little content should live in >1 file; consolidate/split where the line is clear; end with
-  *fewer* `.md` files than we started. If a doc is getting long, tighten or split it — don't grow it.
+- **TIGHT docs, not long.** Tighten the *prose*; **keep code specs and step-by-step
+  instructions** — those are the product, not bloat. Cut by: not repeating yourself, not
+  narrating what a doc *used to* say, and not cross-referencing other docs more than
+  necessary (a reference should earn its place). **Each doc < 1000 LOC, and total volume
+  should feel light.** Little content should live in >1 file; end with *fewer* `.md` files
+  than we started. If a doc is getting long, tighten or split — don't grow it.
 - **Show, don't just tell — include VISUALS.** Embed fake **CLI/TUI experiences** (ASCII mockups of
   the actual terminal session a user would see), **dense code snippets** that show off the design
   (real type definitions, the shape of a fn, an op-stream fold), and small diagrams. These are tight
   and high-signal — they *are* the tight-doc style, not padding. A spec should be reviewable by
   *looking* at it. Prefer a 12-line mocked `dark apps` session over a paragraph describing it.
+- **`main` is the source of truth — not this branch.** The `pdd` branch is a research
+  **spike** (~368 files differ from `main`); many primitives here exist *only* in the spike.
+  Verify every codebase claim against real `main` (`git show main:path`), never the working
+  tree. Label spike-only things as spike-only. A clean idea on a real `main` primitive beats
+  a slick one resting on something that only exists in the spike.
 - Sandbox: edit only under `notes/loop-work/` (the `outputs/` tree + this file). Never
   touch the real `pdd-thinking/` or the Obsidian vault. Never use the section-sign in
   prose (write "section N"). Never `git stash`/`reset --hard`.
@@ -118,12 +126,6 @@ Lower buckets may not reference higher ones.
 - [ ] **`remote-access.md`:** rename → `remote-access-and-control.md`; migrate the core
   Tailscale bits into the pre-S&S Tailscale doc; migrate the *rest* (remote control) →
   `later/`.
-- [ ] **`capabilities.md`:** a capability grant is **NOT** an op — grants are more like
-  **per-instance settings**, separate from ops and projections. Keep iterating the
-  nuanced `Capabilities` type — explicit + thorough, work on the shapes. On the
-  representation question, **choose model B** (per-builtin `checkCapabilities`, per the
-  earlier notes). Answer: **how does a user set allowances and see failures/blockers?**
-  Via the CLI somewhere — model it in PT, RT, and expose in the CLI.
 - [ ] **`async.md`:** async should be **usually invisible** to Dark users — no syntax or
   difference between async and non-async code, *unless* they have specific scheduling
   needs. Update with **effort estimates / steps involved**. **Evaluate:** is the
