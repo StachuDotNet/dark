@@ -248,6 +248,16 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 
 ## Discovered (add todos here as they surface)
 
+- [ ] **Prework prototyping track (NEW outlet — validate specs in real code).** Isolated clone
+  at `~/code/dark/loop-fun` (off real `main`, branch `prework/event-bus-primitive`). The `main/`
+  tree (pdd) is untouched — never edit it or checkout another branch there. **Goal:** implement
+  the floor PR specs as real code to validate "enough to implement." Start with the EventBus
+  primitive (cleanest leaf). **Build-safety rule:** the devcontainer mounts *named, shared*
+  Docker volumes (`dark_build`, `dark_nuget`, …) — a naïve second devcontainer would corrupt
+  this session's build. Before compiling in loop-fun, **rename its volumes** in
+  `loop-fun/.devcontainer/devcontainer.json` (e.g. `dark_build_loopfun`). Until then, WRITE the
+  F# against real source (high-value, zero-risk) and defer the compile to a deliberate pass.
+
 - [ ] **Vault-reference sweep (in progress).** Reading `~/vaults/Darklang Dev` for cross-check
   (favor local + main where conflicting). **Done:** Networking/`Tailscale.md` — strongly
   *confirms* local tailscale.md/sync (lean-on-TS, serve, MagicDNS, User-Login header, no-tsnet,
