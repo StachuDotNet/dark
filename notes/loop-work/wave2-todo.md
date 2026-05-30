@@ -27,8 +27,9 @@ and prereqs to pull out into *earlier* efforts. Iterate on those sketches hard.
   implement." Everything else can rest / be roughed-in.
 - **Dependency rule (enforce constantly):** a doc may only reference its own bucket or
   *earlier* buckets. S&S must not reference PDD; etc. (See bucket order below.)
-- **Reduce total lines.** Little content should live in >1 file. Consolidate/split
-  where the line is clear. End with *fewer* `.md` files than we started.
+- **TIGHT docs, not long.** Dense and short beats thorough-but-bloated. Reduce total lines;
+  little content should live in >1 file; consolidate/split where the line is clear; end with
+  *fewer* `.md` files than we started. If a doc is getting long, tighten or split it — don't grow it.
 - Sandbox: edit only under `notes/loop-work/` (the `outputs/` tree + this file). Never
   touch the real `pdd-thinking/` or the Obsidian vault. Never use the section-sign in
   prose (write "section N"). Never `git stash`/`reset --hard`.
@@ -53,11 +54,18 @@ here. Rotate through these (and write what you do as new "Discovered" todos):
 - **Tighten + consolidate.** Reduce lines, merge overlapping docs, fewer files.
 - **Re-verify against `main`** (not the spike tree) any codebase claim a sketch leans on.
 
+**Focus the perpetual work on pre-S&S and S&S docs.** That's where the depth should go.
+It's fine to do the other buckets and think ahead too, but those are secondary — the
+bar to clear by Sunday is a tight, implementable pre-S&S + S&S spec.
+
+**Keep docs TIGHT, not long.** Tight beats thorough-but-bloated. If a doc is getting
+long, tighten or split it — do not grow it. PR-shape sketches should be dense and
+short: the key types, the empty fn bodies, the test list — not prose padding. Deepening
+a sketch means making it *more precise*, not *longer*.
+
 Guardrail (per `looping-preferences.md`): don't *churn* already-good prose for its own
-sake. But the design space — "everything between main and print-md sync," with a shape
-sketched for every PR — is genuinely large; there is real work here right up to 6pm
-Sunday. Prefer deepening the highest-leverage pre-S&S / S&S efforts over polishing low
-ones. Leave a one-line status each pass so progress is legible.
+sake. The design space is large, but the product is a tight spec — prefer making
+pre-S&S / S&S sharper and shorter over adding surface. Leave a one-line status each pass.
 
 ## Bucket / dependency order (the dir structure to converge on)
 
