@@ -1,219 +1,140 @@
-# CLI daemon — the long-running host
+# CLI daemon — hosting the live substrate
 
-The original framing of this doc was narrow: a daemon amortizes the ~1 s .NET
-cold-start that every `dark` invocation pays. That benefit is real but it is the
-*least* interesting reason to build one. The async, sync, and event-bus work has
-since produced a set of components that are inherently long-lived — an event bus,
-a frame-parking scheduler, open sync connections, warm projections — and none of
-them fit the "fresh process per call" model at all. A long-running daemon is the
-natural host for all of it. Cold-start savings become a side effect.
+A per-call `dark <cmd>` boots the runtime, loads the package tree from `data.db`, does one
+thing, and exits. That's fine for stateless reads. But the substrate from
+[event-bus.md](event-bus.md) and [async.md](async.md) is **not** stateless — it needs a
+resident host. This doc splits into two parts: (1) generic long-running-daemon support in
+the CLI, and (2) which daemons actually exist and how they're shaped.
 
-This doc reframes the daemon as **the resident process that owns the live
-substrate**, and the user-facing CLI as a thin client that talks to it.
+`main` has no daemon today (no `dark daemon`, no socket host) — this is all new surface.
 
-## The shift: from optimization to architecture
+---
 
-The per-call CLI is stateless by construction: each `dark <cmd>` boots the
-runtime, loads the package tree from `data.db`, does one thing, and exits. That
-is fine for a stateless world. But the substrate described in `event-bus.md`
-and `async.md` is **not** stateless:
+# Part 1 — Long-running daemon support
 
-- The **event bus** is a push-based, multi-subscriber, partly-durable structure.
-  Subscribers register interest and get woken on emit. A process that exits after
-  one command cannot host a subscriber.
-- The **scheduler** holds parked frames — continuations waiting on a promise, a
-  conflict resolution, a capability grant, or a human answer. A parked frame that
-  outlives a single command (a long materialization, an `await` on a remote op)
-  has nowhere to live in the per-call model.
-- **Sync connections** (`sync.md`) want to stay open: a WebSocket on
-  `/sync/live`, or a polling loop against `/sync/events`. Reconnecting per command
-  is wasteful and loses push latency.
-- **Crons and `start()` daemons** — user-defined background work — have no host at
-  all today. A cron tick is `Bus.publish "cron-tick" ()`, which presupposes a
-  process alive to receive it.
-- **Projections** (the package tree, dep graphs, the conflict view, budget totals)
-  are rebuilt from the op stream. Keeping them warm in memory means a query is a
-  read, not a replay.
+## Why a resident process at all
 
-The question is no longer "is the cold-start worth optimizing." It is "where does
-the live substrate run." The answer is: a daemon.
+Four things can't live in a process that exits after one command:
 
-## What the daemon hosts
+- **The event bus** — push-based, multi-subscriber, partly durable. A subscriber needs a
+  process to live in.
+- **The scheduler** — parked frames (continuations awaiting a promise, a conflict, a human
+  answer) must outlive the command that spawned them.
+- **Long-lived external connections** — anything holding an open socket/poll loop (the
+  future sync layer is the headline consumer, built *on top* of this).
+- **Crons + `start()` background work** — a cron tick is `Bus.publish "cron-tick" ()`, which
+  presupposes a process alive to receive it.
 
-Six responsibilities, roughly in order of how much they *need* a resident process:
+Warm projections (the package tree, dep graphs) are a bonus: held in memory, a query is a
+read, not a replay — and the ~1 s .NET cold-start the original optimization chased vanishes
+as a side effect.
 
-1. **The event bus.** One set of typed `RuntimeBuses` (per `event-bus.md`),
-   resident, with durable buses backed by SQLite and ephemeral ones in memory.
-   Subscribers across all logical sessions attach here.
-2. **The scheduler.** The `ready`/`parked` split lives in the daemon. Parked frames
-   survive across CLI interactions — a frame parked on a slow LLM materialization
-   keeps waiting while the user runs other commands.
-3. **Sync producers and consumers.** The daemon holds the open connection(s) to
-   peers, runs the `/sync/live` WebSocket or the poll loop, and pushes arriving ops
-   onto `syncIn` / outgoing ops off `syncOut`. One connection per remote, not one
-   per command.
-4. **Crons and `start()` background work.** User daemons and scheduled work run here
-   on the same bus pipeline — a cron tick is just another publish.
-5. **Warm projections.** The package tree and other derived views are built once
-   and updated incrementally as ops arrive, instead of replayed per call.
-6. **The apps surface** (see [apps-surface.md](apps-surface.md)). Serving running
-   Darklang apps (HTTP handlers, the eventual app runtime) needs an always-on host.
-   **The apps work likely depends on this daemon** — there is no per-call model for
-   "serve an HTTP endpoint."
+## Daemons are just Apps
 
-Cold-start amortization and instant autocomplete (the original doc's whole case)
-fall out of items 1 and 5 for free: the client talks to a warm process, so it
-never pays boot cost and never re-reads the package tree.
-
-## Ops vs projections
-
-The daemon does not introduce new mutable state. The durable op stream (sync ops,
-conflicts, capability grants) remains canonical; everything the daemon holds in
-memory — the warm package tree, the parked-frame table, the live projections — is
-a **projection** of that op stream, rebuildable on restart by replay. This matters
-for the lifecycle story below: a daemon crash loses no durable state, only warm
-caches, which it rebuilds. The daemon is a cache and a coordinator, never a source
-of truth.
-
-## One daemon per machine, sessions multiplexed inside
-
-The original doc left this open ("per-user? per-rundir? per-machine?"). The
-substrate now forces a clear answer.
-
-**Position: one background service per machine (per user account on that machine).
-Sessions and branches are logical state multiplexed inside it — not separate
-sockets, pidfiles, or processes.**
-
-Reasoning:
-
-- **The event bus is shared by nature.** A sync op arriving for branch B should
-  wake frames parked on B regardless of which session triggered them. Sync
-  connections are per-remote, not per-session. If each session ran its own daemon,
-  each would open its own sync connection and maintain its own bus — duplicating
-  the open connections and fragmenting the very coordination the bus exists to
-  provide. One bus, many logical subscribers, is the whole point of a push-based
-  multi-subscriber design.
-- **Branches are filters, not boundaries.** Sync is "per-branch with namespace as
-  a filter on top" (`sync.md`). A branch is a selector applied to one op
-  stream, not a separate world needing its own process. The scheduler keys parked
-  frames by event selector; the selector already carries branch identity. Branch
-  isolation is a query-time concern, handled by tagging frames and subscriptions,
-  not a process boundary.
-- **Isolation is achievable in-process.** The against-case worry — bench tasks
-  cross-contaminating — is handled by rundir/branch tagging on frames, ops, and
-  subscriptions, the same tagging the scheduler already needs. We do not need OS
-  process boundaries to keep concurrent agent runs apart; we need disciplined
-  selectors, which the bus design already has.
-- **Resource cost.** N daemons means N warm package trees, N sync connections, N
-  schedulers. One daemon shares all of it. For the concurrency=4 bench case, that
-  is one daemon coordinating four logical sessions, not four daemons.
-
-So the filesystem footprint is **one set per machine** (per account):
+**A long-running daemon is an [App](apps-surface.md) with a background loop** — nothing new
+to manage. It shows up in `dark apps`, and start/stop/status are the *app* surface, not a
+parallel "daemon manager." This keeps the user model small:
 
 ```
-~/.darklang/daemon.sock      # one Unix domain socket — the client connects here
-~/.darklang/daemon.pid       # one pidfile — liveness + single-instance guard
-~/.darklang/daemon.version   # one version stamp — client/daemon compat check
+$ dark apps
+NAME          KIND      STATUS
+core          daemon    running   (bus, scheduler, routing)
+print-md      app       idle
+my-http-api   daemon    running   :8080  (3 handlers)
+
+$ dark apps stop my-http-api      # same verb as any app
+$ dark apps status core
+core  running  pid 4821  sessions:2  parked-frames:1  uptime:3h
 ```
 
-A logical session or branch is identified by a header/handshake field on the
-client connection (`session_id`, `branch`), not by a distinct socket. The client
-opens the one socket, announces who it is and which branch it cares about, and the
-daemon routes its requests and event subscriptions accordingly. This mirrors how
-sync already maps a connection to an `account_id` via a handshake rather than a
-dedicated endpoint per identity.
+So "daemon lifecycle" = "app lifecycle for apps that happen to run a loop." The only
+daemon-specific surface is the host plumbing below.
 
-The `.version` stamp does real work: a client built against an older protocol must
-detect a mismatch and either tell the daemon to restart or fall back to per-call
-mode. The single-instance pidfile guard prevents two daemons fighting over the one
-socket.
+## Lifecycle + client/daemon protocol
+
+The user-facing CLI is a **thin client** that talks to a resident host over a socket:
+
+- **Start.** Lazy — the first command that needs a daemon starts it if absent; explicit
+  `dark apps start <name>` for the always-on case.
+- **Connect.** Client opens the socket, sends a handshake `(protocolVersion, sessionId,
+  branch)`, gets a routed channel. On version mismatch → fall back to per-call.
+- **Stop/restart.** Drains: parked frames resolve, persist (durable buses already do), or
+  time out; restart rebuilds warm projections by replay — no durable loss.
+- **Crash recovery.** The daemon holds only projections, so a crash loses warm caches and
+  ephemeral frames; durable buses replay on restart and resurface pending conflicts/queries.
+  The next client connection transparently restarts a dead daemon.
+- **Signals.** Client CTRL-C cancels *that client's* in-flight request (scheduler injects
+  `Cancelled` into its frames) — it does not kill the daemon. Killing is explicit.
+
+```
+thin client ──socket──► resident daemon ─┬─ event bus + scheduler (parked frames)
+  serialize cmd+ctx     handshake routes │─ warm projections (package tree, ...)
+  stream results+events  by session/branch└─ background loops (crons, app handlers)
+```
+
+A command that parks doesn't block the socket: the daemon returns a `parked` handle, the
+client keeps working or subscribes to the wake event, and the result streams on resume. The
+blocking `readKey`/`watchLoop` problem dissolves — the loop lives in the daemon, clients get
+events.
+
+**Fallback:** stateless reads (`view`, one-shot `search`) still run in-process if no daemon
+is present. Only the live surface (background loops, open connections, cross-session parked
+frames) *requires* the host.
+
+---
+
+# Part 2 — The daemon topology
+
+Not one monolith per machine, and not one per session. Instead: **a core coordinator plus
+per-app daemons it supervises** — matching "an instance per app; a core instance coordinates
+the rest, that's its only job."
+
+```
+            ┌──────────────── core daemon (one per machine/account) ───────────────┐
+            │  owns: the event bus · the scheduler · routing · external connections │
+            │  job: coordinate everything + drive sync.  Holds no app logic.        │
+            └───────────────┬───────────────────────────┬──────────────────────────┘
+              supervises     │                           │
+            ┌────────────────▼─────┐            ┌────────▼──────────────┐
+            │ app daemon: my-http  │            │ app daemon: a warm    │
+            │ serves :8080         │            │ projection / cron host│
+            └──────────────────────┘            └───────────────────────┘
+```
+
+- **The core daemon** — one per machine (per account). Owns the single event bus, the
+  scheduler, request routing, and the long-lived external connections. Its *only* job is
+  coordination + sync; it holds no app-specific logic. One bus, many logical subscribers is
+  the whole point of a push-based design — N cores would duplicate connections and fragment
+  coordination.
+- **Per-app daemons** — each long-lived App (an HTTP handler host, a warm projection, a cron
+  host) runs as its own daemon-App, spawned and GC'd by the core. Most are temporary; some
+  stick around. This is where "each app has its own DB / instance" lands
+  ([distributed-event-sourcing.md](distributed-event-sourcing.md)).
+- **Sessions and branches are logical filters**, multiplexed inside via the handshake fields
+  — not separate processes. A branch is a selector on one op stream; the scheduler already
+  keys parked frames by selector, so branch isolation is query-time tagging, not a process
+  boundary.
+
+Filesystem footprint — one core set per account; app daemons register with the core:
+
+```
+~/.darklang/core.sock       # the one socket clients connect to
+~/.darklang/core.pid        # liveness + single-instance guard
+~/.darklang/core.version    # client/daemon protocol compat check
+```
 
 ### When per-machine is the wrong grain
 
-Two exceptions worth naming, both narrow:
-
-- **Strong isolation requirements.** If a bench harness needs hard guarantees that
-  one task cannot observe another's state (a security or determinism requirement,
-  not just hygiene), spawn a daemon per isolation domain with its own socket path
-  (`DARK_DAEMON_SOCK=...`). This is opt-in, not the default.
-- **Multi-account on one machine.** Different OS users get different daemons
-  naturally (different `~/.darklang`). That is per-user, which is the intended
-  grain anyway.
-
-## Lifecycle
-
-The daemon's lifecycle is the genuinely new surface area, and the original doc's
-caution here was right. Concretely:
-
-- **Start.** Lazy: the first `dark` command that needs the daemon starts it if the
-  pidfile is stale/absent, then connects. Explicit `dark daemon start` exists for
-  the apps/sync case where you want it up without issuing a command.
-- **Connect.** Client opens `daemon.sock`, sends a handshake (protocol version,
-  session_id, branch), and gets a routed channel. On version mismatch, fall back
-  to per-call.
-- **Stop / restart.** `dark daemon stop|restart`. Stop drains: it lets parked
-  frames either resolve, persist (durable buses already do), or time out, then
-  exits. Restart rebuilds warm projections by replay — no durable loss.
-- **Crash recovery.** Because the daemon holds only projections, a crash loses
-  warm caches and in-flight ephemeral frames. Durable buses (`conflict`,
-  `capability`, `syncIn/Out`, `humanQuery`) persisted their state; on restart the
-  daemon replays and resurfaces pending human queries and unresolved conflicts.
-  The next client connection transparently restarts a dead daemon.
-- **Health.** `dark daemon status` reports liveness, connected sessions, parked
-  frame count, sync connection state.
-- **Signals.** The daemon must distinguish "stop the daemon" from "interrupt the
-  operation this client requested." Client-side CTRL-C cancels the client's
-  in-flight request (the scheduler injects `Cancelled` into that session's frames,
-  per the event-bus cancellation note); it does not kill the daemon. Killing the
-  daemon is the explicit `stop` command or a signal to the daemon pid directly.
-
-## Client/daemon protocol
-
-The client is thin: it serializes a command + context (session, branch, cwd) over
-the socket and streams back results and events. This is deliberately close to the
-sync wire protocol's shape — a handshake that establishes identity, then a
-request/response plus an optional event stream — so the two can share framing.
-
-A command that parks (because it `await`s something not yet ready) does not block
-the socket: the daemon returns a "parked" status with a handle, the client can
-keep working or subscribe to the wake event, and the result streams when the frame
-resumes. This is the per-call model's blocking `readKey` / `File.watchLoop`
-problem dissolved — the blocking loop lives in the resident daemon, and clients
-get events.
-
-## Fallback: per-call still works
-
-The daemon is an optimization-and-host layer, not a hard dependency for the basic
-CLI. A `dark <cmd>` that does not need the live substrate (a pure `view`, a
-one-shot `search`) can still run in-process if the daemon is absent or a version
-mismatch is detected. What *requires* the daemon is the long-lived surface: serving
-apps, holding sync connections open, running crons, and awaiting cross-session
-parked frames. The split is clean: stateless reads can go either way; live
-substrate needs the resident host.
-
-## Cross-references
-
-- `event-bus.md` — the bus + scheduler + parked-frame model the daemon
-  hosts; durable-vs-ephemeral persistence; the QueueWorker precedent for
-  background work.
-- `sync.md` — the wire protocol whose framing the client/daemon protocol
-  mirrors; the open connections the daemon holds; per-branch-as-filter, which
-  justifies one daemon over many.
-- `async.md` — the core async model the scheduler depends on; the daemon
-  hosts the scheduler but should depend on the interface that doc settles, not on
-  Ply specifics.
+- **Strong isolation** (a bench harness needing hard guarantees one task can't observe
+  another): opt-in separate core via `DARK_DAEMON_SOCK=...`. Not the default.
+- **Multi-account** on one machine: different OS users get different `~/.darklang` naturally.
 
 ## Open questions
 
-- **Apps runtime coupling.** How tightly does the apps surface bind to the daemon —
-  is the daemon the app host, or does it spawn separate app processes it
-  supervises? Likely the former for v1, but worth settling once the apps design
-  firms up.
-- **Idle shutdown.** Should the daemon exit after some idle period to free
-  resources, or stay resident for instant response? Probably stay resident when
-  sync/apps/crons are active, idle-timeout when only serving CLI calls.
-- **Protocol sharing with sync.** How much framing can the client/daemon protocol
-  literally reuse from the sync wire protocol versus merely resemble it?
-- **Multi-branch in one session.** A session may touch several branches; confirm
-  the per-connection branch field is a default rather than a hard scope, with
-  per-request override.
+- **App-daemon supervision.** Does the core spawn app daemons as child processes it
+  supervises, or host them as in-core background loops? Lean: in-core loops for v1, separate
+  processes only when an app needs isolation or its own resource budget.
+- **Idle shutdown.** Stay resident when sync/apps/crons are active; idle-timeout when only
+  serving stateless CLI calls.
+- **Multi-branch per session.** The per-connection `branch` is a default, not a hard scope —
+  confirm a per-request override.

@@ -113,6 +113,15 @@ here. Rotate through these (and write what you do as new "Discovered" todos):
   PR spec + design doc it needs. Spine = the index; PR specs = the detail.
 - **Adversarial gap-hunt.** Re-read across docs for cross-doc tensions, missing pieces,
   unstated assumptions, and dependency-rule violations. Fix what you find.
+- **Top-to-bottom sanity check (every few passes).** Step back from the individual docs and
+  read the whole thing as one design. Do the docs *make sense together*? Are we going insane
+  / over-engineering? **Will this actually work as a product?** North star: **as universal
+  and boring-reliable as `git` and `sqlite`** — something people reach for without thinking,
+  that just works, that you'd build a hundred other things on. Ask plainly: *what's getting
+  in the way of that?* (Too many moving parts? A primitive that's too clever? A story that
+  only works for print-md and nothing else?) Write the answer somewhere durable
+  (`meta/sanity-check.md` or Discovered) and feed the gaps back as todos. This is worth
+  *hours* over the run — not a checkbox; keep returning to it.
 - **Tighten + consolidate.** Reduce lines, merge overlapping docs, fewer files.
 - **Re-verify against `main`** (not the spike tree) any codebase claim a sketch leans on.
 
@@ -190,12 +199,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 - [ ] **`remote-access.md`:** rename → `remote-access-and-control.md`; migrate the core
   Tailscale bits into the pre-S&S Tailscale doc; migrate the *rest* (remote control) →
   `later/`.
-- [ ] **`cli-daemon.md`:** drop the doc-history framing. **Split** into (1) supporting
-  long-running daemons in the CLI, and (2) the specific per-branch(?) daemon — what it
-  needs, its projections, how it interacts with everything. Reconsider
-  "one daemon per machine": maybe one **core sync daemon** + one **per projection**?
-  Think it through, don't go wild. **Daemons are just Apps** — show in the apps menu,
-  managed there.
 - [ ] **`composable-mvu.md`:** fold into 1+ other docs (per its own preamble). Rename
   `App.empty` → `init` (and maybe it takes args). **Compare the App structure to mature
   systems (Elm, F#, …)** — is ours reasonable? Does it make distribution of
