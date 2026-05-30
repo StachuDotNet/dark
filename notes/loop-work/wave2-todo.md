@@ -86,13 +86,25 @@ here. Rotate through these (and write what you do as new "Discovered" todos):
   # PR: <name>     (effort N of the spine)
   Goal            one sentence; what's true after this merges that wasn't before.
   Prereqs         which earlier PRs must land first; what to pull *into* them.
-  .fs changes     each file + how it changes (new type, changed signature, new module).
-                  Ground every file path against `main` (git show main:path).
+  .fs changes     THE MOST IMPORTANT THING TO MODEL — spend the effort here.
+                  Lead with LibExecution (RuntimeTypes, Interpreter, Execution, ...).
+                  Call out ProgramTypes changes EXPLICITLY where relevant: PT is the
+                  serialized AST/type surface, so a PT change ripples to serialization,
+                  ProgramTypesToRuntimeTypes, and the embedded package-ref hashes (needs
+                  the two-build pass). Each file + how it changes (new type, changed
+                  signature, new module). Ground every path against `main` (git show main:path).
   .dark changes   which package items / .dark files change; new builtins exposed.
+  SQL/schema      only when a step adds/changes DURABLE state: the table + migration.
+                  Sometimes it matters, often it doesn't — say which, don't invent rows.
   New types/fns   the key type defs + empty fn bodies / pseudocode (the shape).
-  Test plan       per step: unit (which test file), integration, and the observable
-                  done-signal. "How do we know step K works?"
-  UX touchpoints  CLI/TUI surface that changes — with a fake-session visual.
+  Test plan       per step, BOTH kinds: .fs tests (which test file; add vs adjust) AND
+                  .dark tests (which package test; add vs adjust) — say which exist vs new.
+                  Plus the observable done-signal: "how do we know step K works?"
+  CLI impact      CHECK EVERY PR (even if "none"): does the `dark` CLI gain/change a
+                  command, flag, or output? What breaks for an existing CLI user?
+  UX change       state it concretely — what does the user SEE differently before vs
+                  after? A fake before/after terminal session. "Nothing user-visible" is
+                  a valid answer, but say it explicitly.
   Risks/unknowns  problems not yet raised; failure modes; what could force a redesign.
   Above/below     what the PR above expects from this one; what this expects from below.
   ```
@@ -293,10 +305,17 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 ## Discovered (add todos here as they surface)
 
 - [ ] **First PR specs (async + event-bus are solid enough).** Their substrate shape is
-  settled; write PR specs per the template: (a) **EventBus primitive** — new
-  `LibExecution/EventBus.fs`, `ExecutionState` gains `buses`, persistence to SQLite, tests;
-  (b) **async Stage A** — effect metadata on the 9 builtin assemblies + child-VM isolation +
-  cancellation (the prereq everything else needs). Ground each `.fs` path against `main`.
+  settled; write PR specs per the template. (a) **EventBus primitive** — DRAFTED at
+  `pre-s-and-s/pr-eventbus.md`; still needs the newer template sections back-applied:
+  **.dark tests** (add/adjust, not just .fs), an explicit **CLI impact** line, and a
+  concrete **UX change** (before/after). (b) **async Stage A** — effect metadata on the 9
+  builtin assemblies + child-VM isolation + cancellation (the shared prereq). Ground each
+  `.fs` path against `main`.
+- [ ] **Per-PR-spec contract (apply to every spec; see the template).** Each spec must
+  model: LibExecution changes first (esp. **ProgramTypes** where relevant — serialization +
+  package-ref-hash ripple); **SQL/schema** only when durable state changes; **both .fs and
+  .dark tests** (which file, add vs adjust); **CLI impact** checked every time; and the
+  concrete **UX change** (what the user sees before/after). Sweep existing and future specs.
 - [ ] **Conflict-dispatch bucket placement** (from capabilities.md): the deny→resolution
   "conflict dispatch" is shared by caps + sync + runtime errors. It may be a pre-S&S
   substrate primitive so pre-S&S docs reference it without an up-link — decide + move.
