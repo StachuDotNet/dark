@@ -9,8 +9,10 @@ reads this top-to-bottom to execute.
 > Stachu's `print-md` script lives in Dark. He inspects it, changes it, the changes **sync**
 > to his other machines, and it shows up under **`dark apps`** as an installed app.
 
-Concrete near-term target: **two local release builds syncing — one always-on desktop on the
-Tailscale network, one client — over a wire that carries only ops and commits.** End-state:
+Concrete target: **any member of the Tailscale tailnet syncing — an always-on desktop as the
+hub, and any number of clients (Stachu's other machines, Ocean, coworkers) — over a wire that
+carries only ops and commits.** Two machines is the *first proof*, not the limit; the design
+target is tailnet-wide sync across whoever is on the tailnet. End-state:
 [apps-surface.md](../pre-s-and-s/apps-surface.md); substrate: [sync.md](sync.md).
 
 ## Floor vs. vision substrate (read this first)
@@ -78,16 +80,18 @@ with idempotent apply through the existing op-playback path — localhost first,
 Tailscale. The durable `syncIn`/`syncOut` buses (from (1)) flip to persisted here.
 → design: [sync.md](sync.md)
 
-**8. Identity binding (thin). [floor]** Just enough to sync safely between Stachu + coworkers: a
-`Tailscale-User-Login` → account mapping and `dark link --tailscale`, so synced ops carry real
-authorship + a structured `Intent`. Kept minimal and stable in PT; the fuller identity story
-is deferred. → design: [sync.md](sync.md)
+**8. Identity binding (thin). [floor]** Just enough to sync safely between *any* tailnet
+members: a `Tailscale-User-Login` → account mapping and `dark link --tailscale`, so synced ops
+carry real authorship + a structured `Intent`. Scales to N members on the tailnet, not just
+Stachu's own devices. Kept minimal and stable in PT; the fuller identity story is deferred.
+→ design: [sync.md](sync.md)
 
-**9. Autosync between two of Stachu's machines. [floor]** A background **poll**-based pull/apply
-loop (config in the `.darklang` dir, not env vars); push is a [vision] upgrade once the bus
-lands. Optionally hosted by the core daemon, but a plain cron-style poll works daemon-free.
-**The self-sync milestone — the goal's first real proof.** → design:
-[cli-daemon.md](../pre-s-and-s/cli-daemon.md), [sync.md](sync.md)
+**9. Autosync across the tailnet. [floor]** A background **poll**-based pull/apply loop (config
+in the `.darklang` dir, not env vars); push is a [vision] upgrade once the bus lands.
+Optionally hosted by the core daemon, but a plain cron-style poll works daemon-free. Two of
+Stachu's machines is the first proof; the *same* loop syncs any tailnet member against the hub.
+**The first real proof of the goal.** → design: [cli-daemon.md](../pre-s-and-s/cli-daemon.md),
+[sync.md](sync.md)
 
 **10. `print-md` as an App + the `dark apps` surface. [floor]** Declare print-md as an App,
 install/list via `dark apps`, and get an edit on the desktop to surface on the laptop through
@@ -105,7 +109,9 @@ follows once the floor syncs.
 ## What's punted (and why)
 
 Removing the `.dark` files (needs working sync + a stable env — [bootstrap.md](bootstrap.md));
-multi-user / public funnel (after self-sync works); interactive capability grants (grants are
-instance settings for now); **WIP sync** (ideal, but we don't yet know how to do it safely).
+**public-internet / cross-org exposure beyond the tailnet** (the Tailscale `funnel`) — note
+*tailnet-wide* sync across all members **is in scope**, since the tailnet is the trust
+boundary; interactive capability grants (grants are instance settings for now); **WIP sync**
+(ideal, but we don't yet know how to do it safely).
 Each is detailed where it lives; the open *decisions* per effort stay in their own design docs,
 not here.

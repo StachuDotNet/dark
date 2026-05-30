@@ -68,7 +68,8 @@ tokens, no second identity source — the tailnet *is* the trust boundary for no
 
 A small star: every peer syncs to and from the always-on server (Stachu's desktop, or
 a hosted `matter.darklang.com` later). **Direct peer-to-peer sync is punted to
-the later bucket** — the star is enough for "my machines + a couple of coworkers."
+the later bucket** — a star with the always-on desktop as hub handles **anyone on the
+tailnet** (Stachu's machines, Ocean, coworkers — N members, not just two).
 
 ## Ops vs. projections — the separation that makes concurrent sync work
 

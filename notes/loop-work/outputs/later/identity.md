@@ -2,8 +2,9 @@
 
 Designs the identity model: who authors ops, and the *intent* behind them.
 
-> **Punted to later — S&S needs only a thin slice.** To sync safely between Stachu and a
-> couple of coworkers, all that's required is a `Tailscale-User-Login` → account mapping so
+> **Punted to later — S&S needs only a thin slice.** To sync safely between *any* members of
+> the tailnet (Stachu's machines, Ocean, coworkers — N of them), all that's required is a
+> `Tailscale-User-Login` → account mapping so
 > ops carry real authorship, plus a **stable, structured `Intent`** (below). The rest of this
 > doc — agent identities, the owner-chain recursion, sub-agents — is later depth, not needed
 > to reach print-md sync. The thin slice is effort 8 in the spine.

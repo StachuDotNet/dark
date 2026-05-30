@@ -46,7 +46,7 @@ fi
 date > "$LOCK"
 cd "$REPO" || { rm -f "$LOCK"; exit 1; }
 
-PROMPT='Resume the wave-2 loop (the live session appears to have died — you are the crash backstop). Read notes/loop-work/wave2-todo.md fully and do ONE chunk per its rules: pre-S&S then S&S; tight prose but keep code specs + step-by-step; visuals; enforce the dependency rule; main is the source of truth (verify vs git show main:path; pdd is a spike); edit only under notes/loop-work/; touch /tmp/dark-wave2-loop.heartbeat; verify 0 broken links; commit locally (NEVER push); delete done todos. One-line status.'
+PROMPT='Resume the wave-2 loop (the live session appears to have died — you are the crash backstop). Read notes/loop-work/wave2-todo.md fully and do ONE chunk per its rules: pre-S&S then S&S; tight prose but keep code specs + step-by-step; visuals; enforce the dependency rule; sync is tailnet-wide (any member, not just 2 machines); main is the source of truth (verify vs git show main:path; pdd is a spike); EDIT only under notes/loop-work/ (reading ~/vaults/Darklang Dev is OK but may be stale — favor local+main); touch /tmp/dark-wave2-loop.heartbeat; verify 0 broken links; commit locally (NEVER push); delete done todos. One-line status.'
 
 { echo "=== $(date) watchdog fire (heartbeat stale) ==="; \
   claude --resume "$SESSION" -p "$PROMPT" --permission-mode acceptEdits 2>&1; \

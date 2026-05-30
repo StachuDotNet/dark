@@ -53,8 +53,10 @@ and prereqs to pull out into *earlier* efforts. Iterate on those sketches hard.
   Verify every codebase claim against real `main` (`git show main:path`), never the working
   tree. Label spike-only things as spike-only. A clean idea on a real `main` primitive beats
   a slick one resting on something that only exists in the spike.
-- Sandbox: edit only under `notes/loop-work/` (the `outputs/` tree + this file). Never
-  touch the real `pdd-thinking/` or the Obsidian vault. Never use the section-sign in
+- Sandbox: **edit** only under `notes/loop-work/` (the `outputs/` tree + this file). Never
+  **edit** the real `pdd-thinking/` or the Obsidian vault. **Reading `~/vaults/Darklang Dev`
+  is allowed** (read-only) for reference — but its details may be **old/wrong**, so favor
+  local docs + `main` over the vault wherever they conflict. Never use the section-sign in
   prose (write "section N"). Never `git stash`/`reset --hard`.
 
 ## Keep going until Sunday 6pm — perpetual mode (read every pass)

@@ -45,7 +45,8 @@ can predict exactly what happens.
 
 ## Sharpest finding: the sync milestone probably doesn't need the heavy substrate
 
-Walk the *minimal* path to "print-md edits sync between two machines":
+Walk the *minimal* path to "print-md edits sync across the tailnet" (two machines is the first
+proof; the target is any number of tailnet members against the hub):
 
 ```
 ops DB (content-addressed)  +  Tailscale HTTP  +  POST /sync/events → fold apply
