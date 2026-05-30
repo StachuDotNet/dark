@@ -231,11 +231,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 
 ## 6. meta (cleanup — do the kills only after section-0 extraction; consolidate at the very end)
 
-- [ ] **Kill:** `meta-reflections/README.md`, `PRINT-LIST.md`, `STATUS.md`,
-  `feedback-coverage.md`, `grounding-against-main.md`, `loop-operations.md`,
-  `process-risks.md`, `where-the-loop-struggles.md`, `what-the-loop-is-good-at.md`.
-  (The looping-prefs doc is already extracted → `notes/loop-work/looping-preferences.md`,
-  so these kills are unblocked.)
 - [ ] **Consolidate `vault-organization.md` + `overwrite-map.md` into one.** At the **end
   of EVERYTHING**, re-evaluate its content from scratch (the dir structure will have
   changed a lot).
