@@ -91,3 +91,43 @@ full substrate with the boring floor that actually ships print-md sync.
    opt-in for sync/apps (cli-daemon.md + spine).
 3. Keep testing the unification against "does each PR stand alone?" — flag any doc that only
    works if the whole system exists.
+
+---
+
+# Second pass — is it review-ready?
+
+Re-run after the floor PR specs, the floor/vision split, tailnet scope, the no-daemon-default
+fix, and the meta cleanup. The question now is Sunday-readiness, not viability.
+
+**The first pass's central prediction held — and is now *validated*, not asserted.** It claimed
+the floor is git-small and the runtime substrate is the over-build risk. Since then every floor
+PR spec was written, and **each one grounds in machinery that already exists on `main`**:
+sync = `package_ops` + `applyOps` + idempotent `INSERT OR IGNORE` (already there); ops⊥projections
+= `package_ops` + `Seed.growIfNeeded` (already there); conflict-dispatch = wrap `raiseRTE`
+(already there); EventBus integration = one construction site (proven in prework). So "the floor
+is mostly *expose/reorganize what exists*" is now a demonstrated fact across four specs, not a
+hope. The EventBus + scheduler were correctly pulled off the floor's critical path. Both findings
+1 and 2 from the first pass are resolved (spine re-sequenced; cli-daemon no-daemon-default).
+
+**Health check (real numbers):** pre-S&S + S&S = ~2360 lines across ~14 tight docs, **zero
+up-ref violations**, 0 broken links, every codebase claim grounded against `main`. The spine is
+a clean ordered entry point with floor/vision tags and links down to specs. This is review-ready.
+
+**What could make Sunday go badly (honest):**
+- **A foundational disagreement Stachu hasn't seen coming.** Mitigated: the genuinely-contested
+  calls are *flagged as open*, not hidden — conflict-carrying vs conflict-blind App, build-our-own
+  async vs keep Ply, WIP-sync. He adjudicates these; the spec doesn't pretend they're settled.
+- **The op/PT format-stability long-pole.** Still the deepest unsolved gate to "universal as
+  git/sqlite" (a peer on an older op encoding can't read a newer op). Correctly punted to
+  bootstrap, but it's the one thing that ultimately decides universality — worth him knowing it's
+  *the* prerequisite, not a detail.
+- **Breadth/navigation.** ~14 priority docs + 4 PR specs is a lot to review. The spine is the
+  entry point, but a one-paragraph "read in this order" pointer at the top of the spine would
+  help a cold reader. *(Low-effort win — candidate next pass.)*
+
+**Verdict: the pre-S&S + S&S deliverable is review-ready.** The floor is a coherent, git-small,
+grounded, executable plan whose every step traces to existing `main` code. What's left for
+Stachu is to adjudicate the handful of explicitly-flagged open decisions — not to fill gaps.
+
+**Minor housekeeping found:** `later/dark-virtual-files.md` is ~1200 lines (over the <1000 bar) —
+a tighten candidate, but it's punted/secondary so low priority.

@@ -4,6 +4,13 @@ The through-line. Not a backlog — an **ordered list of efforts (PRs)**, each m
 the one goal, each linking *down* to the design doc (and PR spec) that details it. A future AI
 reads this top-to-bottom to execute.
 
+> **Reviewing the whole thing cold? Read in this order:** (1) **this spine** — the plan and the
+> floor/vision split; (2) the keystone **`../pre-s-and-s/distributed-event-sourcing.md`** — the
+> one model everything reduces to (ops, projections, the thin `App`); (3) the per-effort
+> **design docs** this spine links down to; (4) the **PR specs** (`pr-*.md`) for the floor
+> efforts, which show the concrete `.fs`/`.dark`/test shape. The floor efforts are what ship
+> print-md sync; the `[vision]` ones come after.
+
 ## The goal
 
 > Stachu's `print-md` script lives in Dark. He inspects it, changes it, the changes **sync**

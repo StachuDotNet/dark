@@ -245,6 +245,9 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 
 ## Discovered (add todos here as they surface)
 
+- [ ] **`later/dark-virtual-files.md` is ~1200 lines** — over the <1000 bar (only doc that is).
+  Tighten/split when convenient; low priority (punted/secondary bucket). Found in 2nd sanity pass.
+
 - [ ] **Prework prototyping track (NEW outlet — validate specs in real code).** Isolated clone
   at `~/code/dark/loop-fun` (off real `main`, branch `prework/event-bus-primitive`). The `main/`
   tree (pdd) is untouched — never edit it or checkout another branch there. **Goal:** implement
