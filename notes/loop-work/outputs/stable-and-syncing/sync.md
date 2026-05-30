@@ -4,6 +4,12 @@ The sync wire protocol. The one-line frame: **the protocol carries only ops and
 commits.** Receivers regenerate every projection locally from those ops; nothing
 derived travels the wire.
 
+**Offline-first (like git).** Everything works offline: edit, run, branch, resolve — ops are
+authored into the local store and apply immediately. Sync is *reconciliation*, not a
+dependency: queued local ops push when a peer is reachable, remote ops pull and fold in. A
+disconnected instance is a fully working instance, exactly as `git` keeps working without a
+remote. This is the same property the floor's daemon-free, off-by-default stance already buys.
+
 ## Sharing, kept simple
 
 **Sharing** is an op authored on instance X becoming observable on instance Y, by
@@ -130,6 +136,10 @@ Sync is **off by default**; you opt in, and you can opt in *narrowly*:
 - **Default sync target.** Explicit, opt-in autosync — the user adds remotes
   deliberately (mirroring git's `remote add`), and autosync, once on, is likely managed
   by a **sync daemon** (see [cli-daemon.md](../pre-s-and-s/cli-daemon.md)). Not auto-on at install.
-- **Sync granularity.** Per-branch is the likely unit.
+- **Sync granularity.** Per-branch is the likely unit. Open sub-question: while on branch
+  `feature-x`, do `main`'s ops also flow in? Since a branch is a *filter* on one op stream
+  (not a separate world), main ops can be *received* without being *incorporated* — the dev
+  controls when to fold main into the branch (a merge), rather than main silently disrupting
+  in-flight work. Lean: receive-but-don't-auto-incorporate; surface "main has relevant changes."
 - **WIP across instances.** Ideally WIP syncs too, but we don't yet know how to do it
   safely — **punted**. WIP stays local by default for now.

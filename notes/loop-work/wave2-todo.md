@@ -249,18 +249,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
   `loop-fun/.devcontainer/devcontainer.json` (e.g. `dark_build_loopfun`). Until then, WRITE the
   F# against real source (high-value, zero-risk) and defer the compile to a deliberate pass.
 
-- [ ] **Vault-reference sweep (in progress).** Reading `~/vaults/Darklang Dev` for cross-check
-  (favor local + main where conflicting). **Done:** Networking/`Tailscale.md` — strongly
-  *confirms* local tailscale.md/sync (lean-on-TS, serve, MagicDNS, User-Login header, no-tsnet,
-  star, no-L2); its "poll every 2s" smallest-bet reinforces the floor=poll finding. Integrated
-  the one addition (`Tailscale-App-Capabilities` header as a cap *input*). Superseded by local:
-  vault's WIP-streaming (we punt WIP) and rebase-before-push (we use surface-as-data) — no
-  change. **`Sync and Distribution/Sync.md` — done:** strongly confirms (repos-are-ops-DBs,
-  sync-off-by-default, ops/conflict/resolution feeds, sync-is-an-app, ops-as-events). Integrated
-  two additions — **security-notices-only fetch mode** (sync.md) and a **PT-shape hash in the
-  handshake** as the cheap op-format-compat guard (pr-sync-read-write.md). **Still to skim**
-  (lower priority): `Ops and Playback/Notes/` (Offline Operations, Branch Syncing, Name
-  Resolution), `User Data/dl-distributed-dbs.md`. Pull only genuinely-additive bits; don't churn.
 
 - [ ] **Standing: does each PR stand alone?** (sanity-check finding #3). On each pass, spot-check
   that no doc/effort *requires the whole cathedral* — each primitive must ship independently.
