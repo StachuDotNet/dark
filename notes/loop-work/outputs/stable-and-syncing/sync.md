@@ -1,233 +1,123 @@
-# Sync and sharing
+# Sync
 
-This is the durable home for the sync wire protocol and the sharing
-story. The notion of "stable" as it relates to PDD iterative development
-lives in the PDD algorithm doc, not here.
-
-The one-line frame: **the protocol carries only ops and commits.**
-Receivers regenerate every projection locally from those ops. Nothing
+The sync wire protocol. The one-line frame: **the protocol carries only ops and
+commits.** Receivers regenerate every projection locally from those ops; nothing
 derived travels the wire.
 
-## Definitions
+## Sharing, kept simple
 
-### Sharing
+**Sharing** is an op authored on instance X becoming observable on instance Y, by
+idempotent op replication: the wire carries the op plus its attribution, and the
+receiver applies it through the same op-playback path it uses for a locally authored
+op. A remote op and a local op are the same kind of thing — there is no separate
+"import" path.
 
-**Sharing** is the act of an op authored on instance X becoming
-observable on instance Y. The mechanism is idempotent op replication:
-the wire carries the op plus its attribution, and the receiver applies
-it through the same op-playback path it would use for a locally authored
-op. There is no separate "import" path — a remote op and a local op are
-the same kind of thing.
-
-Sharing has three modes worth distinguishing:
-
-- **Self-share** — same human, different machines (desktop + laptop).
-  Bidirectional, single identity, full trust.
-- **Pair-share** — multiple humans collaborating on a namespace they
-  both own (or where one delegates to the other). Identity is per-op;
-  trust is scoped to the namespace.
-- **Public-share** — pushing to a public namespace via
-  `matter.darklang.com`. Authorship is explicit; trust is set per
-  namespace owner.
-
-All three ride the same wire protocol. What differs is the
-authentication and the capability surface granted to the remote peer.
-
-### Namespace ownership
-
-The canonical sharing-vs-collaboration distinction:
-
-> if the edits are to our own namespace, ops are applied directly and
-> visible to everyone with access. if the edits are to another
-> namespace, we automatically create an approval request.
-
-So **self-share and pair-share behave like a direct apply.** Public-share
-(and any cross-namespace edit) routes through the approval flow, which is
-itself just more ops on the wire.
-
-Namespaces are owner-scoped: a location is owner + modules + name (e.g.
-`User.Stachu.Foo.bar`). When an op targets a namespace whose owner is not
-the author, the op becomes an approval request rather than a direct
-apply. The owner sees the request arrive over the sync stream, chooses to
-accept / reject / comment, and the resolution is itself ops on the wire.
-
-### Approval flow as ops
-
-Approvals are not a subsystem — they are two first-class, content-
-addressed, syncable op variants:
-
-- `CreateApprovalRequest(authorId, targetLocation, op)`
-- `ApprovalDecided(requestId, decision: Approved | Rejected | ChangesRequested, comment)`
-
-Same replication machinery as any other op. No separate approval system.
+**For now we simply trust the other parties on the Tailscale network.** No sharing
+"modes", no namespace-ownership rules, no approval flow. If a peer is on the tailnet
+and we sync with it, its ops apply. (Cross-org trust, approvals, and public exposure
+are a deliberate later concern — punted to a later bucket.)
 
 ## Wire protocol
 
 ### Stance: lean on Tailscale, don't build a network stack
 
-Let Tailscale handle peer addressing, identity, TLS, and auth. The wire
-protocol then reduces to an HTTP-over-Tailscale exchange of ops.
-
-The substrate does not *require* Tailscale. Over the open internet the
-same HTTP endpoints work with ordinary TLS plus an auth header. Tailscale
-is the convenient default; the protocol design is network-agnostic.
+Let Tailscale handle peer addressing, identity, TLS, and auth. The wire protocol then
+reduces to an HTTP-over-Tailscale exchange of ops. (The substrate is not *bound* to
+Tailscale — over the open internet the same endpoints work with ordinary TLS — but the
+tailnet is the only target we design for now.)
 
 ### Default model: client/server
 
-The default deployment is plain client/server, where the server is an
-always-on desktop on the Tailscale network. Peers configure their
-remotes through config in the CLI-adjacent `.darklang` directory — not
-through environment variables.
+Plain client/server, where the server is an always-on desktop on the Tailscale
+network. Peers configure their remotes through config in the CLI-adjacent `.darklang`
+directory — not environment variables.
 
 ### Endpoints
 
 ```
-GET  /sync/snapshot
-  → returns the canonical snapshot (current branch state)
-  Used for: bootstrap
-  Auth: Tailscale-User-Login header OR Bearer token
-
-GET  /sync/snapshot/hash
-  → returns the SHA256 of the current snapshot
-  Used for: install-time + upgrade-time cache validation
-
+GET  /sync/snapshot           → the canonical snapshot (current branch state); for bootstrap
+GET  /sync/snapshot/hash      → SHA256 of the snapshot; for install/upgrade cache validation
 GET  /sync/events?since=<seq>&branch=<id>
-  → returns ops with sequence > since for the given branch
-  Auth: same
-
-POST /sync/events
-  Body: the ops the client is pushing
-  Response: { accepted, assigned_sequences, conflicts }
-  Auth: same
-  Note: never blocks on conflicts — accepts the ops and returns any
-        conflicts for the client to surface separately.
-
-GET  /sync/branches
-  → list branches the peer can access (filtered by identity)
-
-GET  /sync/whoami
-  → echo which Tailscale-User-Login the server saw and which Darklang
-    account it maps to; used for sanity checks
-
-WS   /sync/live
-  → optional WebSocket for low-latency push of new ops as they apply;
-    falls back to polling /sync/events on an interval
+                              → ops with sequence > since for the branch
+POST /sync/events             → push ops; body = ops; resp = { accepted, assigned_sequences, conflicts }
+                                never blocks on conflicts — accepts the ops, returns conflicts to surface
+GET  /sync/branches           → branches the peer can access
+GET  /sync/whoami             → which Tailscale-User-Login the server saw + its Dark account; a sanity check
+WS   /sync/live               → optional low-latency push of new ops; falls back to polling /sync/events
 ```
 
-About six endpoints. Most are simple queries against the op tables.
-
-### Authentication
-
-Two modes, both resolving to an `account_id` that goes into op
-authorship. The server does not care which mode the client used.
-
-- **Tailnet mode** (default between trusted peers): Tailscale terminates
-  TLS and injects `Tailscale-User-Login` / `Tailscale-User-Name` headers.
-  The server maps the login to an account, with a one-time onboarding
-  step that binds the tailnet login to a Darklang account.
-- **Token mode** (for non-Tailscale peers or the public web): a per-
-  account, scope-limited bearer token in `Authorization: Bearer <token>`.
-  Same account lookup, different identity source.
+About six endpoints, mostly simple queries against the op tables. **Auth on every one
+is the `Tailscale-User-Login` header** that Tailscale injects after terminating TLS;
+the server maps that login to an `account_id` (a one-time onboarding binds a tailnet
+login to a Dark account) and that account_id goes into op authorship. No bearer
+tokens, no second identity source — the tailnet *is* the trust boundary for now.
 
 ### Sync semantics
 
-- **Append-only and idempotent.** Receiving the same op twice is a no-op;
-  the content-hash op ID plus an applied flag handle de-dupe.
-- **Per-source ordering.** Each source carries a monotonic sequence
-  number. Cross-source ordering breaks ties by `(timestamp, author_id)`.
-- **Never blocks on conflicts.** Ops apply in the order received; any
-  disagreements are surfaced through the conflict-resolution dispatch
-  (see `conflicts.md`).
-- **Carries no derived data — only ops and commits.** Receivers
-  regenerate all projections locally. This is the whole point: the wire
-  is a transport for intent, not for state.
+- **Append-only and idempotent.** Receiving the same op twice is a no-op (content-hash
+  op ID + an applied flag de-dupe).
+- **Per-source ordering.** Each source carries a monotonic sequence number;
+  cross-source ties break by `(timestamp, author_id)`.
+- **Never blocks on conflicts.** Ops apply in order received; disagreements surface
+  through the conflict dispatch (see [conflicts.md](conflicts.md)).
+- **Carries no derived data — only ops and commits.** Receivers regenerate all
+  projections locally. The wire transports intent, not state.
 
 ### Replication topology
 
-```
-            matter.darklang.com   (always-on; just another peer)
-                    ↑↓
-   ┌────────────────┼────────────────┐
-   │                │                │
-stachu/desktop  stachu/laptop   feriel/laptop
-   └─── optional direct p2p over Tailscale ───┘
-```
+A small star: every peer syncs to and from the always-on server (Stachu's desktop, or
+a hosted `matter.darklang.com` later). **Direct peer-to-peer sync is punted to
+the later bucket** — the star is enough for "my machines + a couple of coworkers."
 
-Default: every peer syncs to and from the always-on server. Optionally,
-peers sync directly to each other over Tailscale (e.g. Stachu's desktop
-pushes straight to his laptop). The protocol is symmetric —
-`matter.darklang.com` is just another peer, distinguished only by the
-convention of being always-on.
+## Ops vs. projections — the separation that makes concurrent sync work
 
-## Interactions with the rest of the system
+This was previously open; settling it: **ops are stored separately from the
+projections built from them.** The op stream (and commits — see below) is the one
+synced, durable thing; each projection is a local, regenerable read of it.
 
-### Event bus
+Why it matters for sync specifically:
 
-Sync is just another producer on the event bus (see `event-bus.md`).
-Arriving ops flow onto the bus exactly as locally authored ops do.
+- **Performance.** A projection (the name→hash table, package-item bodies, a file
+  view) is rebuilt by folding ops; keeping it separate lets it be cached, dropped, and
+  rebuilt without touching the canonical stream.
+- **Concurrent AI sessions.** Multiple agents/branches can run at once because **each
+  projection ignores the ops irrelevant to its branch/session** — it folds only what it
+  scopes to. The shared op stream is the only contention point, and it's append-only.
 
-### Conflicts
-
-Arriving ops that disagree with local state generate conflicts, handled
-by the conflict dispatch (see `conflicts.md`). `POST /sync/events` never
-blocks: it applies what it can and returns the conflicts for the client
-to dispatch locally, after sync, on whatever per-session policy applies.
-
-### Capabilities
-
-A remote peer can invoke only the capabilities the local user granted it.
-Per-peer grants live alongside per-session grants: a trusted peer (e.g.
-my own laptop) may receive all of my caps; an untrusted peer gets the
-minimum (read-only).
-
-## Open decisions
-
-- **Default sync target.** Auto-sync to the server on install, or opt-in?
-  Leaning local-first: the user adds remotes explicitly, mirroring git's
-  `remote add`.
-- **Sync granularity.** Per-branch with namespace as a filter on top is
-  the likely shape.
-- **Public exposure.** Initial deployments are tailnet-only; opening to
-  non-tailnet members (via Tailscale funnel or a real public ingress,
-  with rate-limiting and abuse defense) is a deliberate later step.
-- **Conflict dispatch timing.** When does the receiver dispatch arriving
-  conflicts — immediately, or batched and surfaced on the next CLI
-  interaction? A per-session policy.
-- **WIP across instances.** Does WIP on one machine sync to another?
-  Leaning hybrid: WIP stays local by default, opt-in to share it.
+So a projection declares what it folds and its scope (branch / session); arriving sync
+ops simply append to the stream, and the relevant projections pick them up. The DB
+shape this implies — a core ops/sync DB plus per-branch/per-session/per-app projection
+stores — is worked in [distributed-event-sourcing.md](distributed-event-sourcing.md).
 
 ## Persistence: ops in SQLite, no sidecars
 
-The wire carries only ops and commits — and locally those ops and commits should
-have exactly **one** durable home: the SQLite DB. The PDD *spike* scattered state
-across `rundir/pdd-cache/*.jsonl`, `promoted.jsonl`, `promoted_hashes.jsonl`, and
-friends — note these JSONL sidecars are **spike-only, not on `main`**, so this is a
-caution about a pattern to avoid as the real thing is built, not a description of
-shipped state. Such sidecars are a second source of truth living next to the op
-tables, and they must not return.
+Locally, ops and commits should have exactly **one** durable home: the SQLite DB.
+**Commits and branches are themselves managed by ops** (a different, "above" layer of
+op kinds than package edits, but ops all the same) — so there is no separate
+commit/branch store to reconcile against the op tables.
 
-The ops-vs-projections lens makes the rule sharp: the **op stream is the only
-durable thing**, and it lives in SQLite. Everything currently in a sidecar is
-either an op (so it belongs in the op tables) or a projection (so it should be
-*regenerated*, never persisted as a separate file). A JSONL cache is the worst of
-both — durable enough to drift, derived enough to be wrong.
+The ops-vs-projections lens makes the rule sharp: the **op stream is the only durable
+thing**, and it lives in SQLite. Anything else is either an op (belongs in the op
+tables) or a projection (regenerated, never persisted as a separate file). Avoid JSONL
+sidecars — they are the worst of both, durable enough to drift and derived enough to be
+wrong. (The PDD spike scattered state across `*.jsonl` caches; that pattern must not
+return when the real thing is built.)
 
-Concretely:
+## Interactions
 
-- **Everything in SQLite.** Traces, WIP, promoted bodies, the materialization
-  cache — all move into the DB. Either raw tables or, more likely, a `UserDB`-like
-  persistence primitive we build out: a typed, content-addressable store usable
-  from Dark code, so PDD persistence is not bespoke F# but an ordinary Dark
-  consumer of the same store.
-- **One source of truth.** With ops in SQLite, the snapshot/bootstrap path and
-  the wire protocol both read from one place. No file has to be reconciled against
-  the tables.
-- **Content-addressable store.** This is the same content-addressed-store framing
-  that lets the wire carry only ops and commits: if bodies and traces are
-  addressed by hash in the DB, replication is idempotent and projections rebuild
-  locally for free. The sidecars are exactly the non-content-addressed state that
-  blocks that, which is why they go.
+- **Event bus** — sync is just another producer; arriving ops flow onto the bus exactly
+  as locally authored ops do (see [event-bus.md](event-bus.md)).
+- **Conflicts** — arriving ops that disagree generate conflicts handled by the dispatch
+  (see [conflicts.md](conflicts.md)); `POST /sync/events`
+  applies what it can and returns the rest.
+- **Capabilities** — what a synced/remote action may *do* is gated by capabilities,
+  which are per-instance settings, not ops (see [capabilities.md](capabilities.md)).
 
-So the storage stance and the wire stance are the same stance seen at two scales:
-on disk, ops in SQLite with no sidecars; on the wire, ops and commits with no
-derived data.
+## Open decisions
+
+- **Default sync target.** Explicit, opt-in autosync — the user adds remotes
+  deliberately (mirroring git's `remote add`), and autosync, once on, is likely managed
+  by a **sync daemon** (see [cli-daemon.md](cli-daemon.md)). Not auto-on at install.
+- **Sync granularity.** Per-branch is the likely unit.
+- **WIP across instances.** Ideally WIP syncs too, but we don't yet know how to do it
+  safely — **punted**. WIP stays local by default for now.

@@ -144,15 +144,6 @@ Lower buckets may not reference higher ones.
 
 ## 2. S&S
 
-- [ ] **`sync.md`:** kill the 2nd sentence. Drop "sharing has three modes" — for now we
-  simply **trust other parties on the Tailscale network**; keep it simple. **Approvals
-  are not needed and are not ops** — kill the namespace-ownership + approval-flow
-  sections. Consequently **remove "token mode"** mentions. **Punt P2P** (but don't fully
-  drop — see `later/`). Open decision (default sync target): **explicit, opt-in
-  autosync**, maybe managed by a sync daemon. Persistence: **commits/branches are also
-  managed by (different/above?) ops**. **Answer (not answered anywhere yet): separate
-  ops from projections** — likely good for perf + handling multiple concurrent AI
-  sessions; each projection ignores ops irrelevant to its branch/session.
 - [ ] **`conflicts.md` → `conflicts-and-resolutions.md`:** keep **just enough** for S&S;
   split/punt the rest. Good core ideas — but don't go overboard.
 - [ ] **`identity.md`:** probably **punt to later** (likely not needed for S&S yet).
