@@ -215,11 +215,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
   `dark "request"` and it goes; some requests are "build/run software that…", some are
   "cd to wherever the json stdlib is." Open intent, we figure it out. **Fold the PDD
   README into `pdd.md`** (or vice-versa).
-- [ ] **`example-app.md`:** consider the real CLI **outliner** instead (real, known,
-  composed). Adjust the whole doc after reconsidering the App shape (per composable-mvu).
-  The **`views`** part especially needs work: we need an **identifier** so an "above"
-  app can use 0-N of the UXs as it chooses — maybe `views` is a **record type** the
-  above app reaches into. (Coordinate with the outliner focus in composable-mvu.)
 
 ## 5. later
 

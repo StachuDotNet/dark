@@ -10,6 +10,13 @@ play out on something concrete.
 
 It is illustration, not a spec — the point is to make the abstract members tangible.
 
+> **Why a KV store, not the outliner?** Considered the real CLI outliner (and it *is* the
+> worked App for the MVU/views lens in [composable-mvu.md](composable-mvu.md)). But a shared
+> map with concurrent same-key writes is the *clearest* demonstration of `conflict`/`resolve` —
+> the textbook clash — so KV earns its place here for the reconciliation depth, while the
+> outliner carries the addressable-`views` story next door. Same `App` type, two complementary
+> lenses.
+
 ## The App
 
 ```fsharp
@@ -57,10 +64,11 @@ let kv : App<Kv, KvOp> =
           Set ($"{k}.conflict.theirs", v2) ]
       | _ -> [ x ]
 
+    // NAMED views (Map<ViewId, View>) so an above-app picks the ones it wants:
     views = fun state ->
-      [ Table (state |> Map.toList |> List.map (fun (k, v) -> Row [Text k; Text v]))
-        // a standard projection: just the conflict rows
-        Text $"conflicts: {state |> Map.keys |> List.filter (String.endsWith \".conflict.ours\") |> List.length}" ]
+      Map [ "table",     Table (state |> Map.toList |> List.map (fun (k, v) -> Row [Text k; Text v]))
+            // a sibling projection an above-app may surface or ignore independently:
+            "conflicts", Text $"conflicts: {state |> Map.keys |> List.filter (String.endsWith \".conflict.ours\") |> List.length}" ]
 
     invariants = fun state ->
       // a hard at-rest constraint: keys are never empty strings.

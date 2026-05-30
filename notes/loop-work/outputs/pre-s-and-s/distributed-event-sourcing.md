@@ -32,9 +32,15 @@ type App<'state, 'op> =
     apply      : 'op -> 'state -> 'state     // play ONE op back — the only way state moves
     conflict   : 'op -> 'op -> Bool          // do two concurrent ops clash?
     resolve    : 'op * 'op -> List<'op>      // reconcile a clash (auto where it can)
-    views      : 'state -> List<View>        // projections to render (each by id/hash)
+    views      : 'state -> Map<ViewId, View> // NAMED projections; an above-app picks 0-N by id
     invariants : 'state -> List<Violation> } // at-rest / runtime constraints
 ```
+
+`views` is **keyed, not an anonymous list** — each projection has a stable `ViewId`, so a
+composing ("above") App reaches in and renders *whichever* sub-views it wants (0, some, or all)
+rather than getting an opaque blob. A concrete App typically wraps the keys in a typed record
+for ergonomics (e.g. the outliner exposes `outlinePane`/`editorPane`/`keyHints` — see
+[composable-mvu.md](composable-mvu.md)); the generic type stays `Map<ViewId, View>`.
 
 A counter, in full:
 
@@ -46,7 +52,7 @@ let counter : App<Int64, CounterOp> =
     apply = fun op n -> match op with | Inc -> n + 1L | Dec -> n - 1L | SetTo v -> v
     conflict = fun _ _ -> false          // increments commute — never clash
     resolve  = fun (a, _) -> [a]
-    views    = fun n -> [ Text $"count: {n}" ]
+    views    = fun n -> Map [ "count", Text $"count: {n}" ]
     invariants = fun _ -> [] }
 ```
 

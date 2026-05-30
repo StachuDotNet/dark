@@ -18,8 +18,9 @@ type App<'state, 'op> =
 
 Everything the system shows — viewers, editors, traces, eventually darklang.com — is **one
 composed `App`** whose `'op` is the sum of its facets' op types and whose `views` returns all
-their projections. Compose `apply` by op-variant dispatch, `views` by concatenation,
-`conflict`/`resolve` by routing on op kind, `invariants` by union. The ops-vs-projections
+their projections. Compose `apply` by op-variant dispatch, `views` by **keyed merge** (each
+facet's named views union into one `Map<ViewId, View>`), `conflict`/`resolve` by routing on op
+kind, `invariants` by union. The ops-vs-projections
 split holds: **ops** are durable/synced/replayable (state moves *only* by `apply`-ing one);
 **`views`** are derived reads, never authoritative.
 
@@ -151,12 +152,18 @@ outliner as a composed App:
     KeyPressed Enter   on node n   ->  [ NodeAdded (fresh()) (parentOf n) ]
     KeyPressed (Char c) editing n  ->  [ NodeEdited n (insert c) ]
     ToggleExport                   ->  [ Exported Markdown ]      // reuses markdown.dark
-  views = outline pane (ScrollableList of nodes) + text-editor pane (Input) + key hints
+  views = Map [ "outline",  ScrollableList(nodes)     // NAMED views — an above-app composes
+                "editor",   Input(focusedNodeText)     // 0-N of these by id (e.g. a dashboard
+                "keyHints", KeyHints(bindings) ]        // embeds just "outline")
 ```
+
+Because `views` is keyed (`Map<ViewId, View>`, per the keystone), a composing App reaches in by
+id: a focus-mode shell renders only `"editor"`; a split view renders `"outline"` + `"editor"`;
+a help overlay pulls `"keyHints"`. The outliner publishes the menu; the above-app picks the dishes.
 
 The migration from today's `SubApp` is mechanical: the `onKey` body that returns
 `Continue/Save/Exit` splits into the **intent translator** (decide → emit ops) plus
-**`apply`** (fold ops); `onDisplay : Unit -> String` becomes `views : state -> List<View>`
+**`apply`** (fold ops); `onDisplay : Unit -> String` becomes `views : state -> Map<ViewId, View>`
 (structured tree); a save stops being `onSave : Unit -> Unit` and becomes just another op.
 Then it gains, for free: **sync** (the `NodeXxx` ops ride the wire), **replay** (re-fold the
 op log), **hot-reload** (swap `views`/translator, keep the op stream), and **`print-md`** as
@@ -165,7 +172,7 @@ a sibling App over the same export op.
 | Today on main (`SubApp`) | Toward composed `App` |
 |---|---|
 | `onKey : Key -> … -> SubAppAction * SubApp` | intent translator `Msg -> state -> List<op>`; keys wrap into `KeyPressed` |
-| `onDisplay : Unit -> String` | `views : state -> List<View>` (structured tree) |
+| `onDisplay : Unit -> String` | `views : state -> Map<ViewId, View>` (structured tree) |
 | `onSave : Unit -> Unit` | a `Save`/`Exported` op, folded like any other |
 | `Page = … \| SubApp` (one slot) | one composed `App`; facets routed by op kind |
 | terminal-only render | multi-target via the `View` tree |
