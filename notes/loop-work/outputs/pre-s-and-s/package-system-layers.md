@@ -104,7 +104,7 @@ This is why extensions can be **opt-in without being opt-in-to-receive**.
 Participation in a feature is a local choice about which projections you
 materialize and which runners you activate, *not* a gate on which ops cross your
 boundary. The wire carries the full op stream (subject to
-[sync.md](sync.md) visibility/trust policy); each instance projects the subset it
+[sync.md](../stable-and-syncing/sync.md) visibility/trust policy); each instance projects the subset it
 cares about. An extension that lands later still sees the complete history,
 because the ops were never filtered out for lack of a local consumer.
 
@@ -186,7 +186,7 @@ fold out." None is a layer.
 | Saved / named traces | `PinTrace id`, `NameTrace id label` | example-of edges into the trace subsystem |
 | Comments / commentary | `Comment item body`, `Reply`, `Resolve` | threaded tree per item; long-form docs as items |
 | Approvals / provenance | `Approve item by`, `SetProvenance item src` | append log; cross-boundary attestations (sync) |
-| Trust / signatures / visibility | sync-policy ops + signature ops | what crosses a boundary (see [sync.md](sync.md)) |
+| Trust / signatures / visibility | sync-policy ops + signature ops | what crosses a boundary (see [sync.md](../stable-and-syncing/sync.md)) |
 
 Notes that survive the reframe:
 
@@ -194,7 +194,7 @@ Notes that survive the reframe:
   It is two **op sources** feeding two projections that a consumer may read
   together: an author's `DeclareEffects` op stream and a background analysis op
   stream. When they disagree, that disagreement is itself a projection — a
-  conflict surfaced as data, exactly as [conflicts.md](conflicts.md) and the
+  conflict surfaced as data, exactly as [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md) and the
   keystone's "most conflicts are OK" stance prescribe — not an overwrite and not a
   thing the storage layer adjudicates.
 
@@ -219,7 +219,7 @@ Notes that survive the reframe:
   they read, openly.
 - **Sync is free.** The package system rides the same op stream + projection split
   as everything else, so syncing deprecations, descriptions, and dependencies is
-  not new plumbing — it is [sync.md](sync.md) replicating ops, with each instance
+  not new plumbing — it is [sync.md](../stable-and-syncing/sync.md) replicating ops, with each instance
   projecting what it runs.
 - **Runtime checks are subscribers, not core toggles.** Harmful-halt, effect
   gating, and the like are Dark-side subscribers over buses, removing the bespoke
@@ -243,7 +243,7 @@ Notes that survive the reframe:
   App. The old "semantics differ per annotation" table was right about the
   *differences*; it now lives as each App's `conflict`/`resolve` members rather
   than as a column in a shared table.
-- **Trust and visibility** stay a [sync.md](sync.md) concern, not a package
+- **Trust and visibility** stay a [sync.md](../stable-and-syncing/sync.md) concern, not a package
   concern: which ops cross a boundary and who signed them is policy over the
   stream, layered the same way the keystone layers everything else.
 
@@ -253,7 +253,7 @@ Notes that survive the reframe:
   the thin `App`, ops vs projections, the four primitives this doc specializes.
 - [event-bus.md](event-bus.md) — the substrate; how harmful-flags and other
   warnings become subscriber-driven streams rather than core toggles.
-- [conflicts.md](conflicts.md) — how each package App's `conflict`/`resolve`
+- [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md) — how each package App's `conflict`/`resolve`
   reconciles concurrent ops (rename races, declared-vs-inferred disagreements).
-- [sync.md](sync.md) — how the op stream crosses machines and what trust/visibility
+- [sync.md](../stable-and-syncing/sync.md) — how the op stream crosses machines and what trust/visibility
   policy gates it.

@@ -8,7 +8,7 @@ fluid/structural editor) and **Hazel** (typed holes, edit-the-tree-not-the-strin
 
 Read alongside the vault note **"05.Implementation/Editing/structured and
 projectional editing.md"** (the conceptual background) and
-[distributed-event-sourcing.md](../stable-and-syncing/distributed-event-sourcing.md) (the substrate
+[distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md) (the substrate
 this rides on). The one-line framing borrowed from that doc:
 
 > **An edit is an op. The rendered view is a projection.** The editor never
@@ -36,7 +36,7 @@ This buys the things text editors fight for and lose:
   program is a tree with holes, not a syntactically broken string.
 - **Renames, moves, wraps are ops, not regex.** "Wrap this expression in a
   `match`" is one EditOp that replaces node N with `Match(N, holes)`. It
-  conflicts cleanly with concurrent edits ([conflicts](../stable-and-syncing/conflicts.md)) and
+  conflicts cleanly with concurrent edits ([conflicts](../stable-and-syncing/conflicts-and-resolutions.md)) and
   replays deterministically.
 - **Projections are free and plural.** Because the view is derived, a second
   person (or a screen reader, or a web pane) can fold the same op stream into a
@@ -45,7 +45,7 @@ This buys the things text editors fight for and lose:
 ### EditOps are just the App's ops
 
 The editor is one `App<EditorState, EditOp>` (per
-[distributed-event-sourcing.md](../stable-and-syncing/distributed-event-sourcing.md)). Sketch:
+[distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md)). Sketch:
 
 ```fsharp
 type EditOp =
@@ -108,7 +108,7 @@ model:
 ### Self-hosting: the editor's model is editable in the editor
 
 The mapping model is **a Dark value** (a fn body that is "forever lazy" — a
-delegated LLM call, per [distributed-event-sourcing.md](../stable-and-syncing/distributed-event-sourcing.md)
+delegated LLM call, per [distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md)
 and the CLAIMS framing). It lives in the package corpus like any other value,
 which means:
 
@@ -125,7 +125,7 @@ keyboard-to-op mapping is data the editor can edit.**
 ## UI design
 
 The view is a `View` tree (the same algebra as
-[composable-mvu.md](../stable-and-syncing/composable-mvu.md), shared across the codebase):
+[composable-mvu.md](../pre-s-and-s/composable-mvu.md), shared across the codebase):
 
 ```fsharp
 type View =
@@ -160,7 +160,7 @@ differs (terminal → ANSI, web → HTML/flexbox, later → svg/voice).
 - **Hole / completion popover** — when the cursor is on a hole, the candidates the
   expected type admits (and the tiny-loop's suggested op).
 - **Dive-in panel (optional, right)** — detail for the selected node: its sig,
-  body, dependents, trace — mirrors the [view-sketches.md](view-sketches.md) dive-in mechanic.
+  body, dependents, trace — mirrors the [view-sketches.md](../pdd/view-sketches.md) dive-in mechanic.
 - **Key hints bar** — context-sensitive shortcuts for the current node kind,
   populated from the cache/keymap (so it shows *real* current bindings, including
   user-forked ones).
@@ -254,7 +254,7 @@ declarative (Clay-style sizing/flow), the editor targets:
   a fork of the editor.
 
 The renderer is a substrate function, not per-editor code — exactly the
-[composable-mvu.md](../stable-and-syncing/composable-mvu.md) stance, so the structural editor inherits
+[composable-mvu.md](../pre-s-and-s/composable-mvu.md) stance, so the structural editor inherits
 multi-target rendering for free.
 
 ## Open questions
@@ -268,10 +268,10 @@ multi-target rendering for free.
   decide whether a hole can hold uninterpreted text as an escape hatch, or stays
   strictly structural.
 - **Conflict shape for concurrent structural edits.** Two people wrapping the
-  same node — defer to the [conflicts](../stable-and-syncing/conflicts.md) timing model (a dev-time
+  same node — defer to the [conflicts](../stable-and-syncing/conflicts-and-resolutions.md) timing model (a dev-time
   conflict), don't special-case it here.
 - **Parser / `compile` dependency.** Editing is parse-free, but two enabling
   primitives from the keystone still matter: a **composable Dark parser** for
   importing/pasting text into the AST, and the **`compile` builtin** for turning
   the edited AST into runnable code. See the parser/`ref`/`compile` thread in
-  [distributed-event-sourcing.md](../stable-and-syncing/distributed-event-sourcing.md).
+  [distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md).

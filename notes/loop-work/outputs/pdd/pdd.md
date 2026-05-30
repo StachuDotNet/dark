@@ -15,7 +15,7 @@ $ dark prompt "compute doubleIt of 4"
 DInt64 8L
 ```
 
-It works end-to-end today on real cases — recursion, list transforms, even a CSV column demo — and there are known gaps (LLM-natural FP idioms with tuples and non-existent Stdlib names still trip the parser). See [claims.md](claims.md) for the reframed core claims; where the thin F# substrate should grow is covered across the design docs — [event-bus.md](../stable-and-syncing/event-bus.md), [conflicts.md](../stable-and-syncing/conflicts.md), and the keystone [distributed-event-sourcing.md](../stable-and-syncing/distributed-event-sourcing.md).
+It works end-to-end today on real cases — recursion, list transforms, even a CSV column demo — and there are known gaps (LLM-natural FP idioms with tuples and non-existent Stdlib names still trip the parser). See [claims.md](claims.md) for the reframed core claims; where the thin F# substrate should grow is covered across the design docs — [event-bus.md](../pre-s-and-s/event-bus.md), [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md), and the keystone [distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md).
 
 ## Where it stands
 
@@ -23,4 +23,4 @@ This is a spike, currently resting. We do **not** anticipate a wide surface of P
 
 ## Reading order
 
-See [README.md](../README.md) for the design index. `git log pdd ^main` is the source of truth for the actual diff.
+See README.md for the design index. `git log pdd ^main` is the source of truth for the actual diff.

@@ -59,7 +59,7 @@ tokens, no second identity source — the tailnet *is* the trust boundary for no
 - **Per-source ordering.** Each source carries a monotonic sequence number;
   cross-source ties break by `(timestamp, author_id)`.
 - **Never blocks on conflicts.** Ops apply in order received; disagreements surface
-  through the conflict dispatch (see [conflicts.md](conflicts.md)).
+  through the conflict dispatch (see [conflicts.md](conflicts-and-resolutions.md)).
 - **Carries no derived data — only ops and commits.** Receivers regenerate all
   projections locally. The wire transports intent, not state.
 
@@ -87,7 +87,7 @@ Why it matters for sync specifically:
 So a projection declares what it folds and its scope (branch / session); arriving sync
 ops simply append to the stream, and the relevant projections pick them up. The DB
 shape this implies — a core ops/sync DB plus per-branch/per-session/per-app projection
-stores — is worked in [distributed-event-sourcing.md](distributed-event-sourcing.md).
+stores — is worked in [distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md).
 
 ## Persistence: ops in SQLite, no sidecars
 
@@ -106,18 +106,18 @@ return when the real thing is built.)
 ## Interactions
 
 - **Event bus** — sync is just another producer; arriving ops flow onto the bus exactly
-  as locally authored ops do (see [event-bus.md](event-bus.md)).
+  as locally authored ops do (see [event-bus.md](../pre-s-and-s/event-bus.md)).
 - **Conflicts** — arriving ops that disagree generate conflicts handled by the dispatch
-  (see [conflicts.md](conflicts.md)); `POST /sync/events`
+  (see [conflicts.md](conflicts-and-resolutions.md)); `POST /sync/events`
   applies what it can and returns the rest.
 - **Capabilities** — what a synced/remote action may *do* is gated by capabilities,
-  which are per-instance settings, not ops (see [capabilities.md](capabilities.md)).
+  which are per-instance settings, not ops (see [capabilities.md](../pre-s-and-s/capabilities.md)).
 
 ## Open decisions
 
 - **Default sync target.** Explicit, opt-in autosync — the user adds remotes
   deliberately (mirroring git's `remote add`), and autosync, once on, is likely managed
-  by a **sync daemon** (see [cli-daemon.md](cli-daemon.md)). Not auto-on at install.
+  by a **sync daemon** (see [cli-daemon.md](../pre-s-and-s/cli-daemon.md)). Not auto-on at install.
 - **Sync granularity.** Per-branch is the likely unit.
 - **WIP across instances.** Ideally WIP syncs too, but we don't yet know how to do it
   safely — **punted**. WIP stays local by default for now.

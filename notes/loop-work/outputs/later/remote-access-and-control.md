@@ -2,7 +2,7 @@
 
 Remote-control of a peer is not a new subsystem — it is a **mode that reuses the
 sync wire and the identity stack**. The transport, addressing, and auth are the
-ones [sync.md](sync.md) already specifies; the actor invoking a command is the
+ones [sync.md](../stable-and-syncing/sync.md) already specifies; the actor invoking a command is the
 same `Identity` that authors ops in [identity.md](identity.md). This doc covers
 the wire: addressing, auth, endpoints, and exec. Agent-runtime concerns (process
 model, spawning, observing, cross-instance agent identity) are out of scope here.
@@ -10,7 +10,7 @@ model, spawning, observing, cross-instance agent identity) are out of scope here
 The goals:
 
 - **Sync** — a function written on the laptop is on `major` and the reMarkable
-  within seconds. (This is just [sync.md](sync.md); listed for contrast.)
+  within seconds. (This is just [sync.md](../stable-and-syncing/sync.md); listed for contrast.)
 - **Control** — `dark on major run BatchProcess.run` invokes a fn on the GPU box
   from the reMarkable.
 - **Discovery** — `dark devices` shows all my peers with last-sync and current
@@ -20,7 +20,7 @@ The goals:
 
 ## Stance: lean on Tailscale, don't build a network stack
 
-The same stance as [sync.md](sync.md). Tailscale gives us, for free:
+The same stance as [sync.md](../stable-and-syncing/sync.md). Tailscale gives us, for free:
 
 - Stable per-device addressing (MagicDNS `<machine>.<tailnet>.ts.net`).
 - TLS (`tailscale serve --https=443`).
@@ -58,7 +58,7 @@ remarkable online   last-sync: 3m ago
 
 Implementation: shell out to `tailscale status --json`, parse it, and augment
 with per-device `last-sync` from local sync state plus `/sync/whoami` (see
-[sync.md](sync.md)). The device list rendered here is a **projection** over
+[sync.md](../stable-and-syncing/sync.md)). The device list rendered here is a **projection** over
 Tailscale status and local sync state, not a stored table.
 
 ### `dark on <peer> <cmd>` — remote execution
@@ -74,7 +74,7 @@ What happens:
 3. Tailscale terminates TLS and injects
    `Tailscale-User-Login: stachu@stachu.net`.
 4. The receiver maps the login → `account_id` (the same mapping
-   [sync.md](sync.md) uses) and resolves it to an `Identity`
+   [sync.md](../stable-and-syncing/sync.md) uses) and resolves it to an `Identity`
    ([identity.md](identity.md)).
 5. The receiver verifies that identity holds `CapRemoteExec` for this device.
 6. The receiver runs the cmd as that account; the resulting ops are authored
@@ -85,7 +85,7 @@ Same auth flow as sync. No additional moving parts.
 
 ### Endpoints on each peer
 
-In addition to the sync endpoints in [sync.md](sync.md):
+In addition to the sync endpoints in [sync.md](../stable-and-syncing/sync.md):
 
 ```
 POST /exec
@@ -118,7 +118,7 @@ a bespoke queue.
 3. When sync next succeeds with `offline-box`, that op replays on the target via
    the normal op-playback path.
 4. The result is published back over the sync stream and surfaces on the bus
-   (see [event-bus.md](event-bus.md)).
+   (see [event-bus.md](../pre-s-and-s/event-bus.md)).
 
 This dovetails with sync: `dark on` is "produce an op targeting a peer," and the
 durable record is that op. The "[queued: ...]" line and any later "[done]" line
@@ -126,7 +126,7 @@ are projections of the op's state, not separate bookkeeping.
 
 ## Capability surface
 
-Two caps extend the [capabilities.md](capabilities.md) set:
+Two caps extend the [capabilities.md](../pre-s-and-s/capabilities.md) set:
 
 - `CapRemoteExec` — let a remote peer invoke `dark run` / `eval` / etc. on me.
   Default: granted for *my own* accounts (Stachu's laptop trusts Stachu's other
@@ -135,14 +135,14 @@ Two caps extend the [capabilities.md](capabilities.md) set:
   granted to known tailnet members.
 
 Both follow the existing capability model: same grant flow, and denials route
-through the conflict dispatch (see [conflicts.md](conflicts.md)).
+through the conflict dispatch (see [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md)).
 
 ## Deliberately out of scope
 
 - **F# `tsnet` binding** — no .NET SDK for Tailscale's Go library; we work via
   the `tailscale` CLI plus HTTPS. Workable, not optimal.
 - **Public funnel exposure** — deferred with the public-share decision in
-  [sync.md](sync.md).
+  [sync.md](../stable-and-syncing/sync.md).
 - **Multi-tenant isolation between unrelated users on `matter.darklang.com`** —
   present deployments are small-team-tailnet-only. Cross-org sharing waits for a
   real auth/billing story.
@@ -159,4 +159,4 @@ through the conflict dispatch (see [conflicts.md](conflicts.md)).
   for "trust this peer to run X on me" is its own design.
 - **Tailnet-vs-internet boundary.** When does `matter.darklang.com` expose
   endpoints to non-tailnet members? Tied to the funnel decision in
-  [sync.md](sync.md).
+  [sync.md](../stable-and-syncing/sync.md).

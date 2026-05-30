@@ -8,7 +8,7 @@ Mechanically, hot-reload is **one consumer of a `BodyChanged` event**: when a
 definition's body changes, the substrate publishes `BodyChanged hash` on the
 event bus, and the parties that depend on the old body react. It is not a
 separate subsystem — it is a subscription pattern over the same bus everything
-else rides (see [event-bus.md](event-bus.md)).
+else rides (see [event-bus.md](../pre-s-and-s/event-bus.md)).
 
 ## UX intention
 
@@ -28,7 +28,7 @@ else rides (see [event-bus.md](event-bus.md)).
 The durable fact is the op that changes the body — a commit in the op stream.
 Editing a definition appends that op; the substrate then publishes a
 `BodyChanged hash` event derived from it. The bus already lists this kind (see
-[event-bus.md](event-bus.md), Event kinds):
+[event-bus.md](../pre-s-and-s/event-bus.md), Event kinds):
 
 | Kind | Producers | Subscribers |
 |---|---|---|
@@ -91,7 +91,7 @@ declared inputs cannot be told its world moved — and that is the shape to avoi
   or both? Likely both, linked.
 - **Blast-radius UX.** "Experiment on this branch" vs "push to dependents" needs
   a concrete gesture; it overlaps with the sharing modes in
-  [sync.md](sync.md).
+  [sync.md](../stable-and-syncing/sync.md).
 - **In-flight frames.** A frame mid-evaluation against a body that just changed:
   finish on the old body, or restart on the new one? Default to finishing the
   in-flight call and applying the new body on the next call.

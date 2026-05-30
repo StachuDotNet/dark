@@ -2,11 +2,11 @@
 
 > This is the "Dark state projected as a filesystem" concept — DISTINCT
 > from removing the `.dark` files from the repo (that's
-> [bootstrap.md](../removing-dark-files/bootstrap.md)). The file view here is a *projection* of
+> [bootstrap.md](../stable-and-syncing/bootstrap.md)). The file view here is a *projection* of
 > SCM state, and a write is an *op*: see
-> [distributed-event-sourcing.md](../stable-and-syncing/distributed-event-sourcing.md). The
+> [distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md). The
 > two-way conflict story reuses the conflict-dispatch machinery from
-> [sync.md](../stable-and-syncing/sync.md) and [conflicts.md](../stable-and-syncing/conflicts.md).
+> [sync.md](../stable-and-syncing/sync.md) and [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md).
 
 ## The question, re-stated
 
@@ -577,7 +577,7 @@ world this is trivial; in reality the second writer can be:
 
 Dark already handles these as SCM-level conflicts — the same
 conflict-dispatch machinery described in [sync.md](../stable-and-syncing/sync.md) and
-[conflicts.md](../stable-and-syncing/conflicts.md). The projection's job is to *surface* that
+[conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md). The projection's job is to *surface* that
 conflict in filelike form without reimplementing or bypassing it: the
 file view shows the conflict, the underlying op pipeline still owns the
 resolution.
@@ -925,7 +925,7 @@ an overwrite.
 user-facing resolution*. Dark's projection-sync model should look at
 Unison's reconciliation UI — it's a solved-enough problem that
 reinventing it is wasteful. (Dark's own version of this lives in
-[sync.md](../stable-and-syncing/sync.md) / [conflicts.md](../stable-and-syncing/conflicts.md); the projection just
+[sync.md](../stable-and-syncing/sync.md) / [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md); the projection just
 renders it.)
 
 ### VSCode Virtual File System API
@@ -1016,7 +1016,7 @@ real:
 - Conflicts (local write + Dark-side change to the same location)
   surface as `.yours`/`.theirs`/`.base` sidecars and dispatch through
   the existing conflict machinery
-  ([conflicts.md](../stable-and-syncing/conflicts.md)). User resolves by editing and removing
+  ([conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md)). User resolves by editing and removing
   the sidecars.
 
 **Writes back only.** Annotation sidecars (`.deprecation.yaml`) on write

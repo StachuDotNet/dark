@@ -78,7 +78,7 @@ This is exactly the BEAM/OTP playbook: ~100K lines of C under ~500K lines of Erl
 The F# layer should do only:
 
 1. **Op application + persistence** — validate, apply to SQLite, fire `BodyChanged`.
-2. **Event dispatch + bus routing** — subscribers, batches, transaction-end markers (see [event-bus.md](../stable-and-syncing/event-bus.md)).
+2. **Event dispatch + bus routing** — subscribers, batches, transaction-end markers (see [event-bus.md](../pre-s-and-s/event-bus.md)).
 3. **The MVU loop + async/parking** — drain a Msg queue, call `onMsg`, apply effects, park/resume frames, render deltas. (`MailboxProcessor` is a reasonable host for the per-app queue.)
 4. **Effects executor** — a small routed set: `PublishToBus` / `SubscribeTo` / `SaveState` / `Spawn` / `Exec` (cap-gated).
 5. **Capability check** — set-difference at the call site; denials through conflict dispatch.
@@ -104,4 +104,4 @@ BEAM solves runtime mutation per node and message-passing between nodes — not 
 - https://blog.appsignal.com/2021/09/14/application-code-upgrades-in-elixir.html
 - https://elixirschool.com/en/lessons/advanced/otp_distribution
 - F# `MailboxProcessor` (FSharp.Control)
-- [hot-reload.md](../stable-and-syncing/hot-reload.md), [composable-mvu.md](../stable-and-syncing/composable-mvu.md), [sync.md](../stable-and-syncing/sync.md), [identity.md](../stable-and-syncing/identity.md), [event-bus.md](../stable-and-syncing/event-bus.md)
+- [hot-reload.md](hot-reload.md), [composable-mvu.md](../pre-s-and-s/composable-mvu.md), [sync.md](../stable-and-syncing/sync.md), [identity.md](identity.md), [event-bus.md](../pre-s-and-s/event-bus.md)

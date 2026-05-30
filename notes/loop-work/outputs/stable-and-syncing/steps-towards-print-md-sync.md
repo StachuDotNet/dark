@@ -12,15 +12,15 @@ what order**, measured against the one goal.
 
 Concretely, the near-term target: **two local release builds syncing — one server
 (an always-on desktop on the Tailscale network), one client — over a wire that
-carries only ops and commits.** See [apps-surface.md](stable-and-syncing/apps-surface.md)
-for the end-state and [sync.md](stable-and-syncing/sync.md) for the substrate.
+carries only ops and commits.** See [apps-surface.md](../pre-s-and-s/apps-surface.md)
+for the end-state and [sync.md](sync.md) for the substrate.
 
 ## Priority order
 
 **1. Stable & Syncing (do this).** Everything below points at the two-builds-syncing
 target. **2. Removing `.dark` files — punted** (see
-[bootstrap.md](removing-dark-files/bootstrap.md); blocked on stable env + working sync).
-**3. PDD — resting** ([pdd.md](pdd/pdd.md); spike, not advancing). The
+[bootstrap.md](bootstrap.md); blocked on stable env + working sync).
+**3. PDD — resting** ([pdd.md](../pdd/pdd.md); spike, not advancing). The
 rest (capabilities depth, structural editor, the apps runtime) follows the substrate.
 
 ## The Stable & Syncing path
@@ -31,29 +31,29 @@ Roughly ordered; the first three can start in parallel.
    (`status --json`, `serve` shell-out, header parsing), then a two-machine
    ping/pong over `https://<peer>.<tailnet>.ts.net`. The single most
    confidence-building first move — it proves the "lean on Tailscale" stance
-   end-to-end. ([sync.md](stable-and-syncing/sync.md), [remote-access.md](stable-and-syncing/remote-access.md))
+   end-to-end. ([sync.md](sync.md), [remote-access.md](../later/remote-access-and-control.md))
 2. **Conflict-dispatch skeleton.** `Conflict` + `Resolution` sum types and a
    `conflictDispatch` field on `ExecutionState`, defaulting to `FailLoudly` — a hook
    that changes no behavior until a policy is installed. Everything (sync, caps,
-   runtime errors) routes through it later. ([conflicts.md](stable-and-syncing/conflicts.md))
+   runtime errors) routes through it later. ([conflicts.md](conflicts-and-resolutions.md))
 3. **Event-bus + scheduler core.** The thin F# `EventBus` (publish / subscribe /
    `waitForOne`) plus the parked-frame scheduler. The coordination substrate sync,
-   hot-reload, and async all rest on. ([event-bus.md](stable-and-syncing/event-bus.md),
-   [async.md](stable-and-syncing/async.md))
+   hot-reload, and async all rest on. ([event-bus.md](../pre-s-and-s/event-bus.md),
+   [async.md](../pre-s-and-s/async.md))
 4. **Sync read + write.** `GET /sync/snapshot`, `GET /sync/events`, then
    `POST /sync/events` with idempotent apply through the existing op-playback path —
-   localhost first. ([sync.md](stable-and-syncing/sync.md))
+   localhost first. ([sync.md](sync.md))
 5. **Identity binding.** A Tailscale-login → account mapping and `dark link
    --tailscale`, so synced ops carry real authorship + intent.
-   ([identity.md](stable-and-syncing/identity.md))
+   ([identity.md](../later/identity.md))
 6. **Autosync between two of Stachu's machines.** A background pull/apply loop
    (config in the `.darklang` dir, not env vars). This is the **self-sync
    milestone** — the goal's first real proof.
 7. **`print-md` as an App + the `dark apps` surface.** Declare print-md as an App,
    install/list/fork via `dark apps`, and get an edit on the desktop to surface on
    the laptop through sync. This is the north star.
-   ([apps-surface.md](stable-and-syncing/apps-surface.md),
-   [distributed-event-sourcing.md](stable-and-syncing/distributed-event-sourcing.md))
+   ([apps-surface.md](../pre-s-and-s/apps-surface.md),
+   [distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md))
 
 ## Recommended first chunk
 
@@ -65,17 +65,17 @@ leaf substrate work someone else can start the same day.
 ## Explicitly not next
 
 - **Removing `.dark` files** — punted until sync + a stable environment exist
-  ([bootstrap.md](removing-dark-files/bootstrap.md)).
+  ([bootstrap.md](bootstrap.md)).
 - **The PDD command surface** — resting; `dark prompt` waits for real implementation.
 - **Multi-user / `matter.darklang.com` / public funnel** — after self-sync works;
-  approval-as-ops is designed ([sync.md](stable-and-syncing/sync.md)) but deferred.
+  approval-as-ops is designed ([sync.md](sync.md)) but deferred.
 - **Interactive capability grants** — deliberately deferred
-  ([capabilities.md](stable-and-syncing/capabilities.md)); grants are instance-specific for now.
+  ([capabilities.md](../pre-s-and-s/capabilities.md)); grants are instance-specific for now.
 
 ## Open decisions to settle as you build
 
 - Conflict-blind vs. conflict-carrying op-playback (settle on the first real App).
 - WIP local-only vs. synced — i.e. which store it lives in
-  ([distributed-event-sourcing.md](stable-and-syncing/distributed-event-sourcing.md)).
+  ([distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md)).
 - Whether the core async model (Ply replacement) lands before or under the event bus
-  ([async.md](stable-and-syncing/async.md)).
+  ([async.md](../pre-s-and-s/async.md)).

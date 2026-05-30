@@ -3,10 +3,10 @@
 The unifying vision, named so future design decisions can be checked against it.
 
 > **Overlap note.** The collaboration *mechanics* — self/pair/public sharing,
-> namespace ownership, approval-as-ops — live in [sync.md](sync.md). This doc is
+> namespace ownership, approval-as-ops — live in [sync.md](../stable-and-syncing/sync.md). This doc is
 > the mental model above that: who inhabits the substrate, what vocabulary they
 > share, and why agents and humans are the same kind of inhabitant. Where this
-> doc touches synchronization, it defers to [sync.md](sync.md).
+> doc touches synchronization, it defers to [sync.md](../stable-and-syncing/sync.md).
 
 ## The reframing
 
@@ -34,7 +34,7 @@ doesn't distinguish at the mechanism level.
 instance with no AI is still a complete instance — human-only cohabitation
 (single user, or several humans, no agents) is the *primary* configuration, not
 a degraded one. AI agents enter only when the user explicitly grants
-`CapInvokeLLM` and any associated caps (see [capabilities.md](capabilities.md)).
+`CapInvokeLLM` and any associated caps (see [capabilities.md](../pre-s-and-s/capabilities.md)).
 The mechanism doesn't care who is present; the *defaults* do.
 
 Cohabitation isn't "humans and AIs forced together"; it's "*whoever is present*
@@ -70,7 +70,7 @@ Two channels, both shared across the substrate:
   it subscribes to what's relevant, and existing apps don't notice. (The
   *Elmish-magical* part: each app's update fn consumes a stream of Msgs; Msgs
   come from the bus; the rest is pure functions. No callback graphs, no RPC,
-  just streams.) See [event-bus.md](event-bus.md).
+  just streams.) See [event-bus.md](../pre-s-and-s/event-bus.md).
 - **Ops on shared state.** When an app needs to mutate persistent state (not its
   own Model), it produces an op. The op goes through validation, conflict
   detection, execution. Other apps see the result via their event
@@ -82,7 +82,7 @@ Two channels, both shared across the substrate:
 
 A complex app contains sub-apps; sub-apps can contain sub-apps. Composable MVU
 all the way down — apps compose, Msgs route, views assemble, effects interleave
-(see [composable-mvu.md](composable-mvu.md)).
+(see [composable-mvu.md](../pre-s-and-s/composable-mvu.md)).
 
 Nothing stops a sub-app from being another instance of its parent. The trace
 viewer can show a trace that includes traces. The PM can show the PM (browsing
@@ -108,7 +108,7 @@ An *agent* (human or AI) carries:
 
 This isn't optional metadata. "Why is this op being produced?" should be
 answerable by walking back to the agent's intent. This is exactly the `Intent`
-shape that rides on every op in [identity.md](identity.md): identity (chaining
+shape that rides on every op in [identity.md](../later/identity.md): identity (chaining
 to a responsible human), originating instance, reason, context.
 
 **Humans and AIs are both agents.** Same data shape, same permissioning.
@@ -144,16 +144,16 @@ we use and talk about the system, not how the language itself works.
 - **Adversarial agents.** Cohabitation assumes good-faith participation. What if
   an agent (or human) goes rogue? Capability gating, attributed ops, and
   revocation paths make the permission system the immune system (see
-  [capabilities.md](capabilities.md)).
+  [capabilities.md](../pre-s-and-s/capabilities.md)).
 - **Identity at scale.** A trusted agent run by user A is one thing; an
   autonomously-running agent is another. The identity model for agents is in
-  [identity.md](identity.md); scale is still open.
+  [identity.md](../later/identity.md); scale is still open.
 - **What constitutes "an app"?** The boundary is fuzzy — likely a continuum from
   a session-scoped one-shot action, through a long-running daemon, to an
   always-on background app.
 - **Synchronization granularity.** Real-time collaboration (multi-cursor-style)
   wants sub-second sync; async PR-style review tolerates minutes. A per-app
-  choice; the mechanics are in [sync.md](sync.md).
+  choice; the mechanics are in [sync.md](../stable-and-syncing/sync.md).
 
 ## Closing
 

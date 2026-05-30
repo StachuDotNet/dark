@@ -8,7 +8,7 @@ This is the doc the north star points at. The litmus test for the whole effort:
 
 Everything else in the design tree is substrate; this is the surface a user actually
 touches. It is built *on* the [App type](distributed-event-sourcing.md), runs *in* the
-[cli-daemon](cli-daemon.md), syncs *over* [sync.md](sync.md), and is gated by
+[cli-daemon](cli-daemon.md), syncs *over* [sync.md](../stable-and-syncing/sync.md), and is gated by
 [capabilities](capabilities.md). The apps surface is ready to build once those land
 (it may depend on the daemon work).
 
@@ -55,7 +55,7 @@ local projection; they do not mutate the canonical stream.
 2. **Inspect + change.** `dark apps print-md` shows its source and views; editing a
    fn appends ops to the stream. No separate "app build step."
 3. **Synced across machines.** Stachu's laptop is [subscribed to his desktop's op
-   stream](sync.md). His edit on the desktop folds into the laptop's projection on the
+   stream](../stable-and-syncing/sync.md). His edit on the desktop folds into the laptop's projection on the
    next sync — `print-md` updates on both. The op stream is the only thing on the wire.
 4. **Ocean forks it.** `dark apps fork print-md` branches the op stream into Ocean's
    namespace. She shares the history up to the fork point; her future ops are hers.
@@ -72,11 +72,11 @@ When that walkthrough works end to end, the effort has hit its mark.
 | Concern | Where it's handled |
 |---|---|
 | App is an op stream + projections | [distributed-event-sourcing.md](distributed-event-sourcing.md) |
-| Edits/installs/forks cross machines | [sync.md](sync.md) — ops on the wire; fork = a branch |
+| Edits/installs/forks cross machines | [sync.md](../stable-and-syncing/sync.md) — ops on the wire; fork = a branch |
 | Running app is hosted, kept warm | [cli-daemon.md](cli-daemon.md) — the resident host |
 | App declares + is gated by effects | [capabilities.md](capabilities.md) — `print-md` needs fs + process caps |
-| App's views render (CLI now, HTML later) | [view-sketches.md](../editing-software/view-sketches.md), [structural-editor.md](../editing-software/structural-editor.md) |
-| Fork-point + concurrent-edit conflicts | [conflicts.md](conflicts.md) — branch-vs-branch, name→two-hashes |
+| App's views render (CLI now, HTML later) | [view-sketches.md](../pdd/view-sketches.md), [structural-editor.md](../later/structural-editor.md) |
+| Fork-point + concurrent-edit conflicts | [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md) — branch-vs-branch, name→two-hashes |
 | Self-management of package values | the CLI provides listing/history/diff/share *around* an App's values |
 
 ## Forking, concretely
@@ -85,7 +85,7 @@ A fork is a branch of the op stream plus a transfer of authorship for future ops
 
 - **Shared history.** The fork keeps everything up to the fork point; only divergent
   future ops differ. Two instances pointing the same name at different post-fork
-  hashes is exactly the `Name → two hashes` conflict in [conflicts.md](conflicts.md),
+  hashes is exactly the `Name → two hashes` conflict in [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md),
   surfaced as data, not silently merged.
 - **Data migration.** A user of the app (not just the author) can fork and **migrate
   their data** into the fork. The mechanism is the App's own `apply` replayed over the

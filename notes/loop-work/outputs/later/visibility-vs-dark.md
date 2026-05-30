@@ -20,7 +20,7 @@ But Greten's question — "across 263 runs, what's this phase's failure rate?" �
 
 ### 1. Phase outcomes as typed ops, not log lines
 
-Greten's Ruby printed "failed to submit PR" but emitted no typed `PRSubmissionAttempted { outcome, error_kind, duration_ms, cost_usd }`. In Dark every materialization, cap-check, and conflict resolution should emit an op carrying **outcome metadata** — success / error_kind / duration / cost — not just a "something happened" signal. The agent runtime default-instruments, the event-bus carries it, the viewer aggregates. [capabilities.md](../stable-and-syncing/capabilities.md) already sets this discipline for caps; PDD needs it for materialize + refine cycles.
+Greten's Ruby printed "failed to submit PR" but emitted no typed `PRSubmissionAttempted { outcome, error_kind, duration_ms, cost_usd }`. In Dark every materialization, cap-check, and conflict resolution should emit an op carrying **outcome metadata** — success / error_kind / duration / cost — not just a "something happened" signal. The agent runtime default-instruments, the event-bus carries it, the viewer aggregates. [capabilities.md](../pre-s-and-s/capabilities.md) already sets this discipline for caps; PDD needs it for materialize + refine cycles.
 
 ### 2. Decisions through traced fn calls, not glue
 
@@ -32,11 +32,11 @@ Greten ends with "does low ideation confidence predict build failure?" — now *
 
 ## The honest tension
 
-Swamp's instrumentation took real work — the 268-line class didn't move itself, and Dark faces the same cost. The event-bus + parking get this right by construction (typed ops, recorded as they go); the discipline is keeping PDD on those rails rather than adding a side-channel of untyped log lines. The temptation to skip it for v0 ("we'll just read the code") is exactly what fails at scale — and the moment you wish you'd been recording, the data is already gone. See [event-bus.md](../stable-and-syncing/event-bus.md), [conflicts.md](../stable-and-syncing/conflicts.md).
+Swamp's instrumentation took real work — the 268-line class didn't move itself, and Dark faces the same cost. The event-bus + parking get this right by construction (typed ops, recorded as they go); the discipline is keeping PDD on those rails rather than adding a side-channel of untyped log lines. The temptation to skip it for v0 ("we'll just read the code") is exactly what fails at scale — and the moment you wish you'd been recording, the data is already gone. See [event-bus.md](../pre-s-and-s/event-bus.md), [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md).
 
 ## What visibility looks like, Dark-flavored
 
-The viewer ([view-sketches.md](../editing-software/view-sketches.md)) is the home — a telemetry strip, each entry a projection over the op stream:
+The viewer ([view-sketches.md](../pdd/view-sketches.md)) is the home — a telemetry strip, each entry a projection over the op stream:
 
 - **Per-session** — materializations attempted / successful / refined / abandoned.
 - **Per-cap** — top uses, top denials, grant-prompt latency.
@@ -47,7 +47,7 @@ All are projections over ops the substrate already records. The work is folding 
 
 ## Headline
 
-Greten's post is the case study Dark's design implicitly argues for. The ethos already says "show what's happening, by default" ([cohabitation.md](../stable-and-syncing/cohabitation.md)); the ops are already recorded. The open work is making **every phase of every agent's work** a projection on the same surface — not just caps and conflicts, but materialization outcomes, plan revisions, refine cycles. Instrumentation isn't an optional epic; it's the difference between a black box and a substrate. Ship PDD without it and you ship the system Greten spent his post arguing against.
+Greten's post is the case study Dark's design implicitly argues for. The ethos already says "show what's happening, by default" ([cohabitation.md](../pdd/cohabitation.md)); the ops are already recorded. The open work is making **every phase of every agent's work** a projection on the same surface — not just caps and conflicts, but materialization outcomes, plan revisions, refine cycles. Instrumentation isn't an optional epic; it's the difference between a black box and a substrate. Ship PDD without it and you ship the system Greten spent his post arguing against.
 
 ---
 
@@ -55,4 +55,4 @@ Greten's post is the case study Dark's design implicitly argues for. The ethos a
 
 - https://matgreten.dev/posts/visibility-into-the-black-box/
 - https://swamp.club/
-- [capabilities.md](../stable-and-syncing/capabilities.md), [conflicts.md](../stable-and-syncing/conflicts.md), [event-bus.md](../stable-and-syncing/event-bus.md), [cohabitation.md](../stable-and-syncing/cohabitation.md), [view-sketches.md](../editing-software/view-sketches.md)
+- [capabilities.md](../pre-s-and-s/capabilities.md), [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md), [event-bus.md](../pre-s-and-s/event-bus.md), [cohabitation.md](../pdd/cohabitation.md), [view-sketches.md](../pdd/view-sketches.md)

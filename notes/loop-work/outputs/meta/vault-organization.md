@@ -51,7 +51,7 @@ Recommended steps:
 Two referenced inputs were not found and need a manual pointer (or confirmation they don't
 exist under that name):
 
-- **HttpClient restriction notes** — referenced by [capabilities.md](../stable-and-syncing/capabilities.md);
+- **HttpClient restriction notes** — referenced by [capabilities.md](../pre-s-and-s/capabilities.md);
   the specific restriction spec is said to live in the vault but its exact location wasn't found.
 - **`feedback-from-agent.md`** — referenced by the agent-workflow theme; not located under
   that name. May not exist yet, or lives under a different name.

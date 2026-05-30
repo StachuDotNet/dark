@@ -33,11 +33,11 @@ The ops-vs-projections lens sharpens the difference. Swamp's "Data" conflates th
 
 ### 1. The recipe as a first-class inhabitant
 
-Dark treats the agent as an actor with intent; the **plan it executes is not yet a thing**. Swamp's bet: the plan deserves to be a typed, named, versioned, forkable artifact — not a transient chat thought. In Dark terms a workflow is just Dark code (a sequence of ops, or a composable-MVU shape) emitted onto the event-bus, replayable like any other op stream, owned by an account, cap-gated. Spec it as Dark, not YAML — Dark owns its host language. See [cohabitation.md](../stable-and-syncing/cohabitation.md), [composable-mvu.md](../stable-and-syncing/composable-mvu.md).
+Dark treats the agent as an actor with intent; the **plan it executes is not yet a thing**. Swamp's bet: the plan deserves to be a typed, named, versioned, forkable artifact — not a transient chat thought. In Dark terms a workflow is just Dark code (a sequence of ops, or a composable-MVU shape) emitted onto the event-bus, replayable like any other op stream, owned by an account, cap-gated. Spec it as Dark, not YAML — Dark owns its host language. See [cohabitation.md](../pdd/cohabitation.md), [composable-mvu.md](../pre-s-and-s/composable-mvu.md).
 
 ### 2. Tag-and-query as the default projection
 
-Swamp tags every artifact and queries by CEL. Dark records everything as ops but the query surface is thin. The move is native to the ops/projections model: a tagged-event projection is just another view folded from the op stream. Generalize the capability audit log ([capabilities.md](../stable-and-syncing/capabilities.md)) — every substrate event carries `tags`, the viewer ([view-sketches.md](../editing-software/view-sketches.md)) gets a filter bar. Trace-as-log becomes trace-as-projection.
+Swamp tags every artifact and queries by CEL. Dark records everything as ops but the query surface is thin. The move is native to the ops/projections model: a tagged-event projection is just another view folded from the op stream. Generalize the capability audit log ([capabilities.md](../pre-s-and-s/capabilities.md)) — every substrate event carries `tags`, the viewer ([view-sketches.md](../pdd/view-sketches.md)) gets a filter bar. Trace-as-log becomes trace-as-projection.
 
 ### 3. The `init` ritual
 
@@ -66,4 +66,4 @@ Both drop cleanly into the ops/projections model and shorten the path from "agen
 
 - https://swamp.club/
 - https://github.com/systeminit/swamp
-- [cohabitation.md](../stable-and-syncing/cohabitation.md), [capabilities.md](../stable-and-syncing/capabilities.md), [identity.md](../stable-and-syncing/identity.md), [event-bus.md](../stable-and-syncing/event-bus.md), [view-sketches.md](../editing-software/view-sketches.md)
+- [cohabitation.md](../pdd/cohabitation.md), [capabilities.md](../pre-s-and-s/capabilities.md), [identity.md](identity.md), [event-bus.md](../pre-s-and-s/event-bus.md), [view-sketches.md](../pdd/view-sketches.md)

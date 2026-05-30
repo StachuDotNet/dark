@@ -13,7 +13,7 @@ which are greenfield by nature. But **emulating *brownfield* work well (an agent
 changing an existing codebase) is an explicitly important, still-unsolved problem**
 (per the master feedback) — the bench is currently blind to it. Adding brownfield
 projects, and figuring out how to evaluate "changed existing code correctly," is a
-tracked open item (see [open-decisions.md](../../open-decisions.md)).
+tracked open item (see open-decisions.md).
 
 ## Pure computation & text toys
 

@@ -230,7 +230,7 @@ over local state.
   conflicts to worry about — there are no `.dark` files to re-resolve. Anything
   ambiguous flows through the same dispatch.
 - **`ConstraintViolated` (at-rest)** — when the fold reaches a resting state, an
-  `App`'s `invariants` ([distributed-event-sourcing.md](distributed-event-sourcing.md))
+  `App`'s `invariants` ([distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md))
   run over it; a returned `Violation` becomes a `ConstraintViolated` conflict.
   Runtime invariants produce the same conflict at run-time instead. Default is
   surface-not-block (the violations list is a projection); only a *hard* invariant

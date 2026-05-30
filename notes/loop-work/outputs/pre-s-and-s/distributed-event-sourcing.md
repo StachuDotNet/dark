@@ -7,7 +7,7 @@ you see is a **projection** of that stream; the unit that syncs and replays is
 one thin `App`.
 
 Read it alongside [event-bus.md](event-bus.md) (the substrate that carries ops),
-[conflicts.md](conflicts.md) (how concurrent ops reconcile), [sync.md](sync.md)
+[conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md) (how concurrent ops reconcile), [sync.md](../stable-and-syncing/sync.md)
 (how ops cross machines), [composable-mvu.md](composable-mvu.md) (the UI layer on
 top), and [async.md](async.md) (how a frame waits on an op without blocking).
 
@@ -132,14 +132,14 @@ Model and view are distributed, but a **projection of an update very likely
 happens on a specific instance**. That asymmetry drives the storage split:
 
 - **The core sync DB** (the ordered, content-addressed op stream) is one thing —
-  small, durable, shared. It is what [sync.md](sync.md) replicates.
+  small, durable, shared. It is what [sync.md](../stable-and-syncing/sync.md) replicates.
 - **Branch- and session-specific projections** (materialized package items,
   the file view, dependency graphs, the conflict list) are a *different* thing —
   regenerated locally, never shipped on the wire.
 
 We need recovery for distribution races — e.g. two branches on different
 instances pointing the same name to different hashes. That is resolved through
-the [conflicts](conflicts.md) system, not by trying to keep projections in lockstep.
+the [conflicts](../stable-and-syncing/conflicts-and-resolutions.md) system, not by trying to keep projections in lockstep.
 
 ### How to split it cleanly
 
@@ -158,8 +158,8 @@ files* (or the config dir), not just separate tables:
 - **`local.db` / the `.darklang` config** — local-authoritative state that is
   *neither synced nor derived*: capability grants (instance-specific —
   [capabilities.md](capabilities.md)), sync-remote config and the tailnet-login →
-  account binding ([sync.md](sync.md)), and WIP *if* the "WIP stays local" option
-  wins ([conflicts.md](conflicts.md)). This is the category the two-store split
+  account binding ([sync.md](../stable-and-syncing/sync.md)), and WIP *if* the "WIP stays local" option
+  wins ([conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md)). This is the category the two-store split
   would otherwise have no home for: it is authoritative (losing it loses
   information, so not a projection) yet private (it must never ride the wire, so
   not `ops.db`). The user backs it up; sync ignores it.
@@ -170,7 +170,7 @@ or a local grant; `projections.db` can be deleted any time and rebuilt with zero
 information loss; `local.db` is the one a careful user backs up but never shares.
 (`projections.db` is the natural thing to `.gitignore`.)
 
-A note on WIP: the local-vs-synced choice for WIP ([conflicts.md](conflicts.md)) is
+A note on WIP: the local-vs-synced choice for WIP ([conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md)) is
 exactly the question of whether WIP lives in `local.db` (option a, never folds into
 cross-instance conflicts) or in `ops.db` as non-committed ops (option b, folds and
 can clash). The three-store model makes that choice concrete: it is "which file."
@@ -192,7 +192,7 @@ name to different hashes is *not* two projections that disagree and must be
 reconciled — the `name → hash` binding is a projection on both sides, derived from
 each instance's ops. What actually exists is two ops in the log. When both ops fold
 on one instance, the disagreement surfaces as the `Name → two hashes` conflict
-([conflicts.md](conflicts.md)) and the dispatch resolves it. Recovery is re-fold +
+([conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md)) and the dispatch resolves it. Recovery is re-fold +
 dispatch over `ops.db`, never a distributed lock on `projections.db`. Keeping the
 projection non-authoritative is exactly what makes races cheap.
 
@@ -208,12 +208,12 @@ themselves be streams), compose. Solved with the least total code, this is the
 path that eventually lets us **remove the `.dark` files from the repo**: once the
 package corpus is just an op stream with projections, the checked-in files are
 redundant. (That removal is itself punted until baseline sync + stability —
-see [bootstrap.md](../removing-dark-files/bootstrap.md).)
+see [bootstrap.md](../stable-and-syncing/bootstrap.md).)
 
 ## Replay and nondeterminism — an op records the result, not the intent to call
 
 Replay is "re-fold `apply` over the op stream," and several docs lean on it being
-**deterministic**: [conflicts.md](conflicts.md) requires resolutions to resolve to
+**deterministic**: [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md) requires resolutions to resolve to
 "the recorded choice"; [async.md](async.md) calls playback deterministic because
 await points are explicit. That seems to clash with two facts — some bodies are
 "forever lazy" LLM calls that are *nondeterministic* on every invocation
@@ -259,7 +259,7 @@ This does not need a new guard, because the App's own functions are themselves
   that *is* the convergence guarantee.
 - A fork of the reconciliation logic (someone edits `resolve`) is not silent drift
   — it is a new hash for that package item, which shows up as an ordinary
-  `Name → two hashes` conflict ([conflicts.md](conflicts.md)) on the App's *own*
+  `Name → two hashes` conflict ([conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md)) on the App's *own*
   definition. The system surfaces "you two are running different resolvers" as the
   same kind of data it surfaces any other divergence.
 - Divergence by fork is therefore *deliberate and visible*, never accidental.
@@ -284,7 +284,7 @@ conflict rather than an invisible assumption.
 - **Auto-views from data.** A value with no hand-written `views` still renders —
   by reflection over its type, or by LLM code generation of a first view the user
   then edits. This needs a baseline **view engine** (see
-  [view-sketches.md](../editing-software/view-sketches.md) and [structural-editor.md](../editing-software/structural-editor.md)).
+  [view-sketches.md](../pdd/view-sketches.md) and [structural-editor.md](../later/structural-editor.md)).
 
 ## Rebuild the CLI as an App
 
@@ -322,7 +322,7 @@ Scriptorium is the reference for how these read and report.
 **What happens when an invariant is violated.** `invariants` returns a
 `List<Violation>`, and a violation is *not* a special case — it folds into the same
 conflict model as everything else. Each kind is checked at its matching timing
-([conflicts.md](conflicts.md)): at-rest invariants after the fold reaches a resting
+([conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md)): at-rest invariants after the fold reaches a resting
 state, runtime invariants during evaluation. A non-empty result is a
 `ConstraintViolated` conflict handed to the dispatch. Consistent with "most
 conflicts are OK," the default is to **surface, not block**: the current set of
@@ -338,19 +338,19 @@ A recurring stance worth stating once, here, and referencing elsewhere: **most
 conflicts are fine.** A conflict is just data — a condition we do not like and can
 get to later. The system should surface conflicts as a projection and keep
 running, not block. Only a small minority need eager resolution; the
-[conflicts](conflicts.md) dispatch decides which.
+[conflicts](../stable-and-syncing/conflicts-and-resolutions.md) dispatch decides which.
 
 ## How the docs compose
 
 | Doc | Its role in this frame |
 |---|---|
 | [event-bus.md](event-bus.md) | the substrate that carries and replays ops; parking |
-| [conflicts.md](conflicts.md) | the `conflict`/`resolve` members, by evaluation-time |
-| [sync.md](sync.md) | moving the op stream between instances |
+| [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md) | the `conflict`/`resolve` members, by evaluation-time |
+| [sync.md](../stable-and-syncing/sync.md) | moving the op stream between instances |
 | [composable-mvu.md](composable-mvu.md) | the msg/cmd UI loop layered on `apply`/`views` |
 | [capabilities.md](capabilities.md) | what an App's ops are allowed to *do* as effects |
 | [async.md](async.md) | how a frame waits on a not-yet-resolved op |
-| [view-sketches.md](../editing-software/view-sketches.md) / [structural-editor.md](../editing-software/structural-editor.md) | the view engine that renders `views` |
+| [view-sketches.md](../pdd/view-sketches.md) / [structural-editor.md](../later/structural-editor.md) | the view engine that renders `views` |
 | [apps-surface.md](apps-surface.md) | `dark apps` — the user-facing install/fork/run shape of an App |
 
 The meta-claim, worth holding loosely but testing hard: capabilities, conflicts,

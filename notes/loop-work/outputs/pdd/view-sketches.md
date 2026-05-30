@@ -5,8 +5,8 @@ High-level visual brief for the recursive-live-development viewer.
 shape; whoever builds the viewer takes these as inputs, not
 specifications.
 
-The viewer is one MVU app (see [composable-mvu.md](../stable-and-syncing/composable-mvu.md))
-subscribed to the event bus (see [event-bus.md](../stable-and-syncing/event-bus.md)),
+The viewer is one MVU app (see [composable-mvu.md](../pre-s-and-s/composable-mvu.md))
+subscribed to the event bus (see [event-bus.md](../pre-s-and-s/event-bus.md)),
 surfacing the in-focus fn as it gets shaped.
 
 ## Layout principle
@@ -255,7 +255,7 @@ am."
 
 ## Concurrent threads / multiple in-flight workflows
 
-Per the "`dark prompt` as daemon" idea (see [cli-daemon.md](../stable-and-syncing/cli-daemon.md)):
+Per the "`dark prompt` as daemon" idea (see [cli-daemon.md](../pre-s-and-s/cli-daemon.md)):
 a user can have multiple in-progress sessions at once. The viewer shows them in
 a sessions strip:
 
@@ -298,11 +298,11 @@ need to steer it**.
   difference.
 - State: lives in the Model of one MVU app. Survives hot-reload.
 - Events come from the bus (B4).
-- Polymorphic views (per [composable-mvu.md](../stable-and-syncing/composable-mvu.md)) mean
+- Polymorphic views (per [composable-mvu.md](../pre-s-and-s/composable-mvu.md)) mean
   a Pending renders one way, a fn body another, a trace another — all
   out of the box, customizable per user.
 - The whole thing should be Dark code on top of the substrate
-  (see the keystone [distributed-event-sourcing.md](../stable-and-syncing/distributed-event-sourcing.md)).
+  (see the keystone [distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md)).
 
 ## Aspirational closing
 
@@ -445,7 +445,7 @@ different values.
 
 ## "List of conflicts" as a standard view
 
-Conflicts (see [conflicts.md](../stable-and-syncing/conflicts.md)) are not a modal
+Conflicts (see [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md)) are not a modal
 interruption — they are a projection of state, so they get a
 standard view like anything else. The set of unresolved conflicts
 is `fold(ops) |> filter unresolved`; render that list.

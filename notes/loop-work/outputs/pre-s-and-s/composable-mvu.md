@@ -157,7 +157,7 @@ hand-writes a card:
   shows its event log; a `Pending` shows its state machine and last attempt.
 
 This is the **view engine** the keystone defers to
-[view-sketches.md](../editing-software/view-sketches.md). `App.views` returns `List<View>`; the engine
+[view-sketches.md](../pdd/view-sketches.md). `App.views` returns `List<View>`; the engine
 renders each. Writing a PDD viewer means calling `UI.view someFunction` and getting
 the default fn-card, then customizing per context.
 
@@ -200,7 +200,7 @@ dict. The right version is the PDD viewer expressed as a facet of the composed
 
 The viewer subscribes to streams via effects; ops flow in; `apply` folds; `views`
 re-renders. Hot-reloadable (swap `views` or the translator, keep the op stream;
-see [hot-reload.md](hot-reload.md)). Replayable (re-fold the op
+see [hot-reload.md](../later/hot-reload.md)). Replayable (re-fold the op
 stream). The viewer is a Dark `App`, not F# code.
 
 ## Replay, traces, and time-travel — all one fold
@@ -253,7 +253,7 @@ fields defaulting to empty.
 
 - **Render-target abstraction.** The `View` tree's exact node set and where the
   per-target renderer lives (F# adapter vs Dark) — converges with
-  [view-sketches.md](../editing-software/view-sketches.md).
+  [view-sketches.md](../pdd/view-sketches.md).
 - **Effects discipline.** Effects (especially `Exec`, `subscribe`) are
   capability-gated; routes through [capabilities.md](capabilities.md).
 - **Runner placement.** How much of the runner stays F# vs moves to Dark, and the
@@ -261,7 +261,7 @@ fields defaulting to empty.
   [event-bus.md](event-bus.md) / `async.md`.
 - **Real-time collaboration.** Two clients' intent translators emitting ops into
   one shared stream is just concurrent ops — handled by `conflict`/`resolve` in
-  [conflicts.md](conflicts.md).
+  [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md).
 - **Replay through a changed `apply`.** Semantics of re-folding old ops through a
   refined `apply` — owned by [distributed-event-sourcing.md](distributed-event-sourcing.md).
 - **`Stdlib.UI` content.** Which primitives ship vs are user-built; likely layout

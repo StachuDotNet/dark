@@ -82,7 +82,7 @@ Plan for that rework; it's not a transient. It is also the one body
 shape that does not replay deterministically — a run is reproducible
 only if its model output was captured in the trace (see the
 replay-and-nondeterminism rule in
-[distributed-event-sourcing.md](../stable-and-syncing/distributed-event-sourcing.md)).
+[distributed-event-sourcing.md](../pre-s-and-s/distributed-event-sourcing.md)).
 
 (This mirrors [claims.md](claims.md) Claim 1, "the source often starts as
 lazy": lazy is not merely an early phase that always burns off — for
@@ -177,7 +177,7 @@ ideally event streams or event graphs with waiters — so the same
 machinery serves the materializer, the SCM sync, the human-async
 flow, and (eventually) other agentic operations. The PDD spike's F#
 `EventSink` (a spike artifact, not on `main`) is a simpler shape;
-[event-bus.md](../stable-and-syncing/event-bus.md) sketches
+[event-bus.md](../pre-s-and-s/event-bus.md) sketches
 what it should become.
 
 ## Conflicts and resolutions
@@ -193,7 +193,7 @@ behaviour is mostly "fail." We need a richer system that can:
 - Fail loudly with a typed error
 
 This conflicts + resolutions system should be a base concept inside
-LibExecution, used by both PDD and SCM ops. See [conflicts.md](../stable-and-syncing/conflicts.md).
+LibExecution, used by both PDD and SCM ops. See [conflicts.md](../stable-and-syncing/conflicts-and-resolutions.md).
 
 ## What's recursive
 
