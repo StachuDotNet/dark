@@ -152,12 +152,6 @@ spine reads top-down (goal → foundations); dependencies point down. Same arrow
 - [ ] **`remote-access.md`:** rename → `remote-access-and-control.md`; migrate the core
   Tailscale bits into the pre-S&S Tailscale doc; migrate the *rest* (remote control) →
   `later/`.
-- [ ] **`async.md`:** async should be **usually invisible** to Dark users — no syntax or
-  difference between async and non-async code, *unless* they have specific scheduling
-  needs. Update with **effort estimates / steps involved**. **Evaluate:** is the
-  `DarkAsync` / build-our-own-scheduling idea actually good? How does this relate to
-  events → op-playback — do we do both efforts together, or async first then
-  separate-ops-from-playback? Does EventBus relate? Answer these.
 - [ ] **`event-bus.md`:** keep focused — split/punt into "needed for S&S" vs "later";
   enough to get by. **Stop mentioning the `Stream` thing**; talk about EventBus
   independently. Keep iterating re App / async / MVU. Tighten.

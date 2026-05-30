@@ -1,139 +1,125 @@
 # Async / concurrency at the language level
 
-One place for the Task/Ply-replacement decision. Everything async lands here so
-the choice does not scatter across [event-bus.md](event-bus.md),
-[cli-daemon.md](cli-daemon.md), [composable-mvu.md](composable-mvu.md), and the
-research notes.
+Where the Task/Ply-replacement decision lives. On `main` today every Dark fn returns
+`Ply<Dval>` (`DvalTask = Ply<Dval>`, `RuntimeTypes.fs`) and execution is threaded through
+.NET `Task` (`Execution.execute : Task<_>`). Ply is everywhere — interpreter, streams,
+type-checker. So this is a large, staged migration, not a flip.
 
-## The decision
+## Default surface: async is invisible
 
-**Kill Task/Ply and roll our own async.** Today every Dark fn returns
-`Ply.Ply<Dval>` and the whole runtime is threaded through .NET `Task`. That gets
-us host-level concurrency for free, but it means the *behavior* of async — when a
-frame suspends, what it is waiting on, whether it can be parked, inspected, or
-cancelled — is owned by the host, not by us. We want to own it, because the
-features we care about are exactly the ones the host hides:
-
-- **Park threads deliberately.** A frame that needs a not-yet-ready value should
-  suspend onto our scheduler, not block a thread pool slot.
-- **Manage nested processes.** Parent/child execution trees, sibling
-  cancellation, structured cleanup — owned by us, not delegated to `Task`.
-- **Inspect what is running.** Dark UXs should be able to ask "what frames are
-  parked, on what, since when?" via **opt-in debug symbols**. That requires the
-  suspension points to be *our* values, not host continuations we cannot see.
-
-The cost is real (we give up a mature runtime), so the migration is staged and
-narrow at first (see below). No heavy .NET-concurrency study for now — the design
-is about the Dark-level model, not about out-reading the CLR.
-
-## The model: explicit await on the event bus
-
-Direct-style stays the default surface, but the await point is **explicit**, not
-hidden:
+**A Dark user should not see async.** No `async`/`await` keywords, no colored functions,
+no syntactic difference between code that does I/O and code that doesn't. You write
+direct-style; the scheduler overlaps independent work for you.
 
 ```dark
-let urls : List<String> = ["https://...", ...]
-let results : List<Promise<HttpResult>> = urls |> List.map HttpClient.get
-let first : HttpResult = (results |> List.head)!     // ! forces — frame parks here
-first.body
+// No async syntax anywhere. These three GETs have no data dependency between them,
+// so the scheduler issues them concurrently and joins — the author did nothing special.
+let [a; b; c] = [urlA; urlB; urlC] |> List.map HttpClient.get
+combine a b c
 ```
 
-- A `Promise<T>` is a value that may not be ready yet. Producing it does **not**
-  block — the frame moves on holding the promise.
-- The trailing `!` is the **only** park-point at the Dark level. It compiles to a
-  wait on the promise's underlying event bus (`EventBus.waitForOne`), and the
-  frame parks until the matching event fires.
-- The scheduler runs other ready frames meanwhile; on resolution the parked frame
-  re-enters the ready set and resumes from the same instruction.
+What makes that safe is **effect metadata**, not annotations the user writes: each builtin
+already declares its effect (and its capability — see [capabilities.md](capabilities.md)).
+Independent `AsyncRead`/`ConcurrentSafe` calls can be planned to run together; anything
+`OrderedIO` or `Blocking` stays sequential. The planner reads metadata the builtins already
+carry, so the *surface* stays plain.
 
-This is the parking machinery already described in [event-bus.md](event-bus.md);
-async is that machinery seen from the language surface. Because await points are
-explicit, the debugger and traces can show *every* place a frame suspends — no
-hidden suspension points. That is the inspectability we are paying for.
+## The escape hatch: explicit control, only when you need it
 
-## Why this ties to event sourcing
+Invisible covers the common case. When a user genuinely has scheduling needs — fan out a
+thousand requests with a concurrency cap, race two sources, inspect what's parked — they
+drop to an explicit primitive. This is opt-in, not the default path.
 
-In the [distributed event-sourcing](distributed-event-sourcing.md) frame, a
-`Promise<T>` is "the next op/event matching this selector." So:
+```dark
+let ps : List<Promise<HttpResult>> = urls |> List.map HttpClient.get   // producing doesn't block
+let first = Promise.race ps                                            // explicit: first to resolve
+let capped = Promise.all (ps |> Promise.withLimit 20)                  // explicit: bounded fan-out
+```
 
-- **Waiting** is subscribing to a stream's first emission.
-- **Playback** is re-running a frame against a recorded op stream — deterministic
-  because the await points are explicit and the events are ordered.
-- **Sync** is just another producer: an op arriving from a peer can be exactly the
-  event a local frame is parked on.
+A `Promise<T>` is a value that may not be ready; forcing one parks the frame on the event
+bus ([event-bus.md](event-bus.md)) until it resolves. The two surfaces are one mechanism:
+the invisible planner *also* parks frames on the bus — it just inserts the wait for you.
 
-Async, conflicts, sync, and materialization all become "a frame parked on an
-event that some producer will emit." One coordination model, many producers.
+```
+ invisible default ──┐
+                     ├──> scheduler: ready-queue + parked-map (keyed by event selector)
+ explicit Promise ───┘        parked frame == a subscriber waiting for its event
+```
 
-## Concrete migration sketch
+## Is "build our own scheduler" actually worth it? — verdict
 
-Staged so each step preserves existing sequential behavior:
+**Yes, but only because of three things we can't get from `Task`/`Ply`, and only
+incrementally.** Owning the suspension primitive buys exactly:
 
-1. **Introduce our continuation type** behind the `Ply` surface. Define
-   `DarkAsync<'T>` (a resumable computation: either `Done of 'T` or
-   `Parked of selector * (Dval -> DarkAsync<'T>)`). Initially it is a thin wrapper
-   over `Ply` so nothing changes observably.
-2. **Add the scheduler** (`ready` queue + `parked` map keyed by event selector,
-   per [event-bus.md](event-bus.md)). The eval loop pulls from `ready`; a `Parked`
-   result moves the frame to `parked`; a matching event moves it back.
-3. **Make suspension points our values.** `Promise<T>` and the `!` force-builtin
-   produce/consume `DarkAsync`, so park state is a Dark-visible value, not a host
-   continuation.
-4. **Thread cancellation** through the scheduler: a parked frame carries an
-   optional timeout/cancel selector; waking with a `Cancelled` injection unwinds it.
-5. **Peel Ply away** where we now own the suspension: builtins that only ever
-   parked on our selectors stop returning `Ply` and return `DarkAsync`. Pure
-   builtins need no change. This is incremental — Ply and `DarkAsync` coexist
-   until the last host-level await is gone.
-6. **Opt-in debug symbols.** When enabled, each park records `(frameId, selector,
-   parkedAt)` so a UX can project the live park-set. Off by default for cost.
+1. **Inspectability** — "what frames are parked, on what, since when?" needs the suspension
+   points to be *our* values, not opaque host continuations.
+2. **Deterministic playback** — replaying a frame against a recorded op stream requires the
+   await points to be explicit, ordered, and ours (see next section).
+3. **Capability/effect integration** — the same effect metadata drives the planner *and*
+   the cap gate; one model, not two.
 
-## Opinion on the coworker's "Dark Async Plan"
+If we didn't want those, **keep `Ply`** — rolling our own concurrency to re-implement a
+mature runtime would be a bad trade. We want all three, so it's justified — but the cost is
+real, so the first syncing milestone should lean on the thin-wrapper stage (below), not a
+finished scheduler.
 
-The coworker's plan (vault `Current Experiment/Design/Dark Async Plan.md`) solves
-a **different, complementary** problem and reaches a **different** conclusion on
-the surface question. Worth being precise about both.
+## Relation to op-playback + EventBus — and sequencing
 
-**Where it agrees / is reusable:**
+The scheduler and the event bus are **the same machinery**: a parked frame is a subscriber;
+an event waking it is an op being applied. A `Promise<T>` is "the next op/event matching
+this selector" ([distributed-event-sourcing.md](distributed-event-sourcing.md)). So async,
+parking, and playback are one coordination model with many producers.
 
-- Direct-style Dark source — function calls return values, no `Task`/`Ply` in user
-  code. We keep that.
-- Child VMs / fibers with branch-local mutable state and only safe
-  `ExecutionState` shared. We need exactly this for parked-frame isolation.
-- Structured concurrency: parent owns children, cancellation propagates, no orphan
-  work. Adopt wholesale.
-- The blob-lifetime and single-consumer-stream hazards it identifies are real and
-  block any concurrent execution; fixing them is a prerequisite either way.
-- The **effect model** (`Pure`, `AsyncRead`, `AsyncWrite`, `OrderedIO`,
-  `ConcurrentSafe`, `Blocking`, `Resource(...)`, `Harmful`) is genuinely useful —
-  and it dovetails with [capabilities.md](capabilities.md), where effects and caps
-  are close cousins.
+**Do we do async and op-playback together, or async-first?** They share the suspension
+primitive, so they can't be fully independent — but they *stage*:
 
-**Where it differs from us:**
+```
+Stage A  effect metadata + child-VM isolation + structured cancellation   ← needed either way
+Stage B  DarkAsync behind Ply (thin wrapper, no behavior change)          ← async foundation
+Stage C  scheduler: ready/parked on event-bus selectors                   ← async becomes real
+   └─ op-playback rides Stage C: record selectors+events, replay deterministically
+Stage D  peel Ply where we own suspension; planner overlaps independent calls
+```
 
-- It keeps the await point **implicit** — a dependency planner + scheduler
-  auto-parallelizes independent `ConcurrentSafe AsyncRead` calls; the user never
-  sees suspension. We want await **explicit** (`!`), because inspectability and
-  deterministic playback depend on the suspension points being visible Dark
-  values. These are not contradictory: auto-parallelization of independent calls
-  can sit *under* an explicit-await surface — the planner overlaps work between two
-  explicit `!`s; the `!` is still where the program observably waits.
-- It keeps `Ply` as the host substrate and layers a planner on top. We want to own
-  the suspension primitive so we can park, inspect, and replay. The reconciliation:
-  start with her effect-metadata + child-VM + cancellation work (which we need
-  regardless), and replace `Ply` with `DarkAsync` only once our scheduler exists.
+Op-playback is **not a separate effort** — it's what Stage C's deterministic suspension
+points *give you* once they exist. So: async-first through Stage C, and playback falls out
+of the same primitive rather than being a later "separate ops from playback" project.
 
-**Synthesis.** Take her effect model, child-VM isolation, structured concurrency,
-and the blob/stream/cancellation hardening as the foundation. Put our explicit
-`Promise<T>` + `!` + event-bus parking as the surface and the suspension primitive
-on top. Effects then do double duty: they drive *her* auto-parallel planner *and*
-feed *our* capability checks. The two plans are layers, not rivals.
+## Migration sketch + rough effort
+
+Each step preserves existing sequential behavior; sizing is relative (no metered units).
+
+| Step | What | Effort |
+|---|---|---|
+| A | Effect metadata on builtins + child-VM isolation + cancellation (prereqs) | **large** — touches every builtin assembly |
+| B | `DarkAsync<'T>` (`Done` \| `Parked of selector * (Dval -> DarkAsync<'T>)`) as a thin Ply wrapper | **medium** — type + plumbing, no behavior change |
+| C | Scheduler: `ready` queue + `parked` map keyed by selector; eval loop pulls/parks/wakes | **large** — core interpreter change |
+| D | `Promise<T>` + force as Dark-visible values; peel Ply off builtins that only park on our selectors | **medium**, incremental — Ply and DarkAsync coexist |
+| E | Invisible planner: overlap independent `ConcurrentSafe AsyncRead` calls between waits | **medium** — sits *above* C, opt-in→default |
+| F | Opt-in debug symbols: each park records `(frameId, selector, parkedAt)` for a live park-set view | **small** — off by default |
+
+```fsharp
+type DarkAsync<'T> =
+  | Done   of 'T
+  | Parked of selector : EventSelector * resume : (Dval -> DarkAsync<'T>)
+// scheduler: pull from `ready`; a Parked result moves the frame to `parked`;
+// a matching event moves it back to `ready` and resumes from the same instruction.
+```
+
+## Lineage: the coworker's "Dark Async Plan"
+
+Complementary, not rival. **Take from it:** the effect model (`Pure`/`AsyncRead`/
+`AsyncWrite`/`OrderedIO`/`ConcurrentSafe`/`Blocking`/`Resource`/`Harmful`), child-VM
+isolation, structured concurrency, and its blob-lifetime + single-consumer-stream hardening
+(real hazards, prerequisite either way). Its planner gives us the **invisible default**
+above. **Where we go further:** we own the suspension primitive (`DarkAsync`) so we can
+park, inspect, and replay — its planner sits *on top* of our scheduler. Effects then do
+double duty: drive the planner *and* feed the capability gate.
 
 ## Open questions
 
-- On one auto-parallel branch failing: cancel siblings eagerly, or finish and
-  aggregate? (Lean: structured-concurrency cancel, with an opt-in aggregate mode.)
-- How much effect metadata is persisted vs. inferred/cached at load?
-- Are streams affine at the language level, or guarded by a runtime lock + clear
-  failure on concurrent consumption?
-- When does auto-parallelization become default-on vs. opt-in behind a flag?
+- One auto-parallel branch fails: cancel siblings eagerly, or finish + aggregate?
+  *(Lean: structured-concurrency cancel, opt-in aggregate mode.)*
+- Effect metadata persisted vs. inferred/cached at load?
+- Streams affine at the language level, or runtime-locked with a clear concurrent-use failure?
+- When does the invisible planner flip from opt-in to default-on?
