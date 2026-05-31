@@ -21,8 +21,15 @@ for now so the keystone stays thin.
 >   its projected sub-stream. Facets don't entangle; `views` compose by **keyed merge** (a real
 >   `Dict<ViewId, String>` union, tested).
 > - **Distributed convergence** — folding ops incrementally (apply remote ops as they arrive)
->   equals a full replay, so two nodes on one op log re-converge. `Register.resolve` is
->   deterministic (higher seq wins), so a divergence resolves to the *same* op on both sides.
+>   equals a full replay, so two nodes on one op log re-converge. The clean way to *guarantee*
+>   convergence: make **`apply` a semilattice join** (a least-upper-bound over a total order).
+>   The prototype's **LWW-Register CRDT** (`Write(lamport, node, value)`, `apply` keeps the max
+>   by `(lamport, node)`) is commutative + idempotent + associative, so two nodes folding the
+>   same concurrent-write op set in *opposite* orders reach byte-identical state — **no separate
+>   `resolve` pass**, and re-delivering a known op is a no-op (safe at-least-once sync). This is
+>   why "most conflicts are fine / auto-resolve": when `apply` is a join, concurrent ops merge.
+>   `conflict`/`resolve` is the **fallback** for ops that *aren't* joins (and it must be symmetric
+>   to converge — a resolve that keeps "the first arg" on a tie does **not**).
 >
 > So Model=projection, Update=`apply`, op=the durable synced unit — the ops⊥projections + sync
 > substrate **is** the MVU runtime. What's *not* yet built: the F# runner that folds App ops into
