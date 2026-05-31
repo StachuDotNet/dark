@@ -58,8 +58,8 @@ A **new** tailnet member joining (relevant now that scope is tailnet-wide) first
 
 | File (on `main`) | Change |
 |---|---|
-| `LibDB/` (new `Sync.fs` or builtins) | Two thin builtins: **`opsSince : branchId -> cursor -> Ply<List<SerializedOp>>`** (a `SELECT … WHERE seq > cursor ORDER BY seq` over `package_ops`/`branch_ops`) and **`applyRemoteOps : List<SerializedOp> -> Ply<ApplyResult>`** = `INSERT OR IGNORE` + the existing `PackageOpPlayback.applyOps`. Apply already exists; this wraps it. |
-| `LibDB/` schema | Add a monotonic **`seq`** column (autoincrement per store) for the `?since=` cursor; `created_at` alone isn't a total order. Per-source seq; cross-source ties break by `(timestamp, author_id)` (sync.md). |
+| `LibDB/Inserts.fs` (or a `Sync.fs`) | **`opsSince (cursor: int64) : Task<List<rowid * id * op_blob>>`** — `SELECT rowid, id, op_blob FROM package_ops WHERE rowid > @cursor ORDER BY rowid ASC` (**prototyped + tested**). The receiver is the *existing* `Inserts.insertAndApplyOps` (`INSERT OR IGNORE INTO package_ops` + `applyOps`) — apply already exists; no new write fn needed. |
+| `LibDB/` schema | **No `seq` column needed** (prework finding). `package_ops`'s PK is `TEXT`, so SQLite keeps an implicit **`rowid`** that *is* a monotonic insertion cursor — use it for `?since=`. (`created_at` alone isn't a total order, but rowid is — and free.) **No migration for the cursor.** |
 | `Builtins.Http.Server` | No change — the endpoints are **Dark HTTP handlers** (below) on the existing server. |
 
 **ProgramTypes:** untouched as a *type*, but the **`PackageOp` serialization is the wire
@@ -84,9 +84,10 @@ advance cursor) and `dark remote add <peer>` (writes the remote into `.darklang`
 
 ## SQL/schema
 
-`package_ops`/`branch_ops` already exist and are canonical. Add: a `seq` column (cursor), and a
-small **`sync_cursors`** table (per remote: `folded_through_seq`) so a poll resumes where it
-left off. No projection tables touched — they refold from the applied ops.
+`package_ops`/`branch_ops` already exist and are canonical. The cursor is the **implicit
+`rowid`** (no `seq` column — prework finding). The only new state is a small **`sync_cursors`**
+table (per remote: `folded_through_rowid`) so a poll resumes where it left off — local-only,
+not synced. No projection tables touched — they refold from the applied ops.
 
 ## Test plan
 
