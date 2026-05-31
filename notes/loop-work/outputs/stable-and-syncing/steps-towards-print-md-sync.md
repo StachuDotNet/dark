@@ -142,12 +142,13 @@ ladder, simplest-runnable first:
    then asserts **store B resolves the folded name to the same hash as A**. That's the
    "a receiver actually runs the sender's code" proof, in-process, already green. The convergence
    engine is proven; rungs 2–3 only change where the ops come from.
-2. **CLI local-file pull — BUILD THIS NEXT** (first un-built rung, first *user-facing* sync).
-   `dark sync pull <other-data.db>`: two real `data.db` files, one process opens the other
-   read-only, reads the ops it lacks (cursor-bounded `opsSince`), folds them via the same
-   `applyRemoteOps`/`connStore` path rung 1 proved, fetches any missing blobs (`Blob.missing` →
-   `getMany`). Genuine two-instance local sync, no network — a visceral "edit on A, `pull`, see
-   it on B" on one machine. The first rung that isn't already green.
+2. **CLI local-file pull — ENGINE DONE, CLI remains.** `Sync.pull sourceConnStr target cursor`
+   reads a peer's `data.db` op log directly (rowid-bounded) and folds it into a target store via
+   `dispatchVia` — proven by a real **two-file** test (source = a 40-op slice, target starts
+   empty, pull folds its projections, advances the cursor, re-pull is a no-op). What remains is
+   the thin **`dark sync pull <other-data.db>` CLI command** that calls `Sync.pull`, persists the
+   returned cursor (`SyncCursors`), and fetches any missing blobs (`Blob.missing` → `getMany`).
+   That command is the first *user-facing* sync — "edit on A, `pull`, see it on B" on one machine.
 3. **HTTP localhost → tailnet** — instance A serves `GET /sync/snapshot` + `GET/POST /sync/events`
    over its `data.db`; instance B polls + applies (effort 9's loop). Prove it on `localhost:port`
    first, then bind A to its tailnet IP (server = the always-on desktop). Same handlers, just a
