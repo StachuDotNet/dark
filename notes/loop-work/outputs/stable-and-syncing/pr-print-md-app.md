@@ -37,6 +37,16 @@ let printMdApp : AppManifest =
   // allow-list ["pandoc"; "weasyprint"; "lp"] — which is the "structured later" cliHost refinement.
 ```
 
+> **Pure surface is real, tested Dark (prework, 6/6)** — `loop-fun:compose-check`,
+> `testfiles/execution/pre-s-and-s/print-md.dark`. The render-chain **arg builders** (`pandocArgs` =
+> `["-f"; "markdown"; "-t"; "html"]`, `weasyprintArgs out` = `["-"; out]`, `lpArgs pdf` = the
+> two-sided print args) and the **`PrintMdManifest`** value (`name`/`entrypoint`/`spawnAllowList =
+> ["pandoc"; "weasyprint"; "lp"]` — the cap-gate grant) are real Dark with passing `expr = expected`
+> assertions. The spawns themselves need the binaries (untestable in-container), so these arg lists +
+> the manifest are the provable core of the capstone — it's now real Dark code, not just spec.
+> (Dark-syntax finding: a **named** record needs its type-name prefix on construction —
+> `PrintMdManifest { … }`, not bare `{ … }`, which is an "Unsupported expression" parse error.)
+
 The entrypoint. **Render is two spawns, not a Dark library call** — see the grounding note:
 
 ```dark
