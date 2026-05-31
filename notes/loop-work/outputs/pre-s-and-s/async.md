@@ -52,7 +52,14 @@ the invisible planner *also* parks frames on the bus — it just inserts the wai
 incrementally.** Owning the suspension primitive buys exactly:
 
 1. **Inspectability** — "what frames are parked, on what, since when?" needs the suspension
-   points to be *our* values, not opaque host continuations.
+   points to be *our* values, not opaque host continuations. **Prototyped (prework,
+   `compose-check`):** `Scheduler.ParkSet` (a concurrent `frameId → {frameId; selector;
+   parkedAt}` registry) makes exactly this observable — `Scheduler.park` registers a frame
+   while it waits and deregisters on resume (via `try/finally`), and `Scheduler.parked` returns
+   the live snapshot. Tested: a parked frame is visible while waiting and gone on resume;
+   multiple frames are tracked with selective resume (only the matching selector wakes). This is
+   the bookkeeping behind a `dark debug` park view (row F), built directly on `waitForOne` — so
+   the inspectability claim is demonstrated, not just asserted.
 2. **Deterministic playback** — replaying a frame against a recorded op stream requires the
    await points to be explicit, ordered, and ours (see next section).
 3. **Capability/effect integration** — the same effect metadata drives the planner *and*
