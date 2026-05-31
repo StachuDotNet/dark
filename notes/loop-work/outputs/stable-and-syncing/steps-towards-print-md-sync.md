@@ -125,6 +125,36 @@ follows once the floor syncs.
 > type-blocks + `createState` collide) — ~2-min resolutions, no semantic conflict. Land them in
 > any order; just expect a quick keep-both at merge, or rebase each on the prior.
 
+## Getting sync working LOCALLY — the shortest path to a running demo
+
+The engine is built + tested (prework): `opsToSend`/`opsSince` (read), `applyRemoteOps`
+(idempotent insert+apply), `snapshot` (bootstrap cursor), `SyncCursors` (resume), the
+cross-store op-log transfer (two real SQLite files), and the blob content channel
+(`Blob.missing`/`getMany`). What's left is the **transport + two-store orchestration**. The one
+hard constraint: **LibDB binds a single global connection per process** (`LibConfig.Config.dbPath`)
+— so two stores means either two *processes* (each its own `data.db`) or the in-process
+`connStore` seam (the connection-parameterized fold, on `compose-check`). That gives a 3-rung
+ladder, simplest-runnable first:
+
+1. **In-process convergence proof** *(on `compose-check` — it has `connStore`)*. Read store A's
+   ops, fold them into a *separate* store B via `connStore`/`dispatchVia`, then assert **B
+   resolves the same `name → hash` as A**. The cross-store op-log transfer is already tested
+   (SyncIdempotency); this adds the projection refold on B + the resolve assertion — the missing
+   "a receiver actually runs the sender's code" proof. No network, fully testable. **Build this first.**
+2. **CLI local-file pull** — `dark sync pull <other-data.db>`: two real `data.db` files, one
+   process opens the other read-only, transfers the ops it lacks (cursor-bounded), folds, fetches
+   any missing blobs. Genuine two-instance local sync, no network — the first *user-facing* sync,
+   and a visceral "edit on A, see on B" on one machine.
+3. **HTTP localhost → tailnet** — instance A serves `GET /sync/snapshot` + `GET/POST /sync/events`
+   over its `data.db`; instance B polls + applies (effort 9's loop). Prove it on `localhost:port`
+   first, then bind A to its tailnet IP (server = the always-on desktop). Same handlers, just a
+   different address — the tailnet is only the transport, not new logic.
+
+Each rung reuses the rung below's apply path; only the *source of ops* changes (a second store →
+a local file → an HTTP body) — exactly the keystone's "the fold is the same, only where ops come
+from differs." Rung 1 is pure F# integration; rung 2 adds a CLI command; rung 3 adds the Dark
+HTTP handlers (the only piece needing a live environment).
+
 ## What's punted (and why)
 
 Removing the `.dark` files (needs working sync + a stable env — [bootstrap.md](bootstrap.md));
