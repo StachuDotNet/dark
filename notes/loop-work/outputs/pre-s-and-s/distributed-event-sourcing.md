@@ -213,6 +213,17 @@ package items in the op stream**:
 This is why App logic living *in* the synced stream (not as privileged F#) is load-bearing:
 it makes "do we even agree on how to merge?" a first-class, inspectable conflict.
 
+**Order-independence is a property of `apply`, not the substrate.** Same-logic gets two
+instances folding the same ops to the same result *only if they fold in the same order* — but
+sync delivers concurrent ops in different orders to different nodes. The clean fix is to make
+`apply` a **semilattice join** (a least-upper-bound over a total order): then it's commutative,
+idempotent, and associative, so the fold is order-independent and re-delivery is a no-op —
+convergence for free, no `resolve` pass. The canonical case is an **LWW-Register** keyed by a
+`(lamport, node)` total order (`apply` keeps the max); add-only sets and counters are joins too.
+*Prototyped + proven* in `composable-mvu.md` (two nodes, concurrent writes, opposite fold orders
+→ byte-identical state). When `apply` *can't* be a join, `conflict`/`resolve` is the fallback —
+and it must be **symmetric** (a resolve that keeps "the first arg" on a tie won't converge).
+
 ## Refactors are ops
 
 A refactor — rename, move, extract, inline, change-signature — is **an op**, the same kind of
