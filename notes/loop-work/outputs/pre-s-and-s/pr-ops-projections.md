@@ -63,6 +63,14 @@ lines of reorganization, not a new subsystem.
 > So **one mechanism serves two PRs**: sync's cross-store fold and this physical split. What's left
 > for this PR is the *routing* (open the two connections, send reads to the branch DB / appends to
 > `core.db`) — the fold-into-a-separate-store half is done and tested.
+>
+> **And the projection REGISTRY (below) is built too** (`Seed.projectionRegistry`, OpsProjections
+> 3/3): a `Projection { table; foldsOpKinds; dirtiedBy }` over the 5 regenerable projections —
+> `rebuildProjections` now derives its clear-list from it (single source of truth, can't drift from
+> the descriptors), and `projectionsDirtiedBy opKind` gives the incremental-refold targets (`AddFn`
+> → functions+deps, `SetName`/`RevertPropagation` → locations, the no-op `PropagateUpdate` → none).
+> So **both** of this PR's "genuinely new" pieces exist: the fold engine *and* the registry; the
+> remaining work is the two-connection routing.
 
 ```fsharp
 // the projection registry — the only genuinely new abstraction
