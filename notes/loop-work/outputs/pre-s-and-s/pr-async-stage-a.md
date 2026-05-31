@@ -11,7 +11,9 @@ yet, async stays invisible at the Dark surface.
 
 > **Validated in prework** (part 1 — the `effects` field — on `loop-fun:prework/async-stage-a`).
 > **The FULL backend compiles clean** (0 errors): all 9 builtin assemblies + LibExecution + test
-> utils + the Tests project, with `effects` on every `BuiltInFn`. Real findings:
+> utils + the Tests project, with `effects` on every `BuiltInFn`. **Tests PASS** (3 Expecto via
+> `run-backend-tests`: every builtin has an effect, `Http.Client.*` = `AsyncRead`, `uuidGenerate`
+> = `ConcurrentSafe`) — the field is correct at *runtime*, not just compile. Real findings:
 > - **Builtins are raw record literals, no constructor helper** — the field is a ~620-site change,
 >   **mechanically tractable via codemod**: `sed` an `effects = Effect.OrderedIO` after each
 >   `previewable =` line (conservative default-to-most-restrictive). Genuinely-effectful builtins
