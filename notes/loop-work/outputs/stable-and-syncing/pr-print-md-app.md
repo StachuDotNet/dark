@@ -9,7 +9,8 @@ across the tailnet, and `print-md file.md` runs it. Built from
 **Goal.** `print-md` is a Dark App (an entrypoint fn + declared caps). `dark apps install
 print-md` makes `print-md file.md` runnable from the shell. An edit to its fn on the desktop
 syncs to the laptop. Today's `print-md` is bash (read → Pandoc → WeasyPrint → `lp`); the Dark
-App does the same via builtins + two subprocess spawns.
+App does the same via an `fs-read` builtin + **three** subprocess spawns (`pandoc`, `weasyprint`,
+`lp`) — there's no Dark markdown renderer to reuse (prework-verified below).
 
 **Prereqs.** The whole floor: ops⊥projections (3), Tailscale (5), sync (7), autosync (9) — and
 apps-surface (install=alias) + capabilities (fs-read + spawn). This PR adds *no* new substrate;
@@ -33,26 +34,44 @@ let printMdApp : AppManifest =
              cliHost = true                                     // spawn weasyprint + lp
              httpClient = None; httpServer = None; random = false; time = false } }
   // cliHost is boolean now (capabilities.md); print-md wants the *structured* form — a spawn
-  // allow-list ["weasyprint"; "lp"] — which is the "structured later" cliHost refinement.
+  // allow-list ["pandoc"; "weasyprint"; "lp"] — which is the "structured later" cliHost refinement.
 ```
 
-The entrypoint, reusing the outliner's `markdown.dark` for render:
+The entrypoint. **Render is two spawns, not a Dark library call** — see the grounding note:
 
 ```dark
 let main (args: List<String>) : Int64 =
   let file = args |> List.head |> unwrap
-  let md   = Stdlib.File.read file                 // fs-read cap
-  let html = Darklang.Markdown.toHtml md           // reuse outliner/markdown.dark
-  let pdf  = Cli.spawn "weasyprint" ["-"; "out.pdf"] html   // spawn cap
-  Cli.spawn "lp" ["-o"; "sides=two-sided-long-edge"; "out.pdf"] ""   // spawn cap
+  let md   = Stdlib.File.read file                          // fs-read cap
+  // md → html via pandoc, html → pdf via weasyprint — same chain as the bash original
+  let html = Cli.spawn "pandoc" ["-f"; "markdown"; "-t"; "html"] md   // spawn cap (stdin=md)
+  let pdf  = Cli.spawn "weasyprint" ["-"; "out.pdf"] html             // spawn cap (stdin=html)
+  Cli.spawn "lp" ["-o"; "sides=two-sided-long-edge"; "out.pdf"] ""    // spawn cap
   0L
 ```
+
+> **Verified against `main` (prework).** There is **no markdown→HTML/PDF anywhere in Dark** — a
+> backend `git grep` for `pandoc|wkhtmltopdf|toHtml|→pdf` across `packages/**/*.dark` finds
+> nothing, and there is **no `Darklang.Markdown` module**. The outliner's `markdown.dark` is the
+> *opposite* direction and the wrong shape: `Markdown.export (doc: Outliner.Document) : String`
+> serializes an **outline tree → nested-bullet markdown text** (and `import` parses markdown back
+> into an outline) — it neither takes plain markdown nor produces HTML/PDF. **So the capstone
+> cannot "reuse the outliner render."** The render path is exactly the bash original's external
+> chain — `pandoc` (md→html) then `weasyprint` (html→pdf) then `lp` — via the **existing
+> `Cli.posixSpawnAndWait`** spawn builtin (the same primitive Tailscale uses; confirmed in
+> `Builtins.Cli`, [tailscale.md](../pre-s-and-s/tailscale.md)). This means **three** spawns, not
+> two, and the cap allow-list is `["pandoc"; "weasyprint"; "lp"]`. **Open question to resolve when
+> built:** `posixSpawnAndWait`'s signature is `(program) (args) → Result<(exit*stdout*stderr)>`
+> with **no stdin parameter** — pandoc/weasyprint read their input on stdin, so either the spawn
+> builtin needs a stdin-bytes parameter added, or the chain writes temp files between stages
+> (`md→pandoc→tmp.html→weasyprint→out.pdf`). The temp-file route needs **no new builtin**; the
+> stdin route is the one possible builtin extension flagged below.
 
 ## .fs changes — minimal (apps are Dark)
 
 | File (on `main`) | Change |
 |---|---|
-| `Builtins.Cli` (`CliHost`) | Confirm a `spawn`/subprocess builtin exists with stdin piping + captured stdout (weasyprint reads stdin). If not, add it — the one possible new builtin. |
+| `Builtins.Cli` | **Spawn exists** — `posixSpawnAndWait (program) (args) : Result<(exit*stdout*stderr)>` (prework-verified, [tailscale.md](../pre-s-and-s/tailscale.md)). The gap: **no stdin parameter**. Either add a stdin-bytes arg (the one possible new builtin) or pipe via temp files between stages (no builtin). Decide at build time. |
 | `LibExecution/RuntimeTypes.fs` | **No change** — `AppManifest` is an ordinary Dark value, not a runtime type. PT untouched. |
 | — | Everything else is Dark: the App, the `dark apps` surface, the alias. |
 
@@ -124,9 +143,11 @@ App that syncs itself — edit once, runs everywhere on the tailnet.
 - **The alias mechanism.** A generated shell shim on `PATH` is simple but per-shell (bash/zsh/fish
   differ) and needs a clean uninstall. Alternative: a single `dark` dispatcher + a `~/.darklang/bin`
   on `PATH`. Pick one.
-- **Subprocess fidelity.** WeasyPrint reading stdin + writing a file via the `spawn` builtin must
-  match the bash pipe exactly (exit codes, stderr). The one place a new/extended builtin may be
-  needed.
+- **Subprocess fidelity / stdin.** The bash original pipes md→pandoc→weasyprint on stdin; the
+  prework-confirmed `posixSpawnAndWait` has **no stdin parameter** (verified). Match the pipe
+  exactly (exit codes, stderr) by either extending the spawn builtin with a stdin-bytes arg, or
+  staging through temp files (`tmp.html`, `out.pdf`). Temp-file staging needs no new builtin and
+  is the lower-risk first cut. This is the one place a new/extended builtin may be needed.
 - **Install-elsewhere UX.** A synced-in App shows as available but not locally aliased/granted —
   the two-step (sync brings the code, install grants+aliases locally) must be obvious, not
   surprising.
