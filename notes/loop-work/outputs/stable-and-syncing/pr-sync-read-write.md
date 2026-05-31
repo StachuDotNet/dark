@@ -188,7 +188,7 @@ not synced. No projection tables touched — they refold from the applied ops.
 | Step | Test | Done-signal |
 |---|---|---|
 | idempotent apply | `.fs`: `applyRemoteOps [op; op]` (same op twice) | second is a no-op (`INSERT OR IGNORE`); state identical |
-| two-instance round-trip | `.fs` integration: author on A, `opsSince` from A, `applyRemoteOps` on B | B resolves the same name→hash as A |
+| two-instance round-trip | `.fs` integration: author on A, `opsSince` from A, `applyRemoteOps` on B | B resolves the same name→hash as A — **DONE across two real stores:** the op-LOG transfer (A→B, idempotent dedup) *and* the PROJECTION refold (folding an `AddFn` into store B's `package_functions` reproduces A's `pt_def` byte-for-byte → B resolves the same fn). Finding: only the fold's *write* is connection-coupled (serialization is pure), so store-parameterizing it is a connString swap |
 | cursor advances | `.fs`: POST 3 ops, assert `sync_cursors.folded_through_seq += 3` | cursor correct, no re-fold of old |
 | auth maps | `.dark`/`.fs`: a request with `Tailscale-User-Login: x` lands ops authored by x's account | authorship correct — **`.fs` half DONE (Accounts 3/3):** `upsertAccount login → account_id`, a commit with that `account_id` attributes back to the login via the `commits.account_id → accounts_v0` join; only the Dark header-extraction remains |
 | `.dark` end-to-end | `.dark` test: a fn defined via the sync handler is callable after apply | resolves + runs |
