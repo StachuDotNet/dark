@@ -266,6 +266,15 @@ makes it appear — the goal's first observable proof.
   silent encoding drift. (The versioned encoding is the real fix; the PT-hash is the cheap guard.)
 - **Seq monotonicity across sources.** Each store's `seq` is local; a global order needs the
   `(timestamp, author_id)` tiebreak. Fine for a star (everyone orders against the hub).
+- **Code rides with ops; `package_blobs` do NOT — bounded gap.** `AddFn`/`AddType`/`AddValue`
+  *embed the whole item* (`AddFn of fn : PackageFn.PackageFn`), so shipping the op log ships the
+  **code** — the receiver folds the Add\* ops and reconstructs `package_functions` etc. with no
+  separate content channel. That's why syncing the print-md *script* is free. The exception is
+  **`package_blobs`** (canonical binary/large content — op-playback never writes it): blob bytes a
+  value references would not travel via `opsToSend`. **Off the print-md-script critical path**
+  (the script is code = Add\* ops), but a real gap before "*any* app/value syncs" — needs a blob
+  transfer keyed by content hash (ship referenced blobs alongside the ops that name them), or fetch
+  on a resolve-miss. Not floor work; flagged so it isn't mistaken as covered.
 - **Concurrent write during snapshot — SOLVED (prework).** Rather than a transaction/lock,
   `Sync.snapshot` derives the bootstrap cursor as the **max rowid among the ops it just read**
   (one `opsSince 0` query), not a separate `SELECT MAX(rowid)`. So (ops, cursor) is **consistent by
