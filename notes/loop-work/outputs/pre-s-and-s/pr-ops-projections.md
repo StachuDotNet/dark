@@ -9,14 +9,20 @@ and split them **physically**: ops in `core.db`, projections in per-branch cache
 dropped and re-folded. After this, a projection can be deleted with zero information loss.
 
 > **Validated in prework** (`loop-fun:prework/ops-projections`). Implemented
-> `LibDB.Seed.rebuildProjections` — clears the 7 projection tables (`package_functions/types/
-> values/blobs`, `locations`, `deprecations`, `package_dependencies`), marks all `package_ops`
-> unapplied, and re-folds them through the existing `PackageOpPlayback.applyOps`. **Compiles +
-> the drop-rebuild=identity TEST PASSES**: on a seeded DB, drop every projection, re-fold the
-> whole op log, and `package_functions` + `locations` come back **identical**. So the design's
-> central claim — *projections are regenerable from the canonical op log* — is **proven by
-> running code**, and the "minimum F#" really is mostly reorganizing what exists (`Seed.grow` +
-> a `DELETE`-then-refold). (Fix: `Sql.executeStatementAsync` is `Task<unit>` — use `do!`.)
+> `LibDB.Seed.rebuildProjections` — clears the regenerable projection tables, marks all
+> `package_ops` unapplied, and re-folds them through the existing `PackageOpPlayback.applyOps`.
+> **Compiles + the drop-rebuild=identity TEST PASSES**: on a seeded DB, drop the projections,
+> re-fold the whole op log, and `package_functions` + `locations` come back **identical**. So the
+> design's central claim — *projections are regenerable from the canonical op log* — is **proven
+> by running code**, and the "minimum F#" really is mostly reorganizing what exists.
+> - **Which tables are projections — corrected by the code.** The authoritative list is the 5
+>   tables `Seed.export` strips as derived data: `package_functions`/`types`/`values`,
+>   `locations`, `package_dependencies`. **`package_blobs` is *canonical content*, NOT a
+>   projection** (blob bytes aren't re-derivable by folding ops) — clearing it loses data. (An
+>   early version over-cleared it; the test now asserts `package_blobs` is preserved.) So in
+>   `core.db`-vs-projections terms: ops + `package_blobs` (content) are canonical; the other 5
+>   are the regenerable cache. The spec's "every package table is a projection" needs this caveat.
+> - Fix: `Sql.executeStatementAsync` is `Task<unit>` — use `do!`.
 >
 > **Later note (not now):** the prototype hardcodes the 7 projection tables in F#. Worth thinking
 > through someday whether the op/projection *shape* could be Dark-declared (an App naming its
