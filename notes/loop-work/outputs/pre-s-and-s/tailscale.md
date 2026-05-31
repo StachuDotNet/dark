@@ -63,6 +63,14 @@ let loginHeader (req: HttpRequest) : Option<String> = ...   // "stachu@stachu.ne
 So the transport is: `serve` to expose the local sync server, `status`/`peerUrl` to address
 peers, and `loginHeader` to authenticate inbound requests.
 
+> **`loginHeader` now built too (prework, tailscale.dark 8/8).** `loginHeader headers :
+> Option<String>` finds the `Tailscale-User-Login` header (present/missing/empty cases tested) — the
+> identity that ties straight into identity-thin's `upsertAccount login → account_id → commit`
+> chain. So the **whole Tailscale module is now real, tested Dark** (URL + CLI args + ping + auth);
+> only the daemon-dependent shell-outs are stubbed. (Dark-syntax findings: `==` is equality in fn
+> bodies; a *piped multi-line lambda* trips the parser — use `let found = …` + tuple destructuring
+> `fun (k, _) -> …`, as the stdlib does.)
+
 ## Auth: the header *is* the identity
 
 Tailscale terminates TLS and injects `Tailscale-User-Login` on every inbound request. The
