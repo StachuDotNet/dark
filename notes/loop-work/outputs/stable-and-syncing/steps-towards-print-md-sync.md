@@ -136,15 +136,18 @@ hard constraint: **LibDB binds a single global connection per process** (`LibCon
 `connStore` seam (the connection-parameterized fold, on `compose-check`). That gives a 3-rung
 ladder, simplest-runnable first:
 
-1. **In-process convergence proof** *(on `compose-check` — it has `connStore`)*. Read store A's
-   ops, fold them into a *separate* store B via `connStore`/`dispatchVia`, then assert **B
-   resolves the same `name → hash` as A**. The cross-store op-log transfer is already tested
-   (SyncIdempotency); this adds the projection refold on B + the resolve assertion — the missing
-   "a receiver actually runs the sender's code" proof. No network, fully testable. **Build this first.**
-2. **CLI local-file pull** — `dark sync pull <other-data.db>`: two real `data.db` files, one
-   process opens the other read-only, transfers the ops it lacks (cursor-bounded), folds, fetches
-   any missing blobs. Genuine two-instance local sync, no network — the first *user-facing* sync,
-   and a visceral "edit on A, see on B" on one machine.
+1. **In-process convergence proof — DONE** *(`compose-check`, LibPmSeam)*. The test
+   *"dispatchVia (connStore connB) folds AddFn + SetName — B resolves the name to the hash"*
+   folds a sender's `AddFn` + `SetName` into a *separate* store B via `connStore`/`dispatchVia`,
+   then asserts **store B resolves the folded name to the same hash as A**. That's the
+   "a receiver actually runs the sender's code" proof, in-process, already green. The convergence
+   engine is proven; rungs 2–3 only change where the ops come from.
+2. **CLI local-file pull — BUILD THIS NEXT** (first un-built rung, first *user-facing* sync).
+   `dark sync pull <other-data.db>`: two real `data.db` files, one process opens the other
+   read-only, reads the ops it lacks (cursor-bounded `opsSince`), folds them via the same
+   `applyRemoteOps`/`connStore` path rung 1 proved, fetches any missing blobs (`Blob.missing` →
+   `getMany`). Genuine two-instance local sync, no network — a visceral "edit on A, `pull`, see
+   it on B" on one machine. The first rung that isn't already green.
 3. **HTTP localhost → tailnet** — instance A serves `GET /sync/snapshot` + `GET/POST /sync/events`
    over its `data.db`; instance B polls + applies (effort 9's loop). Prove it on `localhost:port`
    first, then bind A to its tailnet IP (server = the always-on desktop). Same handlers, just a
