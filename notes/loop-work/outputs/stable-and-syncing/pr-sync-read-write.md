@@ -8,10 +8,14 @@ uses. Localhost first, then over Tailscale.
 > capabilities (interpreter cap-gate) + sync (`Accounts`/`SyncCursors`/`Sync` + divergence) + the
 > **complete LibPM seam** (`PackageStore`/`dispatchVia`/`sqliteStore`/`connStore` + the
 > `RevertPropagation` extraction that restructured the op-playback path) are all merged onto
-> `compose-check`. All merges clean, builds clean, and the **full backend suite is green: 9,437
-> passed, 0 failed, 0 errored** — re-verified after the op-playback restructure + the divergence work
-> (which touched `createState`'s default dispatch), **no regression**. So one branch holds the whole
-> prework, green at scale. The integration run earlier
+> `compose-check`. All merges clean, builds clean, and the **full backend suite is green: 9,477
+> passed, 0 failed, 0 errored** — and this now includes the **Dark-side prework** (7 `.dark`
+> testfiles, +40 assertions: Tailscale transport, the print-md capstone's manifest/render-args/
+> install/apps-list, the `dark sync` summary + op-kind breakdown, divergence display, and the
+> capabilities CLI), which run inside `LibExecution.Tests`. So **one branch holds the whole prework
+> — F# floor *and* Dark surface — green at scale**, re-verified after the op-playback restructure +
+> the divergence work (which touched `createState`'s default dispatch), **no regression**. The
+> integration run earlier
 > **caught a real test-isolation bug** (the `Accounts` test asserted a *global* `accounts_v0` count
 > unchanged, which races other tests' inserts in the parallel suite — the upsert logic was always
 > correct; the assertion was scoped to a global count) — fixed by scoping the count to the test's
