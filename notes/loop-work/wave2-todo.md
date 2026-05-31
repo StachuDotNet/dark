@@ -158,51 +158,71 @@ Guardrail (per `looping-preferences.md`): don't *churn* already-good prose for i
 sake. The design space is large, but the product is a tight spec — prefer making
 pre-S&S / S&S sharper and shorter over adding surface. Leave a one-line status each pass.
 
-## Today — day plan (2026-05-31, set 09:30) — read every pass
+## Today — day plan (2026-05-31, revised ~10:35) — read every pass
 
-**State at 09:30.** All 7 prework PRs built + full-suite-green on `compose-check`
-(9,496 / 0). `deprecations` is now a **6th** regenerable projection (`Seed.export` strips
-it; committed on `prework/ops-projections`). **Composable distributed MVU's pure core is
-prototyped in Dark** — `composable-mvu.dark` **12/12** on `prework/composable-mvu`:
-Counter + Flag, composed by op-variant dispatch, with the runner proven to *be*
-op-playback and incremental-fold proven to converge with full replay.
+**Mode shift (Stachu, mid-morning):** *"don't just prove things can work. tighten things
+until they're beautiful and ready to review/merge. remove what we no longer need. look for
+existing sync attempts, consolidate."* + *"focus on getting sync working locally between two
+instances, one as server."* So the priority is no longer *more prototypes/proofs* — it's
+**CONSOLIDATE → MERGE-READY**, then **local two-instance sync**.
 
-Stachu's steers today (all logged here so the loop honors them): **(a)** the **dist App
-thing matters** — *"start with small apps, compose together; some initial apps can be
-non-interactive / whatever's testable"*; **(b)** at **~16:00, do a REVIEW pass** —
-re-review/tidy the `.md` files, re-test the branches, write a report on what's done +
-next steps. Don't cut the current PR short to get there.
+**State now.** The prework engine is built + tested but **fragmented across leaf branches**,
+and this session added more on separate leaves without re-integrating:
+- dist-App / composable MVU: **DONE** — `composable-mvu.dark` **28/28** on
+  `prework/composable-mvu` (Counter, Flag, Register w/ conflict+resolve, GrowOnlySet, Log;
+  2 compositions; keyed-merge views; **LWW-Register CRDT two-node convergence**). All the
+  old dist-App sub-todos are complete. Don't add more app variants — it's proven.
+- `capabilities`: `CapabilityAnalysis.fs` adapter (walks real Instructions) — 16/16, on
+  `prework/capabilities` only.
+- `conflict-dispatch`: `CSyncDivergence` aligned to compose-check's form — 4/4, on the leaf.
+- `sync-read-write`: blob content channel (`Blob.missing`/`getMany`) — 39/39, on the leaf.
+- These are **NOT yet on `compose-check`** → it's no longer the true whole.
 
-### 09:30 → ~16:00 — the dist App track (priority; lives in pre-s-and-s)
-Small apps first, then compose. Every app non-interactive + testable (a `.dark` testfile).
-- [x] **Counter** (state=Int) — done (`composable-mvu.dark`).
-- [x] **Flag** (state=Bool) — done.
-- [ ] **Register** — last-writer-wins `String` (op `SetTo of String`).
-- [ ] **GrowOnlySet** — add-only `Set<String>` (commutative; never conflicts — exercises
-  the "most conflicts are fine / auto-resolve" claim).
-- [ ] **Log** — append-only `List<String>`.
-- [ ] **Compose 3+ facets** into ONE App (sum op, keyed-record state, dispatch apply);
-  re-prove the composability law per facet + distributed convergence on the mixed stream.
-- [ ] **`views` as a real keyed merge** — `Dict<ViewId, String>`, facet views union (the
-  spec's "compose views by keyed merge"), tested.
-- [ ] **conflict / resolve** on one facet (Register: two concurrent `SetTo` clash →
-  `resolve` picks by a rule) — exercises the App-type's `conflict`/`resolve` fields.
-- [ ] **Escalate `composable-mvu.md`** with the prototype findings + a fake CLI/TUI visual
-  of a composed App folding an op stream. Keep < 1000 LOC.
-- [ ] **Don't tunnel** — keep the other prework PRs moving in the rotation between app steps.
+**Sync consolidation findings (already audited this pass — act on them):**
+- `Queries.getAllOpsSince` (main, **timestamp** cursor, returns `(op, isWip)`) is **dead — zero
+  callers** anywhere. The prework's `Inserts.opsSince` (**rowid** cursor) is a parallel reimpl
+  of it. → unify to ONE op-since read; remove the dead duplicate (or reconcile WIP-awareness,
+  but WIP-sync is punted).
+- `SyncIdempotency.Tests` "cross-store" + "cross-store projection" tests are **raw-SQL
+  reimplementations** that LibPmSeam's production `connStore` tests supersede (LibPmSeam's own
+  comment says so). → remove the redundant ones; keep the production `connStore` tests.
+- Rung 1 of local sync (a receiver resolves the sender's `name→hash`) is **already proven**
+  (LibPmSeam connStore test). The engine exists; what's missing is transport + the CLI.
+
+### ~10:35 → ~16:00 — CONSOLIDATE, then local sync (in this order)
+1. **Sync consolidation (the explicit ask).** On `compose-check`: remove dead
+   `getAllOpsSince`; unify the op-since read to one canonical function in one place; remove the
+   redundant `SyncIdempotency` cross-store tests (keep LibPmSeam's connStore ones); tighten
+   `Sync.fs` to merge-ready (cohesive, no scaffolding, honest comments). Build + test each step.
+2. **Re-integrate the fragmented leaves into `compose-check`** (blob channel, CapabilityAnalysis,
+   CSyncDivergence alignment, `composable-mvu.dark`) so it's the true whole again; **full-suite
+   verify**. Expect the trivial keep-both merge conflicts the spine's merge-note describes.
+3. **Local two-instance sync — rung 2, built CLEANLY** (only after 1–2). ONE beautiful
+   `Sync.pull`-style engine over the consolidated primitives (read a peer's `data.db` ops above
+   a cursor → fold via `dispatchVia` → fetch missing blobs), with a real two-file test. No
+   proof-pile — the merge-ready version. Then sketch rung 3 (HTTP localhost→tailnet).
 
 ### ~16:00 — REVIEW PASS (when the pass nearest 16:00 fires, switch modes)
-- [ ] **Tidy/review** the `outputs/` `.md` files: dependency rule (no doc references a
-  higher bucket), dedup, tightness (< 1000 LOC each, fewer files overall).
-- [ ] **Re-test every prework branch**: build + targeted tests per branch; **full suite on
-  `compose-check`**. Record pass/fail counts.
-- [ ] **Write the report**: what's DONE per PR (with test counts) + concrete NEXT STEPS.
-  Refresh `meta/prework-status.md`; drop a dated review at `meta/review-2026-05-31.md`.
+- [ ] **Tidy/review** the `outputs/` `.md` files: dependency rule, dedup, tightness (<1000 LOC).
+- [ ] **Re-test every prework branch** + **full suite on `compose-check`**; record counts.
+- [ ] **Write the report**: what's DONE per PR (test counts) + NEXT STEPS. Refresh
+  `meta/prework-status.md`; drop a dated review at `meta/review-2026-05-31.md`. Include the
+  **consolidation log** (what was removed/unified and why).
 
-### Evening → onward — perpetual mode resumes
-Back to the rotation (specs / prototyping / broad-picture), dist-App track continued
-(richer apps, the F# runner that folds App ops into the real op log, the Msg/intent layer
-left for last since it's the ephemeral half).
+### Evening → onward
+Finish rung 2 if unfinished; rung 3 framing; keep hunting redundancy across the sync surface
+(Merge.fs / Rebase.fs / BranchOpPlayback.fs are existing branch-op machinery — check for
+overlap with the sync path). Keep everything merge-ready.
+
+### Standing guardrails (Stachu, this session) — apply every pass
+- **Tighten/remove/consolidate beats add.** Before writing a new fn, look for an existing one
+  to reuse/extend (the `getAllOpsSince` lesson). No parallel reimplementations.
+- **Everything must be merge-ready**, not "proven." No scaffolding left lying around; redundant
+  tests get removed once a production version exists.
+- **Conservative on deleting SOURCE** (disable-don't-delete bias) — but truly-dead duplicate
+  functions + superseded tests are fair to remove, with a one-line why in the commit.
+- **Ground before acting** (the recurring catch: rung 1 already done; CSyncDivergence already
+  on compose-check). Check the integrated branch + main before building.
 
 ## The shape: one goal, what's below it, what's above it
 
