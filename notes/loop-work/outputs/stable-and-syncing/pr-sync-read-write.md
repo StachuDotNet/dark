@@ -143,6 +143,17 @@ let postEvents (req: HttpRequest) : HttpResponse =       // POST /sync/events
 Plus a `dark sync` CLI command (the poll: `GET /sync/events?since=cursor` → `applyRemoteOps` →
 advance cursor) and `dark remote add <peer>` (writes the remote into `.darklang` settings).
 
+> **The F# receiver/sender these handlers call is BUILT + tested** (prework — `LibDB.Sync`, the
+> cohesive module tying the proven primitives together): `Sync.opsToSend cursor` = the GET read
+> (`(rowid, id, op_blob)` via `opsSince`); `Sync.applyRemoteOps remote branchId commitHash
+> opsWithRowids` = the POST receiver — `insertAndApplyOps` (idempotent) then `advanceCursor` to the
+> **max sender-rowid** in the batch, returning the new cursor (empty batch = no-op). **8/8 sync
+> tests** (`SyncIdempotency`): the receiver adds no row for an already-known op and advances +
+> persists the remote's cursor; an empty batch leaves it unchanged. So the handlers are a thin Dark
+> wrapper over a tested module, not new logic — and the `.fs` side of the floor is complete (read
+> cursor, idempotent write, cross-store transfer, login→account authorship, resumable cursor, and
+> the cohesive `Sync` API). What's left is the Dark HTTP/CLI surface (not F#-unit-testable here).
+
 ## SQL/schema
 
 `package_ops`/`branch_ops` already exist and are canonical. The cursor is the **implicit
