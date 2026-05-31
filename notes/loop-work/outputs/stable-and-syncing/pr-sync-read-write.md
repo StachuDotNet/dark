@@ -240,8 +240,10 @@ makes it appear — the goal's first observable proof.
 > `syncSummary remote pulled pushed : String` builds the human-facing lines (`↓ pulled N ops from
 > <remote>` / `↑ pushed N op to <remote>` with op/ops pluralization), covering pulled-only,
 > pushed-only, both, and `✓ already in sync`. The counts come from `Sync.opsToSend`/`applyRemoteOps`
-> (the F# already built); this is the pure UX surface, testable without the network. (The richer
-> `(2 fns, 1 type, 1 rename)` breakdown is a later refinement over the op kinds.)
+> (the F# already built); this is the pure UX surface, testable without the network. **The richer
+> `(2 fns, 1 type, 1 rename)` breakdown is built too** (`opKindBreakdown`): counts each kind
+> (`List.filter`+`length`), pluralizes, and joins only the *present* kinds in fn/type/value/rename
+> order — tested mixed/single/empty/all-one-kind. So the detailed `dark sync` line is real Dark.
 
 ## Risks / problems not yet raised
 
