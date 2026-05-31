@@ -106,7 +106,12 @@ and changed nothing" *is* the deliverable; it's what makes it safe to land early
 ## Above / below
 
 - **Below:** nothing.
-- **Above expects:** the caps PR emits `Conflict.CapabilityDenied`; the sync PR emits
+- **Above expects:** the caps PR emits `Conflict.CapabilityDenied` — **now BUILT (prework,
+  `compose-check`):** `Conflict.CCapabilityDenied of CapCategory` exists, the default dispatch
+  fails it loudly, and `CapabilityGate.gate` routes a denial through this hook to a resolution
+  (fail/substitute/park); ConflictDispatch is 11/11 with the 4 cap-gate tests, see
+  [capabilities.md](../pre-s-and-s/capabilities.md). The sync PR still emits
   `Conflict.SyncDivergence` and makes resolutions durable content-addressed ops; the
   errors-as-conflicts rollout routes the remaining `raiseRTE` sites. All depend only on the
-  `Conflict`/`Resolution`/`ConflictDispatch` shapes frozen here.
+  `Conflict`/`Resolution`/`ConflictDispatch` shapes frozen here — and the extensibility just got
+  exercised: adding `CCapabilityDenied` was a one-case addition + the single default-dispatch site.

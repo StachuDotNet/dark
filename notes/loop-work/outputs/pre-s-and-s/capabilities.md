@@ -10,12 +10,21 @@ exfiltrate secrets. Capabilities gate that: "this code may do exactly these effe
 > `checkCaps granted needs` (first uncovered category wins; empty `needs` = the pure fast-path =
 > today's behavior), and the structured `hostAllowed` HttpClient allow-list (exact / `*.suffix` /
 > `*`, with the lookalike-suffix `googleapis.com.evil.com` correctly rejected). So **model B (coarse
-> static caps + a dynamic structured check) is implementable as specified.** Two integration steps
-> remain, both already-sized elsewhere: (1) the **`caps : Set<CapCategory>` field on `BuiltInFn`**
-> is the *same ~620-site mechanical codemod* the async `effects` field already proved tractable (and
-> `caps` is orthogonal to `effects` — they coexist); (2) the **call-site gate** maps a `Denied` onto
-> a conflict-dispatch `Conflict` (`CCapabilityDenied`) whose policy decides fail/substitute/park —
-> the seam conflict-dispatch already left open.
+> static caps + a dynamic structured check) is implementable as specified.**
+>
+> **The gate→policy wiring is now BUILT + tested too** (`compose-check`, where capabilities,
+> conflict-dispatch, and the scheduler coexist). Added `Conflict.CCapabilityDenied of CapCategory`;
+> `createState`'s default dispatch fails a denial loudly (strict default = today); and
+> `CapabilityGate.gate dispatch ctx granted needs` runs `checkCaps` and, on `Denied`, routes a
+> `CCapabilityDenied` through the **conflict-dispatch policy**, returning its `Resolution` (`None` =
+> allowed, the call proceeds). **+4 tests (ConflictDispatch 11/11 PASS):** a granted cap proceeds; a
+> denied cap **fails loudly** under the default; an installed policy **substitutes**; and a policy
+> can **park** the denied cap on a grant event (`RPark` on an `EventSelector`) — so "park waiting for
+> a grant" is real, riding the scheduler. **A denied capability is now a genuine, policy-resolved
+> runtime conflict, not an invented error.** The ONE remaining integration step is the
+> **`caps : Set<CapCategory>` field on `BuiltInFn`** + calling `gate` at the builtin call site — the
+> field is the *same ~620-site codemod* the async `effects` field already proved tractable (and
+> `caps` is orthogonal to `effects`; they coexist).
 
 **Builtins are the only impure boundary** (pure Dark code can only compute), and `main`
 already splits builtins into 9 effect assemblies (`Pure`, `Http.Client`, `Http.Server`,
