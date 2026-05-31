@@ -53,6 +53,17 @@ exist; the genuinely new code is the **two-connection split** + a small **projec
 (what each projection folds, its scope, its invalidation trigger). That's it — a few hundred
 lines of reorganization, not a new subsystem.
 
+> **The two-DB split's *engine* is already built (prework) — by the sync PR's `connStore`.** The
+> LibPM seam's `connStore connStr` (a `PackageStore` whose handlers write to a *given* connection)
+> + `dispatchVia` *is* the per-branch-DB refold: folding `core.db`'s op stream into a separate
+> store's projection tables. **Tested (LibPmSeam 7/7):** a 4-op stream (2 `AddFn` + 2 `SetName`)
+> folds from `package_ops` into a standalone "branch.db" holding **only** `package_functions` +
+> `locations` (no op log), which then resolves **both** names independently. That's exactly this
+> PR's claim — *ops in `core.db`, projections in a droppable per-branch DB refolded from the log*.
+> So **one mechanism serves two PRs**: sync's cross-store fold and this physical split. What's left
+> for this PR is the *routing* (open the two connections, send reads to the branch DB / appends to
+> `core.db`) — the fold-into-a-separate-store half is done and tested.
+
 ```fsharp
 // the projection registry — the only genuinely new abstraction
 type Projection =
