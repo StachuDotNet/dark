@@ -80,7 +80,13 @@ schema pins exactly what it is** (prework-verified against `backend/migrations/s
   as the author id" — `account_id` is a UUID, not a string. The first proof therefore does the
   minimal real binding: **upsert `accounts_v0` by the login string** (its `name` column is
   `UNIQUE`) and use the resulting UUID as the commit's `account_id`. That's not a new table — it's
-  `accounts_v0` itself, keyed by name — so it's still "thin," just not "none."
+  `accounts_v0` itself, keyed by name — so it's still "thin," just not "none." **BUILT + tested
+  (prework):** `LibDB.Accounts.upsertAccount login : Task<Guid>` does `INSERT OR IGNORE INTO
+  accounts_v0 (id, name)` then `SELECT id WHERE name` — idempotent, so a repeat login returns the
+  **same** id with no duplicate (`accountIdForLogin` gives the read-only lookup). **2/2 Accounts
+  tests pass**: count grows by 1 on first sight, a repeat upsert returns the same id and adds no
+  row, and distinct logins get distinct ids. So the receiver can bind a `Tailscale-User-Login` →
+  `account_id` on receipt with no new table and no PT change.
 - **Per-op `Intent` is the *later* depth, not the slice.** Attribution *inside* each op (the
   `Intent` of [identity.md](../later/identity.md)) means adding an `Intent` field to the serialized
   `PackageOp` — a **ProgramTypes change** (hash-affecting, two-build dance), explicitly out of the
