@@ -158,6 +158,52 @@ Guardrail (per `looping-preferences.md`): don't *churn* already-good prose for i
 sake. The design space is large, but the product is a tight spec — prefer making
 pre-S&S / S&S sharper and shorter over adding surface. Leave a one-line status each pass.
 
+## Today — day plan (2026-05-31, set 09:30) — read every pass
+
+**State at 09:30.** All 7 prework PRs built + full-suite-green on `compose-check`
+(9,496 / 0). `deprecations` is now a **6th** regenerable projection (`Seed.export` strips
+it; committed on `prework/ops-projections`). **Composable distributed MVU's pure core is
+prototyped in Dark** — `composable-mvu.dark` **12/12** on `prework/composable-mvu`:
+Counter + Flag, composed by op-variant dispatch, with the runner proven to *be*
+op-playback and incremental-fold proven to converge with full replay.
+
+Stachu's steers today (all logged here so the loop honors them): **(a)** the **dist App
+thing matters** — *"start with small apps, compose together; some initial apps can be
+non-interactive / whatever's testable"*; **(b)** at **~16:00, do a REVIEW pass** —
+re-review/tidy the `.md` files, re-test the branches, write a report on what's done +
+next steps. Don't cut the current PR short to get there.
+
+### 09:30 → ~16:00 — the dist App track (priority; lives in pre-s-and-s)
+Small apps first, then compose. Every app non-interactive + testable (a `.dark` testfile).
+- [x] **Counter** (state=Int) — done (`composable-mvu.dark`).
+- [x] **Flag** (state=Bool) — done.
+- [ ] **Register** — last-writer-wins `String` (op `SetTo of String`).
+- [ ] **GrowOnlySet** — add-only `Set<String>` (commutative; never conflicts — exercises
+  the "most conflicts are fine / auto-resolve" claim).
+- [ ] **Log** — append-only `List<String>`.
+- [ ] **Compose 3+ facets** into ONE App (sum op, keyed-record state, dispatch apply);
+  re-prove the composability law per facet + distributed convergence on the mixed stream.
+- [ ] **`views` as a real keyed merge** — `Dict<ViewId, String>`, facet views union (the
+  spec's "compose views by keyed merge"), tested.
+- [ ] **conflict / resolve** on one facet (Register: two concurrent `SetTo` clash →
+  `resolve` picks by a rule) — exercises the App-type's `conflict`/`resolve` fields.
+- [ ] **Escalate `composable-mvu.md`** with the prototype findings + a fake CLI/TUI visual
+  of a composed App folding an op stream. Keep < 1000 LOC.
+- [ ] **Don't tunnel** — keep the other prework PRs moving in the rotation between app steps.
+
+### ~16:00 — REVIEW PASS (when the pass nearest 16:00 fires, switch modes)
+- [ ] **Tidy/review** the `outputs/` `.md` files: dependency rule (no doc references a
+  higher bucket), dedup, tightness (< 1000 LOC each, fewer files overall).
+- [ ] **Re-test every prework branch**: build + targeted tests per branch; **full suite on
+  `compose-check`**. Record pass/fail counts.
+- [ ] **Write the report**: what's DONE per PR (with test counts) + concrete NEXT STEPS.
+  Refresh `meta/prework-status.md`; drop a dated review at `meta/review-2026-05-31.md`.
+
+### Evening → onward — perpetual mode resumes
+Back to the rotation (specs / prototyping / broad-picture), dist-App track continued
+(richer apps, the F# runner that folds App ops into the real op log, the Msg/intent layer
+left for last since it's the ephemeral half).
+
 ## The shape: one goal, what's below it, what's above it
 
 The buckets aren't a flat list — they're **a goal with a stack under it and a stack on
