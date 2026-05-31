@@ -150,6 +150,16 @@ advance cursor) and `dark remote add <peer>` (writes the remote into `.darklang`
 table (per remote: `folded_through_rowid`) so a poll resumes where it left off — local-only,
 not synced. No projection tables touched — they refold from the applied ops.
 
+> **Built + tested (prework).** `LibDB.SyncCursors`: `sync_cursors (remote TEXT PK,
+> folded_through_rowid INTEGER)`; `cursorFor remote` (0 if unseen) and `advanceCursor remote rowid`
+> — a **monotonic** upsert (`ON CONFLICT DO UPDATE SET = MAX(existing, incoming)`) so a
+> stale/duplicate advance can't rewind the cursor and re-fold older ops. Local-only; the table is
+> created on demand (`CREATE TABLE IF NOT EXISTS`) so prework needs no migration (the real PR moves
+> it into `schema.sql`). **+2 tests (SyncIdempotency 7/7):** the cursor starts at 0, advances, and
+> ignores a backward advance; and **cursor + `opsSince` = a resumable poll** — fold the whole log,
+> advance to the max rowid, and a re-poll from the cursor returns **no** already-folded ops. So the
+> poll-resume bookkeeping the floor needs is proven against the rowid cursor.
+
 ## Test plan
 
 | Step | Test | Done-signal |
