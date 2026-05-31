@@ -9,6 +9,20 @@ changes no observable behavior on its own.
 VM**; (3) execution carries a **cancellation** signal. Metadata + plumbing only — nothing parks
 yet, async stays invisible at the Dark surface.
 
+> **Validated in prework** (part 1 — the `effects` field — on `loop-fun:prework/async-stage-a`).
+> **Compiles clean** (0 errors) across LibExecution + the Pure assembly (439 builtins). Two real
+> findings:
+> - **Builtins are raw record literals, no constructor helper** — so the field *is* a ~617-site
+>   change (confirmed by count). It's **mechanically tractable via codemod**: `sed` an
+>   `effects = Effect.OrderedIO` line after each `previewable =` line (conservative
+>   default-to-most-restrictive). The genuinely-effectful builtins (the few small assemblies) then
+>   get their real effect set by hand.
+> - **`Effect.Pure` shadows the existing `Previewable.Pure`** (hundreds of `previewable = Pure`
+>   sites resolve to the wrong type). Fix: **`[<RequireQualifiedAccess>]` on `Effect`** so its
+>   cases must be qualified (`Effect.Pure`), leaving bare `Pure` as `Previewable.Pure`. A
+>   non-obvious gotcha the spec must call out. (Child-VM isolation + cancellation: not yet
+>   prototyped.)
+
 **Prereqs.** None (leaf). Unblocks the scheduler (effort 6, consumes all three).
 
 > **`effects` vs `caps` — two orthogonal axes, not redundant.** A builtin now carries *both*
