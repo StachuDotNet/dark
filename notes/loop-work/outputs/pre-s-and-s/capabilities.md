@@ -3,6 +3,14 @@
 LLM-generated and shared code will try to delete files, hit arbitrary endpoints, and
 exfiltrate secrets. Capabilities gate that: "this code may do exactly these effects."
 
+> **Integration check — the FULL composed backend suite is green** (`compose-check`, where every
+> pre-S&S foundation coexists): **9,416 passed, 4 ignored, 0 failed**. This is the strongest
+> validation of the riskiest change here — the cap gate runs on *every* builtin call across all
+> 9,416 tests under the permissive default grant with **zero regressions** (pure builtins fast-path
+> on `caps={}`; the 628-site `caps` codemod + the interpreter call-site gate are invisible). It also
+> confirms all foundations compose without cross-interaction (EventBus + async Stage A + scheduler +
+> conflict-dispatch + capabilities, all wired, all green at scale).
+
 > **Prototyped in prework** (`loop-fun:prework/capabilities`). The cap **types + gate** are built
 > and tested (`LibExecution.Capabilities`, RT-independent like the bus — compiles before
 > RuntimeTypes; **6/6 tests PASS**): `CapCategory` (the 6 domains), the structured `Capabilities`
