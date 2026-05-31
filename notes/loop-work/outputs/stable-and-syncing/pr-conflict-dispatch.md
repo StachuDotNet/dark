@@ -30,9 +30,18 @@ EventBus PR is not a hard prereq for the skeleton.
 >   mention `RuntimeError.Error`/`Dval` (defined there) *and* `ExecutionState` references
 >   `ConflictDispatch` — a later file can't satisfy both. (Same circular constraint the EventBus
 >   PR hit with `RuntimeBuses`.) The original "new ConflictTypes.fs after RuntimeTypes" was wrong.
-> - **`Resolution.Park` is omitted from the skeleton** — it needs the scheduler's `EventSelector`
->   (vision-domain, doesn't exist yet). Skeleton ships `Substitute`/`FailLoudly`; `Park` lands with
->   the scheduler PR. Confirms "the default never Parks, so EventBus isn't a hard prereq."
+> - **`Resolution.Park` — now IMPLEMENTED on the composed branch** (`loop-fun:prework/compose-check`,
+>   where all three pre-S&S foundations coexist). The skeleton deferred it because it needs the
+>   scheduler's `EventSelector`; once EventBus + async Stage A + conflict-dispatch were composed onto
+>   one branch, the seam was buildable: added **`EventSelector`** (`OnConflictResolved of conflictId`
+>   / `OnOpArrived of opId` — one case per bus the scheduler can park on), **`Resolution.RPark of
+>   EventSelector`**, and a minimal **`LibExecution.Scheduler.awaitSelector buses selector`** that
+>   parks via `EventBus.waitForOne` on the bus the selector names. **LibExecution builds clean; +2
+>   tests (5/5 ConflictDispatch PASS):** `RPark` flows through the dispatch hook, and `awaitSelector`
+>   genuinely parks on the conflict bus — a non-matching event leaves it parked, the matching publish
+>   resumes it. So a **parked frame is literally a `waitForOne` subscriber** — the first working
+>   thread of async Stage C. (Still default-never-Parks, so EventBus remains a *soft* prereq; the
+>   ready/parked queues + resume-to-Dval plumbing are the larger Stage C work.)
 > - **The `FnNotFound` seam site resolves *instructions*, not values** — so `Substitute(Dval)`
 >   doesn't fit *there* (the site returns `InstrData`); it only meaningfully honors `FailLoudly`.
 >   `Substitute` belongs at value-producing fail sites. The site also needs `vm` threaded for
@@ -51,7 +60,8 @@ match resolution with
 | Resolution.FailLoudly rte -> return raiseRTE vm.threadID rte   // == today's behavior (the default)
 | _                          -> return raiseRTE vm.threadID (RTE.FnNotFound n)
 // Substitute(Dval) doesn't fit here (this site returns InstrData, not a value); it applies at
-// value-producing fail sites. Park lands with the scheduler PR (needs EventSelector).
+// value-producing fail sites. RPark(EventSelector) now exists (prework) — a Park resolution
+// suspends the frame via Scheduler.awaitSelector → EventBus.waitForOne on the selector's bus.
 ```
 
 `CallContext` is assembled from what's already on hand — `ExecutionState.branchId` + the
