@@ -15,8 +15,10 @@ these buses. Ships **in-process only** — durable tables come with the sync PR.
 >   (`HttpServer.fs`, `Cli.fs`) uses `{ state with … }` copies that inherit it. Minimal risk.
 > - **`waitForOne` = a `TaskCompletionSource` + a one-shot subscription** whose handler sets the
 >   result; `publish` fires it and removes it. Real, working parking primitive.
-> - Not yet compiled (loop-fun needs its isolated devcontainer build); types written against
->   real source and cross-checked by hand.
+> - **Compiles clean** (0 errors) against real `main` in the loop-fun devcontainer. The only
+>   fixes needed: 3× FS0685 — `TryRemove`/`TrySetResult |> ignore` need explicit type args
+>   (`ignore<bool * Subscription<'T>>` / `ignore<bool>`). So the spec is implementable as written
+>   modulo that F# detail; `EventBus.fs` + the `RuntimeBuses` wiring build.
 
 **Goal.** `ExecutionState` carries a set of typed, multi-subscriber buses; F# code can
 `publish`/`subscribe`/`waitForOne`; nothing about the serialized program changes. After this
