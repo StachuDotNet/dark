@@ -131,3 +131,53 @@ Stachu is to adjudicate the handful of explicitly-flagged open decisions — not
 
 **Minor housekeeping found:** `later/dark-virtual-files.md` is ~1200 lines (over the <1000 bar) —
 a tighten candidate, but it's punted/secondary so low priority.
+
+---
+
+# Third pass — does the BUILT system hold together as a product?
+
+Re-run after the floor was actually *implemented* in `loop-fun` (sync rungs 1–3, builtins, the
+CLI command), not just specced. The question is no longer "is the plan viable / review-ready" but
+"**does the working thing behave like git/sqlite?**" — now answerable by running it.
+
+**The central prediction held all the way to working code.** Passes 1–2 claimed the floor is
+git-small and grounds in existing `main` machinery. The implementation confirms it: `dark sync
+pull <peer>` is a thin shell over `Inserts.insertAndApplyOps` (already on `main`) — the new code
+is `pull`/`pullFromFile` (read a source's ops above a cursor, fold via the *existing* apply path),
+three small builtins, a wire codec, and a CLI command. Full suite **9,534 / 0 / 0**.
+
+**The "it just works" bar is met for the local floor — demonstrated, not asserted.** A value
+authored on one instance (`DARK_CONFIG_DB_NAME=peerB.db`, `dark val … = 42L`) was `Not found` on
+a second instance, then after `dark sync pull <peerB.db>` it **resolved** there. Idempotent
+(re-pull is a no-op via the persisted cursor), content-addressed, no daemon. That *is* the
+git/sqlite-shaped property working: a boring one-liner that converges two stores.
+
+**Building it (vs theorizing) surfaced real obstacles a spec wouldn't have:**
+- **The SSRF guard blocks the tailnet.** `HttpClient`'s default config blocks loopback *and*
+  `100.64.0.0/10` — the Tailscale range — so cross-machine sync over the standard client can't
+  reach a peer. Found by *running* it; fixed with a `looseConfig` fetch (`httpClientGetUnsafe`),
+  justified because the tailnet IS the trust boundary. A pure-design pass would have missed this.
+- **The two-build hash-binding** (`package-ref-hashes.txt`) is the concrete shape of the
+  F#↔Dark coupling that gates `.dark`-seeding removal — now grounded, with two exit options.
+- **Test-isolation under real load**: global-count assertions race the destructive refold
+  (`testSequenced` fix). The kind of thing only a full parallel run exposes.
+
+**Honest gaps to the print-md north star (what's NOT done):**
+- **Cross-machine HTTP demo not run live** — the code is built + the SSRF blocker fixed, but the
+  headless env can't probe server-readiness; needs a controlled run. (Local cross-instance *is*
+  proven, same mechanism.)
+- **print-md as an *App* + the `dark apps` surface** — the actual north-star wrapper — isn't built;
+  sync moves the *ops*, but "show up under `dark apps`, forkable by Ocean" is the next layer.
+- **Divergence auto-resolution isn't wired into the pull path** — `detectDivergences` +
+  `CSyncDivergence` + resolution policies all exist and are tested, but `pull` applies straight
+  through `insertAndApplyOps` without consulting a policy. Fine for single-author/last-writer; the
+  multi-author auto-resolve loop is unbuilt.
+- **Format stability** remains the deepest gate (a peer on an older op encoding can't read a newer
+  one) — correctly punted to bootstrap, still *the* prerequisite for true git-universality.
+
+**Verdict: the sync *floor* works as a product.** The mechanism — ops + idempotent apply +
+per-peer cursors + content-addressed blobs — is as boring-reliable as hoped, and *demonstrated*
+moving real content between instances. What stands between here and the north star is not the
+sync core (done) but the layers around it: the App/`dark apps` wrapper, the cross-machine
+transport's live proof, and the format-stability gate. None of those are "is the design right"
+risks anymore — they're build-it-out work.
