@@ -86,9 +86,13 @@ no-op. This PR mostly **exposes that over HTTP**; it doesn't reinvent apply.
 > **Tested (LibPmSeam 3/3):** folding a real `AddFn` into a separate temp store reproduces store A's
 > `package_functions` `pt_def` byte-for-byte → B resolves the same fn. So the seam doesn't just
 > *size* the LibDB-as-backend refactor — a working connection-parameterized store drops straight
-> into it. (Location/deprecation handlers in `connStore` aren't parameterized yet — their
-> multi-statement SQL is a documented follow-up; the content-addressed Add* fold is the proven
-> core.)
+> into it. **`connStore.setName` is now parameterized too** (`setNameToConn` mirrors `applySetName`'s
+> three steps against the target connStr), so `dispatchVia (connStore connB)` folds **AddFn +
+> SetName** into store B and **B resolves the name→hash** — tested (LibPmSeam 4/4): a folded
+> `TestPeer.Sync.foldedFn` resolves to the fn's hash via B's `locations`. So "B resolves the same
+> **name**→hash as A" is realized in production code (content *and* name resolution), not just the
+> content row. Only the deprecation handlers (`deprecate`/`undeprecate`/`revertPropagation`) remain
+> unparameterized in `connStore` — a documented follow-up; Add*/SetName is the floor's core.
 
 **Goal.** A peer can `GET` ops since a cursor and `POST` ops; the receiver applies them via the
 existing playback path. A remote op and a local op are the same thing — no separate import path.
