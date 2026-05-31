@@ -168,10 +168,12 @@ git/sqlite-shaped property working: a boring one-liner that converges two stores
   proven, same mechanism.)
 - **print-md as an *App* + the `dark apps` surface** — the actual north-star wrapper — isn't built;
   sync moves the *ops*, but "show up under `dark apps`, forkable by Ocean" is the next layer.
-- **Divergence auto-resolution isn't wired into the pull path** — `detectDivergences` +
-  `CSyncDivergence` + resolution policies all exist and are tested, but `pull` applies straight
-  through `insertAndApplyOps` without consulting a policy. Fine for single-author/last-writer; the
-  multi-author auto-resolve loop is unbuilt.
+- **Divergence *detection* is now wired into both receiver paths; auto-*resolution* is the
+  remaining bit.** `pull` and `applyRemoteOps` (file + HTTP) now call `detectDivergences` before
+  applying and surface the count in the CLI (*"N name divergence(s) surfaced — not blocked"*),
+  as data, never blocking — closing the gap this pass. What's still unbuilt is the *auto-resolve
+  loop*: consulting a `ConflictDispatch` policy to emit reconciling ops. Fine for
+  single-author/last-writer (the immediate north star); the multi-author auto-resolve is next.
 - **Format stability** remains the deepest gate (a peer on an older op encoding can't read a newer
   one) — correctly punted to bootstrap, still *the* prerequisite for true git-universality.
 
