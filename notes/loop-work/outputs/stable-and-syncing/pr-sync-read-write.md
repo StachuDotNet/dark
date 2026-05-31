@@ -44,10 +44,23 @@ existing playback path. A remote op and a local op are the same thing — no sep
 **Prereqs.** ops⊥projections (effort 3 — `core.db` is what syncs) and Tailscale transport
 (effort 5 — addressing + the `Tailscale-User-Login` header). Conflict-dispatch (4) handles
 `SyncDivergence`, but the floor can ship before rich resolution (last-writer / surface-as-data).
-**Identity (8) is *not* a prereq:** the first proof attributes ops by the **raw
-`Tailscale-User-Login` string** (the login *is* the author id — no mapping table), which is why
-sync (7) can precede identity (8). Effort 8 then replaces the raw login with a proper
-login→account binding + structured `Intent`.
+**Identity (8) is *not* a prereq — but the thin slice is smaller than "no mapping," and the
+schema pins exactly what it is** (prework-verified against `backend/migrations/schema.sql`):
+- **Authorship is at the *commit*, not the op.** `package_ops` has **no `account_id` column**
+  (`id, op_blob, branch_id, commit_hash, applied, propagation_id, created_at`); the author lives
+  on `commits.account_id`, a **UUID FK → `accounts_v0(id)`**. So you *cannot* "store the raw login
+  as the author id" — `account_id` is a UUID, not a string. The first proof therefore does the
+  minimal real binding: **upsert `accounts_v0` by the login string** (its `name` column is
+  `UNIQUE`) and use the resulting UUID as the commit's `account_id`. That's not a new table — it's
+  `accounts_v0` itself, keyed by name — so it's still "thin," just not "none."
+- **Per-op `Intent` is the *later* depth, not the slice.** Attribution *inside* each op (the
+  `Intent` of [identity.md](../later/identity.md)) means adding an `Intent` field to the serialized
+  `PackageOp` — a **ProgramTypes change** (hash-affecting, two-build dance), explicitly out of the
+  floor. The floor attributes at commit granularity via `accounts_v0`; effort 8 adds the
+  structured per-op `Intent`.
+
+This is why sync (7) can still precede identity (8): the floor needs only the `accounts_v0`
+upsert (no PT change), and `main` already attributes commits via `commits.account_id`.
 
 ## The wire flow
 

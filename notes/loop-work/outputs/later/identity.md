@@ -16,6 +16,16 @@ Main has the bones: an `accounts_v0` table with seeded humans, an
 `commits.account_id`, every trace optionally attributed via
 `traces.account_id`. The attribution shape is real.
 
+> **Prework-verified (schema).** `accounts_v0` is deliberately thin — `(id TEXT PK, name TEXT
+> UNIQUE, created_at)` — which is exactly the `Account` record below, and the `UNIQUE name` is what
+> a `Tailscale-User-Login` upserts against. Crucially, **attribution today is *commit*-grained, not
+> *op*-grained**: `package_ops` has **no `account_id` column** (only `id, op_blob, branch_id,
+> commit_hash, applied, propagation_id, created_at`). So "every op carries an `Intent`" (below) is
+> genuinely *new* — it means embedding `Intent` *inside* the serialized `PackageOp` (a
+> ProgramTypes/hash-affecting change), not adding a SQL column. Until then, authorship rides the
+> commit's `account_id`. This is why the S&S thin slice attributes at commit granularity, not
+> per-op (see [pr-sync-read-write.md](../stable-and-syncing/pr-sync-read-write.md)).
+
 Missing: agent identities, and a model for the *intent* behind an op (the
 reason + context a given identity is acting under).
 
