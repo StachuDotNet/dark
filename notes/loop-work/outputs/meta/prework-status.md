@@ -9,7 +9,7 @@ isolated clone; `main`/pdd source was never touched.
 
 Each PR is a `prework/*` branch off `main`; **`prework/compose-check`** merges **all 7** and is
 the one branch holding the *whole* prework — F# floor + Dark surfaces — **full-suite-green at
-9,494 / 0 failed**.
+9,496 / 0 failed**.
 
 `event-bus-primitive · async-stage-a · ops-projections · conflict-dispatch · capabilities ·
 sync-read-write · libpm-seam` → all merged into `compose-check`.
@@ -20,7 +20,7 @@ sync-read-write · libpm-seam` → all merged into `compose-check`.
 |---|---|---|---|
 | EventBus (1) | `EventBus.fs` (publish/subscribe/waitForOne) + `RuntimeBuses` on ExecutionState | 7 | durable buses (deferred to sync, per spec) |
 | async Stage A (2) | `BuiltInFn.effects` (628-site codemod) · `VMState.spawnChild`+`cancel`+wired `throwIfCancelled` in the eval loop · `Scheduler.fs` (awaitSelector / ParkSet / DarkAsync + run/runReady) | 6 + sched | Stage C eval-loop yielding DarkAsync (the "large core interpreter change") |
-| ops⊥projections (3) | `Seed.rebuildProjections` (drop+refold=identity) | (in Seed) | physical core.db/branch.db split |
+| ops⊥projections (3) | `Seed.rebuildProjections` (drop+refold) · projection **registry** (`Projection`/`projectionsDirtiedBy`/`…ByBatch`) · **incremental** refold `rebuildDirtied` (selective) · the two-DB split *engine* = `connStore` (fold the log into a standalone branch.db) | 5 | two-connection *routing* (open core.db + branch.db, route reads/appends) |
 | conflict-dispatch (4) | `Conflict`(4 cases)/`Resolution`(Fail/Substitute/Park)/`ConflictDispatch` on ExecutionState + default | 15 | route remaining raiseRTE sites |
 | capabilities | `Capabilities.fs` (CapCategory/gate/hostAllowed/effectiveCaps) · `caps` field on all 628 builtins · `CapabilityGate.fs` + ExecutionState.grantedCaps · **gate wired at the builtin call site**, all 3 resolutions live (fail/substitute/park) | 15 + caps | per-fn effectiveCaps at its call site (adapter exists); structured multi-cat grant |
 | sync read/write (7) | `Inserts.opsSince` (rowid cursor) · `Sync.fs` (opsToSend/snapshot/applyRemoteOps/detectDivergences) · `SyncCursors.fs` · cross-store transfer (op-log **and** projection+name) | 11 | the Dark HTTP handlers |
