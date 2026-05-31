@@ -19,11 +19,25 @@ these buses. Ships **in-process only** — durable tables come with the sync PR.
 >   fixes: 3× FS0685 — `TryRemove`/`TrySetResult |> ignore` need explicit type args
 >   (`ignore<bool * Subscription<'T>>` / `ignore<bool>`). `EventBus.fs` + the `RuntimeBuses`
 >   wiring build.
-> - **Tests written + PASSING** (`backend/tests/Tests/EventBus.Tests.fs`, 4 Expecto tests via
->   `run-backend-tests`: publish→subscriber delivery, predicate filtering, `waitForOne` wakes on
->   the matching event, one-shot sub removed after firing — **4 passed, 0 failed**). One more F#
->   detail: `publish`'s `reportException` arg needs `(fun _ -> ())`, not bare `ignore` (FS0685).
->   **This PR is compile- AND test-validated end to end** — implementable as specified.
+> - **Tests written + PASSING — now the FULL test-plan, 7 Expecto tests** (`EventBus.Tests.fs` via
+>   `run-backend-tests`, **7 passed, 0 failed**). The four core ones (publish→subscriber delivery,
+>   predicate filtering, `waitForOne` wakes on the matching event, one-shot sub removed after
+>   firing) plus the three that close the plan:
+>   - **throwing-subscriber isolation** (plan row 4): a handler that raises doesn't break `publish`
+>     or starve siblings, and `reportException` fires once — order-independent (works whichever of
+>     the two subscribers `ConcurrentDictionary.Values` yields first).
+>   - **re-entrancy / snapshot** (the invariant `publish` documents): a handler that *subscribes to
+>     the same bus mid-publish* is deferred — it does **not** fire that round (publish snapshots the
+>     subscriber set first) but **does** on the next publish. Proven by counter.
+>   - **cross-VM shared delivery** (plan row 5): a `publish` on `exeState.buses.conflict` reaches a
+>     subscriber registered on the same `ExecutionState` — proving the buses live on shared
+>     execution state (like `lambdaInstrCache`), not per-VM. (Used the trivial `ConflictEvent`
+>     `{conflictId; location}` rather than `MaterializationEvent`, which needs an `FQFnName.Package`.)
+>   F# details found: `publish`'s `reportException` arg needs `(fun _ -> ())` not bare `ignore`
+>   (FS0685); `failwith` is banned in this codebase (use `Exception.raiseInternal`); the typed
+>   `ConflictEvent` handler/literal need explicit annotations or inference can't resolve the labels.
+>   **This PR is compile- AND test-validated end to end against the full plan** — implementable as
+>   specified.
 
 **Goal.** `ExecutionState` carries a set of typed, multi-subscriber buses; F# code can
 `publish`/`subscribe`/`waitForOne`; nothing about the serialized program changes. After this
