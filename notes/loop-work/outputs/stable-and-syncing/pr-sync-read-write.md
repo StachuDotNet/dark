@@ -22,9 +22,14 @@ no-op. This PR mostly **exposes that over HTTP**; it doesn't reinvent apply.
 > with `LibDB` as just the SQLite backend. **Prototyped + sized (compiles):** the seam is a
 > **~6-method `PackageStore` interface** (`addType`/`addValue`/`addFn`/`setName`/`deprecate`/…),
 > and **the existing handlers fit it with ZERO changes** (`sqliteStore = { addType = applyAddType;
-> … }` builds as-is); a storage-agnostic `dispatchVia store op` compiles. So the refactor is a
-> **clean interface-extraction — moderate, not "huge"**: move `dispatchVia` + `PackageStore` to a
-> new `LibPM`, leave `sqliteStore` in `LibDB`. Worth doing before/alongside sync; now de-risked.
+> … }` builds as-is); a storage-agnostic `dispatchVia store op` covering **all** op kinds compiles.
+> So the refactor is a **clean interface-extraction — moderate, not "huge"**: move `dispatchVia` +
+> `PackageStore` to a new `LibPM`, leave `sqliteStore` in `LibDB`. **Precise sizing:** of 8 op
+> kinds, **7 route cleanly** through the store (`addType`/`addValue`/`addFn`/`setName`/`deprecate`/
+> `undeprecate`; `PropagateUpdate` is a no-op), and **`RevertPropagation` is the *one* rough edge**
+> — its logic is written *inline in `applyOp`* (not a handler), so it must first be extracted to a
+> `store.revertPropagation` method. That single extraction is the only real work; everything else
+> is a lift-and-shift. Worth doing before/alongside sync; now de-risked and sized.
 
 **Goal.** A peer can `GET` ops since a cursor and `POST` ops; the receiver applies them via the
 existing playback path. A remote op and a local op are the same thing — no separate import path.
