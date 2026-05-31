@@ -227,6 +227,11 @@ not synced. No projection tables touched — they refold from the applied ops.
 New: **`dark sync`** (one-shot poll-pull-apply; the autosync PR wraps it in a loop), **`dark
 remote add <peer>`**, **`dark remote list`**. Existing commands unchanged.
 
+> **The CLI's pure surfaces are real, tested Dark (prework).** `dark sync` output (`sync-cli.dark`,
+> summary + op-kind breakdown), and `dark remote add`/`list` (`remote-mgmt.dark` 4/4: a `RemoteEntry
+> {name; host}` with `host = <name>.<tailnet>.ts.net` per `Tailscale.peerUrl`, `remoteAddedMsg`,
+> `remoteListLine`). So the whole sync CLI UX has a tested Dark display layer over the F# wire ops.
+
 ## UX change
 
 ```
