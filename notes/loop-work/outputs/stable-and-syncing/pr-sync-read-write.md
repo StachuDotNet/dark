@@ -270,7 +270,11 @@ makes it appear — the goal's first observable proof.
   flagged with both hashes; a same-hash rebind is not; and the conflict resolves via the policy. So
   the *whole* divergence path — detect (LibDB) → conflict type (LibExecution) → resolve (policy) —
   is built and tested at the F# level; only the Dark handler that wires detection to the policy and
-  returns the surfaced conflicts in the POST response remains.
+  returns the surfaced conflicts in the POST response remains. **The Dark DISPLAY surface is built
+  too** (`conflicts-display.dark`, 6/6): `divergenceLine`/`divergenceHeader`/`divergenceReport`
+  format `detectDivergences`'s `(location, existing, incoming)` tuples for `dark sync`/`dark
+  conflicts` (`⚠ divergence at <loc>: <existing> vs <incoming>`, with a none/one/many header). So
+  the divergence story is now real end to end — F# detect → Dark display.
 
 ## Above / below
 
