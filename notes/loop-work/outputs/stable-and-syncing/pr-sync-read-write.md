@@ -77,6 +77,18 @@ no-op. This PR mostly **exposes that over HTTP**; it doesn't reinvent apply.
 > remaining LibPM work is the mechanical lift-and-shift (move `PackageStore` + `dispatchVia` into a
 > new `LibPM` project, leave `sqliteStore` in `LibDB`) — **no design risk left**. Worth doing
 > before/alongside sync.
+>
+> **Store-param REALIZED via the seam (prework) — the cross-store fold is now production, not a
+> test re-impl.** Added **`connStore connStr`**: a *second* `PackageStore` whose Add* handlers write
+> to a **given** connection string (`Fumble.Sql` fully-qualified to bypass the global wrapper),
+> *additive* (the global `sqliteStore` + op-playback path are untouched → no regression). Then
+> **`dispatchVia (connStore connStrB) op`** folds any Add* op into store B through the same dispatch.
+> **Tested (LibPmSeam 3/3):** folding a real `AddFn` into a separate temp store reproduces store A's
+> `package_functions` `pt_def` byte-for-byte → B resolves the same fn. So the seam doesn't just
+> *size* the LibDB-as-backend refactor — a working connection-parameterized store drops straight
+> into it. (Location/deprecation handlers in `connStore` aren't parameterized yet — their
+> multi-statement SQL is a documented follow-up; the content-addressed Add* fold is the proven
+> core.)
 
 **Goal.** A peer can `GET` ops since a cursor and `POST` ops; the receiver applies them via the
 existing playback path. A remote op and a local op are the same thing — no separate import path.
