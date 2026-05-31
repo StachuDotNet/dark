@@ -190,6 +190,14 @@ $ print-md report.md
 A denial is actionable: it names exactly what was needed and the one command to grant
 it. `dark caps <app>` shows the current grant; `dark caps revoke …` removes it.
 
+> **The actionable-denial surface is real, tested Dark (prework, `capabilities-cli.dark` 3/3).**
+> `capDenialMessage app category` (`print-md needs Cli(spawn) — not granted`), `grantCommand app
+> allowList` (`dark caps grant print-md --spawn pandoc,weasyprint,lp`), and `denialWithRemedy`
+> (the denial + the one command to fix it). So the capability loop is now real **end to end**:
+> runtime-denial (the F# `CCapabilityDenied` → policy gate built earlier) → user-facing remedy
+> (this Dark CLI surface). The structured multi-category grant line (`--http-get … --fs read …`) is
+> a later elaboration; the spawn case (what print-md needs) is the proven core.
+
 ## Discovered
 
 - The denial→resolution policy is the same "conflict dispatch" sync and runtime errors
