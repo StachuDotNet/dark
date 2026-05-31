@@ -25,11 +25,18 @@ no-op. This PR mostly **exposes that over HTTP**; it doesn't reinvent apply.
 > … }` builds as-is); a storage-agnostic `dispatchVia store op` covering **all** op kinds compiles.
 > So the refactor is a **clean interface-extraction — moderate, not "huge"**: move `dispatchVia` +
 > `PackageStore` to a new `LibPM`, leave `sqliteStore` in `LibDB`. **Precise sizing:** of 8 op
-> kinds, **7 route cleanly** through the store (`addType`/`addValue`/`addFn`/`setName`/`deprecate`/
-> `undeprecate`; `PropagateUpdate` is a no-op), and **`RevertPropagation` is the *one* rough edge**
-> — its logic is written *inline in `applyOp`* (not a handler), so it must first be extracted to a
-> `store.revertPropagation` method. That single extraction is the only real work; everything else
-> is a lift-and-shift. Worth doing before/alongside sync; now de-risked and sized.
+> kinds, **7 routed cleanly** through the store from the start (`addType`/`addValue`/`addFn`/
+> `setName`/`deprecate`/`undeprecate`; `PropagateUpdate` is a no-op), and `RevertPropagation` was
+> the one rough edge — its logic lived *inline in `applyOp`* (not a handler).
+> **DONE (prework, `LibDB` builds clean):** that inline block is now extracted to a private
+> `applyRevertPropagation` and added to the store as `store.revertPropagation`; `dispatchVia`'s
+> `RevertPropagation` case routes through the store like every other kind — **no delegation back
+> to `applyOp`**. So **all 8 op kinds are now storage-agnostic** and the seam is *complete*: the
+> `PackageStore` interface is 7 methods, `sqliteStore` is exactly the existing 7 handlers with
+> zero behavioral change, and `dispatchVia` is a self-contained fold with no SQL. The only
+> remaining LibPM work is the mechanical lift-and-shift (move `PackageStore` + `dispatchVia` into a
+> new `LibPM` project, leave `sqliteStore` in `LibDB`) — **no design risk left**. Worth doing
+> before/alongside sync.
 
 **Goal.** A peer can `GET` ops since a cursor and `POST` ops; the receiver applies them via the
 existing playback path. A remote op and a local op are the same thing — no separate import path.
