@@ -4,12 +4,14 @@ The spine's floor effort 7 — the heart of the floor, built from [sync.md](sync
 on one tailnet member and replay on another through the **same op-playback path** a local edit
 uses. Localhost first, then over Tailscale.
 
-> **Integration check — sync composes with the whole pre-S&S floor.** All of sync's F# (`Accounts`,
-> `SyncCursors`, `Sync`) was merged onto `compose-check` alongside every foundation + capabilities
-> (with the interpreter cap-gate) — including the divergence integrations (`Conflict.CSyncDivergence`
-> + `Sync.detectDivergences`). Clean merge (sync only adds `LibDB` modules), builds clean, and the
-> **full backend suite is green: 9,429 passed, 0 failed, 0 errored** (re-verified after the divergence
-> work, which touched `createState`'s default dispatch — no regression). The integration run earlier
+> **Integration check — the ENTIRE prework floor composes on one branch.** Every foundation +
+> capabilities (interpreter cap-gate) + sync (`Accounts`/`SyncCursors`/`Sync` + divergence) + the
+> **complete LibPM seam** (`PackageStore`/`dispatchVia`/`sqliteStore`/`connStore` + the
+> `RevertPropagation` extraction that restructured the op-playback path) are all merged onto
+> `compose-check`. All merges clean, builds clean, and the **full backend suite is green: 9,437
+> passed, 0 failed, 0 errored** — re-verified after the op-playback restructure + the divergence work
+> (which touched `createState`'s default dispatch), **no regression**. So one branch holds the whole
+> prework, green at scale. The integration run earlier
 > **caught a real test-isolation bug** (the `Accounts` test asserted a *global* `accounts_v0` count
 > unchanged, which races other tests' inserts in the parallel suite — the upsert logic was always
 > correct; the assertion was scoped to a global count) — fixed by scoping the count to the test's
