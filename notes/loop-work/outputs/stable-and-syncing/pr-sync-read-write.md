@@ -225,8 +225,18 @@ makes it appear — the goal's first observable proof.
   on the peer's first incremental poll from the snapshot cursor. **9/9 sync tests** (the snapshot =
   the whole log, its cursor = its own max rowid, and a poll from that cursor returns nothing already
   included). No transaction needed.
-- **Conflict volume tailnet-wide.** N authors → more `SyncDivergence`; the floor surfaces them
-  (never blocks the POST) and defers rich resolution to the conflict-dispatch policy.
+- **Conflict volume tailnet-wide — surfacing is BUILT.** N authors → more `SyncDivergence`; the
+  floor surfaces them (never blocks the POST) and defers rich resolution to the conflict-dispatch
+  policy. **Prework:** `Sync.detectDivergences branchId ops` does exactly this — for each incoming
+  `SetName` it queries `locations` for the current (`unlisted_at IS NULL`) binding and, if a
+  *different* `item_hash` is already there, records `(location, existingHash, incomingHash)` as
+  **data** (never blocking the apply). A higher layer turns each into `Conflict.CSyncDivergence`,
+  which flows through the policy (strict default fails loudly; a last-writer policy `Substitute`s).
+  **Tested (SyncIdempotency 10/10 + ConflictDispatch 15/15):** a rebind to a different hash is
+  flagged with both hashes; a same-hash rebind is not; and the conflict resolves via the policy. So
+  the *whole* divergence path — detect (LibDB) → conflict type (LibExecution) → resolve (policy) —
+  is built and tested at the F# level; only the Dark handler that wires detection to the policy and
+  returns the surfaced conflicts in the POST response remains.
 
 ## Above / below
 
