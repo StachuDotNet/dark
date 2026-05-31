@@ -19,7 +19,9 @@ EventBus PR is not a hard prereq for the skeleton.
 `RuntimeErrorException`, caught at `Execution.fs`. The skeleton wraps that.
 
 > **Validated in prework** (real code on `loop-fun:prework/conflict-dispatch`, off clean `main`).
-> Findings that *correct* this spec:
+> **Compiles clean** (0 errors) in the loop-fun devcontainer — the `Conflict`/`Resolution`/
+> `CallContext`/`ConflictDispatch` types + the `ExecutionState.conflictDispatch` field + the
+> `createState` FailLoudly default all build against real `main`. Findings that *correct* this spec:
 > - **Types live IN `RuntimeTypes.fs` (the and-chain), NOT a separate `ConflictTypes.fs`.** They
 >   mention `RuntimeError.Error`/`Dval` (defined there) *and* `ExecutionState` references
 >   `ConflictDispatch` — a later file can't satisfy both. (Same circular constraint the EventBus
