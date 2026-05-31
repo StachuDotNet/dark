@@ -208,8 +208,13 @@ makes it appear — the goal's first observable proof.
   silent encoding drift. (The versioned encoding is the real fix; the PT-hash is the cheap guard.)
 - **Seq monotonicity across sources.** Each store's `seq` is local; a global order needs the
   `(timestamp, author_id)` tiebreak. Fine for a star (everyone orders against the hub).
-- **Concurrent write during snapshot.** `GET /sync/snapshot` must be a consistent read (a
-  transaction / point-in-time), or a bootstrapping peer sees a torn state.
+- **Concurrent write during snapshot — SOLVED (prework).** Rather than a transaction/lock,
+  `Sync.snapshot` derives the bootstrap cursor as the **max rowid among the ops it just read**
+  (one `opsSince 0` query), not a separate `SELECT MAX(rowid)`. So (ops, cursor) is **consistent by
+  construction** — never torn: a write landing *after* the read gets a higher rowid and is picked up
+  on the peer's first incremental poll from the snapshot cursor. **9/9 sync tests** (the snapshot =
+  the whole log, its cursor = its own max rowid, and a poll from that cursor returns nothing already
+  included). No transaction needed.
 - **Conflict volume tailnet-wide.** N authors → more `SyncDivergence`; the floor surfaces them
   (never blocks the POST) and defers rich resolution to the conflict-dispatch policy.
 
