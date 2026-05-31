@@ -164,25 +164,25 @@ ladder, simplest-runnable first:
    > fetch + persisted cursor; a re-pull resumes as a no-op). (Gotchas: the peer path must be
    > reachable *inside the devcontainer* — use a mounted dir like `rundir/`, not host `/tmp`; a
    > package location needs 3 parts owner.module.name.)
-3. **HTTP localhost → tailnet — BUILT, one blocker to fix.** The full chain is coded + loads:
-   the **server** (`Darklang.Sync.Server.router`, a `/sync/events` GET → `pmSyncOpsSince` base64
-   wire batch, served via `dark serve`) and the **client** (`dark sync pull <url>` →
-   `Stdlib.HttpClient.get` → `pmSyncApplyWire`), over the 13/13-tested payload codec
-   (`encodeBatch`/`applyWireBatch`).
-   > **Blocker found (real, with a clear fix): the HTTP client's SSRF guard blocks the ranges
-   > sync needs.** `Stdlib.HttpClient`'s `defaultConfig` blocks loopback, RFC-1918, link-local —
-   > **and `100.64.0.0/10`, the Tailscale/CGNAT range** (`Builtins.Http.Client/HttpClient.fs`).
-   > So `dark sync pull http://localhost:…` *and* `http://<tailnet-ip>…` both get "could not
-   > reach". The fix is to give sync its own fetch using **`looseConfig`** (no SSRF guards) —
-   > which exists for exactly this: its own comment says *"a power-user shelling out from their
-   > own CLI session to a localhost dev server."* Sync from a trusted tailnet peer IS that case
-   > (the tailnet is the trust boundary, per the design). Concretely: a `httpClientRequestUnsafe`
-   > / `pmSyncHttpGet` builtin in the Http.Client assembly that calls `makeRequest looseConfig …`,
-   > which `dark sync pull <url>` uses instead of `Stdlib.HttpClient.get`. (Also: under
-   > `run_in_background` the server's stdout is block-buffered, so "Listening on…" never flushes —
-   > use a TTY or a readiness probe, not the log, to detect ready.)
-   Once that fetch lands, the same `pmSyncApplyWire` path applies the body — the tailnet is only
-   the transport, not new logic. The server = the always-on desktop on its tailnet IP.
+3. **HTTP localhost → tailnet — BUILT; the SSRF blocker is FIXED; live demo pending env.** The
+   full chain is coded + loads: the **server** (`Darklang.Sync.Server.router`, a `/sync/events`
+   GET → `pmSyncOpsSince` base64 wire batch, served via `dark serve`) and the **client**
+   (`dark sync pull <url>` → `httpClientGetUnsafe` → `pmSyncApplyWire`), over the 13/13-tested
+   payload codec (`encodeBatch`/`applyWireBatch`).
+   > **SSRF blocker FIXED.** `Stdlib.HttpClient`'s `defaultConfig` blocks loopback, RFC-1918,
+   > link-local — **and `100.64.0.0/10`, the Tailscale/CGNAT range** — so the guarded client
+   > can't reach a localhost *or tailnet* peer. Landed **`httpClientGetUnsafe`** (a builtin with
+   > its own `BaseClient.create looseConfig`, no SSRF guards — `looseConfig`'s own comment
+   > describes exactly this trusted-CLI→trusted-server case; the tailnet is the trust boundary).
+   > `dark sync pull <url>` now uses it. Builds + reloads clean.
+   > **Live cross-machine demo still pending — blocked by the headless env, not the code:** the
+   > in-container `dark serve` process runs, but its readiness can't be probed headlessly (no
+   > `ss`/`netstat`; its stdout is block-buffered under `run_in_background` so "Listening on…"
+   > never flushes), so the puller races server-startup. Needs a controlled run (TTY server +
+   > a readiness probe, or a published port) — the *code* is in place (May-14 `httpServerServe`
+   > on :9876 proves the HTTP server itself works). The same `pmSyncApplyWire` path applies the
+   > body; the tailnet is only the transport. Core sync is already proven by the rung-2
+   > cross-instance demo (a value moved between two instances).
 
 Each rung reuses the rung below's apply path; only the *source of ops* changes (a second store →
 a local file → an HTTP body) — exactly the keystone's "the fold is the same, only where ops come
