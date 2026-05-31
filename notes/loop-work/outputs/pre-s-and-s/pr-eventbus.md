@@ -16,9 +16,14 @@ these buses. Ships **in-process only** — durable tables come with the sync PR.
 > - **`waitForOne` = a `TaskCompletionSource` + a one-shot subscription** whose handler sets the
 >   result; `publish` fires it and removes it. Real, working parking primitive.
 > - **Compiles clean** (0 errors) against real `main` in the loop-fun devcontainer. The only
->   fixes needed: 3× FS0685 — `TryRemove`/`TrySetResult |> ignore` need explicit type args
->   (`ignore<bool * Subscription<'T>>` / `ignore<bool>`). So the spec is implementable as written
->   modulo that F# detail; `EventBus.fs` + the `RuntimeBuses` wiring build.
+>   fixes: 3× FS0685 — `TryRemove`/`TrySetResult |> ignore` need explicit type args
+>   (`ignore<bool * Subscription<'T>>` / `ignore<bool>`). `EventBus.fs` + the `RuntimeBuses`
+>   wiring build.
+> - **Tests written + PASSING** (`backend/tests/Tests/EventBus.Tests.fs`, 4 Expecto tests via
+>   `run-backend-tests`: publish→subscriber delivery, predicate filtering, `waitForOne` wakes on
+>   the matching event, one-shot sub removed after firing — **4 passed, 0 failed**). One more F#
+>   detail: `publish`'s `reportException` arg needs `(fun _ -> ())`, not bare `ignore` (FS0685).
+>   **This PR is compile- AND test-validated end to end** — implementable as specified.
 
 **Goal.** `ExecutionState` carries a set of typed, multi-subscriber buses; F# code can
 `publish`/`subscribe`/`waitForOne`; nothing about the serialized program changes. After this
