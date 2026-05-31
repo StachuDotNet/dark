@@ -49,11 +49,21 @@ exfiltrate secrets. Capabilities gate that: "this code may do exactly these effe
 > the conflict bus, then **resume** and return a real timestamp. **So a denied capability now
 > actually stops, substitutes for, or suspends a real builtin call, resolved by the conflict
 > policy.** The whole capabilities chain (per-builtin caps → gate → conflict policy →
-> **fail/substitute/park**) is built and tested end-to-end. The ONLY remaining piece is computing a
-> *user fn's* `effectiveCaps` at its call site (the projection exists; the `Instructions`-walking
-> adapter is a parallel walk to `DependencyExtractor`, which captures package edges but discards
-> builtins). (Park's model here: the grant event means "now allowed" → run; re-gating against a
-> mutable, updated grant is the richer future refinement.)
+> **fail/substitute/park**) is built and tested end-to-end. The `effectiveCaps` adapter over real fns is **now built too — capabilities is COMPLETE end-to-end.**
+> **Grounding win:** a named fn is loaded as a `DApplicable (AppNamedFn …)` *before* its `Apply`, so
+> finding a fn's calls is a **flat scan of `LoadVal` instructions** — not the 30-arm PT tree walk
+> mirroring `DependencyExtractor` — and the flat scan **captures builtins** (which
+> `DependencyExtractor` discards). `CapabilityGate.callTargetsOf` maps each named-fn ref to
+> `CallsBuiltin(its caps)` or `CallsFn(hash)`; `effectiveCapsOfPackageFn` feeds those to
+> `Capabilities.effectiveCaps` over an `instrsOf` resolver. **+2 tests (Capabilities 15/15):**
+> `callTargetsOf` finds builtin + package refs (ignoring literals), and `effectiveCapsOfPackageFn`
+> unions `Time` (direct) + `Random` (via a package-fn edge) across the **real** instruction call
+> graph. So the whole capabilities PR is implemented: types + coarse gate + structured host check;
+> per-builtin static caps on all 628 builtins; the interpreter call-site gate with all three
+> resolutions (fail/substitute/park) wired and tested; the `effectiveCaps` projection + the real
+> RT-instruction adapter; and the conflict-dispatch integration. (Future refinements, not blockers:
+> recursing into lambda-body instruction streams in `callTargetsOf`; Park re-gating against a
+> mutable, updated grant rather than "grant event ⇒ run".)
 
 **Builtins are the only impure boundary** (pure Dark code can only compute), and `main`
 already splits builtins into 9 effect assemblies (`Pure`, `Http.Client`, `Http.Server`,
