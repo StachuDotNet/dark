@@ -21,10 +21,18 @@ exfiltrate secrets. Capabilities gate that: "this code may do exactly these effe
 > denied cap **fails loudly** under the default; an installed policy **substitutes**; and a policy
 > can **park** the denied cap on a grant event (`RPark` on an `EventSelector`) — so "park waiting for
 > a grant" is real, riding the scheduler. **A denied capability is now a genuine, policy-resolved
-> runtime conflict, not an invented error.** The ONE remaining integration step is the
-> **`caps : Set<CapCategory>` field on `BuiltInFn`** + calling `gate` at the builtin call site — the
-> field is the *same ~620-site codemod* the async `effects` field already proved tractable (and
-> `caps` is orthogonal to `effects`; they coexist).
+> runtime conflict, not an invented error.** The **`caps : Set<CapCategory>` field on `BuiltInFn` is now DONE too** (prework). A per-assembly
+> codemod (anchored on the `sqlSpec` line, ~628 sites) added it to every builtin:
+> Pure/Language/Matter = `Set.empty` (the pure fast-path, ~530 of them), and the effectful
+> assemblies their category — Http.Client → `{HttpClient}`, Http.Server → `{HttpServer}`,
+> Cli/CliHost → `{CliHost}`, Random → `{Random}`, Time → `{Time}`. **The full backend (all 9
+> builtin assemblies + LibExecution + Tests) builds clean**, and a runtime test confirms the caps
+> landed (>300 pure; Http.Client carries HttpClient; Cli/CliHost carry CliHost) — Capabilities is
+> **13/13**. It mirrors the proven `effects` codemod and is orthogonal to it (they coexist on merge).
+> So static caps are real on every builtin. **The ONLY remaining step is calling `gate` at the
+> interpreter's builtin-call site** (compute `effectiveCaps` for the call, run the gate, act on the
+> resolution) — the gate, the conflict integration, the projection, and the per-builtin caps all
+> exist; what's left is the single wire-up at the call site.
 
 **Builtins are the only impure boundary** (pure Dark code can only compute), and `main`
 already splits builtins into 9 effect assemblies (`Pure`, `Http.Client`, `Http.Server`,
