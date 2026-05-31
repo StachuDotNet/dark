@@ -91,6 +91,13 @@ durable ops in the *sync* PR (the playback-determinism requirement); the skeleto
 **Nothing visible — by design.** Same errors, same messages, same exit codes. "We added a seam
 and changed nothing" *is* the deliverable; it's what makes it safe to land early.
 
+> **(Later) resolution display — Dark surface prototyped** (`resolution-display.dark`, 3/3). When
+> a downstream PR *does* surface resolutions (the sync `dark conflicts` view), the Dark formatter is
+> ready: a `Resolution` enum (Failed/Substituted/Parked) + `resolutionLabel` via `match` →
+> `✗ failed (…)` / `→ substituted …` / `⏸ parked (awaiting …)`, mirroring the F#
+> `RFailLoudly`/`RSubstitute`/`RPark`. So the foundation's user-facing surface (when it's wanted)
+> is real Dark — pairing with the divergence display to show *both* a conflict and how it resolved.
+
 ## Risks / problems not yet raised
 
 - **Hot-path latency.** A dispatch call before every routed raise. Mitigated by routing *one*
