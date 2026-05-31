@@ -25,7 +25,25 @@ yet, async stays invisible at the Dark surface.
 >   `src/Builtins`** (test utils `LibTest.fs`, 8) — the codemod must run **backend-wide**, not just
 >   `src/Builtins`. So the real PR's codemod needs these two refinements.
 >
-> Child-VM isolation + cancellation (parts 2–3): not yet prototyped.
+> **Parts 2–3 now prototyped + tested** (same branch). `LibExecution` builds clean and **2 new
+> tests PASS** (5 total in `AsyncStageA.Tests`):
+> - **Part 2 (child-VM isolation) — `VMState.spawnChild parent cancel instrs`.** Key finding:
+>   **isolation is already structural** — `VMState` does *not* embed `ExecutionState` (it's
+>   threaded into the eval loop as a separate arg), so the only shared thing is already the
+>   concurrency-safe `ExecutionState`; a child built via `VMState.create` automatically gets its
+>   own `threadID`/`callFrames`/`registers`/`stats`. The *only* genuinely new state is a
+>   **`parentThreadID : Option<uuid>`** field giving the scheduler the parent→child thread tree.
+>   Test proves mutating the child (its `threadID`, `currentFrameID`) leaves the parent untouched
+>   and the child's `callFrames` is a distinct dictionary instance.
+> - **Part 3 (cancellation) — a `cancel : CancellationToken` field + `vm.throwIfCancelled()`**
+>   safe-point check. Test proves it's a no-op before `Cancel()` and raises
+>   `OperationCanceledException` after. (Stage A adds the *signal + check* only; actually calling
+>   `throwIfCancelled` inside the interpreter's eval loop is the deeper wiring the scheduler drives
+>   — left as the next layer, see "above expects" below.)
+> - **Integration cost was tiny:** only **ONE** `VMState` record-literal site exists
+>   (`VMState.create`); the other two `threadID` mentions are reads. So the two new fields needed a
+>   single construction-site edit — `{ vm with … }` copies carry them for free. The `BuiltInFn`
+>   `effects` change (part 1, ~620 sites) is the bulk; parts 2–3 are a handful of lines.
 
 **Prereqs.** None (leaf). Unblocks the scheduler (effort 6, consumes all three).
 
