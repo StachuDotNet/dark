@@ -91,8 +91,12 @@ no-op. This PR mostly **exposes that over HTTP**; it doesn't reinvent apply.
 > SetName** into store B and **B resolves the name→hash** — tested (LibPmSeam 4/4): a folded
 > `TestPeer.Sync.foldedFn` resolves to the fn's hash via B's `locations`. So "B resolves the same
 > **name**→hash as A" is realized in production code (content *and* name resolution), not just the
-> content row. Only the deprecation handlers (`deprecate`/`undeprecate`/`revertPropagation`) remain
-> unparameterized in `connStore` — a documented follow-up; Add*/SetName is the floor's core.
+> content row. `deprecate`/`undeprecate` are now parameterized too (LibPmSeam 5/5: a folded `Deprecate(Obsolete)`
+> lands one current `deprecated` row in store B). So **6 of 7 `PackageStore` methods are
+> connection-parameterized** — `dispatchVia (connStore connB)` folds content (`package_functions`),
+> name resolution (`locations`), AND deprecation state into a chosen store. Only the complex
+> multi-statement `revertPropagation` remains — the last follow-up; everything the floor needs to
+> replicate a peer's resolvable state is covered.
 
 **Goal.** A peer can `GET` ops since a cursor and `POST` ops; the receiver applies them via the
 existing playback path. A remote op and a local op are the same thing — no separate import path.
