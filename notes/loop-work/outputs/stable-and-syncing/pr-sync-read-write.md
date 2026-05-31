@@ -236,6 +236,13 @@ $ dark sync
 Before: an edit on the desktop is invisible on the laptop. After: `dark sync` (or autosync)
 makes it appear — the goal's first observable proof.
 
+> **The `dark sync` output formatter is real, tested Dark (prework, `sync-cli.dark` 6/6).**
+> `syncSummary remote pulled pushed : String` builds the human-facing lines (`↓ pulled N ops from
+> <remote>` / `↑ pushed N op to <remote>` with op/ops pluralization), covering pulled-only,
+> pushed-only, both, and `✓ already in sync`. The counts come from `Sync.opsToSend`/`applyRemoteOps`
+> (the F# already built); this is the pure UX surface, testable without the network. (The richer
+> `(2 fns, 1 type, 1 rename)` breakdown is a later refinement over the op kinds.)
+
 ## Risks / problems not yet raised
 
 - **Op-format stability.** Serialized `PackageOp` is the wire format; mismatched peer versions
