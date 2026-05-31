@@ -26,7 +26,7 @@ uses. Localhost first, then over Tailscale.
 > `RevertPropagation` extraction that restructured the op-playback path) are all merged onto
 `compose-check` — **now ALL 7 prework branches** (the last, `ops-projections`, brought
 > `rebuildProjections` + the projection registry). All merges clean, builds clean, and the **full
-> backend suite is green: 9,496 passed, 0 failed, 0 errored** — including the **Dark-side prework**
+> backend suite is green: 9,534 passed, 0 failed, 0 errored** (as of the sync rungs 1–3 landing) — including the **Dark-side prework**
 > (10 `.dark` testfiles, ~53 assertions: Tailscale, the print-md capstone's manifest/render/install/
 > apps-list, the `dark sync` summary + op-kind breakdown, remote-mgmt, divergence + resolution
 > display, capabilities CLI, autosync), which run inside `LibExecution.Tests`. So **one branch holds

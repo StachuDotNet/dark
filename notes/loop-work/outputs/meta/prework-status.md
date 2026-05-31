@@ -9,7 +9,10 @@ isolated clone; `main`/pdd source was never touched.
 
 Each PR is a `prework/*` branch off `main`; **`prework/compose-check`** merges **all 7** and is
 the one branch holding the *whole* prework — F# floor + Dark surfaces — **full-suite-green at
-9,496 / 0 failed**.
+9,534 / 0 failed / 0 errored** (grew from 9,496 as the sync rungs 1–3 + builtins landed; two
+race/ref errors the pre-review full run surfaced were fixed — `testSequenced` on LibPmSeam's
+global-count assertions, and de-`Builtin.`-prefixing doc comments that the textual multi-ref
+guard miscounted).
 
 `event-bus-primitive · async-stage-a · ops-projections · conflict-dispatch · capabilities ·
 sync-read-write · libpm-seam` → all merged into `compose-check`.
