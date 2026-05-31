@@ -106,6 +106,19 @@ effectiveCaps fn =                       // : Set<CapCategory>
 
 A user may *tighten* below the computed set (defense in depth) but never loosen it.
 
+> **Built + tested (prework).** `Capabilities.effectiveCaps` is a **generic call-graph fold** —
+> `CallTarget = CallsBuiltin of Set<CapCategory> | CallsFn of 'fn` — unioning the static caps of
+> every builtin reachable from a fn, with a **visited set** so mutual recursion terminates and each
+> fn is unioned once (the "memoize by hash" the sketch notes, here as dedup). `tightenedCaps =
+> Set.intersect` enforces tighten-but-never-loosen. It's **abstracted over the call graph** (the
+> `calls` adapter), so it's testable without the interpreter — the RT instantiation (walking real
+> `Instructions` for builtin/package calls) is a thin adapter the call site supplies. **+6 tests
+> (Capabilities 12/12 PASS):** leaf union, multi-builtin union, transitive inheritance, pure ⇒
+> empty, mutual-recursion termination, and declaring an unreachable cap being dropped (can't
+> loosen). So the projection is implementable as specified; only the `Instructions`-walking adapter
+> is left, and it shares the call-graph walk the existing `Propagation`/dependency-extraction code
+> already does.
+
 ## CLI UX — set allowances, see failures
 
 Grants are set and inspected from the CLI (the typed `Capabilities` value is the model;
