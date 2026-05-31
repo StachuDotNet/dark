@@ -111,12 +111,25 @@ Each step preserves existing sequential behavior; sizing is relative (no metered
 
 | Step | What | Effort |
 |---|---|---|
-| A | Effect metadata on builtins + child-VM isolation + cancellation (prereqs) | **large** — touches every builtin assembly |
-| B | `DarkAsync<'T>` (`Done` \| `Parked of selector * (Dval -> DarkAsync<'T>)`) as a thin Ply wrapper | **medium** — type + plumbing, no behavior change |
-| C | Scheduler: `ready` queue + `parked` map keyed by selector; eval loop pulls/parks/wakes | **large** — core interpreter change |
+| A | Effect metadata on builtins + child-VM isolation + cancellation (prereqs) | **large** — touches every builtin assembly · **prework: DONE + composed** |
+| B | `DarkAsync<'T>` (`Done` \| `Parked of selector * (Dval -> DarkAsync<'T>)`) as a thin Ply wrapper | **medium** — type + plumbing, no behavior change · **prework: prototyped + driver tested** |
+| C | Scheduler: `ready` queue + `parked` map keyed by selector; eval loop pulls/parks/wakes | **large** — core interpreter change · **prework: the off-loop driver works; the eval-loop integration is what's left** |
 | D | `Promise<T>` + force as Dark-visible values; peel Ply off builtins that only park on our selectors | **medium**, incremental — Ply and DarkAsync coexist |
 | E | Invisible planner: overlap independent `ConcurrentSafe AsyncRead` calls between waits | **medium** — sits *above* C, opt-in→default |
-| F | Opt-in debug symbols: each park records `(frameId, selector, parkedAt)` for a live park-set view | **small** — off by default |
+| F | Opt-in debug symbols: each park records `(frameId, selector, parkedAt)` for a live park-set view | **small** — off by default · **prework: ParkSet built + tested** |
+
+> **Rows B/C/F prototyped (prework, `compose-check`).** Built on the composed substrate:
+> `Scheduler.DarkAsync<'T>` = `Done | Parked of EventSelector * resume` (row B); `Scheduler.run`
+> drives one frame to `Done` by parking each suspension on its selector's bus and resuming on the
+> event, and `runReady` drives a ready-list concurrently (row C's pull/park/wake loop **in
+> miniature, off the interpreter hot loop**); `Scheduler.ParkSet` makes every suspension inspectable
+> (row F). **3/3 driver tests pass** (Done short-circuits; a single-park frame resumes on its
+> conflict publish; two frames park on distinct selectors and both complete). What's genuinely left
+> for C is the **hard** part: making the *interpreter's eval loop* itself yield `DarkAsync` (a
+> `Parked` result from a real instruction) instead of a standalone driver over hand-built
+> `DarkAsync` values — i.e. the eval-loop integration, not the scheduling logic, which now exists
+> and is tested. The resume is also still `unit -> DarkAsync` here; the `Dval -> DarkAsync` payload
+> form (carrying the event value into the continuation) is the row-D refinement.
 
 ```fsharp
 type DarkAsync<'T> =
