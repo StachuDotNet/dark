@@ -17,12 +17,14 @@ no-op. This PR mostly **exposes that over HTTP**; it doesn't reinvent apply.
 >
 > **Architectural finding (Stachu's call) — op-playback should move to a `LibPM`.** Today
 > op-playback lives in **`LibDB`** (`PackageOpPlayback`/`BranchOpPlayback`/`PackageManager`) and
-> `applyOp` writes SQL *directly* (`INSERT OR REPLACE INTO package_functions …`) — the **fold
-> logic is entangled with SQLite persistence**. There is **no `LibPM`**. For the clean
-> ops⊥projections split (and the eventual Dark-managed projection shape), the fold ("what an op
-> does to state") wants to be **storage-agnostic in a `LibPM`**, with `LibDB` as just the SQLite
-> backend. That's a **sizable refactor** worth doing before/alongside sync, not a small one —
-> flag it as a real prereq, not a detail.
+> `applyOp` writes SQL *directly* — the fold is entangled with SQLite persistence; there is **no
+> `LibPM`**. The fold ("what an op does to state") wants to be **storage-agnostic in a `LibPM`**,
+> with `LibDB` as just the SQLite backend. **Prototyped + sized (compiles):** the seam is a
+> **~6-method `PackageStore` interface** (`addType`/`addValue`/`addFn`/`setName`/`deprecate`/…),
+> and **the existing handlers fit it with ZERO changes** (`sqliteStore = { addType = applyAddType;
+> … }` builds as-is); a storage-agnostic `dispatchVia store op` compiles. So the refactor is a
+> **clean interface-extraction — moderate, not "huge"**: move `dispatchVia` + `PackageStore` to a
+> new `LibPM`, leave `sqliteStore` in `LibDB`. Worth doing before/alongside sync; now de-risked.
 
 **Goal.** A peer can `GET` ops since a cursor and `POST` ops; the receiver applies them via the
 existing playback path. A remote op and a local op are the same thing — no separate import path.
