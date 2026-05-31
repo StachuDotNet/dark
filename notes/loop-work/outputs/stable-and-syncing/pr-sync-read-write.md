@@ -92,11 +92,14 @@ no-op. This PR mostly **exposes that over HTTP**; it doesn't reinvent apply.
 > `TestPeer.Sync.foldedFn` resolves to the fn's hash via B's `locations`. So "B resolves the same
 > **name**→hash as A" is realized in production code (content *and* name resolution), not just the
 > content row. `deprecate`/`undeprecate` are now parameterized too (LibPmSeam 5/5: a folded `Deprecate(Obsolete)`
-> lands one current `deprecated` row in store B). So **6 of 7 `PackageStore` methods are
-> connection-parameterized** — `dispatchVia (connStore connB)` folds content (`package_functions`),
-> name resolution (`locations`), AND deprecation state into a chosen store. Only the complex
-> multi-statement `revertPropagation` remains — the last follow-up; everything the floor needs to
-> replicate a peer's resolvable state is covered.
+> lands one current `deprecated` row in store B). So **ALL 7 `PackageStore` methods are now connection-parameterized** (LibPmSeam 6/6:
+> `revertPropagationToConn` restores a pre-superseded location in store B). **`dispatchVia
+> (connStore connStr)` folds the ENTIRE op stream — all 8 op kinds — into ANY store**: content
+> (`package_functions`/`types`/`values`), name resolution (`locations`), deprecation
+> (`deprecations`), and propagation reverts. **The LibDB-as-backend refactor is fully realized for
+> op-playback** — a sync receiver can materialize a remote peer's whole package DB into a chosen
+> store through the seam, additive (the global `sqliteStore` + op-playback path are untouched → no
+> regression). What the spec sized as the "real refactor" now has a complete, tested implementation.
 
 **Goal.** A peer can `GET` ops since a cursor and `POST` ops; the receiver applies them via the
 existing playback path. A remote op and a local op are the same thing — no separate import path.
