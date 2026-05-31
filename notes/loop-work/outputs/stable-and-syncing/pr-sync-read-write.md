@@ -24,17 +24,24 @@ no-op. This PR mostly **exposes that over HTTP**; it doesn't reinvent apply.
 >   newly-inserted ops (none), so projections are untouched.
 > - **Read cursor**: `opsSince 0` = whole log in ascending rowid order; `opsSince maxRowid` = empty.
 >
-> > **KEY FINDING — a literal two-DB round-trip can't be tested in-process yet; the receiver isn't
-> > store-parameterized.** `LibDB` binds to a **single global connection** (`LibConfig.Config.dbPath`
-> > → a module-level `Sql.connect`); `insertAndApplyOps`/`opsSince`/`computeOpHash` all use it with
-> > **no store/connection argument**. So "author on A, apply on B" with two real SQLite stores in one
-> > process is impossible without **parameterizing the store** — the same `LibDB`-as-pluggable-SQLite-
-> > backend refactor the LibPM seam (the architectural finding below) and ops-projections specs flag. The
-> > safety *properties* are proven above (dedup soundness, no-op re-apply); the genuine cross-store
-> > wire test waits on that connection-parameterization. This is a real prerequisite for the HTTP
-> > receiver too (it applies remote ops to *this* instance's store — fine while there's one global
-> > store, but the seam should be explicit). (F# detail: this codebase's `List.groupBy` returns a
-> > `Map`, so chain `|> Map.toList` to fold over groups.)
+> > **KEY FINDING — the store-param seam, now sized by a LITERAL cross-store test.** `LibDB`'s
+> > *helpers* bind to a **single global connection** (`LibConfig.Config.dbPath` → a module-level
+> > `Sql.connect`); `insertAndApplyOps`/`opsSince`/`computeOpHash` take **no store argument**. But
+> > Fumble's `Sql.connect` takes a *connection string* — `connect` is config, not an open handle — so
+> > targeting a second store is **only a different connString**. Proven directly (**5th sync test
+> > PASSES**): read the op log from store A (the global DB) and apply it to a **separate temp SQLite
+> > file** (store B) via `INSERT OR IGNORE` on B's own `SqliteConnection`; B mirrors A, and a
+> > re-transfer adds nothing — **dedup by id holds across two real stores.** So:
+> > - **The op-LOG layer is trivially store-parameterizable** — the canonical synced table
+> >   (`package_ops`) moves between stores with just a connString; the wire at the op level is small.
+> > - **What's still global is the PROJECTION refold** (`applyOps` → `package_functions`/etc.), which
+> >   uses the module-level connection. *That* is the real `LibDB`-as-pluggable-backend refactor (the
+> >   LibPM seam below + ops-projections flag the same thing) — threading a store through the fold.
+> >
+> > So the HTTP receiver can already append remote ops to a chosen store's `package_ops`; making the
+> > *refold* target that store is the remaining work. (F# details: this codebase's `List.groupBy`
+> > returns a `Map` — chain `|> Map.toList`; `Microsoft.Data.Sqlite` is available to the Tests project
+> > so a raw second `SqliteConnection` works.)
 >
 > **Architectural finding (Stachu's call) — op-playback should move to a `LibPM`.** Today
 > op-playback lives in **`LibDB`** (`PackageOpPlayback`/`BranchOpPlayback`/`PackageManager`) and
