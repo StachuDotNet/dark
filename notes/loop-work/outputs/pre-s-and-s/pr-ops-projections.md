@@ -111,7 +111,7 @@ marker so a rebuild knows where it left off (incremental re-fold).
 | fold is total | `.fs` (`OpsProjectionsTests`, new): seed ops, `rebuildProjections`, assert projection tables match a known-good snapshot | tables equal |
 | drop + rebuild = identity | `.fs`: resolve `Stdlib.List.map`'s hash; `DROP` the branch DB; `rebuildProjections`; resolve again | same hash, byte-identical |
 | `.dark` round-trip | `.dark` test (add/adjust `packages/.../tests`): define a fn, force a projection rebuild, call it | same result before/after |
-| incremental | append one op; assert only the dirtied projection entries refold (not a full rebuild) | `folded_through_seq` advances by 1 |
+| incremental | append one op; assert only the dirtied projection entries refold (not a full rebuild) | `folded_through_seq` advances by 1 — **the DECISION layer is built (OpsProjections 4/4):** `projectionsDirtiedByBatch opKinds` unions the registry's dirtied sets, so an `AddFn`-only batch yields `{functions, deps}` and a refold *skips* `locations`. The selective *fold* (refold only those tables) reuses the `PackageStore` seam with per-kind handlers; the *which-to-refold* decision is done |
 
 ## CLI impact
 
