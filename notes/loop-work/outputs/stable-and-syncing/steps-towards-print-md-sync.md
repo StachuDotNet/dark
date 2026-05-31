@@ -142,15 +142,17 @@ ladder, simplest-runnable first:
    then asserts **store B resolves the folded name to the same hash as A**. That's the
    "a receiver actually runs the sender's code" proof, in-process, already green. The convergence
    engine is proven; rungs 2–3 only change where the ops come from.
-2. **CLI local-file pull — ENGINE DONE, CLI remains.** `Sync.pull sourceConnStr cursor` reads a
-   peer's `data.db` op log directly (rowid-bounded) and applies it into THIS instance via the
-   same `insertAndApplyOps` the wire receiver uses — writing the op **log** (so the receiver
-   becomes a re-serving peer) *and* folding projections, idempotently. Proven by a real two-file
-   test (read a peer log file, apply locally, cursor = source op count, re-pull is a cursor-bound
-   no-op). What remains is the thin **`dark sync pull <other-data.db>` CLI command**: an F#
-   builtin wrapping `Sync.pull` + `SyncCursors` (persist the per-peer cursor) + blob fetch
-   (`Blob.missing` → `getMany`), and the Dark command that calls it. The first *user-facing* sync
-   — "edit on A, `pull`, see it on B" on one machine.
+2. **CLI local-file pull — DONE end to end** (only a live interactive demo remains). The full
+   chain is built + validated: **`dark sync pull <peer.db>`** (`cli/sync.dark`, registered in
+   core) → **`pmSyncPull` builtin** (`Builtins.Matter/Libs/PM/Sync.fs`, caps `{FileSystem}`) →
+   **`Sync.pullFromFile`** (resume per-peer cursor → `Sync.pull` → persist cursor) →
+   **`Sync.pull`** reads the peer's op log directly and applies via the same `insertAndApplyOps`
+   the wire receiver uses — writing the op **log** (receiver becomes a re-serving peer) *and*
+   folding projections, idempotently. Tested: a real two-file `pullFromFile` test (apply a peer
+   log, cursor = op count, cursor persisted, re-pull resumes/no-ops, SyncIdempotency 11/11); the
+   command + builtin parse/compile/reload cleanly. Blob fetch (`Blob.missing` → `getMany`) is a
+   deferred add (code rides with ops). This is the first *user-facing* sync — "edit on A, `pull`,
+   see it on B" on one machine.
 3. **HTTP localhost → tailnet** — instance A serves `GET /sync/snapshot` + `GET/POST /sync/events`
    over its `data.db`; instance B polls + applies (effort 9's loop). Prove it on `localhost:port`
    first, then bind A to its tailnet IP (server = the always-on desktop). Same handlers, just a
