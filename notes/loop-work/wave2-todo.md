@@ -61,21 +61,22 @@ and prereqs to pull out into *earlier* efforts. Iterate on those sketches hard.
 
 ## Keep going until Sunday 6pm — perpetual mode (read every pass)
 
-> **SATURATION STATE (read first).** The discrete deliverable is **complete and validated**:
-> pre-S&S + S&S tight/grounded/dependency-clean, all 6 PR specs written + mutually consistent +
-> 3 prototype-validated (loop-fun) + builtin-count-grounded, 2 sanity passes, coherence + compose
-> checks, full vault sweep, promotion map. The remaining `[ ]` items below are **standing
-> quality-checks that currently PASS** — they are *not* TODO work. **Do NOT manufacture edits
-> over the solid deliverable** — that degrades it (the cardinal sin per looping-preferences). A
-> quiet verification-only pass with **no commit** is the *correct* outcome at saturation. Only
-> commit on: a genuine adversarial find, a new steer from Stachu, or the **user-triggered**
-> loop-fun compile (`devcontainer up --workspace-folder ~/code/dark/loop-fun`). When in doubt,
-> verify + report, don't edit.
+> **PHASE 2 — ACTIVE IMPLEMENTATION (read first).** Phase 1 (DESIGN/SPEC) is done: pre-S&S + S&S
+> tight/grounded/dependency-clean, 6 PR specs written + consistent + 3 prototype-validated +
+> builtin-count-grounded, sanity/coherence/compose checks, vault sweep, promotion map. Stachu's
+> steer: *"there's no reason to ever stop"* + *"work on PRs for pre-S&S steps."* So the ongoing
+> work is now **implementing the PRs as real, compiling, tested code** in the isolated clone
+> `~/code/dark/loop-fun` (prework/* branches off `main`, isolated `*_loopfun` devcontainer
+> volumes). This is **effectively unbounded** — always a next thing: get each PR compiling, fix
+> real F# errors, add the .fs + .dark tests the spec lists, flesh out empty fn bodies, then the
+> next PR. **Order:** pre-S&S foundations first (EventBus, async Stage A, ops⊥projections,
+> conflict-dispatch), then S&S. Each pass: pick up where the last left off (`git log` in loop-fun
+> + build state), make real progress, commit on the prework branch, feed findings back into the
+> matching `outputs/` PR spec. **Don't stop, don't declare "saturated."** `main/` (pdd) source is
+> NEVER edited — all code work is in loop-fun.
 
-**Do not go idle, but do not churn either.** Keep the loop *alive* until ~18:00 Sunday (touch
-the heartbeat, stay ready), and add real todos as genuine work surfaces — but per the
-saturation note above, "keep working" means *stay available for genuine work*, not manufacture
-marginal edits. The deadline is a complete, review-ready spec by **6pm Sunday** — already met.
+The `[ ]` items below remain the design-side standing checks (still passing); the *implementation*
+work lives in loop-fun, tracked by its git history + the spec back-references.
 
 When the explicit list is empty, the work is not done — there is always genuine depth
 here. **Stay BROAD — don't tunnel into any one mode (especially not just coding prototypes).**
