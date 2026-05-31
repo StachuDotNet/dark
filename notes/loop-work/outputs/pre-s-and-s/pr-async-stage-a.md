@@ -10,18 +10,20 @@ VM**; (3) execution carries a **cancellation** signal. Metadata + plumbing only 
 yet, async stays invisible at the Dark surface.
 
 > **Validated in prework** (part 1 — the `effects` field — on `loop-fun:prework/async-stage-a`).
-> **Compiles clean** (0 errors) across LibExecution + the Pure assembly (439 builtins). Two real
-> findings:
-> - **Builtins are raw record literals, no constructor helper** — so the field *is* a ~617-site
->   change (confirmed by count). It's **mechanically tractable via codemod**: `sed` an
->   `effects = Effect.OrderedIO` line after each `previewable =` line (conservative
->   default-to-most-restrictive). The genuinely-effectful builtins (the few small assemblies) then
->   get their real effect set by hand.
-> - **`Effect.Pure` shadows the existing `Previewable.Pure`** (hundreds of `previewable = Pure`
->   sites resolve to the wrong type). Fix: **`[<RequireQualifiedAccess>]` on `Effect`** so its
->   cases must be qualified (`Effect.Pure`), leaving bare `Pure` as `Previewable.Pure`. A
->   non-obvious gotcha the spec must call out. (Child-VM isolation + cancellation: not yet
->   prototyped.)
+> **The FULL backend compiles clean** (0 errors): all 9 builtin assemblies + LibExecution + test
+> utils + the Tests project, with `effects` on every `BuiltInFn`. Real findings:
+> - **Builtins are raw record literals, no constructor helper** — the field is a ~620-site change,
+>   **mechanically tractable via codemod**: `sed` an `effects = Effect.OrderedIO` after each
+>   `previewable =` line (conservative default-to-most-restrictive). Genuinely-effectful builtins
+>   then get their real effect by hand (demo: `Http.Client.*` → `AsyncRead`).
+> - **`Effect.Pure` shadows the existing `Previewable.Pure`** → fix: **`[<RequireQualifiedAccess>]`
+>   on `Effect`** so its cases qualify, leaving bare `Pure` as `Previewable.Pure`. Non-obvious.
+> - **Codemod-coverage gaps** the anchor misses: (a) a *multi-line* `previewable =` whose value is
+>   on a later line (1 case: `uuidGenerate`) — handle by hand; (b) `BuiltInFn` literals **outside
+>   `src/Builtins`** (test utils `LibTest.fs`, 8) — the codemod must run **backend-wide**, not just
+>   `src/Builtins`. So the real PR's codemod needs these two refinements.
+>
+> Child-VM isolation + cancellation (parts 2–3): not yet prototyped.
 
 **Prereqs.** None (leaf). Unblocks the scheduler (effort 6, consumes all three).
 
