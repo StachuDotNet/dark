@@ -37,19 +37,23 @@ exfiltrate secrets. Capabilities gate that: "this code may do exactly these effe
 > `fn.fn`) it runs `CapabilityGate.gate exeState.grantedCaps fn.caps`, and the **gate produces the result**:
 > `None` → `return! fn.fn` (the real call); **`RSubstitute dval` → `return dval`** (the builtin is
 > bypassed and the policy's default value flows through the normal type-check + register store);
-> `RFailLoudly` → raise; `RPark` → raise (still the next layer). **No regression:
+> `RFailLoudly` → raise; **`RPark selector` → `do! Scheduler.awaitSelector exeState.buses selector`
+> then `return! fn.fn`** (the call *suspends* on the grant event — a parked builtin call is a
+> `waitForOne` subscriber, the same primitive as any frame — and runs once granted). **No regression:
 > 88/88 Interpreter tests pass** under the permissive default (the gate runs on every builtin call
-> and always allows; pure builtins fast-path on `caps={}`). And **two end-to-end tests** prove it
-> bites: `dateTimeNow` (Builtins.Time, `caps={Time}`) succeeds under `allCaps` but **fails
-> "capability denied"** when the grant denies Time; and a **Substitute** policy makes `timeNowMs`
-> return `-1` (a value the real monotonic clock never yields), proving the builtin was **bypassed**
-> and the policy's value used. **So a denied capability now actually stops — or substitutes for — a
-> real builtin call, resolved by the conflict policy.** The whole capabilities chain (per-builtin
-> caps → gate → conflict policy → fail/**substitute**/park) is built and tested. Left for later:
-> wiring the **Park** *result* into the value flow (today it raises; the scheduler driver to suspend
-> on a grant event exists), and computing a *user fn's* `effectiveCaps` at its call site (the
-> projection exists; the `Instructions`-walking adapter is the remaining piece — a parallel walk to
-> `DependencyExtractor`, which captures package edges but discards builtins).
+> and always allows; pure builtins fast-path on `caps={}`). And **three end-to-end tests** prove all three
+> resolutions bite at the real call site: (1) `dateTimeNow` (`caps={Time}`) **fails "capability
+> denied"** when Time is denied; (2) a **Substitute** policy makes `timeNowMs` return `-1` (a value
+> the real monotonic clock never yields), proving the builtin was **bypassed**; (3) a **Park**
+> policy makes `timeNowMs` **suspend** (its task stays pending) until a grant event is published on
+> the conflict bus, then **resume** and return a real timestamp. **So a denied capability now
+> actually stops, substitutes for, or suspends a real builtin call, resolved by the conflict
+> policy.** The whole capabilities chain (per-builtin caps → gate → conflict policy →
+> **fail/substitute/park**) is built and tested end-to-end. The ONLY remaining piece is computing a
+> *user fn's* `effectiveCaps` at its call site (the projection exists; the `Instructions`-walking
+> adapter is a parallel walk to `DependencyExtractor`, which captures package edges but discards
+> builtins). (Park's model here: the grant event means "now allowed" → run; re-gating against a
+> mutable, updated grant is the richer future refinement.)
 
 **Builtins are the only impure boundary** (pure Dark code can only compute), and `main`
 already splits builtins into 9 effect assemblies (`Pure`, `Http.Client`, `Http.Server`,
