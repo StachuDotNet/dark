@@ -50,6 +50,16 @@ let serve (localPort: Int64) : Result<Unit, String> = ...
 let loginHeader (req: HttpRequest) : Option<String> = ...   // "stachu@stachu.net"
 ```
 
+> **First `.dark` prework — the pure surface is real, compiling, tested Dark** (`loop-fun:
+> compose-check`, `testfiles/execution/pre-s-and-s/tailscale.dark`, **5/5**). `peerUrl name tailnet`
+> (the MagicDNS URL), `statusArgs`/`serveArgs` (the exact arg lists handed to `Cli.posixSpawnAndWait
+> "tailscale" …`), and `pingPath` are now Dark code with `expr = expected` assertions that pass via
+> `run-backend-tests` (`tests.LibExecution.All…tailscale`). The shell-outs themselves need the
+> `tailscale` daemon (untestable in-container), so the *pure* URL + arg builders are the provable
+> floor — and this **establishes the `.dark` prework path** for the rest of the Dark surface (the
+> print-md App, sync handlers): a testfile defines local `let` helpers + assertion lines. (Harness
+> note: `LibExecution.Tests` scans **subdirectories** of `testfiles/execution`, not top-level files
+> — prework `.dark` files go in a subdir.)
 So the transport is: `serve` to expose the local sync server, `status`/`peerUrl` to address
 peers, and `loginHeader` to authenticate inbound requests.
 
