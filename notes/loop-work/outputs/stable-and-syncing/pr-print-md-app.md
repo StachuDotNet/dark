@@ -164,9 +164,12 @@ App that syncs itself — edit once, runs everywhere on the tailnet.
   exactly (exit codes, stderr) by either extending the spawn builtin with a stdin-bytes arg, or
   staging through temp files (`tmp.html`, `out.pdf`). Temp-file staging needs no new builtin and
   is the lower-risk first cut. This is the one place a new/extended builtin may be needed.
-- **Install-elsewhere UX.** A synced-in App shows as available but not locally aliased/granted —
-  the two-step (sync brings the code, install grants+aliases locally) must be obvious, not
-  surprising.
+- **Install-elsewhere UX — display built (prework, `apps-list.dark` 4/4).** A synced-in App shows
+  as available but not locally aliased/granted — the two-step (sync brings the code, install
+  grants+aliases locally) must be obvious, not surprising. `appsLine`/`installElsewhereHint`/
+  `appsLineWithHint` make it so: an `installed-elsewhere` App's row carries the one-step remedy
+  (`run 'dark apps install print-md' to alias locally`), any other status is the bare row. So the
+  cross-machine "edit once, runs everywhere" headline has a real, tested display surface.
 
 ## Above / below
 
