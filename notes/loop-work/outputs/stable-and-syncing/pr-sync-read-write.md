@@ -8,14 +8,17 @@ uses. Localhost first, then over Tailscale.
 > capabilities (interpreter cap-gate) + sync (`Accounts`/`SyncCursors`/`Sync` + divergence) + the
 > **complete LibPM seam** (`PackageStore`/`dispatchVia`/`sqliteStore`/`connStore` + the
 > `RevertPropagation` extraction that restructured the op-playback path) are all merged onto
-> `compose-check`. All merges clean, builds clean, and the **full backend suite is green: 9,477
-> passed, 0 failed, 0 errored** — and this now includes the **Dark-side prework** (7 `.dark`
-> testfiles, +40 assertions: Tailscale transport, the print-md capstone's manifest/render-args/
-> install/apps-list, the `dark sync` summary + op-kind breakdown, divergence display, and the
-> capabilities CLI), which run inside `LibExecution.Tests`. So **one branch holds the whole prework
-> — F# floor *and* Dark surface — green at scale**, re-verified after the op-playback restructure +
-> the divergence work (which touched `createState`'s default dispatch), **no regression**. The
-> integration run earlier
+`compose-check` — **now ALL 7 prework branches** (the last, `ops-projections`, brought
+> `rebuildProjections` + the projection registry). All merges clean, builds clean, and the **full
+> backend suite is green: 9,494 passed, 0 failed, 0 errored** — including the **Dark-side prework**
+> (10 `.dark` testfiles, ~53 assertions: Tailscale, the print-md capstone's manifest/render/install/
+> apps-list, the `dark sync` summary + op-kind breakdown, remote-mgmt, divergence + resolution
+> display, capabilities CLI, autosync), which run inside `LibExecution.Tests`. So **one branch holds
+> the ENTIRE prework — every PR's F# *and* the Dark surface — green at scale**. The `ops-projections`
+> merge **caught a real destructive-test bug** (the drop-rebuild test clears+refolds the *shared*
+> projections, racing the parallel suite — 2 errored); fixed with `testSequenced` + a *deterministic*
+> assertion (a second rebuild reproduces the same projections, robust to other tests' mutations)
+> rather than a fragile pristine-count match. The integration run earlier
 > **caught a real test-isolation bug** (the `Accounts` test asserted a *global* `accounts_v0` count
 > unchanged, which races other tests' inserts in the parallel suite — the upsert logic was always
 > correct; the assertion was scoped to a global count) — fixed by scoping the count to the test's

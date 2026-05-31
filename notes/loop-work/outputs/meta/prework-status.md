@@ -7,9 +7,9 @@ isolated clone; `main`/pdd source was never touched.
 
 ## Branch layout
 
-Each PR is a `prework/*` branch off `main`; **`prework/compose-check`** merges them all and is
+Each PR is a `prework/*` branch off `main`; **`prework/compose-check`** merges **all 7** and is
 the one branch holding the *whole* prework — F# floor + Dark surfaces — **full-suite-green at
-9,477 / 0 failed**.
+9,494 / 0 failed**.
 
 `event-bus-primitive · async-stage-a · ops-projections · conflict-dispatch · capabilities ·
 sync-read-write · libpm-seam` → all merged into `compose-check`.
