@@ -85,6 +85,19 @@ Op-playback is **not a separate effort** — it's what Stage C's deterministic s
 points *give you* once they exist. So: async-first through Stage C, and playback falls out
 of the same primitive rather than being a later "separate ops from playback" project.
 
+> **Stage A substrate is built AND composes (prework, `loop-fun:prework/compose-check`).** The
+> three things Stage C's scheduler consumes — `effects` metadata, `VMState.spawnChild` (child-VM
+> isolation) + `cancel`/`throwIfCancelled` (now wired live into the interpreter eval loop), and the
+> EventBus `waitForOne` parking primitive — were each built+tested on their own branch and then
+> **merged onto one branch that builds clean (0 errors) with all 16 foundation tests passing
+> together** (AsyncStageA 6, EventBus 7, ConflictDispatch 3). Async Stage A merged with **zero**
+> conflicts; the only merge friction was test-registration lines. So the scheduler (Stage C / effort
+> 6) starts from a *composition-proven* substrate, not three separately-validated pieces that might
+> clash. The remaining Stage C work is the genuinely hard part the table marks "large — core
+> interpreter change": the `ready`/`parked` queues + the eval-loop pull/park/wake, and an
+> `EventSelector` tying a parked frame to a bus predicate (the same gap `Resolution.Park` in
+> conflict-dispatch is waiting on).
+
 ## Migration sketch + rough effort
 
 Each step preserves existing sequential behavior; sizing is relative (no metered units).
