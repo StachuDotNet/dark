@@ -110,8 +110,12 @@ and changed nothing" *is* the deliverable; it's what makes it safe to land early
   `compose-check`):** `Conflict.CCapabilityDenied of CapCategory` exists, the default dispatch
   fails it loudly, and `CapabilityGate.gate` routes a denial through this hook to a resolution
   (fail/substitute/park); ConflictDispatch is 11/11 with the 4 cap-gate tests, see
-  [capabilities.md](../pre-s-and-s/capabilities.md). The sync PR still emits
-  `Conflict.SyncDivergence` and makes resolutions durable content-addressed ops; the
+  [capabilities.md](../pre-s-and-s/capabilities.md). The sync PR emits
+  `Conflict.SyncDivergence` — **now BUILT too:** `Conflict.CSyncDivergence of (location *
+  existingHash * incomingHash)` exists, the default dispatch fails it loudly (surfacing the
+  location + both hashes), and a **last-writer** sync policy resolves it via `RSubstitute` (so the
+  receiver never blocks). ConflictDispatch is **15/15**. The remaining sync work is the *detection*
+  (the LibDB receiver querying `locations` for a conflicting hash and emitting this conflict). The
   errors-as-conflicts rollout routes the remaining `raiseRTE` sites. All depend only on the
   `Conflict`/`Resolution`/`ConflictDispatch` shapes frozen here — and the extensibility just got
   exercised: adding `CCapabilityDenied` was a one-case addition + the single default-dispatch site.
