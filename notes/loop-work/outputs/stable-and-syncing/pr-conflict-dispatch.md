@@ -21,7 +21,11 @@ EventBus PR is not a hard prereq for the skeleton.
 > **Validated in prework** (real code on `loop-fun:prework/conflict-dispatch`, off clean `main`).
 > **Compiles clean** (0 errors) in the loop-fun devcontainer — the `Conflict`/`Resolution`/
 > `CallContext`/`ConflictDispatch` types + the `ExecutionState.conflictDispatch` field + the
-> `createState` FailLoudly default all build against real `main`. Findings that *correct* this spec:
+> `createState` FailLoudly default all build against real `main`. **Tests PASS** (3 Expecto via
+> `run-backend-tests`: default FailLoudly-s a `RuntimeError` unchanged, default maps `FnNotFound`
+> → `FailLoudly(FnNotFound)`, and an installed policy overrides with `Substitute`) — proving the
+> hook is **byte-identical by default AND swappable**. Compile- AND test-validated.
+> Findings that *correct* this spec:
 > - **Types live IN `RuntimeTypes.fs` (the and-chain), NOT a separate `ConflictTypes.fs`.** They
 >   mention `RuntimeError.Error`/`Dval` (defined there) *and* `ExecutionState` references
 >   `ConflictDispatch` — a later file can't satisfy both. (Same circular constraint the EventBus
