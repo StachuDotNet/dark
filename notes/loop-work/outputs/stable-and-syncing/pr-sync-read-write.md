@@ -4,6 +4,16 @@ The spine's floor effort 7 — the heart of the floor, built from [sync.md](sync
 on one tailnet member and replay on another through the **same op-playback path** a local edit
 uses. Localhost first, then over Tailscale.
 
+> **Integration check — sync composes with the whole pre-S&S floor.** All of sync's F# (`Accounts`,
+> `SyncCursors`, `Sync`) was merged onto `compose-check` alongside every foundation + capabilities
+> (with the interpreter cap-gate). Clean merge (sync only adds `LibDB` modules), builds clean, and
+> the **full backend suite is green: 9,382 passed, 0 failed, 0 errored.** The integration run also
+> **caught a real test-isolation bug** (the `Accounts` test asserted a *global* `accounts_v0` count
+> unchanged, which races other tests' inserts in the parallel suite — the upsert logic was always
+> correct; the assertion was scoped to a global count) — fixed by scoping the count to the test's
+> unique login. So the whole floor's F# coexists and passes at scale; only the Dark HTTP/CLI surface
+> remains.
+
 **The reassuring part:** the apply path already exists on `main`. `PackageOpPlayback.applyOps
 branchId commitHash ops` folds ops into projections, and writes are already **idempotent** —
 `INSERT OR IGNORE INTO package_ops (id, …)` keys on the op id, so receiving an op twice is a
