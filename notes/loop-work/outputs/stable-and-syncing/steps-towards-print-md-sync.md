@@ -154,6 +154,12 @@ ladder, simplest-runnable first:
    `pullFromFile` is complete: ops (log + projections) + **content blobs** (`Blob.missing` → copy)
    + persisted cursor, no deferred TODO. This is the first *user-facing* sync — "edit on A,
    `pull`, see it on B" on one machine.
+   > **VALIDATED LIVE** through the real CLI (not just unit tests): with a peer copy at
+   > `rundir/peer.db`, `dark sync pull rundir/peer.db` → *"Synced from rundir/peer.db — caught up
+   > through op 9851."*, and a second run resumes from the persisted cursor (same output, no
+   > re-apply). The full chain runs: `Cli.Sync.execute` → `pmSyncPull` → `pullFromFile` → `pull`
+   > → `insertAndApplyOps`. (One gotcha for the future demo: the peer path must be reachable
+   > *inside the devcontainer* — a host `/tmp` path fails; use a mounted dir like `rundir/`.)
 3. **HTTP localhost → tailnet** — instance A serves `GET /sync/snapshot` + `GET/POST /sync/events`
    over its `data.db`; instance B polls + applies (effort 9's loop). Prove it on `localhost:port`
    first, then bind A to its tailnet IP (server = the always-on desktop). Same handlers, just a
