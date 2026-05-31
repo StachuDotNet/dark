@@ -8,6 +8,21 @@ The spine's floor effort 3, built from
 and split them **physically**: ops in `core.db`, projections in per-branch caches that can be
 dropped and re-folded. After this, a projection can be deleted with zero information loss.
 
+> **Validated in prework** (`loop-fun:prework/ops-projections`). Implemented
+> `LibDB.Seed.rebuildProjections` — clears the 7 projection tables (`package_functions/types/
+> values/blobs`, `locations`, `deprecations`, `package_dependencies`), marks all `package_ops`
+> unapplied, and re-folds them through the existing `PackageOpPlayback.applyOps`. **Compiles +
+> the drop-rebuild=identity TEST PASSES**: on a seeded DB, drop every projection, re-fold the
+> whole op log, and `package_functions` + `locations` come back **identical**. So the design's
+> central claim — *projections are regenerable from the canonical op log* — is **proven by
+> running code**, and the "minimum F#" really is mostly reorganizing what exists (`Seed.grow` +
+> a `DELETE`-then-refold). (Fix: `Sql.executeStatementAsync` is `Task<unit>` — use `do!`.)
+>
+> **Later note (not now):** the prototype hardcodes the 7 projection tables in F#. Worth thinking
+> through someday whether the op/projection *shape* could be Dark-declared (an App naming its
+> projections, walked by a generic rebuild) rather than F#-hardcoded — left as a seam to revisit,
+> not a near-term goal.
+
 **The reassuring part:** `main` already has the bones — `package_ops`/`branch_ops` (the op
 log), `package_functions`/`package_types`/`package_values`/`locations`/`deprecations`/
 `package_dependencies` (projections), and **`LibDB.Seed.growIfNeeded`** already "applies
