@@ -150,9 +150,15 @@ App that syncs itself — edit once, runs everywhere on the tailnet.
 
 ## Risks / problems not yet raised
 
-- **The alias mechanism.** A generated shell shim on `PATH` is simple but per-shell (bash/zsh/fish
-  differ) and needs a clean uninstall. Alternative: a single `dark` dispatcher + a `~/.darklang/bin`
-  on `PATH`. Pick one.
+- **The alias mechanism — pure core built (prework, 3/3).** A generated shell shim on `PATH` is
+  simple but per-shell (bash/zsh/fish differ) and needs a clean uninstall. **Decided + prototyped:**
+  the `~/.darklang/bin` approach (one dir on `PATH` → clean uninstall is one file).
+  `apps-surface.dark`: `aliasShim entrypoint` produces the shim (`#!/bin/sh\nexec dark run
+  <entrypoint> "$@"\n`), `aliasPath appName` = `~/.darklang/bin/<app>`, and `spawnGrantSummary
+  allowList` = the actionable cap prompt (`Cli(spawn: pandoc, weasyprint, lp)`). The fs-write/PATH
+  side needs builtins (untestable in-container); these string builders are the provable surface and
+  are real, passing Dark. **So the capstone's whole pure surface is now real Dark** — the manifest +
+  render-chain arg builders (above) + this install mechanism.
 - **Subprocess fidelity / stdin.** The bash original pipes md→pandoc→weasyprint on stdin; the
   prework-confirmed `posixSpawnAndWait` has **no stdin parameter** (verified). Match the pipe
   exactly (exit codes, stderr) by either extending the spawn builtin with a stdin-bytes arg, or
