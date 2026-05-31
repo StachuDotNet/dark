@@ -21,15 +21,22 @@ members, nothing more.
 
 ## No new builtin assembly — a Dark module over shell-outs
 
-`main` ships 9 builtin assemblies (`Pure`, `Http.Client`, `Http.Server`, `Random`, `Time`,
-`Cli`, `CliHost`, `Language`, `Matter`). Tailscale needs **none added** — it's a Dark
-`Tailscale` module built on `CliHost` (subprocess spawn) + `Http`:
+`main` ships 9 builtin assemblies. Tailscale needs **none added** — it's a Dark `Tailscale`
+module over the **existing subprocess-spawn builtin** + `Http`.
+
+> **Verified against `main` (prework).** The spawn primitive exists: **`Builtins.Cli`** has
+> `posixSpawnAndWait (program: String) (args: List<String>) : Result<(Int64 * String * String),
+> PosixError>` — returns `(exitCode, stdout, stderr)`, exactly what's needed. So
+> `Tailscale.status` = `posixSpawnAndWait "tailscale" ["status"; "--json"]` then parse stdout.
+> **Correction:** spawn lives in **`Cli`**, *not* `CliHost` (CliHost only runs Dark scripts:
+> `cliParseAndExecuteScript`/`cliEvaluateExpression`). The cap is `Cli`-domain (capabilities.md's
+> `cliHost` bool covers it). No new builtin — confirmed feasible.
 
 ```fsharp
 module Darklang.Tailscale
 
-// shells out to `tailscale status --json`, parses the device list (a projection,
-// not a stored table). Needs CliHost(spawn) capability — see capabilities.md.
+// shells out via Cli.posixSpawnAndWait "tailscale" ["status"; "--json"], parses the device
+// list (a projection, not a stored table). Needs the Cli/spawn capability — see capabilities.md.
 let status () : List<Device> = ...
 type Device = { name: String; dnsName: String; online: Bool; self: Bool }
 
