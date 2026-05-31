@@ -154,12 +154,16 @@ ladder, simplest-runnable first:
    `pullFromFile` is complete: ops (log + projections) + **content blobs** (`Blob.missing` → copy)
    + persisted cursor, no deferred TODO. This is the first *user-facing* sync — "edit on A,
    `pull`, see it on B" on one machine.
-   > **VALIDATED LIVE** through the real CLI (not just unit tests): with a peer copy at
-   > `rundir/peer.db`, `dark sync pull rundir/peer.db` → *"Synced from rundir/peer.db — caught up
-   > through op 9851."*, and a second run resumes from the persisted cursor (same output, no
-   > re-apply). The full chain runs: `Cli.Sync.execute` → `pmSyncPull` → `pullFromFile` → `pull`
-   > → `insertAndApplyOps`. (One gotcha for the future demo: the peer path must be reachable
-   > *inside the devcontainer* — a host `/tmp` path fails; use a mounted dir like `rundir/`.)
+   > **VALIDATED LIVE — content moves between two real instances.** Run a second instance on its
+   > own DB (`DARK_CONFIG_DB_NAME=peerB.db`, a copy of the seed), author a value there
+   > (`dark val Stachu.Demo.syncVal… = 42L` → ✓ Created), and on the local instance:
+   > `dark view …` → *Not found*; `dark sync pull rundir/peerB.db` → *caught up through op 9853*
+   > (peerB's 2 extra ops: AddValue + SetName); `dark view …` → **`val syncVal… = 42L`**. The
+   > value authored on B is now resolvable on A. The full chain runs end to end:
+   > `Cli.Sync.execute` → `pmSyncPull` → `pullFromFile` → `pull` → `insertAndApplyOps` (+ blob
+   > fetch + persisted cursor; a re-pull resumes as a no-op). (Gotchas: the peer path must be
+   > reachable *inside the devcontainer* — use a mounted dir like `rundir/`, not host `/tmp`; a
+   > package location needs 3 parts owner.module.name.)
 3. **HTTP localhost → tailnet** — instance A serves `GET /sync/snapshot` + `GET/POST /sync/events`
    over its `data.db`; instance B polls + applies (effort 9's loop). Prove it on `localhost:port`
    first, then bind A to its tailnet IP (server = the always-on desktop). Same handlers, just a
