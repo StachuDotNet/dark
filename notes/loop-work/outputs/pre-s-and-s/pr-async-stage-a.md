@@ -36,10 +36,18 @@ yet, async stays invisible at the Dark surface.
 >   Test proves mutating the child (its `threadID`, `currentFrameID`) leaves the parent untouched
 >   and the child's `callFrames` is a distinct dictionary instance.
 > - **Part 3 (cancellation) — a `cancel : CancellationToken` field + `vm.throwIfCancelled()`**
->   safe-point check. Test proves it's a no-op before `Cancel()` and raises
->   `OperationCanceledException` after. (Stage A adds the *signal + check* only; actually calling
->   `throwIfCancelled` inside the interpreter's eval loop is the deeper wiring the scheduler drives
->   — left as the next layer, see "above expects" below.)
+>   safe-point check, **now WIRED into the real interpreter eval loop.** The check sits at the top
+>   of `executeInner`'s per-call-frame `while` (a natural unwind point), so it runs once per frame
+>   dispatch, never inside the hot per-instruction inner loop. **Confirmed invisible to normal
+>   execution: 88/88 `Interpreter` tests still pass** (root VMs use `CancellationToken.None`, so the
+>   check is a free volatile-bool read that never throws). A new integration test runs the *actual*
+>   `Interpreter.execute` with an already-cancelled child VM and proves it raises
+>   `OperationCanceledException` mid-loop instead of completing — so cancellation is now *checked
+>   during execution*, not merely a dormant signal.
+>   - **Granularity tradeoff (documented in code):** per-call-frame is the cheap safe point;
+>     per-*instruction* is the finer alternative if a single frame can run unboundedly long (a tight
+>     non-lambda loop). Lambda iterations push frames, so most long work already hits the check.
+>     The scheduler (effort 6) can tighten this if needed.
 > - **Integration cost was tiny:** only **ONE** `VMState` record-literal site exists
 >   (`VMState.create`); the other two `threadID` mentions are reads. So the two new fields needed a
 >   single construction-site edit — `{ vm with … }` copies carry them for free. The `BuiltInFn`
