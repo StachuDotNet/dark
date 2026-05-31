@@ -4,6 +4,22 @@ The spine's floor effort 7 — the heart of the floor, built from [sync.md](sync
 on one tailnet member and replay on another through the **same op-playback path** a local edit
 uses. Localhost first, then over Tailscale.
 
+> **Local two-instance sync is IMPLEMENTED and WORKS LIVE** (`compose-check`). The full chain is
+> built + tested + demonstrated through the real CLI: **`dark sync pull <peer.db>`**
+> (`cli/sync.dark`) → **`pmSyncPull`** builtin (`Builtins.Matter/Libs/PM/Sync.fs`, caps
+> `{FileSystem}`) → **`Sync.pullFromFile`** (resume per-peer cursor → pull → fetch missing blobs →
+> persist cursor) → **`Sync.pull`** (read the peer's op log directly, apply via the same
+> `insertAndApplyOps` the wire receiver uses → op **log** + projections, idempotent) → **blob
+> channel** (`Blob.missing` → copy bytes). **Proven cross-instance:** a value authored on a
+> separate instance (`DARK_CONFIG_DB_NAME=peerB.db`) is `Not found` on the local instance, then
+> after `dark sync pull rundir/peerB.db` (caught up through op 9853) it resolves — `val … = 42L`.
+> Tests: SyncIdempotency **11/11** (pull two-file + cursor persist/resume + blob fetch), LibPmSeam
+> **7/7**, OpsProjections **5/5**. So **rung 2 is done** — the only remaining transport step is
+> rung 3 (the same engine over HTTP/Tailscale, swapping the source connection for a wire body).
+> A consolidation landed alongside: removed the dead `Queries.getAllOpsSince` (a zero-caller
+> timestamp-cursor duplicate of `opsSince`) and a redundant raw-SQL cross-store test (superseded by
+> LibPmSeam's production `connStore` fold).
+
 > **Integration check — the ENTIRE prework floor composes on one branch.** Every foundation +
 > capabilities (interpreter cap-gate) + sync (`Accounts`/`SyncCursors`/`Sync` + divergence) + the
 > **complete LibPM seam** (`PackageStore`/`dispatchVia`/`sqliteStore`/`connStore` + the
