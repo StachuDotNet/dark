@@ -286,5 +286,9 @@ makes it appear — the goal's first observable proof.
 
 - **Below:** ops⊥projections (`core.db`), Tailscale transport, conflict-dispatch (for
   `SyncDivergence`).
-- **Above expects:** autosync (effort 9) wraps `dark sync` in a poll loop; identity (8) supplies
-  the login→account mapping; print-md-as-an-App (10) is the thing whose edits ride this wire.
+- **Above expects:** autosync (effort 9) wraps `dark sync` in a poll loop — **its pure core is
+  prework-built** (`autosync.dark` 6/6): `nextPollMs sawChanges currentMs` snaps to a 2s floor after
+  a sync that saw changes (responsive) and doubles-to-a-60s-ceiling while idle (don't hammer the
+  tailnet); the loop body itself calls `dark sync` via builtins. Identity (8) supplies the
+  login→account mapping (`Accounts.upsertAccount`, built); print-md-as-an-App (10) is the thing whose
+  edits ride this wire.
