@@ -149,10 +149,11 @@ ladder, simplest-runnable first:
    **`Sync.pull`** reads the peer's op log directly and applies via the same `insertAndApplyOps`
    the wire receiver uses — writing the op **log** (receiver becomes a re-serving peer) *and*
    folding projections, idempotently. Tested: a real two-file `pullFromFile` test (apply a peer
-   log, cursor = op count, cursor persisted, re-pull resumes/no-ops, SyncIdempotency 11/11); the
-   command + builtin parse/compile/reload cleanly. Blob fetch (`Blob.missing` → `getMany`) is a
-   deferred add (code rides with ops). This is the first *user-facing* sync — "edit on A, `pull`,
-   see it on B" on one machine.
+   log, cursor = op count, cursor persisted, re-pull resumes/no-ops, **and a peer blob the local
+   lacks is fetched** — SyncIdempotency 11/11); the command + builtin parse/compile/reload cleanly.
+   `pullFromFile` is complete: ops (log + projections) + **content blobs** (`Blob.missing` → copy)
+   + persisted cursor, no deferred TODO. This is the first *user-facing* sync — "edit on A,
+   `pull`, see it on B" on one machine.
 3. **HTTP localhost → tailnet** — instance A serves `GET /sync/snapshot` + `GET/POST /sync/events`
    over its `data.db`; instance B polls + applies (effort 9's loop). Prove it on `localhost:port`
    first, then bind A to its tailnet IP (server = the always-on desktop). Same handlers, just a
