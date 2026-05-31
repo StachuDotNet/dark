@@ -57,6 +57,21 @@ delta from the server, and CI builds against a known baseline rather than
 re-parsing source. Until then, the `.dark` files are the cheapest way to keep
 F# and Dark consistent across a language change.
 
+**The concrete binding is `package-ref-hashes.txt`.** F# doesn't reference Dark items by name —
+it references them by **content hash**, via `LibExecution.PackageRefs` (e.g.
+`PackageRefs.Type.Stdlib.option ()`), which loads hashes from `package-ref-hashes.txt` (embedded
+as a resource in the release binary). So the F#→Dark edge is literally *a file of hashes baked
+into the build*. When the Dark op log changes a package's shape, its hash changes, the file must
+regenerate, and **F# must rebuild** to pick up the new hashes — the "two-build dance" (build with
+stale hashes → seed → regenerate → rebuild). This is why sync *alone* doesn't remove the coupling:
+shipping a package update as ops changes the projections, which changes the hashes, which the
+embedded file won't reflect until a rebuild. Two ways out, weighed when the time comes: **(a)** keep
+the two-build dance but trigger it off **op-log changes** (a sync pull or an import) instead of a
+`.dark` edit — minimal; or **(b)** make the F#→Dark binding **dynamic** — resolve hashes from the
+seeded op-log DB at startup instead of embedding them — so a synced package update lands *without* an
+F# rebuild, at the cost of a startup resolution step. (b) is the real "decouple F# from Dark source"
+move; (a) is the pragmatic interim. Either way the hash file is the edge to manage.
+
 See `sync.md` — sync is the prerequisite, not a parallel track.
 
 ---
@@ -109,6 +124,26 @@ a stable env exist. Each step leans on a mechanism that already exists on `main`
 The gating blocker (4 above — F#↔Dark mutual reference under language change) sits *under*
 steps 3–4: until a dev can move the language forward locally without re-parsing, those steps
 can't land. So the sequence is real but strictly downstream of [sync.md](sync.md).
+
+**How the sync work plugs in (the loop into LocalExec seeding).** The prework sync primitives
+*are* the seed-replacement machinery — the eventual sequence is mostly already coded, just not
+wired to seeding yet. The meeting point is the **`PT.PackageOp` type**: today
+`LoadPackagesFromDisk` produces `List<PackageOp>` from `.dark`; sync produces the same ops from a
+peer. Both fold through the one `PackageOpPlayback` path.
+- Step 2 "first-run bootstraps from the seed, no parse" **is `Sync.snapshot`** — the whole op log
+  + a consistent bootstrap cursor, applied through the same fold `growIfNeeded` already runs.
+- Step 3 "local dev pulls deltas" **is `Sync.opsSince(cursor)` + `applyRemoteOps`** — incremental,
+  idempotent by op-id, resuming from the rowid cursor.
+- Folding a pulled stream into a *fresh* store **is `connStore`/`dispatchVia`** — a seed is just an
+  op stream folded into an empty projection DB (proven cross-store in LibPmSeam).
+- Content the op stream doesn't carry (large `package_blobs`) rides the **blob channel**
+  (`Blob.missing` → `getMany`, fetch-on-miss after the ops apply).
+- `LoadPackagesFromDisk` survives as the **op *importer*** (`.dark` → ops, for authoring + the
+  CI/release seed-builder), no longer the bootstrap source.
+
+So "replace `.dark` seeding with sync" concretely = make the **committed/synced op-log snapshot**
+the seed source (`Seed.export` already produces it), `.dark` parsing demoted to importer +
+seed-builder — gated only by blocker 4 (the `package-ref-hashes.txt` binding above).
 
 ---
 
