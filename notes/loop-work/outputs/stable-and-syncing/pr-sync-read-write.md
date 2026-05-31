@@ -9,11 +9,32 @@ branchId commitHash ops` folds ops into projections, and writes are already **id
 `INSERT OR IGNORE INTO package_ops (id, …)` keys on the op id, so receiving an op twice is a
 no-op. This PR mostly **exposes that over HTTP**; it doesn't reinvent apply.
 
-> **Validated in prework** (`loop-fun:prework/sync-read-write`). The idempotency **TEST PASSES**:
-> re-applying an existing seeded op via `Inserts.insertAndApplyOps` leaves `package_ops` count
-> unchanged. So the tailnet-sync safety property (the same op from N peers can't corrupt the log)
-> is proven — and the receiver path (`insertAndApplyOps` → `INSERT OR IGNORE INTO package_ops` +
-> `applyOps`) already exists; the PR wraps it in an HTTP handler.
+> **Validated in prework** (`loop-fun:prework/sync-read-write`) — **4/4 sync tests PASS**. The
+> single-op idempotency test (re-applying a seeded op via `Inserts.insertAndApplyOps` leaves
+> `package_ops` count unchanged) plus three more that nail the round-trip safety property:
+> - **Wire round-trip over the WHOLE log.** The receiver decodes a wire blob to a `PackageOp` and
+>   **re-hashes** it — `insertAndApplyOps` sets the id to `computeOpHash op`. For `INSERT OR IGNORE`
+>   to *dedup* a re-sent op instead of forking the log, that re-hash must reproduce the sender's
+>   stored id. **Test: every op in the seeded log re-hashes to its stored id** across
+>   serialize→decode→re-hash — so dedup-by-id is sound cross-instance, not just for a byte-identical
+>   blob. (This is the property the single-op test only *implied*; now explicit over the full log.)
+> - **Two fully-synced peers exchanging logs is a total no-op.** Driving the real receiver path
+>   (`insertAndApplyOps` → `applyOps` refold) over the *entire* log, grouped by `(branch, commit)`,
+>   adds **zero** rows — `INSERT OR IGNORE` dedups every op; `applyOps` only re-runs on
+>   newly-inserted ops (none), so projections are untouched.
+> - **Read cursor**: `opsSince 0` = whole log in ascending rowid order; `opsSince maxRowid` = empty.
+>
+> > **KEY FINDING — a literal two-DB round-trip can't be tested in-process yet; the receiver isn't
+> > store-parameterized.** `LibDB` binds to a **single global connection** (`LibConfig.Config.dbPath`
+> > → a module-level `Sql.connect`); `insertAndApplyOps`/`opsSince`/`computeOpHash` all use it with
+> > **no store/connection argument**. So "author on A, apply on B" with two real SQLite stores in one
+> > process is impossible without **parameterizing the store** — the same `LibDB`-as-pluggable-SQLite-
+> > backend refactor the LibPM seam (the architectural finding below) and ops-projections specs flag. The
+> > safety *properties* are proven above (dedup soundness, no-op re-apply); the genuine cross-store
+> > wire test waits on that connection-parameterization. This is a real prerequisite for the HTTP
+> > receiver too (it applies remote ops to *this* instance's store — fine while there's one global
+> > store, but the seam should be explicit). (F# detail: this codebase's `List.groupBy` returns a
+> > `Map`, so chain `|> Map.toList` to fold over groups.)
 >
 > **Architectural finding (Stachu's call) — op-playback should move to a `LibPM`.** Today
 > op-playback lives in **`LibDB`** (`PackageOpPlayback`/`BranchOpPlayback`/`PackageManager`) and
