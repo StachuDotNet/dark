@@ -6,8 +6,23 @@ uses. Localhost first, then over Tailscale.
 
 **The reassuring part:** the apply path already exists on `main`. `PackageOpPlayback.applyOps
 branchId commitHash ops` folds ops into projections, and writes are already **idempotent** —
-`INSERT OR IGNORE INTO branch_ops (id, …)` keys on the content-hash id, so receiving an op twice
-is a no-op. This PR mostly **exposes that over HTTP**; it doesn't reinvent apply.
+`INSERT OR IGNORE INTO package_ops (id, …)` keys on the op id, so receiving an op twice is a
+no-op. This PR mostly **exposes that over HTTP**; it doesn't reinvent apply.
+
+> **Validated in prework** (`loop-fun:prework/sync-read-write`). The idempotency **TEST PASSES**:
+> re-applying an existing seeded op via `Inserts.insertAndApplyOps` leaves `package_ops` count
+> unchanged. So the tailnet-sync safety property (the same op from N peers can't corrupt the log)
+> is proven — and the receiver path (`insertAndApplyOps` → `INSERT OR IGNORE INTO package_ops` +
+> `applyOps`) already exists; the PR wraps it in an HTTP handler.
+>
+> **Architectural finding (Stachu's call) — op-playback should move to a `LibPM`.** Today
+> op-playback lives in **`LibDB`** (`PackageOpPlayback`/`BranchOpPlayback`/`PackageManager`) and
+> `applyOp` writes SQL *directly* (`INSERT OR REPLACE INTO package_functions …`) — the **fold
+> logic is entangled with SQLite persistence**. There is **no `LibPM`**. For the clean
+> ops⊥projections split (and the eventual Dark-managed projection shape), the fold ("what an op
+> does to state") wants to be **storage-agnostic in a `LibPM`**, with `LibDB` as just the SQLite
+> backend. That's a **sizable refactor** worth doing before/alongside sync, not a small one —
+> flag it as a real prereq, not a detail.
 
 **Goal.** A peer can `GET` ops since a cursor and `POST` ops; the receiver applies them via the
 existing playback path. A remote op and a local op are the same thing — no separate import path.
