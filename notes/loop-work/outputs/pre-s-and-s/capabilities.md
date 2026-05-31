@@ -3,6 +3,20 @@
 LLM-generated and shared code will try to delete files, hit arbitrary endpoints, and
 exfiltrate secrets. Capabilities gate that: "this code may do exactly these effects."
 
+> **Prototyped in prework** (`loop-fun:prework/capabilities`). The cap **types + gate** are built
+> and tested (`LibExecution.Capabilities`, RT-independent like the bus — compiles before
+> RuntimeTypes; **6/6 tests PASS**): `CapCategory` (the 6 domains), the structured `Capabilities`
+> grant + `noCaps` strict default, `CapDecision = Allowed | Denied of CapCategory`, the coarse
+> `checkCaps granted needs` (first uncovered category wins; empty `needs` = the pure fast-path =
+> today's behavior), and the structured `hostAllowed` HttpClient allow-list (exact / `*.suffix` /
+> `*`, with the lookalike-suffix `googleapis.com.evil.com` correctly rejected). So **model B (coarse
+> static caps + a dynamic structured check) is implementable as specified.** Two integration steps
+> remain, both already-sized elsewhere: (1) the **`caps : Set<CapCategory>` field on `BuiltInFn`**
+> is the *same ~620-site mechanical codemod* the async `effects` field already proved tractable (and
+> `caps` is orthogonal to `effects` — they coexist); (2) the **call-site gate** maps a `Denied` onto
+> a conflict-dispatch `Conflict` (`CCapabilityDenied`) whose policy decides fail/substitute/park —
+> the seam conflict-dispatch already left open.
+
 **Builtins are the only impure boundary** (pure Dark code can only compute), and `main`
 already splits builtins into 9 effect assemblies (`Pure`, `Http.Client`, `Http.Server`,
 `Random`, `Time`, `Cli`, `CliHost`, `Language`, `Matter`). So gating effects = gating
