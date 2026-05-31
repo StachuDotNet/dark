@@ -118,7 +118,10 @@ marker so a rebuild knows where it left off (incremental re-fold).
 - New: **`dark branch rebuild`** — drop + re-fold this branch's projections (recovery / after a
   schema bump). Mostly a safety valve.
 - `dark status` gains a line: ops count in `core.db` vs projection `folded_through_seq` (shows
-  staleness). Otherwise no command changes.
+  staleness). Otherwise no command changes. **Pure surface built (prework, `status-cli.dark` 4/4):**
+  `statusLine opsCount foldedThrough` → `✓ up to date (N ops)` when caught up, else `core.db: N ops
+  · projections folded through M (K behind)` — over the op-log size + the projection cursor (both
+  F#-built). The observable "is my local cache current?" line.
 
 ## UX change
 
