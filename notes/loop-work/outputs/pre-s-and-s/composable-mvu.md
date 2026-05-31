@@ -7,6 +7,40 @@ distributed op-playback) and rides [event-bus.md](event-bus.md) (which carries +
 ops). A satellite of the keystone — once settled it likely folds *into* it; kept separate
 for now so the keystone stays thin.
 
+> **Validated in prework** (`loop-fun:prework/composable-mvu`, `composable-mvu.dark`, **23/23**).
+> The pure MVU core — *without* the Msg/intent layer, which is the ephemeral half — is real,
+> running Dark. Five small **non-interactive** apps, each just an op enum + `apply` + a runner
+> that **is** op-playback (`List.fold ops empty apply`): **Counter** (Int), **Flag** (Bool),
+> **Register** (last-writer-wins by a logical seq, with real `conflict`/`resolve`), **GrowOnlySet**
+> (add-only/dedup — commutative, so it *never* conflicts), **Log** (append-only). Then composed:
+> Counter+Flag, and a 3-facet **DocApp** (title=Register, tags=GrowOnlySet, history=Log) whose
+> `'op` is the **sum** of facet ops and whose `apply` is **op-variant dispatch**. The tests prove
+> the three claims this doc rests on:
+> - **The runner is op-playback** — same fold live or replay (the keystone's claim, at the MVU layer).
+> - **Composability law** — a composed app's per-facet state equals running that facet *alone* on
+>   its projected sub-stream. Facets don't entangle; `views` compose by **keyed merge** (a real
+>   `Dict<ViewId, String>` union, tested).
+> - **Distributed convergence** — folding ops incrementally (apply remote ops as they arrive)
+>   equals a full replay, so two nodes on one op log re-converge. `Register.resolve` is
+>   deterministic (higher seq wins), so a divergence resolves to the *same* op on both sides.
+>
+> So Model=projection, Update=`apply`, op=the durable synced unit — the ops⊥projections + sync
+> substrate **is** the MVU runtime. What's *not* yet built: the F# runner that folds App ops into
+> the real `package_ops` log, and the `Msg → state → List<op>` intent translator (left for last —
+> it's the ephemeral, per-instance half that doesn't sync).
+>
+> A composed `App` folding one mixed op stream — the whole model on one screen:
+> ```text
+>   op stream (durable, synced)              folded state (a projection)        views (keyed merge)
+>   ───────────────────────────              ───────────────────────────        ───────────────────
+>   T (SetTo 1 "Draft")   ─┐                 title:   "Final"   (Register)       title:      Final
+>   G (AddElem "urgent")   │                  tags:    [urgent,reviewed] (Gset)  tagCount:   2
+>   H (AppendLine "made")  ├─ fold apply ───► history: [made, retitled] (Log)    historyLen: 2
+>   T (SetTo 2 "Final")    │                  ▲                                   ▲
+>   G (AddElem "reviewed") │                  │ each op routed to ONE facet's     │ Dict union of
+>   H (AppendLine "redo")  ─┘                 │ apply by op-variant dispatch      │ each facet's view
+> ```
+
 ## The unit of composition is one big `App`, not a Model
 
 The thing being composed is the **`App`** from the keystone — not a tree of sub-Models:

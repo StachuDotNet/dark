@@ -37,6 +37,19 @@ capabilities-cli (actionable denial + grant cmd) · autosync (adaptive poll inte
 the *pure* UX/logic; the builtin/binary-dependent bodies (the App `main`, HTTP handler, autosync
 loop, real `tailscale`/`pandoc` spawns) need a live environment.
 
+## Composable distributed MVU — the App model, prototyped (`prework/composable-mvu`)
+
+`composable-mvu.dark` (**23/23**) prototypes the pure MVU core in Dark, tying the ops⊥projections
++ sync substrate to the App model. **Five small non-interactive apps** — Counter, Flag, Register
+(LWW + real `conflict`/`resolve`), GrowOnlySet (commutative, never conflicts), Log — each an op
+enum + `apply` + a runner that **is** op-playback (`List.fold ops empty apply`). Composed two ways
+(Counter+Flag; a 3-facet DocApp = Register+GrowOnlySet+Log) with `'op` = the **sum** of facet ops,
+`apply` = **op-variant dispatch**, `views` = **keyed merge** (`Dict<ViewId,String>`). Proves: the
+runner is op-playback; the **composability law** (composed per-facet state == that facet run alone);
+and **distributed convergence** (incremental fold == full replay → nodes re-converge). Model=projection,
+Update=apply, op=the durable synced unit. **Remains:** the F# runner folding App ops into the real
+`package_ops` log, and the `Msg → state → List<op>` intent layer (the ephemeral half — left for last).
+
 ## Grounding corrections — facts that changed the design
 
 - **No Dark md→PDF to reuse.** The outliner's `markdown.dark` is outline→bullets, the wrong
@@ -58,7 +71,11 @@ loop, real `tailscale`/`pandoc` spawns) need a live environment.
 Named records need the type prefix on construction (`T { … }`); `==` is equality in fn bodies; a
 *piped multi-line lambda* trips the parser (use `let x = …` + tuple destructuring `fun (k, _) ->`);
 enums: `type X = | A | C of String`, construct `X.C v`, match `| C v ->` (no prefix); the `.dark`
-test harness scans **subdirectories** of `testfiles/execution`.
+test harness scans **subdirectories** of `testfiles/execution`. Multi-field enums:
+`| SetTo of Int64 * String`, construct `T.SetTo(s, v)`, match `| SetTo(s, v) ->`; `Dict.set`/`get`/
+`empty`/`merge`, `List.any`/`append`, `Int64.greaterThan`/`max` available. **Gotcha:** a module-level
+*value*-`let` that references **another value-`let`** in record construction resolves to `()` at
+runtime — inline the referenced value (function-`let`→value-`let` refs are fine).
 
 ## What a real implementation does next
 
