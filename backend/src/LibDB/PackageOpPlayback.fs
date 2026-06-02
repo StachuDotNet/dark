@@ -382,6 +382,94 @@ let private applyUndeprecate
 /// branchId = branch context, commitHash = None means WIP, Some id means committed
 /// addedHashes = hashes of items added by Add* ops earlier in this batch
 ///   (used to distinguish "add + name" from "rename")
+/// Revert a propagation: restore previous versions atomically.
+/// Extracted from `applyOp`'s former inline case so it routes through the `PackageStore`
+/// seam like every other op kind — the last piece of the LibPM extraction.
+let private applyRevertPropagation
+  (branchId : PT.BranchId)
+  (sourceLocation : PT.PackageLocation)
+  (restoredSourceRef : PT.Reference)
+  (revertedRepoints : List<PT.PropagateRepoint>)
+  : Task<unit> =
+  task {
+    let sourceItemKind = restoredSourceRef.kind
+
+    // For each reverted repoint: unlist toRef, un-unlist fromRef.
+    // Skip repoints for the source item — those are handled by the
+    // dedicated source-handling block below (avoids redundant
+    // double-toggle in mutual recursion).
+    let dependentStmts =
+      revertedRepoints
+      |> List.filter (fun r ->
+        r.location <> sourceLocation || r.toRef.kind <> sourceItemKind)
+      |> List.collect (fun repoint ->
+        let (Hash toHashStr) = repoint.toRef.hash
+        let (Hash fromHashStr) = repoint.fromRef.hash
+        [ ("""
+           UPDATE locations
+           SET unlisted_at = datetime('now')
+           WHERE item_hash = @item_hash
+             AND branch_id = @branch_id
+             AND unlisted_at IS NULL
+           """,
+           [ [ "item_hash", Sql.string toHashStr; "branch_id", Sql.uuid branchId ] ])
+          ("""
+           UPDATE locations
+           SET unlisted_at = NULL
+           WHERE location_id = (
+             SELECT location_id FROM locations
+             WHERE item_hash = @item_hash
+               AND branch_id = @branch_id
+               AND unlisted_at IS NOT NULL
+             ORDER BY unlisted_at DESC
+             LIMIT 1
+           )
+           """,
+           [ [ "item_hash", Sql.string fromHashStr
+               "branch_id", Sql.uuid branchId ] ]) ])
+
+    // Undo source: unlist WIP location, un-unlist committed location.
+    let modulesStr = String.concat "." sourceLocation.modules
+    let itemTypeStr = sourceItemKind.toString ()
+    let (Hash restoredSourceHashStr) = restoredSourceRef.hash
+
+    let sourceStmts =
+      [ ("""
+         UPDATE locations
+         SET unlisted_at = datetime('now')
+         WHERE owner = @owner
+           AND modules = @modules
+           AND name = @name
+           AND item_type = @item_type
+           AND branch_id = @branch_id
+           AND unlisted_at IS NULL
+           AND commit_hash IS NULL
+         """,
+         [ [ "owner", Sql.string sourceLocation.owner
+             "modules", Sql.string modulesStr
+             "name", Sql.string sourceLocation.name
+             "item_type", Sql.string itemTypeStr
+             "branch_id", Sql.uuid branchId ] ])
+        ("""
+         UPDATE locations
+         SET unlisted_at = NULL
+         WHERE location_id = (
+           SELECT location_id FROM locations
+           WHERE item_hash = @item_hash
+             AND branch_id = @branch_id
+             AND unlisted_at IS NOT NULL
+           ORDER BY unlisted_at DESC
+           LIMIT 1
+         )
+         """,
+         [ [ "item_hash", Sql.string restoredSourceHashStr
+             "branch_id", Sql.uuid branchId ] ]) ]
+
+    let _ = Sql.executeTransactionSync (dependentStmts @ sourceStmts)
+    ()
+  }
+
+
 let private applyOp
   (branchId : PT.BranchId)
   (commitHash : Option<string>)
@@ -410,81 +498,12 @@ let private applyOp
                                      sourceLocation,
                                      restoredSourceRef,
                                      revertedRepoints) ->
-      let sourceItemKind = restoredSourceRef.kind
-
-      // For each reverted repoint: unlist toRef, un-unlist fromRef.
-      // Skip repoints for the source item — those are handled by the
-      // dedicated source-handling block below (avoids redundant
-      // double-toggle in mutual recursion).
-      let dependentStmts =
-        revertedRepoints
-        |> List.filter (fun r ->
-          r.location <> sourceLocation || r.toRef.kind <> sourceItemKind)
-        |> List.collect (fun repoint ->
-          let (Hash toHashStr) = repoint.toRef.hash
-          let (Hash fromHashStr) = repoint.fromRef.hash
-          [ ("""
-             UPDATE locations
-             SET unlisted_at = datetime('now')
-             WHERE item_hash = @item_hash
-               AND branch_id = @branch_id
-               AND unlisted_at IS NULL
-             """,
-             [ [ "item_hash", Sql.string toHashStr; "branch_id", Sql.uuid branchId ] ])
-            ("""
-             UPDATE locations
-             SET unlisted_at = NULL
-             WHERE location_id = (
-               SELECT location_id FROM locations
-               WHERE item_hash = @item_hash
-                 AND branch_id = @branch_id
-                 AND unlisted_at IS NOT NULL
-               ORDER BY unlisted_at DESC
-               LIMIT 1
-             )
-             """,
-             [ [ "item_hash", Sql.string fromHashStr
-                 "branch_id", Sql.uuid branchId ] ]) ])
-
-      // Undo source: unlist WIP location, un-unlist committed location.
-      let modulesStr = String.concat "." sourceLocation.modules
-      let itemTypeStr = sourceItemKind.toString ()
-      let (Hash restoredSourceHashStr) = restoredSourceRef.hash
-
-      let sourceStmts =
-        [ ("""
-           UPDATE locations
-           SET unlisted_at = datetime('now')
-           WHERE owner = @owner
-             AND modules = @modules
-             AND name = @name
-             AND item_type = @item_type
-             AND branch_id = @branch_id
-             AND unlisted_at IS NULL
-             AND commit_hash IS NULL
-           """,
-           [ [ "owner", Sql.string sourceLocation.owner
-               "modules", Sql.string modulesStr
-               "name", Sql.string sourceLocation.name
-               "item_type", Sql.string itemTypeStr
-               "branch_id", Sql.uuid branchId ] ])
-          ("""
-           UPDATE locations
-           SET unlisted_at = NULL
-           WHERE location_id = (
-             SELECT location_id FROM locations
-             WHERE item_hash = @item_hash
-               AND branch_id = @branch_id
-               AND unlisted_at IS NOT NULL
-             ORDER BY unlisted_at DESC
-             LIMIT 1
-           )
-           """,
-           [ [ "item_hash", Sql.string restoredSourceHashStr
-               "branch_id", Sql.uuid branchId ] ]) ]
-
-      let _ = Sql.executeTransactionSync (dependentStmts @ sourceStmts)
-      ()
+      do!
+        applyRevertPropagation
+          branchId
+          sourceLocation
+          restoredSourceRef
+          revertedRepoints
   }
 
 
@@ -518,4 +537,338 @@ let applyOps
     let addedHashes = collectAddedHashes ops
     for op in ops do
       do! applyOp branchId commitHash addedHashes op
+  }
+
+
+// ───────────────────────────────────────────────────────────────────────────
+// LibPM-seam prototype (Stachu: op-playback should move to a storage-agnostic LibPM).
+// The fold's dispatch is already clean; the only coupling is that each per-kind
+// handler writes SQL directly. Extracting this `PackageStore` interface is the whole
+// refactor: LibPM holds `dispatchVia` (storage-agnostic), LibDB provides `sqliteStore`.
+// Sizing: ~6 methods, the dispatch is already a clean `match`. Moderate, not "huge".
+// ───────────────────────────────────────────────────────────────────────────
+
+/// The storage seam an op-fold needs — the interface a LibPM would depend on.
+type PackageStore =
+  { addType : PT.PackageType.PackageType -> Task<unit>
+    addValue : PT.PackageValue.PackageValue -> Task<unit>
+    addFn : PT.PackageFn.PackageFn -> Task<unit>
+    setName :
+      PT.BranchId
+        -> Option<string>
+        -> bool
+        -> Hash
+        -> PT.PackageLocation
+        -> PT.ItemKind
+        -> Task<unit>
+    deprecate :
+      PT.BranchId -> Option<string> -> PT.Reference -> PT.DeprecationKind -> string -> Task<unit>
+    undeprecate : PT.BranchId -> Option<string> -> PT.Reference -> Task<unit>
+    revertPropagation :
+      PT.BranchId
+        -> PT.PackageLocation
+        -> PT.Reference
+        -> List<PT.PropagateRepoint>
+        -> Task<unit> }
+
+/// LibDB's SQLite implementation of the store — literally the existing handlers.
+/// (Proves the current code already fits the interface with zero changes to the handlers.)
+let sqliteStore : PackageStore =
+  { addType = applyAddType
+    addValue = applyAddValue
+    addFn = applyAddFn
+    setName = applySetName
+    deprecate = applyDeprecate
+    undeprecate = applyUndeprecate
+    revertPropagation = applyRevertPropagation }
+
+
+// ───────────────────────────────────────────────────────────────────────────
+// connStore — a PackageStore that writes to a GIVEN connection string, not the global DB.
+// This is the store-param the cross-store fold needs (prework finding: only the WRITE is
+// connection-coupled; the serialization is pure). The content-addressed Add* handlers fold a
+// projection row into any store; the location/deprecation handlers are not yet parameterized
+// (their multi-statement SQL uses the global helpers) — folding Add* into another store is the
+// proven core that makes "store B resolves the same fn as A" a production path, not a test.
+// ───────────────────────────────────────────────────────────────────────────
+
+/// One INSERT against an explicit connection string (Fumble, fully qualified to bypass the
+/// global `LibDB.Sqlite.Sql` wrapper). Surfaces errors rather than swallowing them.
+let private writeTo (connStr : string) (sql : string) ps : Task<unit> =
+  task {
+    let! result =
+      Fumble.Sql.connect connStr
+      |> Fumble.Sql.query sql
+      |> Fumble.Sql.parameters ps
+      |> Fumble.Sql.executeNonQueryAsync
+      |> Async.StartAsTask
+    match result with
+    | Ok _ -> ()
+    | Error e -> raise e
+  }
+
+let private addTypeToConn (connStr : string) (typ : PT.PackageType.PackageType) : Task<unit> =
+  let hash =
+    match typ.hash with
+    | Hash "" -> Hashing.computeTypeHash Hashing.Normal typ
+    | h -> h
+  let typ = { typ with hash = hash }
+  let (Hash h) = hash
+  let ptDef = BS.PT.PackageType.serialize h typ
+  let rtDef = typ |> PT2RT.PackageType.toRT |> BS.RT.PackageType.serialize h
+  writeTo
+    connStr
+    "INSERT OR REPLACE INTO package_types (hash, pt_def, rt_def) VALUES (@hash, @pt_def, @rt_def)"
+    [ "hash", Sql.string h; "pt_def", Sql.bytes ptDef; "rt_def", Sql.bytes rtDef ]
+
+let private addValueToConn
+  (connStr : string)
+  (value : PT.PackageValue.PackageValue)
+  : Task<unit> =
+  let hash =
+    match value.hash with
+    | Hash "" -> Hashing.computeValueHash Hashing.Normal value
+    | h -> h
+  let value = { value with hash = hash }
+  let (Hash h) = hash
+  let ptDef = BS.PT.PackageValue.serialize h value
+  writeTo
+    connStr
+    "INSERT INTO package_values (hash, pt_def, rt_dval, value_type) VALUES (@hash, @pt_def, NULL, NULL) ON CONFLICT(hash) DO UPDATE SET pt_def = excluded.pt_def"
+    [ "hash", Sql.string h; "pt_def", Sql.bytes ptDef ]
+
+let private addFnToConn (connStr : string) (fn : PT.PackageFn.PackageFn) : Task<unit> =
+  let hash =
+    match fn.hash with
+    | Hash "" -> Hashing.computeFnHash Hashing.Normal fn
+    | h -> h
+  let fn = { fn with hash = hash }
+  let (Hash h) = hash
+  let ptDef = BS.PT.PackageFn.serialize h fn
+  let rtInstrs = fn |> PT2RT.PackageFn.toRT |> BS.RT.PackageFn.serialize h
+  writeTo
+    connStr
+    "INSERT OR REPLACE INTO package_functions (hash, pt_def, rt_instrs) VALUES (@hash, @pt_def, @rt_instrs)"
+    [ "hash", Sql.string h; "pt_def", Sql.bytes ptDef; "rt_instrs", Sql.bytes rtInstrs ]
+
+/// SetName against an explicit connection — mirrors `applySetName`'s three steps (supersede
+/// any current binding at the path; on a rename, supersede old bindings to the same hash;
+/// insert the new binding) but writes to `connStr`. Run sequentially (vs the global handler's
+/// single transaction); the end state is identical for a name fold.
+let private setNameToConn
+  (connStr : string)
+  (branchId : PT.BranchId)
+  (commitHash : Option<string>)
+  (isRename : bool)
+  (itemHash : Hash)
+  (location : PT.PackageLocation)
+  (itemKind : PT.ItemKind)
+  : Task<unit> =
+  task {
+    let modulesStr = String.concat "." location.modules
+    let itemTypeStr = itemKind.toString ()
+    let (Hash itemHashStr) = itemHash
+
+    do!
+      writeTo
+        connStr
+        "UPDATE locations SET unlisted_at = datetime('now') WHERE owner = @owner AND modules = @modules AND name = @name AND item_type = @item_type AND unlisted_at IS NULL AND branch_id = @branch_id"
+        [ "owner", Sql.string location.owner
+          "modules", Sql.string modulesStr
+          "name", Sql.string location.name
+          "item_type", Sql.string itemTypeStr
+          "branch_id", Sql.uuid branchId ]
+
+    if isRename then
+      do!
+        writeTo
+          connStr
+          "UPDATE locations SET unlisted_at = datetime('now') WHERE item_hash = @item_hash AND branch_id = @branch_id AND unlisted_at IS NULL"
+          [ "item_hash", Sql.string itemHashStr; "branch_id", Sql.uuid branchId ]
+
+    let commitHashParam =
+      match commitHash with
+      | Some s -> Sql.string s
+      | None -> Sql.dbnull
+    do!
+      writeTo
+        connStr
+        "INSERT INTO locations (location_id, item_hash, owner, modules, name, item_type, branch_id, commit_hash) VALUES (@location_id, @item_hash, @owner, @modules, @name, @item_type, @branch_id, @commit_hash)"
+        [ "location_id", Sql.uuid (System.Guid.NewGuid())
+          "item_hash", Sql.string itemHashStr
+          "owner", Sql.string location.owner
+          "modules", Sql.string modulesStr
+          "name", Sql.string location.name
+          "item_type", Sql.string itemTypeStr
+          "branch_id", Sql.uuid branchId
+          "commit_hash", commitHashParam ]
+  }
+
+/// Deprecate against an explicit connection — mirrors `applyDeprecate` (supersede any current
+/// row for (branch, item_hash, item_kind); insert a new `deprecated` row) against `connStr`.
+let private deprecateToConn
+  (connStr : string)
+  (branchId : PT.BranchId)
+  (commitHash : Option<string>)
+  (target : PT.Reference)
+  (kind : PT.DeprecationKind)
+  (message : string)
+  : Task<unit> =
+  task {
+    let (Hash itemHashStr) = target.hash
+    let itemKindStr = target.kind.toString ()
+    let blob = serializeAnnotation kind message
+    let commitHashParam =
+      match commitHash with
+      | Some s -> Sql.string s
+      | None -> Sql.dbnull
+    do!
+      writeTo
+        connStr
+        "UPDATE deprecations SET unlisted_at = datetime('now') WHERE branch_id = @branch_id AND item_hash = @item_hash AND item_kind = @item_kind AND unlisted_at IS NULL"
+        [ "branch_id", Sql.uuid branchId
+          "item_hash", Sql.string itemHashStr
+          "item_kind", Sql.string itemKindStr ]
+    do!
+      writeTo
+        connStr
+        "INSERT INTO deprecations (deprecation_id, branch_id, commit_hash, item_hash, item_kind, state, annotation_blob) VALUES (@deprecation_id, @branch_id, @commit_hash, @item_hash, @item_kind, 'deprecated', @blob)"
+        [ "deprecation_id", Sql.uuid (System.Guid.NewGuid())
+          "branch_id", Sql.uuid branchId
+          "commit_hash", commitHashParam
+          "item_hash", Sql.string itemHashStr
+          "item_kind", Sql.string itemKindStr
+          "blob", Sql.bytes blob ]
+  }
+
+/// Undeprecate against an explicit connection — mirrors `applyUndeprecate` (supersede the
+/// current row; insert an `undeprecated` row with NULL annotation) against `connStr`.
+let private undeprecateToConn
+  (connStr : string)
+  (branchId : PT.BranchId)
+  (commitHash : Option<string>)
+  (target : PT.Reference)
+  : Task<unit> =
+  task {
+    let (Hash itemHashStr) = target.hash
+    let itemKindStr = target.kind.toString ()
+    let commitHashParam =
+      match commitHash with
+      | Some s -> Sql.string s
+      | None -> Sql.dbnull
+    do!
+      writeTo
+        connStr
+        "UPDATE deprecations SET unlisted_at = datetime('now') WHERE branch_id = @branch_id AND item_hash = @item_hash AND item_kind = @item_kind AND unlisted_at IS NULL"
+        [ "branch_id", Sql.uuid branchId
+          "item_hash", Sql.string itemHashStr
+          "item_kind", Sql.string itemKindStr ]
+    do!
+      writeTo
+        connStr
+        "INSERT INTO deprecations (deprecation_id, branch_id, commit_hash, item_hash, item_kind, state, annotation_blob) VALUES (@deprecation_id, @branch_id, @commit_hash, @item_hash, @item_kind, 'undeprecated', NULL)"
+        [ "deprecation_id", Sql.uuid (System.Guid.NewGuid())
+          "branch_id", Sql.uuid branchId
+          "commit_hash", commitHashParam
+          "item_hash", Sql.string itemHashStr
+          "item_kind", Sql.string itemKindStr ]
+  }
+
+/// RevertPropagation against an explicit connection — mirrors `applyRevertPropagation`'s
+/// location toggles (per reverted repoint: unlist the toRef, restore the fromRef; then undo the
+/// source: unlist its WIP binding, restore its most-recent superseded one) against `connStr`.
+/// Run sequentially (vs the global single transaction); identical end state.
+let private revertPropagationToConn
+  (connStr : string)
+  (branchId : PT.BranchId)
+  (sourceLocation : PT.PackageLocation)
+  (restoredSourceRef : PT.Reference)
+  (revertedRepoints : List<PT.PropagateRepoint>)
+  : Task<unit> =
+  task {
+    let sourceItemKind = restoredSourceRef.kind
+
+    for repoint in
+      revertedRepoints
+      |> List.filter (fun r ->
+        r.location <> sourceLocation || r.toRef.kind <> sourceItemKind) do
+      let (Hash toHashStr) = repoint.toRef.hash
+      let (Hash fromHashStr) = repoint.fromRef.hash
+      do!
+        writeTo
+          connStr
+          "UPDATE locations SET unlisted_at = datetime('now') WHERE item_hash = @item_hash AND branch_id = @branch_id AND unlisted_at IS NULL"
+          [ "item_hash", Sql.string toHashStr; "branch_id", Sql.uuid branchId ]
+      do!
+        writeTo
+          connStr
+          "UPDATE locations SET unlisted_at = NULL WHERE location_id = (SELECT location_id FROM locations WHERE item_hash = @item_hash AND branch_id = @branch_id AND unlisted_at IS NOT NULL ORDER BY unlisted_at DESC LIMIT 1)"
+          [ "item_hash", Sql.string fromHashStr; "branch_id", Sql.uuid branchId ]
+
+    let modulesStr = String.concat "." sourceLocation.modules
+    let itemTypeStr = sourceItemKind.toString ()
+    let (Hash restoredSourceHashStr) = restoredSourceRef.hash
+    do!
+      writeTo
+        connStr
+        "UPDATE locations SET unlisted_at = datetime('now') WHERE owner = @owner AND modules = @modules AND name = @name AND item_type = @item_type AND branch_id = @branch_id AND unlisted_at IS NULL AND commit_hash IS NULL"
+        [ "owner", Sql.string sourceLocation.owner
+          "modules", Sql.string modulesStr
+          "name", Sql.string sourceLocation.name
+          "item_type", Sql.string itemTypeStr
+          "branch_id", Sql.uuid branchId ]
+    do!
+      writeTo
+        connStr
+        "UPDATE locations SET unlisted_at = NULL WHERE location_id = (SELECT location_id FROM locations WHERE item_hash = @item_hash AND branch_id = @branch_id AND unlisted_at IS NOT NULL ORDER BY unlisted_at DESC LIMIT 1)"
+        [ "item_hash", Sql.string restoredSourceHashStr; "branch_id", Sql.uuid branchId ]
+  }
+
+/// A store targeting `connStr` — ALL 7 `PackageStore` methods connection-parameterized. So
+/// `dispatchVia (connStore connStr)` folds the ENTIRE op stream (every op kind) into the target
+/// store: the engine a sync receiver uses to materialize a remote peer's package DB.
+let connStore (connStr : string) : PackageStore =
+  { addType = addTypeToConn connStr
+    addValue = addValueToConn connStr
+    addFn = addFnToConn connStr
+    setName = setNameToConn connStr
+    deprecate = deprecateToConn connStr
+    undeprecate = undeprecateToConn connStr
+    revertPropagation = revertPropagationToConn connStr }
+
+/// Storage-AGNOSTIC dispatch (what would live in LibPM): identical to `applyOp`, but every
+/// state change routes through `store` — no SQL here. Proves the fold can be lifted out of LibDB.
+let dispatchVia
+  (store : PackageStore)
+  (branchId : PT.BranchId)
+  (commitHash : Option<string>)
+  (addedHashes : Set<Hash>)
+  (op : PT.PackageOp)
+  : Task<unit> =
+  task {
+    match op with
+    | PT.PackageOp.AddType typ -> do! store.addType typ
+    | PT.PackageOp.AddValue value -> do! store.addValue value
+    | PT.PackageOp.AddFn fn -> do! store.addFn fn
+    | PT.PackageOp.SetName(loc, target) ->
+      let isRename = not (Set.contains target.hash addedHashes)
+      do! store.setName branchId commitHash isRename target.hash loc target.kind
+    | PT.PackageOp.Deprecate(target, kind, message) ->
+      do! store.deprecate branchId commitHash target kind message
+    | PT.PackageOp.Undeprecate target -> do! store.undeprecate branchId commitHash target
+    | PT.PackageOp.PropagateUpdate _ -> () // no-op (handled by the accompanying SetName ops)
+    | PT.PackageOp.RevertPropagation(_,
+                                     _,
+                                     sourceLocation,
+                                     restoredSourceRef,
+                                     revertedRepoints) ->
+      // Now routes through the store like every other kind — the inline logic was
+      // extracted to `applyRevertPropagation` / `store.revertPropagation`. All 8 op
+      // kinds are storage-agnostic; the seam is complete (no delegation back to applyOp).
+      do!
+        store.revertPropagation
+          branchId
+          sourceLocation
+          restoredSourceRef
+          revertedRepoints
   }

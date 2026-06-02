@@ -40,6 +40,7 @@ let main (args : string array) : int =
         Tests.Propagation.tests
         Tests.Hashing.tests
         Tests.BranchOps.tests
+        Tests.LibPmSeam.tests
 
         // serialization
         Tests.BinarySerialization.tests
