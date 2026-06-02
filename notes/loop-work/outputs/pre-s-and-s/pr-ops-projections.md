@@ -110,13 +110,27 @@ marker so a rebuild knows where it left off (incremental re-fold).
 |---|---|---|
 | fold is total | `.fs` (`OpsProjectionsTests`, new): seed ops, `rebuildProjections`, assert projection tables match a known-good snapshot | tables equal |
 | drop + rebuild = identity | `.fs`: resolve `Stdlib.List.map`'s hash; `DROP` the branch DB; `rebuildProjections`; resolve again | same hash, byte-identical |
-| `.dark` round-trip | `.dark` test (add/adjust `packages/.../tests`): define a fn, force a projection rebuild, call it | same result before/after |
+| `.dark` round-trip | `.dark` test (add/adjust `packages/.../tests`): define a fn, force a projection rebuild, call it | same result before/after — **DONE via `dark branch rebuild` (prework):** rebuild the live DB, then `apps list` reads a package VALUE's fields (the `rt_dval` path) — works. Caught + fixed the "structural-fold-only leaves `rt_dval` NULL" gap; the command now folds **then** re-evaluates. |
 | incremental | append one op; assert only the dirtied projection entries refold (not a full rebuild) | `folded_through_seq` advances by 1 — **DONE end to end (OpsProjections 5/5):** `projectionsDirtiedByBatch` picks the dirtied tables, and **`rebuildDirtied opKinds`** clears only those + re-folds only the ops of those kinds (filter by `opKindName` → `applyOps`). Tested: `rebuildDirtied {AddFn}` refolds `package_functions`(+deps) while **`locations` is unchanged** — selectivity proven. (Faithful for content-addressed `Add*`; a `SetName`-only refold needs its batch's added hashes for rename detection — documented.) |
 
 ## CLI impact
 
 - New: **`dark branch rebuild`** — drop + re-fold this branch's projections (recovery / after a
-  schema bump). Mostly a safety valve.
+  schema bump). Mostly a safety valve. **BUILT end-to-end (prework, `compose-check`).** A
+  `pmRebuildProjections` builtin calls the tested `LibDB.Seed.rebuildProjections`; the command
+  reports the re-folded op count (`Rebuilt projections — re-folded 9897 ops from the canonical
+  log.`).
+  > **Finding — the structural fold is not enough; values need re-evaluation.** Running
+  > `branch rebuild` live surfaced a real gap: `rebuildProjections` re-folds the structural
+  > projections but inserts `package_values.rt_dval = NULL` (value *evaluation* is a separate
+  > phase that normally only runs at startup over unapplied ops). So reading any package VALUE
+  > immediately after a rebuild hit a `NULL at ordinal 0`. Fix: the builtin re-runs
+  > `evaluateAllValues` after the fold (the same post-write eval `pmAddOps` already does for
+  > CLI-added values). With that, the round-trip is proven for the *value* case — `branch
+  > rebuild` then `apps list` (which reads a value's `.name`/`.description` via the `rt_dval`
+  > path) works. **Spec consequence:** "re-fold the op log" must be stated as *two* phases —
+  > structural fold **then** value re-evaluation — for the projection cache to be fully usable;
+  > `folded_through_seq` alone doesn't capture eval-completeness.
 - `dark status` gains a line: ops count in `core.db` vs projection `folded_through_seq` (shows
   staleness). Otherwise no command changes. **Pure surface built (prework, `status-cli.dark` 4/4):**
   `statusLine opsCount foldedThrough` → `✓ up to date (N ops)` when caught up, else `core.db: N ops

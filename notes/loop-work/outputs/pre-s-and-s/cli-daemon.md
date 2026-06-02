@@ -158,3 +158,47 @@ Filesystem footprint — one core set per account; app daemons register with the
   serving stateless CLI calls.
 - **Multi-branch per session.** The per-connection `branch` is a default, not a hard scope —
   confirm a per-request override.
+
+---
+
+# v0 — built and validated (prework/compose-check)
+
+The full design above is the destination. A working **v0 of the daemon's process layer +
+management surface** now exists and is validated live — the part that makes a long-runner
+real (detach, track, status, stop), without yet the core-socket / event-bus host.
+
+## What shipped
+
+- **`Darklang.Sync.Daemon`** (`packages/darklang/sync/daemon.dark`) — built entirely on the
+  POSIX stdlib (`Stdlib.Cli.File` + `Stdlib.Cli.Posix`); **no new builtin**:
+  - pidfile at `~/.darklang/run/<name>.pid` — `claimPidfile` (the daemon records its own pid
+    on startup), `recordedPid` (read back), `isRunning` (pidfile present AND
+    `Posix.isProcessRunning` = `kill -0` liveness — so a stale pidfile reads as not-running),
+    `statusLine` (running / stopped / **stale**), `stop` (SIGTERM + clear pidfile, idempotent).
+  - `runDaemon` entrypoint — claims the pidfile, then runs the adaptive `Autosync.runLoop`
+    effectively forever; ended by SIGTERM from `apps stop`.
+  - `start` — launches it **detached** (`nohup … eval … &`, reparents to init, survives the
+    launching CLI's exit), logging to `~/.darklang/run/sync-daemon.log`.
+- **`dark apps status | start <name> <peer> | stop <name>`** — the management surface over
+  declared daemon Apps (pidfile-backed runtime state). `apps list` already showed kind.
+
+## Validated live (not just logic)
+
+- Lifecycle logic via `eval`: claim→read round-trip; liveness both directions; **stale
+  detection** (a dead pid reads as not-running, status says "stale"); stop clears the pidfile;
+  post-stop no record.
+- Full detached run through `apps start`: launched a real OS process (`ps`-confirmed, ~3 min
+  uptime across many CLI calls); `apps status` → running; the daemon log shows the **adaptive
+  backoff** working (4000→8000→16000 ms as the converged peer yields no changes); `apps stop`
+  SIGTERM'd it → status "stopped" → `ps` confirms the process is **gone**.
+
+## Seams to the full design
+
+- **v0 is one detached process per daemon** (the simple, universal path). The design's *core
+  daemon + per-app daemons under one socket/bus* is the next layer — this proves the
+  process/pidfile/management mechanics it will reuse.
+- **Launcher**: production resolves `dark` on PATH; the dev container has no `dark` on PATH, so
+  `DARK_CLI` overrides the launcher to the built Cli exe. The daemon entrypoint is invoked via
+  `eval` (an expression), since `run` is for script files.
+- **No file lock between daemon pulls and CLI writes yet** — `Posix.flock` exists for when the
+  daemon and a foreground command contend on `data.db`; v0 leans on SQLite's own serialization.
