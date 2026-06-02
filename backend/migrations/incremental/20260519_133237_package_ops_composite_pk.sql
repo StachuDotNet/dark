@@ -14,6 +14,10 @@ CREATE TABLE package_ops (
   applied INTEGER NOT NULL DEFAULT 0,
   propagation_id TEXT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT (datetime('now')),
+  -- Keep schema.sql's portable authoring stamp when this migration rebuilds the table — the
+  -- timestamp-LWW sync convergence reads it (conflicts-and-resolutions.md). Without it the rebuilt
+  -- table loses the column schema.sql defines and reload's origin_ts INSERT fails.
+  origin_ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   PRIMARY KEY (id, branch_id)
 );
 

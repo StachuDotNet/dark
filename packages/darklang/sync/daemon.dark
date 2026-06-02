@@ -1,0 +1,184 @@
+module Darklang.Sync.Daemon
+
+// The background sync daemon — the part of autosync that needs a real OS process, not just the pure
+// poll arithmetic in Darklang.Sync.Autosync. A daemon is a DETACHED `dark` process running the
+// adaptive runLoop, tracked by a PIDFILE so `dark apps start/stop/status` can manage it. Built
+// entirely on the POSIX stdlib (File.writeText for the pidfile, Posix.isProcessRunning for a
+// signal-0 liveness check, Process for the detached launch + SIGTERM stop) — a true OS process that
+// survives the launching CLI's exit, not a managed child that dies with it.
+
+// ── pidfile location ──  ~/.darklang/run/<name>.pid  (one pidfile per named daemon)
+let runDir () : String =
+  let home = Stdlib.Option.withDefault (Stdlib.Cli.Env.home ()) "/tmp"
+  home ++ "/.darklang/run"
+
+let pidfilePath (name: String) : String =
+  (runDir ()) ++ "/" ++ name ++ ".pid"
+
+// Where a daemon's poll trace + any startup error land (it has no terminal). `sync daemon logs` reads this.
+let logPath (name: String) : String =
+  (runDir ()) ++ "/" ++ name ++ ".log"
+
+// The daemon's recent log lines (last `n`), newest at the bottom — empty if it has never logged.
+let tailLog (name: String) (n: Int64) : List<String> =
+  match Stdlib.Cli.File.readLines (logPath name) with
+  | Ok lines ->
+    let total = Stdlib.List.length lines
+    if total <= n then lines else Stdlib.List.drop lines (total - n)
+  | Error _ -> []
+
+
+// Record THIS process as the named daemon. The daemon entrypoint calls this on startup so the
+// pidfile holds the REAL worker pid (the detached `dark run` process), not a transient launcher.
+let claimPidfile (name: String) : Stdlib.Result.Result<Unit, String> =
+  match Stdlib.Cli.Posix.mkdirRecursive (runDir ()) with
+  | Error e -> Stdlib.Result.Result.Error e.message
+  | Ok _ ->
+    let pid = Stdlib.Cli.Sys.currentPid ()
+
+    match Stdlib.Cli.File.writeText (pidfilePath name) (Stdlib.Int64.toString pid) with
+    | Error e -> Stdlib.Result.Result.Error e.message
+    | Ok _ -> Stdlib.Result.Result.Ok()
+
+
+// The pid recorded for a daemon, if its pidfile exists and parses.
+let recordedPid (name: String) : Stdlib.Option.Option<Int64> =
+  let path = pidfilePath name
+
+  if Stdlib.Cli.File.exists path then
+    match Stdlib.Cli.File.readText path with
+    | Ok content -> Stdlib.Result.toOption (Stdlib.Int64.parse (Stdlib.String.trim content))
+    | Error _ -> Stdlib.Option.Option.None
+  else
+    Stdlib.Option.Option.None
+
+
+// Is the named daemon alive? pidfile present AND that pid is a running process (signal-0 check) — so
+// a STALE pidfile (the daemon was killed without cleanup) correctly reads as not running.
+let isRunning (name: String) : Bool =
+  match recordedPid name with
+  | Some pid -> Stdlib.Cli.Posix.isProcessRunning pid
+  | None -> false
+
+
+// One status line: running / stopped / stale (pidfile present but the pid is dead).
+let statusLine (name: String) : String =
+  match recordedPid name with
+  | Some pid ->
+    if Stdlib.Cli.Posix.isProcessRunning pid then
+      $"{name}: running (pid {Stdlib.Int64.toString pid})"
+    else
+      $"{name}: stale (pidfile pid {Stdlib.Int64.toString pid} not running — `sync daemon stop` clears it)"
+  | None -> $"{name}: stopped"
+
+
+// Stop the named daemon: SIGTERM the recorded pid (if alive), then remove the pidfile. Idempotent —
+// stopping an already-stopped daemon just clears any stale pidfile and says so.
+let stop (name: String) : Stdlib.Result.Result<String, String> =
+  match recordedPid name with
+  | None -> Stdlib.Result.Result.Ok $"{name}: not running"
+  | Some pid ->
+    let wasRunning = Stdlib.Cli.Posix.isProcessRunning pid
+
+    let _killed =
+      if wasRunning then
+        Stdlib.Cli.Posix.kill pid Stdlib.Cli.Posix.sigterm
+      else
+        Stdlib.Result.Result.Ok()
+
+    let _removed = Stdlib.Cli.File.delete (pidfilePath name)
+
+    if wasRunning then
+      Stdlib.Result.Result.Ok $"{name}: stopped (pid {Stdlib.Int64.toString pid})"
+    else
+      Stdlib.Result.Result.Ok
+        $"{name}: cleared stale pidfile (pid {Stdlib.Int64.toString pid} was not running)"
+
+
+// ── launch ──
+
+// The `dark` launcher to re-invoke for the detached child. In production `dark` is on PATH; in a dev
+// container the built Cli exe isn't named `dark`, so DARK_CLI overrides the launcher path.
+let launcher () : String =
+  match Stdlib.Cli.Posix.getenv "DARK_CLI" with
+  | Some path -> path
+  | None -> "dark"
+
+
+// The daemon ENTRYPOINT — what the detached process runs (invoked via `eval`, see `start`). Claims
+// the pidfile (recording its own pid), then runs the adaptive autosync loop effectively forever; a
+// SIGTERM from `sync daemon stop` ends it. Args: the peer, then the start interval in ms.
+let runDaemon (peer: String) (intervalMs: Int64) : Int64 =
+  let _logged =
+    match claimPidfile "sync-daemon" with
+    | Error e -> Stdlib.printLine $"daemon: could not write pidfile: {e}"
+    | Ok _ ->
+      Stdlib.printLine
+        $"daemon: started for {peer} (pid {Stdlib.Int64.toString (Stdlib.Cli.Sys.currentPid ())})"
+
+  // a very large step count ≈ forever; the daemon is meant to be ended by `sync daemon stop` (SIGTERM)
+  Darklang.Sync.Autosync.runLoop peer intervalMs 1000000000L
+
+
+// The TAILNET-WIDE daemon entrypoint — claims the same pidfile, then polls EVERY known peer each
+// cycle (re-reading the set so newly-synced peers join automatically). This is the default shape:
+// one daemon keeps the whole tailnet in sync, not one per peer.
+let runDaemonAll (intervalMs: Int64) : Int64 =
+  let _logged =
+    match claimPidfile "sync-daemon" with
+    | Error e -> Stdlib.printLine $"daemon: could not write pidfile: {e}"
+    | Ok _ ->
+      Stdlib.printLine
+        $"daemon: started for all peers (pid {Stdlib.Int64.toString (Stdlib.Cli.Sys.currentPid ())})"
+
+  Darklang.Sync.Autosync.runLoopAll intervalMs 1000000000L
+
+
+// Spawn a daemon entrypoint expression DETACHED so it survives this CLI exiting: `nohup … &`
+// backgrounds it and shields it from hangups, the launching `sh -c` returns immediately (it does not
+// wait on the `&` child), and the child reparents to init. The child claims its own pidfile on
+// startup. Output appends to the daemon logfile (`sync daemon logs` reads it). Shared by start / startAll.
+let launchDetached
+  (expr: String)
+  (okMsg: String)
+  : Stdlib.Result.Result<String, String> =
+  let cmd = $"nohup {launcher ()} eval '{expr}' >> {logPath "sync-daemon"} 2>&1 &"
+
+  match Stdlib.Cli.Process.exec "/bin/sh" [ "-c"; cmd ] with
+  | Ok _ -> Stdlib.Result.Result.Ok okMsg
+  | Error e -> Stdlib.Result.Result.Error $"failed to launch sync-daemon: {e}"
+
+
+// Launch a single-peer daemon detached. The child claims its pidfile, then polls just `peer`.
+let start (peer: String) (intervalMs: Int64) : Stdlib.Result.Result<String, String> =
+  if isRunning "sync-daemon" then
+    Stdlib.Result.Result.Error "sync-daemon is already running (see `sync daemon status`)"
+  else if
+    // a file peer that doesn't exist would launch a daemon that crashes on the first pull and goes
+    // stale — refuse early with a clear message. (http peers are checked at poll time: an
+    // unreachable one just backs off, it doesn't crash, so we let those launch.)
+    (Stdlib.Bool.not (Stdlib.String.startsWith peer "http"))
+    && (Stdlib.Bool.not (Stdlib.Cli.File.exists peer))
+  then
+    Stdlib.Result.Result.Error $"peer file not found: {peer} (nothing to sync from)"
+  else
+    // invoke the daemon entrypoint via `eval` (the CLI's expression evaluator) — `run` is for script
+    // files, not package fns. The peer is quoted as a String literal in the expression.
+    let q = "\""
+
+    let expr =
+      "Darklang.Sync.Daemon.runDaemon " ++ q ++ peer ++ q ++ " " ++ (Stdlib.Int64.toString intervalMs) ++ "L"
+
+    launchDetached expr $"sync-daemon launching for {peer} (interval {Stdlib.Int64.toString intervalMs}ms) — `sync daemon status` to confirm"
+
+
+// Launch the TAILNET-WIDE daemon detached — polls every known peer (no peer argument). This is the
+// default `apps start sync-daemon` (no peer): one daemon for the whole tailnet.
+let startAll (intervalMs: Int64) : Stdlib.Result.Result<String, String> =
+  if isRunning "sync-daemon" then
+    Stdlib.Result.Result.Error "sync-daemon is already running (see `sync daemon status`)"
+  else
+    let expr =
+      "Darklang.Sync.Daemon.runDaemonAll " ++ (Stdlib.Int64.toString intervalMs) ++ "L"
+
+    launchDetached expr $"sync-daemon launching for all peers (interval {Stdlib.Int64.toString intervalMs}ms) — `sync daemon status` to confirm"

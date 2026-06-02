@@ -1,0 +1,26 @@
+module Darklang.Tailscale
+
+// The base-level Tailscale transport surface — knows nothing about sync. A tailnet peer is addressed
+// by its MagicDNS name;
+// `tailscale serve --https=443 <port>` fronts the local sync server, so a peer is reached at
+// https://<name>.<tailnet>.ts.net (443, no explicit port). These pure helpers — the peer URL, the
+// `tailscale` CLI args, the login header the daemon reads for attribution — are real Dark code;
+// `peerUrl` is wired into `dark remote add-ts`. The actual `tailscale` spawns (status/serve) need the
+// daemon in the environment, so those stay env-gated; the arg builders here are what they're given.
+
+// The MagicDNS URL a tailnet peer's sync server is reached at (443, fronted by `tailscale serve`).
+let peerUrl (name: String) (tailnet: String) : String =
+  "https://" ++ name ++ "." ++ tailnet ++ ".ts.net"
+
+let statusArgs () : List<String> = [ "status"; "--json" ]
+
+let serveArgs (port: Int64) : List<String> =
+  [ "serve"; "--https=443"; Stdlib.Int64.toString port ]
+
+let pingPath () : String = "/ping"
+
+// the auth surface: Tailscale injects `Tailscale-User-Login` after terminating TLS; the receiver
+// reads it as the op author (→ identity-thin's upsertAccount → commit attribution).
+let loginHeader (headers: List<(String * String)>) : Stdlib.Option.Option<String> =
+  let found = Stdlib.List.findFirst headers (fun (k, _) -> k == "Tailscale-User-Login")
+  Stdlib.Option.map found (fun (_, v) -> v)

@@ -101,6 +101,36 @@ let inline private pOpt
   | Some s -> p cmd name (box s)
   | None -> p cmd name (box System.DBNull.Value)
 
+/// Run a SELECT on the shared connection, mapping each row with `readRow`.
+/// Reads MUST go through this (not a fresh Fumble `Sql.query`): the whole op batch runs in ONE
+/// transaction on `ctx.conn`, so an earlier same-batch write (e.g. a rebind from a previous op in
+/// the fold) is only visible on this connection — a fresh-connection read would miss it. Reuses the
+/// same prepared-command cache as `exec`.
+let private queryRows
+  (ctx : Ctx)
+  (sql : string)
+  (setParams : SqliteCommand -> unit)
+  (readRow : SqliteDataReader -> 'a)
+  : Task<List<'a>> =
+  task {
+    let cmd =
+      match ctx.cmds.TryGetValue(sql) with
+      | true, c -> c
+      | false, _ ->
+        let c = ctx.conn.CreateCommand()
+        c.CommandText <- sql
+        c.Prepare()
+        ctx.cmds[sql] <- c
+        c
+    cmd.Parameters.Clear()
+    setParams cmd
+    use reader = cmd.ExecuteReader()
+    let results = System.Collections.Generic.List<'a>()
+    while reader.Read() do
+      results.Add(readRow reader)
+    return List.ofSeq results
+  }
+
 
 // ------------------------------------------------------------------
 // Dependency table maintenance.
@@ -272,55 +302,117 @@ let private applySetName
     let locationId = System.Guid.NewGuid()
     let (Hash itemHashStr) = itemHash
 
-    // 1. Deprecate any existing location at the target path (handles updates)
-    do!
-      exec ctx """
-        UPDATE locations
-        SET unlisted_at = datetime('now')
-        WHERE owner = $owner
-          AND modules = $modules
-          AND name = $name
-          AND item_type = $item_type
-          AND unlisted_at IS NULL
-          AND branch_id = $branch_id
-        """ (fun cmd ->
-        p cmd "$owner" location.owner
-        p cmd "$modules" modulesStr
-        p cmd "$name" location.name
-        p cmd "$item_type" itemTypeStr
-        pUuid cmd "$branch_id" branchId)
+    // ── timestamp-LWW (conflicts-and-resolutions.md): order this binding by the op's CREATION
+    // time, not arrival. Reconstruct this op's id → read its `origin_ts` (the authoring stamp,
+    // already in package_ops before this fold) and the CURRENT binding's `origin_ts` (the
+    // name→authoring-time mapping in `locations`). If this op was created BEFORE the current
+    // binding's op — i.e. an old op arriving late via sync — it's stale: keep the existing,
+    // newer-by-creation binding (the op still lives in the log; it's just not the active name).
+    // Computed identically on every instance, so all converge to the SAME hash, regardless of the
+    // order ops arrived. Unknown stamps (op not in package_ops / pre-origin_ts data) → no skip =
+    // the prior last-writer behavior, so non-sync playback (seed grow, local authoring) is
+    // unchanged (a freshly-authored op's `now` is always ≥ the binding it replaces).
+    // NB: both reads go through `ctx.conn` (`queryRows`), NOT a fresh `Sql.query` — under the
+    // single-transaction `applyOps` batch, an earlier same-batch rebind is only visible here.
+    let thisOp =
+      PT.PackageOp.SetName(
+        location,
+        PT.Reference.fromHashAndKind (itemHash, itemKind)
+      )
+    let (Hash thisOpHashStr) = Hashing.computeOpHash thisOp
+    let thisOpId = System.Guid(System.Convert.FromHexString(thisOpHashStr)[0..15])
 
-    // 2. If this is a rename (standalone SetName, not paired with Add*),
-    //    also deprecate old locations pointing to the same hash.
-    //    We do NOT do this for Add+SetName pairs because multiple items can
-    //    legitimately share the same hash (e.g. Int8.ParseError and
-    //    Int16.ParseError have identical definitions).
-    if isRename then
+    let! thisTsRows =
+      queryRows
+        ctx
+        "SELECT origin_ts FROM package_ops WHERE id = $id"
+        (fun cmd -> pUuid cmd "$id" thisOpId)
+        (fun r -> if r.IsDBNull 0 then None else Some(r.GetString 0))
+    let thisTs =
+      match thisTsRows with
+      | x :: _ -> x
+      | [] -> None
+
+    let! curRows =
+      queryRows
+        ctx
+        """
+        SELECT item_hash, origin_ts FROM locations
+        WHERE owner = $owner AND modules = $modules AND name = $name
+          AND item_type = $item_type AND branch_id = $branch_id AND unlisted_at IS NULL
+        LIMIT 1
+        """
+        (fun cmd ->
+          p cmd "$owner" location.owner
+          p cmd "$modules" modulesStr
+          p cmd "$name" location.name
+          p cmd "$item_type" itemTypeStr
+          pUuid cmd "$branch_id" branchId)
+        (fun r ->
+          (r.GetString 0, (if r.IsDBNull 1 then None else Some(r.GetString 1))))
+
+    let isStale =
+      match curRows, thisTs with
+      // a DIFFERENT current binding with a known stamp, and ours is older (tie-break: lower item
+      // hash loses — total + deterministic so every instance agrees)
+      | (curHash, Some curTs) :: _, Some t when curHash <> itemHashStr ->
+        t < curTs || (t = curTs && itemHashStr < curHash)
+      | _ -> false
+
+    if isStale then
+      return ()
+    else
+      // 1. Deprecate any existing location at the target path (handles updates)
       do!
         exec ctx """
           UPDATE locations
           SET unlisted_at = datetime('now')
-          WHERE item_hash = $item_hash
-            AND branch_id = $branch_id
+          WHERE owner = $owner
+            AND modules = $modules
+            AND name = $name
+            AND item_type = $item_type
             AND unlisted_at IS NULL
+            AND branch_id = $branch_id
           """ (fun cmd ->
-          p cmd "$item_hash" itemHashStr
+          p cmd "$owner" location.owner
+          p cmd "$modules" modulesStr
+          p cmd "$name" location.name
+          p cmd "$item_type" itemTypeStr
           pUuid cmd "$branch_id" branchId)
 
-    // 3. Insert new location entry.
-    do!
-      exec ctx """
-        INSERT INTO locations (location_id, item_hash, owner, modules, name, item_type, branch_id, commit_hash)
-        VALUES ($location_id, $item_hash, $owner, $modules, $name, $item_type, $branch_id, $commit_hash)
-        """ (fun cmd ->
-        pUuid cmd "$location_id" locationId
-        p cmd "$item_hash" itemHashStr
-        p cmd "$owner" location.owner
-        p cmd "$modules" modulesStr
-        p cmd "$name" location.name
-        p cmd "$item_type" itemTypeStr
-        pUuid cmd "$branch_id" branchId
-        pOpt cmd "$commit_hash" commitHash)
+      // 2. If this is a rename (standalone SetName, not paired with Add*),
+      //    also deprecate old locations pointing to the same hash.
+      //    We do NOT do this for Add+SetName pairs because multiple items can
+      //    legitimately share the same hash (e.g. Int8.ParseError and
+      //    Int16.ParseError have identical definitions).
+      if isRename then
+        do!
+          exec ctx """
+            UPDATE locations
+            SET unlisted_at = datetime('now')
+            WHERE item_hash = $item_hash
+              AND branch_id = $branch_id
+              AND unlisted_at IS NULL
+            """ (fun cmd ->
+            p cmd "$item_hash" itemHashStr
+            pUuid cmd "$branch_id" branchId)
+
+      // 3. Insert new location entry. `origin_ts` carries this op's authoring stamp forward so the
+      //    NEXT op contending for this name can LWW-compare against it.
+      do!
+        exec ctx """
+          INSERT INTO locations (location_id, item_hash, owner, modules, name, item_type, branch_id, commit_hash, origin_ts)
+          VALUES ($location_id, $item_hash, $owner, $modules, $name, $item_type, $branch_id, $commit_hash, $origin_ts)
+          """ (fun cmd ->
+          pUuid cmd "$location_id" locationId
+          p cmd "$item_hash" itemHashStr
+          p cmd "$owner" location.owner
+          p cmd "$modules" modulesStr
+          p cmd "$name" location.name
+          p cmd "$item_type" itemTypeStr
+          pUuid cmd "$branch_id" branchId
+          pOpt cmd "$commit_hash" commitHash
+          pOpt cmd "$origin_ts" thisTs)
   }
 
 

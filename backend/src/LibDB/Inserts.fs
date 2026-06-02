@@ -35,10 +35,15 @@ let computeOpHash (op : PT.PackageOp) : System.Guid =
 /// 3. Mark ops as applied=true
 ///
 /// This ensures that if step 2 fails, we can identify unapplied ops and retry/rollback.
-let insertAndApplyOps
+/// Shared impl. `originTs` maps an op-id → the authoring stamp to store; for ops not in the map
+/// (the normal local-authoring path) the op self-stamps `now`. The SYNC path supplies the peer's
+/// origin_ts here so the op is inserted with its TRUE creation time BEFORE the fold — so playback's
+/// `applySetName` orders the binding by creation, not arrival (timestamp-LWW).
+let private insertAndApplyOpsImpl
   (branchId : PT.BranchId)
   (commitHash : Option<string>)
   (ops : List<PT.PackageOp>)
+  (originTs : Map<System.Guid, string>)
   : Task<int64> =
   task {
     if List.isEmpty ops then
@@ -67,8 +72,8 @@ let insertAndApplyOps
         |> List.map (fun (opId, _op, opBlob, propagationId) ->
           let sql =
             """
-            INSERT OR IGNORE INTO package_ops (id, op_blob, branch_id, applied, commit_hash, propagation_id)
-            VALUES (@id, @op_blob, @branch_id, @applied, @commit_hash, @propagation_id)
+            INSERT OR IGNORE INTO package_ops (id, op_blob, branch_id, applied, commit_hash, propagation_id, origin_ts)
+            VALUES (@id, @op_blob, @branch_id, @applied, @commit_hash, @propagation_id, @origin_ts)
             """
 
           let commitHashParam =
@@ -76,12 +81,20 @@ let insertAndApplyOps
             | Some s -> Sql.string s
             | None -> Sql.dbnull
 
+          // the op's authoring stamp: the peer's value on sync, else `now` (matching the schema
+          // default format) for a locally-authored op.
+          let originTsVal =
+            match Map.tryFind opId originTs with
+            | Some t -> t
+            | None -> System.DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+
           let parameters =
             [ "id", Sql.uuid opId
               "op_blob", Sql.bytes opBlob
               "branch_id", Sql.uuid branchId
               "applied", Sql.bool false // Insert as unapplied
               "commit_hash", commitHashParam
+              "origin_ts", Sql.string originTsVal
               "propagation_id",
               (match propagationId with
                | Some id -> Sql.uuid id
@@ -130,6 +143,24 @@ let insertAndApplyOps
 
       return insertedCount
   }
+
+/// Insert + apply ops authored locally (each self-stamps `now` as its origin_ts).
+let insertAndApplyOps
+  (branchId : PT.BranchId)
+  (commitHash : Option<string>)
+  (ops : List<PT.PackageOp>)
+  : Task<int64> =
+  insertAndApplyOpsImpl branchId commitHash ops Map.empty
+
+/// Insert + apply ops received via SYNC, preserving each op's authoring stamp (`originTs` by op-id)
+/// so the fold orders bindings by CREATION time, not arrival (timestamp-LWW, conflicts doc).
+let insertAndApplyOpsWithOrigin
+  (branchId : PT.BranchId)
+  (commitHash : Option<string>)
+  (ops : List<PT.PackageOp>)
+  (originTs : Map<System.Guid, string>)
+  : Task<int64> =
+  insertAndApplyOpsImpl branchId commitHash ops originTs
 
 
 /// Create a new commit and insert ops with that commit_hash
@@ -644,3 +675,36 @@ let discardWipOps (branchId : PT.BranchId) : Task<Result<int64, string>> =
     with ex ->
       return Error ex.Message
   }
+
+
+/// Sync read path (pr-sync-read-write): all ops with rowid > cursor, in insertion order.
+/// Uses SQLite's implicit `rowid` as a monotonic cursor — `package_ops`'s PK is TEXT, so the
+/// rowid is a free, strictly-increasing insertion sequence; no `seq` column / migration needed.
+/// Returns (rowid, opId, opBlob) per op so a poller advances `since` to the last rowid seen.
+let opsSince (cursor : int64) : Task<List<int64 * System.Guid * string * byte[]>> =
+  Sql.query
+    "SELECT rowid, id, origin_ts, op_blob FROM package_ops WHERE rowid > @cursor ORDER BY rowid ASC"
+  |> Sql.parameters [ "cursor", Sql.int64 cursor ]
+  |> Sql.executeAsync (fun read ->
+    (read.int64 "rowid",
+     read.uuid "id",
+     read.string "origin_ts",
+     read.bytes "op_blob"))
+
+/// COMMITTED-ONLY variant of `opsSince` — only ops belonging to a commit (`commit_hash` set),
+/// excluding WIP (`commit_hash IS NULL`). The sync POLICY choice for the multi-AUTHOR case: a
+/// coworker should sync your committed history, not your uncommitted mid-edit work. The default
+/// `opsSince` ships both, which is what you want across your OWN devices. Which one the server
+/// serves is a policy decision (see pr-sync-read-write.md) — this is the ready mechanism.
+let opsSinceCommitted
+  (cursor : int64)
+  : Task<List<int64 * System.Guid * string * byte[]>> =
+  Sql.query
+    "SELECT rowid, id, origin_ts, op_blob FROM package_ops
+     WHERE rowid > @cursor AND commit_hash IS NOT NULL ORDER BY rowid ASC"
+  |> Sql.parameters [ "cursor", Sql.int64 cursor ]
+  |> Sql.executeAsync (fun read ->
+    (read.int64 "rowid",
+     read.uuid "id",
+     read.string "origin_ts",
+     read.bytes "op_blob"))

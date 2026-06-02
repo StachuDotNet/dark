@@ -273,7 +273,10 @@ module Registry =
       ("review", "Review branch changesets", [], Darklang.Cli.Apps.Review.App.execute, Darklang.Cli.Apps.Review.App.help, Darklang.Cli.Apps.Review.App.complete)
       ("views", "Browse and preview CLI views", [], Darklang.Cli.Apps.Views.App.execute, Darklang.Cli.Apps.Views.App.help, Darklang.Cli.Apps.Views.App.complete)
       ("login", "Log in as a seeded account (required for commit / serve)", [], Commands.Login.execute, Commands.Login.help, Commands.Login.complete)
-      ("logout", "Clear the active account", [], Commands.Logout.execute, Commands.Logout.help, Commands.Logout.complete) ]
+      ("logout", "Clear the active account", [], Commands.Logout.execute, Commands.Logout.help, Commands.Logout.complete)
+      ("sync", "Pull package ops from a peer (file or HTTP) + show sync status", [], Cli.Sync.execute, Cli.Sync.help, Cli.Sync.complete)
+      ("conflicts", "Review + resolve recorded sync conflicts", [], Commands.Conflicts.execute, Commands.Conflicts.help, Commands.Conflicts.complete)
+      ("remote", "Register tailnet sync peers (add/list/remove/add-ts)", [], Commands.Remote.execute, Commands.Remote.help, Commands.Remote.complete) ]
     |> Stdlib.List.map(
       // CLEANUP nitpicky: swap help and complete
       fun (name, desc, aliases, execute, help, complete) ->
@@ -348,6 +351,7 @@ module Registry =
   let commandGroups () : List<(String * List<String>)> =
     [ ("Packages", [ "nav"; "ls"; "view"; "tree"; "back"; "search"; "deps"; "val"; "let"; "fn"; "type"; "hash"; "db"; "deprecate"; "delete" ])
       ("SCM", [ "status"; "log"; "commit"; "discard"; "show"; "branch"; "rebase"; "merge"; "review" ])
+      ("Sync", [ "sync"; "conflicts"; "remote" ])
       ("Execution", [ "run"; "eval"; "scripts" ])
       ("Installation", [ "install"; "update"; "uninstall"; "version" ])
       ("AI", [ "agent" ])

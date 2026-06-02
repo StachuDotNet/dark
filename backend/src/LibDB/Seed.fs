@@ -396,3 +396,17 @@ let growIfNeeded
     else
       return false
   }
+
+
+/// Op-log convergence probe: (total ops, applied/folded ops). The sync server's `/sync/health`
+/// reports the total so a puller can compare its own count and see convergence.
+let projectionStatus () : Task<int64 * int64> =
+  task {
+    let! total =
+      Sql.query "SELECT COUNT(*) as cnt FROM package_ops"
+      |> Sql.executeRowAsync (fun read -> read.int64 "cnt")
+    let! folded =
+      Sql.query "SELECT COUNT(*) as cnt FROM package_ops WHERE applied = 1"
+      |> Sql.executeRowAsync (fun read -> read.int64 "cnt")
+    return (total, folded)
+  }
