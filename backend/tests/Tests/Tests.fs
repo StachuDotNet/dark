@@ -62,7 +62,9 @@ let main (args : string array) : int =
         Tests.Stream.tests
         Tests.Capabilities.tests
         Tests.OpsProjections.tests
-        Tests.ConflictDispatch.tests ]
+        Tests.ConflictDispatch.tests
+        Tests.SyncIdempotency.tests
+        Tests.Remotes.tests ]
 
     let cancelationTokenSource = new System.Threading.CancellationTokenSource()
     let httpClientTestsTask = Tests.HttpClient.init cancelationTokenSource.Token

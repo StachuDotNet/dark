@@ -1,0 +1,45 @@
+module Darklang.Sync.Display
+
+// The human-facing summary over a sync result (pr-sync-read-write) — the UX surface of `dark sync`.
+// Pure: the counts come from the F# pull (cursor delta = ops pulled, since the op log is append-only
+// and contiguous); this just formats them. Tested in testfiles/execution/pre-s-and-s/sync-cli.dark.
+
+let opWord (n: Int64) : String =
+  if n == 1L then "op" else "ops"
+
+let pullLine (remote: String) (pulled: Int64) : String =
+  "↓ pulled " ++ (Stdlib.Int64.toString pulled) ++ " " ++ (opWord pulled) ++ " from " ++ remote
+
+let pushLine (remote: String) (pushed: Int64) : String =
+  "↑ pushed " ++ (Stdlib.Int64.toString pushed) ++ " " ++ (opWord pushed) ++ " to " ++ remote
+
+let syncSummary (remote: String) (pulled: Int64) (pushed: Int64) : String =
+  if pulled == 0L && pushed == 0L then
+    "✓ already in sync with " ++ remote
+  else if pushed == 0L then
+    pullLine remote pulled
+  else if pulled == 0L then
+    pushLine remote pushed
+  else
+    (pullLine remote pulled) ++ "\n" ++ (pushLine remote pushed)
+
+
+// the richer op-kind breakdown: "(2 fns, 1 type, 1 rename)" over the pulled op kinds. (The kinds
+// themselves aren't threaded through the pull path yet — these formatters are ready for when they are.)
+let countOf (kinds: List<String>) (k: String) : Int64 =
+  Stdlib.List.length (Stdlib.List.filter kinds (fun x -> x == k))
+
+let pluralKind (k: String) (n: Int64) : String =
+  if n == 1L then k else k ++ "s"
+
+let kindPart (kinds: List<String>) (k: String) : List<String> =
+  let n = countOf kinds k
+  if n == 0L then [] else [ (Stdlib.Int64.toString n) ++ " " ++ (pluralKind k n) ]
+
+let opKindBreakdown (kinds: List<String>) : String =
+  let parts =
+    Stdlib.List.append
+      (Stdlib.List.append (kindPart kinds "fn") (kindPart kinds "type"))
+      (Stdlib.List.append (kindPart kinds "value") (kindPart kinds "rename"))
+
+  Stdlib.String.join parts ", "

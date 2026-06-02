@@ -45,6 +45,12 @@
     <Compile Include="CapabilityGrants.fs" />
     <Compile Include="PackageCaps.fs" />
 
+    <!-- Sync (read/write op-log between instances) /-->
+    <Compile Include="Remotes.fs" />
+    <Compile Include="SyncCursors.fs" />
+    <Compile Include="Conflicts.fs" />
+    <Compile Include="Sync.fs" />
+
     <!-- ex-LibCloud SQLite-bound modules /-->
     <Compile Include="Tracing.fs" />
     <Compile Include="UserDB.fs" />

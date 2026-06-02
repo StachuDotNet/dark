@@ -1,0 +1,121 @@
+module Darklang.Sync.Autosync
+
+// Autosync (effort 9) poll core. The ADAPTIVE interval: snap to a responsive floor right after a
+// sync that pulled changes, back off (double, capped at a ceiling) while idle — so a quiet
+// tailnet isn't hammered but a real change propagates fast. Pure arithmetic; the loop that
+// sleeps + repeats is the daemon (the one part needing a timer + background process).
+
+let pollFloorMs () : Int64 = 2000L
+let pollCeilingMs () : Int64 = 60000L
+
+let nextPollMs (sawChanges: Bool) (currentMs: Int64) : Int64 =
+  if sawChanges then
+    pollFloorMs ()
+  else
+    let doubled = currentMs * 2L
+
+    if doubled > (pollCeilingMs ()) then
+      pollCeilingMs ()
+    else
+      doubled
+
+
+// The adaptive DECISION, given the cursor before/after a pull: `(newCursor, nextIntervalMs)`. The
+// cursor ADVANCING means changes arrived → snap to the responsive floor; UNCHANGED (a converged,
+// empty pull) → back off. Pure — separated from pollOnce's pull side-effect so it's testable; this
+// is what makes a converged tailnet quiet down instead of polling at the floor forever.
+let decideNext (before: Int64) (after: Int64) (currentMs: Int64) : (Int64 * Int64) =
+  (after, nextPollMs (after > before) currentMs)
+
+
+// Pull a peer regardless of transport: an `http(s)` URL pulls over HTTP (ops + content blobs),
+// anything else is a local `data.db` file path. Returns `(newCursor, divCount)`. An unreachable
+// HTTP peer doesn't advance the cursor — so the poll treats it as idle and backs off (no crash).
+let pullPeer (peer: String) : (Int64 * Int64) =
+  if Stdlib.String.startsWith peer "http" then
+    match Darklang.Sync.pullHttp peer with
+    | Ok((c, d, _b)) -> (c, d)
+    | Error _ -> ((Darklang.Sync.cursorFor peer), 0L)
+  else if Stdlib.Cli.File.exists peer then
+    Darklang.Sync.pullFromFile peer
+  else
+    // a local peer whose db is currently missing (offline/removed) must NOT crash the daemon — treat
+    // it like an unreachable http peer: no advance, back off. (Essential for a tailnet-wide daemon,
+    // where peers come and go.)
+    ((Darklang.Sync.cursorFor peer), 0L)
+
+
+// One poll step: pull the peer (HTTP or file), then decide the next interval — responsive if it
+// brought new ops, backing off if idle. Returns `(newCursor, nextIntervalMs)`. A daemon calls this
+// on a timer, sleeping `nextIntervalMs` between calls.
+let pollOnce (peer: String) (currentIntervalMs: Int64) : (Int64 * Int64) =
+  let before = Darklang.Sync.cursorFor peer
+  let (after, _divCount) = pullPeer peer
+  decideNext before after currentIntervalMs
+
+
+// Run `times` adaptive poll steps, sleeping the computed interval BETWEEN steps (not after the
+// last). A blocking FOREGROUND loop — the true background daemon (non-blocking, survives CLI
+// exit) is the cli-daemon effort. Returns the last interval.
+let runLoop (peer: String) (intervalMs: Int64) (times: Int64) : Int64 =
+  if times <= 0L then
+    intervalMs
+  else
+    let (cursor, nextMs) = pollOnce peer intervalMs
+
+    Stdlib.printLine
+      $"  [autosync] {peer} → op {Stdlib.Int64.toString cursor}, next in {Stdlib.Int64.toString nextMs}ms"
+
+    if times > 1L then
+      Stdlib.Cli.Posix.sleep (Stdlib.Int64.toFloat nextMs)
+    else
+      ()
+
+    runLoop peer nextMs (times - 1L)
+
+
+// ── tailnet-wide poll ── the daemon syncs EVERY known peer, not one. (Sync is tailnet-wide.)
+
+// Poll every peer once; return `(sawChanges, conflictsRecorded)` — whether ANY peer advanced (one
+// cursor advancing is enough to call the cycle "saw changes" → snap back to the floor) and the total
+// divergences auto-resolved this cycle (so the daemon LOG records background conflict resolution —
+// the user isn't watching, so this is where it's surfaced, alongside `dark conflicts`/`sync status`).
+let pollAllPeers (peers: List<String>) : (Bool * Int64) =
+  let results =
+    peers
+    |> Stdlib.List.map (fun p ->
+      let before = Darklang.Sync.cursorFor p
+      let (after, div) = pullPeer p
+      (after > before, div))
+
+  let sawChanges = Stdlib.List.any results (fun (changed, _div) -> changed)
+  let conflicts = Stdlib.List.fold results 0L (fun acc (_changed, div) -> acc + div)
+  (sawChanges, conflicts)
+
+
+// The tailnet-wide adaptive loop: each cycle re-reads the peer set (so peers added mid-run are
+// picked up) and polls them all, then sleeps an interval that snaps to the floor if ANY peer brought
+// changes and backs off when the whole tailnet is quiet. Returns the last interval.
+let runLoopAll (intervalMs: Int64) (times: Int64) : Int64 =
+  if times <= 0L then
+    intervalMs
+  else
+    let peers = Darklang.Sync.remotes ()
+    let (sawChanges, conflicts) = pollAllPeers peers
+    let nextMs = nextPollMs sawChanges intervalMs
+
+    let conflictNote =
+      if conflicts > 0L then
+        $", {Stdlib.Int64.toString conflicts} conflict(s) auto-resolved"
+      else
+        ""
+
+    Stdlib.printLine
+      $"  [autosync] polled {Stdlib.Int64.toString (Stdlib.List.length peers)} peer(s), changes={Stdlib.Bool.toString sawChanges}{conflictNote} → next in {Stdlib.Int64.toString nextMs}ms"
+
+    if times > 1L then
+      Stdlib.Cli.Posix.sleep (Stdlib.Int64.toFloat nextMs)
+    else
+      ()
+
+    runLoopAll nextMs (times - 1L)

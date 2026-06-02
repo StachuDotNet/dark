@@ -56,6 +56,8 @@
     <Compile Include="ConflictDispatch.Tests.fs" />
     <Compile Include="Stream.Tests.fs" />
     <Compile Include="Capabilities.Tests.fs" />
+    <Compile Include="SyncIdempotency.Tests.fs" />
+    <Compile Include="Remotes.Tests.fs" />
 
     <Compile Include="Tests.fs" />
   </ItemGroup>

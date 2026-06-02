@@ -1,0 +1,20 @@
+// `dark sync` CLI output (pr-sync-read-write) — the PURE human-facing summary over a sync result,
+// now a real package: `Darklang.Sync.Display`. The counts come from the F# pull (cursor delta = ops
+// pulled, the log being append-only/contiguous); this formats them. `syncSummary` is wired into
+// `dark sync pull`; the op-kind breakdown is ready for when op kinds are threaded through the pull.
+
+// pluralization
+Darklang.Sync.Display.opWord 1L = "op"
+Darklang.Sync.Display.opWord 4L = "ops"
+
+// op-kind breakdown: mixed, single, empty, all-one-kind (only present kinds, in fn/type/value/rename order)
+Darklang.Sync.Display.opKindBreakdown ["fn"; "fn"; "type"; "rename"] = "2 fns, 1 type, 1 rename"
+Darklang.Sync.Display.opKindBreakdown ["fn"] = "1 fn"
+Darklang.Sync.Display.opKindBreakdown [] = ""
+Darklang.Sync.Display.opKindBreakdown ["value"; "value"] = "2 values"
+
+// pulled-only / pushed-only / both / nothing
+Darklang.Sync.Display.syncSummary "major" 4L 0L = "↓ pulled 4 ops from major"
+Darklang.Sync.Display.syncSummary "major" 0L 1L = "↑ pushed 1 op to major"
+Darklang.Sync.Display.syncSummary "major" 4L 1L = "↓ pulled 4 ops from major\n↑ pushed 1 op to major"
+Darklang.Sync.Display.syncSummary "major" 0L 0L = "✓ already in sync with major"

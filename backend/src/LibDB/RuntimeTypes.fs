@@ -112,6 +112,26 @@ module Blob =
       return ()
     }
 
+  /// Of `hashes`, the ones this store does NOT already have — the receiver's blob request
+  /// (sync's fetch-on-miss: `package_blobs` don't ride the op stream). Content-addressed, so
+  /// a hash we have is identical content; only the genuinely-absent ones need fetching.
+  let missing (hashes : List<string>) : Ply<List<string>> =
+    uply {
+      let! present =
+        Sql.query "SELECT hash FROM package_blobs"
+        |> Sql.executeAsync (fun read -> read.string "hash")
+      let presentSet = Set.ofList present
+      return hashes |> List.filter (fun h -> not (Set.contains h presentSet))
+    }
+
+  /// Every content hash this store holds — the sync blob MANIFEST (sender side of fetch-on-miss).
+  let allHashes () : Ply<List<string>> =
+    uply {
+      return!
+        Sql.query "SELECT hash FROM package_blobs"
+        |> Sql.executeAsync (fun read -> read.string "hash")
+    }
+
 
   /// Walk a Dval tree and collect every `Persistent` blob hash it
   /// references. Ephemeral blobs aren't rows in `package_blobs` — they
