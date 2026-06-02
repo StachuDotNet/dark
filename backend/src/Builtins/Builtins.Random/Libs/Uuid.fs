@@ -22,6 +22,7 @@ let fns () : List<BuiltInFn> =
         // Similarly to DateTime.now, it's not particularly fun for this to change
         // when live programming, so let's keep this as Impure rather than ImpurePreviewable
         Impure
+      effects = LibExecution.RuntimeTypes.Effect.ConcurrentSafe // uuid gen: impure but safe to overlap
       deprecated = NotDeprecated } ]
 
 let builtins () = LibExecution.Builtin.make [] (fns ())

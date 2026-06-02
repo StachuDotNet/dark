@@ -27,6 +27,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
     { name = fn "timeNowMs" 0
@@ -46,6 +47,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
     { name = fn "interpreterStatsReset" 0
@@ -62,6 +64,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
     { name = fn "interpreterStatsGet" 0
@@ -124,6 +127,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Impure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated } ]
 
 

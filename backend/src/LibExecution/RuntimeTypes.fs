@@ -1555,6 +1555,19 @@ type VMState =
 
     /// Performance counters — incremented during execution
     stats : InterpreterStats
+
+    /// async Stage A (part 2 — child-VM isolation): the parent VM's threadID when this
+    /// VM was spawned as a child, else `None` for a root VM. Gives the scheduler the
+    /// parent→child thread tree WITHOUT sharing any mutable state — the child's
+    /// callFrames/registers/threadID/stats are all its own; only the concurrency-safe
+    /// `ExecutionState` is shared (it's threaded into the eval loop separately, never
+    /// stored on `VMState`).
+    parentThreadID : Option<uuid>
+
+    /// async Stage A (part 3 — cancellation): the signal this VM checks at safe points.
+    /// `CancellationToken.None` for a non-cancellable (root) VM; a spawned child gets a
+    /// token linked to its parent's so cancelling a parent unwinds its whole subtree.
+    cancel : System.Threading.CancellationToken
   }
 
   static member create(instrs : Option<tlid> * Instructions) : VMState =
@@ -1582,13 +1595,35 @@ type VMState =
             resultReg = instrs.resultIn }
         (tlid, instrs)
       lambdaInstrDataCache = Map.empty
-      stats = InterpreterStats.create () }
+      stats = InterpreterStats.create ()
+      parentThreadID = None
+      cancel = System.Threading.CancellationToken.None }
 
   static member createWithoutTLID(instrs : Instructions) : VMState =
     VMState.create (None, instrs)
 
   static member creatWithTLID (tlid : tlid) (instrs : Instructions) : VMState =
     VMState.create (Some tlid, instrs)
+
+  /// async Stage A (parts 2 + 3): spawn an isolated child VM that runs `instrs`.
+  /// The child has entirely fresh mutable state (its own threadID, callFrames,
+  /// registers, stats) — mutating it can never affect the parent — and records the
+  /// parent's threadID for the scheduler's thread tree. `cancel` is the child's
+  /// cancellation token (in real use linked to the parent's, so a parent-cancel
+  /// unwinds the child). The shared `ExecutionState` is passed to the eval loop
+  /// separately, so nothing mutable is shared by spawning.
+  static member spawnChild
+    (parent : VMState)
+    (cancel : System.Threading.CancellationToken)
+    (instrs : Option<tlid> * Instructions)
+    : VMState =
+    let child = VMState.create instrs
+    { child with parentThreadID = Some parent.threadID; cancel = cancel }
+
+  /// async Stage A (part 3): throw if this VM has been cancelled. Call at safe points
+  /// (between instructions, before a builtin call). Stage A only adds the signal + this
+  /// check; no caller parks on it yet — the scheduler (effort 6) drives cancellation.
+  member this.throwIfCancelled() : unit = this.cancel.ThrowIfCancellationRequested()
 
 
 
@@ -1602,6 +1637,23 @@ type BuiltInValue =
 
 /// A built-in standard library function
 ///
+/// The concurrency CHARACTER of a builtin (for the async scheduler/planner).
+/// Orthogonal to its capability *domain* (capabilities.md) — see async.md / pr-async-stage-a.md.
+/// async Stage A: every builtin declares one. Default-to-most-restrictive (OrderedIO) keeps a
+/// forgotten declaration conservative, not a soundness bug.
+/// RequireQualifiedAccess: `Effect.Pure` collides with the existing `Previewable.Pure`
+/// (hundreds of `previewable = Pure` sites) — qualification keeps them distinct.
+[<RequireQualifiedAccess>]
+type Effect =
+  | Pure // no effect — schedulable freely, never needs a cap
+  | AsyncRead
+  | AsyncWrite
+  | OrderedIO // must keep program order (stdout, append)
+  | ConcurrentSafe
+  | Blocking // holds a thread — schedule off the hot path
+  | Resource of name : string
+  | Harmful // gated; ties to capabilities.md + the harmful-flag stream
+
 /// (Generally shouldn't be accessed directly,
 /// except by a single stdlib Package fn that wraps it)
 type BuiltInFn =
@@ -1613,6 +1665,7 @@ type BuiltInFn =
     previewable : Previewable
     deprecated : Deprecation<FQFnName.FQFnName>
     sqlSpec : SqlSpec
+    effects : Effect // async Stage A — concurrency character (default OrderedIO via codemod)
     fn : BuiltInFnSig }
 
 and BuiltInFnSig =

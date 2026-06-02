@@ -755,6 +755,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
+      effects = LibExecution.RuntimeTypes.Effect.AsyncRead
       deprecated = NotDeprecated }
 
 
@@ -905,6 +906,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
+      effects = LibExecution.RuntimeTypes.Effect.AsyncRead
       deprecated = NotDeprecated } ]
 
 

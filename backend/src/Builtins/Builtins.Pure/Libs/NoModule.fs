@@ -185,6 +185,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "="
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -199,6 +200,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = SqlBinOp "<>"
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -256,6 +258,7 @@ let fns () : List<BuiltInFn> =
 
       sqlSpec = NotQueryable
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 

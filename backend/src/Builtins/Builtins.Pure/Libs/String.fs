@@ -32,6 +32,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -65,6 +66,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "replace"
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -79,6 +81,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "upper"
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -93,6 +96,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "lower"
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -108,6 +112,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented // CLEANUP: Sqlite has "LENGTH" but that counts characters; if we can get it to count EGCs, great
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -126,6 +131,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -159,6 +165,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -174,6 +181,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "reverse"
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -218,6 +226,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -244,6 +253,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -292,6 +302,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -310,6 +321,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "trim"
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -327,6 +339,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "ltrim"
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -344,6 +357,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = SqlFunction "rtrim"
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -360,6 +374,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -379,6 +394,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -400,6 +416,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -423,6 +440,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -445,6 +463,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = SqlCallback2(fun str search -> $"(INSTR({str}, {search}) - 1)")
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -467,6 +486,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated } ]
 
 

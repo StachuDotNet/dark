@@ -23,6 +23,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
     // { name = fn "reflect" 0

@@ -267,6 +267,14 @@ let rec private executeInner (exeState : ExecutionState) (vm : VMState) : Ply<Dv
     let mutable finalResult : Dval option = None
 
     while vm.callFrames.ContainsKey vm.currentFrameID do
+      // async Stage A (part 3): cancellation safe point, between call-frame dispatches.
+      // A no-op unless a cancel token was supplied (root VMs use CancellationToken.None),
+      // so it changes no observable behavior; a requested cancel raises
+      // OperationCanceledException here, unwinding the eval loop cleanly. (Per-instruction
+      // granularity is the finer alternative — see pr-async-stage-a.md — but per-frame is
+      // the cheap safe point that keeps the hot inner loop untouched.)
+      vm.throwIfCancelled ()
+
       let currentFrame = vm.callFrames[vm.currentFrameID]
 
       let mutable counter = currentFrame.programCounter

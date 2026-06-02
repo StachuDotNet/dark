@@ -103,6 +103,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -126,6 +127,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated }
 
 
@@ -140,6 +142,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
+      effects = LibExecution.RuntimeTypes.Effect.OrderedIO
       deprecated = NotDeprecated } ]
 
 let builtins () = LibExecution.Builtin.make [] (fns ())
