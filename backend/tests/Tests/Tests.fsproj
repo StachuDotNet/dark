@@ -52,6 +52,7 @@
     <Compile Include="Serialization.DarkTypes.Tests.fs" />
 
     <Compile Include="Blob.Tests.fs" />
+    <Compile Include="OpsProjections.Tests.fs" />
     <Compile Include="Stream.Tests.fs" />
 
     <Compile Include="Tests.fs" />
