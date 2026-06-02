@@ -1849,11 +1849,40 @@ and ExceptionReporter = ExecutionState -> VMState -> Metadata -> exn -> Ply<unit
 
 and Notifier = ExecutionState -> VMState -> string -> Metadata -> Ply<unit>
 
+// -- Conflict dispatch: the runtime "I can't proceed; here are my options" hook. --
+// These MUST live here (the and-chain), not a separate ConflictTypes.fs: they mention
+// RuntimeError.Error/Dval (defined above) AND ExecutionState references ConflictDispatch,
+// so a later file can't satisfy both. (Same constraint a buses field would have.)
+and Conflict =
+  | CRuntimeError of RuntimeError.Error
+  | CFnNotFound of FQFnName.FQFnName
+  // A name bound to two different hashes across synced instances — the `Name → two hashes`
+  // conflict the sync PR produces. Hashes are RT-level strings (PT's `Hash of string` can't be
+  // referenced here — PT depends on RT, not the reverse). Default dispatch surfaces it loudly;
+  // a sync policy can RSubstitute the converged winner (last-writer / LWW-register join).
+  // (Signature matches the integrated `compose-check`, so a re-merge is clean.)
+  | CSyncDivergence of location : string * existingHash : string * incomingHash : string
+  // extensible: CCapabilityDenied / … added by later PRs
+
+and Resolution =
+  | RSubstitute of Dval
+  | RFailLoudly of RuntimeError.Error
+  // RPark is added with the scheduler PR — it needs the scheduler's EventSelector,
+  // which is vision-domain and doesn't exist at the skeleton stage. Omitted here.
+
+and CallContext = { branchId : BranchId; threadID : uuid } // assembled from ExecState + VMState
+
+and ConflictDispatch = Conflict -> CallContext -> Ply<Resolution>
+
 /// All state set when starting an execution; non-changing
 /// (as opposed to the VMState, which changes as the execution progresses)
 and ExecutionState =
   { // -- Set consistently across a runtime --
     tracing : Tracing.Tracing
+
+    /// The conflict-dispatch hook. Default (createState) returns FailLoudly for every
+    /// conflict — byte-identical to today. A policy can install substitute/park later.
+    conflictDispatch : ConflictDispatch
     test : TestContext
 
     /// Lambda instructions registered by `CreateLambda`, looked up on `Apply`.
