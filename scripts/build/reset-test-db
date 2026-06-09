@@ -1,0 +1,40 @@
+#! /usr/bin/env bash
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
+
+set -euo pipefail
+
+# Reset the *throwaway* test databases to a clean state, then reload packages from source.
+#
+# Use when the dev DB is stale or corrupt — e.g. dangling refs after package renames, or
+# "SQLite Error: no such table" after a manual `data.db` delete (the schema lives in the DB,
+# so deleting it by hand breaks reload; this restores it).
+#
+# Resets ONLY:
+#   - the dev package DB in the rundir
+#   - release-test data dirs that sit *next to* a published exe (clis/.darklang, publish/.darklang)
+# It never touches a real/installed instance at ~/.darklang.
+#
+# Usage: reset-test-db            # reset dev DB + release-test data dirs, then reload
+
+RUNDIR="${DARK_CONFIG_RUNDIR:-rundir}"
+
+echo "→ dev DB: ${RUNDIR}/data.db"
+rm -f "${RUNDIR}/data.db" "${RUNDIR}/data.db-wal" "${RUNDIR}/data.db-shm"
+if [[ -f "${RUNDIR}/seed.db" ]]; then
+  # seed.db carries the schema + base packages; reload then repopulates from the current source.
+  cp "${RUNDIR}/seed.db" "${RUNDIR}/data.db"
+else
+  echo "  no ${RUNDIR}/seed.db — run scripts/fetch-seed first" >&2
+  exit 1
+fi
+
+echo "→ release-test data dirs (next to published exes, not ~/.darklang)"
+rm -rf clis/.darklang 2>/dev/null || true
+for d in backend/Build/out/Cli/Release/*/*/publish/.darklang; do
+  [ -e "$d" ] && rm -rf "$d" || true
+done
+
+echo "→ reloading packages from source"
+./scripts/build/reload-packages
+
+echo "Test DBs reset."
