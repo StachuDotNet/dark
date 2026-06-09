@@ -11,7 +11,9 @@ suite green. Not squashing — keeping the commits granular for review.
   byte-identical build. Now wired in **two** places: the interpreter's missing-fn path (teed up for
   fetch-on-miss) and sync's divergence routing — so it's shared infrastructure, not a sync appendage.
 - **Sync engine** — op log + per-peer cursors + the latest-op-wins fold; idempotent apply; race detection
-  + a reviewable `sync_conflicts` record; peer registry. File + HTTP-over-Tailscale transports.
+  + a reviewable `sync_conflicts` record; peer registry. File + HTTP-over-Tailscale transports. Exact
+  same-millisecond ties break deterministically by content hash (portable → every machine + a rebuild
+  converge); local sequential edits never tie (each gets a strictly-increasing local stamp).
 - **Conflict resolution** — a SetName race auto-resolves to whichever op was written later; recorded for
   review. You `ack` to OK it or `resolve mine|theirs` to override — and an override is itself an op that
   rides sync, so peers converge on your choice. Pure Dark `Sync.Display.conflictReport` (LWW-framed,
@@ -28,8 +30,6 @@ suite green. Not squashing — keeping the commits granular for review.
 
 1. **Migration kill-and-fill** of `package_ops` — pre-existing; leave as-is, or make data-preserving?
 2. **Commit-only vs WIP pull** — gate `sync pull` to committed ops only (`opsSinceCommitted` exists)?
-3. **Same-millisecond tie** — two different ops for one name authored in the exact same millisecond on
-   different machines resolve by which arrived first (rare). Accept, or add a deterministic tie-break?
 
 ## Remaining
 

@@ -64,7 +64,10 @@ belong to; a branch projects only its own ops.
 Two machines can bind the same name to different content — a **SetName race**. It auto-resolves by
 **choosing whichever op was written later** (each op carries a portable `origin_ts` authoring time, kept
 *beside* the op so its content hash is unchanged; every instance computes the same winner regardless of
-arrival order). The race is **recorded, never lost** — you follow up when you want:
+arrival order). The rare exact tie — two ops stamped the *same millisecond* on different machines — breaks
+**deterministically by content hash**, so the machines still converge rather than disagreeing by arrival
+order. (Local sequential edits never tie: each op in a batch gets a strictly-increasing local stamp, so
+v2-replacing-v1 just wins.) The race is **recorded, never lost** — you follow up when you want:
 
 - **ack** the auto-resolution to say "that was right," or
 - **override** (`resolve <id> mine|theirs`) to pick the other side. An override re-stamps the op to *now*,
@@ -181,7 +184,8 @@ The goal was to make the engine's *properties* hold, not to rack up cases. By la
   not arrival**. *(SyncIdempotency)*
 - **Divergence routing — the policy layer.** Default routing is a no-op (LWW stands); keep-local
   re-stamps + re-binds and marks the race overridden; keep-incoming and an unknown substitute are safe
-  no-ops; a *type* binding resolves like a fn; a multi-race pull converges each location. *(SyncScenarios)*
+  no-ops; a *type* binding resolves like a fn; a multi-race pull converges each location; an **exact
+  same-millisecond tie converges to the higher-hash winner whichever side holds it**. *(SyncScenarios)*
 - **The race UX, end to end.** A live divergent pull auto-resolves AND records the conflict; `resolve
   mine` re-stamps + re-binds, `resolve theirs` keeps the incoming — both mark it overridden. *(BranchOps +
   SyncIdempotency)*
