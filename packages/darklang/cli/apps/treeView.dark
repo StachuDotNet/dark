@@ -1,0 +1,57 @@
+// SKETCH (render-only, not wired interactive yet) -- the package-tree navigation + adjustment app.
+//
+// Vision: the whole package hierarchy as one collapsible, navigable tree (the "shape at once"
+// view, vs `Explorer`'s "one level at a time"). Move a cursor through it, expand/collapse nodes,
+// and ADJUST in place -- rename, deprecate, move an item, or open it to edit -- without dropping
+// back to the command line. Today's `tree` command prints a static dump; this makes it live.
+//
+// Connected to: `Apps.Explorer` (shared package-path + cursor -- a key toggles between the two
+// views at the same location), and `Apps.Repl` (open the selected item into a scratch eval).
+//
+// What's here now: the pure `Row`/`Model` + `render`. TODO (later):
+//   - [ ] wire interactive via `Cli.Component` from a nested submodule (see the note in
+//         `Apps.Explorer` about where `Component` resolves)
+//   - [ ] back nodes with lazy data (`Builtin.pmChildren`) so big trees stay cheap
+//   - [ ] expand/collapse; adjust-in-place (r rename / d deprecate / m move / enter open) routed
+//         through the constraint/resolution flow so e.g. an orphaning rename surfaces a Constraint
+//   - [ ] per-node badges: WIP, pending conflict, deprecated, dependent-count
+module Darklang.Cli.Apps.TreeView
+
+// A flattened tree row: depth (indent), whether it has children + is expanded, and the label.
+type Row =
+  { depth: Int64
+    expandable: Bool
+    expanded: Bool
+    label: String }
+
+type Model = { rows: List<Row>; cursor: Int64 }
+
+// The disclosure glyph for a row: "v" expanded, ">" collapsed, " " leaf.
+let twisty (r: Row) : String =
+  if Stdlib.Bool.not r.expandable then " " else if r.expanded then "v" else ">"
+
+// One tree line: indent by depth, the twisty, a cursor caret on the selected row, then the label.
+let renderRow (selected: Bool) (r: Row) : String =
+  let indent = Stdlib.String.repeat "  " r.depth
+  let caret = if selected then "*" else " "
+  caret ++ " " ++ indent ++ (twisty r) ++ " " ++ r.label
+
+let render (m: Model) : String =
+  let header = "  packages\n  " ++ (Stdlib.String.repeat "-" 40L) ++ "\n"
+
+  let body =
+    m.rows
+    |> Stdlib.List.indexedMap (fun i r -> renderRow (i == m.cursor) r)
+    |> Stdlib.String.join "\n"
+
+  let footer = "\n\n  up/down move - left/right expand - enter open - r rename - esc exit   (SKETCH)"
+  header ++ body ++ footer
+
+let demoRows : List<Row> =
+  [ Row { depth = 0L; expandable = true; expanded = true; label = "Darklang" }
+    Row { depth = 1L; expandable = true; expanded = true; label = "Stdlib" }
+    Row { depth = 2L; expandable = true; expanded = false; label = "List" }
+    Row { depth = 2L; expandable = true; expanded = false; label = "String" }
+    Row { depth = 1L; expandable = true; expanded = false; label = "Cli" } ]
+
+let demoModel : Model = Model { rows = demoRows; cursor = 0L }

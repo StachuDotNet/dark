@@ -1,0 +1,21 @@
+// SKETCH apps (Explorer / TreeView / Repl) -- pure render helpers. These are bare-bones UX sketches
+// (see each module's doc + TODOs); the interactive shell is a TODO. Dense coverage of the pure bits.
+
+// ── Explorer: breadcrumb + listing rows ──
+Darklang.Cli.Apps.Explorer.pathBar [] = "/"
+Darklang.Cli.Apps.Explorer.pathBar ["Darklang"] = "/Darklang"
+Darklang.Cli.Apps.Explorer.pathBar ["Darklang"; "Stdlib"; "List"] = "/Darklang/Stdlib/List"
+Darklang.Cli.Apps.Explorer.renderRow true "List" = "  > List"
+Darklang.Cli.Apps.Explorer.renderRow false "List" = "    List"
+
+// ── TreeView: disclosure twisty + indented rows ──
+Darklang.Cli.Apps.TreeView.twisty (Darklang.Cli.Apps.TreeView.Row { depth = 0L; expandable = true; expanded = true; label = "x" }) = "v"
+Darklang.Cli.Apps.TreeView.twisty (Darklang.Cli.Apps.TreeView.Row { depth = 0L; expandable = true; expanded = false; label = "x" }) = ">"
+Darklang.Cli.Apps.TreeView.twisty (Darklang.Cli.Apps.TreeView.Row { depth = 0L; expandable = false; expanded = false; label = "x" }) = " "
+Darklang.Cli.Apps.TreeView.renderRow true (Darklang.Cli.Apps.TreeView.Row { depth = 1L; expandable = true; expanded = false; label = "List" }) = "*   > List"
+Darklang.Cli.Apps.TreeView.renderRow false (Darklang.Cli.Apps.TreeView.Row { depth = 0L; expandable = false; expanded = false; label = "Darklang" }) = "    Darklang"
+
+// ── Repl: prompt + history entry ──
+Darklang.Cli.Apps.Repl.prompt "" = "  > _"
+Darklang.Cli.Apps.Repl.prompt "1L + 2L" = "  > 1L + 2L_"
+Darklang.Cli.Apps.Repl.renderEntry (Darklang.Cli.Apps.Repl.Entry { input = "1L + 2L"; output = "3L" }) = "  > 1L + 2L\n      3L"

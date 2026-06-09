@@ -1,0 +1,51 @@
+// SKETCH (render-only, not wired interactive yet) -- the dir-based package "filesystem" experience.
+//
+// Vision: a full-screen file-manager for packages. The package namespace IS a directory tree
+// (owner / module / submodule / item); this app lets you cd/ls through it interactively -- a
+// breadcrumb path bar on top, a selectable listing below, preview/actions on the right (later).
+// It's the spatial counterpart to today's line-oriented `nav`/`ls`/`tree` commands.
+//
+// Connected to: `Apps.TreeView` (same package-path model -- this is the "one level at a time"
+// view, TreeView is the "whole shape at once" view; a key should toggle between them). And to
+// `dark sync`/`conflicts` (a divergent location could be flagged inline here).
+//
+// What's here now: the pure `Model` + `render` (testable in conflicts-list's sibling testfile).
+// TODO (later):
+//   - [ ] wire interactive via `Cli.Component` (render + onKey -> launch). NOTE: the `Component`
+//         framework only resolves from a *nested* submodule under `Apps.*` (see `Apps.Examples.
+//         TextEdit`); a top-level ref doesn't resolve. Mirror that shape when wiring.
+//   - [ ] back `entries` with real data: `Builtin.pmListAtPath path` (owners -> modules -> items)
+//   - [ ] Enter descends / opens the selected item (View); Backspace = up; t = toggle to TreeView
+//   - [ ] right pane preview (signature, doc, hash, deprecation); inline conflict/WIP markers
+module Darklang.Cli.Apps.Explorer
+
+type Model =
+  { path: List<String> // package path segments, e.g. ["Darklang"; "Stdlib"; "List"]
+    entries: List<String> // names at this level (dirs + items)
+    cursor: Int64 }
+
+// "/Darklang/Stdlib/List" -- the breadcrumb. Root (empty path) reads as "/".
+let pathBar (path: List<String>) : String =
+  if Stdlib.List.isEmpty path then "/" else "/" ++ (Stdlib.String.join path "/")
+
+// One listing row; the selected row gets a ">" caret, others indent to align.
+let renderRow (selected: Bool) (name: String) : String =
+  if selected then "  > " ++ name else "    " ++ name
+
+// The full frame: breadcrumb header, the listing (cursor-marked), and the keybinding footer.
+let render (m: Model) : String =
+  let header = "  " ++ (pathBar m.path) ++ "\n  " ++ (Stdlib.String.repeat "-" 40L) ++ "\n"
+
+  let rows =
+    m.entries
+    |> Stdlib.List.indexedMap (fun i name -> renderRow (i == m.cursor) name)
+    |> Stdlib.String.join "\n"
+
+  let footer = "\n\n  up/down move - enter open - backspace up - t tree - esc exit   (SKETCH)"
+  header ++ rows ++ footer
+
+let demoModel : Model =
+  Model
+    { path = [ "Darklang"; "Stdlib" ]
+      entries = [ "List"; "String"; "Int64"; "Option"; "Result" ]
+      cursor = 0L }

@@ -1,0 +1,46 @@
+// SKETCH (render-only, not wired interactive yet) -- the full-screen REPL / script-testing app.
+//
+// Vision: a persistent, full-screen scratchpad. Type an expression, see it evaluate, keep the
+// history on screen; or load a script file and re-run it on each save (a tight test loop). The
+// inline `eval`/`run-script` commands are one-shot; this is the place you LIVE while iterating --
+// history, multiline editing, and a pinned "last result" you can name into a package value.
+//
+// Connected to: `Apps.Explorer`/`Apps.TreeView` (open the selected item here to poke at it), and
+// to scripts (`dark scripts`) -- a saved script becomes a REPL session you re-run.
+//
+// What's here now: the pure `Entry`/`Model` + `render`. TODO (later):
+//   - [ ] wire interactive via `Cli.Component` from a nested submodule (see `Apps.Explorer` note)
+//   - [ ] real evaluation: pipe input through the same path as `Cli.Eval`, capture the Dval
+//   - [ ] multiline input (the outliner `TextEditor` widget); history recall; persist across runs
+//   - [ ] "watch a script file": re-run on change, show pass/fail inline (the testing loop)
+//   - [ ] promote the last result into a package value (`val <name> = <lastResult>`)
+//   - [ ] :commands (`:type <expr>`, `:deps <name>`, `:clear`)
+module Darklang.Cli.Apps.Repl
+
+type Entry = { input: String; output: String }
+
+type Model = { history: List<Entry>; input: String }
+
+// One history entry: the "> input" line then the indented result.
+let renderEntry (e: Entry) : String =
+  "  > " ++ e.input ++ "\n      " ++ e.output
+
+// The active input line with a cursor block.
+let prompt (input: String) : String = "  > " ++ input ++ "_"
+
+let render (m: Model) : String =
+  let header = "  repl (scratch)\n  " ++ (Stdlib.String.repeat "-" 40L) ++ "\n"
+
+  let hist =
+    if Stdlib.List.isEmpty m.history then "  (nothing evaluated yet)"
+    else m.history |> Stdlib.List.map renderEntry |> Stdlib.String.join "\n\n"
+
+  let footer = "\n\n  enter eval - up/down history - esc exit   (SKETCH -- eval not wired yet)"
+  header ++ hist ++ "\n\n" ++ (prompt m.input) ++ footer
+
+let demoModel : Model =
+  Model
+    { history =
+        [ Entry { input = "1L + 2L"; output = "3L" }
+          Entry { input = "Stdlib.List.length [1L; 2L]"; output = "2L" } ]
+      input = "Stdlib.String.toUppercase \"hi\"" }
