@@ -39,6 +39,14 @@ hash) in the op, a per-identity LWW fold, and the new conflict case.
   shadowing a signature) so the whole "system noticed X, you commit your intent" loop is uniform.
 - **ACL / grant changes on merge** — needs the capability axis; `CCapabilityDenied` is the hook.
 
+## Fetch-on-miss (the dispatch's next consumer)
+
+The conflict-dispatch seam is already wired into the interpreter's **missing-package-fn** path (today it
+fails loud, exactly as before). The teed-up policy: instead of failing, **pull the missing fn from a
+peer** and resolve the call. That's the second real use of the dispatch (sync's divergence routing is the
+first), and the reason it's shared infrastructure rather than a sync-only hook. Needs: result-injection
+at the call site (return a Dval, not instructions) + the pull-one-fn path.
+
 ## The throughline
 Every one of these is: **an op in the log → folded on the receiver → races surface as a `Conflict` →
 resolved by a policy → reviewable + overridable**. This PR establishes that spine; the rest is adding

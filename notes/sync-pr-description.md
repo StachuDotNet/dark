@@ -1,69 +1,77 @@
-# Stable & Syncing — op-log sync between Darklang instances
+# Stable & Syncing — a graph of Dark instances that reconcile
 
-Author on one machine, see it on another. Two Dark instances reconcile their package **op-logs** and
-converge on the same code — the foundation for using Dark day-to-day across devices.
+## The goal
 
-This PR lands the whole **floor** in three coherent layers, bottom-up:
+Use Dark across all my devices. Each device runs a Dark instance; together they form a **graph** on my
+tailnet that **reconciles its package changes**. Author a function on the laptop, it shows up on the
+desktop. The instances agree on the same code without a central server in the loop.
 
-1. **Ops ⊥ projections** — make the op log canonical and every package table a regenerable projection.
-2. **Conflict-dispatch seam** — a single dormant runtime hook for "I can't proceed; here are the options."
-3. **Sync** — replicate the op log between instances, converge by authoring time, surface divergences for ack.
+Two properties make that safe to live in day to day:
 
-## How sync works (the process)
+- **Convergence without blocking.** When two machines change the same name, sync doesn't stall — it
+  auto-resolves and records the race so I can follow up.
+- **Resolutions travel too.** A decision I make on one machine (override this race, keep my version) is
+  *itself an op* that rides sync to the others, so they converge on my choice — as if I'd resolved it
+  there. Nothing is a one-machine-only fact.
 
-Transport-agnostic — true whether ops move over a file or the network.
+The rest of this reads **bottom-up**: the two foundation pieces this rests on, then sync itself.
 
-- **Ops are the truth.** Every package change (add a fn, rename, deprecate, propagate) is an **op** in a
-  branch-scoped, append-only log. Everything you *see* — functions, types, locations, dependency graphs — is a
-  **projection** folded from that log. Projections are regenerable and disposable; the op log is canonical.
-- **Sync = replicate the log.** A receiver pulls the ops it hasn't seen (tracked by a per-peer cursor) and
-  folds them through the **same playback path a local edit uses**. Apply is idempotent (`INSERT OR IGNORE`
-  by content-hash id), so re-pulling is a no-op and a full replay reproduces the identical projection.
-- **Conflicts resolve by creation time.** Each op carries a portable **`origin_ts`** (when it was authored)
-  *alongside* it — never inside the op, so its content hash is unchanged. A name→hash binding is ordered by
-  **creation, not arrival**: an op authored *earlier* but arriving *later* via sync loses to the newer
-  binding. Every instance computes this identically, so they converge regardless of arrival order. The
-  losing op stays in the log — it's just not the active name.
-- **Divergences surface as data, never block.** When an incoming rename points a name at a different hash
-  than this instance has, it's auto-resolved (last-writer-wins) and **recorded** for review — the op still
-  applies, nothing stalls on a human. See *Conflict resolution* below.
-- **Per-branch, no bleed.** A synced op folds onto the branch it belongs to; a branch projects only its own
-  ops. Pulling a peer's branch you're not on receives the ops without auto-folding them into yours.
+---
 
-## Layer 1 — ops ⊥ projections (the regenerable foundation)
+## Foundation 1 — ops ⊥ projections
 
-The op log is the source of truth; five tables (package functions/types/values, locations, dependencies)
-are **projections** of it (`package_blobs` is canonical content, not a projection). A `projectionRegistry`
-makes the rebuild set the single source of truth: `rebuildProjections` clears the projections, marks ops
-unapplied, and re-folds the whole log → byte-identical tables. Surfaced as **`dark status`** (op count vs
-folded-through — is the cache current?) and **`dark branch rebuild`** (recover a projection from the log).
-Losing a projection costs only CPU; the ops are safe.
+The op log is the source of truth; everything you *see* is a projection of it.
 
-## Layer 2 — conflict-dispatch seam (dormant on purpose)
+Every package change (add a fn, rename, deprecate, propagate) is an **op** in a branch-scoped,
+append-only log. The five tables you query — package functions/types/values, locations, dependencies —
+are **projections** *folded* from that log (`package_blobs` is canonical content, not a projection). A
+`projectionRegistry` makes the rebuild set authoritative: `rebuildProjections` clears the projections,
+marks the ops unapplied, and re-folds the whole log → byte-identical tables. Surfaced as **`dark status`**
+(ops in the log vs folded-through — is the cache current?) and **`dark branch rebuild`**.
+
+This is what makes sync safe: replicating the op log and re-folding it is the *same operation* as a local
+edit. Losing a projection costs only the CPU to rebuild; the ops are the thing that matters.
+
+## Foundation 2 — conflict-dispatch (the resolution spine)
 
 A single runtime hook — `ExecutionState.conflictDispatch : Conflict -> CallContext -> Ply<Resolution>` —
-the place the runtime asks "I can't proceed; here are the options" (a `CSyncDivergence`, a `CFnNotFound`, …).
-The default is `FailLoudly` for every conflict, so the build is **byte-identical to before**: the seam is
-installed, unused, ready. The types live in `RuntimeTypes.fs` (they reference Dval/RuntimeError *and*
-ExecutionState references them — a circular constraint that forces the and-chain).
+the one place the runtime says *"I can't proceed; here are the options."* A `Conflict` (a SetName race, a
+missing fn, …) goes in; a `Resolution` (fail loud, substitute a value, later: park) comes out. The default
+policy fails loud for everything, so installing the seam changed no behavior.
 
-## Layer 3 — sync, and routing divergences through the seam
+It is **shared infrastructure, not a sync appendage** — it's wired into two places already:
 
-Sync detects each `name → two hashes` divergence, auto-resolves it by timestamp-LWW, and **routes it through
-the conflict-dispatch seam** as a first-class `CSyncDivergence` (not just its own recording):
+1. the interpreter's **missing-package-fn** path (today: fail loud, identical to before; teed up:
+   *fetch-on-miss* — a policy pulls the fn from a peer instead of failing), and
+2. sync's **divergence routing** (below).
 
-- the **default policy** keeps today's behavior exactly — surface-as-data, LWW stands, a pull never aborts
-  mid-batch;
-- a **sync policy** can return `RSubstitute(local hash)` → keep-local (re-stamp + re-fold, the same move as
-  a human `resolve … mine` override).
+New conflict kinds are new `Conflict` cases a policy resolves the same way — so the system grows by adding
+cases, not by re-plumbing.
 
-So sync is both self-contained *and* wired into the generic resolution machinery the other constraint kinds
-(merge, propagation, deprecation) can later emit through.
+---
 
-## Conflict resolution (surfaced for ack — nothing silently lost)
+## Sync
 
-Auto-resolution never blocks, so every divergence lands somewhere you **eventually ack** (agree) or
-**override**. `dark conflicts` frames the last-write-wins outcome, marks the winning side, and inlines the
+### How it reconciles
+
+A receiver pulls the ops it hasn't seen (tracked by a per-peer cursor) and folds them through the **same
+playback path a local edit uses**. Apply is idempotent (`INSERT OR IGNORE` by content-hash id), so
+re-pulling is a no-op and a full replay reproduces the identical projection. Ops fold onto the branch they
+belong to; a branch projects only its own ops.
+
+### Conflicts & resolutions
+
+Two machines can bind the same name to different content — a **SetName race**. It auto-resolves by
+**choosing whichever op was written later** (each op carries a portable `origin_ts` authoring time, kept
+*beside* the op so its content hash is unchanged; every instance computes the same winner regardless of
+arrival order). The race is **recorded, never lost** — you follow up when you want:
+
+- **ack** the auto-resolution to say "that was right," or
+- **override** (`resolve <id> mine|theirs`) to pick the other side. An override re-stamps the op to *now*,
+  which both wins locally and **rides sync** — so peers adopt your choice too.
+
+Other conflict kinds (moves, value updates — below) will be modeled and resolved the same way, all through
+the conflict-dispatch spine. `dark conflicts` shows what was auto-kept, marks the winner, and inlines the
 exact action:
 
 ```
@@ -75,74 +83,120 @@ exact action:
   ack <id> (agree)  ·  ack all  ·  resolve <id> mine|theirs (override)
 ```
 
-A `sync pull` that surfaced divergences nudges you (`… see dark conflicts`); `dark sync status` shows the
-pending count. The formatting is a **pure Dark package** (`Sync.Display.conflictReport`) over structured
-rows from the builtin — package-testable and iterable without an F# rebuild.
+A pull that surfaced races nudges you toward `dark conflicts`; `dark sync status` shows the pending count.
+The formatting is a pure Dark package (`Sync.Display.conflictReport`) over structured rows from the
+builtin — so the UX is package-testable and iterable without an F# rebuild.
 
-## Transport (the swappable part — deliberately last)
+### Sync transport options
 
-The process above doesn't care *how* ops move. Two transports are wired:
+The reconciliation above doesn't care *how* ops move. Two carriers are wired:
 
-- **File** — `dark sync pull <peer's data.db>`. Direct, offline, no server. (Verified: two release CLIs,
-  author on A → B pulls exactly the new ops → idempotent re-pull.)
-- **HTTP over Tailscale** — a peer serves `/sync/{events,snapshot,blobs,health}`; the client pulls the delta
-  since its cursor. Identity comes from Tailscale's `Tailscale-User-Login` header (the tailnet is the trust
-  boundary; `httpClientGetUnsafe` relaxes SSRF only there). MagicDNS + TLS for free.
+- **File** — `dark sync pull <peer's data.db>`. Direct, offline, no server.
+- **HTTP over Tailscale** — a peer serves `/sync/{events,snapshot,blobs,health}`; the client pulls the
+  delta since its cursor. **Trust model: machines on the tailnet are trusted** — identity is the
+  `Tailscale-User-Login` header, the tailnet is the boundary, and `httpClientGetUnsafe` relaxes SSRF only
+  for that. MagicDNS + TLS come for free.
 
-Public client/server (bearer auth, a canonical hub) is designed-for but not built here.
+A public client/server (bearer auth, a canonical hub) is designed-for but out of scope here.
 
-## Coverage: every op kind rides sync
+### Every op kind rides sync
 
-Nothing a user can author silently fails to replicate: `applyOp` has **no wildcard** — the compiler forces
-every `PackageOp` kind (add fn/type/value, name/rename, deprecate, undeprecate, propagate, revert) to be
-folded on the receiver; `opsSince` ships every kind; the wire codec frames the raw blob byte-exact. A
-propagation rides as its standalone companion `SetName` ops, so dependents repoint on the receiver too.
+Nothing you can author silently fails to replicate: `applyOp` has **no wildcard**, so the compiler forces
+every `PackageOp` kind to be folded on the receiver; `opsSince` ships every kind; the wire frames the raw
+blob byte-exact. A propagation rides as its standalone companion `SetName` ops, so dependents repoint too.
 
-## Built to grow (more ops, more conflict types)
+---
 
-The foundation is meant to expand without re-architecting — see `notes/sync-future-ops.md`:
+## What's coming (ops & conflict types)
 
-- **A new op rides sync for free** — `opsSince` has no kind filter, the wire frames the raw blob
-  byte-exact, and `applyOp` has **no wildcard** (a new `PackageOp` case won't compile until the fold
-  handles it — so "silently doesn't sync" is impossible).
-- **Conflicts are one open enum** — `Conflict` is the meta-model; new kinds are new cases a policy
-  resolves the same way. Already named for what's coming: **`CMoveCollision`** (MoveItem/MoveModule
-  land on an occupied name), **`CValueUpdateRace`** (concurrent updates to a long-lived *mutable*
-  package value — LWW by `origin_ts`, or a merge policy later), **`CCapabilityDenied`**.
-- A **SetName race** (this PR) is the first instance of the general pattern: *op in the log → folded →
-  race surfaces as a `Conflict` → resolved by policy → reviewable + overridable*.
+The foundation is built to grow (see `sync-future-ops.md`). Next:
 
-## Also in this PR (CLI app sketches, for later)
+- **MoveItem / MoveModule** — reorganize the namespace (a module move = many item moves). Folds through
+  the same `locations` machinery as SetName. New conflict: **`CMoveCollision`** (two machines move
+  different things to the same place).
+- **Long-lived mutable package values** — a value keeps a stable identity while its content is *updated*
+  over time (config, counters, the stuff you actually keep across devices), vs today's immutable
+  content-addressed values. New conflict: **`CValueUpdateRace`** (concurrent updates — last-write-wins, or
+  a merge policy later).
+- **Constraints as conflicts** — a rename that orphans dependents, a new fn shadowing a signature, an ACL
+  change on merge (`CCapabilityDenied`) — routed through the same spine.
 
-Bare-bones render-only sketches of three high-level CLI apps — **Explorer** (dir-based package browser),
-**TreeView** (package-tree nav/adjust), **Repl** (full-screen scratchpad) — toward a multi-view CLI beyond
-today's chat-window. They already render **inline sync/lifecycle badges** (conflict / WIP / deprecated /
-dependent-count), so new conflict kinds get a UI home for free. Pure render + Model + TODOs; interactive
-wiring is a documented follow-up. Vision in `notes/cli-ux-redesign-vision.md`.
+## The apps (sketches toward a multi-view CLI)
 
-## Testing
+Today the CLI is one view: a chat window. These are render-only sketches of three high-level apps you'd
+visit often — interactive wiring is a documented follow-up (`cli-ux-redesign-vision.md`). They already
+render inline **sync/lifecycle badges**, so new conflict kinds get a UI home for free.
 
-- `SyncIdempotency` (30) — wire round-trip, cross-store transfer, convergence, order-independence, cursor
-  resume, blob fetch, timestamp-LWW ordering.
-- `SyncScenarios` (8) — the dispatch-routing policy layer: default no-op, keep-local, keep-incoming,
-  unknown-substitute, type-kind, empty, multi-divergence LWW, re-stamp propagation.
-- `OpsProjections` (5), `ConflictDispatch` (4), `Remotes` (4), `BranchOps` (7, incl. the same-FQN
-  local-authoring case the LWW fix protects).
-- `.dark` testfiles (fast loop, no rebuild): `conflicts-list` (19), `sync-check` (11), `apps-sketches` (18),
-  plus the existing sync-cli / conflicts-display / status-cli / autosync.
-- **Full backend suite — 9,750 passed, 0 failed.**
-- Release CLI — two instances sync via file pull end-to-end.
+**Explorer** — the package namespace as a dir tree you cd/ls through:
 
-## Notable engineering
+```
+  /Stachu/MyApp
+  ----------------------------------------
+  > Handlers/
+    greeting  (fn)   ! conflict
+    Config  (type)
+    draft  (value)   * wip
+    oldHelper  (fn)   ~ deprecated
+```
 
-Surfaced by rebasing the floor onto current `main`: `applySetName` ported to main's single-transaction
-`exec ctx` model (LWW reads atomic on one connection); the `composite_pk` migration now carries `origin_ts`
-(it was silently dropping it on rebuild); sync builtins adopt the `capabilities` field; the LWW guard skips
-only on a *strict* older-by-creation (a hash tie-break would have broken local same-ms authoring); a
-duplicate `Seed.projectionStatus` (sync + ops-projections each added an identical one) de-duped; the
-conflict list moved from an F#-baked string to structured rows + a pure Dark formatter;
-`sync/daemon.dark` dedup'd ~185→~70 lines onto `Stdlib.Cli.Daemon`.
+**TreeView** — the whole hierarchy at once, with rename-impact (`dep:N`) and race badges:
 
-### Known edge (non-blocking)
-Two *keep-local* resolutions in one routing pass: the second re-fold can fail to flip. No keep-local policy
-ships (default is `FailLoudly`), and the shipped multi-divergence path (LWW) converges and is tested.
+```
+  packages
+  ----------------------------------------
+* v Stachu
+    v MyApp
+        greeting   [conflict]
+        render   [dep:7]
+      > Lib
+    > Scripts   [wip]
+```
+
+**Repl** — a full-screen scratchpad that teaches types as you go:
+
+```
+  repl (scratch)
+  ----------------------------------------
+  > 1L + 2L
+      3L  : Int64
+
+  > Stdlib.List.length [1L; 2L]
+      2L  : Int64
+
+  > Stdlib.String.toUppercase "hi"_
+```
+
+## Testing — what each layer proves
+
+The goal was to make the engine's *properties* hold, not to rack up cases. By layer:
+
+- **Foundation.** A `rebuildProjections` reproduces byte-identical tables from the log; the `dark status`
+  counters track folded-through vs total. *(OpsProjections)*
+- **Conflict-dispatch.** The default policy is byte-identical; a policy's `RSubstitute` / `RFailLoudly`
+  verdicts are honored; the seam is live. *(ConflictDispatch)*
+- **Sync engine — the safety properties.** Re-applying an op is a no-op (idempotence); a cross-store
+  transfer converges; **out-of-order arrival converges to the same winner** (order-independence); a cursor
+  resumes where it left off; the wire round-trips byte-exact *and* rejects a truncated body or a
+  version-skewed peer (fail-closed); a content blob is fetched on miss; timestamp-LWW orders by **creation,
+  not arrival**. *(SyncIdempotency)*
+- **Divergence routing — the policy layer.** Default routing is a no-op (LWW stands); keep-local
+  re-stamps + re-binds and marks the race overridden; keep-incoming and an unknown substitute are safe
+  no-ops; a *type* binding resolves like a fn; a multi-race pull converges each location. *(SyncScenarios)*
+- **The race UX, end to end.** A live divergent pull auto-resolves AND records the conflict; `resolve
+  mine` re-stamps + re-binds, `resolve theirs` keeps the incoming — both mark it overridden. *(BranchOps +
+  SyncIdempotency)*
+- **The CLI surface** (fast `.dark` testfiles, no rebuild): the conflict report frames LWW + marks the
+  winner + inlines `ack`; `sync check` parses a peer's health and reports caught-up vs behind; the app
+  sketches render.
+- **End to end.** Two release CLIs converge via a file pull — author on A, B pulls exactly the new ops,
+  re-pull is idempotent.
+
+The whole backend suite is green (~9.7k cases).
+
+## Notes from rebasing onto main
+
+A few edits the rebase onto current `main` required, recorded for the reviewer: `applySetName` moved to
+main's single-transaction `exec ctx` model (LWW reads stay atomic on one connection); the `composite_pk`
+migration now carries `origin_ts` (it was being dropped on rebuild); sync builtins adopt main's
+`capabilities` field; a duplicate `Seed.projectionStatus` (sync and ops-projections each added an
+identical one) was de-duped; the daemon was dedup'd onto `Stdlib.Cli.Daemon`.

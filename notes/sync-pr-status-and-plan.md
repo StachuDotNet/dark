@@ -1,49 +1,40 @@
 # Stable & Syncing — status & remaining
 
-**Done, green, pushed** to `github/syncing-again`. The full "stable & syncing" floor (loop-fun):
-`+5,336 / −50`, 7 commits on current `main`. Full backend suite **9,750 passed / 0 failed**.
+**Done, green, pushed** to `github/syncing-again` (loop-fun), 8 commits on current `main`. Full backend
+suite green. Not squashing — keeping the commits granular for review.
 
 ## What's in it
 
-- **Ops ⊥ projections** — op log canonical; 5 regenerable projection tables; `rebuildProjections` +
-  `projectionRegistry`; surfaced as `dark status` / `dark branch rebuild`. (`OpsProjections` 5/5.)
-- **Conflict-dispatch seam** — `ExecutionState.conflictDispatch` hook, default `FailLoudly` =
-  byte-identical build; the place every "can't proceed, here are the options" routes. (`ConflictDispatch` 4/4.)
-- **Sync engine** — op log + per-peer cursors + timestamp-LWW fold; idempotent apply; divergence
-  detection + `sync_conflicts` record; peer registry. File + HTTP/Tailscale transports.
-- **Divergence routing** — sync emits each divergence through the dispatch seam as a first-class
-  `CSyncDivergence`; default behavior unchanged, a sync policy can keep-local. (`SyncScenarios` 8/8.)
-- **Conflict-resolution UX** — structured builtin + pure Dark `Sync.Display.conflictReport`:
-  last-write-wins framed, winner-marked, the exact `ack <id>` inlined; surfaced at pull → status →
-  `dark conflicts`. Nothing silently lost. (`conflicts-list.dark` 19.)
-- **Coverage proven** — every `PackageOp` kind rides sync (`applyOp` has no wildcard; `opsSince` no
-  filter; propagation rides via companion `SetName`s). Release CLI: two instances converge via file pull.
-- **Built to grow** — `Conflict` is an open meta-model; named the coming cases (`CMoveCollision`,
+- **Ops ⊥ projections** — op log canonical; the package tables are regenerable projections;
+  `rebuildProjections` + `projectionRegistry`; surfaced as `dark status` / `dark branch rebuild`.
+- **Conflict-dispatch (the resolution spine)** — `ExecutionState.conflictDispatch`, default fail-loud =
+  byte-identical build. Now wired in **two** places: the interpreter's missing-fn path (teed up for
+  fetch-on-miss) and sync's divergence routing — so it's shared infrastructure, not a sync appendage.
+- **Sync engine** — op log + per-peer cursors + the latest-op-wins fold; idempotent apply; race detection
+  + a reviewable `sync_conflicts` record; peer registry. File + HTTP-over-Tailscale transports.
+- **Conflict resolution** — a SetName race auto-resolves to whichever op was written later; recorded for
+  review. You `ack` to OK it or `resolve mine|theirs` to override — and an override is itself an op that
+  rides sync, so peers converge on your choice. Pure Dark `Sync.Display.conflictReport` (LWW-framed,
+  winner-marked, ack inlined), surfaced at pull → status → `dark conflicts`.
+- **Coverage** — every `PackageOp` kind rides sync (`applyOp` has no wildcard; `opsSince` no filter).
+  Release CLI: two instances converge via file pull.
+- **Built to grow** — `Conflict` is an open meta-model; the coming cases are named (`CMoveCollision`,
   `CValueUpdateRace`, `CCapabilityDenied`) for MoveItem/MoveModule + long-lived mutable value updates.
   Design in `sync-future-ops.md`.
-- **CLI app sketches** (render-only) — Explorer / TreeView / Repl with inline sync/lifecycle badges
-  (conflict / WIP / deprecated / dep-count), toward a multi-view CLI. Vision in
-  `cli-ux-redesign-vision.md`. (`apps-sketches.dark` 18.)
+- **CLI app sketches** (render-only) — Explorer / TreeView / Repl with inline sync/lifecycle badges,
+  toward a multi-view CLI. Vision in `cli-ux-redesign-vision.md`.
 
 ## Open questions (your call — don't block the merge)
 
 1. **Migration kill-and-fill** of `package_ops` — pre-existing; leave as-is, or make data-preserving?
 2. **Commit-only vs WIP pull** — gate `sync pull` to committed ops only (`opsSinceCommitted` exists)?
-3. **LWW tie-break** — accept application-order resolution for the rare same-millisecond cross-instance tie?
-
-## Known edge (non-blocking)
-
-Two *keep-local* resolutions in one `routeDivergences` pass: the second re-fold can fail to flip. No
-keep-local policy ships (default is `FailLoudly`); the shipped multi-divergence path (LWW) converges and
-is tested. Revisit if/when a keep-local policy lands.
+3. **Same-millisecond tie** — two different ops for one name authored in the exact same millisecond on
+   different machines resolve by which arrived first (rare). Accept, or add a deterministic tie-break?
 
 ## Remaining
 
-- [ ] **(your go)** squash the WIP commits into the sync commit, then `gh` push + open the PR.
-- [ ] Later: HTTP/Tailscale two-instance live demo; wire the app sketches interactive; unify the other
-      constraints (merge / propagation / deprecation) through the dispatch seam.
-
-## Pointers
-
-- Branch `syncing-again` (loop-fun), base `github/main`. Prework branches: `ops-projections`, `conflict-dispatch`.
-- PR description / commit message: `sync-pr-description.md`. Code-diff report: `sync-pr-code-diff.md`.
+- [ ] **(your go)** review the diff on the fork, then open the PR.
+- [ ] Later: HTTP/Tailscale two-instance live demo; wire the app sketches interactive; route the other
+      constraints (merge / propagation / deprecation) and fetch-on-miss through the dispatch spine; make a
+      received override **auto-ack** the matching race on the peer (today it converges, but the peer's own
+      record isn't cleared automatically).
