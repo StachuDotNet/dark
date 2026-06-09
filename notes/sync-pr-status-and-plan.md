@@ -18,7 +18,11 @@
   `dark conflicts`. Nothing silently lost. (`conflicts-list.dark` 19.)
 - **Coverage proven** — every `PackageOp` kind rides sync (`applyOp` has no wildcard; `opsSince` no
   filter; propagation rides via companion `SetName`s). Release CLI: two instances converge via file pull.
-- **CLI app sketches** (render-only) — Explorer / TreeView / Repl, toward a multi-view CLI. Vision in
+- **Built to grow** — `Conflict` is an open meta-model; named the coming cases (`CMoveCollision`,
+  `CValueUpdateRace`, `CCapabilityDenied`) for MoveItem/MoveModule + long-lived mutable value updates.
+  Design in `sync-future-ops.md`.
+- **CLI app sketches** (render-only) — Explorer / TreeView / Repl with inline sync/lifecycle badges
+  (conflict / WIP / deprecated / dep-count), toward a multi-view CLI. Vision in
   `cli-ux-redesign-vision.md`. (`apps-sketches.dark` 18.)
 
 ## Open questions (your call — don't block the merge)

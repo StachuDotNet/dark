@@ -98,12 +98,27 @@ every `PackageOp` kind (add fn/type/value, name/rename, deprecate, undeprecate, 
 folded on the receiver; `opsSince` ships every kind; the wire codec frames the raw blob byte-exact. A
 propagation rides as its standalone companion `SetName` ops, so dependents repoint on the receiver too.
 
-## Also in this PR (sketches, for later)
+## Built to grow (more ops, more conflict types)
+
+The foundation is meant to expand without re-architecting — see `notes/sync-future-ops.md`:
+
+- **A new op rides sync for free** — `opsSince` has no kind filter, the wire frames the raw blob
+  byte-exact, and `applyOp` has **no wildcard** (a new `PackageOp` case won't compile until the fold
+  handles it — so "silently doesn't sync" is impossible).
+- **Conflicts are one open enum** — `Conflict` is the meta-model; new kinds are new cases a policy
+  resolves the same way. Already named for what's coming: **`CMoveCollision`** (MoveItem/MoveModule
+  land on an occupied name), **`CValueUpdateRace`** (concurrent updates to a long-lived *mutable*
+  package value — LWW by `origin_ts`, or a merge policy later), **`CCapabilityDenied`**.
+- A **SetName race** (this PR) is the first instance of the general pattern: *op in the log → folded →
+  race surfaces as a `Conflict` → resolved by policy → reviewable + overridable*.
+
+## Also in this PR (CLI app sketches, for later)
 
 Bare-bones render-only sketches of three high-level CLI apps — **Explorer** (dir-based package browser),
 **TreeView** (package-tree nav/adjust), **Repl** (full-screen scratchpad) — toward a multi-view CLI beyond
-today's chat-window. Pure render + Model + TODOs; interactive wiring is a documented follow-up. Vision in
-`notes/cli-ux-redesign-vision.md`.
+today's chat-window. They already render **inline sync/lifecycle badges** (conflict / WIP / deprecated /
+dependent-count), so new conflict kinds get a UI home for free. Pure render + Model + TODOs; interactive
+wiring is a documented follow-up. Vision in `notes/cli-ux-redesign-vision.md`.
 
 ## Testing
 
