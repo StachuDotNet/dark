@@ -228,6 +228,44 @@ let tests =
         Expect.equal reconciled 0 "no divergences → nothing reconciled, no ops"
       }
 
+      // The same-millisecond cross-instance tie: two DIFFERENT ops bind one name with the EXACT same
+      // origin_ts (two machines authored in the same ms). Resolution must be DETERMINISTIC — the higher
+      // item hash wins — so both machines converge regardless of which side they hold. We assert that by
+      // running it both ways (local=low/incoming=high AND local=high/incoming=low) → same winner.
+      testTask "same-millisecond tie resolves deterministically by hash (higher wins, both ways)" {
+        let mk suffix : PT.PackageLocation =
+          { owner = "Scenario"; modules = [ "Tie" ]; name = uniqueName suffix }
+        let lowH, highH = hashChar 'a', hashChar 'b' // 'b' > 'a' → highH wins
+        let tie = "2025-01-01T00:00:00.000Z" // one exact stamp both sides share
+        let refOf h = PT.Reference.fromHashAndKind (PT.Hash h, PT.ItemKind.Fn)
+
+        let runTie (localH : string) (incomingH : string) : Task<Option<string>> =
+          task {
+            let loc = mk "tie"
+            let localOp = PT.PackageOp.SetName(loc, refOf localH)
+            let! _ =
+              Inserts.insertAndApplyOpsWithOrigin
+                PT.mainBranchId
+                None
+                [ localOp ]
+                (Map.ofList [ (Inserts.computeOpHash localOp, tie) ])
+            let! _ =
+              Sync.applyRemoteOps
+                (uniqueName "rtie")
+                PT.mainBranchId
+                None
+                [ (1L, tie, PT.PackageOp.SetName(loc, refOf incomingH)) ]
+            return! liveHash loc
+          }
+
+        // incoming holds the higher hash → incoming wins
+        let! a = runTie lowH highH
+        Expect.equal a (Some highH) "higher hash wins (incoming was higher)"
+        // local holds the higher hash → incoming is stale, local stays — SAME winner
+        let! b = runTie highH lowH
+        Expect.equal b (Some highH) "higher hash wins (incoming was lower → stale)"
+      }
+
       testTask
         "multi-divergence batch (default policy): every location surfaces + LWW converges" {
         // The SHIPPED path: a single pull carrying TWO divergent bindings. The default policy

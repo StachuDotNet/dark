@@ -67,9 +67,16 @@ let private insertAndApplyOpsImpl
           let opBlob = BS.PT.PackageOp.serialize opId op
           (opId, op, opBlob, batchPropagationId))
 
+      // Base stamp for locally-authored ops. Each op in this batch gets `baseNow + its index` ms, so a
+      // same-batch rebind of one name (v1 then v2) gets STRICTLY-INCREASING origin_ts — v2 is
+      // newer-by-creation and wins outright, never hitting playback's same-millisecond hash tie-break
+      // (which is reserved for genuine cross-instance races). Sub-millisecond authoring would otherwise
+      // tie, making a local rebind resolve by content hash instead of order.
+      let baseNow = System.DateTime.UtcNow
+
       let insertStatements =
         opsWithIds
-        |> List.map (fun (opId, _op, opBlob, propagationId) ->
+        |> List.mapi (fun i (opId, _op, opBlob, propagationId) ->
           let sql =
             """
             INSERT OR IGNORE INTO package_ops (id, op_blob, branch_id, applied, commit_hash, propagation_id, origin_ts)
@@ -81,12 +88,13 @@ let private insertAndApplyOpsImpl
             | Some s -> Sql.string s
             | None -> Sql.dbnull
 
-          // the op's authoring stamp: the peer's value on sync, else `now` (matching the schema
-          // default format) for a locally-authored op.
+          // the op's authoring stamp: the peer's value on sync (preserve it), else a strictly-increasing
+          // local stamp (`baseNow + index`) so same-batch rebinds order by authoring sequence.
           let originTsVal =
             match Map.tryFind opId originTs with
             | Some t -> t
-            | None -> System.DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+            | None ->
+              baseNow.AddMilliseconds(float i).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
 
           let parameters =
             [ "id", Sql.uuid opId

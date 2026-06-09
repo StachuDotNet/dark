@@ -330,13 +330,15 @@ let private applySetName
 
     let isStale =
       match curBinding, thisTs with
-      // Skip only when this op is STRICTLY older by creation than the current (different) binding — a
-      // stale op arriving late via sync loses to the newer binding. On a TIE (equal origin_ts) the op
-      // applies, so normal local authoring is unchanged (e.g. v2 replacing v1 in one WIP batch shares a
-      // millisecond — see BranchOps "same-FQN"). The remaining edge — two DIFFERENT ops for one name
-      // authored in the exact same millisecond on different instances — then resolves by application
-      // order rather than a hash tie-break; rare enough to accept over breaking local op playback.
-      | Some(curHash, Some curTs), Some t when curHash <> itemHashStr -> t < curTs
+      // Order a binding by its op's CREATION time (origin_ts); a stale op arriving late via sync loses
+      // to the newer binding. On an EXACT TIE (two DIFFERENT ops for one name stamped the same
+      // millisecond — a genuine cross-instance race), break deterministically by item hash: the higher
+      // hash wins. That tie-break is PORTABLE (content, not arrival/rowid), so every instance — and a
+      // from-scratch projection rebuild — converges on the same winner. Local sequential authoring
+      // (v2 replacing v1 in one batch) never reaches this tie: `Inserts` self-stamps each op in a
+      // local batch with a strictly-increasing origin_ts, so v2 is newer-by-creation and just wins.
+      | Some(curHash, Some curTs), Some t when curHash <> itemHashStr ->
+        t < curTs || (t = curTs && itemHashStr < curHash)
       | _ -> false
 
     if isStale then
