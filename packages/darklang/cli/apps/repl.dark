@@ -17,13 +17,19 @@
 //   - [ ] :commands (`:type <expr>`, `:deps <name>`, `:clear`)
 module Darklang.Cli.Apps.Repl
 
-type Entry = { input: String; output: String }
+// `typ` is the result's type, shown dimly after the value (the future `:type` hook -- so the REPL
+// teaches types as you go, and a result can be promoted into a typed package value).
+type Entry =
+  { input: String
+    output: String
+    typ: String }
 
 type Model = { history: List<Entry>; input: String }
 
-// One history entry: the "> input" line then the indented result.
+// One history entry: the "> input" line, then the indented result with a trailing ": <type>".
 let renderEntry (e: Entry) : String =
-  "  > " ++ e.input ++ "\n      " ++ e.output
+  let typed = if e.typ == "" then e.output else e.output ++ "  : " ++ e.typ
+  "  > " ++ e.input ++ "\n      " ++ typed
 
 // The active input line with a cursor block.
 let prompt (input: String) : String = "  > " ++ input ++ "_"
@@ -35,12 +41,14 @@ let render (m: Model) : String =
     if Stdlib.List.isEmpty m.history then "  (nothing evaluated yet)"
     else m.history |> Stdlib.List.map renderEntry |> Stdlib.String.join "\n\n"
 
-  let footer = "\n\n  enter eval - up/down history - esc exit   (SKETCH -- eval not wired yet)"
+  let footer =
+    "\n\n  enter eval - up/down history - :type/:deps/:clear - esc exit   (SKETCH -- eval not wired yet)"
+
   header ++ hist ++ "\n\n" ++ (prompt m.input) ++ footer
 
 let demoModel : Model =
   Model
     { history =
-        [ Entry { input = "1L + 2L"; output = "3L" }
-          Entry { input = "Stdlib.List.length [1L; 2L]"; output = "2L" } ]
+        [ Entry { input = "1L + 2L"; output = "3L"; typ = "Int64" }
+          Entry { input = "Stdlib.List.length [1L; 2L]"; output = "2L"; typ = "Int64" } ]
       input = "Stdlib.String.toUppercase \"hi\"" }

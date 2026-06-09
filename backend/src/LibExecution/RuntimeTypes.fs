@@ -1862,7 +1862,14 @@ and Conflict =
   // a sync policy can RSubstitute the converged winner (last-writer / LWW-register join).
   // (Signature matches the integrated `compose-check`, so a re-merge is clean.)
   | CSyncDivergence of location : string * existingHash : string * incomingHash : string
-  // extensible: CCapabilityDenied / … added by later PRs
+  // Extensible by design — `Conflict` is the meta-model. As we add ops we add cases here, and a
+  // policy decides each the same way (RSubstitute / FailLoudly / later RPark). Anticipated:
+  //   - CMoveCollision   — a MoveItem/MoveModule op lands a name where one already lives (two
+  //                        instances reorganized the same namespace).
+  //   - CValueUpdateRace — two concurrent updates to one long-lived mutable package value
+  //                        (last-writer-wins by origin_ts, like CSyncDivergence, or a merge policy).
+  //   - CCapabilityDenied — a gate refused; a policy could prompt/escalate instead of failing.
+  // See notes/sync-future-ops.md.
 
 and Resolution =
   | RSubstitute of Dval

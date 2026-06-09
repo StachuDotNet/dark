@@ -17,12 +17,15 @@
 //   - [ ] per-node badges: WIP, pending conflict, deprecated, dependent-count
 module Darklang.Cli.Apps.TreeView
 
-// A flattened tree row: depth (indent), whether it has children + is expanded, and the label.
+// A flattened tree row. `badge` carries the node's sync/lifecycle state inline (the future hook):
+// "conflict" (a recorded SetName race here), "wip", "dep:N" (N dependents -- a rename impact preview),
+// "" -- so the SHAPE and its health read together. (Future: from pmConflictsList + pmDependents.)
 type Row =
   { depth: Int64
     expandable: Bool
     expanded: Bool
-    label: String }
+    label: String
+    badge: String }
 
 type Model = { rows: List<Row>; cursor: Int64 }
 
@@ -30,11 +33,15 @@ type Model = { rows: List<Row>; cursor: Int64 }
 let twisty (r: Row) : String =
   if Stdlib.Bool.not r.expandable then " " else if r.expanded then "v" else ">"
 
-// One tree line: indent by depth, the twisty, a cursor caret on the selected row, then the label.
+// The trailing badge, padded off from the label, or "" when clean.
+let badgeTag (r: Row) : String =
+  if r.badge == "" then "" else "   [" ++ r.badge ++ "]"
+
+// One tree line: indent by depth, the twisty, a cursor caret on the selected row, label, badge.
 let renderRow (selected: Bool) (r: Row) : String =
   let indent = Stdlib.String.repeat "  " r.depth
   let caret = if selected then "*" else " "
-  caret ++ " " ++ indent ++ (twisty r) ++ " " ++ r.label
+  caret ++ " " ++ indent ++ (twisty r) ++ " " ++ r.label ++ (badgeTag r)
 
 let render (m: Model) : String =
   let header = "  packages\n  " ++ (Stdlib.String.repeat "-" 40L) ++ "\n"
@@ -48,10 +55,11 @@ let render (m: Model) : String =
   header ++ body ++ footer
 
 let demoRows : List<Row> =
-  [ Row { depth = 0L; expandable = true; expanded = true; label = "Darklang" }
-    Row { depth = 1L; expandable = true; expanded = true; label = "Stdlib" }
-    Row { depth = 2L; expandable = true; expanded = false; label = "List" }
-    Row { depth = 2L; expandable = true; expanded = false; label = "String" }
-    Row { depth = 1L; expandable = true; expanded = false; label = "Cli" } ]
+  [ Row { depth = 0L; expandable = true; expanded = true; label = "Stachu"; badge = "" }
+    Row { depth = 1L; expandable = true; expanded = true; label = "MyApp"; badge = "" }
+    Row { depth = 2L; expandable = false; expanded = false; label = "greeting"; badge = "conflict" }
+    Row { depth = 2L; expandable = false; expanded = false; label = "render"; badge = "dep:7" }
+    Row { depth = 2L; expandable = true; expanded = false; label = "Lib"; badge = "" }
+    Row { depth = 1L; expandable = true; expanded = false; label = "Scripts"; badge = "wip" } ]
 
 let demoModel : Model = Model { rows = demoRows; cursor = 0L }

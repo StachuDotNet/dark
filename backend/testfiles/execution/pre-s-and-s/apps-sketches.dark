@@ -1,21 +1,27 @@
-// SKETCH apps (Explorer / TreeView / Repl) -- pure render helpers. These are bare-bones UX sketches
-// (see each module's doc + TODOs); the interactive shell is a TODO. Dense coverage of the pure bits.
+// SKETCH apps (Explorer / TreeView / Repl) -- pure render helpers. Bare-bones UX sketches (see each
+// module's doc + TODOs); the interactive shell is a TODO. Each carries a future-indicating hook:
+// inline sync/lifecycle badges (conflict/wip/deprecated/dep-count) and REPL result types. Dense coverage.
 
-// ── Explorer: breadcrumb + listing rows ──
+// ── Explorer: breadcrumb + typed/badged entries ──
 Darklang.Cli.Apps.Explorer.pathBar [] = "/"
-Darklang.Cli.Apps.Explorer.pathBar ["Darklang"] = "/Darklang"
-Darklang.Cli.Apps.Explorer.pathBar ["Darklang"; "Stdlib"; "List"] = "/Darklang/Stdlib/List"
-Darklang.Cli.Apps.Explorer.renderRow true "List" = "  > List"
-Darklang.Cli.Apps.Explorer.renderRow false "List" = "    List"
+Darklang.Cli.Apps.Explorer.pathBar ["Stachu"; "MyApp"] = "/Stachu/MyApp"
+Darklang.Cli.Apps.Explorer.entryLabel (Darklang.Cli.Apps.Explorer.Entry { name = "Handlers"; kind = "dir"; badge = "" }) = "Handlers/"
+Darklang.Cli.Apps.Explorer.entryLabel (Darklang.Cli.Apps.Explorer.Entry { name = "greeting"; kind = "fn"; badge = "conflict" }) = "greeting  (fn)   ! conflict"
+Darklang.Cli.Apps.Explorer.entryLabel (Darklang.Cli.Apps.Explorer.Entry { name = "draft"; kind = "value"; badge = "wip" }) = "draft  (value)   * wip"
+Darklang.Cli.Apps.Explorer.renderRow true (Darklang.Cli.Apps.Explorer.Entry { name = "greeting"; kind = "fn"; badge = "conflict" }) = "  > greeting  (fn)   ! conflict"
+Darklang.Cli.Apps.Explorer.renderRow false (Darklang.Cli.Apps.Explorer.Entry { name = "Config"; kind = "type"; badge = "" }) = "    Config  (type)"
 
-// ── TreeView: disclosure twisty + indented rows ──
-Darklang.Cli.Apps.TreeView.twisty (Darklang.Cli.Apps.TreeView.Row { depth = 0L; expandable = true; expanded = true; label = "x" }) = "v"
-Darklang.Cli.Apps.TreeView.twisty (Darklang.Cli.Apps.TreeView.Row { depth = 0L; expandable = true; expanded = false; label = "x" }) = ">"
-Darklang.Cli.Apps.TreeView.twisty (Darklang.Cli.Apps.TreeView.Row { depth = 0L; expandable = false; expanded = false; label = "x" }) = " "
-Darklang.Cli.Apps.TreeView.renderRow true (Darklang.Cli.Apps.TreeView.Row { depth = 1L; expandable = true; expanded = false; label = "List" }) = "*   > List"
-Darklang.Cli.Apps.TreeView.renderRow false (Darklang.Cli.Apps.TreeView.Row { depth = 0L; expandable = false; expanded = false; label = "Darklang" }) = "    Darklang"
+// ── TreeView: disclosure twisty + badged rows ──
+Darklang.Cli.Apps.TreeView.twisty (Darklang.Cli.Apps.TreeView.Row { depth = 0L; expandable = true; expanded = true; label = "x"; badge = "" }) = "v"
+Darklang.Cli.Apps.TreeView.twisty (Darklang.Cli.Apps.TreeView.Row { depth = 0L; expandable = true; expanded = false; label = "x"; badge = "" }) = ">"
+Darklang.Cli.Apps.TreeView.twisty (Darklang.Cli.Apps.TreeView.Row { depth = 0L; expandable = false; expanded = false; label = "x"; badge = "" }) = " "
+Darklang.Cli.Apps.TreeView.badgeTag (Darklang.Cli.Apps.TreeView.Row { depth = 0L; expandable = false; expanded = false; label = "x"; badge = "dep:7" }) = "   [dep:7]"
+Darklang.Cli.Apps.TreeView.badgeTag (Darklang.Cli.Apps.TreeView.Row { depth = 0L; expandable = false; expanded = false; label = "x"; badge = "" }) = ""
+Darklang.Cli.Apps.TreeView.renderRow true (Darklang.Cli.Apps.TreeView.Row { depth = 2L; expandable = false; expanded = false; label = "greeting"; badge = "conflict" }) = "*       greeting   [conflict]"
+Darklang.Cli.Apps.TreeView.renderRow false (Darklang.Cli.Apps.TreeView.Row { depth = 1L; expandable = true; expanded = true; label = "MyApp"; badge = "" }) = "    v MyApp"
 
-// ── Repl: prompt + history entry ──
+// ── Repl: prompt + typed history entry ──
 Darklang.Cli.Apps.Repl.prompt "" = "  > _"
 Darklang.Cli.Apps.Repl.prompt "1L + 2L" = "  > 1L + 2L_"
-Darklang.Cli.Apps.Repl.renderEntry (Darklang.Cli.Apps.Repl.Entry { input = "1L + 2L"; output = "3L" }) = "  > 1L + 2L\n      3L"
+Darklang.Cli.Apps.Repl.renderEntry (Darklang.Cli.Apps.Repl.Entry { input = "1L + 2L"; output = "3L"; typ = "Int64" }) = "  > 1L + 2L\n      3L  : Int64"
+Darklang.Cli.Apps.Repl.renderEntry (Darklang.Cli.Apps.Repl.Entry { input = "print x"; output = "()"; typ = "" }) = "  > print x\n      ()"

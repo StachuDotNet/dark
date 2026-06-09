@@ -19,18 +19,36 @@
 //   - [ ] right pane preview (signature, doc, hash, deprecation); inline conflict/WIP markers
 module Darklang.Cli.Apps.Explorer
 
-type Model =
-  { path: List<String> // package path segments, e.g. ["Darklang"; "Stdlib"; "List"]
-    entries: List<String> // names at this level (dirs + items)
-    cursor: Int64 }
+// A listing row. `kind` is "dir" (a module) or "fn"/"type"/"value" (a leaf). `badge` surfaces sync
+// state inline -- "conflict" (a recorded SetName race), "wip" (uncommitted), "deprecated", "" -- so
+// the namespace and its sync health read at a glance. (Future: kind+badge come from pmListAtPath +
+// pmConflictsList + pmProjectionStatus; today the demo fills them in.)
+type Entry =
+  { name: String
+    kind: String
+    badge: String }
+
+type Model = { path: List<String>; entries: List<Entry>; cursor: Int64 }
 
 // "/Darklang/Stdlib/List" -- the breadcrumb. Root (empty path) reads as "/".
 let pathBar (path: List<String>) : String =
   if Stdlib.List.isEmpty path then "/" else "/" ++ (Stdlib.String.join path "/")
 
-// One listing row; the selected row gets a ">" caret, others indent to align.
-let renderRow (selected: Bool) (name: String) : String =
-  if selected then "  > " ++ name else "    " ++ name
+// dirs get a trailing "/"; leaves show their kind; a sync/lifecycle badge trails (the future hook).
+let entryLabel (e: Entry) : String =
+  let label = if e.kind == "dir" then e.name ++ "/" else e.name ++ "  (" ++ e.kind ++ ")"
+
+  let badge =
+    if e.badge == "conflict" then "   ! conflict"
+    else if e.badge == "wip" then "   * wip"
+    else if e.badge == "deprecated" then "   ~ deprecated"
+    else ""
+
+  label ++ badge
+
+// One row; the selected row gets a ">" caret, others indent to align.
+let renderRow (selected: Bool) (e: Entry) : String =
+  (if selected then "  > " else "    ") ++ (entryLabel e)
 
 // The full frame: breadcrumb header, the listing (cursor-marked), and the keybinding footer.
 let render (m: Model) : String =
@@ -38,7 +56,7 @@ let render (m: Model) : String =
 
   let rows =
     m.entries
-    |> Stdlib.List.indexedMap (fun i name -> renderRow (i == m.cursor) name)
+    |> Stdlib.List.indexedMap (fun i e -> renderRow (i == m.cursor) e)
     |> Stdlib.String.join "\n"
 
   let footer = "\n\n  up/down move - enter open - backspace up - t tree - esc exit   (SKETCH)"
@@ -46,6 +64,11 @@ let render (m: Model) : String =
 
 let demoModel : Model =
   Model
-    { path = [ "Darklang"; "Stdlib" ]
-      entries = [ "List"; "String"; "Int64"; "Option"; "Result" ]
+    { path = [ "Stachu"; "MyApp" ]
+      entries =
+        [ Entry { name = "Handlers"; kind = "dir"; badge = "" }
+          Entry { name = "greeting"; kind = "fn"; badge = "conflict" }
+          Entry { name = "Config"; kind = "type"; badge = "" }
+          Entry { name = "draft"; kind = "value"; badge = "wip" }
+          Entry { name = "oldHelper"; kind = "fn"; badge = "deprecated" } ]
       cursor = 0L }

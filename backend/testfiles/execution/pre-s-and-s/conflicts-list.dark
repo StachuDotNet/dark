@@ -51,3 +51,15 @@ Darklang.Sync.Display.conflictReport [(("7c0ffee0", "Stachu.Lib.parse", "acked",
   "";
   "  ack <id> (agree)  ·  ack all  ·  resolve <id> mine|theirs (override)"
 ]
+
+// TWO pending races from different peers → header counts both, one block each (a realistic review)
+Darklang.Sync.Display.conflictReport [(("aaaa1111", "Stachu.MyApp.greeting", "NEW", "auto: timestamp-LWW — incoming won (newer creation)", "11111111", "22222222", "desktop")); (("bbbb2222", "Stachu.MyApp.config", "NEW", "auto: timestamp-LWW — kept local (newer creation)", "33333333", "44444444", "laptop"))] false = [
+  "2 auto-resolved conflict(s) awaiting ack — last-write-wins kept one side, nothing lost:";
+  "";
+  "⚠ Stachu.MyApp.greeting";
+  "    last-write-wins → kept theirs   you 11111111  →  them 22222222 ✓  ·  from desktop  ·  ack aaaa1111";
+  "⚠ Stachu.MyApp.config";
+  "    last-write-wins → kept yours   you 33333333 ✓  ←  them 44444444  ·  from laptop  ·  ack bbbb2222";
+  "";
+  "  ack <id> (agree)  ·  ack all  ·  resolve <id> mine|theirs (override)"
+]
