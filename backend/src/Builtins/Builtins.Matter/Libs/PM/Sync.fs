@@ -24,9 +24,21 @@ let fns () : List<BuiltInFn> =
          last applied rowid, and how many name→hash divergences were surfaced (never blocks)."
       fn =
         (function
-        | _, _, _, [ DString sourcePath ] ->
+        | exeState, vm, _, [ DString sourcePath ] ->
           uply {
             let! (newCursor, divergences) = LibDB.Sync.pullFromFile sourcePath
+            // Route each surfaced divergence through the runtime conflict-dispatch seam. The
+            // default policy keeps today's behavior (surface-as-data, LWW stands); a sync policy
+            // can keep-local. branchId = the puller's current branch.
+            let callCtx : CallContext =
+              { branchId = exeState.branchId; threadID = vm.threadID }
+            let! _reconciled =
+              LibDB.Sync.routeDivergences
+                exeState.conflictDispatch
+                callCtx
+                sourcePath
+                exeState.branchId
+                divergences
             return
               DTuple(DInt64 newCursor, DInt64(int64 (List.length divergences)), [])
           }
@@ -109,11 +121,21 @@ let fns () : List<BuiltInFn> =
          surfaced (never blocked), same as the file pull."
       fn =
         (function
-        | _, _, _, [ DString remote; DString wireB64 ] ->
+        | exeState, vm, _, [ DString remote; DString wireB64 ] ->
           uply {
             let bytes = System.Convert.FromBase64String wireB64
             let! (newCursor, divergences) =
               LibDB.Sync.applyWireBatch remote PT.mainBranchId None bytes
+            // Same dispatch routing as the file pull (the wire batch applies on main).
+            let callCtx : CallContext =
+              { branchId = exeState.branchId; threadID = vm.threadID }
+            let! _reconciled =
+              LibDB.Sync.routeDivergences
+                exeState.conflictDispatch
+                callCtx
+                remote
+                PT.mainBranchId
+                divergences
             return
               DTuple(DInt64 newCursor, DInt64(int64 (List.length divergences)), [])
           }

@@ -16,6 +16,7 @@ open Fumble
 open LibDB.Sqlite
 
 module PT = LibExecution.ProgramTypes
+module RT = LibExecution.RuntimeTypes
 module BS = LibSerialization.Binary.Serialization
 module PMBlob = LibDB.RuntimeTypes.Blob
 
@@ -274,6 +275,93 @@ let recordDivergences
         else
           "auto: timestamp-LWW"
       do! Conflicts.record remote location localHash incomingHash resolution
+  }
+
+
+/// The item kind of a content hash — needed to rebuild a `SetName` Reference for a keep-local
+/// reconcile (the transport surfaced the divergence as data, so the original op isn't retained).
+/// Reads `locations.item_type` first — that's the kind of the very binding we're restoring, present
+/// even for a binding the incoming since superseded (its row is unlisted, not gone) — then falls
+/// back to the projection tables. None if the hash is unknown to all of them.
+let private kindOfHash (hash : string) : Task<Option<PT.ItemKind>> =
+  task {
+    let! rows =
+      Sql.query
+        """
+        SELECT item_type AS k FROM locations WHERE item_hash = @h
+        UNION ALL SELECT 'fn'    FROM package_functions WHERE hash = @h
+        UNION ALL SELECT 'type'  FROM package_types     WHERE hash = @h
+        UNION ALL SELECT 'value' FROM package_values    WHERE hash = @h
+        LIMIT 1
+        """
+      |> Sql.parameters [ "h", Sql.string hash ]
+      |> Sql.executeAsync (fun read -> read.string "k")
+    return rows |> List.tryHead |> Option.map PT.ItemKind.fromString
+  }
+
+/// Parse an FQ "owner[.modules].name" location back into a `PackageLocation` (owner = head,
+/// name = last, modules = the middle) — the inverse of `detectDivergences`' stringification.
+let private parseLocation (location : string) : Option<PT.PackageLocation> =
+  match location.Split('.') |> List.ofArray with
+  | owner :: rest ->
+    match List.rev rest with
+    | name :: revModules -> Some { owner = owner; modules = List.rev revModules; name = name }
+    | [] -> None
+  | _ -> None
+
+/// Route each detected divergence through the runtime conflict-dispatch seam
+/// (`exeState.conflictDispatch`). This is the "higher layer" the transport defers to: the receiver
+/// surfaces each `name → two hashes` divergence as data (never blocks); HERE it becomes a first-class
+/// `Conflict.CSyncDivergence` the runtime policy resolves —
+///   - default policy (`FailLoudly`) → no reconciling op: the divergence stays surfaced and the
+///     timestamp-LWW outcome the fold already applied stands. Byte-identical to pre-seam sync.
+///   - a sync policy may return `RSubstitute (DString hash)`:
+///       · hash = the LOCAL (existing) hash → KEEP LOCAL: emit + apply a reconciling `SetName`
+///         re-binding the location to our hash (a fresh op that also propagates the decision to
+///         peers, like a human override), and mark the recorded conflict overridden.
+///       · hash = the incoming hash / anything else → no-op: the incoming bind already applied.
+/// `branchId` is the branch the reconcile op is written to (the receiver's current branch — sync
+/// divergences are name bindings, applied on the branch the puller is on). Returns the number of
+/// divergences the policy actively reconciled (0 under the default).
+let routeDivergences
+  (dispatch : RT.ConflictDispatch)
+  (callCtx : RT.CallContext)
+  (remote : string)
+  (branchId : PT.BranchId)
+  (divergences : List<string * string * string>)
+  : Task<int> =
+  task {
+    let mutable reconciled = 0
+    for (location, existingHash, incomingHash) in divergences do
+      let conflict = RT.CSyncDivergence(location, existingHash, incomingHash)
+      let! resolution = dispatch conflict callCtx |> Ply.toTask
+      match resolution with
+      | RT.RSubstitute(RT.DString keepHash) when keepHash = existingHash ->
+        // keep local: re-bind the location to our existing hash, overriding the incoming bind.
+        // This is the same move as a human 'mine' override (`resolveConflict`): the `SetName` to our
+        // hash is content-identical to the op that first bound it, so it's already in the log and a
+        // fresh insert would `INSERT OR IGNORE`-dedup. RE-STAMP that op's `origin_ts` to now (so it
+        // wins timestamp-LWW, and the newer stamp rides sync so peers re-adopt our hash too) and
+        // RE-FOLD it directly via `applyOps` (which re-runs `applySetName`, un-listing the incoming
+        // row and re-activating ours) — `insertAndApplyOps` only folds NEWLY-inserted ops.
+        match! kindOfHash existingHash with
+        | Some kind ->
+          match parseLocation location with
+          | Some loc ->
+            let mineOp =
+              PT.PackageOp.SetName(loc, PT.Reference.fromHashAndKind (PT.Hash existingHash, kind))
+            do!
+              Sql.query
+                "UPDATE package_ops SET origin_ts = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = @id"
+              |> Sql.parameters [ "id", Sql.uuid (Inserts.computeOpHash mineOp) ]
+              |> Sql.executeStatementAsync
+            do! PackageOpPlayback.applyOps branchId None [ mineOp ]
+            do! Conflicts.markOverriddenByLocation remote location
+            reconciled <- reconciled + 1
+          | None -> ()
+        | None -> ()
+      | _ -> () // RFailLoudly / RSubstitute(incoming|other) → surfaced-as-data, LWW stands
+    return reconciled
   }
 
 let applyRemoteOps

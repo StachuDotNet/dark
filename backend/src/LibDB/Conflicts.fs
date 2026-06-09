@@ -138,6 +138,23 @@ let markOverridden (id : string) : Task<unit> =
       |> Sql.executeStatementAsync
   }
 
+/// Mark the most recent un-overridden conflict at a location overridden — used when a resolution
+/// POLICY (not a human) keeps local: `Sync.routeDivergences` emitted a reconciling op, so the
+/// recorded auto-LWW outcome no longer reflects the live binding. Keyed by remote + location.
+let markOverriddenByLocation (remote : string) (location : string) : Task<unit> =
+  task {
+    do!
+      Sql.query
+        """
+        UPDATE sync_conflicts SET overridden = 1, acknowledged = 1
+        WHERE id = (SELECT id FROM sync_conflicts
+                    WHERE remote = @remote AND location = @loc AND overridden = 0
+                    ORDER BY detected_at DESC LIMIT 1)
+        """
+      |> Sql.parameters [ "remote", Sql.string remote; "loc", Sql.string location ]
+      |> Sql.executeStatementAsync
+  }
+
 /// Look up one conflict by id (for the resolve flow).
 let getById (id : string) : Task<Option<Conflict>> =
   task {

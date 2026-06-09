@@ -64,6 +64,7 @@ let main (args : string array) : int =
         Tests.OpsProjections.tests
         Tests.ConflictDispatch.tests
         Tests.SyncIdempotency.tests
+        Tests.SyncScenarios.tests
         Tests.Remotes.tests ]
 
     let cancelationTokenSource = new System.Threading.CancellationTokenSource()
