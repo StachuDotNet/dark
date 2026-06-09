@@ -50,7 +50,7 @@ let opKindBreakdown (kinds: List<String>) : String =
 // authoring time wins) and RECORDED so it's never silently lost. This is the review surface
 // (`dark conflicts`): it shows what was auto-kept, which side won, and nudges the user to `ack`
 // (agree) or `resolve … mine|theirs` (override). Pure over the structured tuples from
-// `Builtin.pmConflictsList` — testable in testfiles/execution/pre-s-and-s/conflicts-list.dark.
+// `pmConflictsList` — testable in testfiles/execution/pre-s-and-s/conflicts-list.dark.
 
 let shortHash (h: String) : String =
   if Stdlib.String.length h > 8L then Stdlib.String.slice h 0L 8L else h
@@ -110,7 +110,7 @@ let conflictBlock
     ++ remote
     ++ ackHint ]
 
-// The full `dark conflicts` report over the structured rows from `Builtin.pmConflictsList`.
+// The full `dark conflicts` report over the structured rows from `pmConflictsList`.
 // Header frames the ack model; the footer lists the actions. Empty → a clean "nothing pending".
 let conflictReport
   (conflicts: List<(String * String * String * String * String * String * String)>)
