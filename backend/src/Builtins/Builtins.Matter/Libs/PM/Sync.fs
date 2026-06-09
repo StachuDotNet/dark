@@ -7,6 +7,7 @@ open LibExecution.RuntimeTypes
 module Builtin = LibExecution.Builtin
 module PT = LibExecution.ProgramTypes
 module Dval = LibExecution.Dval
+module VT = LibExecution.ValueType
 
 open Builtin.Shortcuts
 
@@ -479,15 +480,18 @@ let fns () : List<BuiltInFn> =
             "includeResolved"
             TBool
             "true = include acked/overridden (history); false = only pending" ]
-      returnType = TList TString
+      returnType =
+        TList(
+          TTuple(TString, TString, [ TString; TString; TString; TString; TString ])
+        )
       description =
-        "Recorded sync conflicts (auto-resolved name-binding divergences), one pre-formatted line
-         each for `dark conflicts`: short id, location, status (NEW/acked/overridden), the
-         auto-resolution, and both hashes (yours vs theirs). `includeResolved=false` shows only
-         pending (the actionable view — acked/overridden drop out, the ack-to-dismiss model). Empty
-         if none match."
+        "Recorded sync conflicts (auto-resolved name-binding divergences), one STRUCTURED tuple each
+         for `dark conflicts` to format in Dark (so the display is package-testable + iterable):
+         `(id, location, status, resolution, localHash, incomingHash, remote)`. `status` is
+         NEW/acked/overridden; hashes are full (the Dark formatter shortens). `includeResolved=false`
+         shows only pending (the actionable view — acked/overridden drop out, the ack-to-dismiss
+         model). Empty if none match."
       fn =
-        let shortHash (h : string) = if h.Length > 8 then h.Substring(0, 8) else h
         (function
         | _, _, _, [ DBool includeResolved ] ->
           uply {
@@ -499,16 +503,26 @@ let fns () : List<BuiltInFn> =
                 all
                 |> List.filter (fun (c : LibDB.Conflicts.Conflict) ->
                   not (c.acknowledged || c.overridden))
-            let lines =
+            let rows =
               conflicts
               |> List.map (fun c ->
                 let status =
                   if c.overridden then "overridden"
                   elif c.acknowledged then "acked"
                   else "NEW"
-                DString
-                  $"{c.id.Substring(0, 8)}  {c.location}  [{status}]  {c.resolution} — you={shortHash c.localHash} them={shortHash c.incomingHash}  (from {c.remote})")
-            return Dval.list KTString lines
+                DTuple(
+                  DString c.id,
+                  DString c.location,
+                  [ DString status
+                    DString c.resolution
+                    DString c.localHash
+                    DString c.incomingHash
+                    DString c.remote ]
+                ))
+            return
+              Dval.list
+                (KTTuple(VT.string, VT.string, [ VT.string; VT.string; VT.string; VT.string; VT.string ]))
+                rows
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

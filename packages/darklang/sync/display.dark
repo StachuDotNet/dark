@@ -43,3 +43,99 @@ let opKindBreakdown (kinds: List<String>) : String =
       (Stdlib.List.append (kindPart kinds "value") (kindPart kinds "rename"))
 
   Stdlib.String.join parts ", "
+
+
+// ── conflict display: surfacing last-write-wins auto-resolutions for eventual ack ──
+// Sync NEVER blocks — a `name → two hashes` divergence is auto-resolved by timestamp-LWW (newest
+// authoring time wins) and RECORDED so it's never silently lost. This is the review surface
+// (`dark conflicts`): it shows what was auto-kept, which side won, and nudges the user to `ack`
+// (agree) or `resolve … mine|theirs` (override). Pure over the structured tuples from
+// `Builtin.pmConflictsList` — testable in testfiles/execution/pre-s-and-s/conflicts-list.dark.
+
+let shortHash (h: String) : String =
+  if Stdlib.String.length h > 8L then Stdlib.String.slice h 0L 8L else h
+
+// Which side timestamp-LWW kept, read from the recorded resolution tag: "you" | "them" | "" (unknown).
+let conflictWinner (resolution: String) : String =
+  if Stdlib.String.contains resolution "incoming won" then
+    "them"
+  else if Stdlib.String.contains resolution "kept local" then
+    "you"
+  else
+    ""
+
+// The human verdict phrase — always names last-write-wins so the auto-resolution is never opaque.
+let conflictVerdict (resolution: String) : String =
+  match conflictWinner resolution with
+  | "them" -> "last-write-wins → kept theirs"
+  | "you" -> "last-write-wins → kept yours"
+  | _ -> "auto-resolved (last-write-wins)"
+
+// you/them hashes with a ✓ on the side that won (and the arrow pointing to it).
+let conflictHashes (resolution: String) (localHash: String) (incomingHash: String) : String =
+  let you = shortHash localHash
+  let them = shortHash incomingHash
+
+  match conflictWinner resolution with
+  | "them" -> "you " ++ you ++ "  →  them " ++ them ++ " ✓"
+  | "you" -> "you " ++ you ++ " ✓  ←  them " ++ them
+  | _ -> "you " ++ you ++ "  ·  them " ++ them
+
+// status glyph: pending (needs ack) vs already-dismissed history.
+let conflictGlyph (status: String) : String =
+  if status == "acked" then "✓"
+  else if status == "overridden" then "↩"
+  else "⚠"
+
+// One recorded conflict as a 2-line block: the location headline, then the indented verdict +
+// who-won + peer + (for pending) the exact `ack <id>` to dismiss it.
+let conflictBlock
+  (id: String)
+  (location: String)
+  (status: String)
+  (resolution: String)
+  (localHash: String)
+  (incomingHash: String)
+  (remote: String)
+  : List<String> =
+  let ackHint =
+    if status == "NEW" then "  ·  ack " ++ (shortHash id) else ""
+
+  [ (conflictGlyph status) ++ " " ++ location
+    "    "
+    ++ (conflictVerdict resolution)
+    ++ "   "
+    ++ (conflictHashes resolution localHash incomingHash)
+    ++ "  ·  from "
+    ++ remote
+    ++ ackHint ]
+
+// The full `dark conflicts` report over the structured rows from `Builtin.pmConflictsList`.
+// Header frames the ack model; the footer lists the actions. Empty → a clean "nothing pending".
+let conflictReport
+  (conflicts: List<(String * String * String * String * String * String * String)>)
+  (includeResolved: Bool)
+  : List<String> =
+  if Stdlib.List.isEmpty conflicts then
+    if includeResolved then
+      [ "✓ no sync conflicts on record" ]
+    else
+      [ "✓ no pending sync conflicts — every divergence is acknowledged" ]
+  else
+    let n = Stdlib.List.length conflicts
+
+    let header =
+      (Stdlib.Int64.toString n)
+      ++ " auto-resolved conflict(s) awaiting ack — last-write-wins kept one side, nothing lost:"
+
+    let blocks =
+      conflicts
+      |> Stdlib.List.map (fun (id, location, status, resolution, localHash, incomingHash, remote) ->
+        conflictBlock id location status resolution localHash incomingHash remote)
+      |> Stdlib.List.flatten
+
+    let footer = "  ack <id> (agree)  ·  ack all  ·  resolve <id> mine|theirs (override)"
+
+    Stdlib.List.append
+      (Stdlib.List.append [ header; "" ] blocks)
+      [ ""; footer ]

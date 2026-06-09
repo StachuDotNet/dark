@@ -6,26 +6,24 @@ module Darklang.Cli.Conflicts
 // thing was right"); `resolve <id> mine|theirs` to override lands next.
 
 // Single home for the pmConflictsList builtin (multi-ref guard wants ≤1 reference) — every other
-// caller (the display below, the `sync status` count) routes through this one fn.
-let recorded (includeResolved: Bool) : List<String> =
+// caller (the display below, the `sync status` count) routes through this one fn. Returns STRUCTURED
+// rows `(id, location, status, resolution, localHash, incomingHash, remote)`; the human formatting
+// lives in `Darklang.Sync.Display.conflictReport` (pure → package-testable, iterable without a rebuild).
+let recorded
+  (includeResolved: Bool)
+  : List<(String * String * String * String * String * String * String)> =
   Builtin.pmConflictsList includeResolved
 
 // How many conflicts are still pending (unacknowledged) — the `dark sync status` glance shows this.
 let pendingCount () : Int64 =
   Stdlib.List.length (recorded false)
 
-// Print the conflict list — pending only, or all (including acked/overridden history).
+// Print the conflict list — pending only, or all (including acked/overridden history). The report
+// frames the last-write-wins auto-resolution, marks the winning side, and nudges toward `ack`.
 let showConflicts (includeResolved: Bool) : Unit =
-  let lines = recorded includeResolved
-
-  if Stdlib.List.isEmpty lines then
-    if includeResolved then
-      Stdlib.printLine (Colors.success "✓ no sync conflicts on record")
-    else
-      Stdlib.printLine (Colors.success "✓ no pending sync conflicts")
-  else
-    Stdlib.printLine "Sync conflicts (auto-resolved — `ack <id>`/`ack all` to dismiss):"
-    Stdlib.printLines lines
+  Stdlib.printLines (
+    Darklang.Sync.Display.conflictReport (recorded includeResolved) includeResolved
+  )
 
 
 let execute (state: AppState) (args: List<String>) : AppState =
