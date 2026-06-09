@@ -113,9 +113,9 @@ today's chat-window. Pure render + Model + TODOs; interactive wiring is a docume
   unknown-substitute, type-kind, empty, multi-divergence LWW, re-stamp propagation.
 - `OpsProjections` (5), `ConflictDispatch` (4), `Remotes` (4), `BranchOps` (7, incl. the same-FQN
   local-authoring case the LWW fix protects).
-- `.dark` testfiles (fast loop, no rebuild): `conflicts-list` (18), `sync-check` (11), `apps-sketches` (13),
+- `.dark` testfiles (fast loop, no rebuild): `conflicts-list` (19), `sync-check` (11), `apps-sketches` (18),
   plus the existing sync-cli / conflicts-display / status-cli / autosync.
-- **Full backend suite — 9,743 passed, 0 failed.**
+- **Full backend suite — 9,750 passed, 0 failed.**
 - Release CLI — two instances sync via file pull end-to-end.
 
 ## Notable engineering

@@ -1,7 +1,7 @@
 # Stable & Syncing — status & remaining
 
-**Done, green, unpushed.** The full "stable & syncing" floor is assembled on `sync-ss` (loop-fun):
-`+5,272 / −50`, 7 commits on current `main`. Full backend suite **9,743 passed / 0 failed**.
+**Done, green, pushed** to `github/syncing-again`. The full "stable & syncing" floor (loop-fun):
+`+5,336 / −50`, 7 commits on current `main`. Full backend suite **9,750 passed / 0 failed**.
 
 ## What's in it
 
@@ -15,11 +15,11 @@
   `CSyncDivergence`; default behavior unchanged, a sync policy can keep-local. (`SyncScenarios` 8/8.)
 - **Conflict-resolution UX** — structured builtin + pure Dark `Sync.Display.conflictReport`:
   last-write-wins framed, winner-marked, the exact `ack <id>` inlined; surfaced at pull → status →
-  `dark conflicts`. Nothing silently lost. (`conflicts-list.dark` 18.)
+  `dark conflicts`. Nothing silently lost. (`conflicts-list.dark` 19.)
 - **Coverage proven** — every `PackageOp` kind rides sync (`applyOp` has no wildcard; `opsSince` no
   filter; propagation rides via companion `SetName`s). Release CLI: two instances converge via file pull.
 - **CLI app sketches** (render-only) — Explorer / TreeView / Repl, toward a multi-view CLI. Vision in
-  `cli-ux-redesign-vision.md`. (`apps-sketches.dark` 13.)
+  `cli-ux-redesign-vision.md`. (`apps-sketches.dark` 18.)
 
 ## Open questions (your call — don't block the merge)
 
@@ -41,5 +41,5 @@ is tested. Revisit if/when a keep-local policy lands.
 
 ## Pointers
 
-- Branch `sync-ss` (loop-fun), base `github/main`. Prework branches: `ops-projections`, `conflict-dispatch`.
+- Branch `syncing-again` (loop-fun), base `github/main`. Prework branches: `ops-projections`, `conflict-dispatch`.
 - PR description / commit message: `sync-pr-description.md`. Code-diff report: `sync-pr-code-diff.md`.
