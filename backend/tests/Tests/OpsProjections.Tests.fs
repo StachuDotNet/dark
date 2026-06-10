@@ -151,4 +151,24 @@ let tests =
           (List.contains t Seed.projectionTables)
           $"{t} is canonical and must NOT be in the projection drop-set (it would be lost on a schema change)")
     }
+
+    // DURABLE-CANON, end to end. A schema change now runs `rebuildProjections` (drop projections +
+    // re-fold), exactly what this exercises. The first test pins projection-regen + blobs; this pins the
+    // thing that actually matters — your authored op LOG (and branch/commit state) come through a full
+    // re-fold IDENTICAL. If this regresses, a schema bump is eating real work.
+    testTask "durable-canon: a full re-fold preserves the canonical op log (the authored work)" {
+      let! opsBefore = countRows "package_ops"
+      let! branchesBefore = countRows "branches"
+      let! commitsBefore = countRows "commits"
+      Expect.isTrue (opsBefore > 0L) "there are ops to preserve (not a vacuous test)"
+
+      let! _ = Seed.rebuildProjections ()
+
+      let! opsAfter = countRows "package_ops"
+      let! branchesAfter = countRows "branches"
+      let! commitsAfter = countRows "commits"
+      Expect.equal opsAfter opsBefore "package_ops (the authored op log) is untouched by a re-fold"
+      Expect.equal branchesAfter branchesBefore "branches preserved across a re-fold"
+      Expect.equal commitsAfter commitsBefore "commits preserved across a re-fold"
+    }
   ]
