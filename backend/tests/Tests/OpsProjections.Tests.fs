@@ -171,4 +171,24 @@ let tests =
       Expect.equal branchesAfter branchesBefore "branches preserved across a re-fold"
       Expect.equal commitsAfter commitsBefore "commits preserved across a re-fold"
     }
+
+    // Projection-currency counters — the `dark status` glance (`projectionStatus` → opsCount vs
+    // folded-through). Equal when the cache is current; a gap when ops are appended/pulled but not yet
+    // folded. Guards the surface that tells you a `branch rebuild` is owed.
+    testTask "projectionStatus: folded == total when current; a gap appears when an op is unapplied" {
+      let! _ = Seed.rebuildProjections () // re-fold → every op applied → current
+      let! (total1, folded1) = Seed.projectionStatus ()
+      Expect.isTrue (total1 > 0L) "there are ops to count"
+      Expect.equal folded1 total1 "after a rebuild, folded-through == total (cache current)"
+      // mark one op unapplied → a one-op gap
+      do!
+        Sql.query
+          "UPDATE package_ops SET applied = 0 WHERE rowid = (SELECT MIN(rowid) FROM package_ops)"
+        |> Sql.executeStatementAsync
+      let! (total2, folded2) = Seed.projectionStatus ()
+      Expect.equal total2 total1 "total ops unchanged (the canonical log is untouched)"
+      Expect.equal folded2 (folded1 - 1L) "one unapplied op → folded-through drops by one (a visible gap)"
+      let! _ = Seed.rebuildProjections () // restore: re-fold so the shared DB stays consistent
+      ()
+    }
   ]
