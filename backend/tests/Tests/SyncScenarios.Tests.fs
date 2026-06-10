@@ -320,4 +320,61 @@ let tests =
           incomingStamp
           "our op is now the newest-by-creation (the re-stamp rides sync so peers re-adopt local)"
       }
+
+      // An incoming binding OLDER (by creation) than ours is stale — it's recorded as a divergence
+      // (surfaced as data) but does NOT rebind. The opposite of the default scenarios (incoming newer).
+      testTask "incoming older than local → local stays, no rebind (still recorded)" {
+        let loc : PT.PackageLocation =
+          { owner = "Scenario"; modules = [ "Older" ]; name = uniqueName "o" }
+        let localH, incomingH = hashChar 'a', hashChar 'b'
+        let remote = uniqueName "rold"
+        // local newer (-30), incoming older (-90) → incoming loses by timestamp-LWW
+        let! divs =
+          setupDivergentPull loc PT.ItemKind.Fn localH -30.0 incomingH -90.0 remote
+        Expect.equal (List.length divs) 1 "the divergence is still surfaced as data (recorded)"
+        let! winner = liveHash loc
+        Expect.equal winner (Some localH) "local stays — the older incoming op did not rebind"
+      }
+
+      // Order-independence: whichever side holds the newer-by-creation op, both machines converge to
+      // it — proven by running the SAME race with the newer hash on opposite sides.
+      testTask "order-independent: both machines converge to the newer op regardless of arrival side" {
+        let mk suffix : PT.PackageLocation =
+          { owner = "Scenario"; modules = [ "Order" ]; name = uniqueName suffix }
+        let a, b = hashChar 'a', hashChar 'b'
+        // machine-1: local=a (older), incoming=b (newer) → b wins as the incoming
+        let loc1 = mk "ord1"
+        let! _ = setupDivergentPull loc1 PT.ItemKind.Fn a -120.0 b -60.0 (uniqueName "ro1")
+        let! w1 = liveHash loc1
+        // machine-2: local=b (newer), incoming=a (older) → b stays as the local
+        let loc2 = mk "ord2"
+        let! _ = setupDivergentPull loc2 PT.ItemKind.Fn b -60.0 a -120.0 (uniqueName "ro2")
+        let! w2 = liveHash loc2
+        Expect.equal w1 (Some b) "machine where b arrived incoming: b (newer) won"
+        Expect.equal w2 (Some b) "machine where b was local: b (newer) stayed — same winner"
+      }
+
+      // After a divergent pull converges, re-pulling the SAME op is a clean no-op: no new divergence
+      // (the binding already equals the incoming), no flip (INSERT OR IGNORE dedups the op).
+      testTask "re-pulling an already-applied divergent op is a no-op (no new conflict, no flip)" {
+        let loc : PT.PackageLocation =
+          { owner = "Scenario"; modules = [ "NoOp" ]; name = uniqueName "np" }
+        let localH, incomingH = hashChar 'a', hashChar 'b'
+        let remote = uniqueName "rnoop"
+        let! _ =
+          setupDivergentPull loc PT.ItemKind.Fn localH -120.0 incomingH -60.0 remote
+        let! winner1 = liveHash loc
+        Expect.equal winner1 (Some incomingH) "incoming (newer) won the first pull"
+        // re-deliver the same incoming op
+        let incomingRef = PT.Reference.fromHashAndKind (PT.Hash incomingH, PT.ItemKind.Fn)
+        let! (_cursor, divs2) =
+          Sync.applyRemoteOps
+            remote
+            PT.mainBranchId
+            None
+            [ (1L, relTs -60.0, PT.PackageOp.SetName(loc, incomingRef)) ]
+        Expect.isEmpty divs2 "re-pulling the same op surfaces no new divergence"
+        let! winner2 = liveHash loc
+        Expect.equal winner2 (Some incomingH) "binding unchanged after the idempotent re-pull"
+      }
     ]
