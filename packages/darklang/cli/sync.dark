@@ -125,9 +125,21 @@ let execute (state: AppState) (args: List<String>) : AppState =
     if Stdlib.String.startsWith target "http" then
       match Darklang.Sync.httpGet (Darklang.Sync.healthUrl target) with
       | Ok body ->
-        let peerOps = Darklang.Sync.parseHealthOps body
-        let ourCursor = Darklang.Sync.cursorFor target
-        Stdlib.printLine (Darklang.Sync.convergenceLine target ourCursor peerOps)
+        // version-skew first: if the peer's release differs from ours, sync can't proceed (the wire
+        // gate fails closed) — say which side to upgrade, instead of letting a pull decode-error later.
+        let skew =
+          Darklang.Sync.releaseSkewLine
+            target
+            (Darklang.Sync.ourRelease ())
+            (Darklang.Sync.parseHealthRelease body)
+
+        if skew == "" then
+          let peerOps = Darklang.Sync.parseHealthOps body
+          let ourCursor = Darklang.Sync.cursorFor target
+          Stdlib.printLine (Darklang.Sync.convergenceLine target ourCursor peerOps)
+        else
+          Stdlib.printLine (Colors.warning skew)
+
         state
       | Error _ ->
         Stdlib.printLine

@@ -25,6 +25,16 @@ Darklang.Sync.parseHealthRelease "sync-server ok; release=7; ops=0" = 7L
 Darklang.Sync.parseHealthRelease "sync-server ok; ops=42" = 0L
 Darklang.Sync.parseHealthRelease "" = 0L
 
+// ── releaseSkewLine: sync needs both sides on the same release; say WHICH to upgrade on a mismatch ──
+// matched → "" (no skew; the check falls through to the convergence line)
+Darklang.Sync.releaseSkewLine "desktop" 2L 2L = ""
+// peer has no release stamp (old Dark) → upgrade it
+Darklang.Sync.releaseSkewLine "desktop" 2L 0L = "⚠ desktop is on an older Dark (no release) — upgrade it to sync"
+// peer behind us → upgrade the peer
+Darklang.Sync.releaseSkewLine "desktop" 3L 2L = "⚠ desktop is on Release 2, you're on 3 — upgrade desktop to sync"
+// peer ahead of us → upgrade this machine
+Darklang.Sync.releaseSkewLine "desktop" 2L 5L = "⚠ desktop is on Release 5, you're on 2 — upgrade this machine to sync"
+
 // ── convergenceLine: the HUMAN verdict over (our cursor, peer op count) ──
 // caught up — our cursor reached the peer's latest op
 Darklang.Sync.convergenceLine "desktop" 9845L 9845L = "✓ desktop — caught up (9845 ops)"

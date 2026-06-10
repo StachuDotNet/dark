@@ -126,6 +126,39 @@ let parseHealthRelease (healthBody: String) : Int64 =
     | _ -> 0L
   | _ -> 0L
 
+// THIS instance's sync release. Single home for the `pmSyncReleaseVersion` builtin (the multi-ref
+// guard wants ≤1 reference) — every caller routes through here.
+let ourRelease () : Int64 =
+  Builtin.pmSyncReleaseVersion ()
+
+// Sync requires both sides on the SAME release (the wire gate fails closed — a mismatched batch is
+// rejected, never misread). When they differ, this is the clear, actionable line — saying WHICH side
+// to upgrade — that a `check`/`pull` shows instead of a raw decode error. "" when releases match (no
+// skew). A peer with no release stamp parses to 0 (an old pre-release Dark) → "upgrade it".
+let releaseSkewLine
+  (peerLabel: String)
+  (ourRelease: Int64)
+  (peerRelease: Int64)
+  : String =
+  if ourRelease == peerRelease then
+    ""
+  else if peerRelease == 0L then
+    "⚠ " ++ peerLabel ++ " is on an older Dark (no release) — upgrade it to sync"
+  else
+    let theirs = Stdlib.Int64.toString peerRelease
+    let ours = Stdlib.Int64.toString ourRelease
+    let which = if peerRelease < ourRelease then peerLabel else "this machine"
+
+    "⚠ "
+    ++ peerLabel
+    ++ " is on Release "
+    ++ theirs
+    ++ ", you're on "
+    ++ ours
+    ++ " — upgrade "
+    ++ which
+    ++ " to sync"
+
 // "Am I caught up with this peer?" — compare our synced cursor to the peer's op count. Caught up
 // when our cursor has reached the peer's latest op; else how far behind, both sides shown.
 let convergenceLine
