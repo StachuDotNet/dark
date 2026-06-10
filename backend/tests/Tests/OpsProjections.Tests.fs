@@ -127,4 +127,28 @@ let tests =
         locsBefore
         "locations untouched — rebuildDirtied {AddFn} refolds only the dirtied projections"
     }
+
+    // DURABLE-CANON invariant. A schema change drops ONLY `projectionTables` and re-folds the op log
+    // (LocalExec.Migrations.dropProjectionTables) — so the canonical, authored data must NEVER appear
+    // in that drop-set. If it did, a schema bump would delete your work. This guards that line.
+    test "durable-canon: the projection drop-set never includes a canonical table" {
+      let canonical =
+        [ "package_ops" // the authored op log — the truth
+          "package_blobs" // canonical content (op-playback never writes it)
+          "branches"
+          "commits"
+          "branch_ops"
+          "accounts_v0"
+          "user_data_v0"
+          "toplevels_v0"
+          "scripts_v0"
+          "sync_remotes"
+          "sync_cursors"
+          "sync_conflicts" ]
+      canonical
+      |> List.iter (fun t ->
+        Expect.isFalse
+          (List.contains t Seed.projectionTables)
+          $"{t} is canonical and must NOT be in the projection drop-set (it would be lost on a schema change)")
+    }
   ]

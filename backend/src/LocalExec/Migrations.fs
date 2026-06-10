@@ -82,23 +82,34 @@ let private storedHash () : Option<string> =
     | Error err -> Exception.raiseInternal $"storedHash: {err}" [ "err", err ]
 
 
-let private dropAllUserTables () : unit =
-  // Disable FK enforcement for the bulk drop. Without this, SQLite refuses
-  // to drop parent tables before children when the child table's FK
-  // column is non-nullable; drop order is sqlite_master row order,
-  // not topological. PRAGMA foreign_keys is connection-scoped, so the
-  // next connection (which runs schema.sql) gets the default back.
+/// Drop ONLY the regenerable projection tables — never the canonical op log, blobs, branches,
+/// commits, or account/user state. This is what makes a schema change DURABLE: your authored work
+/// (the ops) survives; only the cache is rebuilt. The list is `Seed.projectionTables` (single source
+/// of truth — the same set the runtime's `rebuildProjections` clears), so it can't drift.
+let private dropProjectionTables () : unit =
+  // FK off for the drop (a child projection may FK a parent we're keeping); connection-scoped, so
+  // the next connection (which replays schema.sql) gets the default back.
   Sql.query "PRAGMA foreign_keys = OFF" |> Sql.executeStatementSync
-  let userTables =
-    Sql.query
-      "SELECT name FROM sqlite_master
-       WHERE type = 'table'
-         AND name NOT LIKE 'sqlite_%'
-         AND name <> 'schema_state_v0'"
-    |> Sql.execute (fun read -> read.string "name")
-    |> Result.unwrap
-  for t in userTables do
+  for t in LibDB.Seed.projectionTables do
     Sql.query (sprintf "DROP TABLE IF EXISTS \"%s\"" t) |> Sql.executeStatementSync
+
+/// Mark every op unapplied so the next `Seed.growIfNeeded` re-folds the whole log into the freshly
+/// recreated projections. Re-folding (with value evaluation) needs the runtime, which the migration
+/// phase doesn't have — so we defer the fold to startup, exactly like a fresh seed does.
+let private markOpsUnapplied () : unit =
+  if tableExists "package_ops" then
+    Sql.query "UPDATE package_ops SET applied = 0" |> Sql.executeStatementSync
+
+let private opCount () : int =
+  if tableExists "package_ops" then
+    match
+      Sql.query "SELECT COUNT(*) AS c FROM package_ops"
+      |> Sql.execute (fun read -> read.int "c")
+    with
+    | Ok(c :: _) -> c
+    | _ -> 0
+  else
+    0
 
 
 let private writeHash (hash : string) : unit =
@@ -144,11 +155,19 @@ let private runSchemaBootstrap () : unit =
   match storedHash () with
   | Some have when have = want -> ()
   | Some have ->
+    // DURABLE re-fold (not kill-and-fill): drop only the regenerable projections; the canonical op
+    // log + blobs + branch/commit/account state survive. Replaying schema.sql recreates the dropped
+    // projections in their new shape and is a no-op for the surviving canonical tables
+    // (CREATE TABLE IF NOT EXISTS). Marking ops unapplied makes the next `growIfNeeded` re-fold them.
+    // NOTE: a canonical-table SHAPE change can't go through this path (CREATE IF NOT EXISTS won't
+    // alter an existing table) — it needs a data-preserving incremental (the Release migrator).
+    let ops = opCount ()
     print
-      $"schema.sql changed (hash {have[0..7]} → {want[0..7]}); \
-        kill-and-fill."
-    dropAllUserTables ()
+      $"schema.sql changed (hash {have[0..7]} → {want[0..7]}); preserving {ops} op(s), \
+        rebuilding projections."
+    dropProjectionTables ()
     Sql.query sql |> Sql.executeStatementSync
+    markOpsUnapplied ()
     writeHash want
   | None ->
     if adoptLegacyDB want then
