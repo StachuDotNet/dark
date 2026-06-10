@@ -111,6 +111,21 @@ let parseHealthOps (healthBody: String) : Int64 =
     | Error _ -> 0L
   | _ -> 0L
 
+// The peer's sync RELEASE from its `/sync/health` body ("...; release=<N>; ops=<M>"). The single
+// coordinate that must match ours for sync to proceed. A peer that omits it (an OLD pre-release
+// version) parses to 0 — which reads as a mismatch against any real release, exactly the intent.
+let parseHealthRelease (healthBody: String) : Int64 =
+  match Stdlib.String.split healthBody "release=" with
+  | [ _before; rest ] ->
+    // `rest` is "<N>; ops=<M>" — take the digits before the next ";"
+    match Stdlib.String.split rest ";" with
+    | n :: _ ->
+      match Stdlib.Int64.parse n with
+      | Ok v -> v
+      | Error _ -> 0L
+    | _ -> 0L
+  | _ -> 0L
+
 // "Am I caught up with this peer?" — compare our synced cursor to the peer's op count. Caught up
 // when our cursor has reached the peer's latest op; else how far behind, both sides shown.
 let convergenceLine

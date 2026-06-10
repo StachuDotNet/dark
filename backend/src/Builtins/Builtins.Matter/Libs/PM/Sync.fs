@@ -346,15 +346,38 @@ let fns () : List<BuiltInFn> =
       returnType = TString
       description =
         "Liveness + state probe for the sync SERVER (the `GET /sync/health` body): confirms the
-         server is up and reports how many ops its canonical log holds — so a puller (or a person)
-         can check readiness before a pull and see convergence (server ops vs local ops)."
+         server is up, its RELEASE (the op-format/wire version — the single coordinate that gates
+         cross-instance sync), and how many ops its canonical log holds. So a puller (or a person)
+         can check readiness, see convergence (server ops vs local ops), AND detect a version skew
+         before pulling. `release` comes first so the older `ops=` parser stays valid."
       fn =
         (function
         | _, _, _, [ DUnit ] ->
           uply {
             let! (opsCount, _folded) = LibDB.Seed.projectionStatus ()
-            return DString $"sync-server ok; ops={string opsCount}"
+            return
+              DString
+                $"sync-server ok; release={string LibDB.Sync.wireFormatVersion}; ops={string opsCount}"
           }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+
+    { name = fn "pmSyncReleaseVersion" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TInt64
+      description =
+        "THIS instance's sync RELEASE (the op-format/wire version). The single coordinate that must
+         match a peer's for sync to proceed — the wire gate refuses a mismatched batch (fail-closed,
+         no corruption). Compare against a peer's `/sync/health` `release=` to detect a skew and tell
+         the user to upgrade, rather than surfacing a raw decode failure."
+      fn =
+        (function
+        | _, _, _, [ DUnit ] -> uply { return DInt64(int64 LibDB.Sync.wireFormatVersion) }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
