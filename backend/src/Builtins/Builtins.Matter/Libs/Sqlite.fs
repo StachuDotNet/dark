@@ -39,6 +39,7 @@ module Value =
     let (caseName, fields) =
       match cell with
       | null -> "Null", []
+      | :? System.DBNull -> "Null", [] // ADO returns DBNull.Value (not null) for a SQL NULL
       | :? int64 as i -> "Int", [ DInt64 i ]
       | :? double as f -> "Real", [ DFloat f ]
       | :? string as s -> "Text", [ DString s ]
