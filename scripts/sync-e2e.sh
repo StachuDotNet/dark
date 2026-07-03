@@ -27,7 +27,7 @@ if cli "$B" view "$VAL" 2>/dev/null | strip | grep -q "42"; then
 fi
 
 # --- sync A -> B (copy ops via ATTACH + fold), assert convergence ---
-folded=$(cli "$B" eval "Darklang.Sync.pullFile \"$B\" \"$A\"" 2>/dev/null | strip | tail -1)
+folded=$(cli "$B" eval "Darklang.Sync.pullFile \"$A\"" 2>/dev/null | strip | tail -1)
 if cli "$B" view "$VAL" 2>/dev/null | strip | grep -q "42"; then
   echo "PASS: B converged — $VAL synced from A (folded $folded op(s))"
 else
@@ -35,7 +35,7 @@ else
 fi
 
 # --- idempotency: a second pull folds nothing new ---
-folded2=$(cli "$B" eval "Darklang.Sync.pullFile \"$B\" \"$A\"" 2>/dev/null | strip | tail -1)
+folded2=$(cli "$B" eval "Darklang.Sync.pullFile \"$A\"" 2>/dev/null | strip | tail -1)
 if [ "$folded2" = "0" ]; then
   echo "PASS: idempotent re-pull folded 0"
 else

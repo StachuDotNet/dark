@@ -7,8 +7,10 @@ module Darklang.Sync
 /// content-addressed by id) makes it idempotent — re-pulling is a no-op.
 ///
 /// v1: the FILE transport — a debug / offline floor. The installed daemon automates this (DECISIONS §8).
-/// <param localPath> must be the running instance's OWN store, since the fold applies to that store.
-let pullFile (localPath: String) (peerPath: String) : Int =
+/// Copies into + folds THIS instance's own store (`Builtin.localDbPath ()`), so the caller only names the peer.
+let pullFile (peerPath: String) : Int =
+  let localPath = Builtin.localDbPath ()
+
   let _copied =
     Stdlib.Sqlite.execP
       localPath

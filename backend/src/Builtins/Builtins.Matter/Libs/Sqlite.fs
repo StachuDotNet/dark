@@ -192,6 +192,22 @@ let fns () : List<BuiltInFn> =
       sqlSpec = NotQueryable
       previewable = Impure
       capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    // This instance's OWN package store path (data.db). Sync copies a peer's ops into + folds this store,
+    // so `pullFile` uses it as the local target — the daemon/CLI don't have to know the path.
+    { name = fn "localDbPath" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TString
+      description = "The file path of this instance's own package store (data.db)."
+      fn =
+        (function
+        | _, _, _, [ DUnit ] -> uply { return DString LibConfig.Config.dbPath }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated } ]
 
 let builtins () = LibExecution.Builtin.make [] (fns ())
