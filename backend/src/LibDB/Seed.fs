@@ -8,6 +8,18 @@
 ///
 /// On CLI startup the grow step runs automatically — if everything is already
 /// applied it's a single fast SELECT COUNT and returns immediately.
+///
+/// This module is also the home of **ops ⊥ projections**: the op log
+/// (`package_ops`) is canonical; the package tables (functions/types/values,
+/// locations, dependencies, deprecations) are regenerable *projections* folded
+/// from it. `projectionRegistry` names each projection + the op kinds that
+/// dirty it; `applyUnappliedOps` folds pending ops (append and fold are
+/// separable — the `applied` flag is the seam); `rebuildProjections` drops the
+/// projections, marks every op unapplied, and re-folds → byte-identical tables;
+/// `rebuildDirtied` is the incremental counterpart. This is what makes a schema
+/// change safe (drop projections, re-fold — the op log is never touched:
+/// "durable-canon") and, later, what lets a synced peer's ops fold in like any
+/// local edit.
 module LibDB.Seed
 
 open System.Threading.Tasks
