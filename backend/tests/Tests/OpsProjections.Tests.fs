@@ -91,6 +91,18 @@ let tests =
           "the exact set of projected item hashes is identical across a re-fold (deterministic fold)"
       }
 
+      // The authoring stamp behind the timestamp-LWW: locally-inserted ops must get a STRICTLY-increasing
+      // origin_ts, even within one wall-clock millisecond — otherwise two sequential SetNames to the same
+      // name would tie and be reordered by content hash (a later edit could lose its own location).
+      test "origin_ts stamps are strictly increasing (sequential local edits never tie the LWW)" {
+        let stamps = List.init 100 (fun _ -> LibDB.Inserts.nextOriginTs ())
+        Expect.equal stamps (List.sort stamps) "stamps are monotonic (non-decreasing)"
+        Expect.equal
+          (List.length (List.distinct stamps))
+          100
+          "stamps are strictly distinct — no ties even across a burst within one millisecond"
+      }
+
       // the projection registry — the fold/dirty descriptors
       test "the projection registry covers exactly the 6 regenerable projections" {
         Expect.equal

@@ -113,7 +113,11 @@ let applyUnappliedOps () : Task<int64> =
         SELECT id, op_blob, branch_id, commit_hash
         FROM package_ops
         WHERE applied = 0
-        ORDER BY created_at ASC
+        -- rowid (insertion order) is the deterministic tiebreak: created_at is second-resolution, so a
+        -- batch's ops share it and ordering by created_at alone leaves same-second ops in an unspecified
+        -- order. The fold's final state is order-independent for the cases that matter (SetName resolves by
+        -- origin_ts; AddFn is by-hash), but a deterministic replay order keeps re-folds byte-identical.
+        ORDER BY created_at ASC, rowid ASC
         """
         |> Sql.executeAsync (fun read ->
           let opId = read.uuid "id"
@@ -305,7 +309,7 @@ let rebuildDirtied (opKinds : Set<string>) : Task<int64> =
 
     let! ops =
       Sql.query
-        "SELECT id, op_blob, branch_id, commit_hash FROM package_ops ORDER BY created_at ASC"
+        "SELECT id, op_blob, branch_id, commit_hash FROM package_ops ORDER BY created_at ASC, rowid ASC"
       |> Sql.executeAsync (fun read ->
         let opId = read.uuid "id"
         let op = BS.PT.PackageOp.deserialize opId (read.bytes "op_blob")
