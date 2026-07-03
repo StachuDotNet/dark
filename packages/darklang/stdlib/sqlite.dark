@@ -1,0 +1,12 @@
+module Darklang.Stdlib.Sqlite
+
+/// A single SQLite cell value — the five storage classes SQLite uses.
+/// A query returns rows of these so cell types survive the round-trip (in
+/// particular <param Bytes> for BLOB columns like an op log's serialized blob),
+/// rather than being stringified.
+type Value =
+  | Null
+  | Int of Int64
+  | Real of Float
+  | Text of String
+  | Bytes of Blob
