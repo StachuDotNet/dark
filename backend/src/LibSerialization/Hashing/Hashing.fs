@@ -3,8 +3,10 @@
 /// Computes SHA-256 hashes of canonical serialized forms, with SCC-aware
 /// batch hashing for mutually-recursive definitions (Tarjan's algorithm).
 ///
-/// TODO the name of a fn's argument shouldn't relate to the hash.
-/// To to that end, need to adjust PT and such to model `| EArg of pos: Int` or something
+/// The hash is **meaning-stable**: bound-variable names don't affect it. A parameter use is positional
+/// (`EArg index`) and `Canonical.writeParameter` doesn't hash the parameter name; let/lambda/match binders
+/// are alpha-normalized (see `AlphaNormalize`) before hashing. So two functions identical up to a rename
+/// share one content hash.
 namespace LibSerialization.Hashing
 
 open System.IO
