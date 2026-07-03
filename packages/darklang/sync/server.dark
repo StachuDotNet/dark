@@ -1,0 +1,87 @@
+module Darklang.Sync.Server
+
+// A tiny HTTP sync server: a peer serves its op log so others can pull over the NETWORK (the tailnet),
+// not just from a local file. Run with `dark serve Darklang.Sync.Server.router --port <N>` and expose it
+// over your tailnet with `dark devices serve <N>`.
+//
+// The wire is plain text — no codec / no serialization. Each op is one line:
+//   id | origin_ts | branch_id | commit_hash | hex(op_blob)
+// The op blob rides as hex, so a puller INSERTs it via X'<hex>'. Committed ops only (WIP stays local).
+
+let private cellText (row: Dict<Stdlib.Sqlite.Value>) (key: String) : String =
+  match Stdlib.Dict.get row key with
+  | Some cell ->
+    match Stdlib.Sqlite.asText cell with
+    | Some s -> s
+    | None -> ""
+  | None -> ""
+
+let private cellInt (row: Dict<Stdlib.Sqlite.Value>) (key: String) : Int64 =
+  match Stdlib.Dict.get row key with
+  | Some cell ->
+    match Stdlib.Sqlite.asInt cell with
+    | Some i -> i
+    | None -> 0L
+  | None -> 0L
+
+
+// GET /sync/health — liveness + op count. A puller probes this before pulling + compares counts to see
+// convergence.
+let healthFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
+  let db = Builtin.localDbPath ()
+  let rows = Stdlib.Sqlite.query db "SELECT count(*) AS n FROM package_ops"
+
+  let n =
+    match rows with
+    | [ row ] -> cellInt row "n"
+    | _ -> 0L
+
+  Stdlib.Http.responseWithText $"ok ops={Stdlib.Int64.toString n}" 200I
+
+let healthHandler : Stdlib.HttpServer.Handler =
+  Stdlib.HttpServer.Handler
+    { route = "/sync/health"; method = "GET"; handler = healthFn }
+
+
+// GET /sync/events?since=<rowid> — the committed ops after `since`, one text line each.
+let private parseSince (url: String) : Int64 =
+  match Stdlib.Dict.get (Stdlib.Http.parseQueryString url) "since" with
+  | Some s ->
+    match Stdlib.Int64.parse s with
+    | Ok n -> n
+    | Error _ -> 0L
+  | None -> 0L
+
+let eventsFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
+  let db = Builtin.localDbPath ()
+  let since = parseSince req.url
+
+  let sql =
+    $"SELECT rowid AS rid, id, origin_ts, branch_id, commit_hash, hex(op_blob) AS blob FROM package_ops WHERE rowid > {Stdlib.Int64.toString since} AND commit_hash IS NOT NULL ORDER BY rowid"
+
+  let rows = Stdlib.Sqlite.query db sql
+
+  let lines =
+    Stdlib.List.map rows (fun row ->
+      (cellText row "id")
+      ++ "|"
+      ++ (cellText row "origin_ts")
+      ++ "|"
+      ++ (cellText row "branch_id")
+      ++ "|"
+      ++ (cellText row "commit_hash")
+      ++ "|"
+      ++ (cellText row "blob"))
+
+  Stdlib.Http.responseWithText (Stdlib.String.join lines "\n") 200I
+
+let eventsHandler : Stdlib.HttpServer.Handler =
+  Stdlib.HttpServer.Handler
+    { route = "/sync/events"; method = "GET"; handler = eventsFn }
+
+
+let handlers : List<Stdlib.HttpServer.Handler> = [ healthHandler; eventsHandler ]
+
+/// The sync server router — pass to `dark serve Darklang.Sync.Server.router --port <N>`.
+let router (req: Stdlib.Http.Request) : Stdlib.Http.Response =
+  Stdlib.HttpServer.routeRequest handlers req

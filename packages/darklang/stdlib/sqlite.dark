@@ -18,6 +18,12 @@ let asText (v: Value) : Stdlib.Option.Option<String> =
   | Text s -> Stdlib.Option.Option.Some s
   | _ -> Stdlib.Option.Option.None
 
+/// The Int of an <param Int> cell (Some), else None.
+let asInt (v: Value) : Stdlib.Option.Option<Int64> =
+  match v with
+  | Int i -> Stdlib.Option.Option.Some i
+  | _ -> Stdlib.Option.Option.None
+
 
 /// Run a statement (CREATE/INSERT/UPDATE/DELETE/DDL) against the SQLite file at
 /// <param dbPath>; returns the number of rows affected. Users call this, not the
