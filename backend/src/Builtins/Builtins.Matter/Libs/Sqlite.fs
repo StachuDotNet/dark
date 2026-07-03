@@ -1,12 +1,14 @@
 /// Raw SQLite access from Darklang — a SPIKE of the `Stdlib.Sqlite` floor primitive (SYNCING-PR-DESIGN.md
 /// PW-1), the keystone that lets sync/SCM policy move out of F# and into Dark over an ordinary database.
 ///
-/// This spike is deliberately minimal: it opens an arbitrary file per call and runs SQL, returning affected
-/// rows (exec) or rows as `Dict<String>` (query — cells are stringified so each row is homogeneous). The
-/// production version (its own `Builtins.Sqlite` assembly) adds: an opaque connection-registry-backed `Db`
-/// handle (so `open` is idempotent and connections are pooled), a typed `Sqlite.Value` enum
-/// (Null|Int|Real|Text|Bytes) so columns keep their types, parameterized statements, `transact`, and a
-/// `sqlite:open:<glob>` capability gate. Kept here on Builtins.Matter for the spike; it should be carved out.
+/// Surface: `sqliteExec`/`sqliteQuery` (no params) and `sqliteExecP`/`sqliteQueryP` (positional params bound
+/// to @p0..@pN — the injection-safe way to pass values). `exec` returns rows affected; `query` returns each
+/// row as `Dict<String>` (cells stringified so the row is homogeneous).
+///
+/// Deliberately minimal (spike): opens a file per call, stringifies cells, uncapped, rides Builtins.Matter.
+/// The production version (its own `Builtins.Sqlite` assembly) adds an opaque connection-registry `Db`
+/// handle, a typed `Sqlite.Value` enum (Null|Int|Real|Text|Bytes), `transact`, and a `sqlite:open:<glob>`
+/// capability. See the design doc.
 module Builtins.Matter.Libs.Sqlite
 
 open FSharp.Control.Tasks
@@ -30,6 +32,56 @@ let private cellToString (v : obj) : string =
   | :? (byte[]) as b -> System.Convert.ToHexString b
   | other -> string other
 
+/// Bind a positional param list to @p0..@pN — parameterized statements, so values can't be SQL-injected.
+let private bindParams (cmd : SqliteCommand) (parameters : List<string>) : unit =
+  parameters
+  |> List.iteri (fun i p ->
+    cmd.Parameters.AddWithValue($"@p{i}", box p) |> ignore<SqliteParameter>)
+
+let private paramStrings (dvals : List<Dval>) : List<string> =
+  dvals
+  |> List.map (fun d ->
+    match d with
+    | DString s -> s
+    | other -> string other)
+
+let private execImpl (path : string) (sql : string) (parameters : List<string>) : Ply<Dval> =
+  uply {
+    use conn = new SqliteConnection(connStr path)
+    do! conn.OpenAsync()
+    use cmd = conn.CreateCommand()
+    cmd.CommandText <- sql
+    bindParams cmd parameters
+    let! affected = cmd.ExecuteNonQueryAsync()
+    return Dval.int (bigint affected)
+  }
+
+let private queryImpl (path : string) (sql : string) (parameters : List<string>) : Ply<Dval> =
+  uply {
+    use conn = new SqliteConnection(connStr path)
+    do! conn.OpenAsync()
+    use cmd = conn.CreateCommand()
+    cmd.CommandText <- sql
+    bindParams cmd parameters
+    let! readerObj = cmd.ExecuteReaderAsync()
+    use reader = readerObj
+    let rows = System.Collections.Generic.List<Dval>()
+
+    let rec loop () : Ply<unit> =
+      uply {
+        let! hasRow = reader.ReadAsync()
+        if hasRow then
+          let cells =
+            [ for i in 0 .. reader.FieldCount - 1 ->
+                (reader.GetName i, DString(cellToString (reader.GetValue i))) ]
+          rows.Add(Dval.dict KTString cells)
+          return! loop ()
+      }
+
+    do! loop ()
+    return Dval.list (KTDict VT.string) (List.ofSeq rows)
+  }
+
 let fns () : List<BuiltInFn> =
   [ { name = fn "sqliteExec" 0
       typeParams = []
@@ -41,15 +93,26 @@ let fns () : List<BuiltInFn> =
         "Opens the SQLite file at <param path> and runs <param sql>, returning the number of rows affected."
       fn =
         (function
-        | _, _, _, [ DString path; DString sql ] ->
-          uply {
-            use conn = new SqliteConnection(connStr path)
-            do! conn.OpenAsync()
-            use cmd = conn.CreateCommand()
-            cmd.CommandText <- sql
-            let! affected = cmd.ExecuteNonQueryAsync()
-            return Dval.int (bigint affected)
-          }
+        | _, _, _, [ DString path; DString sql ] -> execImpl path sql []
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "sqliteExecP" 0
+      typeParams = []
+      parameters =
+        [ Param.make "path" TString "the SQLite file to open"
+          Param.make "sql" TString "a statement with @p0..@pN placeholders"
+          Param.make "params" (TList TString) "values bound to @p0..@pN, in order" ]
+      returnType = TInt
+      description =
+        "Like <fn sqliteExec> but binds <param params> to @p0..@pN placeholders (injection-safe)."
+      fn =
+        (function
+        | _, _, _, [ DString path; DString sql; DList(_, ps) ] ->
+          execImpl path sql (paramStrings ps)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -67,30 +130,26 @@ let fns () : List<BuiltInFn> =
         + "of column-name to its (stringified) value."
       fn =
         (function
-        | _, _, _, [ DString path; DString sql ] ->
-          uply {
-            use conn = new SqliteConnection(connStr path)
-            do! conn.OpenAsync()
-            use cmd = conn.CreateCommand()
-            cmd.CommandText <- sql
-            let! readerObj = cmd.ExecuteReaderAsync()
-            use reader = readerObj
-            let rows = System.Collections.Generic.List<Dval>()
+        | _, _, _, [ DString path; DString sql ] -> queryImpl path sql []
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
-            let rec loop () : Ply<unit> =
-              uply {
-                let! hasRow = reader.ReadAsync()
-                if hasRow then
-                  let cells =
-                    [ for i in 0 .. reader.FieldCount - 1 ->
-                        (reader.GetName i, DString(cellToString (reader.GetValue i))) ]
-                  rows.Add(Dval.dict KTString cells)
-                  return! loop ()
-              }
-
-            do! loop ()
-            return Dval.list (KTDict VT.string) (List.ofSeq rows)
-          }
+    { name = fn "sqliteQueryP" 0
+      typeParams = []
+      parameters =
+        [ Param.make "path" TString "the SQLite file to open"
+          Param.make "sql" TString "a SELECT with @p0..@pN placeholders"
+          Param.make "params" (TList TString) "values bound to @p0..@pN, in order" ]
+      returnType = TList(TDict TString)
+      description =
+        "Like <fn sqliteQuery> but binds <param params> to @p0..@pN placeholders (injection-safe)."
+      fn =
+        (function
+        | _, _, _, [ DString path; DString sql; DList(_, ps) ] ->
+          queryImpl path sql (paramStrings ps)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
