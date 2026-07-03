@@ -64,6 +64,33 @@ let tests =
           "package_blobs (canonical content) preserved, not dropped"
       }
 
+      // Stronger than the count check above: the exact CONTENT of the projections (the set of projected
+      // item hashes) is reproduced byte-for-byte across a re-fold — the fold is a deterministic function
+      // of the op log, not merely cardinality-preserving. This is what makes "drop the projections and
+      // re-fold" safe, and (later) what lets two instances fold the same log to the same tables.
+      testTask "re-fold reproduces identical projection CONTENT (deterministic fold, not just counts)" {
+        let itemHashes () : Task<string> =
+          task {
+            let q (table : string) =
+              Sql.query $"SELECT hash FROM {table} ORDER BY hash"
+              |> Sql.executeAsync (fun read -> read.string "hash")
+            let! fns = q "package_functions"
+            let! typs = q "package_types"
+            let! vals = q "package_values"
+            return String.concat "\n" (fns @ typs @ vals)
+          }
+
+        let! _ = Seed.rebuildProjections ()
+        let! fp1 = itemHashes ()
+        Expect.isTrue (String.length fp1 > 0) "non-vacuous: the projections have content"
+        let! _ = Seed.rebuildProjections ()
+        let! fp2 = itemHashes ()
+        Expect.equal
+          fp2
+          fp1
+          "the exact set of projected item hashes is identical across a re-fold (deterministic fold)"
+      }
+
       // the projection registry — the fold/dirty descriptors
       test "the projection registry covers exactly the 6 regenerable projections" {
         Expect.equal
