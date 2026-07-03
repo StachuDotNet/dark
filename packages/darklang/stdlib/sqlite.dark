@@ -22,12 +22,12 @@ let asText (v: Value) : Stdlib.Option.Option<String> =
 /// Run a statement (CREATE/INSERT/UPDATE/DELETE/DDL) against the SQLite file at
 /// <param dbPath>; returns the number of rows affected. Users call this, not the
 /// raw builtin.
-let exec (dbPath: String) (sql: String) : Int =
+let exec (dbPath: String) (sql: String) : Stdlib.Result.Result<Int, String> =
   Builtin.sqliteExec dbPath sql
 
 /// Like <fn exec> but binds <param params> to @p0..@pN placeholders in <param sql>,
 /// so values are never string-spliced into SQL (injection-safe).
-let execP (dbPath: String) (sql: String) (params: List<String>) : Int =
+let execP (dbPath: String) (sql: String) (params: List<String>) : Stdlib.Result.Result<Int, String> =
   Builtin.sqliteExecP dbPath sql params
 
 /// Run a SELECT against <param dbPath>; returns each row as a dict of column name

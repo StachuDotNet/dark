@@ -60,15 +60,21 @@ let private paramStrings (dvals : List<Dval>) : List<string> =
     | DString s -> s
     | other -> string other)
 
+// exec returns a `Result<Int, String>` (Ok rows-affected / Error message) so a bad path, a locked db, a
+// mid-copy failure, etc. surface as a value Dark can handle — never an uncaught throw. This is what lets
+// `Sync.pullFile`/the daemon skip a bad-or-offline peer gracefully.
 let private execImpl (path : string) (sql : string) (parameters : List<string>) : Ply<Dval> =
   uply {
-    use conn = new SqliteConnection(connStr path)
-    do! conn.OpenAsync()
-    use cmd = conn.CreateCommand()
-    cmd.CommandText <- sql
-    bindParams cmd parameters
-    let! affected = cmd.ExecuteNonQueryAsync()
-    return Dval.int (bigint affected)
+    try
+      use conn = new SqliteConnection(connStr path)
+      do! conn.OpenAsync()
+      use cmd = conn.CreateCommand()
+      cmd.CommandText <- sql
+      bindParams cmd parameters
+      let! affected = cmd.ExecuteNonQueryAsync()
+      return Dval.resultOk KTInt KTString (Dval.int (bigint affected))
+    with e ->
+      return Dval.resultError KTInt KTString (DString e.Message)
   }
 
 let private queryImpl (path : string) (sql : string) (parameters : List<string>) : Ply<Dval> =
@@ -103,9 +109,9 @@ let fns () : List<BuiltInFn> =
       parameters =
         [ Param.make "path" TString "the SQLite file to open"
           Param.make "sql" TString "a statement to run (CREATE/INSERT/UPDATE/DELETE…)" ]
-      returnType = TInt
+      returnType = TypeReference.result TInt TString
       description =
-        "Opens the SQLite file at <param path> and runs <param sql>, returning the number of rows affected."
+        "Opens the SQLite file at <param path> and runs <param sql>. Ok = rows affected; Error = the SQLite message. Never throws."
       fn =
         (function
         | _, _, _, [ DString path; DString sql ] -> execImpl path sql []
@@ -121,9 +127,9 @@ let fns () : List<BuiltInFn> =
         [ Param.make "path" TString "the SQLite file to open"
           Param.make "sql" TString "a statement with @p0..@pN placeholders"
           Param.make "params" (TList TString) "values bound to @p0..@pN, in order" ]
-      returnType = TInt
+      returnType = TypeReference.result TInt TString
       description =
-        "Like <fn sqliteExec> but binds <param params> to @p0..@pN placeholders (injection-safe)."
+        "Like <fn sqliteExec> but binds <param params> to @p0..@pN placeholders (injection-safe). Ok = rows affected; Error = message."
       fn =
         (function
         | _, _, _, [ DString path; DString sql; DList(_, ps) ] ->

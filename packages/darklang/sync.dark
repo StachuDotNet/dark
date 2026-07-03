@@ -11,14 +11,19 @@ module Darklang.Sync
 let pullFile (peerPath: String) : Int =
   let localPath = Builtin.localDbPath ()
 
-  let _copied =
+  // Copy the peer's ops (+ referenced branches/commits) as unapplied. execP returns a Result, so a missing /
+  // offline / unreadable peer is an Error we skip — not a throw that crashes the daemon.
+  let copied =
     Stdlib.Sqlite.execP
       localPath
       // FK off for the bulk snapshot copy (branches<->commits have a circular FK; the copy is internally
-      // consistent — same approach as the rebuild path). Copy referenced rows (branches/commits) then the ops.
+      // consistent — same approach as the rebuild path). Copy referenced rows (branches/commits) then ops.
       "PRAGMA foreign_keys=OFF; ATTACH DATABASE @p0 AS peer; INSERT OR IGNORE INTO branches SELECT * FROM peer.branches; INSERT OR IGNORE INTO commits SELECT * FROM peer.commits; INSERT OR IGNORE INTO package_ops (id, op_blob, branch_id, commit_hash, propagation_id, origin_ts, applied) SELECT id, op_blob, branch_id, commit_hash, propagation_id, origin_ts, 0 FROM peer.package_ops; DETACH peer"
       [ peerPath ]
-  Builtin.foldOps ()
+
+  match copied with
+  | Ok _ -> Builtin.foldOps ()
+  | Error _ -> 0I
 
 
 // ── peer config (LOCAL, per-instance — never synced, like `caps`; DECISIONS §8) ──
