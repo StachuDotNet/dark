@@ -1,0 +1,19 @@
+module Darklang.Sync
+
+/// Pull new ops from a peer's data.db FILE at <param peerPath> into the local store at <param localPath>
+/// and fold them in. The op blobs — and the branches/commits they reference — ride as-is via SQLite
+/// ATTACH (no serialization). Copied ops land unapplied (applied=0), then fold exactly like a local
+/// edit via <fn Builtin.foldOps>. Returns the number of ops folded. INSERT OR IGNORE (ops are
+/// content-addressed by id) makes it idempotent — re-pulling is a no-op.
+///
+/// v1: the FILE transport — a debug / offline floor. The installed daemon automates this (DECISIONS §8).
+/// <param localPath> must be the running instance's OWN store, since the fold applies to that store.
+let pullFile (localPath: String) (peerPath: String) : Int =
+  let _copied =
+    Stdlib.Sqlite.execP
+      localPath
+      // FK off for the bulk snapshot copy (branches<->commits have a circular FK; the copy is internally
+      // consistent — same approach as the rebuild path). Copy referenced rows (branches/commits) then the ops.
+      "PRAGMA foreign_keys=OFF; ATTACH DATABASE @p0 AS peer; INSERT OR IGNORE INTO branches SELECT * FROM peer.branches; INSERT OR IGNORE INTO commits SELECT * FROM peer.commits; INSERT OR IGNORE INTO package_ops (id, op_blob, branch_id, commit_hash, propagation_id, origin_ts, applied) SELECT id, op_blob, branch_id, commit_hash, propagation_id, origin_ts, 0 FROM peer.package_ops; DETACH peer"
+      [ peerPath ]
+  Builtin.foldOps ()
