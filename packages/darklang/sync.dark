@@ -54,4 +54,29 @@ let connect (peer: String) : Unit =
 
 /// Pull from every configured peer; returns the total number of ops folded in.
 let pullAll () : Int =
-  Stdlib.List.fold (peers ()) 0 (fun acc peer -> acc + (pullFile peer))
+  Stdlib.List.fold (peers ()) 0I (fun acc peer -> acc + (pullFile peer))
+
+
+// ── the autosync daemon (DECISIONS §8): pull from every configured peer on an interval, in the
+//    background. Managed by `dark apps start/stop/enable sync` on the shared Stdlib.Cli.Daemon substrate
+//    (pidfile lifecycle). Poll-based (no EventBus yet); the manual `dark sync` stays as the offline floor. ──
+
+let rec private syncLoop (intervalMs: Int) (remaining: Int) : Int =
+  if remaining <= 0I then
+    0I
+  else
+    let _ = pullAll ()
+    Stdlib.Cli.Posix.sleep (Stdlib.Int.toFloat intervalMs)
+    syncLoop intervalMs (remaining - 1I)
+
+/// The autosync daemon entrypoint: claim the pidfile, then pull from every configured peer forever
+/// (ended by `apps stop`/SIGTERM). Invoked by `dark apps start sync`.
+let daemon (name: String) : Int =
+  let _ =
+    match Stdlib.Cli.Daemon.claimPidfile name with
+    | Error e -> Stdlib.printLine $"{name}: could not write pidfile: {e}"
+    | Ok _ ->
+      Stdlib.printLine
+        $"{name}: keeping your peers in sync in the background (pid {Stdlib.Int.toString (Stdlib.Cli.Sys.currentPid ())})"
+
+  syncLoop 3000I 1000000000I
