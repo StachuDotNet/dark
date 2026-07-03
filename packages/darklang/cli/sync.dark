@@ -1,0 +1,45 @@
+module Darklang.Cli.Sync
+
+// `dark sync` — share your package changes with your other instances. Local-first: sync is opt-in, and
+// once set up the daemon keeps things current in the background (DECISIONS §8). `dark sync pull <peer.db>`
+// is the manual file-transport floor (offline / no daemon needed).
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | [] ->
+    Stdlib.printLine "sync is local-first — set up once, then it stays current in the background."
+    Stdlib.printLine (Colors.hint "  dark sync pull <peer.db>    pull another instance's changes")
+    state
+
+  | [ "pull"; peer ] ->
+    let n = Darklang.Sync.pullFile peer
+
+    Stdlib.printLine (
+      Colors.success $"pulled {Stdlib.Int.toString n} change(s) from {peer}")
+
+    state
+
+  | _ ->
+    Stdlib.printLine "Usage: sync [pull <peer.db>]"
+    state
+
+
+let help (state: AppState) : AppState =
+  [ "Usage: sync <command>"
+    "Share your package changes with your other instances."
+    "Local-first: sync is opt-in; once set up, it stays current in the background."
+    ""
+    "Commands:"
+    "  pull <peer.db>    Pull another instance's changes from its store file" ]
+  |> Stdlib.printLines
+
+  state
+
+
+let complete
+  (state: AppState)
+  (args: List<String>)
+  : List<Completion.CompletionItem> =
+  match args with
+  | [] -> [ "pull" ] |> Stdlib.List.map Completion.simple
+  | _ -> []

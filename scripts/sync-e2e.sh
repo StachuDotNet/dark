@@ -27,19 +27,19 @@ if cli "$B" view "$VAL" 2>/dev/null | strip | grep -q "42"; then
 fi
 
 # --- sync A -> B (copy ops via ATTACH + fold), assert convergence ---
-folded=$(cli "$B" eval "Darklang.Sync.pullFile \"$A\"" 2>/dev/null | strip | tail -1)
+out=$(cli "$B" sync pull "$A" 2>/dev/null | strip)
 if cli "$B" view "$VAL" 2>/dev/null | strip | grep -q "42"; then
-  echo "PASS: B converged — $VAL synced from A (folded $folded op(s))"
+  echo "PASS: B converged — $VAL synced from A ($out)"
 else
   echo "FAIL: B did not converge after sync"; exit 1
 fi
 
 # --- idempotency: a second pull folds nothing new ---
-folded2=$(cli "$B" eval "Darklang.Sync.pullFile \"$A\"" 2>/dev/null | strip | tail -1)
-if [ "$folded2" = "0" ]; then
-  echo "PASS: idempotent re-pull folded 0"
+out2=$(cli "$B" sync pull "$A" 2>/dev/null | strip)
+if echo "$out2" | grep -q "pulled 0 change"; then
+  echo "PASS: idempotent re-pull ($out2)"
 else
-  echo "FAIL: re-pull folded $folded2 (expected 0)"; exit 1
+  echo "FAIL: re-pull not idempotent ($out2)"; exit 1
 fi
 
 echo "SYNC E2E GREEN ✓"
