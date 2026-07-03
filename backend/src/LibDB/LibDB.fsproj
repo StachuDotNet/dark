@@ -45,6 +45,9 @@
     <Compile Include="CapabilityGrants.fs" />
     <Compile Include="PackageCaps.fs" />
 
+    <!-- The Release migrator: move a store forward one Release at a time; refuse a newer store. /-->
+    <Compile Include="Releases.fs" />
+
     <!-- ex-LibCloud SQLite-bound modules /-->
     <Compile Include="Tracing.fs" />
     <Compile Include="UserDB.fs" />
