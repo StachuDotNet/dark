@@ -15,10 +15,25 @@ open Fumble
 open LibDB.Sqlite
 
 module Seed = LibDB.Seed
+module Releases = LibDB.Releases
 
 let private countRows (table : string) : Task<int64> =
   Sql.query $"SELECT COUNT(*) as n FROM {table}"
   |> Sql.executeRowAsync (fun read -> read.int64 "n")
+
+/// A content fingerprint of the projections: the sorted set of every projected item's hash. Two folds that
+/// produce the same fingerprint produced the same projections (down to identity), regardless of row order
+/// or nondeterministic columns like `location_id`.
+let private itemHashes () : Task<string> =
+  task {
+    let q (table : string) =
+      Sql.query $"SELECT hash FROM {table} ORDER BY hash"
+      |> Sql.executeAsync (fun read -> read.string "hash")
+    let! fns = q "package_functions"
+    let! typs = q "package_types"
+    let! vals = q "package_values"
+    return String.concat "\n" (fns @ typs @ vals)
+  }
 
 // `testSequenced` because the drop+rebuild case DELETEs + refolds the *shared* projection
 // tables and marks all ops unapplied — it must not run concurrently with other DB tests (it
@@ -101,6 +116,61 @@ let tests =
           (List.length (List.distinct stamps))
           100
           "stamps are strictly distinct — no ties even across a burst within one millisecond"
+      }
+
+      // ── THE POINT, end to end: migrate a store from one Release of Dark to the next WITHOUT losing
+      // authored work. A *durable* Release step carries the op log forward (a schema copy-swap + an optional
+      // op-format re-serialize); the projections are then dropped and RE-FOLDED from that same log in the
+      // new Release's format. This is exactly why the two design pieces exist:
+      //   • ops ⊥ projections — you migrate the LOG (the authored work), never the derived tables; the
+      //     projections are disposable and regenerated. Losing a projection costs only CPU.
+      //   • meaning-stable hashing — a format re-serialize keeps each op's IDENTITY (the id hashes the op's
+      //     MEANING, not its bytes), so names/dependencies don't churn across the migration.
+      // (Contrast the shipped Release 3, a clean-BREAK that throws the package data away and rebuilds — this
+      // test proves the DURABLE path that carries it forward, the one a real future release will use.) ──
+      testTask
+        "release migration (durable): authored op log carried forward + projections re-folded, nothing lost" {
+        let! opsBefore = countRows "package_ops"
+        let! blobsBefore = countRows "package_blobs"
+        Expect.isTrue (opsBefore > 0L) "there is authored work to migrate (not a vacuous test)"
+        let! fpBefore = itemHashes ()
+
+        // A durable forward Release step (n = code+1): a real schema change + the op-format re-serialize
+        // path. NOT clearForRebuild — the authored op log is preserved and carried forward. (The remap is
+        // identity here; a real format bump swaps this one fn. The op ids are unaffected either way, because
+        // they hash the op's meaning, not its bytes — that's the property meaning-stable hashing buys.)
+        Releases.applyRelease
+          { n = Releases.currentRelease + 1
+            sql =
+              "CREATE INDEX IF NOT EXISTS idx_release_migration_demo ON package_ops(origin_ts)"
+            reserialize = Some(fun blob -> blob)
+            clearForRebuild = false }
+        // the step marked the log unapplied; startup re-folds the projections from the (carried-forward) log
+        let! _ = Seed.rebuildProjections ()
+
+        let! opsAfter = countRows "package_ops"
+        let! blobsAfter = countRows "package_blobs"
+        let! fpAfter = itemHashes ()
+        Expect.equal
+          opsAfter
+          opsBefore
+          "the authored op log is PRESERVED across the migration — nothing lost"
+        Expect.equal blobsAfter blobsBefore "canonical content (package_blobs) preserved"
+        Expect.equal
+          fpAfter
+          fpBefore
+          "projections re-fold IDENTICALLY in the new Release — same items, meaning-stable"
+
+        let! idxExists =
+          Sql.query
+            "SELECT COUNT(*) as n FROM sqlite_master WHERE type='index' AND name='idx_release_migration_demo'"
+          |> Sql.executeRowAsync (fun read -> read.int64 "n")
+        Expect.equal idxExists 1L "the Release's schema change actually landed"
+
+        // leave the shared store as we found it
+        do!
+          Sql.query "DROP INDEX IF EXISTS idx_release_migration_demo"
+          |> Sql.executeStatementAsync
       }
 
       // the projection registry — the fold/dirty descriptors
