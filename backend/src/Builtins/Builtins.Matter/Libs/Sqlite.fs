@@ -214,6 +214,23 @@ let fns () : List<BuiltInFn> =
       sqlSpec = NotQueryable
       previewable = Impure
       capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    // The Release (store format/version coordinate: language + op-format + schema + hashing) this Dark
+    // binary speaks. Compared against the store's stamped Release for the upgrade/`dark version` surface.
+    { name = fn "currentRelease" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TInt
+      description = "The Release (store format/version) this Dark binary speaks."
+      fn =
+        (function
+        | _, _, _, [ DUnit ] ->
+          uply { return Dval.int (bigint LibDB.Releases.currentRelease) }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated } ]
 
 let builtins () = LibExecution.Builtin.make [] (fns ())
