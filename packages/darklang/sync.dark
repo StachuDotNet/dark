@@ -85,3 +85,17 @@ let daemon (name: String) : Int =
         $"{name}: keeping your peers in sync in the background (pid {Stdlib.Int.toString (Stdlib.Cli.Sys.currentPid ())})"
 
   syncLoop 3000I 1000000000I
+
+
+// ── HTTP transport (client): pull a peer over the NETWORK, no Dark HTTP server needed ──
+// Downloads the peer's store (served over your tailnet via `tailscale serve <file>`, or any HTTP host) to
+// a temp file, then folds it in exactly like a file pull. This is the cross-computer path that works TODAY
+// even while the Dark-native `dark serve` sync server is blocked. A 404/garbage body just fails the ATTACH
+// (pullFile returns 0), so it degrades cleanly.
+let pullUrl (url: String) : Int =
+  match Stdlib.HttpClient.get url [] with
+  | Ok resp ->
+    match Builtin.fileWrite resp.body "/tmp/dark-sync-peer.db" with
+    | Ok _ -> pullFile "/tmp/dark-sync-peer.db"
+    | Error _ -> 0I
+  | Error _ -> 0I
