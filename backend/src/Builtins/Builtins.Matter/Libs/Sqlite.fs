@@ -169,6 +169,29 @@ let fns () : List<BuiltInFn> =
       sqlSpec = NotQueryable
       previewable = Impure
       capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    // Op-log core (not sqlite-specific; sits here for now). The append/fold seam: a sync pull APPENDS a
+    // peer's ops (INSERT applied=0 — e.g. via the ATTACH copy) then calls this to FOLD them into the
+    // projections, exactly as a local edit does. Idempotent (only unapplied ops fold). TODO: relocate to a
+    // dedicated Sync/core builtin lib alongside detectConflicts/resolution-apply.
+    { name = fn "foldOps" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TInt
+      description =
+        "Fold any unapplied ops in the local package_ops log into the projections. Idempotent; returns the number of ops applied."
+      fn =
+        (function
+        | _, _, _, [ DUnit ] ->
+          uply {
+            let! n = LibDB.Seed.applyUnappliedOps ()
+            return Dval.int (bigint n)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated } ]
 
 let builtins () = LibExecution.Builtin.make [] (fns ())
