@@ -21,16 +21,30 @@ open Microsoft.Data.Sqlite
 
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
+module PackageRefs = LibExecution.PackageRefs
+module NR = LibExecution.RuntimeTypes.NameResolution
+module Blob = LibExecution.Blob
 
 let private connStr (path : string) : string = $"Data Source={path}"
 
-/// Spike marshalling: every SQLite cell becomes a string, so a row is a homogeneous `Dict<String>`. (The
-/// production version returns a typed `Sqlite.Value` per cell so ints/reals/blobs keep their types.)
-let private cellToString (v : obj) : string =
-  match v with
-  | null -> ""
-  | :? (byte[]) as b -> System.Convert.ToHexString b
-  | other -> string other
+/// Marshal a SQLite cell (the ADO reader's `obj`) into a typed `Stdlib.Sqlite.Value` DEnum, so
+/// ints/reals/blobs keep their types across the round-trip (esp. Bytes for BLOB columns). Mirrors the
+/// `Int.fs` ParseError.toDT pattern: build the FQ type name from PackageRefs, then a `DEnum`.
+module Value =
+  let typeName = FQTypeName.fqPackage (PackageRefs.Type.Stdlib.sqliteValue ())
+  let knownType : KnownType = KTCustomType(typeName, [])
+  let typeRef : TypeReference = TCustomType(NR.ok typeName, [])
+
+  let toDT (cell : obj) : Dval =
+    let (caseName, fields) =
+      match cell with
+      | null -> "Null", []
+      | :? int64 as i -> "Int", [ DInt64 i ]
+      | :? double as f -> "Real", [ DFloat f ]
+      | :? string as s -> "Text", [ DString s ]
+      | :? (byte[]) as b -> "Bytes", [ Blob.newEphemeral b ]
+      | other -> "Text", [ DString(string other) ]
+    DEnum(typeName, typeName, [], caseName, fields)
 
 /// Bind a positional param list to @p0..@pN — parameterized statements, so values can't be SQL-injected.
 let private bindParams (cmd : SqliteCommand) (parameters : List<string>) : unit =
@@ -73,13 +87,13 @@ let private queryImpl (path : string) (sql : string) (parameters : List<string>)
         if hasRow then
           let cells =
             [ for i in 0 .. reader.FieldCount - 1 ->
-                (reader.GetName i, DString(cellToString (reader.GetValue i))) ]
-          rows.Add(Dval.dict KTString cells)
+                (reader.GetName i, Value.toDT (reader.GetValue i)) ]
+          rows.Add(Dval.dict Value.knownType cells)
           return! loop ()
       }
 
     do! loop ()
-    return Dval.list (KTDict VT.string) (List.ofSeq rows)
+    return Dval.list (KTDict(ValueType.Known Value.knownType)) (List.ofSeq rows)
   }
 
 let fns () : List<BuiltInFn> =
@@ -124,7 +138,7 @@ let fns () : List<BuiltInFn> =
       parameters =
         [ Param.make "path" TString "the SQLite file to open"
           Param.make "sql" TString "a SELECT to run" ]
-      returnType = TList(TDict TString)
+      returnType = TList(TDict Value.typeRef)
       description =
         "Opens the SQLite file at <param path> and runs the SELECT <param sql>, returning each row as a dict "
         + "of column-name to its (stringified) value."
@@ -143,7 +157,7 @@ let fns () : List<BuiltInFn> =
         [ Param.make "path" TString "the SQLite file to open"
           Param.make "sql" TString "a SELECT with @p0..@pN placeholders"
           Param.make "params" (TList TString) "values bound to @p0..@pN, in order" ]
-      returnType = TList(TDict TString)
+      returnType = TList(TDict Value.typeRef)
       description =
         "Like <fn sqliteQuery> but binds <param params> to @p0..@pN placeholders (injection-safe)."
       fn =
