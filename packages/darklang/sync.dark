@@ -57,9 +57,17 @@ let connect (peer: String) : Unit =
 
   ()
 
+/// Pull a peer by whatever its address implies: an http(s) URL over the network (tailnet), else a local
+/// db file path. The single entry point the CLI + daemon use — the transport is inferred, not configured.
+let pull (peer: String) : Int =
+  if Stdlib.String.startsWith peer "http" then
+    pullUrl peer
+  else
+    pullFile peer
+
 /// Pull from every configured peer; returns the total number of ops folded in.
 let pullAll () : Int =
-  Stdlib.List.fold (peers ()) 0I (fun acc peer -> acc + (pullFile peer))
+  Stdlib.List.fold (peers ()) 0I (fun acc peer -> acc + (pull peer))
 
 
 // ── the autosync daemon (DECISIONS §8): pull from every configured peer on an interval, in the

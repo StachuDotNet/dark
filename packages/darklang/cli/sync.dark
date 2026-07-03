@@ -28,7 +28,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
     state
 
   | [ "pull"; peer ] ->
-    let n = Darklang.Sync.pullFile peer
+    let n = Darklang.Sync.pull peer
 
     Stdlib.printLine (
       Colors.success $"pulled {Stdlib.Int.toString n} change(s) from {peer}")
