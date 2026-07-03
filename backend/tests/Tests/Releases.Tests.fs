@@ -144,4 +144,25 @@ let tests =
             [ 3; 4 ]
             "store 2 → code 4 migrates exactly 3,4 ascending"
         | other -> failtest $"expected Migrate [3;4], got %A{other}"
+      }
+
+      // The boot guard end-to-end over the real store (the pure decision is tested above; this exercises
+      // writeRelease → storedRelease → applyPending against the DB). We stamp the store NEWER than the code
+      // and confirm applyPending refuses to open it. We only exercise the REFUSE path — it raises before any
+      // migration runs, so it's non-destructive; running a real forward step would execute the Release-3
+      // clean-break and wipe the shared test DB. try/finally restores the stamp so the rest of the suite is
+      // unaffected (the store was born at currentRelease, so restoring to it is a no-op).
+      test "applyPending refuses a store stamped at a NEWER Release (boot guard, over the DB)" {
+        let cur = Releases.currentRelease
+        try
+          Releases.writeRelease (cur + 1)
+          Expect.equal
+            (Releases.storedRelease ())
+            (Some(cur + 1))
+            "store stamped one Release newer than the code"
+          Expect.throws
+            (fun () -> Releases.applyPending cur)
+            "older code must refuse to open a store from a newer Release"
+        finally
+          Releases.writeRelease cur
       } ]
