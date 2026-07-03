@@ -19,3 +19,39 @@ let pullFile (peerPath: String) : Int =
       "PRAGMA foreign_keys=OFF; ATTACH DATABASE @p0 AS peer; INSERT OR IGNORE INTO branches SELECT * FROM peer.branches; INSERT OR IGNORE INTO commits SELECT * FROM peer.commits; INSERT OR IGNORE INTO package_ops (id, op_blob, branch_id, commit_hash, propagation_id, origin_ts, applied) SELECT id, op_blob, branch_id, commit_hash, propagation_id, origin_ts, 0 FROM peer.package_ops; DETACH peer"
       [ peerPath ]
   Builtin.foldOps ()
+
+
+// ── peer config (LOCAL, per-instance — never synced, like `caps`; DECISIONS §8) ──
+// Stored in a `sync_peers` table in this instance's own store, created on demand (no migration needed).
+
+let private peersDb () : String =
+  let db = Builtin.localDbPath ()
+
+  let _ =
+    Stdlib.Sqlite.exec db "CREATE TABLE IF NOT EXISTS sync_peers (path TEXT PRIMARY KEY)"
+
+  db
+
+/// The peers this instance syncs with (local config; per-instance; never travels).
+let peers () : List<String> =
+  let rows =
+    Stdlib.Sqlite.query (peersDb ()) "SELECT path FROM sync_peers ORDER BY path"
+
+  Stdlib.List.filterMap rows (fun row ->
+    match Stdlib.Dict.get row "path" with
+    | Some cell -> Stdlib.Sqlite.asText cell
+    | None -> Stdlib.Option.Option.None)
+
+/// Add a peer to this instance's sync config (idempotent).
+let connect (peer: String) : Unit =
+  let _ =
+    Stdlib.Sqlite.execP
+      (peersDb ())
+      "INSERT OR IGNORE INTO sync_peers (path) VALUES (@p0)"
+      [ peer ]
+
+  ()
+
+/// Pull from every configured peer; returns the total number of ops folded in.
+let pullAll () : Int =
+  Stdlib.List.fold (peers ()) 0 (fun acc peer -> acc + (pullFile peer))

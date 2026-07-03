@@ -12,6 +12,13 @@ type Value =
   | Bytes of Blob
 
 
+/// The String of a <param Text> cell (Some), else None — pull a text column out of a row.
+let asText (v: Value) : Stdlib.Option.Option<String> =
+  match v with
+  | Text s -> Stdlib.Option.Option.Some s
+  | _ -> Stdlib.Option.Option.None
+
+
 /// Run a statement (CREATE/INSERT/UPDATE/DELETE/DDL) against the SQLite file at
 /// <param dbPath>; returns the number of rows affected. Users call this, not the
 /// raw builtin.

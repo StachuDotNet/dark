@@ -7,8 +7,24 @@ module Darklang.Cli.Sync
 let execute (state: AppState) (args: List<String>) : AppState =
   match args with
   | [] ->
-    Stdlib.printLine "sync is local-first — set up once, then it stays current in the background."
-    Stdlib.printLine (Colors.hint "  dark sync pull <peer.db>    pull another instance's changes")
+    // bare `dark sync` = sync now with every configured peer (the daemon automates this).
+    match Darklang.Sync.peers () with
+    | [] ->
+      Stdlib.printLine "sync is local-first — set up once, then it stays current."
+      Stdlib.printLine (Colors.hint "  dark sync connect <peer.db>   add a peer to sync with")
+      state
+    | ps ->
+      let n = Darklang.Sync.pullAll ()
+
+      Stdlib.printLine (
+        Colors.success
+          $"synced {Stdlib.Int.toString (Stdlib.List.length ps)} peer(s) — pulled {Stdlib.Int.toString n} change(s)")
+
+      state
+
+  | [ "connect"; peer ] ->
+    Darklang.Sync.connect peer
+    Stdlib.printLine (Colors.success $"now syncing with {peer}")
     state
 
   | [ "pull"; peer ] ->
@@ -20,7 +36,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
     state
 
   | _ ->
-    Stdlib.printLine "Usage: sync [pull <peer.db>]"
+    Stdlib.printLine "Usage: sync [connect <peer.db>] [pull <peer.db>]"
     state
 
 
@@ -41,5 +57,5 @@ let complete
   (args: List<String>)
   : List<Completion.CompletionItem> =
   match args with
-  | [] -> [ "pull" ] |> Stdlib.List.map Completion.simple
+  | [] -> [ "connect"; "pull" ] |> Stdlib.List.map Completion.simple
   | _ -> []
