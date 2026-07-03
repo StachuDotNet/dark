@@ -111,4 +111,37 @@ let tests =
           steps
           [ 3 ]
           "store 2 → code 3 applies exactly Release 3 (the clean-break)"
+      }
+
+      // planRelease — the boot-guard DECISION, pure so the refuse-newer safety property is unit-tested
+      // without mutating the store. (applyPending wraps it with the DB read/write; its DB half runs at
+      // every suite startup.) ReleaseAction carries a Release (which holds a function), so it has no
+      // structural equality — we match instead of Expect.equal.
+      test "planRelease: no stored Release → StampFresh (fresh or pre-tracking store)" {
+        match Releases.planRelease [ step 3 ] None 3 with
+        | Releases.StampFresh -> ()
+        | other -> failtest $"expected StampFresh, got %A{other}"
+      }
+
+      test "planRelease: store == code → UpToDate (the steady state)" {
+        match Releases.planRelease [ step 3 ] (Some 3) 3 with
+        | Releases.UpToDate -> ()
+        | other -> failtest $"expected UpToDate, got %A{other}"
+      }
+
+      test
+        "planRelease: store > code → RefuseNewer (never open a newer store with older code)" {
+        match Releases.planRelease [ step 3 ] (Some 5) 3 with
+        | Releases.RefuseNewer s -> Expect.equal s 5 "refuses, reporting the store's Release"
+        | other -> failtest $"expected RefuseNewer 5, got %A{other}"
+      }
+
+      test "planRelease: store < code → Migrate the pending steps, in order" {
+        match Releases.planRelease [ step 2; step 3; step 4 ] (Some 2) 4 with
+        | Releases.Migrate steps ->
+          Expect.equal
+            (steps |> List.map (fun r -> r.n))
+            [ 3; 4 ]
+            "store 2 → code 4 migrates exactly 3,4 ascending"
+        | other -> failtest $"expected Migrate [3;4], got %A{other}"
       } ]

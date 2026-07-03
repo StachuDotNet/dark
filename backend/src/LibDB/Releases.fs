@@ -172,26 +172,47 @@ let applyRelease (r : Release) : unit =
 
 // ── The boot guard + forward migrator ──
 
-/// Reconcile the store's Release with this binary's (`codeRelease = currentRelease`):
-///  - **store == code** → nothing;
-///  - **store > code**  → REFUSE (a newer store; older code would misread the op format) — raise;
-///  - **store < code**  → apply each pending step in order, then stamp `code`;
-///  - **store absent**  → stamp `code` (a fresh store is born at the current Release; a pre-tracking
-///    store is, by construction, at the current format — no format bumps happened before tracking).
+/// What `applyPending` decides to do, factored out of the DB-mutating path so the guard is a **pure,
+/// unit-testable** function of (storedRelease, codeRelease).
+type ReleaseAction =
+  /// no stored Release → stamp `code` (a fresh store, or a pre-tracking store already at the current format)
+  | StampFresh
+  /// store == code → nothing to do (the steady state)
+  | UpToDate
+  /// store > code → REFUSE: a newer store; older code would misread the op format
+  | RefuseNewer of storeN : int
+  /// store < code → apply these steps in order, then stamp `code`
+  | Migrate of Release list
+
+/// Pure: reconcile the store's Release with this binary's. See `ReleaseAction`. Total over the four cases;
+/// no DB access — `applyPending` reads/writes the store around it.
+let planRelease
+  (registry : Release list)
+  (stored : int option)
+  (codeRelease : int)
+  : ReleaseAction =
+  match stored with
+  | None -> StampFresh
+  | Some s when s = codeRelease -> UpToDate
+  | Some s when s > codeRelease -> RefuseNewer s
+  | Some s -> Migrate(pendingReleases registry s codeRelease)
+
+/// Reconcile the store's Release with this binary's (`codeRelease = currentRelease`) and execute the
+/// decision. The *decision* is `planRelease` (pure, tested); this wraps it with the DB read/write.
 let applyPending (codeRelease : int) : unit =
   if not (registryIsWellFormed releases codeRelease) then
     Exception.raiseInternal
       "Release registry is not well-formed (a gap, duplicate, or an entry above the code Release)"
       [ "codeRelease", codeRelease ]
-  match storedRelease () with
-  | None -> writeRelease codeRelease
-  | Some s when s = codeRelease -> ()
-  | Some s when s > codeRelease ->
+  match planRelease releases (storedRelease ()) codeRelease with
+  | UpToDate -> ()
+  | StampFresh -> writeRelease codeRelease
+  | RefuseNewer s ->
     Exception.raiseInternal
       $"This store is on Release {s}; this Dark speaks Release {codeRelease}. Upgrade Dark to open it — never open a newer store with older code."
       []
-  | Some s ->
-    for r in pendingReleases releases s codeRelease do
+  | Migrate steps ->
+    for r in steps do
       let extra = if r.reserialize.IsSome then " + op re-serialize" else ""
       print $"Applying Release {r.n} (schema{extra})…"
       applyRelease r
