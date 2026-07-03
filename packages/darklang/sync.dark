@@ -93,9 +93,9 @@ let daemon (name: String) : Int =
 // even while the Dark-native `dark serve` sync server is blocked. A 404/garbage body just fails the ATTACH
 // (pullFile returns 0), so it degrades cleanly.
 let pullUrl (url: String) : Int =
-  match Stdlib.HttpClient.get url [] with
-  | Ok resp ->
-    match Builtin.fileWrite resp.body "/tmp/dark-sync-peer.db" with
+  match Builtin.httpGetUnsafeBytes url with
+  | Ok body ->
+    match Builtin.fileWrite body "/tmp/dark-sync-peer.db" with
     | Ok _ -> pullFile "/tmp/dark-sync-peer.db"
     | Error _ -> 0I
   | Error _ -> 0I

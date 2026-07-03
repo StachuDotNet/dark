@@ -778,6 +778,45 @@ let fns (config : Configuration) : List<BuiltInFn> =
     // runs the same disposer chain when the DStream becomes
     // unreachable.
     // ——————————————————————————————————————————————————————————
+    // GET with SSRF guards OFF, returning raw BYTES — for syncing a peer's store over the tailnet.
+    // (The safe `httpClientRequest` bans loopback/RFC-1918/tailnet; `httpClientGetUnsafe` returns a UTF8
+    // String which corrupts a binary db — hence this Blob variant.) TRUSTED-CLI use: the caller IS the code
+    // author; used by `Sync.pullUrl` / `dark sync pull <url>`.
+    { name = fn "httpGetUnsafeBytes" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "uri"
+            TString
+            "URL to GET with SSRF guards OFF (loopback/RFC-1918/tailnet reachable)" ]
+      returnType = TypeReference.result TBlob TString
+      description =
+        "GET <param uri> with NO SSRF guards, returning the raw response body as Bytes (Ok) or an error message (Error). For pulling a peer's store over the tailnet."
+      fn =
+        let looseClient = BaseClient.create looseConfig
+
+        (function
+        | _, _, _, [ DString uri ] ->
+          uply {
+            let request : Request =
+              { url = uri
+                method = HttpMethod "GET"
+                headers = []
+                body = [||] }
+
+            let! response = makeRequest looseConfig looseClient request
+
+            match response with
+            | Ok r -> return Dval.resultOk KTBlob KTString (Blob.newEphemeral r.body)
+            | Error _ ->
+              return Dval.resultError KTBlob KTString (DString "sync fetch failed")
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.Needs.http
+      deprecated = NotDeprecated }
+
     { name = fn "httpClientStream" 0
       typeParams = []
       parameters =
