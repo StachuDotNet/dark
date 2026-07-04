@@ -38,9 +38,16 @@ let execP (dbPath: String) (sql: String) (params: List<String>) : Stdlib.Result.
 
 /// Run a SELECT against <param dbPath>; returns each row as a dict of column name
 /// to a typed <type Value> (so ints/reals/blobs keep their types).
-let query (dbPath: String) (sql: String) : List<Dict<Value>> =
+let query
+  (dbPath: String)
+  (sql: String)
+  : Stdlib.Result.Result<List<Dict<Value>>, String> =
   Builtin.sqliteQuery dbPath sql
 
 /// Like <fn query> but binds <param params> to @p0..@pN placeholders (injection-safe).
-let queryP (dbPath: String) (sql: String) (params: List<String>) : List<Dict<Value>> =
+let queryP
+  (dbPath: String)
+  (sql: String)
+  (params: List<String>)
+  : Stdlib.Result.Result<List<Dict<Value>>, String> =
   Builtin.sqliteQueryP dbPath sql params

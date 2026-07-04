@@ -15,7 +15,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
         (Builtin.localDbPath ())
         "SELECT release FROM release_state_v0 WHERE id = 0"
     with
-    | [ row ] ->
+    | Ok [ row ] ->
       match Stdlib.Dict.get row "release" with
       | Some c ->
         match Stdlib.Sqlite.asInt c with

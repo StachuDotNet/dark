@@ -77,30 +77,39 @@ let private execImpl (path : string) (sql : string) (parameters : List<string>) 
       return Dval.resultError KTInt KTString (DString e.Message)
   }
 
+// query returns a `Result<List<Dict<Value>>, String>` (Ok rows / Error message) to match exec — a bad path
+// or malformed SQL surfaces as a value, never an uncaught throw. Lets a caller read a peer's Release / op
+// count (or its own config) without a throw taking down the caller.
 let private queryImpl (path : string) (sql : string) (parameters : List<string>) : Ply<Dval> =
+  let rowsKT = KTList(ValueType.Known(KTDict(ValueType.Known Value.knownType)))
+
   uply {
-    use conn = new SqliteConnection(connStr path)
-    do! conn.OpenAsync()
-    use cmd = conn.CreateCommand()
-    cmd.CommandText <- sql
-    bindParams cmd parameters
-    let! readerObj = cmd.ExecuteReaderAsync()
-    use reader = readerObj
-    let rows = System.Collections.Generic.List<Dval>()
+    try
+      use conn = new SqliteConnection(connStr path)
+      do! conn.OpenAsync()
+      use cmd = conn.CreateCommand()
+      cmd.CommandText <- sql
+      bindParams cmd parameters
+      let! readerObj = cmd.ExecuteReaderAsync()
+      use reader = readerObj
+      let rows = System.Collections.Generic.List<Dval>()
 
-    let rec loop () : Ply<unit> =
-      uply {
-        let! hasRow = reader.ReadAsync()
-        if hasRow then
-          let cells =
-            [ for i in 0 .. reader.FieldCount - 1 ->
-                (reader.GetName i, Value.toDT (reader.GetValue i)) ]
-          rows.Add(Dval.dict Value.knownType cells)
-          return! loop ()
-      }
+      let rec loop () : Ply<unit> =
+        uply {
+          let! hasRow = reader.ReadAsync()
+          if hasRow then
+            let cells =
+              [ for i in 0 .. reader.FieldCount - 1 ->
+                  (reader.GetName i, Value.toDT (reader.GetValue i)) ]
+            rows.Add(Dval.dict Value.knownType cells)
+            return! loop ()
+        }
 
-    do! loop ()
-    return Dval.list (KTDict(ValueType.Known Value.knownType)) (List.ofSeq rows)
+      do! loop ()
+      let listDval = Dval.list (KTDict(ValueType.Known Value.knownType)) (List.ofSeq rows)
+      return Dval.resultOk rowsKT KTString listDval
+    with e ->
+      return Dval.resultError rowsKT KTString (DString e.Message)
   }
 
 let fns () : List<BuiltInFn> =
@@ -145,10 +154,10 @@ let fns () : List<BuiltInFn> =
       parameters =
         [ Param.make "path" TString "the SQLite file to open"
           Param.make "sql" TString "a SELECT to run" ]
-      returnType = TList(TDict Value.typeRef)
+      returnType = TypeReference.result (TList(TDict Value.typeRef)) TString
       description =
-        "Opens the SQLite file at <param path> and runs the SELECT <param sql>, returning each row as a dict "
-        + "of column-name to its (stringified) value."
+        "Opens the SQLite file at <param path> and runs the SELECT <param sql>. Ok = each row as a dict of "
+        + "column-name to its typed value; Error = the SQLite message. Never throws."
       fn =
         (function
         | _, _, _, [ DString path; DString sql ] -> queryImpl path sql []
@@ -164,9 +173,9 @@ let fns () : List<BuiltInFn> =
         [ Param.make "path" TString "the SQLite file to open"
           Param.make "sql" TString "a SELECT with @p0..@pN placeholders"
           Param.make "params" (TList TString) "values bound to @p0..@pN, in order" ]
-      returnType = TList(TDict Value.typeRef)
+      returnType = TypeReference.result (TList(TDict Value.typeRef)) TString
       description =
-        "Like <fn sqliteQuery> but binds <param params> to @p0..@pN placeholders (injection-safe)."
+        "Like <fn sqliteQuery> but binds <param params> to @p0..@pN placeholders (injection-safe). Ok = rows; Error = message."
       fn =
         (function
         | _, _, _, [ DString path; DString sql; DList(_, ps) ] ->

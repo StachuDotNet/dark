@@ -39,13 +39,13 @@ let private peersDb () : String =
 
 /// The peers this instance syncs with (local config; per-instance; never travels).
 let peers () : List<String> =
-  let rows =
-    Stdlib.Sqlite.query (peersDb ()) "SELECT path FROM sync_peers ORDER BY path"
-
-  Stdlib.List.filterMap rows (fun row ->
-    match Stdlib.Dict.get row "path" with
-    | Some cell -> Stdlib.Sqlite.asText cell
-    | None -> Stdlib.Option.Option.None)
+  match Stdlib.Sqlite.query (peersDb ()) "SELECT path FROM sync_peers ORDER BY path" with
+  | Ok rows ->
+    Stdlib.List.filterMap rows (fun row ->
+      match Stdlib.Dict.get row "path" with
+      | Some cell -> Stdlib.Sqlite.asText cell
+      | None -> Stdlib.Option.Option.None)
+  | Error _ -> []
 
 /// Add a peer to this instance's sync config (idempotent).
 let connect (peer: String) : Unit =

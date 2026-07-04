@@ -29,12 +29,14 @@ let private cellInt (row: Dict<Stdlib.Sqlite.Value>) (key: String) : Int64 =
 // convergence.
 let healthFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
   let db = Builtin.localDbPath ()
-  let rows = Stdlib.Sqlite.query db "SELECT count(*) AS n FROM package_ops"
 
   let n =
-    match rows with
-    | [ row ] -> cellInt row "n"
-    | _ -> 0L
+    match Stdlib.Sqlite.query db "SELECT count(*) AS n FROM package_ops" with
+    | Ok rows ->
+      match rows with
+      | [ row ] -> cellInt row "n"
+      | _ -> 0L
+    | Error _ -> 0L
 
   Stdlib.Http.responseWithText $"ok ops={Stdlib.Int64.toString n}" 200I
 
@@ -59,7 +61,10 @@ let eventsFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
   let sql =
     $"SELECT rowid AS rid, id, origin_ts, branch_id, commit_hash, hex(op_blob) AS blob FROM package_ops WHERE rowid > {Stdlib.Int64.toString since} AND commit_hash IS NOT NULL ORDER BY rowid"
 
-  let rows = Stdlib.Sqlite.query db sql
+  let rows =
+    match Stdlib.Sqlite.query db sql with
+    | Ok rs -> rs
+    | Error _ -> []
 
   let lines =
     Stdlib.List.map rows (fun row ->
