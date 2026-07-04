@@ -8,22 +8,44 @@ module Darklang.Sync
 ///
 /// v1: the FILE transport — a debug / offline floor. The installed daemon automates this (DECISIONS §8).
 /// Copies into + folds THIS instance's own store (`Builtin.localDbPath ()`), so the caller only names the peer.
+/// The Release a store is stamped at (None if unreadable or unstamped). Same coordinate `dark version` shows.
+let private storeRelease (dbPath: String) : Stdlib.Option.Option<Int64> =
+  match
+    Stdlib.Sqlite.query dbPath "SELECT release FROM release_state_v0 WHERE id = 0"
+  with
+  | Ok [ row ] ->
+    match Stdlib.Dict.get row "release" with
+    | Some c -> Stdlib.Sqlite.asInt c
+    | None -> Stdlib.Option.Option.None
+  | _ -> Stdlib.Option.Option.None
+
 let pullFile (peerPath: String) : Int =
   let localPath = Builtin.localDbPath ()
 
-  // Copy the peer's ops (+ referenced branches/commits) as unapplied. execP returns a Result, so a missing /
-  // offline / unreadable peer is an Error we skip — not a throw that crashes the daemon.
-  let copied =
-    Stdlib.Sqlite.execP
-      localPath
-      // FK off for the bulk snapshot copy (branches<->commits have a circular FK; the copy is internally
-      // consistent — same approach as the rebuild path). Copy referenced rows (branches/commits) then ops.
-      "PRAGMA foreign_keys=OFF; ATTACH DATABASE @p0 AS peer; INSERT OR IGNORE INTO branches SELECT * FROM peer.branches; INSERT OR IGNORE INTO commits SELECT * FROM peer.commits; INSERT OR IGNORE INTO package_ops (id, op_blob, branch_id, commit_hash, propagation_id, origin_ts, applied) SELECT id, op_blob, branch_id, commit_hash, propagation_id, origin_ts, 0 FROM peer.package_ops; DETACH peer"
-      [ peerPath ]
+  // Refuse a peer stamped at a DIFFERENT Release: the snapshot copy is a `SELECT *` that assumes a matching
+  // schema + op-format. If either side's Release can't be read we proceed best-effort (a truly bad peer just
+  // fails the copy and returns 0 anyway). When both are readable and differ, skip — nothing is corrupted.
+  let compatible =
+    match storeRelease peerPath, storeRelease localPath with
+    | Some p, Some l -> p == l
+    | _ -> true
 
-  match copied with
-  | Ok _ -> Builtin.foldOps ()
-  | Error _ -> 0I
+  if compatible then
+    // Copy the peer's ops (+ referenced branches/commits) as unapplied. execP returns a Result, so a missing
+    // / offline / unreadable peer is an Error we skip — not a throw that crashes the daemon.
+    let copied =
+      Stdlib.Sqlite.execP
+        localPath
+        // FK off for the bulk snapshot copy (branches<->commits have a circular FK; the copy is internally
+        // consistent — same approach as the rebuild path). Copy referenced rows (branches/commits) then ops.
+        "PRAGMA foreign_keys=OFF; ATTACH DATABASE @p0 AS peer; INSERT OR IGNORE INTO branches SELECT * FROM peer.branches; INSERT OR IGNORE INTO commits SELECT * FROM peer.commits; INSERT OR IGNORE INTO package_ops (id, op_blob, branch_id, commit_hash, propagation_id, origin_ts, applied) SELECT id, op_blob, branch_id, commit_hash, propagation_id, origin_ts, 0 FROM peer.package_ops; DETACH peer"
+        [ peerPath ]
+
+    match copied with
+    | Ok _ -> Builtin.foldOps ()
+    | Error _ -> 0I
+  else
+    0I
 
 
 // ── peer config (LOCAL, per-instance — never synced, like `caps`; DECISIONS §8) ──
