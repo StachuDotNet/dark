@@ -202,8 +202,12 @@ module BaseClient =
               // Use this to hide more specific errors when looking at loopback
               Exception.raiseInternal "Could not connect" []
 
+            // Create the socket with the resolved IP's address family (v4 vs v6). The 2-arg ctor defaults
+            // to IPv6, which only reaches an IPv4 literal (e.g. 127.0.0.1) when the host has IPv6 dual-mode
+            // — absent in some containers, giving a NetworkError. Matching the family connects either way.
             let socket =
               new System.Net.Sockets.Socket(
+                ips[0].AddressFamily,
                 System.Net.Sockets.SocketType.Stream,
                 System.Net.Sockets.ProtocolType.Tcp
               )
@@ -808,8 +812,16 @@ let fns (config : Configuration) : List<BuiltInFn> =
 
             match response with
             | Ok r -> return Dval.resultOk KTBlob KTString (Blob.newEphemeral r.body)
-            | Error _ ->
-              return Dval.resultError KTBlob KTString (DString "sync fetch failed")
+            | Error err ->
+              let reason =
+                match err with
+                | RequestError.BadUrl _ -> "bad url"
+                | RequestError.Timeout -> "timeout"
+                | RequestError.BadHeader _ -> "bad header"
+                | RequestError.NetworkError -> "network error"
+                | RequestError.BadMethod -> "bad method"
+              return
+                Dval.resultError KTBlob KTString (DString $"fetch failed: {reason}")
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
