@@ -343,6 +343,27 @@ module LocalAccess =
     else
       true // not ipv4 or ipv6, so banned
 
+  /// The subset of banned ranges that stay banned even for a trusted tailnet SYNC pull: 169.254.0.0/16
+  /// (link-local + cloud-metadata), GCP private endpoints, and 0.0.0.0. Loopback, RFC-1918, and the
+  /// Tailscale CGN range (100.64/10) are deliberately ALLOWED here — reaching a tailnet/LAN peer is the
+  /// whole point — but the cloud-metadata SSRF target is never reachable, even by an unsafe pull.
+  let private metadataOrLinkLocalV4 (ip : System.Net.IPAddress) : bool =
+    oneSixNine.Contains ip
+    || oneNineNineFour.Contains ip
+    || oneNineNineEight.Contains ip
+    || zero = ip
+
+  let metadataOrLinkLocal (ip : System.Net.IPAddress) : bool =
+    if ip.AddressFamily = System.Net.Sockets.AddressFamily.InterNetworkV6 then
+      if ip.IsIPv4MappedToIPv6 then
+        metadataOrLinkLocalV4 (ip.MapToIPv4())
+      else
+        ip.IsIPv6LinkLocal // ipv6 link-local / metadata
+    else if ip.AddressFamily = System.Net.Sockets.AddressFamily.InterNetwork then
+      metadataOrLinkLocalV4 ip
+    else
+      true
+
   let bannedHost (host : string) : bool =
     let host = host.Trim().ToLower()
     let badIP =
@@ -377,6 +398,17 @@ let defaultConfig : Configuration =
   { looseConfig with
       allowedIP = fun ip -> not (LocalAccess.bannedIp ip)
       allowedHost = fun host -> not (LocalAccess.bannedHost host)
+      allowedScheme = fun scheme -> scheme = "https" || scheme = "http"
+      allowedHeaders =
+        fun headers -> not (LocalAccess.hasInstanceMetadataHeader headers) }
+
+/// Config for trusted tailnet SYNC pulls (`httpGetUnsafeBytes`). Unlike `defaultConfig` it reaches
+/// loopback / RFC-1918 / the Tailscale range so a peer's server is reachable — but unlike `looseConfig` it
+/// still blocks cloud-metadata + link-local, so even a sync pull can't be aimed at 169.254.169.254. Also
+/// drops the metadata request-header (defence-in-depth; sync sends no headers anyway).
+let syncConfig : Configuration =
+  { looseConfig with
+      allowedIP = fun ip -> not (LocalAccess.metadataOrLinkLocal ip)
       allowedScheme = fun scheme -> scheme = "https" || scheme = "http"
       allowedHeaders =
         fun headers -> not (LocalAccess.hasInstanceMetadataHeader headers) }
@@ -797,7 +829,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
       description =
         "GET <param uri> with NO SSRF guards, returning the raw response body as Bytes (Ok) or an error message (Error). For pulling a peer's store over the tailnet."
       fn =
-        let looseClient = BaseClient.create looseConfig
+        let syncClient = BaseClient.create syncConfig
 
         (function
         | _, _, _, [ DString uri ] ->
@@ -808,7 +840,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
                 headers = []
                 body = [||] }
 
-            let! response = makeRequest looseConfig looseClient request
+            let! response = makeRequest syncConfig syncClient request
 
             match response with
             | Ok r -> return Dval.resultOk KTBlob KTString (Blob.newEphemeral r.body)
