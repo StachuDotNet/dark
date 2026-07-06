@@ -11,6 +11,24 @@ let private plural (n: Int) (noun: String) : String =
   else
     $"{Stdlib.Int.toString n} {noun}s"
 
+// Serve the sync endpoint so peers can pull from you. Blocks until Ctrl+C (foreground); for boot, use
+// `dark apps enable sync-server`. Same router `dark serve Darklang.Sync.Server.router` would run — just less
+// to type, and it prints the address peers actually need.
+let private serveOn (port: Int) (state: AppState) : AppState =
+  let portStr = Stdlib.Int.toString port
+
+  [ Colors.success $"Serving sync on http://localhost:{portStr} — peers can pull from you here."
+    Colors.hint $"  Remote peers use your tailnet address, e.g. http://you.tailnet:{portStr}"
+    Colors.hint "  Keep it running across reboots:  dark apps enable sync-server"
+    "  Press Ctrl+C to stop." ]
+  |> Stdlib.printLines
+
+  Stdlib.HttpServer.serve
+    (Stdlib.HttpServer.Config.defaults port)
+    Darklang.Sync.Server.router
+
+  state
+
 let execute (state: AppState) (args: List<String>) : AppState =
   match args with
   | [] ->
@@ -89,7 +107,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
   | [ "connect"; peer ] ->
     match Darklang.Sync.connect peer with
-    | Ok _ -> Stdlib.printLine (Colors.success $"Now syncing with {peer}")
+    | Ok _ ->
+      Stdlib.printLine (Colors.success $"Now syncing with {peer}")
+      Stdlib.printLine (
+        Colors.hint "  dark sync   pull now  ·  dark apps enable sync   keep current on boot")
     | Error e -> Stdlib.printLine (Colors.error e)
 
     state
@@ -106,8 +127,16 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
     state
 
+  | [ "serve" ] -> serveOn 9000I state
+  | [ "serve"; "--port"; portStr ] ->
+    match Stdlib.Int.parse portStr with
+    | Ok p -> serveOn p state
+    | Error _ ->
+      Stdlib.printLine (Colors.error $"Invalid --port: {portStr}")
+      state
+
   | _ ->
-    Stdlib.printLine "Usage: dark sync [connect <url> | pull <url>]"
+    Stdlib.printLine "Usage: dark sync [serve [--port N] | connect <url> | pull <url> | status]"
     state
 
 
@@ -115,16 +144,17 @@ let help (state: AppState) : AppState =
   [ "Usage: dark sync [<command>]"
     ""
     "Keep your packages in step with your other instances, over HTTP. Local-first: sync is"
-    "opt-in, and once you connect a peer it stays current in the background."
+    "opt-in, and once you connect a peer it stays current."
     ""
     "  dark sync                 pull now from every instance you're connected to"
-    "  dark sync status          show who you're syncing with and how current you are"
     "  dark sync connect <url>   start syncing with an instance (e.g. http://ocean.tailnet:9000)"
+    "  dark sync serve           let peers pull from you (add --port N; default 9000)"
+    "  dark sync status          show who you're syncing with and how current you are"
     "  dark sync pull <url>      pull once from one instance"
-    "  dark apps start sync      keep syncing automatically in the background"
     ""
-    "To let other instances pull from you, serve the sync endpoint:"
-    "  dark serve Darklang.Sync.Server.router --port 9000" ]
+    "Always on, across reboots:"
+    "  dark apps enable sync            auto-pull from your peers on boot"
+    "  dark apps enable sync-server     serve to your peers on boot" ]
   |> Stdlib.printLines
 
   state
@@ -135,5 +165,6 @@ let complete
   (args: List<String>)
   : List<Completion.CompletionItem> =
   match args with
-  | [] -> [ "status"; "connect"; "pull" ] |> Stdlib.List.map Completion.simple
+  | [] ->
+    [ "status"; "connect"; "serve"; "pull" ] |> Stdlib.List.map Completion.simple
   | _ -> []
