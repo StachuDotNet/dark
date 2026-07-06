@@ -4,6 +4,13 @@ module Darklang.Cli.Sync
 // and once you connect a peer, `dark apps start sync` keeps things current in the background (DECISIONS §8).
 // Peers are URLs (running instances), never files — sync exchanges ops, not databases.
 
+// "1 instance" / "2 instances" — count + correctly-pluralized noun, so no message reads "1 instance(s)".
+let private plural (n: Int) (noun: String) : String =
+  if n == 1I then
+    $"{Stdlib.Int.toString n} {noun}"
+  else
+    $"{Stdlib.Int.toString n} {noun}s"
+
 let execute (state: AppState) (args: List<String>) : AppState =
   match args with
   | [] ->
@@ -37,18 +44,18 @@ let execute (state: AppState) (args: List<String>) : AppState =
         if unreachable > 0I then
           Stdlib.printLine (
             Colors.error
-              $"Couldn't reach {Stdlib.Int.toString unreachable} of {Stdlib.Int.toString (Stdlib.List.length ps)} instance(s)")
+              $"Couldn't reach {Stdlib.Int.toString unreachable} of {plural (Stdlib.List.length ps) "instance"}")
         else
           ()
 
       if pulled > 0I then
         Stdlib.printLine (
           Colors.success
-            $"Pulled {Stdlib.Int.toString pulled} change(s) from {Stdlib.Int.toString reached} instance(s)")
+            $"Pulled {plural pulled "change"} from {plural reached "instance"}")
       else if reached > 0I then
         Stdlib.printLine (
           Colors.success
-            $"Already up to date with {Stdlib.Int.toString reached} instance(s)")
+            $"Already up to date with {plural reached "instance"}")
       else
         ()
 
@@ -65,7 +72,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
       state
     | sts ->
       let header =
-        $"Syncing with {Stdlib.Int.toString (Stdlib.List.length sts)} instance(s):"
+        $"Syncing with {plural (Stdlib.List.length sts) "instance"}:"
 
       let lines =
         Stdlib.List.map sts (fun pc ->
@@ -94,7 +101,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
         Stdlib.printLine (Colors.success $"Already up to date with {peer}")
       else
         Stdlib.printLine (
-          Colors.success $"Pulled {Stdlib.Int.toString n} change(s) from {peer}")
+          Colors.success $"Pulled {plural n "change"} from {peer}")
     | Error e -> Stdlib.printLine (Colors.error e)
 
     state
