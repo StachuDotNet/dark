@@ -16,6 +16,9 @@ open LibDB.Sqlite
 
 module Seed = LibDB.Seed
 module Releases = LibDB.Releases
+module PT = LibExecution.ProgramTypes
+module Inserts = LibDB.Inserts
+module BS = LibSerialization.Binary.Serialization
 
 let private countRows (table : string) : Task<int64> =
   Sql.query $"SELECT COUNT(*) as n FROM {table}"
@@ -368,4 +371,61 @@ let tests =
           fnsAfter
           fnsBefore
           "re-receiving existing ops is a no-op (idempotent append)"
+      }
+
+      // The convergence property, at the seam: a genuinely NEW op arriving from a "peer" (here: a fresh
+      // SetName binding an unused name to an existing fn hash) must be appended PRESERVING its origin_ts — not
+      // re-stamped with a fresh local one, which is exactly what would make two instances' LWW diverge — and
+      // then folded into `locations` by the invisible playback. This is what carries across the HTTP wire.
+      testTask "receiveOps appends a new op preserving origin_ts and folds it" {
+        let! fnHash =
+          Sql.query "SELECT hash FROM package_functions LIMIT 1"
+          |> Sql.executeRowAsync (fun read -> read.string "hash")
+        let! commitHash =
+          Sql.query "SELECT hash FROM commits LIMIT 1"
+          |> Sql.executeRowAsync (fun read -> read.string "hash")
+
+        let loc : PT.PackageLocation =
+          { owner = "Test"; modules = [ "SyncConv" ]; name = "thing" }
+        let op = PT.PackageOp.SetName(loc, PT.Reference.PackageFn(PT.Hash fnHash))
+        let opId = Inserts.computeOpHash op
+        let opBlob = BS.PT.PackageOp.serialize opId op
+        // A stamp no local edit would ever produce, so preservation is unambiguous.
+        let distinctiveTs = "2099-01-01 00:00:00.000042"
+
+        let deleteOp () : Task<unit> =
+          Sql.query "DELETE FROM package_ops WHERE id = @id"
+          |> Sql.parameters [ "id", Sql.uuid opId ]
+          |> Sql.executeStatementAsync
+        do! deleteOp () // clean any prior run
+
+        let! _ =
+          Seed.receiveOps [] [ (opId, opBlob, PT.mainBranchId, commitHash, distinctiveTs) ]
+
+        let! storedTs =
+          Sql.query "SELECT origin_ts FROM package_ops WHERE id = @id"
+          |> Sql.parameters [ "id", Sql.uuid opId ]
+          |> Sql.executeRowAsync (fun read -> read.string "origin_ts")
+        Expect.equal
+          storedTs
+          distinctiveTs
+          "the received op kept its original origin_ts (not a fresh local stamp)"
+
+        let! bound =
+          Sql.query
+            "SELECT item_hash FROM locations WHERE owner = 'Test' AND modules = 'SyncConv' AND name = 'thing' AND unlisted_at IS NULL"
+          |> Sql.executeAsync (fun read -> read.string "item_hash")
+        Expect.equal
+          bound
+          [ fnHash ]
+          "the received op folded into `locations` (invisible playback)"
+
+        // restore the shared DB: drop the test op + its projection row, re-fold
+        do! deleteOp ()
+        do!
+          Sql.query
+            "DELETE FROM locations WHERE owner = 'Test' AND modules = 'SyncConv' AND name = 'thing'"
+          |> Sql.executeStatementAsync
+        let! _ = Seed.rebuildProjections ()
+        ()
       } ]
