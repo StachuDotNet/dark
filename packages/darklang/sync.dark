@@ -16,8 +16,9 @@ type Wire =
 /// The `GET /sync/events?since=<cursor>` body: this instance's Release + its committed events after
 /// <param cursor>, as JSON. Served by `Sync.Server` (`dark serve`), pulled by a peer's `Sync.pull`.
 let wireSince (cursor: Int64) : String =
-  // One bounded batch (≤ 500 ops) so a large log never becomes one giant response — the puller loops.
-  let (commits, events, newCursor) = Stdlib.EventLog.since cursor 500L
+  // One bounded batch so a large log never becomes one giant response — the puller loops. 50 keeps each wire
+  // small (~tens of KB) even when the batch includes big ops; the cursor makes the extra round-trips cheap.
+  let (commits, events, newCursor) = Stdlib.EventLog.since cursor 50L
   Stdlib.Json.serialize<Wire> ((Builtin.currentRelease(), commits, events, newCursor))
 
 
