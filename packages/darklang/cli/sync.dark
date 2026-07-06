@@ -1,24 +1,56 @@
 module Darklang.Cli.Sync
 
-// `dark sync` — share your package changes with your other instances. Local-first: sync is opt-in, and
-// once set up the daemon keeps things current in the background (DECISIONS §8). `dark sync pull <peer.db>`
-// is the manual file-transport floor (offline / no daemon needed).
+// `dark sync` — keep your packages in step with your other instances, over HTTP. Local-first: sync is opt-in,
+// and once you connect a peer, `dark apps start sync` keeps things current in the background (DECISIONS §8).
+// Peers are URLs (running instances), never files — sync exchanges ops, not databases.
 
 let execute (state: AppState) (args: List<String>) : AppState =
   match args with
   | [] ->
-    // bare `dark sync` = sync now with every configured peer (the daemon automates this).
+    // bare `dark sync` = pull now from every connected instance (the daemon automates this).
     match Darklang.Sync.peers () with
     | [] ->
-      Stdlib.printLine "sync is local-first — set up once, then it stays current."
-      Stdlib.printLine (Colors.hint "  dark sync connect <peer.db>   add a peer to sync with")
-      state
-    | ps ->
-      let n = Darklang.Sync.pullAll ()
+      Stdlib.printLine "You're not syncing with anyone yet."
 
       Stdlib.printLine (
-        Colors.success
-          $"synced {Stdlib.Int.toString (Stdlib.List.length ps)} peer(s) — pulled {Stdlib.Int.toString n} change(s)")
+        Colors.hint "  dark sync connect <url>   sync with one of your instances")
+
+      state
+    | ps ->
+      let results = Stdlib.List.map ps (fun p -> Darklang.Sync.pull p)
+
+      let pulled =
+        Stdlib.List.fold results 0I (fun acc r ->
+          match r with
+          | Ok n -> acc + n
+          | Error _ -> acc)
+
+      let unreachable =
+        Stdlib.List.fold results 0I (fun acc r ->
+          match r with
+          | Ok _ -> acc
+          | Error _ -> acc + 1I)
+
+      let reached = (Stdlib.List.length ps) - unreachable
+
+      let _ =
+        if unreachable > 0I then
+          Stdlib.printLine (
+            Colors.error
+              $"Couldn't reach {Stdlib.Int.toString unreachable} of {Stdlib.Int.toString (Stdlib.List.length ps)} instance(s)")
+        else
+          ()
+
+      if pulled > 0I then
+        Stdlib.printLine (
+          Colors.success
+            $"Pulled {Stdlib.Int.toString pulled} change(s) from {Stdlib.Int.toString reached} instance(s)")
+      else if reached > 0I then
+        Stdlib.printLine (
+          Colors.success
+            $"Already up to date with {Stdlib.Int.toString reached} instance(s)")
+      else
+        ()
 
       state
 
@@ -26,28 +58,36 @@ let execute (state: AppState) (args: List<String>) : AppState =
     match Darklang.Sync.connect peer with
     | Ok _ -> Stdlib.printLine (Colors.success $"Now syncing with {peer}")
     | Error e -> Stdlib.printLine (Colors.error e)
+
     state
 
   | [ "pull"; peer ] ->
-    let n = Darklang.Sync.pull peer
-
-    Stdlib.printLine (
-      Colors.success $"Pulled {Stdlib.Int.toString n} change(s) from {peer}")
+    match Darklang.Sync.pull peer with
+    | Ok n ->
+      if n == 0I then
+        Stdlib.printLine (Colors.success $"Already up to date with {peer}")
+      else
+        Stdlib.printLine (
+          Colors.success $"Pulled {Stdlib.Int.toString n} change(s) from {peer}")
+    | Error e -> Stdlib.printLine (Colors.error e)
 
     state
 
   | _ ->
-    Stdlib.printLine "Usage: sync [connect <url>] [pull <url>]"
+    Stdlib.printLine "Usage: dark sync [connect <url> | pull <url>]"
     state
 
 
 let help (state: AppState) : AppState =
-  [ "Usage: sync <command>"
-    "Share your package changes with your other instances."
-    "Local-first: sync is opt-in; once set up, it stays current in the background."
+  [ "Usage: dark sync [<command>]"
     ""
-    "Commands:"
-    "  pull <peer.db>    Pull another instance's changes from its store file" ]
+    "Keep your packages in step with your other instances, over HTTP. Local-first: sync is"
+    "opt-in, and once you connect a peer it stays current in the background."
+    ""
+    "  dark sync                 pull now from every instance you're connected to"
+    "  dark sync connect <url>   start syncing with an instance (e.g. http://ocean.tailnet:9000)"
+    "  dark sync pull <url>      pull once from one instance"
+    "  dark apps start sync      keep syncing automatically in the background" ]
   |> Stdlib.printLines
 
   state

@@ -85,8 +85,9 @@ let private setCursor (peer: String) (cursor: Int64) : Unit =
 // ── the client: pull a peer's new ops over HTTP + apply (folding invisible) ──
 
 /// Pull new ops from <param peer> (an http URL) since our stored cursor, apply them, advance the cursor.
-/// Returns the number of events applied. Everything is ops over HTTP; a bad/offline peer applies 0 (no crash).
-let pull (peer: String) : Int =
+/// Ok(n) = n events applied (0 = already current); Error = the peer was unreachable or spoke nonsense. Honest
+/// about the difference so a caller never reports "up to date" when it actually couldn't reach the peer.
+let pull (peer: String) : Stdlib.Result.Result<Int, String> =
   let url = $"{peer}/sync/events?since={Stdlib.Int64.toString (cursorFor peer)}"
 
   match Builtin.httpGetUnsafeBytes url with
@@ -97,14 +98,19 @@ let pull (peer: String) : Int =
       | Ok((commits, events, serverCursor)) ->
         let _ = Stdlib.EventLog.append commits events
         let _ = setCursor peer serverCursor
-        Stdlib.List.length events
-      | Error _ -> 0
-    | Error _ -> 0
-  | Error _ -> 0
+        Stdlib.Result.Result.Ok(Stdlib.List.length events)
+      | Error _ ->
+        Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
+    | Error _ -> Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
+  | Error _ -> Stdlib.Result.Result.Error $"Couldn't reach {peer}"
 
-/// Pull from every configured peer; returns the total number of events applied.
+/// Pull from every configured peer; returns the total events applied (unreachable peers contribute 0). Used by
+/// the background daemon, which pulls what it can and stays quiet about peers that happen to be offline.
 let pullAll () : Int =
-  Stdlib.List.fold (peers ()) 0 (fun acc peer -> acc + (pull peer))
+  Stdlib.List.fold (peers ()) 0I (fun acc peer ->
+    match pull peer with
+    | Ok n -> acc + n
+    | Error _ -> acc)
 
 
 // ── the autosync daemon (DECISIONS §8): pull from every peer on an interval, in the background. Managed by
