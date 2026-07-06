@@ -90,17 +90,19 @@ let execute (state: AppState) (args: List<String>) : AppState =
       state
     | sts ->
       let header =
-        $"Syncing with {plural (Stdlib.List.length sts) "instance"}:"
+        $"Syncing with {plural (Stdlib.List.length sts) "instance"} (run `dark sync` to pull the latest):"
 
       let lines =
         Stdlib.List.map sts (fun pc ->
           let peer = Stdlib.Tuple2.first pc
           let cursor = Stdlib.Tuple2.second pc
 
+          // Cursor is the PEER's rowid — meaningless to show. What's honest is whether we've pulled it yet;
+          // "current" is always as-of the last pull (we can't know if the peer moved without pulling).
           if cursor == 0L then
             $"  {peer}   (not pulled yet)"
           else
-            $"  {peer}   (synced through op {Stdlib.Int64.toString cursor})")
+            $"  {peer}   (pulled)")
 
       Stdlib.printLines (Stdlib.List.append [ header ] lines)
       state
