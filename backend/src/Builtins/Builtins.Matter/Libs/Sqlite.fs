@@ -234,9 +234,9 @@ let fns () : List<BuiltInFn> =
             "events"
             (TList(TTuple(TString, TString, [ TString; TString; TString ])))
             "(id, opBlobHex, branchId, commitHash, originTs) tuples received from a peer" ]
-      returnType = TInt64
+      returnType = TInt
       description =
-        "Append received commits + events to the op log (preserving origin_ts) + fold. Returns the new cursor. Idempotent."
+        "Append received commits + events to the op log (preserving origin_ts) + fold. Returns the count of ops newly applied. Idempotent."
       fn =
         (function
         | _, _, _, [ DList(_, commits); DList(_, events) ] ->
@@ -267,8 +267,8 @@ let fns () : List<BuiltInFn> =
                    commitHash,
                    originTs)
                 | _ -> Exception.raiseInternal "appendEvents: malformed event tuple" [])
-            let! cursor = LibDB.Seed.receiveOps parsedCommits parsedEvents
-            return Dval.int64 cursor
+            let! applied = LibDB.Seed.receiveOps parsedCommits parsedEvents
+            return Dval.int (bigint applied)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

@@ -108,14 +108,14 @@ let rec private pullLoop
           Stdlib.Result.Result.Error
             $"{peer} is on Dark release {Stdlib.Int.toString peerRelease}; you're on {Stdlib.Int.toString (Builtin.currentRelease())} — upgrade to the same release to sync"
         else
-          let n = Stdlib.List.length events
-
-          if n == 0 then
+          // Loop control is the WIRE size (an all-already-present batch still advances the cursor); the count
+          // we report is what actually APPLIED, so "Pulled N" is honest even on a shared-base first pull.
+          if Stdlib.List.length events == 0 then
             Stdlib.Result.Result.Ok applied
           else
-            let _ = Stdlib.EventLog.append commits events
+            let newlyApplied = Stdlib.EventLog.append commits events
             let _ = setCursor peer serverCursor
-            pullLoop peer (applied + n)
+            pullLoop peer (applied + newlyApplied)
       | Error _ ->
         Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
     | Error _ -> Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"

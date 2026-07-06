@@ -85,5 +85,5 @@ let since
 let append
   (commits: List<(String * String * String * String * String)>)
   (events: List<(String * String * String * String * String)>)
-  : Int64 =
+  : Int =
   Builtin.appendEvents commits events

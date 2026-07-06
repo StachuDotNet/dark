@@ -273,18 +273,15 @@ type Projection = { table : string; dirtiedBy : Set<string> }
 /// (the LOCAL-authoring path, which stamps a fresh `nextOriginTs`), this PRESERVES each op's original
 /// `origin_ts` — essential for the timestamp-LWW to converge the same on every instance regardless of
 /// arrival order. Idempotent: `INSERT OR IGNORE` on the content-addressed id, and only unapplied ops
-/// fold. Returns the new max-rowid cursor. Folding stays here (F#) — invisible to Dark.
+/// fold. Returns the number of ops NEWLY applied (INSERT OR IGNORE skips already-present ones), so a puller
+/// reports the real change count. Folding stays here (F#) — invisible to Dark.
 let receiveOps
   (commits : List<string * string * System.Guid * System.Guid * string>)
   (events : List<System.Guid * byte[] * System.Guid * string * string>)
   : Task<int64> =
   task {
-    let maxRowid () : Task<int64> =
-      Sql.query "SELECT COALESCE(MAX(rowid), 0) as c FROM package_ops"
-      |> Sql.executeRowAsync (fun read -> read.int64 "c")
-
     if List.isEmpty events then
-      return! maxRowid ()
+      return 0L
     else
       // Insert the referenced commits FIRST (same transaction, in order) so the ops' commit_hash FK is
       // satisfied — a synced op belongs to a commit that must exist on the receiver. INSERT OR IGNORE dedups.
@@ -323,9 +320,11 @@ let receiveOps
               "origin_ts", Sql.string originTs ]
           (sql, [ ps ]))
 
-      let _ = (commitInserts @ opInserts) |> Sql.executeTransactionSync
+      let affected = (commitInserts @ opInserts) |> Sql.executeTransactionSync
       let! _ = applyUnappliedOps ()
-      return! maxRowid ()
+      // Newly-inserted ops only (INSERT OR IGNORE returns 0 rows-affected for ones already present) — the
+      // honest change count. Skip the commit-insert results to count just the ops.
+      return affected |> List.skip (List.length commitInserts) |> List.sumBy int64
   }
 
 

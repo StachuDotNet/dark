@@ -345,11 +345,7 @@ let tests =
       // committed ops is a no-op — INSERT OR IGNORE on the content-addressed ids — so the cursor comes back as
       // the current max rowid and the projections are unchanged. This is what makes an incremental pull safe to
       // retry; the same append path a real peer's events take (commits shipped alongside them).
-      testTask "receiveOps is idempotent and returns the max-rowid cursor" {
-        let! maxRowid =
-          Sql.query "SELECT COALESCE(MAX(rowid), 0) as c FROM package_ops"
-          |> Sql.executeRowAsync (fun read -> read.int64 "c")
-
+      testTask "receiveOps is idempotent and reports zero newly-applied for known ops" {
         let! events =
           Sql.query
             "SELECT id, op_blob, branch_id, commit_hash, origin_ts FROM package_ops WHERE commit_hash IS NOT NULL ORDER BY rowid DESC LIMIT 8"
@@ -363,10 +359,13 @@ let tests =
         Expect.isTrue (not (List.isEmpty events)) "there are committed ops to re-receive"
 
         let! fnsBefore = countRows "package_functions"
-        let! cursor = Seed.receiveOps [] events
+        let! applied = Seed.receiveOps [] events
         let! fnsAfter = countRows "package_functions"
 
-        Expect.equal cursor maxRowid "cursor is the current max rowid (nothing new appended)"
+        Expect.equal
+          applied
+          0L
+          "re-receiving existing ops applies 0 (INSERT OR IGNORE) — the honest change count"
         Expect.equal
           fnsAfter
           fnsBefore
