@@ -16,7 +16,8 @@ type Wire =
 /// The `GET /sync/events?since=<cursor>` body: this instance's Release + its committed events after
 /// <param cursor>, as JSON. Served by `Sync.Server` (`dark serve`), pulled by a peer's `Sync.pull`.
 let wireSince (cursor: Int64) : String =
-  let (commits, events, newCursor) = Stdlib.EventLog.since cursor
+  // One bounded batch (≤ 500 ops) so a large log never becomes one giant response — the puller loops.
+  let (commits, events, newCursor) = Stdlib.EventLog.since cursor 500L
   Stdlib.Json.serialize<Wire> ((Builtin.currentRelease(), commits, events, newCursor))
 
 
@@ -87,10 +88,13 @@ let private setCursor (peer: String) (cursor: Int64) : Unit =
 
 // ── the client: pull a peer's new ops over HTTP + apply (folding invisible) ──
 
-/// Pull new ops from <param peer> (an http URL) since our stored cursor, apply them, advance the cursor.
-/// Ok(n) = n events applied (0 = already current); Error = the peer was unreachable or spoke nonsense. Honest
-/// about the difference so a caller never reports "up to date" when it actually couldn't reach the peer.
-let pull (peer: String) : Stdlib.Result.Result<Int, String> =
+// One pull batch: GET the peer's next ≤500 ops after our cursor, apply them, advance the cursor, and recurse
+// until a batch comes back empty (caught up). Advancing the cursor per batch means an interrupted pull resumes
+// where it left off. <param applied> accumulates the total across batches.
+let rec private pullLoop
+  (peer: String)
+  (applied: Int)
+  : Stdlib.Result.Result<Int, String> =
   let url = $"{peer}/sync/events?since={Stdlib.Int64.toString (cursorFor peer)}"
 
   match Builtin.httpGetUnsafeBytes url with
@@ -103,13 +107,25 @@ let pull (peer: String) : Stdlib.Result.Result<Int, String> =
           Stdlib.Result.Result.Error
             $"{peer} is on Dark release {Stdlib.Int.toString peerRelease}; you're on {Stdlib.Int.toString (Builtin.currentRelease())} — upgrade to the same release to sync"
         else
-          let _ = Stdlib.EventLog.append commits events
-          let _ = setCursor peer serverCursor
-          Stdlib.Result.Result.Ok(Stdlib.List.length events)
+          let n = Stdlib.List.length events
+
+          if n == 0 then
+            Stdlib.Result.Result.Ok applied
+          else
+            let _ = Stdlib.EventLog.append commits events
+            let _ = setCursor peer serverCursor
+            pullLoop peer (applied + n)
       | Error _ ->
         Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
     | Error _ -> Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
   | Error _ -> Stdlib.Result.Result.Error $"Couldn't reach {peer}"
+
+/// Pull new ops from <param peer> (an http URL) since our stored cursor, in bounded batches until caught up,
+/// applying each and advancing the cursor. Ok(n) = n events transferred (0 = already current); Error = the
+/// peer was unreachable, version-skewed, or spoke nonsense. Honest about the difference so a caller never
+/// reports "up to date" when it actually couldn't reach the peer.
+let pull (peer: String) : Stdlib.Result.Result<Int, String> =
+  pullLoop peer 0
 
 /// Pull from every configured peer; returns the total events applied (unreachable peers contribute 0). Used by
 /// the background daemon, which pulls what it can and stays quiet about peers that happen to be offline.

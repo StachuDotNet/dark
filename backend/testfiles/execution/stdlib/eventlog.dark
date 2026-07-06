@@ -4,4 +4,4 @@
 // (OpsProjections.Tests); this pins the Dark-side read contract.
 
 module EventLog =
-  Stdlib.Tuple3.third (Stdlib.EventLog.since 999999999L) = 999999999L
+  Stdlib.Tuple3.third (Stdlib.EventLog.since 999999999L 500L) = 999999999L
