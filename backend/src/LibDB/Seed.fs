@@ -268,6 +268,63 @@ type Projection = { table : string; dirtiedBy : Set<string> }
 /// from `Deprecate`/`Undeprecate` ops (its `annotation_blob` reconstructs from the op), so it's
 /// regenerable and `export` strips it like the others. NOT `package_blobs` (canonical content —
 /// op-playback never writes it), nor the op log / branch / commit / account state.
+
+/// The committed events after `cursor` from this instance's own log (≤ `limit`), the commits they
+/// reference, and the new cursor (max rowid in the batch, or `cursor` if nothing is new). Exactly what a
+/// peer serves — the READ half of the event-log seam. Native (F#) so serving a large batch doesn't pay
+/// per-row interpreter overhead (a Dark `List.map` + `Dict.get` over thousands of rows is seconds; this
+/// is milliseconds). Each event is (id, opBlobHex, branchId, commitHash, originTs); each commit is
+/// (hash, message, branchId, accountId, createdAt).
+let eventsSince
+  (cursor : int64)
+  (limit : int64)
+  : Task<
+      List<string * string * string * string * string> *
+      List<string * string * string * string * string> *
+      int64> =
+  task {
+    let! opRows =
+      Sql.query
+        $"SELECT rowid AS rid, id, hex(op_blob) AS blob, branch_id, commit_hash, origin_ts
+          FROM package_ops
+          WHERE rowid > {cursor} AND commit_hash IS NOT NULL
+          ORDER BY rowid
+          LIMIT {limit}"
+      |> Sql.executeAsync (fun read ->
+        (read.int64 "rid",
+         read.string "id",
+         read.string "blob",
+         read.string "branch_id",
+         read.string "commit_hash",
+         read.string "origin_ts"))
+
+    let events =
+      opRows |> List.map (fun (_, id, blob, br, ch, ts) -> (id, blob, br, ch, ts))
+
+    let newCursor =
+      match opRows with
+      | [] -> cursor
+      | rows -> rows |> List.map (fun (rid, _, _, _, _, _) -> rid) |> List.max
+
+    // Only the commits the batch's ops reference (rowid in (cursor, newCursor]) — a bounded event batch
+    // carries a bounded set of commits, never the whole commit history.
+    let! commits =
+      Sql.query
+        $"SELECT DISTINCT c.hash AS hash, c.message AS message, c.branch_id AS branch_id,
+            c.account_id AS account_id, c.created_at AS created_at
+          FROM commits c
+          JOIN package_ops o ON o.commit_hash = c.hash
+          WHERE o.rowid > {cursor} AND o.rowid <= {newCursor}"
+      |> Sql.executeAsync (fun read ->
+        (read.string "hash",
+         read.string "message",
+         read.string "branch_id",
+         read.string "account_id",
+         read.string "created_at"))
+
+    return (commits, events, newCursor)
+  }
+
 /// Append events RECEIVED from a peer (over HTTP) into the local op log, then fold them into the
 /// projections — the general event-log append (`Builtin.appendEvents`). Unlike `insertAndApplyOps`
 /// (the LOCAL-authoring path, which stamps a fresh `nextOriginTs`), this PRESERVES each op's original

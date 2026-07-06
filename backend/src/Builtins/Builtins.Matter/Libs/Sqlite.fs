@@ -223,6 +223,46 @@ let fns () : List<BuiltInFn> =
     // Takes events RECEIVED from a peer over HTTP — (id, op_blob-as-hex, branch_id, commit_hash, origin_ts) —
     // appends them to the op log preserving each op's original origin_ts, and folds (INVISIBLY, in F#). Returns
     // the new max-rowid cursor. Idempotent (content-addressed ids). No .db files, no ATTACH: pure ops-over-HTTP.
+    { name = fn "eventLogSince" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "cursor"
+            TInt64
+            "read events after this cursor (0 = from the start of the log)"
+          Param.make "limit" TInt64 "at most this many events — one bounded batch" ]
+      returnType =
+        TTuple(
+          TList(TTuple(TString, TString, [ TString; TString; TString ])),
+          TList(TTuple(TString, TString, [ TString; TString; TString ])),
+          [ TInt64 ]
+        )
+      description =
+        "This instance's committed events after <param cursor> (at most <param limit>), the commits they reference, and the new cursor. Reads the op log natively — the READ half of the event-log seam, exactly what a peer serves."
+      fn =
+        (function
+        | _, _, _, [ DInt64 cursor; DInt64 limit ] ->
+          uply {
+            let! (commits, events, newCursor) = LibDB.Seed.eventsSince cursor limit
+
+            let strTupleKT =
+              KTTuple(VT.string, VT.string, [ VT.string; VT.string; VT.string ])
+
+            let toTuple
+              ((a, b, c, d, e) : string * string * string * string * string)
+              : Dval =
+              DTuple(DString a, DString b, [ DString c; DString d; DString e ])
+
+            let commitsD = Dval.list strTupleKT (List.map toTuple commits)
+            let eventsD = Dval.list strTupleKT (List.map toTuple events)
+            return DTuple(commitsD, eventsD, [ DInt64 newCursor ])
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
     { name = fn "appendEvents" 0
       typeParams = []
       parameters =
