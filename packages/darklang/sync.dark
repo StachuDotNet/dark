@@ -5,16 +5,19 @@ module Darklang.Sync
 // that crosses the wire is OPS — never a database file, never ATTACH. Sync owns no event mechanics: it's thin
 // policy (transport + per-peer cursors) on the general event-log seam, `Stdlib.EventLog`.
 
-/// The wire: (commits, events, cursor) as JSON — what a peer serves and what a puller applies.
+/// The wire: (release, commits, events, cursor) as JSON. The leading Release is the version handshake — a
+/// puller refuses a peer on a different Dark release rather than apply ops it might not understand.
 type Wire =
-  (List<(String * String * String * String * String)> *
+  (Int *
+   List<(String * String * String * String * String)> *
    List<(String * String * String * String * String)> *
    Int64)
 
-/// The `GET /sync/events?since=<cursor>` body: this instance's committed events after <param cursor>, as JSON.
-/// Served by `Sync.Server` (`dark serve`), pulled by a peer's `Sync.pull`.
+/// The `GET /sync/events?since=<cursor>` body: this instance's Release + its committed events after
+/// <param cursor>, as JSON. Served by `Sync.Server` (`dark serve`), pulled by a peer's `Sync.pull`.
 let wireSince (cursor: Int64) : String =
-  Stdlib.Json.serialize<Wire> (Stdlib.EventLog.since cursor)
+  let (commits, events, newCursor) = Stdlib.EventLog.since cursor
+  Stdlib.Json.serialize<Wire> ((Builtin.currentRelease(), commits, events, newCursor))
 
 
 // ── peer config + per-peer resume cursors (LOCAL, per-instance; never synced, like `caps`) ──
@@ -95,10 +98,14 @@ let pull (peer: String) : Stdlib.Result.Result<Int, String> =
     match Stdlib.Blob.toString body with
     | Ok wire ->
       match Stdlib.Json.parse<Wire> wire with
-      | Ok((commits, events, serverCursor)) ->
-        let _ = Stdlib.EventLog.append commits events
-        let _ = setCursor peer serverCursor
-        Stdlib.Result.Result.Ok(Stdlib.List.length events)
+      | Ok((peerRelease, commits, events, serverCursor)) ->
+        if peerRelease != Builtin.currentRelease() then
+          Stdlib.Result.Result.Error
+            $"{peer} is on Dark release {Stdlib.Int.toString peerRelease}; you're on {Stdlib.Int.toString (Builtin.currentRelease())} — upgrade to the same release to sync"
+        else
+          let _ = Stdlib.EventLog.append commits events
+          let _ = setCursor peer serverCursor
+          Stdlib.Result.Result.Ok(Stdlib.List.length events)
       | Error _ ->
         Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
     | Error _ -> Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
