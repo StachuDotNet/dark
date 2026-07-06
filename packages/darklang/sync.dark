@@ -47,6 +47,11 @@ let peers () : List<String> =
       | None -> Stdlib.Option.Option.None)
   | Error _ -> []
 
+// The one message for "that's not a peer" — a peer is always an http(s) URL (a running instance), never a
+// file. Shared by connect + pull so both reject a `.db`/path identically.
+let private peerMustBeUrl : String =
+  "A peer is a URL like http://ocean.tailnet:9000 — sync exchanges ops with a running instance over HTTP, not a .db file."
+
 /// Connect a peer by its URL. Sync talks to running instances over HTTP — a `.db` file is not a peer.
 let connect (url: String) : Stdlib.Result.Result<Unit, String> =
   if Stdlib.String.startsWith url "http" then
@@ -58,8 +63,7 @@ let connect (url: String) : Stdlib.Result.Result<Unit, String> =
 
     Stdlib.Result.Result.Ok()
   else
-    Stdlib.Result.Result.Error
-      "A peer is a URL like http://ocean.tailnet:9000 — sync exchanges ops with a running instance over HTTP, not a .db file."
+    Stdlib.Result.Result.Error peerMustBeUrl
 
 let private cursorFor (peer: String) : Int64 =
   match
@@ -126,7 +130,10 @@ let rec private pullLoop
 /// peer was unreachable, version-skewed, or spoke nonsense. Honest about the difference so a caller never
 /// reports "up to date" when it actually couldn't reach the peer.
 let pull (peer: String) : Stdlib.Result.Result<Int, String> =
-  pullLoop peer 0I
+  if Stdlib.String.startsWith peer "http" then
+    pullLoop peer 0I
+  else
+    Stdlib.Result.Result.Error peerMustBeUrl
 
 /// Pull from every configured peer; returns the total events applied (unreachable peers contribute 0). Used by
 /// the background daemon, which pulls what it can and stays quiet about peers that happen to be offline.
