@@ -18,7 +18,7 @@ type Wire =
 let wireSince (cursor: Int64) : String =
   // One bounded batch so a large log never becomes one giant response — the puller loops on the cursor until a
   // batch comes back empty. 1000 ops (~1 MB wire) balances round-trips against response size: the native read
-  // (`Builtin.eventLogSince`) makes even the whole log milliseconds, so the batch exists for bounded responses
+  // (`eventLogSince`) makes even the whole log milliseconds, so the batch exists for bounded responses
   // and resumability, not to keep the read cheap. A 10k-op first sync is ~10 batches, not 200.
   let (commits, events, newCursor) = Stdlib.EventLog.since cursor 1000L
   Stdlib.Json.serialize<Wire> ((Builtin.currentRelease(), commits, events, newCursor))

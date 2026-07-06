@@ -12,7 +12,7 @@ module Darklang.Stdlib.EventLog
 /// the new cursor (max rowid, or <param cursor> if there's nothing new). This is exactly what a peer serves.
 /// At most <param limit> events per call, so a large log transfers in bounded batches — the puller loops,
 /// resuming from the returned cursor, until a call comes back empty. The commits returned are exactly those
-/// the batch's ops reference. Reads the op log natively (`Builtin.eventLogSince`) so serving a big batch is
+/// the batch's ops reference. Reads the op log natively (`eventLogSince`) so serving a big batch is
 /// milliseconds, not seconds of per-row interpreter overhead.
 let since
   (cursor: Int64)
