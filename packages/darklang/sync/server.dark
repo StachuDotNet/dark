@@ -37,7 +37,7 @@ let healthHandler : Stdlib.HttpServer.Handler =
     { route = "/sync/health"; method = "GET"; handler = healthFn }
 
 
-// GET /sync/events?since=<rowid> — the committed ops after `since`, one text line each.
+// GET /sync/events?since=<rowid> — the committed ops after `since`, as the JSON wire (one bounded batch).
 let private parseSince (url: String) : Int64 =
   match Stdlib.Dict.get (Stdlib.Http.parseQueryString url) "since" with
   | Some s ->
