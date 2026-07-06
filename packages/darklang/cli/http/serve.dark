@@ -96,27 +96,20 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
           "" ]
         |> Stdlib.printLines
 
-        // serve via the stdlib helper; only a non-default max body needs a record-update on the config.
-        let configExpr =
+        // Resolve the router to a callable value and call serve DIRECTLY — no string-eval. The CLI expression
+        // parser mis-tokenizes an int literal in argument position (`defaults 8080I` → "no variable named: I"),
+        // which used to break every serve (see HTTPSERVER-BUG.md); Builtin.applicableByName sidesteps it.
+        let baseConfig = Stdlib.HttpServer.Config.defaults parsed.port
+
+        let config =
           if parsed.maxBodyBytes == Stdlib.HttpServer.Config.defaultMaxBodyBytes then
-            $"Stdlib.HttpServer.Config.defaults {portStr}I"
+            baseConfig
           else
-            $"{{ Stdlib.HttpServer.Config.defaults {portStr}I with maxBodyBytes = {maxBytesStr}I }}"
+            { baseConfig with maxBodyBytes = parsed.maxBodyBytes }
 
-        let expr = $"Stdlib.HttpServer.serve ({configExpr}) {parsed.routerPath}"
-
-        match
-          Builtin.cliEvaluateExpression
-            state.accountID
-            state.currentBranchId
-            expr
-            false
-         with
-        | Ok _ -> state
-        | Error err ->
-          let pretty = Cli.ExecutionError.toString state.currentBranchId err
-          Stdlib.printLine (Colors.error $"Server failed: {pretty}")
-          state
+        let router = Builtin.applicableByName state.currentBranchId parsed.routerPath
+        Stdlib.HttpServer.serve config router
+        state
 
 
 let help (state: Cli.AppState) : Cli.AppState =
