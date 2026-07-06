@@ -1,100 +1,114 @@
 module Darklang.Sync
 
-/// Pull new ops from a peer's data.db FILE at <param peerPath> into the local store at <param localPath>
-/// and fold them in. The op blobs — and the branches/commits they reference — ride as-is via SQLite
-/// ATTACH (no serialization). Copied ops land unapplied (applied=0), then fold exactly like a local
-/// edit via <fn Builtin.foldOps>. Returns the number of ops folded. INSERT OR IGNORE (ops are
-/// content-addressed by id) makes it idempotent — re-pulling is a no-op.
-///
-/// v1: the FILE transport — a debug / offline floor. The installed daemon automates this (DECISIONS §8).
-/// Copies into + folds THIS instance's own store (`Builtin.localDbPath ()`), so the caller only names the peer.
-/// The Release a store is stamped at (None if unreadable or unstamped). Same coordinate `dark version` shows.
-let private storeRelease (dbPath: String) : Stdlib.Option.Option<Int64> =
-  match
-    Stdlib.Sqlite.query dbPath "SELECT release FROM release_state_v0 WHERE id = 0"
-  with
-  | Ok [ row ] ->
-    match Stdlib.Dict.get row "release" with
-    | Some c -> Stdlib.Sqlite.asInt c
-    | None -> Stdlib.Option.Option.None
-  | _ -> Stdlib.Option.Option.None
+// Sync = replicate the op log over HTTP. A peer SERVES its committed events since a cursor (`wireSince`, the
+// `GET /sync/events?since=` body); a puller GETs them and appends them (folding happens invisibly). Everything
+// that crosses the wire is OPS — never a database file, never ATTACH. Sync owns no event mechanics: it's thin
+// policy (transport + per-peer cursors) on the general event-log seam, `Stdlib.EventLog`.
 
-let pullFile (peerPath: String) : Int =
-  let localPath = Builtin.localDbPath ()
+/// The wire: (commits, events, cursor) as JSON — what a peer serves and what a puller applies.
+type Wire =
+  (List<(String * String * String * String * String)> *
+   List<(String * String * String * String * String)> *
+   Int64)
 
-  // Refuse a peer stamped at a DIFFERENT Release: the snapshot copy is a `SELECT *` that assumes a matching
-  // schema + op-format. If either side's Release can't be read we proceed best-effort (a truly bad peer just
-  // fails the copy and returns 0 anyway). When both are readable and differ, skip — nothing is corrupted.
-  let compatible =
-    match storeRelease peerPath, storeRelease localPath with
-    | Some p, Some l -> p == l
-    | _ -> true
-
-  if compatible then
-    // Copy the peer's ops (+ referenced branches/commits) as unapplied. execP returns a Result, so a missing
-    // / offline / unreadable peer is an Error we skip — not a throw that crashes the daemon.
-    let copied =
-      Stdlib.Sqlite.execP
-        localPath
-        // FK off for the bulk snapshot copy (branches<->commits have a circular FK; the copy is internally
-        // consistent — same approach as the rebuild path). Copy referenced rows (branches/commits) then ops.
-        "PRAGMA foreign_keys=OFF; ATTACH DATABASE @p0 AS peer; INSERT OR IGNORE INTO branches SELECT * FROM peer.branches; INSERT OR IGNORE INTO commits SELECT * FROM peer.commits; INSERT OR IGNORE INTO package_ops (id, op_blob, branch_id, commit_hash, propagation_id, origin_ts, applied) SELECT id, op_blob, branch_id, commit_hash, propagation_id, origin_ts, 0 FROM peer.package_ops; DETACH peer"
-        [ peerPath ]
-
-    match copied with
-    | Ok _ -> Builtin.foldOps ()
-    | Error _ -> 0I
-  else
-    0I
+/// The `GET /sync/events?since=<cursor>` body: this instance's committed events after <param cursor>, as JSON.
+/// Served by `Sync.Server` (`dark serve`), pulled by a peer's `Sync.pull`.
+let wireSince (cursor: Int64) : String =
+  Stdlib.Json.serialize<Wire> (Stdlib.EventLog.since cursor)
 
 
-// ── peer config (LOCAL, per-instance — never synced, like `caps`; DECISIONS §8) ──
-// Stored in a `sync_peers` table in this instance's own store, created on demand (no migration needed).
+// ── peer config + per-peer resume cursors (LOCAL, per-instance; never synced, like `caps`) ──
 
-let private peersDb () : String =
+let private syncDb () : String =
   let db = Builtin.localDbPath ()
 
   let _ =
-    Stdlib.Sqlite.exec db "CREATE TABLE IF NOT EXISTS sync_peers (path TEXT PRIMARY KEY)"
+    Stdlib.Sqlite.exec db "CREATE TABLE IF NOT EXISTS sync_peers_v0 (url TEXT PRIMARY KEY)"
+
+  let _ =
+    Stdlib.Sqlite.exec
+      db
+      "CREATE TABLE IF NOT EXISTS sync_cursors_v0 (peer TEXT PRIMARY KEY, cursor INTEGER NOT NULL)"
 
   db
 
-/// The peers this instance syncs with (local config; per-instance; never travels).
+/// The peers this instance pulls from — http(s) URLs only. Local config; never travels.
 let peers () : List<String> =
-  match Stdlib.Sqlite.query (peersDb ()) "SELECT path FROM sync_peers ORDER BY path" with
+  match Stdlib.Sqlite.query (syncDb ()) "SELECT url FROM sync_peers_v0 ORDER BY url" with
   | Ok rows ->
     Stdlib.List.filterMap rows (fun row ->
-      match Stdlib.Dict.get row "path" with
+      match Stdlib.Dict.get row "url" with
       | Some cell -> Stdlib.Sqlite.asText cell
       | None -> Stdlib.Option.Option.None)
   | Error _ -> []
 
-/// Add a peer to this instance's sync config (idempotent).
-let connect (peer: String) : Unit =
+/// Connect a peer by its URL. Sync talks to running instances over HTTP — a `.db` file is not a peer.
+let connect (url: String) : Stdlib.Result.Result<Unit, String> =
+  if Stdlib.String.startsWith url "http" then
+    let _ =
+      Stdlib.Sqlite.execP
+        (syncDb ())
+        "INSERT OR IGNORE INTO sync_peers_v0 (url) VALUES (@p0)"
+        [ url ]
+
+    Stdlib.Result.Result.Ok()
+  else
+    Stdlib.Result.Result.Error
+      "A peer is a URL like http://ocean.tailnet:9000 — sync exchanges ops with a running instance over HTTP, not a .db file."
+
+let private cursorFor (peer: String) : Int64 =
+  match
+    Stdlib.Sqlite.queryP
+      (syncDb ())
+      "SELECT cursor FROM sync_cursors_v0 WHERE peer = @p0"
+      [ peer ]
+  with
+  | Ok [ row ] ->
+    match Stdlib.Dict.get row "cursor" with
+    | Some cell ->
+      match Stdlib.Sqlite.asInt cell with
+      | Some i -> i
+      | None -> 0L
+    | None -> 0L
+  | _ -> 0L
+
+let private setCursor (peer: String) (cursor: Int64) : Unit =
   let _ =
     Stdlib.Sqlite.execP
-      (peersDb ())
-      "INSERT OR IGNORE INTO sync_peers (path) VALUES (@p0)"
-      [ peer ]
+      (syncDb ())
+      "INSERT OR REPLACE INTO sync_cursors_v0 (peer, cursor) VALUES (@p0, @p1)"
+      [ peer; Stdlib.Int64.toString cursor ]
 
   ()
 
-/// Pull a peer by whatever its address implies: an http(s) URL over the network (tailnet), else a local
-/// db file path. The single entry point the CLI + daemon use — the transport is inferred, not configured.
+
+// ── the client: pull a peer's new ops over HTTP + apply (folding invisible) ──
+
+/// Pull new ops from <param peer> (an http URL) since our stored cursor, apply them, advance the cursor.
+/// Returns the number of events applied. Everything is ops over HTTP; a bad/offline peer applies 0 (no crash).
 let pull (peer: String) : Int =
-  if Stdlib.String.startsWith peer "http" then
-    pullUrl peer
-  else
-    pullFile peer
+  let url = $"{peer}/sync/events?since={Stdlib.Int64.toString (cursorFor peer)}"
 
-/// Pull from every configured peer; returns the total number of ops folded in.
+  match Builtin.httpGetUnsafeBytes url with
+  | Ok body ->
+    match Stdlib.Blob.toString body with
+    | Ok wire ->
+      match Stdlib.Json.parse<Wire> wire with
+      | Ok((commits, events, serverCursor)) ->
+        let _ = Stdlib.EventLog.append commits events
+        let _ = setCursor peer serverCursor
+        Stdlib.List.length events
+      | Error _ -> 0
+    | Error _ -> 0
+  | Error _ -> 0
+
+/// Pull from every configured peer; returns the total number of events applied.
 let pullAll () : Int =
-  Stdlib.List.fold (peers ()) 0I (fun acc peer -> acc + (pull peer))
+  Stdlib.List.fold (peers ()) 0 (fun acc peer -> acc + (pull peer))
 
 
-// ── the autosync daemon (DECISIONS §8): pull from every configured peer on an interval, in the
-//    background. Managed by `dark apps start/stop/enable sync` on the shared Stdlib.Cli.Daemon substrate
-//    (pidfile lifecycle). Poll-based (no EventBus yet); the manual `dark sync` stays as the offline floor. ──
+// ── the autosync daemon (DECISIONS §8): pull from every peer on an interval, in the background. Managed by
+//    `dark apps start/stop sync` on the shared Stdlib.Cli.Daemon substrate. Poll-based v1. ──
 
 let rec private syncLoop (intervalMs: Int) (remaining: Int) : Int =
   if remaining <= 0I then
@@ -104,8 +118,8 @@ let rec private syncLoop (intervalMs: Int) (remaining: Int) : Int =
     Stdlib.Cli.Posix.sleep (Stdlib.Int.toFloat intervalMs)
     syncLoop intervalMs (remaining - 1I)
 
-/// The autosync daemon entrypoint: claim the pidfile, then pull from every configured peer forever
-/// (ended by `apps stop`/SIGTERM). Invoked by `dark apps start sync`.
+/// The autosync daemon entrypoint: claim the pidfile, then pull from every peer forever (ended by
+/// `apps stop`/SIGTERM). Invoked by `dark apps start sync`.
 let daemon (name: String) : Int =
   let _ =
     match Stdlib.Cli.Daemon.claimPidfile name with
@@ -115,17 +129,3 @@ let daemon (name: String) : Int =
         $"{name}: keeping your peers in sync in the background (pid {Stdlib.Int.toString (Stdlib.Cli.Sys.currentPid ())})"
 
   syncLoop 3000I 1000000000I
-
-
-// ── HTTP transport (client): pull a peer over the NETWORK, no Dark HTTP server needed ──
-// Downloads the peer's store (served over your tailnet via `tailscale serve <file>`, or any HTTP host) to
-// a temp file, then folds it in exactly like a file pull. This is the cross-computer path that works TODAY
-// even while the Dark-native `dark serve` sync server is blocked. A 404/garbage body just fails the ATTACH
-// (pullFile returns 0), so it degrades cleanly.
-let pullUrl (url: String) : Int =
-  match Builtin.httpGetUnsafeBytes url with
-  | Ok body ->
-    match Builtin.fileWrite body "/tmp/dark-sync-peer.db" with
-    | Ok _ -> pullFile "/tmp/dark-sync-peer.db"
-    | Error _ -> 0I
-  | Error _ -> 0I

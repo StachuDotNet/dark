@@ -186,31 +186,8 @@ let fns () : List<BuiltInFn> =
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
 
-    // Op-log core (not sqlite-specific; sits here for now). The append/fold seam: a sync pull APPENDS a
-    // peer's ops (INSERT applied=0 — e.g. via the ATTACH copy) then calls this to FOLD them into the
-    // projections, exactly as a local edit does. Idempotent (only unapplied ops fold). TODO: relocate to a
-    // dedicated Sync/core builtin lib alongside detectConflicts/resolution-apply.
-    { name = fn "foldOps" 0
-      typeParams = []
-      parameters = [ Param.make "unit" TUnit "" ]
-      returnType = TInt
-      description =
-        "Fold any unapplied ops in the local package_ops log into the projections. Idempotent; returns the number of ops applied."
-      fn =
-        (function
-        | _, _, _, [ DUnit ] ->
-          uply {
-            let! n = LibDB.Seed.applyUnappliedOps ()
-            return Dval.int (bigint n)
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-    // This instance's OWN package store path (data.db). Sync copies a peer's ops into + folds this store,
-    // so `pullFile` uses it as the local target — the daemon/CLI don't have to know the path.
+    // This instance's OWN package store path (data.db). appendEvents/EventLog write ops here; the sync config
+    // tables (sync_peers/sync_cursors) live here too — the daemon/CLI don't have to know the path.
     { name = fn "localDbPath" 0
       typeParams = []
       parameters = [ Param.make "unit" TUnit "" ]

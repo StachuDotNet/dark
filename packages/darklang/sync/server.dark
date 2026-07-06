@@ -8,14 +8,6 @@ module Darklang.Sync.Server
 //   id | origin_ts | branch_id | commit_hash | hex(op_blob)
 // The op blob rides as hex, so a puller INSERTs it via X'<hex>'. Committed ops only (WIP stays local).
 
-let private cellText (row: Dict<Stdlib.Sqlite.Value>) (key: String) : String =
-  match Stdlib.Dict.get row key with
-  | Some cell ->
-    match Stdlib.Sqlite.asText cell with
-    | Some s -> s
-    | None -> ""
-  | None -> ""
-
 let private cellInt (row: Dict<Stdlib.Sqlite.Value>) (key: String) : Int64 =
   match Stdlib.Dict.get row key with
   | Some cell ->
@@ -55,30 +47,9 @@ let private parseSince (url: String) : Int64 =
   | None -> 0L
 
 let eventsFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
-  let db = Builtin.localDbPath ()
-  let since = parseSince req.url
-
-  let sql =
-    $"SELECT rowid AS rid, id, origin_ts, branch_id, commit_hash, hex(op_blob) AS blob FROM package_ops WHERE rowid > {Stdlib.Int64.toString since} AND commit_hash IS NOT NULL ORDER BY rowid"
-
-  let rows =
-    match Stdlib.Sqlite.query db sql with
-    | Ok rs -> rs
-    | Error _ -> []
-
-  let lines =
-    Stdlib.List.map rows (fun row ->
-      (cellText row "id")
-      ++ "|"
-      ++ (cellText row "origin_ts")
-      ++ "|"
-      ++ (cellText row "branch_id")
-      ++ "|"
-      ++ (cellText row "commit_hash")
-      ++ "|"
-      ++ (cellText row "blob"))
-
-  Stdlib.Http.responseWithText (Stdlib.String.join lines "\n") 200I
+  // The committed events after ?since=<cursor>, as the JSON wire (Darklang.Sync.wireSince → EventLog.since).
+  // A puller GETs this and Sync.pull applies it — pure ops over HTTP.
+  Stdlib.Http.responseWithText (Darklang.Sync.wireSince (parseSince req.url)) 200I
 
 let eventsHandler : Stdlib.HttpServer.Handler =
   Stdlib.HttpServer.Handler

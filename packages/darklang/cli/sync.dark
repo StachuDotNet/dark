@@ -23,20 +23,21 @@ let execute (state: AppState) (args: List<String>) : AppState =
       state
 
   | [ "connect"; peer ] ->
-    Darklang.Sync.connect peer
-    Stdlib.printLine (Colors.success $"now syncing with {peer}")
+    match Darklang.Sync.connect peer with
+    | Ok _ -> Stdlib.printLine (Colors.success $"Now syncing with {peer}")
+    | Error e -> Stdlib.printLine (Colors.error e)
     state
 
   | [ "pull"; peer ] ->
     let n = Darklang.Sync.pull peer
 
     Stdlib.printLine (
-      Colors.success $"pulled {Stdlib.Int.toString n} change(s) from {peer}")
+      Colors.success $"Pulled {Stdlib.Int.toString n} change(s) from {peer}")
 
     state
 
   | _ ->
-    Stdlib.printLine "Usage: sync [connect <peer.db>] [pull <peer.db>]"
+    Stdlib.printLine "Usage: sync [connect <url>] [pull <url>]"
     state
 
 
