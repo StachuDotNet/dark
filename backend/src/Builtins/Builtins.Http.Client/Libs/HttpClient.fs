@@ -814,10 +814,10 @@ let fns (config : Configuration) : List<BuiltInFn> =
     // runs the same disposer chain when the DStream becomes
     // unreachable.
     // ——————————————————————————————————————————————————————————
-    // GET with SSRF guards OFF, returning raw BYTES — for syncing a peer's store over the tailnet.
-    // (The safe `httpClientRequest` bans loopback/RFC-1918/tailnet; `httpClientGetUnsafe` returns a UTF8
-    // String which corrupts a binary db — hence this Blob variant.) TRUSTED-CLI use: the caller IS the code
-    // author; used by `Sync.pullUrl` / `dark sync pull <url>`.
+    // GET with SSRF guards OFF, returning raw BYTES — for pulling a peer's op wire over the tailnet.
+    // (The safe `httpClientRequest` bans loopback/RFC-1918/tailnet, which a peer's sync server sits behind;
+    // the Blob variant hands the body back as bytes for the caller to decode — `Stdlib.Blob.toString` for the
+    // JSON wire.) TRUSTED-CLI use: the caller IS the code author; used by `Sync.pull` / `dark sync pull <url>`.
     { name = fn "httpGetUnsafeBytes" 0
       typeParams = []
       parameters =

@@ -62,7 +62,7 @@ let private paramStrings (dvals : List<Dval>) : List<string> =
 
 // exec returns a `Result<Int, String>` (Ok rows-affected / Error message) so a bad path, a locked db, a
 // mid-copy failure, etc. surface as a value Dark can handle — never an uncaught throw. This is what lets
-// `Sync.pullFile`/the daemon skip a bad-or-offline peer gracefully.
+// `Sync.pull`/the daemon skip a bad-or-offline peer gracefully.
 let private execImpl (path : string) (sql : string) (parameters : List<string>) : Ply<Dval> =
   uply {
     try
