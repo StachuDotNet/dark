@@ -336,4 +336,36 @@ let tests =
           "one unapplied op → folded-through drops by one (a visible gap)"
         let! _ = Seed.rebuildProjections () // restore: re-fold so the shared DB stays consistent
         ()
+      }
+
+      // The append seam sync sits on (`Seed.receiveOps` ← `Builtin.appendEvents`). Re-receiving the log's own
+      // committed ops is a no-op — INSERT OR IGNORE on the content-addressed ids — so the cursor comes back as
+      // the current max rowid and the projections are unchanged. This is what makes an incremental pull safe to
+      // retry; the same append path a real peer's events take (commits shipped alongside them).
+      testTask "receiveOps is idempotent and returns the max-rowid cursor" {
+        let! maxRowid =
+          Sql.query "SELECT COALESCE(MAX(rowid), 0) as c FROM package_ops"
+          |> Sql.executeRowAsync (fun read -> read.int64 "c")
+
+        let! events =
+          Sql.query
+            "SELECT id, op_blob, branch_id, commit_hash, origin_ts FROM package_ops WHERE commit_hash IS NOT NULL ORDER BY rowid DESC LIMIT 8"
+          |> Sql.executeAsync (fun read ->
+            (System.Guid.Parse(read.string "id"),
+             read.bytes "op_blob",
+             System.Guid.Parse(read.string "branch_id"),
+             read.string "commit_hash",
+             read.string "origin_ts"))
+
+        Expect.isTrue (not (List.isEmpty events)) "there are committed ops to re-receive"
+
+        let! fnsBefore = countRows "package_functions"
+        let! cursor = Seed.receiveOps [] events
+        let! fnsAfter = countRows "package_functions"
+
+        Expect.equal cursor maxRowid "cursor is the current max rowid (nothing new appended)"
+        Expect.equal
+          fnsAfter
+          fnsBefore
+          "re-receiving existing ops is a no-op (idempotent append)"
       } ]
