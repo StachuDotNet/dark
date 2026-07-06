@@ -268,6 +268,48 @@ type Projection = { table : string; dirtiedBy : Set<string> }
 /// from `Deprecate`/`Undeprecate` ops (its `annotation_blob` reconstructs from the op), so it's
 /// regenerable and `export` strips it like the others. NOT `package_blobs` (canonical content —
 /// op-playback never writes it), nor the op log / branch / commit / account state.
+/// Append events RECEIVED from a peer (over HTTP) into the local op log, then fold them into the
+/// projections — the general event-log append (`Builtin.appendEvents`). Unlike `insertAndApplyOps`
+/// (the LOCAL-authoring path, which stamps a fresh `nextOriginTs`), this PRESERVES each op's original
+/// `origin_ts` — essential for the timestamp-LWW to converge the same on every instance regardless of
+/// arrival order. Idempotent: `INSERT OR IGNORE` on the content-addressed id, and only unapplied ops
+/// fold. Returns the new max-rowid cursor. Folding stays here (F#) — invisible to Dark.
+let receiveOps
+  (events : List<System.Guid * byte[] * System.Guid * string * string>)
+  : Task<int64> =
+  task {
+    let maxRowid () : Task<int64> =
+      Sql.query "SELECT COALESCE(MAX(rowid), 0) as c FROM package_ops"
+      |> Sql.executeRowAsync (fun read -> read.int64 "c")
+
+    if List.isEmpty events then
+      return! maxRowid ()
+    else
+      let inserts =
+        events
+        |> List.map (fun (opId, opBlob, branchId, commitHash, originTs) ->
+          let sql =
+            """
+            INSERT OR IGNORE INTO package_ops
+              (id, op_blob, branch_id, applied, commit_hash, propagation_id, origin_ts)
+            VALUES (@id, @op_blob, @branch_id, @applied, @commit_hash, @propagation_id, @origin_ts)
+            """
+          let ps =
+            [ "id", Sql.uuid opId
+              "op_blob", Sql.bytes opBlob
+              "branch_id", Sql.uuid branchId
+              "applied", Sql.bool false
+              "commit_hash", Sql.string commitHash
+              "propagation_id", Sql.dbnull
+              "origin_ts", Sql.string originTs ]
+          (sql, [ ps ]))
+
+      let _ = inserts |> Sql.executeTransactionSync
+      let! _ = applyUnappliedOps ()
+      return! maxRowid ()
+  }
+
+
 let projectionRegistry : List<Projection> =
   [ { table = "package_functions"; dirtiedBy = Set.ofList [ "AddFn" ] }
     { table = "package_types"; dirtiedBy = Set.ofList [ "AddType" ] }

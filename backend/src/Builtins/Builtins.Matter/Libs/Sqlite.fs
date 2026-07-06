@@ -240,6 +240,46 @@ let fns () : List<BuiltInFn> =
       sqlSpec = NotQueryable
       previewable = Impure
       capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    // The general event-log APPEND (the "nice wheel" — sync is its first consumer, messaging/cron the next).
+    // Takes events RECEIVED from a peer over HTTP — (id, op_blob-as-hex, branch_id, commit_hash, origin_ts) —
+    // appends them to the op log preserving each op's original origin_ts, and folds (INVISIBLY, in F#). Returns
+    // the new max-rowid cursor. Idempotent (content-addressed ids). No .db files, no ATTACH: pure ops-over-HTTP.
+    { name = fn "appendEvents" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "events"
+            (TList(TTuple(TString, TString, [ TString; TString; TString ])))
+            "(id, opBlobHex, branchId, commitHash, originTs) tuples received from a peer" ]
+      returnType = TInt
+      description =
+        "Append received events to the op log (preserving origin_ts) + fold. Returns the new cursor. Idempotent."
+      fn =
+        (function
+        | _, _, _, [ DList(_, events) ] ->
+          uply {
+            let parsed =
+              events
+              |> List.map (fun ev ->
+                match ev with
+                | DTuple(DString id,
+                         DString opBlobHex,
+                         [ DString branchId; DString commitHash; DString originTs ]) ->
+                  (System.Guid.Parse id,
+                   System.Convert.FromHexString opBlobHex,
+                   System.Guid.Parse branchId,
+                   commitHash,
+                   originTs)
+                | _ -> Exception.raiseInternal "appendEvents: malformed event tuple" [])
+            let! cursor = LibDB.Seed.receiveOps parsed
+            return Dval.int (bigint cursor)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated } ]
 
 let builtins () = LibExecution.Builtin.make [] (fns ())
