@@ -129,6 +129,14 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
     state
 
+  | [ "disconnect"; peer ] ->
+    if Darklang.Sync.disconnect peer then
+      Stdlib.printLine (Colors.success $"Stopped syncing with {peer}")
+    else
+      Stdlib.printLine (Colors.hint $"You weren't syncing with {peer}")
+
+    state
+
   | [ "serve" ] -> serveOn 9000I state
   | [ "serve"; "--port"; portStr ] ->
     match Stdlib.Int.parse portStr with
@@ -149,10 +157,11 @@ let help (state: AppState) : AppState =
     "opt-in, and once you connect a peer it stays current."
     ""
     "  dark sync                 pull now from every instance you're connected to"
-    "  dark sync connect <url>   start syncing with an instance (e.g. http://ocean.tailnet:9000)"
-    "  dark sync serve           let peers pull from you (add --port N; default 9000)"
-    "  dark sync status          show who you're syncing with and how current you are"
-    "  dark sync pull <url>      pull once from one instance"
+    "  dark sync connect <url>      start syncing with an instance (e.g. http://ocean.tailnet:9000)"
+    "  dark sync disconnect <url>   stop syncing with an instance"
+    "  dark sync serve              let peers pull from you (add --port N; default 9000)"
+    "  dark sync status             show who you're syncing with and how current you are"
+    "  dark sync pull <url>         pull once from one instance"
     ""
     "Always on, across reboots:"
     "  dark apps enable sync            auto-pull from your peers on boot"
@@ -168,5 +177,6 @@ let complete
   : List<Completion.CompletionItem> =
   match args with
   | [] ->
-    [ "status"; "connect"; "serve"; "pull" ] |> Stdlib.List.map Completion.simple
+    [ "status"; "connect"; "disconnect"; "serve"; "pull" ]
+    |> Stdlib.List.map Completion.simple
   | _ -> []

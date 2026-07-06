@@ -67,6 +67,19 @@ let connect (url: String) : Stdlib.Result.Result<Unit, String> =
   else
     Stdlib.Result.Result.Error peerMustBeUrl
 
+/// Stop syncing with <param url> — forget the peer and drop its resume cursor. Returns whether it was
+/// actually a peer, so the caller can tell you if you weren't syncing with it. Purely local; the peer is
+/// untouched (this just stops *you* pulling from it).
+let disconnect (url: String) : Bool =
+  let wasConnected = Stdlib.List.member_v0 (peers ()) url
+  let _ =
+    Stdlib.Sqlite.execP (syncDb ()) "DELETE FROM sync_peers_v0 WHERE url = @p0" [ url ]
+
+  let _ =
+    Stdlib.Sqlite.execP (syncDb ()) "DELETE FROM sync_cursors_v0 WHERE peer = @p0" [ url ]
+
+  wasConnected
+
 let private cursorFor (peer: String) : Int64 =
   match
     Stdlib.Sqlite.queryP
