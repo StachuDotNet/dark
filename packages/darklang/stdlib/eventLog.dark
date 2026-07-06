@@ -1,0 +1,82 @@
+module Darklang.Stdlib.EventLog
+
+// The append-only op log, exposed as a GENERAL, reusable event-log seam: read the events SINCE a cursor
+// (what a peer serves), and APPEND events received from elsewhere (folding invisibly, via
+// `Builtin.appendEvents`). Sync is its first consumer; messaging/cron are the next. Everything travels as
+// OPS — never a database file.
+//
+// An event in transit: (id, opBlobHex, branchId, commitHash, originTs) — matches `Builtin.appendEvents`.
+// A commit an event references: (hash, message, branchId, accountId, createdAt).
+
+let private cellText (row: Dict<Stdlib.Sqlite.Value>) (key: String) : String =
+  match Stdlib.Dict.get row key with
+  | Some cell ->
+    match Stdlib.Sqlite.asText cell with
+    | Some s -> s
+    | None -> ""
+  | None -> ""
+
+let private cellInt (row: Dict<Stdlib.Sqlite.Value>) (key: String) : Int64 =
+  match Stdlib.Dict.get row key with
+  | Some cell ->
+    match Stdlib.Sqlite.asInt cell with
+    | Some i -> i
+    | None -> 0L
+  | None -> 0L
+
+/// The committed events after <param cursor> from this instance's own log, the commits they reference, and
+/// the new cursor (max rowid, or <param cursor> if there's nothing new). This is exactly what a peer serves.
+let since
+  (cursor: Int64)
+  : (List<(String * String * String * String * String)> * List<(String * String * String * String * String)> * Int64) =
+  let db = Builtin.localDbPath ()
+  let cur = Stdlib.Int64.toString cursor
+
+  let opRows =
+    match
+      Stdlib.Sqlite.query
+        db
+        $"SELECT rowid AS rid, id, hex(op_blob) AS blob, branch_id, commit_hash, origin_ts FROM package_ops WHERE rowid > {cur} AND commit_hash IS NOT NULL ORDER BY rowid"
+    with
+    | Ok rows -> rows
+    | Error _ -> []
+
+  let events =
+    Stdlib.List.map opRows (fun row ->
+      ((cellText row "id"),
+       (cellText row "blob"),
+       (cellText row "branch_id"),
+       (cellText row "commit_hash"),
+       (cellText row "origin_ts")))
+
+  let commitRows =
+    match
+      Stdlib.Sqlite.query
+        db
+        $"SELECT DISTINCT c.hash AS hash, c.message AS message, c.branch_id AS branch_id, c.account_id AS account_id, c.created_at AS created_at FROM commits c JOIN package_ops o ON o.commit_hash = c.hash WHERE o.rowid > {cur}"
+    with
+    | Ok rows -> rows
+    | Error _ -> []
+
+  let commits =
+    Stdlib.List.map commitRows (fun row ->
+      ((cellText row "hash"),
+       (cellText row "message"),
+       (cellText row "branch_id"),
+       (cellText row "account_id"),
+       (cellText row "created_at")))
+
+  let newCursor =
+    Stdlib.List.fold opRows cursor (fun acc row ->
+      let rid = cellInt row "rid"
+      if rid > acc then rid else acc)
+
+  (commits, events, newCursor)
+
+/// Append received commits + events into this instance's log; folding happens automatically (invisible).
+/// Returns the new cursor. Idempotent — re-appending the same events is a no-op.
+let append
+  (commits: List<(String * String * String * String * String)>)
+  (events: List<(String * String * String * String * String)>)
+  : Int64 =
+  Builtin.appendEvents commits events
