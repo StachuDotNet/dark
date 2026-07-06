@@ -88,17 +88,6 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
         let portStr = Stdlib.Int.toString parsed.port
         let maxBytesStr = Stdlib.Int.toString parsed.maxBodyBytes
 
-        [ $"Using router: {parsed.routerPath}"
-          $"Max body bytes: {maxBytesStr}"
-          ""
-          Colors.success $"Listening on http://localhost:{portStr}"
-          "Press Ctrl+C to stop"
-          "" ]
-        |> Stdlib.printLines
-
-        // Resolve the router to a callable value and call serve DIRECTLY — no string-eval. The CLI expression
-        // parser mis-tokenizes an int literal in argument position (`defaults 8080I` → "no variable named: I"),
-        // which used to break every serve (see HTTPSERVER-BUG.md); Builtin.applicableByName sidesteps it.
         let baseConfig = Stdlib.HttpServer.Config.defaults parsed.port
 
         let config =
@@ -107,9 +96,27 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
           else
             { baseConfig with maxBodyBytes = parsed.maxBodyBytes }
 
-        let router = Builtin.applicableByName state.currentBranchId parsed.routerPath
-        Stdlib.HttpServer.serve config router
-        state
+        // Resolve the router to a callable value and call serve DIRECTLY — no string-eval. The CLI expression
+        // parser mis-tokenizes an int literal in argument position (`defaults 8080I` → "no variable named: I"),
+        // which used to break every serve (see HTTPSERVER-BUG.md); Builtin.applicableByName sidesteps it.
+        // Resolve BEFORE announcing "Listening" so a bad router name reports cleanly, never a false start.
+        match Builtin.applicableByName state.currentBranchId parsed.routerPath with
+        | Ok router ->
+          [ $"Using router: {parsed.routerPath}"
+            $"Max body bytes: {maxBytesStr}"
+            ""
+            Colors.success $"Listening on http://localhost:{portStr}"
+            "Press Ctrl+C to stop"
+            "" ]
+          |> Stdlib.printLines
+
+          Stdlib.HttpServer.serve config router
+          state
+        | Error msg ->
+          Stdlib.printLine (
+            Colors.error $"{msg} — is it defined and committed on this branch?")
+
+          state
 
 
 let help (state: Cli.AppState) : Cli.AppState =

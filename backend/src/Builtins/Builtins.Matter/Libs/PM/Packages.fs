@@ -323,13 +323,18 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       parameters =
         [ Param.make "branchId" TUuid "the branch to resolve on"
           Param.make "name" TString "dotted package fn name, e.g. Darklang.Sync.Server.router" ]
-      returnType = TFn(NEList.singleton (TVariable "a"), TVariable "b")
+      returnType =
+        TypeReference.result
+          (TFn(NEList.singleton (TVariable "a"), TVariable "b"))
+          TString
       description =
-        "Resolves a package function by its dotted <param name> to a callable value. Errors if no such function."
+        "Resolves a package function by its dotted <param name> to a callable value, as a Result — Error (a plain-English message) if there's no such function. Lets a caller (e.g. `dark serve`) report a bad name cleanly instead of crashing."
       fn =
         (function
         | _, _, _, [ DUuid branchId; DString name ] ->
           uply {
+            let okKT = KTFn(NEList.singleton ValueType.Unknown, ValueType.Unknown)
+            let err (msg : string) = Dval.resultError okKT KTString (DString msg)
             // dotted name → owner.modules….fnName (native pattern-match; Prelude's List.last is Option-safe)
             match name.Split('.') |> Array.toList |> List.rev with
             | fnName :: revOwnerMods ->
@@ -345,10 +350,11 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                       typeSymbolTable = Map.empty
                       typeArgs = []
                       argsSoFar = [] }
-                  return DApplicable(AppNamedFn namedFn)
-                | None -> return Exception.raiseInternal $"No function named {name}" []
-              | [] -> return Exception.raiseInternal $"Not a package fn name: {name}" []
-            | [] -> return Exception.raiseInternal $"Empty name" []
+                  return
+                    Dval.resultOk okKT KTString (DApplicable(AppNamedFn namedFn))
+                | None -> return err $"No function named {name}"
+              | [] -> return err $"Not a package function name: {name}"
+            | [] -> return err "Empty router name"
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
