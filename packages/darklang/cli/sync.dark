@@ -54,6 +54,32 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
       state
 
+  | [ "status" ] ->
+    match Darklang.Sync.status () with
+    | [] ->
+      Stdlib.printLine "You're not syncing with anyone yet."
+
+      Stdlib.printLine (
+        Colors.hint "  dark sync connect <url>   sync with one of your instances")
+
+      state
+    | sts ->
+      let header =
+        $"Syncing with {Stdlib.Int.toString (Stdlib.List.length sts)} instance(s):"
+
+      let lines =
+        Stdlib.List.map sts (fun pc ->
+          let peer = Stdlib.Tuple2.first pc
+          let cursor = Stdlib.Tuple2.second pc
+
+          if cursor == 0L then
+            $"  {peer}   (not pulled yet)"
+          else
+            $"  {peer}   (synced through op {Stdlib.Int64.toString cursor})")
+
+      Stdlib.printLines (Stdlib.List.append [ header ] lines)
+      state
+
   | [ "connect"; peer ] ->
     match Darklang.Sync.connect peer with
     | Ok _ -> Stdlib.printLine (Colors.success $"Now syncing with {peer}")
@@ -85,6 +111,7 @@ let help (state: AppState) : AppState =
     "opt-in, and once you connect a peer it stays current in the background."
     ""
     "  dark sync                 pull now from every instance you're connected to"
+    "  dark sync status          show who you're syncing with and how current you are"
     "  dark sync connect <url>   start syncing with an instance (e.g. http://ocean.tailnet:9000)"
     "  dark sync pull <url>      pull once from one instance"
     "  dark apps start sync      keep syncing automatically in the background" ]
@@ -98,5 +125,5 @@ let complete
   (args: List<String>)
   : List<Completion.CompletionItem> =
   match args with
-  | [] -> [ "connect"; "pull" ] |> Stdlib.List.map Completion.simple
+  | [] -> [ "status"; "connect"; "pull" ] |> Stdlib.List.map Completion.simple
   | _ -> []

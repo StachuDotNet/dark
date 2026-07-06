@@ -112,6 +112,11 @@ let pullAll () : Int =
     | Ok n -> acc + n
     | Error _ -> acc)
 
+/// Each connected peer paired with how far we've pulled it (the peer's rowid; 0 = never pulled). For
+/// `dark sync status` — so you can see, at a glance, who you sync with and whether you're current.
+let status () : List<(String * Int64)> =
+  Stdlib.List.map (peers ()) (fun peer -> (peer, cursorFor peer))
+
 
 // ── the autosync daemon (DECISIONS §8): pull from every peer on an interval, in the background. Managed by
 //    `dark apps start/stop sync` on the shared Stdlib.Cli.Daemon substrate. Poll-based v1. ──
