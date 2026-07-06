@@ -98,7 +98,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
 
         // Resolve the router to a callable value and call serve DIRECTLY — no string-eval. The CLI expression
         // parser mis-tokenizes an int literal in argument position (`defaults 8080I` → "no variable named: I"),
-        // which used to break every serve (see HTTPSERVER-BUG.md); Builtin.applicableByName sidesteps it.
+        // which used to break every serve (see HTTPSERVER-BUG.md); applicableByName sidesteps it.
         // Resolve BEFORE announcing "Listening" so a bad router name reports cleanly, never a false start.
         match Builtin.applicableByName state.currentBranchId parsed.routerPath with
         | Ok router ->

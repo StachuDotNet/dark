@@ -2,10 +2,10 @@ module Darklang.Stdlib.EventLog
 
 // The append-only op log, exposed as a GENERAL, reusable event-log seam: read the events SINCE a cursor
 // (what a peer serves), and APPEND events received from elsewhere (folding invisibly, via
-// `Builtin.appendEvents`). Sync is its first consumer; messaging/cron are the next. Everything travels as
+// `appendEvents`). Sync is its first consumer; messaging/cron are the next. Everything travels as
 // OPS — never a database file.
 //
-// An event in transit: (id, opBlobHex, branchId, commitHash, originTs) — matches `Builtin.appendEvents`.
+// An event in transit: (id, opBlobHex, branchId, commitHash, originTs) — matches `appendEvents`.
 // A commit an event references: (hash, message, branchId, accountId, createdAt).
 
 let private cellText (row: Dict<Stdlib.Sqlite.Value>) (key: String) : String =
