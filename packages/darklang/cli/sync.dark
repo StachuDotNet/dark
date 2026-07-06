@@ -121,7 +121,10 @@ let help (state: AppState) : AppState =
     "  dark sync status          show who you're syncing with and how current you are"
     "  dark sync connect <url>   start syncing with an instance (e.g. http://ocean.tailnet:9000)"
     "  dark sync pull <url>      pull once from one instance"
-    "  dark apps start sync      keep syncing automatically in the background" ]
+    "  dark apps start sync      keep syncing automatically in the background"
+    ""
+    "To let other instances pull from you, serve the sync endpoint:"
+    "  dark serve Darklang.Sync.Server.router --port 9000" ]
   |> Stdlib.printLines
 
   state
