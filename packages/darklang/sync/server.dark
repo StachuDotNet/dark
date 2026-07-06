@@ -17,13 +17,17 @@ let private cellInt (row: Dict<Stdlib.Sqlite.Value>) (key: String) : Int64 =
   | None -> 0L
 
 
-// GET /sync/health — liveness + op count. A puller probes this before pulling + compares counts to see
-// convergence.
+// GET /sync/health — liveness + servable op count. Counts COMMITTED ops only — the ones a peer can actually
+// pull (WIP stays local) — so two instances comparing counts to gauge convergence are comparing like for like.
 let healthFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
   let db = Builtin.localDbPath ()
 
   let n =
-    match Stdlib.Sqlite.query db "SELECT count(*) AS n FROM package_ops" with
+    match
+      Stdlib.Sqlite.query
+        db
+        "SELECT count(*) AS n FROM package_ops WHERE commit_hash IS NOT NULL"
+    with
     | Ok rows ->
       match rows with
       | [ row ] -> cellInt row "n"
