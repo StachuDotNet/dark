@@ -1,12 +1,12 @@
 module Darklang.Sync.Server
 
-// A tiny HTTP sync server: a peer serves its op log so others can pull over the NETWORK (the tailnet),
-// not just from a local file. Run with `dark serve Darklang.Sync.Server.router --port <N>` and expose it
-// over your tailnet with `dark devices serve <N>`.
+// A tiny HTTP sync server: a peer serves its op log so others can pull it over the network (the tailnet).
+// Run with `dark serve Darklang.Sync.Server.router --port <N>` and expose it over your tailnet with
+// `dark devices serve <N>`.
 //
-// The wire is plain text — no codec / no serialization. Each op is one line:
-//   id | origin_ts | branch_id | commit_hash | hex(op_blob)
-// The op blob rides as hex, so a puller INSERTs it via X'<hex>'. Committed ops only (WIP stays local).
+// The wire is JSON — `Darklang.Sync.wireSince` (← `Stdlib.EventLog.since`): the serving Release, the batch's
+// commits, its events ((id, opBlobHex, branchId, commitHash, originTs) — the op_blob rides as hex), and the
+// cursor. Committed ops only (WIP stays local); one bounded batch per request. No .db files — ops over HTTP.
 
 let private cellInt (row: Dict<Stdlib.Sqlite.Value>) (key: String) : Int64 =
   match Stdlib.Dict.get row key with
