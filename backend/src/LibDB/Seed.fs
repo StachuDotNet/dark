@@ -275,6 +275,7 @@ type Projection = { table : string; dirtiedBy : Set<string> }
 /// arrival order. Idempotent: `INSERT OR IGNORE` on the content-addressed id, and only unapplied ops
 /// fold. Returns the new max-rowid cursor. Folding stays here (F#) — invisible to Dark.
 let receiveOps
+  (commits : List<string * string * System.Guid * System.Guid * string>)
   (events : List<System.Guid * byte[] * System.Guid * string * string>)
   : Task<int64> =
   task {
@@ -285,7 +286,25 @@ let receiveOps
     if List.isEmpty events then
       return! maxRowid ()
     else
-      let inserts =
+      // Insert the referenced commits FIRST (same transaction, in order) so the ops' commit_hash FK is
+      // satisfied — a synced op belongs to a commit that must exist on the receiver. INSERT OR IGNORE dedups.
+      let commitInserts =
+        commits
+        |> List.map (fun (hash, message, branchId, accountId, createdAt) ->
+          let sql =
+            """
+            INSERT OR IGNORE INTO commits (hash, message, branch_id, account_id, created_at)
+            VALUES (@hash, @message, @branch_id, @account_id, @created_at)
+            """
+          let ps =
+            [ "hash", Sql.string hash
+              "message", Sql.string message
+              "branch_id", Sql.uuid branchId
+              "account_id", Sql.uuid accountId
+              "created_at", Sql.string createdAt ]
+          (sql, [ ps ]))
+
+      let opInserts =
         events
         |> List.map (fun (opId, opBlob, branchId, commitHash, originTs) ->
           let sql =
@@ -304,7 +323,7 @@ let receiveOps
               "origin_ts", Sql.string originTs ]
           (sql, [ ps ]))
 
-      let _ = inserts |> Sql.executeTransactionSync
+      let _ = (commitInserts @ opInserts) |> Sql.executeTransactionSync
       let! _ = applyUnappliedOps ()
       return! maxRowid ()
   }

@@ -250,17 +250,34 @@ let fns () : List<BuiltInFn> =
       typeParams = []
       parameters =
         [ Param.make
+            "commits"
+            (TList(TTuple(TString, TString, [ TString; TString; TString ])))
+            "(hash, message, branchId, accountId, createdAt) — the commits the events reference"
+          Param.make
             "events"
             (TList(TTuple(TString, TString, [ TString; TString; TString ])))
             "(id, opBlobHex, branchId, commitHash, originTs) tuples received from a peer" ]
       returnType = TInt
       description =
-        "Append received events to the op log (preserving origin_ts) + fold. Returns the new cursor. Idempotent."
+        "Append received commits + events to the op log (preserving origin_ts) + fold. Returns the new cursor. Idempotent."
       fn =
         (function
-        | _, _, _, [ DList(_, events) ] ->
+        | _, _, _, [ DList(_, commits); DList(_, events) ] ->
           uply {
-            let parsed =
+            let parsedCommits =
+              commits
+              |> List.map (fun c ->
+                match c with
+                | DTuple(DString hash,
+                         DString message,
+                         [ DString branchId; DString accountId; DString createdAt ]) ->
+                  (hash,
+                   message,
+                   System.Guid.Parse branchId,
+                   System.Guid.Parse accountId,
+                   createdAt)
+                | _ -> Exception.raiseInternal "appendEvents: malformed commit tuple" [])
+            let parsedEvents =
               events
               |> List.map (fun ev ->
                 match ev with
@@ -273,7 +290,7 @@ let fns () : List<BuiltInFn> =
                    commitHash,
                    originTs)
                 | _ -> Exception.raiseInternal "appendEvents: malformed event tuple" [])
-            let! cursor = LibDB.Seed.receiveOps parsed
+            let! cursor = LibDB.Seed.receiveOps parsedCommits parsedEvents
             return Dval.int (bigint cursor)
           }
         | _ -> incorrectArgs ())
