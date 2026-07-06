@@ -114,7 +114,7 @@ let rec private pullLoop
         else
           // Loop control is the WIRE size (an all-already-present batch still advances the cursor); the count
           // we report is what actually APPLIED, so "Pulled N" is honest even on a shared-base first pull.
-          if Stdlib.List.length events == 0 then
+          if Stdlib.List.length events == 0I then
             Stdlib.Result.Result.Ok applied
           else
             let newlyApplied = Stdlib.EventLog.append commits events
