@@ -125,7 +125,7 @@ let rec private pullLoop
 /// peer was unreachable, version-skewed, or spoke nonsense. Honest about the difference so a caller never
 /// reports "up to date" when it actually couldn't reach the peer.
 let pull (peer: String) : Stdlib.Result.Result<Int, String> =
-  pullLoop peer 0
+  pullLoop peer 0I
 
 /// Pull from every configured peer; returns the total events applied (unreachable peers contribute 0). Used by
 /// the background daemon, which pulls what it can and stays quiet about peers that happen to be offline.
