@@ -167,6 +167,11 @@ let status () : List<(String * Int64)> =
 // ── the autosync daemon (DECISIONS §8): pull from every peer on an interval, in the background. Managed by
 //    `dark apps start/stop sync` on the shared Stdlib.Cli.Daemon substrate. Poll-based v1. ──
 
+// Poll every 30s: package edits are occasional, so a peer's commit shows within ~half a minute while the
+// daemon stays calm — two small GETs/min per peer, each a no-op when you're already up to date. Sync isn't
+// chat; near-real-time isn't worth the chatter.
+let private pollIntervalMs : Int = 30000I
+
 let rec private syncLoop (intervalMs: Int) (remaining: Int) : Int =
   if remaining <= 0I then
     0I
@@ -185,4 +190,4 @@ let daemon (name: String) : Int =
       Stdlib.printLine
         $"{name}: keeping your peers in sync in the background (pid {Stdlib.Int.toString (Stdlib.Cli.Sys.currentPid ())})"
 
-  syncLoop 3000I 1000000000I
+  syncLoop pollIntervalMs 1000000000I
