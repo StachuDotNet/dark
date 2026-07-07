@@ -509,9 +509,8 @@ let tests =
         let res : LibDB.Resolutions.Resolution =
           { id = "test-resolution-diverge"
             branchId = PT.mainBranchId
-            location = "Test.Diverge.dv"
-            itemKind = "fn"
-            chosenHash = hashA
+            location = loc
+            choice = PT.Reference.PackageFn(PT.Hash hashA)
             resolvedBy = "human"
             at = "2099-01-01T00:00:00.003Z" }
 

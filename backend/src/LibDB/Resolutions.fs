@@ -18,14 +18,21 @@ open LibDB.Sqlite
 
 module PT = LibExecution.ProgramTypes
 
-/// One resolution: bind `location` (canonical owner.modules.name) to `chosenHash` (content of `itemKind`),
-/// made `by` (a policy name or "human") at `at`. `id` is the wire-carried idempotency key.
+// CLEANUP(resolution-shape): Stachu flagged this shape as maybe over-specified / prematurely generic. Today
+// (branchId, location, choice) is the flattened (branch, PackageLocation, Reference) binding-slot identity
+// `applySetName` uses — correct + tested + converges, so not blocking. But revisit once more of the sync UX is
+// exercised: does a resolution want a leaner shape, or a genuinely generic "override projection cell X → Y"
+// one that isn't hardwired to package bindings? (Renamed `chosen`→`choice` per that feedback.)
+/// One resolution: bind `location` to `choice` (a Reference — hash + kind together, NOT two loose strings),
+/// decided by `resolvedBy` ("human" or a policy name) at `at`. `id` is the wire-carried idempotency key.
+/// `branchId` is load-bearing, not premature generality: bindings are per-branch (a name can even hold a fn
+/// AND a type live at once), so `applySetName` keys a binding by (owner, modules, name, item_type, branch_id)
+/// — a resolution has to name the same slot, and a synced one must tell a peer WHICH branch to override.
 type Resolution =
   { id : string
     branchId : System.Guid
-    location : string
-    itemKind : string
-    chosenHash : string
+    location : PT.PackageLocation
+    choice : PT.Reference
     resolvedBy : string
     at : string }
 
@@ -33,23 +40,23 @@ type Resolution =
 /// op origin_ts / locations use), which becomes the LWW stamp the binding competes on.
 let mk
   (location : PT.PackageLocation)
-  (chosen : PT.Reference)
+  (choice : PT.Reference)
   (resolvedBy : string)
   (branchId : System.Guid)
   (at : string)
   : Resolution =
-  let (PT.Hash h) = chosen.hash
-
   { id = System.Guid.NewGuid() |> string
     branchId = branchId
-    location = Conflicts.locationString location
-    itemKind = chosen.kind.toString ()
-    chosenHash = h
+    location = location
+    choice = choice
     resolvedBy = resolvedBy
     at = at }
 
-/// Persist a resolution (idempotent on `id` — a re-pulled resolution from a peer doesn't duplicate).
+/// Persist a resolution (idempotent on `id` — a re-pulled resolution from a peer doesn't duplicate). The
+/// Reference is flattened to the (chosen_hash, item_kind) columns the wire + `applySetName` speak in.
 let record (r : Resolution) : Task<unit> =
+  let (PT.Hash h) = r.choice.hash
+
   Sql.query
     """
     INSERT OR IGNORE INTO resolutions (id, branch_id, location, item_kind, chosen_hash, resolved_by, at)
@@ -58,21 +65,23 @@ let record (r : Resolution) : Task<unit> =
   |> Sql.parameters
     [ "id", Sql.string r.id
       "b", Sql.string (string r.branchId)
-      "location", Sql.string r.location
-      "item_kind", Sql.string r.itemKind
-      "hash", Sql.string r.chosenHash
+      "location", Sql.string (Conflicts.locationString r.location)
+      "item_kind", Sql.string (r.choice.kind.toString ())
+      "hash", Sql.string h
       "by", Sql.string r.resolvedBy
       "at", Sql.string r.at ]
   |> Sql.executeStatementAsync
 
-/// Apply a resolution to the `locations` projection — the OVERLAY step. Re-binds the location to the chosen
+/// Apply a resolution to the `locations` projection — the OVERLAY step. Re-binds the location to the choice
 /// content, gated by the SAME timestamp-LWW `applySetName` uses: a resolution whose `at` is older than the
 /// live binding's `origin_ts` is stale and skipped (exact tie breaks by the higher content hash, portably).
 /// So every instance converges on the same winner regardless of arrival order.
 let applyToLocations (r : Resolution) : Task<unit> =
   task {
-    let loc = Conflicts.parseLocation r.location
+    let loc = r.location
     let modulesStr = String.concat "." loc.modules
+    let itemTypeStr = r.choice.kind.toString ()
+    let (PT.Hash chosenHash) = r.choice.hash
 
     let! cur =
       Sql.query
@@ -86,17 +95,17 @@ let applyToLocations (r : Resolution) : Task<unit> =
         [ "o", Sql.string loc.owner
           "m", Sql.string modulesStr
           "n", Sql.string loc.name
-          "t", Sql.string r.itemKind
+          "t", Sql.string itemTypeStr
           "b", Sql.string (string r.branchId) ]
       |> Sql.executeRowOptionAsync (fun read -> (read.string "item_hash", read.stringOrNone "origin_ts"))
 
     let skip =
       match cur with
-      // already bound to the chosen content — idempotent no-op (so a re-pulled resolution doesn't churn)
-      | Some(curHash, _) when curHash = r.chosenHash -> true
+      // already bound to the choice content — idempotent no-op (so a re-pulled resolution doesn't churn)
+      | Some(curHash, _) when curHash = chosenHash -> true
       // stale: older-by-stamp than the live binding (shared LWW rule; exact tie → higher hash wins)
-      | Some(curHash, Some curTs) when curHash <> r.chosenHash ->
-        r.at < curTs || (r.at = curTs && r.chosenHash < curHash)
+      | Some(curHash, Some curTs) when curHash <> chosenHash ->
+        r.at < curTs || (r.at = curTs && chosenHash < curHash)
       | _ -> false
 
     if skip then
@@ -113,7 +122,7 @@ let applyToLocations (r : Resolution) : Task<unit> =
           [ "o", Sql.string loc.owner
             "m", Sql.string modulesStr
             "n", Sql.string loc.name
-            "t", Sql.string r.itemKind
+            "t", Sql.string itemTypeStr
             "b", Sql.string (string r.branchId) ]
         |> Sql.executeStatementAsync
 
@@ -126,11 +135,11 @@ let applyToLocations (r : Resolution) : Task<unit> =
           """
         |> Sql.parameters
           [ "lid", Sql.string (System.Guid.NewGuid() |> string)
-            "hash", Sql.string r.chosenHash
+            "hash", Sql.string chosenHash
             "o", Sql.string loc.owner
             "m", Sql.string modulesStr
             "n", Sql.string loc.name
-            "t", Sql.string r.itemKind
+            "t", Sql.string itemTypeStr
             "b", Sql.string (string r.branchId)
             "at", Sql.string r.at ]
         |> Sql.executeStatementAsync
@@ -147,9 +156,12 @@ let recordAndApply (r : Resolution) : Task<unit> =
 let ofRow (read : RowReader) : Resolution =
   { id = read.string "id"
     branchId = System.Guid.Parse(read.string "branch_id")
-    location = read.string "location"
-    itemKind = read.string "item_kind"
-    chosenHash = read.string "chosen_hash"
+    location = Conflicts.parseLocation (read.string "location")
+    choice =
+      PT.Reference.fromHashAndKind (
+        PT.Hash(read.string "chosen_hash"),
+        PT.ItemKind.fromString (read.string "item_kind")
+      )
     resolvedBy = read.string "resolved_by"
     at = read.string "at" }
 
@@ -208,9 +220,9 @@ let receiveResolutions
       let r : Resolution =
         { id = id
           branchId = System.Guid.Parse branchId
-          location = location
-          itemKind = itemKind
-          chosenHash = chosenHash
+          location = Conflicts.parseLocation location
+          choice =
+            PT.Reference.fromHashAndKind (PT.Hash chosenHash, PT.ItemKind.fromString itemKind)
           resolvedBy = resolvedBy
           at = at }
 
