@@ -9,8 +9,8 @@ let execute (state: AppState) (args: List<String>) : AppState =
     | [ limitStr ] ->
       match Stdlib.Int.parse limitStr with
       | Ok n -> n
-      | Error _ -> 20I
-    | _ -> 20I
+      | Error _ -> 20
+    | _ -> 20
 
   let commits = SCM.PackageOps.getCommitsWithAncestors branchId limit
 

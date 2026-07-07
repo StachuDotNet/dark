@@ -10,9 +10,9 @@ let reportParseErrors
   match diagnostics with
   | [] -> false
   | (range, message) :: _ ->
-    let lineNum = (range.start.row + 1I) |> Stdlib.Int.toString
+    let lineNum = (range.start.row + 1) |> Stdlib.Int.toString
     // 1-based column, matching renderDiagnostic and the line number above
-    let colNum = (range.start.column + 1I) |> Stdlib.Int.toString
+    let colNum = (range.start.column + 1) |> Stdlib.Int.toString
 
     Stdlib.printLine
       (Colors.error $"Parse error at line {lineNum}, column {colNum}: {message}")
@@ -50,7 +50,7 @@ let reportUnresolvedNames
 
     notFoundNames
     |> Stdlib.List.iter (fun (range, originalName, _err) ->
-      let lineNum = (range.start.row + 1I) |> Stdlib.Int.toString
+      let lineNum = (range.start.row + 1) |> Stdlib.Int.toString
       let colNum = range.start.column |> Stdlib.Int.toString
       let nameStr = Stdlib.String.join originalName "."
 
@@ -65,7 +65,7 @@ let reportUnresolvedNames
 
     invalidNames
     |> Stdlib.List.iter (fun (range, originalName, _err) ->
-      let lineNum = (range.start.row + 1I) |> Stdlib.Int.toString
+      let lineNum = (range.start.row + 1) |> Stdlib.Int.toString
       let colNum = range.start.column |> Stdlib.Int.toString
       let nameStr = Stdlib.String.join originalName "."
 

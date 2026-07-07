@@ -14,7 +14,7 @@ let withBackoffLoop
       Stdlib.Result.Result.Error e
     else
       let _ = Cli.Posix.sleep delayMs
-      withBackoffLoop maxAttempts (attempt + 1I) (Stdlib.Float.multiply delayMs 2.0) fn
+      withBackoffLoop maxAttempts (attempt + 1) (Stdlib.Float.multiply delayMs 2.0) fn
 
 
 /// Retry a function up to maxAttempts times with exponential backoff.
@@ -24,7 +24,7 @@ let withBackoff
   (maxAttempts: Int)
   (fn: Unit -> Result.Result<'a, String>)
   : Result.Result<'a, String> =
-  withBackoffLoop maxAttempts 1I 100.0 fn
+  withBackoffLoop maxAttempts 1 100.0 fn
 
 
 let withFixedDelayLoop
@@ -40,7 +40,7 @@ let withFixedDelayLoop
       Stdlib.Result.Result.Error e
     else
       let _ = Cli.Posix.sleep delayMs
-      withFixedDelayLoop maxAttempts (attempt + 1I) delayMs fn
+      withFixedDelayLoop maxAttempts (attempt + 1) delayMs fn
 
 
 /// Retry with a fixed delay between attempts.
@@ -49,4 +49,4 @@ let withFixedDelay
   (delayMs: Float)
   (fn: Unit -> Result.Result<'a, String>)
   : Result.Result<'a, String> =
-  withFixedDelayLoop maxAttempts 1I delayMs fn
+  withFixedDelayLoop maxAttempts 1 delayMs fn

@@ -17,11 +17,11 @@ type PaginationStyle =
   | Simple
 
 let createPagination (totalItems: Int) (pageSize: Int) : Core.Types.Component<PaginationModel> =
-  let totalPages = if pageSize > 0I then Stdlib.Int.divide (totalItems + pageSize - 1I) pageSize else 1I
-  let model = PaginationModel { currentPage = 1I; totalPages = totalPages; pageSize = pageSize; totalItems = totalItems; showInfo = true; showJumper = false; maxVisiblePages = 7I; style = PaginationStyle.Standard }
-  let width = 60I
-  let height = if model.showInfo then 2I else 1I
-  let bounds = Core.Types.Bounds { position = Core.Types.Position { x = 0I; y = 0I }; dimensions = Core.Types.Dimensions { width = width; height = height } }
+  let totalPages = if pageSize > 0 then Stdlib.Int.divide (totalItems + pageSize - 1) pageSize else 1
+  let model = PaginationModel { currentPage = 1; totalPages = totalPages; pageSize = pageSize; totalItems = totalItems; showInfo = true; showJumper = false; maxVisiblePages = 7; style = PaginationStyle.Standard }
+  let width = 60
+  let height = if model.showInfo then 2 else 1
+  let bounds = Core.Types.Bounds { position = Core.Types.Position { x = 0; y = 0 }; dimensions = Core.Types.Dimensions { width = width; height = height } }
   Core.Types.Component
     { id = "pagination"
       model = model
@@ -60,10 +60,10 @@ let renderPagination (component: Core.Types.Component<PaginationModel>) (context
   let hasFocus = context.hasFocus && component.state == Core.Types.ComponentState.Focused
 
   let generatePageNumbers : List<String> =
-    let halfVisible = Stdlib.Int.divide model.maxVisiblePages 2I
-    let startPage = Stdlib.Int.max 1I (model.currentPage - halfVisible)
-    let endPage = Stdlib.Int.min model.totalPages (startPage + model.maxVisiblePages - 1I)
-    let adjustedStartPage = Stdlib.Int.max 1I (endPage - model.maxVisiblePages + 1I)
+    let halfVisible = Stdlib.Int.divide model.maxVisiblePages 2
+    let startPage = Stdlib.Int.max 1 (model.currentPage - halfVisible)
+    let endPage = Stdlib.Int.min model.totalPages (startPage + model.maxVisiblePages - 1)
+    let adjustedStartPage = Stdlib.Int.max 1 (endPage - model.maxVisiblePages + 1)
 
     let pages = Stdlib.List.range adjustedStartPage endPage
     let pageButtons =
@@ -73,7 +73,7 @@ let renderPagination (component: Core.Types.Component<PaginationModel>) (context
           renderPageButton model.style page isCurrent false)
 
     let prevButton =
-      if model.currentPage > 1I then
+      if model.currentPage > 1 then
         [if model.style == PaginationStyle.Simple then "◀" else "◀ Prev"]
       else
         [Core.Rendering.colorize Core.Types.Color.Dark (if model.style == PaginationStyle.Simple then "◀" else "◀ Prev")]
@@ -84,9 +84,9 @@ let renderPagination (component: Core.Types.Component<PaginationModel>) (context
       else
         [Core.Rendering.colorize Core.Types.Color.Dark (if model.style == PaginationStyle.Simple then "▶" else "Next ▶")]
 
-    let ellipsisLeft = if adjustedStartPage > 1I then ["..."] else []
+    let ellipsisLeft = if adjustedStartPage > 1 then ["..."] else []
     let ellipsisRight = if endPage < model.totalPages then ["..."] else []
-    let firstPage = if adjustedStartPage > 1I then [renderPageButton model.style 1I false false] else []
+    let firstPage = if adjustedStartPage > 1 then [renderPageButton model.style 1 false false] else []
     let lastPage = if endPage < model.totalPages then [renderPageButton model.style model.totalPages false false] else []
 
     prevButton
@@ -105,7 +105,7 @@ let renderPagination (component: Core.Types.Component<PaginationModel>) (context
 
   let infoLine =
     if model.showInfo then
-      let startItem = ((model.currentPage - 1I) * model.pageSize) + 1I
+      let startItem = ((model.currentPage - 1) * model.pageSize) + 1
       let endItem = Stdlib.Int.min (model.currentPage * model.pageSize) model.totalItems
       let infoText = "Showing " ++ Stdlib.Int.toString startItem ++ "-" ++ Stdlib.Int.toString endItem ++ " of " ++ Stdlib.Int.toString model.totalItems
       let paddedInfo = Core.Rendering.padText infoText component.bounds.dimensions.width Core.Types.Alignment.Center
@@ -118,7 +118,7 @@ let renderPagination (component: Core.Types.Component<PaginationModel>) (context
 
 let goToPage (component: Core.Types.Component<PaginationModel>) (page: Int) : Core.Types.Component<PaginationModel> =
   let model = component.model
-  if page >= 1I && page <= model.totalPages then
+  if page >= 1 && page <= model.totalPages then
     { component with model = { model with currentPage = page } }
   else
     component
@@ -126,20 +126,20 @@ let goToPage (component: Core.Types.Component<PaginationModel>) (page: Int) : Co
 let nextPage (component: Core.Types.Component<PaginationModel>) : Core.Types.Component<PaginationModel> =
   let model = component.model
   if model.currentPage < model.totalPages then
-    { component with model = { model with currentPage = model.currentPage + 1I } }
+    { component with model = { model with currentPage = model.currentPage + 1 } }
   else
     component
 
 let prevPage (component: Core.Types.Component<PaginationModel>) : Core.Types.Component<PaginationModel> =
   let model = component.model
-  if model.currentPage > 1I then
-    { component with model = { model with currentPage = model.currentPage - 1I } }
+  if model.currentPage > 1 then
+    { component with model = { model with currentPage = model.currentPage - 1 } }
   else
     component
 
 let firstPage (component: Core.Types.Component<PaginationModel>) : Core.Types.Component<PaginationModel> =
   let model = component.model
-  { component with model = { model with currentPage = 1I } }
+  { component with model = { model with currentPage = 1 } }
 
 let lastPage (component: Core.Types.Component<PaginationModel>) : Core.Types.Component<PaginationModel> =
   let model = component.model
@@ -151,7 +151,7 @@ let setPaginationStyle (component: Core.Types.Component<PaginationModel>) (style
 
 let showPaginationInfo (component: Core.Types.Component<PaginationModel>) : Core.Types.Component<PaginationModel> =
   let model = component.model
-  let newHeight = if model.showInfo then component.bounds.dimensions.height else component.bounds.dimensions.height + 1I
+  let newHeight = if model.showInfo then component.bounds.dimensions.height else component.bounds.dimensions.height + 1
   let newBounds = Core.Types.Bounds { position = component.bounds.position; dimensions = Core.Types.Dimensions { width = component.bounds.dimensions.width; height = newHeight } }
   { component with
       model = { model with showInfo = true }
@@ -159,7 +159,7 @@ let showPaginationInfo (component: Core.Types.Component<PaginationModel>) : Core
 
 let hidePaginationInfo (component: Core.Types.Component<PaginationModel>) : Core.Types.Component<PaginationModel> =
   let model = component.model
-  let newHeight = if model.showInfo then component.bounds.dimensions.height - 1I else component.bounds.dimensions.height
+  let newHeight = if model.showInfo then component.bounds.dimensions.height - 1 else component.bounds.dimensions.height
   let newBounds = Core.Types.Bounds { position = component.bounds.position; dimensions = Core.Types.Dimensions { width = component.bounds.dimensions.width; height = newHeight } }
   { component with
       model = { model with showInfo = false }
@@ -186,9 +186,9 @@ type StepStyle =
   | Dots
 
 let createStepNavigation (width: Int) (style: StepStyle) : Core.Types.Component<StepNavigationModel> =
-  let model = StepNavigationModel { steps = []; currentStep = 0I; width = width; showNumbers = true; style = style }
-  let height = match style with | Vertical -> 5I | _ -> 3I
-  let bounds = Core.Types.Bounds { position = Core.Types.Position { x = 0I; y = 0I }; dimensions = Core.Types.Dimensions { width = width; height = height } }
+  let model = StepNavigationModel { steps = []; currentStep = 0; width = width; showNumbers = true; style = style }
+  let height = match style with | Vertical -> 5 | _ -> 3
+  let bounds = Core.Types.Bounds { position = Core.Types.Position { x = 0; y = 0 }; dimensions = Core.Types.Dimensions { width = width; height = height } }
   Core.Types.Component
     { id = "stepnav"
       model = model
@@ -202,8 +202,8 @@ let addStep (component: Core.Types.Component<StepNavigationModel>) (step: StepMo
   let newSteps = model.steps |> Stdlib.List.append [step]
   let newHeight =
     match model.style with
-    | Vertical -> ((Stdlib.List.length newSteps) * 2I) + 1I
-    | _ -> 3I
+    | Vertical -> ((Stdlib.List.length newSteps) * 2) + 1
+    | _ -> 3
   let newBounds = Core.Types.Bounds { position = component.bounds.position; dimensions = Core.Types.Dimensions { width = model.width; height = newHeight } }
   { component with
       model = { model with steps = newSteps }
@@ -217,7 +217,7 @@ let renderStepNavigation (component: Core.Types.Component<StepNavigationModel>) 
       let stepTexts =
         model.steps
         |> Stdlib.List.indexedMap (fun i step ->
-            let stepNumber = Stdlib.Int.toString (i + 1I)
+            let stepNumber = Stdlib.Int.toString (i + 1)
             let isActive = i == model.currentStep
             let stepText = if model.showNumbers then stepNumber ++ "." ++ step.title else step.title
 
@@ -234,20 +234,20 @@ let renderStepNavigation (component: Core.Types.Component<StepNavigationModel>) 
       let combinedSteps = Stdlib.String.join stepTexts separator
       let paddedSteps = Core.Rendering.padText combinedSteps model.width Core.Types.Alignment.Center
 
-      let topBorder = "┌" ++ (Stdlib.String.repeat "─" (model.width - 2I)) ++ "┐"
-      let bottomBorder = "└" ++ (Stdlib.String.repeat "─" (model.width - 2I)) ++ "┘"
+      let topBorder = "┌" ++ (Stdlib.String.repeat "─" (model.width - 2)) ++ "┐"
+      let bottomBorder = "└" ++ (Stdlib.String.repeat "─" (model.width - 2)) ++ "┘"
       let stepLine = "│ " ++ paddedSteps ++ " │"
 
       [topBorder; stepLine; bottomBorder]
 
   | Vertical ->
-      let topBorder = "┌" ++ (Stdlib.String.repeat "─" (model.width - 2I)) ++ "┐"
-      let bottomBorder = "└" ++ (Stdlib.String.repeat "─" (model.width - 2I)) ++ "┘"
+      let topBorder = "┌" ++ (Stdlib.String.repeat "─" (model.width - 2)) ++ "┐"
+      let bottomBorder = "└" ++ (Stdlib.String.repeat "─" (model.width - 2)) ++ "┘"
 
       let stepLines =
         model.steps
         |> Stdlib.List.indexedMap (fun i step ->
-            let stepNumber = Stdlib.Int.toString (i + 1I)
+            let stepNumber = Stdlib.Int.toString (i + 1)
             let isActive = i == model.currentStep
             let stepText = if model.showNumbers then stepNumber ++ ". " ++ step.title else step.title
 
@@ -263,11 +263,11 @@ let renderStepNavigation (component: Core.Types.Component<StepNavigationModel>) 
               else " "
 
             let styledStep = Core.Rendering.colorize stepColor (prefix ++ " " ++ stepText)
-            let paddedStep = Core.Rendering.padText styledStep (model.width - 4I) Core.Types.Alignment.Left
+            let paddedStep = Core.Rendering.padText styledStep (model.width - 4) Core.Types.Alignment.Left
             let stepLine = "│ " ++ paddedStep ++ " │"
 
-            if i < Stdlib.List.length model.steps - 1I then
-              [stepLine; "│" ++ (Stdlib.String.repeat " " (model.width - 2I)) ++ "│"]
+            if i < Stdlib.List.length model.steps - 1 then
+              [stepLine; "│" ++ (Stdlib.String.repeat " " (model.width - 2)) ++ "│"]
             else
               [stepLine])
         |> Stdlib.List.fold [] Stdlib.List.append
@@ -301,7 +301,7 @@ let renderStepNavigation (component: Core.Types.Component<StepNavigationModel>) 
 
 let goToStep (component: Core.Types.Component<StepNavigationModel>) (stepIndex: Int) : Core.Types.Component<StepNavigationModel> =
   let model = component.model
-  if stepIndex >= 0I && stepIndex < (Stdlib.List.length model.steps) then
+  if stepIndex >= 0 && stepIndex < (Stdlib.List.length model.steps) then
     match Stdlib.List.getAt model.steps stepIndex with
     | Some step ->
         if step.isDisabled then
@@ -314,15 +314,15 @@ let goToStep (component: Core.Types.Component<StepNavigationModel>) (stepIndex: 
 
 let nextStep (component: Core.Types.Component<StepNavigationModel>) : Core.Types.Component<StepNavigationModel> =
   let model = component.model
-  if model.currentStep < (Stdlib.List.length model.steps) - 1I then
-    { component with model = { model with currentStep = model.currentStep + 1I } }
+  if model.currentStep < (Stdlib.List.length model.steps) - 1 then
+    { component with model = { model with currentStep = model.currentStep + 1 } }
   else
     component
 
 let prevStep (component: Core.Types.Component<StepNavigationModel>) : Core.Types.Component<StepNavigationModel> =
   let model = component.model
-  if model.currentStep > 0I then
-    { component with model = { model with currentStep = model.currentStep - 1I } }
+  if model.currentStep > 0 then
+    { component with model = { model with currentStep = model.currentStep - 1 } }
   else
     component
 

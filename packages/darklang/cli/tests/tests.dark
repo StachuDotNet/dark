@@ -22,7 +22,7 @@ let runWithCommand (args: List<String>): String =
   let command = $"./scripts/run-cli {argsString}"
   let result = Stdlib.Cli.Unix.executeInDirectoryWithOutput "." command
 
-  if result.exitCode == 0I then
+  if result.exitCode == 0 then
     Stdlib.String.trim result.stdout
   else
     $"ERROR: {result.stderr}"
@@ -196,9 +196,9 @@ let runAllTests (): Int =
 
   let initialSummary =
     TestSummary
-      { totalTests = 0I
-        passedTests = 0I
-        failedTests = 0I
+      { totalTests = 0
+        passedTests = 0
+        failedTests = 0
         failedTestNames = [] }
 
   let finalSummary =
@@ -208,17 +208,17 @@ let runAllTests (): Int =
       Stdlib.printLine $"Running: {name} ..."
 
       let newSummary =
-        { summary with totalTests = summary.totalTests + 1I }
+        { summary with totalTests = summary.totalTests + 1 }
 
       match testFn () with
       | Pass ->
         Stdlib.printLine $"✓ PASS - {name}"
-        { newSummary with passedTests = newSummary.passedTests + 1I }
+        { newSummary with passedTests = newSummary.passedTests + 1 }
       | Fail message ->
         Stdlib.printLine $"✗ FAIL - {name}"
         Stdlib.printLine $"  Reason: {message}"
         { newSummary with
-            failedTests = newSummary.failedTests + 1I
+            failedTests = newSummary.failedTests + 1
             failedTestNames = Stdlib.List.push newSummary.failedTestNames name })
 
   Stdlib.printLine ""
@@ -228,9 +228,9 @@ let runAllTests (): Int =
   Stdlib.printLine $"Passed:       {Stdlib.Int.toString finalSummary.passedTests}"
   Stdlib.printLine $"Failed:       {Stdlib.Int.toString finalSummary.failedTests}"
 
-  if finalSummary.failedTests == 0I then
+  if finalSummary.failedTests == 0 then
     Stdlib.printLine "🎉 All tests passed!"
-    0I
+    0
   else
     Stdlib.printLine "🚨 Some tests failed!"
     if Stdlib.Bool.not (Stdlib.List.isEmpty finalSummary.failedTestNames) then
@@ -238,4 +238,4 @@ let runAllTests (): Int =
       finalSummary.failedTestNames
       |> Stdlib.List.iter (fun testName ->
         Stdlib.printLine $"  ✗ {testName}")
-    1I
+    1

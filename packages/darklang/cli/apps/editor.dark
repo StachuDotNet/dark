@@ -31,7 +31,7 @@ let private truncate (s: String) (maxLen: Int) : String =
   if (Stdlib.String.length s) <= maxLen then
     s
   else
-    (Stdlib.String.slice s 0I (maxLen - 1I)) ++ "…"
+    (Stdlib.String.slice s 0 (maxLen - 1)) ++ "…"
 
 
 let private appRow (state: State) (idx: Int) (app: Model.App) : String =
@@ -64,13 +64,13 @@ let private appRow (state: State) (idx: Int) (app: Model.App) : String =
     else if isRunning then Colors.colorize Colors.green rawState
     else if isStale then Colors.colorize Colors.yellow rawState
     else Colors.dimText rawState
-  let stateWidth = if rawState == "" then 0I else (Stdlib.String.length rawState) + 3I
+  let stateWidth = if rawState == "" then 0 else (Stdlib.String.length rawState) + 3
 
-  let name = Stdlib.Result.withDefault (Stdlib.String.padEnd app.name " " 26I) app.name
+  let name = Stdlib.Result.withDefault (Stdlib.String.padEnd app.name " " 26) app.name
   let w = Darklang.Cli.Terminal.getWidth ()
-  let width = if w <= 0I then 80I else w
+  let width = if w <= 0 then 80 else w
   // prefix (▸ + install glyph + run glyph + space) = 5 cols, name column = 26, gap before description = 2
-  let descBudget = Stdlib.Int.max (width - 5I - 26I - 2I - stateWidth) 8I
+  let descBudget = Stdlib.Int.max (width - 5 - 26 - 2 - stateWidth) 8
   let desc = truncate app.description descBudget
 
   let trailing = if stateText == "" then "" else "   " ++ stateText
@@ -129,7 +129,7 @@ let render (state: State) : Unit =
 
         match app.target with
         | Daemon _ ->
-          let logs = Stdlib.Cli.Daemon.tailLog app.slug 5I
+          let logs = Stdlib.Cli.Daemon.tailLog app.slug 5
           if Stdlib.List.isEmpty logs then
             ()
           else
@@ -229,11 +229,11 @@ let handleKey
   match key with
   | Escape -> Action.Exit state
   | UpArrow ->
-    let s = if state.selected > 0I then state.selected - 1I else 0I
+    let s = if state.selected > 0 then state.selected - 1 else 0
     Action.Continue ({ state with selected = s })
   | DownArrow ->
-    let maxIdx = count - 1I
-    let s = if state.selected < maxIdx then state.selected + 1I else maxIdx
+    let maxIdx = count - 1
+    let s = if state.selected < maxIdx then state.selected + 1 else maxIdx
     Action.Continue ({ state with selected = s })
   | Enter -> activate state
   | _ ->
@@ -272,7 +272,7 @@ let launch (cliState: Cli.AppState) : Cli.AppState =
   let state =
     Editor.State
       { apps = ordered
-        selected = 0I
+        selected = 0
         message = ""
         showDetail = false }
 

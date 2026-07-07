@@ -23,14 +23,14 @@ let methods : List<String> =
 
 let empty : State =
   State
-    { methodIdx = 1I
+    { methodIdx = 1
       url = LineInput.empty
       field = Field.MethodField }
 
 // find a method's index (default 0 = `*`)
 let indexOfMethod (m: String) : Int =
   let indexed = Stdlib.List.indexedMap methods (fun i x -> (i, x))
-  Stdlib.List.fold indexed 0I (fun acc pair ->
+  Stdlib.List.fold indexed 0 (fun acc pair ->
     let (i, x) = pair
     if x == m then i else acc)
 
@@ -64,8 +64,8 @@ let cycleMethod (state: State) (delta: Int) : State =
   let count = (Stdlib.List.length methods)
   let raw = state.methodIdx + delta
   let next =
-    if raw < 0I then count - 1I
-    else if raw >= count then 0I
+    if raw < 0 then count - 1
+    else if raw >= count then 0
     else raw
   { state with methodIdx = next }
 
@@ -103,13 +103,13 @@ let handleKey
   | UpArrow -> EditResult.Editing ({ state with field = Field.MethodField })
   | DownArrow -> EditResult.Editing ({ state with field = Field.UrlField })
   | LeftArrow ->
-    if onMethod then EditResult.Editing (cycleMethod state (0I - 1I))
+    if onMethod then EditResult.Editing (cycleMethod state (0 - 1))
     else EditResult.Editing (applyUrlKey state key keyChar)
   | RightArrow ->
-    if onMethod then EditResult.Editing (cycleMethod state 1I)
+    if onMethod then EditResult.Editing (cycleMethod state 1)
     else EditResult.Editing (applyUrlKey state key keyChar)
   | Spacebar ->
-    if onMethod then EditResult.Editing (cycleMethod state 1I)
+    if onMethod then EditResult.Editing (cycleMethod state 1)
     else EditResult.Editing (applyUrlKey state key keyChar)
   | _ -> EditResult.Editing (applyUrlKey state key keyChar)
 

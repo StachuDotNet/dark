@@ -51,7 +51,7 @@ let power (``base``: Int) (exponent: Int) : Int =
 
 
 /// Returns the absolute value of <param a> (turning negative inputs into positive outputs)
-let absoluteValue (a: Int) : Int = if lessThan a 0I then negate a else a
+let absoluteValue (a: Int) : Int = if lessThan a 0 then negate a else a
 
 
 /// Returns the negation of <param a>, {{-a}}
@@ -89,7 +89,7 @@ let fromFloat (a: Float) : Int = Builtin.intFromFloat a
 
 /// Returns the sum of all the ints in the list
 let sum (lst: List<Int>) : Int =
-  Stdlib.List.fold lst 0I (fun acc x -> add acc x)
+  Stdlib.List.fold lst 0 (fun acc x -> add acc x)
 
 
 /// Returns the higher of <param a> and <param b>

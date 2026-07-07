@@ -13,7 +13,7 @@ type Thread =
 
 let demoThreads () : List<Thread> =
   [ Thread
-      { id = 1I
+      { id = 1
         status = "running"
         topic = "Add binary serialization for sync"
         branch = "ai/sync"
@@ -22,7 +22,7 @@ let demoThreads () : List<Thread> =
         time = "12m"
         detail = "Currently editing packages/darklang/sync/serialize.dark  •  14 files changed" }
     Thread
-      { id = 2I
+      { id = 2
         status = "review"
         topic = "Refactor HTTP handler error paths"
         branch = "ai/errs"
@@ -31,7 +31,7 @@ let demoThreads () : List<Thread> =
         time = "8m"
         detail = "⚠ Awaiting your review: 3 questions about error propagation strategy" }
     Thread
-      { id = 3I
+      { id = 3
         status = "running"
         topic = "Write tests for package manager"
         branch = "ai/test"
@@ -40,7 +40,7 @@ let demoThreads () : List<Thread> =
         time = "5m"
         detail = "Running test suite (pass: 12, fail: 2, pending: 6)  •  4 files changed" }
     Thread
-      { id = 4I
+      { id = 4
         status = "review"
         topic = "Design new DB migration system"
         branch = "ai/db"
@@ -49,7 +49,7 @@ let demoThreads () : List<Thread> =
         time = "22m"
         detail = "⚠ Awaiting your review: proposed 2 migration approaches, needs decision" }
     Thread
-      { id = 5I
+      { id = 5
         status = "running"
         topic = "Fix canvas rendering perf regression"
         branch = "ai/perf"
@@ -58,7 +58,7 @@ let demoThreads () : List<Thread> =
         time = "3m"
         detail = "Profiling render loop, found bottleneck in tree diff  •  1 file changed" }
     Thread
-      { id = 6I
+      { id = 6
         status = "done"
         topic = "Update stdlib List docs"
         branch = "ai/docs"
@@ -89,7 +89,7 @@ let thinHr () : String =
 let padRight (s: String) (width: Int) : String =
   let len = Stdlib.String.length s
   if len >= width then
-    Stdlib.String.slice s 0I width
+    Stdlib.String.slice s 0 width
   else
     s ++ (Stdlib.String.repeat " " (width - len))
 
@@ -98,18 +98,18 @@ let renderThread (thread: Thread) : Unit =
   let badge = statusBadge thread.status
   let topicStr =
     if thread.status == "done" then
-      Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight thread.topic 40I)
+      Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight thread.topic 40)
     else
-      Darklang.Cli.Colors.boldText (padRight thread.topic 40I)
-  let branchStr = Darklang.Cli.Colors.dimText (padRight thread.branch 10I)
+      Darklang.Cli.Colors.boldText (padRight thread.topic 40)
+  let branchStr = Darklang.Cli.Colors.dimText (padRight thread.branch 10)
   let costColor =
     match thread.status with
     | "running" -> Darklang.Cli.Colors.green
     | "review" -> Darklang.Cli.Colors.yellow
     | _ -> Darklang.Cli.Colors.dim
-  let costStr = Darklang.Cli.Colors.colorize costColor (padRight thread.cost 10I)
-  let tokensStr = Darklang.Cli.Colors.dimText (padRight thread.tokens 10I)
-  let timeStr = Darklang.Cli.Colors.dimText (padRight thread.time 8I)
+  let costStr = Darklang.Cli.Colors.colorize costColor (padRight thread.cost 10)
+  let tokensStr = Darklang.Cli.Colors.dimText (padRight thread.tokens 10)
+  let timeStr = Darklang.Cli.Colors.dimText (padRight thread.time 8)
 
   Stdlib.printLine ("  " ++ idStr ++ "    " ++ badge ++ "  " ++ topicStr ++ "  " ++ branchStr ++ "  " ++ costStr ++ "  " ++ tokensStr ++ "  " ++ timeStr)
 
@@ -148,19 +148,19 @@ let render () : Unit =
   // Column headers
   let headerLine =
     "  "
-    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "ID" 4I)
+    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "ID" 4)
     ++ "    "
-    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "STATUS" 10I)
+    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "STATUS" 10)
     ++ "  "
-    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "TOPIC" 40I)
+    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "TOPIC" 40)
     ++ "  "
-    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "BRANCH" 10I)
+    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "BRANCH" 10)
     ++ "  "
-    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "COST" 10I)
+    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "COST" 10)
     ++ "  "
-    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "TOKENS" 10I)
+    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "TOKENS" 10)
     ++ "  "
-    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "TIME" 8I)
+    ++ Darklang.Cli.Colors.colorize (Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim) (padRight "TIME" 8)
   Stdlib.printLine headerLine
   Stdlib.printLine (hr ())
 

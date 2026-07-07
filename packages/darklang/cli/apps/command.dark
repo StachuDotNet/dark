@@ -10,7 +10,7 @@ module Darklang.Cli.Apps.Command
 /// `None` for daemons that aren't HTTP servers (they never log a port).
 let daemonPort (slug: String) : Stdlib.Option.Option<Int> =
   let portLines =
-    (Stdlib.Cli.Daemon.tailLog slug 25I)
+    (Stdlib.Cli.Daemon.tailLog slug 25)
     |> Stdlib.List.filter (fun l -> Stdlib.String.contains l "localhost:")
 
   match Stdlib.List.last portLines with
@@ -95,7 +95,7 @@ let inspect (state: Cli.AppState) (slug: String) : Cli.AppState =
     match app.target with
     | Daemon _ ->
       Stdlib.printLine $"  status:    {Stdlib.Cli.Daemon.statusLine slug}"
-      let logs = Stdlib.Cli.Daemon.tailLog slug 5I
+      let logs = Stdlib.Cli.Daemon.tailLog slug 5
       if Stdlib.List.isEmpty logs then
         ()
       else
@@ -201,7 +201,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     state
 
   | [ "logs"; slug ] ->
-    let lines = Stdlib.Cli.Daemon.tailLog slug 20I
+    let lines = Stdlib.Cli.Daemon.tailLog slug 20
 
     if Stdlib.List.isEmpty lines then
       Stdlib.printLine (Colors.dimText $"no logs for '{slug}' (has it run?)")
@@ -262,7 +262,7 @@ let complete
 
 // A single help line: "  cmd <args>   description", padded for a clean column.
 let helpLine (usage: String) (desc: String) : String =
-  let pad = Stdlib.Result.withDefault (Stdlib.String.padEnd usage " " 26I) usage
+  let pad = Stdlib.Result.withDefault (Stdlib.String.padEnd usage " " 26) usage
   "  " ++ pad ++ Colors.dimText desc
 
 let help (state: Cli.AppState) : Cli.AppState =

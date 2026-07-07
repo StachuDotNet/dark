@@ -262,11 +262,11 @@ module Response =
 
   module Error =
     module KnownErrorCodes =
-      let parserError = -32700I
-      let invalidRequest = -32600I
-      let methodNotFound = -32601I
-      let invalidParams = -32602I
-      let internalError = -32603I
+      let parserError = -32700
+      let invalidRequest = -32600
+      let methodNotFound = -32601
+      let invalidParams = -32602
+      let internalError = -32603
 
     let make
       (requestId: Stdlib.Option.Option<RequestID>)

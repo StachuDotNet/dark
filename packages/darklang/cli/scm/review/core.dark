@@ -68,11 +68,11 @@ type KeyResult =
 // ── Navigation helpers ──
 
 let moveUp (selected: Int) : Int =
-  if selected > 0I then selected - 1I else selected
+  if selected > 0 then selected - 1 else selected
 
 let moveDown (selected: Int) (itemCount: Int) : Int =
-  let maxIdx = itemCount - 1I
-  if selected < maxIdx then selected + 1I else selected
+  let maxIdx = itemCount - 1
+  if selected < maxIdx then selected + 1 else selected
 
 /// Move up, skipping empty spacer items
 let moveUpSkipping (selected: Int) (items: List<DetailItem>) : Int =
@@ -100,5 +100,5 @@ let moveDownSkipping (selected: Int) (items: List<DetailItem>) : Int =
   | None -> candidate
 
 let computeScrollOffset (selected: Int) (visibleCount: Int) : Int =
-  if selected >= visibleCount then selected - visibleCount + 1I
-  else 0I
+  if selected >= visibleCount then selected - visibleCount + 1
+  else 0

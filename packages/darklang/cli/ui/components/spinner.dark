@@ -29,14 +29,14 @@ let createSpinner (message: String) (style: SpinnerStyle) : Core.Types.Component
     SpinnerModel
       { message = message
         style = style
-        frameIndex = 0I
+        frameIndex = 0
         color = Core.Types.Color.Primary
         running = true }
 
   let bounds =
     Core.Types.Bounds
-      { position = Core.Types.Position { x = 0I; y = 0I }
-        dimensions = Core.Types.Dimensions { width = (Stdlib.String.length message) + 4I; height = 1I } }
+      { position = Core.Types.Position { x = 0; y = 0 }
+        dimensions = Core.Types.Dimensions { width = (Stdlib.String.length message) + 4; height = 1 } }
 
   Core.Types.Component
     { id = "spinner"
@@ -59,7 +59,7 @@ let renderSpinner (component: Core.Types.Component<SpinnerModel>) (context: Core
       let frameIndex =
         match Stdlib.Int.remainder model.frameIndex frameCount with
         | Ok idx -> idx
-        | Error _ -> 0I
+        | Error _ -> 0
       match Stdlib.List.getAt frames frameIndex with
       | Some f -> f
       | None -> "?"
@@ -73,9 +73,9 @@ let tick (component: Core.Types.Component<SpinnerModel>) : Core.Types.Component<
     let frames = getFrames model.style
     let frameCount = Stdlib.List.length frames
     let nextIndex =
-      match Stdlib.Int.remainder (model.frameIndex + 1I) frameCount with
+      match Stdlib.Int.remainder (model.frameIndex + 1) frameCount with
       | Ok idx -> idx
-      | Error _ -> 0I
+      | Error _ -> 0
     { component with model = { model with frameIndex = nextIndex } }
   else
     component
@@ -90,7 +90,7 @@ let setSpinnerColor (component: Core.Types.Component<SpinnerModel>) (color: Core
 
 let setSpinnerStyle (component: Core.Types.Component<SpinnerModel>) (style: SpinnerStyle) : Core.Types.Component<SpinnerModel> =
   let model = component.model
-  { component with model = { model with style = style; frameIndex = 0I } }
+  { component with model = { model with style = style; frameIndex = 0 } }
 
 let startSpinner (component: Core.Types.Component<SpinnerModel>) : Core.Types.Component<SpinnerModel> =
   let model = component.model

@@ -118,7 +118,7 @@ let responseWithHeaders
 /// respond with HTTP status 200 and <param response> body.
 let success (body: Blob) : Stdlib.Http.Response =
   Stdlib.Http.Response
-    { statusCode = 200I
+    { statusCode = 200
       headers = []
       body = body }
 
@@ -163,7 +163,7 @@ let responseWithJson
 /// respond with {{302}} status code and redirect to <param url>.
 let redirectTo (url: String) : Stdlib.Http.Response =
   Stdlib.Http.Response
-    { statusCode = 302I
+    { statusCode = 302
       headers = [ ("Location", url) ]
       body = Stdlib.Blob.empty }
 
@@ -171,7 +171,7 @@ let redirectTo (url: String) : Stdlib.Http.Response =
 /// respond with {{400}} status code and <param response> body.
 let badRequest (error: String) : Stdlib.Http.Response =
   Stdlib.Http.Response
-    { statusCode = 400I
+    { statusCode = 400
       headers = []
       body = Stdlib.String.toBlob error }
 
@@ -179,7 +179,7 @@ let badRequest (error: String) : Stdlib.Http.Response =
 /// respond with {{404}} status code.
 let notFound () : Stdlib.Http.Response =
   Stdlib.Http.Response
-    { statusCode = 404I
+    { statusCode = 404
       headers = []
       body = Stdlib.Blob.empty }
 
@@ -187,7 +187,7 @@ let notFound () : Stdlib.Http.Response =
 /// respond with {{401}} status code.
 let unauthorized () : Stdlib.Http.Response =
   Stdlib.Http.Response
-    { statusCode = 401I
+    { statusCode = 401
       headers = []
       body = Stdlib.Blob.empty }
 
@@ -195,7 +195,7 @@ let unauthorized () : Stdlib.Http.Response =
 /// respond with {{403}} status code.
 let forbidden () : Stdlib.Http.Response =
   Stdlib.Http.Response
-    { statusCode = 403I
+    { statusCode = 403
       headers = []
       body = Stdlib.Blob.empty }
 
@@ -203,7 +203,7 @@ let forbidden () : Stdlib.Http.Response =
 /// respond with {{500}} status code and <param error> body.
 let serverError (error: String) : Stdlib.Http.Response =
   Stdlib.Http.Response
-    { statusCode = 500I
+    { statusCode = 500
       headers = []
       body = Stdlib.String.toBlob error }
 

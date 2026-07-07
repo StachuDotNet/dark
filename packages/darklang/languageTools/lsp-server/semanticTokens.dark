@@ -67,22 +67,22 @@ module EncodeSemanticTokens =
         let bStart = b.range.start
 
         if Stdlib.Int.lessThan aStart.row bStart.row then
-          -1I
+          -1
         elif Stdlib.Int.greaterThan aStart.row bStart.row then
-          1I
+          1
         else if Stdlib.Int.lessThan aStart.column bStart.column then
-          -1I
+          -1
         else if Stdlib.Int.greaterThan aStart.column bStart.column then
-          1I
+          1
         else
-          0I)
+          0)
 
     match sortedTokens with
     | Error _ -> []
     | Ok sorted ->
       sorted
       |> (Stdlib.List.fold
-        (([], Parser.Point { row = 0I; column = 0I }))
+        (([], Parser.Point { row = 0; column = 0 }))
         (fun acc token ->
           let (tokensSoFar, startOfLastToken) = acc
 
@@ -91,7 +91,7 @@ module EncodeSemanticTokens =
           let tokenLength = token.range.end_.column - token.range.start.column
 
           let deltaStartValue =
-            if lineDiff == 0I then columnDiff else token.range.start.column
+            if lineDiff == 0 then columnDiff else token.range.start.column
 
           let maybeDeltaLine = lineDiff |> Stdlib.Int.toUInt64
           let maybeDeltaStart = deltaStartValue |> Stdlib.Int.toUInt64

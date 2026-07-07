@@ -13,7 +13,7 @@ let print (columns: List<String>) (rows: List<List<String>>) : Unit =
 
       let maxCellLen =
         rows
-        |> Stdlib.List.fold 0I (fun mx row ->
+        |> Stdlib.List.fold 0 (fun mx row ->
           match Stdlib.List.getAt row i with
           | Some cell -> Stdlib.Int.max mx (Stdlib.String.length cell)
           | None -> mx)
@@ -24,7 +24,7 @@ let print (columns: List<String>) (rows: List<List<String>>) : Unit =
   let pad = (fun s width ->
     let padding = width - (Stdlib.String.length s)
 
-    if padding <= 0I then s
+    if padding <= 0 then s
     else s ++ (Stdlib.String.repeat " " padding))
 
   // Print header row

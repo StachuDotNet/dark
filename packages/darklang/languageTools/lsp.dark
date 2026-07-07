@@ -51,7 +51,7 @@ let getDiagnostics (uri: String) (text: String) : String =
   | Error parseError ->
     // to be used when the range is otherwise unknown
     let rangeOfAll =
-      let start = Position { line = 0I; character = 0I }
+      let start = Position { line = 0; character = 0 }
 
       let end' =
         let lines = text |> Stdlib.String.split "\n"
@@ -60,11 +60,11 @@ let getDiagnostics (uri: String) (text: String) : String =
           match lines |> Stdlib.List.last with
           | Some lastLine ->
             Stdlib.String.length lastLine
-          | None -> 0I
+          | None -> 0
 
         Position
           { line =
-              ((Stdlib.List.length lines) - 1I)
+              ((Stdlib.List.length lines) - 1)
             character = lastLineLength }
 
       Range { start = start; end_ = end' }

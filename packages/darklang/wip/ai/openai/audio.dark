@@ -71,9 +71,9 @@ module Transport =
 
   let mapStatusError (response: Stdlib.HttpClient.Response) : Stdlib.Option.Option<String> =
     match response.statusCode with
-    | code when code >= 200I && code < 300I -> Stdlib.Option.Option.None
-    | 401I -> Stdlib.Option.Option.Some "Authentication failed: Invalid API key"
-    | 429I -> Stdlib.Option.Option.Some "Rate limit exceeded"
+    | code when code >= 200 && code < 300 -> Stdlib.Option.Option.None
+    | 401 -> Stdlib.Option.Option.Some "Authentication failed: Invalid API key"
+    | 429 -> Stdlib.Option.Option.Some "Rate limit exceeded"
     | _ ->
       let bodyStr = Stdlib.String.fromBlobWithReplacement response.body
       Stdlib.Option.Option.Some("API error: " ++ bodyStr)

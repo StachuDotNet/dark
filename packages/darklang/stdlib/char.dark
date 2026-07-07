@@ -38,7 +38,7 @@ let isASCII (c: Char) : Bool =
   let asciiCode = Stdlib.Char.toAsciiCode c
 
   match asciiCode with
-  | Some ascii -> (ascii >= 0I) && (ascii <= 127I)
+  | Some ascii -> (ascii >= 0) && (ascii <= 127)
   | None -> false
 
 

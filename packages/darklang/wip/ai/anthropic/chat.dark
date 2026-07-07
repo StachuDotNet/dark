@@ -282,16 +282,16 @@ let parseResponse (json: Json) : Stdlib.Result.Result<Response.Response, String>
         JsonHelpers.getInt "ephemeral_5m_input_tokens" cacheCreationObj
       let e1h =
         JsonHelpers.getInt "ephemeral_1h_input_tokens" cacheCreationObj
-      if e5m == 0I && e1h == 0I then
+      if e5m == 0 && e1h == 0 then
         Stdlib.Option.Option.None
       else
         Stdlib.Option.Option.Some(
           Response.CacheCreationUsage
             { ephemeral_5m_input_tokens =
-                if e5m == 0I then Stdlib.Option.Option.None
+                if e5m == 0 then Stdlib.Option.Option.None
                 else Stdlib.Option.Option.Some e5m
               ephemeral_1h_input_tokens =
-                if e1h == 0I then Stdlib.Option.Option.None
+                if e1h == 0 then Stdlib.Option.Option.None
                 else Stdlib.Option.Option.Some e1h })
 
     // Parse nested server_tool_use object
@@ -299,7 +299,7 @@ let parseResponse (json: Json) : Stdlib.Result.Result<Response.Response, String>
     let serverToolUsage =
       let webSearchReqs =
         JsonHelpers.getInt "web_search_requests" serverToolObj
-      if webSearchReqs == 0I then
+      if webSearchReqs == 0 then
         Stdlib.Option.Option.None
       else
         Stdlib.Option.Option.Some(
@@ -311,12 +311,12 @@ let parseResponse (json: Json) : Stdlib.Result.Result<Response.Response, String>
         { input_tokens = JsonHelpers.getInt "input_tokens" usageFields
           output_tokens = JsonHelpers.getInt "output_tokens" usageFields
           cache_creation_input_tokens =
-            if cacheCreation == 0I then
+            if cacheCreation == 0 then
               Stdlib.Option.Option.None
             else
               Stdlib.Option.Option.Some cacheCreation
           cache_read_input_tokens =
-            if cacheRead == 0I then
+            if cacheRead == 0 then
               Stdlib.Option.Option.None
             else
               Stdlib.Option.Option.Some cacheRead
@@ -370,7 +370,7 @@ let handleResponse
   | Ok r ->
     let bodyStr = Stdlib.String.fromBlobWithReplacement r.body
 
-    if r.statusCode == 200I then
+    if r.statusCode == 200 then
       match Stdlib.AltJson.parse bodyStr with
       | Ok json ->
         match parseResponse json with
@@ -422,7 +422,7 @@ module Request =
   let create () : Request =
     Request
       { model = Models.Model.latest
-        maxTokens = 4096I
+        maxTokens = 4096
         messages = MessageContent.Simple []
         system = Stdlib.Option.Option.None
         tools = Stdlib.Option.Option.None
@@ -775,7 +775,7 @@ let countTokens
   | Ok r ->
     let bodyStr = Stdlib.String.fromBlobWithReplacement r.body
 
-    if r.statusCode == 200I then
+    if r.statusCode == 200 then
       match Stdlib.AltJson.parse bodyStr with
       | Ok json ->
         match parseTokenCountResponse json with

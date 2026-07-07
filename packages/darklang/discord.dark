@@ -242,7 +242,7 @@ let post
 
   match Stdlib.HttpClient.post webhookUrl headers body with
   | Ok response ->
-    if response.statusCode >= 200I && response.statusCode < 300I then
+    if response.statusCode >= 200 && response.statusCode < 300 then
       Stdlib.Result.Result.Ok()
     else
       let bodyStr =

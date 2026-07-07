@@ -141,15 +141,15 @@ module ApiError =
   /// Parse an HTTP status code and body into an ApiError
   let fromHttpResponse (statusCode: Int) (body: String) : ApiError =
     match statusCode with
-    | 400I -> ApiError.InvalidRequest body
-    | 401I -> ApiError.AuthenticationError body
-    | 403I -> ApiError.PermissionDenied body
-    | 404I -> ApiError.NotFoundError body
-    | 413I -> ApiError.RequestTooLarge body
-    | 429I -> ApiError.RateLimited
-    | 500I -> ApiError.ServerError body
-    | 529I -> ApiError.Overloaded body
-    | _ when statusCode >= 500I -> ApiError.ServerError body
+    | 400 -> ApiError.InvalidRequest body
+    | 401 -> ApiError.AuthenticationError body
+    | 403 -> ApiError.PermissionDenied body
+    | 404 -> ApiError.NotFoundError body
+    | 413 -> ApiError.RequestTooLarge body
+    | 429 -> ApiError.RateLimited
+    | 500 -> ApiError.ServerError body
+    | 529 -> ApiError.Overloaded body
+    | _ when statusCode >= 500 -> ApiError.ServerError body
     | _ -> ApiError.UnknownError(statusCode, body)
 
   /// Convert an HttpClient.RequestError to an ApiError
@@ -332,4 +332,4 @@ let totalTokens (response: Response) : Int =
 
 let cacheHitTokens (response: Response) : Int =
   response.usage.cache_read_input_tokens
-  |> Stdlib.Option.withDefault 0I
+  |> Stdlib.Option.withDefault 0

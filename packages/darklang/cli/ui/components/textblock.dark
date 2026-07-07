@@ -13,9 +13,9 @@ let createTextBlock (lines: List<String>) (color: Core.Types.Color) (alignment: 
   let maxWidth =
     lines
     |> Stdlib.List.map (fun s -> Stdlib.String.length s)
-    |> Stdlib.List.fold 0I (fun acc len -> if len > acc then len else acc)
+    |> Stdlib.List.fold 0 (fun acc len -> if len > acc then len else acc)
   let height = Stdlib.List.length lines
-  let bounds = Core.Types.Bounds { position = Core.Types.Position { x = 0I; y = 0I }; dimensions = Core.Types.Dimensions { width = maxWidth; height = height } }
+  let bounds = Core.Types.Bounds { position = Core.Types.Position { x = 0; y = 0 }; dimensions = Core.Types.Dimensions { width = maxWidth; height = height } }
   Core.Types.Component
     { id = "textblock"
       model = model
@@ -36,7 +36,7 @@ let setTextBlockLines (component: Core.Types.Component<TextBlockModel>) (lines: 
   let maxWidth =
     lines
     |> Stdlib.List.map (fun s -> Stdlib.String.length s)
-    |> Stdlib.List.fold 0I (fun acc len -> if len > acc then len else acc)
+    |> Stdlib.List.fold 0 (fun acc len -> if len > acc then len else acc)
   let height = Stdlib.List.length lines
   let newBounds = Core.Types.Bounds { position = component.bounds.position; dimensions = Core.Types.Dimensions { width = maxWidth; height = height } }
   { component with

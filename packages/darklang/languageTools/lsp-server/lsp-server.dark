@@ -186,7 +186,7 @@ let runServerCliLoop (state: LspState) : Int =
 
   // shut down if instructed, or listen for the next message
   if updatedState.shouldShutdown then
-    0I
+    0
   else
     runServerCliLoop updatedState
 
@@ -199,7 +199,7 @@ let tryReadHeader
   if line == "" then
     contentLength |> Stdlib.Option.toResult "No Content-Length header found"
   else if Stdlib.String.startsWith line "Content-Length: " then
-    let lengthStr = Stdlib.String.dropFirst line 16I
+    let lengthStr = Stdlib.String.dropFirst line 16
 
     match Stdlib.Int.parse lengthStr with
     | Ok length -> tryReadHeader (Stdlib.Option.Option.Some length)

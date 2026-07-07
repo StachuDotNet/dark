@@ -152,7 +152,7 @@ let size (path: String) : Result.Result<Int, Posix.Error> =
   match listRecursive path with
   | Ok files ->
     files
-    |> Stdlib.List.fold (Stdlib.Result.Result.Ok 0I) (fun acc filePath ->
+    |> Stdlib.List.fold (Stdlib.Result.Result.Ok 0) (fun acc filePath ->
       match acc with
       | Ok total ->
         match Cli.File.size filePath with

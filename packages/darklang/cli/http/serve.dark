@@ -13,7 +13,7 @@ type Args =
 let defaultArgs (): Args =
   Args
     { routerPath = ""
-      port = 8080I
+      port = 8080
       maxBodyBytes = Stdlib.HttpServer.Config.defaultMaxBodyBytes
       error = Stdlib.Option.Option.None }
 

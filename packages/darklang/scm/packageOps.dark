@@ -76,7 +76,7 @@ type WipSummary =
 let getCount (d: Dict<Int>) (key: String) : Int =
   match Stdlib.Dict.get d key with
   | Some v -> v
-  | None -> 0I
+  | None -> 0
 
 /// Get summary of WIP ops on a branch (counts by type)
 let getWipSummary (branchId: Uuid) : WipSummary =

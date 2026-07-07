@@ -81,7 +81,7 @@ let getMatchedSegmentSuffix (completion: String) (partial: String) : String =
     let rest = Stdlib.String.dropFirst completion afterMatch
     // Find end of current segment (next "." or end of string)
     match Stdlib.String.indexOf rest "." with
-    | Some dotPos -> Stdlib.String.slice rest 0I dotPos
+    | Some dotPos -> Stdlib.String.slice rest 0 dotPos
     | None -> rest
 
 
@@ -130,10 +130,10 @@ let findCommonLength (str1: String) (str2: String) (index: Int) (maxLen: Int) : 
   if index >= maxLen then
     index
   else
-    let char1 = Stdlib.String.slice str1 index (index + 1I)
-    let char2 = Stdlib.String.slice str2 index (index + 1I)
+    let char1 = Stdlib.String.slice str1 index (index + 1)
+    let char2 = Stdlib.String.slice str2 index (index + 1)
     if char1 == char2 then
-      findCommonLength str1 str2 (index + 1I) maxLen
+      findCommonLength str1 str2 (index + 1) maxLen
     else
       index
 
@@ -144,8 +144,8 @@ let findCommonPrefix (strings: List<String>) : String =
   | first :: rest ->
     Stdlib.List.fold rest first (fun acc next ->
       let maxLen = Stdlib.Int.min (Stdlib.String.length acc) (Stdlib.String.length next)
-      let commonLen = findCommonLength acc next 0I maxLen
-      Stdlib.String.slice acc 0I commonLen)
+      let commonLen = findCommonLength acc next 0 maxLen
+      Stdlib.String.slice acc 0 commonLen)
 
 
 // Filesystem completion helpers
@@ -171,8 +171,8 @@ let completeFilesystemPath (partialArg: String) : List<String> =
   else if Stdlib.String.contains partialArg "/" then
     match Stdlib.String.lastIndexOf partialArg "/" with
     | Some idx ->
-      let dirPart = Stdlib.String.slice partialArg 0I (idx + 1I)
-      let filePart = Stdlib.String.dropFirst partialArg (idx + 1I)
+      let dirPart = Stdlib.String.slice partialArg 0 (idx + 1)
+      let filePart = Stdlib.String.dropFirst partialArg (idx + 1)
 
       let fullPath =
         if Stdlib.String.startsWith dirPart "/" then

@@ -88,10 +88,10 @@ let drawBoxWithStyle (bounds: Types.Bounds) (title: String) (content: List<Strin
   let width = bounds.dimensions.width
   let (horiz, vert, tl, tr, bl, br) = getBoxCharsForStyle style
 
-  let topBorder = tl ++ Stdlib.String.repeat horiz (width - 2I) ++ tr
-  let bottomBorder = bl ++ Stdlib.String.repeat horiz (width - 2I) ++ br
+  let topBorder = tl ++ Stdlib.String.repeat horiz (width - 2) ++ tr
+  let bottomBorder = bl ++ Stdlib.String.repeat horiz (width - 2) ++ br
 
-  let innerWidth = width - 2I
+  let innerWidth = width - 2
 
   let titleLine =
     if Stdlib.String.isEmpty title then
@@ -99,7 +99,7 @@ let drawBoxWithStyle (bounds: Types.Bounds) (title: String) (content: List<Strin
     else
       let paddedTitle = " " ++ title ++ " "
       let titleWidth = Stdlib.String.length paddedTitle
-      let leftPadding = Stdlib.Int.divide (innerWidth - titleWidth) 2I
+      let leftPadding = Stdlib.Int.divide (innerWidth - titleWidth) 2
       let rightPadding = innerWidth - titleWidth - leftPadding
       [vert ++ Stdlib.String.repeat " " leftPadding ++ bold paddedTitle ++ Stdlib.String.repeat " " rightPadding ++ vert]
 
@@ -107,7 +107,7 @@ let drawBoxWithStyle (bounds: Types.Bounds) (title: String) (content: List<Strin
     content
     |> Stdlib.List.map (fun line ->
       let lineLength = Stdlib.String.length line
-      let padding = if lineLength < innerWidth - 1I then Stdlib.String.repeat " " (innerWidth - 1I - lineLength) else ""
+      let padding = if lineLength < innerWidth - 1 then Stdlib.String.repeat " " (innerWidth - 1 - lineLength) else ""
       vert ++ " " ++ line ++ padding ++ vert)
 
   [topBorder]
@@ -122,14 +122,14 @@ let drawBox (bounds: Types.Bounds) (title: String) (content: List<String>) : Lis
 let padText (text: String) (width: Int) (alignment: Types.Alignment) : String =
   let textLength = Stdlib.String.length text
   if textLength >= width then
-    Stdlib.String.slice text 0I width
+    Stdlib.String.slice text 0 width
   else
     let padding = width - textLength
     match alignment with
     | Left -> text ++ Stdlib.String.repeat " " padding
     | Right -> Stdlib.String.repeat " " padding ++ text
     | Center ->
-        let leftPad = Stdlib.Int.divide padding 2I
+        let leftPad = Stdlib.Int.divide padding 2
         let rightPad = padding - leftPad
         Stdlib.String.repeat " " leftPad ++ text ++ Stdlib.String.repeat " " rightPad
     | Justify -> text ++ Stdlib.String.repeat " " padding
@@ -138,7 +138,7 @@ let truncateText (text: String) (maxWidth: Int) : String =
   if Stdlib.String.length text <= maxWidth then
     text
   else
-    Stdlib.String.slice text 0I (maxWidth - 3I) ++ "..."
+    Stdlib.String.slice text 0 (maxWidth - 3) ++ "..."
 
 // Focus indicators
 let addFocusIndicator (text: String) (hasFocus: Bool) : String =

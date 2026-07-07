@@ -297,7 +297,7 @@ let handleBatchResponse
   | Ok r ->
     let bodyStr = Stdlib.String.fromBlobWithReplacement r.body
 
-    if r.statusCode == 200I || r.statusCode == 201I then
+    if r.statusCode == 200 || r.statusCode == 201 then
       match Stdlib.AltJson.parse bodyStr with
       | Ok json ->
         match parseMessageBatch json with
@@ -317,7 +317,7 @@ let handleListResponse
   | Ok r ->
     let bodyStr = Stdlib.String.fromBlobWithReplacement r.body
 
-    if r.statusCode == 200I then
+    if r.statusCode == 200 then
       match Stdlib.AltJson.parse bodyStr with
       | Ok json ->
         match parseBatchListResponse json with
@@ -422,7 +422,7 @@ let getBatchResults
   | Ok r ->
     let bodyStr = Stdlib.String.fromBlobWithReplacement r.body
 
-    if r.statusCode == 200I then
+    if r.statusCode == 200 then
       // Results are in JSONL format (newline-delimited JSON)
       let allLines = Stdlib.String.splitOnNewline bodyStr
       let lines = Stdlib.List.filter allLines (fun line -> Stdlib.Bool.not (Stdlib.String.isEmpty line))
@@ -455,7 +455,7 @@ let getBatchResultsFromUrl
   | Ok r ->
     let bodyStr = Stdlib.String.fromBlobWithReplacement r.body
 
-    if r.statusCode == 200I then
+    if r.statusCode == 200 then
       // Results are in JSONL format (newline-delimited JSON)
       let allLines = Stdlib.String.splitOnNewline bodyStr
       let lines = Stdlib.List.filter allLines (fun line -> Stdlib.Bool.not (Stdlib.String.isEmpty line))

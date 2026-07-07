@@ -58,7 +58,7 @@ let parseDecls
   | (range, message) :: _ ->
     let u =
       Unparseable
-        { line = range.start.row + 1I
+        { line = range.start.row + 1
           column = range.start.column
           message = message }
 

@@ -133,9 +133,9 @@ let waitUntilRunning
   (name: String)
   (tries: Int)
   : Stdlib.Result.Result<Int, String> =
-  if tries <= 0I then
+  if tries <= 0 then
     let hint =
-      match tailLog name 1I with
+      match tailLog name 1 with
       | [ line ] -> $" (last log: {line})"
       | _ -> ""
 
@@ -147,10 +147,10 @@ let waitUntilRunning
         Stdlib.Result.Result.Ok pid
       else
         let _ = Posix.sleep 100.0
-        waitUntilRunning name (tries - 1I)
+        waitUntilRunning name (tries - 1)
     | None ->
       let _ = Posix.sleep 100.0
-      waitUntilRunning name (tries - 1I)
+      waitUntilRunning name (tries - 1)
 
 
 // Launch a named daemon detached, running `expr`, then VERIFY it actually came up — returns the live pid
@@ -162,4 +162,4 @@ let start (name: String) (expr: String) : Stdlib.Result.Result<Int, String> =
   else
     match launchDetached name expr with
     | Error e -> Stdlib.Result.Result.Error e
-    | Ok _ -> waitUntilRunning name 20I
+    | Ok _ -> waitUntilRunning name 20

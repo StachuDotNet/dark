@@ -8,13 +8,13 @@ module Darklang.Cli.Apps.Examples
 // One beat: log the time + pid, sleep the interval, recurse. `remaining` is a very large step count
 // (≈ forever); the daemon is meant to be ended by `apps stop` (SIGTERM), not by running out.
 let beat (name: String) (intervalMs: Int) (remaining: Int) : Int =
-  if remaining <= 0I then
-    0I
+  if remaining <= 0 then
+    0
   else
     let pid = Stdlib.Cli.Sys.currentPid ()
     Stdlib.printLine $"{name}: beat (pid {Stdlib.Int.toString pid})"
     Stdlib.Cli.Posix.sleep (Stdlib.Int.toFloat intervalMs)
-    beat name intervalMs (remaining - 1I)
+    beat name intervalMs (remaining - 1)
 
 
 // The daemon entrypoint: claim the pidfile (recording THIS detached process's pid), then beat forever.
@@ -22,7 +22,7 @@ let beat (name: String) (intervalMs: Int) (remaining: Int) : Int =
 // from config (`apps.<name>.intervalMs`, default 5000) — daemons take their config from cli-config.json,
 // not argv.
 let heartbeat (name: String) : Int =
-  let intervalMs = Config.getInt ("apps." ++ name ++ ".intervalMs") 5000I
+  let intervalMs = Config.getInt ("apps." ++ name ++ ".intervalMs") 5000
 
   let _logged =
     match Stdlib.Cli.Daemon.claimPidfile name with
@@ -31,7 +31,7 @@ let heartbeat (name: String) : Int =
       Stdlib.printLine
         $"{name}: started (pid {Stdlib.Int.toString (Stdlib.Cli.Sys.currentPid ())}, interval {Stdlib.Int.toString intervalMs}ms)"
 
-  beat name intervalMs 1000000000I
+  beat name intervalMs 1000000000
 
 
 module TextEdit =

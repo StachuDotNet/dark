@@ -269,7 +269,7 @@ let handleRebaseStatusRequest
   let resultJson =
     Json.Object
       [ ("conflicts", conflictsJson)
-        ("hasConflicts", Json.Bool (Stdlib.List.length conflicts > 0I)) ]
+        ("hasConflicts", Json.Bool (Stdlib.List.length conflicts > 0)) ]
 
   let responseJson =
     (JsonRPC.Response.Ok.make (Stdlib.Option.Option.Some requestID) resultJson)

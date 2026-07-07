@@ -11,7 +11,7 @@ type Result<'item> =
   | Cancelled
 
 let make (items: List<'item>) (label: 'item -> String) : State<'item> =
-  State { items = items; selected = 0I; label = label }
+  State { items = items; selected = 0; label = label }
 
 let handleKey
   (state: State<'item>)
@@ -24,13 +24,13 @@ let handleKey
   | Escape -> Result.Cancelled
   | UpArrow ->
     let newIdx =
-      if state.selected > 0I then state.selected - 1I
+      if state.selected > 0 then state.selected - 1
       else state.selected
     Result.Browsing ({ state with selected = newIdx })
   | DownArrow ->
-    let maxIdx = itemCount - 1I
+    let maxIdx = itemCount - 1
     let newIdx =
-      if state.selected < maxIdx then state.selected + 1I
+      if state.selected < maxIdx then state.selected + 1
       else state.selected
     Result.Browsing ({ state with selected = newIdx })
   | Enter ->
@@ -46,11 +46,11 @@ let renderInRegion (state: State<'item>) (region: Darklang.Cli.UI.Layout.Region)
   let scrollOffset =
     if selectedIdx >= region.rows then
       Darklang.Cli.Terminal.clampScrollOffset
-        (selectedIdx - region.rows + 1I)
+        (selectedIdx - region.rows + 1)
         itemCount
         region.rows
     else
-      0I
+      0
   state.items
   |> Stdlib.List.indexedMap (fun idx item -> (idx, item))
   |> Stdlib.List.drop scrollOffset
@@ -67,4 +67,4 @@ let renderInRegion (state: State<'item>) (region: Darklang.Cli.UI.Layout.Region)
         Darklang.Cli.Colors.colorize Darklang.Cli.Colors.selection line
       else
         line
-    Darklang.Cli.UI.Layout.printAt region row 0I styled)
+    Darklang.Cli.UI.Layout.printAt region row 0 styled)

@@ -9,32 +9,32 @@ type ModuleStats =
     submodules: Int }
 
 let demoStats () : List<ModuleStats> =
-  [ ModuleStats { name = "Darklang.Stdlib"; fnCount = 247I; typeCount = 42I; valueCount = 18I; submodules = 23I }
-    ModuleStats { name = "Darklang.Cli"; fnCount = 89I; typeCount = 31I; valueCount = 12I; submodules = 15I }
-    ModuleStats { name = "Darklang.LanguageTools"; fnCount = 156I; typeCount = 67I; valueCount = 8I; submodules = 19I }
-    ModuleStats { name = "Darklang.SCM"; fnCount = 43I; typeCount = 14I; valueCount = 5I; submodules = 7I }
-    ModuleStats { name = "Darklang.PrettyPrinter"; fnCount = 38I; typeCount = 9I; valueCount = 3I; submodules = 4I }
-    ModuleStats { name = "Darklang.LLM"; fnCount = 22I; typeCount = 11I; valueCount = 6I; submodules = 3I }
-    ModuleStats { name = "Darklang.Test"; fnCount = 34I; typeCount = 8I; valueCount = 2I; submodules = 5I } ]
+  [ ModuleStats { name = "Darklang.Stdlib"; fnCount = 247; typeCount = 42; valueCount = 18; submodules = 23 }
+    ModuleStats { name = "Darklang.Cli"; fnCount = 89; typeCount = 31; valueCount = 12; submodules = 15 }
+    ModuleStats { name = "Darklang.LanguageTools"; fnCount = 156; typeCount = 67; valueCount = 8; submodules = 19 }
+    ModuleStats { name = "Darklang.SCM"; fnCount = 43; typeCount = 14; valueCount = 5; submodules = 7 }
+    ModuleStats { name = "Darklang.PrettyPrinter"; fnCount = 38; typeCount = 9; valueCount = 3; submodules = 4 }
+    ModuleStats { name = "Darklang.LLM"; fnCount = 22; typeCount = 11; valueCount = 6; submodules = 3 }
+    ModuleStats { name = "Darklang.Test"; fnCount = 34; typeCount = 8; valueCount = 2; submodules = 5 } ]
 
 
 let padRight (s: String) (width: Int) : String =
   let len = Stdlib.String.length s
   if len >= width then
-    Stdlib.String.slice s 0I (width)
+    Stdlib.String.slice s 0 (width)
   else
     s ++ (Stdlib.String.repeat " " ((width - len)))
 
 let padLeft (s: String) (width: Int) : String =
   let len = Stdlib.String.length s
   if len >= width then
-    Stdlib.String.slice s 0I (width)
+    Stdlib.String.slice s 0 (width)
   else
     (Stdlib.String.repeat " " ((width - len))) ++ s
 
 let bar (value: Int) (maxVal: Int) (width: Int) (color: String) : String =
   let barLen =
-    if maxVal == 0I then 0I
+    if maxVal == 0 then 0
     else Stdlib.Int.divide (value * width) maxVal
   let filled = Stdlib.String.repeat "█" (barLen)
   let empty = Stdlib.String.repeat "░" ((width - barLen))
@@ -44,10 +44,10 @@ let bar (value: Int) (maxVal: Int) (width: Int) (color: String) : String =
 let render () : Unit =
   let stats = demoStats ()
 
-  let totalFns = Stdlib.List.fold stats 0I (fun acc s -> acc + s.fnCount)
-  let totalTypes = Stdlib.List.fold stats 0I (fun acc s -> acc + s.typeCount)
-  let totalValues = Stdlib.List.fold stats 0I (fun acc s -> acc + s.valueCount)
-  let totalModules = Stdlib.List.fold stats 0I (fun acc s -> acc + s.submodules)
+  let totalFns = Stdlib.List.fold stats 0 (fun acc s -> acc + s.fnCount)
+  let totalTypes = Stdlib.List.fold stats 0 (fun acc s -> acc + s.typeCount)
+  let totalValues = Stdlib.List.fold stats 0 (fun acc s -> acc + s.valueCount)
+  let totalModules = Stdlib.List.fold stats 0 (fun acc s -> acc + s.submodules)
 
   // Header
   Stdlib.printLine ""
@@ -78,15 +78,15 @@ let render () : Unit =
   let boldDim = Darklang.Cli.Colors.bold ++ Darklang.Cli.Colors.dim
   let headerLine =
     "  "
-    ++ Darklang.Cli.Colors.colorize boldDim (padRight "MODULE" 30I)
+    ++ Darklang.Cli.Colors.colorize boldDim (padRight "MODULE" 30)
     ++ "  "
-    ++ Darklang.Cli.Colors.colorize boldDim (padLeft "FNS" 6I)
+    ++ Darklang.Cli.Colors.colorize boldDim (padLeft "FNS" 6)
     ++ "  "
-    ++ Darklang.Cli.Colors.colorize boldDim (padLeft "TYPES" 6I)
+    ++ Darklang.Cli.Colors.colorize boldDim (padLeft "TYPES" 6)
     ++ "  "
-    ++ Darklang.Cli.Colors.colorize boldDim (padLeft "VALS" 6I)
+    ++ Darklang.Cli.Colors.colorize boldDim (padLeft "VALS" 6)
     ++ "  "
-    ++ Darklang.Cli.Colors.colorize boldDim (padLeft "MODS" 6I)
+    ++ Darklang.Cli.Colors.colorize boldDim (padLeft "MODS" 6)
     ++ "  "
     ++ Darklang.Cli.Colors.colorize boldDim "FUNCTIONS"
   Stdlib.printLine headerLine
@@ -95,22 +95,22 @@ let render () : Unit =
   let maxFns =
     stats
     |> Stdlib.List.map (fun s -> s.fnCount)
-    |> Stdlib.List.fold 0I (fun acc n -> if n > acc then n else acc)
+    |> Stdlib.List.fold 0 (fun acc n -> if n > acc then n else acc)
 
   // Rows
   stats
   |> Stdlib.List.iter (fun s ->
     let total = s.fnCount + s.typeCount + s.valueCount
     let nameStr =
-      if total > 100I then
-        Darklang.Cli.Colors.boldText (padRight s.name 30I)
+      if total > 100 then
+        Darklang.Cli.Colors.boldText (padRight s.name 30)
       else
-        padRight s.name 30I
-    let fnStr = Darklang.Cli.Colors.colorize Darklang.Cli.Colors.green (padLeft (Stdlib.Int.toString s.fnCount) 6I)
-    let typeStr = Darklang.Cli.Colors.colorize Darklang.Cli.Colors.blue (padLeft (Stdlib.Int.toString s.typeCount) 6I)
-    let valStr = Darklang.Cli.Colors.colorize Darklang.Cli.Colors.magenta (padLeft (Stdlib.Int.toString s.valueCount) 6I)
-    let modStr = Darklang.Cli.Colors.dimText (padLeft (Stdlib.Int.toString s.submodules) 6I)
-    let barStr = bar s.fnCount maxFns 20I Darklang.Cli.Colors.green
+        padRight s.name 30
+    let fnStr = Darklang.Cli.Colors.colorize Darklang.Cli.Colors.green (padLeft (Stdlib.Int.toString s.fnCount) 6)
+    let typeStr = Darklang.Cli.Colors.colorize Darklang.Cli.Colors.blue (padLeft (Stdlib.Int.toString s.typeCount) 6)
+    let valStr = Darklang.Cli.Colors.colorize Darklang.Cli.Colors.magenta (padLeft (Stdlib.Int.toString s.valueCount) 6)
+    let modStr = Darklang.Cli.Colors.dimText (padLeft (Stdlib.Int.toString s.submodules) 6)
+    let barStr = bar s.fnCount maxFns 20 Darklang.Cli.Colors.green
 
     Stdlib.printLine ("  " ++ nameStr ++ "  " ++ fnStr ++ "  " ++ typeStr ++ "  " ++ valStr ++ "  " ++ modStr ++ "  " ++ barStr))
 

@@ -17,10 +17,10 @@ type StatResult =
 /// Standard permission modes
 module Modes =
   /// 0755 — owner rwx, group rx, others rx
-  let defaultDir = 493I
+  let defaultDir = 493
 
   /// 0644 — owner rw, group r, others r
-  let defaultFile = 420I
+  let defaultFile = 420
 
 
 // -- Open flags ---------------------------------------------------
@@ -43,9 +43,9 @@ let fdReadAll
   (fd: Int)
   (acc: List<Blob>)
   : Result.Result<Blob, Error> =
-  (Builtin.posixFdRead fd 4096I)
+  (Builtin.posixFdRead fd 4096)
   |> Stdlib.Result.andThen (fun chunk ->
-    if Stdlib.Blob.length chunk == 0I then
+    if Stdlib.Blob.length chunk == 0 then
       Stdlib.Result.Result.Ok(Stdlib.Blob.concat acc)
     else
       fdReadAll fd (Stdlib.List.append acc [ chunk ]))
@@ -156,29 +156,29 @@ let getenv (name: String) : Stdlib.Option.Option<String> =
 let kill (pid: Int) (signal: Int) : Result.Result<Unit, Error> =
   Builtin.posixKill pid signal
 
-let sigterm = 15I
-let sigkill = 9I
-let sigint = 2I
+let sigterm = 15
+let sigkill = 9
+let sigint = 2
 
 /// Common errno values (Linux/macOS)
 module Errno =
   /// Invalid argument
-  let einval = 22I
+  let einval = 22
 
   /// No such process
-  let esrch = 3I
+  let esrch = 3
 
   /// Operation not permitted
-  let eperm = 1I
+  let eperm = 1
 
 
 /// Stat file-type mask and constants
 module StatMode =
   /// S_IFMT — bitmask for the file type fields
-  let ifmt = 61440I
+  let ifmt = 61440
 
   /// S_IFDIR — directory
-  let ifdir = 16384I
+  let ifdir = 16384
 
 
 /// Sleep for the given number of milliseconds.
@@ -198,7 +198,7 @@ let isDirectory (path: String) : Bool =
 /// Check if a process is running via kill(pid, 0).
 /// Signal 0 checks process existence without sending a signal.
 let isProcessRunning (pid: Int) : Bool =
-  match kill pid 0I with
+  match kill pid 0 with
   | Ok _ -> true
   | Error e ->
     // EPERM means the process exists but we lack permission to signal it

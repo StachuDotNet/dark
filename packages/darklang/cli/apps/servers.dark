@@ -21,8 +21,8 @@ let httpDaemon
 // `dark-packages` — the package API server that powers wip.darklang.com/packages. Defaults to 9090, a
 // port the devcontainer forwards (9090–9099), so it's reachable from the host; override via config.
 let darkPackages (name: String) : Unit =
-  httpDaemon name 9090I "DarkPackages.router" Darklang.Internal.DarkPackages.router
+  httpDaemon name 9090 "DarkPackages.router" Darklang.Internal.DarkPackages.router
 
 // `demo-http` — a tiny demo server (/, /hello, /echo). Defaults to 9091 (a devcontainer-forwarded port).
 let demoHttp (name: String) : Unit =
-  httpDaemon name 9091I "HttpServerTest.router" Darklang.DemoData.HttpServerTest.router
+  httpDaemon name 9091 "HttpServerTest.router" Darklang.DemoData.HttpServerTest.router

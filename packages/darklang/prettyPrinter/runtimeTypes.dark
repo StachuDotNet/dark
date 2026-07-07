@@ -368,8 +368,8 @@ module Dval =
     (dv: LanguageTools.RuntimeTypes.Dval)
     : String =
     let nl = "\n" ++ (makeSpaces indent)
-    let inl = "\n" ++ (makeSpaces (indent + 2I))
-    let indent = indent + 2I
+    let inl = "\n" ++ (makeSpaces (indent + 2))
+    let indent = indent + 2
 
     let valueTypeName = valueTypeName branchId dv
 
@@ -411,7 +411,7 @@ module Dval =
 
       let short = Stdlib.String.join parts ", "
 
-      if Stdlib.String.length short <= 80I then
+      if Stdlib.String.length short <= 80 then
         $"({short})"
       else
         let long = Stdlib.String.join parts $"{inl}, "
@@ -427,7 +427,7 @@ module Dval =
           Stdlib.List.map l (fun item -> withIndent branchId indent item)
         let short = Stdlib.String.join parts ", "
 
-        if Stdlib.String.length short <= 80I then
+        if Stdlib.String.length short <= 80 then
           $"[{short}]"
         else
           let long = Stdlib.String.join parts $",{inl}"
@@ -447,7 +447,7 @@ module Dval =
 
         let short = Stdlib.String.join strs ", "
 
-        if Stdlib.String.length short <= 80I then
+        if Stdlib.String.length short <= 80 then
           "{ " ++ short ++ " }"
         else
           let long = Stdlib.String.join strs $",{inl}"
@@ -456,7 +456,7 @@ module Dval =
 
     // Don't fetch the bytes for rendering — payloads can be many MB.
     | DBlobPersistent(hash, length) ->
-      let short = Stdlib.String.first hash 8I
+      let short = Stdlib.String.first hash 8
       $"<Blob: {short}… {Stdlib.Int.toString length} bytes>"
     | DBlobEphemeral _ -> "<Blob: ephemeral>"
 
@@ -483,7 +483,7 @@ module Dval =
         let typeStr = RuntimeTypes.typeName branchId typeName
         $"{typeStr}{typeArgsPart}.{caseName}{fieldStr}"
 
-      if Stdlib.String.length short <= 80I then
+      if Stdlib.String.length short <= 80 then
         short
       else
         let fieldStr =
@@ -518,7 +518,7 @@ module Dval =
 
       let short = Stdlib.String.join strs ", "
 
-      if Stdlib.String.length short <= 80I then
+      if Stdlib.String.length short <= 80 then
         typeStr ++ typeArgsPart ++ " { " ++ short ++ " }"
       else
         let long = Stdlib.String.join strs $",{inl}"
@@ -549,4 +549,4 @@ let dval
     (branchId: Uuid)
     (dv: LanguageTools.RuntimeTypes.Dval)
   : String =
-  Dval.withIndent branchId 0I dv
+  Dval.withIndent branchId 0 dv

@@ -70,7 +70,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     | [ "apps"; _; "port" ] ->
       match Stdlib.Int.parse value with
       | Ok port ->
-        if port >= 1I && port <= 65535I then
+        if port >= 1 && port <= 65535 then
           Stdlib.printLine (Colors.dimText $"  → http://localhost:{value}")
         else
           ()

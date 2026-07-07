@@ -18,13 +18,13 @@ let getWidth () : Int =
 /// Calculates viewport height for scrollable content
 let getViewportHeight (reservedLines: Int) : Int =
   let terminalHeight = getHeight ()
-  let availableHeight = Stdlib.Int.max 1I (terminalHeight - reservedLines)
+  let availableHeight = Stdlib.Int.max 1 (terminalHeight - reservedLines)
   availableHeight
 
 /// Calculate scroll offset bounds for safe scrolling
 let calculateScrollBounds (totalItems: Int) (viewportHeight: Int) : (Int * Int) =
-  let maxOffset = Stdlib.Int.max 0I (totalItems - viewportHeight)
-  (0I, maxOffset)
+  let maxOffset = Stdlib.Int.max 0 (totalItems - viewportHeight)
+  (0, maxOffset)
 
 /// Clamp scroll offset to safe bounds
 let clampScrollOffset (offset: Int) (totalItems: Int) (viewportHeight: Int) : Int =

@@ -32,7 +32,7 @@ let sign (s: LanguageTools.Sign) : String =
 
 // One-hex-digit (0-15) to its source character.
 let hexDigitChar (n: Int) : String =
-  Stdlib.String.slice "0123456789ABCDEF" n (n + 1I)
+  Stdlib.String.slice "0123456789ABCDEF" n (n + 1)
 
 // Encode one Char to its source-form. ASCII control characters and the
 // backslash get an escape; everything else (printable ASCII, non-ASCII
@@ -41,17 +41,17 @@ let encodeChar (c: Char) : String =
   match Stdlib.Char.toAsciiCode c with
   | None -> Stdlib.Char.toString c
   | Some code ->
-    if code == 92I then "\\\\"
-    else if code == 7I then "\\a"
-    else if code == 8I then "\\b"
-    else if code == 9I then "\\t"
-    else if code == 10I then "\\n"
-    else if code == 11I then "\\v"
-    else if code == 12I then "\\f"
-    else if code == 13I then "\\r"
-    else if code < 32I || code == 127I then
-      let hi = Stdlib.Int.divide code 16I
-      let lo = code % 16I
+    if code == 92 then "\\\\"
+    else if code == 7 then "\\a"
+    else if code == 8 then "\\b"
+    else if code == 9 then "\\t"
+    else if code == 10 then "\\n"
+    else if code == 11 then "\\v"
+    else if code == 12 then "\\f"
+    else if code == 13 then "\\r"
+    else if code < 32 || code == 127 then
+      let hi = Stdlib.Int.divide code 16
+      let lo = code % 16
       $"\\x{hexDigitChar hi}{hexDigitChar lo}"
     else
       Stdlib.Char.toString c
@@ -76,6 +76,6 @@ let escapeCharLiteral (s: String) : String =
 let processRemainder (remainder: String) : String =
   match $".{remainder}" |> Stdlib.Float.parse with
   | Ok floatValue ->
-    floatValue |> Stdlib.Float.toString |> Stdlib.String.dropFirst 2I
+    floatValue |> Stdlib.Float.toString |> Stdlib.String.dropFirst 2
   | Error _ ->
     remainder

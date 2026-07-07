@@ -13,7 +13,7 @@ let branchAnnotation
   let wip = SCM.PackageOps.getWipSummary branch.id
 
   let pendingPart =
-    if wip.total > 0I then
+    if wip.total > 0 then
       let total = Stdlib.Int.toString wip.total
       [ Colors.warning $"{total} pending" ]
     else
@@ -23,10 +23,10 @@ let branchAnnotation
     if isMain then
       []
     else
-      let commits = SCM.PackageOps.getCommits branch.id 1000I
+      let commits = SCM.PackageOps.getCommits branch.id 1000
       let commitCount = Stdlib.List.length commits
 
-      if commitCount > 0I then
+      if commitCount > 0 then
         let count = Stdlib.Int.toString commitCount
         [ Colors.info $"{count} committed" ]
       else
@@ -59,7 +59,7 @@ let printBranchTree
 
   children
   |> Stdlib.List.indexedMap (fun i child ->
-    let isLastChild = i == (childCount - 1I)
+    let isLastChild = i == (childCount - 1)
 
     let connector =
       if isLastChild then
