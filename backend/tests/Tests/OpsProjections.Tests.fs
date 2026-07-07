@@ -429,7 +429,7 @@ let tests =
         ()
       }
 
-      testTask "detectDivergences records a name→two-hashes divergence (LWW isn't silent)" {
+      testTask "conflict → resolution → converge: divergence detected, LWW applied, human override wins" {
         // Two distinct fn contents to bind one name to, in turn.
         let! twoFns =
           Sql.query "SELECT hash FROM package_functions LIMIT 2"
@@ -468,6 +468,9 @@ let tests =
             do!
               Sql.query "DELETE FROM sync_conflicts WHERE location = 'Test.Diverge.dv'"
               |> Sql.executeStatementAsync
+            do!
+              Sql.query "DELETE FROM resolutions WHERE location = 'Test.Diverge.dv'"
+              |> Sql.executeStatementAsync
           }
 
         do! cleanup ()
@@ -492,6 +495,36 @@ let tests =
         Expect.isTrue
           recorded
           "detectDivergences recorded the name→two-hashes divergence with the LWW winner"
+
+        // The live binding is B — LWW picked the newer op.
+        let liveHash () : Task<List<string>> =
+          Sql.query
+            "SELECT item_hash FROM locations WHERE owner = 'Test' AND modules = 'Diverge' AND name = 'dv' AND unlisted_at IS NULL"
+          |> Sql.executeAsync (fun read -> read.string "item_hash")
+
+        let! boundLww = liveHash ()
+        Expect.equal boundLww [ hashB ] "LWW bound the name to the newer content (B)"
+
+        // A human keeps THEIR version (A): mint + apply a Resolution with a newer `at` so it wins the overlay.
+        let res : LibDB.Resolutions.Resolution =
+          { id = "test-resolution-diverge"
+            branchId = PT.mainBranchId
+            location = "Test.Diverge.dv"
+            itemKind = "fn"
+            chosenHash = hashA
+            resolvedBy = "human"
+            at = "2099-01-01T00:00:00.003Z" }
+
+        do! LibDB.Resolutions.recordAndApply res
+
+        // The binding converged on the human's choice (A), overriding the LWW outcome — the "keep mine" that
+        // then propagates as a synced Resolution so peers converge too.
+        let! boundResolved = liveHash ()
+
+        Expect.equal
+          boundResolved
+          [ hashA ]
+          "the resolution overrode the LWW binding → converged on the human's pick"
 
         do! cleanup ()
         let! _ = Seed.rebuildProjections ()
