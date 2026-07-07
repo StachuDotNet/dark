@@ -14,13 +14,19 @@ type Wire =
     branchCursor: Stdlib.EventLog.Cursor
     commits: List<Stdlib.EventLog.Commit>
     packageEvents: List<Stdlib.EventLog.Event>
-    packageCursor: Stdlib.EventLog.Cursor }
+    packageCursor: Stdlib.EventLog.Cursor
+    resolutionEvents: List<Stdlib.EventLog.ResolutionEvent>
+    resolutionCursor: Stdlib.EventLog.Cursor }
 
-/// The `GET /sync/events?package=<c>&branch=<c>` body: this instance's Release + one bounded batch from each
-/// log after the given cursors, as JSON. Served by `Sync.Server` (`dark serve`), pulled by a peer's `Sync.pull`.
-let wireSince (packageCursor: Int64) (branchCursor: Int64) : String =
+/// The `GET /sync/events?package=<c>&branch=<c>&resolution=<c>` body: this instance's Release + one bounded
+/// batch from each log after the given cursors, as JSON. Served by `Sync.Server`, pulled by `Sync.pull`.
+let wireSince
+  (packageCursor: Int64)
+  (branchCursor: Int64)
+  (resolutionCursor: Int64)
+  : String =
   // One bounded batch PER LOG so a large log never becomes one giant response — the puller loops on the
-  // cursors until both come back empty. 1000 ops (~1 MB) balances round-trips against response size; the
+  // cursors until all come back empty. 1000 ops (~1 MB) balances round-trips against response size; the
   // native reads make even a whole log milliseconds, so the batch is for bounded responses + resumability.
   let branchBatch =
     Stdlib.EventLog.readBranchOps
@@ -34,6 +40,12 @@ let wireSince (packageCursor: Int64) (branchCursor: Int64) : String =
       (Stdlib.EventLog.cursorFromInt packageCursor)
       1000L
 
+  let resolutionBatch =
+    Stdlib.EventLog.readResolutions
+      (Stdlib.EventLog.resolutions ())
+      (Stdlib.EventLog.cursorFromInt resolutionCursor)
+      1000L
+
   Stdlib.Json.serialize<Wire> (
     Wire
       { release = Builtin.currentRelease()
@@ -41,7 +53,9 @@ let wireSince (packageCursor: Int64) (branchCursor: Int64) : String =
         branchCursor = branchBatch.next
         commits = pkgBatch.commits
         packageEvents = Stdlib.Stream.toList pkgBatch.events
-        packageCursor = pkgBatch.next }
+        packageCursor = pkgBatch.next
+        resolutionEvents = Stdlib.Stream.toList resolutionBatch.events
+        resolutionCursor = resolutionBatch.next }
   )
 
 
@@ -138,7 +152,7 @@ let rec private pullLoop
   (applied: Int)
   : Stdlib.Result.Result<Int, String> =
   let url =
-    $"{peer}/sync/events?package={Stdlib.Int64.toString (cursorFor peer "package_ops")}&branch={Stdlib.Int64.toString (cursorFor peer "branch_ops")}"
+    $"{peer}/sync/events?package={Stdlib.Int64.toString (cursorFor peer "package_ops")}&branch={Stdlib.Int64.toString (cursorFor peer "branch_ops")}&resolution={Stdlib.Int64.toString (cursorFor peer "resolutions")}"
 
   match Builtin.httpGetUnsafeBytes url with
   | Ok body ->
@@ -169,12 +183,27 @@ let rec private pullLoop
 
           let _ = setCursor peer "package_ops" (Stdlib.EventLog.cursorToInt w.packageCursor)
 
+          // Apply resolutions LAST — they overlay the folded bindings, so a peer's "keep mine" override wins
+          // and converges. Each is idempotent + LWW-gated by its own `at`.
+          let resolutionApplied =
+            if Stdlib.List.length w.resolutionEvents == 0I then
+              0I
+            else
+              Stdlib.EventLog.appendResolutions
+                (Stdlib.EventLog.resolutions ())
+                w.resolutionEvents
+
+          let _ =
+            setCursor peer "resolutions" (Stdlib.EventLog.cursorToInt w.resolutionCursor)
+
           if
-            Stdlib.List.length w.branchEvents == 0I && Stdlib.List.length w.packageEvents == 0I
+            Stdlib.List.length w.branchEvents == 0I
+            && Stdlib.List.length w.packageEvents == 0I
+            && Stdlib.List.length w.resolutionEvents == 0I
           then
             Stdlib.Result.Result.Ok applied
           else
-            pullLoop peer (applied + branchApplied + packageApplied)
+            pullLoop peer (applied + branchApplied + packageApplied + resolutionApplied)
       | Error _ ->
         Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
     | Error _ -> Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"

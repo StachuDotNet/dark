@@ -106,3 +106,51 @@ let readBranchOps
 /// Idempotent — content-addressed, so re-applying is a no-op.
 let appendBranchOps (log: EventLog<BranchOpEvent>) (events: List<BranchOpEvent>) : Int =
   Builtin.branchOpsAppendNative<BranchOpEvent> log events
+
+
+// ── the resolutions log ───────────────────────────────────────────────────────────────────────────
+// `resolutions` is the third named EventLog: synced human/policy overrides that overlay the op-fold. Peers
+// apply them AFTER package ops, so a "keep mine" decision converges everywhere. Each is idempotent (id-keyed)
+// and LWW-gated by its own `at` stamp.
+
+/// One resolution in transit — a decision to bind `location` to `chosenHash` (content of `itemKind`).
+type ResolutionEvent =
+  { id: String
+    branchId: String
+    location: String
+    itemKind: String
+    chosenHash: String
+    resolvedBy: String
+    at: String }
+
+/// A bounded read from the resolutions log.
+type ResolutionBatch =
+  { events: Stream<ResolutionEvent>
+    next: Cursor }
+
+/// This instance's resolutions log — the third named EventLog.
+let resolutions () : EventLog<ResolutionEvent> =
+  Builtin.eventLogNamed<ResolutionEvent> "resolutions"
+
+/// Read at most <param limit> resolutions after <param cursor> from <param log> — as a Stream + resume cursor.
+let readResolutions
+  (log: EventLog<ResolutionEvent>)
+  (cursor: Cursor)
+  (limit: Int64)
+  : ResolutionBatch =
+  let cur =
+    match cursor with
+    | Cursor c -> c
+
+  let (events, next) =
+    Builtin.resolutionsReadNative<ResolutionEvent, Cursor> log cur limit
+
+  ResolutionBatch { events = events; next = next }
+
+/// Apply received resolutions into <param log> — record + overlay onto the locations projection. Returns how
+/// many were processed. Idempotent + LWW-gated.
+let appendResolutions
+  (log: EventLog<ResolutionEvent>)
+  (events: List<ResolutionEvent>)
+  : Int =
+  Builtin.resolutionsAppendNative<ResolutionEvent> log events

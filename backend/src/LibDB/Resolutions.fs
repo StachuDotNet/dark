@@ -158,3 +158,64 @@ let list () : Task<List<Resolution>> =
   Sql.query
     "SELECT id, branch_id, location, item_kind, chosen_hash, resolved_by, at FROM resolutions ORDER BY rowid ASC"
   |> Sql.executeAsync ofRow
+
+// ── the resolutions log as a synced EventLog (the third named log) ──
+
+/// Resolutions authored after <param cursor> (rowid), as their field tuple + the new cursor. The sync read
+/// for the `resolutions` EventLog — a peer serves these so an override converges everywhere.
+let resolutionsSince
+  (cursor : int64)
+  (limit : int64)
+  : Task<List<string * string * string * string * string * string * string> * int64> =
+  task {
+    let! rows =
+      Sql.query
+        $"SELECT rowid AS rid, id, branch_id, location, item_kind, chosen_hash, resolved_by, at
+          FROM resolutions
+          WHERE rowid > {cursor}
+          ORDER BY rowid
+          LIMIT {limit}"
+      |> Sql.executeAsync (fun read ->
+        (read.int64 "rid",
+         read.string "id",
+         read.string "branch_id",
+         read.string "location",
+         read.string "item_kind",
+         read.string "chosen_hash",
+         read.string "resolved_by",
+         read.string "at"))
+
+    let events =
+      rows |> List.map (fun (_, id, b, l, k, h, by, at) -> (id, b, l, k, h, by, at))
+
+    let newCursor =
+      match rows with
+      | [] -> cursor
+      | _ -> rows |> List.map (fun (rid, _, _, _, _, _, _, _) -> rid) |> List.max
+
+    return (events, newCursor)
+  }
+
+/// Apply resolutions RECEIVED from a peer: record (idempotent by id) + apply to locations (the LWW-gated
+/// overlay). Order-independent — each is gated by its own `at` stamp. Returns the count processed.
+let receiveResolutions
+  (events : List<string * string * string * string * string * string * string>)
+  : Task<int64> =
+  task {
+    let mutable n = 0L
+
+    for (id, branchId, location, itemKind, chosenHash, resolvedBy, at) in events do
+      let r : Resolution =
+        { id = id
+          branchId = System.Guid.Parse branchId
+          location = location
+          itemKind = itemKind
+          chosenHash = chosenHash
+          resolvedBy = resolvedBy
+          at = at }
+
+      do! recordAndApply r
+      n <- n + 1L
+
+    return n
+  }

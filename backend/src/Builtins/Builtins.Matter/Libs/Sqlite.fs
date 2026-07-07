@@ -158,6 +158,30 @@ let private branchOpEventRecord ((id, op) : string * string) : Dval =
   let t = branchOpEventType ()
   DRecord(t, t, [], Map [ "id", DString id; "op", DString op ])
 
+let private resolutionEventType () =
+  FQTypeName.fqPackage (EventLogRefs.resolutionEvent ())
+
+/// Build the `Stdlib.EventLog.ResolutionEvent` record for one resolutions row.
+let private resolutionEventRecord
+  ((id, branchId, location, itemKind, chosenHash, resolvedBy, at) :
+    string * string * string * string * string * string * string)
+  : Dval =
+  let t = resolutionEventType ()
+
+  DRecord(
+    t,
+    t,
+    [],
+    Map
+      [ "id", DString id
+        "branchId", DString branchId
+        "location", DString location
+        "itemKind", DString itemKind
+        "chosenHash", DString chosenHash
+        "resolvedBy", DString resolvedBy
+        "at", DString at ]
+  )
+
 /// Read a string field out of an EventLog Event/Commit record (built by the peer + parsed from JSON) —
 /// natively, so appending a 1000-op batch never pays the per-row Dark interpreter cost.
 let private recField (name : string) (fields : Map<string, Dval>) : string =
@@ -457,6 +481,86 @@ let fns () : List<BuiltInFn> =
                   Exception.raiseInternal "branchOpsAppendNative: event not a record" [])
 
             let! applied = LibDB.Seed.receiveBranchOps parsed
+            return Dval.int (bigint applied)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    // The resolutions log — synced override overlays. Peers apply these AFTER package ops so a human's
+    // "keep mine" decision converges everywhere. Read as a Stream of ResolutionEvent records + the cursor.
+    { name = fn "resolutionsReadNative" 0
+      typeParams = [ "e"; "cur" ]
+      parameters =
+        [ Param.make "log" (TEventLog(TVariable "e")) "the resolutions log"
+          Param.make "cursor" TInt64 "read resolutions after this cursor (0 = from the start)"
+          Param.make "limit" TInt64 "at most this many — one bounded batch" ]
+      returnType = TTuple(TStream(TVariable "e"), TVariable "cur", [])
+      description =
+        "This instance's resolutions after <param cursor> as a Stream of ResolutionEvent records + the resume Cursor. Built natively."
+      fn =
+        (function
+        | _, _, _, [ DEventLog _name; DInt64 cursor; DInt64 limit ] ->
+          uply {
+            let! (events, newCursor) = LibDB.Resolutions.resolutionsSince cursor limit
+
+            let remaining = ref (List.map resolutionEventRecord events)
+
+            let nextFn () : Ply<Option<Dval>> =
+              uply {
+                match remaining.Value with
+                | head :: tail ->
+                  remaining.Value <- tail
+                  return Some head
+                | [] -> return None
+              }
+
+            let stream =
+              LibExecution.Stream.newFromIO
+                (ValueType.Known(KTCustomType(resolutionEventType (), [])))
+                nextFn
+                None
+
+            return DTuple(stream, cursorValue newCursor, [])
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    // Apply resolutions RECEIVED from a peer (ResolutionEvent records) — record + overlay onto locations.
+    // Idempotent (id-keyed) + LWW-gated by each resolution's `at`.
+    { name = fn "resolutionsAppendNative" 0
+      typeParams = [ "e" ]
+      parameters =
+        [ Param.make "log" (TEventLog(TVariable "e")) "the resolutions log"
+          Param.make "events" (TList(TVariable "e")) "ResolutionEvent records received from a peer" ]
+      returnType = TInt
+      description =
+        "Apply received ResolutionEvent records (record + overlay onto locations). Returns the count processed. Idempotent."
+      fn =
+        (function
+        | _, _, _, [ DEventLog _name; DList(_, events) ] ->
+          uply {
+            let parsed =
+              events
+              |> List.map (fun ev ->
+                match ev with
+                | DRecord(_, _, _, f) ->
+                  (recField "id" f,
+                   recField "branchId" f,
+                   recField "location" f,
+                   recField "itemKind" f,
+                   recField "chosenHash" f,
+                   recField "resolvedBy" f,
+                   recField "at" f)
+                | _ ->
+                  Exception.raiseInternal "resolutionsAppendNative: event not a record" [])
+
+            let! applied = LibDB.Resolutions.receiveResolutions parsed
             return Dval.int (bigint applied)
           }
         | _ -> incorrectArgs ())

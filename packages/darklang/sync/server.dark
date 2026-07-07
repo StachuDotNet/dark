@@ -55,7 +55,10 @@ let eventsFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
   // Each log's committed events after its cursor, as the JSON wire (Darklang.Sync.wireSince). A puller GETs
   // this and Sync.pull applies it (branch structure first) — pure ops over HTTP.
   Stdlib.Http.responseWithText
-    (Darklang.Sync.wireSince (parseCursor req.url "package") (parseCursor req.url "branch"))
+    (Darklang.Sync.wireSince
+      (parseCursor req.url "package")
+      (parseCursor req.url "branch")
+      (parseCursor req.url "resolution"))
     200I
 
 let eventsHandler : Stdlib.HttpServer.Handler =

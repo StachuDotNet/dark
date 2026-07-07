@@ -148,6 +148,7 @@ module Type =
       let event = p [] "Event"
       let commit = p [] "Commit"
       let branchOpEvent = p [] "BranchOpEvent"
+      let resolutionEvent = p [] "ResolutionEvent"
 
     module Cli =
       let private p addl = p ("Cli" :: addl)
