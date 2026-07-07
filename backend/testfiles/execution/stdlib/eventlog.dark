@@ -1,7 +1,11 @@
 // The general event-log seam (`Stdlib.EventLog`) that sync reads from. Reading past the end of the log
 // leaves the cursor unchanged — the "already current" shape a peer serves a caught-up puller. The full
-// since→append→converge path (origin_ts preservation + fold) is covered in the F# suite
+// readSince→append→converge path (origin_ts preservation + fold) is covered in the F# suite
 // (OpsProjections.Tests); this pins the Dark-side read contract.
 
 module EventLog =
-  Stdlib.Tuple3.third (Stdlib.EventLog.since 999999999L 500L) = 999999999L
+  ((Stdlib.EventLog.readSince
+     (Stdlib.EventLog.packageOps ())
+     (Stdlib.EventLog.cursorFromInt 999999999L)
+     500L)
+   |> (fun b -> Stdlib.EventLog.cursorToInt b.next)) = 999999999L

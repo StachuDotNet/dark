@@ -179,7 +179,7 @@ let private multiUseAllowlist : Set<string> =
       "tracesStatsByHandler"
 
       // Sync / event-log seam — infra builtins used across the sync surface.
-      // localDbPath: the local store path (EventLog.since, sync.dark, server.dark, version.dark).
+      // localDbPath: the local store path (EventLog.readSince, sync.dark, server.dark, version.dark).
       // currentRelease: the Release coordinate (version display + sync's version-skew handshake).
       "currentRelease"
       "localDbPath"

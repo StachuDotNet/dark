@@ -1,12 +1,13 @@
 module Darklang.Stdlib.EventLog
 
-// The append-only op log, exposed as a GENERAL, reusable event-log seam: read the events SINCE a cursor
-// (what a peer serves), and APPEND events received from elsewhere (folding invisibly, via
-// `appendEvents`). Sync is its first consumer; messaging/cron are the next. Everything travels as
-// OPS — never a database file.
+// The append-only op log as a GENERAL, stream-shaped primitive: read the events SINCE a cursor (a peer serves
+// them; the events come back as a filterable Stream), and APPEND events received from elsewhere (folding
+// happens invisibly). Sync is its first consumer; branch structure, resolutions, messaging and cron are the
+// next — each a named EventLog. Everything travels as OPS, never a database file. A log is reached by name
+// (see `packageOps`); `package_ops` is the first.
 //
-// An event in transit: (id, opBlobHex, branchId, commitHash, originTs) — matches `appendEvents`.
-// A commit an event references: (hash, message, branchId, accountId, createdAt).
+// Records and the Stream are built NATIVELY (`eventLogReadNative` / `eventLogAppendNative`), so a 1000-op
+// batch stays milliseconds — never per-row Dark interpreter overhead.
 
 /// An opaque position in a log. You advance it by reading, and resume from where you left off. Compare or
 /// serialize it, but don't depend on the wrapped value — it's the log's private cursor representation.
@@ -28,22 +29,43 @@ type Commit =
     accountId: String
     createdAt: String }
 
-/// The committed events after <param cursor> from this instance's own log, the commits they reference, and
-/// the new cursor (max rowid, or <param cursor> if there's nothing new). This is exactly what a peer serves.
-/// At most <param limit> events per call, so a large log transfers in bounded batches — the puller loops,
-/// resuming from the returned cursor, until a call comes back empty. The commits returned are exactly those
-/// the batch's ops reference. Reads the op log natively (`eventLogSince`) so serving a big batch is
-/// milliseconds, not seconds of per-row interpreter overhead.
-let since
-  (cursor: Int64)
-  (limit: Int64)
-  : (List<(String * String * String * String * String)> * List<(String * String * String * String * String)> * Int64) =
-  Builtin.eventLogSince cursor limit
+/// A bounded read from a log: the commits the events reference, the events as a Stream (filter before draining
+/// — e.g. by branch), and the cursor to resume from.
+type Batch =
+  { commits: List<Commit>
+    events: Stream<Event>
+    next: Cursor }
 
-/// Append received commits + events into this instance's log; folding happens automatically (invisible).
-/// Returns the new cursor. Idempotent — re-appending the same events is a no-op.
-let append
-  (commits: List<(String * String * String * String * String)>)
-  (events: List<(String * String * String * String * String)>)
-  : Int =
-  Builtin.appendEvents commits events
+/// The zero cursor — read a log from its very start.
+let start: Cursor = Cursor.Cursor 0L
+
+/// Wrap a raw Int64 log position as a Cursor (e.g. a cursor loaded from a peer-cursor table).
+let cursorFromInt (n: Int64) : Cursor = Cursor.Cursor n
+
+/// The raw Int64 position a cursor wraps — for callers that persist it locally.
+let cursorToInt (cursor: Cursor) : Int64 =
+  match cursor with
+  | Cursor c -> c
+
+/// This instance's package-op log — the first named EventLog. A function (not a stored value) because a
+/// DEventLog is a live reference, not data to persist in package space.
+let packageOps () : EventLog<Event> = Builtin.eventLogNamed<Event> "package_ops"
+
+/// Read at most <param limit> committed events after <param cursor> from <param log>: the commits they
+/// reference, the events as a filterable Stream, and the cursor to resume from. Reads natively (fast), so a
+/// large log transfers in bounded batches — loop on the returned cursor until the events come back empty.
+let readSince (log: EventLog<Event>) (cursor: Cursor) (limit: Int64) : Batch =
+  let cur =
+    match cursor with
+    | Cursor c -> c
+
+  let (commits, events, next) =
+    Builtin.eventLogReadNative<Commit, Event, Cursor> log cur limit
+
+  Batch { commits = commits; events = events; next = next }
+
+/// Append received commits + events into <param log>; folding is invisible. Returns how many ops were NEWLY
+/// applied (0 = all already present) — the resume cursor comes from `readSince`'s `next`. Idempotent:
+/// re-appending the same events is a no-op (content-addressed ids).
+let append (log: EventLog<Event>) (commits: List<Commit>) (events: List<Event>) : Int =
+  Builtin.eventLogAppendNative<Commit, Event> log commits events

@@ -90,6 +90,7 @@ type TypeReference =
     typeArgs: List<TypeReference>
 
   | TDB of TypeReference
+  | TEventLog of TypeReference
 
   // TODO: this should be an NEList
   | TFn of List<TypeReference> * TypeReference

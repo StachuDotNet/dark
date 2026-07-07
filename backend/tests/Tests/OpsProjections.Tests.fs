@@ -341,7 +341,7 @@ let tests =
         ()
       }
 
-      // The append seam sync sits on (`Seed.receiveOps` ← `Builtin.appendEvents`). Re-receiving the log's own
+      // The append seam sync sits on (`Seed.receiveOps` ← `Builtin.eventLogAppendNative`). Re-receiving the log's own
       // committed ops is a no-op — INSERT OR IGNORE on the content-addressed ids — so the cursor comes back as
       // the current max rowid and the projections are unchanged. This is what makes an incremental pull safe to
       // retry; the same append path a real peer's events take (commits shipped alongside them).

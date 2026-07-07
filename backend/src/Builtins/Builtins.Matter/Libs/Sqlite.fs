@@ -151,6 +151,16 @@ let private cursorValue (n : int64) : Dval =
   let t = eventLogCursorType ()
   DEnum(t, t, [], "Cursor", [ DInt64 n ])
 
+/// Read a string field out of an EventLog Event/Commit record (built by the peer + parsed from JSON) —
+/// natively, so appending a 1000-op batch never pays the per-row Dark interpreter cost.
+let private recField (name : string) (fields : Map<string, Dval>) : string =
+  match Map.tryFind name fields with
+  | Some(DString s) -> s
+  | _ ->
+    Exception.raiseInternal
+      "eventLog record missing expected string field"
+      [ "field", name ]
+
 let fns () : List<BuiltInFn> =
   [ { name = fn "sqliteExec" 0
       typeParams = []
@@ -225,7 +235,7 @@ let fns () : List<BuiltInFn> =
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
 
-    // This instance's OWN package store path (data.db). appendEvents/EventLog write ops here; the sync config
+    // This instance's OWN package store path (data.db). The EventLog builtins write ops here; the sync config
     // tables (sync_peers/sync_cursors) live here too — the daemon/CLI don't have to know the path.
     { name = fn "localDbPath" 0
       typeParams = []
@@ -258,10 +268,7 @@ let fns () : List<BuiltInFn> =
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
 
-    // The general event-log APPEND (the "nice wheel" — sync is its first consumer, messaging/cron the next).
-    // Takes events RECEIVED from a peer over HTTP — (id, op_blob-as-hex, branch_id, commit_hash, origin_ts) —
-    // appends them to the op log preserving each op's original origin_ts, and folds (INVISIBLY, in F#). Returns
-    // the new max-rowid cursor. Idempotent (content-addressed ids). No .db files, no ATTACH: pure ops-over-HTTP.
+    // The general event-log seam (the "nice wheel" — sync is its first consumer, messaging/cron the next).
     // A named reference to an event log — the DDB-sibling `EventLog` value. The name selects the store
     // (v1: "package_ops"; branchOps / resolutions become named logs in the branch + resolution work).
     { name = fn "eventLogNamed" 0
@@ -328,90 +335,46 @@ let fns () : List<BuiltInFn> =
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
 
-    { name = fn "eventLogSince" 0
-      typeParams = []
+    // The TYPED append: Commit + Event records received from a peer (parsed from JSON natively) folded into the
+    // log. Field extraction is native — a 1000-op pull never pays the per-row Dark cost. Returns the count
+    // newly applied (idempotent). `EventLog.append` wraps this.
+    { name = fn "eventLogAppendNative" 0
+      typeParams = [ "c"; "e" ]
       parameters =
-        [ Param.make
-            "cursor"
-            TInt64
-            "read events after this cursor (0 = from the start of the log)"
-          Param.make "limit" TInt64 "at most this many events — one bounded batch" ]
-      returnType =
-        TTuple(
-          TList(TTuple(TString, TString, [ TString; TString; TString ])),
-          TList(TTuple(TString, TString, [ TString; TString; TString ])),
-          [ TInt64 ]
-        )
-      description =
-        "This instance's committed events after <param cursor> (at most <param limit>), the commits they reference, and the new cursor. Reads the op log natively — the READ half of the event-log seam, exactly what a peer serves."
-      fn =
-        (function
-        | _, _, _, [ DInt64 cursor; DInt64 limit ] ->
-          uply {
-            let! (commits, events, newCursor) = LibDB.Seed.eventsSince cursor limit
-
-            let strTupleKT =
-              KTTuple(VT.string, VT.string, [ VT.string; VT.string; VT.string ])
-
-            let toTuple
-              ((a, b, c, d, e) : string * string * string * string * string)
-              : Dval =
-              DTuple(DString a, DString b, [ DString c; DString d; DString e ])
-
-            let commitsD = Dval.list strTupleKT (List.map toTuple commits)
-            let eventsD = Dval.list strTupleKT (List.map toTuple events)
-            return DTuple(commitsD, eventsD, [ DInt64 newCursor ])
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-    { name = fn "appendEvents" 0
-      typeParams = []
-      parameters =
-        [ Param.make
-            "commits"
-            (TList(TTuple(TString, TString, [ TString; TString; TString ])))
-            "(hash, message, branchId, accountId, createdAt) — the commits the events reference"
-          Param.make
-            "events"
-            (TList(TTuple(TString, TString, [ TString; TString; TString ])))
-            "(id, opBlobHex, branchId, commitHash, originTs) tuples received from a peer" ]
+        [ Param.make "log" (TEventLog(TVariable "e")) "the log to append to"
+          Param.make "commits" (TList(TVariable "c")) "Commit records the events reference"
+          Param.make "events" (TList(TVariable "e")) "Event records received from a peer" ]
       returnType = TInt
       description =
-        "Append received commits + events to the op log (preserving origin_ts) + fold. Returns the count of ops newly applied. Idempotent."
+        "Append received Commit + Event records to the op log (preserving origin_ts) + fold. Returns the count of ops newly applied. Idempotent. Extracts fields natively."
       fn =
         (function
-        | _, _, _, [ DList(_, commits); DList(_, events) ] ->
+        | _, _, _, [ DEventLog _name; DList(_, commits); DList(_, events) ] ->
           uply {
             let parsedCommits =
               commits
               |> List.map (fun c ->
                 match c with
-                | DTuple(DString hash,
-                         DString message,
-                         [ DString branchId; DString accountId; DString createdAt ]) ->
-                  (hash,
-                   message,
-                   System.Guid.Parse branchId,
-                   System.Guid.Parse accountId,
-                   createdAt)
-                | _ -> Exception.raiseInternal "appendEvents: malformed commit tuple" [])
+                | DRecord(_, _, _, f) ->
+                  (recField "hash" f,
+                   recField "message" f,
+                   System.Guid.Parse(recField "branchId" f),
+                   System.Guid.Parse(recField "accountId" f),
+                   recField "createdAt" f)
+                | _ -> Exception.raiseInternal "eventLogAppendNative: commit not a record" [])
+
             let parsedEvents =
               events
               |> List.map (fun ev ->
                 match ev with
-                | DTuple(DString id,
-                         DString opBlobHex,
-                         [ DString branchId; DString commitHash; DString originTs ]) ->
-                  (System.Guid.Parse id,
-                   System.Convert.FromHexString opBlobHex,
-                   System.Guid.Parse branchId,
-                   commitHash,
-                   originTs)
-                | _ -> Exception.raiseInternal "appendEvents: malformed event tuple" [])
+                | DRecord(_, _, _, f) ->
+                  (System.Guid.Parse(recField "id" f),
+                   System.Convert.FromHexString(recField "op" f),
+                   System.Guid.Parse(recField "branchId" f),
+                   recField "commitHash" f,
+                   recField "originTs" f)
+                | _ -> Exception.raiseInternal "eventLogAppendNative: event not a record" [])
+
             let! applied = LibDB.Seed.receiveOps parsedCommits parsedEvents
             return Dval.int (bigint applied)
           }

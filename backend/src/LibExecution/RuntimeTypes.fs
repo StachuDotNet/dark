@@ -1394,7 +1394,8 @@ module Dval =
       // (probably forces us to make this fn async?)
       | AppNamedFn _named -> ValueType.Unknown
 
-    // CLEANUP follow up when DDB has a typeReference
+    // CLEANUP follow up when DDB / DEventLog carry a typeReference (the name alone doesn't pin the
+    // element type, so both stay Unknown — permissive against any declared DB<_> / EventLog<_>).
     | DDB _ -> ValueType.Unknown
     | DEventLog _ -> ValueType.Unknown
 

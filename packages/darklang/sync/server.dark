@@ -4,7 +4,7 @@ module Darklang.Sync.Server
 // Run with `dark serve Darklang.Sync.Server.router --port <N>` and expose it over your tailnet with
 // `dark devices serve <N>`.
 //
-// The wire is JSON — `Darklang.Sync.wireSince` (← `Stdlib.EventLog.since`): the serving Release, the batch's
+// The wire is JSON — `Darklang.Sync.wireSince` (← `Stdlib.EventLog.readSince`): the serving Release, the batch's
 // commits, its events ((id, opBlobHex, branchId, commitHash, originTs) — the op_blob rides as hex), and the
 // cursor. Committed ops only (WIP stays local); one bounded batch per request. No .db files — ops over HTTP.
 
@@ -51,7 +51,7 @@ let private parseSince (url: String) : Int64 =
   | None -> 0L
 
 let eventsFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
-  // The committed events after ?since=<cursor>, as the JSON wire (Darklang.Sync.wireSince → EventLog.since).
+  // The committed events after ?since=<cursor>, as the JSON wire (Darklang.Sync.wireSince → EventLog.readSince).
   // A puller GETs this and Sync.pull applies it — pure ops over HTTP.
   Stdlib.Http.responseWithText (Darklang.Sync.wireSince (parseSince req.url)) 200I
 

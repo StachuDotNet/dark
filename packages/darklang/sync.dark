@@ -9,19 +9,28 @@ module Darklang.Sync
 /// puller refuses a peer on a different Dark release rather than apply ops it might not understand.
 type Wire =
   (Int *
-   List<(String * String * String * String * String)> *
-   List<(String * String * String * String * String)> *
-   Int64)
+   List<Stdlib.EventLog.Commit> *
+   List<Stdlib.EventLog.Event> *
+   Stdlib.EventLog.Cursor)
 
 /// The `GET /sync/events?since=<cursor>` body: this instance's Release + its committed events after
 /// <param cursor>, as JSON. Served by `Sync.Server` (`dark serve`), pulled by a peer's `Sync.pull`.
 let wireSince (cursor: Int64) : String =
   // One bounded batch so a large log never becomes one giant response — the puller loops on the cursor until a
   // batch comes back empty. 1000 ops (~1 MB wire) balances round-trips against response size: the native read
-  // (`eventLogSince`) makes even the whole log milliseconds, so the batch exists for bounded responses
+  // (reads the log natively) makes even the whole log milliseconds, so the batch exists for bounded responses
   // and resumability, not to keep the read cheap. A 10k-op first sync is ~10 batches, not 200.
-  let (commits, events, newCursor) = Stdlib.EventLog.since cursor 1000L
-  Stdlib.Json.serialize<Wire> ((Builtin.currentRelease(), commits, events, newCursor))
+  let batch =
+    Stdlib.EventLog.readSince
+      Stdlib.EventLog.packageOps ()
+      (Stdlib.EventLog.cursorFromInt cursor)
+      1000L
+
+  let events = Stdlib.Stream.toList batch.events
+
+  Stdlib.Json.serialize<Wire> (
+    (Builtin.currentRelease(), batch.commits, events, batch.next)
+  )
 
 
 // ── peer config + per-peer resume cursors (LOCAL, per-instance; never synced, like `caps`) ──
@@ -132,8 +141,11 @@ let rec private pullLoop
           if Stdlib.List.length events == 0I then
             Stdlib.Result.Result.Ok applied
           else
-            let newlyApplied = Stdlib.EventLog.append commits events
-            let _ = setCursor peer serverCursor
+            let newlyApplied =
+              Stdlib.EventLog.append (Stdlib.EventLog.packageOps ()) commits events
+
+            let serverCursorInt = Stdlib.EventLog.cursorToInt serverCursor
+            let _ = setCursor peer serverCursorInt
             pullLoop peer (applied + newlyApplied)
       | Error _ ->
         Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
