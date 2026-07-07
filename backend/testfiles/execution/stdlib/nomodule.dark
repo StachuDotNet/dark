@@ -304,7 +304,7 @@ module Equals =
     (() != Stdlib.Option.Option.None) = error="Cannot perform equality check on Unit and Darklang.Stdlib.Option.Option<_>"
 
     (() != false) = error="Cannot perform equality check on Unit and Bool"
-    (() != 0) = error="Cannot perform equality check on Unit and Int32"
+    (() != 0l) = error="Cannot perform equality check on Unit and Int32"
     (() != 0.0) = error="Cannot perform equality check on Unit and Float"
     // CLEANUP follow up here when DB references are fully resolved at parse-time
   // Other ways to call it

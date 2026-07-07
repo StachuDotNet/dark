@@ -67,8 +67,7 @@ let oldFunctionsAreDeprecated =
 
 /// Builtins called via infix operators rather than `Builtin.X` syntax.
 /// Source: LibExecution/ProgramTypesToRuntimeTypes.fs InfixFnName.toFnName
-/// for binary ops; LibParser/FSharpToWrittenTypes.fs op_UnaryNegation
-/// for `-x`.
+/// for binary ops; LibParser/Parser.fs lowers unary `-x` to Builtin.negate.
 let private infixDispatched : Set<string> =
   Set.ofList
     [ // Polymorphic numeric operators
@@ -115,6 +114,10 @@ let private multiUseAllowlist : Set<string> =
       // Option-returning wrapper breaks SQL queryability and trips
       // `Stdlib.DB.queryAll` callers (cloud/db.dark line 815+).
       "stringIndexOf"
+
+      // Structured parse diagnostics — gates CLI package creation (fn/type/value),
+      // the CLI-script parser, and LSP diagnostics; all call the builtin directly.
+      "parserParseDiagnostics"
 
       // CLI / IO surface — direct calls from many CLI commands.
       "debug"
@@ -177,6 +180,11 @@ let private multiUseAllowlist : Set<string> =
       "tracesHotspots"
       "tracesList"
       "tracesStatsByHandler"
+
+      // Parser entry point — CLI syntax highlighting + package fn/value/type
+      // display + LSP (fileSystemProvider, docSync) + the CLI-script parser all
+      // call it directly to turn source into WrittenTypes.
+      "parserParseToWrittenTypes"
 
       // Misc.
       "interpreterStatsReset" ]

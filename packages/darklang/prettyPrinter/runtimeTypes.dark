@@ -79,7 +79,7 @@ module FQValueName =
     let namePart = t.name
 
     let versionPart =
-      if t.version == 0 then
+      if t.version == 0l then
         ""
       else
         $"_v{Stdlib.Int32.toString t.version}"
@@ -107,7 +107,7 @@ module FQFnName =
     let namePart = t.name
 
     let versionPart =
-      if t.version == 0 then
+      if t.version == 0l then
         ""
       else
         $"_v{Stdlib.Int32.toString t.version}"

@@ -26,14 +26,6 @@ type VariableIdentifier = { range: Range; name: String }
 
 type ValueIdentifier = { range: Range; name: String }
 
-type ValueOrFnIdentifier = { range: Range; name: String }
-
-type QualifiedValueOrFnIdentifier =
-  { range: Range
-    /// the Range corresponds to the `.` after the module name
-    modules: List<(ModuleIdentifier * Range)>
-    valueOrFn: ValueOrFnIdentifier }
-
 type FnIdentifier = { range: Range; name: String }
 
 type QualifiedFnIdentifier =
@@ -42,7 +34,6 @@ type QualifiedFnIdentifier =
     /// the range corresponds to the `.` after the module name
     modules: List<(ModuleIdentifier * Range)>
     fn: FnIdentifier
-    typeArgs: List<TypeReference.TypeReference>
   }
 
 // CLEANUP: Refactor List<String> to List<Range* String> or use a QualifiedTypeIdentifier.
@@ -197,6 +188,11 @@ type MatchPattern =
 
   // CLEANUP: handle pipe symbols
   | MPOr of Range * List<MatchPattern>
+
+  // A recovery hole where a pattern was expected but couldn't be parsed (the
+  // parse carries a diagnostic at this range). Tooling renders around it; it
+  // never reaches execution.
+  | MPError of Range
 
 type MatchCase =
   { pat:
@@ -373,9 +369,12 @@ type Expr =
 
   | EFnName of Range * name: QualifiedFnIdentifier
 
-  | EValueOrFn of Range * name: QualifiedValueOrFnIdentifier
-
   | EStatement of Range * first: Expr * next: Expr
+
+  // A recovery hole where an expression was expected but couldn't be parsed
+  // (the parse carries a diagnostic at this range). Tooling renders around it;
+  // it never reaches execution.
+  | EError of Range
 
 type PipeExpr =
   | EPipeInfix of Range * op: (Range * Infix) * Expr
@@ -392,7 +391,11 @@ type PipeExpr =
     fields: List<Expr> *
     /// between the typeName and the caseName
     symbolDot: Range
-  | EPipeFnCall of Range * fnName: QualifiedFnIdentifier * args: List<Expr>
+  | EPipeFnCall of
+    Range *
+    fnName: QualifiedFnIdentifier *
+    typeArgs: List<TypeReference.TypeReference> *
+    args: List<Expr>
   | EPipeVariableOrFnCall of Range * String
 
 
@@ -494,11 +497,6 @@ module FnDeclaration =
       symbolEquals: Range }
 
 
-type Unparseable =
-  { source: Parser.ParsedNode
-    note: Stdlib.Option.Option<String> }
-
-
 module SourceFile =
   type SourceFileDeclaration =
     | Type of TypeDeclaration.TypeDeclaration
@@ -509,7 +507,6 @@ module SourceFile =
   type SourceFile =
     { range: Range
       declarations: List<SourceFile.SourceFileDeclaration>
-      unparseableStuff: List<Unparseable>
       exprsToEval: List<Expr> }
 
 

@@ -1,6 +1,25 @@
 module Darklang.Cli.Packages.Errors
 
 
+/// Reports the parser's structured diagnostics. Returns true if there are any —
+/// the parser returns a best-effort tree even for broken input, so creation must
+/// gate on this or it saves a broken body.
+let reportParseErrors
+  (diagnostics: List<(LanguageTools.Parser.Range * String)>)
+  : Bool =
+  match diagnostics with
+  | [] -> false
+  | (range, message) :: _ ->
+    let lineNum = (range.start.row + 1I) |> Stdlib.Int.toString
+    // 1-based column, matching renderDiagnostic and the line number above
+    let colNum = (range.start.column + 1I) |> Stdlib.Int.toString
+
+    Stdlib.printLine
+      (Colors.error $"Parse error at line {lineNum}, column {colNum}: {message}")
+
+    true
+
+
 /// Checks for invalid names (hard errors) and unresolved names (warnings).
 /// Returns true if there are invalid names (which block creation).
 /// Unresolved names are allowed in WIP — they'll be resolved by WipRefresh

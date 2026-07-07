@@ -1,10 +1,30 @@
 /// The types that the user writes. Think of this as the Syntax Tree.
+///
+/// This is the SINGLE, range-complete syntax tree produced by the hand-written
+/// parser. Every node carries the exact source ranges (whole-node plus the
+/// fine-grained keyword/symbol ranges) that the editor tooling needs — the
+/// semantic-token highlighter, the LSP (hover / diagnostics), and the formatter —
+/// converted 1:1 into the Dark `LanguageTools.WrittenTypes` (as Dvals) by
+/// `WrittenTypesToDarkTypes` in `Builtins.Language/Libs/Parser.fs`.
+///
+/// Execution lowering (`WrittenTypesToProgramTypes`) consumes the same tree,
+/// ignoring the ranges and minting fresh node ids as it lowers to ProgramTypes.
+/// (Node ids are ephemeral — a `gid()` counter, not source-derived — so they are
+/// created at lowering time rather than stored on every node; the Dark WrittenTypes
+/// keys on ranges, not ids.)
 module LibParser.WrittenTypes
 
 open Prelude
 
-// Unless otherwise noted, all types in this file correspond pretty directly to
-// LibExecution.ProgramTypes.
+open LibParser.Tokenizer // Pos, TokenRange
+
+type Range = TokenRange
+
+/// A synthetic (zero-width) range for nodes the lowering synthesizes with no
+/// source counterpart (e.g. an implicit unit parameter). Never serialized for
+/// highlighting — the package/decl normalization layer is execution-only.
+let synthRange : Range =
+  { start = { row = 0; column = 0 }; end_ = { row = 0; column = 0 } }
 
 type Name =
   // Used when a syntactic construct turns into a function (e.g. some operators)
@@ -13,85 +33,17 @@ type Name =
   // WrittenTypesToProgramTypes
   | Unresolved of NEList<string>
 
-// Ideally, we'd use a Name for the Enum typenames, like we do for ERecords and
-// EFnNames. However there are a number of problems of reusing it, that either
-// aren't problems for ERecord typenames and EFnNames, or conflict with them.
-//
-// The core problem that we're trying to model is that a Name is something the
-// user types, and the fact that users must type _something_. For DRecords or
-// EFnNames, that "at least 1 thing" is well modelled as an NEList, which avoids
-// a ton of error handling of impossible states from using empty lists (which
-// the users shouldn't even be able to type).
-//
-// However, in addition to the TypeName, EEnums have a case name required (while
-// EFnName and DRecord typenames don't). If we use an NEList for the typename
-// alone, that doesn't allow someone to type `Ok`, which is allowed. (It doesn't
-// resolve to anything but we want to allow them to type it all the same.
-//
-// Looking at the four possible ways we could use Names to model EEnum:
-//
-// Name as List, plus separate casename field in EEnum:
-//  - ✅ supports [] + caseName which is valid for EEnums
-//  - ❌ supports [] for FnName and DRecord, which is invalid.
-//  - ✅ KnownBuiltin will work in EEnums
-
-// Name as List, including casename (no separate caseName field in EEnum):
-//  - 🤔 supports [] which is invalid but won't appear in practice so we can error
-//
-// Name as NEList, plus separate casename field in EEnum:
-//  - ❌ doesn't support [ "Ok" ] - can't do this
-//
-// Name as NEList, including casename (no separate caseName field in EEnum):
-//  - ❌ KnownBuiltin won't work as we won't have a caseName field, but we can
-//       error safely since we just won't do this
-//
-// Alternative: don't use Name for EEnum, and instead use List<string> plus a
-// separate caseName field.
+// Enum type names are a plain `List<string>` (an empty list is valid — e.g. an
+// unqualified `Ok`, where only the case name is written). See the long note in git
+// history for why EEnum doesn't reuse `Name`.
 type UnresolvedEnumTypeName = List<string>
 
 
-type LetPattern =
-  | LPUnit of id
-  | LPVariable of id * name : string
-  | LPWildcard of id
-  | LPTuple of
-    id *
-    first : LetPattern *
-    second : LetPattern *
-    theRest : List<LetPattern>
+type Infix =
+  | InfixFnCall of InfixFnName
+  | BinOp of BinaryOperation
 
-type MatchPattern =
-  | MPUnit of id
-  | MPBool of id * bool
-  | MPInt64 of id * int64
-  | MPUInt64 of id * uint64
-  | MPInt8 of id * int8
-  | MPUInt8 of id * uint8
-  | MPInt16 of id * int16
-  | MPUInt16 of id * uint16
-  | MPInt32 of id * int32
-  | MPUInt32 of id * uint32
-  | MPInt128 of id * System.Int128
-  | MPUInt128 of id * System.UInt128
-  | MPInt of id * bigint
-  | MPFloat of id * Sign * string * string
-  | MPChar of id * string
-  | MPString of id * string
-
-  | MPList of id * List<MatchPattern>
-  | MPListCons of id * head : MatchPattern * tail : MatchPattern
-  | MPTuple of id * MatchPattern * MatchPattern * List<MatchPattern>
-
-  | MPVariable of id * string
-
-  | MPEnum of id * caseName : string * fieldPats : List<MatchPattern>
-  | MPOr of id * NEList<MatchPattern>
-
-type BinaryOperation =
-  | BinOpAnd
-  | BinOpOr
-
-type InfixFnName =
+and InfixFnName =
   | ArithmeticPlus
   | ArithmeticMinus
   | ArithmeticMultiply
@@ -106,129 +58,516 @@ type InfixFnName =
   | ComparisonNotEquals
   | StringConcat
 
-type Infix =
-  | InfixFnCall of InfixFnName
-  | BinOp of BinaryOperation
+and BinaryOperation =
+  | BinOpAnd
+  | BinOpOr
 
-type TypeReference =
-  // TODO
-  // | Named of Name * typeArgs : List<TypeReference>
-  // | Fn of int // ...
-  // | Variable of string
-  | TUnit
-  | TBool
-  | TInt64
-  | TUInt64
-  | TInt8
-  | TUInt8
-  | TInt16
-  | TUInt16
-  | TInt32
-  | TUInt32
-  | TInt128
-  | TUInt128
-  | TInt
-  | TFloat
-  | TChar
-  | TString
-  | TDateTime
-  | TUuid
-  | TBlob
-  | TStream of TypeReference
+/// A simple `{ range; name }` identifier (the role is conveyed by which field of
+/// the parent node it sits in — VariableName, FnName, etc.).
+type Identifier = { range : Range; name : string }
 
-  | TList of TypeReference
-  | TTuple of TypeReference * TypeReference * List<TypeReference>
-  | TDict of TypeReference
-  | TCustomType of Name * typeArgs : List<TypeReference>
+/// `Module.Path.fn` — modules each carry their own range (for module-name color).
+type QualifiedFnIdentifier =
+  { range : Range
+    modules : List<Identifier * Range> // (module ident, trailing-dot range)
+    fn : Identifier }
 
-  | TFn of NEList<TypeReference> * TypeReference
+/// `Module.Path.TypeName<args>` — the type half of a record literal / enum
+/// constructor, and a custom type reference.
+type QualifiedTypeIdentifier =
+  { range : Range
+    modules : List<Identifier * Range>
+    typ : Identifier
+    typeArgs : List<TypeReference> } // `<…>` generic args (e.g. `Option<String>`)
 
-  | TDB of TypeReference
+/// Type references on parameters / return types. Each primitive/built-in type is its
+/// own case carrying just its range (rather than a `TPrim of Range * string`), so the
+/// WT2PT lowering and serializer match them exhaustively — adding a primitive is
+/// compiler-checked everywhere instead of string-matched in places that can drift.
+and TypeReference =
+  | TUnit of Range
+  | TBool of Range
+  | TInt of Range
+  | TInt8 of Range
+  | TUInt8 of Range
+  | TInt16 of Range
+  | TUInt16 of Range
+  | TInt32 of Range
+  | TUInt32 of Range
+  | TInt64 of Range
+  | TUInt64 of Range
+  | TInt128 of Range
+  | TUInt128 of Range
+  | TFloat of Range
+  | TChar of Range
+  | TString of Range
+  | TDateTime of Range
+  | TUuid of Range
+  | TBlob of Range
+  | TList of
+    Range *
+    keywordList : Range *
+    openBracket : Range *
+    inner : TypeReference *
+    closeBracket : Range
+  | TDict of
+    Range *
+    keywordDict : Range *
+    openBrace : Range *
+    inner : TypeReference *
+    closeBrace : Range
+  | TCustom of QualifiedTypeIdentifier
+  | TVariable of Range * tick : Range * name : (Range * string) // `'a`
+  | TTuple of
+    Range *
+    first : TypeReference *
+    symbolAsterisk : Range *
+    second : TypeReference *
+    rest : List<Range * TypeReference> *  // each: (`*` range, type)
+    openParen : Range *
+    closeParen : Range
+  | TFn of Range * arguments : List<TypeReference * Range> * ret : TypeReference // each arg: (type, `->` range)
 
-  | TVariable of string
+/// THE mapping between primitive type names (as written) and their `TypeReference`
+/// case constructor — the single place a name→case dispatch lives. The parser resolves
+/// a name through this; the WT2PT lowering and serializer then match the primitive cases
+/// exhaustively (compiler-checked), so they cannot drift from this list.
+let primTypes : List<string * (Range -> TypeReference)> =
+  [ "Unit", TUnit
+    "Bool", TBool
+    "Int", TInt
+    "Int8", TInt8
+    "UInt8", TUInt8
+    "Int16", TInt16
+    "UInt16", TUInt16
+    "Int32", TInt32
+    "UInt32", TUInt32
+    "Int64", TInt64
+    "UInt64", TUInt64
+    "Int128", TInt128
+    "UInt128", TUInt128
+    "Float", TFloat
+    "Char", TChar
+    "String", TString
+    "DateTime", TDateTime
+    "Uuid", TUuid
+    "Blob", TBlob ]
 
+let primTypeFromName (s : string) : Option<Range -> TypeReference> =
+  primTypes |> List.tryPick (fun (n, ctor) -> if n = s then Some ctor else None)
 
-type Expr =
-  | EUnit of id
-  | EBool of id * bool
-  | EInt64 of id * int64
-  | EUInt64 of id * uint64
-  | EInt8 of id * int8
-  | EUInt8 of id * uint8
-  | EInt16 of id * int16
-  | EUInt16 of id * uint16
-  | EInt32 of id * int32
-  | EUInt32 of id * uint32
-  | EInt128 of id * System.Int128
-  | EUInt128 of id * System.UInt128
-  | EInt of id * bigint
-  | EFloat of id * Sign * string * string
-  | EChar of id * string
-  | EString of id * List<StringSegment>
+type LetPattern =
+  | LPUnit of Range
+  | LPVariable of Range * name : string
+  | LPWildcard of Range
+  | LPTuple of
+    Range *
+    first : LetPattern *
+    symbolComma : Range *
+    second : LetPattern *
+    rest : List<Range * LetPattern> *  // each: (`,` range, pattern)
+    symbolOpenParen : Range *
+    symbolCloseParen : Range
 
-  | EList of id * List<Expr>
-  | EDict of id * List<string * Expr>
-  | ETuple of id * Expr * Expr * List<Expr>
-  | ERecord of id * Name * List<string * Expr>
-  | ERecordUpdate of id * record : Expr * updates : NEList<string * Expr>
+/// Match patterns.
+type MatchPattern =
+  | MPVariable of Range * string // also `_` (as "_")
+  | MPInt of Range * intPart : (Range * bigint) // arbitrary-precision `Int`
+  | MPInt8 of Range * intPart : (Range * int8) * suffixPart : Range
+  | MPUInt8 of Range * intPart : (Range * uint8) * suffixPart : Range
+  | MPInt16 of Range * intPart : (Range * int16) * suffixPart : Range
+  | MPUInt16 of Range * intPart : (Range * uint16) * suffixPart : Range
+  | MPInt32 of Range * intPart : (Range * int32) * suffixPart : Range
+  | MPUInt32 of Range * intPart : (Range * uint32) * suffixPart : Range
+  | MPInt64 of Range * intPart : (Range * int64) * suffixPart : Range
+  | MPUInt64 of Range * intPart : (Range * uint64) * suffixPart : Range
+  | MPInt128 of Range * intPart : (Range * System.Int128) * suffixPart : Range
+  | MPUInt128 of Range * intPart : (Range * System.UInt128) * suffixPart : Range
+  | MPFloat of Range * isNegative : bool * whole : string * fraction : string
+  | MPBool of Range * bool
+  | MPString of
+    Range *
+    contents : Option<Range * string> *
+    symbolOpenQuote : Range *
+    symbolCloseQuote : Range
+  | MPChar of
+    Range *
+    contents : Option<Range * string> *
+    symbolOpenQuote : Range *
+    symbolCloseQuote : Range
+  | MPUnit of Range
+  | MPEnum of Range * caseName : (Range * string) * fieldPats : List<MatchPattern>
+  | MPTuple of
+    Range *
+    first : MatchPattern *
+    symbolComma : Range *
+    second : MatchPattern *
+    rest : List<Range * MatchPattern> *
+    symbolOpenParen : Range *
+    symbolCloseParen : Range
+  | MPList of
+    Range *
+    contents : List<MatchPattern * Option<Range>> *
+    symbolOpenBracket : Range *
+    symbolCloseBracket : Range
+  | MPListCons of
+    Range *
+    head : MatchPattern *
+    tail : MatchPattern *
+    symbolCons : Range
+  | MPOr of Range * List<MatchPattern>
+  /// A recovery hole where a pattern was expected but couldn't be parsed (the
+  /// parse has a diagnostic at this range). Execution paths never see it —
+  /// every consumer rejects files with diagnostics before lowering.
+  | MPError of Range
+
+let rec mpRange (p : MatchPattern) : Range =
+  match p with
+  | MPVariable(r, _)
+  | MPInt(r, _)
+  | MPInt8(r, _, _)
+  | MPUInt8(r, _, _)
+  | MPInt16(r, _, _)
+  | MPUInt16(r, _, _)
+  | MPInt32(r, _, _)
+  | MPUInt32(r, _, _)
+  | MPInt64(r, _, _)
+  | MPUInt64(r, _, _)
+  | MPInt128(r, _, _)
+  | MPUInt128(r, _, _)
+  | MPFloat(r, _, _, _)
+  | MPBool(r, _)
+  | MPString(r, _, _, _)
+  | MPChar(r, _, _, _)
+  | MPUnit r
+  | MPEnum(r, _, _)
+  | MPTuple(r, _, _, _, _, _, _)
+  | MPList(r, _, _, _)
+  | MPListCons(r, _, _, _)
+  | MPOr(r, _)
+  | MPError r -> r
+
+type StringSegment =
+  | StringText of Range * string
+  | StringInterpolation of
+    Range *
+    Expr *
+    symbolOpenBrace : Range *
+    symbolCloseBrace : Range
+
+and Expr =
+  | EUnit of Range
+  | EBool of Range * bool
+  | EInt of Range * intPart : (Range * bigint) // arbitrary-precision `Int`, bare literal (no suffix)
+  | EInt64 of Range * intPart : (Range * int64) * suffixPart : Range
+  | EInt8 of Range * intPart : (Range * sbyte) * suffixPart : Range
+  | EUInt8 of Range * intPart : (Range * byte) * suffixPart : Range
+  | EInt16 of Range * intPart : (Range * int16) * suffixPart : Range
+  | EUInt16 of Range * intPart : (Range * uint16) * suffixPart : Range
+  | EInt32 of Range * intPart : (Range * int32) * suffixPart : Range
+  | EUInt32 of Range * intPart : (Range * uint32) * suffixPart : Range
+  | EUInt64 of Range * intPart : (Range * uint64) * suffixPart : Range
+  | EInt128 of Range * intPart : (Range * System.Int128) * suffixPart : Range
+  | EUInt128 of Range * intPart : (Range * System.UInt128) * suffixPart : Range
+  | EFloat of Range * isNegative : bool * whole : string * fraction : string
+  | EChar of
+    Range *
+    contents : Option<Range * string> *
+    symbolOpenQuote : Range *
+    symbolCloseQuote : Range
+  | EString of
+    Range *
+    symbolDollarSign : Option<Range> *
+    contents : List<StringSegment> *
+    symbolOpenQuote : Range *
+    symbolCloseQuote : Range
+  | EVariable of Range * string
+  | EFnName of Range * QualifiedFnIdentifier
+  | EInfix of Range * op : (Range * Infix) * left : Expr * right : Expr
+  | ELet of
+    Range *
+    LetPattern *
+    expr : Expr *
+    body : Expr *
+    keywordLet : Range *
+    symbolEquals : Range
+  | EApply of Range * lhs : Expr * typeArgs : List<TypeReference> * args : List<Expr>
+  // each list element carries its trailing-separator (`;`/`,`) range, if any
+  | EList of
+    Range *
+    contents : List<Expr * Option<Range>> *
+    symbolOpenBracket : Range *
+    symbolCloseBracket : Range
+  | ETuple of
+    Range *
+    first : Expr *
+    symbolComma : Range *
+    second : Expr *
+    rest : List<Range * Expr> *
+    symbolOpenParen : Range *
+    symbolCloseParen : Range
+  | EIf of
+    Range *
+    cond : Expr *
+    thenExpr : Expr *
+    elseExpr : Option<Expr> *
+    keywordIf : Range *
+    keywordThen : Range *
+    keywordElse : Option<Range>
+  | ERecordFieldAccess of
+    Range *
+    Expr *
+    fieldName : (Range * string) *
+    symbolDot : Range
+  | ELambda of
+    Range *
+    pats : List<LetPattern> *
+    body : Expr *
+    keywordFun : Range *
+    symbolArrow : Range
+  | ERecord of
+    Range *
+    typeName : QualifiedTypeIdentifier *
+    fields : List<Range * (Range * string) * Expr> *
+    symbolOpenBrace : Range *
+    symbolCloseBrace : Range
+  // `Dict { k = v; … }` — a dict literal. Syntactically like a record, but `Dict`
+  // is a keyword (its own range), not a type name, so it's a distinct node.
+  | EDict of
+    Range *
+    contents : List<Range * (Range * string) * Expr> *  // (entry, (key range, key), value)
+    keywordDict : Range *
+    symbolOpenBrace : Range *
+    symbolCloseBrace : Range
+  | ERecordUpdate of
+    Range *
+    record : Expr *
+    updates : List<(Range * string) * Range * Expr> *  // (field name, `=` range, value)
+    symbolOpenBrace : Range *
+    symbolCloseBrace : Range *
+    keywordWith : Range
   | EEnum of
-    id *
-    typeName : UnresolvedEnumTypeName *
-    caseName : string *
-    fields : List<Expr>
+    Range *
+    typeName : QualifiedTypeIdentifier *
+    caseName : (Range * string) *
+    fields : List<Expr> *
+    symbolDot : Range
+  | EMatch of
+    Range *
+    expr : Expr *
+    cases : List<MatchCase> *
+    keywordMatch : Range *
+    keywordWith : Range
+  | EPipe of Range * Expr * List<Range * PipeExpr> // each: (`|>` range, segment)
+  | EStatement of Range * first : Expr * next : Expr // `e1 ⏎ e2` (sequence)
+  /// A recovery hole where an expression was expected but couldn't be parsed
+  /// (the parse has a diagnostic at this range). Execution paths never see it —
+  /// every consumer rejects files with diagnostics before lowering.
+  | EError of Range
 
-  | ELet of id * LetPattern * Expr * Expr
-  | EVariable of id * string
-  | ERecordFieldAccess of id * Expr * string
-
-  | EIf of id * cond : Expr * thenExpr : Expr * elseExpr : Option<Expr>
-  // CLEANUP: why is this not an NEList?
-  | EPipe of id * Expr * List<PipeExpr>
-  | EMatch of id * arg : Expr * cases : List<MatchCase>
-
-  | EFnName of id * Name
-  | EInfix of id * Infix * Expr * Expr
-  | ELambda of id * pats : NEList<LetPattern> * body : Expr
-  | EApply of id * Expr * typeArgs : List<TypeReference> * args : NEList<Expr>
-  | EStatement of id * first : Expr * next : Expr
-
-  | EPlaceHolder // Used to start exprs that aren't filled in yet, not in ProgramTypes
-
-and MatchCase = { pat : MatchPattern; whenCondition : Option<Expr>; rhs : Expr }
-
-and StringSegment =
-  | StringText of string
-  | StringInterpolation of Expr
+and MatchCase =
+  { barRange : Range
+    pat : MatchPattern
+    arrowRange : Range
+    whenCondition : Option<Range * Expr>
+    rhs : Expr }
 
 and PipeExpr =
-  | EPipeInfix of id * Infix * Expr
-
-  | EPipeLambda of id * pats : NEList<LetPattern> * body : Expr
-
+  | EPipeInfix of Range * op : (Range * Infix) * Expr
+  | EPipeLambda of
+    Range *
+    pats : List<LetPattern> *
+    body : Expr *
+    keywordFun : Range *
+    symbolArrow : Range
   | EPipeEnum of
-    id *
-    typeName : UnresolvedEnumTypeName *
-    caseName : string *
-    fields : List<Expr>
-
+    Range *
+    typeName : QualifiedTypeIdentifier *
+    caseName : (Range * string) *
+    fields : List<Expr> *
+    symbolDot : Range
   | EPipeFnCall of
-    id *
-    // CLEANUP: should this be an Expr?
-    // let something = {add = /x -> x + 1}
-    // 1 |> something.add 1
-    fnName : Name *
+    Range *
+    fnName : QualifiedFnIdentifier *
     typeArgs : List<TypeReference> *
     args : List<Expr>
+  | EPipeVariableOrFnCall of Range * string
 
-  /// When parsing, the following is a bit ambiguous:
-  ///   `dir |> listDirectoryRecursive`
-  ///
-  /// It could either be a local variable,
-  ///   or a user function with only one argument or type args.
-  ///
-  /// We resolve this ambiguity during name resolution of WT2PT.
-  | EPipeVariableOrFnCall of id * string
+/// A function parameter: `(name: Type)` or a `()` unit parameter.
+type FnParam =
+  | FPUnit of Range
+  | FPNormal of
+    Range *
+    name : Identifier *
+    typ : TypeReference *
+    symbolLeftParen : Range *
+    symbolColon : Range *
+    symbolRightParen : Range
 
+/// `let name (p: T) … : Ret = body`
+type FnDecl =
+  { range : Range
+    name : Identifier
+    typeParams : List<string * Range> // `<'a, 'b>` (name tick-stripped, with range)
+    parameters : List<FnParam>
+    returnType : TypeReference
+    body : Expr
+    keywordLet : Range
+    symbolColon : Range
+    symbolEquals : Range
+    description : string } // preceding `///` doc comments
+
+/// `let name = body` (no params)
+type ValueDecl =
+  { range : Range
+    name : Identifier
+    body : Expr
+    keywordLet : Range
+    symbolEquals : Range
+    description : string }
+
+// --- type declarations ---
+
+type RecordFieldSyntax =
+  { range : Range; name : Range * string; typ : TypeReference; symbolColon : Range }
+
+type EnumFieldSyntax =
+  { range : Range
+    typ : TypeReference
+    label : Option<Range * string>
+    symbolColon : Option<Range> }
+
+type EnumCaseSyntax =
+  { range : Range
+    name : Range * string
+    fields : List<EnumFieldSyntax>
+    keywordOf : Option<Range> }
+
+type TypeDefinition =
+  | TDAlias of TypeReference
+  | TDRecord of List<RecordFieldSyntax * Option<Range>> // (field, trailing-separator)
+  | TDEnum of List<Range * EnumCaseSyntax> // (leading `|` range, case)
+
+/// `type Name [<'a>] = Definition`
+type TypeDecl =
+  { range : Range
+    name : Identifier
+    typeParams : List<string * Range> // `<'a, 'b>` (name tick-stripped, with range)
+    definition : TypeDefinition
+    keywordType : Range
+    symbolEquals : Range
+    description : string }
+
+/// A `module Name.Path` header.
+type ModuleDecl =
+  { range : Range
+    name : Range * string
+    declarations : List<Declaration>
+    keywordModule : Range }
+
+/// A testfile assertion's expected side: a value expression, or an expected
+/// runtime / SQL error message. (Test-mode parsing only.)
+and TestExpected =
+  | TEExpr of Expr
+  | TEError of string
+  | TESqlError of string
+
+/// A testfile assertion `actual = expected` (test-mode parsing only).
+and Test = { range : Range; actual : Expr; expected : TestExpected }
+
+and Declaration =
+  | DFunction of FnDecl
+  | DValue of ValueDecl
+  | DModule of ModuleDecl
+  | DType of TypeDecl
+  /// A trailing expression inside a module body (`module M = … \n expr`).
+  | DExpr of Expr
+  /// `[<DB>] type Name = AliasedType` — a user DB (test-mode parsing only).
+  | DTypeDB of TypeDecl
+  /// `actual = expected` testfile assertion (test-mode parsing only).
+  | DTest of Test
+
+/// The whole file: top-level declarations + trailing expressions to eval.
+type SourceFile =
+  { range : Range; declarations : List<Declaration>; exprsToEval : List<Expr> }
+
+type ParsedFile = SourceFile of SourceFile
+
+/// The source range covering a whole expression node.
+let exprRange (e : Expr) : Range =
+  match e with
+  | EUnit r -> r
+  | EBool(r, _)
+  | EInt(r, _)
+  | EInt64(r, _, _)
+  | EInt8(r, _, _)
+  | EUInt8(r, _, _)
+  | EInt16(r, _, _)
+  | EUInt16(r, _, _)
+  | EInt32(r, _, _)
+  | EUInt32(r, _, _)
+  | EUInt64(r, _, _)
+  | EInt128(r, _, _)
+  | EUInt128(r, _, _)
+  | EFloat(r, _, _, _)
+  | EChar(r, _, _, _)
+  | EString(r, _, _, _, _)
+  | EVariable(r, _)
+  | EFnName(r, _)
+  | EInfix(r, _, _, _)
+  | ELet(r, _, _, _, _, _)
+  | EApply(r, _, _, _)
+  | EList(r, _, _, _)
+  | ETuple(r, _, _, _, _, _, _)
+  | EIf(r, _, _, _, _, _, _)
+  | ERecordFieldAccess(r, _, _, _)
+  | ELambda(r, _, _, _, _)
+  | ERecord(r, _, _, _, _)
+  | EDict(r, _, _, _, _)
+  | ERecordUpdate(r, _, _, _, _, _)
+  | EEnum(r, _, _, _, _)
+  | EMatch(r, _, _, _, _)
+  | EPipe(r, _, _)
+  | EStatement(r, _, _)
+  | EError r -> r
+
+let typeReferenceRange (t : TypeReference) : Range =
+  match t with
+  | TUnit r
+  | TBool r
+  | TInt r
+  | TInt8 r
+  | TUInt8 r
+  | TInt16 r
+  | TUInt16 r
+  | TInt32 r
+  | TUInt32 r
+  | TInt64 r
+  | TUInt64 r
+  | TInt128 r
+  | TUInt128 r
+  | TFloat r
+  | TChar r
+  | TString r
+  | TDateTime r
+  | TUuid r
+  | TBlob r
+  | TList(r, _, _, _, _)
+  | TDict(r, _, _, _, _)
+  | TVariable(r, _, _)
+  | TTuple(r, _, _, _, _, _, _)
+  | TFn(r, _, _) -> r
+  | TCustom q -> q.range
+
+
+// ============================================================================
+// Normalized package IR + declaration normalization
+//
+// The layers below are EXECUTION-ONLY (Cli / Package / TestModule → WT2PT → PT).
+// They are never serialized for highlighting, so synthesized nodes may use
+// `synthRange`. They normalize the raw parser tree (rich decls above) into the
+// module-qualified package shapes the lowering consumes.
+// ============================================================================
 
 module TypeDeclaration =
   type RecordField = { name : string; typ : TypeReference; description : string }
@@ -273,3 +612,92 @@ module PackageFn =
 
 module DB =
   type T = { name : string; version : int; typ : TypeReference }
+
+
+// --- normalization: raw parser syntax → package IR ---
+//
+// The parser produces one range-complete syntax tree (the ranges drive the
+// highlighter / LSP). The package form is the SEMANTIC shape execution wants:
+// names pulled out of `(range, name)` pairs, no ranges. These strip one to the
+// other. Descriptions are "" here — `///` docs are attached elsewhere.
+
+let private fnParamNorm (p : FnParam) : PackageFn.Parameter =
+  match p with
+  // a unit parameter is named "_"
+  | FPUnit _ -> { name = "_"; typ = TUnit synthRange; description = "" }
+  | FPNormal(_, name, typ, _, _, _) ->
+    { name = name.name; typ = typ; description = "" }
+
+let private recordFieldNorm (f : RecordFieldSyntax) : TypeDeclaration.RecordField =
+  { name = snd f.name; typ = f.typ; description = "" }
+
+let private enumFieldNorm (f : EnumFieldSyntax) : TypeDeclaration.EnumField =
+  { typ = f.typ; label = f.label |> Option.map snd; description = "" }
+
+let private enumCaseNorm (c : EnumCaseSyntax) : TypeDeclaration.EnumCase =
+  { name = snd c.name
+    fields = c.fields |> List.map enumFieldNorm
+    description = "" }
+
+let typeDefinitionNorm (d : TypeDefinition) : TypeDeclaration.Definition =
+  match d with
+  | TDAlias t -> TypeDeclaration.Alias t
+  | TDRecord fields ->
+    fields
+    |> List.map (fst >> recordFieldNorm)
+    |> NEList.ofListWithDefault (
+      { name = "_"; typ = TUnit synthRange; description = "" }
+      : TypeDeclaration.RecordField
+    )
+    |> TypeDeclaration.Record
+  | TDEnum cases ->
+    cases
+    |> List.map (snd >> enumCaseNorm)
+    |> NEList.ofListWithDefault (
+      { name = "_"; fields = []; description = "" } : TypeDeclaration.EnumCase
+    )
+    |> TypeDeclaration.Enum
+
+
+// --- build owner-qualified package items from declarations ---
+//
+// A fn `map` inside `module Darklang.Stdlib.List` becomes `Darklang.Stdlib.List.map`:
+// the accumulated path's first segment is the owner, the rest the modules.
+
+let packageFn
+  (owner : string)
+  (modules : List<string>)
+  (fn : FnDecl)
+  : PackageFn.PackageFn =
+  let parameters =
+    fn.parameters
+    |> List.map fnParamNorm
+    |> NEList.ofListWithDefault (
+      { name = "_"; typ = TUnit synthRange; description = "" } : PackageFn.Parameter
+    )
+  { name = { owner = owner; modules = modules; name = fn.name.name }
+    body = fn.body
+    typeParams = fn.typeParams |> List.map fst
+    parameters = parameters
+    returnType = fn.returnType
+    description = fn.description }
+
+let packageType
+  (owner : string)
+  (modules : List<string>)
+  (t : TypeDecl)
+  : PackageType.PackageType =
+  { name = { owner = owner; modules = modules; name = t.name.name }
+    declaration =
+      { typeParams = t.typeParams |> List.map fst
+        definition = typeDefinitionNorm t.definition }
+    description = t.description }
+
+let packageValue
+  (owner : string)
+  (modules : List<string>)
+  (v : ValueDecl)
+  : PackageValue.PackageValue =
+  { name = { owner = owner; modules = modules; name = v.name.name }
+    description = v.description
+    body = v.body }

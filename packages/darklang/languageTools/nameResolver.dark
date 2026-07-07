@@ -112,32 +112,63 @@ let resolveGenericName
     let modules = Stdlib.List.dropLast given
     let name = Stdlib.List.last given
 
-    // TODO: handle versions... (parse out the _v[n] part if present)
     match name with
     | None ->
       ProgramTypes.NameResolution
         { originalName = given
           resolved = Stdlib.Result.Result.Error ProgramTypes.NameResolutionError.InvalidName }
     | Some name ->
+      // split a `_v[n]` version suffix off the written name (`member_v0` →
+      // name `member`, version 0) — mirrors the F# resolver's
+      // parseFnNameString; without this every suffixed call site fails to
+      // resolve on the tooling path
+      let (name, version) =
+        match Stdlib.String.split name "_v" with
+        | [ bare; v ] ->
+          match Stdlib.Int32.parse v with
+          | Ok n when n >= 0l -> (bare, n)
+          | _ -> (name, 0l)
+        | _ -> (name, 0l)
+
+      // the written-name format check (mirrors the F# parse*NameString regexes:
+      // a letter then letters/digits, optional trailing apostrophe): a name that
+      // can't be a package name is InvalidName, not NotFound — so tooling agrees
+      // with the loader and DeferredResolver doesn't retry hopeless names
+      let isValidName =
+        // an optional trailing apostrophe is allowed (`foo'`)
+        let core =
+          if Stdlib.String.endsWith name "'" then Stdlib.String.dropLast name 1 else name
+        match Stdlib.String.toList core with
+        | [] -> false
+        | first :: rest ->
+          (Stdlib.Char.isASCIILetter first)
+          && (rest
+              |> Stdlib.List.all (fun c ->
+                (Stdlib.Char.isASCIILetter c) || (Stdlib.Char.isDigit c)))
+
       let genericName =
-        GenericName { modules = modules; name = name; version = 0 }
+        GenericName { modules = modules; name = name; version = version }
 
       // Fold accumulator: (resolvedResult, matchedLocation). Once we
       // find a successful candidate we keep it; further candidates
-      // are skipped.
+      // are skipped. An invalid written name skips the search entirely.
       let (resolved, location) =
-        Stdlib.List.fold
-          (namesToTry ctx.owner ctx.currentModule genericName)
-          (Stdlib.Result.Result.Error ProgramTypes.NameResolutionError.NotFound,
+        if Stdlib.Bool.not isValidName then
+          (Stdlib.Result.Result.Error ProgramTypes.NameResolutionError.InvalidName,
            Stdlib.Option.Option.None)
-          (fun acc nameToTry ->
-            let (currentResult, currentLoc) = acc
-            match currentResult with
-            | Ok _ -> acc
-            | Error _ ->
-              match tryResolve ctx.pm ctx.branchId nameToTry with
-              | Error() -> acc
-              | Ok((success, loc)) -> (Stdlib.Result.Result.Ok success, loc))
+        else
+          Stdlib.List.fold
+            (namesToTry ctx.owner ctx.currentModule genericName)
+            (Stdlib.Result.Result.Error ProgramTypes.NameResolutionError.NotFound,
+             Stdlib.Option.Option.None)
+            (fun acc nameToTry ->
+              let (currentResult, currentLoc) = acc
+              match currentResult with
+              | Ok _ -> acc
+              | Error _ ->
+                match tryResolve ctx.pm ctx.branchId nameToTry with
+                | Error() -> acc
+                | Ok((success, loc)) -> (Stdlib.Result.Result.Ok success, loc))
 
       // Pair the resolved name with the location that produced it. This
       // makes "location without resolution" unrepresentable: on Error,
@@ -190,7 +221,10 @@ module TypeName =
 module ValueName =
   let builtinThingExists (name: String) : Bool =
     (Builtin.getAllBuiltinValues ())
-    |> Stdlib.List.findFirst (fun f -> f.name == name)
+    // `f.name` is an FQValueName.Builtin record, not a String — compare its
+    // name field (comparing the record itself crashes with a mixed-type
+    // equality error at resolution time)
+    |> Stdlib.List.findFirst (fun f -> f.name.name == name)
     |> Stdlib.Option.isSome
 
   let tryResolve

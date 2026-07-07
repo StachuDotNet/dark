@@ -1,12 +1,11 @@
-/// Tests the new tree-sitter-based parser.
+/// Tests the hand-written parser (LibParser).
 ///
 /// Currently just focused on round-tripping:
 ///   source (input)
-///   -> parsed TreeSitter tree
-///   -> parsed CLI Script
+///   -> WrittenTypes tree
 ///   -> PT.SourceFile
 ///   -> pretty-print back to text (expected)
-module Tests.NewParser
+module Tests.LibParserRoundTrip
 
 open System.Threading.Tasks
 open FSharp.Control.Tasks
@@ -244,12 +243,16 @@ let tParseErrorNote (name : string) (input : string) (expectedNote : string) =
     | RT.DEnum(tn, _, _, "Error", [ errVariant ]) when tn = Dval.resultType () ->
       match errVariant with
       | RT.DEnum(_, _, _, "Unparseable", [ RT.DRecord(_, _, _, fields) ]) ->
-        match Map.tryFind "note" fields with
-        | Some(RT.DEnum(_, _, _, "Some", [ RT.DString note ])) ->
-          return Expect.equal note expectedNote $"wrong Unparseable note for {input}"
+        match Map.tryFind "message" fields with
+        | Some(RT.DString message) ->
+          return
+            Expect.equal
+              message
+              expectedNote
+              $"wrong Unparseable message for {input}"
         | other ->
           return
-            failtest $"Expected an Unparseable with a Some note; got note = {other}"
+            failtest $"Expected an Unparseable with a message; got message = {other}"
       | other -> return failtest $"Expected an Unparseable variant; got {other}"
     | _ ->
       return failtest $"Expected Result.Error (Unparseable ...); got {parseDval}"
@@ -950,9 +953,9 @@ let exprs =
       "match c with\n| '\\d' -> 1L\n| _ -> 0L"
       "Unparseable"
     // A qualified enum-case pattern is unsupported (use the unqualified case name).
-    // tree-sitter keeps only the first path segment and error-recovers the
-    // rest; reject it instead of silently building a truncated pattern. The
-    // rejection holds across path lengths and whether or not fields are bound.
+    // Reject it instead of silently building a truncated pattern (keeping only
+    // the first path segment). The rejection holds across path lengths and
+    // whether or not fields are bound.
     tParseErrorVariant
       "qualified enum-case match pattern (fully qualified)"
       "match x with\n| Stdlib.Result.Result.Ok n -> 1L\n| _ -> 0L"
@@ -971,7 +974,7 @@ let exprs =
       "qualified enum-case match pattern suggests unqualified case name"
       "match x with\n| Stdlib.Result.Result.Ok n -> 1L\n| _ -> 0L"
       "Invalid match pattern. Enum patterns use the unqualified case name (e.g. `| Ok n`), not a qualified path like `| Stdlib.Result.Result.Ok n`."
-    // Codepoints that tree-sitter accepts as well-formed escapes but that
+    // Escapes that are syntactically well-formed but denote codepoints that
     // are not valid Unicode scalars must be rejected by the decoder:
     //   - surrogate range (D800..DFFF)
     //   - above the Unicode max (>0x10FFFF)
@@ -2367,7 +2370,7 @@ Builtin.printLine (getTitle curiousGeorgeBookId)
 
 let tests =
   testList
-    "NewParser"
+    "LibParserRoundTrip"
     [ typeReferences
       typeDeclarations
       valueDeclarations

@@ -155,7 +155,7 @@ module FQValueName =
       let namePart = t.name
 
       let versionPart =
-        if t.version == 0 then
+        if t.version == 0l then
           ""
         else
           $"_v{Stdlib.Int32.toString t.version}"
@@ -212,7 +212,7 @@ module FQFnName =
       let namePart = t.name
 
       let versionPart =
-        if t.version == 0 then
+        if t.version == 0l then
           ""
         else
           $"_v{Stdlib.Int32.toString t.version}"
@@ -644,14 +644,19 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
         |> Stdlib.String.join ", "
         |> fun parts -> $"<{parts}>"
 
+    // A bare, unqualified enum case (no type name) prints as just the case name —
+    // e.g. an unresolved `TestDB` — not `.TestDB`. The leading `.` only separates a
+    // present type name from its case (`Result.Ok`, `Generic<Int64>.A`).
+    let sep = if typeNamePart == "" then "" else "."
+
     match fields with
-    | [] -> $"{typeNamePart}{typeArgsPart}.{caseName}"
+    | [] -> $"{typeNamePart}{typeArgsPart}{sep}{caseName}"
     | fields ->
       let fieldPart =
         fields
         |> Stdlib.List.map (fun field -> expr ctx field)
         |> Stdlib.String.join ", "
-      $"{typeNamePart}{typeArgsPart}.{caseName}({fieldPart})"
+      $"{typeNamePart}{typeArgsPart}{sep}{caseName}({fieldPart})"
 
 
   // declaring and accessing variables
@@ -899,7 +904,7 @@ let db
   (db: LanguageTools.ProgramTypes.DB)
   : String =
   let versionPart =
-    if db.version == 0 then
+    if db.version == 0l then
       ""
     else
       $"_v{Stdlib.Int32.toString db.version}"

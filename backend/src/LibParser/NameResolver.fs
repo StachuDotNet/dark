@@ -4,12 +4,29 @@ module LibParser.NameResolver
 open Prelude
 open LibExecution.ProgramTypes
 
-module FS2WT = FSharpToWrittenTypes
 module WT = WrittenTypes
 module PT = LibExecution.ProgramTypes
-module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module RT = LibExecution.RuntimeTypes
 type NRE = PT.NameResolutionError
+
+// Name-format helpers: a package fn/value is written `name` or `name_vN`; a type is
+// `Name` or `Name_v0`.
+let private parseFnNameString (fnName : string) : Result<string * int, string> =
+  match fnName with
+  | Regex.Regex "^([a-z][a-z0-9A-Z]*[']?)_v(\d+)$" [ name; version ] ->
+    // TryParse (not `int`) so an absurdly long version string is a format error, not
+    // an OverflowException raised from a function that otherwise returns Result
+    match System.Int32.TryParse version with
+    | true, v -> Ok(name, v)
+    | false, _ -> Error "Bad format in fn name"
+  | Regex.Regex "^([a-z][a-z0-9A-Z]*[']?)$" [ name ] -> Ok(name, 0)
+  | _ -> Error "Bad format in fn name"
+
+let private parseTypeNameString (typeName : string) : Result<string, string> =
+  match typeName with
+  | Regex.Regex "^([A-Z][a-z0-9A-Z]*[']?)_v0$" [ name ] -> Ok name
+  | Regex.Regex "^([A-Z][a-z0-9A-Z]*[']?)$" [ name ] -> Ok name
+  | _ -> Error "Bad format in type name"
 
 
 /// If a name is not found, should we raise an exception?
@@ -77,7 +94,15 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
 
     match parseName name with
     | Error _ ->
-      return { originalName = originalName; resolved = Error NRE.InvalidName }
+      // a malformed name goes through throwIfRelevant too, so under ThrowError
+      // (package loading) it fails the same way a NotFound does, rather than being
+      // silently swallowed as InvalidName
+      return
+        throwIfRelevant
+          onMissing
+          currentModule
+          given
+          { originalName = originalName; resolved = Error NRE.InvalidName }
     | Ok(name, version) ->
       let genericName : GenericName =
         { modules = modules; name = name; version = version }
@@ -149,8 +174,7 @@ let resolveTypeName
   | WT.Unresolved given ->
     // Types don't have builtins, so pass None
     // parseTypeName returns just name (version always 0 for types)
-    let parseTypeName name =
-      FS2WT.Expr.parseTypeName name |> Result.map (fun n -> (n, 0))
+    let parseTypeName name = parseTypeNameString name |> Result.map (fun n -> (n, 0))
 
     resolveGenericName
       emptyBuiltins
@@ -186,7 +210,7 @@ let resolveValueName
       onMissing
       currentModule
       given
-      FS2WT.Expr.parseFnName
+      parseFnNameString
       packageManager.findValue
       PT.FQValueName.FQValueName.Package
       (fun (n, v) -> PT.FQValueName.Builtin { name = n; version = v })
@@ -213,7 +237,7 @@ let resolveFnName
       onMissing
       currentModule
       given
-      FS2WT.Expr.parseFnName
+      parseFnNameString
       packageManager.findFn
       PT.FQFnName.FQFnName.Package
       (fun (n, v) -> PT.FQFnName.Builtin { name = n; version = v })

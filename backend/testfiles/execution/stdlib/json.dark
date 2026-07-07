@@ -972,7 +972,7 @@ module List =
       Dict { name = "Charlie"; role = "user" } ]
 
   module Errors =
-    Stdlib.Json.serialize<List<Int64>> [ 1L, 2L, "three" ] = error="Darklang.Stdlib.Json.serialize's 1st parameter `value` expects List<Int64>, but got (Int64 * Int64 * String) ((1, 2, \"three\"))"
+    Stdlib.Json.serialize<List<Int64>> (1L, 2L, "three") = error="Darklang.Stdlib.Json.serialize's 1st parameter `value` expects List<Int64>, but got (Int64 * Int64 * String) ((1, 2, \"three\"))"
     (Stdlib.Json.parse<List<Int64>> "[1, 2, \"three\"]") |> err =
       Result.Error "Can't parse JSON `\"three\"` as type `Int64` at path: `root[2]`"
 

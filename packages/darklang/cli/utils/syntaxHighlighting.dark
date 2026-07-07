@@ -85,19 +85,43 @@ let applyTokenColors
   |> Stdlib.String.join "\n"
 
 
+/// Maps a lexical token kind (from LanguageTools.Parser.lexToTokens) to a
+/// semantic token type. Lexical highlighting can't tell e.g. a type name from
+/// a variable name, so all identifiers map to VariableName.
+let lexicalKindToTokenType
+  (kind: String)
+  : LanguageTools.SemanticTokens.TokenType =
+  match kind with
+  | "keyword" -> LanguageTools.SemanticTokens.TokenType.Keyword
+  | "operator" -> LanguageTools.SemanticTokens.TokenType.Operator
+  | "string" -> LanguageTools.SemanticTokens.TokenType.String
+  | "number" -> LanguageTools.SemanticTokens.TokenType.Number
+  | "comment" -> LanguageTools.SemanticTokens.TokenType.Comment
+  | "symbol" -> LanguageTools.SemanticTokens.TokenType.Symbol
+  | _ -> LanguageTools.SemanticTokens.TokenType.VariableName
+
+
+/// Lexical syntax highlighting driven by the tokenizer alone.
+/// Less rich than `highlightCode` (no module/type/function/parameter
+/// distinction), but needs no full parse.
+let highlightCodeLexical (sourceCode: String) : String =
+  let nodes = LanguageTools.Parser.lexToTokens sourceCode
+
+  let tokens =
+    nodes
+    |> Stdlib.List.map (fun node ->
+      LanguageTools.SemanticTokens.makeToken
+        node.range
+        (lexicalKindToTokenType node.typ))
+
+  applyTokenColors sourceCode tokens
+
+
 let highlightCode (sourceCode: String) : String =
-  let parsedTree = LanguageTools.Parser.parseToSimplifiedTree sourceCode
-
-  match LanguageTools.Parser.parseFromTree parsedTree with
-  | Ok parsedFile ->
-    let tokens = LanguageTools.SemanticTokens.ParsedFile.tokenize parsedFile
-    if Stdlib.List.isEmpty tokens then
-      // TODO: create a fallback highlighting when parsing and tokenization fail
-      Builtin.debug "what" parsedFile
-      sourceCode
-    else
-      applyTokenColors sourceCode tokens
-
-  | Error err ->
-    Builtin.debug "err" err
-    sourceCode
+  // The parser is best-effort and its lexer recovers from malformed input, so it
+  // always returns `Some` (a partial tree, with precise diagnostics reported
+  // separately). `None` is unreachable.
+  match Builtin.parserParseToWrittenTypes sourceCode with
+  | Some parsedFile ->
+    applyTokenColors sourceCode (LanguageTools.SemanticTokens.ParsedFile.tokenize parsedFile)
+  | None -> sourceCode

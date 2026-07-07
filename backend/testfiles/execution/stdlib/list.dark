@@ -19,9 +19,9 @@ Stdlib.List.append_v0 [] [] = []
 
 
 // CLEANUP the following tests should fail on having mixed types
-[1; 2.3] = error="Cannot add a Float (2.3) to a list of Int32. Failed at index 1."
-[(1,10); 10; (3,30)] = error="Cannot add an Int32 (10) to a list of (Int32 * Int32). Failed at index 1."
-[(1,10); (2,20); (3,30,40)] = error="Cannot add an (Int32 * Int32 * Int32) ((3, 30, 40)) to a list of (Int32 * Int32). Failed at index 2."
+[1l; 2.3] = error="Cannot add a Float (2.3) to a list of Int32. Failed at index 1."
+[(1l,10l); 10l; (3l,30l)] = error="Cannot add an Int32 (10) to a list of (Int32 * Int32). Failed at index 1."
+[(1l,10l); (2l,20l); (3l,30l,40l)] = error="Cannot add an (Int32 * Int32 * Int32) ((3, 30, 40)) to a list of (Int32 * Int32). Failed at index 2."
 Stdlib.List.all_v0 [] (fun item -> item < 3L) = true
 Stdlib.List.all_v0 [ 2L ] (fun item -> item < 3L) = true
 Stdlib.List.all_v0 [ 1L; 2L ] (fun item -> item < 3L) = true
@@ -126,7 +126,7 @@ module FindFirstIndex =
 module Flatten =
   Stdlib.List.flatten_v0 [ [ 1L ]; [ 2L ]; [ 3L ] ] = [ 1L; 2L; 3L ]
 
-  Stdlib.List.flatten_v0 [ 1; 2; 3 ] = error="Darklang.Stdlib.List.flatten's 1st parameter `list` expects List<List<_>>, but got List<Int32> ([1, 2, 3])"
+  Stdlib.List.flatten_v0 [ 1l; 2l; 3l ] = error="Darklang.Stdlib.List.flatten's 1st parameter `list` expects List<List<_>>, but got List<Int32> ([1, 2, 3])"
   Stdlib.List.flatten_v0 [ [ 1L ]; [ [ 2L; 3L ] ] ] = error="Cannot add a List<List<Int64>> ([[2, 3]]) to a list of List<Int64>. Failed at index 1."
   Stdlib.List.flatten_v0 [ [ [] ] ] = [ [] ]
   Stdlib.List.flatten_v0 [ [] ] = []

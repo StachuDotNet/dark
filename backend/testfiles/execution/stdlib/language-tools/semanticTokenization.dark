@@ -6,8 +6,7 @@ let tokenize
   : List<(Darklang.LanguageTools.SemanticTokens.TokenType * (Int * Int) * (Int * Int))>
   =
   text
-  |> Darklang.LanguageTools.Parser.parseToSimplifiedTree
-  |> Darklang.LanguageTools.Parser.parseFromTree
+  |> Builtin.parserParseToWrittenTypes
   |> Builtin.unwrap
   |> Darklang.LanguageTools.SemanticTokens.ParsedFile.tokenize
   |> Stdlib.List.map (fun token ->
@@ -18,878 +17,874 @@ let tokenize
 
 module TokenizeTypeReference =
   ("type MyUnit = Unit" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 11I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.TypeName, (0I, 14I), (0I, 18I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 11))
+      (TokenType.Symbol, (0, 12), (0, 13))
+      (TokenType.TypeName, (0, 14), (0, 18)) ]
 
   ("type MyBool = Bool" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 11I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.TypeName, (0I, 14I), (0I, 18I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 11))
+      (TokenType.Symbol, (0, 12), (0, 13))
+      (TokenType.TypeName, (0, 14), (0, 18)) ]
 
   ("type MyInt8 = Int8" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 11I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.TypeName, (0I, 14I), (0I, 18I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 11))
+      (TokenType.Symbol, (0, 12), (0, 13))
+      (TokenType.TypeName, (0, 14), (0, 18)) ]
 
   ("type MyUInt8 = UInt8" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 12I))
-      (TokenType.Symbol, (0I, 13I), (0I, 14I))
-      (TokenType.TypeName, (0I, 15I), (0I, 20I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 12))
+      (TokenType.Symbol, (0, 13), (0, 14))
+      (TokenType.TypeName, (0, 15), (0, 20)) ]
 
   ("type MyInt16 = Int16" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 12I))
-      (TokenType.Symbol, (0I, 13I), (0I, 14I))
-      (TokenType.TypeName, (0I, 15I), (0I, 20I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 12))
+      (TokenType.Symbol, (0, 13), (0, 14))
+      (TokenType.TypeName, (0, 15), (0, 20)) ]
 
   ("type MyUInt16 = UInt16" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.TypeName, (0I, 16I), (0I, 22I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.TypeName, (0, 16), (0, 22)) ]
 
   ("type MyInt32 = Int32" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 12I))
-      (TokenType.Symbol, (0I, 13I), (0I, 14I))
-      (TokenType.TypeName, (0I, 15I), (0I, 20I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 12))
+      (TokenType.Symbol, (0, 13), (0, 14))
+      (TokenType.TypeName, (0, 15), (0, 20)) ]
 
   ("type MyUInt32 = UInt32" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.TypeName, (0I, 16I), (0I, 22I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.TypeName, (0, 16), (0, 22)) ]
 
   ("type MyInt64 = Int64" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 12I))
-      (TokenType.Symbol, (0I, 13I), (0I, 14I))
-      (TokenType.TypeName, (0I, 15I), (0I, 20I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 12))
+      (TokenType.Symbol, (0, 13), (0, 14))
+      (TokenType.TypeName, (0, 15), (0, 20)) ]
 
   ("type MyUInt64 = UInt64" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.TypeName, (0I, 16I), (0I, 22I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.TypeName, (0, 16), (0, 22)) ]
 
   ("type MyInt128 = Int128" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.TypeName, (0I, 16I), (0I, 22I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.TypeName, (0, 16), (0, 22)) ]
 
   ("type MyUInt128 = UInt128" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 14I))
-      (TokenType.Symbol, (0I, 15I), (0I, 16I))
-      (TokenType.TypeName, (0I, 17I), (0I, 24I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 14))
+      (TokenType.Symbol, (0, 15), (0, 16))
+      (TokenType.TypeName, (0, 17), (0, 24)) ]
 
   ("type MyFloat = Float" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 12I))
-      (TokenType.Symbol, (0I, 13I), (0I, 14I))
-      (TokenType.TypeName, (0I, 15I), (0I, 20I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 12))
+      (TokenType.Symbol, (0, 13), (0, 14))
+      (TokenType.TypeName, (0, 15), (0, 20)) ]
 
   ("type MyChar = Char" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 11I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.TypeName, (0I, 14I), (0I, 18I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 11))
+      (TokenType.Symbol, (0, 12), (0, 13))
+      (TokenType.TypeName, (0, 14), (0, 18)) ]
 
   ("type MyString = String" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.TypeName, (0I, 16I), (0I, 22I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.TypeName, (0, 16), (0, 22)) ]
 
   ("type MyUUID = UUID" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 11I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.TypeName, (0I, 14I), (0I, 18I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 11))
+      (TokenType.Symbol, (0, 12), (0, 13))
+      (TokenType.TypeName, (0, 14), (0, 18)) ]
 
   ("type MyDateTime = DateTime" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 15I))
-      (TokenType.Symbol, (0I, 16I), (0I, 17I))
-      (TokenType.TypeName, (0I, 18I), (0I, 26I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 15))
+      (TokenType.Symbol, (0, 16), (0, 17))
+      (TokenType.TypeName, (0, 18), (0, 26)) ]
 
   ("type MyList = List<String>" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 11I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.Keyword, (0I, 14I), (0I, 18I))
-      (TokenType.Symbol, (0I, 18I), (0I, 19I))
-      (TokenType.TypeName, (0I, 19I), (0I, 25I))
-      (TokenType.Symbol, (0I, 25I), (0I, 26I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 11))
+      (TokenType.Symbol, (0, 12), (0, 13))
+      (TokenType.Keyword, (0, 14), (0, 18))
+      (TokenType.Symbol, (0, 18), (0, 19))
+      (TokenType.TypeName, (0, 19), (0, 25))
+      (TokenType.Symbol, (0, 25), (0, 26)) ]
 
   ("type MyDict = Dict<Int64>" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 11I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.Keyword, (0I, 14I), (0I, 18I))
-      (TokenType.Symbol, (0I, 18I), (0I, 19I))
-      (TokenType.TypeName, (0I, 19I), (0I, 24I))
-      (TokenType.Symbol, (0I, 24I), (0I, 25I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 11))
+      (TokenType.Symbol, (0, 12), (0, 13))
+      (TokenType.Keyword, (0, 14), (0, 18))
+      (TokenType.Symbol, (0, 18), (0, 19))
+      (TokenType.TypeName, (0, 19), (0, 24))
+      (TokenType.Symbol, (0, 24), (0, 25)) ]
 
   ("type MyTuple2 = (String * Int64)" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.Symbol, (0I, 16I), (0I, 17I))
-      (TokenType.TypeName, (0I, 17I), (0I, 23I))
-      (TokenType.Symbol, (0I, 24I), (0I, 25I))
-      (TokenType.TypeName, (0I, 26I), (0I, 31I))
-      (TokenType.Symbol, (0I, 31I), (0I, 32I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.Symbol, (0, 16), (0, 17))
+      (TokenType.TypeName, (0, 17), (0, 23))
+      (TokenType.Symbol, (0, 24), (0, 25))
+      (TokenType.TypeName, (0, 26), (0, 31))
+      (TokenType.Symbol, (0, 31), (0, 32)) ]
 
   ("type MyTuple3 = (String * Int64 * Bool)" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.Symbol, (0I, 16I), (0I, 17I))
-      (TokenType.TypeName, (0I, 17I), (0I, 23I))
-      (TokenType.Symbol, (0I, 24I), (0I, 25I))
-      (TokenType.TypeName, (0I, 26I), (0I, 31I))
-      (TokenType.Symbol, (0I, 32I), (0I, 33I))
-      (TokenType.TypeName, (0I, 34I), (0I, 38I))
-      (TokenType.Symbol, (0I, 38I), (0I, 39I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.Symbol, (0, 16), (0, 17))
+      (TokenType.TypeName, (0, 17), (0, 23))
+      (TokenType.Symbol, (0, 24), (0, 25))
+      (TokenType.TypeName, (0, 26), (0, 31))
+      (TokenType.Symbol, (0, 32), (0, 33))
+      (TokenType.TypeName, (0, 34), (0, 38))
+      (TokenType.Symbol, (0, 38), (0, 39)) ]
 
   ("type MyFn = 'a -> String" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 9I))
-      (TokenType.Symbol, (0I, 10I), (0I, 11I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.TypeName, (0I, 13I), (0I, 14I))
-      (TokenType.Symbol, (0I, 15I), (0I, 17I))
-      (TokenType.TypeName, (0I, 18I), (0I, 24I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 9))
+      (TokenType.Symbol, (0, 10), (0, 11))
+      (TokenType.Symbol, (0, 12), (0, 13))
+      (TokenType.TypeName, (0, 13), (0, 14))
+      (TokenType.Symbol, (0, 15), (0, 17))
+      (TokenType.TypeName, (0, 18), (0, 24)) ]
 
   ("type MyDB = DB<'a>" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 9I))
-      (TokenType.Symbol, (0I, 10I), (0I, 11I))
-      (TokenType.Keyword, (0I, 12I), (0I, 14I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.Symbol, (0I, 15I), (0I, 16I))
-      (TokenType.TypeName, (0I, 16I), (0I, 17I))
-      (TokenType.Symbol, (0I, 17I), (0I, 18I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 9))
+      (TokenType.Symbol, (0, 10), (0, 11))
+      (TokenType.TypeName, (0, 12), (0, 14))
+      (TokenType.Symbol, (0, 15), (0, 16))
+      (TokenType.TypeName, (0, 16), (0, 17)) ]
 
   ("type MyVar = 'a" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 10I))
-      (TokenType.Symbol, (0I, 11I), (0I, 12I))
-      (TokenType.Symbol, (0I, 13I), (0I, 14I))
-      (TokenType.TypeName, (0I, 14I), (0I, 15I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 10))
+      (TokenType.Symbol, (0, 11), (0, 12))
+      (TokenType.Symbol, (0, 13), (0, 14))
+      (TokenType.TypeName, (0, 14), (0, 15)) ]
 
   ("type MyFullyQualifiedTypeAlias = Stdlib.Option.Option" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 30I))
-      (TokenType.Symbol, (0I, 31I), (0I, 32I))
-      (TokenType.ModuleName, (0I, 33I), (0I, 39I))
-      (TokenType.ModuleName, (0I, 40I), (0I, 46I))
-      (TokenType.TypeName, (0I, 47I), (0I, 53I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 30))
+      (TokenType.Symbol, (0, 31), (0, 32))
+      (TokenType.ModuleName, (0, 33), (0, 39))
+      (TokenType.ModuleName, (0, 40), (0, 46))
+      (TokenType.TypeName, (0, 47), (0, 53)) ]
 
 
 module TokenizeTypeDeclaration =
   ("type MyAlias = Int64" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 12I))
-      (TokenType.Symbol, (0I, 13I), (0I, 14I))
-      (TokenType.TypeName, (0I, 15I), (0I, 20I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 12))
+      (TokenType.Symbol, (0, 13), (0, 14))
+      (TokenType.TypeName, (0, 15), (0, 20)) ]
 
   ("type MyType<'a> = List<'a>" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 11I))
-      (TokenType.TypeParameter, (0I, 12I), (0I, 14I))
-      (TokenType.Symbol, (0I, 16I), (0I, 17I))
-      (TokenType.Keyword, (0I, 18I), (0I, 22I))
-      (TokenType.Symbol, (0I, 22I), (0I, 23I))
-      (TokenType.Symbol, (0I, 23I), (0I, 24I))
-      (TokenType.TypeName, (0I, 24I), (0I, 25I))
-      (TokenType.Symbol, (0I, 25I), (0I, 26I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 11))
+      (TokenType.TypeParameter, (0, 12), (0, 14))
+      (TokenType.Symbol, (0, 16), (0, 17))
+      (TokenType.Keyword, (0, 18), (0, 22))
+      (TokenType.Symbol, (0, 22), (0, 23))
+      (TokenType.Symbol, (0, 23), (0, 24))
+      (TokenType.TypeName, (0, 24), (0, 25))
+      (TokenType.Symbol, (0, 25), (0, 26)) ]
 
 
   ("type MyRecord = { x: Int64; y: String }" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.Property, (0I, 18I), (0I, 19I))
-      (TokenType.Symbol, (0I, 19I), (0I, 20I))
-      (TokenType.TypeName, (0I, 21I), (0I, 26I))
-      (TokenType.Symbol, (0I, 26I), (0I, 27I))
-      (TokenType.Property, (0I, 28I), (0I, 29I))
-      (TokenType.Symbol, (0I, 29I), (0I, 30I))
-      (TokenType.TypeName, (0I, 31I), (0I, 37I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.Property, (0, 18), (0, 19))
+      (TokenType.Symbol, (0, 19), (0, 20))
+      (TokenType.TypeName, (0, 21), (0, 26))
+      (TokenType.Symbol, (0, 26), (0, 27))
+      (TokenType.Property, (0, 28), (0, 29))
+      (TokenType.Symbol, (0, 29), (0, 30))
+      (TokenType.TypeName, (0, 31), (0, 37)) ]
 
 
   ("type MyEnum =\n  | A of Int64\n  | B of y: String" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.TypeName, (0I, 5I), (0I, 11I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.Symbol, (1I, 2I), (1I, 3I))
-      (TokenType.EnumMember, (1I, 4I), (1I, 5I))
-      (TokenType.Keyword, (1I, 6I), (1I, 8I))
-      (TokenType.TypeName, (1I, 9I), (1I, 14I))
-      (TokenType.Symbol, (2I, 2I), (2I, 3I))
-      (TokenType.EnumMember, (2I, 4I), (2I, 5I))
-      (TokenType.Keyword, (2I, 6I), (2I, 8I))
-      (TokenType.Property, (2I, 9I), (2I, 10I))
-      (TokenType.Symbol, (2I, 10I), (2I, 11I))
-      (TokenType.TypeName, (2I, 12I), (2I, 18I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.TypeName, (0, 5), (0, 11))
+      (TokenType.Symbol, (0, 12), (0, 13))
+      (TokenType.Symbol, (1, 2), (1, 3))
+      (TokenType.EnumMember, (1, 4), (1, 5))
+      (TokenType.Keyword, (1, 6), (1, 8))
+      (TokenType.TypeName, (1, 9), (1, 14))
+      (TokenType.Symbol, (2, 2), (2, 3))
+      (TokenType.EnumMember, (2, 4), (2, 5))
+      (TokenType.Keyword, (2, 6), (2, 8))
+      (TokenType.Property, (2, 9), (2, 10))
+      (TokenType.Symbol, (2, 10), (2, 11))
+      (TokenType.TypeName, (2, 12), (2, 18)) ]
 
 
 module TokenizeFunctionDeclaration =
   ("let myFn () : Int64 = 1L" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.FunctionName, (0I, 4I), (0I, 8I))
-      (TokenType.Symbol, (0I, 9I), (0I, 11I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.TypeName, (0I, 14I), (0I, 19I))
-      (TokenType.Symbol, (0I, 20I), (0I, 21I))
-      (TokenType.Number, (0I, 22I), (0I, 23I))
-      (TokenType.Symbol, (0I, 23I), (0I, 24I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.FunctionName, (0, 4), (0, 8))
+      (TokenType.Symbol, (0, 9), (0, 11))
+      (TokenType.Symbol, (0, 12), (0, 13))
+      (TokenType.TypeName, (0, 14), (0, 19))
+      (TokenType.Symbol, (0, 20), (0, 21))
+      (TokenType.Number, (0, 22), (0, 24))
+      (TokenType.Symbol, (0, 24), (0, 24)) ]
 
   ("let myFn (a: Int64) : Int64 = a" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.FunctionName, (0I, 4I), (0I, 8I))
-      (TokenType.Symbol, (0I, 9I), (0I, 10I))
-      (TokenType.ParameterName, (0I, 10I), (0I, 11I))
-      (TokenType.Symbol, (0I, 11I), (0I, 12I))
-      (TokenType.TypeName, (0I, 13I), (0I, 18I))
-      (TokenType.Symbol, (0I, 18I), (0I, 19I))
-      (TokenType.Symbol, (0I, 20I), (0I, 21I))
-      (TokenType.TypeName, (0I, 22I), (0I, 27I))
-      (TokenType.Symbol, (0I, 28I), (0I, 29I))
-      (TokenType.VariableName, (0I, 30I), (0I, 31I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.FunctionName, (0, 4), (0, 8))
+      (TokenType.Symbol, (0, 9), (0, 10))
+      (TokenType.ParameterName, (0, 10), (0, 11))
+      (TokenType.Symbol, (0, 11), (0, 12))
+      (TokenType.TypeName, (0, 13), (0, 18))
+      (TokenType.Symbol, (0, 18), (0, 19))
+      (TokenType.Symbol, (0, 20), (0, 21))
+      (TokenType.TypeName, (0, 22), (0, 27))
+      (TokenType.Symbol, (0, 28), (0, 29))
+      (TokenType.VariableName, (0, 30), (0, 31)) ]
 
   ("let add (a: Int64) (b: Int64) : Int64 = (a + b)" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.FunctionName, (0I, 4I), (0I, 7I))
-      (TokenType.Symbol, (0I, 8I), (0I, 9I))
-      (TokenType.ParameterName, (0I, 9I), (0I, 10I))
-      (TokenType.Symbol, (0I, 10I), (0I, 11I))
-      (TokenType.TypeName, (0I, 12I), (0I, 17I))
-      (TokenType.Symbol, (0I, 17I), (0I, 18I))
-      (TokenType.Symbol, (0I, 19I), (0I, 20I))
-      (TokenType.ParameterName, (0I, 20I), (0I, 21I))
-      (TokenType.Symbol, (0I, 21I), (0I, 22I))
-      (TokenType.TypeName, (0I, 23I), (0I, 28I))
-      (TokenType.Symbol, (0I, 28I), (0I, 29I))
-      (TokenType.Symbol, (0I, 30I), (0I, 31I))
-      (TokenType.TypeName, (0I, 32I), (0I, 37I))
-      (TokenType.Symbol, (0I, 38I), (0I, 39I))
-      (TokenType.VariableName, (0I, 41I), (0I, 42I))
-      (TokenType.Operator, (0I, 43I), (0I, 44I))
-      (TokenType.VariableName, (0I, 45I), (0I, 46I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.FunctionName, (0, 4), (0, 7))
+      (TokenType.Symbol, (0, 8), (0, 9))
+      (TokenType.ParameterName, (0, 9), (0, 10))
+      (TokenType.Symbol, (0, 10), (0, 11))
+      (TokenType.TypeName, (0, 12), (0, 17))
+      (TokenType.Symbol, (0, 17), (0, 18))
+      (TokenType.Symbol, (0, 19), (0, 20))
+      (TokenType.ParameterName, (0, 20), (0, 21))
+      (TokenType.Symbol, (0, 21), (0, 22))
+      (TokenType.TypeName, (0, 23), (0, 28))
+      (TokenType.Symbol, (0, 28), (0, 29))
+      (TokenType.Symbol, (0, 30), (0, 31))
+      (TokenType.TypeName, (0, 32), (0, 37))
+      (TokenType.Symbol, (0, 38), (0, 39))
+      (TokenType.VariableName, (0, 41), (0, 42))
+      (TokenType.Operator, (0, 43), (0, 44))
+      (TokenType.VariableName, (0, 45), (0, 46)) ]
 
 
   ("let myFn<'a, 'b> (paramOne: 'a) (paramTwo: 'b): Unit = ()" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.FunctionName, (0I, 4I), (0I, 8I))
-      (TokenType.TypeParameter, (0I, 9I), (0I, 11I))
-      (TokenType.TypeParameter, (0I, 13I), (0I, 15I))
-      (TokenType.Symbol, (0I, 17I), (0I, 18I))
-      (TokenType.ParameterName, (0I, 18I), (0I, 26I))
-      (TokenType.Symbol, (0I, 26I), (0I, 27I))
-      (TokenType.Symbol, (0I, 28I), (0I, 29I))
-      (TokenType.TypeName, (0I, 29I), (0I, 30I))
-      (TokenType.Symbol, (0I, 30I), (0I, 31I))
-      (TokenType.Symbol, (0I, 32I), (0I, 33I))
-      (TokenType.ParameterName, (0I, 33I), (0I, 41I))
-      (TokenType.Symbol, (0I, 41I), (0I, 42I))
-      (TokenType.Symbol, (0I, 43I), (0I, 44I))
-      (TokenType.TypeName, (0I, 44I), (0I, 45I))
-      (TokenType.Symbol, (0I, 45I), (0I, 46I))
-      (TokenType.Symbol, (0I, 46I), (0I, 47I))
-      (TokenType.TypeName, (0I, 48I), (0I, 52I))
-      (TokenType.Symbol, (0I, 53I), (0I, 54I))
-      (TokenType.Symbol, (0I, 55I), (0I, 57I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.FunctionName, (0, 4), (0, 8))
+      (TokenType.TypeParameter, (0, 9), (0, 11))
+      (TokenType.TypeParameter, (0, 13), (0, 15))
+      (TokenType.Symbol, (0, 17), (0, 18))
+      (TokenType.ParameterName, (0, 18), (0, 26))
+      (TokenType.Symbol, (0, 26), (0, 27))
+      (TokenType.Symbol, (0, 28), (0, 29))
+      (TokenType.TypeName, (0, 29), (0, 30))
+      (TokenType.Symbol, (0, 30), (0, 31))
+      (TokenType.Symbol, (0, 32), (0, 33))
+      (TokenType.ParameterName, (0, 33), (0, 41))
+      (TokenType.Symbol, (0, 41), (0, 42))
+      (TokenType.Symbol, (0, 43), (0, 44))
+      (TokenType.TypeName, (0, 44), (0, 45))
+      (TokenType.Symbol, (0, 45), (0, 46))
+      (TokenType.Symbol, (0, 46), (0, 47))
+      (TokenType.TypeName, (0, 48), (0, 52))
+      (TokenType.Symbol, (0, 53), (0, 54))
+      (TokenType.Symbol, (0, 55), (0, 57)) ]
 
 
 module TokenizeValueDeclaration =
   ("val unitValue = ()" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.VariableName, (0I, 4I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.Symbol, (0I, 16I), (0I, 18I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.VariableName, (0, 4), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.Symbol, (0, 16), (0, 18)) ]
 
   ("val myIntValue = 1L" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.VariableName, (0I, 4I), (0I, 14I))
-      (TokenType.Symbol, (0I, 15I), (0I, 16I))
-      (TokenType.Number, (0I, 17I), (0I, 18I))
-      (TokenType.Symbol, (0I, 18I), (0I, 19I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.VariableName, (0, 4), (0, 14))
+      (TokenType.Symbol, (0, 15), (0, 16))
+      (TokenType.Number, (0, 17), (0, 19))
+      (TokenType.Symbol, (0, 19), (0, 19)) ]
 
   ("val boolValue = true" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.VariableName, (0I, 4I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.Keyword, (0I, 16I), (0I, 20I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.VariableName, (0, 4), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.Keyword, (0, 16), (0, 20)) ]
 
   ("val stringValue = \"hello\"" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.VariableName, (0I, 4I), (0I, 15I))
-      (TokenType.Symbol, (0I, 16I), (0I, 17I))
-      (TokenType.Symbol, (0I, 18I), (0I, 19I))
-      (TokenType.String, (0I, 19I), (0I, 24I))
-      (TokenType.Symbol, (0I, 24I), (0I, 25I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.VariableName, (0, 4), (0, 15))
+      (TokenType.Symbol, (0, 16), (0, 17))
+      (TokenType.Symbol, (0, 18), (0, 18))
+      (TokenType.String, (0, 18), (0, 25))
+      (TokenType.Symbol, (0, 25), (0, 25)) ]
 
   ("val charValue = 'a'" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.VariableName, (0I, 4I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.Symbol, (0I, 16I), (0I, 17I))
-      (TokenType.String, (0I, 17I), (0I, 18I))
-      (TokenType.Symbol, (0I, 18I), (0I, 19I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.VariableName, (0, 4), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.Symbol, (0, 16), (0, 16))
+      (TokenType.String, (0, 16), (0, 19))
+      (TokenType.Symbol, (0, 19), (0, 19)) ]
 
   ("val floatValue = 1.0" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.VariableName, (0I, 4I), (0I, 14I))
-      (TokenType.Symbol, (0I, 15I), (0I, 16I))
-      (TokenType.Number, (0I, 17I), (0I, 20I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.VariableName, (0, 4), (0, 14))
+      (TokenType.Symbol, (0, 15), (0, 16))
+      (TokenType.Number, (0, 17), (0, 20)) ]
 
   ("val listValue = [1L; 2L; 3L]" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.VariableName, (0I, 4I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.Symbol, (0I, 16I), (0I, 17I))
-      (TokenType.Number, (0I, 17I), (0I, 18I))
-      (TokenType.Symbol, (0I, 18I), (0I, 19I))
-      (TokenType.Number, (0I, 21I), (0I, 22I))
-      (TokenType.Symbol, (0I, 22I), (0I, 23I))
-      (TokenType.Number, (0I, 25I), (0I, 26I))
-      (TokenType.Symbol, (0I, 26I), (0I, 27I))
-      (TokenType.Symbol, (0I, 27I), (0I, 28I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.VariableName, (0, 4), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.Symbol, (0, 16), (0, 17))
+      (TokenType.Number, (0, 17), (0, 19))
+      (TokenType.Symbol, (0, 19), (0, 19))
+      (TokenType.Number, (0, 21), (0, 23))
+      (TokenType.Symbol, (0, 23), (0, 23))
+      (TokenType.Number, (0, 25), (0, 27))
+      (TokenType.Symbol, (0, 27), (0, 27))
+      (TokenType.Symbol, (0, 27), (0, 28)) ]
 
   ("val tupleValue = (1L, 2L, 3L)" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.VariableName, (0I, 4I), (0I, 14I))
-      (TokenType.Symbol, (0I, 15I), (0I, 16I))
-      (TokenType.Symbol, (0I, 17I), (0I, 18I))
-      (TokenType.Number, (0I, 18I), (0I, 19I))
-      (TokenType.Symbol, (0I, 19I), (0I, 20I))
-      (TokenType.Symbol, (0I, 20I), (0I, 21I))
-      (TokenType.Number, (0I, 22I), (0I, 23I))
-      (TokenType.Symbol, (0I, 23I), (0I, 24I))
-      (TokenType.Symbol, (0I, 24I), (0I, 25I))
-      (TokenType.Number, (0I, 26I), (0I, 27I))
-      (TokenType.Symbol, (0I, 27I), (0I, 28I))
-      (TokenType.Symbol, (0I, 28I), (0I, 29I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.VariableName, (0, 4), (0, 14))
+      (TokenType.Symbol, (0, 15), (0, 16))
+      (TokenType.Symbol, (0, 17), (0, 18))
+      (TokenType.Number, (0, 18), (0, 20))
+      (TokenType.Symbol, (0, 20), (0, 20))
+      (TokenType.Symbol, (0, 20), (0, 21))
+      (TokenType.Number, (0, 22), (0, 24))
+      (TokenType.Symbol, (0, 24), (0, 24))
+      (TokenType.Symbol, (0, 24), (0, 25))
+      (TokenType.Number, (0, 26), (0, 28))
+      (TokenType.Symbol, (0, 28), (0, 28))
+      (TokenType.Symbol, (0, 28), (0, 29)) ]
 
   ("val dictValue = Dict { a = 1L; b = 2L }" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.VariableName, (0I, 4I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.Keyword, (0I, 16I), (0I, 20I))
-      (TokenType.Symbol, (0I, 21I), (0I, 22I))
-      (TokenType.Property, (0I, 23I), (0I, 24I))
-      (TokenType.Number, (0I, 27I), (0I, 28I))
-      (TokenType.Symbol, (0I, 28I), (0I, 29I))
-      (TokenType.Property, (0I, 31I), (0I, 32I))
-      (TokenType.Number, (0I, 35I), (0I, 36I))
-      (TokenType.Symbol, (0I, 36I), (0I, 37I))
-      (TokenType.Symbol, (0I, 38I), (0I, 39I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.VariableName, (0, 4), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.Keyword, (0, 16), (0, 20))
+      (TokenType.Symbol, (0, 21), (0, 22))
+      (TokenType.Property, (0, 23), (0, 24))
+      (TokenType.Number, (0, 27), (0, 29))
+      (TokenType.Symbol, (0, 29), (0, 29))
+      (TokenType.Property, (0, 31), (0, 32))
+      (TokenType.Number, (0, 35), (0, 37))
+      (TokenType.Symbol, (0, 37), (0, 37))
+      (TokenType.Symbol, (0, 38), (0, 39)) ]
 
   ("val enumValue = Stdlib.Option.Option.Some(1L)" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.VariableName, (0I, 4I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.ModuleName, (0I, 16I), (0I, 22I))
-      (TokenType.ModuleName, (0I, 23I), (0I, 29I))
-      (TokenType.TypeName, (0I, 30I), (0I, 36I))
-      (TokenType.Symbol, (0I, 36I), (0I, 37I))
-      (TokenType.EnumMember, (0I, 37I), (0I, 41I))
-      (TokenType.Number, (0I, 42I), (0I, 43I))
-      (TokenType.Symbol, (0I, 43I), (0I, 44I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.VariableName, (0, 4), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.ModuleName, (0, 16), (0, 22))
+      (TokenType.ModuleName, (0, 23), (0, 29))
+      (TokenType.TypeName, (0, 30), (0, 36))
+      (TokenType.Symbol, (0, 36), (0, 37))
+      (TokenType.EnumMember, (0, 37), (0, 41))
+      (TokenType.Number, (0, 42), (0, 44))
+      (TokenType.Symbol, (0, 44), (0, 44)) ]
 
   ("val enumValue = MyEnum.A(1L, 2L)" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.VariableName, (0I, 4I), (0I, 13I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I))
-      (TokenType.TypeName, (0I, 16I), (0I, 22I))
-      (TokenType.Symbol, (0I, 22I), (0I, 23I))
-      (TokenType.EnumMember, (0I, 23I), (0I, 24I))
-      (TokenType.Number, (0I, 25I), (0I, 26I))
-      (TokenType.Symbol, (0I, 26I), (0I, 27I))
-      (TokenType.Number, (0I, 29I), (0I, 30I))
-      (TokenType.Symbol, (0I, 30I), (0I, 31I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.VariableName, (0, 4), (0, 13))
+      (TokenType.Symbol, (0, 14), (0, 15))
+      (TokenType.TypeName, (0, 16), (0, 22))
+      (TokenType.Symbol, (0, 22), (0, 23))
+      (TokenType.EnumMember, (0, 23), (0, 24))
+      (TokenType.Number, (0, 25), (0, 27))
+      (TokenType.Symbol, (0, 27), (0, 27))
+      (TokenType.Number, (0, 29), (0, 31))
+      (TokenType.Symbol, (0, 31), (0, 31)) ]
 
 
 module TokenizeExpression =
-  ("()" |> tokenize) = [ (TokenType.Symbol, (0I, 0I), (0I, 2I)) ]
-  ("true" |> tokenize) = [ (TokenType.Keyword, (0I, 0I), (0I, 4I)) ]
+  ("()" |> tokenize) = [ (TokenType.Symbol, (0, 0), (0, 2)) ]
+  ("true" |> tokenize) = [ (TokenType.Keyword, (0, 0), (0, 4)) ]
 
-  ("1y" |> tokenize) = [ (TokenType.Number, (0I, 0I), (0I, 1I))
-                         (TokenType.Symbol, (0I, 1I), (0I, 2I)) ]
+  ("1y" |> tokenize) = [ (TokenType.Number, (0, 0), (0, 2))
+                         (TokenType.Symbol, (0, 2), (0, 2)) ]
 
-  ("1uy" |> tokenize) = [ (TokenType.Number, (0I, 0I), (0I, 1I))
-                          (TokenType.Symbol, (0I, 1I), (0I, 3I)) ]
+  ("1uy" |> tokenize) = [ (TokenType.Number, (0, 0), (0, 3))
+                          (TokenType.Symbol, (0, 3), (0, 3)) ]
 
-  ("1s" |> tokenize) = [ (TokenType.Number, (0I, 0I), (0I, 1I))
-                         (TokenType.Symbol, (0I, 1I), (0I, 2I)) ]
+  ("1s" |> tokenize) = [ (TokenType.Number, (0, 0), (0, 2))
+                         (TokenType.Symbol, (0, 2), (0, 2)) ]
 
-  ("1us" |> tokenize) = [ (TokenType.Number, (0I, 0I), (0I, 1I))
-                          (TokenType.Symbol, (0I, 1I), (0I, 3I)) ]
+  ("1us" |> tokenize) = [ (TokenType.Number, (0, 0), (0, 3))
+                          (TokenType.Symbol, (0, 3), (0, 3)) ]
 
-  ("1l" |> tokenize) = [ (TokenType.Number, (0I, 0I), (0I, 1I))
-                         (TokenType.Symbol, (0I, 1I), (0I, 2I)) ]
+  ("1l" |> tokenize) = [ (TokenType.Number, (0, 0), (0, 2))
+                         (TokenType.Symbol, (0, 2), (0, 2)) ]
 
-  ("1ul" |> tokenize) = [ (TokenType.Number, (0I, 0I), (0I, 1I))
-                          (TokenType.Symbol, (0I, 1I), (0I, 3I)) ]
+  ("1ul" |> tokenize) = [ (TokenType.Number, (0, 0), (0, 3))
+                          (TokenType.Symbol, (0, 3), (0, 3)) ]
 
-  ("1L" |> tokenize) = [ (TokenType.Number, (0I, 0I), (0I, 1I))
-                         (TokenType.Symbol, (0I, 1I), (0I, 2I)) ]
+  ("1L" |> tokenize) = [ (TokenType.Number, (0, 0), (0, 2))
+                         (TokenType.Symbol, (0, 2), (0, 2)) ]
 
-  ("1UL" |> tokenize) = [ (TokenType.Number, (0I, 0I), (0I, 1I))
-                          (TokenType.Symbol, (0I, 1I), (0I, 3I)) ]
+  ("1UL" |> tokenize) = [ (TokenType.Number, (0, 0), (0, 3))
+                          (TokenType.Symbol, (0, 3), (0, 3)) ]
 
-  ("1Q" |> tokenize) = [ (TokenType.Number, (0I, 0I), (0I, 1I))
-                         (TokenType.Symbol, (0I, 1I), (0I, 2I)) ]
+  ("1Q" |> tokenize) = [ (TokenType.Number, (0, 0), (0, 2))
+                         (TokenType.Symbol, (0, 2), (0, 2)) ]
 
-  ("1Z" |> tokenize) = [ (TokenType.Number, (0I, 0I), (0I, 1I))
-                         (TokenType.Symbol, (0I, 1I), (0I, 2I)) ]
+  ("1Z" |> tokenize) = [ (TokenType.Number, (0, 0), (0, 2))
+                         (TokenType.Symbol, (0, 2), (0, 2)) ]
 
   // suffixless Int literal: just a Number token, no suffix Symbol
-  ("1" |> tokenize) = [ (TokenType.Number, (0I, 0I), (0I, 1I)) ]
+  ("1" |> tokenize) = [ (TokenType.Number, (0, 0), (0, 1)) ]
 
   ("12345678901234567890" |> tokenize) =
-    [ (TokenType.Number, (0I, 0I), (0I, 20I)) ]
+    [ (TokenType.Number, (0, 0), (0, 20)) ]
 
-  ("1.0" |> tokenize) = [ (TokenType.Number, (0I, 0I), (0I, 3I)) ]
+  ("1.0" |> tokenize) = [ (TokenType.Number, (0, 0), (0, 3)) ]
 
   ("\"hello\"" |> tokenize) =
-    [ (TokenType.Symbol, (0I, 0I), (0I, 1I))
-      (TokenType.String, (0I, 1I), (0I, 6I))
-      (TokenType.Symbol, (0I, 6I), (0I, 7I)) ]
+    [ (TokenType.Symbol, (0, 0), (0, 0))
+      (TokenType.String, (0, 0), (0, 7))
+      (TokenType.Symbol, (0, 7), (0, 7)) ]
 
   ("$\"hello {name}\"" |> tokenize) =
-    [ (TokenType.Symbol, (0I, 0I), (0I, 1I))
-      (TokenType.Symbol, (0I, 1I), (0I, 2I))
-      (TokenType.String, (0I, 2I), (0I, 8I))
-      (TokenType.Symbol, (0I, 8I), (0I, 9I))
-      (TokenType.VariableName, (0I, 9I), (0I, 13I))
-      (TokenType.Symbol, (0I, 13I), (0I, 14I))
-      (TokenType.Symbol, (0I, 14I), (0I, 15I)) ]
+    [ (TokenType.Symbol, (0, 0), (0, 1))
+      (TokenType.Symbol, (0, 1), (0, 2))
+      (TokenType.String, (0, 2), (0, 8))
+      (TokenType.Symbol, (0, 8), (0, 9))
+      (TokenType.VariableName, (0, 9), (0, 13))
+      (TokenType.Symbol, (0, 13), (0, 14))
+      (TokenType.Symbol, (0, 14), (0, 15)) ]
 
   ("$\"Name: {name}, Age: {age}\"" |> tokenize) =
-    [ (TokenType.Symbol, (0I, 0I), (0I, 1I))
-      (TokenType.Symbol, (0I, 1I), (0I, 2I))
-      (TokenType.String, (0I, 2I), (0I, 8I))
-      (TokenType.Symbol, (0I, 8I), (0I, 9I))
-      (TokenType.VariableName, (0I, 9I), (0I, 13I))
-      (TokenType.Symbol, (0I, 13I), (0I, 14I))
-      (TokenType.String, (0I, 14I), (0I, 21I))
-      (TokenType.Symbol, (0I, 21I), (0I, 22I))
-      (TokenType.VariableName, (0I, 22I), (0I, 25I))
-      (TokenType.Symbol, (0I, 25I), (0I, 26I))
-      (TokenType.Symbol, (0I, 26I), (0I, 27I)) ]
+    [ (TokenType.Symbol, (0, 0), (0, 1))
+      (TokenType.Symbol, (0, 1), (0, 2))
+      (TokenType.String, (0, 2), (0, 8))
+      (TokenType.Symbol, (0, 8), (0, 9))
+      (TokenType.VariableName, (0, 9), (0, 13))
+      (TokenType.Symbol, (0, 13), (0, 14))
+      (TokenType.String, (0, 14), (0, 21))
+      (TokenType.Symbol, (0, 21), (0, 22))
+      (TokenType.VariableName, (0, 22), (0, 25))
+      (TokenType.Symbol, (0, 25), (0, 26))
+      (TokenType.Symbol, (0, 26), (0, 27)) ]
 
 
   ("[true; false; true]" |> tokenize) =
-    [ (TokenType.Symbol, (0I, 0I), (0I, 1I))
-      (TokenType.Keyword, (0I, 1I), (0I, 5I))
-      (TokenType.Keyword, (0I, 7I), (0I, 12I))
-      (TokenType.Keyword, (0I, 14I), (0I, 18I))
-      (TokenType.Symbol, (0I, 18I), (0I, 19I)) ]
+    [ (TokenType.Symbol, (0, 0), (0, 1))
+      (TokenType.Keyword, (0, 1), (0, 5))
+      (TokenType.Keyword, (0, 7), (0, 12))
+      (TokenType.Keyword, (0, 14), (0, 18))
+      (TokenType.Symbol, (0, 18), (0, 19)) ]
 
 
   ("Dict { a = 1L; b = 2L }" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 4I))
-      (TokenType.Symbol, (0I, 5I), (0I, 6I))
-      (TokenType.Property, (0I, 7I), (0I, 8I))
-      (TokenType.Number, (0I, 11I), (0I, 12I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.Property, (0I, 15I), (0I, 16I))
-      (TokenType.Number, (0I, 19I), (0I, 20I))
-      (TokenType.Symbol, (0I, 20I), (0I, 21I))
-      (TokenType.Symbol, (0I, 22I), (0I, 23I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 4))
+      (TokenType.Symbol, (0, 5), (0, 6))
+      (TokenType.Property, (0, 7), (0, 8))
+      (TokenType.Number, (0, 11), (0, 13))
+      (TokenType.Symbol, (0, 13), (0, 13))
+      (TokenType.Property, (0, 15), (0, 16))
+      (TokenType.Number, (0, 19), (0, 21))
+      (TokenType.Symbol, (0, 21), (0, 21))
+      (TokenType.Symbol, (0, 22), (0, 23)) ]
 
 
   ("(true, false, true)" |> tokenize) =
-    [ (TokenType.Symbol, (0I, 0I), (0I, 1I))
-      (TokenType.Keyword, (0I, 1I), (0I, 5I))
-      (TokenType.Symbol, (0I, 5I), (0I, 6I))
-      (TokenType.Keyword, (0I, 7I), (0I, 12I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.Keyword, (0I, 14I), (0I, 18I))
-      (TokenType.Symbol, (0I, 18I), (0I, 19I)) ]
+    [ (TokenType.Symbol, (0, 0), (0, 1))
+      (TokenType.Keyword, (0, 1), (0, 5))
+      (TokenType.Symbol, (0, 5), (0, 6))
+      (TokenType.Keyword, (0, 7), (0, 12))
+      (TokenType.Symbol, (0, 12), (0, 13))
+      (TokenType.Keyword, (0, 14), (0, 18))
+      (TokenType.Symbol, (0, 18), (0, 19)) ]
 
 
 
   // Record/record-update tokenization regression coverage.
   // A previous .range-related RTE in this area makes this worth keeping explicit.
   ("MyRecord {fieldOne = 1L; fieldTwo = 2L} " |> tokenize) =
-    [ (TokenType.TypeName, (0I, 0I),  (0I, 8I))
-      (TokenType.Symbol,   (0I, 9I),  (0I, 10I))
-      (TokenType.Property, (0I, 10I), (0I, 18I))
-      (TokenType.Symbol,   (0I, 19I), (0I, 20I))
-      (TokenType.Number,   (0I, 21I), (0I, 22I))
-      (TokenType.Symbol,   (0I, 22I), (0I, 23I))
-      (TokenType.Property, (0I, 25I), (0I, 33I))
-      (TokenType.Symbol,   (0I, 34I), (0I, 35I))
-      (TokenType.Number,   (0I, 36I), (0I, 37I))
-      (TokenType.Symbol,   (0I, 37I), (0I, 38I))
-      (TokenType.Symbol,   (0I, 38I), (0I, 39I)) ]
+    [ (TokenType.TypeName, (0, 0), (0, 8))
+      (TokenType.Symbol, (0, 9), (0, 10))
+      (TokenType.Property, (0, 10), (0, 18))
+      (TokenType.Symbol, (0, 10), (0, 23))
+      (TokenType.Number, (0, 21), (0, 23))
+      (TokenType.Symbol, (0, 23), (0, 23))
+      (TokenType.Property, (0, 25), (0, 33))
+      (TokenType.Symbol, (0, 25), (0, 38))
+      (TokenType.Number, (0, 36), (0, 38))
+      (TokenType.Symbol, (0, 38), (0, 38))
+      (TokenType.Symbol, (0, 38), (0, 39)) ]
 
   ("{ RecordForUpdate { x = true; y = false } with y = true }" |> tokenize) =
-    [ (TokenType.TypeName, (0I, 2I),  (0I, 17I))
-      (TokenType.Symbol,   (0I, 18I), (0I, 19I))
-      (TokenType.Property, (0I, 20I), (0I, 21I))
-      (TokenType.Symbol,   (0I, 22I), (0I, 23I))
-      (TokenType.Keyword,  (0I, 24I), (0I, 28I))
-      (TokenType.Property, (0I, 30I), (0I, 31I))
-      (TokenType.Symbol,   (0I, 32I), (0I, 33I))
-      (TokenType.Keyword,  (0I, 34I), (0I, 39I))
-      (TokenType.Symbol,   (0I, 40I), (0I, 41I))
-      (TokenType.Keyword,  (0I, 42I), (0I, 46I))
-      (TokenType.Property, (0I, 47I), (0I, 48I))
-      (TokenType.Symbol,   (0I, 49I), (0I, 50I))
-      (TokenType.Keyword,  (0I, 51I), (0I, 55I)) ]
+    [ (TokenType.TypeName, (0, 2), (0, 17))
+      (TokenType.Symbol, (0, 18), (0, 19))
+      (TokenType.Property, (0, 20), (0, 21))
+      (TokenType.Symbol, (0, 20), (0, 28))
+      (TokenType.Keyword, (0, 24), (0, 28))
+      (TokenType.Property, (0, 30), (0, 31))
+      (TokenType.Symbol, (0, 30), (0, 39))
+      (TokenType.Keyword, (0, 34), (0, 39))
+      (TokenType.Symbol, (0, 40), (0, 41))
+      (TokenType.Keyword, (0, 42), (0, 46))
+      (TokenType.Property, (0, 47), (0, 48))
+      (TokenType.Symbol, (0, 49), (0, 50))
+      (TokenType.Keyword, (0, 51), (0, 55)) ]
 
   ("MyEnum.A(1L)" |> tokenize) =
-    [ (TokenType.TypeName, (0I, 0I), (0I, 6I))
-      (TokenType.Symbol, (0I, 6I), (0I, 7I))
-      (TokenType.EnumMember, (0I, 7I), (0I, 8I))
-      (TokenType.Number, (0I, 9I), (0I, 10I))
-      (TokenType.Symbol, (0I, 10I), (0I, 11I)) ]
+    [ (TokenType.TypeName, (0, 0), (0, 6))
+      (TokenType.Symbol, (0, 6), (0, 7))
+      (TokenType.EnumMember, (0, 7), (0, 8))
+      (TokenType.Number, (0, 9), (0, 11))
+      (TokenType.Symbol, (0, 11), (0, 11)) ]
 
   ("let x = true\n  x" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.VariableName, (0I, 4I), (0I, 5I))
-      (TokenType.Symbol, (0I, 6I), (0I, 7I))
-      (TokenType.Keyword, (0I, 8I), (0I, 12I))
-      (TokenType.VariableName, (1I, 2I), (1I, 3I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.VariableName, (0, 4), (0, 5))
+      (TokenType.Symbol, (0, 6), (0, 7))
+      (TokenType.Keyword, (0, 8), (0, 12))
+      (TokenType.VariableName, (1, 2), (1, 3)) ]
 
   ("myVar" |> tokenize) =
-    [ (TokenType.VariableName, (0I, 0I), (0I, 5I)) ]
+    [ (TokenType.VariableName, (0, 0), (0, 5)) ]
 
   ("myRecordVar.field" |> tokenize) =
-    [ (TokenType.VariableName, (0I, 0I), (0I, 11I))
-      (TokenType.Symbol, (0I, 11I), (0I, 12I))
-      (TokenType.Property, (0I, 12I), (0I, 17I)) ]
+    [ (TokenType.VariableName, (0, 0), (0, 11))
+      (TokenType.Symbol, (0, 11), (0, 12))
+      (TokenType.Property, (0, 12), (0, 17)) ]
 
   ("1L + 2L" |> tokenize) =
-    [ (TokenType.Number, (0I, 0I), (0I, 1I))
-      (TokenType.Symbol, (0I, 1I), (0I, 2I))
-      (TokenType.Operator, (0I, 3I), (0I, 4I))
-      (TokenType.Number, (0I, 5I), (0I, 6I))
-      (TokenType.Symbol, (0I, 6I), (0I, 7I)) ]
+    [ (TokenType.Number, (0, 0), (0, 2))
+      (TokenType.Symbol, (0, 2), (0, 2))
+      (TokenType.Operator, (0, 3), (0, 4))
+      (TokenType.Number, (0, 5), (0, 7))
+      (TokenType.Symbol, (0, 7), (0, 7)) ]
 
   ("fun x -> x" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 3I))
-      (TokenType.VariableName, (0I, 4I), (0I, 5I))
-      (TokenType.Symbol, (0I, 6I), (0I, 8I))
-      (TokenType.VariableName, (0I, 9I), (0I, 10I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 3))
+      (TokenType.VariableName, (0, 4), (0, 5))
+      (TokenType.Symbol, (0, 6), (0, 8))
+      (TokenType.VariableName, (0, 9), (0, 10)) ]
 
   ("Stdlib.Bool.and true false" |> tokenize) =
-    [ (TokenType.ModuleName, (0I, 0I), (0I, 6I))
-      (TokenType.ModuleName, (0I, 7I), (0I, 11I))
-      (TokenType.FunctionName, (0I, 12I), (0I, 15I))
-      (TokenType.Keyword, (0I, 16I), (0I, 20I))
-      (TokenType.Keyword, (0I, 21I), (0I, 26I)) ]
+    [ (TokenType.ModuleName, (0, 0), (0, 6))
+      (TokenType.ModuleName, (0, 7), (0, 11))
+      (TokenType.FunctionName, (0, 12), (0, 15))
+      (TokenType.Keyword, (0, 16), (0, 20))
+      (TokenType.Keyword, (0, 21), (0, 26)) ]
 
-  // // CLEANUP: fix this, the range is correct, but the order isn't for typeArgs
-  // ("Builtin.jsonParse<Bool> \"true\"" |> tokenize) =
-  //   [ (TokenType.ModuleName, (0I, 0I), (0I, 7I))
-  //     (TokenType.FunctionName, (0I, 8I), (0I, 17I))
-  //     (TokenType.TypeName, (0I, 18I), (0I, 22I))
-  //     (TokenType.Symbol, (0I, 24I), (0I, 25I))
-  //     (TokenType.String, (0I, 25I), (0I, 29I))
-  //     (TokenType.Symbol, (0I, 29I), (0I, 30I)) ]
+  // call-site type args (`<Bool>`) tokenize between the fn name and the args
+  ("Builtin.jsonParse<Bool> \"true\"" |> tokenize) =
+    [ (TokenType.ModuleName, (0, 0), (0, 7))
+      (TokenType.FunctionName, (0, 8), (0, 17))
+      (TokenType.TypeName, (0, 18), (0, 22))
+      (TokenType.Symbol, (0, 24), (0, 24))
+      (TokenType.String, (0, 24), (0, 30))
+      (TokenType.Symbol, (0, 30), (0, 30)) ]
 
   ("if true then true else false" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 2I))
-      (TokenType.Keyword, (0I, 3I), (0I, 7I))
-      (TokenType.Keyword, (0I, 8I), (0I, 12I))
-      (TokenType.Keyword, (0I, 13I), (0I, 17I))
-      (TokenType.Keyword, (0I, 18I), (0I, 22I))
-      (TokenType.Keyword, (0I, 23I), (0I, 28I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 2))
+      (TokenType.Keyword, (0, 3), (0, 7))
+      (TokenType.Keyword, (0, 8), (0, 12))
+      (TokenType.Keyword, (0, 13), (0, 17))
+      (TokenType.Keyword, (0, 18), (0, 22))
+      (TokenType.Keyword, (0, 23), (0, 28)) ]
 
   ("match true with\n| true -> true" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.Keyword, (0I, 6I), (0I, 10I))
-      (TokenType.Keyword, (0I, 11I), (0I, 15I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.Keyword, (1I, 2I), (1I, 6I))
-      (TokenType.Symbol, (1I, 7I), (1I, 9I))
-      (TokenType.Keyword, (1I, 10I), (1I, 14I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.Keyword, (0, 6), (0, 10))
+      (TokenType.Keyword, (0, 11), (0, 15))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.Keyword, (1, 2), (1, 6))
+      (TokenType.Symbol, (1, 7), (1, 9))
+      (TokenType.Keyword, (1, 10), (1, 14)) ]
 
   ("Stdlib.List.empty" |> tokenize) =
-    [ (TokenType.ModuleName, (0I, 0I), (0I, 6I))
-      (TokenType.ModuleName, (0I, 7I), (0I, 11I))
-      (TokenType.VariableName, (0I, 12I), (0I, 17I)) ]
+    [ (TokenType.ModuleName, (0, 0), (0, 6))
+      (TokenType.ModuleName, (0, 7), (0, 11))
+      (TokenType.FunctionName, (0, 12), (0, 17)) ]
 
 
 module TokenizePipeExpression =
   ("1L |> (+) 2L" |> tokenize) =
-    [ (TokenType.Number, (0I, 0I), (0I, 1I))
-      (TokenType.Symbol, (0I, 1I), (0I, 2I))
-      (TokenType.Operator, (0I, 3I), (0I, 5I))
-      (TokenType.Operator, (0I, 7I), (0I, 8I))
-      (TokenType.Number, (0I, 10I), (0I, 11I))
-      (TokenType.Symbol, (0I, 11I), (0I, 12I)) ]
+    [ (TokenType.Number, (0, 0), (0, 2))
+      (TokenType.Symbol, (0, 2), (0, 2))
+      (TokenType.Operator, (0, 3), (0, 5))
+      (TokenType.Operator, (0, 7), (0, 8))
+      (TokenType.Number, (0, 10), (0, 12))
+      (TokenType.Symbol, (0, 12), (0, 12)) ]
 
   ("1L |> (fun x -> x + 1L)" |> tokenize) =
-    [ (TokenType.Number, (0I, 0I), (0I, 1I))
-      (TokenType.Symbol, (0I, 1I), (0I, 2I))
-      (TokenType.Operator, (0I, 3I), (0I, 5I))
-      (TokenType.Keyword, (0I, 7I), (0I, 10I))
-      (TokenType.VariableName, (0I, 11I), (0I, 12I))
-      (TokenType.Symbol, (0I, 13I), (0I, 15I))
-      (TokenType.VariableName, (0I, 16I), (0I, 17I))
-      (TokenType.Operator, (0I, 18I), (0I, 19I))
-      (TokenType.Number, (0I, 20I), (0I, 21I))
-      (TokenType.Symbol, (0I, 21I), (0I, 22I)) ]
+    [ (TokenType.Number, (0, 0), (0, 2))
+      (TokenType.Symbol, (0, 2), (0, 2))
+      (TokenType.Operator, (0, 3), (0, 5))
+      (TokenType.Keyword, (0, 7), (0, 10))
+      (TokenType.VariableName, (0, 11), (0, 12))
+      (TokenType.Symbol, (0, 13), (0, 15))
+      (TokenType.VariableName, (0, 16), (0, 17))
+      (TokenType.Operator, (0, 18), (0, 19))
+      (TokenType.Number, (0, 20), (0, 22))
+      (TokenType.Symbol, (0, 22), (0, 22)) ]
 
   ("1L |> MyEnum.A" |> tokenize) =
-    [ (TokenType.Number, (0I, 0I), (0I, 1I))
-      (TokenType.Symbol, (0I, 1I), (0I, 2I))
-      (TokenType.Operator, (0I, 3I), (0I, 5I))
-      (TokenType.TypeName, (0I, 6I), (0I, 12I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.EnumMember, (0I, 13I), (0I, 14I)) ]
+    [ (TokenType.Number, (0, 0), (0, 2))
+      (TokenType.Symbol, (0, 2), (0, 2))
+      (TokenType.Operator, (0, 3), (0, 5))
+      (TokenType.TypeName, (0, 6), (0, 12))
+      (TokenType.Symbol, (0, 12), (0, 13))
+      (TokenType.EnumMember, (0, 13), (0, 14)) ]
 
   ("1L |> Stdlib.Result.Result.Ok" |> tokenize) =
-    [ (TokenType.Number, (0I, 0I), (0I, 1I))
-      (TokenType.Symbol, (0I, 1I), (0I, 2I))
-      (TokenType.Operator, (0I, 3I), (0I, 5I))
-      (TokenType.ModuleName, (0I, 6I), (0I, 12I))
-      (TokenType.ModuleName, (0I, 13I), (0I, 19I))
-      (TokenType.TypeName, (0I, 20I), (0I, 26I))
-      (TokenType.Symbol, (0I, 26I), (0I, 27I))
-      (TokenType.EnumMember, (0I, 27I), (0I, 29I)) ]
+    [ (TokenType.Number, (0, 0), (0, 2))
+      (TokenType.Symbol, (0, 2), (0, 2))
+      (TokenType.Operator, (0, 3), (0, 5))
+      (TokenType.ModuleName, (0, 6), (0, 12))
+      (TokenType.ModuleName, (0, 13), (0, 19))
+      (TokenType.TypeName, (0, 20), (0, 26))
+      (TokenType.Symbol, (0, 26), (0, 27))
+      (TokenType.EnumMember, (0, 27), (0, 29)) ]
 
   ("1L |> Stdlib.Int64.add 2L" |> tokenize) =
-    [ (TokenType.Number, (0I, 0I), (0I, 1I))
-      (TokenType.Symbol, (0I, 1I), (0I, 2I))
-      (TokenType.Operator, (0I, 3I), (0I, 5I))
-      (TokenType.ModuleName, (0I, 6I), (0I, 12I))
-      (TokenType.ModuleName, (0I, 13I), (0I, 18I))
-      (TokenType.FunctionName, (0I, 19I), (0I, 22I))
-      (TokenType.Number, (0I, 23I), (0I, 24I))
-      (TokenType.Symbol, (0I, 24I), (0I, 25I)) ]
+    [ (TokenType.Number, (0, 0), (0, 2))
+      (TokenType.Symbol, (0, 2), (0, 2))
+      (TokenType.Operator, (0, 3), (0, 5))
+      (TokenType.ModuleName, (0, 6), (0, 12))
+      (TokenType.ModuleName, (0, 13), (0, 18))
+      (TokenType.FunctionName, (0, 19), (0, 22))
+      (TokenType.Number, (0, 23), (0, 25))
+      (TokenType.Symbol, (0, 25), (0, 25)) ]
 
   ("\"true\" |> Builtin.jsonParse<Bool>" |> tokenize) =
-    [ (TokenType.Symbol, (0I, 0I), (0I, 1I))
-      (TokenType.String, (0I, 1I), (0I, 5I))
-      (TokenType.Symbol, (0I, 5I), (0I, 6I))
-      (TokenType.Operator, (0I, 7I), (0I, 9I))
-      (TokenType.ModuleName, (0I, 10I), (0I, 17I))
-      (TokenType.FunctionName, (0I, 18I), (0I, 27I))
-      (TokenType.TypeName, (0I, 28I), (0I, 32I)) ]
+    [ (TokenType.Symbol, (0, 0), (0, 0))
+      (TokenType.String, (0, 0), (0, 6))
+      (TokenType.Symbol, (0, 6), (0, 6))
+      (TokenType.Operator, (0, 7), (0, 9))
+      (TokenType.ModuleName, (0, 10), (0, 17))
+      (TokenType.FunctionName, (0, 18), (0, 27))
+      (TokenType.TypeName, (0, 28), (0, 32)) ]
 
   ("1L |> x" |> tokenize) =
-    [ (TokenType.Number, (0I, 0I), (0I, 1I))
-      (TokenType.Symbol, (0I, 1I), (0I, 2I))
-      (TokenType.Operator, (0I, 3I), (0I, 5I))
-      (TokenType.FunctionName, (0I, 6I), (0I, 7I)) ]
+    [ (TokenType.Number, (0, 0), (0, 2))
+      (TokenType.Symbol, (0, 2), (0, 2))
+      (TokenType.Operator, (0, 3), (0, 5))
+      (TokenType.VariableName, (0, 6), (0, 7)) ]
 
 
 module TokenizeMatchExpression =
   ("match () with\n| () -> true" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.Symbol, (0I, 6I), (0I, 8I))
-      (TokenType.Keyword, (0I, 9I), (0I, 13I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.Symbol, (1I, 2I), (1I, 4I))
-      (TokenType.Symbol, (1I, 5I), (1I, 7I))
-      (TokenType.Keyword, (1I, 8I), (1I, 12I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.Symbol, (0, 6), (0, 8))
+      (TokenType.Keyword, (0, 9), (0, 13))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.Symbol, (1, 2), (1, 4))
+      (TokenType.Symbol, (1, 5), (1, 7))
+      (TokenType.Keyword, (1, 8), (1, 12)) ]
 
   ("match x with\n| x -> 1L" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.VariableName, (0I, 6I), (0I, 7I))
-      (TokenType.Keyword, (0I, 8I), (0I, 12I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.VariableName, (1I, 2I), (1I, 3I))
-      (TokenType.Symbol, (1I, 4I), (1I, 6I))
-      (TokenType.Number, (1I, 7I), (1I, 8I))
-      (TokenType.Symbol, (1I, 8I), (1I, 9I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.VariableName, (0, 6), (0, 7))
+      (TokenType.Keyword, (0, 8), (0, 12))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.VariableName, (1, 2), (1, 3))
+      (TokenType.Symbol, (1, 4), (1, 6))
+      (TokenType.Number, (1, 7), (1, 9))
+      (TokenType.Symbol, (1, 9), (1, 9)) ]
 
   // suffixless Int in both pattern and rhs: Number tokens with no suffix Symbol
   ("match x with\n| 1 -> 2" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.VariableName, (0I, 6I), (0I, 7I))
-      (TokenType.Keyword, (0I, 8I), (0I, 12I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.Number, (1I, 2I), (1I, 3I))
-      (TokenType.Symbol, (1I, 4I), (1I, 6I))
-      (TokenType.Number, (1I, 7I), (1I, 8I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.VariableName, (0, 6), (0, 7))
+      (TokenType.Keyword, (0, 8), (0, 12))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.Number, (1, 2), (1, 3))
+      (TokenType.Symbol, (1, 4), (1, 6))
+      (TokenType.Number, (1, 7), (1, 8)) ]
 
   ("match 1L with\n| 1L -> 1L" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.Number, (0I, 6I), (0I, 7I))
-      (TokenType.Symbol, (0I, 7I), (0I, 8I))
-      (TokenType.Keyword, (0I, 9I), (0I, 13I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.Number, (1I, 2I), (1I, 3I))
-      (TokenType.Symbol, (1I, 3I), (1I, 4I))
-      (TokenType.Symbol, (1I, 5I), (1I, 7I))
-      (TokenType.Number, (1I, 8I), (1I, 9I))
-      (TokenType.Symbol, (1I, 9I), (1I, 10I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.Number, (0, 6), (0, 8))
+      (TokenType.Symbol, (0, 8), (0, 8))
+      (TokenType.Keyword, (0, 9), (0, 13))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.Number, (1, 2), (1, 4))
+      (TokenType.Symbol, (1, 4), (1, 4))
+      (TokenType.Symbol, (1, 5), (1, 7))
+      (TokenType.Number, (1, 8), (1, 10))
+      (TokenType.Symbol, (1, 10), (1, 10)) ]
 
   ("match 1.0 with\n| 1.0 -> 1.0" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.Number, (0I, 6I), (0I, 9I))
-      (TokenType.Keyword, (0I, 10I), (0I, 14I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.Number, (1I, 2I), (1I, 5I))
-      (TokenType.Symbol, (1I, 6I), (1I, 8I))
-      (TokenType.Number, (1I, 9I), (1I, 12I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.Number, (0, 6), (0, 9))
+      (TokenType.Keyword, (0, 10), (0, 14))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.Number, (1, 2), (1, 5))
+      (TokenType.Symbol, (1, 6), (1, 8))
+      (TokenType.Number, (1, 9), (1, 12)) ]
 
   ("match true with\n| true -> true\n| false -> false" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.Keyword, (0I, 6I), (0I, 10I))
-      (TokenType.Keyword, (0I, 11I), (0I, 15I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.Keyword, (1I, 2I), (1I, 6I))
-      (TokenType.Symbol, (1I, 7I), (1I, 9I))
-      (TokenType.Keyword, (1I, 10I), (1I, 14I))
-      (TokenType.Symbol, (2I, 0I), (2I, 1I))
-      (TokenType.Keyword, (2I, 2I), (2I, 7I))
-      (TokenType.Symbol, (2I, 8I), (2I, 10I))
-      (TokenType.Keyword, (2I, 11I), (2I, 16I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.Keyword, (0, 6), (0, 10))
+      (TokenType.Keyword, (0, 11), (0, 15))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.Keyword, (1, 2), (1, 6))
+      (TokenType.Symbol, (1, 7), (1, 9))
+      (TokenType.Keyword, (1, 10), (1, 14))
+      (TokenType.Symbol, (2, 0), (2, 1))
+      (TokenType.Keyword, (2, 2), (2, 7))
+      (TokenType.Symbol, (2, 8), (2, 10))
+      (TokenType.Keyword, (2, 11), (2, 16)) ]
 
   ("match \"str\" with\n| \"str\" -> true" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.Symbol, (0I, 6I), (0I, 7I))
-      (TokenType.String, (0I, 7I), (0I, 10I))
-      (TokenType.Symbol, (0I, 10I), (0I, 11I))
-      (TokenType.Keyword, (0I, 12I), (0I, 16I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.Symbol, (1I, 2I), (1I, 3I))
-      (TokenType.String, (1I, 3I), (1I, 6I))
-      (TokenType.Symbol, (1I, 6I), (1I, 7I))
-      (TokenType.Symbol, (1I, 8I), (1I, 10I))
-      (TokenType.Keyword, (1I, 11I), (1I, 15I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.Symbol, (0, 6), (0, 6))
+      (TokenType.String, (0, 6), (0, 11))
+      (TokenType.Symbol, (0, 11), (0, 11))
+      (TokenType.Keyword, (0, 12), (0, 16))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.Symbol, (1, 2), (1, 2))
+      (TokenType.String, (1, 2), (1, 7))
+      (TokenType.Symbol, (1, 7), (1, 7))
+      (TokenType.Symbol, (1, 8), (1, 10))
+      (TokenType.Keyword, (1, 11), (1, 15)) ]
 
   ("match 'a' with\n| 'a' -> true" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.Symbol, (0I, 6I), (0I, 7I))
-      (TokenType.String, (0I, 7I), (0I, 8I))
-      (TokenType.Symbol, (0I, 8I), (0I, 9I))
-      (TokenType.Keyword, (0I, 10I), (0I, 14I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.Symbol, (1I, 2I), (1I, 3I))
-      (TokenType.String, (1I, 3I), (1I, 4I))
-      (TokenType.Symbol, (1I, 4I), (1I, 5I))
-      (TokenType.Symbol, (1I, 6I), (1I, 8I))
-      (TokenType.Keyword, (1I, 9I), (1I, 13I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.Symbol, (0, 6), (0, 6))
+      (TokenType.String, (0, 6), (0, 9))
+      (TokenType.Symbol, (0, 9), (0, 9))
+      (TokenType.Keyword, (0, 10), (0, 14))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.Symbol, (1, 2), (1, 2))
+      (TokenType.String, (1, 2), (1, 5))
+      (TokenType.Symbol, (1, 5), (1, 5))
+      (TokenType.Symbol, (1, 6), (1, 8))
+      (TokenType.Keyword, (1, 9), (1, 13)) ]
 
   ("match [true; false] with\n| [true; false] -> true" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.Symbol, (0I, 6I), (0I, 7I))
-      (TokenType.Keyword, (0I, 7I), (0I, 11I))
-      (TokenType.Keyword, (0I, 13I), (0I, 18I))
-      (TokenType.Symbol, (0I, 18I), (0I, 19I))
-      (TokenType.Keyword, (0I, 20I), (0I, 24I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.Symbol, (1I, 2I), (1I, 3I))
-      (TokenType.Keyword, (1I, 3I), (1I, 7I))
-      (TokenType.Keyword, (1I, 9I), (1I, 14I))
-      (TokenType.Symbol, (1I, 14I), (1I, 15I))
-      (TokenType.Symbol, (1I, 16I), (1I, 18I))
-      (TokenType.Keyword, (1I, 19I), (1I, 23I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.Symbol, (0, 6), (0, 7))
+      (TokenType.Keyword, (0, 7), (0, 11))
+      (TokenType.Keyword, (0, 13), (0, 18))
+      (TokenType.Symbol, (0, 18), (0, 19))
+      (TokenType.Keyword, (0, 20), (0, 24))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.Symbol, (1, 2), (1, 3))
+      (TokenType.Keyword, (1, 3), (1, 7))
+      (TokenType.Keyword, (1, 9), (1, 14))
+      (TokenType.Symbol, (1, 14), (1, 15))
+      (TokenType.Symbol, (1, 16), (1, 18))
+      (TokenType.Keyword, (1, 19), (1, 23)) ]
 
   ("match [1L; 2L] with\n| head :: tail -> true" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.Symbol, (0I, 6I), (0I, 7I))
-      (TokenType.Number, (0I, 7I), (0I, 8I))
-      (TokenType.Symbol, (0I, 8I), (0I, 9I))
-      (TokenType.Number, (0I, 11I), (0I, 12I))
-      (TokenType.Symbol, (0I, 12I), (0I, 13I))
-      (TokenType.Symbol, (0I, 13I), (0I, 14I))
-      (TokenType.Keyword, (0I, 15I), (0I, 19I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.VariableName, (1I, 2I), (1I, 6I))
-      (TokenType.Symbol, (1I, 7I), (1I, 9I))
-      (TokenType.VariableName, (1I, 10I), (1I, 14I))
-      (TokenType.Symbol, (1I, 15I), (1I, 17I))
-      (TokenType.Keyword, (1I, 18I), (1I, 22I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.Symbol, (0, 6), (0, 7))
+      (TokenType.Number, (0, 7), (0, 9))
+      (TokenType.Symbol, (0, 9), (0, 9))
+      (TokenType.Number, (0, 11), (0, 13))
+      (TokenType.Symbol, (0, 13), (0, 13))
+      (TokenType.Symbol, (0, 13), (0, 14))
+      (TokenType.Keyword, (0, 15), (0, 19))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.VariableName, (1, 2), (1, 6))
+      (TokenType.Symbol, (1, 7), (1, 9))
+      (TokenType.VariableName, (1, 10), (1, 14))
+      (TokenType.Symbol, (1, 15), (1, 17))
+      (TokenType.Keyword, (1, 18), (1, 22)) ]
 
   ("match (true, false) with\n| (true, false) -> true" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.Symbol, (0I, 6I), (0I, 7I))
-      (TokenType.Keyword, (0I, 7I), (0I, 11I))
-      (TokenType.Symbol, (0I, 11I), (0I, 12I))
-      (TokenType.Keyword, (0I, 13I), (0I, 18I))
-      (TokenType.Symbol, (0I, 18I), (0I, 19I))
-      (TokenType.Keyword, (0I, 20I), (0I, 24I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.Symbol, (1I, 2I), (1I, 3I))
-      (TokenType.Keyword, (1I, 3I), (1I, 7I))
-      (TokenType.Symbol, (1I, 7I), (1I, 8I))
-      (TokenType.Keyword, (1I, 9I), (1I, 14I))
-      (TokenType.Symbol, (1I, 14I), (1I, 15I))
-      (TokenType.Symbol, (1I, 16I), (1I, 18I))
-      (TokenType.Keyword, (1I, 19I), (1I, 23I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.Symbol, (0, 6), (0, 7))
+      (TokenType.Keyword, (0, 7), (0, 11))
+      (TokenType.Symbol, (0, 11), (0, 12))
+      (TokenType.Keyword, (0, 13), (0, 18))
+      (TokenType.Symbol, (0, 18), (0, 19))
+      (TokenType.Keyword, (0, 20), (0, 24))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.Symbol, (1, 2), (1, 3))
+      (TokenType.Keyword, (1, 3), (1, 7))
+      (TokenType.Symbol, (1, 7), (1, 8))
+      (TokenType.Keyword, (1, 9), (1, 14))
+      (TokenType.Symbol, (1, 14), (1, 15))
+      (TokenType.Symbol, (1, 16), (1, 18))
+      (TokenType.Keyword, (1, 19), (1, 23)) ]
 
   ("match Stdlib.Result.Result.Ok(5L) with\n| Ok(5L) -> true\n| Error(e) -> false" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.ModuleName, (0I, 6I), (0I, 12I))
-      (TokenType.ModuleName, (0I, 13I), (0I, 19I))
-      (TokenType.TypeName, (0I, 20I), (0I, 26I))
-      (TokenType.Symbol, (0I, 26I), (0I, 27I))
-      (TokenType.EnumMember, (0I, 27I), (0I, 29I))
-      (TokenType.Number, (0I, 30I), (0I, 31I))
-      (TokenType.Symbol, (0I, 31I), (0I, 32I))
-      (TokenType.Keyword, (0I, 34I), (0I, 38I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.EnumMember, (1I, 2I), (1I, 4I))
-      (TokenType.Number, (1I, 5I), (1I, 6I))
-      (TokenType.Symbol, (1I, 6I), (1I, 7I))
-      (TokenType.Symbol, (1I, 9I), (1I, 11I))
-      (TokenType.Keyword, (1I, 12I), (1I, 16I))
-      (TokenType.Symbol, (2I, 0I), (2I, 1I))
-      (TokenType.EnumMember, (2I, 2I), (2I, 7I))
-      (TokenType.VariableName, (2I, 8I), (2I, 9I))
-      (TokenType.Symbol, (2I, 11I), (2I, 13I))
-      (TokenType.Keyword, (2I, 14I), (2I, 19I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.ModuleName, (0, 6), (0, 12))
+      (TokenType.ModuleName, (0, 13), (0, 19))
+      (TokenType.TypeName, (0, 20), (0, 26))
+      (TokenType.Symbol, (0, 26), (0, 27))
+      (TokenType.EnumMember, (0, 27), (0, 29))
+      (TokenType.Number, (0, 30), (0, 32))
+      (TokenType.Symbol, (0, 32), (0, 32))
+      (TokenType.Keyword, (0, 34), (0, 38))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.EnumMember, (1, 2), (1, 4))
+      (TokenType.Number, (1, 5), (1, 7))
+      (TokenType.Symbol, (1, 7), (1, 7))
+      (TokenType.Symbol, (1, 9), (1, 11))
+      (TokenType.Keyword, (1, 12), (1, 16))
+      (TokenType.Symbol, (2, 0), (2, 1))
+      (TokenType.EnumMember, (2, 2), (2, 7))
+      (TokenType.VariableName, (2, 8), (2, 9))
+      (TokenType.Symbol, (2, 11), (2, 13))
+      (TokenType.Keyword, (2, 14), (2, 19)) ]
 
 
 
   ("match x with\n| 1L | 2L | 3L -> true \n| _ -> false" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 5I))
-      (TokenType.VariableName, (0I, 6I), (0I, 7I))
-      (TokenType.Keyword, (0I, 8I), (0I, 12I))
-      (TokenType.Symbol, (1I, 0I), (1I, 1I))
-      (TokenType.Number, (1I, 2I), (1I, 3I))
-      (TokenType.Symbol, (1I, 3I), (1I, 4I))
-      //TODO missing symbol
-      (TokenType.Number, (1I, 7I), (1I, 8I))
-      (TokenType.Symbol, (1I, 8I), (1I, 9I))
-      //TODO missing symbol
-      (TokenType.Number, (1I, 12I), (1I, 13I))
-      (TokenType.Symbol, (1I, 13I), (1I, 14I))
-      (TokenType.Symbol, (1I, 15I), (1I, 17I))
-      (TokenType.Keyword, (1I, 18I), (1I, 22I))
-      (TokenType.Symbol, (2I, 0I), (2I, 1I))
-      (TokenType.VariableName, (2I, 2I), (2I, 3I))
-      (TokenType.Symbol, (2I, 4I), (2I, 6I))
-      (TokenType.Keyword, (2I, 7I), (2I, 12I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 5))
+      (TokenType.VariableName, (0, 6), (0, 7))
+      (TokenType.Keyword, (0, 8), (0, 12))
+      (TokenType.Symbol, (1, 0), (1, 1))
+      (TokenType.Number, (1, 2), (1, 4))
+      (TokenType.Symbol, (1, 4), (1, 4))
+      (TokenType.Number, (1, 7), (1, 9))
+      (TokenType.Symbol, (1, 9), (1, 9))
+      (TokenType.Number, (1, 12), (1, 14))
+      (TokenType.Symbol, (1, 14), (1, 14))
+      (TokenType.Symbol, (1, 15), (1, 17))
+      (TokenType.Keyword, (1, 18), (1, 22))
+      (TokenType.Symbol, (2, 0), (2, 1))
+      (TokenType.VariableName, (2, 2), (2, 3))
+      (TokenType.Symbol, (2, 4), (2, 6))
+      (TokenType.Keyword, (2, 7), (2, 12)) ]
 
 
   ("Builtin.printLine \"hey\"\n0L" |> tokenize) =
-    [ (TokenType.ModuleName, (0I, 0I), (0I, 7I))
-      (TokenType.FunctionName, (0I, 8I), (0I, 17I))
-      (TokenType.Symbol, (0I, 18I), (0I, 19I))
-      (TokenType.String, (0I, 19I), (0I, 22I))
-      (TokenType.Symbol, (0I, 22I), (0I, 23I))
-      (TokenType.Number, (1I, 0I), (1I, 1I))
-      (TokenType.Symbol, (1I, 1I), (1I, 2I)) ]
+    [ (TokenType.ModuleName, (0, 0), (0, 7))
+      (TokenType.FunctionName, (0, 8), (0, 17))
+      (TokenType.Symbol, (0, 18), (0, 18))
+      (TokenType.String, (0, 18), (0, 23))
+      (TokenType.Symbol, (0, 23), (0, 23))
+      (TokenType.Number, (1, 0), (1, 2))
+      (TokenType.Symbol, (1, 2), (1, 2)) ]
 
 
 module TokenizeModuleDeclaration =
   ("module MyModule =\n  type ID = Int64" |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 6I))
-      (TokenType.ModuleName, (0I, 7I), (0I, 15I))
-      (TokenType.Keyword, (1I, 2I), (1I, 6I))
-      (TokenType.TypeName, (1I, 7I), (1I, 9I))
-      (TokenType.Symbol, (1I, 10I), (1I, 11I))
-      (TokenType.TypeName, (1I, 12I), (1I, 17I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 6))
+      (TokenType.ModuleName, (0, 7), (0, 15))
+      (TokenType.Keyword, (1, 2), (1, 6))
+      (TokenType.TypeName, (1, 7), (1, 9))
+      (TokenType.Symbol, (1, 10), (1, 11))
+      (TokenType.TypeName, (1, 12), (1, 17)) ]
 
   ("""module MyModule =
   type ID = Int64
@@ -897,31 +892,31 @@ module TokenizeModuleDeclaration =
   val x = 100L
   1L"""
    |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 6I))
-      (TokenType.ModuleName, (0I, 7I), (0I, 15I))
-      (TokenType.Keyword, (1I, 2I), (1I, 6I))
-      (TokenType.TypeName, (1I, 7I), (1I, 9I))
-      (TokenType.Symbol, (1I, 10I), (1I, 11I))
-      (TokenType.TypeName, (1I, 12I), (1I, 17I))
-      (TokenType.Keyword, (2I, 2I), (2I, 5I))
-      (TokenType.FunctionName, (2I, 6I), (2I, 10I))
-      (TokenType.Symbol, (2I, 11I), (2I, 12I))
-      (TokenType.ParameterName, (2I, 12I), (2I, 13I))
-      (TokenType.Symbol, (2I, 13I), (2I, 14I))
-      (TokenType.TypeName, (2I, 15I), (2I, 20I))
-      (TokenType.Symbol, (2I, 20I), (2I, 21I))
-      (TokenType.Symbol, (2I, 21I), (2I, 22I))
-      (TokenType.TypeName, (2I, 23I), (2I, 28I))
-      (TokenType.Symbol, (2I, 29I), (2I, 30I))
-      (TokenType.Number, (2I, 31I), (2I, 32I))
-      (TokenType.Symbol, (2I, 32I), (2I, 33I))
-      (TokenType.Keyword, (3I, 2I), (3I, 5I))
-      (TokenType.VariableName, (3I, 6I), (3I, 7I))
-      (TokenType.Symbol, (3I, 8I), (3I, 9I))
-      (TokenType.Number, (3I, 10I), (3I, 13I))
-      (TokenType.Symbol, (3I, 13I), (3I, 14I))
-      (TokenType.Number, (4I, 2I), (4I, 3I))
-      (TokenType.Symbol, (4I, 3I), (4I, 4I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 6))
+      (TokenType.ModuleName, (0, 7), (0, 15))
+      (TokenType.Keyword, (1, 2), (1, 6))
+      (TokenType.TypeName, (1, 7), (1, 9))
+      (TokenType.Symbol, (1, 10), (1, 11))
+      (TokenType.TypeName, (1, 12), (1, 17))
+      (TokenType.Keyword, (2, 2), (2, 5))
+      (TokenType.FunctionName, (2, 6), (2, 10))
+      (TokenType.Symbol, (2, 11), (2, 12))
+      (TokenType.ParameterName, (2, 12), (2, 13))
+      (TokenType.Symbol, (2, 13), (2, 14))
+      (TokenType.TypeName, (2, 15), (2, 20))
+      (TokenType.Symbol, (2, 20), (2, 21))
+      (TokenType.Symbol, (2, 21), (2, 22))
+      (TokenType.TypeName, (2, 23), (2, 28))
+      (TokenType.Symbol, (2, 29), (2, 30))
+      (TokenType.Number, (2, 31), (2, 33))
+      (TokenType.Symbol, (2, 33), (2, 33))
+      (TokenType.Keyword, (3, 2), (3, 5))
+      (TokenType.VariableName, (3, 6), (3, 7))
+      (TokenType.Symbol, (3, 8), (3, 9))
+      (TokenType.Number, (3, 10), (3, 14))
+      (TokenType.Symbol, (3, 14), (3, 14))
+      (TokenType.Number, (4, 2), (4, 4))
+      (TokenType.Symbol, (4, 4), (4, 4)) ]
 
 
   ("""module MyModule1 =
@@ -929,11 +924,11 @@ module TokenizeModuleDeclaration =
     module MyModule3 =
       1L"""
    |> tokenize) =
-    [ (TokenType.Keyword, (0I, 0I), (0I, 6I))
-      (TokenType.ModuleName, (0I, 7I), (0I, 16I))
-      (TokenType.Keyword, (1I, 2I), (1I, 8I))
-      (TokenType.ModuleName, (1I, 9I), (1I, 18I))
-      (TokenType.Keyword, (2I, 4I), (2I, 10I))
-      (TokenType.ModuleName, (2I, 11I), (2I, 20I))
-      (TokenType.Number, (3I, 6I), (3I, 7I))
-      (TokenType.Symbol, (3I, 7I), (3I, 8I)) ]
+    [ (TokenType.Keyword, (0, 0), (0, 6))
+      (TokenType.ModuleName, (0, 7), (0, 16))
+      (TokenType.Keyword, (1, 2), (1, 8))
+      (TokenType.ModuleName, (1, 9), (1, 18))
+      (TokenType.Keyword, (2, 4), (2, 10))
+      (TokenType.ModuleName, (2, 11), (2, 20))
+      (TokenType.Number, (3, 6), (3, 8))
+      (TokenType.Symbol, (3, 8), (3, 8)) ]

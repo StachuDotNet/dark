@@ -86,25 +86,6 @@ module ValueIdentifier =
   let tokenize (c: WrittenTypes.ValueIdentifier) : List<SemanticToken> =
     [ makeToken c.range TokenType.VariableName ]
 
-module ValueOrFnIdentifier =
-  let tokenize
-    (id: WrittenTypes.ValueOrFnIdentifier)
-    : List<SemanticToken> =
-    [ makeToken id.range TokenType.VariableName ]
-
-module QualifiedValueOrFnIdentifier =
-  let tokenize
-    (q: WrittenTypes.QualifiedValueOrFnIdentifier)
-    : List<SemanticToken> =
-    [ // Darklang.Stdlib.List
-      (q.modules
-        |> Stdlib.List.map (fun (m, _) -> ModuleIdentifier.tokenize m)
-        |> Stdlib.List.flatten)
-
-      // empty
-      ValueOrFnIdentifier.tokenize q.valueOrFn ]
-    |> Stdlib.List.flatten
-
 module FnIdentifier =
   let tokenize (fn: WrittenTypes.FnIdentifier) : List<SemanticToken> =
     [ makeToken fn.range TokenType.FunctionName ]
@@ -118,11 +99,7 @@ module QualifiedFnIdentifier =
         |> Stdlib.List.flatten)
 
       // map
-      FnIdentifier.tokenize q.fn
-
-      (q.typeArgs
-        |> Stdlib.List.map (fun typeArg -> TypeReference.tokenize typeArg)
-        |> Stdlib.List.flatten) ]
+      FnIdentifier.tokenize q.fn ]
     |> Stdlib.List.flatten
 
 
@@ -513,6 +490,9 @@ module MatchPattern =
         fields ]
       |> Stdlib.List.flatten
 
+    // a parse-error hole paints nothing; the pattern around it still highlights
+    | MPError _ -> []
+
     | MPOr(range, patterns) ->
       let patterns =
         patterns
@@ -605,19 +585,23 @@ module Expr =
           fields ]
         |> Stdlib.List.flatten
 
-      | EPipeFnCall(_, fnName, args) ->
+      | EPipeFnCall(_, fnName, typeArgs, args) ->
         let fnName = QualifiedFnIdentifier.tokenize fnName
 
         [ // Darklang.Stdlib.List.map
           fnName
+          // <T>
+          (typeArgs
+            |> Stdlib.List.map (fun typeArg -> TypeReference.tokenize typeArg)
+            |> Stdlib.List.flatten)
           // (1)
           (args
             |> Stdlib.List.map (fun arg -> Expr.tokenize arg)
             |> Stdlib.List.flatten) ]
         |> Stdlib.List.flatten
 
-      | EPipeVariable(range, _varName) ->
-        [ makeToken range TokenType.VariableName ] |> Stdlib.List.flatten
+      | EPipeVariableOrFnCall(range, _varName) ->
+        [ makeToken range TokenType.VariableName ]
 
   let tokenize (e: WrittenTypes.Expr) : List<SemanticToken> =
     match e with
@@ -879,8 +863,6 @@ module Expr =
     // x
     | EVariable(range, _varName) -> [ makeToken range TokenType.VariableName ]
 
-    | EValueOrFn(range, id) -> QualifiedValueOrFnIdentifier.tokenize id
-
     // person.name
     | ERecordFieldAccess(_range, expr, (r, fieldName), symbolDot) ->
       [ // person
@@ -1008,9 +990,14 @@ module Expr =
     // Int.add (1) (2)
     | EFnName(_range, fnName) -> QualifiedFnIdentifier.tokenize fnName
 
-    // CLEANUP: consider removing typeArgs from EApply, as it should be handled by QualifiedFnIdentifier
     | EApply(_range, lhs, typeArgs, args) ->
-      [ Expr.tokenize lhs
+      [ // the fn being applied
+        Expr.tokenize lhs
+        // <T> call-site type args, between the fn and its args (source order)
+        (typeArgs
+          |> Stdlib.List.map (fun typeArg -> TypeReference.tokenize typeArg)
+          |> Stdlib.List.flatten)
+        // the args
         (args
           |> Stdlib.List.map (fun arg -> Expr.tokenize arg)
           |> Stdlib.List.flatten) ]
@@ -1020,6 +1007,9 @@ module Expr =
       [ Expr.tokenize first
         Expr.tokenize next ]
       |> Stdlib.List.flatten
+
+    // a parse-error hole paints nothing; the code around it still highlights
+    | EError _ -> []
 
 
 module ParsedFile =

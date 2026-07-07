@@ -39,8 +39,17 @@ let parseAndReportDiagnostics
   let onMissing = LanguageTools.NameResolver.OnMissing.Allow
   let pm = LanguageTools.PackageManager.pm ()
 
+  // The parser is best-effort and its lexer recovers from malformed input, so it
+  // always returns `Some` (a partial tree + precise diagnostics reported below).
+  // `None` is unreachable.
   let parsed =
-    requestText |> Parser.parseToSimplifiedTree |> Parser.parseFromTree
+    match Builtin.parserParseToWrittenTypes requestText with
+    | Some parsedFile -> Stdlib.Result.Result.Ok parsedFile
+    | None -> Stdlib.Result.Result.Error "tokenizer failure"
+
+  // the parser's precise syntax errors (empty on a clean parse) — reported
+  // alongside name-resolution warnings below
+  let parseDiagnostics = Builtin.parserParseDiagnostics requestText
 
   match parsed with
   | Ok (SourceFile sf) ->
@@ -77,17 +86,24 @@ let parseAndReportDiagnostics
           owner = owner
           currentModule = if scriptName == "" then [] else [ scriptName ] }
 
+    // name-resolve off the already-parsed file (no re-parse)
     let unresolvedNames =
-      match Parser.CliScript.parse nrCtx scriptName "fileName" requestText with
+      match
+        Parser.CliScript.parseFromWT
+          nrCtx
+          scriptName
+          parseDiagnostics
+          (WrittenTypes.ParsedFile.SourceFile sf)
+      with
       | Ok ((_ptCliScriptModule, unresolvedNames)) -> unresolvedNames
       | Error err ->
-        log $"Parse error: {Parser.CliScript.ParseError.toString err}"
+        log $"Name resolution error: {Parser.CliScript.ParseError.toString err}"
         []
 
     Diagnostics.gatherAndReportDiagnostics
       requestUri
-      sf
       unresolvedNames
+      parseDiagnostics
 
     parsed
   | Error err ->

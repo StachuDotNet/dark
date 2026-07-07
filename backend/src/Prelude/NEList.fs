@@ -76,6 +76,12 @@ let ofSeq (head : 'a) (seq : seq<'a>) : NEList<'a> =
 
 let singleton (head : 'a) : NEList<'a> = { head = head; tail = [] }
 
+/// A `List` to an `NEList`, falling back to `[dflt]` when the list is empty.
+let ofListWithDefault (dflt : 'a) (l : List<'a>) : NEList<'a> =
+  match l with
+  | head :: tail -> { head = head; tail = tail }
+  | [] -> singleton dflt
+
 let doubleton (head : 'a) (tail : 'a) : NEList<'a> = { head = head; tail = [ tail ] }
 
 let push (head : 'a) (l : NEList<'a>) : NEList<'a> =

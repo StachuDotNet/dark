@@ -4,7 +4,7 @@ module Empty =
 
 module ConstructionErrors =
   Dict { a = 1; a = 2 } = error="Cannot add two dictionary entries with the same key `a`"
-  Dict { a = 1; b = "two" } = error="Cannot add a String (\"two\") to a dict of Int32. Failed at key `b`."
+  Dict { a = 1l; b = "two" } = error="Cannot add a String (\"two\") to a dict of Int32. Failed at key `b`."
 module FilterMap =
   Stdlib.Dict.filterMap (Dict { }) (fun key value -> 0L) = (Dict { })
 

@@ -193,6 +193,46 @@ module Type =
         let parseError = p [] "ParseError"
         let unparseable = p [] "Unparseable"
 
+    /// Package-type refs for the Dark `LanguageTools.WrittenTypes` — the
+    /// range-complete syntax tree consumed by the semantic highlighter / LSP.
+    /// The parser's F# `LibParser.WrittenTypes` is converted 1:1 into these Dark
+    /// values (Dvals) by `WrittenTypesToDarkTypes` in `Builtins.Language/Libs/Parser.fs`.
+    module WrittenTypes =
+      let private p addl = p ("WrittenTypes" :: addl)
+      let parsedFile = p [] "ParsedFile"
+      let sourceFile = p [ "SourceFile" ] "SourceFile"
+      let sourceFileDeclaration = p [ "SourceFile" ] "SourceFileDeclaration"
+      let typeReference = p [ "TypeReference" ] "TypeReference"
+      let expr = p [] "Expr"
+      let matchPattern = p [] "MatchPattern"
+      let matchCase = p [] "MatchCase"
+      let pipeExpr = p [] "PipeExpr"
+      let letPattern = p [] "LetPattern"
+      let stringSegment = p [] "StringSegment"
+      let infix = p [] "Infix"
+      let infixFnName = p [] "InfixFnName"
+      let binaryOperation = p [] "BinaryOperation"
+      let moduleIdentifier = p [] "ModuleIdentifier"
+      let variableIdentifier = p [] "VariableIdentifier"
+      let fnIdentifier = p [] "FnIdentifier"
+      let qualifiedFnIdentifier = p [] "QualifiedFnIdentifier"
+      let typeIdentifier = p [] "TypeIdentifier"
+      let qualifiedTypeIdentifier = p [] "QualifiedTypeIdentifier"
+      let valueIdentifier = p [] "ValueIdentifier"
+      let typeReferenceBuiltin = p [ "TypeReference" ] "Builtin"
+      let fnDeclaration = p [ "FnDeclaration" ] "FnDeclaration"
+      let fnParameter = p [ "FnDeclaration" ] "Parameter"
+      let fnNormalParameter = p [ "FnDeclaration" ] "NormalParameter"
+      let fnUnitParameter = p [ "FnDeclaration" ] "UnitParameter"
+      let valueDeclaration = p [ "ValueDeclaration" ] "ValueDeclaration"
+      let moduleDeclaration = p [ "ModuleDeclaration" ] "ModuleDeclaration"
+      let moduleDeclarationDeclaration = p [ "ModuleDeclaration" ] "Declaration"
+      let typeDeclaration = p [ "TypeDeclaration" ] "TypeDeclaration"
+      let typeDeclDefinition = p [ "TypeDeclaration" ] "Definition"
+      let typeDeclRecordField = p [ "TypeDeclaration" ] "RecordField"
+      let typeDeclEnumField = p [ "TypeDeclaration" ] "EnumField"
+      let typeDeclEnumCase = p [ "TypeDeclaration" ] "EnumCase"
+
     module RuntimeTypes =
       let private p addl = p ("RuntimeTypes" :: addl)
       let hash = p [] "Hash"
@@ -409,6 +449,7 @@ module Fn =
     module Parser =
       let private p addl = p ("Parser" :: addl)
       let parsePTExpr = p [ "TestParsing" ] "parsePTExpr"
+      let parsePTExprInContext = p [ "TestParsing" ] "parsePTExprInContext"
       let parsePTSourceFileWithOps = p [ "TestParsing" ] "parsePTSourceFileWithOps"
 
       module CliScript =

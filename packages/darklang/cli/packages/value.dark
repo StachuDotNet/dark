@@ -68,15 +68,24 @@ let createValueInline
     // Build full source code for parsing
     let fullSource = $"val {location.name} = {expression}"
 
-    // Parse the value definition string using tree-sitter
-    let tree = LanguageTools.Parser.parseToSimplifiedTree fullSource
+    // Parse the value definition with the unified (ranged) parser
+    match Builtin.parserParseToWrittenTypes fullSource with
+    | Some(SourceFile sourceFile) ->
+      // A parse error blocks creation — the recovered tree would save a broken
+      // body. reportParseErrors prints a precise diagnostic and returns true.
+      let hasParseError = Errors.reportParseErrors (Builtin.parserParseDiagnostics fullSource)
+      let found =
+        if hasParseError then
+          Stdlib.Option.Option.None
+        else
+          sourceFile.declarations
+          |> Stdlib.List.findFirst (fun d ->
+            match d with
+            | Value _ -> true
+            | _ -> false)
 
-    // Find the val_decl node
-    match tree.children |> Stdlib.List.findFirst (fun node -> node.typ == "val_decl") with
-    | Some valDeclNode ->
-      // Parse node to WrittenTypes
-      match LanguageTools.Parser.ValueDeclaration.parse valDeclNode with
-      | Ok writtenValue ->
+      match found with
+      | Some(Value writtenValue) ->
         // Convert to ProgramTypes.PackageValue
         let pm = LanguageTools.PackageManager.pm ()
 
@@ -132,17 +141,21 @@ let createValueInline
 
             state
 
-      | Error unparseable ->
-        let r = unparseable.source.range
-        let detail =
-          match unparseable.note with
-          | Some note -> note
-          | None -> "Make sure your syntax is correct."
-        [ Colors.error "Failed to parse value expression"
-          $"  at line {Stdlib.Int.toString (r.start.row + 1I)}, column {Stdlib.Int.toString (r.start.column + 1I)}"
-          detail ]
-        |> Stdlib.printLines
-        state
+      | _ ->
+        // a precise parse error was already printed above; don't stack the
+        // generic hint on top of it
+        if hasParseError then
+          state
+        else
+          [
+            (Colors.error "Failed to parse value expression")
+            ""
+            "Make sure your syntax is correct. Examples:"
+            "  val x = 42"
+            "  val myString = \"hello\""
+            ""
+          ] |> Stdlib.printLines
+          state
     | None ->
       [
         (Colors.error "Failed to parse value expression")

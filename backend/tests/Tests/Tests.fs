@@ -26,14 +26,14 @@ let main (args : string array) : int =
     let tests =
       [ // core
         Tests.Prelude.tests
-        Tests.TreeSitter.tests
         Tests.ProgramTypesToRuntimeTypes.tests
         Tests.Interpreter.tests
         Tests.AnalysisTypes.tests
         Tests.Builtin.tests
         Tests.DvalReprInternalQueryable.tests
+        Tests.LibParserRoundTrip.tests
         Tests.LibParser.tests
-        Tests.NewParser.tests
+        Tests.LoweringDifferential.tests
         Tests.HttpClient.tests
 
         // package manager

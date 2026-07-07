@@ -122,18 +122,17 @@ module ReadFile =
 
 
 module WriteFile =
-  // Extract module name from a module_decl node
-  let getModuleName (node: LanguageTools.Parser.ParsedNode) : String =
-    // A module_decl has children: keyword, identifier, equals, body
-    // Find the identifier child
-    let identifierNode =
-      node.children
-      |> Stdlib.List.findFirst (fun child ->
-        child.typ == "module_identifier")
-
-    match identifierNode with
-    | Some id -> id.text
-    | None -> ""
+  // Lift a top-level SourceFileDeclaration into the nested Declaration type, so one
+  // recursion handles both levels (they share Type/Function/Value; only the nested-module
+  // case name differs — Module vs SubModule).
+  let sfDeclToModuleDecl
+    (d: LanguageTools.WrittenTypes.SourceFile.SourceFileDeclaration)
+    : LanguageTools.WrittenTypes.ModuleDeclaration.Declaration =
+    match d with
+    | Type t -> LanguageTools.WrittenTypes.ModuleDeclaration.Declaration.Type t
+    | Function f -> LanguageTools.WrittenTypes.ModuleDeclaration.Declaration.Function f
+    | Value v -> LanguageTools.WrittenTypes.ModuleDeclaration.Declaration.Value v
+    | Module m -> LanguageTools.WrittenTypes.ModuleDeclaration.Declaration.SubModule m
 
 
   // Remove the prefix from a module path if it matches
@@ -151,30 +150,21 @@ module WriteFile =
     | _ -> path
 
 
-  // Recursively find all declarations with their module path
-  // Returns list of (extraModules, declaration) where extraModules are the modules beyond the base path
-  let findDeclsWithPath
-    (nodeType: String)
+  // Recursively collect (extraModules, declaration) for every leaf declaration,
+  // descending into nested modules and accumulating the module path.
+  let rec collectDecls
     (currentExtraModules: List<String>)
-    (node: LanguageTools.Parser.ParsedNode)
-    : List<List<String> * LanguageTools.Parser.ParsedNode> =
-    if node.typ == nodeType then
-      [ (currentExtraModules, node) ]
-
-    else
-      if node.typ == "module_decl" then
-        let moduleName = WriteFile.getModuleName node
-        let newPath = Stdlib.List.append currentExtraModules [ moduleName ]
-
-        node.children
-        |> Stdlib.List.map (fun child -> WriteFile.findDeclsWithPath nodeType newPath child)
-        |> Stdlib.List.flatten
-
-      else
-        node.children
-        |> Stdlib.List.map (fun child ->
-          WriteFile.findDeclsWithPath nodeType currentExtraModules child)
-        |> Stdlib.List.flatten
+    (decls: List<LanguageTools.WrittenTypes.ModuleDeclaration.Declaration>)
+    : List<List<String> * LanguageTools.WrittenTypes.ModuleDeclaration.Declaration> =
+    decls
+    |> Stdlib.List.map (fun d ->
+      match d with
+      | SubModule m ->
+        let newPath =
+          Stdlib.List.append currentExtraModules [ Stdlib.Tuple2.second m.name ]
+        WriteFile.collectDecls newPath m.declarations
+      | _ -> [ (currentExtraModules, d) ])
+    |> Stdlib.List.flatten
 
 
   let sendSuccessResponse
@@ -254,31 +244,38 @@ module WriteFile =
       | Error err -> sendErrorResponse state requestId [ err ]
     else
       // Parse package module content
-      let tree = LanguageTools.Parser.parseToSimplifiedTree content
+      // Parse with the unified (ranged) parser, then collect every declaration with its
+      // module path (descending into nested modules).
+      let allDecls =
+        match Builtin.parserParseToWrittenTypes content with
+        | Some(SourceFile sourceFile) ->
+          sourceFile.declarations
+          |> Stdlib.List.map WriteFile.sfDeclToModuleDecl
+          |> WriteFile.collectDecls []
+        | None -> []
 
-      // Find all type, function, and value declarations with their module paths
-      let typeDeclsWithPath = WriteFile.findDeclsWithPath "type_decl" [] tree
-      let fnDeclsWithPath = WriteFile.findDeclsWithPath "fn_decl" [] tree
-      let valDeclsWithPath = WriteFile.findDeclsWithPath "val_decl" [] tree
-
-      // Parse declarations, keeping track of their module paths
+      // Split by kind, wrapping in Ok (ranged already parsed; per-decl parse errors no
+      // longer apply — syntax diagnostics are reported separately).
       let parsedTypes =
-        typeDeclsWithPath
-        |> Stdlib.List.map (fun (extraModules, node) ->
-          let parsed = LanguageTools.Parser.TypeDeclaration.parse node
-          (extraModules, parsed))
+        allDecls
+        |> Stdlib.List.filterMap (fun (extraModules, d) ->
+          match d with
+          | Type t -> Stdlib.Option.Option.Some((extraModules, Stdlib.Result.Result.Ok t))
+          | _ -> Stdlib.Option.Option.None)
 
       let parsedFns =
-        fnDeclsWithPath
-        |> Stdlib.List.map (fun (extraModules, node) ->
-          let parsed = LanguageTools.Parser.FunctionDeclaration.parse node
-          (extraModules, parsed))
+        allDecls
+        |> Stdlib.List.filterMap (fun (extraModules, d) ->
+          match d with
+          | Function f -> Stdlib.Option.Option.Some((extraModules, Stdlib.Result.Result.Ok f))
+          | _ -> Stdlib.Option.Option.None)
 
       let parsedVals =
-        valDeclsWithPath
-        |> Stdlib.List.map (fun (extraModules, node) ->
-          let parsed = LanguageTools.Parser.ValueDeclaration.parse node
-          (extraModules, parsed))
+        allDecls
+        |> Stdlib.List.filterMap (fun (extraModules, d) ->
+          match d with
+          | Value v -> Stdlib.Option.Option.Some((extraModules, Stdlib.Result.Result.Ok v))
+          | _ -> Stdlib.Option.Option.None)
 
       // Extract error messages from each declaration type
       let typeErrors =
