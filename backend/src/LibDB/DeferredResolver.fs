@@ -224,6 +224,9 @@ let rec private reResolveTypeRef
     | PT.TDB inner ->
       let! inner = reResolveTypeRef branchId contextModules pm inner
       return PT.TDB inner
+    | PT.TEventLog inner ->
+      let! inner = reResolveTypeRef branchId contextModules pm inner
+      return PT.TEventLog inner
 
     | PT.TTuple(first, second, rest) ->
       let! first = reResolveTypeRef branchId contextModules pm first

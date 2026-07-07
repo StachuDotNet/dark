@@ -198,7 +198,8 @@ let rec private toJsonV0
 
     // Not supported
     | DApplicable _
-    | DDB _ -> Exception.raiseInternal "Not supported in queryable" [ "value", dv ]
+    | DDB _
+    | DEventLog _ -> Exception.raiseInternal "Not supported in queryable" [ "value", dv ]
   }
 
 
@@ -395,6 +396,7 @@ let parseJsonV0
         "Blob value must be a JSON object envelope"
         [ "json", j ]
     | TStream _, _ -> Exception.raiseInternal "Stream values are not persistable" []
+    | TEventLog _, _ -> Exception.raiseInternal "EventLog values are not queryable" []
 
     // Exhaustiveness checking
     | TUnit, _
@@ -464,4 +466,5 @@ module Test =
     // Maybe never support
     | DApplicable _
     | DDB _
+    | DEventLog _
     | DStream _ -> false

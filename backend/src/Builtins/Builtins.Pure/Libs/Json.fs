@@ -156,6 +156,7 @@ let rec serialize (threadID : ThreadID) (w : Utf8JsonWriter) (dv : Dval) : unit 
 
   // Not supported
   | DDB _
+  | DEventLog _
   | DApplicable _
   | DBlob _
   | DStream _ -> (RTE.Jsons.CannotSerializeValue dv) |> RTE.Json |> raiseRTE threadID
@@ -733,6 +734,7 @@ let parse
     | TFn _, _
     | TBlob, _
     | TStream _, _
+    | TEventLog _, _
     | TDB _, _ -> (RTE.Jsons.UnsupportedType typ) |> RTE.Json |> raiseRTE threadID
 
 

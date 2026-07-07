@@ -141,7 +141,8 @@ module Blob =
       | RT.DDateTime _
       | RT.DUuid _
       | RT.DApplicable _
-      | RT.DDB _ -> acc
+      | RT.DDB _
+      | RT.DEventLog _ -> acc
       | RT.DList(_, items) -> items |> List.fold go acc
       | RT.DTuple(a, b, rest) ->
         let acc = go acc a

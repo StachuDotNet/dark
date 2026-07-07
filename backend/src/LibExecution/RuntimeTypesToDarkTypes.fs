@@ -270,6 +270,7 @@ module TypeReference =
         "TFn", [ args; toDT ret ]
 
       | TDB inner -> "TDB", [ toDT inner ]
+      | TEventLog inner -> "TEventLog", [ toDT inner ]
 
 
     DEnum(typeName (), typeName (), [], caseName, fields)
@@ -316,6 +317,7 @@ module TypeReference =
       TFn(NEList.ofList (fromDT firstArg) (List.map fromDT otherArgs), fromDT ret)
 
     | DEnum(_, _, [], "TDB", [ inner ]) -> TDB(fromDT inner)
+    | DEnum(_, _, [], "TEventLog", [ inner ]) -> TEventLog(fromDT inner)
 
     | _ -> Exception.raiseInternal "Invalid TypeReference" [ "typeRef", d ]
 
@@ -488,6 +490,7 @@ module KnownType =
         "KTFn", [ args; ValueType.toDT ret ]
 
       | KTDB d -> "KTDB", [ ValueType.toDT d ]
+      | KTEventLog d -> "KTEventLog", [ ValueType.toDT d ]
 
     DEnum(typeName (), typeName (), [], caseName, fields)
 
@@ -535,6 +538,7 @@ module KnownType =
         ValueType.fromDT ret
       )
     | DEnum(_, _, [], "KTDB", [ inner ]) -> KTDB(ValueType.fromDT inner)
+    | DEnum(_, _, [], "KTEventLog", [ inner ]) -> KTEventLog(ValueType.fromDT inner)
 
     | _ -> Exception.raiseInternal "Invalid KnownType" []
 
@@ -729,6 +733,7 @@ module Dval =
     | DApplicable applicable -> mk "DApplicable" [ Applicable.toDT applicable ]
 
     | DDB name -> mk "DDB" [ DString name ]
+    | DEventLog name -> mk "DEventLog" [ DString name ]
 
     // Inspectable but not round-trippable. The DT form carries only the
     // runtime id; the inline bytes stay on the original DBlob value.
@@ -810,6 +815,7 @@ module Dval =
       DApplicable(Applicable.fromDT applicable)
 
     | DEnum(_, _, [], "DDB", [ DString name ]) -> DDB name
+    | DEnum(_, _, [], "DEventLog", [ DString name ]) -> DEventLog name
 
     | DEnum(_, _, [], "DBlobEphemeral", [ DUuid _ ]) ->
       // Reflected ephemeral blobs are inspectable but not round-trippable.

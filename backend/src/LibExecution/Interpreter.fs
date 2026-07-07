@@ -22,6 +22,7 @@ let rec private collectTVars (acc : Set<string>) (tr : TypeReference) : Set<stri
   | TStream inner
   | TDict inner
   | TDB inner -> collectTVars acc inner
+  | TEventLog inner -> collectTVars acc inner
   | TTuple(a, b, rest) ->
     let acc = collectTVars acc a
     let acc = collectTVars acc b
@@ -64,6 +65,7 @@ let rec private isFullyKnown (vt : ValueType) : bool =
     | KTDateTime
     | KTBlob
     | KTDB _ -> true
+    | KTEventLog _ -> true
     | KTList inner
     | KTStream inner
     | KTDict inner -> isFullyKnown inner

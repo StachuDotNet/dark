@@ -116,6 +116,7 @@ module TypeReference =
       RT.TFn(NEList.map toRT paramTypes, toRT returnType)
 
     | PT.TDB typ -> RT.TDB(toRT typ)
+    | PT.TEventLog typ -> RT.TEventLog(toRT typ)
 
   let rec toValueType (t : PT.TypeReference) : RT.ValueType =
     match t with
@@ -165,6 +166,7 @@ module TypeReference =
         RT.KTFn(NEList.map toValueType paramTypes, toValueType returnType)
       )
     | PT.TDB typ -> RT.ValueType.Known(RT.KTDB(toValueType typ))
+    | PT.TEventLog typ -> RT.ValueType.Known(RT.KTEventLog(toValueType typ))
 
 
 module InfixFnName =

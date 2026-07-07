@@ -657,6 +657,7 @@ let compileLambda
         | RT.DEnum _ -> "Enum"
         | RT.DApplicable _ -> "Function"
         | RT.DDB _ -> "DB"
+        | RT.DEventLog _ -> "EventLog"
         | RT.DBlob _ -> "Blob"
         | RT.DStream _ -> "Stream"
       Error $"Incorrect type, expected Bool, but got {typeName}"
