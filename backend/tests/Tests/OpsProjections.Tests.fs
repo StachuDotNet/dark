@@ -427,4 +427,72 @@ let tests =
           |> Sql.executeStatementAsync
         let! _ = Seed.rebuildProjections ()
         ()
-      } ]
+      }
+
+      testTask "detectDivergences records a name→two-hashes divergence (LWW isn't silent)" {
+        // Two distinct fn contents to bind one name to, in turn.
+        let! twoFns =
+          Sql.query "SELECT hash FROM package_functions LIMIT 2"
+          |> Sql.executeAsync (fun read -> read.string "hash")
+
+        let hashA, hashB =
+          match twoFns with
+          | a :: b :: _ -> a, b
+          | _ -> Exception.raiseInternal "seed needs >=2 functions" []
+
+        let! commitHash =
+          Sql.query "SELECT hash FROM commits LIMIT 1"
+          |> Sql.executeRowAsync (fun read -> read.string "hash")
+
+        let loc : PT.PackageLocation =
+          { owner = "Test"; modules = [ "Diverge" ]; name = "dv" }
+
+        let mkEvent (h : string) (ts : string) =
+          let op = PT.PackageOp.SetName(loc, PT.Reference.PackageFn(PT.Hash h))
+          let opId = Inserts.computeOpHash op
+          (opId, BS.PT.PackageOp.serialize opId op, PT.mainBranchId, commitHash, ts)
+
+        let (idA, blobA, _, _, _) = mkEvent hashA "2099-01-01T00:00:00.001Z"
+        let (idB, blobB, _, _, _) = mkEvent hashB "2099-01-01T00:00:00.002Z"
+
+        let cleanup () : Task<unit> =
+          task {
+            do!
+              Sql.query "DELETE FROM package_ops WHERE id = @a OR id = @b"
+              |> Sql.parameters [ "a", Sql.uuid idA; "b", Sql.uuid idB ]
+              |> Sql.executeStatementAsync
+            do!
+              Sql.query
+                "DELETE FROM locations WHERE owner = 'Test' AND modules = 'Diverge' AND name = 'dv'"
+              |> Sql.executeStatementAsync
+            do!
+              Sql.query "DELETE FROM sync_conflicts WHERE location = 'Test.Diverge.dv'"
+              |> Sql.executeStatementAsync
+          }
+
+        do! cleanup ()
+
+        // #1: bind the name to A (no prior binding — no divergence).
+        let! _ =
+          Seed.receiveOps [] [ (idA, blobA, PT.mainBranchId, commitHash, "2099-01-01T00:00:00.001Z") ]
+        // #2: a peer's op rebinds it to B — that's a divergence (curHash=A ≠ incoming=B), auto-resolved by LWW.
+        let! _ =
+          Seed.receiveOps [] [ (idB, blobB, PT.mainBranchId, commitHash, "2099-01-01T00:00:00.002Z") ]
+
+        let! conflicts = LibDB.Conflicts.list ()
+
+        let recorded =
+          conflicts
+          |> List.exists (fun (c: LibDB.Conflicts.Conflict) ->
+            c.location = "Test.Diverge.dv"
+            && c.localHash = hashA
+            && c.incomingHash = hashB
+            && c.chosenHash = hashB) // B is newer-by-stamp, so LWW picks it — and that's recorded
+
+        Expect.isTrue
+          recorded
+          "detectDivergences recorded the name→two-hashes divergence with the LWW winner"
+
+        do! cleanup ()
+        let! _ = Seed.rebuildProjections ()
+        () } ]
