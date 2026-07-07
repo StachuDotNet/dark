@@ -151,6 +151,13 @@ let private cursorValue (n : int64) : Dval =
   let t = eventLogCursorType ()
   DEnum(t, t, [], "Cursor", [ DInt64 n ])
 
+let private branchOpEventType () = FQTypeName.fqPackage (EventLogRefs.branchOpEvent ())
+
+/// Build the `Stdlib.EventLog.BranchOpEvent` record for one branch_ops row — natively (no per-row Dark cost).
+let private branchOpEventRecord ((id, op) : string * string) : Dval =
+  let t = branchOpEventType ()
+  DRecord(t, t, [], Map [ "id", DString id; "op", DString op ])
+
 /// Read a string field out of an EventLog Event/Commit record (built by the peer + parsed from JSON) —
 /// natively, so appending a 1000-op batch never pays the per-row Dark interpreter cost.
 let private recField (name : string) (fields : Map<string, Dval>) : string =
@@ -376,6 +383,80 @@ let fns () : List<BuiltInFn> =
                 | _ -> Exception.raiseInternal "eventLogAppendNative: event not a record" [])
 
             let! applied = LibDB.Seed.receiveOps parsedCommits parsedEvents
+            return Dval.int (bigint applied)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    // The branch-structure log (CreateBranch/CreateCommit/Rebase/Merge/Archive), read as a Stream of
+    // BranchOpEvent records + the resume Cursor. Branch ops are self-contained (no side commits). Peers apply
+    // these to LEARN branches — the structure that `packageOps` events reference by branch_id.
+    { name = fn "branchOpsReadNative" 0
+      typeParams = [ "e"; "cur" ]
+      parameters =
+        [ Param.make "log" (TEventLog(TVariable "e")) "the branch-ops log"
+          Param.make "cursor" TInt64 "read branch ops after this cursor (0 = from the start)"
+          Param.make "limit" TInt64 "at most this many — one bounded batch" ]
+      returnType = TTuple(TStream(TVariable "e"), TVariable "cur", [])
+      description =
+        "This instance's branch ops after <param cursor> as a Stream of BranchOpEvent records + the resume Cursor. Built natively."
+      fn =
+        (function
+        | _, _, _, [ DEventLog _name; DInt64 cursor; DInt64 limit ] ->
+          uply {
+            let! (events, newCursor) = LibDB.Seed.branchOpsSince cursor limit
+
+            let remaining = ref (List.map branchOpEventRecord events)
+
+            let nextFn () : Ply<Option<Dval>> =
+              uply {
+                match remaining.Value with
+                | head :: tail ->
+                  remaining.Value <- tail
+                  return Some head
+                | [] -> return None
+              }
+
+            let stream =
+              LibExecution.Stream.newFromIO
+                (ValueType.Known(KTCustomType(branchOpEventType (), [])))
+                nextFn
+                None
+
+            return DTuple(stream, cursorValue newCursor, [])
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    // Apply branch ops RECEIVED from a peer (BranchOpEvent records) — fold into branches/commits. Idempotent.
+    { name = fn "branchOpsAppendNative" 0
+      typeParams = [ "e" ]
+      parameters =
+        [ Param.make "log" (TEventLog(TVariable "e")) "the branch-ops log"
+          Param.make "events" (TList(TVariable "e")) "BranchOpEvent records received from a peer" ]
+      returnType = TInt
+      description =
+        "Apply received BranchOpEvent records to the branch-ops log (fold into branches/commits). Returns the count processed. Idempotent."
+      fn =
+        (function
+        | _, _, _, [ DEventLog _name; DList(_, events) ] ->
+          uply {
+            let parsed =
+              events
+              |> List.map (fun ev ->
+                match ev with
+                | DRecord(_, _, _, f) ->
+                  (recField "id" f, System.Convert.FromHexString(recField "op" f))
+                | _ ->
+                  Exception.raiseInternal "branchOpsAppendNative: event not a record" [])
+
+            let! applied = LibDB.Seed.receiveBranchOps parsed
             return Dval.int (bigint applied)
           }
         | _ -> incorrectArgs ())

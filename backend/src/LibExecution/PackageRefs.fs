@@ -147,6 +147,7 @@ module Type =
       let cursor = p [] "Cursor"
       let event = p [] "Event"
       let commit = p [] "Commit"
+      let branchOpEvent = p [] "BranchOpEvent"
 
     module Cli =
       let private p addl = p ("Cli" :: addl)

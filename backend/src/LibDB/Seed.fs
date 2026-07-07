@@ -325,6 +325,48 @@ let eventsSince
     return (commits, events, newCursor)
   }
 
+/// The branch ops after <param cursor> from this instance's `branch_ops` log, as (id, opBlob-as-hex) pairs,
+/// plus the new cursor (max rowid, or <param cursor> if nothing new). Branch ops carry their own structure
+/// (branchId, commit, merge, …) inside the blob, so — unlike package events — they need no side metadata.
+/// Ordered by rowid so a receiver applies them in the same order (CreateBranch before dependent ops).
+let branchOpsSince (cursor : int64) (limit : int64) : Task<List<string * string> * int64> =
+  task {
+    let! rows =
+      Sql.query
+        $"SELECT rowid AS rid, id, hex(op_blob) AS blob
+          FROM branch_ops
+          WHERE rowid > {cursor}
+          ORDER BY rowid
+          LIMIT {limit}"
+      |> Sql.executeAsync (fun read ->
+        (read.int64 "rid", read.string "id", read.string "blob"))
+
+    let events = rows |> List.map (fun (_, id, blob) -> (id, blob))
+
+    let newCursor =
+      match rows with
+      | [] -> cursor
+      | _ -> rows |> List.map (fun (rid, _, _) -> rid) |> List.max
+
+    return (events, newCursor)
+  }
+
+/// Apply branch ops RECEIVED from a peer: deserialize each blob → BranchOp → insertAndApply (idempotent,
+/// content-addressed by hash). Applied in order, so CreateBranch lands before the commits/merges that depend
+/// on it. Returns the count processed (branch ops are low-volume; the puller advances a per-peer cursor, so a
+/// re-pull doesn't re-count in practice).
+let receiveBranchOps (events : List<string * byte[]>) : Task<int64> =
+  task {
+    let mutable applied = 0L
+
+    for (id, opBlob) in events do
+      let op = BS.PT.BranchOp.deserialize id opBlob
+      do! BranchOpPlayback.insertAndApply op
+      applied <- applied + 1L
+
+    return applied
+  }
+
 /// Append events RECEIVED from a peer (over HTTP) into the local op log, then fold them into the
 /// projections — the general event-log append (`Builtin.appendEvents`). Unlike `insertAndApplyOps`
 /// (the LOCAL-authoring path, which stamps a fresh `nextOriginTs`), this PRESERVES each op's original

@@ -69,3 +69,40 @@ let readSince (log: EventLog<Event>) (cursor: Cursor) (limit: Int64) : Batch =
 /// re-appending the same events is a no-op (content-addressed ids).
 let append (log: EventLog<Event>) (commits: List<Commit>) (events: List<Event>) : Int =
   Builtin.eventLogAppendNative<Commit, Event> log commits events
+
+
+// ── the branch-structure log ──────────────────────────────────────────────────────────────────────
+// `branchOps` is the second named EventLog: the branch lifecycle (create / commit / rebase / merge / archive).
+// Peers sync it so they LEARN branches — the structure `packageOps` events reference by branch_id. Branch ops
+// are self-contained (they carry their own branch/commit data), so an event is just (id, op) — no side commits.
+
+/// One branch op in transit. `op` is the branch-op blob as hex.
+type BranchOpEvent = { id: String; op: String }
+
+/// A bounded read from the branch-ops log: the ops as a Stream, and the cursor to resume from.
+type BranchBatch =
+  { events: Stream<BranchOpEvent>
+    next: Cursor }
+
+/// This instance's branch-structure log — the second named EventLog.
+let branchOps () : EventLog<BranchOpEvent> =
+  Builtin.eventLogNamed<BranchOpEvent> "branch_ops"
+
+/// Read at most <param limit> branch ops after <param cursor> from <param log> — as a Stream + the resume
+/// cursor. Built natively.
+let readBranchOps
+  (log: EventLog<BranchOpEvent>)
+  (cursor: Cursor)
+  (limit: Int64)
+  : BranchBatch =
+  let cur =
+    match cursor with
+    | Cursor c -> c
+
+  let (events, next) = Builtin.branchOpsReadNative<BranchOpEvent, Cursor> log cur limit
+  BranchBatch { events = events; next = next }
+
+/// Apply received branch ops into <param log>; folds into branches/commits. Returns how many were processed.
+/// Idempotent — content-addressed, so re-applying is a no-op.
+let appendBranchOps (log: EventLog<BranchOpEvent>) (events: List<BranchOpEvent>) : Int =
+  Builtin.branchOpsAppendNative<BranchOpEvent> log events
