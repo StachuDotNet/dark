@@ -142,6 +142,12 @@ module Type =
       let parseError = p [ "ParseError" ] "ParseError"
       let json = p [] "Json"
 
+    module EventLog =
+      let private p addl = p ("EventLog" :: addl)
+      let cursor = p [] "Cursor"
+      let event = p [] "Event"
+      let commit = p [] "Commit"
+
     module Cli =
       let private p addl = p ("Cli" :: addl)
       let executionOutcome = p [] "ExecutionOutcome"

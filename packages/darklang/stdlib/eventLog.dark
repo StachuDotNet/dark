@@ -8,6 +8,26 @@ module Darklang.Stdlib.EventLog
 // An event in transit: (id, opBlobHex, branchId, commitHash, originTs) — matches `appendEvents`.
 // A commit an event references: (hash, message, branchId, accountId, createdAt).
 
+/// An opaque position in a log. You advance it by reading, and resume from where you left off. Compare or
+/// serialize it, but don't depend on the wrapped value — it's the log's private cursor representation.
+type Cursor = Cursor of Int64
+
+/// One event in transit: an op and the commit it belongs to. `op` is the op_blob as hex.
+type Event =
+  { id: String
+    op: String
+    branchId: String
+    commitHash: String
+    originTs: String }
+
+/// A commit an event references.
+type Commit =
+  { hash: String
+    message: String
+    branchId: String
+    accountId: String
+    createdAt: String }
+
 /// The committed events after <param cursor> from this instance's own log, the commits they reference, and
 /// the new cursor (max rowid, or <param cursor> if there's nothing new). This is exactly what a peer serves.
 /// At most <param limit> events per call, so a large log transfers in bounded batches — the puller loops,
