@@ -112,6 +112,45 @@ let private queryImpl (path : string) (sql : string) (parameters : List<string>)
       return Dval.resultError rowsKT KTString (DString e.Message)
   }
 
+module EventLogRefs = LibExecution.PackageRefs.Type.Stdlib.EventLog
+let private eventLogEventType () = FQTypeName.fqPackage (EventLogRefs.event ())
+let private eventLogCommitType () = FQTypeName.fqPackage (EventLogRefs.commit ())
+let private eventLogCursorType () = FQTypeName.fqPackage (EventLogRefs.cursor ())
+
+/// Build the `Stdlib.EventLog.Event` record for one op row — natively, so a 1000-op batch never pays the
+/// per-row Dark interpreter cost the native read exists to avoid.
+let private eventRecord ((id, op, br, ch, ts) : string * string * string * string * string) : Dval =
+  let t = eventLogEventType ()
+  DRecord(
+    t,
+    t,
+    [],
+    Map
+      [ "id", DString id
+        "op", DString op
+        "branchId", DString br
+        "commitHash", DString ch
+        "originTs", DString ts ]
+  )
+
+let private commitRecord ((hash, msg, br, acct, at) : string * string * string * string * string) : Dval =
+  let t = eventLogCommitType ()
+  DRecord(
+    t,
+    t,
+    [],
+    Map
+      [ "hash", DString hash
+        "message", DString msg
+        "branchId", DString br
+        "accountId", DString acct
+        "createdAt", DString at ]
+  )
+
+let private cursorValue (n : int64) : Dval =
+  let t = eventLogCursorType ()
+  DEnum(t, t, [], "Cursor", [ DInt64 n ])
+
 let fns () : List<BuiltInFn> =
   [ { name = fn "sqliteExec" 0
       typeParams = []
@@ -238,6 +277,54 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Pure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    // The TYPED, stream-shaped read: Event/Commit records + the resume Cursor, all built NATIVELY so a 1000-op
+    // batch never pays the per-row Dark interpreter cost. `EventLog.readSince` wraps this; the events Stream is
+    // drained (native loop) for the wire, and is filterable for branch-scoped reads.
+    { name = fn "eventLogReadNative" 0
+      typeParams = [ "c"; "e"; "cur" ]
+      parameters =
+        [ Param.make "log" (TEventLog(TVariable "e")) "the log to read"
+          Param.make "cursor" TInt64 "read events after this cursor (0 = from the start)"
+          Param.make "limit" TInt64 "at most this many events — one bounded batch" ]
+      returnType =
+        TTuple(TList(TVariable "c"), TStream(TVariable "e"), [ TVariable "cur" ])
+      description =
+        "This instance's committed events after <param cursor> (at most <param limit>) as a Stream of Event records, the Commit records they reference, and the resume Cursor. Built natively — the fast typed read half of the event-log seam."
+      fn =
+        (function
+        | _, _, _, [ DEventLog _name; DInt64 cursor; DInt64 limit ] ->
+          uply {
+            let! (commits, events, newCursor) = LibDB.Seed.eventsSince cursor limit
+
+            let commitsList =
+              List.map commitRecord commits
+              |> Dval.list (KTCustomType(eventLogCommitType (), []))
+
+            let remaining = ref (List.map eventRecord events)
+
+            let nextFn () : Ply<Option<Dval>> =
+              uply {
+                match remaining.Value with
+                | head :: tail ->
+                  remaining.Value <- tail
+                  return Some head
+                | [] -> return None
+              }
+
+            let eventStream =
+              LibExecution.Stream.newFromIO
+                (ValueType.Known(KTCustomType(eventLogEventType (), [])))
+                nextFn
+                None
+
+            return DTuple(commitsList, eventStream, [ cursorValue newCursor ])
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
 
