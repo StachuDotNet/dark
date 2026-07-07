@@ -135,6 +135,7 @@ type TypeReference =
   | TUuid
   | TBlob
   | TStream of TypeReference
+  | TEventLog of TypeReference
 
   | TList of TypeReference
   | TTuple of TypeReference * TypeReference * List<TypeReference>

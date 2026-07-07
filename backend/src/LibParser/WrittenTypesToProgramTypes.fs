@@ -74,6 +74,7 @@ module TypeReference =
       | WT.TBlob -> return PT.TBlob
 
       | WT.TStream typ -> return! toPT typ |> Ply.map PT.TStream
+      | WT.TEventLog typ -> return! toPT typ |> Ply.map PT.TEventLog
 
       | WT.TList typ -> return! toPT typ |> Ply.map PT.TList
 
@@ -906,6 +907,7 @@ module PackageFn =
     | PT.TVariable _ -> acc
     | PT.TList inner
     | PT.TStream inner
+    | PT.TEventLog inner
     | PT.TDict inner
     | PT.TDB inner -> collectTVars acc inner
     | PT.TTuple(a, b, rest) ->

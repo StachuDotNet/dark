@@ -223,6 +223,24 @@ let fns () : List<BuiltInFn> =
     // Takes events RECEIVED from a peer over HTTP — (id, op_blob-as-hex, branch_id, commit_hash, origin_ts) —
     // appends them to the op log preserving each op's original origin_ts, and folds (INVISIBLY, in F#). Returns
     // the new max-rowid cursor. Idempotent (content-addressed ids). No .db files, no ATTACH: pure ops-over-HTTP.
+    // A named reference to an event log — the DDB-sibling `EventLog` value. The name selects the store
+    // (v1: "package_ops"; branchOps / resolutions become named logs in the branch + resolution work).
+    { name = fn "eventLogNamed" 0
+      typeParams = [ "e" ]
+      parameters =
+        [ Param.make "name" TString "the log's name, e.g. \"package_ops\"" ]
+      returnType = TEventLog(TVariable "e")
+      description =
+        "A named reference to an append-only event log. Reads (EventLog.readSince) yield a Stream; EventLog.append writes. The name selects the store."
+      fn =
+        (function
+        | _, _, _, [ DString name ] -> uply { return DEventLog name }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Pure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
     { name = fn "eventLogSince" 0
       typeParams = []
       parameters =

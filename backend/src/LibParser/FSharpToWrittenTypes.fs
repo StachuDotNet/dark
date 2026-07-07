@@ -88,6 +88,7 @@ module TypeReference =
     // with type args
     | [], "List", [ arg ] -> WT.TList(fromSynType arg)
     | [], "Stream", [ arg ] -> WT.TStream(fromSynType arg)
+    | [], "EventLog", [ arg ] -> WT.TEventLog(fromSynType arg)
     | [], "Dict", [ valArg ] -> WT.TDict(fromSynType valArg)
     | _ -> WT.TCustomType(WT.Unresolved(names), List.map fromSynType typeArgs)
 
