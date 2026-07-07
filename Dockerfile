@@ -113,9 +113,8 @@ RUN DEBIAN_FRONTEND=noninteractive \
       libstdc++6 \
       zlib1g \
       # end .NET dependencies
-      # parser (tree-sitter) dependencies
+      # for compiling native dependencies
       build-essential \
-      # end parser dependencies
       psmisc \
       # CLI integration tests
       expect \
@@ -232,23 +231,8 @@ ENV PATH="$PATH:/home/dark/bin:/home/dark/.dotnet/tools"
 ENV NUGET_SCRATCH=/tmp/NuGetScratch
 
 #############
-# Emscripten,
-# for compiling the tree-sitter parser to wasm
-#############
-# RUN git clone https://github.com/emscripten-core/emsdk.git --depth 1 \
-#   && cd emsdk \
-#   # TODO pin to a recent stable version (i.e. 3.1.37)
-#   # we are using the latest version because Linux arm64 binaries aren't available in all releases.
-#   # see: https://github.com/emscripten-core/emscripten/issues/19275
-#   && ./emsdk install latest \
-#   && ./emsdk activate latest
-# ENV PATH="$PATH:/home/dark/emsdk/upstream/emscripten"
-
-
-#############
 # Zig,
-# for (cross-)compiling our `tree-sitter-darklang` parser,
-# along with the `tree-sitter` library itself.
+# for cross-compiling native libraries (e.g. SQLite) for the release CLIs.
 # TODO Occasionally, check https://ziglang.org/download to see if we're using the latest version
 ENV ZIG_VERSION=0.11.0
 ENV ZIG_ARM64_MINISIG="RUSGOq2NVecA2XPwbgbN5SvU46UcCmhhfcfrjVC+YvcwUcjAYfIXQmqE//df1Mes7iyGZvGoy2+PSJ8pog7QGLE+3nvP8gtlSAs="

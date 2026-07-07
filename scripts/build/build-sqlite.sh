@@ -25,10 +25,9 @@
 # Note: the list of runtime targets here must stay in sync with
 # - backend/src/Cli/Cli.fsproj (per-RID <NativeLibrary> items)
 # - scripts/build/build-release-cli-exes.sh
-# - backend/src/LibTreeSitter/LibTreeSitter.fsproj
 #
 # Uses zig cc for cross-compile (single toolchain, no per-target sysroot
-# wrangling), matching the pattern in build-tree-sitter-darklang.sh.
+# wrangling).
 
 set -euo pipefail
 

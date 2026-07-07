@@ -1,9 +1,0 @@
-==================
-[TODO name this test]
-==================
-
-true
-
----
-
-(source_file (expression (simple_expression (bool_literal))))

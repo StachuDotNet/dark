@@ -61,9 +61,7 @@ scripts/run-local-exec export-seed rundir/seed.db
 cp rundir/seed.db rundir/data.db
 echo "Replaced data.db with seed ($(du -h rundir/data.db | cut -f1))"
 
-# All supported runtimes - must match:
-# - backend/src/LibTreeSitter/LibTreeSitter.fsproj
-# - ./scripts/build/build-tree-sitter.sh
+# All supported runtimes.
 ALL_RUNTIMES="linux-x64 linux-musl-x64 linux-arm64 linux-arm osx-x64 osx-arm64 win-x64 win-arm64"
 
 # Determine which runtimes to build
@@ -87,13 +85,6 @@ else
   # Parse comma-separated list
   runtimes="${RUNTIMES_ARG//,/ }"
   echo "Building for specified runtimes: $runtimes"
-fi
-
-# Ensure tree-sitter-darklang libraries exist for the runtimes we're building
-if [[ "$runtimes" == "$ALL_RUNTIMES" ]]; then
-  ./scripts/build/build-tree-sitter-darklang.sh --runtimes=all
-else
-  ./scripts/build/build-tree-sitter-darklang.sh --runtimes="${runtimes// /,}"
 fi
 
 # AOT-published CLIs statically link libe_sqlite3 (DirectPInvoke binding in

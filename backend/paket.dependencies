@@ -17,7 +17,6 @@ nuget Fumble = 1.0.3
 nuget SQLitePCLRaw.bundle_e_sqlite3 = 2.1.11
 
 // Parser
-nuget FSharp.Compiler.Service = 43.10.100
 
 // Tests
 nuget Expecto = 10.1.0

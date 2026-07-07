@@ -91,10 +91,6 @@ def circleci_validate():
   return run_backend(start, "circleci config validate")
 
 
-def build_parser():
-  start = time.time()
-  return run_other(start, "scripts/build/build-parser")
-
 ###########
 # F#
 ###########
@@ -247,16 +243,10 @@ class Should:
     self.reload_backend_server = False
     self.shellcheck = []
     self.yamllint = []
-    self.build_parser = False
 
 
 def execute(should):
   success = True
-
-  # parser
-  if should.build_parser:
-    if not build_parser(): success = False
-
 
   # backend dependencies
   if should.fsharp_tool_restore:
@@ -375,10 +365,6 @@ def mark(should, f):
   elif f.endswith(".yml") or f.endswith(".yaml"):
     should.yamllint += [f]
 
-  elif f == "tree-sitter-darklang/grammar.js":
-    should.build_parser = True
-    should.backend_quick_build = True
-
   else:
     print("non-build file: " + f, end='')
 
@@ -393,7 +379,6 @@ def get_ignored_files():
         ".git/",
         "scripts/build/compile",
         "backend/testfiles/serialization-artifacts/",
-        "tree-sitter-darklang/src/"
         "containers/",
         "Dockerfile",
         ".devcontainer/devcontainer.json"
