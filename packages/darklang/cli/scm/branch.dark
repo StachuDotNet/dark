@@ -123,7 +123,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
             match b.parentBranchId with
             | None -> b.id != mainId
             | Some pid ->
-              Stdlib.Bool.not (Stdlib.List.member_v0 branchIds pid)
+              Stdlib.Bool.not (Stdlib.List.member branchIds pid)
 
           if isOrphan then
             let orphanMarker =

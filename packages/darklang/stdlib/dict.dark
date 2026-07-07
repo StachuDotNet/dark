@@ -14,48 +14,48 @@ let singleton (key: String) (value: 'a) : Dict<'a> =
 
 /// Returns the number of entries in <param dict>
 let size (dict: Dict<'a>) : Int =
-  Builtin.dictSize_v0 dict
+  Builtin.dictSize dict
 
 
 /// If the <param dict> contains <param key>, returns the corresponding value,
 /// wrapped in an <type Option>: {{Some value}}. Otherwise, returns {{None}}.
 let get (dict: Dict<'a>) (key: String) : Stdlib.Option.Option<'a> =
-  Builtin.dictGet_v0 dict key
+  Builtin.dictGet dict key
 
 
 /// Returns a copy of <param dict> with the <param key> set to <param val>
 let set (dict: Dict<'a>) (key: String) (``val``: 'a) : Dict<'a> =
-  Builtin.dictSet_v0 dict key ``val``
+  Builtin.dictSet dict key ``val``
 
 
 /// Returns a copy of <param dict> with the <param key> set to <param val>
 let setOverridingDuplicates (dict: Dict<'a>) (key: String) (``val``: 'a) : Dict<'a> =
-  Builtin.dictSetOverridingDuplicates_v0 dict key ``val``
+  Builtin.dictSetOverridingDuplicates dict key ``val``
 
 
 /// If the <param dict> contains <param key>, returns a copy of <param dict> with <param key> and its associated value removed. Otherwise, returns <param dict> unchanged.
 let remove (dict: Dict<'a>) (key: String) : Dict<'a> =
-  Builtin.dictRemove_v0 dict key
+  Builtin.dictRemove dict key
 
 
 /// Returns a combined dictionary with both dictionaries' entries. If the same key exists in both <param left> and <param right>, it will have the value from <param right>.
 let merge (left: Dict<'a>) (right: Dict<'a>) : Dict<'a> =
-  Builtin.dictMerge_v0 left right
+  Builtin.dictMerge left right
 
 
 /// Returns <param dict>'s keys in a <type List>, in an arbitrary order
 let keys (dict: Dict<'a>) : List<String> =
-  Builtin.dictKeys_v0 dict
+  Builtin.dictKeys dict
 
 
 /// Returns <param dict>'s values in a <type List>, in an arbitrary order
 let values (dict: Dict<'a>) : List<'a> =
-  Builtin.dictValues_v0 dict
+  Builtin.dictValues dict
 
 
 /// Returns <param dict>'s entries as a list of {{(key, value)}} tuples, in an arbitrary order. This function is the opposite of <fn Dict.fromList>
 let toList (dict: Dict<'a>) : List<(String * 'a)> =
-  Builtin.dictToList_v0 dict
+  Builtin.dictToList dict
 
 
 /// Returns a <type dict> with <param entries>. Each value in <param entries>
@@ -75,13 +75,13 @@ let fromListOverwritingDuplicates (entries: List<(String * 'a)>) : Dict<'a> =
 /// Otherwise, returns {{None}} (use <fn Dict.fromListOverwritingDuplicates>
 /// if you want to overwrite duplicate keys).
 let fromList (entries: List<(String * 'a)>) : Stdlib.Option.Option<Dict<'a>> =
-  Builtin.dictFromList_v0 entries
+  Builtin.dictFromList entries
 
 
 /// Returns {{true}} if the <param dict> contains an entry with <param key>,
 /// and {{false}} otherwise
 let ``member`` (dict: Dict<'a>) (key: String) : Bool =
-  Builtin.dictMember_v0 dict key
+  Builtin.dictMember dict key
 
 
 /// Returns a new dictionary that contains the same keys as the original <param

@@ -62,7 +62,7 @@ module EncodeSemanticTokens =
     : List<LanguageServerProtocol.SemanticTokens.RelativeSemanticToken.RelativeSemanticToken<LanguageTools.SemanticTokens.TokenType>> =
     let sortedTokens =
       tokens
-      |> Stdlib.List.sortByComparator_v0 (fun a b ->
+      |> Stdlib.List.sortByComparator (fun a b ->
         let aStart = a.range.start
         let bStart = b.range.start
 

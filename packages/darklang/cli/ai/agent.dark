@@ -170,11 +170,11 @@ let runCliCommand
   match parts with
   | [] -> Stdlib.Result.Result.Error "command required"
   | commandName :: _ ->
-    let isWriteCommand = Stdlib.List.member_v0 writeCommands commandName
+    let isWriteCommand = Stdlib.List.member writeCommands commandName
     let writesAllowed = writeMode != WriteMode.Denied
 
     let allCommands = Stdlib.List.append readOnlyCommands writeCommands
-    let commandExists = Stdlib.List.member_v0 allCommands commandName
+    let commandExists = Stdlib.List.member allCommands commandName
 
     // Check confirmation for write commands
     let userRejected =
@@ -384,7 +384,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   let options = parseOptions args defaultOptions
   let provider = resolveProvider options.provider
 
-  if Stdlib.Bool.not (Stdlib.List.member_v0 validProviders provider) then
+  if Stdlib.Bool.not (Stdlib.List.member validProviders provider) then
     Stdlib.printLine (Colors.error $"Unknown provider: {provider}. Use: anthropic, openai, local")
     state
   else

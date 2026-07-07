@@ -22,7 +22,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
     commits
     |> Stdlib.List.iter (fun c ->
       let id = LanguageTools.ProgramTypes.hashToShort c.hash
-      let createdAt = Stdlib.DateTime.toString_v0 c.createdAt
+      let createdAt = Stdlib.DateTime.toString c.createdAt
       let opCount = Stdlib.Int.toString c.opCount
       let commitBranchId = Stdlib.Uuid.toString c.branchId
 

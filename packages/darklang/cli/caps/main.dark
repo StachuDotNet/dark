@@ -50,13 +50,13 @@ let load () : State =
       dirty = false
       screen = Screen.Browsing }
 
-let isFlag (domain: String) : Bool = Stdlib.List.member_v0 flagDomains domain
+let isFlag (domain: String) : Bool = Stdlib.List.member flagDomains domain
 
 // the visible rows: the flag checklist, then one row per scoped/coupled rule spec
 let rows (state: State) : List<Row> =
   let flagRows =
     Stdlib.List.map flagDomains (fun d ->
-      let granted = Stdlib.List.member_v0 state.specs d
+      let granted = Stdlib.List.member state.specs d
       Row.FlagRow(d, granted))
   let ruleRows =
     state.specs
@@ -69,7 +69,7 @@ let rows (state: State) : List<Row> =
 let rowCount (state: State) : Int = (Stdlib.List.length (rows state))
 
 let toggleFlag (state: State) (domain: String) : State =
-  if Stdlib.List.member_v0 state.specs domain then
+  if Stdlib.List.member state.specs domain then
     let next = Stdlib.List.filter state.specs (fun s -> s != domain)
     { state with specs = next; dirty = true }
   else

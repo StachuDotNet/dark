@@ -643,7 +643,7 @@ let printAllBranches () : Unit =
 
 let execute (cliState: Darklang.Cli.AppState) (args: List<String>) : Darklang.Cli.AppState =
   let branchId = cliState.currentBranchId
-  let showAll = Stdlib.List.member_v0 args "--all"
+  let showAll = Stdlib.List.member args "--all"
 
   if cliState.nonInteractive then
     if showAll then printAllBranches ()

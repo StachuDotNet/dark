@@ -3,7 +3,7 @@ module Darklang.Cli.SCM.Rebase
 
 let execute (state: AppState) (args: List<String>) : AppState =
   let showStatus =
-    (Stdlib.List.member_v0 args "--status") || (Stdlib.List.member_v0 args "-s")
+    (Stdlib.List.member args "--status") || (Stdlib.List.member args "-s")
 
   if showStatus then
     let conflicts = SCM.Rebase.getConflicts state.currentBranchId

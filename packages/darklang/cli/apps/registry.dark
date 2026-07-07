@@ -57,7 +57,7 @@ let catalog (branchId: Uuid) : List<Model.App> =
   let seedSlugs = (available ()) |> Stdlib.List.map (fun a -> a.slug)
   let extra =
     (discover branchId)
-    |> Stdlib.List.filter (fun a -> Stdlib.Bool.not (Stdlib.List.member_v0 seedSlugs a.slug))
+    |> Stdlib.List.filter (fun a -> Stdlib.Bool.not (Stdlib.List.member seedSlugs a.slug))
   Stdlib.List.append (available ()) extra
 
 
@@ -80,7 +80,7 @@ let installedSlugs () : List<String> =
   | None -> []
 
 let isInstalled (slug: String) : Bool =
-  Stdlib.List.member_v0 (installedSlugs ()) slug
+  Stdlib.List.member (installedSlugs ()) slug
 
 let saveInstalled (slugs: List<String>) : Unit =
   let cfg = Config.readConfig ()
@@ -99,4 +99,4 @@ let removeInstalled (slug: String) : Unit =
 /// installed discovered app still resolves. Empty by default.
 let installed (branchId: Uuid) : List<Model.App> =
   let slugs = installedSlugs ()
-  (catalog branchId) |> Stdlib.List.filter (fun a -> Stdlib.List.member_v0 slugs a.slug)
+  (catalog branchId) |> Stdlib.List.filter (fun a -> Stdlib.List.member slugs a.slug)

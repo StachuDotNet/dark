@@ -184,7 +184,7 @@ let isSelected
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   (kind: LanguageTools.ProgramTypes.ItemKind)
   : Bool =
-  Stdlib.List.member_v0 selection (loc, kind)
+  Stdlib.List.member selection (loc, kind)
 
 
 /// Pick the propagation IDs of batches whose source is in the selection.
@@ -219,7 +219,7 @@ let inPropBatch
   (propId: Stdlib.Option.Option<Uuid>)
   : Bool =
   match propId with
-  | Some p -> Stdlib.List.member_v0 includedPropIds p
+  | Some p -> Stdlib.List.member includedPropIds p
   | None -> false
 
 
@@ -258,7 +258,7 @@ let referencedHashContains
   : Bool =
   let h = LanguageTools.ProgramTypes.Reference.hash target
   let k = LanguageTools.ProgramTypes.Reference.kind target
-  Stdlib.List.member_v0 referencedHashes (h, k)
+  Stdlib.List.member referencedHashes (h, k)
 
 
 /// Decide whether one WIP op should be in the partial commit.
@@ -277,15 +277,15 @@ let shouldInclude
   else
     match entry.op with
     | AddType t ->
-      Stdlib.List.member_v0
+      Stdlib.List.member
         referencedHashes
         (t.hash, LanguageTools.ProgramTypes.ItemKind.Type)
     | AddValue v ->
-      Stdlib.List.member_v0
+      Stdlib.List.member
         referencedHashes
         (v.hash, LanguageTools.ProgramTypes.ItemKind.Value)
     | AddFn f ->
-      Stdlib.List.member_v0
+      Stdlib.List.member
         referencedHashes
         (f.hash, LanguageTools.ProgramTypes.ItemKind.Fn)
     | SetName(loc, target) ->
@@ -455,7 +455,7 @@ let oneLevelDeps
     | Some loc ->
       if
         (selectionContains selection loc dKind)
-        || (Stdlib.List.member_v0 seenKeys (loc, dKind))
+        || (Stdlib.List.member seenKeys (loc, dKind))
       then
         Stdlib.Option.Option.None
       else

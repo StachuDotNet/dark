@@ -179,9 +179,9 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   // don't have to enumerate their position. `--yes`/`-y` for destructive
   // confirmations; `--json` for output format; `--view` is find-only.
   let autoConfirm =
-    (Stdlib.List.member_v0 args "--yes") || (Stdlib.List.member_v0 args "-y")
-  let wantsJson = Stdlib.List.member_v0 args "--json"
-  let wantsFindView = Stdlib.List.member_v0 args "--view"
+    (Stdlib.List.member args "--yes") || (Stdlib.List.member args "-y")
+  let wantsJson = Stdlib.List.member args "--json"
+  let wantsFindView = Stdlib.List.member args "--view"
   let args =
     args
     |> Stdlib.List.filter (fun a ->

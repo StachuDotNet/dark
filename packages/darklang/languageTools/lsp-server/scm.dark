@@ -38,7 +38,7 @@ let handleGetCommitsRequest
       Stdlib.AltJson.Json.Object
         [ ("hash", Stdlib.AltJson.Json.String c.hash)
           ("message", Stdlib.AltJson.Json.String c.message)
-          ("createdAt", Stdlib.AltJson.Json.String (Stdlib.DateTime.toString_v0 c.createdAt))
+          ("createdAt", Stdlib.AltJson.Json.String (Stdlib.DateTime.toString c.createdAt))
           ("opCount", Stdlib.AltJson.Json.String (Stdlib.Int.toString c.opCount))
           ("branchId", Stdlib.AltJson.Json.String (Stdlib.Uuid.toString c.branchId))
           ("branchName", Stdlib.AltJson.Json.String c.branchName) ])

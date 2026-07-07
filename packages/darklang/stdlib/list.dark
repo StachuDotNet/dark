@@ -173,7 +173,7 @@ let uniqueBy (list: List<'a>) (fn: 'a -> 'b) : List<'a> =
   |> fold ([], []) (fun (unique, seen) value ->
     let uniqueValue = fn value
 
-    if member_v0 seen uniqueValue then
+    if member seen uniqueValue then
       (unique, seen)
     else
       (push unique value, push seen uniqueValue))

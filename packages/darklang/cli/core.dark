@@ -111,7 +111,7 @@ let initState () : AppState =
       allCommandsCache = Registry.allCommands ()
       commandOptionsCache = commandOptions ()
       cachedStatusBar = ""
-      cachedStatusBarBranch = Builtin.unwrap (Stdlib.Uuid.parse_v0 "00000000-0000-0000-0000-000000000000")
+      cachedStatusBarBranch = Builtin.unwrap (Stdlib.Uuid.parse "00000000-0000-0000-0000-000000000000")
       telemetryEnabled = (Builtin.environmentGet "DARK_TELEMETRY") == Stdlib.Option.Option.Some "1" }
 
 type Msg =
@@ -328,7 +328,7 @@ module Registry =
     let handler = findCommandIn state.allCommandsCache name
 
     let hasHelpFlag =
-      (Stdlib.List.member_v0 args "--help") || (Stdlib.List.member_v0 args "-h")
+      (Stdlib.List.member args "--help") || (Stdlib.List.member args "-h")
 
     if hasHelpFlag then
       executeCommandHelp name state

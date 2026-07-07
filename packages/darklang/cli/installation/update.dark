@@ -8,7 +8,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
   // Parse flags
   let autoConfirm =
-    (Stdlib.List.member_v0 args "--yes") || (Stdlib.List.member_v0 args "-y")
+    (Stdlib.List.member args "--yes") || (Stdlib.List.member args "-y")
 
   match currentMode with
   | Installed ->

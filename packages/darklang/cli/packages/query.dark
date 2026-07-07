@@ -94,7 +94,7 @@ let private memberOf
   (d: Dict<Bool>)
   (hash: LanguageTools.ProgramTypes.Hash)
   : Bool =
-  Stdlib.Dict.member_v0 d (LanguageTools.ProgramTypes.hashToString hash)
+  Stdlib.Dict.member d (LanguageTools.ProgramTypes.hashToString hash)
 
 
 /// Whether an item hash should be hidden by default visibility.
