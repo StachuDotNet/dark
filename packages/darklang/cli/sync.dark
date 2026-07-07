@@ -113,7 +113,21 @@ let execute (state: AppState) (args: List<String>) : AppState =
           let mark = if cursor == 0L then "(not pulled yet)" else "(pulled)"
           $"  {padded}   {mark}")
 
-      Stdlib.printLines (Stdlib.List.append [ header ] lines)
+      // All branches sync automatically (structure + content). Selective per-branch sync is a follow-up;
+      // for now this just makes visible WHICH branches travel.
+      let branchNames =
+        Stdlib.List.map (Darklang.SCM.Branch.list ()) (fun b -> b.name)
+
+      let branchLine =
+        match branchNames with
+        | [] -> []
+        | names ->
+          [ Colors.hint
+              $"  {plural (Stdlib.List.length names) "branch"} syncing: {Stdlib.String.join names ", "}" ]
+
+      Stdlib.printLines (
+        Stdlib.List.append (Stdlib.List.append [ header ] lines) branchLine)
+
       state
 
   | [ "connect"; peer ] ->
