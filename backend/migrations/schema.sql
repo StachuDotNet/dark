@@ -125,6 +125,41 @@ CREATE INDEX IF NOT EXISTS idx_branch_ops_created_at ON branch_ops(created_at);
 
 
 --------------------
+-- Sync conflicts + resolutions (the "LWW isn't silent" model)
+--------------------
+-- sync_conflicts: a LOCAL review log (NOT synced). A divergence auto-resolved by last-writer-wins at pull
+-- time is recorded here so it can be reviewed + (optionally) overridden. Per-branch.
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+  id TEXT PRIMARY KEY,                   -- content-addressed (branch + location + candidate hashes)
+  branch_id TEXT NOT NULL,
+  location TEXT NOT NULL,                -- owner.modules.name
+  item_kind TEXT NOT NULL,              -- fn | type | value
+  local_hash TEXT NOT NULL,             -- the content we had
+  incoming_hash TEXT NOT NULL,          -- the content the peer sent
+  chosen_hash TEXT NOT NULL,            -- which won (auto: last-writer-wins)
+  resolved_by TEXT NOT NULL,            -- 'auto:last-writer-wins' | 'human'
+  status TEXT NOT NULL DEFAULT 'auto-resolved',  -- auto-resolved | acknowledged | overridden
+  detected_at TIMESTAMP NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sync_conflicts_detected_at ON sync_conflicts(detected_at DESC);
+
+-- resolutions: SYNCED override overlay. A resolution binds a contested location to a chosen content,
+-- competing in the same timestamp-LWW that orders bindings (by `at`). id is a wire-carried uuid (idempotent).
+-- Effective binding = fold(package_ops)[LWW] -> apply resolutions[last-resolver-wins by `at`]. Per-branch.
+CREATE TABLE IF NOT EXISTS resolutions (
+  id TEXT PRIMARY KEY,                   -- wire-carried uuid (INSERT OR IGNORE dedup)
+  branch_id TEXT NOT NULL,
+  location TEXT NOT NULL,
+  item_kind TEXT NOT NULL,
+  chosen_hash TEXT NOT NULL,            -- the content this resolution binds the location to
+  resolved_by TEXT NOT NULL,            -- 'auto:<policy>' | 'human'
+  at TEXT NOT NULL                      -- LWW stamp (same format as op origin_ts / locations)
+);
+CREATE INDEX IF NOT EXISTS idx_resolutions_location ON resolutions(branch_id, location);
+CREATE INDEX IF NOT EXISTS idx_resolutions_at ON resolutions(at);
+
+
+--------------------
 -- Package projections (content-addressed)
 --------------------
 -- Definitions stored once per content hash; locations is the
