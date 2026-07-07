@@ -1,0 +1,147 @@
+module Darklang.Cli.Conflicts
+
+// `dark conflicts` — review + adjudicate sync divergences. When two instances edit the same name, sync
+// auto-resolves by last-writer-wins but records the divergence here (never silent). You can acknowledge the
+// auto choice, or override it — an override mints a SYNCED Resolution that propagates so peers converge on
+// your pick.
+
+type Conflict =
+  { id: String
+    location: String
+    itemKind: String
+    localHash: String
+    incomingHash: String
+    chosenHash: String
+    resolvedBy: String
+    status: String }
+
+let private conflicts () : List<Conflict> =
+  Stdlib.List.map (Builtin.conflictsList ()) (fun t ->
+    let (id, location, itemKind, localHash, incomingHash, chosenHash, resolvedBy, status) =
+      t
+
+    Conflict
+      { id = id
+        location = location
+        itemKind = itemKind
+        localHash = localHash
+        incomingHash = incomingHash
+        chosenHash = chosenHash
+        resolvedBy = resolvedBy
+        status = status })
+
+// First 8 chars of a hash for compact display.
+let private short (h: String) : String =
+  Stdlib.String.slice h 0 8
+
+let private unreviewed () : List<Conflict> =
+  Stdlib.List.filter (conflicts ()) (fun c -> c.status == "auto-resolved")
+
+let private findOpen (location: String) : Stdlib.Option.Option<Conflict> =
+  Stdlib.List.findFirst (unreviewed ()) (fun c -> c.location == location)
+
+let private noneMsg (location: String) : String =
+  $"No open conflict at {location}. See: dark conflicts"
+
+// Override at <location> with <hash> — mints a synced Resolution + marks the conflict overridden.
+let private keep (location: String) (hash: String) : Bool =
+  Builtin.conflictKeep location hash
+
+let help (state: AppState) : AppState =
+  Stdlib.printLine "dark conflicts — review + resolve sync divergences"
+  Stdlib.printLine ""
+  Stdlib.printLine "  dark conflicts [list]            unreviewed conflicts"
+  Stdlib.printLine "  dark conflicts show <loc>        the two candidate contents"
+  Stdlib.printLine "  dark conflicts ok <loc>          acknowledge (the auto choice stands)"
+  Stdlib.printLine "  dark conflicts keep-mine <loc>   override → keep your version (syncs)"
+  Stdlib.printLine "  dark conflicts keep-theirs <loc> override → keep their version (syncs)"
+  state
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | []
+  | [ "list" ] ->
+    match unreviewed () with
+    | [] ->
+      Stdlib.printLine (Colors.success "No conflicts — everything's converged.")
+      state
+    | cs ->
+      Stdlib.printLine
+        $"{Stdlib.Int.toString (Stdlib.List.length cs)} unreviewed conflict(s):"
+
+      Stdlib.List.iter cs (fun c ->
+        let kept =
+          if c.chosenHash == c.incomingHash then "theirs" else "yours"
+
+        Stdlib.printLine
+          $"  {c.location}   active: {short c.chosenHash} ({kept}, {c.resolvedBy})   yours: {short c.localHash} · theirs: {short c.incomingHash}")
+
+      Stdlib.printLine (
+        Colors.hint
+          "  dark conflicts show <loc> · keep-mine <loc> · keep-theirs <loc> · ok <loc>")
+
+      state
+
+  | [ "show"; location ] ->
+    match findOpen location with
+    | Some c ->
+      Stdlib.printLine $"{c.location} — two versions ({c.itemKind}):"
+      Stdlib.printLine $"  yours   {c.localHash}"
+      Stdlib.printLine $"  theirs  {c.incomingHash}   (active: {short c.chosenHash})"
+
+      Stdlib.printLine (
+        Colors.hint
+          $"  keep yours: dark conflicts keep-mine {location} · keep theirs: dark conflicts keep-theirs {location}")
+
+      state
+    | None ->
+      Stdlib.printLine (Colors.error (noneMsg location))
+      state
+
+  | [ "ok"; location ] ->
+    if Builtin.conflictAcknowledge location then
+      Stdlib.printLine (Colors.success $"Acknowledged {location} — the auto choice stands.")
+    else
+      Stdlib.printLine (Colors.error (noneMsg location))
+
+    state
+
+  | [ "keep-mine"; location ] ->
+    match findOpen location with
+    | Some c ->
+      let _ = keep location c.localHash
+
+      Stdlib.printLine (
+        Colors.success
+          $"Kept yours ({short c.localHash}) at {location}. This resolution will sync to your peers.")
+
+      state
+    | None ->
+      Stdlib.printLine (Colors.error (noneMsg location))
+      state
+
+  | [ "keep-theirs"; location ] ->
+    match findOpen location with
+    | Some c ->
+      let _ = keep location c.incomingHash
+
+      Stdlib.printLine (
+        Colors.success
+          $"Kept theirs ({short c.incomingHash}) at {location}. This resolution will sync to your peers.")
+
+      state
+    | None ->
+      Stdlib.printLine (Colors.error (noneMsg location))
+      state
+
+  | _ -> help state
+
+let complete
+  (state: AppState)
+  (args: List<String>)
+  : List<Completion.CompletionItem> =
+  match args with
+  | [] ->
+    [ "list"; "show"; "ok"; "keep-mine"; "keep-theirs" ]
+    |> Stdlib.List.map Completion.simple
+  | _ -> []

@@ -273,6 +273,7 @@ module Registry =
       ("export-seed", "Export minimal seed.db from current database", [], ExportSeed.execute, ExportSeed.help, ExportSeed.complete)
       ("traces", "List and view execution traces", [ "trace" ], Tracing.execute, Tracing.help, Tracing.complete)
       ("review", "Review branch changesets", [], SCM.Review.App.execute, SCM.Review.App.help, SCM.Review.App.complete)
+      ("conflicts", "Review + resolve sync divergences", [], Conflicts.execute, Conflicts.help, Conflicts.complete)
       ("views", "Browse and preview CLI views", [], Apps.Views.App.execute, Apps.Views.App.help, Apps.Views.App.complete)
       ("login", "Log in as a seeded account (required for commit / serve)", [], Auth.Login.execute, Auth.Login.help, Auth.Login.complete)
       ("logout", "Clear the active account", [], Auth.Logout.execute, Auth.Logout.help, Auth.Logout.complete)

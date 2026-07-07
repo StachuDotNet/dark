@@ -116,6 +116,12 @@ let acknowledge (id : string) : Task<unit> =
   |> Sql.parameters [ "id", Sql.string id ]
   |> Sql.executeStatementAsync
 
+/// Mark a conflict overridden — a human picked a candidate (recorded as a synced Resolution).
+let markOverridden (id : string) : Task<unit> =
+  Sql.query "UPDATE sync_conflicts SET status = 'overridden' WHERE id = @id"
+  |> Sql.parameters [ "id", Sql.string id ]
+  |> Sql.executeStatementAsync
+
 /// The current live binding (item_hash, origin_ts) for a location on a branch, if any.
 let private currentBinding
   (branchId : System.Guid)
