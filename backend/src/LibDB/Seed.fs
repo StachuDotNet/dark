@@ -420,6 +420,9 @@ let receiveOps
           (sql, [ ps ]))
 
       let affected = (commitInserts @ opInserts) |> Sql.executeTransactionSync
+      // Record any divergences BEFORE the fold: an incoming SetName that rebinds a name already bound
+      // locally to a different hash is a sync conflict (auto-resolved by LWW). Recorded so it's reviewable.
+      do! Conflicts.detectDivergences events
       let! _ = applyUnappliedOps ()
       // Newly-inserted ops only (INSERT OR IGNORE returns 0 rows-affected for ones already present) — the
       // honest change count. Skip the commit-insert results to count just the ops.
