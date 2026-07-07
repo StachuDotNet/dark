@@ -5,31 +5,43 @@ module Darklang.Sync
 // that crosses the wire is OPS — never a database file, never ATTACH. Sync owns no event mechanics: it's thin
 // policy (transport + per-peer cursors) on the general event-log seam, `Stdlib.EventLog`.
 
-/// The wire: (release, commits, events, cursor) as JSON. The leading Release is the version handshake — a
-/// puller refuses a peer on a different Dark release rather than apply ops it might not understand.
+/// The wire (JSON): the version handshake + one bounded batch from EACH synced log. `release` lets a puller
+/// refuse a peer on a different Dark release. `branchOps` (structure) is applied before `packageOps` (content)
+/// so package ops' branch_ids resolve on the receiver. Each log carries its own resume cursor.
 type Wire =
-  (Int *
-   List<Stdlib.EventLog.Commit> *
-   List<Stdlib.EventLog.Event> *
-   Stdlib.EventLog.Cursor)
+  { release: Int
+    branchEvents: List<Stdlib.EventLog.BranchOpEvent>
+    branchCursor: Stdlib.EventLog.Cursor
+    commits: List<Stdlib.EventLog.Commit>
+    packageEvents: List<Stdlib.EventLog.Event>
+    packageCursor: Stdlib.EventLog.Cursor }
 
-/// The `GET /sync/events?since=<cursor>` body: this instance's Release + its committed events after
-/// <param cursor>, as JSON. Served by `Sync.Server` (`dark serve`), pulled by a peer's `Sync.pull`.
-let wireSince (cursor: Int64) : String =
-  // One bounded batch so a large log never becomes one giant response — the puller loops on the cursor until a
-  // batch comes back empty. 1000 ops (~1 MB wire) balances round-trips against response size: the native read
-  // (reads the log natively) makes even the whole log milliseconds, so the batch exists for bounded responses
-  // and resumability, not to keep the read cheap. A 10k-op first sync is ~10 batches, not 200.
-  let batch =
-    Stdlib.EventLog.readSince
-      Stdlib.EventLog.packageOps ()
-      (Stdlib.EventLog.cursorFromInt cursor)
+/// The `GET /sync/events?package=<c>&branch=<c>` body: this instance's Release + one bounded batch from each
+/// log after the given cursors, as JSON. Served by `Sync.Server` (`dark serve`), pulled by a peer's `Sync.pull`.
+let wireSince (packageCursor: Int64) (branchCursor: Int64) : String =
+  // One bounded batch PER LOG so a large log never becomes one giant response — the puller loops on the
+  // cursors until both come back empty. 1000 ops (~1 MB) balances round-trips against response size; the
+  // native reads make even a whole log milliseconds, so the batch is for bounded responses + resumability.
+  let branchBatch =
+    Stdlib.EventLog.readBranchOps
+      (Stdlib.EventLog.branchOps ())
+      (Stdlib.EventLog.cursorFromInt branchCursor)
       1000L
 
-  let events = Stdlib.Stream.toList batch.events
+  let pkgBatch =
+    Stdlib.EventLog.readSince
+      (Stdlib.EventLog.packageOps ())
+      (Stdlib.EventLog.cursorFromInt packageCursor)
+      1000L
 
   Stdlib.Json.serialize<Wire> (
-    (Builtin.currentRelease(), batch.commits, events, batch.next)
+    Wire
+      { release = Builtin.currentRelease()
+        branchEvents = Stdlib.Stream.toList branchBatch.events
+        branchCursor = branchBatch.next
+        commits = pkgBatch.commits
+        packageEvents = Stdlib.Stream.toList pkgBatch.events
+        packageCursor = pkgBatch.next }
   )
 
 
@@ -41,10 +53,11 @@ let private syncDb () : String =
   let _ =
     Stdlib.Sqlite.exec db "CREATE TABLE IF NOT EXISTS sync_peers_v0 (url TEXT PRIMARY KEY)"
 
+  // One resume cursor per (peer, log-kind) — "package_ops" and "branch_ops" advance independently.
   let _ =
     Stdlib.Sqlite.exec
       db
-      "CREATE TABLE IF NOT EXISTS sync_cursors_v0 (peer TEXT PRIMARY KEY, cursor INTEGER NOT NULL)"
+      "CREATE TABLE IF NOT EXISTS sync_cursors_v1 (peer TEXT NOT NULL, kind TEXT NOT NULL, cursor INTEGER NOT NULL, PRIMARY KEY (peer, kind))"
 
   db
 
@@ -85,16 +98,16 @@ let disconnect (url: String) : Bool =
     Stdlib.Sqlite.execP (syncDb ()) "DELETE FROM sync_peers_v0 WHERE url = @p0" [ url ]
 
   let _ =
-    Stdlib.Sqlite.execP (syncDb ()) "DELETE FROM sync_cursors_v0 WHERE peer = @p0" [ url ]
+    Stdlib.Sqlite.execP (syncDb ()) "DELETE FROM sync_cursors_v1 WHERE peer = @p0" [ url ]
 
   wasConnected
 
-let private cursorFor (peer: String) : Int64 =
+let private cursorFor (peer: String) (kind: String) : Int64 =
   match
     Stdlib.Sqlite.queryP
       (syncDb ())
-      "SELECT cursor FROM sync_cursors_v0 WHERE peer = @p0"
-      [ peer ]
+      "SELECT cursor FROM sync_cursors_v1 WHERE peer = @p0 AND kind = @p1"
+      [ peer; kind ]
   with
   | Ok [ row ] ->
     match Stdlib.Dict.get row "cursor" with
@@ -105,12 +118,12 @@ let private cursorFor (peer: String) : Int64 =
     | None -> 0L
   | _ -> 0L
 
-let private setCursor (peer: String) (cursor: Int64) : Unit =
+let private setCursor (peer: String) (kind: String) (cursor: Int64) : Unit =
   let _ =
     Stdlib.Sqlite.execP
       (syncDb ())
-      "INSERT OR REPLACE INTO sync_cursors_v0 (peer, cursor) VALUES (@p0, @p1)"
-      [ peer; Stdlib.Int64.toString cursor ]
+      "INSERT OR REPLACE INTO sync_cursors_v1 (peer, kind, cursor) VALUES (@p0, @p1, @p2)"
+      [ peer; kind; Stdlib.Int64.toString cursor ]
 
   ()
 
@@ -124,29 +137,44 @@ let rec private pullLoop
   (peer: String)
   (applied: Int)
   : Stdlib.Result.Result<Int, String> =
-  let url = $"{peer}/sync/events?since={Stdlib.Int64.toString (cursorFor peer)}"
+  let url =
+    $"{peer}/sync/events?package={Stdlib.Int64.toString (cursorFor peer "package_ops")}&branch={Stdlib.Int64.toString (cursorFor peer "branch_ops")}"
 
   match Builtin.httpGetUnsafeBytes url with
   | Ok body ->
     match Stdlib.Blob.toString body with
     | Ok wire ->
       match Stdlib.Json.parse<Wire> wire with
-      | Ok((peerRelease, commits, events, serverCursor)) ->
-        if peerRelease != Builtin.currentRelease() then
+      | Ok(w) ->
+        if w.release != Builtin.currentRelease() then
           Stdlib.Result.Result.Error
-            $"{peer} is on Dark release {Stdlib.Int.toString peerRelease}; you're on {Stdlib.Int.toString (Builtin.currentRelease())} — upgrade to the same release to sync"
+            $"{peer} is on Dark release {Stdlib.Int.toString w.release}; you're on {Stdlib.Int.toString (Builtin.currentRelease())} — upgrade to the same release to sync"
         else
-          // Loop control is the WIRE size (an all-already-present batch still advances the cursor); the count
-          // we report is what actually APPLIED, so "Pulled N" is honest even on a shared-base first pull.
-          if Stdlib.List.length events == 0I then
+          // Apply branch STRUCTURE before content, so package ops' branch_ids resolve on this side. Each log
+          // advances its own cursor; loop until BOTH come back empty. The reported count is what actually
+          // applied, so "Pulled N" is honest even on a shared-base first pull.
+          let branchApplied =
+            if Stdlib.List.length w.branchEvents == 0I then
+              0I
+            else
+              Stdlib.EventLog.appendBranchOps (Stdlib.EventLog.branchOps ()) w.branchEvents
+
+          let _ = setCursor peer "branch_ops" (Stdlib.EventLog.cursorToInt w.branchCursor)
+
+          let packageApplied =
+            if Stdlib.List.length w.packageEvents == 0I then
+              0I
+            else
+              Stdlib.EventLog.append (Stdlib.EventLog.packageOps ()) w.commits w.packageEvents
+
+          let _ = setCursor peer "package_ops" (Stdlib.EventLog.cursorToInt w.packageCursor)
+
+          if
+            Stdlib.List.length w.branchEvents == 0I && Stdlib.List.length w.packageEvents == 0I
+          then
             Stdlib.Result.Result.Ok applied
           else
-            let newlyApplied =
-              Stdlib.EventLog.append (Stdlib.EventLog.packageOps ()) commits events
-
-            let serverCursorInt = Stdlib.EventLog.cursorToInt serverCursor
-            let _ = setCursor peer serverCursorInt
-            pullLoop peer (applied + newlyApplied)
+            pullLoop peer (applied + branchApplied + packageApplied)
       | Error _ ->
         Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
     | Error _ -> Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
@@ -173,7 +201,7 @@ let pullAll () : Int =
 /// Each connected peer paired with how far we've pulled it (the peer's rowid; 0 = never pulled). For
 /// `dark sync status` — so you can see, at a glance, who you sync with and whether you're current.
 let status () : List<(String * Int64)> =
-  Stdlib.List.map (peers ()) (fun peer -> (peer, cursorFor peer))
+  Stdlib.List.map (peers ()) (fun peer -> (peer, cursorFor peer "package_ops"))
 
 
 // ── the autosync daemon (DECISIONS §8): pull from every peer on an interval, in the background. Managed by

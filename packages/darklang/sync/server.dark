@@ -41,9 +41,10 @@ let healthHandler : Stdlib.HttpServer.Handler =
     { route = "/sync/health"; method = "GET"; handler = healthFn }
 
 
-// GET /sync/events?since=<rowid> — the committed ops after `since`, as the JSON wire (one bounded batch).
-let private parseSince (url: String) : Int64 =
-  match Stdlib.Dict.get (Stdlib.Http.parseQueryString url) "since" with
+// GET /sync/events?package=<rowid>&branch=<rowid> — one bounded batch from each log after the given cursors,
+// as the JSON wire. Missing/garbage cursor defaults to 0 (from the start).
+let private parseCursor (url: String) (param: String) : Int64 =
+  match Stdlib.Dict.get (Stdlib.Http.parseQueryString url) param with
   | Some s ->
     match Stdlib.Int64.parse s with
     | Ok n -> n
@@ -51,9 +52,11 @@ let private parseSince (url: String) : Int64 =
   | None -> 0L
 
 let eventsFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
-  // The committed events after ?since=<cursor>, as the JSON wire (Darklang.Sync.wireSince → EventLog.readSince).
-  // A puller GETs this and Sync.pull applies it — pure ops over HTTP.
-  Stdlib.Http.responseWithText (Darklang.Sync.wireSince (parseSince req.url)) 200I
+  // Each log's committed events after its cursor, as the JSON wire (Darklang.Sync.wireSince). A puller GETs
+  // this and Sync.pull applies it (branch structure first) — pure ops over HTTP.
+  Stdlib.Http.responseWithText
+    (Darklang.Sync.wireSince (parseCursor req.url "package") (parseCursor req.url "branch"))
+    200I
 
 let eventsHandler : Stdlib.HttpServer.Handler =
   Stdlib.HttpServer.Handler
