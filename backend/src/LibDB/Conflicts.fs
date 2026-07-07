@@ -32,8 +32,21 @@ type Conflict =
     status : string }
 
 /// Canonical "owner.modules.name" for a location (round-trips: owner = first, name = last, modules = middle).
+/// Package name components never contain "." (dots separate modules), so this splits back cleanly.
 let locationString (loc : PT.PackageLocation) : string =
   String.concat "." (loc.owner :: (loc.modules @ [ loc.name ]))
+
+/// Inverse of `locationString`.
+let parseLocation (s : string) : PT.PackageLocation =
+  let parts = s.Split('.')
+
+  match parts.Length with
+  | 0 -> { owner = ""; modules = []; name = "" }
+  | 1 -> { owner = parts[0]; modules = []; name = "" }
+  | n ->
+    { owner = parts[0]
+      modules = parts[1 .. n - 2] |> Array.toList
+      name = parts[n - 1] }
 
 /// A content-addressed id for a divergence — same branch+location+candidates always maps to one row, so a
 /// re-detected divergence (e.g. re-pull) doesn't duplicate.
@@ -122,7 +135,7 @@ let private currentBinding
       "name", Sql.string loc.name
       "item_type", Sql.string (itemKind.toString ())
       "branch_id", Sql.string (string branchId) ]
-  |> Sql.executeRowOption (fun read -> (read.string "item_hash", read.stringOrNone "origin_ts"))
+  |> Sql.executeRowOptionAsync (fun read -> (read.string "item_hash", read.stringOrNone "origin_ts"))
 
 /// Detect + record divergences for a batch of RECEIVED ops. Called by `Seed.receiveOps` AFTER the ops are
 /// inserted but BEFORE the fold: for each incoming `SetName`, if the name is already bound LOCALLY to a
