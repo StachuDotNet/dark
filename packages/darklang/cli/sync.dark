@@ -60,6 +60,60 @@ let private settingsLine () : String =
 
   $"mode: {daemonMode ()} · every {Stdlib.Int.toString (intervalSec ())}s · port {Stdlib.Int.toString (servePort ())} · {boot}"
 
+let private setConfig (key: String) (value: String) : Unit =
+  let updated =
+    Stdlib.Dict.setOverridingDuplicates (Darklang.Cli.Config.readConfig ()) key value
+
+  let _ = Darklang.Cli.Config.writeConfig updated
+  ()
+
+// The first-run dialog: explain the defaults, offer to adjust them inline. In a non-interactive context
+// (piped/no TTY) the "Adjust?" prompt reads EOF → No, so it falls through to defaults without blocking.
+let private firstRunDialog () : Unit =
+  Stdlib.printLine "Setting up automatic sync. Defaults:"
+
+  Stdlib.printLine (
+    Colors.hint
+      $"  · pull from peers + serve to them, every {Stdlib.Int.toString (intervalSec ())}s")
+
+  Stdlib.printLine (
+    Colors.hint
+      $"  · serve on port {Stdlib.Int.toString (servePort ())} — all branches, open to anyone who can reach you")
+
+  Stdlib.printLine (Colors.hint "  · start automatically on boot")
+
+  let _ =
+    if Stdlib.Cli.UI.Prompt.confirm "Adjust these settings?" then
+      let intervalIn =
+        Stdlib.Cli.UI.Prompt.ask
+          $"  interval seconds [{Stdlib.Int.toString (intervalSec ())}]:"
+
+      let _ =
+        match Stdlib.Int.parse intervalIn with
+        | Ok secs -> setConfig "apps.sync.intervalMs" (Stdlib.Int.toString (secs * 1000I))
+        | Error _ -> ()
+
+      let portIn =
+        Stdlib.Cli.UI.Prompt.ask $"  port [{Stdlib.Int.toString (servePort ())}]:"
+
+      let _ =
+        match Stdlib.Int.parse portIn with
+        | Ok _ -> setConfig "apps.sync-server.port" portIn
+        | Error _ -> ()
+
+      let modeIn =
+        Stdlib.Cli.UI.Prompt.select
+          "  mode:"
+          [ "pull+serve"; "pull-only"; "serve-only" ]
+
+      let _ = setConfig "sync.daemon.mode" modeIn
+      let boot = Stdlib.Cli.UI.Prompt.confirm "  start on boot?"
+      setConfig "sync.daemon.onBoot" (if boot then "yes" else "no")
+    else
+      ()
+
+  setConfig "sync.daemon.configured" "yes"
+
 let private daemonStart (state: AppState) : AppState =
   let firstRun =
     match Darklang.Cli.Config.get "sync.daemon.configured" with
@@ -68,26 +122,7 @@ let private daemonStart (state: AppState) : AppState =
 
   let _ =
     if firstRun then
-      Stdlib.printLine "Setting up automatic sync. Defaults:"
-
-      Stdlib.printLine (
-        Colors.hint
-          $"  · pull from peers + serve to them, every {Stdlib.Int.toString (intervalSec ())}s")
-
-      Stdlib.printLine (
-        Colors.hint
-          $"  · serve on port {Stdlib.Int.toString (servePort ())} — all branches, open to anyone who can reach you")
-
-      Stdlib.printLine (Colors.hint "  · start automatically on boot")
-      Stdlib.printLine (Colors.hint "  adjust any of these: dark sync daemon config")
-
-      let updated =
-        Stdlib.Dict.setOverridingDuplicates
-          (Darklang.Cli.Config.readConfig ())
-          "sync.daemon.configured"
-          "yes"
-
-      Darklang.Cli.Config.writeConfig updated
+      firstRunDialog ()
     else
       Stdlib.printLine (
         Colors.success $"Automatic sync started — {settingsLine ()}.")
