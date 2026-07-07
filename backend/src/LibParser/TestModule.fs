@@ -153,7 +153,8 @@ let toPT
       m.types
       |> Ply.List.mapSequentially (fun wtType ->
         uply {
-          let! ptType = WT2PT.PackageType.toPT pm onMissing currentModule wtType
+          let! ptType =
+            WT2PT.PackageType.toPT pm onMissing PT.mainBranchId currentModule wtType
           let hash = Hashing.computeTypeHash Hashing.Normal ptType
           return
             [ PT.PackageOp.AddType ptType
@@ -169,7 +170,13 @@ let toPT
       |> Ply.List.mapSequentially (fun wtValue ->
         uply {
           let! ptValue =
-            WT2PT.PackageValue.toPT builtins pm onMissing currentModule wtValue
+            WT2PT.PackageValue.toPT
+              builtins
+              pm
+              onMissing
+              PT.mainBranchId
+              currentModule
+              wtValue
           return
             [ PT.PackageOp.AddValue ptValue
               PT.PackageOp.SetName(
@@ -183,7 +190,14 @@ let toPT
       m.fns
       |> Ply.List.mapSequentially (fun wtFn ->
         uply {
-          let! ptFn = WT2PT.PackageFn.toPT builtins pm onMissing currentModule wtFn
+          let! ptFn =
+            WT2PT.PackageFn.toPT
+              builtins
+              pm
+              onMissing
+              PT.mainBranchId
+              currentModule
+              wtFn
           let hash = Hashing.computeFnHash Hashing.Normal ptFn
           return
             [ PT.PackageOp.AddFn ptFn
@@ -195,7 +209,10 @@ let toPT
       |> Ply.map List.flatten
 
     let! dbs =
-      m.dbs |> Ply.List.mapSequentially (WT2PT.DB.toPT pm onMissing currentModule)
+      m.dbs
+      |> Ply.List.mapSequentially (
+        WT2PT.DB.toPT pm onMissing PT.mainBranchId currentModule
+      )
 
     let! (tests : List<PTTest>) =
       m.tests
@@ -206,7 +223,14 @@ let toPT
               WT2PT.Context.isInFunction = false
               WT2PT.Context.argMap = Map.empty
               WT2PT.Context.localBindings = Set.empty }
-          let exprToPT = WT2PT.Expr.toPT builtins pm onMissing currentModule context
+          let exprToPT =
+            WT2PT.Expr.toPT
+              builtins
+              pm
+              onMissing
+              PT.mainBranchId
+              currentModule
+              context
           let! actual = exprToPT test.actual
           let! expected =
             uply {

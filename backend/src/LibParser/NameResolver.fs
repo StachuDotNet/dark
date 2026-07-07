@@ -75,10 +75,13 @@ let namesToTry = LibDB.NameLookup.namesToTry
 /// `namesToTry` candidate expansion — captured at resolution time so
 /// dep-edge inserts can populate location columns directly without a
 /// post-hoc lookup.
-/// Note: F# parser always uses mainBranchId for package lookups
+/// `branchId` selects which branch's package view the lookups see (WIP included).
+/// Package loading and tests pass `mainBranchId`; CLI-script parsing passes the
+/// run's branch so intra-branch WIP resolves.
 let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
   (builtins : Option<Set<'Builtin>>)
   (onMissing : OnMissing)
+  (branchId : PT.BranchId)
   (currentModule : List<string>)
   (given : NEList<string>)
   (parseName : string -> Result<string * int, string>)
@@ -129,7 +132,7 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
               // Try package manager lookup
               let location : PT.PackageLocation =
                 { owner = owner; modules = modules; name = nameToTry.name }
-              match! findInPM (PT.mainBranchId, location) with
+              match! findInPM (branchId, location) with
               | Some id -> return Ok(makePackageFQName id, Some location)
               | None -> return Error()
         }
@@ -162,6 +165,7 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
 let resolveTypeName
   (packageManager : PT.PackageManager)
   (onMissing : OnMissing)
+  (branchId : PT.BranchId)
   (currentModule : List<string>)
   (name : WT.Name)
   : Ply<PT.NameResolution<PT.FQTypeName.FQTypeName>> =
@@ -179,6 +183,7 @@ let resolveTypeName
     resolveGenericName
       emptyBuiltins
       onMissing
+      branchId
       currentModule
       given
       parseTypeName
@@ -193,6 +198,7 @@ let resolveValueName
   (builtins : Set<RT.FQValueName.Builtin>)
   (packageManager : PT.PackageManager)
   (onMissing : OnMissing)
+  (branchId : PT.BranchId)
   (currentModule : List<string>)
   (name : WT.Name)
   : Ply<PT.NameResolution<PT.FQValueName.FQValueName>> =
@@ -208,6 +214,7 @@ let resolveValueName
     resolveGenericName
       (Some builtins)
       onMissing
+      branchId
       currentModule
       given
       parseFnNameString
@@ -221,6 +228,7 @@ let resolveFnName
   (builtinFns : Set<RT.FQFnName.Builtin>)
   (packageManager : PT.PackageManager)
   (onMissing : OnMissing)
+  (branchId : PT.BranchId)
   (currentModule : List<string>)
   (name : WT.Name)
   : Ply<PT.NameResolution<PT.FQFnName.FQFnName>> =
@@ -235,6 +243,7 @@ let resolveFnName
     resolveGenericName
       (Some builtinFns)
       onMissing
+      branchId
       currentModule
       given
       parseFnNameString

@@ -35,6 +35,7 @@ let private wtModuleToOps
           builtins
           pm
           onMissing
+          PT.mainBranchId
           (WT2PT.PackageFn.Name.toModules fn.name)
           fn)
 
@@ -44,6 +45,7 @@ let private wtModuleToOps
         WT2PT.PackageType.toPT
           pm
           onMissing
+          PT.mainBranchId
           (WT2PT.PackageType.Name.toModules typ.name)
           typ)
 
@@ -54,6 +56,7 @@ let private wtModuleToOps
           builtins
           pm
           onMissing
+          PT.mainBranchId
           (WT2PT.PackageValue.Name.toModules value.name)
           value)
 

@@ -529,7 +529,14 @@ let private toPT (e : WT.Expr) : PT.Expr =
       isInFunction = false
       argMap = Map.empty
       localBindings = Set.empty }
-  (WT2PT.Expr.toPT emptyBuiltins PT.PackageManager.empty NR.OnMissing.Allow [] ctx e
+  (WT2PT.Expr.toPT
+    emptyBuiltins
+    PT.PackageManager.empty
+    NR.OnMissing.Allow
+    PT.mainBranchId
+    []
+    ctx
+    e
    |> Ply.toTask)
     .Result
 
@@ -1176,6 +1183,7 @@ let private primTypeDriftTests =
             (WT2PT.TypeReference.toPT
               PT.PackageManager.empty
               NR.OnMissing.Allow
+              PT.mainBranchId
               []
               t
              |> Ply.toTask)

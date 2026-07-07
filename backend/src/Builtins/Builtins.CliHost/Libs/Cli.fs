@@ -107,22 +107,6 @@ let private flattenSourceFile
   @ (sf.exprsToEval |> List.map (fun e -> ([], WT.DExpr e)))
 
 
-// Name resolution during CLI lowering must see THIS run's branch (WIP included):
-// the shared F# NameResolver always passes mainBranchId (package loading has no
-// branch notion), so rebind the location lookups to the given branch here.
-//
-// CLEANUP: this is a workaround for a non-branch-aware resolver. The real fix is to
-// thread `branchId` through `NameResolver` (+ WT2PT) so it stops hardcoding
-// mainBranchId at NameResolver.fs's `findInPM`; then `pinBranch` can go away.
-let private pinBranch
-  (branchId : PT.BranchId)
-  (pm : PT.PackageManager)
-  : PT.PackageManager =
-  { pm with
-      findType = fun (_, loc) -> pm.findType (branchId, loc)
-      findValue = fun (_, loc) -> pm.findValue (branchId, loc)
-      findFn = fun (_, loc) -> pm.findFn (branchId, loc) }
-
 /// Lower a script's declarations to a PTCliScriptModule. Two passes: lower once
 /// against the base package manager, graft the script's own declarations in,
 /// then re-lower so intra-script references resolve. The two passes are inherent
@@ -222,6 +206,7 @@ let private declarationsToModule
           builtins
           pm
           onMissing
+          state.branchId
           (WT2PT.PackageFn.Name.toModules fn.name)
           fn)
     let lowerTypes pm =
@@ -230,6 +215,7 @@ let private declarationsToModule
         WT2PT.PackageType.toPT
           pm
           onMissing
+          state.branchId
           (WT2PT.PackageType.Name.toModules t.name)
           t)
     let lowerValues pm =
@@ -239,6 +225,7 @@ let private declarationsToModule
           builtins
           pm
           onMissing
+          state.branchId
           (WT2PT.PackageValue.Name.toModules v.name)
           v)
 
@@ -258,7 +245,9 @@ let private declarationsToModule
       { f with hash = Hashing.computeFnHash Hashing.Normal f }
 
     // Pass 1: lower against the base pm (intra-script refs unresolved, allowed).
-    let pm0 = LibDB.PackageManager.pt |> pinBranch state.branchId
+    // The resolver looks up packages on `state.branchId` (threaded through WT2PT),
+    // so WIP on this branch resolves without wrapping the pm.
+    let pm0 = LibDB.PackageManager.pt
     let! fns1 = lowerFns pm0
     let fns1 = fns1 |> List.map hashFn
     let! types1 = lowerTypes pm0
@@ -333,7 +322,14 @@ let private declarationsToModule
       wtExprs
       |> List.ofSeq
       |> Ply.List.mapSequentially (fun (modules, e) ->
-        WT2PT.Expr.toPT builtins pm2 onMissing (owner :: modules) emptyContext e)
+        WT2PT.Expr.toPT
+          builtins
+          pm2
+          onMissing
+          state.branchId
+          (owner :: modules)
+          emptyContext
+          e)
 
     let emptyDefs : Utils.CliScript.Definitions =
       { types = []; values = []; fns = [] }

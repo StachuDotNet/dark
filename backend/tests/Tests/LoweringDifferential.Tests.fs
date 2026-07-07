@@ -295,7 +295,14 @@ let tests =
           let mutable darkSideErrors = 0
           for (f, snip, wtExpr) in sample do
             let! (fsPT : PT.Expr) =
-              WT2PT.Expr.toPT fsBuiltins pmPT NR.OnMissing.Allow [] ctx wtExpr
+              WT2PT.Expr.toPT
+                fsBuiltins
+                pmPT
+                NR.OnMissing.Allow
+                PT.mainBranchId
+                []
+                ctx
+                wtExpr
               |> Ply.toTask
             let! darkResult =
               LibExecution.Execution.executeFunction
@@ -387,7 +394,14 @@ let tests =
           match (P.parse snip).parsed with
           | Some(WT.SourceFile { exprsToEval = [ e ] }) ->
             let! (fsPT : PT.Expr) =
-              WT2PT.Expr.toPT fsBuiltins pmPT NR.OnMissing.Allow cmod ctx e
+              WT2PT.Expr.toPT
+                fsBuiltins
+                pmPT
+                NR.OnMissing.Allow
+                PT.mainBranchId
+                cmod
+                ctx
+                e
               |> Ply.toTask
             let strList xs = xs |> List.map RT.DString |> Dval.list RT.KTString
             let args =
