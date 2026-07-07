@@ -55,51 +55,23 @@ module CliTraceSource =
 
 
 module ParseError =
-  type Unparseable = { line : int64; column : int64; message : string }
-
-  type ParseError =
-    | Unparseable of Unparseable
-    | Other of string
+  type ParseError = Message of string
 
   let fqTypeName () =
     FQTypeName.fqPackage (
       PackageRefs.Type.LanguageTools.Parser.CliScript.parseError ()
     )
 
-  let unparseableTypeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.Parser.CliScript.unparseable ()
-    )
-
-  let unparseableToDT (u : Unparseable) : Dval =
-    let typeName = unparseableTypeName ()
-    let fields =
-      [ "line", Dval.int (bigint u.line)
-        "column", Dval.int (bigint u.column)
-        "message", DString u.message ]
-    DRecord(typeName, typeName, [], Map fields)
-
-  let unparseableFromDT (d : Dval) : Unparseable =
-    match d with
-    | DRecord(_, _, _, fields) ->
-      { line = fields |> D.field "line" |> D.int64FromInt
-        column = fields |> D.field "column" |> D.int64FromInt
-        message = fields |> D.field "message" |> D.string }
-    | _ -> Exception.raiseInternal "Invalid Unparseable Dval" [ "dval", d ]
-
   let toDT (err : ParseError) : Dval =
     let typeName = fqTypeName ()
     let (caseName, fields) =
       match err with
-      | Unparseable u -> "Unparseable", [ unparseableToDT u ]
-      | Other msg -> "Other", [ DString msg ]
+      | Message msg -> "Message", [ DString msg ]
     DEnum(typeName, typeName, [], caseName, fields)
 
   let fromDT (d : Dval) : ParseError =
     match d with
-    | DEnum(_, _, _, "Unparseable", [ uDval ]) ->
-      Unparseable(unparseableFromDT uDval)
-    | DEnum(_, _, _, "Other", [ DString msg ]) -> Other msg
+    | DEnum(_, _, _, "Message", [ DString msg ]) -> Message msg
     | _ -> Exception.raiseInternal "Invalid ParseError Dval" [ "dval", d ]
 
 /// CLI/script declaration flattening. The CLI execution path qualifies by
@@ -617,8 +589,8 @@ let fns () : List<BuiltInFn> =
                 | Error diags ->
                   let pe =
                     match diags with
-                    | d :: _ -> ParseError.Other(P.renderDiagnostic code d)
-                    | [] -> ParseError.Other "Parse error"
+                    | d :: _ -> ParseError.Message(P.renderDiagnostic code d)
+                    | [] -> ParseError.Message "Parse error"
                   Ply(Error pe)
 
               let! dbs = loadDBs ()
@@ -738,8 +710,8 @@ let fns () : List<BuiltInFn> =
                 | Error diags ->
                   let pe =
                     match diags with
-                    | d :: _ -> ParseError.Other(P.renderDiagnostic expression d)
-                    | [] -> ParseError.Other "Parse error"
+                    | d :: _ -> ParseError.Message(P.renderDiagnostic expression d)
+                    | [] -> ParseError.Message "Parse error"
                   Ply(Error pe)
 
               let! dbs = loadDBs ()

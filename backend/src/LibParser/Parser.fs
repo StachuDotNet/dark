@@ -407,7 +407,7 @@ let floatParts (state : ParserState) (i : int) (v : float) : string * string =
 
 // Reject invalid escapes / codepoints in string, char, and interpolated-string
 // literals (triple-quoted forms are raw, so skipped). A diagnostic here becomes a
-// `ParseError.Unparseable` — the escape is otherwise silently error-recovered.
+// `ParseError.Message` — the escape is otherwise silently error-recovered.
 let stripDelims (raw : string) (lead : string) (close : string) : string =
   let a = if raw.StartsWith lead then lead.Length else 0
   let b =

@@ -214,19 +214,18 @@ let parseForCliDval (input : string) =
   }
 
 
-let tParseErrorVariant (name : string) (input : string) (expectedCaseName : string) =
+/// Asserts `input` is rejected — parsing yields `Result.Error (ParseError …)`
+/// rather than silently succeeding. `ParseError` has a single case today, so this
+/// checks that parsing failed, not which variant.
+let tParseRejected (name : string) (input : string) =
   testTask name {
     let! parseDval = parseForCliDval input
 
     match parseDval with
-    | RT.DEnum(tn, _, _, "Error", [ RT.DEnum(_, _, _, caseName, _) ]) when
+    | RT.DEnum(tn, _, _, "Error", [ RT.DEnum(_, _, _, _, _) ]) when
       tn = Dval.resultType ()
       ->
-      return
-        Expect.equal
-          caseName
-          expectedCaseName
-          $"wrong ParseError variant for {input}"
+      return ()
     | _ ->
       return
         failtest
@@ -234,7 +233,9 @@ let tParseErrorVariant (name : string) (input : string) (expectedCaseName : stri
   }
 
 
-/// Like `tParseErrorVariant`, but also asserts the exact `Unparseable` note.
+/// Like `tParseRejected`, but also asserts the rendered `Message` names the
+/// given note. The message carries a "Parse error at line/col: …" prefix, so we
+/// assert containment rather than exact equality.
 let tParseErrorNote (name : string) (input : string) (expectedNote : string) =
   testTask name {
     let! parseDval = parseForCliDval input
@@ -242,20 +243,17 @@ let tParseErrorNote (name : string) (input : string) (expectedNote : string) =
     match parseDval with
     | RT.DEnum(tn, _, _, "Error", [ errVariant ]) when tn = Dval.resultType () ->
       match errVariant with
-      | RT.DEnum(_, _, _, "Unparseable", [ RT.DRecord(_, _, _, fields) ]) ->
-        match Map.tryFind "message" fields with
-        | Some(RT.DString message) ->
-          return
-            Expect.equal
-              message
-              expectedNote
-              $"wrong Unparseable message for {input}"
-        | other ->
-          return
-            failtest $"Expected an Unparseable with a message; got message = {other}"
-      | other -> return failtest $"Expected an Unparseable variant; got {other}"
+      | RT.DEnum(_, _, _, "Message", [ RT.DString message ]) ->
+        return
+          Expect.stringContains
+            message
+            expectedNote
+            $"wrong ParseError note for {input}"
+      | other -> return failtest $"Expected a Message variant; got {other}"
     | _ ->
-      return failtest $"Expected Result.Error (Unparseable ...); got {parseDval}"
+      return
+        failtest
+          $"Expected Result.Error containing a ParseError variant; got {parseDval}"
   }
 
 
@@ -940,34 +938,28 @@ let exprs =
       []
       false
     // Invalid escape sequences must be rejected (not silently dropped to "").
-    // Asserts both failure AND `Unparseable` variant
-    tParseErrorVariant "invalid escape in string literal" "\"\\d+\"" "Unparseable"
-    tParseErrorVariant "invalid escape in interpolation" "$\"a\\d+b\"" "Unparseable"
-    tParseErrorVariant "invalid escape in char literal" "'\\d'" "Unparseable"
-    tParseErrorVariant
+    tParseRejected "invalid escape in string literal" "\"\\d+\""
+    tParseRejected "invalid escape in interpolation" "$\"a\\d+b\""
+    tParseRejected "invalid escape in char literal" "'\\d'"
+    tParseRejected
       "invalid escape in string match pattern"
       "match s with\n| \"\\d+\" -> 1L\n| _ -> 0L"
-      "Unparseable"
-    tParseErrorVariant
+    tParseRejected
       "invalid escape in char match pattern"
       "match c with\n| '\\d' -> 1L\n| _ -> 0L"
-      "Unparseable"
     // A qualified enum-case pattern is unsupported (use the unqualified case name).
     // Reject it instead of silently building a truncated pattern (keeping only
     // the first path segment). The rejection holds across path lengths and
     // whether or not fields are bound.
-    tParseErrorVariant
+    tParseRejected
       "qualified enum-case match pattern (fully qualified)"
       "match x with\n| Stdlib.Result.Result.Ok n -> 1L\n| _ -> 0L"
-      "Unparseable"
-    tParseErrorVariant
+    tParseRejected
       "qualified enum-case match pattern (two segments)"
       "match x with\n| Result.Ok n -> 1L\n| _ -> 0L"
-      "Unparseable"
-    tParseErrorVariant
+    tParseRejected
       "qualified enum-case match pattern (no field binding)"
       "match x with\n| Stdlib.Result.Ok -> 1L\n| _ -> 0L"
-      "Unparseable"
     // The diagnostic must name the actual problem (qualified path) so the user
     // knows to use the unqualified case name, not just report a generic failure.
     tParseErrorNote
@@ -978,20 +970,14 @@ let exprs =
     // are not valid Unicode scalars must be rejected by the decoder:
     //   - surrogate range (D800..DFFF)
     //   - above the Unicode max (>0x10FFFF)
-    tParseErrorVariant "surrogate codepoint \\uD800" "\"\\uD800\"" "Unparseable"
-    tParseErrorVariant
-      "surrogate codepoint \\U0000D800"
-      "\"\\U0000D800\""
-      "Unparseable"
-    tParseErrorVariant
-      "codepoint above max \\U00110000"
-      "\"\\U00110000\""
-      "Unparseable"
-    tParseErrorVariant "surrogate codepoint in char" "'\\uD800'" "Unparseable"
-    tParseErrorVariant "codepoint above max in char" "'\\U00110000'" "Unparseable"
+    tParseRejected "surrogate codepoint \\uD800" "\"\\uD800\""
+    tParseRejected "surrogate codepoint \\U0000D800" "\"\\U0000D800\""
+    tParseRejected "codepoint above max \\U00110000" "\"\\U00110000\""
+    tParseRejected "surrogate codepoint in char" "'\\uD800'"
+    tParseRejected "codepoint above max in char" "'\\U00110000'"
     // Pure syntax-rejection cases (no escape involvement).
-    tParseErrorVariant "bang produces Unparseable" "!true" "Unparseable"
-    tParseErrorVariant "garbage tokens produce Unparseable" "@@@" "Unparseable"
+    tParseRejected "bang produces a parse error" "!true"
+    tParseRejected "garbage tokens produce a parse error" "@@@"
     t
       "string interpolation - multiple expr to eval"
       "$\"Name: {name}, Age: {age}\""

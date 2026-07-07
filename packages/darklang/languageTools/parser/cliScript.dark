@@ -1,31 +1,18 @@
 module Darklang.LanguageTools.Parser.CliScript
 
 
-/// A parse error from the parser's structured diagnostics.
-type Unparseable =
-  { line: Int
-    column: Int
-    message: String }
-
-
-/// Why a parse attempt failed.
+/// Why a parse attempt failed. A DU (not a bare String) so structured cases
+/// can be added later; today every failure is a rendered diagnostic message.
 type ParseError =
-  /// A token or subtree couldn't be matched to any grammar production
-  /// (e.g. `!true`).
-  | Unparseable of Unparseable
-
-  /// Lower-level parser failure that produced a string error before
-  /// declarations could be split out. Rarer than `Unparseable`, which
-  /// carries structured line/column diagnostics.
-  | Other of String
+  /// A rendered parser diagnostic — line/column (when known) are already
+  /// formatted into the message.
+  | Message of String
 
 
 module ParseError =
   let toString (err: ParseError) : String =
     match err with
-    | Unparseable u ->
-      $"Parse error at line {Stdlib.Int.toString u.line}, column {Stdlib.Int.toString u.column}: {u.message}"
-    | Other msg -> msg
+    | Message msg -> msg
 
 
 type WTCliScriptModule =
@@ -56,13 +43,10 @@ let parseDecls
   // A parse error blocks declaration extraction — the recovered tree would be broken.
   match diagnostics with
   | (range, message) :: _ ->
-    let u =
-      Unparseable
-        { line = range.start.row + 1
-          column = range.start.column
-          message = message }
+    let rendered =
+      $"Parse error at line {Stdlib.Int.toString (range.start.row + 1)}, column {Stdlib.Int.toString range.start.column}: {message}"
 
-    Stdlib.Result.Result.Error(ParseError.Unparseable u)
+    Stdlib.Result.Result.Error(ParseError.Message rendered)
 
   | [] ->
     // `ParsedFile` is a single-case DU (`SourceFile of ...`). No `| _` fallback.
@@ -352,7 +336,7 @@ let parse
   (source: String)
   : Stdlib.Result.Result<(PTCliScriptModule * List<WrittenTypes.UnresolvedName>), ParseError> =
   match source |> LanguageTools.Parser.TestParsing.initialParse with
-  | Error e -> Stdlib.Result.Result.Error(ParseError.Other e)
+  | Error e -> Stdlib.Result.Result.Error(ParseError.Message e)
   | Ok parsedFile ->
     parseFromWT ctx scriptName (Builtin.parserParseDiagnostics source) parsedFile
 
@@ -387,7 +371,7 @@ let pmWithExtras
   : Stdlib.Result.Result<ProgramTypes.PackageManager.PackageManager, ParseError> =
   // The range-complete parser, matching the rest of the LSP.
   match Builtin.parserParseToWrittenTypes source with
-  | None -> Stdlib.Result.Result.Error(ParseError.Other "parse failed")
+  | None -> Stdlib.Result.Result.Error(ParseError.Message "parse failed")
   | Some parsedFile ->
     match
       parseDecls ctx.owner scriptName (Builtin.parserParseDiagnostics source) parsedFile

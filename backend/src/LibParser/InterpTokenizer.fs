@@ -112,7 +112,7 @@ let unescape (s : string) : string =
   decoded.Normalize()
 
 /// Does `content` (RAW inner text of a regular — NOT triple-quoted — string/char)
-/// contain an invalid escape? Callers turn a `true` into a `ParseError.Unparseable`.
+/// contain an invalid escape? Callers turn a `true` into a `ParseError.Message`.
 let hasInvalidEscape (content : string) : bool =
   if not (content.Contains '\\') then
     false

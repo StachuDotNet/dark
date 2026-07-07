@@ -191,7 +191,6 @@ module Type =
         let private p addl = p ("CliScript" :: addl)
         let pTCliScriptModule = p [] "PTCliScriptModule"
         let parseError = p [] "ParseError"
-        let unparseable = p [] "Unparseable"
 
     /// Package-type refs for the Dark `LanguageTools.WrittenTypes` — the
     /// range-complete syntax tree consumed by the semantic highlighter / LSP.
