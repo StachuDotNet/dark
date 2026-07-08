@@ -350,9 +350,15 @@ let receiveBranchOps (events : List<string * byte[]>) : Task<int64> =
     let mutable applied = 0L
 
     for (id, opBlob) in events do
+      // Count only NEWLY-applied ops (insertAndApply is idempotent on the content-addressed id), so the
+      // puller's "Pulled N" is honest on a re-pull / shared-base pull — matching the package-op count.
+      let existed =
+        Sql.query "SELECT 1 FROM branch_ops WHERE id = @id"
+        |> Sql.parameters [ "id", Sql.string id ]
+        |> Sql.executeExistsSync
       let op = BS.PT.BranchOp.deserialize id opBlob
       do! BranchOpPlayback.insertAndApply op
-      applied <- applied + 1L
+      if not existed then applied <- applied + 1L
 
     return applied
   }

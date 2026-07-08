@@ -199,6 +199,12 @@ let receiveResolutions
     let mutable n = 0L
 
     for (id, branchId, location, itemKind, chosenHash, resolvedBy, at) in events do
+      // Count only NEWLY-recorded resolutions (recordAndApply is idempotent on the id), so the puller's
+      // "Pulled N" is honest on a re-pull — matching the package-op and branch-op counts.
+      let existed =
+        Sql.query "SELECT 1 FROM resolutions WHERE id = @id"
+        |> Sql.parameters [ "id", Sql.string id ]
+        |> Sql.executeExistsSync
       let r : Resolution =
         { id = id
           branchId = System.Guid.Parse branchId
@@ -209,7 +215,7 @@ let receiveResolutions
           at = at }
 
       do! recordAndApply r
-      n <- n + 1L
+      if not existed then n <- n + 1L
 
     return n
   }

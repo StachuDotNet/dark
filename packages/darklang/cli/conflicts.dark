@@ -66,8 +66,9 @@ let execute (state: AppState) (args: List<String>) : AppState =
       Stdlib.printLine (Colors.success "No conflicts — everything's converged.")
       state
     | cs ->
-      Stdlib.printLine
-        $"{Stdlib.Int.toString (Stdlib.List.length cs)} unreviewed conflict(s):"
+      let n = Stdlib.List.length cs
+      let noun = if n == 1I then "conflict" else "conflicts"
+      Stdlib.printLine $"{Stdlib.Int.toString n} unreviewed {noun}:"
 
       Stdlib.List.iter cs (fun c ->
         let kept =

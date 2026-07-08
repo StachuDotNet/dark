@@ -158,6 +158,11 @@ let rec private pullLoop
           // Apply branch STRUCTURE before content, so package ops' branch_ids resolve on this side. Each log
           // advances its own cursor; loop until BOTH come back empty. The reported count is what actually
           // applied, so "Pulled N" is honest even on a shared-base first pull.
+          // TODO(pull-error): the append builtins return 0 both when a batch is fully idempotent AND when they
+          // caught an error (a malformed peer — skip is correct there). We advance the cursor regardless, which
+          // is right for a malformed op but would skip past ops lost to a TRANSIENT db error until the peer is
+          // reconnected (cursor reset). To fix, the append path should distinguish parse-skip from db-error and
+          // not advance that log's cursor on the latter.
           let branchApplied =
             if Stdlib.List.length w.branchEvents == 0I then
               0I
