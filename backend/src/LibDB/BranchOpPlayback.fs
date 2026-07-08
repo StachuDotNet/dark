@@ -14,6 +14,18 @@ module BS = LibSerialization.Binary.Serialization
 open LibSerialization.Hashing
 
 
+/// The op's PRIMARY branch (create/rebase/archive/commit → that branch; merge → the merged branch),
+/// denormalized into branch_ops.branch_id so the serve path can exclude a PRIVATE branch's structure without
+/// deserializing the blob.
+let primaryBranchId (op : PT.BranchOp) : System.Guid =
+  match op with
+  | PT.BranchOp.CreateBranch(branchId, _, _, _) -> branchId
+  | PT.BranchOp.CreateCommit(_, _, _, branchId, _) -> branchId
+  | PT.BranchOp.RebaseBranch(branchId, _) -> branchId
+  | PT.BranchOp.MergeBranch(branchId, _) -> branchId
+  | PT.BranchOp.ArchiveBranch branchId -> branchId
+
+
 /// Apply a BranchOp to the branches/commits tables.
 /// This is the single source of truth for what each op does —
 /// mutation sites call insertAndApply, and replay calls applyOp directly.
@@ -167,13 +179,14 @@ let insertAndApplyWithTs (op : PT.BranchOp) (originTs : string) : Task<unit> =
     let! rowsAffected =
       Sql.query
         """
-        INSERT OR IGNORE INTO branch_ops (id, op_blob, applied, origin_ts, created_at)
-        VALUES (@id, @op_blob, 0, @origin_ts, datetime('now'))
+        INSERT OR IGNORE INTO branch_ops (id, op_blob, applied, origin_ts, branch_id, created_at)
+        VALUES (@id, @op_blob, 0, @origin_ts, @branch_id, datetime('now'))
         """
       |> Sql.parameters
         [ "id", Sql.string hashStr
           "op_blob", Sql.bytes opBlob
-          "origin_ts", Sql.string originTs ]
+          "origin_ts", Sql.string originTs
+          "branch_id", Sql.uuid (primaryBranchId op) ]
       |> Sql.executeNonQueryAsync
 
     // Phase 2: Apply if newly inserted (skip if duplicate)

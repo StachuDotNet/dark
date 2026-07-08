@@ -74,7 +74,9 @@ type BranchOpEvent =
     op: String
     // authoring stamp, PRESERVED across sync so the receiver's structural LWW (rebase) converges by
     // creation time rather than arrival order (mirrors Event.originTs for package ops)
-    originTs: String }
+    originTs: String
+    // the op's primary branch, so the SERVER can withhold a private branch's structure before serving
+    branchId: String }
 
 /// A bounded read from the branch-ops log: the ops as a Stream, and the cursor to resume from.
 type BranchBatch =

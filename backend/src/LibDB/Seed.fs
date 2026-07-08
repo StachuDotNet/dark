@@ -322,25 +322,30 @@ let eventsSince
 let branchOpsSince
   (cursor : int64)
   (limit : int64)
-  : Task<List<string * string * string> * int64> =
+  : Task<List<string * string * string * string> * int64> =
   task {
     let! rows =
       Sql.query
-        $"SELECT rowid AS rid, id, hex(op_blob) AS blob, origin_ts
+        $"SELECT rowid AS rid, id, hex(op_blob) AS blob, origin_ts, branch_id
           FROM branch_ops
           WHERE rowid > {cursor}
           ORDER BY rowid
           LIMIT {limit}"
       |> Sql.executeAsync (fun read ->
-        (read.int64 "rid", read.string "id", read.string "blob", read.string "origin_ts"))
+        (read.int64 "rid",
+         read.string "id",
+         read.string "blob",
+         read.string "origin_ts",
+         read.string "branch_id"))
 
-    // each event carries its origin_ts so the receiver's structural LWW (rebase) converges by creation time
-    let events = rows |> List.map (fun (_, id, blob, ts) -> (id, blob, ts))
+    // each event carries origin_ts (so the receiver's structural LWW converges) + branch_id (so the SERVER can
+    // withhold a private branch's structure before it leaves the box)
+    let events = rows |> List.map (fun (_, id, blob, ts, br) -> (id, blob, ts, br))
 
     let newCursor =
       match rows with
       | [] -> cursor
-      | _ -> rows |> List.map (fun (rid, _, _, _) -> rid) |> List.max
+      | _ -> rows |> List.map (fun (rid, _, _, _, _) -> rid) |> List.max
 
     return (events, newCursor)
   }

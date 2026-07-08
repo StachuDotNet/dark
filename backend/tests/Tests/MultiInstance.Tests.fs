@@ -212,7 +212,7 @@ let tests =
           let! _ =
             Seed.receiveBranchOps (
               wire
-              |> List.map (fun ((id, hex, ts) : string * string * string) ->
+              |> List.map (fun ((id, hex, ts, _br) : string * string * string * string) ->
                 (id, System.Convert.FromHexString hex, ts))
             )
           let! bAfter = branchNames ()
@@ -492,7 +492,7 @@ let tests =
           let! _ =
             Seed.receiveBranchOps (
               branchWire
-              |> List.map (fun ((id, hex, ts) : string * string * string) ->
+              |> List.map (fun ((id, hex, ts, _br) : string * string * string * string) ->
                 (id, System.Convert.FromHexString hex, ts))
             )
 
@@ -562,6 +562,42 @@ let tests =
 
           Expect.equal aBase (Some baseX) "A: the newer rebase (ts .200 → baseX) wins; the later-arriving older one is skipped"
           Expect.equal bBase (Some baseX) "B: converges to the SAME base though the winner arrived last — order-independent"
+        finally
+          teardown insts
+      }
+
+      testTask "branch_ops.branch_id is denormalized from the op (lets the serve path withhold a private branch)" {
+        let mutable insts : List<Instance> = []
+
+        try
+          let! a = seededInstance "a"
+          insts <- [ a ]
+
+          let branchId = System.Guid.NewGuid()
+
+          activate a
+          let! baseCommit = existingCommit ()
+          let createB =
+            branchEvent (
+              PT.BranchOp.CreateBranch(
+                branchId,
+                "feature",
+                Some PT.mainBranchId,
+                Some(PT.Hash baseCommit)
+              )
+            )
+          let (createId, _, _) = createB
+          let! _ = Seed.receiveBranchOps [ createB ]
+
+          let! storedBranchId =
+            Sql.query "SELECT branch_id FROM branch_ops WHERE id = @id"
+            |> Sql.parameters [ "id", Sql.string createId ]
+            |> Sql.executeRowAsync (fun read -> read.string "branch_id")
+
+          Expect.equal
+            storedBranchId
+            (string branchId)
+            "the CreateBranch op's primary branch was denormalized into branch_ops.branch_id"
         finally
           teardown insts
       } ]

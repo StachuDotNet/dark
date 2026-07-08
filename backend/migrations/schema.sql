@@ -132,6 +132,9 @@ CREATE TABLE IF NOT EXISTS branch_ops (
   -- a SYNCED op preserves the peer's, so a structural op (rebase) converges by CREATION time (LWW) rather than
   -- by arrival order. Distinct from `created_at` (local-insert time, differs per instance for the same op).
   origin_ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  -- The op's PRIMARY branch (create/rebase/archive/commit → that branch; merge → the merged branch),
+  -- denormalized from the blob so the serve path can exclude a PRIVATE branch's structure without deserializing.
+  branch_id TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMP NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_branch_ops_created_at ON branch_ops(created_at);

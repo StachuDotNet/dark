@@ -153,13 +153,19 @@ let private cursorValue (n : int64) : Dval =
 let private branchOpEventType () = FQTypeName.fqPackage (EventLogRefs.branchOpEvent ())
 
 /// Build the `Stdlib.EventLog.BranchOpEvent` record for one branch_ops row — natively (no per-row Dark cost).
-let private branchOpEventRecord ((id, op, originTs) : string * string * string) : Dval =
+let private branchOpEventRecord
+  ((id, op, originTs, branchId) : string * string * string * string)
+  : Dval =
   let t = branchOpEventType ()
   DRecord(
     t,
     t,
     [],
-    Map [ "id", DString id; "op", DString op; "originTs", DString originTs ]
+    Map
+      [ "id", DString id
+        "op", DString op
+        "originTs", DString originTs
+        "branchId", DString branchId ]
   )
 
 let private resolutionEventType () =

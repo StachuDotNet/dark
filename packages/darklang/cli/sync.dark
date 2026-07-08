@@ -214,6 +214,15 @@ let help (state: AppState) : AppState =
     "  dark sync status             who you're syncing with, and how current each is"
     "  dark sync pull <url>         pull once from a single instance"
     ""
+    "Follow only some of a peer's branches (default: all):"
+    "  dark sync branches <url>     the peer's branches, ✓ on the ones you follow"
+    "  dark sync follow <url> <b>   follow branch <b> (no <b> = pick interactively; --all = back to wholesale)"
+    "  dark sync unfollow <url> <b> stop following branch <b>"
+    ""
+    "Keep some of YOUR branches from ever being served (the other end of the control):"
+    "  dark sync private <b>        never serve branch <b>'s content to any peer (no <b> = list)"
+    "  dark sync share <b>          serve branch <b> again"
+    ""
     "Automatic (background, and across reboots):"
     "  dark sync daemon start       pull from + serve to your peers on an interval"
     "  dark sync daemon status      whether it's running, and with what settings"
@@ -223,6 +232,148 @@ let help (state: AppState) : AppState =
     "When two instances edit the same name, sync auto-resolves (latest wins) but records it:"
     "  dark conflicts               review + override sync divergences" ]
   |> Stdlib.printLines
+
+  state
+
+
+// ── selective per-branch sync — `dark sync branches/follow/unfollow <peer>` ────────────────────────────
+
+/// Resolve a branch NAME to its id-string (what package events + the subs table compare on).
+let private branchIdByName (name: String) : Stdlib.Option.Option<String> =
+  match
+    Stdlib.List.findFirst (Darklang.SCM.Branch.list ()) (fun b -> b.name == name)
+  with
+  | Some b -> Stdlib.Option.Option.Some(Stdlib.Uuid.toString b.id)
+  | None -> Stdlib.Option.Option.None
+
+let private notAPeer (peer: String) : Bool =
+  Stdlib.Bool.not (Stdlib.List.member_v0 (Darklang.Sync.peers ()) peer)
+
+/// `dark sync branches <peer>` — the branches you could follow, a ✓ on the ones you do.
+let private branchesCmd (state: AppState) (peer: String) : AppState =
+  if notAPeer peer then
+    Stdlib.printLine (
+      Colors.hint $"You're not syncing with {peer} — `dark sync connect {peer}` first.")
+
+    state
+  else
+    let selective = Darklang.Sync.isSelective peer
+    let followed = Darklang.Sync.followedBranches peer
+
+    let header =
+      if selective then
+        $"Branches from {peer} (✓ = followed):"
+      else
+        $"Branches from {peer} — following ALL (run `dark sync follow {peer} <branch>` to narrow):"
+
+    let lines =
+      Stdlib.List.map (Darklang.SCM.Branch.list ()) (fun b ->
+        let isFollowed =
+          (Stdlib.Bool.not selective)
+          || Stdlib.List.member_v0 followed (Stdlib.Uuid.toString b.id)
+
+        let mark = if isFollowed then "✓" else " "
+        $"  {mark} {b.name}")
+
+    Stdlib.printLines (Stdlib.List.append [ header ] lines)
+    state
+
+/// `dark sync follow <peer> <branch>` — follow one branch (non-interactive).
+let private followCmd
+  (state: AppState)
+  (peer: String)
+  (branchName: String)
+  : AppState =
+  if notAPeer peer then
+    Stdlib.printLine (
+      Colors.hint $"You're not syncing with {peer} — `dark sync connect {peer}` first.")
+  else
+    match branchIdByName branchName with
+    | Some bid ->
+      let _ = Darklang.Sync.follow peer bid
+
+      Stdlib.printLine (
+        Colors.success
+          $"Now following {branchName} from {peer} — its content back-fills on the next pull.")
+    | None -> Stdlib.printLine (Colors.error $"No branch named {branchName}.")
+
+  state
+
+/// `dark sync follow <peer>` — interactive: confirm each branch to follow.
+let private followInteractive (state: AppState) (peer: String) : AppState =
+  if notAPeer peer then
+    Stdlib.printLine (
+      Colors.hint $"You're not syncing with {peer} — `dark sync connect {peer}` first.")
+  else
+    let _ =
+      Stdlib.List.iter (Darklang.SCM.Branch.list ()) (fun b ->
+        if Stdlib.Cli.UI.Prompt.confirm $"Follow {b.name} from {peer}?" then
+          Darklang.Sync.follow peer (Stdlib.Uuid.toString b.id)
+        else
+          ())
+
+    Stdlib.printLine (Colors.success $"Updated the branches you follow from {peer}.")
+
+  state
+
+/// `dark sync unfollow <peer> <branch>` — stop following one branch (the peer stays selective).
+let private unfollowCmd
+  (state: AppState)
+  (peer: String)
+  (branchName: String)
+  : AppState =
+  match branchIdByName branchName with
+  | Some bid ->
+    let _ = Darklang.Sync.unfollow peer bid
+    Stdlib.printLine (Colors.success $"Stopped following {branchName} from {peer}.")
+  | None -> Stdlib.printLine (Colors.error $"No branch named {branchName}.")
+
+  state
+
+/// `dark sync private <branch>` — never serve this branch's content to any peer (the server-side control).
+let private makePrivateCmd (state: AppState) (branchName: String) : AppState =
+  match branchIdByName branchName with
+  | Some bid ->
+    let _ = Darklang.Sync.makePrivate bid
+
+    Stdlib.printLine (
+      Colors.success
+        $"{branchName} is now private — its content is never pushed to any peer.")
+  | None -> Stdlib.printLine (Colors.error $"No branch named {branchName}.")
+
+  state
+
+/// `dark sync share <branch>` — undo private; serve this branch to peers again.
+let private makePublicCmd (state: AppState) (branchName: String) : AppState =
+  match branchIdByName branchName with
+  | Some bid ->
+    let _ = Darklang.Sync.makePublic bid
+    Stdlib.printLine (Colors.success $"{branchName} is shared again.")
+  | None -> Stdlib.printLine (Colors.error $"No branch named {branchName}.")
+
+  state
+
+/// `dark sync private` — list the branches you never serve.
+let private privateListCmd (state: AppState) : AppState =
+  let privateIds = Darklang.Sync.privateBranches ()
+
+  let names =
+    Stdlib.List.filterMap (Darklang.SCM.Branch.list ()) (fun b ->
+      if Stdlib.List.member_v0 privateIds (Stdlib.Uuid.toString b.id) then
+        Stdlib.Option.Option.Some b.name
+      else
+        Stdlib.Option.Option.None)
+
+  let _ =
+    match names with
+    | [] ->
+      Stdlib.printLine (
+        Colors.hint "No private branches — every branch is served to peers who follow it.")
+    | ns ->
+      Stdlib.printLines (
+        Stdlib.List.append
+          [ "Private branches (never served upstream):" ]
+          (Stdlib.List.map ns (fun n -> $"  {n}")))
 
   state
 
@@ -311,8 +462,8 @@ let execute (state: AppState) (args: List<String>) : AppState =
           let mark = if cursor == 0L then "(not pulled yet)" else "(pulled)"
           $"  {padded}   {mark}")
 
-      // All branches sync automatically (structure + content). Selective per-branch sync is a follow-up;
-      // for now this just makes visible WHICH branches travel.
+      // Branch structure always syncs; content follows the same branches by default. Narrow per peer with
+      // `dark sync follow`, and keep your own branches local with `dark sync private`.
       let branchNames =
         Stdlib.List.map (Darklang.SCM.Branch.list ()) (fun b -> b.name)
 
@@ -357,6 +508,24 @@ let execute (state: AppState) (args: List<String>) : AppState =
       Stdlib.printLine (Colors.hint $"You weren't syncing with {peer}")
 
     state
+
+  | [ "branches"; peer ] -> branchesCmd state peer
+  | [ "follow"; peer; "--all" ] ->
+    if notAPeer peer then
+      Stdlib.printLine (
+        Colors.hint $"You're not syncing with {peer} — `dark sync connect {peer}` first.")
+    else
+      let _ = Darklang.Sync.followAll peer
+      Stdlib.printLine (Colors.success $"Now following ALL branches from {peer} again.")
+
+    state
+  | [ "follow"; peer; branch ] -> followCmd state peer branch
+  | [ "follow"; peer ] -> followInteractive state peer
+  | [ "unfollow"; peer; branch ] -> unfollowCmd state peer branch
+
+  | [ "private" ] -> privateListCmd state
+  | [ "private"; branch ] -> makePrivateCmd state branch
+  | [ "share"; branch ] -> makePublicCmd state branch
 
   | [ "daemon" ]
   | [ "daemon"; "status" ] -> daemonStatusCmd state

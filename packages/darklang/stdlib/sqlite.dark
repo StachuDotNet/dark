@@ -92,6 +92,17 @@ let column (dbPath: String) (sql: String) (col: String) : List<String> =
   | Ok rows -> Stdlib.List.filterMap rows (fun row -> textField row col)
   | Error _ -> []
 
+/// Like <fn column> but with injection-safe params — e.g. rows scoped to a key.
+let columnP
+  (dbPath: String)
+  (sql: String)
+  (params: List<String>)
+  (col: String)
+  : List<String> =
+  match queryP dbPath sql params with
+  | Ok rows -> Stdlib.List.filterMap rows (fun row -> textField row col)
+  | Error _ -> []
+
 /// The Int in column <param col> of the first row of <param sql> — e.g. a `count(*)`.
 let scalarInt
   (dbPath: String)

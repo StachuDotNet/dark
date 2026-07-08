@@ -43,15 +43,29 @@ let wireSince
       (Stdlib.EventLog.cursorFromInt resolutionCursor)
       1000L
 
+  // A PRIVATE branch is withheld ENTIRELY before anything leaves this instance — its structure, commits,
+  // content, and resolutions — so a peer never even learns it exists. (Cursors still advance past the withheld
+  // rows.) `notPrivate` keeps a row whose branch isn't private.
+  let priv = privateBranches ()
+
+  let notPrivate (branchId: String) : Bool =
+    Stdlib.Bool.not (Stdlib.List.member_v0 priv branchId)
+
   Stdlib.Json.serialize<Wire> (
     Wire
       { release = Builtin.currentRelease()
-        branchEvents = Stdlib.Stream.toList branchBatch.events
+        branchEvents =
+          Stdlib.List.filter (Stdlib.Stream.toList branchBatch.events) (fun e ->
+            notPrivate e.branchId)
         branchCursor = branchBatch.next
-        commits = pkgBatch.commits
-        packageEvents = Stdlib.Stream.toList pkgBatch.events
+        commits =
+          Stdlib.List.filter pkgBatch.commits (fun c -> notPrivate c.branchId)
+        packageEvents = serveFilter priv (Stdlib.Stream.toList pkgBatch.events)
         packageCursor = pkgBatch.next
-        resolutionEvents = Stdlib.Stream.toList resolutionBatch.events
+        resolutionEvents =
+          Stdlib.List.filter
+            (Stdlib.Stream.toList resolutionBatch.events)
+            (fun r -> notPrivate r.branchId)
         resolutionCursor = resolutionBatch.next }
   )
 
@@ -69,6 +83,26 @@ let private syncDb () : String =
     Stdlib.Sqlite.exec
       db
       "CREATE TABLE IF NOT EXISTS sync_cursors_v1 (peer TEXT NOT NULL, kind TEXT NOT NULL, cursor INTEGER NOT NULL, PRIMARY KEY (peer, kind))"
+
+  // Selective per-branch sync (opt-in). A peer is WHOLESALE by default; `follow` flips it into selective mode
+  // (a row in sync_selective_v0) and records which branches' content to fold (sync_branch_subs_v0). Branch
+  // STRUCTURE always syncs wholesale, so you can still see + later follow the rest.
+  let _ =
+    Stdlib.Sqlite.exec
+      db
+      "CREATE TABLE IF NOT EXISTS sync_branch_subs_v0 (peer TEXT NOT NULL, branch_id TEXT NOT NULL, PRIMARY KEY (peer, branch_id))"
+
+  let _ =
+    Stdlib.Sqlite.exec
+      db
+      "CREATE TABLE IF NOT EXISTS sync_selective_v0 (peer TEXT PRIMARY KEY)"
+
+  // The OTHER end of the control: branches this instance NEVER serves to any peer (private — their content
+  // stays local no matter what a puller follows). Global, not per-peer.
+  let _ =
+    Stdlib.Sqlite.exec
+      db
+      "CREATE TABLE IF NOT EXISTS sync_private_v0 (branch_id TEXT PRIMARY KEY)"
 
   db
 
@@ -105,7 +139,161 @@ let disconnect (url: String) : Bool =
   let _ =
     Stdlib.Sqlite.execP (syncDb ()) "DELETE FROM sync_cursors_v1 WHERE peer = @p0" [ url ]
 
+  // forget any selective-sync choices for this peer too
+  let _ =
+    Stdlib.Sqlite.execP
+      (syncDb ())
+      "DELETE FROM sync_branch_subs_v0 WHERE peer = @p0"
+      [ url ]
+
+  let _ =
+    Stdlib.Sqlite.execP
+      (syncDb ())
+      "DELETE FROM sync_selective_v0 WHERE peer = @p0"
+      [ url ]
+
   wasConnected
+
+/// Is <param peer> in SELECTIVE mode — folding content only for the branches you follow? A peer is wholesale
+/// (the default) until the first `follow`.
+let isSelective (peer: String) : Bool =
+  let n =
+    (Stdlib.Sqlite.scalarIntP
+      (syncDb ())
+      "SELECT count(*) AS n FROM sync_selective_v0 WHERE peer = @p0"
+      [ peer ]
+      "n")
+    |> Stdlib.Option.withDefault 0L
+
+  n > 0L
+
+/// The branch-ids whose content you follow from <param peer> (only meaningful when the peer is selective).
+let followedBranches (peer: String) : List<String> =
+  Stdlib.Sqlite.columnP
+    (syncDb ())
+    "SELECT branch_id FROM sync_branch_subs_v0 WHERE peer = @p0"
+    [ peer ]
+    "branch_id"
+
+/// Pure filter: which package events to fold given a peer's mode + followed set. All events for a wholesale
+/// peer; only the followed branches' events for a selective one. This is the testable core of `eventsToFold`
+/// (which reads mode + followed from the db).
+let foldFilter
+  (selective: Bool)
+  (followed: List<String>)
+  (events: List<Stdlib.EventLog.Event>)
+  : List<Stdlib.EventLog.Event> =
+  if selective then
+    Stdlib.List.filter events (fun e -> Stdlib.List.member_v0 followed e.branchId)
+  else
+    events
+
+/// The package events to actually FOLD from <param peer>: all of them for a wholesale peer, or only the
+/// followed branches' events for a selective one. (Branch structure already synced separately, and the pull
+/// cursor advances past the dropped events — `follow` clears it to re-serve + back-fill a newly-followed
+/// branch.)
+let eventsToFold
+  (peer: String)
+  (events: List<Stdlib.EventLog.Event>)
+  : List<Stdlib.EventLog.Event> =
+  foldFilter (isSelective peer) (followedBranches peer) events
+
+/// Follow one of <param peer>'s branches. Flips the peer into selective mode (content for un-followed branches
+/// stops folding) and back-fills THIS branch by clearing the package cursor, so the next pull re-serves its
+/// history (idempotent for ops already applied).
+let follow (peer: String) (branchId: String) : Unit =
+  let db = syncDb ()
+  let _ =
+    Stdlib.Sqlite.execP
+      db
+      "INSERT OR IGNORE INTO sync_selective_v0 (peer) VALUES (@p0)"
+      [ peer ]
+
+  let _ =
+    Stdlib.Sqlite.execP
+      db
+      "INSERT OR IGNORE INTO sync_branch_subs_v0 (peer, branch_id) VALUES (@p0, @p1)"
+      [ peer; branchId ]
+
+  let _ =
+    Stdlib.Sqlite.execP
+      db
+      "DELETE FROM sync_cursors_v1 WHERE peer = @p0 AND kind = 'package_ops'"
+      [ peer ]
+
+  ()
+
+/// Stop following one of <param peer>'s branches. The peer stays selective (use `followAll` to go back to
+/// wholesale); content already folded stays, it just won't receive NEW ops for this branch.
+let unfollow (peer: String) (branchId: String) : Unit =
+  let _ =
+    Stdlib.Sqlite.execP
+      (syncDb ())
+      "DELETE FROM sync_branch_subs_v0 WHERE peer = @p0 AND branch_id = @p1"
+      [ peer; branchId ]
+
+  ()
+
+/// Return <param peer> to WHOLESALE (follow all its branches again): clears selective mode + the sub list.
+let followAll (peer: String) : Unit =
+  let db = syncDb ()
+  let _ =
+    Stdlib.Sqlite.execP db "DELETE FROM sync_selective_v0 WHERE peer = @p0" [ peer ]
+
+  let _ =
+    Stdlib.Sqlite.execP db "DELETE FROM sync_branch_subs_v0 WHERE peer = @p0" [ peer ]
+
+  ()
+
+
+// ── server side: branches you NEVER serve (private) — the other end of the control ─────────────────────
+
+/// Branch-ids this instance never serves to ANY peer — their content stays local no matter what a puller
+/// follows. Global (not per-peer).
+let privateBranches () : List<String> =
+  Stdlib.Sqlite.column
+    (syncDb ())
+    "SELECT branch_id FROM sync_private_v0 ORDER BY branch_id"
+    "branch_id"
+
+/// Is <param branchId> private (never pushed upstream)?
+let isPrivate (branchId: String) : Bool =
+  Stdlib.List.member_v0 (privateBranches ()) branchId
+
+/// Mark <param branchId> private — its content is never served to any peer.
+let makePrivate (branchId: String) : Unit =
+  let _ =
+    Stdlib.Sqlite.execP
+      (syncDb ())
+      "INSERT OR IGNORE INTO sync_private_v0 (branch_id) VALUES (@p0)"
+      [ branchId ]
+
+  ()
+
+/// Share <param branchId> again — undo `makePrivate`.
+let makePublic (branchId: String) : Unit =
+  let _ =
+    Stdlib.Sqlite.execP
+      (syncDb ())
+      "DELETE FROM sync_private_v0 WHERE branch_id = @p0"
+      [ branchId ]
+
+  ()
+
+/// Pure filter: drop private branches' events from what we serve. Testable core of `eventsToServe`.
+let serveFilter
+  (privateIds: List<String>)
+  (events: List<Stdlib.EventLog.Event>)
+  : List<Stdlib.EventLog.Event> =
+  Stdlib.List.filter events (fun e ->
+    Stdlib.Bool.not (Stdlib.List.member_v0 privateIds e.branchId))
+
+/// The package events to actually SERVE: everything EXCEPT private branches' content, so a private branch is
+/// never pushed upstream regardless of what a peer follows (controls at both ends).
+let eventsToServe
+  (events: List<Stdlib.EventLog.Event>)
+  : List<Stdlib.EventLog.Event> =
+  serveFilter (privateBranches ()) events
 
 let private cursorFor (peer: String) (kind: String) : Int64 =
   (Stdlib.Sqlite.scalarIntP
@@ -171,11 +359,15 @@ let rec private pullLoop
 
           let _ = setCursor peer "branch_ops" (Stdlib.EventLog.cursorToInt w.branchCursor)
 
+          // Selective peers: fold only content for branches you follow (see `eventsToFold`). The cursor still
+          // advances past the dropped events — `follow` clears it so a newly-followed branch back-fills.
+          let pkgEvents = eventsToFold peer w.packageEvents
+
           let packageApplied =
-            if Stdlib.List.length w.packageEvents == 0I then
+            if Stdlib.List.length pkgEvents == 0I then
               0I
             else
-              Stdlib.EventLog.append w.commits w.packageEvents
+              Stdlib.EventLog.append w.commits pkgEvents
 
           let _ = setCursor peer "package_ops" (Stdlib.EventLog.cursorToInt w.packageCursor)
 

@@ -1,0 +1,107 @@
+// Selective per-branch sync (Darklang.Sync): controls at BOTH ends. The puller FOLLOWS only some of a peer's
+// branches and stores nothing for the rest (`foldFilter`); the server marks branches PRIVATE so their content
+// is never served upstream (`serveFilter`). Each DB-backed assertion uses a UNIQUE peer/branch id (so leftover
+// rows can't collide under the parallel testfile run) and keeps its READ in final position. Records need their
+// type name (`Stdlib.EventLog.Event { ... }`), and results are compared as List<String> (List.length is Int,
+// not the Int64 a `1L` literal would be).
+
+// ── foldFilter (puller side; pure, no db) ──────────────────────────────────────────────────────────────
+
+// A WHOLESALE peer (selective=false) keeps the event whatever its branch.
+module FoldWholesaleKeepsAll =
+  (Stdlib.List.map
+    (Darklang.Sync.foldFilter
+      false
+      []
+      [ Stdlib.EventLog.Event { id = "1"; op = ""; branchId = "x"; commitHash = ""; originTs = "" } ])
+    (fun e -> e.branchId)) = [ "x" ]
+
+// A SELECTIVE peer keeps a FOLLOWED branch's event.
+module FoldSelectiveKeepsFollowed =
+  (Stdlib.List.map
+    (Darklang.Sync.foldFilter
+      true
+      [ "keep" ]
+      [ Stdlib.EventLog.Event { id = "1"; op = ""; branchId = "keep"; commitHash = ""; originTs = "" } ])
+    (fun e -> e.branchId)) = [ "keep" ]
+
+// A SELECTIVE peer DROPS an un-followed branch's event (never stored).
+module FoldSelectiveDropsUnfollowed =
+  (Stdlib.List.map
+    (Darklang.Sync.foldFilter
+      true
+      [ "keep" ]
+      [ Stdlib.EventLog.Event { id = "1"; op = ""; branchId = "other"; commitHash = ""; originTs = "" } ])
+    (fun e -> e.branchId)) = []
+
+// ── serveFilter (server side; pure, no db) ─────────────────────────────────────────────────────────────
+
+// serveFilter keeps a PUBLIC branch's event.
+module ServeKeepsPublic =
+  (Stdlib.List.map
+    (Darklang.Sync.serveFilter
+      [ "secret" ]
+      [ Stdlib.EventLog.Event { id = "1"; op = ""; branchId = "public"; commitHash = ""; originTs = "" } ])
+    (fun e -> e.branchId)) = [ "public" ]
+
+// serveFilter DROPS a PRIVATE branch's event — never pushed upstream.
+module ServeDropsPrivate =
+  (Stdlib.List.map
+    (Darklang.Sync.serveFilter
+      [ "secret" ]
+      [ Stdlib.EventLog.Event { id = "1"; op = ""; branchId = "secret"; commitHash = ""; originTs = "" } ])
+    (fun e -> e.branchId)) = []
+
+// ── follow / unfollow / mode (puller side; db-backed, unique peer per assertion) ───────────────────────
+
+// A peer is WHOLESALE by default — not selective until you follow a branch.
+module DefaultIsWholesale =
+  (let p = "http://test-pbs-default:9000"
+   let _ = Darklang.Sync.connect p
+   Darklang.Sync.isSelective p) = false
+
+// `follow` flips the peer into selective mode.
+module FollowSelects =
+  (let p = "http://test-pbs-follow:9000"
+   let _ = Darklang.Sync.connect p
+   let _ = Darklang.Sync.follow p "branch-keep"
+   Darklang.Sync.isSelective p) = true
+
+// `followedBranches` lists what you follow.
+module FollowedBranchesList =
+  (let p = "http://test-pbs-list:9000"
+   let _ = Darklang.Sync.connect p
+   let _ = Darklang.Sync.follow p "b-one"
+   Darklang.Sync.followedBranches p) = [ "b-one" ]
+
+// `unfollow` removes one; the peer stays selective.
+module UnfollowRemovesOne =
+  (let p = "http://test-pbs-unfollow:9000"
+   let _ = Darklang.Sync.connect p
+   let _ = Darklang.Sync.follow p "b1"
+   let _ = Darklang.Sync.follow p "b2"
+   let _ = Darklang.Sync.unfollow p "b1"
+   Darklang.Sync.followedBranches p) = [ "b2" ]
+
+// `followAll` returns the peer to wholesale (clears selective + the sub list).
+module FollowAllReturnsToWholesale =
+  (let p = "http://test-pbs-all:9000"
+   let _ = Darklang.Sync.connect p
+   let _ = Darklang.Sync.follow p "b1"
+   let _ = Darklang.Sync.followAll p
+   Darklang.Sync.isSelective p) = false
+
+// ── private / share (server side; db-backed, unique branch id per assertion) ───────────────────────────
+
+// makePrivate marks a branch private; isPrivate sees it.
+module MakePrivateWorks =
+  (let b = "test-private-branch-abc"
+   let _ = Darklang.Sync.makePrivate b
+   Darklang.Sync.isPrivate b) = true
+
+// makePublic undoes it.
+module MakePublicWorks =
+  (let b = "test-private-branch-xyz"
+   let _ = Darklang.Sync.makePrivate b
+   let _ = Darklang.Sync.makePublic b
+   Darklang.Sync.isPrivate b) = false
