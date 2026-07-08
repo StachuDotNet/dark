@@ -20,16 +20,10 @@ backend/Build/
 backend/src/**/obj
 backend/tests/**/obj
 backend/static/dark_wasm/
-backend/static/tree-sitter/
-
-# Parser
-tree-sitter-darklang/build/
-tree-sitter-darklang/package-lock.json
-tree-sitter-darklang/node_modules
-tree-sitter-darklang/bindings
-tree-sitter-darklang/tree-sitter-darklang.so
-tree-sitter-darklang/xplat-builds
-tree-sitter-darklang/src/parser.c
+# WASM REPL build output (backend/src/Wasm) — generated, don't commit
+backend/src/Wasm/publish/
+backend/src/Wasm/wwwroot/packages.snapshot
+darklang-repl.zip
 
 # Native SQLite archives for AOT — built by scripts/build/build-sqlite.sh
 # from the amalgamation, cached locally + in CI.
