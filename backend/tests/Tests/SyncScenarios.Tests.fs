@@ -22,6 +22,7 @@ module Inserts = LibDB.Inserts
 module Resolutions = LibDB.Resolutions
 module PT = LibExecution.ProgramTypes
 module BS = LibSerialization.Binary.Serialization
+module Hashing = LibSerialization.Hashing.Hashing
 
 // ── helpers: build wire events + inspect/reset the projection, all keyed to a test-only name ──
 
@@ -91,6 +92,23 @@ let private twoFns () : Task<string * string> =
 let private aCommit () : Task<string> =
   Sql.query "SELECT hash FROM commits LIMIT 1"
   |> Sql.executeRowAsync (fun read -> read.string "hash")
+
+/// A BranchOp wire event (id, blob) as it arrives at receiveBranchOps.
+let private branchEvent (op : PT.BranchOp) : string * byte[] =
+  let (PT.Hash h) = Hashing.computeBranchOpHash op
+  (h, BS.PT.BranchOp.serialize h op)
+
+/// A SetName package event on a SPECIFIC branch (setNameEvent above hardcodes main).
+let private setNameEventOn
+  (loc : PT.PackageLocation)
+  (fnHash : string)
+  (branchId : System.Guid)
+  (commitHash : string)
+  (ts : string)
+  : System.Guid * byte[] * System.Guid * string * string =
+  let op = PT.PackageOp.SetName(loc, PT.Reference.PackageFn(PT.Hash fnHash))
+  let opId = Inserts.computeOpHash op
+  (opId, BS.PT.PackageOp.serialize opId op, branchId, commitHash, ts)
 
 let tests =
   testSequenced
@@ -192,5 +210,84 @@ let tests =
         Expect.equal flipped [ hIncoming ] "keep-theirs: a newer resolution flips it back to incoming"
 
         do! wipe loc [ idL; idI ]
+        let! _ = Seed.rebuildProjections ()
+        ()
+      }
+
+      // BRANCH SCM SYNC — branch structure (branch_ops) applies before content, so a package op on a
+      // freshly-synced branch resolves its branch_id and folds; and a merge marks the branch merged.
+      testTask "branch sync: structure lands, content on the new branch folds, merge marks it" {
+        let! fnHash =
+          Sql.query "SELECT hash FROM package_functions LIMIT 1"
+          |> Sql.executeRowAsync (fun read -> read.string "hash")
+        let! baseCommit = aCommit ()
+        let branchId = System.Guid "dead0000-0000-0000-0000-0000000b0b00"
+        let loc : PT.PackageLocation =
+          { owner = "Test"; modules = [ "BranchSync" ]; name = "onbranch" }
+
+        let createB =
+          branchEvent (
+            PT.BranchOp.CreateBranch(
+              branchId,
+              "test-sync-branch",
+              Some PT.mainBranchId,
+              Some(PT.Hash baseCommit)
+            )
+          )
+        let mergeB = branchEvent (PT.BranchOp.MergeBranch(branchId, PT.mainBranchId))
+        let pkgEv = setNameEventOn loc fnHash branchId baseCommit "2099-01-01T00:00:00.500Z"
+
+        let cleanup () : Task<unit> =
+          task {
+            do!
+              Sql.query "DELETE FROM locations WHERE branch_id = @b"
+              |> Sql.parameters [ "b", Sql.uuid branchId ]
+              |> Sql.executeStatementAsync
+            do!
+              Sql.query "DELETE FROM package_ops WHERE branch_id = @b"
+              |> Sql.parameters [ "b", Sql.uuid branchId ]
+              |> Sql.executeStatementAsync
+            do!
+              Sql.query "DELETE FROM branches WHERE id = @b"
+              |> Sql.parameters [ "b", Sql.uuid branchId ]
+              |> Sql.executeStatementAsync
+            do!
+              Sql.query "DELETE FROM branch_ops WHERE id = @c OR id = @m"
+              |> Sql.parameters
+                [ "c", Sql.string (fst createB); "m", Sql.string (fst mergeB) ]
+              |> Sql.executeStatementAsync
+          }
+
+        do! cleanup ()
+
+        // structure first: the branch lands
+        let! _ = Seed.receiveBranchOps [ createB ]
+        let! branchExists =
+          Sql.query "SELECT count(*) AS n FROM branches WHERE id = @b"
+          |> Sql.parameters [ "b", Sql.uuid branchId ]
+          |> Sql.executeRowAsync (fun read -> read.int64 "n")
+        Expect.equal branchExists 1L "CreateBranch synced — the branch exists"
+
+        // content on the new branch folds — branch_id resolves because structure came first
+        let! _ = Seed.receiveOps [] [ pkgEv ]
+        let! bound =
+          Sql.query
+            "SELECT item_hash FROM locations WHERE branch_id = @b AND name = 'onbranch' AND unlisted_at IS NULL"
+          |> Sql.parameters [ "b", Sql.uuid branchId ]
+          |> Sql.executeAsync (fun read -> read.string "item_hash")
+        Expect.equal
+          bound
+          [ fnHash ]
+          "a package op on the synced branch folded into locations under that branch"
+
+        // merge marks it merged
+        let! _ = Seed.receiveBranchOps [ mergeB ]
+        let! mergedAt =
+          Sql.query "SELECT merged_at FROM branches WHERE id = @b"
+          |> Sql.parameters [ "b", Sql.uuid branchId ]
+          |> Sql.executeRowAsync (fun read -> read.stringOrNone "merged_at")
+        Expect.isSome mergedAt "MergeBranch marked the branch merged_at"
+
+        do! cleanup ()
         let! _ = Seed.rebuildProjections ()
         () } ]
