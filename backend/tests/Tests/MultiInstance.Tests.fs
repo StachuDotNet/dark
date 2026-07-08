@@ -111,6 +111,11 @@ let private existingCommit () : Task<string> =
   Sql.query "SELECT hash FROM commits LIMIT 1"
   |> Sql.executeRowAsync (fun read -> read.string "hash")
 
+/// The active instance's branch-op-log high-water mark (so a `branchOpsSince` returns only NEW branch ops).
+let private currentBranchCursor () : Task<int64> =
+  Sql.query "SELECT COALESCE(MAX(rowid), 0) AS c FROM branch_ops"
+  |> Sql.executeRowAsync (fun read -> read.int64 "c")
+
 let private branchNames () : Task<List<string>> =
   Sql.query "SELECT name FROM branches ORDER BY name"
   |> Sql.executeAsync (fun read -> read.string "name")
@@ -413,6 +418,62 @@ let tests =
 
           Expect.equal aResolved [ fnA ] "A's resolution overrode the LWW winner back to fnA"
           Expect.equal bResolved [ fnA ] "B adopted A's resolution via the synced resolutions log"
+        finally
+          teardown insts
+      }
+
+      testTask "branch merge syncs across stores: a branch's create + merge land on B (merged_at set)" {
+        let mutable insts : List<Instance> = []
+
+        try
+          let! a = seededInstance "a"
+          insts <- [ a ]
+          let! b = seededInstance "b"
+          insts <- [ a; b ]
+
+          let branchId = System.Guid.NewGuid()
+
+          activate a
+          let! baseCommit = existingCommit ()
+          let! bCur0 = currentBranchCursor ()
+
+          let createB =
+            branchEvent (
+              PT.BranchOp.CreateBranch(
+                branchId,
+                "feature",
+                Some PT.mainBranchId,
+                Some(PT.Hash baseCommit)
+              )
+            )
+          let mergeB = branchEvent (PT.BranchOp.MergeBranch(branchId, PT.mainBranchId))
+
+          // Author on A: create the branch, then merge it. (Content-on-branch folding is covered by
+          // SyncScenarios before the merge; merge re-homes it, so this focuses on the lifecycle sync.)
+          let! _ = Seed.receiveBranchOps [ createB ]
+          let! _ = Seed.receiveBranchOps [ mergeB ]
+
+          let! (branchWire, _) = Seed.branchOpsSince bCur0 1000L
+
+          activate b
+          let! _ =
+            Seed.receiveBranchOps (
+              branchWire
+              |> List.map (fun ((id, hex) : string * string) ->
+                (id, System.Convert.FromHexString hex))
+            )
+
+          let! branchExists =
+            Sql.query "SELECT count(*) AS n FROM branches WHERE id = @b"
+            |> Sql.parameters [ "b", Sql.uuid branchId ]
+            |> Sql.executeRowAsync (fun read -> read.int64 "n")
+          let! mergedAt =
+            Sql.query "SELECT merged_at FROM branches WHERE id = @b"
+            |> Sql.parameters [ "b", Sql.uuid branchId ]
+            |> Sql.executeRowAsync (fun read -> read.stringOrNone "merged_at")
+
+          Expect.equal branchExists 1L "the branch's create + merge synced to B"
+          Expect.isSome mergedAt "the merge marked the branch merged on B"
         finally
           teardown insts
       } ]
