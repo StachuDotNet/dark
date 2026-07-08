@@ -4,17 +4,15 @@
 /// package loading, testfiles, CLI) and the Dark lowering
 /// (`languageTools/writtenTypesToProgramTypes.dark`, used by tooling: LSP,
 /// round-trip, formatting) must produce the same ProgramTypes for the same
-/// source, modulo the DELIBERATE divergences documented in
-/// backend/src/LibParser/GRAMMAR.md:
-///   - node ids (ignored by canonical serialization)
-///   - statement sequences: Dark keeps `EStatement`; F# lowers to
-///     `let _ = a in b` (normalized here before comparison)
-/// Anything else is drift — the exact class of bug this gate exists to catch.
+/// source — identical except for node ids (which canonical serialization
+/// ignores). Any other difference is drift, the class of bug this gate catches.
 ///
-/// Inputs are REAL corpus expressions: every fn/value body in packages/darklang
-/// whose source slice reparses cleanly as a single expression, spread-sampled
-/// to bound runtime.
-module Tests.LoweringDifferential
+/// Two tests: a broad sweep over REAL corpus expressions (fn/value bodies in
+/// packages/darklang that reparse cleanly as one expression, spread-sampled to
+/// bound runtime, lowered with an empty context), and a few pinned cases lowered
+/// under a real (module, fn, params) context — catching divergences that only
+/// surface once names resolve (self-calls, a match pattern shadowing a param).
+module Tests.WrittenTypesLoweringParity
 
 open System.Threading.Tasks
 open FSharp.Control.Tasks
@@ -36,62 +34,6 @@ module NR = LibParser.NameResolver
 module Canonical = LibSerialization.Hashing.Canonical
 
 // --- normalization of documented divergences ---
-
-/// Dark WT2PT keeps statement sequences as `PT.EStatement` (round-trip
-/// fidelity); the F# execution lowering emits `let _ = a in b`. Rewrite
-/// EStatement→ELet on both sides before comparing.
-let rec private normExpr (e : PT.Expr) : PT.Expr =
-  match e with
-  | PT.EStatement(id, a, b) ->
-    PT.ELet(id, PT.LPWildcard(gid ()), normExpr a, normExpr b)
-  | PT.EString(id, contents) -> PT.EString(id, List.map normSeg contents)
-  | PT.EIf(id, c, t, e2) ->
-    PT.EIf(id, normExpr c, normExpr t, Option.map normExpr e2)
-  | PT.EPipe(id, lhs, parts) -> PT.EPipe(id, normExpr lhs, List.map normPipe parts)
-  | PT.EMatch(id, arg, cases) ->
-    PT.EMatch(
-      id,
-      normExpr arg,
-      cases
-      |> List.map (fun c ->
-        { c with
-            whenCondition = Option.map normExpr c.whenCondition
-            rhs = normExpr c.rhs })
-    )
-  | PT.ELet(id, p, v, b) -> PT.ELet(id, p, normExpr v, normExpr b)
-  | PT.EList(id, es) -> PT.EList(id, List.map normExpr es)
-  | PT.EDict(id, kvs) ->
-    PT.EDict(id, kvs |> List.map (fun (k, v) -> (k, normExpr v)))
-  | PT.ETuple(id, a, b, rest) ->
-    PT.ETuple(id, normExpr a, normExpr b, List.map normExpr rest)
-  | PT.EApply(id, f, tas, args) ->
-    PT.EApply(id, normExpr f, tas, NEList.map normExpr args)
-  | PT.ELambda(id, pats, body) -> PT.ELambda(id, pats, normExpr body)
-  | PT.EInfix(id, op, l, r) -> PT.EInfix(id, op, normExpr l, normExpr r)
-  | PT.ERecord(id, tn, tas, fields) ->
-    PT.ERecord(id, tn, tas, fields |> List.map (fun (n, v) -> (n, normExpr v)))
-  | PT.ERecordFieldAccess(id, r, f) -> PT.ERecordFieldAccess(id, normExpr r, f)
-  | PT.ERecordUpdate(id, r, ups) ->
-    PT.ERecordUpdate(id, normExpr r, NEList.map (fun (n, v) -> (n, normExpr v)) ups)
-  | PT.EEnum(id, tn, tas, cn, fields) ->
-    PT.EEnum(id, tn, tas, cn, List.map normExpr fields)
-  // leaves (literals, names, EArg, ESelf, …)
-  | other -> other
-
-and private normSeg (s : PT.StringSegment) : PT.StringSegment =
-  match s with
-  | PT.StringText t -> PT.StringText t
-  | PT.StringInterpolation e -> PT.StringInterpolation(normExpr e)
-
-and private normPipe (p : PT.PipeExpr) : PT.PipeExpr =
-  match p with
-  | PT.EPipeLambda(id, pats, body) -> PT.EPipeLambda(id, pats, normExpr body)
-  | PT.EPipeInfix(id, op, e) -> PT.EPipeInfix(id, op, normExpr e)
-  | PT.EPipeFnCall(id, nr, tas, args) ->
-    PT.EPipeFnCall(id, nr, tas, List.map normExpr args)
-  | PT.EPipeEnum(id, tn, cn, fields) ->
-    PT.EPipeEnum(id, tn, cn, List.map normExpr fields)
-  | PT.EPipeVariable(id, v, args) -> PT.EPipeVariable(id, v, List.map normExpr args)
 
 /// id-independent canonical bytes (the content-hash serialization)
 let private canonicalBytes (e : PT.Expr) : byte[] =
@@ -240,7 +182,7 @@ let private parseSingleExpr (snippet : string) : Option<WT.Expr> =
 
 let tests =
   testList
-    "LoweringDifferential"
+    "WrittenTypesLoweringParity"
     [ testTask
         "F# and Dark lowerings agree on corpus expressions (modulo documented divergences)" {
         let root =
@@ -314,13 +256,9 @@ let tests =
             match darkDval with
             | RT.DEnum(tn, _, _, "Ok", [ exprDval ]) when tn = Dval.resultType () ->
               let darkPT = PT2DT.Expr.fromDT exprDval
-              if
-                canonicalBytes (normExpr fsPT) <> canonicalBytes (normExpr darkPT)
-              then
+              if canonicalBytes fsPT <> canonicalBytes darkPT then
                 if mismatches.Count < 8 then
-                  let d =
-                    diffExpr (normExpr fsPT) (normExpr darkPT)
-                    |> Option.defaultValue "?"
+                  let d = diffExpr fsPT darkPT |> Option.defaultValue "?"
                   print $"DRILL {f}:\n  {d}"
                 mismatches.Add(f, snip)
             | other ->
@@ -332,8 +270,6 @@ let tests =
                 print $"DARK-ERR {f}: %A{other}\n  snippet: {shown}"
               darkSideErrors <- darkSideErrors + 1
 
-          print
-            $"LOWERING-DIFFERENTIAL: compared F# vs Dark lowering on a {List.length sample}-of-{List.length snippets} sample of corpus expressions (sampled to bound runtime; NOT exhaustive) — {mismatches.Count} mismatches, {darkSideErrors} Dark-side failures"
           if mismatches.Count > 0 then
             let detail =
               mismatches
@@ -414,12 +350,8 @@ let tests =
             match darkDval with
             | RT.DEnum(tn, _, _, "Ok", [ exprDval ]) when tn = Dval.resultType () ->
               let darkPT = PT2DT.Expr.fromDT exprDval
-              if
-                canonicalBytes (normExpr fsPT) <> canonicalBytes (normExpr darkPT)
-              then
-                let d =
-                  diffExpr (normExpr fsPT) (normExpr darkPT)
-                  |> Option.defaultValue "?"
+              if canonicalBytes fsPT <> canonicalBytes darkPT then
+                let d = diffExpr fsPT darkPT |> Option.defaultValue "?"
                 mismatches.Add($"{label} `{snip}`: {d}")
             | other -> mismatches.Add($"{label} `{snip}`: dark-side error {other}")
           | _ -> mismatches.Add($"{label} `{snip}`: F# parse failed")

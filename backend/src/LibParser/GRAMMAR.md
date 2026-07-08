@@ -7,19 +7,25 @@ contract.
 
 ## Lexical structure
 
-**Comments / trivia.** `// line`, `/// doc` (attaches to the next declaration as
-its description), `////` and deeper are plain comments, `(* block *)` (nestable;
-`(*)` is the multiply operator section, not a comment). All comments are
-preserved on tokens as `leadingTrivia` — the token stream reconstructs the
-source byte-exactly except trailing whitespace.
+### Comments and trivia
 
-**Identifiers.** `[A-Za-z_][A-Za-z0-9_']*`. Backtick-quoted ``` ``name`` ```
-permits anything up to the closing backticks. `___` is the blank identifier
-(empty name). A leading `'` in type position lexes a type variable (`'a`,
-`'TModel`); elsewhere `'…'` is a char literal.
+`// line`, `/// doc` (attaches to the next declaration as its description),
+`////` and deeper are plain comments, `(* block *)` (nestable; `(*)` is the
+multiply operator section, not a comment). All comments are preserved on tokens
+as `leadingTrivia` — the token stream reconstructs the source byte-exactly
+except trailing whitespace.
 
-**Integer literals.** Bare literals (`42`) are arbitrary-precision `Int`.
-Suffixes select fixed-width types:
+### Identifiers
+
+`[A-Za-z_][A-Za-z0-9_']*`. Backtick-quoted ``` ``name`` ``` permits anything up
+to the closing backticks. `___` is the blank identifier (empty name). A leading
+`'` in type position lexes a type variable (`'a`, `'TModel`); elsewhere `'…'` is
+a char literal.
+
+### Integer literals
+
+Bare literals (`42`) are arbitrary-precision `Int`. Suffixes select fixed-width
+types:
 
 | suffix | type | | suffix | type |
 |---|---|---|---|---|
@@ -28,23 +34,35 @@ Suffixes select fixed-width types:
 | `l` | Int32 | | `ul` | UInt32 |
 | `L` | Int64 | | `UL` | UInt64 |
 | `Q` | Int128 | | `Z` | UInt128 |
-| `I` | Int (explicit; redundant) | | | |
+
+(No `I` suffix — bare literals are already `Int`, so `80I` is a number glued to
+an identifier and diagnosed like `123abc`.)
 
 A literal whose magnitude equals the type's `|MinValue|` (e.g. `128y`,
 `9223372036854775808L`) is valid **only when negated** (`-128y`); bare use is an
 out-of-range diagnostic, never a silent wrap.
 
-**Float literals.** `digits[.digits][eE[±]exp]`. Lowered to exponent-free
-whole/fraction decimal strings (`1e300` → `1` + 300 zeros).
+### Float literals
 
-**Strings.** `"…"` with escapes, `"""…"""` raw (no escapes), `$"…{expr}…"`
-interpolated (`{{`/`}}` are literal braces; interpolation bodies are full
-expressions, parsed with real source positions), `$"""…"""` raw-interpolated.
-Escapes: `\n \t \r \a \b \v \f \\ \" \' \/ \0 \{ \}`, `\xHH`, `\XHHHH`,
-`\uHHHH`, `\UHHHHHHHH` (must be a Unicode scalar — surrogates and > 0x10FFFF
-are invalid). Invalid escapes are diagnostics. String content is NFC-normalized.
+`digits[.digits][eE[±]exp]`. Lowered to exponent-free whole/fraction decimal
+strings (`1e300` → `1` + 300 zeros).
 
-**Chars.** `'c'` — one extended grapheme cluster; escapes as in strings.
+### String literals
+
+`"…"` with escapes, `"""…"""` raw (no escapes), `$"…{expr}…"` interpolated
+(`{{`/`}}` are literal braces; interpolation bodies are full expressions, parsed
+with real source positions), `$"""…"""` raw-interpolated. Escapes:
+`\n \t \r \a \b \v \f \\ \" \' \/ \0 \{ \}`, `\xHH`, `\XHHHH`, `\uHHHH`,
+`\UHHHHHHHH` (must be a Unicode scalar — surrogates and > 0x10FFFF are invalid).
+Invalid escapes are diagnostics. String content is NFC-normalized.
+
+### Character literals
+
+`'c'` — one extended grapheme cluster; escapes as in strings.
+
+### Boolean and unit literals
+
+`true` / `false`; the empty tuple `()` is the unit value.
 
 ## Operators and precedence
 
@@ -70,7 +88,7 @@ literal; on anything else it applies `Builtin.negate`. In argument position a
 
 ## Offside (indentation) rules
 
-One rule set for all inputs (no per-mode fork):
+One rule set for all inputs:
 
 - Every statement/declaration/element anchors at its **start column**. A token
   on a new line *indented past the anchor* continues the current construct; at
@@ -92,27 +110,50 @@ One rule set for all inputs (no per-mode fork):
 Literals, `()`, tuples `(a, b, …)`, lists `[a; b]` (`;`, `,`, or newline
 separated), `Dict { k = v }`, records `Type { f = v }` / anonymous `{ f = v }`,
 record update `{ r with f = v }`, field access `x.f` (lowercase step = field;
-uppercase steps = module path), lambdas `fun p1 p2 -> body` (tuple patterns
+uppercase steps = module path — a bare dotted name like `Stdlib.List.map` is
+itself a value/function reference), lambdas `fun p1 p2 -> body` (tuple patterns
 allowed), `let pat = e` (with optional `in`; tuple/wildcard/unit patterns),
 nested `let f (x: T) : R = …` (lowers to a let-bound lambda, types discarded),
-`if/then/elif/else`, `match e with | pat [when g] -> body`, pipes, statement
-sequences (newline or `;`).
+`if c then a [elif …] [else b]` (else optional),
+`match e with | pat [when g] -> body`, pipes, statement sequences
+(newline or `;`).
 
-**Enum constructors.** `Type.Case`, `Module.Type.Case`, or bare `Case`.
-`Case(a, b)` / `Case (a, b)` — parenthesized commas are **fields** (`Pair(1,2)`
-has two fields; `Pair((1,2))` has one tuple field). `Case()` is one unit field.
-Space-application binds fields only in head position (`Ok 5`), never in argument
-position (`f None x` keeps `None` nullary). A *bare* nullary uppercase name is
-resolved contextually (variable / enum case / DB) at lowering.
+### Enum constructors
 
-**Match patterns.** Literals (incl. negative), `_`, variables, tuples, lists,
-cons `h :: t` (right-assoc), or-patterns `p1 | p2`, enum patterns with
-**unqualified** case names (`| Ok x`, never `| Result.Ok x` — rejected), unit.
+`Type.Case`, `Module.Type.Case`, or bare `Case`. `Case(a, b)` / `Case (a, b)` —
+parenthesized commas are **fields** (`Pair(1,2)` has two fields; `Pair((1,2))`
+has one tuple field). `Case()` is one unit field. Space-application binds fields
+only in head position (`Ok 5`), never in argument position (`f None x` keeps
+`None` nullary). A *bare* nullary uppercase name is resolved contextually
+(variable / enum case / DB) at lowering.
 
-**Generics.** `Name<T, …>` requires `<` *adjacent* to the name (spaced `<` is
-comparison). Works on calls (`parse<Int64> x`), enum ctors
-(`Type<T>.Case`), records (`Type<T> { … }`), and type declarations
-(`type F<'a> = …`). `>>` closes two levels.
+### Pipes
+
+`e |> seg |> seg …` threads the value of `e` through each segment, left to
+right. A segment is one of:
+
+- a **function call** — `|> Stdlib.List.map f` — or a bare qualified fn name
+  `|> Stdlib.List.reverse` (callee type args are kept: `|> parse<Int64>`);
+- a **bare variable / unqualified call** — `|> myFn`;
+- a **lambda** — `|> fun x -> …`;
+- an **enum constructor** — `|> Ok`, `|> Type.Case`;
+- an **operator section with an argument** — `|> (+) 1`, which desugars to
+  `e + 1` (the piped value is the *left* operand, not the section's).
+
+A pipe RHS that is none of these is a `PARSE-PIPE-SEGMENT` diagnostic.
+
+### Match patterns
+
+Literals (incl. negative), `_`, variables, tuples, lists, cons `h :: t`
+(right-assoc), or-patterns `p1 | p2`, enum patterns with **unqualified** case
+names (`| Ok x`, never `| Result.Ok x` — rejected), unit.
+
+### Generics
+
+`Name<T, …>` requires `<` *adjacent* to the name (spaced `<` is comparison).
+Works on calls (`parse<Int64> x`), enum ctors (`Type<T>.Case`), records
+(`Type<T> { … }`), and type declarations (`type F<'a> = …`). `>>` closes two
+levels.
 
 ## Types
 
@@ -128,15 +169,22 @@ level (`Case of A * B` = two fields; a tuple field needs parens `(A * B)`).
 `let f (p: T) … : R = body` (function — parenthesized, annotated params;
 `()` unit param), `let x = e` (value **inside a module**; at a file's top level
 it is a let-*expression* sequencing with what follows), `val x = e` (always a
-value), `type Name<'a> = …` (record `{ f: T; … }` / enum `| A | B of T`
-— after the first case each case *requires* a leading `|` / alias), `module
-A.B` header (wraps the file) or `module X =` (indented body). Modules nest;
-the path builds the package location (owner.modules.name). `///` doc comments
-become descriptions.
+value), `module A.B` header (wraps the file) or `module X =` (indented body).
+Modules nest; the path builds the package location (owner.modules.name). `///`
+doc comments become descriptions.
 
-**Testfile dialect** (`parseTestFile` only): top level acts as a module body,
-`actual = expected` is a test assertion (with `error "msg"` / `sqlerror "msg"`
-expected forms), `[<DB>] type X = T` declares a user DB.
+**Type declarations** — `type Name<'a> = …` is one of:
+
+- a **record**: `{ f: T; … }`;
+- an **enum**: `| A | B of T` (after the first case each case requires a leading
+  `|`);
+- an **alias** to another type: `type Id = String`, `type Pair = Int * Int`.
+
+### Testfile dialect
+
+`parseTestFile` only: top level acts as a module body, `actual = expected` is a
+test assertion (with `error "msg"` / `sqlerror "msg"` expected forms),
+`[<DB>] type X = T` declares a user DB.
 
 ## Diagnostics
 
@@ -180,19 +228,8 @@ code/related is a pending Dark-side type change.
   per-loop progress guards: any future no-progress loop becomes a
   `PARSE-INTERNAL-LOOP` diagnostic instead of a hang.
 
-## Architecture and the two lowerings
+## Where this fits
 
-```
-source ──InterpTokenizer──▶ tokens(+trivia) ──Parser──▶ WrittenTypes (ranges)
-   ├─ F# WT2PT ──▶ ProgramTypes        (execution: packages, testfiles, CLI)
-   └─ WTSerializer ──▶ Dark WrittenTypes ──Dark WT2PT──▶ PT   (tooling: LSP,
-      highlighting, round-trip, formatter)
-```
+`source ──Lexer──▶ tokens (+trivia) ──Parser──▶ WrittenTypes (range-complete)`
 
-The two lowerings **deliberately diverge** (drift beyond this list is a bug):
-
-| construct | F# WT2PT (execution) | Dark WT2PT (tooling) |
-|---|---|---|
-| `a ⏎ b` statement seq | `let _ = a in b` | kept as `EStatement` (round-trips) |
-| `EError` hole | raises (never lowered) | `EVariable "__parseError__"` |
-| ids | minted `gid()` | minted Dark-side |
+The parser stops at WrittenTypes; lowering to ProgramTypes (`WT2PT`) is downstream.

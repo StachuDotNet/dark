@@ -1,13 +1,11 @@
 # LibParser
 
-The hand-written recursive-descent parser for Darklang source. One tokenizer,
+The hand-written recursive-descent parser for Darklang source. One lexer,
 one parser, one syntax tree — this is the only parser in the system
 (tree-sitter and the FCS-based parser are gone).
 
-**The grammar it accepts — including operator precedence, offside rules,
-dialect decisions, and diagnostic codes — is specified in [GRAMMAR.md](GRAMMAR.md).**
-When a "is this a bug or a decision?" question comes up, the answer gets
-recorded there.
+**[GRAMMAR.md](GRAMMAR.md) is the spec for the grammar it accepts** — operator
+precedence, offside rules, dialect decisions, and diagnostic codes.
 
 ## Pipeline
 
@@ -27,9 +25,8 @@ source
 ```
 
 The two lowerings are kept in agreement by a differential test
-(`Tests/LoweringDifferential.Tests.fs`) that compares their ProgramTypes output
-over the real package corpus; their deliberate divergences are documented in
-GRAMMAR.md.
+(`Tests/WrittenTypesLoweringParity.Tests.fs`) that compares their ProgramTypes
+output over the real package corpus; they must be identical (node ids aside).
 
 ## Files
 
@@ -49,5 +46,5 @@ GRAMMAR.md.
 - `Tests/LibParser.Tests.fs` — structure, offside, types, literals,
   recovery, golden diagnostics, fuzzer, range invariants, and the corpus gate
   (every real package file must parse cleanly)
-- `Tests/LoweringDifferential.Tests.fs` — F# vs Dark lowering agreement
+- `Tests/WrittenTypesLoweringParity.Tests.fs` — F# vs Dark lowering agreement
 - `Tests/LibParser.RoundTrip.Tests.fs` — source → PT → pretty-print round-trips

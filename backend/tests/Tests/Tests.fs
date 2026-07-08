@@ -33,7 +33,7 @@ let main (args : string array) : int =
         Tests.DvalReprInternalQueryable.tests
         Tests.LibParserRoundTrip.tests
         Tests.LibParser.tests
-        Tests.LoweringDifferential.tests
+        Tests.WrittenTypesLoweringParity.tests
         Tests.HttpClient.tests
 
         // package manager
