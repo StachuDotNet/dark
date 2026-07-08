@@ -1,6 +1,5 @@
-/// Lexer for the canonical Darklang syntax this repo uses (suffixed ints `1L`,
-/// `fun ->`, `;`-lists, `::`, space-application; rejects `=>`). Produces
-/// `Tokenizer.Token`s with source ranges for the parser to consume.
+/// Lexer for the Darklang syntax this repo uses. Produces `Tokenizer.Token`s
+/// with source ranges for the parser.
 ///
 /// Regular string/char escapes are processed (`unescape`); triple-quoted strings
 /// stay raw.
@@ -29,12 +28,11 @@ type SpannedToken =
     // Trailing comments at EOF land on the TEOF token.
     leadingTrivia : List<Trivia> }
 
-/// THE escape table: decode the escape starting at `s[i]` (which must be `\`).
-/// Returns `Some(charsConsumed, decodedText)`, or `None` if invalid: an unknown
-/// escape letter, a short/non-hex `\x`/`\X`/`\u`/`\U`, or a codepoint that isn't
-/// a valid Unicode scalar (surrogate or > 0x10FFFF). Both the decoder
-/// (`unescape`) and the validators (`hasInvalidEscape*`) are driven by this one
-/// function so they can't drift.
+/// Decode the escape starting at `s[i]`, which must be `\`.
+/// Returns `Some(charsConsumed, decodedText)`, or `None` for an invalid escape:
+/// unknown escape letter, short/non-hex Unicode escape, surrogate, or codepoint
+/// above `0x10FFFF`. `unescape` and the validators share this function so they
+/// cannot drift.
 let private decodeEscape (s : string) (i : int) : Option<int * string> =
   let len = s.Length
   let hexInt (start : int) (count : int) : int option =
@@ -82,12 +80,11 @@ let private decodeEscape (s : string) (i : int) : Option<int * string> =
     | 'U' -> scalar (i + 2) 8 |> Option.map (fun t -> (10, t)) // \UHHHHHHHH
     | _ -> None
 
-/// Process escape sequences in regular (NOT triple-quoted) string/char content.
-/// Error-recovering: an invalid escape keeps the backslash as-is.
+/// Process escape sequences in regular string/char content. Triple-quoted
+/// strings stay raw. Invalid escapes keep the backslash as-is.
 /// Module-level so the parser can reuse it for interpolated-string literal parts.
-/// The result is NFC-normalized so a literal's stored form is canonical (a
-/// decomposed vs composed grapheme hashes/compares identically) — done in the
-/// SHARED tokenizer so the F# and Dark lowerings both see the same bytes.
+/// The result is NFC-normalized so decomposed and composed graphemes have the
+/// same stored form.
 let unescape (s : string) : string =
   let decoded =
     if not (s.Contains '\\') then
@@ -111,8 +108,7 @@ let unescape (s : string) : string =
       sb.ToString()
   decoded.Normalize()
 
-/// Does `content` (RAW inner text of a regular — NOT triple-quoted — string/char)
-/// contain an invalid escape? Callers turn a `true` into a `ParseError.Message`.
+/// Does the raw inner text of a regular string/char contain an invalid escape?
 let hasInvalidEscape (content : string) : bool =
   if not (content.Contains '\\') then
     false
@@ -130,12 +126,11 @@ let hasInvalidEscape (content : string) : bool =
     bad
 
 
-/// Index of the `}` closing an interpolation expression region, scanning
-/// `s[start..limit-1]` with `start` just past the opening `{`. Tracks nested
-/// braces and skips embedded string AND char literals (a `{`/`}` inside one
-/// must not desync the scan). Returns -1 if unclosed. The tokenizer, the escape
-/// validator, and the parser's rescan all delimit regions with THIS scanner —
-/// they must agree on where a region ends.
+/// Find the `}` that closes an interpolation expression region.
+/// `start` is just past the opening `{`. The scan tracks nested braces and skips
+/// embedded string and char literals, so braces inside them do not desync the
+/// scan. Returns `-1` if unclosed. The tokenizer, escape validator, and parser
+/// all use this scanner so they agree on where interpolation regions end.
 let findInterpExprClose (s : string) (limit : int) (start : int) : int =
   let mutable k = start
   let mutable depth = 0
@@ -153,12 +148,12 @@ let findInterpExprClose (s : string) (limit : int) (start : int) : int =
         else
           m <- m + 1
       k <- m
-    // char literals `'x'` / `'\n'` / `'{'` / `'}'` / `'\{'` / `'\}'` — skip so
-    // a brace inside can't desync. A leading `'` NOT closing like a char literal
-    // (type var `'a`, tick-ident tail `x'`) falls through harmlessly (no braces).
+    // Skip char literals so braces inside them do not affect interpolation
+    // depth. A leading `'` that is not a char literal, such as type var `'a` or
+    // tick-ident tail `x'`, falls through harmlessly.
     elif s[k] = '\'' && k + 1 < limit && s[k + 1] = '\\' then
-      // start at the `\` (k+1), not past it — so an escaped quote `'\''` skips the
-      // escape via the `\\`→m+2 branch instead of reading it as the closing quote
+      // Start at the `\` so `'\''` skips the escape before looking for the
+      // closing quote.
       let mutable m = k + 1
       let mutable inCh = true
       while inCh && m < limit do
@@ -185,9 +180,9 @@ let findInterpExprClose (s : string) (limit : int) (start : int) : int =
   found
 
 
-/// Like `hasInvalidEscape`, but for the inner text of a regular `$"…"` interpolation:
-/// `{{`/`}}` are literal braces and `{ … }` regions are interpolated expressions (code,
-/// not string content), so both are skipped — only the literal text is escape-checked.
+/// Like `hasInvalidEscape`, but for regular `$"…"` interpolated strings.
+/// `{{`/`}}` are literal braces and `{ … }` regions are code, so only literal
+/// string text is escape-checked.
 let hasInvalidEscapeInterp (inner : string) : bool =
   let len = inner.Length
   let mutable i = 0
@@ -210,12 +205,10 @@ let hasInvalidEscapeInterp (inner : string) : bool =
   bad
 
 
-/// The parser re-parses each `{expr}` body recursively (an inner `$"…"` recurses
-/// again), so interpolation nesting = recursion depth there. Cap it or a
-/// pathological `$"{$"{…}"}"` bomb is an uncatchable StackOverflow that KILLS the
-/// process (the parser's own expression-depth guard can't help: each nested parse
-/// constructs fresh state). 64 levels is far beyond real code. The tokenizer itself
-/// doesn't recurse here — `scanInterp` skips `{expr}` regions iteratively.
+/// The parser parses each `{expr}` body recursively. Nested interpolated strings
+/// therefore increase recursion depth. Cap it so pathological nesting cannot
+/// overflow the process stack. The tokenizer itself does not recurse here;
+/// `scanInterp` skips `{expr}` regions iteratively.
 let maxInterpNesting = 64
 
 let tokenize
@@ -223,12 +216,12 @@ let tokenize
   : Result<List<SpannedToken> * List<TokenRange * string>, string> =
   let n = input.Length
 
-  // `///` doc comments lex as trivia, but we stash their text here so it lands on
-  // the next emitted token (the declaration). Consumed + cleared by `emit`.
+  // `///` doc comments lex as trivia, but their text also lands on the next
+  // emitted token. `emit` consumes and clears this.
   let mutable pendingDoc : string option = None
 
-  // comments scanned since the last emitted token; drained onto that token's
-  // `leadingTrivia` by `emit`.
+  // Comments scanned since the last emitted token. `emit` drains them into
+  // `leadingTrivia`.
   let pendingTrivia = ResizeArray<Trivia>()
 
   let step (p : Pos) (c : char) : Pos =
@@ -256,8 +249,8 @@ let tokenize
         let mutable j = i
         while j < n && input[j] <> '\n' do
           j <- j + 1
-        // `/// …` is a doc comment — accumulate its text for the next declaration.
-        // (`////` and plain `//` are ordinary comments.)
+        // `/// …` is a doc comment for the next declaration. `////` and plain
+        // `//` are ordinary comments.
         let isDoc =
           i + 2 < n && input[i + 2] = '/' && (i + 3 >= n || input[i + 3] <> '/')
         if isDoc then
@@ -279,8 +272,8 @@ let tokenize
         && input[i + 1] = '*'
         && not (i + 2 < n && input[i + 2] = ')')
       then
-        // F#-style block comment `(* ... *)`, nestable. `(*)` (with `)` right after)
-        // is the multiply operator section, NOT a comment, so it's excluded here.
+        // F#-style nestable block comment. `(*)` is the multiply operator
+        // section, so it is excluded here.
         let rec skipBlock (j : int) (depth : int) : int =
           if j + 1 < n && input[j] = '(' && input[j + 1] = '*' then
             skipBlock (j + 2) (depth + 1)
@@ -343,17 +336,17 @@ let tokenize
   let keyword (s : string) : Token =
     match s with
     | "let" -> TLet
-    // `val x = e` is ALWAYS a top-level VALUE declaration (unlike a no-param `let`,
-    // which is a value decl only inside a module and a let-expression at file top
-    // level). The distinct token lets parseItems keep them apart.
+    // `val x = e` always parses as a value declaration. A no-param `let` is a
+    // value declaration only inside a module, and a let-expression at file top
+    // level. The distinct token lets `parseItems` keep them apart.
     | "val" -> TVal
     | "in" -> TIn
     | "if" -> TIf
     | "elif" -> TElif
     | "then" -> TThen
     | "else" -> TElse
-    // note: `def` is NOT a keyword in the interpreter dialect — it's a valid
-    // identifier (e.g. `(def: Type)`), so it lexes as TIdent
+    // `def` is not a keyword in the interpreter dialect. It remains a valid
+    // identifier, for example `(def: Type)`.
     | "type" -> TType
     | "of" -> TOf
     | "match" -> TMatch
@@ -363,8 +356,7 @@ let tokenize
     | "true" -> TTrue
     | "false" -> TFalse
     | "_" -> TUnderscore
-    // `___` is the blank-name placeholder: an identifier with an empty name, used
-    // by tests that exercise empty field/var/key errors.
+    // `___` is the blank-name placeholder: an identifier with an empty name.
     | "___" -> TIdent ""
     | _ -> TIdent s
 
@@ -447,19 +439,15 @@ let tokenize
     elif input[j] = closing then Ok(j + 1)
     else scanString (j + 1) closing
 
-  // error-recovery: scan to the end of an unterminated lexeme — the current line or
-  // EOF — so a half-typed string/char doesn't swallow the rest of the document.
+  // Recovery for unterminated lexemes: scan to the current line end or EOF so a
+  // half-typed string/char does not swallow the rest of the document.
   let rec scanToLineEnd (j : int) : int =
     if j >= n || input[j] = '\n' then j else scanToLineEnd (j + 1)
 
-  // `$"text {expr} text"` (or triple-quoted `$"""…"""`). `start` points at the `$`.
-  // Returns (TInterpString, end-offset). The token carries no payload — the parser
-  // re-reads the token's source text and re-scans the `{expr}` bodies itself — so
-  // this only needs the end offset: scan for the closing quote, skipping `\"`
-  // escapes, `{{`/`}}` literal braces, and each `{expr}` region via
-  // `findInterpExprClose` (the same scanner the parser uses, so the two agree on
-  // where the string ends). `findInterpExprClose` is iterative and skips embedded
-  // strings, so a nested `$"…"` needs no recursion and can't overflow the stack.
+  // Scan `$"text {expr} text"` or `$"""…"""`. The token carries no payload; the
+  // parser re-reads the source text and scans `{expr}` bodies itself. This only
+  // needs to find the token end while skipping escapes, literal braces, and
+  // interpolation regions with `findInterpExprClose`.
   let scanInterp (start : int) : Result<Token * int, string> =
     // triple-quoted `$"""…"""` (raw; a single `"` is literal text)
     let triple =
@@ -495,9 +483,8 @@ let tokenize
     | Ok endIdx -> Ok(TInterpString, endIdx)
     | Error e -> Error e
 
-  // Lexical diagnostics collected during recovery: the tokenizer keeps lexing past a
-  // malformed lexeme (so partial files still highlight), but records the failure here
-  // so it isn't silently accepted.
+  // Lexical diagnostics collected during recovery. The tokenizer keeps lexing so
+  // partial files still highlight, and malformed lexemes still get reported.
   let diagnostics = System.Collections.Generic.List<TokenRange * string>()
   let lexDiag (range : TokenRange) (msg : string) = diagnostics.Add((range, msg))
 
@@ -512,8 +499,8 @@ let tokenize
       Ok(List.rev (eof :: acc))
     else
       let c = input[i]
-      // tolerate the compiler-syntax lambda arrow `=>` — lex `=` then `>` (the parser
-      // rejects it semantically) rather than aborting the whole tokenization
+      // Tolerate compiler-syntax `=>` by lexing `=` then `>`. The parser rejects
+      // it later, but tokenization can continue.
       if c = '=' && i + 1 < n && input[i + 1] = '>' then
         let (st, i', p') = emit TEquals i (i + 1) p
         go i' p' (st :: acc)
@@ -546,9 +533,8 @@ let tokenize
         go i' p' (st :: acc)
       // numbers
       elif System.Char.IsDigit c then
-        // a number token must end at a non-identifier boundary; digits/letters/
-        // `_`/`'` glued to its end (`123abc`, `12l3`) are a typo, not two tokens,
-        // so diagnose rather than silently split.
+        // A number token must end at a non-identifier boundary. Glued suffix text
+        // like `123abc` or `12l3` is a typo, not two tokens.
         let isIdentCont k =
           k < n
           && (System.Char.IsLetterOrDigit input[k]
@@ -582,7 +568,8 @@ let tokenize
           | true, v when not (isIdentCont k) ->
             let (st, i', p') = emit (TFloat v) i k p in go i' p' (st :: acc)
           | true, _ ->
-            // float glued to identifier chars (`1.5abc`) — consume the run and diagnose
+            // Float glued to identifier chars (`1.5abc`): consume the run and
+            // diagnose it as one malformed literal.
             let mutable e = k
             while isIdentCont e do
               e <- e + 1
@@ -590,7 +577,7 @@ let tokenize
             lexDiag st.range $"invalid number literal: {input.Substring(i, e - i)}"
             go i' p' (st :: acc)
           | _ ->
-            // malformed float — emit a placeholder so it still lexes/highlights as a number
+            // Emit a placeholder so malformed floats still highlight as numbers.
             let (st, i', p') = emit (TFloat 0.0) i k p
             lexDiag st.range $"malformed float literal: {text}"
             go i' p' (st :: acc)
@@ -600,7 +587,8 @@ let tokenize
           | Ok(tok, suffixLen) when not (isIdentCont (j + suffixLen)) ->
             let (st, i', p') = emit tok i (j + suffixLen) p in go i' p' (st :: acc)
           | Ok(_, suffixLen) ->
-            // int glued to identifier chars (`123abc`, `12l3`) — consume the run and diagnose
+            // Int glued to identifier chars: consume the run and diagnose it as
+            // one malformed literal.
             let mutable e = j + suffixLen
             while isIdentCont e do
               e <- e + 1
@@ -608,7 +596,7 @@ let tokenize
             lexDiag st.range $"invalid number literal: {input.Substring(i, e - i)}"
             go i' p' (st :: acc)
           | Error msg ->
-            // out-of-range/malformed int — emit a placeholder so it still highlights
+            // Emit a placeholder so out-of-range ints still highlight as numbers.
             let (st, i', p') = emit (TInt64 0L) i j p
             lexDiag st.range msg
             go i' p' (st :: acc)
@@ -625,13 +613,13 @@ let tokenize
             findTriple (j + 1)
         match findTriple (i + 3) with
         | Ok j ->
-          // triple-quoted is raw (no unescape), so NFC-normalize here to match
-          // the regular-literal path (unescape) and keep both lowerings consistent
+          // Triple-quoted strings are raw, so normalize here to match the regular
+          // literal path through `unescape`.
           let (st, i', p') =
             emit (TStringLit((input.Substring(i + 3, j - i - 6)).Normalize())) i j p
           go i' p' (st :: acc)
         | Error _ ->
-          // unterminated `"""…` — take the rest as the string content
+          // Unterminated `"""…`: take the rest as string content.
           let (st, i', p') =
             emit (TStringLit((input.Substring(i + 3, n - i - 3)).Normalize())) i n p
           lexDiag st.range "unterminated triple-quoted string literal"
@@ -644,16 +632,16 @@ let tokenize
             emit (TStringLit(unescape (input.Substring(i + 1, j - i - 2)))) i j p in
           go i' p' (st :: acc)
         | Error _ ->
-          // unterminated `"…` — take to end of line (best-effort for mid-typing)
+          // Unterminated `"…`: take to end of line for mid-typing recovery.
           let j = scanToLineEnd (i + 1)
           let (st, i', p') =
             emit (TStringLit(unescape (input.Substring(i + 1, j - i - 1)))) i j p
           lexDiag st.range "unterminated string literal"
           go i' p' (st :: acc)
       elif c = '\'' then
-        // A leading `'` is a type variable (`'a`) when we're in a type context
-        // (decided by the previous token), and a char literal otherwise. A type
-        // var lexes to the bare name as a TIdent.
+        // A leading `'` is a type variable (`'a`) in type context, decided by
+        // the previous token. Otherwise it starts a char literal. Type variables
+        // lex to the bare name as `TIdent`.
         let inTypeContext =
           match acc with
           | prev :: _ ->
@@ -693,12 +681,12 @@ let tokenize
             let (st, i', p') = emit (TIdent(input.Substring(i + 1, j - i - 1))) i j p
             go i' p' (st :: acc)
         else if
-          // char literal: '<one char>' — read exactly one char (or an escape)
-          // then the closing quote, so `'''` is the apostrophe char, not empty.
+          // Char literal: read one char, or one escape, then the closing quote.
+          // `'''` is the apostrophe char, not an empty literal.
           i + 1 < n && input[i + 1] = '\\'
         then
-          // escaped char: scan to the closing quote so multi-char escapes
-          // (`'\x41'`, `'é'`, `'\U0001F600'`) decode, not just `'\n'`.
+          // Escaped char: scan to the closing quote so multi-char escapes decode,
+          // such as `'\x41'` or `'\U0001F600'`.
           match scanString (i + 1) '\'' with
           | Ok j2 ->
             let (st, i', p') =
@@ -711,10 +699,8 @@ let tokenize
             lexDiag st.range "unterminated char literal"
             go i' p' (st :: acc)
         else
-          // unescaped char: one extended grapheme cluster (which may span several
-          // UTF-16 code units — a surrogate-pair emoji `'😀'` or a base+combining
-          // sequence) then the closing quote. `'''` is the apostrophe char: the
-          // grapheme is the inner `'`, and the third quote closes it.
+          // Unescaped char: one extended grapheme cluster, then the closing
+          // quote. A grapheme may span multiple UTF-16 code units.
           let contentEnd =
             if i + 1 < n then
               i
@@ -732,7 +718,7 @@ let tokenize
                 p
             go i' p' (st :: acc)
           else
-            // unterminated/half-typed char — best-effort to the grapheme end
+            // Unterminated/half-typed char: recover through the grapheme end.
             let endIdx = min n (max (i + 1) contentEnd)
             let (st, i', p') =
               emit
@@ -746,7 +732,7 @@ let tokenize
         match scanInterp i with
         | Ok(tok, j) -> let (st, i', p') = emit tok i j p in go i' p' (st :: acc)
         | Error _ ->
-          // unterminated `$"…` — take to end of line
+          // Unterminated `$"…`: take to end of line.
           let j = scanToLineEnd (i + 2)
           let (st, i', p') = emit TInterpString i j p
           lexDiag st.range "unterminated interpolated string"
@@ -756,7 +742,7 @@ let tokenize
         | Some(s, tok) ->
           let (st, i', p') = emit tok i (i + s.Length) p in go i' p' (st :: acc)
         | None ->
-          // unknown character — record it, skip, and keep lexing (don't abort the file)
+          // Unknown character: record it, skip it, and keep lexing.
           lexDiag
             { start = p; end_ = advance p i (i + 1) }
             $"unexpected character: '{input[i]}'"

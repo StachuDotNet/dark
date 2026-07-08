@@ -71,8 +71,7 @@ let createValueInline
     // Parse the value definition with the unified (ranged) parser
     match Builtin.parserParseToWrittenTypes fullSource with
     | Some(SourceFile sourceFile) ->
-      // A parse error blocks creation — the recovered tree would save a broken
-      // body. reportParseErrors prints a precise diagnostic and returns true.
+      // The parser may recover a tree after errors; do not save it.
       let hasParseError = Errors.reportParseErrors (Builtin.parserParseDiagnostics fullSource)
       let found =
         if hasParseError then

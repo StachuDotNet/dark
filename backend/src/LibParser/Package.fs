@@ -92,11 +92,11 @@ let private wtModuleToOps
     return ops
   }
 
-// --- extract package declarations from a parsed package file ---
+// --- classify package declarations from a parsed package file ---
 //
 // Package declarations must live under `module Owner...`; the path's first
 // segment is the owner and the rest are modules. Items that cannot be package
-// declarations surface as errors rather than silently vanishing.
+// declarations become errors.
 
 type private PkgItem =
   | PFn of WT.PackageFn.PackageFn
@@ -132,11 +132,7 @@ let private packageItem (item : WTSourceFile.Item) : PkgItem =
 /// errors for declarations a package file can't hold.
 let private packageDecls
   (sf : WT.SourceFile)
-  : List<WT.PackageFn.PackageFn> *
-    List<WT.PackageType.PackageType> *
-    List<WT.PackageValue.PackageValue> *
-    List<WT.Range * string>
-  =
+  : WTPackageModule * List<WT.Range * string> =
   let items = WTSourceFile.items sf |> List.map packageItem
   let fns =
     items
@@ -158,7 +154,7 @@ let private packageDecls
     |> List.choose (function
       | PErr(r, msg) -> Some(r, msg)
       | _ -> None)
-  (fns, types, values, errors)
+  ({ fns = fns; types = types; values = values }, errors)
 
 /// Parse + lower a package file: the nested module tree gives module-qualified
 /// names. Returns `Error diagnostics` on parse failure.
@@ -172,10 +168,9 @@ let parse
     let result = P.parse contents
     match result.parsed with
     | Some(WT.SourceFile sf) when List.isEmpty result.diagnostics ->
-      let (fns, types, values, declErrors) = packageDecls sf
+      let (modul, declErrors) = packageDecls sf
       match declErrors with
       | [] ->
-        let modul : WTPackageModule = { fns = fns; types = types; values = values }
         let! ops = wtModuleToOps builtins pm onMissing modul
         return Ok ops
       | errors ->
@@ -187,8 +182,7 @@ let parse
           )
     | _ ->
       let msgs = result.diagnostics |> List.map (P.renderDiagnostic contents)
-      // guard against a failure with no diagnostics (shouldn't happen) surfacing as
-      // a message-less `Error []`
+      // Guard against a parser failure with no diagnostics.
       return
         Error(if List.isEmpty msgs then [ "failed to parse package file" ] else msgs)
   }

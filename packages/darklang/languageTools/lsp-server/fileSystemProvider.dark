@@ -244,8 +244,7 @@ module WriteFile =
       | Error err -> sendErrorResponse state requestId [ err ]
     else
       // Parse package module content
-      // Parse with the unified (ranged) parser, then collect every declaration with its
-      // module path (descending into nested modules).
+      // Parse then collect every declaration with its module path (descending into nested modules).
       let allDecls =
         match Builtin.parserParseToWrittenTypes content with
         | Some(SourceFile sourceFile) ->

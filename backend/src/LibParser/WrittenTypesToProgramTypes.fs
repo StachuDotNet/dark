@@ -1,4 +1,4 @@
-/// Conversion functions from WrittenTypes to ProgramTypes
+/// Conversion functions from WrittenTypes to ProgramTypes.
 module LibParser.WrittenTypesToProgramTypes
 
 open Prelude
@@ -10,36 +10,65 @@ module RT = LibExecution.RuntimeTypes
 type NRE = PT.NameResolutionError
 module NR = NameResolver
 
-// CLEANUP: Context could be simplified to use `currentFunction: string option` instead of full name path
 type Context =
-  { // Full qualified name path of the current function being parsed (e.g. ["MyModule"; "myFunction"])
-    // Used for detecting self-recursive calls and converting them to ESelf expressions
+  { // Fully qualified path of the function currently being lowered, used to
+    // recognize self-recursive calls.
     currentFnName : List<string> option
-    // Whether we're currently inside a function body during parsing
-    // Used to determine when variable shadowing of function names should reset the context
+    // Whether this expression is inside a function body. This decides whether an
+    // unqualified call prefers a local variable or a package function.
     isInFunction : bool
-    // Maps parameter names to their indices within the current function
-    // Used to convert EVariable references to EArg when they refer to function parameters
+    // Function parameters by name, used to lower references to `EArg`.
     argMap : Map<string, int>
-    // Tracks local variable bindings from let and match patterns
-    // Used to prevent resolving local names as global functions/values
+    // Local bindings from lets and patterns, used before global name resolution.
     localBindings : Set<string> }
 
-// `Module.Path.fn` → an `Unresolved` name (segments flattened; resolved later).
+let private bindLocalName (context : Context) (name : string) : Context =
+  let currentFnName =
+    match context.currentFnName with
+    | Some qualifiedName ->
+      match List.tryLast qualifiedName with
+      | Some lastName when lastName = name -> None
+      | _ -> context.currentFnName
+    | None -> None
+  { context with
+      currentFnName = currentFnName
+      argMap = Map.remove name context.argMap
+      localBindings = Set.add name context.localBindings }
+
+let private foldMapContext
+  (f : 'ctx -> 'a -> 'ctx * 'b)
+  (context : 'ctx)
+  (items : List<'a>)
+  : 'ctx * List<'b> =
+  items
+  |> List.fold
+    (fun (ctx, acc) item ->
+      let (newCtx, converted) = f ctx item
+      (newCtx, converted :: acc))
+    (context, [])
+  |> fun (ctx, acc) -> (ctx, List.rev acc)
+
+let private neListOrSingleton (fallback : 'a) (items : List<'a>) : NEList<'a> =
+  match items with
+  | h :: t -> NEList.ofList h t
+  | [] -> NEList.singleton fallback
+
+// `Module.Path.fn` becomes an unresolved name; name resolution runs later.
 let private qualifiedFnName (q : WT.QualifiedFnIdentifier) : WT.Name =
   let parts = (q.modules |> List.map (fun (m, _) -> m.name)) @ [ q.fn.name ]
   match parts with
   | h :: t -> WT.Unresolved(NEList.ofList h t)
   | [] -> WT.Unresolved(NEList.singleton "_")
 
-// `Module.Path.TypeName` → an `Unresolved` name (for record-literal type names).
+// `Module.Path.TypeName` becomes an unresolved name for record literals and type
+// refs.
 let private qualifiedTypeName (q : WT.QualifiedTypeIdentifier) : WT.Name =
   let parts = (q.modules |> List.map (fun (m, _) -> m.name)) @ [ q.typ.name ]
   match parts with
   | h :: t -> WT.Unresolved(NEList.ofList h t)
   | [] -> WT.Unresolved(NEList.singleton "_")
 
-// Enum type names are a plain `List<string>` (empty is valid — an unqualified `Ok`).
+// Enum type names are a plain list. Empty means an unqualified case like `Ok`.
 let private enumTypeName
   (q : WT.QualifiedTypeIdentifier)
   : WT.UnresolvedEnumTypeName =
@@ -109,14 +138,11 @@ module TypeReference =
       | WT.TFn(_, args, ret) ->
         let! argTypes = Ply.List.mapSequentially (fun (t, _) -> toPT t) args
         let! returnType = toPT ret
-        let paramTypes =
-          match argTypes with
-          | h :: t -> NEList.ofList h t
-          | [] -> NEList.singleton PT.TUnit
+        let paramTypes = neListOrSingleton PT.TUnit argTypes
         return PT.TFn(paramTypes, returnType)
 
       | WT.TCustom q ->
-        // a few builtin types take a type arg and parse as a "custom" `Name<T>`,
+        // A few builtin types take a type arg and parse as a custom `Name<T>`,
         // but lower to a dedicated PT case (not a package type reference).
         match q.modules, q.typ.name, q.typeArgs with
         | [], "Stream", [ inner ] -> return! toPT inner |> Ply.map PT.TStream
@@ -149,34 +175,14 @@ module LetPattern =
   let rec toPT (context : Context) (p : WT.LetPattern) : (Context * PT.LetPattern) =
     match p with
     | WT.LPVariable(_, varName) ->
-      let newContext =
-        { context with
-            // If this variable shadows the self function name, clear it
-            currentFnName =
-              match context.currentFnName with
-              | Some qualifiedName ->
-                // Only clear if the variable name matches the last part of the qualified name
-                match List.rev qualifiedName with
-                | lastName :: _ when lastName = varName -> None
-                | _ -> context.currentFnName
-              | None -> None
-            // Remove this variable from argMap as it's now shadowed by the let binding
-            argMap = Map.remove varName context.argMap
-            // Track this as a local binding to prevent resolving it as a global
-            localBindings = Set.add varName context.localBindings }
+      let newContext = bindLocalName context varName
       (newContext, PT.LPVariable(gid (), varName))
     | WT.LPWildcard _ -> (context, PT.LPWildcard(gid ()))
     | WT.LPTuple(_, first, _, second, rest, _, _) ->
       let (context1, first') = toPT context first
       let (context2, second') = toPT context1 second
       let (finalContext, theRest') =
-        rest
-        |> List.fold
-          (fun (ctx, acc) (_, pat) ->
-            let (newCtx, pat') = toPT ctx pat
-            (newCtx, pat' :: acc))
-          (context2, [])
-        |> fun (ctx, acc) -> (ctx, List.rev acc)
+        rest |> foldMapContext (fun ctx (_, pat) -> toPT ctx pat) context2
       (finalContext, PT.LPTuple(gid (), first', second', theRest'))
     | WT.LPUnit _ -> (context, PT.LPUnit(gid ()))
 
@@ -187,31 +193,10 @@ module MatchPattern =
     : (Context * PT.MatchPattern) =
     match p with
     | WT.MPVariable(_, varName) ->
-      let newContext =
-        { context with
-            // If this variable shadows the self function name, clear it
-            currentFnName =
-              match context.currentFnName with
-              | Some qualifiedName ->
-                // Only clear if the variable name matches the last part of the qualified name
-                match List.rev qualifiedName with
-                | lastName :: _ when lastName = varName -> None
-                | _ -> context.currentFnName
-              | None -> None
-            // Remove this variable from argMap as it's now shadowed by the match pattern
-            argMap = Map.remove varName context.argMap
-            // Track this as a local binding to prevent resolving it as a global
-            localBindings = Set.add varName context.localBindings }
+      let newContext = bindLocalName context varName
       (newContext, PT.MPVariable(gid (), varName))
     | WT.MPEnum(_, (_, caseName), fieldPats) ->
-      let (finalContext, convertedPats) =
-        fieldPats
-        |> List.fold
-          (fun (ctx, acc) pat ->
-            let (newCtx, pat') = toPT ctx pat
-            (newCtx, pat' :: acc))
-          (context, [])
-        |> fun (ctx, acc) -> (ctx, List.rev acc)
+      let (finalContext, convertedPats) = fieldPats |> foldMapContext toPT context
       (finalContext, PT.MPEnum(gid (), caseName, convertedPats))
     | WT.MPInt64(_, (_, i), _) -> (context, PT.MPInt64(gid (), i))
     | WT.MPUInt64(_, (_, i), _) -> (context, PT.MPUInt64(gid (), i))
@@ -229,7 +214,7 @@ module MatchPattern =
       (context,
        PT.MPChar(
          gid (),
-         // NFC-normalize like MPString, so a char pattern matches a canonically-equal char
+         // Normalize like strings so canonically equal chars match.
          (match contents with
           | Some(_, s) -> String.normalize s
           | None -> "")
@@ -249,45 +234,24 @@ module MatchPattern =
       let (context1, first') = toPT context first
       let (context2, second') = toPT context1 second
       let (finalContext, theRest') =
-        rest
-        |> List.fold
-          (fun (ctx, acc) (_, pat) ->
-            let (newCtx, pat') = toPT ctx pat
-            (newCtx, pat' :: acc))
-          (context2, [])
-        |> fun (ctx, acc) -> (ctx, List.rev acc)
+        rest |> foldMapContext (fun ctx (_, pat) -> toPT ctx pat) context2
       (finalContext, PT.MPTuple(gid (), first', second', theRest'))
     | WT.MPList(_, contents, _, _) ->
       let (finalContext, convertedPats) =
-        contents
-        |> List.fold
-          (fun (ctx, acc) (pat, _) ->
-            let (newCtx, pat') = toPT ctx pat
-            (newCtx, pat' :: acc))
-          (context, [])
-        |> fun (ctx, acc) -> (ctx, List.rev acc)
+        contents |> foldMapContext (fun ctx (pat, _) -> toPT ctx pat) context
       (finalContext, PT.MPList(gid (), convertedPats))
     | WT.MPListCons(_, head, tail, _) ->
       let (context1, head') = toPT context head
       let (finalContext, tail') = toPT context1 tail
       (finalContext, PT.MPListCons(gid (), head', tail'))
     | WT.MPOr(_, pats) ->
-      let (finalContext, convertedPats) =
-        pats
-        |> List.fold
-          (fun (ctx, acc) pat ->
-            let (newCtx, pat') = toPT ctx pat
-            (newCtx, pat' :: acc))
-          (context, [])
-        |> fun (ctx, acc) -> (ctx, List.rev acc)
+      let (finalContext, convertedPats) = pats |> foldMapContext toPT context
       (finalContext,
        PT.MPOr(gid (), NEList.ofListUnsafe "MatchPattern.toPT" [] convertedPats))
     | WT.MPError _ ->
-      // a parse-error hole: every execution path rejects parses with
-      // diagnostics before lowering, so reaching this is a caller bug
-      Exception.raiseInternal
-        "parse-error hole (MPError) reached lowering — callers must reject parses with diagnostics"
-        []
+      // Parse-error holes cannot reach execution lowering. Callers reject
+      // parses with diagnostics before this point.
+      Exception.raiseInternal "parse-error hole (MPError) reached lowering" []
 
 
 module Expr =
@@ -321,8 +285,7 @@ module Expr =
         return
           PT.EChar(
             gid (),
-            // NFC-normalize like string literals, so a char and a 1-char string that
-            // are canonically equal compare equal
+            // Normalize like strings so canonically equal chars compare equal.
             (match contents with
              | Some(_, s) -> String.normalize s
              | None -> "")
@@ -351,14 +314,13 @@ module Expr =
       | WT.EUnit _ -> return PT.EUnit(gid ())
       | WT.EVariable(_, var) ->
         let id = gid ()
-        // Check if this variable is a function argument first
+        // Function args and local bindings take precedence over package names.
         match Map.tryFind var context.argMap with
         | Some index -> return PT.EArg(id, index)
         | None when Set.contains var context.localBindings ->
-          // Local binding takes precedence - don't resolve as global
           return PT.EVariable(id, var)
         | None ->
-          // Try to resolve as a value first
+          // Bare names resolve value-first, then function, then local variable.
           let! value =
             NR.resolveValueName
               (builtins.values |> Map.keys |> Set)
@@ -370,7 +332,6 @@ module Expr =
           match value.resolved with
           | Ok _ -> return PT.EValue(id, value)
           | Error _ ->
-            // Try to resolve as a function reference
             let! fnResult =
               NR.resolveFnName
                 (builtins.fns |> Map.keys |> Set)
@@ -396,7 +357,8 @@ module Expr =
 
         match extractPath obj with
         | Some basePath ->
-          // If the first part of the path is a local binding or function arg, it's field access, not a global
+          // If the first path segment is local, this is field access, not a
+          // package lookup.
           let firstPart = basePath.head
           if
             Set.contains firstPart context.localBindings
@@ -406,7 +368,7 @@ module Expr =
             return PT.ERecordFieldAccess(id, obj, fieldname)
           else
             let fullPath = NEList.pushBack fieldname basePath
-            // Try to resolve as a value first
+            // Qualified bare names resolve value-first, then function.
             let! valueResult =
               NR.resolveValueName
                 (builtins.values |> Map.keys |> Set)
@@ -418,7 +380,6 @@ module Expr =
             match valueResult.resolved with
             | Ok _ -> return PT.EValue(id, valueResult)
             | Error _ ->
-              // Try to resolve as a function reference
               let! fnResult =
                 NR.resolveFnName
                   (builtins.fns |> Map.keys |> Set)
@@ -430,11 +391,9 @@ module Expr =
               match fnResult.resolved with
               | Ok _ -> return PT.EFnName(id, fnResult)
               | Error _ ->
-                // Fall back to actual field access
                 let! obj = toPT context obj
                 return PT.ERecordFieldAccess(id, obj, fieldname)
         | None ->
-          // Not a simple path, treat as field access
           let! obj = toPT context obj
           return PT.ERecordFieldAccess(id, obj, fieldname)
       | WT.EApply(_, (WT.EFnName(_, q) as callee), typeArgs, args) ->
@@ -444,17 +403,17 @@ module Expr =
           Ply.List.mapSequentially
             (TypeReference.toPT pm onMissing branchId currentModule)
             typeArgs
-        // Every Darklang fn has ≥1 parameter, so a call always has ≥1 arg — EApply's
-        // args is a NEList. A type-args-only `f<T>` is really `f<T> ()`: seed the
-        // implicit unit arg. (Same in the serializer lowering.)
+        // Every Darklang fn has at least one parameter, so a call always has at
+        // least one arg. A type-args-only `f<T>` is really `f<T> ()`: seed the
+        // implicit unit arg. Same in serializer lowering.
         let! processedArgs =
           match args with
           | [] -> Ply(NEList.singleton (PT.EUnit(gid ())))
           | h :: t -> Ply.NEList.mapSequentially (toPT context) (NEList.ofList h t)
 
-        // An unqualified name in APPLIED position (`f x`) resolves function-first —
-        // only a function (or function-typed value) can be called — unlike a bare
-        // reference, which is variable-first (see the EVariable case). The one
+        // An unqualified applied name (`f x`) resolves function-first because
+        // only a function, or function-typed value, can be called. This differs
+        // from bare references, which are value-first. The one
         // exception is a lambda body with no self-context, where we keep the bare
         // variable so a param can shadow a same-named function. The callee node gets
         // its own id, distinct from the wrapping EApply's.
@@ -484,14 +443,14 @@ module Expr =
                   | None -> PT.EVariable(gid (), varName)
               return PT.EApply(id, expr, processedTypeArgs, processedArgs)
           | None when context.isInFunction ->
-            // Inside a function, prioritize variables for unqualified calls (allows shadowing)
+            // Inside a function, let variables shadow unqualified function calls.
             let varExpr =
               match Map.tryFind varName context.argMap with
               | Some index -> PT.EArg(gid (), index)
               | None -> PT.EVariable(gid (), varName)
             return PT.EApply(id, varExpr, processedTypeArgs, processedArgs)
           | None ->
-            // Global context, try to resolve as function name first, fall back to variable
+            // At global scope, resolve function-first and fall back to a variable.
             let! fnName =
               NR.resolveFnName
                 (builtins.fns |> Map.keys |> Set)
@@ -509,11 +468,10 @@ module Expr =
                 | None -> PT.EVariable(gid (), varName)
             return PT.EApply(id, expr, processedTypeArgs, processedArgs)
         | _ ->
-          // Applied position: the callee is being CALLED, so resolve it FUNCTION-first
-          // (only a function — or a function-typed value — can be applied). Fall back to
-          // the value-first path (toPT) when there's no such function. This keeps the
-          // bare-name value-first resolution (the EFnName case) for non-applied refs while
-          // fixing same-name value+function shadowing (`Mod.f x` where a value `f` exists).
+          // Qualified callees also resolve function-first. Fall back to the
+          // value-first path when no function matches, preserving bare-reference
+          // behavior while allowing `Mod.f x` to call the function even when a
+          // same-named value exists.
           let! fnNameResolved =
             NR.resolveFnName
               (builtins.fns |> Map.keys |> Set)
@@ -542,10 +500,10 @@ module Expr =
       | WT.EFnName(_, q) ->
         let id = gid ()
         let name = qualifiedFnName q
-        // A bare qualified name like `Mod.Sub.foo` could be a package VALUE or a
-        // function. The parser commits it to a fn-name node (it carries the module
-        // ranges needed for highlighting), so resolve VALUE-first here, mirroring the
-        // ERecordFieldAccess path. Operator `KnownBuiltin` names are always functions,
+        // A bare qualified name like `Mod.Sub.foo` could be a package value or a
+        // function. The parser uses a fn-name node so it can preserve module
+        // ranges, but non-applied references still resolve value-first. Operator
+        // `KnownBuiltin` names are always functions,
         // so skip the value lookup. Keep the failed resolution (don't discard it).
         let! valueResolved =
           match name with
@@ -580,42 +538,33 @@ module Expr =
               name
           match fnName.resolved, valueResolved with
           | Ok _, _ -> return PT.EFnName(id, fnName)
-          // A bare qualified name that resolves to NEITHER value nor fn → EValue(Error),
+          // A bare qualified name that resolves to neither value nor fn returns
+          // EValue(Error),
           // so DeferredResolver can later refresh forward references to values.
           // KnownBuiltin operator names stay EFnName.
           | Error _, Some value -> return PT.EValue(id, value)
           | Error _, None -> return PT.EFnName(id, fnName)
       | WT.ELambda(_, pats, body, _, _) ->
         let id = gid ()
-        // Start with a clean argMap to prevent lambda params from being converted to EArg
-        // Keep localBindings - outer scope variables should still be visible inside lambdas
+        // Lambda params do not inherit function arg slots, but outer local
+        // bindings remain visible.
         let lambdaContext = { context with argMap = Map.empty }
-        // blank (`___`) params were parsed as empty-name vars; drop them
+        // Blank (`___`) params parse as empty-name vars; drop them.
         let kept =
           pats
           |> List.filter (fun p ->
             match p with
             | WT.LPVariable(_, "") -> false
             | _ -> true)
-        let (finalContext, ptPatsRev) =
-          kept
-          |> List.fold
-            (fun (ctx, acc) pat ->
-              let (newCtx, ptPat) = LetPattern.toPT ctx pat
-              (newCtx, ptPat :: acc))
-            (lambdaContext, [])
-        let ptPats = List.rev ptPatsRev
+        let (finalContext, ptPats) =
+          kept |> foldMapContext LetPattern.toPT lambdaContext
         let! body = toPT finalContext body
-        let patsNel =
-          match ptPats with
-          | h :: t -> NEList.ofList h t
-          | [] -> NEList.singleton (PT.LPUnit(gid ()))
+        let patsNel = neListOrSingleton (PT.LPUnit(gid ())) ptPats
         return PT.ELambda(id, patsNel, body)
       | WT.ELet(_, pat, rhs, body, _, _) ->
         let id = gid ()
-        // If a let-bound lambda refers to its own name, treat that name as a
-        // local while converting the rhs so recursion becomes an `EVariable`.
-        // Resolved package names still stay resolved.
+        // If a let-bound lambda refers to its own name, treat that name as local
+        // while lowering the rhs. Resolved package names still stay resolved.
         let rhsContext =
           match pat, rhs with
           | WT.LPVariable(_, name), WT.ELambda _ ->
@@ -707,10 +656,10 @@ module Expr =
             pipeExprToPT builtins pm onMissing branchId currentModule context
           )
         return PT.EPipe(id, expr, rest)
-      // An UNQUALIFIED uppercase name (`Red`, `XDB`) parses as a zero-field EEnum,
-      // but it's ambiguous — it could be an enum case, a DB, or an uppercase-bound
+      // An unqualified uppercase name (`Red`, `XDB`) parses as a zero-field enum,
+      // but it is ambiguous: it could be an enum case, a DB, or an uppercase-bound
       // variable (values/fns are lowercase, so never those). Lower it to an
-      // EVariable so name resolution disambiguates; left as an EEnum, a DB or
+      // EVariable so name resolution disambiguates. Left as an EEnum, a DB or
       // variable ref would be forced into enum-case resolution and fail.
       | WT.EEnum(_, tn, (_, caseName), fields, _) when
         List.isEmpty tn.modules && tn.typ.name = "" && List.isEmpty fields
@@ -766,9 +715,8 @@ module Expr =
         let! next = toPT context next
         return PT.EStatement(gid (), first, next)
       | WT.EError _ ->
-        // a parse-error hole (recovery node). Execution paths reject parses with
-        // diagnostics before lowering, so this only survives for tooling; if it
-        // reaches execution, PT2RT rejects it at the RT boundary.
+        // Recovery node. Execution paths reject parses with diagnostics before
+        // lowering; if this reaches execution, PT2RT rejects it at the RT boundary.
         return PT.EError(gid ())
     }
 
@@ -782,7 +730,7 @@ module Expr =
     (segment : WT.StringSegment)
     : Ply<PT.StringSegment> =
     match segment with
-    // NFC-normalize literal text (canonicalized strings).
+    // Normalize literal text to match string tokenization.
     | WT.StringText(_, text) -> Ply(PT.StringText(String.normalize text))
     | WT.StringInterpolation(_, expr, _, _) ->
       toPT builtins pm onMissing branchId currentModule context expr
@@ -826,22 +774,13 @@ module Expr =
 
       | WT.EPipeLambda(_, pats, body, _, _) ->
         let id = gid ()
-        // Start with a clean argMap to prevent lambda params from being converted to EArg
-        // Keep localBindings - outer scope variables should still be visible inside lambdas
+        // Lambda params do not inherit function arg slots, but outer local
+        // bindings remain visible.
         let lambdaContext = { context with argMap = Map.empty }
-        let (finalContext, ptPatsRev) =
-          pats
-          |> List.fold
-            (fun (ctx, acc) pat ->
-              let (newCtx, ptPat) = LetPattern.toPT ctx pat
-              (newCtx, ptPat :: acc))
-            (lambdaContext, [])
-        let ptPats = List.rev ptPatsRev
+        let (finalContext, ptPats) =
+          pats |> foldMapContext LetPattern.toPT lambdaContext
         let! body = toPT finalContext body
-        let patsNel =
-          match ptPats with
-          | h :: t -> NEList.ofList h t
-          | [] -> NEList.singleton (PT.LPUnit(gid ()))
+        let patsNel = neListOrSingleton (PT.LPUnit(gid ())) ptPats
         return PT.EPipeLambda(id, patsNel, body)
 
       | WT.EPipeInfix(_, (_, infixOp), first) ->
@@ -854,8 +793,8 @@ module Expr =
         let name = qualifiedFnName q
         match name, typeArgs with
         | WT.Unresolved { head = varName; tail = [] }, [] ->
-          // Special case for variables with arguments. Since it could be a userfn, we
-          // need to check that first. We do a similar thing converting EFnNames.
+          // A bare pipe segment with args might be a function call or a variable
+          // application. Resolve function-first, then fall back to variable.
           let! fnName =
             NR.resolveFnName
               (builtins.fns |> Map.keys |> Set)
@@ -869,8 +808,8 @@ module Expr =
           | Ok _ -> return PT.EPipeFnCall(id, fnName, [], args)
           | Error _ -> return PT.EPipeVariable(id, varName, args)
         | _ ->
-          // resolve with Allow (like every other fn-name resolution here): a missing
-          // name defers to runtime rather than hard-erroring during package loading
+          // Missing names use Allow here, like other fn-name lowering. Package
+          // loading can continue and unresolved names are handled later.
           let! fnName =
             NR.resolveFnName
               (builtins.fns |> Map.keys |> Set)
@@ -1067,14 +1006,11 @@ module PackageFn =
         return { name = p.name; typ = typ; description = p.description }
       }
 
-  /// Walk a PT TypeReference collecting all TVariable names.
-  /// Used to discover a fn's "implicit" type parameters from its
-  /// declared param/return types — wrappers like
-  ///   `let f (x: List<'a>) : Stream<'a> = ...`
-  /// don't always declare `<'a>` explicitly, but we still need
-  /// `'a` registered as a typeParam so callers can pass an
-  /// explicit type arg when arg inference can't fill it in
-  /// (e.g. empty-literal arguments).
+  /// Collect TVariable names from a PT TypeReference.
+  /// Used to discover implicit function type parameters from declared
+  /// param/return types. For example, `let f (x: List<'a>) : Stream<'a> = ...`
+  /// may not declare `<'a>` explicitly, but callers still need `'a` registered
+  /// when inference cannot fill it in, such as with empty literals.
   let rec private collectTVars
     (acc : List<string>)
     (tr : PT.TypeReference)
@@ -1124,10 +1060,8 @@ module PackageFn =
       let! body =
         Expr.toPT builtins pm onMissing branchId currentModule context fn.body
 
-      // Auto-discover any TVariables in param/return types that
-      // weren't declared explicitly. Explicit typeParams stay first
-      // (callers passing positional type args expect that order);
-      // discovered names append in first-seen order.
+      // Explicit typeParams stay first because callers pass positional type
+      // args in that order. Discovered names append in first-seen order.
       let explicitTypeParams = fn.typeParams
       let implicitTypeParams =
         let fromParams =

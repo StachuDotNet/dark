@@ -1,4 +1,4 @@
-/// CLEANUP still feels like this can be tidied/shortened a bit.
+/// Resolves WrittenTypes names against builtins and branch-aware package lookups.
 module LibParser.NameResolver
 
 open Prelude
@@ -9,8 +9,8 @@ module PT = LibExecution.ProgramTypes
 module RT = LibExecution.RuntimeTypes
 type NRE = PT.NameResolutionError
 
-// Name-format helpers: a package fn/value is written `name` or `name_vN`; a type is
-// `Name` or `Name_v0`.
+// Package fn/value names are `name` or `name_vN`; type names are `Name` or
+// `Name_v0`.
 let private parseFnNameString (fnName : string) : Result<string * int, string> =
   match fnName with
   | Regex.Regex "^([a-z][a-z0-9A-Z]*[']?)_v(\d+)$" [ name; version ] ->
@@ -29,23 +29,17 @@ let private parseTypeNameString (typeName : string) : Result<string, string> =
   | _ -> Error "Bad format in type name"
 
 
-/// If a name is not found, should we raise an exception?
+/// Controls whether unresolved names are allowed.
 ///
-/// - when the local package DB is fully empty, and we're filling it in for the
-///   first time, we want to allow all names to be NotFound -- other package
-///   items won't be there yet
-/// - sometimes when parsing, we're not sure whether something is:
-///   - a variable
-///   - or something else, like a value or fn.
-///   During these times, we _also_ want to allow errors as well, so we can
-///   parse it as a variable as a fallback if nothing is found under that name.
+/// Package loading uses `Allow` while the package manager is being filled, since
+/// sibling package items may not exist yet. Expression lowering also uses
+/// `Allow` for ambiguous names so it can fall back to local variables.
 [<RequireQualifiedAccess>]
 type OnMissing =
   | ThrowError
   | Allow
 
-// TODO: we should probably just return the Result, and let the caller
-// handle the error if they want to...
+// CLEANUP: return the Result directly and let callers decide how to handle it.
 let throwIfRelevant
   (onMissing : OnMissing)
   (currentModule : List<string>)
@@ -69,12 +63,13 @@ type GenericName = LibDB.NameLookup.GenericName
 let namesToTry = LibDB.NameLookup.namesToTry
 
 
-/// Generic name resolution that handles the common pattern across Type/Value/Fn resolution.
-/// Returns the matched location alongside the resolved name (None for
-/// builtins / unresolved). The location is what the user typed, after
-/// `namesToTry` candidate expansion — captured at resolution time so
-/// dep-edge inserts can populate location columns directly without a
-/// post-hoc lookup.
+/// Shared resolver for type, value, and function names.
+/// Returns the matched package location alongside the resolved name. Builtins and
+/// unresolved names have no package location.
+///
+/// The location comes from the winning `namesToTry` candidate, so dependency
+/// edges can record it directly.
+///
 /// `branchId` selects which branch's package view the lookups see (WIP included).
 /// Package loading and tests pass `mainBranchId`; CLI-script parsing passes the
 /// run's branch so intra-branch WIP resolves.
@@ -97,9 +92,8 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
 
     match parseName name with
     | Error _ ->
-      // a malformed name goes through throwIfRelevant too, so under ThrowError
-      // (package loading) it fails the same way a NotFound does, rather than being
-      // silently swallowed as InvalidName
+      // Invalid names should obey `OnMissing` too. In `ThrowError` mode, fail
+      // hard just like `NotFound`.
       return
         throwIfRelevant
           onMissing

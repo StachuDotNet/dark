@@ -1,9 +1,7 @@
 module Darklang.Cli.Packages.Errors
 
 
-/// Reports the parser's structured diagnostics. Returns true if there are any —
-/// the parser returns a best-effort tree even for broken input, so creation must
-/// gate on this or it saves a broken body.
+/// Prints the first parse diagnostic. Returns true when parsing failed.
 let reportParseErrors
   (diagnostics: List<(LanguageTools.Parser.Range * String)>)
   : Bool =

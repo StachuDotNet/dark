@@ -1,8 +1,7 @@
 # LibParser
 
-The hand-written recursive-descent parser for Darklang source. One lexer,
-one parser, one syntax tree — this is the only parser in the system
-(tree-sitter and the FCS-based parser are gone).
+The hand-written recursive-descent parser for Darklang source. One lexer, one
+parser, one syntax tree.
 
 **[GRAMMAR.md](GRAMMAR.md) is the spec for the grammar it accepts** — operator
 precedence, offside rules, dialect decisions, and diagnostic codes.
@@ -15,13 +14,14 @@ source
   │                                  byte-exact source reconstruction)
   ▼
   │  Parser.parse / parseTestFile    range-complete WrittenTypes tree +
-  │                                  structured diagnostics (never throws,
-  │                                  never dies; recovers with EError holes)
+  │                                  structured diagnostics (recovers from
+  │                                  syntax errors with EError holes)
   ▼
   ├─ WrittenTypesToProgramTypes      execution lowering → ProgramTypes
   │                                  (package loading, testfiles, CLI)
-  └─ WrittenTypesToDarkTypes         tooling path → Dark WrittenTypes (Dvals) →
-     (Builtins.Language)             Dark WT2PT (LSP, highlighting, round-trip)
+  └─ Builtins.Language.WrittenTypesToDarkTypes
+                                     tooling path → Dark WrittenTypes (Dvals)
+                                     → Dark WT2PT (LSP, highlighting, round-trip)
 ```
 
 The two lowerings are kept in agreement by a differential test
@@ -34,6 +34,7 @@ output over the real package corpus; they must be identical (node ids aside).
 - `Lexer.fs` — the lexer: tokens with ranges, doc comments, trivia
 - `Parser.fs` — the parser: `ParserState` + module-level parse functions;
   offside scope stack; recovery; structured `Diagnostic` + `renderDiagnostic`
+- `SourceFile.fs` — shared flat view over `WrittenTypes.SourceFile` items
 - `WrittenTypes.fs` — the syntax tree (every node carries source ranges) plus
   the normalized package IR
 - `WrittenTypesToProgramTypes.fs` — execution lowering + name resolution glue

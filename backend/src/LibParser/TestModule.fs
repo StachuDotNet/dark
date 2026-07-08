@@ -105,14 +105,14 @@ let parseFile (owner : string) (source : string) : List<WTModule> =
           | WT.DType t -> types.Add(WT.packageType owner currentModule t)
           | WT.DTypeDB t -> dbs.Add(dbFromTypeDecl t)
           | WT.DTest test -> tests.Add(wtTest test)
-          // testfiles evaluate via `actual = expected` assertions; a bare expr
-          // is a broken assertion — fail loudly rather than silently skip it
+          // Testfiles evaluate `actual = expected` assertions. A bare expression
+          // is a broken assertion, so report it instead of skipping it.
           | WT.DExpr e ->
             Exception.raiseInternal
               "Test case not in format `x = y`"
               [ "line", box ((WT.exprRange e).start.row + 1) ]
-          // recurse where the module appears, passing the DBs accumulated SO FAR
-          // so a nested module inherits only the parent's earlier-declared DBs
+          // Recurse where the module appears, passing the DBs accumulated so far
+          // so a nested module inherits only the parent's earlier-declared DBs.
           | WT.DModule sub ->
             nested.AddRange(
               walk
@@ -129,7 +129,7 @@ let parseFile (owner : string) (source : string) : List<WTModule> =
             tests = List.ofSeq tests }
         :: List.ofSeq nested
 
-      // top-level bare exprs land in exprsToEval, not declarations — same error
+      // Top-level bare expressions land in exprsToEval, not declarations.
       match sf.exprsToEval with
       | e :: _ ->
         Exception.raiseInternal
@@ -265,7 +265,7 @@ let parseTestFile
 
     let modulesWT = filename |> System.IO.File.ReadAllText |> parseFile owner
 
-    // First pass: parse with empty PM, then compute real SCC-aware hashes
+    // First pass: lower with an empty PM, then compute real SCC-aware hashes.
     let! firstPassModules =
       modulesWT
       |> Ply.List.mapSequentially (
@@ -274,11 +274,11 @@ let parseTestFile
 
     let firstPassOps = firstPassModules |> List.collect _.ops
 
-    // Iteratively re-parse until ALL hashes converge.
+    // Iteratively re-lower until all hashes converge.
     // Same approach as LoadPackagesFromDisk: remapSetNames + computeRealHashes.
     let mutable currentOps = HS.computeRealHashes firstPassOps
     let mutable currentModules = firstPassModules
-    // seed with the first-pass hashes so an already-stable file converges on iter 1
+    // Seed with the first-pass hashes so an already-stable file converges on iter 1.
     let mutable prevHashes = HS.extractAllHashes currentOps
     let mutable converged = false
     let mutable iteration = 0
@@ -298,25 +298,25 @@ let parseTestFile
       currentOps <- newOps
       currentModules <- newModules
 
-    // Non-convergence means non-deterministic hashing — a bug, not user error; fail
-    // loudly rather than silently shipping whichever ops the last iteration produced.
+    // Non-convergence means non-deterministic hashing: a bug, not user error.
+    // Fail instead of returning whichever ops the last iteration produced.
     if not converged then
       Exception.raiseInternal
         "test module hashes did not converge"
         [ "filename", filename; "iterations", box maxIterations ]
 
-    // currentModules has correct test expressions (parsed with converged PM)
-    // but its ops are from raw parsing (not through computeRealHashes).
+    // currentModules has correct test expressions (lowered with the converged PM),
+    // but its ops are from raw lowering (not through computeRealHashes).
     // Replace each module's ops with the corresponding converged ops.
     // Op count per module is preserved by remapSetNames + computeRealHashes.
-    let mutable opsRemaining = currentOps
-    let result =
+    let result, _remaining =
       currentModules
-      |> List.map (fun m ->
-        let count = List.length m.ops
-        let (these, rest) = List.splitAt count opsRemaining
-        opsRemaining <- rest
-        { m with ops = these })
+      |> List.mapFold
+        (fun opsRemaining m ->
+          let count = List.length m.ops
+          let (these, rest) = List.splitAt count opsRemaining
+          ({ m with ops = these }, rest))
+        currentOps
 
     return result
   }

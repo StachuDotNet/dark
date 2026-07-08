@@ -1,10 +1,10 @@
 /// The types that the user writes. Think of this as the Syntax Tree.
 ///
-/// This is the SINGLE, range-complete syntax tree produced by the hand-written
+/// This is the range-complete syntax tree produced by the hand-written
 /// parser. Every node carries the exact source ranges (whole-node plus the
-/// fine-grained keyword/symbol ranges) that the editor tooling needs — the
-/// semantic-token highlighter, the LSP (hover / diagnostics), and the formatter —
-/// converted 1:1 into the Dark `LanguageTools.WrittenTypes` (as Dvals) by
+/// fine-grained keyword/symbol ranges) that the editor tooling needs: the
+/// semantic-token highlighter, the LSP (hover / diagnostics), and the formatter.
+/// The tree is converted 1:1 into the Dark `LanguageTools.WrittenTypes` (as Dvals) by
 /// `WrittenTypesToDarkTypes` in `Builtins.Language/Libs/Parser.fs`.
 ///
 /// Execution lowering (`WrittenTypesToProgramTypes`) consumes the same tree,
@@ -21,20 +21,19 @@ open LibParser.Tokenizer // Pos, TokenRange
 type Range = TokenRange
 
 /// A synthetic (zero-width) range for nodes the lowering synthesizes with no
-/// source counterpart (e.g. an implicit unit parameter). Never serialized for
-/// highlighting — the package/decl normalization layer is execution-only.
+/// source counterpart, such as an implicit unit parameter. Never serialized for
+/// highlighting; the package/decl normalization layer is execution-only.
 let synthRange : Range =
   { start = { row = 0; column = 0 }; end_ = { row = 0; column = 0 } }
 
 type Name =
-  // Used when a syntactic construct turns into a function (e.g. some operators)
+  // Used when a syntactic construct turns into a function, such as some operators.
   | KnownBuiltin of string * int
-  // Basically all names are unresolved at this point, and will be resolved during
-  // WrittenTypesToProgramTypes
+  // Most names are unresolved here and are resolved during WT2PT lowering.
   | Unresolved of NEList<string>
 
-// Enum type names are a plain `List<string>` (an empty list is valid — e.g. an
-// unqualified `Ok`, where only the case name is written). See the long note in git
+// Enum type names are a plain `List<string>`. An empty list is valid, e.g. an
+// unqualified `Ok`, where only the case name is written. See the long note in git
 // history for why EEnum doesn't reuse `Name`.
 type UnresolvedEnumTypeName = List<string>
 
@@ -62,28 +61,27 @@ and BinaryOperation =
   | BinOpAnd
   | BinOpOr
 
-/// A simple `{ range; name }` identifier (the role is conveyed by which field of
-/// the parent node it sits in — VariableName, FnName, etc.).
+/// A simple `{ range; name }` identifier. The parent field gives it meaning:
+/// variable name, function name, type name, etc.
 type Identifier = { range : Range; name : string }
 
-/// `Module.Path.fn` — modules each carry their own range (for module-name color).
+/// `Module.Path.fn`; each module segment carries its own range.
 type QualifiedFnIdentifier =
   { range : Range
     modules : List<Identifier * Range> // (module ident, trailing-dot range)
     fn : Identifier }
 
-/// `Module.Path.TypeName<args>` — the type half of a record literal / enum
-/// constructor, and a custom type reference.
+/// `Module.Path.TypeName<args>`; used by record literals, enum constructors, and
+/// custom type references.
 type QualifiedTypeIdentifier =
   { range : Range
     modules : List<Identifier * Range>
     typ : Identifier
     typeArgs : List<TypeReference> } // `<…>` generic args (e.g. `Option<String>`)
 
-/// Type references on parameters / return types. Each primitive/built-in type is its
-/// own case carrying just its range (rather than a `TPrim of Range * string`), so the
-/// WT2PT lowering and serializer match them exhaustively — adding a primitive is
-/// compiler-checked everywhere instead of string-matched in places that can drift.
+/// Type references on parameters and return types. Each primitive/built-in type
+/// has its own case carrying just its range, so WT2PT and the serializer match
+/// them exhaustively.
 and TypeReference =
   | TUnit of Range
   | TBool of Range
@@ -113,9 +111,9 @@ and TypeReference =
   | TDict of
     Range *
     keywordDict : Range *
-    openBrace : Range *
+    openBracket : Range *
     inner : TypeReference *
-    closeBrace : Range
+    closeBracket : Range
   | TCustom of QualifiedTypeIdentifier
   | TVariable of Range * tick : Range * name : (Range * string) // `'a`
   | TTuple of
@@ -123,15 +121,14 @@ and TypeReference =
     first : TypeReference *
     symbolAsterisk : Range *
     second : TypeReference *
-    rest : List<Range * TypeReference> *  // each: (`*` range, type)
+    rest : List<Range * TypeReference> *  // each item is (`*` range, type)
     openParen : Range *
     closeParen : Range
   | TFn of Range * arguments : List<TypeReference * Range> * ret : TypeReference // each arg: (type, `->` range)
 
-/// THE mapping between primitive type names (as written) and their `TypeReference`
-/// case constructor — the single place a name→case dispatch lives. The parser resolves
-/// a name through this; the WT2PT lowering and serializer then match the primitive cases
-/// exhaustively (compiler-checked), so they cannot drift from this list.
+/// Mapping between primitive type names and their `TypeReference` case
+/// constructors. The parser resolves names through this list; WT2PT and the
+/// serializer then match the primitive cases exhaustively.
 let primTypes : List<string * (Range -> TypeReference)> =
   [ "Unit", TUnit
     "Bool", TBool
@@ -165,7 +162,7 @@ type LetPattern =
     first : LetPattern *
     symbolComma : Range *
     second : LetPattern *
-    rest : List<Range * LetPattern> *  // each: (`,` range, pattern)
+    rest : List<Range * LetPattern> *  // each item is (`,` range, pattern)
     symbolOpenParen : Range *
     symbolCloseParen : Range
 
@@ -216,9 +213,9 @@ type MatchPattern =
     tail : MatchPattern *
     symbolCons : Range
   | MPOr of Range * List<MatchPattern>
-  /// A recovery hole where a pattern was expected but couldn't be parsed (the
-  /// parse has a diagnostic at this range). Execution paths never see it —
-  /// every consumer rejects files with diagnostics before lowering.
+  /// Recovery hole where a pattern was expected but could not be parsed. The
+  /// parse has a diagnostic at this range, and execution paths reject files with
+  /// diagnostics before lowering.
   | MPError of Range
 
 let rec mpRange (p : MatchPattern) : Range =
@@ -258,7 +255,7 @@ type StringSegment =
 and Expr =
   | EUnit of Range
   | EBool of Range * bool
-  | EInt of Range * intPart : (Range * bigint) // arbitrary-precision `Int`, bare literal (no suffix)
+  | EInt of Range * intPart : (Range * bigint) // bare arbitrary-precision `Int`
   | EInt64 of Range * intPart : (Range * int64) * suffixPart : Range
   | EInt8 of Range * intPart : (Range * sbyte) * suffixPart : Range
   | EUInt8 of Range * intPart : (Range * byte) * suffixPart : Range
@@ -331,7 +328,7 @@ and Expr =
     fields : List<Range * (Range * string) * Expr> *
     symbolOpenBrace : Range *
     symbolCloseBrace : Range
-  // `Dict { k = v; … }` — a dict literal. Syntactically like a record, but `Dict`
+  // `Dict { k = v; … }`: a dict literal. Syntactically like a record, but `Dict`
   // is a keyword (its own range), not a type name, so it's a distinct node.
   | EDict of
     Range *
@@ -358,11 +355,11 @@ and Expr =
     cases : List<MatchCase> *
     keywordMatch : Range *
     keywordWith : Range
-  | EPipe of Range * Expr * List<Range * PipeExpr> // each: (`|>` range, segment)
+  | EPipe of Range * Expr * List<Range * PipeExpr> // each item is (`|>` range, segment)
   | EStatement of Range * first : Expr * next : Expr // `e1 ⏎ e2` (sequence)
-  /// A recovery hole where an expression was expected but couldn't be parsed
-  /// (the parse has a diagnostic at this range). Execution paths never see it —
-  /// every consumer rejects files with diagnostics before lowering.
+  /// Recovery hole where an expression was expected but could not be parsed. The
+  /// parse has a diagnostic at this range, and execution paths reject files with
+  /// diagnostics before lowering.
   | EError of Range
 
 and MatchCase =
@@ -493,7 +490,7 @@ type SourceFile =
 
 type ParsedFile = SourceFile of SourceFile
 
-/// The source range covering a whole expression node.
+/// Source range covering a whole expression node.
 let exprRange (e : Expr) : Range =
   match e with
   | EUnit r -> r
@@ -563,7 +560,7 @@ let typeReferenceRange (t : TypeReference) : Range =
 // ============================================================================
 // Normalized package IR + declaration normalization
 //
-// The layers below are EXECUTION-ONLY (Cli / Package / TestModule → WT2PT → PT).
+// The layers below are execution-only (Cli / Package / TestModule -> WT2PT -> PT).
 // They are never serialized for highlighting, so synthesized nodes may use
 // `synthRange`. They normalize the raw parser tree (rich decls above) into the
 // module-qualified package shapes the lowering consumes.
@@ -616,14 +613,14 @@ module DB =
 
 // --- normalization: raw parser syntax → package IR ---
 //
-// The parser produces one range-complete syntax tree (the ranges drive the
-// highlighter / LSP). The package form is the SEMANTIC shape execution wants:
-// names pulled out of `(range, name)` pairs, no ranges. These strip one to the
-// other. Descriptions are "" here — `///` docs are attached elsewhere.
+// The parser produces one range-complete syntax tree. The package form is the
+// shape execution wants: names pulled out of `(range, name)` pairs, no ranges.
+// Field descriptions default to ""; declaration descriptions keep their `///`
+// doc comments.
 
 let private fnParamNorm (p : FnParam) : PackageFn.Parameter =
   match p with
-  // a unit parameter is named "_"
+  // A unit parameter is named "_".
   | FPUnit _ -> { name = "_"; typ = TUnit synthRange; description = "" }
   | FPNormal(_, name, typ, _, _, _) ->
     { name = name.name; typ = typ; description = "" }

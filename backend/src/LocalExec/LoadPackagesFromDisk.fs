@@ -17,8 +17,8 @@ module PackageLocation = LibDB.PackageLocation
 open Utils
 
 
-// A parse failure surfaces loudly rather than being silently masked —
-// every package file is expected to parse cleanly (see the parser-corpus gate).
+// A parse failure surfaces loudly rather than being silently masked.
+// Every package file is expected to parse cleanly
 let private parsePackageFile
   (builtins : RT.Builtins)
   (pm : PT.PackageManager)

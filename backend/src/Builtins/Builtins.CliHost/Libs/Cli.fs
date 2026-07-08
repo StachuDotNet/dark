@@ -101,8 +101,8 @@ let private declarationsToModule
     let wtFns = ResizeArray<WT.PackageFn.PackageFn>()
     let wtTypes = ResizeArray<WT.PackageType.PackageType>()
     let wtValues = ResizeArray<WT.PackageValue.PackageValue>()
-    // each trailing expr keeps its own module path so an expr inside `module M =`
-    // still resolves M's declarations by short name
+    // Each trailing expr keeps its module path, so an expr inside `module M =`
+    // can still resolve M's declarations by short name.
     let wtExprs = ResizeArray<List<string> * WT.Expr>()
     for item in sourceItems do
       match item with
@@ -161,14 +161,14 @@ let private declarationsToModule
           (WT2PT.PackageValue.Name.toModules v.name)
           v)
 
-    // WT2PT stamps every declaration with an empty `Hash ""` placeholder, and the
-    // grafting below (`withExtras`) keys declarations by hash — so without real content
-    // hashes ALL of a script's types (or values/fns) collapse to a single hash entry and
-    // only the last-defined one survives (`type A={a} type B={b}` then `A{a=1}` resolves
-    // to B → "no field named a"). These call the SHARED `Hashing.compute*Hash` (the same
-    // primitive `LibDB/PackageOpPlayback` uses for `Hash ""` decls) — not a reimplementation.
-    // (The SCC-aware `LibDB.HashStabilization` is a different strategy; unneeded here since
-    // pass-1 bodies carry no resolved sibling refs to stabilize.)
+    // WT2PT gives each declaration an empty `Hash ""` placeholder. The graft
+    // below keys declarations by hash, so without real content hashes a script's
+    // types, values, or fns can collapse to one entry and only the last one
+    // survives.
+    //
+    // Use the same `Hashing.compute*Hash` helpers package playback uses for
+    // `Hash ""` declarations. SCC-aware hash stabilization is not needed here
+    // because pass-1 bodies do not contain resolved sibling references.
     let hashType (t : PT.PackageType.PackageType) =
       { t with hash = Hashing.computeTypeHash Hashing.Normal t }
     let hashValue (v : PT.PackageValue.PackageValue) =
@@ -192,11 +192,10 @@ let private declarationsToModule
         (List.zip values1 valueLocations)
         (List.zip fns1 fnLocations)
 
-    // Pass 2: re-lower with the grafted pm so intra-script references resolve —
-    // but KEEP each decl's pass-1 hash. Pass-2 bodies embed the pass-1 hashes pm1
-    // hands out (that's all it has), so re-hashing the resolved bodies would make
-    // every registered decl's hash disagree with the refs embedded in its callers
-    // (any chain of depth ≥ 2 then fails with "function … couldn't be found").
+    // Pass 2: re-lower with the grafted pm so intra-script references resolve.
+    // Keep each declaration's pass-1 hash, because pass-2 bodies contain refs to
+    // those hashes. Re-hashing the resolved bodies would make registered hashes
+    // disagree with refs embedded in callers.
     let! fns = lowerFns pm1
     let fns =
       List.map2
