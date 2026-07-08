@@ -300,7 +300,7 @@ let fns () : List<BuiltInFn> =
 
     // The general event-log seam (the "nice wheel" — sync is its first consumer, messaging/cron the next).
     // A named reference to an event log — the DDB-sibling `EventLog` value. The name selects the store
-    // (v1: "package_ops"; branchOps / resolutions become named logs in the branch + resolution work).
+    // (package_ops, branch_ops, resolutions).
     { name = fn "eventLogNamed" 0
       typeParams = [ "e" ]
       parameters =
@@ -376,7 +376,7 @@ let fns () : List<BuiltInFn> =
           Param.make "events" (TList(TVariable "e")) "Event records received from a peer" ]
       returnType = TInt
       description =
-        "Append received Commit + Event records to the op log (preserving origin_ts) + fold. Returns the count of ops newly applied. Idempotent. Extracts fields natively."
+        "Append received Commit + Event records to the op log (reconciling origin_ts to the MIN stamp for LWW convergence) + fold. Returns the count of ops newly applied. Idempotent. Extracts fields natively."
       fn =
         (function
         | _, _, _, [ DEventLog _name; DList(_, commits); DList(_, events) ] ->

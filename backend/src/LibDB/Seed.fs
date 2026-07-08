@@ -254,20 +254,10 @@ let applyUnappliedOps () : Task<int64> =
   }
 
 
-/// ops⊥projections prototype: drop every projection table and re-fold the entire
-/// package_ops log to rebuild them. Proves projections are *regenerable from the ops*
-/// (the ops⊥projections split) — losing a projection costs only the CPU to re-fold; the
-/// op log (package_ops) is the canonical durable state and is never touched here.
-/// Returns the count of ops re-applied.
 /// A regenerable projection in the per-branch cache: `table` is the projection, and `dirtiedBy` is
 /// the set of `package_ops` kinds whose arrival invalidates it (so an incremental update re-folds
 /// only the projections an incoming op touches). Op-kind names match the `PackageOp` DU cases.
 type Projection = { table : string; dirtiedBy : Set<string> }
-
-/// The regenerable projections — every table the op-fold writes. `deprecations` is one: it's folded
-/// from `Deprecate`/`Undeprecate` ops (its `annotation_blob` reconstructs from the op), so it's
-/// regenerable and `export` strips it like the others. NOT `package_blobs` (canonical content —
-/// op-playback never writes it), nor the op log / branch / commit / account state.
 
 /// The committed events after `cursor` from this instance's own log (≤ `limit`), the commits they
 /// reference, and the new cursor (max rowid in the batch, or `cursor` if nothing is new). Exactly what a
@@ -442,6 +432,10 @@ let receiveOps
   }
 
 
+/// The regenerable projections — every table the op-fold writes. `deprecations` is one: it's folded
+/// from `Deprecate`/`Undeprecate` ops (its `annotation_blob` reconstructs from the op), so it's
+/// regenerable and `export` strips it like the others. NOT `package_blobs` (canonical content —
+/// op-playback never writes it), nor the op log / branch / commit / account state.
 let projectionRegistry : List<Projection> =
   [ { table = "package_functions"; dirtiedBy = Set.ofList [ "AddFn" ] }
     { table = "package_types"; dirtiedBy = Set.ofList [ "AddType" ] }
@@ -515,6 +509,11 @@ let rebuildDirtied (opKinds : Set<string>) : Task<int64> =
     return int64 (List.length relevant)
   }
 
+/// ops⊥projections prototype: drop every projection table and re-fold the entire
+/// package_ops log to rebuild them. Proves projections are *regenerable from the ops*
+/// (the ops⊥projections split) — losing a projection costs only the CPU to re-fold; the
+/// op log (package_ops) is the canonical durable state and is never touched here.
+/// Returns the count of ops re-applied.
 let rebuildProjections () : Task<int64> =
   task {
     // 1. clear the regenerable projection tables — from the projection registry (single

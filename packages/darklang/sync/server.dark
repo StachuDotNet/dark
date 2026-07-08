@@ -41,7 +41,7 @@ let healthHandler : Stdlib.HttpServer.Handler =
     { route = "/sync/health"; method = "GET"; handler = healthFn }
 
 
-// GET /sync/events?package=<rowid>&branch=<rowid> — one bounded batch from each log after the given cursors,
+// GET /sync/events?package=<rowid>&branch=<rowid>&resolution=<rowid> — one bounded batch from each log after the given cursors,
 // as the JSON wire. Missing/garbage cursor defaults to 0 (from the start).
 let private parseCursor (url: String) (param: String) : Int64 =
   match Stdlib.Dict.get (Stdlib.Http.parseQueryString url) param with
