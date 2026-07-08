@@ -30,6 +30,7 @@ module Tracing = LibDB.Tracing
 module P = LibParser.Parser
 module WT = LibParser.WrittenTypes
 module WT2PT = LibParser.WrittenTypesToProgramTypes
+module WTSourceFile = LibParser.SourceFile
 module NRslv = LibParser.NameResolver
 module Hashing = LibSerialization.Hashing.Hashing
 
@@ -74,50 +75,22 @@ module ParseError =
     | DEnum(_, _, _, "Message", [ DString msg ]) -> Message msg
     | _ -> Exception.raiseInternal "Invalid ParseError Dval" [ "dval", d ]
 
-/// CLI/script declaration flattening. The CLI execution path qualifies by
-/// owner/scriptName (not the module path), so a `module X = …` block's
-/// declarations are flattened to the top level, each paired with its module path
-/// (so `module Helpers = let go …` registers under …/Helpers/go, and same-named
-/// fns in different modules can't collide at one location). `declarationsToModule`
-/// consumes the raw `WT.Declaration`s directly. DB/test decls don't reach here.
-let rec private flattenDecls
-  (path : List<string>)
-  (ds : List<WT.Declaration>)
-  : List<List<string> * WT.Declaration> =
-  ds
-  |> List.collect (fun d ->
-    match d with
-    | WT.DModule m ->
-      let parts =
-        (snd m.name).Split('.') |> Array.toList |> List.filter (fun s -> s <> "")
-      flattenDecls (path @ parts) m.declarations
-    | WT.DFunction _
-    | WT.DType _
-    | WT.DValue _
-    | WT.DExpr _ -> [ (path, d) ]
-    | WT.DTypeDB _
-    | WT.DTest _ -> [])
-
-/// Flatten a parsed file: declarations (each with its module path), then the
-/// trailing expressions as `DExpr`s.
-let private flattenSourceFile
-  (sf : WT.SourceFile)
-  : List<List<string> * WT.Declaration> =
-  flattenDecls [] sf.declarations
-  @ (sf.exprsToEval |> List.map (fun e -> ([], WT.DExpr e)))
-
-
-/// Lower a script's declarations to a PTCliScriptModule. Two passes: lower once
-/// against the base package manager, graft the script's own declarations in,
-/// then re-lower so intra-script references resolve. The two passes are inherent
-/// (pass 1 can't resolve sibling refs — the decls aren't in the PM yet), not a
-/// workaround.
+/// Lower a script's source items to a PTCliScriptModule. CLI execution identifies
+/// the script by owner/scriptName; nested `module` blocks only affect the package
+/// module path used when lowering declarations. `WTSourceFile.items` provides the
+/// shared flat view over the parser's nested module tree.
+///
+/// Two passes: lower once against the base package manager, add the script's own
+/// declarations to a package-manager overlay, then re-lower so declarations can
+/// refer to siblings in the same script (for example, `main` calling `helper`).
+/// The two passes are inherent: pass 1 cannot resolve those sibling references
+/// because the declarations are not in the PM yet.
 ///
 let private declarationsToModule
   (state : RT.ExecutionState)
   (owner : string)
   (scriptName : string)
-  (declarations : List<List<string> * WT.Declaration>)
+  (sourceItems : List<WTSourceFile.Item>)
   : Ply<Utils.CliScript.PTCliScriptModule> =
   uply {
     let builtins : RT.Builtins =
@@ -131,10 +104,10 @@ let private declarationsToModule
     // each trailing expr keeps its own module path so an expr inside `module M =`
     // still resolves M's declarations by short name
     let wtExprs = ResizeArray<List<string> * WT.Expr>()
-    for (declPath, d) in declarations do
-      let modules = baseModules @ declPath
-      match d with
-      | WT.DFunction fn ->
+    for item in sourceItems do
+      match item with
+      | WTSourceFile.Fn(declPath, fn) ->
+        let modules = baseModules @ declPath
         let parameters =
           fn.parameters
           |> List.map (fun p ->
@@ -162,7 +135,8 @@ let private declarationsToModule
             description = fn.description }
           : WT.PackageFn.PackageFn
         )
-      | WT.DType t ->
+      | WTSourceFile.Type(declPath, t) ->
+        let modules = baseModules @ declPath
         let typeName : WT.PackageType.Name =
           { owner = owner; modules = modules; name = t.name.name }
         let decl : WT.TypeDeclaration.T =
@@ -172,18 +146,18 @@ let private declarationsToModule
           { name = typeName; declaration = decl; description = t.description }
           : WT.PackageType.PackageType
         )
-      | WT.DValue v ->
+      | WTSourceFile.Value(declPath, v) ->
+        let modules = baseModules @ declPath
         let valueName : WT.PackageValue.Name =
           { owner = owner; modules = modules; name = v.name.name }
         wtValues.Add(
           { name = valueName; description = v.description; body = v.body }
           : WT.PackageValue.PackageValue
         )
-      | WT.DExpr e -> wtExprs.Add(modules, e)
-      // modules are flattened upstream; DB/test decls never reach the CLI path
-      | WT.DModule _
-      | WT.DTypeDB _
-      | WT.DTest _ -> ()
+      | WTSourceFile.Expr(declPath, e) -> wtExprs.Add(baseModules @ declPath, e)
+      // DB/test decls are produced only by test-mode parsing, not the CLI path.
+      | WTSourceFile.TypeDB _
+      | WTSourceFile.Test _ -> ()
 
     let onMissing = NRslv.OnMissing.Allow
     let fnList = List.ofSeq wtFns
@@ -346,11 +320,11 @@ let parseCliScript
     match result.parsed with
     | None -> return Error result.diagnostics
     | Some(WT.SourceFile sf) ->
-      let declarations = flattenSourceFile sf
+      let sourceItems = WTSourceFile.items sf
       match result.diagnostics with
       | (_ :: _) as ds -> return Error ds
       | [] ->
-        let! m = declarationsToModule state owner scriptName declarations
+        let! m = declarationsToModule state owner scriptName sourceItems
         return Ok m
   }
 
@@ -369,7 +343,7 @@ let parseCliExpr
       match result.diagnostics with
       | (_ :: _) as ds -> return Error ds
       | [] ->
-        let! m = declarationsToModule state "" "" (flattenSourceFile sf)
+        let! m = declarationsToModule state "" "" (WTSourceFile.items sf)
         return Ok m
   }
 

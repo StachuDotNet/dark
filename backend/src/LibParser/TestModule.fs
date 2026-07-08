@@ -114,12 +114,11 @@ let parseFile (owner : string) (source : string) : List<WTModule> =
           // recurse where the module appears, passing the DBs accumulated SO FAR
           // so a nested module inherits only the parent's earlier-declared DBs
           | WT.DModule sub ->
-            let parts =
-              (snd sub.name).Split('.')
-              |> Array.toList
-              |> List.filter (fun s -> s <> "")
             nested.AddRange(
-              walk (currentModule @ parts) (List.ofSeq dbs) sub.declarations
+              walk
+                (currentModule @ WT.moduleNameParts sub)
+                (List.ofSeq dbs)
+                sub.declarations
             )
         { emptyWTModule with
             name = currentModule

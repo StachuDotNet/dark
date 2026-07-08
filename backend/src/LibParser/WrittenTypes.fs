@@ -664,6 +664,11 @@ let typeDefinitionNorm (d : TypeDefinition) : TypeDeclaration.Definition =
 // A fn `map` inside `module Darklang.Stdlib.List` becomes `Darklang.Stdlib.List.map`:
 // the accumulated path's first segment is the owner, the rest the modules.
 
+/// The dotted `module A.B.C` header split into its path segments.
+let moduleNameParts (m : ModuleDecl) : List<string> =
+  let dotted = snd m.name
+  dotted.Split('.') |> Array.toList |> List.filter (fun s -> s <> "")
+
 let packageFn
   (owner : string)
   (modules : List<string>)

@@ -8,6 +8,7 @@ open LibExecution.ProgramTypes
 module P = LibParser.Parser
 module WT = WrittenTypes
 module WT2PT = WrittenTypesToProgramTypes
+module WTSourceFile = SourceFile
 module PT = LibExecution.ProgramTypes
 module RT = LibExecution.RuntimeTypes
 module NR = NameResolver
@@ -93,11 +94,9 @@ let private wtModuleToOps
 
 // --- extract package declarations from a parsed package file ---
 //
-// Flatten the nested module tree into owner-qualified package items (a fn `map`
-// in `module Darklang.Stdlib.List` → `Darklang.Stdlib.List.map`; the path's first
-// segment is the owner, the rest the modules — via the shared `WT.package*`
-// helpers). A decl that can't be a package item surfaces as an ERROR rather than
-// silently vanishing (a dropped decl looks like "fn not found" later).
+// Package declarations must live under `module Owner...`; the path's first
+// segment is the owner and the rest are modules. Items that cannot be package
+// declarations surface as errors rather than silently vanishing.
 
 type private PkgItem =
   | PFn of WT.PackageFn.PackageFn
@@ -108,35 +107,26 @@ type private PkgItem =
 let private noOwner (kind : string) (name : string) : string =
   $"{kind} '{name}' is outside any 'module Owner.…' — package declarations must live inside an owner module"
 
-let rec private collectPackage
-  (path : List<string>)
-  (decls : List<WT.Declaration>)
-  : List<PkgItem> =
-  decls
-  |> List.collect (fun d ->
-    match d with
-    | WT.DModule m ->
-      let parts =
-        (snd m.name).Split('.') |> Array.toList |> List.filter (fun s -> s <> "")
-      collectPackage (path @ parts) m.declarations
-    | WT.DFunction fn ->
-      match path with
-      | owner :: modules -> [ PFn(WT.packageFn owner modules fn) ]
-      | [] -> [ PErr(fn.range, noOwner "function" fn.name.name) ]
-    | WT.DType t ->
-      match path with
-      | owner :: modules -> [ PType(WT.packageType owner modules t) ]
-      | [] -> [ PErr(t.range, noOwner "type" t.name.name) ]
-    | WT.DValue v ->
-      match path with
-      | owner :: modules -> [ PValue(WT.packageValue owner modules v) ]
-      | [] -> [ PErr(v.range, noOwner "value" v.name.name) ]
-    | WT.DExpr e ->
-      [ PErr(WT.exprRange e, "expressions are not allowed in package files") ]
-    | WT.DTypeDB t ->
-      [ PErr(t.range, "[<DB>] declarations are not allowed in package files") ]
-    | WT.DTest t ->
-      [ PErr(t.range, "test assertions are not allowed in package files") ])
+let private packageItem (item : WTSourceFile.Item) : PkgItem =
+  match item with
+  | WTSourceFile.Fn(path, fn) ->
+    match path with
+    | owner :: modules -> PFn(WT.packageFn owner modules fn)
+    | [] -> PErr(fn.range, noOwner "function" fn.name.name)
+  | WTSourceFile.Type(path, t) ->
+    match path with
+    | owner :: modules -> PType(WT.packageType owner modules t)
+    | [] -> PErr(t.range, noOwner "type" t.name.name)
+  | WTSourceFile.Value(path, v) ->
+    match path with
+    | owner :: modules -> PValue(WT.packageValue owner modules v)
+    | [] -> PErr(v.range, noOwner "value" v.name.name)
+  | WTSourceFile.Expr(_, e) ->
+    PErr(WT.exprRange e, "expressions are not allowed in package files")
+  | WTSourceFile.TypeDB(_, t) ->
+    PErr(t.range, "[<DB>] declarations are not allowed in package files")
+  | WTSourceFile.Test(_, t) ->
+    PErr(t.range, "test assertions are not allowed in package files")
 
 /// Lower a parsed package file to module-qualified package declarations, plus
 /// errors for declarations a package file can't hold.
@@ -147,7 +137,7 @@ let private packageDecls
     List<WT.PackageValue.PackageValue> *
     List<WT.Range * string>
   =
-  let items = collectPackage [] sf.declarations
+  let items = WTSourceFile.items sf |> List.map packageItem
   let fns =
     items
     |> List.choose (function
@@ -183,11 +173,7 @@ let parse
     match result.parsed with
     | Some(WT.SourceFile sf) when List.isEmpty result.diagnostics ->
       let (fns, types, values, declErrors) = packageDecls sf
-      let exprErrors =
-        sf.exprsToEval
-        |> List.map (fun e ->
-          (WT.exprRange e, "expressions are not allowed in package files"))
-      match declErrors @ exprErrors with
+      match declErrors with
       | [] ->
         let modul : WTPackageModule = { fns = fns; types = types; values = values }
         let! ops = wtModuleToOps builtins pm onMissing modul
