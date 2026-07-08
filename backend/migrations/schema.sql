@@ -90,7 +90,7 @@ CREATE INDEX IF NOT EXISTS idx_commits_branch
 
 -- The source of truth for all package changes (branch-scoped).
 CREATE TABLE IF NOT EXISTS package_ops (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
   op_blob BLOB NOT NULL,
   branch_id TEXT NOT NULL REFERENCES branches(id),
   commit_hash TEXT REFERENCES commits(hash),  -- NULL = WIP
@@ -102,7 +102,11 @@ CREATE TABLE IF NOT EXISTS package_ops (
   -- receiver writes the peer's value), so every instance agrees on a given op's origin_ts and
   -- max(origin_ts) picks the same divergence winner → no swap. Distinct from `created_at` (which
   -- is local-insert time and differs per instance for the same op).
-  origin_ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  origin_ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  -- Composite, not bare `id`: an identical op authored on two branches hashes equal (the id is the op's
+  -- content hash), so a bare-`id` INSERT OR IGNORE would drop the second and the fn would be invisible on
+  -- that branch. (id, branch_id) lets IGNORE catch only true within-branch repeats.
+  PRIMARY KEY (id, branch_id)
 );
 CREATE INDEX IF NOT EXISTS idx_package_ops_wip
   ON package_ops(branch_id) WHERE commit_hash IS NULL;
@@ -169,7 +173,8 @@ CREATE TABLE IF NOT EXISTS package_types (
   hash TEXT PRIMARY KEY,
   pt_def BLOB NOT NULL,
   rt_def BLOB NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  description TEXT NOT NULL DEFAULT ''         -- plain-text doc comment for SQL package search
 );
 
 CREATE TABLE IF NOT EXISTS package_values (
@@ -177,7 +182,8 @@ CREATE TABLE IF NOT EXISTS package_values (
   pt_def BLOB NOT NULL,
   rt_dval BLOB,                  -- NULL until evaluated
   value_type BLOB,               -- for finding values of a given ValueType
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  description TEXT NOT NULL DEFAULT ''         -- plain-text doc comment for SQL package search
 );
 CREATE INDEX IF NOT EXISTS idx_package_values_type ON package_values(value_type);
 
@@ -185,7 +191,8 @@ CREATE TABLE IF NOT EXISTS package_functions (
   hash TEXT PRIMARY KEY,
   pt_def BLOB NOT NULL,
   rt_instrs BLOB NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  description TEXT NOT NULL DEFAULT ''         -- plain-text doc comment for SQL package search
 );
 
 -- Content-addressed bytes (Blob refs). Dedup comes for free via PK
