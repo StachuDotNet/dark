@@ -11,26 +11,14 @@ let private db () : String = Builtin.localDbPath ()
 let private short (s: String) : String =
   if Stdlib.String.length s <= 8I then s else Stdlib.String.slice s 0I 8I
 
-/// A text cell from a Sqlite row, or "" if missing/non-text.
+/// A text cell from a Sqlite row for display, or "" if missing/non-text.
 let private textCell (row: Dict<Stdlib.Sqlite.Value>) (col: String) : String =
-  match Stdlib.Dict.get row col with
-  | Some v ->
-    match Stdlib.Sqlite.asText v with
-    | Some s -> s
-    | None -> ""
-  | None -> ""
+  (Stdlib.Sqlite.textField row col) |> Stdlib.Option.withDefault ""
 
 /// Total ops in the log.
 let private countOps () : Int64 =
-  match Stdlib.Sqlite.query (db ()) "SELECT count(*) AS n FROM package_ops" with
-  | Ok [ row ] ->
-    match Stdlib.Dict.get row "n" with
-    | Some v ->
-      match Stdlib.Sqlite.asInt v with
-      | Some n -> n
-      | None -> 0L
-    | None -> 0L
-  | _ -> 0L
+  (Stdlib.Sqlite.scalarInt (db ()) "SELECT count(*) AS n FROM package_ops" "n")
+  |> Stdlib.Option.withDefault 0L
 
 /// The most recent <param limit> ops, newest first — with the read time, so the log's read speed is visible.
 let executeList (state: AppState) (limit: Int64) : AppState =

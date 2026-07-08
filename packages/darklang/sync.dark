@@ -74,13 +74,7 @@ let private syncDb () : String =
 
 /// The peers this instance pulls from — http(s) URLs only. Local config; never travels.
 let peers () : List<String> =
-  match Stdlib.Sqlite.query (syncDb ()) "SELECT url FROM sync_peers_v0 ORDER BY url" with
-  | Ok rows ->
-    Stdlib.List.filterMap rows (fun row ->
-      match Stdlib.Dict.get row "url" with
-      | Some cell -> Stdlib.Sqlite.asText cell
-      | None -> Stdlib.Option.Option.None)
-  | Error _ -> []
+  Stdlib.Sqlite.column (syncDb ()) "SELECT url FROM sync_peers_v0 ORDER BY url" "url"
 
 // The one message for "that's not a peer" — a peer is always an http(s) URL (a running instance), never a
 // file. Shared by connect + pull so both reject a `.db`/path identically.
@@ -114,20 +108,12 @@ let disconnect (url: String) : Bool =
   wasConnected
 
 let private cursorFor (peer: String) (kind: String) : Int64 =
-  match
-    Stdlib.Sqlite.queryP
-      (syncDb ())
-      "SELECT cursor FROM sync_cursors_v1 WHERE peer = @p0 AND kind = @p1"
-      [ peer; kind ]
-  with
-  | Ok [ row ] ->
-    match Stdlib.Dict.get row "cursor" with
-    | Some cell ->
-      match Stdlib.Sqlite.asInt cell with
-      | Some i -> i
-      | None -> 0L
-    | None -> 0L
-  | _ -> 0L
+  (Stdlib.Sqlite.scalarIntP
+    (syncDb ())
+    "SELECT cursor FROM sync_cursors_v1 WHERE peer = @p0 AND kind = @p1"
+    [ peer; kind ]
+    "cursor")
+  |> Stdlib.Option.withDefault 0L
 
 let private setCursor (peer: String) (kind: String) (cursor: Int64) : Unit =
   let _ =

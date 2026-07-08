@@ -51,3 +51,64 @@ let queryP
   (params: List<String>)
   : Stdlib.Result.Result<List<Dict<Value>>, String> =
   Builtin.sqliteQueryP dbPath sql params
+
+
+// ── convenience layer (pure Dark on top of exec/query) ──────────────────────────────────────────────
+// So callers don't hand-roll the `query → match Ok [row] → Dict.get → asText` dance. Callers above this
+// shouldn't have to think about rows and cells — they ask for a column, a scalar, or a field, and get a
+// typed value back.
+
+/// The text value of column <param col> in <param row>, or None if missing/non-text.
+let textField (row: Dict<Value>) (col: String) : Stdlib.Option.Option<String> =
+  match Stdlib.Dict.get row col with
+  | Some v -> asText v
+  | None -> Stdlib.Option.Option.None
+
+/// The Int value of column <param col> in <param row>, or None if missing/non-int.
+let intField (row: Dict<Value>) (col: String) : Stdlib.Option.Option<Int64> =
+  match Stdlib.Dict.get row col with
+  | Some v -> asInt v
+  | None -> Stdlib.Option.Option.None
+
+/// The first row of <param sql> (or None if it returned no rows / errored).
+let queryOne (dbPath: String) (sql: String) : Stdlib.Option.Option<Dict<Value>> =
+  match query dbPath sql with
+  | Ok(row :: _) -> Stdlib.Option.Option.Some row
+  | _ -> Stdlib.Option.Option.None
+
+/// Like <fn queryOne> but with injection-safe params.
+let queryOneP
+  (dbPath: String)
+  (sql: String)
+  (params: List<String>)
+  : Stdlib.Option.Option<Dict<Value>> =
+  match queryP dbPath sql params with
+  | Ok(row :: _) -> Stdlib.Option.Option.Some row
+  | _ -> Stdlib.Option.Option.None
+
+/// Column <param col> of every row of <param sql>, as a list of text (non-text/missing cells dropped).
+let column (dbPath: String) (sql: String) (col: String) : List<String> =
+  match query dbPath sql with
+  | Ok rows -> Stdlib.List.filterMap rows (fun row -> textField row col)
+  | Error _ -> []
+
+/// The Int in column <param col> of the first row of <param sql> — e.g. a `count(*)`.
+let scalarInt
+  (dbPath: String)
+  (sql: String)
+  (col: String)
+  : Stdlib.Option.Option<Int64> =
+  match queryOne dbPath sql with
+  | Some row -> intField row col
+  | None -> Stdlib.Option.Option.None
+
+/// Like <fn scalarInt> but with injection-safe params — e.g. a per-key lookup.
+let scalarIntP
+  (dbPath: String)
+  (sql: String)
+  (params: List<String>)
+  (col: String)
+  : Stdlib.Option.Option<Int64> =
+  match queryOneP dbPath sql params with
+  | Some row -> intField row col
+  | None -> Stdlib.Option.Option.None

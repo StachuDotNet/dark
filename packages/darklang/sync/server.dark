@@ -14,31 +14,17 @@ module Darklang.Sync.Server
 // trusted collaborators, reached over a private tailnet). A future hardening: a shared-token/auth check,
 // bind loopback by default + expose via `dark devices serve`, and per-branch/scoped serving.
 
-let private cellInt (row: Dict<Stdlib.Sqlite.Value>) (key: String) : Int64 =
-  match Stdlib.Dict.get row key with
-  | Some cell ->
-    match Stdlib.Sqlite.asInt cell with
-    | Some i -> i
-    | None -> 0L
-  | None -> 0L
-
-
 // GET /sync/health — liveness + servable op count. Counts COMMITTED ops only — the ones a peer can actually
 // pull (WIP stays local) — so two instances comparing counts to gauge convergence are comparing like for like.
 let healthFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
   let db = Builtin.localDbPath ()
 
   let n =
-    match
-      Stdlib.Sqlite.query
-        db
-        "SELECT count(*) AS n FROM package_ops WHERE commit_hash IS NOT NULL"
-    with
-    | Ok rows ->
-      match rows with
-      | [ row ] -> cellInt row "n"
-      | _ -> 0L
-    | Error _ -> 0L
+    (Stdlib.Sqlite.scalarInt
+      db
+      "SELECT count(*) AS n FROM package_ops WHERE commit_hash IS NOT NULL"
+      "n")
+    |> Stdlib.Option.withDefault 0L
 
   Stdlib.Http.responseWithText $"ok ops={Stdlib.Int64.toString n}" 200I
 
