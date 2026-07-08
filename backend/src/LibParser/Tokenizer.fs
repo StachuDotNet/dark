@@ -1,6 +1,6 @@
 /// Shared lexer types for the range-complete parser: source positions and the
-/// interpreter-dialect `Token` DU (produced by `InterpTokenizer`, consumed by
-/// `Parser` and the syntax-highlighter's token-kind classifier).
+/// `Token` DU (produced by `Lexer`, consumed by `Parser` and the
+/// syntax-highlighter's token-kind classifier).
 module LibParser.Tokenizer
 
 type Pos = { row : int; column : int }

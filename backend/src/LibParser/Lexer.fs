@@ -4,7 +4,7 @@
 ///
 /// Regular string/char escapes are processed (`unescape`); triple-quoted strings
 /// stay raw.
-module LibParser.InterpTokenizer
+module LibParser.Lexer
 
 open LibParser.Tokenizer // Pos, TokenRange, Token
 

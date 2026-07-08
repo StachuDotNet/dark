@@ -113,15 +113,6 @@ let private flattenSourceFile
 /// (pass 1 can't resolve sibling refs — the decls aren't in the PM yet), not a
 /// workaround.
 ///
-/// CLEANUP: the nested-module → flat-qualified-location lowering here is a THIRD
-/// copy — `LibParser.Package.wtModuleToOps` (package loader) and `cliScript.dark`
-/// (parseFromWT) already do it. The better design is one shared "lower a SourceFile
-/// into package items at an owner-qualified base" path that all three use; folding
-/// `flattenDecls` + this builder into `Package.fs`'s lowering is the target. It's a
-/// real refactor, not a swap: the shared helper must also take trailing EXPRESSIONS
-/// (package files are decls-only) and the branch, and the failure mode is runtime
-/// ("fn couldn't be found" on deep call chains), so it needs the full CLI test
-/// battery — deliberately deferred, not done in place.
 let private declarationsToModule
   (state : RT.ExecutionState)
   (owner : string)

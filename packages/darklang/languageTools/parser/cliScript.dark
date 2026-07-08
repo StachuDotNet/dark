@@ -327,8 +327,8 @@ let parseFromWT
       Stdlib.Result.Result.Ok ((adjusted, unresolvedNames))
 
 
-/// Parse from source, then name-resolve + lower. Used by execution callers;
-/// the LSP uses `parseFromWT` directly with an already-parsed tree.
+/// Parse from source, then name-resolve + lower. Used by the parse-error test
+/// harness; the LSP uses `parseFromWT` directly with an already-parsed tree.
 let parse
   (ctx: NameResolver.NRContext)
   (scriptName: String)

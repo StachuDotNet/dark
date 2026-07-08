@@ -12,7 +12,7 @@ module PackageRefs = LibExecution.PackageRefs.Type.LanguageTools.Parser
 module NR = LibExecution.RuntimeTypes.NameResolution
 
 module Tok = LibParser.Tokenizer
-module ITok = LibParser.InterpTokenizer
+module Lex = LibParser.Lexer
 module P = LibParser.Parser
 module WT = LibParser.WrittenTypes
 module WTRefs = LibExecution.PackageRefs.Type.LanguageTools.WrittenTypes
@@ -1328,7 +1328,7 @@ let fns () : List<BuiltInFn> =
                   "end_", mkPoint r.end_.row r.end_.column ]
             )
 
-          let mkNode (st : ITok.SpannedToken) =
+          let mkNode (st : Lex.SpannedToken) =
             DRecord(
               parsedNodeTypeName (),
               parsedNodeTypeName (),
@@ -1342,7 +1342,7 @@ let fns () : List<BuiltInFn> =
             )
 
           let nodes =
-            match ITok.tokenize sourceCode with
+            match Lex.tokenize sourceCode with
             | Ok(tokens, _) ->
               tokens
               |> List.filter (fun st -> st.token <> Tok.TEOF)

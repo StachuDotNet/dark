@@ -13,7 +13,7 @@
   <ItemGroup>
     <Compile Include="Tokenizer.fs" />
     <Compile Include="WrittenTypes.fs" />
-    <Compile Include="InterpTokenizer.fs" />
+    <Compile Include="Lexer.fs" />
     <Compile Include="Parser.fs" />
     <Compile Include="NameResolver.fs" />
     <Compile Include="WrittenTypesToProgramTypes.fs" />

@@ -4,7 +4,7 @@
 module LibParser.Parser
 
 open LibParser.Tokenizer // Pos, TokenRange, Token
-open LibParser.InterpTokenizer // SpannedToken, tokenize
+open LibParser.Lexer // SpannedToken, tokenize
 
 module WT = LibParser.WrittenTypes
 
@@ -420,25 +420,21 @@ let validateLiterals (state : ParserState) : unit =
   for vi in 0 .. state.tokenCount - 1 do
     match state.toks[vi].token with
     | TStringLit _ when not ((txt state vi).StartsWith "\"\"\"") ->
-      if InterpTokenizer.hasInvalidEscape (stripDelims (txt state vi) "\"" "\"") then
+      if Lexer.hasInvalidEscape (stripDelims (txt state vi) "\"" "\"") then
         err
           state
           DiagnosticCode.escape
           vi
           "Invalid escape sequence or codepoint in string literal"
     | TCharLit _ ->
-      if InterpTokenizer.hasInvalidEscape (stripDelims (txt state vi) "'" "'") then
+      if Lexer.hasInvalidEscape (stripDelims (txt state vi) "'" "'") then
         err
           state
           DiagnosticCode.escape
           vi
           "Invalid escape sequence or codepoint in character literal"
     | TInterpString when not ((txt state vi).StartsWith "$\"\"\"") ->
-      if
-        InterpTokenizer.hasInvalidEscapeInterp (
-          stripDelims (txt state vi) "$\"" "\""
-        )
-      then
+      if Lexer.hasInvalidEscapeInterp (stripDelims (txt state vi) "$\"" "\"") then
         err
           state
           DiagnosticCode.escape
@@ -1523,7 +1519,7 @@ and parseInterpString (state : ParserState) (i : int) : WT.Expr * int =
       // triple-quoted `$"""…"""` stays raw but is NFC-normalized (like `unescape`)
       // so both lowerings see canonical bytes.
       let segText =
-        if triple then deDoubled.Normalize() else InterpTokenizer.unescape deDoubled
+        if triple then deDoubled.Normalize() else Lexer.unescape deDoubled
       contents.Add(WT.StringText(rangeAt textStart endOff, segText))
   while go && k < m do
     let atClose =
@@ -1547,7 +1543,7 @@ and parseInterpString (state : ParserState) (i : int) : WT.Expr * int =
     elif fullText[k] = '{' then
       flushText k
       let braceOpen = rangeAt k (k + 1)
-      let found = InterpTokenizer.findInterpExprClose fullText m (k + 1)
+      let found = Lexer.findInterpExprClose fullText m (k + 1)
       if found < 0 then
         go <- false
       else
