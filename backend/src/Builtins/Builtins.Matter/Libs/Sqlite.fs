@@ -153,9 +153,14 @@ let private cursorValue (n : int64) : Dval =
 let private branchOpEventType () = FQTypeName.fqPackage (EventLogRefs.branchOpEvent ())
 
 /// Build the `Stdlib.EventLog.BranchOpEvent` record for one branch_ops row — natively (no per-row Dark cost).
-let private branchOpEventRecord ((id, op) : string * string) : Dval =
+let private branchOpEventRecord ((id, op, originTs) : string * string * string) : Dval =
   let t = branchOpEventType ()
-  DRecord(t, t, [], Map [ "id", DString id; "op", DString op ])
+  DRecord(
+    t,
+    t,
+    [],
+    Map [ "id", DString id; "op", DString op; "originTs", DString originTs ]
+  )
 
 let private resolutionEventType () =
   FQTypeName.fqPackage (EventLogRefs.resolutionEvent ())
@@ -470,7 +475,11 @@ let fns () : List<BuiltInFn> =
                 match ev with
                 | DRecord(_, _, _, f) ->
                   try
-                    Some(recField "id" f, System.Convert.FromHexString(recField "op" f))
+                    Some(
+                      recField "id" f,
+                      System.Convert.FromHexString(recField "op" f),
+                      recField "originTs" f
+                    )
                   with _ -> None
                 | _ -> None)
 

@@ -93,10 +93,10 @@ let private aCommit () : Task<string> =
   Sql.query "SELECT hash FROM commits LIMIT 1"
   |> Sql.executeRowAsync (fun read -> read.string "hash")
 
-/// A BranchOp wire event (id, blob) as it arrives at receiveBranchOps.
-let private branchEvent (op : PT.BranchOp) : string * byte[] =
+/// A BranchOp wire event (id, blob, origin_ts) as it arrives at receiveBranchOps.
+let private branchEvent (op : PT.BranchOp) : string * byte[] * string =
   let (PT.Hash h) = Hashing.computeBranchOpHash op
-  (h, BS.PT.BranchOp.serialize h op)
+  (h, BS.PT.BranchOp.serialize h op, "2099-01-01T00:00:00.000Z")
 
 /// A SetName package event on a SPECIFIC branch (setNameEvent above hardcodes main).
 let private setNameEventOn
@@ -305,7 +305,8 @@ let tests =
             do!
               Sql.query "DELETE FROM branch_ops WHERE id = @c OR id = @m"
               |> Sql.parameters
-                [ "c", Sql.string (fst createB); "m", Sql.string (fst mergeB) ]
+                [ "c", Sql.string (let (i, _, _) = createB in i)
+                  "m", Sql.string (let (i, _, _) = mergeB in i) ]
               |> Sql.executeStatementAsync
           }
 

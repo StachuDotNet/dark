@@ -319,24 +319,28 @@ let eventsSince
 /// plus the new cursor (max rowid, or <param cursor> if nothing new). Branch ops carry their own structure
 /// (branchId, commit, merge, …) inside the blob, so — unlike package events — they need no side metadata.
 /// Ordered by rowid so a receiver applies them in the same order (CreateBranch before dependent ops).
-let branchOpsSince (cursor : int64) (limit : int64) : Task<List<string * string> * int64> =
+let branchOpsSince
+  (cursor : int64)
+  (limit : int64)
+  : Task<List<string * string * string> * int64> =
   task {
     let! rows =
       Sql.query
-        $"SELECT rowid AS rid, id, hex(op_blob) AS blob
+        $"SELECT rowid AS rid, id, hex(op_blob) AS blob, origin_ts
           FROM branch_ops
           WHERE rowid > {cursor}
           ORDER BY rowid
           LIMIT {limit}"
       |> Sql.executeAsync (fun read ->
-        (read.int64 "rid", read.string "id", read.string "blob"))
+        (read.int64 "rid", read.string "id", read.string "blob", read.string "origin_ts"))
 
-    let events = rows |> List.map (fun (_, id, blob) -> (id, blob))
+    // each event carries its origin_ts so the receiver's structural LWW (rebase) converges by creation time
+    let events = rows |> List.map (fun (_, id, blob, ts) -> (id, blob, ts))
 
     let newCursor =
       match rows with
       | [] -> cursor
-      | _ -> rows |> List.map (fun (rid, _, _) -> rid) |> List.max
+      | _ -> rows |> List.map (fun (rid, _, _, _) -> rid) |> List.max
 
     return (events, newCursor)
   }
@@ -345,19 +349,20 @@ let branchOpsSince (cursor : int64) (limit : int64) : Task<List<string * string>
 /// content-addressed by hash). Applied in order, so CreateBranch lands before the commits/merges that depend
 /// on it. Returns the count processed (branch ops are low-volume; the puller advances a per-peer cursor, so a
 /// re-pull doesn't re-count in practice).
-let receiveBranchOps (events : List<string * byte[]>) : Task<int64> =
+let receiveBranchOps (events : List<string * byte[] * string>) : Task<int64> =
   task {
     let mutable applied = 0L
 
-    for (id, opBlob) in events do
-      // Count only NEWLY-applied ops (insertAndApply is idempotent on the content-addressed id), so the
-      // puller's "Pulled N" is honest on a re-pull / shared-base pull — matching the package-op count.
+    for (id, opBlob, originTs) in events do
+      // Count only NEWLY-applied ops (idempotent on the content-addressed id), so the puller's "Pulled N"
+      // is honest on a re-pull / shared-base pull — matching the package-op count.
       let existed =
         Sql.query "SELECT 1 FROM branch_ops WHERE id = @id"
         |> Sql.parameters [ "id", Sql.string id ]
         |> Sql.executeExistsSync
       let op = BS.PT.BranchOp.deserialize id opBlob
-      do! BranchOpPlayback.insertAndApply op
+      // PRESERVE the peer's origin_ts (not a fresh stamp) so the structural LWW converges the same everywhere
+      do! BranchOpPlayback.insertAndApplyWithTs op originTs
       if not existed then applied <- applied + 1L
 
     return applied

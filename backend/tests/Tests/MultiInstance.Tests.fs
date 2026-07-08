@@ -91,9 +91,15 @@ let teardown (insts : List<Instance>) : unit =
 
 // ── helpers (build wire events, inspect projections, convert the JSON-ish wire) ───────────────────────
 
-let private branchEvent (op : PT.BranchOp) : string * byte[] =
+let private branchEventAt
+  (op : PT.BranchOp)
+  (originTs : string)
+  : string * byte[] * string =
   let (PT.Hash h) = Hashing.computeBranchOpHash op
-  (h, BS.PT.BranchOp.serialize h op)
+  (h, BS.PT.BranchOp.serialize h op, originTs)
+
+let private branchEvent (op : PT.BranchOp) : string * byte[] * string =
+  branchEventAt op "2026-07-08T00:00:00.000Z"
 
 /// A SetName package-op event, exactly as it crosses the wire / arrives at `receiveOps`.
 let private setNameEvent
@@ -206,8 +212,8 @@ let tests =
           let! _ =
             Seed.receiveBranchOps (
               wire
-              |> List.map (fun ((id, hex) : string * string) ->
-                (id, System.Convert.FromHexString hex))
+              |> List.map (fun ((id, hex, ts) : string * string * string) ->
+                (id, System.Convert.FromHexString hex, ts))
             )
           let! bAfter = branchNames ()
 
@@ -486,8 +492,8 @@ let tests =
           let! _ =
             Seed.receiveBranchOps (
               branchWire
-              |> List.map (fun ((id, hex) : string * string) ->
-                (id, System.Convert.FromHexString hex))
+              |> List.map (fun ((id, hex, ts) : string * string * string) ->
+                (id, System.Convert.FromHexString hex, ts))
             )
 
           let! branchExists =
@@ -501,6 +507,61 @@ let tests =
 
           Expect.equal branchExists 1L "the branch's create + merge synced to B"
           Expect.isSome mergedAt "the merge marked the branch merged on B"
+        finally
+          teardown insts
+      }
+
+      testTask "structural convergence: concurrent rebases of one branch converge to the LWW winner, order-independent" {
+        let mutable insts : List<Instance> = []
+
+        try
+          let! a = seededInstance "a"
+          insts <- [ a ]
+          let! b = seededInstance "b"
+          insts <- [ a; b ]
+
+          let branchId = System.Guid.NewGuid()
+          let baseX =
+            "1111111111111111111111111111111111111111111111111111111111111111"
+          let baseY =
+            "2222222222222222222222222222222222222222222222222222222222222222"
+
+          // Both instances know the branch (shared CreateBranch, older than either rebase). Then two
+          // instances rebase it CONCURRENTLY to different bases: X at ts .200 (newer) beats Y at ts .100.
+          let createB =
+            branchEventAt
+              (PT.BranchOp.CreateBranch(branchId, "feature", Some PT.mainBranchId, None))
+              "2026-01-01T00:00:00.000Z"
+          let rebaseX =
+            branchEventAt
+              (PT.BranchOp.RebaseBranch(branchId, PT.Hash baseX))
+              "2026-07-08T00:00:00.200Z"
+          let rebaseY =
+            branchEventAt
+              (PT.BranchOp.RebaseBranch(branchId, PT.Hash baseY))
+              "2026-07-08T00:00:00.100Z"
+
+          let baseOf () : Task<Option<string>> =
+            Sql.query "SELECT base_commit_hash FROM branches WHERE id = @id"
+            |> Sql.parameters [ "id", Sql.uuid branchId ]
+            |> Sql.executeRowAsync (fun read -> read.stringOrNone "base_commit_hash")
+
+          // A authors X (newer), THEN receives Y (older) — Y must lose the LWW.
+          activate a
+          let! _ = Seed.receiveBranchOps [ createB ]
+          let! _ = Seed.receiveBranchOps [ rebaseX ]
+          let! _ = Seed.receiveBranchOps [ rebaseY ]
+          let! aBase = baseOf ()
+
+          // B authors Y (older) FIRST, THEN receives X (newer) — X arrives last but must still win.
+          activate b
+          let! _ = Seed.receiveBranchOps [ createB ]
+          let! _ = Seed.receiveBranchOps [ rebaseY ]
+          let! _ = Seed.receiveBranchOps [ rebaseX ]
+          let! bBase = baseOf ()
+
+          Expect.equal aBase (Some baseX) "A: the newer rebase (ts .200 → baseX) wins; the later-arriving older one is skipped"
+          Expect.equal bBase (Some baseX) "B: converges to the SAME base though the winner arrived last — order-independent"
         finally
           teardown insts
       } ]

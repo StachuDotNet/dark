@@ -59,6 +59,11 @@ CREATE TABLE IF NOT EXISTS branches (
   -- (commits also references branches), but the rows are inserted in
   -- dependency order at runtime; we don't add a FK constraint here.
   base_commit_hash TEXT,
+  -- LWW stamp for base_commit_hash: the (origin_ts, op-id) of the CreateBranch/RebaseBranch that last set it.
+  -- Concurrent rebases of the same branch on two instances converge (later origin_ts wins, op-id breaks a tie)
+  -- instead of resolving by arrival order. merged_at/archived_at need no stamp — they're monotonic set-once.
+  base_ts TEXT NOT NULL DEFAULT '',
+  base_op TEXT NOT NULL DEFAULT '',
 
   archived_at TIMESTAMP NULL,             -- soft-delete; replaces hard delete
   created_at TIMESTAMP NOT NULL DEFAULT (datetime('now')),
@@ -123,6 +128,10 @@ CREATE TABLE IF NOT EXISTS branch_ops (
   id TEXT PRIMARY KEY,                  -- content-addressed hash of the op
   op_blob BLOB NOT NULL,                -- serialized BranchOp
   applied INTEGER NOT NULL DEFAULT 0,   -- 0=pending, 1=applied (for crash recovery)
+  -- Authoring stamp, PORTABLE across sync (mirrors package_ops.origin_ts): a locally-authored op self-stamps,
+  -- a SYNCED op preserves the peer's, so a structural op (rebase) converges by CREATION time (LWW) rather than
+  -- by arrival order. Distinct from `created_at` (local-insert time, differs per instance for the same op).
+  origin_ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   created_at TIMESTAMP NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_branch_ops_created_at ON branch_ops(created_at);

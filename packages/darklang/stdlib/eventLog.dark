@@ -69,7 +69,12 @@ let append (commits: List<Commit>) (events: List<Event>) : Int =
 // self-contained (they carry their own branch/commit data), so an event is just (id, op) — no side commits.
 
 /// One branch op in transit. `op` is the branch-op blob as hex.
-type BranchOpEvent = { id: String; op: String }
+type BranchOpEvent =
+  { id: String
+    op: String
+    // authoring stamp, PRESERVED across sync so the receiver's structural LWW (rebase) converges by
+    // creation time rather than arrival order (mirrors Event.originTs for package ops)
+    originTs: String }
 
 /// A bounded read from the branch-ops log: the ops as a Stream, and the cursor to resume from.
 type BranchBatch =
