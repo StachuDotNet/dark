@@ -10,8 +10,14 @@ open Fumble
 
 open Prelude
 
-let connString =
+let private defaultConnString =
   $"Data Source={LibConfig.Config.dbPath};Mode=ReadWriteCreate;Cache=Private;Pooling=true"
+
+// `mutable` only so tests can repoint LibDB at a fresh store (see `Sql.useStoreForTesting`). Production never
+// rebinds it. Both the Fumble `connect` AND the raw-ADO fold path (`applyOps` opens `new SqliteConnection
+// connString`) read this, so a test swap redirects ALL of LibDB — inserts, reads, and the fold — at the
+// instance store.
+let mutable connString = defaultConnString
 
 module Sql =
   // Initialize connection with PRAGMA settings that can't be set in the connection string
@@ -38,12 +44,12 @@ module Sql =
   /// the default. NOT parallel-safe (it mutates process-global state): callers must be `testSequenced`
   /// and restore the default when done.
   let useStoreForTesting (path : string) : unit =
-    let cs =
-      $"Data Source={path};Mode=ReadWriteCreate;Cache=Private;Pooling=true"
-    connect <- Sql.connect cs |> initializeConnection
+    connString <- $"Data Source={path};Mode=ReadWriteCreate;Cache=Private;Pooling=true"
+    connect <- Sql.connect connString |> initializeConnection
 
-  /// TEST-ONLY: restore the default (`connString`) store after `useStoreForTesting`.
+  /// TEST-ONLY: restore the default store after `useStoreForTesting`.
   let resetStoreForTesting () : unit =
+    connString <- defaultConnString
     connect <- Sql.connect connString |> initializeConnection
 
   let query (sql : string) : Sql.SqlProps = connect |> Sql.query sql

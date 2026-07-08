@@ -1,13 +1,17 @@
 /// A tight, general-purpose harness for spinning up FRESH, ISOLATED Darklang instances in-process — each
-/// instance is its own store (schema applied; `main` comes from schema.sql). Switch the active store with
-/// `activate`, sync the wire between instances via the real receive path, and assert they converge. This is
-/// the "a fresh instance in a few lines" setup the sync work needs for true multi-instance scenarios:
-///   let! a = freshInstance "a"
-///   let! b = freshInstance "b"
+/// instance is its own store. Two flavours:
+///   freshInstance  — an empty store (schema only; `main` from schema.sql). For structure-level tests.
+///   seededInstance — a COPY of a ready-to-go baseline store (the full package seed), so a test that needs
+///                    real functions/types/values (most CLI experiences) is cheap: the baseline is snapshotted
+///                    once, then each instance is a fast file-copy of it.
+/// Switch the active store with `activate`, sync the wire between instances via the real receive path, and
+/// assert they converge. Spinning up an instance is a couple of lines:
+///   let! a = seededInstance "a"
+///   let! b = seededInstance "b"
 ///
 /// `testSequenced` + a `finally` that always restores the default store, so swapping the process-global
 /// connection can't disturb the parallel store tests (they've completed by the sequenced phase; and we hand
-/// the default store back no matter what). The global swap lives behind `Sql.useStoreForTesting` (test-only).
+/// the default store back no matter what). The swap lives behind `Sql.useStoreForTesting` (test-only).
 module Tests.MultiInstance
 
 open Expecto
@@ -20,6 +24,7 @@ open Fumble
 open LibDB.Sqlite
 
 module Seed = LibDB.Seed
+module Inserts = LibDB.Inserts
 module PT = LibExecution.ProgramTypes
 module BS = LibSerialization.Binary.Serialization
 module Hashing = LibSerialization.Hashing.Hashing
@@ -39,36 +44,124 @@ let private deleteStore (path : string) : unit =
     with _ ->
       ()
 
-/// Spin up a fresh, isolated instance (its own store file, schema applied — `main` included) and make it the
-/// active store. The whole setup is one line at the call site.
+/// Copy a SQLite store + its WAL/SHM sidecars (so the copy is a consistent snapshot on open).
+let private copyStore (src : string) (dst : string) : unit =
+  deleteStore dst
+  for suffix in [ ""; "-wal"; "-shm" ] do
+    if System.IO.File.Exists(src + suffix) then
+      System.IO.File.Copy(src + suffix, dst + suffix, overwrite = true)
+
+let private tmpPath (name : string) : string =
+  $"/tmp/dark-test-instance-{name}-{System.Guid.NewGuid()}.db"
+
+/// Snapshotted ONCE: a baseline of the seeded default store, so `seededInstance` is a cheap local copy.
+/// Captured lazily during the sequenced phase, when no parallel test is writing the default store.
+let private baselineSeed : Lazy<string> =
+  lazy
+    (let template = "/tmp/dark-test-seed-baseline.db"
+     copyStore LibConfig.Config.dbPath template
+     template)
+
+/// A fresh, EMPTY, isolated instance (schema only; `main` from schema.sql), made the active store.
 let freshInstance (name : string) : Task<Instance> =
   task {
-    let path = $"/tmp/dark-test-instance-{name}-{System.Guid.NewGuid()}.db"
+    let path = tmpPath name
     deleteStore path
     Sql.useStoreForTesting path
     Sql.query (schemaSql.Force()) |> Sql.executeStatementSync
     return { name = name; path = path }
   }
 
-/// Make `inst` the active store (all subsequent LibDB ops hit it).
+/// A fresh isolated instance that is a COPY of the seeded baseline (full package seed), made the active store.
+let seededInstance (name : string) : Task<Instance> =
+  task {
+    let path = tmpPath name
+    copyStore (baselineSeed.Force()) path
+    Sql.useStoreForTesting path
+    return { name = name; path = path }
+  }
+
 let activate (inst : Instance) : unit = Sql.useStoreForTesting inst.path
 
-/// Restore the default store + delete the temp instance files. Always safe to call.
 let teardown (insts : List<Instance>) : unit =
   Sql.resetStoreForTesting ()
   insts |> List.iter (fun i -> deleteStore i.path)
 
-// ── helpers ─────────────────────────────────────────────────────────────────────────────────────────
+// ── helpers (build wire events, inspect projections, convert the JSON-ish wire) ───────────────────────
 
-/// A BranchOp wire event (id, blob) as it arrives at `receiveBranchOps`.
 let private branchEvent (op : PT.BranchOp) : string * byte[] =
   let (PT.Hash h) = Hashing.computeBranchOpHash op
   (h, BS.PT.BranchOp.serialize h op)
 
-/// The branch names on the currently-active instance.
+/// A SetName package-op event, exactly as it crosses the wire / arrives at `receiveOps`.
+let private setNameEvent
+  (loc : PT.PackageLocation)
+  (fnHash : string)
+  (commitHash : string)
+  (ts : string)
+  : System.Guid * byte[] * System.Guid * string * string =
+  let op = PT.PackageOp.SetName(loc, PT.Reference.PackageFn(PT.Hash fnHash))
+  let opId = Inserts.computeOpHash op
+  (opId, BS.PT.PackageOp.serialize opId op, PT.mainBranchId, commitHash, ts)
+
+/// An existing commit hash from the seed. Sync ops reference commits that already exist (commits travel in the
+/// wire alongside their ops), so a test references a real seed commit rather than minting accounts + commits.
+let private existingCommit () : Task<string> =
+  Sql.query "SELECT hash FROM commits LIMIT 1"
+  |> Sql.executeRowAsync (fun read -> read.string "hash")
+
 let private branchNames () : Task<List<string>> =
   Sql.query "SELECT name FROM branches ORDER BY name"
   |> Sql.executeAsync (fun read -> read.string "name")
+
+let private liveHash (loc : PT.PackageLocation) : Task<List<string>> =
+  Sql.query
+    "SELECT item_hash FROM locations WHERE owner = @o AND modules = @m AND name = @n AND unlisted_at IS NULL"
+  |> Sql.parameters
+    [ "o", Sql.string loc.owner
+      "m", Sql.string (String.concat "." loc.modules)
+      "n", Sql.string loc.name ]
+  |> Sql.executeAsync (fun read -> read.string "item_hash")
+
+/// Two distinct real function hashes from the seed (both instances share the seed, so a hash on A exists on B).
+let private twoFunctionHashes () : Task<string * string> =
+  task {
+    let! hs =
+      Sql.query "SELECT hash FROM package_functions LIMIT 2"
+      |> Sql.executeAsync (fun read -> read.string "hash")
+    match hs with
+    | a :: b :: _ -> return (a, b)
+    | _ -> return Exception.raiseInternal "seed needs >= 2 functions" []
+  }
+
+/// The active instance's current op-log high-water mark, so a later `eventsSince` returns only NEW ops
+/// (not the whole seed).
+let private currentCursor () : Task<int64> =
+  Sql.query "SELECT COALESCE(MAX(rowid), 0) AS c FROM package_ops"
+  |> Sql.executeRowAsync (fun read -> read.int64 "c")
+
+/// The count of unreviewed conflicts recorded on the active instance.
+let private conflictCount () : Task<int64> =
+  Sql.query "SELECT COUNT(*) AS n FROM sync_conflicts"
+  |> Sql.executeRowAsync (fun read -> read.int64 "n")
+
+let private wireEvent
+  ((id, hex, br, ch, ts) : string * string * string * string * string)
+  : System.Guid * byte[] * System.Guid * string * string =
+  (System.Guid.Parse id, System.Convert.FromHexString hex, System.Guid.Parse br, ch, ts)
+
+let private wireCommit
+  ((h, msg, br, acct, at) : string * string * string * string * string)
+  : string * string * System.Guid * System.Guid * string =
+  (h, msg, System.Guid.Parse br, System.Guid.Parse acct, at)
+
+/// Read the active instance's NEW package ops since `cursor` as a wire batch, ready to feed another
+/// instance's `receiveOps` (this is the real serialize→wire→deserialize round-trip sync does).
+let private wireSince (cursor : int64) : Task<List<string * string * System.Guid * System.Guid * string> * List<System.Guid * byte[] * System.Guid * string * string>> =
+  task {
+    let! (commitsW, eventsW, _) = Seed.eventsSince cursor 100000L
+    return (List.map wireCommit commitsW, List.map wireEvent eventsW)
+  }
 
 // ── tests ─────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -85,7 +178,6 @@ let tests =
           let! b = freshInstance "b"
           insts <- [ a; b ]
 
-          // A authors a new branch off main.
           activate a
           let create =
             PT.BranchOp.CreateBranch(
@@ -97,11 +189,9 @@ let tests =
           let! _ = Seed.receiveBranchOps [ branchEvent create ]
           let! aBranches = branchNames ()
 
-          // B, before syncing, has only `main` — proving the two instances are genuinely separate stores.
           activate b
           let! bBefore = branchNames ()
 
-          // Sync A's branch-op wire (hex over the "wire") into B via the real receive path.
           activate a
           let! (wire, _cursor) = Seed.branchOpsSince 0L 1000L
 
@@ -117,6 +207,85 @@ let tests =
           Expect.equal aBranches [ "feature"; "main" ] "A has both branches"
           Expect.equal bBefore [ "main" ] "B is isolated: only main before sync"
           Expect.equal bAfter [ "feature"; "main" ] "B converged: feature arrived over the wire"
+        finally
+          teardown insts
+      }
+
+      testTask "package convergence: a rename authored on A folds identically on B via the wire" {
+        let mutable insts : List<Instance> = []
+
+        try
+          let! a = seededInstance "a"
+          insts <- [ a ]
+          let! b = seededInstance "b"
+          insts <- [ a; b ]
+
+          let loc : PT.PackageLocation =
+            { owner = "Test"; modules = [ "Conv" ]; name = "greeting" }
+          let ts = "2026-07-08T12:00:00.000Z"
+
+          // Author on A: bind a fresh name to a real seeded function, on a new commit.
+          activate a
+          let! (fnHash, _) = twoFunctionHashes ()
+          let! commitHash = existingCommit ()
+          let! cursorBefore = currentCursor ()
+          let! _ = Seed.receiveOps [] [ setNameEvent loc fnHash commitHash ts ]
+          let! aHash = liveHash loc
+          let! (commits, events) = wireSince cursorBefore
+
+          // Apply A's wire on B.
+          activate b
+          let! bBefore = liveHash loc
+          let! _ = Seed.receiveOps commits events
+          let! bHash = liveHash loc
+
+          Expect.equal aHash [ fnHash ] "A bound the name"
+          Expect.equal bBefore [] "B didn't have the binding before sync (isolated seed)"
+          Expect.equal bHash [ fnHash ] "B converged to A's binding via the wire"
+        finally
+          teardown insts
+      }
+
+      testTask "cross-store conflict: concurrent binds to one name converge (LWW) + record a conflict" {
+        let mutable insts : List<Instance> = []
+
+        try
+          let! a = seededInstance "a"
+          insts <- [ a ]
+          let! b = seededInstance "b"
+          insts <- [ a; b ]
+
+          let loc : PT.PackageLocation =
+            { owner = "Test"; modules = [ "Conflict" ]; name = "dup" }
+
+          // A binds loc → fnA at ts …100; B binds loc → fnB at ts …200 (later ⇒ the LWW winner).
+          activate a
+          let! (fnA, fnB) = twoFunctionHashes ()
+          let! commit = existingCommit ()
+          let! curA = currentCursor ()
+          let! _ =
+            Seed.receiveOps [] [ setNameEvent loc fnA commit "2026-07-08T00:00:00.100Z" ]
+          let! (commitsA, eventsA) = wireSince curA
+
+          activate b
+          let! curB = currentCursor ()
+          let! _ =
+            Seed.receiveOps [] [ setNameEvent loc fnB commit "2026-07-08T00:00:00.200Z" ]
+          let! (commitsB, eventsB) = wireSince curB
+
+          // Cross-sync: B receives A's op (divergence!), A receives B's op.
+          activate b
+          let! _ = Seed.receiveOps commitsA eventsA
+          let! bConflicts = conflictCount ()
+          let! bFinal = liveHash loc
+
+          activate a
+          let! _ = Seed.receiveOps commitsB eventsB
+          let! aFinal = liveHash loc
+
+          Expect.equal bFinal [ fnB ] "B keeps the LWW winner (its own later bind) after receiving A's older op"
+          Expect.equal aFinal [ fnB ] "A converges to the same LWW winner after receiving B's op"
+          Expect.isGreaterThan bConflicts 0L "B recorded the divergence as a conflict (never silent)"
         finally
           teardown insts
       } ]
