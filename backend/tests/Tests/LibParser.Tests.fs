@@ -545,10 +545,10 @@ let private desugarTests =
         match toPT (lowerExpr "XDB") with
         | PT.EVariable(_, "XDB") -> ()
         | other -> failtest $"expected EVariable XDB, got: {other}")
-      testCase "a statement sequence lowers to a discarding let" (fun _ ->
+      testCase "a statement sequence lowers to EStatement" (fun _ ->
         match toPT (fnBody "let f () : Unit =\n  foo ()\n  bar ()") with
-        | PT.ELet(_, PT.LPWildcard _, PT.EApply _, PT.EApply _) -> ()
-        | other -> failtest $"expected `let _ = a in b`, got: {other}")
+        | PT.EStatement(_, PT.EApply _, PT.EApply _) -> ()
+        | other -> failtest $"expected EStatement(a, b), got: {other}")
       testCase "a type-args-only call seeds a unit placeholder arg" (fun _ ->
         match toPT (lowerExpr "Stdlib.List.empty<String>") with
         | PT.EApply(_, _, [ PT.TString ], args) ->

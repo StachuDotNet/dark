@@ -132,15 +132,9 @@ module Get =
 
 module NestedRecordFieldAccess =
   // can use lambda like (fun p -> p.details.numbers.age)
-  (Stdlib.DB.set
-    (OuterRecord { name = "joe"; details = InnerRecord { numbers = AliasOfVeryInnerRecord { age = 41L } } })
-    "jjj"
-    TestNestedRecord
+  (let _ = Stdlib.DB.set (OuterRecord { name = "joe"; details = InnerRecord { numbers = AliasOfVeryInnerRecord { age = 41L } } }) "jjj" TestNestedRecord
 
-   Stdlib.DB.set
-     (OuterRecord { name = "frank"; details = InnerRecord { numbers = VeryInnerRecord { age = 22L } } })
-     "fff"
-     TestNestedRecord
+   let _ = Stdlib.DB.set (OuterRecord { name = "frank"; details = InnerRecord { numbers = VeryInnerRecord { age = 22L } } }) "fff" TestNestedRecord
 
    let shouldBeJustJoe =
      Stdlib.DB.query TestNestedRecord (fun p -> p.details.numbers.age == 41L)
@@ -148,15 +142,9 @@ module NestedRecordFieldAccess =
    Stdlib.List.length shouldBeJustJoe) = 1
 
   // same as above, but with aliases
-  (Stdlib.DB.set
-    (AliasOfRecord { name = "jeremy"; details = InnerRecord { numbers = VeryInnerRecord { age = 38L } } })
-    "ignored"
-    TestNestedAliasRecord
+  (let _ = Stdlib.DB.set (AliasOfRecord { name = "jeremy"; details = InnerRecord { numbers = VeryInnerRecord { age = 38L } } }) "ignored" TestNestedAliasRecord
 
-   Stdlib.DB.set
-     (AliasOfRecord { name = "josephine"; details = InnerRecord { numbers = AliasOfVeryInnerRecord { age = 29L } } })
-     "alsoIgnored"
-     TestNestedAliasRecord
+   let _ = Stdlib.DB.set (AliasOfRecord { name = "josephine"; details = InnerRecord { numbers = AliasOfVeryInnerRecord { age = 29L } } }) "alsoIgnored" TestNestedAliasRecord
 
    let shouldBeJustJeremy =
      Stdlib.DB.query TestNestedAliasRecord (fun p -> p.details.numbers.age == 38L)
@@ -173,15 +161,9 @@ type RecordWithGenericThing = GenericThing<String>
 type TestRecordWithGenericThing = RecordWithGenericThing
 
 module AccessDataInGenericField =
-  (Stdlib.DB.set
-    (RecordWithGenericThing { name = "joe" })
-    "jjj"
-    TestRecordWithGenericThing
+  (let _ = Stdlib.DB.set (RecordWithGenericThing { name = "joe" }) "jjj" TestRecordWithGenericThing
 
-   Stdlib.DB.set
-     (RecordWithGenericThing { name = "frank" })
-     "fff"
-     TestRecordWithGenericThing
+   let _ = Stdlib.DB.set (RecordWithGenericThing { name = "frank" }) "fff" TestRecordWithGenericThing
 
    Stdlib.DB.query TestRecordWithGenericThing (fun p -> p.name == "joe")) = [ RecordWithGenericThing
                                                                                  { name =
@@ -194,15 +176,9 @@ module AccessRecordInGenericField =
   type TestDB = GenericThing<RecordThing>
 
 
-  (Stdlib.DB.set
-    (GenericThing { name = RecordThing { nested = "joe" } })
-    "jjj"
-    TestDB
+  (let _ = Stdlib.DB.set (GenericThing { name = RecordThing { nested = "joe" } }) "jjj" TestDB
 
-   Stdlib.DB.set
-     (GenericThing { name = RecordThing { nested = "frank" } })
-     "fff"
-     TestDB
+   let _ = Stdlib.DB.set (GenericThing { name = RecordThing { nested = "frank" } }) "fff" TestDB
 
    let nestedValue = RecordThing { nested = "joe" }
 
@@ -219,8 +195,8 @@ module AccessEnumInGenericField =
   type EnumThingDB = GenericThing<EnumThing>
 
 
-  (Stdlib.DB.set (GenericThing { name = EnumThing.A "joe" }) "jjj" EnumThingDB
-   Stdlib.DB.set (GenericThing { name = EnumThing.A "frank" }) "fff" EnumThingDB
+  (let _ = Stdlib.DB.set (GenericThing { name = EnumThing.A "joe" }) "jjj" EnumThingDB
+   let _ = Stdlib.DB.set (GenericThing { name = EnumThing.A "frank" }) "fff" EnumThingDB
 
    let nestedValue = EnumThing.A "joe"
 

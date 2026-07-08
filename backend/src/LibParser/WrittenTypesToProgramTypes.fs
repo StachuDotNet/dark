@@ -762,12 +762,9 @@ module Expr =
         let! arg2 = toPT context arg2
         return PT.EInfix(id, Infix.toPT infixOp, arg1, arg2)
       | WT.EStatement(_, first, next) ->
-        // A statement sequence `a ⏎ b` discards `a` (any type) and yields `b`; lower
-        // it to `let _ = a in b` (a PT.EStatement would insert a runtime unit check
-        // that wrongly rejects non-Unit statements).
         let! first = toPT context first
         let! next = toPT context next
-        return PT.ELet(gid (), PT.LPWildcard(gid ()), first, next)
+        return PT.EStatement(gid (), first, next)
       | WT.EError _ ->
         // a parse-error hole (recovery node). Execution paths reject parses with
         // diagnostics before lowering, so this only survives for tooling; if it
