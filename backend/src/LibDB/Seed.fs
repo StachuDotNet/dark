@@ -403,11 +403,22 @@ let receiveOps
       let opInserts =
         events
         |> List.map (fun (opId, opBlob, branchId, commitHash, originTs) ->
+          // Convergence fix (canonical origin_ts): the op id is content-only, so two instances that
+          // independently author the SAME op stamp it with different local `origin_ts`. If we kept
+          // first-writer's stamp (INSERT OR IGNORE), a later competing edit could resolve differently on each
+          // instance → permanent divergence. Instead reconcile to the MIN stamp (deterministic on every
+          // instance), and if that LOWERS an already-applied op's stamp, mark it unapplied so the fold re-runs
+          // and the binding's `locations.origin_ts` is refreshed to the reconciled value.
           let sql =
             """
-            INSERT OR IGNORE INTO package_ops
+            INSERT INTO package_ops
               (id, op_blob, branch_id, applied, commit_hash, propagation_id, origin_ts)
             VALUES (@id, @op_blob, @branch_id, @applied, @commit_hash, @propagation_id, @origin_ts)
+            ON CONFLICT(id, branch_id) DO UPDATE SET
+              origin_ts = MIN(package_ops.origin_ts, excluded.origin_ts),
+              applied =
+                CASE WHEN excluded.origin_ts < package_ops.origin_ts THEN 0
+                     ELSE package_ops.applied END
             """
           let ps =
             [ "id", Sql.uuid opId
@@ -419,14 +430,15 @@ let receiveOps
               "origin_ts", Sql.string originTs ]
           (sql, [ ps ]))
 
-      let affected = (commitInserts @ opInserts) |> Sql.executeTransactionSync
+      let _ = (commitInserts @ opInserts) |> Sql.executeTransactionSync
       // Record any divergences BEFORE the fold: an incoming SetName that rebinds a name already bound
       // locally to a different hash is a sync conflict (auto-resolved by LWW). Recorded so it's reviewable.
       do! Conflicts.detectDivergences events
-      let! _ = applyUnappliedOps ()
-      // Newly-inserted ops only (INSERT OR IGNORE returns 0 rows-affected for ones already present) — the
-      // honest change count. Skip the commit-insert results to count just the ops.
-      return affected |> List.skip (List.length commitInserts) |> List.sumBy int64
+      // Honest change count = ops that actually FOLD — newly inserted, plus any the MIN-reconcile above
+      // lowered (marked unapplied) so they re-fold. A pure re-pull folds nothing → 0. (Insert rows-affected
+      // can't be used now that the op insert is an upsert: a DO UPDATE counts even a no-op re-pull.)
+      let! foldedCount = applyUnappliedOps ()
+      return foldedCount
   }
 
 

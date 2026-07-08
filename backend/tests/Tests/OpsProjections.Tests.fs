@@ -536,4 +536,77 @@ let tests =
 
         do! cleanup ()
         let! _ = Seed.rebuildProjections ()
+        ()
+      }
+
+      // M1 convergence fix: the op id is content-only, so two instances that independently author the SAME op
+      // stamp it with different local origin_ts. receiveOps must reconcile to the MIN (deterministic on every
+      // instance) in BOTH package_ops AND the folded locations binding — otherwise a later competing edit
+      // resolves differently on each instance and they diverge permanently. This is the two-instance
+      // convergence property, reproduced on one store via re-receives at different stamps.
+      testTask "M1: a re-received op reconciles origin_ts to the MIN in package_ops + locations" {
+        let! fnHash =
+          Sql.query "SELECT hash FROM package_functions LIMIT 1"
+          |> Sql.executeRowAsync (fun read -> read.string "hash")
+        let! commitHash =
+          Sql.query "SELECT hash FROM commits LIMIT 1"
+          |> Sql.executeRowAsync (fun read -> read.string "hash")
+
+        let loc : PT.PackageLocation =
+          { owner = "Test"; modules = [ "M1Reconcile" ]; name = "dv" }
+        let op = PT.PackageOp.SetName(loc, PT.Reference.PackageFn(PT.Hash fnHash))
+        let opId = Inserts.computeOpHash op
+        let opBlob = BS.PT.PackageOp.serialize opId op
+
+        let recv (ts : string) : Task<unit> =
+          task {
+            let! _ = Seed.receiveOps [] [ (opId, opBlob, PT.mainBranchId, commitHash, ts) ]
+            ()
+          }
+
+        let opTs () : Task<string> =
+          Sql.query "SELECT origin_ts FROM package_ops WHERE id = @id"
+          |> Sql.parameters [ "id", Sql.uuid opId ]
+          |> Sql.executeRowAsync (fun read -> read.string "origin_ts")
+
+        let locTs () : Task<List<string>> =
+          Sql.query
+            "SELECT origin_ts FROM locations WHERE owner = 'Test' AND modules = 'M1Reconcile' AND name = 'dv' AND unlisted_at IS NULL"
+          |> Sql.executeAsync (fun read -> read.string "origin_ts")
+
+        let cleanup () : Task<unit> =
+          task {
+            do!
+              Sql.query "DELETE FROM package_ops WHERE id = @id"
+              |> Sql.parameters [ "id", Sql.uuid opId ]
+              |> Sql.executeStatementAsync
+            do!
+              Sql.query
+                "DELETE FROM locations WHERE owner = 'Test' AND modules = 'M1Reconcile' AND name = 'dv'"
+              |> Sql.executeStatementAsync
+          }
+
+        do! cleanup ()
+
+        // #1 receive at ts=100 → binding folded with 100
+        do! recv "2099-01-01T00:00:00.100Z"
+        let! ts1 = opTs ()
+        let! loc1 = locTs ()
+        Expect.equal ts1 "2099-01-01T00:00:00.100Z" "op stamped at 100"
+        Expect.equal loc1 [ "2099-01-01T00:00:00.100Z" ] "binding folded at 100"
+
+        // #2 re-receive the SAME op at an EARLIER 050 → reconcile DOWN to MIN, and the binding re-folds to 050
+        do! recv "2099-01-01T00:00:00.050Z"
+        let! ts2 = opTs ()
+        let! loc2 = locTs ()
+        Expect.equal ts2 "2099-01-01T00:00:00.050Z" "op reconciled to the MIN (050)"
+        Expect.equal loc2 [ "2099-01-01T00:00:00.050Z" ] "binding origin_ts refreshed to the MIN (050)"
+
+        // #3 re-receive at a LATER 200 → MIN stays 050, no spurious change
+        do! recv "2099-01-01T00:00:00.200Z"
+        let! ts3 = opTs ()
+        Expect.equal ts3 "2099-01-01T00:00:00.050Z" "a later stamp never raises the reconciled MIN"
+
+        do! cleanup ()
+        let! _ = Seed.rebuildProjections ()
         () } ]
