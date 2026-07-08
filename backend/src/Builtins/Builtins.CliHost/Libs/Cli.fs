@@ -1,5 +1,5 @@
-/// Builtin functions for building the CLI
-/// (as opposed to functions needed by CLI programs, which are in StdLibCli)
+/// Builtin functions for building the CLI itself
+/// (as opposed to functions CLI programs call, which live in packages)
 module Builtins.CliHost.Libs.Cli
 
 open System.Threading.Tasks
@@ -107,53 +107,11 @@ let private declarationsToModule
     for item in sourceItems do
       match item with
       | WTSourceFile.Fn(declPath, fn) ->
-        let modules = baseModules @ declPath
-        let parameters =
-          fn.parameters
-          |> List.map (fun p ->
-            let (name, typ) =
-              match p with
-              | WT.FPUnit _ -> ("_", WT.TUnit WT.synthRange)
-              | WT.FPNormal(_, n, t, _, _, _) -> (n.name, t)
-            ({ name = name; typ = typ; description = "" } : WT.PackageFn.Parameter))
-        let parameters =
-          match parameters with
-          | h :: t -> NEList.ofList h t
-          | [] ->
-            NEList.singleton (
-              { name = "_"; typ = WT.TUnit WT.synthRange; description = "" }
-              : WT.PackageFn.Parameter
-            )
-        let fnName : WT.PackageFn.Name =
-          { owner = owner; modules = modules; name = fn.name.name }
-        wtFns.Add(
-          { name = fnName
-            body = fn.body
-            typeParams = fn.typeParams |> List.map fst
-            parameters = parameters
-            returnType = fn.returnType
-            description = fn.description }
-          : WT.PackageFn.PackageFn
-        )
+        wtFns.Add(WT.packageFn owner (baseModules @ declPath) fn)
       | WTSourceFile.Type(declPath, t) ->
-        let modules = baseModules @ declPath
-        let typeName : WT.PackageType.Name =
-          { owner = owner; modules = modules; name = t.name.name }
-        let decl : WT.TypeDeclaration.T =
-          { typeParams = t.typeParams |> List.map fst
-            definition = WT.typeDefinitionNorm t.definition }
-        wtTypes.Add(
-          { name = typeName; declaration = decl; description = t.description }
-          : WT.PackageType.PackageType
-        )
+        wtTypes.Add(WT.packageType owner (baseModules @ declPath) t)
       | WTSourceFile.Value(declPath, v) ->
-        let modules = baseModules @ declPath
-        let valueName : WT.PackageValue.Name =
-          { owner = owner; modules = modules; name = v.name.name }
-        wtValues.Add(
-          { name = valueName; description = v.description; body = v.body }
-          : WT.PackageValue.PackageValue
-        )
+        wtValues.Add(WT.packageValue owner (baseModules @ declPath) v)
       | WTSourceFile.Expr(declPath, e) -> wtExprs.Add(baseModules @ declPath, e)
       // DB/test decls are produced only by test-mode parsing, not the CLI path.
       | WTSourceFile.TypeDB _
@@ -163,6 +121,15 @@ let private declarationsToModule
     let fnList = List.ofSeq wtFns
     let typeList = List.ofSeq wtTypes
     let valueList = List.ofSeq wtValues
+
+    // Graft locations are derived from names only, so they're identical across
+    // both lowering passes (pass 2 keeps each decl's name, changing only body/hash).
+    let fnLocations =
+      fnList |> List.map (fun f -> WT2PT.PackageFn.Name.toLocation f.name)
+    let typeLocations =
+      typeList |> List.map (fun t -> WT2PT.PackageType.Name.toLocation t.name)
+    let valueLocations =
+      valueList |> List.map (fun v -> WT2PT.PackageValue.Name.toLocation v.name)
 
     let lowerFns pm =
       fnList
@@ -213,27 +180,17 @@ let private declarationsToModule
     // The resolver looks up packages on `state.branchId` (threaded through WT2PT),
     // so WIP on this branch resolves without wrapping the pm.
     let pm0 = LibDB.PackageManager.pt
-    let! fns1 = lowerFns pm0
-    let fns1 = fns1 |> List.map hashFn
-    let! types1 = lowerTypes pm0
-    let types1 = types1 |> List.map hashType
-    let! values1 = lowerValues pm0
-    let values1 = values1 |> List.map hashValue
+    let! fns1 = lowerFns pm0 |> Ply.map (List.map hashFn)
+    let! types1 = lowerTypes pm0 |> Ply.map (List.map hashType)
+    let! values1 = lowerValues pm0 |> Ply.map (List.map hashValue)
 
     // Graft the script's own declarations into the pm, keyed by location.
-    let fnLocs =
-      List.zip
-        fns1
-        (fnList |> List.map (fun f -> WT2PT.PackageFn.Name.toLocation f.name))
-    let typeLocs =
-      List.zip
-        types1
-        (typeList |> List.map (fun t -> WT2PT.PackageType.Name.toLocation t.name))
-    let valueLocs =
-      List.zip
-        values1
-        (valueList |> List.map (fun v -> WT2PT.PackageValue.Name.toLocation v.name))
-    let pm1 = pm0 |> PT.PackageManager.withExtras typeLocs valueLocs fnLocs
+    let pm1 =
+      pm0
+      |> PT.PackageManager.withExtras
+        (List.zip types1 typeLocations)
+        (List.zip values1 valueLocations)
+        (List.zip fns1 fnLocations)
 
     // Pass 2: re-lower with the grafted pm so intra-script references resolve —
     // but KEEP each decl's pass-1 hash. Pass-2 bodies embed the pass-1 hashes pm1
@@ -264,19 +221,12 @@ let private declarationsToModule
 
     // Graft the pass-2 declarations (resolved bodies, pass-1 hashes) for the
     // expressions' lowering — their refs then match the returned decls exactly.
-    let typeLocs2 =
-      List.zip
-        types
-        (typeList |> List.map (fun t -> WT2PT.PackageType.Name.toLocation t.name))
-    let valueLocs2 =
-      List.zip
-        values
-        (valueList |> List.map (fun v -> WT2PT.PackageValue.Name.toLocation v.name))
-    let fnLocs2 =
-      List.zip
-        fns
-        (fnList |> List.map (fun f -> WT2PT.PackageFn.Name.toLocation f.name))
-    let pm2 = pm0 |> PT.PackageManager.withExtras typeLocs2 valueLocs2 fnLocs2
+    let pm2 =
+      pm0
+      |> PT.PackageManager.withExtras
+        (List.zip types typeLocations)
+        (List.zip values valueLocations)
+        (List.zip fns fnLocations)
 
     let emptyContext =
       { WT2PT.Context.currentFnName = None
@@ -362,9 +312,8 @@ module ExecutionError =
     | Unhandled of Unhandled
 
   /// Capture an exception's message and metadata for the `Unhandled` case.
-  /// `Exception.toMetadata` only ever produces string-stringified values,
-  /// so `List<string * string>` faithfully represents what we have without
-  /// the Dval-wrapping machinery.
+  /// Metadata values are `obj`; we accept the lossy `string v` here (rather than
+  /// the Dval-wrapping machinery) because this metadata is only ever displayed.
   let unhandledFromExn (e : exn) : Unhandled =
     { message = Exception.getMessages e |> String.concat "\n"
       metadata = Exception.toMetadata e |> List.map (fun (k, v) -> (k, string v)) }
@@ -538,7 +487,7 @@ let fns () : List<BuiltInFn> =
             // Use branch-specific state for parsing so name resolution uses the right branch.
             // Parsing keeps the host's caps — name resolution / package loading needs
             // cli-host effects to boot (the noCaps-breaks-bootstrap case). Only the script
-            // *body* is sandboxed below (`runState`).
+            // *body* is sandboxed below (`runCaps` on `exeState`).
             let branchState = createBranchState exeState branchId allowHarmful
 
             try
