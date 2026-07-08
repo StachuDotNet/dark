@@ -7,6 +7,12 @@ module Darklang.Sync.Server
 // The wire is JSON — `Darklang.Sync.wireSince` (← `Stdlib.EventLog.readSince`): the serving Release, the batch's
 // commits, its events ((id, opBlobHex, branchId, commitHash, originTs) — the op_blob rides as hex), and the
 // cursor. Committed ops only (WIP stays local); one bounded batch per request. No .db files — ops over HTTP.
+//
+// CLEANUP(sync-security): this endpoint is UNAUTHENTICATED and serves EVERY committed op on EVERY branch
+// (plus each commit's author account_id) to anyone who can reach the port — and `dark serve` binds all
+// interfaces, not just loopback/tailnet. Peers are FULLY TRUSTED for now (they're your own instances /
+// trusted collaborators, reached over a private tailnet). A future hardening: a shared-token/auth check,
+// bind loopback by default + expose via `dark devices serve`, and per-branch/scoped serving.
 
 let private cellInt (row: Dict<Stdlib.Sqlite.Value>) (key: String) : Int64 =
   match Stdlib.Dict.get row key with
