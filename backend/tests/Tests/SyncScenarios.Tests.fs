@@ -247,6 +247,24 @@ let tests =
         ()
       }
 
+      // PAGINATION / CURSOR RESUME — the serve read (eventsSince) returns one bounded batch and a resume
+      // cursor; the next read after that cursor is the next batch, disjoint (so a puller loops to catch up and
+      // an interrupted pull resumes where it stopped).
+      testTask "eventsSince paginates: bounded batches, cursor advances, batches disjoint" {
+        let! (_, events1, cur1) = Seed.eventsSince 0L 3L
+        Expect.isTrue (List.length events1 <= 3) "first batch is bounded to the limit"
+        Expect.isTrue (List.length events1 > 0) "first batch non-empty (the seed has committed ops)"
+
+        let! (_, events2, cur2) = Seed.eventsSince cur1 3L
+        Expect.isTrue (cur2 >= cur1) "the resume cursor advances monotonically"
+
+        let idsOf evs =
+          evs |> List.map (fun (id, _, _, _, _) -> id) |> Set.ofList
+        Expect.isTrue
+          (Set.intersect (idsOf events1) (idsOf events2) |> Set.isEmpty)
+          "consecutive batches are disjoint — the cursor prevents re-reading"
+      }
+
       // BRANCH SCM SYNC — branch structure (branch_ops) applies before content, so a package op on a
       // freshly-synced branch resolves its branch_id and folds; and a merge marks the branch merged.
       testTask "branch sync: structure lands, content on the new branch folds, merge marks it" {
