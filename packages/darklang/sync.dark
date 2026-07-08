@@ -261,10 +261,11 @@ let status () : List<(String * Int64)> =
 // ── the autosync daemon: pull from every peer on an interval, in the background. Driven by
 //    `dark sync daemon start/stop` on the shared Stdlib.Cli.Daemon substrate. Poll-based v1. ──
 
-// Poll every 30s: package edits are occasional, so a peer's commit shows within ~half a minute while the
-// daemon stays calm — two small GETs/min per peer, each a no-op when you're already up to date. Sync isn't
-// chat; near-real-time isn't worth the chatter.
-let private pollIntervalMs : Int = 30000I
+// The default poll interval (30s): package edits are occasional, so a peer's commit shows within ~half a
+// minute while the daemon stays calm — two small GETs/min per peer, each a no-op when you're already up to
+// date. Sync isn't chat; near-real-time isn't worth the chatter. Overridable via `dark sync daemon config
+// interval N` (stored as `apps.<name>.intervalMs`), which the daemon reads on start.
+let private defaultPollIntervalMs : Int = 30000I
 
 let rec private syncLoop (intervalMs: Int) (remaining: Int) : Int =
   if remaining <= 0I then
@@ -284,4 +285,8 @@ let daemon (name: String) : Int =
       Stdlib.printLine
         $"{name}: keeping your peers in sync in the background (pid {Stdlib.Int.toString (Stdlib.Cli.Sys.currentPid ())})"
 
-  syncLoop pollIntervalMs 1000000000I
+  // Honor the configured interval (set by `dark sync daemon config interval N`); fall back to the default.
+  let intervalMs =
+    Darklang.Cli.Config.getInt $"apps.{name}.intervalMs" defaultPollIntervalMs
+
+  syncLoop intervalMs 1000000000I
