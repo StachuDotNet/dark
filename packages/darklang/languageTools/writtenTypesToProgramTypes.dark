@@ -980,9 +980,6 @@ module Expr =
         (ProgramTypes.Expr.EApply(gid (), fnExpr, typeArgs, args), unresolvedNames)
 
     | EStatement (_, first, next) ->
-      // Kept as PT.EStatement (NOT lowered to `let _ = a in b` like the F# execution
-      // path): this Dark lowering also feeds round-trip / formatting, where EStatement
-      // must pretty-print back as a bare `a ⏎ b` sequence rather than `let _ = a`.
       let (first, firstUnresolvedNames) = toPT ctx context first
 
       let (next, nextUnresolvedNames) = toPT ctx context next

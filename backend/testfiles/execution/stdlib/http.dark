@@ -18,7 +18,7 @@
 //   Stdlib.Http.setCookie "myCookie" "myVal" { Fake = "fake"} = Builtin.Test.runtimeError "Keys must be `Expires`, `Max-Age`, `Domain`, `Path`, `Secure`, `HttpOnly`, and/or `SameSite`, but one of the keys was Fake"
 
 
-Stdlib.Http.badRequest_v0 "Your request resulted in an error" =
+Stdlib.Http.badRequest "Your request resulted in an error" =
   Stdlib.Http.Response
     { statusCode = 400
       headers = []
@@ -72,10 +72,10 @@ Stdlib.Http.responseWithJson "test" 200 =
 (Stdlib.Http.redirectTo "bad url") =
   Stdlib.Http.responseWithHeaders Stdlib.Blob.empty [ ("Location", "bad url") ] 302
 
-(Stdlib.Http.redirectTo_v0 "http://someothersite.com") =
+(Stdlib.Http.redirectTo "http://someothersite.com") =
   Stdlib.Http.responseWithHeaders Stdlib.Blob.empty [ ("Location", "http://someothersite.com") ] 302
 
-(Stdlib.Http.redirectTo_v0 "/relativeUrl") =
+(Stdlib.Http.redirectTo "/relativeUrl") =
   Stdlib.Http.responseWithHeaders Stdlib.Blob.empty [ ("Location", "/relativeUrl") ] 302
 
 

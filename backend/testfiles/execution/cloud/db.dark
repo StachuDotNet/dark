@@ -468,7 +468,7 @@ module GetAll =
   (let _ = Stdlib.DB.set (SortedX { x = "hello"; sortBy = 0L }) "one" SortedXDB
    let _ = Stdlib.DB.set (SortedX { x = "goodbye"; sortBy = 1L }) "two" SortedXDB
    let _ = Stdlib.DB.set (SortedX { x = "howdy"; sortBy = 2L }) "three" SortedXDB
-   (Stdlib.DB.getAll SortedXDB) |> Stdlib.List.sortBy_v0 (fun x -> x.sortBy)) =
+   (Stdlib.DB.getAll SortedXDB) |> Stdlib.List.sortBy (fun x -> x.sortBy)) =
     [ SortedX { x = "hello";  sortBy = 0L }
       SortedX { x = "goodbye"; sortBy = 1L }
       SortedX { x = "howdy"; sortBy = 2L } ]
@@ -477,7 +477,7 @@ module GetAll =
 module GetAllKeys =
   (let one = Stdlib.DB.set (X { x = "hello" }) "one" XDB
    let two = Stdlib.DB.set (X { x = "goodbye" }) "two" XDB
-   (Stdlib.DB.keys XDB) |> Stdlib.List.sort_v0) = [ "one"; "two" ]
+   (Stdlib.DB.keys XDB) |> Stdlib.List.sort) = [ "one"; "two" ]
 
 
 module GetAllWithKeys =
