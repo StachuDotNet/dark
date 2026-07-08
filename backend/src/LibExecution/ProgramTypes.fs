@@ -515,6 +515,11 @@ type Expr =
 
   | ESelf of id
 
+  /// A parse-error hole left by error recovery, mirroring `WrittenTypes.EError`.
+  /// Only tooling holds one (highlight/hover on a broken buffer); execution
+  /// rejects diagnostic-carrying parses upstream, and PT2RT raises if one slips through.
+  | EError of id
+
 and MatchCase = { pat : MatchPattern; whenCondition : Option<Expr>; rhs : Expr }
 
 and StringSegment =
@@ -588,6 +593,7 @@ module Expr =
     | EMatch(id, _, _)
     | EStatement(id, _, _) -> id
     | ESelf id -> id
+    | EError id -> id
 
 
 

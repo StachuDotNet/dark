@@ -41,6 +41,7 @@ let rec fnRefs (expr : PT.Expr) : List<PT.FQFnName.FQFnName> =
   | PT.EVariable _
   | PT.EArg _
   | PT.ESelf _
+  | PT.EError _
   | PT.EValue _ -> []
 
   | PT.EFnName(_, nr) -> nameRef nr

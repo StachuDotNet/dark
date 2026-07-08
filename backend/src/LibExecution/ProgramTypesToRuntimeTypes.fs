@@ -763,6 +763,13 @@ module Expr =
         // No current function context - this should never happen
         Exception.raiseInternal "ESelf used outside function context" []
 
+    | PT.EError _ ->
+      // should be unreachable: reaching RT means a caller lowered a broken parse
+      // instead of rejecting it (see the EError case in ProgramTypes).
+      Exception.raiseInternal
+        "parse-error hole (EError) reached execution — callers must reject parses with diagnostics"
+        []
+
 
     | PT.EIf(_id, cond, thenExpr, elseExpr) ->
       // We need a consistent result register,

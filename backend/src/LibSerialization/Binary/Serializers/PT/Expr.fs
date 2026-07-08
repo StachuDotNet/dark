@@ -583,6 +583,9 @@ module Expr =
     | ESelf id ->
       w.Write 33uy
       w.Write id
+    | EError id ->
+      w.Write 36uy
+      w.Write id
     | EArg(id, index) ->
       w.Write 34uy
       w.Write id
@@ -761,6 +764,9 @@ module Expr =
     | 33uy ->
       let id = r.ReadUInt64()
       ESelf id
+    | 36uy ->
+      let id = r.ReadUInt64()
+      EError id
     | 34uy ->
       let id = r.ReadUInt64()
       let index = r.ReadInt32()

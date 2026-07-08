@@ -993,10 +993,9 @@ module Expr =
       (ProgramTypes.Expr.EStatement(gid (), first, next), unresolvedNames)
 
     | EError _ ->
-      // a parse-error hole (recovery node). Execution consumers gate on clean
-      // parses so this should never run; if it somehow does, the unresolvable
-      // variable produces a clear runtime error instead of silent data.
-      (ProgramTypes.Expr.EVariable(gid (), "__parseError__"), [])
+      // a parse-error hole (recovery node), mirroring the F# lowering. Execution
+      // consumers gate on clean parses so this only survives for tooling.
+      (ProgramTypes.Expr.EError(gid ()), [])
 
 
 

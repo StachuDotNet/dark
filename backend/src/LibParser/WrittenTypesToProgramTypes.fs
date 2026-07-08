@@ -769,12 +769,10 @@ module Expr =
         let! next = toPT context next
         return PT.ELet(gid (), PT.LPWildcard(gid ()), first, next)
       | WT.EError _ ->
-        // a parse-error hole: every execution path rejects parses with
-        // diagnostics before lowering, so reaching this is a caller bug
-        return
-          Exception.raiseInternal
-            "parse-error hole (EError) reached lowering — callers must reject parses with diagnostics"
-            []
+        // a parse-error hole (recovery node). Execution paths reject parses with
+        // diagnostics before lowering, so this only survives for tooling; if it
+        // reaches execution, PT2RT rejects it at the RT boundary.
+        return PT.EError(gid ())
     }
 
   and stringSegmentToPT

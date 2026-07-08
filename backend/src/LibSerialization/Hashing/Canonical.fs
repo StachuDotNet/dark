@@ -492,6 +492,7 @@ let writeExpr (mode : HashRefMode) (w : BinaryWriter) (expr : PT.Expr) =
     writeExpr mode w first
     writeExpr mode w next
   | PT.ESelf _id -> w.Write 33uy
+  | PT.EError _id -> w.Write 36uy
   | PT.EArg(_id, index) ->
     w.Write 34uy
     w.Write index

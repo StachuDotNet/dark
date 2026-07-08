@@ -176,7 +176,8 @@ and extractFromExpr (expr : PT.Expr) : List<Dependency> =
   | PT.EChar _
   | PT.EVariable _
   | PT.EArg _
-  | PT.ESelf _ -> []
+  | PT.ESelf _
+  | PT.EError _ -> []
 
   | PT.EString(_, segments) -> segments |> List.collect extractFromStringSegment
 

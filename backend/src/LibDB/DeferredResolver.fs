@@ -357,6 +357,7 @@ and private reResolveExpr
     | PT.EVariable _
     | PT.EArg _
     | PT.ESelf _ -> return expr
+    | PT.EError _ -> return expr
 
     | PT.EString(id, segments) ->
       let! segments =
