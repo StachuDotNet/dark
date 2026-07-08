@@ -381,32 +381,48 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DEventLog _name; DList(_, commits); DList(_, events) ] ->
           uply {
+            // Receive must be TOTAL against a malformed/hostile peer: skip any event/commit that won't parse
+            // (bad guid/hex), and catch a batch-level DB error (e.g. an FK to a row not in this batch) so the
+            // pull loop + background daemon survive instead of crashing. CLEANUP(sync-security): peers are
+            // FULLY TRUSTED for now — a future hardening should verify op ids against content + reject bad ops
+            // per-op (not skip the whole batch) + not trust the peer's account_id/commit_hash.
             let parsedCommits =
               commits
-              |> List.map (fun c ->
+              |> List.choose (fun c ->
                 match c with
                 | DRecord(_, _, _, f) ->
-                  (recField "hash" f,
-                   recField "message" f,
-                   System.Guid.Parse(recField "branchId" f),
-                   System.Guid.Parse(recField "accountId" f),
-                   recField "createdAt" f)
-                | _ -> Exception.raiseInternal "eventLogAppendNative: commit not a record" [])
+                  try
+                    Some(
+                      recField "hash" f,
+                      recField "message" f,
+                      System.Guid.Parse(recField "branchId" f),
+                      System.Guid.Parse(recField "accountId" f),
+                      recField "createdAt" f
+                    )
+                  with _ -> None
+                | _ -> None)
 
             let parsedEvents =
               events
-              |> List.map (fun ev ->
+              |> List.choose (fun ev ->
                 match ev with
                 | DRecord(_, _, _, f) ->
-                  (System.Guid.Parse(recField "id" f),
-                   System.Convert.FromHexString(recField "op" f),
-                   System.Guid.Parse(recField "branchId" f),
-                   recField "commitHash" f,
-                   recField "originTs" f)
-                | _ -> Exception.raiseInternal "eventLogAppendNative: event not a record" [])
+                  try
+                    Some(
+                      System.Guid.Parse(recField "id" f),
+                      System.Convert.FromHexString(recField "op" f),
+                      System.Guid.Parse(recField "branchId" f),
+                      recField "commitHash" f,
+                      recField "originTs" f
+                    )
+                  with _ -> None
+                | _ -> None)
 
-            let! applied = LibDB.Seed.receiveOps parsedCommits parsedEvents
-            return Dval.int (bigint applied)
+            try
+              let! applied = LibDB.Seed.receiveOps parsedCommits parsedEvents
+              return Dval.int (bigint applied)
+            with _ ->
+              return Dval.int (bigint 0L)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -470,17 +486,22 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DEventLog _name; DList(_, events) ] ->
           uply {
+            // Total against a bad peer (see eventLogAppendNative): skip unparseable events, catch batch errors.
             let parsed =
               events
-              |> List.map (fun ev ->
+              |> List.choose (fun ev ->
                 match ev with
                 | DRecord(_, _, _, f) ->
-                  (recField "id" f, System.Convert.FromHexString(recField "op" f))
-                | _ ->
-                  Exception.raiseInternal "branchOpsAppendNative: event not a record" [])
+                  try
+                    Some(recField "id" f, System.Convert.FromHexString(recField "op" f))
+                  with _ -> None
+                | _ -> None)
 
-            let! applied = LibDB.Seed.receiveBranchOps parsed
-            return Dval.int (bigint applied)
+            try
+              let! applied = LibDB.Seed.receiveBranchOps parsed
+              return Dval.int (bigint applied)
+            with _ ->
+              return Dval.int (bigint 0L)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -546,21 +567,27 @@ let fns () : List<BuiltInFn> =
           uply {
             let parsed =
               events
-              |> List.map (fun ev ->
+              |> List.choose (fun ev ->
                 match ev with
                 | DRecord(_, _, _, f) ->
-                  (recField "id" f,
-                   recField "branchId" f,
-                   recField "location" f,
-                   recField "itemKind" f,
-                   recField "chosenHash" f,
-                   recField "resolvedBy" f,
-                   recField "at" f)
-                | _ ->
-                  Exception.raiseInternal "resolutionsAppendNative: event not a record" [])
+                  try
+                    Some(
+                      recField "id" f,
+                      recField "branchId" f,
+                      recField "location" f,
+                      recField "itemKind" f,
+                      recField "chosenHash" f,
+                      recField "resolvedBy" f,
+                      recField "at" f
+                    )
+                  with _ -> None
+                | _ -> None)
 
-            let! applied = LibDB.Resolutions.receiveResolutions parsed
-            return Dval.int (bigint applied)
+            try
+              let! applied = LibDB.Resolutions.receiveResolutions parsed
+              return Dval.int (bigint applied)
+            with _ ->
+              return Dval.int (bigint 0L)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
