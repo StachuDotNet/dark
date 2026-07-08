@@ -150,9 +150,17 @@ let private setCursor (peer: String) (kind: String) (cursor: Int64) : Unit =
 let rec private pullLoop
   (peer: String)
   (applied: Int)
+  (budget: Int)
   : Stdlib.Result.Result<Int, String> =
+  // Bounded against a misbehaving/hostile peer that never lets us catch up: `budget` caps total batches (100k
+  // × 1000 ops ≫ any real store), and the strict-advance check at the recursion below stops a peer that
+  // returns events without moving any cursor forward.
+  let pkgSent = cursorFor peer "package_ops"
+  let branchSent = cursorFor peer "branch_ops"
+  let resSent = cursorFor peer "resolutions"
+
   let url =
-    $"{peer}/sync/events?package={Stdlib.Int64.toString (cursorFor peer "package_ops")}&branch={Stdlib.Int64.toString (cursorFor peer "branch_ops")}&resolution={Stdlib.Int64.toString (cursorFor peer "resolutions")}"
+    $"{peer}/sync/events?package={Stdlib.Int64.toString pkgSent}&branch={Stdlib.Int64.toString branchSent}&resolution={Stdlib.Int64.toString resSent}"
 
   match Builtin.httpGetUnsafeBytes url with
   | Ok body ->
@@ -196,14 +204,31 @@ let rec private pullLoop
           let _ =
             setCursor peer "resolutions" (Stdlib.EventLog.cursorToInt w.resolutionCursor)
 
-          if
+          let caughtUp =
             Stdlib.List.length w.branchEvents == 0I
             && Stdlib.List.length w.packageEvents == 0I
             && Stdlib.List.length w.resolutionEvents == 0I
-          then
+
+          // A well-behaved peer that returns events moves at least one cursor strictly forward; if it doesn't,
+          // it's replaying and we'd loop forever — stop.
+          let advanced =
+            (Stdlib.EventLog.cursorToInt w.packageCursor) > pkgSent
+            || (Stdlib.EventLog.cursorToInt w.branchCursor) > branchSent
+            || (Stdlib.EventLog.cursorToInt w.resolutionCursor) > resSent
+
+          let total =
+            applied + branchApplied + packageApplied + resolutionApplied
+
+          if caughtUp then
             Stdlib.Result.Result.Ok applied
+          else if Stdlib.Bool.not advanced then
+            Stdlib.Result.Result.Error
+              $"{peer} returned ops but advanced no cursor — stopping (misbehaving peer)"
+          else if budget <= 1I then
+            Stdlib.Result.Result.Error
+              $"{peer} kept sending ops without catching up — stopped after the batch budget (possible misbehaving peer)"
           else
-            pullLoop peer (applied + branchApplied + packageApplied + resolutionApplied)
+            pullLoop peer total (budget - 1I)
       | Error _ ->
         Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
     | Error _ -> Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
@@ -215,7 +240,7 @@ let rec private pullLoop
 /// reports "up to date" when it actually couldn't reach the peer.
 let pull (peer: String) : Stdlib.Result.Result<Int, String> =
   if Stdlib.String.startsWith peer "http" then
-    pullLoop peer 0I
+    pullLoop peer 0I 100000I
   else
     Stdlib.Result.Result.Error peerMustBeUrl
 

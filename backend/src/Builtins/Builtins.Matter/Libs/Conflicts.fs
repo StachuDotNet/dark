@@ -105,7 +105,10 @@ let fns () : List<BuiltInFn> =
               let loc = LibDB.Conflicts.parseLocation location
               let itemKind = PT.ItemKind.fromString c.itemKind
               let chosenRef = PT.Reference.fromHashAndKind(PT.Hash chosenHash, itemKind)
-              let at = System.DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+              // The resolution's `at` competes in the same string-LWW as op origin_ts, so it MUST be minted
+              // by the one canonical stamp source (lock-guarded, monotonic, InvariantCulture) — not a raw
+              // UtcNow, which can tie/regress and formats locale-dependently.
+              let at = LibDB.Inserts.nextOriginTs ()
               let r = LibDB.Resolutions.mk loc chosenRef "human" c.branchId at
               do! LibDB.Resolutions.recordAndApply r
               do! LibDB.Conflicts.markOverridden c.id
