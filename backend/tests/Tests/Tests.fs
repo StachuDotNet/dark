@@ -61,6 +61,7 @@ let main (args : string array) : int =
         Tests.Blob.tests
         Tests.OpsProjections.tests
         Tests.SyncScenarios.tests
+        Tests.MultiInstance.tests
         Tests.Releases.tests
         Tests.Stream.tests
         Tests.Capabilities.tests

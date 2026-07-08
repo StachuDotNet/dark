@@ -28,7 +28,23 @@ module Sql =
 
     props
 
-  let connect = Sql.connect connString |> initializeConnection
+  // `mutable` only so tests can repoint LibDB at a fresh store (see `useStoreForTesting`). Production
+  // never rebinds it — it stays the default `connString` store for the process's life.
+  let mutable connect = Sql.connect connString |> initializeConnection
+
+  /// TEST-ONLY: repoint LibDB at the store file at `path` (created if missing), so a test can run true
+  /// multi-instance scenarios — each "instance" is its own store, and you switch the active one by
+  /// calling this. Every subsequent LibDB operation hits `path`. Call `resetStoreForTesting` to restore
+  /// the default. NOT parallel-safe (it mutates process-global state): callers must be `testSequenced`
+  /// and restore the default when done.
+  let useStoreForTesting (path : string) : unit =
+    let cs =
+      $"Data Source={path};Mode=ReadWriteCreate;Cache=Private;Pooling=true"
+    connect <- Sql.connect cs |> initializeConnection
+
+  /// TEST-ONLY: restore the default (`connString`) store after `useStoreForTesting`.
+  let resetStoreForTesting () : unit =
+    connect <- Sql.connect connString |> initializeConnection
 
   let query (sql : string) : Sql.SqlProps = connect |> Sql.query sql
 
