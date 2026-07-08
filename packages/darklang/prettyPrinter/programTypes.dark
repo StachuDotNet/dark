@@ -368,9 +368,6 @@ let typeReference
   | TDB inner ->
     $"DB<{typeReference ctx inner}>"
 
-  | TEventLog inner ->
-    $"EventLog<{typeReference ctx inner}>"
-
   | TFn(args, ret) ->
     let argPart =
       args

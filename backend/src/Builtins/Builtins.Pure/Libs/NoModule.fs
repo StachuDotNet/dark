@@ -115,7 +115,6 @@ let rec equals (a : Dval) (b : Dval) : bool =
     | _ -> false
 
   | DDB a, DDB b -> a = b
-  | DEventLog a, DEventLog b -> a = b
 
   | DBlob refA, DBlob refB ->
     // Identity-based: same hash (Persistent) or same UUID (Ephemeral).
@@ -159,7 +158,6 @@ let rec equals (a : Dval) (b : Dval) : bool =
   | DEnum _, _
   | DApplicable _, _
   | DDB _, _
-  | DEventLog _, _
   | DBlob _, _
   | DStream _, _ -> false
 

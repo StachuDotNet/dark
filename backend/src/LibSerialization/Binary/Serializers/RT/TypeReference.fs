@@ -54,9 +54,6 @@ let rec write (w : BinaryWriter) (t : TypeReference) : unit =
   | TDB inner ->
     w.Write 23uy
     write w inner
-  | TEventLog inner ->
-    w.Write 27uy
-    write w inner
   | TBlob -> w.Write 24uy
   | TStream inner ->
     w.Write 25uy
@@ -99,7 +96,6 @@ let rec read (r : BinaryReader) : TypeReference =
     TCustomType(typeName, typeArgs)
   | 22uy -> TVariable(String.read r)
   | 23uy -> TDB(read r)
-  | 27uy -> TEventLog(read r)
   | 24uy -> TBlob
   | 25uy -> TStream(read r)
   | 26uy -> TInt

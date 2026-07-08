@@ -208,7 +208,6 @@ let typeReference
 
 
   | TDB inner -> $"DB<{typeReference branchId inner}>"
-  | TEventLog inner -> $"EventLog<{typeReference branchId inner}>"
 
   | TVariable varName -> "'" ++ varName
 
@@ -271,7 +270,6 @@ let knownType
     (typeName branchId name) ++ typeArgsPortion
 
   | KTDB typ -> $"Datastore<{valueType branchId typ}>"
-  | KTEventLog typ -> $"EventLog<{valueType branchId typ}>"
 
 
 let valueType
@@ -353,7 +351,6 @@ module Dval =
           |> fun parts -> $"<{parts}>"
       (RuntimeTypes.typeName branchId typeName) ++ typeArgsPart
     | DDB _ -> "Datastore"
-    | DEventLog _ -> "EventLog"
     | DApplicable (AppNamedFn _) -> "Function"
     | DApplicable (AppLambda _) -> "Lambda"
     | DBlobPersistent(_, _) -> "Blob"
@@ -545,7 +542,6 @@ module Dval =
 
 
     | DDB name -> $"<{valueTypeName}: {name}>"
-    | DEventLog name -> $"<{valueTypeName}: {name}>"
 
 
 

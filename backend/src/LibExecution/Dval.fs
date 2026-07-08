@@ -139,7 +139,6 @@ let rec isPersistable (dv : Dval) : bool =
   // Demo handlers persist lambdas as vals; user DBs rely on the DDB path.
   | DApplicable _
   | DDB _
-  | DEventLog _
   | DBlob(Persistent _) -> true
 
   | DList(_, items) -> items |> List.forall isPersistable

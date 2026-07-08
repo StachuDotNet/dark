@@ -96,7 +96,6 @@ let rec private transformTypeRef
   | PT.TList inner -> PT.TList(transformTypeRef mapping inner)
   | PT.TDict inner -> PT.TDict(transformTypeRef mapping inner)
   | PT.TDB inner -> PT.TDB(transformTypeRef mapping inner)
-  | PT.TEventLog inner -> PT.TEventLog(transformTypeRef mapping inner)
 
   | PT.TTuple(first, second, rest) ->
     PT.TTuple(

@@ -186,9 +186,6 @@ let writeTypeReference
   | PT.TDB inner ->
     w.Write 16uy
     writeTypeReference mode w inner
-  | PT.TEventLog inner ->
-    w.Write 27uy
-    writeTypeReference mode w inner
   | PT.TDateTime -> w.Write 17uy
   | PT.TChar -> w.Write 18uy
   | PT.TUuid -> w.Write 19uy

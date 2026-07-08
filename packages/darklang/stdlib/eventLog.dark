@@ -1,13 +1,12 @@
 module Darklang.Stdlib.EventLog
 
-// The append-only op log as a GENERAL, stream-shaped primitive: read the events SINCE a cursor (a peer serves
-// them; the events come back as a filterable Stream), and APPEND events received from elsewhere (folding
-// happens invisibly). Sync is its first consumer; branch structure, resolutions, messaging and cron are the
-// next — each a named EventLog. Everything travels as OPS, never a database file. A log is reached by name
-// (see `packageOps`); `package_ops` is the first.
+// The native read/append API over the three op-log tables (`package_ops`, `branch_ops`, `resolutions`).
+// Read the events SINCE a cursor (a peer serves them; the events come back as a filterable Stream), and
+// APPEND events received from elsewhere (folding happens invisibly). Everything travels as OPS, never a
+// database file. Sync is the primary consumer.
 //
-// Records and the Stream are built NATIVELY (`eventLogReadNative` / `eventLogAppendNative`), so a 1000-op
-// batch stays milliseconds — never per-row Dark interpreter overhead.
+// Records and the Stream are built NATIVELY (`packageOpsReadNative` / `packageOpsAppendNative` / …), so a
+// 1000-op batch stays milliseconds — never per-row Dark interpreter overhead.
 
 /// An opaque position in a log. You advance it by reading, and resume from where you left off. Compare or
 /// serialize it, but don't depend on the wrapped value — it's the log's private cursor representation.
@@ -29,8 +28,8 @@ type Commit =
     accountId: String
     createdAt: String }
 
-/// A bounded read from a log: the commits the events reference, the events as a Stream (filter before draining
-/// — e.g. by branch), and the cursor to resume from.
+/// A bounded read from the log: the commits the events reference, the events as a Stream (filter before
+/// draining — e.g. by branch), and the cursor to resume from.
 type Batch =
   { commits: List<Commit>
     events: Stream<Event>
@@ -44,34 +43,30 @@ let cursorToInt (cursor: Cursor) : Int64 =
   match cursor with
   | Cursor c -> c
 
-/// This instance's package-op log — the first named EventLog. A function (not a stored value) because a
-/// DEventLog is a live reference, not data to persist in package space.
-let packageOps () : EventLog<Event> = Builtin.eventLogNamed<Event> "package_ops"
-
-/// Read at most <param limit> committed events after <param cursor> from <param log>: the commits they
-/// reference, the events as a filterable Stream, and the cursor to resume from. Reads natively (fast), so a
-/// large log transfers in bounded batches — loop on the returned cursor until the events come back empty.
-let readSince (log: EventLog<Event>) (cursor: Cursor) (limit: Int64) : Batch =
+/// Read at most <param limit> committed package ops after <param cursor>: the commits they reference, the
+/// events as a filterable Stream, and the cursor to resume from. Reads natively (fast), so a large log
+/// transfers in bounded batches — loop on the returned cursor until the events come back empty.
+let readSince (cursor: Cursor) (limit: Int64) : Batch =
   let cur =
     match cursor with
     | Cursor c -> c
 
   let (commits, events, next) =
-    Builtin.eventLogReadNative<Commit, Event, Cursor> log cur limit
+    Builtin.packageOpsReadNative<Commit, Event, Cursor> cur limit
 
   Batch { commits = commits; events = events; next = next }
 
-/// Append received commits + events into <param log>; folding is invisible. Returns how many ops were NEWLY
-/// applied (0 = all already present) — the resume cursor comes from `readSince`'s `next`. Idempotent:
+/// Append received commits + events into the package op log; folding is invisible. Returns how many ops were
+/// NEWLY applied (0 = all already present) — the resume cursor comes from `readSince`'s `next`. Idempotent:
 /// re-appending the same events is a no-op (content-addressed ids).
-let append (log: EventLog<Event>) (commits: List<Commit>) (events: List<Event>) : Int =
-  Builtin.eventLogAppendNative<Commit, Event> log commits events
+let append (commits: List<Commit>) (events: List<Event>) : Int =
+  Builtin.packageOpsAppendNative<Commit, Event> commits events
 
 
 // ── the branch-structure log ──────────────────────────────────────────────────────────────────────
-// `branchOps` is the second named EventLog: the branch lifecycle (create / commit / rebase / merge / archive).
-// Peers sync it so they LEARN branches — the structure `packageOps` events reference by branch_id. Branch ops
-// are self-contained (they carry their own branch/commit data), so an event is just (id, op) — no side commits.
+// `branch_ops` carries the branch lifecycle (create / commit / rebase / merge / archive). Peers sync it so
+// they LEARN branches — the structure `package_ops` events reference by branch_id. Branch ops are
+// self-contained (they carry their own branch/commit data), so an event is just (id, op) — no side commits.
 
 /// One branch op in transit. `op` is the branch-op blob as hex.
 type BranchOpEvent = { id: String; op: String }
@@ -81,34 +76,26 @@ type BranchBatch =
   { events: Stream<BranchOpEvent>
     next: Cursor }
 
-/// This instance's branch-structure log — the second named EventLog.
-let branchOps () : EventLog<BranchOpEvent> =
-  Builtin.eventLogNamed<BranchOpEvent> "branch_ops"
-
-/// Read at most <param limit> branch ops after <param cursor> from <param log> — as a Stream + the resume
-/// cursor. Built natively.
-let readBranchOps
-  (log: EventLog<BranchOpEvent>)
-  (cursor: Cursor)
-  (limit: Int64)
-  : BranchBatch =
+/// Read at most <param limit> branch ops after <param cursor> — as a Stream + the resume cursor. Built
+/// natively.
+let readBranchOps (cursor: Cursor) (limit: Int64) : BranchBatch =
   let cur =
     match cursor with
     | Cursor c -> c
 
-  let (events, next) = Builtin.branchOpsReadNative<BranchOpEvent, Cursor> log cur limit
+  let (events, next) = Builtin.branchOpsReadNative<BranchOpEvent, Cursor> cur limit
   BranchBatch { events = events; next = next }
 
-/// Apply received branch ops into <param log>; folds into branches/commits. Returns how many were processed.
-/// Idempotent — content-addressed, so re-applying is a no-op.
-let appendBranchOps (log: EventLog<BranchOpEvent>) (events: List<BranchOpEvent>) : Int =
-  Builtin.branchOpsAppendNative<BranchOpEvent> log events
+/// Apply received branch ops into the branch-ops log; folds into branches/commits. Returns how many were
+/// processed. Idempotent — content-addressed, so re-applying is a no-op.
+let appendBranchOps (events: List<BranchOpEvent>) : Int =
+  Builtin.branchOpsAppendNative<BranchOpEvent> events
 
 
 // ── the resolutions log ───────────────────────────────────────────────────────────────────────────
-// `resolutions` is the third named EventLog: synced human/policy overrides that overlay the op-fold. Peers
-// apply them AFTER package ops, so a "keep mine" decision converges everywhere. Each is idempotent (id-keyed)
-// and LWW-gated by its own `at` stamp.
+// `resolutions` carries synced human/policy overrides that overlay the op-fold. Peers apply them AFTER
+// package ops, so a "keep mine" decision converges everywhere. Each is idempotent (id-keyed) and LWW-gated
+// by its own `at` stamp.
 
 /// One resolution in transit — a decision to bind `location` to `chosenHash` (content of `itemKind`).
 type ResolutionEvent =
@@ -125,29 +112,18 @@ type ResolutionBatch =
   { events: Stream<ResolutionEvent>
     next: Cursor }
 
-/// This instance's resolutions log — the third named EventLog.
-let resolutions () : EventLog<ResolutionEvent> =
-  Builtin.eventLogNamed<ResolutionEvent> "resolutions"
-
-/// Read at most <param limit> resolutions after <param cursor> from <param log> — as a Stream + resume cursor.
-let readResolutions
-  (log: EventLog<ResolutionEvent>)
-  (cursor: Cursor)
-  (limit: Int64)
-  : ResolutionBatch =
+/// Read at most <param limit> resolutions after <param cursor> — as a Stream + resume cursor.
+let readResolutions (cursor: Cursor) (limit: Int64) : ResolutionBatch =
   let cur =
     match cursor with
     | Cursor c -> c
 
   let (events, next) =
-    Builtin.resolutionsReadNative<ResolutionEvent, Cursor> log cur limit
+    Builtin.resolutionsReadNative<ResolutionEvent, Cursor> cur limit
 
   ResolutionBatch { events = events; next = next }
 
-/// Apply received resolutions into <param log> — record + overlay onto the locations projection. Returns how
-/// many were processed. Idempotent + LWW-gated.
-let appendResolutions
-  (log: EventLog<ResolutionEvent>)
-  (events: List<ResolutionEvent>)
-  : Int =
-  Builtin.resolutionsAppendNative<ResolutionEvent> log events
+/// Apply received resolutions — record + overlay onto the locations projection. Returns how many were
+/// processed. Idempotent + LWW-gated.
+let appendResolutions (events: List<ResolutionEvent>) : Int =
+  Builtin.resolutionsAppendNative<ResolutionEvent> events

@@ -30,19 +30,16 @@ let wireSince
   // native reads make even a whole log milliseconds, so the batch is for bounded responses + resumability.
   let branchBatch =
     Stdlib.EventLog.readBranchOps
-      (Stdlib.EventLog.branchOps ())
       (Stdlib.EventLog.cursorFromInt branchCursor)
       1000L
 
   let pkgBatch =
     Stdlib.EventLog.readSince
-      (Stdlib.EventLog.packageOps ())
       (Stdlib.EventLog.cursorFromInt packageCursor)
       1000L
 
   let resolutionBatch =
     Stdlib.EventLog.readResolutions
-      (Stdlib.EventLog.resolutions ())
       (Stdlib.EventLog.cursorFromInt resolutionCursor)
       1000L
 
@@ -179,7 +176,7 @@ let rec private pullLoop
             if Stdlib.List.length w.branchEvents == 0I then
               0I
             else
-              Stdlib.EventLog.appendBranchOps (Stdlib.EventLog.branchOps ()) w.branchEvents
+              Stdlib.EventLog.appendBranchOps w.branchEvents
 
           let _ = setCursor peer "branch_ops" (Stdlib.EventLog.cursorToInt w.branchCursor)
 
@@ -187,7 +184,7 @@ let rec private pullLoop
             if Stdlib.List.length w.packageEvents == 0I then
               0I
             else
-              Stdlib.EventLog.append (Stdlib.EventLog.packageOps ()) w.commits w.packageEvents
+              Stdlib.EventLog.append w.commits w.packageEvents
 
           let _ = setCursor peer "package_ops" (Stdlib.EventLog.cursorToInt w.packageCursor)
 
@@ -197,9 +194,7 @@ let rec private pullLoop
             if Stdlib.List.length w.resolutionEvents == 0I then
               0I
             else
-              Stdlib.EventLog.appendResolutions
-                (Stdlib.EventLog.resolutions ())
-                w.resolutionEvents
+              Stdlib.EventLog.appendResolutions w.resolutionEvents
 
           let _ =
             setCursor peer "resolutions" (Stdlib.EventLog.cursorToInt w.resolutionCursor)

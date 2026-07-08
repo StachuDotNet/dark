@@ -61,9 +61,6 @@ and writeKnownType (w : BinaryWriter) (kt : KnownType) =
   | KTDB vt ->
     w.Write 20uy
     writeValueType w vt
-  | KTEventLog vt ->
-    w.Write 26uy
-    writeValueType w vt
   | KTCustomType(fqTypeName, typeArgs) ->
     w.Write 21uy
     FQTypeName.write w fqTypeName
@@ -189,9 +186,6 @@ and writeDvalImpl (w : BinaryWriter) (dval : Dval) =
   | DDB value ->
     w.Write 23uy
     String.write w value
-  | DEventLog value ->
-    w.Write 26uy
-    String.write w value
   | DBlob(Persistent(hash, length)) ->
     w.Write 24uy
     String.write w hash
@@ -254,7 +248,6 @@ and readKnownType (r : BinaryReader) : KnownType =
     let ret = readValueType r
     KTFn(args, ret)
   | 20uy -> KTDB(readValueType r)
-  | 26uy -> KTEventLog(readValueType r)
   | 21uy ->
     let fqTypeName = FQTypeName.read r
     let typeArgs = List.read r readValueType
@@ -345,7 +338,6 @@ and readDvalImpl (r : BinaryReader) : Dval =
     DEnum(sourceTypeName, runtimeTypeName, typeArgs, caseName, fields)
   | 22uy -> DApplicable(readApplicable r)
   | 23uy -> DDB(String.read r)
-  | 26uy -> DEventLog(String.read r)
   | 24uy ->
     let hash = String.read r
     let length = r.ReadInt64()

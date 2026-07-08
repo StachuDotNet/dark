@@ -69,7 +69,6 @@ type TypeReference =
     typeArgs: List<TypeReference>
   | TFn of List<TypeReference> * TypeReference
   | TDB of TypeReference
-  | TEventLog of TypeReference
   | TVariable of String
 
 type TypeSymbolTable = Dict<TypeReference>
@@ -105,7 +104,6 @@ type KnownType =
   | KTCustomType of FQTypeName.FQTypeName * typeArgs: List<ValueType>
 
   | KTDB of ValueType
-  | KTEventLog of ValueType
 
 type ValueType =
   | Unknown
@@ -210,7 +208,6 @@ type Dval =
 
   // References
   | DDB of String
-  | DEventLog of String
 
   | DBlobPersistent of hash: String * length: Int
   | DBlobEphemeral of id: Uuid

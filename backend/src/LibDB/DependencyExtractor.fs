@@ -62,7 +62,6 @@ let rec private extractFromTypeRef (typeRef : PT.TypeReference) : List<Dependenc
   | PT.TList inner -> extractFromTypeRef inner
   | PT.TDict inner -> extractFromTypeRef inner
   | PT.TDB inner -> extractFromTypeRef inner
-  | PT.TEventLog inner -> extractFromTypeRef inner
 
   | PT.TTuple(first, second, rest) ->
     [ extractFromTypeRef first

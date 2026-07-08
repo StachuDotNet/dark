@@ -116,10 +116,6 @@ let private multiUseAllowlist : Set<string> =
       // `Stdlib.DB.queryAll` callers (cloud/db.dark line 815+).
       "stringIndexOf"
 
-      // `eventLogNamed` builds a named EventLog reference; each named log
-      // (packageOps, branchOps, …) calls it directly. Shared by design.
-      "eventLogNamed"
-
       // CLI / IO surface — direct calls from many CLI commands.
       "debug"
       "directoryCurrent"

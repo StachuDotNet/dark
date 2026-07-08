@@ -380,11 +380,6 @@ type TypeReference =
 
   | TDB of TypeReference
 
-  /// A named, persistent, append-only event log of the given element type —
-  /// a DDB-sibling named reference. Reads yield a `Stream` of events. The
-  /// package op log is the first; tracing/messaging are future named logs.
-  | TEventLog of TypeReference
-
 
 /// Expressions - the main part of the language.
 type Expr =

@@ -191,10 +191,6 @@ type KnownType =
   /// List.head ([]: List<DB<'a>>) // KTDB (Unknown)
   | KTDB of ValueType
 
-  /// A named, persistent, append-only event log of the element type. Sibling
-  /// to `KTDB`; reads yield a `Stream`. (package op log, + future named logs.)
-  | KTEventLog of ValueType
-
   /// let n = None          // type args: [Unknown]
   /// let s = Some(5)       // type args: [Known KTInt64]
   /// let o = Ok (5)        // type args: [Known KTInt64, Unknown]
@@ -361,7 +357,6 @@ type TypeReference =
     typeArgs : List<TypeReference>
   | TVariable of string
   | TDB of TypeReference
-  | TEventLog of TypeReference
 
 
   member this.isFn() : bool =
@@ -404,7 +399,6 @@ type TypeReference =
       | TFn(ts, t) -> NEList.forall isConcrete ts && isConcrete t
 
       | TDB t -> isConcrete t
-      | TEventLog t -> isConcrete t
 
       | TVariable _ -> false
 
@@ -815,11 +809,6 @@ and [<NoComparison>] Dval =
 
   // References
   | DDB of name : string
-
-  /// A named reference to a persistent, append-only event log (data lives in
-  /// LibDB, resolved by name — like `DDB`). Reads (`EventLog.since`) yield a
-  /// `Stream`; `EventLog.append` writes. Persistable as a bare name.
-  | DEventLog of name : string
 
   /// Byte sequence, immutable by convention. Ephemeral blobs carry their
   /// bytes inline (lifetime is GC); `Blob.readBytes` returns the array to
@@ -1394,10 +1383,9 @@ module Dval =
       // (probably forces us to make this fn async?)
       | AppNamedFn _named -> ValueType.Unknown
 
-    // CLEANUP follow up when DDB / DEventLog carry a typeReference (the name alone doesn't pin the
-    // element type, so both stay Unknown — permissive against any declared DB<_> / EventLog<_>).
+    // CLEANUP follow up when DDB carries a typeReference (the name alone doesn't pin the
+    // element type, so it stays Unknown — permissive against any declared DB<_>).
     | DDB _ -> ValueType.Unknown
-    | DEventLog _ -> ValueType.Unknown
 
     | DBlob _ -> ValueType.Known KTBlob
 
@@ -1452,7 +1440,6 @@ module Dval =
           | DDateTime _
           | DUuid _
           | DDB _
-          | DEventLog _
           | DStream _
           | DBlob _ -> return dv
 
@@ -2145,7 +2132,6 @@ module Types =
 
     | TFn(args, ret) -> TFn(NEList.map r args, r ret)
     | TDB inner -> TDB(r inner)
-    | TEventLog inner -> TEventLog(r inner)
 
     | TVariable v ->
       if typeParams.Length = typeArguments.Length then
@@ -2252,9 +2238,6 @@ module TypeReference =
       | TDB inner ->
         let! inner = r inner
         return ValueType.Known(KTDB inner)
-      | TEventLog inner ->
-        let! inner = r inner
-        return ValueType.Known(KTEventLog inner)
     }
 
 
@@ -2294,7 +2277,6 @@ module TypeReference =
       TCustomType(NameResolution.ok typeName, List.map fromVT typeArgs)
     | KTFn(args, ret) -> TFn(NEList.map fromVT args, fromVT ret)
     | KTDB inner -> TDB(fromVT inner)
-    | KTEventLog inner -> TEventLog(fromVT inner)
 
 
   /// Resolve type variables in a TypeReference using the TypeSymbolTable.
@@ -2338,7 +2320,6 @@ module TypeReference =
     | TCustomType(typeName, typeArgs) -> TCustomType(typeName, List.map r typeArgs)
     | TFn(args, ret) -> TFn(NEList.map r args, r ret)
     | TDB inner -> TDB(r inner)
-    | TEventLog inner -> TEventLog(r inner)
 
 
 

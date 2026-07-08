@@ -35,9 +35,6 @@ let rec write (w : BinaryWriter) (t : TypeReference) : unit =
   | TDB inner ->
     w.Write 16uy
     write w inner
-  | TEventLog inner ->
-    w.Write 27uy
-    write w inner
   | TDateTime -> w.Write 17uy
   | TChar -> w.Write 18uy
   | TUuid -> w.Write 19uy
@@ -82,7 +79,6 @@ let rec read (r : BinaryReader) : TypeReference =
   | 14uy -> TList(read r)
   | 15uy -> TDict(read r)
   | 16uy -> TDB(read r)
-  | 27uy -> TEventLog(read r)
   | 17uy -> TDateTime
   | 18uy -> TChar
   | 19uy -> TUuid

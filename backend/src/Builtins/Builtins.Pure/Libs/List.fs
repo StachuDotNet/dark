@@ -91,7 +91,6 @@ module DvalComparator =
     //   if c = 0 then compareExprs l1.body l2.body else c
 
     | DDB name1, DDB name2 -> order name1 name2
-    | DEventLog name1, DEventLog name2 -> order name1 name2
 
     | DBlob a, DBlob b ->
       // Blobs don't have a natural ordering — compare by hash for
@@ -128,7 +127,6 @@ module DvalComparator =
     | DEnum _, _
     | DApplicable _, _
     | DDB _, _
-    | DEventLog _, _
     | DBlob _, _
     | DStream _, _ ->
       // TODO: Feels like this should hook into typechecker and ValueTypes somehow

@@ -265,7 +265,7 @@ let fns () : List<BuiltInFn> =
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
 
-    // This instance's OWN package store path (data.db). The EventLog builtins write ops here; the sync config
+    // This instance's OWN package store path (data.db). The op-log builtins write ops here; the sync config
     // tables (sync_peers/sync_cursors) live here too — the daemon/CLI don't have to know the path.
     { name = fn "localDbPath" 0
       typeParams = []
@@ -298,41 +298,21 @@ let fns () : List<BuiltInFn> =
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
 
-    // The general event-log seam (the "nice wheel" — sync is its first consumer, messaging/cron the next).
-    // A named reference to an event log — the DDB-sibling `EventLog` value. The name selects the store
-    // (package_ops, branch_ops, resolutions).
-    { name = fn "eventLogNamed" 0
-      typeParams = [ "e" ]
-      parameters =
-        [ Param.make "name" TString "the log's name, e.g. \"package_ops\"" ]
-      returnType = TEventLog(TVariable "e")
-      description =
-        "A named reference to an append-only event log. Reads (EventLog.readSince) yield a Stream; EventLog.append writes. The name selects the store."
-      fn =
-        (function
-        | _, _, _, [ DString name ] -> uply { return DEventLog name }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Pure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-    // The TYPED, stream-shaped read: Event/Commit records + the resume Cursor, all built NATIVELY so a 1000-op
-    // batch never pays the per-row Dark interpreter cost. `EventLog.readSince` wraps this; the events Stream is
-    // drained (native loop) for the wire, and is filterable for branch-scoped reads.
-    { name = fn "eventLogReadNative" 0
+    // The TYPED, stream-shaped read of the package op log: Event/Commit records + the resume Cursor, all built
+    // NATIVELY so a 1000-op batch never pays the per-row Dark interpreter cost. `EventLog.readSince` wraps this;
+    // the events Stream is drained (native loop) for the wire, and is filterable for branch-scoped reads.
+    { name = fn "packageOpsReadNative" 0
       typeParams = [ "c"; "e"; "cur" ]
       parameters =
-        [ Param.make "log" (TEventLog(TVariable "e")) "the log to read"
-          Param.make "cursor" TInt64 "read events after this cursor (0 = from the start)"
+        [ Param.make "cursor" TInt64 "read events after this cursor (0 = from the start)"
           Param.make "limit" TInt64 "at most this many events — one bounded batch" ]
       returnType =
         TTuple(TList(TVariable "c"), TStream(TVariable "e"), [ TVariable "cur" ])
       description =
-        "This instance's committed events after <param cursor> (at most <param limit>) as a Stream of Event records, the Commit records they reference, and the resume Cursor. Built natively — the fast typed read half of the event-log seam."
+        "This instance's committed events after <param cursor> (at most <param limit>) as a Stream of Event records, the Commit records they reference, and the resume Cursor. Built natively — the fast typed read half of the op-log seam."
       fn =
         (function
-        | _, _, _, [ DEventLog _name; DInt64 cursor; DInt64 limit ] ->
+        | _, _, _, [ DInt64 cursor; DInt64 limit ] ->
           uply {
             let! (commits, events, newCursor) = LibDB.Seed.eventsSince cursor limit
 
@@ -366,20 +346,19 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
     // The TYPED append: Commit + Event records received from a peer (parsed from JSON natively) folded into the
-    // log. Field extraction is native — a 1000-op pull never pays the per-row Dark cost. Returns the count
-    // newly applied (idempotent). `EventLog.append` wraps this.
-    { name = fn "eventLogAppendNative" 0
+    // package op log. Field extraction is native — a 1000-op pull never pays the per-row Dark cost. Returns the
+    // count newly applied (idempotent). `EventLog.append` wraps this.
+    { name = fn "packageOpsAppendNative" 0
       typeParams = [ "c"; "e" ]
       parameters =
-        [ Param.make "log" (TEventLog(TVariable "e")) "the log to append to"
-          Param.make "commits" (TList(TVariable "c")) "Commit records the events reference"
+        [ Param.make "commits" (TList(TVariable "c")) "Commit records the events reference"
           Param.make "events" (TList(TVariable "e")) "Event records received from a peer" ]
       returnType = TInt
       description =
         "Append received Commit + Event records to the op log (reconciling origin_ts to the MIN stamp for LWW convergence) + fold. Returns the count of ops newly applied. Idempotent. Extracts fields natively."
       fn =
         (function
-        | _, _, _, [ DEventLog _name; DList(_, commits); DList(_, events) ] ->
+        | _, _, _, [ DList(_, commits); DList(_, events) ] ->
           uply {
             // Receive must be TOTAL against a malformed/hostile peer: skip any event/commit that won't parse
             // (bad guid/hex), and catch a batch-level DB error (e.g. an FK to a row not in this batch) so the
@@ -436,15 +415,14 @@ let fns () : List<BuiltInFn> =
     { name = fn "branchOpsReadNative" 0
       typeParams = [ "e"; "cur" ]
       parameters =
-        [ Param.make "log" (TEventLog(TVariable "e")) "the branch-ops log"
-          Param.make "cursor" TInt64 "read branch ops after this cursor (0 = from the start)"
+        [ Param.make "cursor" TInt64 "read branch ops after this cursor (0 = from the start)"
           Param.make "limit" TInt64 "at most this many — one bounded batch" ]
       returnType = TTuple(TStream(TVariable "e"), TVariable "cur", [])
       description =
         "This instance's branch ops after <param cursor> as a Stream of BranchOpEvent records + the resume Cursor. Built natively."
       fn =
         (function
-        | _, _, _, [ DEventLog _name; DInt64 cursor; DInt64 limit ] ->
+        | _, _, _, [ DInt64 cursor; DInt64 limit ] ->
           uply {
             let! (events, newCursor) = LibDB.Seed.branchOpsSince cursor limit
 
@@ -477,16 +455,15 @@ let fns () : List<BuiltInFn> =
     { name = fn "branchOpsAppendNative" 0
       typeParams = [ "e" ]
       parameters =
-        [ Param.make "log" (TEventLog(TVariable "e")) "the branch-ops log"
-          Param.make "events" (TList(TVariable "e")) "BranchOpEvent records received from a peer" ]
+        [ Param.make "events" (TList(TVariable "e")) "BranchOpEvent records received from a peer" ]
       returnType = TInt
       description =
         "Apply received BranchOpEvent records to the branch-ops log (fold into branches/commits). Returns the count processed. Idempotent."
       fn =
         (function
-        | _, _, _, [ DEventLog _name; DList(_, events) ] ->
+        | _, _, _, [ DList(_, events) ] ->
           uply {
-            // Total against a bad peer (see eventLogAppendNative): skip unparseable events, catch batch errors.
+            // Total against a bad peer (see packageOpsAppendNative): skip unparseable events, catch batch errors.
             let parsed =
               events
               |> List.choose (fun ev ->
@@ -514,15 +491,14 @@ let fns () : List<BuiltInFn> =
     { name = fn "resolutionsReadNative" 0
       typeParams = [ "e"; "cur" ]
       parameters =
-        [ Param.make "log" (TEventLog(TVariable "e")) "the resolutions log"
-          Param.make "cursor" TInt64 "read resolutions after this cursor (0 = from the start)"
+        [ Param.make "cursor" TInt64 "read resolutions after this cursor (0 = from the start)"
           Param.make "limit" TInt64 "at most this many — one bounded batch" ]
       returnType = TTuple(TStream(TVariable "e"), TVariable "cur", [])
       description =
         "This instance's resolutions after <param cursor> as a Stream of ResolutionEvent records + the resume Cursor. Built natively."
       fn =
         (function
-        | _, _, _, [ DEventLog _name; DInt64 cursor; DInt64 limit ] ->
+        | _, _, _, [ DInt64 cursor; DInt64 limit ] ->
           uply {
             let! (events, newCursor) = LibDB.Resolutions.resolutionsSince cursor limit
 
@@ -556,14 +532,13 @@ let fns () : List<BuiltInFn> =
     { name = fn "resolutionsAppendNative" 0
       typeParams = [ "e" ]
       parameters =
-        [ Param.make "log" (TEventLog(TVariable "e")) "the resolutions log"
-          Param.make "events" (TList(TVariable "e")) "ResolutionEvent records received from a peer" ]
+        [ Param.make "events" (TList(TVariable "e")) "ResolutionEvent records received from a peer" ]
       returnType = TInt
       description =
         "Apply received ResolutionEvent records (record + overlay onto locations). Returns the count processed. Idempotent."
       fn =
         (function
-        | _, _, _, [ DEventLog _name; DList(_, events) ] ->
+        | _, _, _, [ DList(_, events) ] ->
           uply {
             let parsed =
               events

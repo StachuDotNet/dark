@@ -328,7 +328,6 @@ module TypeReference =
           DList(VT.known (knownType ()), List.map toDT typeArgs) ]
 
       | PT.TDB inner -> "TDB", [ toDT inner ]
-      | PT.TEventLog inner -> "TEventLog", [ toDT inner ]
 
       | PT.TFn(args, ret) ->
         "TFn",
@@ -376,7 +375,6 @@ module TypeReference =
       )
 
     | DEnum(_, _, [], "TDB", [ inner ]) -> PT.TDB(fromDT inner)
-    | DEnum(_, _, [], "TEventLog", [ inner ]) -> PT.TEventLog(fromDT inner)
     | DEnum(_, _, [], "TFn", [ DList(_vtTODO, head :: tail); ret ]) ->
       PT.TFn(NEList.ofList head tail |> NEList.map fromDT, fromDT ret)
     | _ -> Exception.raiseInternal "Invalid TypeReference" []

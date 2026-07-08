@@ -336,7 +336,6 @@ module Expect =
     | DUuid _
     | DApplicable _
     | DDB _
-    | DEventLog _
     | DBlob _
     | DStream _ -> true
 
@@ -627,7 +626,6 @@ module Expect =
       | DEnum _, _
       | DApplicable _, _
       | DDB _, _
-      | DEventLog _, _
       | DBlob _, _
       | DStream _, _ -> check path actual expected
 
@@ -1069,7 +1067,6 @@ let visitDval (f : Dval -> 'a) (dv : Dval) : List<'a> =
     | DDateTime _
     | DApplicable _
     | DDB _
-    | DEventLog _
     | DBlob _
     | DStream _ -> f dv
     f dv

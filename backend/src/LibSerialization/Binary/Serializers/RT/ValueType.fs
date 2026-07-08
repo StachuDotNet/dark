@@ -51,9 +51,6 @@ and writeKnownType (w : BinaryWriter) (kt : KnownType) : unit =
   | KTDB vt ->
     w.Write 20uy
     write w vt
-  | KTEventLog vt ->
-    w.Write 26uy
-    write w vt
   | KTCustomType(typeName, typeArgs) ->
     w.Write 21uy
     FQTypeName.write w typeName
@@ -103,7 +100,6 @@ and readKnownType (r : BinaryReader) : KnownType =
     let returnType = read r
     KTFn(argTypes, returnType)
   | 20uy -> KTDB(read r)
-  | 26uy -> KTEventLog(read r)
   | 21uy ->
     let typeName = FQTypeName.read r
     let typeArgs = List.read r read
