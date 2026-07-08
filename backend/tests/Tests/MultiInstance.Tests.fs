@@ -26,6 +26,7 @@ open LibDB.Sqlite
 module Seed = LibDB.Seed
 module Inserts = LibDB.Inserts
 module Resolutions = LibDB.Resolutions
+module Account = LibCloud.Account
 module PT = LibExecution.ProgramTypes
 module BS = LibSerialization.Binary.Serialization
 module Hashing = LibSerialization.Hashing.Hashing
@@ -213,6 +214,32 @@ let tests =
           Expect.equal aBranches [ "feature"; "main" ] "A has both branches"
           Expect.equal bBefore [ "main" ] "B is isolated: only main before sync"
           Expect.equal bAfter [ "feature"; "main" ] "B converged: feature arrived over the wire"
+        finally
+          teardown insts
+      }
+
+      testTask "a fresh schema-only store runs the sync path (the composite-PK upsert folds a package op)" {
+        let mutable insts : List<Instance> = []
+
+        try
+          let! a = freshInstance "a"
+          insts <- [ a ]
+
+          // A fresh store built from schema.sql alone must run receiveOps — whose ON CONFLICT(id, branch_id)
+          // upsert needs the composite PK to be IN schema.sql (not only in an incremental migration). This
+          // guards against schema.sql drifting from the migrated production schema.
+          let loc : PT.PackageLocation = { owner = "Test"; modules = [ "Fresh" ]; name = "x" }
+          let fnHash =
+            "00000000000000000000000000000000000000000000000000000000deadbeef"
+          let commitHash = "fresh-" + string (System.Guid.NewGuid())
+          let ts = "2026-07-08T00:00:00.000Z"
+          let commit =
+            (commitHash, "author x", PT.mainBranchId, Account.IDs.darklang, ts)
+
+          let! _ = Seed.receiveOps [ commit ] [ setNameEvent loc fnHash commitHash ts ]
+          let! bound = liveHash loc
+
+          Expect.equal bound [ fnHash ] "the package op folded on the fresh schema-built store"
         finally
           teardown insts
       }
