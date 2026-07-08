@@ -152,24 +152,6 @@ let recordAndApply (r : Resolution) : Task<unit> =
     do! applyToLocations r
   }
 
-/// Read a Resolution off a `resolutions` row.
-let ofRow (read : RowReader) : Resolution =
-  { id = read.string "id"
-    branchId = System.Guid.Parse(read.string "branch_id")
-    location = Conflicts.parseLocation (read.string "location")
-    choice =
-      PT.Reference.fromHashAndKind (
-        PT.Hash(read.string "chosen_hash"),
-        PT.ItemKind.fromString (read.string "item_kind")
-      )
-    resolvedBy = read.string "resolved_by"
-    at = read.string "at" }
-
-/// All resolutions, oldest first (creation order) — for inspection + the sync read.
-let list () : Task<List<Resolution>> =
-  Sql.query
-    "SELECT id, branch_id, location, item_kind, chosen_hash, resolved_by, at FROM resolutions ORDER BY rowid ASC"
-  |> Sql.executeAsync ofRow
 
 // ── the resolutions log as a synced EventLog (the third named log) ──
 

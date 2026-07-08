@@ -372,6 +372,15 @@ let tests =
           "re-receiving existing ops is a no-op (idempotent append)"
       }
 
+      // CLEANUP(sync-testing): these in-process tests exercise the receive/fold/detect/resolve seam on ONE
+      // store. What they DON'T cover is the genuinely-two-instance behavior the sync design turns on — and
+      // where the known gaps live (see the pre-merge review): (a) identical-op-then-divergent-edit convergence
+      // (origin_ts is stamped locally + kept via INSERT OR IGNORE, so two instances can disagree); (b) a
+      // malformed/hostile peer crashing the pull loop; (c) an unbounded/adversarial peer. Building these needs
+      // a harness that spins up N fresh, isolated Dark stores, seeds them, syncs between them over HTTP, and
+      // tears them down — worth investing in as the real sync test substrate. TODO: add that harness + the
+      // two-instance convergence + malformed-wire tests. (This note replaces the deleted TEST-SCENARIOS.md.)
+
       // The convergence property, at the seam: a genuinely NEW op arriving from a "peer" (here: a fresh
       // SetName binding an unused name to an existing fn hash) must be appended PRESERVING its origin_ts — not
       // re-stamped with a fresh local one, which is exactly what would make two instances' LWW diverge — and

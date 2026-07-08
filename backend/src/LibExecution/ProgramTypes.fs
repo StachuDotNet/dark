@@ -742,14 +742,6 @@ type PackageOp =
 
 
 
-/// A sync conflict — a disagreement about the op log across instances. Distinct from a RuntimeError: a
-/// conflict has CHOOSABLE resolutions (recorded locally + adjudicated; a human override becomes a synced
-/// `Resolution` overlaid on the op-fold — see `LibDB.Conflicts` / `LibDB.Resolutions`). Extensible: future
-/// kinds (a move collision, a value-update race) join here and resolve the same way, no sync-engine change.
-and SyncConflict =
-  /// One location bound to two different contents across instances (`name → two hashes`). `candidates`
-  /// are the contending references — today exactly two, ordered [local; incoming].
-  | Divergence of location : PackageLocation * candidates : List<Reference>
 
 
 /// The kind of package item (function, type, or value)

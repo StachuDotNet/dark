@@ -19,7 +19,6 @@ open LibExecution.Builtin.Shortcuts
 
 open Microsoft.Data.Sqlite
 
-module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
 module PackageRefs = LibExecution.PackageRefs
 module NR = LibExecution.RuntimeTypes.NameResolution

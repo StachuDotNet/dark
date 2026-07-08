@@ -36,9 +36,6 @@ type Batch =
     events: Stream<Event>
     next: Cursor }
 
-/// The zero cursor — read a log from its very start.
-let start: Cursor = Cursor.Cursor 0L
-
 /// Wrap a raw Int64 log position as a Cursor (e.g. a cursor loaded from a peer-cursor table).
 let cursorFromInt (n: Int64) : Cursor = Cursor.Cursor n
 
