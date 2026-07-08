@@ -144,7 +144,7 @@ let private setCursor (peer: String) (kind: String) (cursor: Int64) : Unit =
 
 // ── the client: pull a peer's new ops over HTTP + apply (folding invisible) ──
 
-// One pull batch: GET the peer's next ≤500 ops after our cursor, apply them, advance the cursor, and recurse
+// One pull batch: GET the peer's next bounded batch of ops after our cursor, apply them, advance the cursor, and recurse
 // until a batch comes back empty (caught up). Advancing the cursor per batch means an interrupted pull resumes
 // where it left off. <param applied> accumulates the total across batches.
 let rec private pullLoop
@@ -258,8 +258,8 @@ let status () : List<(String * Int64)> =
   Stdlib.List.map (peers ()) (fun peer -> (peer, cursorFor peer "package_ops"))
 
 
-// ── the autosync daemon (DECISIONS §8): pull from every peer on an interval, in the background. Managed by
-//    `dark apps start/stop sync` on the shared Stdlib.Cli.Daemon substrate. Poll-based v1. ──
+// ── the autosync daemon: pull from every peer on an interval, in the background. Driven by
+//    `dark sync daemon start/stop` on the shared Stdlib.Cli.Daemon substrate. Poll-based v1. ──
 
 // Poll every 30s: package edits are occasional, so a peer's commit shows within ~half a minute while the
 // daemon stays calm — two small GETs/min per peer, each a no-op when you're already up to date. Sync isn't
@@ -275,7 +275,7 @@ let rec private syncLoop (intervalMs: Int) (remaining: Int) : Int =
     syncLoop intervalMs (remaining - 1I)
 
 /// The autosync daemon entrypoint: claim the pidfile, then pull from every peer forever (ended by
-/// `apps stop`/SIGTERM). Invoked by `dark apps start sync`.
+/// `dark sync daemon stop`/SIGTERM). Started by `dark sync daemon start`.
 let daemon (name: String) : Int =
   let _ =
     match Stdlib.Cli.Daemon.claimPidfile name with

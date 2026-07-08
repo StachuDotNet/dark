@@ -1,7 +1,7 @@
 module Darklang.Cli.Sync
 
 // `dark sync` — keep your packages in step with your other instances, over HTTP. Local-first: sync is opt-in,
-// and once you connect a peer, `dark apps start sync` keeps things current in the background (DECISIONS §8).
+// and once you connect a peer, `dark sync daemon start` keeps things current in the background.
 // Peers are URLs (running instances), never files — sync exchanges ops, not databases.
 
 // "1 instance" / "2 instances" — count + correctly-pluralized noun, so no message reads "1 instance(s)".
@@ -12,7 +12,7 @@ let private plural (n: Int) (noun: String) : String =
     $"{Stdlib.Int.toString n} {noun}s"
 
 // Serve the sync endpoint so peers can pull from you. Blocks until Ctrl+C (foreground); for boot, use
-// `dark apps enable sync-server`. Same router `dark serve Darklang.Sync.Server.router` would run — just less
+// `dark sync daemon start`. Same router `dark serve Darklang.Sync.Server.router` would run — just less
 // to type, and it prints the address peers actually need.
 let private serveOn (port: Int) (state: AppState) : AppState =
   let portStr = Stdlib.Int.toString port

@@ -30,8 +30,8 @@ let computeOpHash (op : PT.PackageOp) : System.Guid =
 /// sequential* edits (rename v1 then v2 could leave v1 winning). So each call returns `max(nowMs, last+1ms)`:
 /// a local batch gets strictly-increasing stamps, so a later edit always wins its location. The string
 /// format matches the schema default `strftime('%Y-%m-%dT%H:%M:%fZ')`, so it stays lexically comparable
-/// with existing rows and peers. (The sync follow-on generalizes this to a full HLC that also advances on
-/// receive — SYNCING-PR-DESIGN.md PW-4.)
+/// with existing rows and peers. (A future hardening could generalize this to a hybrid logical clock that
+/// also advances the stamp on receive, so a skewed peer clock can't pin a binding.)
 let private originTsLock = System.Object()
 let mutable private lastOriginTs = System.DateTime.MinValue
 

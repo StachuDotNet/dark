@@ -1,5 +1,5 @@
-/// Raw SQLite access from Darklang — a SPIKE of the `Stdlib.Sqlite` floor primitive (SYNCING-PR-DESIGN.md
-/// PW-1), the keystone that lets sync/SCM policy move out of F# and into Dark over an ordinary database.
+/// Raw SQLite access from Darklang — a SPIKE of the `Stdlib.Sqlite` floor primitive, the keystone that lets
+/// sync/SCM policy move out of F# and into Dark over an ordinary database.
 ///
 /// Surface: `sqliteExec`/`sqliteQuery` (no params) and `sqliteExecP`/`sqliteQueryP` (positional params bound
 /// to @p0..@pN — the injection-safe way to pass values). `exec` returns rows affected; `query` returns each
@@ -8,7 +8,7 @@
 /// Deliberately minimal (spike): opens a file per call, stringifies cells, uncapped, rides Builtins.Matter.
 /// The production version (its own `Builtins.Sqlite` assembly) adds an opaque connection-registry `Db`
 /// handle, a typed `Sqlite.Value` enum (Null|Int|Real|Text|Bytes), `transact`, and a `sqlite:open:<glob>`
-/// capability. See the design doc.
+/// capability.
 module Builtins.Matter.Libs.Sqlite
 
 open FSharp.Control.Tasks
