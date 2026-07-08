@@ -372,14 +372,12 @@ let tests =
           "re-receiving existing ops is a no-op (idempotent append)"
       }
 
-      // CLEANUP(sync-testing): these in-process tests exercise the receive/fold/detect/resolve seam on ONE
-      // store. What they DON'T cover is the genuinely-two-instance behavior the sync design turns on — and
-      // where the known gaps live (see the pre-merge review): (a) identical-op-then-divergent-edit convergence
-      // (origin_ts is stamped locally + kept via INSERT OR IGNORE, so two instances can disagree); (b) a
-      // malformed/hostile peer crashing the pull loop; (c) an unbounded/adversarial peer. Building these needs
-      // a harness that spins up N fresh, isolated Dark stores, seeds them, syncs between them over HTTP, and
-      // tears them down — worth investing in as the real sync test substrate. TODO: add that harness + the
-      // two-instance convergence + malformed-wire tests. (This note replaces the deleted TEST-SCENARIOS.md.)
+      // These tests (and SyncScenarios.Tests.fs) exercise the receive/fold/detect/resolve seam on ONE store,
+      // applying a "peer's" ops through the real receive path — which is where convergence, LWW, and the
+      // origin_ts reconcile actually live. The one thing they don't cover is a genuinely-two-instance setup: N
+      // separate stores syncing the wire over HTTP and torn down per test.
+      // CLEANUP(sync-testing): build that multi-store harness (create/seed/clear isolated stores + sync between
+      // them) as the real sync test substrate, and add a true cross-host convergence test on top of it.
 
       // The convergence property, at the seam: a genuinely NEW op arriving from a "peer" (here: a fresh
       // SetName binding an unused name to an existing fn hash) must be appended PRESERVING its origin_ts — not
@@ -539,12 +537,12 @@ let tests =
         ()
       }
 
-      // M1 convergence fix: the op id is content-only, so two instances that independently author the SAME op
+      // The op id is content-only, so two instances that independently author the SAME op
       // stamp it with different local origin_ts. receiveOps must reconcile to the MIN (deterministic on every
       // instance) in BOTH package_ops AND the folded locations binding — otherwise a later competing edit
       // resolves differently on each instance and they diverge permanently. This is the two-instance
       // convergence property, reproduced on one store via re-receives at different stamps.
-      testTask "M1: a re-received op reconciles origin_ts to the MIN in package_ops + locations" {
+      testTask "a re-received op reconciles origin_ts to the MIN in package_ops + locations (convergence)" {
         let! fnHash =
           Sql.query "SELECT hash FROM package_functions LIMIT 1"
           |> Sql.executeRowAsync (fun read -> read.string "hash")

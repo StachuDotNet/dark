@@ -155,8 +155,17 @@ let detectDivergences
     for (opId, opBlob, branchId, _commitHash, originTs) in events do
       let op = BS.PT.PackageOp.deserialize (string opId) opBlob
 
-      match op with
-      | PT.PackageOp.SetName(loc, target) ->
+      // Only an op that is ABOUT TO FOLD (applied = 0 after the receive-insert) can introduce a new
+      // divergence. A re-received op that already folded (applied = 1) must be skipped — otherwise re-pulling
+      // a long-superseded SetName records a phantom conflict (curBinding is the newer winner, so it looks
+      // divergent) that surfaces in `dark conflicts` though nothing actually changed.
+      let! applied =
+        Sql.query "SELECT applied FROM package_ops WHERE id = @id AND branch_id = @b"
+        |> Sql.parameters [ "id", Sql.uuid opId; "b", Sql.uuid branchId ]
+        |> Sql.executeRowOptionAsync (fun read -> read.int64 "applied")
+
+      match op, applied with
+      | PT.PackageOp.SetName(loc, target), Some 0L ->
         let (PT.Hash incomingHash) = target.hash
         let! cur = currentBinding branchId loc target.kind
 

@@ -214,6 +214,39 @@ let tests =
         ()
       }
 
+      // NO PHANTOM CONFLICTS on re-pull: a divergence is recorded once (when the rebind actually folds);
+      // re-receiving an already-applied op must NOT record it again (detection only fires on ops about to fold).
+      testTask "re-pulling an already-applied op records no phantom conflict" {
+        let! (hLocal, hIncoming) = twoFns ()
+        let! commitHash = aCommit ()
+        let loc : PT.PackageLocation =
+          { owner = "Test"; modules = [ "SyncPhantom" ]; name = "p" }
+        let evLocal = setNameEvent loc hLocal commitHash "2099-01-01T00:00:00.100Z"
+        let evIncoming = setNameEvent loc hIncoming commitHash "2099-01-01T00:00:00.200Z"
+        let (idL, _, _, _, _) = evLocal
+        let (idI, _, _, _, _) = evIncoming
+
+        let conflictCount () : Task<int64> =
+          Sql.query "SELECT count(*) AS n FROM sync_conflicts WHERE location = @l"
+          |> Sql.parameters [ "l", Sql.string "Test.SyncPhantom.p" ]
+          |> Sql.executeRowAsync (fun read -> read.int64 "n")
+
+        do! wipe loc [ idL; idI ]
+        let! _ = recv evLocal
+        let! _ = recv evIncoming // the rebind folds → one divergence recorded
+        let! afterDivergence = conflictCount ()
+        Expect.equal afterDivergence 1L "the rebind records exactly one divergence"
+
+        // re-pull the now-superseded local op — already applied, so detection must NOT re-fire
+        let! _ = recv evLocal
+        let! afterRepull = conflictCount ()
+        Expect.equal afterRepull 1L "re-pulling the already-applied op records no new (phantom) conflict"
+
+        do! wipe loc [ idL; idI ]
+        let! _ = Seed.rebuildProjections ()
+        ()
+      }
+
       // BRANCH SCM SYNC — branch structure (branch_ops) applies before content, so a package op on a
       // freshly-synced branch resolves its branch_id and folds; and a merge marks the branch merged.
       testTask "branch sync: structure lands, content on the new branch folds, merge marks it" {
