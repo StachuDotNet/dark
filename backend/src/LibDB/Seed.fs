@@ -421,6 +421,11 @@ let receiveOps
           (sql, [ ps ]))
 
       let _ = (commitInserts @ opInserts) |> Sql.executeTransactionSync
+      // TODO(receive-atomicity): the insert above, detectDivergences below, and applyUnappliedOps run in
+      // three separate transactions. A mid-fold throw can leave conflicts recorded for ops that never
+      // folded — transiently inconsistent, though it self-heals on the next grow. The fix is to thread a
+      // single transaction/connection through detect + fold (the same connection-threading a true
+      // multi-store test harness needs), deferred to keep this change off the hot path for now.
       // Record any divergences BEFORE the fold: an incoming SetName that rebinds a name already bound
       // locally to a different hash is a sync conflict (auto-resolved by LWW). Recorded so it's reviewable.
       do! Conflicts.detectDivergences events
