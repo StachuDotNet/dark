@@ -435,12 +435,6 @@ let tokenize
        | true, v -> Ok(TInt32 v, 1)
        | _ when digits = "2147483648" -> Ok(TInt32 System.Int32.MinValue, 1)
        | _ -> Error $"out of range for Int32: {digits}")
-    // explicit `I` suffix → arbitrary-precision `Int`. Bare literals are already Int,
-    // so `I` is redundant, but some package files use it; accept and consume it.
-    elif matchesAt "I" i then
-      (match System.Numerics.BigInteger.TryParse digits with
-       | true, v -> Ok(TInt v, 1)
-       | _ -> Error $"Invalid integer literal: {digits}")
     // bare literal (no suffix) → arbitrary-precision `Int` (the default).
     else
       (match System.Numerics.BigInteger.TryParse digits with

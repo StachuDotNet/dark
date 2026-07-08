@@ -2,166 +2,166 @@
 
 module ESelfTests =
   let factorial (n: Int): Int =
-    if Stdlib.Int.lessThanOrEqualTo n 1I then
-      1I
+    if Stdlib.Int.lessThanOrEqualTo n 1 then
+      1
     else
-      Stdlib.Int.multiply n (factorial (Stdlib.Int.subtract n 1I))
+      Stdlib.Int.multiply n (factorial (Stdlib.Int.subtract n 1))
 
 
   let fibonacci (n: Int): Int =
-    if Stdlib.Int.lessThanOrEqualTo n 1I then
+    if Stdlib.Int.lessThanOrEqualTo n 1 then
       n
     else
       Stdlib.Int.add
-        (ESelfTests.fibonacci (Stdlib.Int.subtract n 1I))
-        (ESelfTests.fibonacci (Stdlib.Int.subtract n 2I))
+        (ESelfTests.fibonacci (Stdlib.Int.subtract n 1))
+        (ESelfTests.fibonacci (Stdlib.Int.subtract n 2))
 
 
   let sumUpTo (n: Int): Int =
-    if Stdlib.Int.lessThanOrEqualTo n 0I then
-      0I
+    if Stdlib.Int.lessThanOrEqualTo n 0 then
+      0
     else
-      Stdlib.Int.add n (ESelfTests.sumUpTo (Stdlib.Int.subtract n 1I))
+      Stdlib.Int.add n (ESelfTests.sumUpTo (Stdlib.Int.subtract n 1))
 
 
 module ShadowingTest =
   let factorialWithShadowing (n: Int): (String * Int) =
-    if Stdlib.Int.lessThanOrEqualTo n 1I then
-      ("base_case", 1I)
+    if Stdlib.Int.lessThanOrEqualTo n 1 then
+      ("base_case", 1)
     else
       let factorialWithShadowing = "shadowed"
-      let result = Stdlib.Int.multiply n ((ShadowingTest.factorialWithShadowing (Stdlib.Int.subtract n 1I)) |> Stdlib.Tuple2.second)
+      let result = Stdlib.Int.multiply n ((ShadowingTest.factorialWithShadowing (Stdlib.Int.subtract n 1)) |> Stdlib.Tuple2.second)
       (factorialWithShadowing , result)
 
   let factorialWithShadowingError (n: Int): (String * Int) =
-    if Stdlib.Int.lessThanOrEqualTo n 1I then
-      ("base_case", 1I)
+    if Stdlib.Int.lessThanOrEqualTo n 1 then
+      ("base_case", 1)
     else
       let factorialWithShadowingError = "shadowed"
-      let result = Stdlib.Int.multiply n ((factorialWithShadowingError (Stdlib.Int.subtract n 1I)) |> Stdlib.Tuple2.second)
+      let result = Stdlib.Int.multiply n ((factorialWithShadowingError (Stdlib.Int.subtract n 1)) |> Stdlib.Tuple2.second)
       (factorialWithShadowingError , result)
 
 
   let incrementWithShadowing (y: Int) (z: Int): Int =
-    if Stdlib.Int.lessThanOrEqualTo z 0I then
+    if Stdlib.Int.lessThanOrEqualTo z 0 then
       y
     else
-      let result = incrementWithShadowing y (Stdlib.Int.subtract z 1I)
-      let incrementWithShadowing = (fun x -> Stdlib.Int.add x 2I)
+      let result = incrementWithShadowing y (Stdlib.Int.subtract z 1)
+      let incrementWithShadowing = (fun x -> Stdlib.Int.add x 2)
       let lambdaResult = incrementWithShadowing z
       Stdlib.Int.add result lambdaResult
 
 
   let matchWithShadowing (x: Int) : Int =
     match x with
-    | 0I -> 0I
-    | 1I -> matchWithShadowing 0I
-    | 2I ->
-      let matchWithShadowing = (fun v -> v * 4I)
-      matchWithShadowing 2I
-    | matchWithShadowing -> matchWithShadowing + 1I
+    | 0 -> 0
+    | 1 -> matchWithShadowing 0
+    | 2 ->
+      let matchWithShadowing = (fun v -> v * 4)
+      matchWithShadowing 2
+    | matchWithShadowing -> matchWithShadowing + 1
 
 
   let tupleMatchWithShadowing (x: Int * Int) : Int =
     match x with
-    | (0I, _) -> 0I
-    | (1I, n) -> tupleMatchWithShadowing (0I, n)
-    | (2I, v) ->
-        let tupleMatchWithShadowing = (fun x -> x * 10I)
+    | (0, _) -> 0
+    | (1, n) -> tupleMatchWithShadowing (0, n)
+    | (2, v) ->
+        let tupleMatchWithShadowing = (fun x -> x * 10)
         tupleMatchWithShadowing v
     | (a, tupleMatchWithShadowing) -> a + tupleMatchWithShadowing
 
 
   let letBindingShadowing (x: Int) : List<Int> =
-    let letBindingShadowing = (fun v -> v * 3I)
-    let letBindingShadowing = [ 10I; letBindingShadowing x ]
+    let letBindingShadowing = (fun v -> v * 3)
+    let letBindingShadowing = [ 10; letBindingShadowing x ]
     let letBindingShadowing = Stdlib.List.reverse letBindingShadowing
     letBindingShadowing
 
 
   let conditionalShadowing (x: Int) : Int =
-    if x <= 0I then
-      0I
-    elif x < 3I then
-      let conditionalShadowing = (fun v w -> v * 5I + w)
-      conditionalShadowing x 2I
-    elif x < 5I then
-      let conditionalShadowing = (fun v -> v * 3I)
+    if x <= 0 then
+      0
+    elif x < 3 then
+      let conditionalShadowing = (fun v w -> v * 5 + w)
+      conditionalShadowing x 2
+    elif x < 5 then
+      let conditionalShadowing = (fun v -> v * 3)
       conditionalShadowing x
     else
-      x + conditionalShadowing (x - 1I)
+      x + conditionalShadowing (x - 1)
 
 
   let pipeWithShadowing (x: Int) : Int =
     match x with
-    | 0I -> 0I
-    | 1I -> 0I |> pipeWithShadowing
-    | 2I ->
-      let pipeWithShadowing = (fun v -> v * 6I)
+    | 0 -> 0
+    | 1 -> 0 |> pipeWithShadowing
+    | 2 ->
+      let pipeWithShadowing = (fun v -> v * 6)
       x |> pipeWithShadowing
     | pipeWithShadowing -> x |> Stdlib.Int.add pipeWithShadowing
 
 
-  let valueShadowing = 120I
+  let valueShadowing = 120
   let valueShadowing (x: Int) : Int =
-    if x <= 0I then
-      10I
-    else if x == 1I then
-      (valueShadowing 0I) + 1I
+    if x <= 0 then
+      10
+    else if x == 1 then
+      (valueShadowing 0) + 1
     else
-      let result = valueShadowing + 1I
-      (valueShadowing (x - 1I)) + result
+      let result = valueShadowing + 1
+      (valueShadowing (x - 1)) + result
 
 
-ESelfTests.factorial 0I = 1I
-ESelfTests.factorial 1I = 1I
-ESelfTests.factorial 5I = 120I
-ESelfTests.factorial 10I = 3628800I
+ESelfTests.factorial 0 = 1
+ESelfTests.factorial 1 = 1
+ESelfTests.factorial 5 = 120
+ESelfTests.factorial 10 = 3628800
 
 
-ESelfTests.fibonacci 0I = 0I
-ESelfTests.fibonacci 1I = 1I
-ESelfTests.fibonacci 5I = 5I
-ESelfTests.fibonacci 10I = 55I
+ESelfTests.fibonacci 0 = 0
+ESelfTests.fibonacci 1 = 1
+ESelfTests.fibonacci 5 = 5
+ESelfTests.fibonacci 10 = 55
 
 
-ESelfTests.sumUpTo 0I = 0I
-ESelfTests.sumUpTo 1I = 1I
-ESelfTests.sumUpTo 5I = 15I
-ESelfTests.sumUpTo 10I = 55I
+ESelfTests.sumUpTo 0 = 0
+ESelfTests.sumUpTo 1 = 1
+ESelfTests.sumUpTo 5 = 15
+ESelfTests.sumUpTo 10 = 55
 
 
 
-ShadowingTest.factorialWithShadowing 5I = ("shadowed", 120I)
-ShadowingTest.factorialWithShadowingError 5I = error="""Expected something we could apply to, such as a lambda or function, but got a String ("shadowed")"""
-ShadowingTest.incrementWithShadowing 3I 1I = 6I
+ShadowingTest.factorialWithShadowing 5 = ("shadowed", 120)
+ShadowingTest.factorialWithShadowingError 5 = error="""Expected something we could apply to, such as a lambda or function, but got a String ("shadowed")"""
+ShadowingTest.incrementWithShadowing 3 1 = 6
 
-ShadowingTest.matchWithShadowing 0I = 0I
-ShadowingTest.matchWithShadowing 1I = 0I
-ShadowingTest.matchWithShadowing 2I = 8I
-ShadowingTest.matchWithShadowing 5I = 6I
+ShadowingTest.matchWithShadowing 0 = 0
+ShadowingTest.matchWithShadowing 1 = 0
+ShadowingTest.matchWithShadowing 2 = 8
+ShadowingTest.matchWithShadowing 5 = 6
 
-ShadowingTest.tupleMatchWithShadowing (0I, 10I) = 0I
-ShadowingTest.tupleMatchWithShadowing (1I, 20I) = 0I
-ShadowingTest.tupleMatchWithShadowing (2I, 3I) = 30I
-ShadowingTest.tupleMatchWithShadowing (4I, 5I) = 9I
+ShadowingTest.tupleMatchWithShadowing (0, 10) = 0
+ShadowingTest.tupleMatchWithShadowing (1, 20) = 0
+ShadowingTest.tupleMatchWithShadowing (2, 3) = 30
+ShadowingTest.tupleMatchWithShadowing (4, 5) = 9
 
-ShadowingTest.letBindingShadowing 4I = [12I; 10I]
-ShadowingTest.letBindingShadowing 5I = [15I; 10I]
+ShadowingTest.letBindingShadowing 4 = [12; 10]
+ShadowingTest.letBindingShadowing 5 = [15; 10]
 
-ShadowingTest.conditionalShadowing 0I = 0I
-ShadowingTest.conditionalShadowing 1I = 7I
-ShadowingTest.conditionalShadowing 2I = 12I
-ShadowingTest.conditionalShadowing 3I = 9I
-ShadowingTest.conditionalShadowing 4I = 12I
-ShadowingTest.conditionalShadowing 5I = 17I
-ShadowingTest.conditionalShadowing 6I = 23I
+ShadowingTest.conditionalShadowing 0 = 0
+ShadowingTest.conditionalShadowing 1 = 7
+ShadowingTest.conditionalShadowing 2 = 12
+ShadowingTest.conditionalShadowing 3 = 9
+ShadowingTest.conditionalShadowing 4 = 12
+ShadowingTest.conditionalShadowing 5 = 17
+ShadowingTest.conditionalShadowing 6 = 23
 
-ShadowingTest.pipeWithShadowing 0I = 0I
-ShadowingTest.pipeWithShadowing 1I = 0I
-ShadowingTest.pipeWithShadowing 2I = 12I
-ShadowingTest.pipeWithShadowing 5I = 10I
+ShadowingTest.pipeWithShadowing 0 = 0
+ShadowingTest.pipeWithShadowing 1 = 0
+ShadowingTest.pipeWithShadowing 2 = 12
+ShadowingTest.pipeWithShadowing 5 = 10
 
-ShadowingTest.valueShadowing 0I = 10I
-ShadowingTest.valueShadowing 1I = 11I
-ShadowingTest.valueShadowing 5I = 495I
+ShadowingTest.valueShadowing 0 = 10
+ShadowingTest.valueShadowing 1 = 11
+ShadowingTest.valueShadowing 5 = 495

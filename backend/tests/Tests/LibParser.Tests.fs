@@ -61,11 +61,6 @@ let private corpusTests =
                 | d :: _ -> Some(rel, d.message)
               with e ->
                 Some(rel, "THREW: " + e.Message))
-          printfn
-            "PARSER-CORPUS: %d of %d package files parse cleanly (%d allowlisted as expected-fail)"
-            (files.Length - failures.Length)
-            files.Length
-            corpusAllowlist.Count
           // regression gate: every non-allowlisted file must parse cleanly
           let unexpected =
             failures
@@ -806,12 +801,12 @@ let private recoveryTests =
           "non-empty record update is clean")
       testCase "a number glued to identifier chars is rejected" (fun _ ->
         // `123abc` / `12l3` are typos, not two tokens — reject rather than split
-        for src in [ "123abc"; "12l3"; "1.5xyz" ] do
+        for src in [ "123abc"; "12l3"; "1.5xyz"; "80I" ] do
           Expect.isNonEmpty
             (P.parse src).diagnostics
             $"glued number {src} diagnoses"
         // guard: valid suffixed / bare literals stay clean
-        for src in [ "123L"; "80I"; "1.5"; "1e300"; "[1L; 2L]" ] do
+        for src in [ "123L"; "1.5"; "1e300"; "[1L; 2L]" ] do
           Expect.isEmpty (P.parse src).diagnostics $"valid literal {src} is clean")
       testCase "two independent errors still recover both list elements" (fun _ ->
         let r = P.parse "[1L + ; 2L * ]"

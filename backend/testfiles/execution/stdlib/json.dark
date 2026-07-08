@@ -73,39 +73,39 @@ module Bool =
 
 module Int =
   module Basic =
-    Stdlib.Json.serialize<Int> 0I = "0"
-    Stdlib.Json.serialize<Int> 12345I = "12345"
-    Stdlib.Json.serialize<Int> -12345I = "-12345"
-    Stdlib.Json.parse<Int> "0" = Result.Ok 0I
-    Stdlib.Json.parse<Int> "12345" = Result.Ok 12345I
-    Stdlib.Json.parse<Int> "-12345" = Result.Ok(-12345I)
+    Stdlib.Json.serialize<Int> 0 = "0"
+    Stdlib.Json.serialize<Int> 12345 = "12345"
+    Stdlib.Json.serialize<Int> -12345 = "-12345"
+    Stdlib.Json.parse<Int> "0" = Result.Ok 0
+    Stdlib.Json.parse<Int> "12345" = Result.Ok 12345
+    Stdlib.Json.parse<Int> "-12345" = Result.Ok(-12345)
 
   module Huge =
     // arbitrary precision: well past Int64, exact round-trip
-    Stdlib.Json.serialize<Int> 123456789012345678901234567890I = "123456789012345678901234567890"
-    Stdlib.Json.parse<Int> "123456789012345678901234567890" = Result.Ok 123456789012345678901234567890I
-    Stdlib.Json.parse<Int> "-123456789012345678901234567890" = Result.Ok(-123456789012345678901234567890I)
-    (Stdlib.Json.parse<Int> (Stdlib.Json.serialize<Int> 99999999999999999999999999999999I)) = Result.Ok 99999999999999999999999999999999I
+    Stdlib.Json.serialize<Int> 123456789012345678901234567890 = "123456789012345678901234567890"
+    Stdlib.Json.parse<Int> "123456789012345678901234567890" = Result.Ok 123456789012345678901234567890
+    Stdlib.Json.parse<Int> "-123456789012345678901234567890" = Result.Ok(-123456789012345678901234567890)
+    (Stdlib.Json.parse<Int> (Stdlib.Json.serialize<Int> 99999999999999999999999999999999)) = Result.Ok 99999999999999999999999999999999
 
   module PastInt64 =
     // Int is unbounded: it serializes/parses values that overflow Int64.
     // Compare the Int64Limits module above, which *errors* on these exact values.
-    Stdlib.Json.serialize<Int> 9223372036854775808I = "9223372036854775808"
-    Stdlib.Json.parse<Int> "9223372036854775808" = Result.Ok 9223372036854775808I
-    Stdlib.Json.parse<Int> "-9223372036854775809" = Result.Ok(-9223372036854775809I)
+    Stdlib.Json.serialize<Int> 9223372036854775808 = "9223372036854775808"
+    Stdlib.Json.parse<Int> "9223372036854775808" = Result.Ok 9223372036854775808
+    Stdlib.Json.parse<Int> "-9223372036854775809" = Result.Ok(-9223372036854775809)
     // a float-form just above the Int64 max (Int64 rejects "9.3E18")
-    Stdlib.Json.parse<Int> "9.3E18" = Result.Ok 9300000000000000000I
+    Stdlib.Json.parse<Int> "9.3E18" = Result.Ok 9300000000000000000
 
   module IntegerValuedFloatForms =
     // integer-valued decimal/exponent forms are accepted, parsed EXACTLY
     // (the same forms the fixed-width int parsers accept)
-    Stdlib.Json.parse<Int> "0.0" = Result.Ok 0I
-    Stdlib.Json.parse<Int> "-1.0" = Result.Ok(-1I)
-    Stdlib.Json.parse<Int> "1.2E2" = Result.Ok 120I
-    Stdlib.Json.parse<Int> "1.2E+2" = Result.Ok 120I
-    Stdlib.Json.parse<Int> "1200E-1" = Result.Ok 120I
+    Stdlib.Json.parse<Int> "0.0" = Result.Ok 0
+    Stdlib.Json.parse<Int> "-1.0" = Result.Ok(-1)
+    Stdlib.Json.parse<Int> "1.2E2" = Result.Ok 120
+    Stdlib.Json.parse<Int> "1.2E+2" = Result.Ok 120
+    Stdlib.Json.parse<Int> "1200E-1" = Result.Ok 120
     // exact even past 2^53 — guards the precision-loss regression
-    Stdlib.Json.parse<Int> "9007199254740993.0" = Result.Ok 9007199254740993I
+    Stdlib.Json.parse<Int> "9007199254740993.0" = Result.Ok 9007199254740993
 
   module Errors =
     // genuinely fractional values are rejected, never rounded
@@ -119,7 +119,7 @@ module Int =
     (Stdlib.Json.parse<Int> "1e-2147483647") |> err = Result.Error "Can't parse JSON `1e-2147483647` as type `Int` at path: `root`"
     (Stdlib.Json.parse<Int> "1e-2147483648") |> err = Result.Error "Can't parse JSON `1e-2147483648` as type `Int` at path: `root`"
     // ...but zero with an extreme negative exponent is still exactly zero
-    Stdlib.Json.parse<Int> "0e-2147483648" = Result.Ok 0I
+    Stdlib.Json.parse<Int> "0e-2147483648" = Result.Ok 0
 
 
 module Int64 =
@@ -838,11 +838,11 @@ module String =
     "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed non risus. Suspendisse lectus tortor, dignissim sit amet, adipiscing nec, ultricies sed, dolor."
 
 
-  Stdlib.Json.serialize<String> (Stdlib.String.repeat_v0 "a" 100I) = "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
+  Stdlib.Json.serialize<String> (Stdlib.String.repeat_v0 "a" 100) = "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\""
 
   Stdlib.Json.parse<String>
     "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"" = Result
-    .Ok(Stdlib.String.repeat_v0 "a" 100I)
+    .Ok(Stdlib.String.repeat_v0 "a" 100)
 
 
 module DateTime =

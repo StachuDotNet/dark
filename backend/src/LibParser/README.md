@@ -13,7 +13,7 @@ recorded there.
 
 ```
 source
-  │  InterpTokenizer.tokenize        tokens + trivia (comments preserved;
+  │  Lexer.tokenize                  tokens + trivia (comments preserved;
   │                                  byte-exact source reconstruction)
   ▼
   │  Parser.parse / parseTestFile    range-complete WrittenTypes tree +
@@ -34,7 +34,7 @@ GRAMMAR.md.
 ## Files
 
 - `Tokenizer.fs` — shared token/position types (`Token`, `Pos`, `TokenRange`)
-- `InterpTokenizer.fs` — the lexer: tokens with ranges, doc comments, trivia
+- `Lexer.fs` — the lexer: tokens with ranges, doc comments, trivia
 - `Parser.fs` — the parser: `ParserState` + module-level parse functions;
   offside scope stack; recovery; structured `Diagnostic` + `renderDiagnostic`
 - `WrittenTypes.fs` — the syntax tree (every node carries source ranges) plus
