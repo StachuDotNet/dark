@@ -344,7 +344,7 @@ let private applySetName
       // (v2 replacing v1 in one batch) never reaches this tie: `Inserts` self-stamps each op in a
       // local batch with a strictly-increasing origin_ts, so v2 is newer-by-creation and just wins.
       | Some(curHash, Some curTs), Some t when curHash <> itemHashStr ->
-        t < curTs || (t = curTs && itemHashStr < curHash)
+        Lww.isStale t itemHashStr curTs curHash
       | _ -> false
 
     if isStale then

@@ -171,10 +171,10 @@ let detectDivergences
 
         match cur with
         | Some(curHash, curTs) when curHash <> incomingHash ->
-          // Same LWW rule as applySetName: incoming is stale (loses) if older-by-stamp, tie → lower hash.
+          // Same LWW rule as applySetName + the resolution overlay — one shared predicate.
           let incomingStale =
             match curTs with
-            | Some ct -> originTs < ct || (originTs = ct && incomingHash < curHash)
+            | Some ct -> Lww.isStale originTs incomingHash ct curHash
             | None -> false
 
           let chosenHash = if incomingStale then curHash else incomingHash

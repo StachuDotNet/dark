@@ -103,9 +103,9 @@ let applyToLocations (r : Resolution) : Task<unit> =
       match cur with
       // already bound to the choice content — idempotent no-op (so a re-pulled resolution doesn't churn)
       | Some(curHash, _) when curHash = chosenHash -> true
-      // stale: older-by-stamp than the live binding (shared LWW rule; exact tie → higher hash wins)
+      // stale: older-by-stamp than the live binding (the one shared LWW rule)
       | Some(curHash, Some curTs) when curHash <> chosenHash ->
-        r.at < curTs || (r.at = curTs && chosenHash < curHash)
+        Lww.isStale r.at chosenHash curTs curHash
       | _ -> false
 
     if skip then
