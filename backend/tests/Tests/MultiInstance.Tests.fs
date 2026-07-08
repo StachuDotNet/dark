@@ -25,6 +25,7 @@ open LibDB.Sqlite
 
 module Seed = LibDB.Seed
 module Inserts = LibDB.Inserts
+module Resolutions = LibDB.Resolutions
 module PT = LibExecution.ProgramTypes
 module BS = LibSerialization.Binary.Serialization
 module Hashing = LibSerialization.Hashing.Hashing
@@ -286,6 +287,132 @@ let tests =
           Expect.equal bFinal [ fnB ] "B keeps the LWW winner (its own later bind) after receiving A's older op"
           Expect.equal aFinal [ fnB ] "A converges to the same LWW winner after receiving B's op"
           Expect.isGreaterThan bConflicts 0L "B recorded the divergence as a conflict (never silent)"
+        finally
+          teardown insts
+      }
+
+      testTask "bidirectional pull: A's and B's independent edits both land on the other" {
+        let mutable insts : List<Instance> = []
+
+        try
+          let! a = seededInstance "a"
+          insts <- [ a ]
+          let! b = seededInstance "b"
+          insts <- [ a; b ]
+
+          let locX : PT.PackageLocation = { owner = "Test"; modules = [ "Bi" ]; name = "x" }
+          let locY : PT.PackageLocation = { owner = "Test"; modules = [ "Bi" ]; name = "y" }
+          let ts = "2026-07-08T12:00:00.000Z"
+
+          activate a
+          let! (fnA, fnB) = twoFunctionHashes ()
+          let! commit = existingCommit ()
+          let! curA = currentCursor ()
+          let! _ = Seed.receiveOps [] [ setNameEvent locX fnA commit ts ]
+          let! (cA, eA) = wireSince curA
+
+          activate b
+          let! curB = currentCursor ()
+          let! _ = Seed.receiveOps [] [ setNameEvent locY fnB commit ts ]
+          let! (cB, eB) = wireSince curB
+
+          // Sync both directions.
+          activate b
+          let! _ = Seed.receiveOps cA eA
+          let! bx = liveHash locX
+          let! by = liveHash locY
+
+          activate a
+          let! _ = Seed.receiveOps cB eB
+          let! ax = liveHash locX
+          let! ay = liveHash locY
+
+          Expect.equal ax [ fnA ] "A keeps its own X"
+          Expect.equal ay [ fnB ] "A gains B's Y"
+          Expect.equal bx [ fnA ] "B gains A's X"
+          Expect.equal by [ fnB ] "B keeps its own Y"
+        finally
+          teardown insts
+      }
+
+      testTask "pagination: eventsSince returns bounded, disjoint batches with an advancing cursor" {
+        let mutable insts : List<Instance> = []
+
+        try
+          let! a = seededInstance "a"
+          insts <- [ a ]
+
+          activate a
+          let! (fnA, _) = twoFunctionHashes ()
+          let! commit = existingCommit ()
+          let! cur0 = currentCursor ()
+
+          for i in [ 1; 2; 3 ] do
+            let loc : PT.PackageLocation =
+              { owner = "Test"; modules = [ "Page" ]; name = $"n{i}" }
+            let! _ =
+              Seed.receiveOps [] [ setNameEvent loc fnA commit $"2026-07-08T00:00:0{i}.000Z" ]
+            ()
+
+          let! (_, batch1, c1) = Seed.eventsSince cur0 2L
+          let! (_, batch2, c2) = Seed.eventsSince c1 2L
+
+          Expect.equal (List.length batch1) 2 "first batch is bounded to the limit"
+          Expect.equal (List.length batch2) 1 "second batch has exactly the remaining op"
+          Expect.isGreaterThan c1 cur0 "cursor advanced past the first batch"
+          Expect.isGreaterThan c2 c1 "cursor advanced again"
+        finally
+          teardown insts
+      }
+
+      testTask "resolution converges: a keep-mine override propagates and the other instance adopts it" {
+        let mutable insts : List<Instance> = []
+
+        try
+          let! a = seededInstance "a"
+          insts <- [ a ]
+          let! b = seededInstance "b"
+          insts <- [ a; b ]
+
+          let loc : PT.PackageLocation = { owner = "Test"; modules = [ "Res" ]; name = "pick" }
+
+          // A and B concurrently bind loc; the later stamp (fnB) is the LWW winner on both after cross-sync.
+          activate a
+          let! (fnA, fnB) = twoFunctionHashes ()
+          let! commit = existingCommit ()
+          let! curA = currentCursor ()
+          let! _ = Seed.receiveOps [] [ setNameEvent loc fnA commit "2026-07-08T00:00:00.100Z" ]
+          let! (cA, eA) = wireSince curA
+
+          activate b
+          let! curB = currentCursor ()
+          let! _ = Seed.receiveOps [] [ setNameEvent loc fnB commit "2026-07-08T00:00:00.200Z" ]
+          let! (cB, eB) = wireSince curB
+
+          activate b
+          let! _ = Seed.receiveOps cA eA
+          activate a
+          let! _ = Seed.receiveOps cB eB
+
+          // A's human overrides back to fnA (a later `at` than either op) and it converges to B via the log.
+          activate a
+          let res =
+            Resolutions.mk
+              loc
+              (PT.Reference.PackageFn(PT.Hash fnA))
+              "human"
+              PT.mainBranchId
+              "2026-07-08T00:00:00.300Z"
+          do! Resolutions.recordAndApply res
+          let! aResolved = liveHash loc
+          let! (resWire, _) = Resolutions.resolutionsSince 0L 1000L
+
+          activate b
+          let! _ = Resolutions.receiveResolutions resWire
+          let! bResolved = liveHash loc
+
+          Expect.equal aResolved [ fnA ] "A's resolution overrode the LWW winner back to fnA"
+          Expect.equal bResolved [ fnA ] "B adopted A's resolution via the synced resolutions log"
         finally
           teardown insts
       } ]
