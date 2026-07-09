@@ -1,6 +1,5 @@
-/// The lexical token stream + its shared `Range`/`Point`/`ParsedNode` types. The
-/// `ParsedNode` here is the flat lexer-token shape consumed by the CLI's lexical
-/// highlighter (`lexToTokens`); structured parsing lives in the F# `LibParser`.
+/// Shared `Range`/`Point` types for source positions. Structured parsing lives
+/// in the F# `LibParser`.
 module Darklang.LanguageTools.Parser
 
 
@@ -9,27 +8,3 @@ module Darklang.LanguageTools.Parser
 type Point = { row: Int; column: Int }
 
 type Range = { start: Point; end_: Point }
-
-type ParsedNode =
-  {
-    // e.g., a node of `typ` `let_expression` has a child node with a `body` field name
-    fieldName: Stdlib.Option.Option<String>
-
-    /// e.g. `source_file`, `fn_decl`, `expression`, `let_expression`
-    typ: String
-
-    /// The text of this node as it was in the unparsed source code
-    text: String
-
-    /// Where in the source code is this node written/contained
-    /// i.e. Line 1, Column 2 to Line 1, Column 5
-    range: Range
-
-    children: List<ParsedNode>
-  }
-
-
-/// Lexes code into a flat list of tokens (each a childless ParsedNode whose
-/// `typ` is its lexical kind).
-let lexToTokens (text: String) : List<ParsedNode> =
-  Builtin.parserLexToTokens text

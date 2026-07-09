@@ -185,7 +185,6 @@ module Type =
       let private p addl = p ("Parser" :: addl)
       let point = p [] "Point"
       let range = p [] "Range"
-      let parsedNode = p [] "ParsedNode"
 
       module CliScript =
         let private p addl = p ("CliScript" :: addl)

@@ -23,88 +23,11 @@ module PT2DT = LibExecution.ProgramTypesToDarkTypes
 module StdlibRefs = LibExecution.PackageRefs.Type.Stdlib
 module Exe = LibExecution.Execution
 
-/// Lexical kind for a lexer token — drives syntax highlighting.
-let private tokenKind (t : Tok.Token) : string =
-  match t with
-  | Tok.TLet
-  | Tok.TVal
-  | Tok.TIn
-  | Tok.TIf
-  | Tok.TElif
-  | Tok.TThen
-  | Tok.TElse
-  | Tok.TDef
-  | Tok.TType
-  | Tok.TOf
-  | Tok.TMatch
-  | Tok.TWith
-  | Tok.TFun
-  | Tok.TWhen
-  | Tok.TTrue
-  | Tok.TFalse -> "keyword"
-  | Tok.TPlus
-  | Tok.TPlusPlus
-  | Tok.TMinus
-  | Tok.TStar
-  | Tok.TSlash
-  | Tok.TPercent
-  | Tok.TEqEq
-  | Tok.TNeq
-  | Tok.TLt
-  | Tok.TGt
-  | Tok.TLte
-  | Tok.TGte
-  | Tok.TAnd
-  | Tok.TOr
-  | Tok.TNot
-  | Tok.TPipe
-  | Tok.TArrow
-  | Tok.TShl
-  | Tok.TShr
-  | Tok.TBitAnd
-  | Tok.TBitOr
-  | Tok.TBitXor
-  | Tok.TBitNot
-  | Tok.TAt
-  | Tok.TEquals -> "operator"
-  | Tok.TLParen
-  | Tok.TRParen
-  | Tok.TLBrace
-  | Tok.TRBrace
-  | Tok.TLBracket
-  | Tok.TRBracket
-  | Tok.TColon
-  | Tok.TComma
-  | Tok.TSemicolon
-  | Tok.TDot
-  | Tok.TBar
-  | Tok.TDotDotDot
-  | Tok.TUnderscore
-  | Tok.TCons -> "symbol"
-  | Tok.TStringLit _
-  | Tok.TCharLit _
-  | Tok.TInterpString -> "string"
-  | Tok.TInt _
-  | Tok.TInt64 _
-  | Tok.TInt128 _
-  | Tok.TInt8 _
-  | Tok.TInt16 _
-  | Tok.TInt32 _
-  | Tok.TUInt8 _
-  | Tok.TUInt16 _
-  | Tok.TUInt32 _
-  | Tok.TUInt64 _
-  | Tok.TUInt128 _
-  | Tok.TFloat _ -> "number"
-  | Tok.TIdent _ -> "identifier"
-  | Tok.TEOF -> "symbol"
-
 
 let pointTypeName () = FQTypeName.fqPackage (PackageRefs.point ())
 let rangeTypeName () = FQTypeName.fqPackage (PackageRefs.range ())
 let signTypeName () =
   FQTypeName.fqPackage (LibExecution.PackageRefs.Type.LanguageTools.sign ())
-let parsedNodeTypeName () = FQTypeName.fqPackage (PackageRefs.parsedNode ())
 
 /// Converts the range-complete `WrittenTypes` tree the parser produces into the
 /// Dark `WrittenTypes.ParsedFile` Dval that the semantic-token highlighter / LSP
@@ -113,7 +36,7 @@ module WrittenTypesToDarkTypes =
   let private tn (r : unit -> string) : FQTypeName.FQTypeName =
     FQTypeName.fqPackage (r ())
 
-  let pointToDT (p : Tok.Pos) : Dval =
+  let private pointToDT (p : Tok.Pos) : Dval =
     DRecord(
       pointTypeName (),
       pointTypeName (),
@@ -122,7 +45,7 @@ module WrittenTypesToDarkTypes =
       Map [ "row", Dval.int (bigint p.row); "column", Dval.int (bigint p.column) ]
     )
 
-  let rangeToDT (r : Tok.TokenRange) : Dval =
+  let private rangeToDT (r : Tok.TokenRange) : Dval =
     DRecord(
       rangeTypeName (),
       rangeTypeName (),
@@ -1257,46 +1180,7 @@ module WrittenTypesToDarkTypes =
     DList(elemVT, diagnostics |> List.map (fun d -> rangedString d.range d.message))
 
 let fns () : List<BuiltInFn> =
-  [ { name = fn "parserLexToTokens" 0
-      typeParams = []
-      parameters = [ Param.make "sourceCode" TString "" ]
-      returnType = TList(TCustomType(NR.ok (parsedNodeTypeName ()), []))
-      description =
-        "Lexes Darklang code into a flat list of tokens, each with its source range. "
-        + "Each token is returned as a childless ParsedNode whose `typ` is its lexical "
-        + "kind (keyword/operator/string/number/identifier/symbol)."
-      fn =
-        (function
-        | _, _, _, [ DString sourceCode ] ->
-          let mkNode (st : Lex.SpannedToken) =
-            DRecord(
-              parsedNodeTypeName (),
-              parsedNodeTypeName (),
-              [],
-              Map
-                [ "fieldName", Dval.optionNone KTString
-                  "typ", DString(tokenKind st.token)
-                  "text", DString st.text
-                  "range", WrittenTypesToDarkTypes.rangeToDT st.range
-                  "children", DList(VT.customType (parsedNodeTypeName ()) [], []) ]
-            )
-
-          let nodes =
-            match Lex.tokenize sourceCode with
-            | Ok(tokens, _) ->
-              tokens
-              |> List.filter (fun st -> st.token <> Tok.TEOF)
-              |> List.map mkNode
-            | Error _ -> []
-
-          DList(VT.customType (parsedNodeTypeName ()) [], nodes) |> Ply
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-    { name = fn "parserParseToWrittenTypes" 0
+  [ { name = fn "parserParseToWrittenTypes" 0
       typeParams = []
       parameters = [ Param.make "sourceCode" TString "" ]
       returnType =
