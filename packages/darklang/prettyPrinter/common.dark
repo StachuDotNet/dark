@@ -73,6 +73,36 @@ let escapeSpecialCharacters (s: String) : String =
 let escapeCharLiteral (s: String) : String =
   (escapeCommon s) |> Stdlib.String.replaceAll "'" "\\'"
 
+/// Format a record/dict field name for source output.
+/// Two reasons a field name needs backticks:
+///  - its shape: a bare identifier is a letter or `_` followed by letters,
+///    digits, `_`, or `'`; a hyphen, a leading digit, or an empty name breaks that.
+///  - it's a reserved word: keywords and `_` lex as their own tokens, so a field
+///    literally named `type` or `match` needs backticks even though its shape is fine.
+/// Current syntax has no escape inside double-backtick identifiers, so names
+/// containing a newline or closing backticks are not source-round-trippable.
+let formatFieldName (name: String) : String =
+  let isStart (c: Char) : Bool = (Stdlib.Char.isASCIILetter c) || (c == '_')
+  let isCont (c: Char) : Bool =
+    (Stdlib.Char.isASCIILetter c)
+    || (Stdlib.Char.isDigit c)
+    || (c == '_')
+    || (c == '\'')
+  let hasBareShape =
+    match Stdlib.String.toList name with
+    | [] -> false
+    | first :: rest -> (isStart first) && (rest |> Stdlib.List.all isCont)
+
+  // Keep this list in sync with the lexer's `keyword` function
+  // (backend/src/LibParser/Lexer.fs). `def` is intentionally not reserved.
+  let reserved =
+    [ "let"; "val"; "in"; "if"; "elif"; "then"; "else"; "type"; "of"
+      "match"; "with"; "fun"; "when"; "true"; "false"; "_" ]
+  let isReserved =
+    reserved |> Stdlib.List.findFirst (fun k -> k == name) |> Stdlib.Option.isSome
+
+  if hasBareShape && (Stdlib.Bool.not isReserved) then name else $"``{name}``"
+
 let processRemainder (remainder: String) : String =
   match $".{remainder}" |> Stdlib.Float.parse with
   | Ok floatValue ->

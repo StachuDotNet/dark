@@ -727,6 +727,24 @@ let typeDeclarations =
       false
 
     t
+      "record type field name with hyphen"
+      "type Headers = { ``Content-Length``: String }"
+      "type Headers =\n  { ``Content-Length``: String }"
+      []
+      []
+      []
+      false
+
+    t
+      "record type field name that is a keyword"
+      "type Metadata = { ``type``: String }"
+      "type Metadata =\n  { ``type``: String }"
+      []
+      []
+      []
+      false
+
+    t
       "record, 2 fields"
       "type Person = {name: String; age: Int64}"
       "type Person =\n  { name: String\n    age: Int64 }"
@@ -817,6 +835,22 @@ let typeDeclarations =
       "enum, named tuple fields"
       "type MyEnum = | A of x:Int64 * y:Int64"
       "type MyEnum =\n  | A of x: Int64 * y: Int64"
+      []
+      []
+      []
+      false
+    t
+      "enum field label with hyphen"
+      "type MyEnum = | A of ``Content-Length``: String"
+      "type MyEnum =\n  | A of ``Content-Length``: String"
+      []
+      []
+      []
+      false
+    t
+      "enum field label that is a keyword"
+      "type MyEnum = | A of ``type``: String"
+      "type MyEnum =\n  | A of ``type``: String"
       []
       []
       []
@@ -1110,7 +1144,50 @@ let exprs =
     t
       "dict with double_backtick_identifier"
       "Dict { ``Content-Length`` = 1L }"
-      "Dict { Content-Length = 1L }"
+      "Dict { ``Content-Length`` = 1L }"
+      []
+      []
+      []
+      false
+
+    // Keep the printer's field-name rule in sync with the lexer: quote names
+    // that cannot be bare, and leave legal bare names alone.
+    t
+      "dict field name that is a keyword"
+      "Dict { ``type`` = 1L }"
+      "Dict { ``type`` = 1L }"
+      []
+      []
+      []
+      false
+    t
+      "dict field name that is a keyword (match)"
+      "Dict { ``match`` = 1L }"
+      "Dict { ``match`` = 1L }"
+      []
+      []
+      []
+      false
+    t
+      "dict field name with a leading digit"
+      "Dict { ``2fa`` = 1L }"
+      "Dict { ``2fa`` = 1L }"
+      []
+      []
+      []
+      false
+    t
+      "dict field name with an apostrophe stays bare"
+      "Dict { foo' = 1L }"
+      "Dict { foo' = 1L }"
+      []
+      []
+      []
+      false
+    t
+      "dict bare field name is not over-quoted"
+      "Dict { name = 1L }"
+      "Dict { name = 1L }"
       []
       []
       []
@@ -1134,6 +1211,24 @@ let exprs =
       "record, 1 field"
       "Person1 {name =\"John\"} "
       "Person1 { name = \"John\" }"
+      []
+      []
+      []
+      true
+
+    t
+      "record field name with hyphen"
+      "Headers { ``Content-Length`` = \"text/html\" }"
+      "Headers { ``Content-Length`` = \"text/html\" }"
+      []
+      []
+      []
+      true
+
+    t
+      "record field name that is a keyword"
+      "Metadata { ``type`` = \"json\" }"
+      "Metadata { ``type`` = \"json\" }"
       []
       []
       []
@@ -1191,6 +1286,14 @@ let exprs =
       []
       []
       false
+    t
+      "record update field name that is a keyword"
+      "{ metadata with ``type`` = \"json\" }"
+      "{ metadata with ``type`` = \"json\" }"
+      []
+      []
+      []
+      true
     t
       "record update 3"
       "{ person with age = 31L; hasPet = false }"
@@ -1342,6 +1445,22 @@ let exprs =
       "(Tests.Person { name =\"Janice\" }).name"
       "(Tests.Person { name = \"Janice\" }).name"
       [ person ]
+      []
+      []
+      false
+    t
+      "field access with hyphenated field name"
+      "headers.``Content-Length``"
+      "headers.``Content-Length``"
+      []
+      []
+      []
+      false
+    t
+      "field access with keyword field name"
+      "metadata.``type``"
+      "metadata.``type``"
+      []
       []
       []
       false
