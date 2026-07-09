@@ -335,7 +335,7 @@ let parse
   (filename: String)
   (source: String)
   : Stdlib.Result.Result<(PTCliScriptModule * List<WrittenTypes.UnresolvedName>), ParseError> =
-  match source |> LanguageTools.Parser.TestParsing.initialParse with
+  match source |> LanguageTools.Parser.Parse.initialParse with
   | Error e -> Stdlib.Result.Result.Error(ParseError.Message e)
   | Ok parsedFile ->
     parseFromWT ctx scriptName (Builtin.parserParseDiagnostics source) parsedFile

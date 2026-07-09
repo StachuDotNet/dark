@@ -23,7 +23,7 @@ module PT2DT = LibExecution.ProgramTypesToDarkTypes
 module StdlibRefs = LibExecution.PackageRefs.Type.Stdlib
 module Exe = LibExecution.Execution
 
-/// Lexical kind for an interpreter-dialect token — drives syntax highlighting.
+/// Lexical kind for a lexer token — drives syntax highlighting.
 let private tokenKind (t : Tok.Token) : string =
   match t with
   | Tok.TLet
@@ -113,7 +113,7 @@ module WrittenTypesToDarkTypes =
   let private tn (r : unit -> string) : FQTypeName.FQTypeName =
     FQTypeName.fqPackage (r ())
 
-  let private pointToDT (p : Tok.Pos) : Dval =
+  let pointToDT (p : Tok.Pos) : Dval =
     DRecord(
       pointTypeName (),
       pointTypeName (),
@@ -122,13 +122,17 @@ module WrittenTypesToDarkTypes =
       Map [ "row", Dval.int (bigint p.row); "column", Dval.int (bigint p.column) ]
     )
 
-  let private rangeToDT (r : Tok.TokenRange) : Dval =
+  let rangeToDT (r : Tok.TokenRange) : Dval =
     DRecord(
       rangeTypeName (),
       rangeTypeName (),
       [],
       Map [ "start", pointToDT r.start; "end_", pointToDT r.end_ ]
     )
+
+  // The recurring WrittenTypes "range + string" shape (a name, case label, key, …).
+  let private rangedString (r : Tok.TokenRange) (s : string) : Dval =
+    DTuple(rangeToDT r, DString s, [])
 
   let private binaryOperationToDT (b : WT.BinaryOperation) : Dval =
     let t = tn WTRefs.binaryOperation
@@ -273,9 +277,7 @@ module WrittenTypesToDarkTypes =
           typeReferenceToDT inner
           rangeToDT closeB ]
     | WT.TVariable(r, tick, (nameR, nm)) ->
-      builtin
-        "TVariable"
-        [ rangeToDT r; rangeToDT tick; DTuple(rangeToDT nameR, DString nm, []) ]
+      builtin "TVariable" [ rangeToDT r; rangeToDT tick; rangedString nameR nm ]
     | WT.TTuple(r, first, star1, second, rest, openP, closeP) ->
       let restVT =
         VT.tuple
@@ -467,8 +469,7 @@ module WrittenTypesToDarkTypes =
       let contentsKT = KTTuple(VT.customType (rangeTypeName ()) [], VT.string, [])
       let contentsDval =
         match contents with
-        | Some(cr, cs) ->
-          Dval.optionSome contentsKT (DTuple(rangeToDT cr, DString cs, []))
+        | Some(cr, cs) -> Dval.optionSome contentsKT (rangedString cr cs)
         | None -> Dval.optionNone contentsKT
       DEnum(
         t,
@@ -481,8 +482,7 @@ module WrittenTypesToDarkTypes =
       let contentsKT = KTTuple(VT.customType (rangeTypeName ()) [], VT.string, [])
       let contentsDval =
         match contents with
-        | Some(cr, cs) ->
-          Dval.optionSome contentsKT (DTuple(rangeToDT cr, DString cs, []))
+        | Some(cr, cs) -> Dval.optionSome contentsKT (rangedString cr cs)
         | None -> Dval.optionNone contentsKT
       DEnum(
         t,
@@ -498,7 +498,7 @@ module WrittenTypesToDarkTypes =
         [],
         "MPEnum",
         [ rangeToDT r
-          DTuple(rangeToDT caseNameR, DString caseName, [])
+          rangedString caseNameR caseName
           DList(mpListVT, List.map matchPatternToDT fieldPats) ]
       )
     | WT.MPTuple(r, first, comma, second, rest, openP, closeP) ->
@@ -669,8 +669,7 @@ module WrittenTypesToDarkTypes =
       let contentsKT = KTTuple(VT.customType (rangeTypeName ()) [], VT.string, [])
       let contentsDval =
         match contents with
-        | Some(cr, cs) ->
-          Dval.optionSome contentsKT (DTuple(rangeToDT cr, DString cs, []))
+        | Some(cr, cs) -> Dval.optionSome contentsKT (rangedString cr cs)
         | None -> Dval.optionNone contentsKT
       DEnum(
         t,
@@ -712,10 +711,7 @@ module WrittenTypesToDarkTypes =
         t,
         [],
         "ERecordFieldAccess",
-        [ rangeToDT r
-          exprToDT e
-          DTuple(rangeToDT fR, DString field, [])
-          rangeToDT dot ]
+        [ rangeToDT r; exprToDT e; rangedString fR field; rangeToDT dot ]
       )
     | WT.EIf(r, cond, thenE, elseE, kwIf, kwThen, kwElse) ->
       DEnum(
@@ -796,11 +792,7 @@ module WrittenTypesToDarkTypes =
           fieldVT,
           fields
           |> List.map (fun (fr, (nr, fname), value) ->
-            DTuple(
-              rangeToDT fr,
-              DTuple(rangeToDT nr, DString fname, []),
-              [ exprToDT value ]
-            ))
+            DTuple(rangeToDT fr, rangedString nr fname, [ exprToDT value ]))
         )
       DEnum(
         t,
@@ -824,11 +816,7 @@ module WrittenTypesToDarkTypes =
           entryVT,
           contents
           |> List.map (fun (er, (kr, key), value) ->
-            DTuple(
-              rangeToDT er,
-              DTuple(rangeToDT kr, DString key, []),
-              [ exprToDT value ]
-            ))
+            DTuple(rangeToDT er, rangedString kr key, [ exprToDT value ]))
         )
       DEnum(
         t,
@@ -852,11 +840,7 @@ module WrittenTypesToDarkTypes =
           updVT,
           updates
           |> List.map (fun ((nr, fname), eqR, value) ->
-            DTuple(
-              DTuple(rangeToDT nr, DString fname, []),
-              rangeToDT eqR,
-              [ exprToDT value ]
-            ))
+            DTuple(rangedString nr fname, rangeToDT eqR, [ exprToDT value ]))
         )
       DEnum(
         t,
@@ -878,7 +862,7 @@ module WrittenTypesToDarkTypes =
         "EEnum",
         [ rangeToDT r
           qualifiedTypeIdentifierToDT typeName
-          DTuple(rangeToDT caseNameR, DString caseName, [])
+          rangedString caseNameR caseName
           DList(VT.customType (tn WTRefs.expr) [], List.map exprToDT fields)
           rangeToDT symbolDot ]
       )
@@ -933,11 +917,7 @@ module WrittenTypesToDarkTypes =
           DList(VT.customType (tn WTRefs.expr) [], argsDval) ]
       )
     | WT.EString(r, dollar, contents, openQ, closeQ) ->
-      let rangeKT = KTCustomType(rangeTypeName (), [])
-      let dollarDval =
-        match dollar with
-        | Some dr -> Dval.optionSome rangeKT (rangeToDT dr)
-        | None -> Dval.optionNone rangeKT
+      let dollarDval = optionRangeToDT dollar
       DEnum(
         t,
         t,
@@ -1021,7 +1001,7 @@ module WrittenTypesToDarkTypes =
         "EPipeEnum",
         [ rangeToDT r
           qualifiedTypeIdentifierToDT tname
-          DTuple(rangeToDT caseNameR, DString caseName, [])
+          rangedString caseNameR caseName
           DList(exprListVT, List.map exprToDT fields)
           rangeToDT dot ]
       )
@@ -1063,10 +1043,7 @@ module WrittenTypesToDarkTypes =
   // `<'a, 'b>` type params serialize as `List<(Range * String)>` (the WT shape).
   let private typeParamsToDT (tps : List<string * Tok.TokenRange>) : Dval =
     let elemVT = VT.tuple (VT.customType (rangeTypeName ()) []) VT.string []
-    DList(
-      elemVT,
-      tps |> List.map (fun (name, r) -> DTuple(rangeToDT r, DString name, []))
-    )
+    DList(elemVT, tps |> List.map (fun (name, r) -> rangedString r name))
 
   let private fnDeclToDT (f : WT.FnDecl) : Dval =
     let t = tn WTRefs.fnDeclaration
@@ -1115,7 +1092,7 @@ module WrittenTypesToDarkTypes =
       [],
       Map
         [ "range", rangeToDT f.range
-          "name", DTuple(rangeToDT nr, DString nm, [])
+          "name", rangedString nr nm
           "typ", typeReferenceToDT f.typ
           "description", DString ""
           "symbolColon", rangeToDT f.symbolColon ]
@@ -1123,17 +1100,12 @@ module WrittenTypesToDarkTypes =
 
   let private enumFieldToDT (f : WT.EnumFieldSyntax) : Dval =
     let t = tn WTRefs.typeDeclEnumField
-    let rangeKT = KTCustomType(rangeTypeName (), [])
     let labelKT = KTTuple(VT.customType (rangeTypeName ()) [], VT.string, [])
     let labelDval =
       match f.label with
-      | Some(lr, ln) ->
-        Dval.optionSome labelKT (DTuple(rangeToDT lr, DString ln, []))
+      | Some(lr, ln) -> Dval.optionSome labelKT (rangedString lr ln)
       | None -> Dval.optionNone labelKT
-    let colonDval =
-      match f.symbolColon with
-      | Some r -> Dval.optionSome rangeKT (rangeToDT r)
-      | None -> Dval.optionNone rangeKT
+    let colonDval = optionRangeToDT f.symbolColon
     DRecord(
       t,
       t,
@@ -1149,18 +1121,14 @@ module WrittenTypesToDarkTypes =
   let private enumCaseToDT (c : WT.EnumCaseSyntax) : Dval =
     let t = tn WTRefs.typeDeclEnumCase
     let (nr, nm) = c.name
-    let rangeKT = KTCustomType(rangeTypeName (), [])
-    let ofDval =
-      match c.keywordOf with
-      | Some r -> Dval.optionSome rangeKT (rangeToDT r)
-      | None -> Dval.optionNone rangeKT
+    let ofDval = optionRangeToDT c.keywordOf
     DRecord(
       t,
       t,
       [],
       Map
         [ "range", rangeToDT c.range
-          "name", DTuple(rangeToDT nr, DString nm, [])
+          "name", rangedString nr nm
           "fields",
           DList(
             VT.customType (tn WTRefs.typeDeclEnumField) [],
@@ -1172,7 +1140,6 @@ module WrittenTypesToDarkTypes =
 
   let private definitionToDT (d : WT.TypeDefinition) : Dval =
     let t = tn WTRefs.typeDeclDefinition
-    let rangeKT = KTCustomType(rangeTypeName (), [])
     match d with
     | WT.TDAlias tr -> DEnum(t, t, [], "Alias", [ typeReferenceToDT tr ])
     | WT.TDRecord fields ->
@@ -1183,11 +1150,7 @@ module WrittenTypesToDarkTypes =
           elemVT,
           fields
           |> List.map (fun (f, sep) ->
-            let sepDval =
-              match sep with
-              | Some r -> Dval.optionSome rangeKT (rangeToDT r)
-              | None -> Dval.optionNone rangeKT
-            DTuple(recordFieldToDT f, sepDval, []))
+            DTuple(recordFieldToDT f, optionRangeToDT sep, []))
         )
       DEnum(t, t, [], "Record", [ fieldsDval ])
     | WT.TDEnum cases ->
@@ -1230,7 +1193,7 @@ module WrittenTypesToDarkTypes =
       [],
       Map
         [ "range", rangeToDT m.range
-          "name", DTuple(rangeToDT nameRange, DString nameStr, [])
+          "name", rangedString nameRange nameStr
           "declarations",
           DList(
             VT.customType (tn WTRefs.moduleDeclarationDeclaration) [],
@@ -1291,11 +1254,7 @@ module WrittenTypesToDarkTypes =
   // the new parser's syntax diagnostics as a `List<(Range * String)>` for the LSP
   let diagnosticsToDT (diagnostics : List<P.Diagnostic>) : Dval =
     let elemVT = VT.tuple (VT.customType (rangeTypeName ()) []) VT.string []
-    DList(
-      elemVT,
-      diagnostics
-      |> List.map (fun d -> DTuple(rangeToDT d.range, DString d.message, []))
-    )
+    DList(elemVT, diagnostics |> List.map (fun d -> rangedString d.range d.message))
 
 let fns () : List<BuiltInFn> =
   [ { name = fn "parserLexToTokens" 0
@@ -1309,25 +1268,6 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [ DString sourceCode ] ->
-          let mkPoint (row : int) (col : int) =
-            DRecord(
-              pointTypeName (),
-              pointTypeName (),
-              [],
-              // `Point` is `{ row: Int; column: Int }` in WrittenTypes — emit Int, not Int64
-              Map [ "row", Dval.int (bigint row); "column", Dval.int (bigint col) ]
-            )
-
-          let mkRange (r : Tok.TokenRange) =
-            DRecord(
-              rangeTypeName (),
-              rangeTypeName (),
-              [],
-              Map
-                [ "start", mkPoint r.start.row r.start.column
-                  "end_", mkPoint r.end_.row r.end_.column ]
-            )
-
           let mkNode (st : Lex.SpannedToken) =
             DRecord(
               parsedNodeTypeName (),
@@ -1337,7 +1277,7 @@ let fns () : List<BuiltInFn> =
                 [ "fieldName", Dval.optionNone KTString
                   "typ", DString(tokenKind st.token)
                   "text", DString st.text
-                  "range", mkRange st.range
+                  "range", WrittenTypesToDarkTypes.rangeToDT st.range
                   "children", DList(VT.customType (parsedNodeTypeName ()) [], []) ]
             )
 

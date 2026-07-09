@@ -1,4 +1,4 @@
-module Darklang.LanguageTools.Parser.TestParsing
+module Darklang.LanguageTools.Parser.Parse
 
 
 let initialParse
@@ -15,34 +15,8 @@ let initialParse
 let parsePTExpr
   (code: String)
   : Stdlib.Result.Result<ProgramTypes.Expr, String> =
-  match code |> TestParsing.initialParse with
-  | Ok sourceFile ->
-    let exprs =
-      match sourceFile with
-      | SourceFile s -> s.exprsToEval
-      | _ -> []
-
-    let ctx =
-      NameResolver.NRContext
-        { onMissing = NameResolver.OnMissing.Allow
-          pm = PackageManager.pm ()
-          branchId = Builtin.scmMainBranchId
-          owner = ""
-          currentModule = [] }
-
-    match exprs with
-    | [ expr ] ->
-      let (expr, _) =
-        WrittenTypesToProgramTypes.Expr.toPT
-          ctx
-          WrittenTypesToProgramTypes.defaultContext
-          expr
-
-      expr |> Stdlib.Result.Result.Ok
-    | _ ->
-      "Expected exactly one expression to be parsed"
-      |> Stdlib.Result.Result.Error
-  | Error e -> Stdlib.Result.Result.Error e
+  // context-free lowering is just the in-context lowering with an empty context
+  parsePTExprInContext "" [] [] [] code
 
 
 // Like `parsePTExpr`, but lowers under a real module / fn-name / parameter context.
@@ -57,12 +31,11 @@ let parsePTExprInContext
   (paramNames: List<String>)
   (code: String)
   : Stdlib.Result.Result<ProgramTypes.Expr, String> =
-  match code |> TestParsing.initialParse with
+  match code |> initialParse with
   | Ok sourceFile ->
     let exprs =
       match sourceFile with
       | SourceFile s -> s.exprsToEval
-      | _ -> []
 
     let ctx =
       NameResolver.NRContext
@@ -104,7 +77,7 @@ let parsePTSourceFileWithOps
     (ProgramTypes.SourceFile.SourceFile * List<ProgramTypes.PackageOp>),
     String
   > =
-  match code |> TestParsing.initialParse with
+  match code |> initialParse with
   | Ok parsedFile ->
     let (sourceFile, ops, _unresolvedNames) =
       parsedFile |> WrittenTypesToProgramTypes.parsedFileAsSourceFile

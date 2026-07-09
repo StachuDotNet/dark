@@ -1,10 +1,8 @@
 /// Tests the hand-written parser (LibParser).
 ///
-/// Currently just focused on round-tripping:
-///   source (input)
-///   -> WrittenTypes tree
-///   -> PT.SourceFile
-///   -> pretty-print back to text (expected)
+/// Most cases parse source into ProgramTypes, then pretty-print it back to the
+/// expected text. A few cases also evaluate parsed expressions or assert parse
+/// errors for rejected syntax.
 module Tests.LibParserRoundTrip
 
 open System.Threading.Tasks
@@ -19,9 +17,6 @@ module PT = LibExecution.ProgramTypes
 module RT = LibExecution.RuntimeTypes
 module Dval = LibExecution.Dval
 module PackageRefs = LibExecution.PackageRefs
-
-// Test package type definitions as tuples with locations
-
 
 let t
   (name : string)
@@ -41,58 +36,78 @@ let t
     RT.FQFnName.fqPackage (PackageRefs.Fn.PrettyPrinter.ProgramTypes.sourceFile ())
 
   testTask name {
-    // First phase: parse with base PM to get PackageOps
     let basePM =
       if allowUnresolved then
         pmPT
       else
         pmPT |> PT.PackageManager.withExtras extraTypes extraValues extraFns
-    let! parseExeState = executionStateFor basePM false Map.empty
 
-    let args = NEList.singleton (RT.DString input)
-    let! parseResult =
-      LibExecution.Execution.executeFunction parseExeState parseFnName [] args
-    let! parseDval = unwrapExecutionResult parseExeState parseResult |> Ply.toTask
+    // Parse `src` (so its declarations produce PackageOps), then pretty-print it
+    // back to source with those ops available for name resolution.
+    let roundOnce (src : string) : Task<string> =
+      task {
+        let! parseExeState = executionStateFor basePM false Map.empty
+        let args = NEList.singleton (RT.DString src)
+        let! parseResult =
+          LibExecution.Execution.executeFunction parseExeState parseFnName [] args
+        let! parseDval =
+          unwrapExecutionResult parseExeState parseResult |> Ply.toTask
 
-    match parseDval with
-    | RT.DEnum(tn, _, _, "Ok", [ RT.DTuple(sourceFile, opsList, []) ]) when
-      tn = Dval.resultType ()
-      ->
-      // Extract PackageOps from the Dval list
-      let packageOps =
-        match opsList with
-        | RT.DList(_vt, ops) ->
-          ops |> List.choose LibExecution.ProgramTypesToDarkTypes.PackageOp.fromDT
-        | _ -> []
+        match parseDval with
+        | RT.DEnum(tn, _, _, "Ok", [ RT.DTuple(sourceFile, opsList, []) ]) when
+          tn = Dval.resultType ()
+          ->
+          let packageOps =
+            match opsList with
+            | RT.DList(_vt, ops) ->
+              ops
+              |> List.choose LibExecution.ProgramTypesToDarkTypes.PackageOp.fromDT
+            | _ -> []
 
-      // Second phase: enhance PM with PackageOps and pretty print
-      let enhancedPM = LibDB.PackageManager.withExtraOps basePM packageOps
-      let! ppExeState = executionStateFor enhancedPM false Map.empty
+          let enhancedPM = LibDB.PackageManager.withExtraOps basePM packageOps
+          let! ppExeState = executionStateFor enhancedPM false Map.empty
 
-      let ppArgs = NEList.ofList (RT.DUuid PT.mainBranchId) [ sourceFile ]
-      let! ppResult =
-        LibExecution.Execution.executeFunction ppExeState prettyPrintFnName [] ppArgs
-      let! resultDval = unwrapExecutionResult ppExeState ppResult |> Ply.toTask
+          let ppArgs = NEList.ofList (RT.DUuid PT.mainBranchId) [ sourceFile ]
+          let! ppResult =
+            LibExecution.Execution.executeFunction
+              ppExeState
+              prettyPrintFnName
+              []
+              ppArgs
+          let! resultDval = unwrapExecutionResult ppExeState ppResult |> Ply.toTask
 
-      match resultDval with
-      | RT.DString result ->
-        return
-          Expect.RT.equalDval
-            (RT.DString result)
-            (RT.DString expected)
-            "Didn't round-trip as expected"
-      | _ -> return failtest $"Unexpected pretty print result: {resultDval}"
+          match resultDval with
+          | RT.DString result -> return result
+          | _ -> return failtest $"Unexpected pretty print result: {resultDval}"
 
-    | RT.DEnum(tn, _, _, "Error", [ RT.DString errMsg ]) when tn = Dval.resultType () ->
-      return failtest $"Parse error: {errMsg}"
-    | _ -> return failtest $"Unexpected parse result format: {parseDval}"
+        | RT.DEnum(tn, _, _, "Error", [ RT.DString errMsg ]) when
+          tn = Dval.resultType ()
+          ->
+          return failtest $"Parse error: {errMsg}"
+        | _ -> return failtest $"Unexpected parse result format: {parseDval}"
+      }
+
+    let! firstPrint = roundOnce input
+    Expect.RT.equalDval
+      (RT.DString firstPrint)
+      (RT.DString expected)
+      "Didn't round-trip as expected"
+
+    // Idempotency: re-parsing and re-printing the output must reproduce it —
+    // catches a printer emitting source that reparses to a different tree.
+    let! secondPrint = roundOnce firstPrint
+    return
+      Expect.RT.equalDval
+        (RT.DString secondPrint)
+        (RT.DString firstPrint)
+        "Pretty-print is not idempotent: re-parsing/re-printing the output changed it"
   }
 
 
 /// Parses `input` as a Darklang expression, evaluates it, and asserts the
 /// resulting runtime Dval equals `expected`. Distinct from `t` (which
 /// compares pretty-printed source) because round-trip tests can hide
-/// symmetric bugs between decode and re-encode — this catches a decode bug
+/// symmetric bugs between decode and re-encode; this catches a decode bug
 /// directly.
 let tEval (name : string) (input : string) (expected : RT.Dval) =
   let parseFnName =
@@ -214,8 +229,8 @@ let parseForCliDval (input : string) =
   }
 
 
-/// Asserts `input` is rejected — parsing yields `Result.Error (ParseError …)`
-/// rather than silently succeeding. `ParseError` has a single case today, so this
+/// Asserts `input` is rejected with `Result.Error (ParseError ...)`
+/// instead of succeeding. `ParseError` has a single case today, so this
 /// checks that parsing failed, not which variant.
 let tParseRejected (name : string) (input : string) =
   testTask name {
@@ -234,7 +249,7 @@ let tParseRejected (name : string) (input : string) =
 
 
 /// Like `tParseRejected`, but also asserts the rendered `Message` names the
-/// given note. The message carries a "Parse error at line/col: …" prefix, so we
+/// given note. The message carries a "Parse error at line/col: ..." prefix, so we
 /// assert containment rather than exact equality.
 let tParseErrorNote (name : string) (input : string) (expectedNote : string) =
   testTask name {
@@ -664,6 +679,24 @@ let typeReferences =
 let typeDeclarations =
   [ t "unit" "type SimpleAlias = Unit" "type SimpleAlias =\n  Unit" [] [] [] false
 
+    t
+      "type doc comment"
+      "/// User-facing id\ntype UserID = Int64"
+      "/// User-facing id\ntype UserID =\n  Int64"
+      []
+      []
+      []
+      false
+
+    t
+      "four slash comment is not a doc comment"
+      "//// plain comment\ntype Plain = Int64"
+      "type Plain =\n  Int64"
+      []
+      []
+      []
+      false
+
     // Alias with type params
     t
       "type param list"
@@ -746,9 +779,7 @@ let typeDeclarations =
       []
       false
 
-    // // Enum type TODO
-    // ("type Thing = | A | B of Int64 | C of String * Bool"  "type Thing =\n  | A\n  | B of Int64\n  | C of String * Bool"
-    // Enum type decls
+    // Enum type declarations.
     t
       "type param, enum"
       "type MyEnum<'a> = | A | B of 'a"
@@ -859,7 +890,7 @@ let exprs =
     t "int literal 1UL" "1UL" "1UL" [] [] [] false
     t "int literal 1Q" "1Q" "1Q" [] [] [] false
     t "int literal -1Q" "-1Q" "-1Q" [] [] [] false
-    t "int literal 1Q" "1Q" "1Q" [] [] [] false
+    t "int literal 1Z" "1Z" "1Z" [] [] [] false
 
     // float literals
     t "float literal -1.0" "-1.0" "-1.0" [] [] [] false
@@ -903,7 +934,7 @@ let exprs =
       "decoded \\u00E9 above-BMP \\U0001F600"
       "\"\\U0001F600\""
       (RT.DString "\U0001F600")
-    // Interpolation: bare-text segment must decode escapes correctly.
+    // Interpolation text segments decode escapes too.
     tEval
       "decoded interpolation with escape"
       "$\"a\\nb {\"x\"}\""
@@ -937,7 +968,7 @@ let exprs =
       []
       []
       false
-    // Invalid escape sequences must be rejected (not silently dropped to "").
+    // Invalid escape sequences are rejected instead of dropped.
     tParseRejected "invalid escape in string literal" "\"\\d+\""
     tParseRejected "invalid escape in interpolation" "$\"a\\d+b\""
     tParseRejected "invalid escape in char literal" "'\\d'"
@@ -948,9 +979,8 @@ let exprs =
       "invalid escape in char match pattern"
       "match c with\n| '\\d' -> 1L\n| _ -> 0L"
     // A qualified enum-case pattern is unsupported (use the unqualified case name).
-    // Reject it instead of silently building a truncated pattern (keeping only
-    // the first path segment). The rejection holds across path lengths and
-    // whether or not fields are bound.
+    // Reject it instead of building a truncated pattern from the first path
+    // segment. The rejection holds across path lengths and field bindings.
     tParseRejected
       "qualified enum-case match pattern (fully qualified)"
       "match x with\n| Stdlib.Result.Result.Ok n -> 1L\n| _ -> 0L"
@@ -960,14 +990,13 @@ let exprs =
     tParseRejected
       "qualified enum-case match pattern (no field binding)"
       "match x with\n| Stdlib.Result.Ok -> 1L\n| _ -> 0L"
-    // The diagnostic must name the actual problem (qualified path) so the user
-    // knows to use the unqualified case name, not just report a generic failure.
+    // The diagnostic names the qualified path problem and points to the
+    // unqualified case-name form.
     tParseErrorNote
       "qualified enum-case match pattern suggests unqualified case name"
       "match x with\n| Stdlib.Result.Result.Ok n -> 1L\n| _ -> 0L"
       "Invalid match pattern. Enum patterns use the unqualified case name (e.g. `| Ok n`), not a qualified path like `| Stdlib.Result.Result.Ok n`."
-    // Escapes that are syntactically well-formed but denote codepoints that
-    // are not valid Unicode scalars must be rejected by the decoder:
+    // Well-formed escapes that are not valid Unicode scalars are rejected:
     //   - surrogate range (D800..DFFF)
     //   - above the Unicode max (>0x10FFFF)
     tParseRejected "surrogate codepoint \\uD800" "\"\\uD800\""
@@ -1106,7 +1135,7 @@ let exprs =
       []
       []
       false
-    t "tuple with expr" "(1L, 2L + 3L, 4L)" "(1L, (2L) + (3L), 4L)" [] [] [] false // CLEANUP
+    t "tuple with expr" "(1L, 2L + 3L, 4L)" "(1L, (2L) + (3L), 4L)" [] [] [] false
 
     // record literals
     t
@@ -1279,7 +1308,7 @@ let exprs =
       []
       []
       false
-    // TODO: this is ugly
+    // Pretty-printing normalizes the let body indentation.
     t "simple let expr" "let x = 1L\n  x" "let x =\n  1L\nx" [] [] [] false
     // A nested function definition desugars to a lambda bound by a let, so the
     // roundtrip is intentionally lossy: the param/return types are dropped and the
@@ -1841,8 +1870,7 @@ else
       []
       false
 
-    // fn calls
-    // CLEANUP these are ugly
+    // Infix calls pretty-print with explicit operand parentheses.
     t "fn call, add once" "1L + 2L" "(1L) + (2L)" [] [] [] false
     t "fn call, add twice" "1L + b + 3L" "((1L) + (b)) + (3L)" [] [] [] false
     t
@@ -1933,6 +1961,15 @@ else
 
 let valueDeclarations =
   [ t "unit" "val unitVal = ()" "val unitVal = ()" [] [] [] false
+
+    t
+      "value doc comment"
+      "/// Default retry count\nval retries = 3L"
+      "/// Default retry count\nval retries = 3L"
+      []
+      []
+      []
+      false
 
     // ints
     t "int8, max" "val maxInt8 = 127y" "val maxInt8 = 127y" [] [] [] false
@@ -2109,6 +2146,15 @@ let valueDeclarations =
 
 let functionDeclarations =
   [ t
+      "function doc comment"
+      "/// Greets a user\nlet greet (name: String): String = \"Hello \" ++ name"
+      "/// Greets a user\nlet greet (name: String): String =\n  (\"Hello \") ++ (name)"
+      []
+      []
+      []
+      false
+
+    t
       "single builtin param"
       "let helloWorld (i: Int64): String = \"Hello world\""
       "let helloWorld (i: Int64): String =\n  \"Hello world\""
@@ -2304,7 +2350,7 @@ let moduleDeclarations =
 
 let sourceFiles =
   [
-    // CLEANUP the output here is a bit broken
+    // Source files pretty-print declarations and trailing expressions together.
     t
       "simple script"
       "
@@ -2328,6 +2374,22 @@ let getTitle (bookId: BookID): String =
 let curiousGeorgeBookId =\n  101L
 Builtin.printLine (getTitle curiousGeorgeBookId)
 0L"
+      []
+      []
+      []
+      false
+
+    t
+      "mixed module, declaration, and trailing expression"
+      """module Helpers =
+  /// One from Helpers
+  val one = 1L
+
+/// Top-level value
+val two = 2L
+
+two"""
+      "module Tests =\n  module Helpers =\n    /// One from Helpers\n    val one = 1L\n\n/// Top-level value\nval two = 2L\n\ntwo"
       []
       []
       []

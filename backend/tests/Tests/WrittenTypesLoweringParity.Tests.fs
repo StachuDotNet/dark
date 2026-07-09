@@ -33,7 +33,7 @@ module WT2PT = LibParser.WrittenTypesToProgramTypes
 module NR = LibParser.NameResolver
 module Canonical = LibSerialization.Hashing.Canonical
 
-// --- normalization of documented divergences ---
+// --- id-independent canonical comparison ---
 
 /// id-independent canonical bytes (the content-hash serialization)
 let private canonicalBytes (e : PT.Expr) : byte[] =
@@ -183,8 +183,7 @@ let private parseSingleExpr (snippet : string) : Option<WT.Expr> =
 let tests =
   testList
     "WrittenTypesLoweringParity"
-    [ testTask
-        "F# and Dark lowerings agree on corpus expressions (modulo documented divergences)" {
+    [ testTask "F# and Dark lowerings agree on corpus expressions (modulo node ids)" {
         let root =
           [ "../packages/darklang"
             "packages/darklang"

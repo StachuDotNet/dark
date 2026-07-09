@@ -38,7 +38,7 @@ let parseSingleTestFromFile
   (filename: String)
   (testSource: String)
   : Stdlib.Result.Result<PTTest, String> =
-  match testSource |> LanguageTools.Parser.TestParsing.initialParse with
+  match testSource |> LanguageTools.Parser.Parse.initialParse with
   | Error e -> Stdlib.Result.Result.Error e
   | Ok parsedFile ->
     match Test.parseTest parsedFile with

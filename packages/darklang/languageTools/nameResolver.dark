@@ -21,8 +21,9 @@ type NRContext =
     owner: String
     currentModule: List<String> }
 
-// TODO: we should probably just return the Result, and let the caller
-// handle the error if they want to...
+// CLEANUP no-op: both arms return `err`, so OnMissing.ThrowError is never
+// honored — this (tooling) resolver never throws. Either implement ThrowError
+// to match the F# resolver, or drop the OnMissing plumbing as always-allow.
 let throwIfRelevant
   (onMissing: OnMissing)
   (result: ProgramTypes.NameResolution<'a>)

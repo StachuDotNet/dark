@@ -447,9 +447,9 @@ module Fn =
     let private p addl = p ("LanguageTools" :: addl)
     module Parser =
       let private p addl = p ("Parser" :: addl)
-      let parsePTExpr = p [ "TestParsing" ] "parsePTExpr"
-      let parsePTExprInContext = p [ "TestParsing" ] "parsePTExprInContext"
-      let parsePTSourceFileWithOps = p [ "TestParsing" ] "parsePTSourceFileWithOps"
+      let parsePTExpr = p [ "Parse" ] "parsePTExpr"
+      let parsePTExprInContext = p [ "Parse" ] "parsePTExprInContext"
+      let parsePTSourceFileWithOps = p [ "Parse" ] "parsePTSourceFileWithOps"
 
       module CliScript =
         let private p addl = p ("CliScript" :: addl)

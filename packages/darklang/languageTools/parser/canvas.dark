@@ -117,7 +117,7 @@ let parse
   (filename: String)
   (source: String)
   : Stdlib.Result.Result<PTCanvasModule, String> =
-  match source |> LanguageTools.Parser.TestParsing.initialParse with
+  match source |> LanguageTools.Parser.Parse.initialParse with
   | Error e -> Stdlib.Result.Result.Error e
   | Ok parsedFile ->
     match parseDecls ctx.owner canvasName parsedFile with

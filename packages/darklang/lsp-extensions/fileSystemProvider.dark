@@ -21,6 +21,34 @@ type FileSystemProviderClientCapabilities = { queryable: Bool }
 
 type URI = String
 
+
+// --- JSON object-field decoders shared by the `fromJson` functions below ---
+
+let getStringField
+  (fields: List<(String * Json)>)
+  (name: String)
+  : Stdlib.Result.Result<String, String> =
+  match Stdlib.List.findFirst fields (fun (key, _) -> key == name) with
+  | Some((_, String value)) -> Stdlib.Result.Result.Ok value
+  | _ -> Stdlib.Result.Result.Error $"Expected {name}"
+
+let getBoolField
+  (fields: List<(String * Json)>)
+  (name: String)
+  : Stdlib.Result.Result<Bool, String> =
+  match Stdlib.List.findFirst fields (fun (key, _) -> key == name) with
+  | Some((_, Bool value)) -> Stdlib.Result.Result.Ok value
+  | _ -> Stdlib.Result.Result.Error $"Expected {name}"
+
+let getObjectField
+  (fields: List<(String * Json)>)
+  (name: String)
+  : Stdlib.Result.Result<List<(String * Json)>, String> =
+  match Stdlib.List.findFirst fields (fun (key, _) -> key == name) with
+  | Some((_, Object value)) -> Stdlib.Result.Result.Ok value
+  | _ -> Stdlib.Result.Result.Error $"Expected {name}"
+
+
 module FileSystemProviderOptions =
   type FileSystemProviderOptions =
     { scheme: String
@@ -28,13 +56,10 @@ module FileSystemProviderOptions =
       readonly: Bool }
 
   let toJson (options: FileSystemProviderOptions) : Json =
-    [ Stdlib.Option.Option.Some(("scheme", Json.String options.scheme))
-      Stdlib.Option.Option.Some(
+    Json.Object
+      [ ("scheme", Json.String options.scheme)
         ("caseSensitive", Json.Bool options.caseSensitive)
-      )
-      Stdlib.Option.Option.Some(("readonly", Json.Bool options.readonly)) ]
-    |> Stdlib.Option.values
-    |> Json.Object
+        ("readonly", Json.Bool options.readonly) ]
 
 
 module ReadFile =
@@ -46,10 +71,9 @@ module ReadFile =
     let fromJson (json: Json) : Stdlib.Result.Result<ReadFileParams, String> =
       match json with
       | Object fields ->
-        match Stdlib.List.findFirst fields (fun (key, _) -> key == "uri") with
-        | Some((_, String uri)) ->
-          (ReadFileParams { uri = uri }) |> Stdlib.Result.Result.Ok
-        | _ -> Stdlib.Result.Result.Error "Expected uri"
+        match getStringField fields "uri" with
+        | Ok uri -> (ReadFileParams { uri = uri }) |> Stdlib.Result.Result.Ok
+        | Error e -> Stdlib.Result.Result.Error e
       | _ -> Stdlib.Result.Result.Error "Expected object"
 
 
@@ -57,9 +81,7 @@ module ReadFile =
     type ReadFileResponse = { content: String }
 
     let toJson (r: ReadFileResponse) : Json =
-      [ Stdlib.Option.Option.Some(("content", Json.String r.content)) ]
-      |> Stdlib.Option.values
-      |> Json.Object
+      Json.Object [ ("content", Json.String r.content) ]
 
 
 module WriteFile =
@@ -68,58 +90,33 @@ module WriteFile =
   module WriteFileOptions =
     type WriteFileOptions =
       {
-        // Create the file when it does not exist.
+        /// Create the file when it does not exist.
         create: Bool
-        // Overwrite the file when it already exists.
+        /// Overwrite the file when it already exists.
         overwrite: Bool }
 
   module WriteFileParams =
     type WriteFileParams =
       {
-        // File to write.
+        /// File to write.
         uri: URI
-        // New file contents, base64 encoded.
+        /// New file contents, base64 encoded.
         content: String
-        // Controls creation and overwrite behavior.
+        /// Controls creation and overwrite behavior.
         options: WriteFileOptions.WriteFileOptions }
 
 
     let fromJson (json: Json) : Stdlib.Result.Result<WriteFileParams, String> =
       match json with
       | Object fields ->
-        let uri =
-          match
-            Stdlib.List.findFirst fields (fun (key, _) -> key == "uri")
-          with
-          | Some((_, String uri)) -> Stdlib.Result.Result.Ok uri
-          | _ -> Stdlib.Result.Result.Error "Expected uri"
-
-        let content =
-          match
-            Stdlib.List.findFirst fields (fun (key, _) -> key == "content")
-          with
-          | Some((_, String content)) -> Stdlib.Result.Result.Ok content
-          | _ -> Stdlib.Result.Result.Error "Expected content"
+        let uri = getStringField fields "uri"
+        let content = getStringField fields "content"
 
         let options =
-          match
-            Stdlib.List.findFirst fields (fun (key, _) -> key == "options")
-          with
-          | Some((_, Object options)) ->
-            let create =
-              match
-                Stdlib.List.findFirst options (fun (key, _) -> key == "create")
-              with
-              | Some((_, Bool create)) -> Stdlib.Result.Result.Ok create
-              | _ -> Stdlib.Result.Result.Error "Expected create option"
-
-            let overwrite =
-              match
-                Stdlib.List.findFirst options (fun (key, _) ->
-                  key == "overwrite")
-              with
-              | Some((_, Bool overwrite)) -> Stdlib.Result.Result.Ok overwrite
-              | _ -> Stdlib.Result.Result.Error "Expected overwrite option"
+          match getObjectField fields "options" with
+          | Ok optionFields ->
+            let create = getBoolField optionFields "create"
+            let overwrite = getBoolField optionFields "overwrite"
 
             match (create, overwrite) with
             | (Ok create, Ok overwrite) ->
@@ -128,7 +125,7 @@ module WriteFile =
                   overwrite = overwrite })
               |> Stdlib.Result.Result.Ok
             | _ -> Stdlib.Result.Result.Error "Invalid options"
-          | _ -> Stdlib.Result.Result.Error "Expected options object"
+          | Error e -> Stdlib.Result.Result.Error e
 
         match (uri, content, options) with
         | (Ok uri, Ok content, Ok options) ->
@@ -182,36 +179,23 @@ module Delete =
       : Stdlib.Result.Result<DeleteFileParams, String> =
       match json with
       | Object fields ->
-        let uri =
-          match
-            Stdlib.List.findFirst fields (fun (key, _) -> key == "uri")
-          with
-          | Some((_, String uri)) -> Stdlib.Result.Result.Ok uri
-          | _ -> Stdlib.Result.Result.Error "Expected uri"
+        let uri = getStringField fields "uri"
 
         let options =
-          match
-            Stdlib.List.findFirst fields (fun (key, _) -> key == "options")
-          with
-          | Some((_, Object options)) ->
-            let recursive =
-              match
-                Stdlib.List.findFirst options (fun (key, _) ->
-                  key == "recursive")
-              with
-              | Some((_, Bool recursive)) -> Stdlib.Result.Result.Ok recursive
-              | _ -> Stdlib.Result.Result.Error "Expected recursive option"
-
-            match recursive with
+          match getObjectField fields "options" with
+          | Ok optionFields ->
+            match getBoolField optionFields "recursive" with
             | Ok recursive ->
               (DeleteFileOptions.DeleteFileOptions { recursive = recursive })
               |> Stdlib.Result.Result.Ok
-            | _ -> Stdlib.Result.Result.Error "Invalid options"
-          | _ -> Stdlib.Result.Result.Error "Expected options object"
+            | Error e -> Stdlib.Result.Result.Error e
+          | Error e -> Stdlib.Result.Result.Error e
 
         match (uri, options) with
         | (Ok uri, Ok options) ->
-          (DeleteFileParams { uri = uri, options = options })
+          (DeleteFileParams
+            { uri = uri
+              options = options })
           |> Stdlib.Result.Result.Ok
         | _ -> Stdlib.Result.Result.Error "Invalid params"
       | _ -> Stdlib.Result.Result.Error "Expected object"
