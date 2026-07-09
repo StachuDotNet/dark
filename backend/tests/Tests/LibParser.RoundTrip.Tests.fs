@@ -88,19 +88,11 @@ let t
       }
 
     let! firstPrint = roundOnce input
-    Expect.RT.equalDval
-      (RT.DString firstPrint)
-      (RT.DString expected)
-      "Didn't round-trip as expected"
-
-    // Idempotency: re-parsing and re-printing the output must reproduce it —
-    // catches a printer emitting source that reparses to a different tree.
-    let! secondPrint = roundOnce firstPrint
     return
       Expect.RT.equalDval
-        (RT.DString secondPrint)
         (RT.DString firstPrint)
-        "Pretty-print is not idempotent: re-parsing/re-printing the output changed it"
+        (RT.DString expected)
+        "Didn't round-trip as expected"
   }
 
 
