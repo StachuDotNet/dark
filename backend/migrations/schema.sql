@@ -6,7 +6,7 @@
 -- final shape is what runs against an empty DB.
 --
 -- system_migrations_v0 (the legacy per-named-migration table) is the one
--- exception, since pre-cutover DBs are adopted via that table; created
+-- exception, since legacy DBs are adopted via that table; created
 -- here AND by Migrations.fs's adoptLegacyDB path.
 --
 -- Order: bookkeeping → branches → commits → ops → package projections →
@@ -40,7 +40,8 @@ INSERT OR IGNORE INTO accounts_v0 (id, name) VALUES
   ('00000000-0000-0000-0000-000000000001', 'Darklang'),
   ('00000000-0000-0000-0000-000000000002', 'Stachu'),
   ('00000000-0000-0000-0000-000000000003', 'Paul'),
-  ('00000000-0000-0000-0000-000000000004', 'Feriel');
+  ('00000000-0000-0000-0000-000000000004', 'Feriel'),
+  ('00000000-0000-0000-0000-000000000005', 'Ocean');
 
 
 --------------------
@@ -58,6 +59,11 @@ CREATE TABLE IF NOT EXISTS branches (
   -- (commits also references branches), but the rows are inserted in
   -- dependency order at runtime; we don't add a FK constraint here.
   base_commit_hash TEXT,
+  -- LWW stamp for base_commit_hash: the (origin_ts, op-id) of the CreateBranch/RebaseBranch that last set it.
+  -- Concurrent rebases of the same branch on two instances converge (later origin_ts wins, op-id breaks a tie)
+  -- instead of resolving by arrival order. merged_at/archived_at need no stamp — they're monotonic set-once.
+  base_ts TEXT NOT NULL DEFAULT '',
+  base_op TEXT NOT NULL DEFAULT '',
 
   archived_at TIMESTAMP NULL,             -- soft-delete; replaces hard delete
   created_at TIMESTAMP NOT NULL DEFAULT (datetime('now')),
@@ -89,13 +95,23 @@ CREATE INDEX IF NOT EXISTS idx_commits_branch
 
 -- The source of truth for all package changes (branch-scoped).
 CREATE TABLE IF NOT EXISTS package_ops (
-  id TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
   op_blob BLOB NOT NULL,
   branch_id TEXT NOT NULL REFERENCES branches(id),
   commit_hash TEXT REFERENCES commits(hash),  -- NULL = WIP
   applied INTEGER NOT NULL DEFAULT 0,
   propagation_id TEXT NULL,                   -- direct lookup for PropagateUpdate ops
-  created_at TIMESTAMP NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMP NOT NULL DEFAULT (datetime('now')),
+  -- Authoring timestamp, PORTABLE across sync. A
+  -- locally-authored op self-stamps here at insert; a SYNCED op preserves its origin (the sync
+  -- receiver writes the peer's value), so every instance agrees on a given op's origin_ts and
+  -- max(origin_ts) picks the same divergence winner → no swap. Distinct from `created_at` (which
+  -- is local-insert time and differs per instance for the same op).
+  origin_ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  -- Composite, not bare `id`: an identical op authored on two branches hashes equal (the id is the op's
+  -- content hash), so a bare-`id` INSERT OR IGNORE would drop the second and the fn would be invisible on
+  -- that branch. (id, branch_id) lets IGNORE catch only true within-branch repeats.
+  PRIMARY KEY (id, branch_id)
 );
 CREATE INDEX IF NOT EXISTS idx_package_ops_wip
   ON package_ops(branch_id) WHERE commit_hash IS NULL;
@@ -112,9 +128,46 @@ CREATE TABLE IF NOT EXISTS branch_ops (
   id TEXT PRIMARY KEY,                  -- content-addressed hash of the op
   op_blob BLOB NOT NULL,                -- serialized BranchOp
   applied INTEGER NOT NULL DEFAULT 0,   -- 0=pending, 1=applied (for crash recovery)
+  -- Authoring stamp, PORTABLE across sync (mirrors package_ops.origin_ts): a locally-authored op self-stamps,
+  -- a SYNCED op preserves the peer's, so a structural op (rebase) converges by CREATION time (LWW) rather than
+  -- by arrival order. Distinct from `created_at` (local-insert time, differs per instance for the same op).
+  origin_ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   created_at TIMESTAMP NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_branch_ops_created_at ON branch_ops(created_at);
+
+
+--------------------
+-- Sync conflicts + resolutions (the "LWW isn't silent" model)
+--------------------
+-- sync_conflicts: a LOCAL review log (NOT synced). A divergence auto-resolved by last-writer-wins at pull
+-- time is recorded here so it can be reviewed + (optionally) overridden. Per-branch.
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+  id TEXT PRIMARY KEY,                   -- content-addressed (branch + location + candidate hashes)
+  branch_id TEXT NOT NULL,
+  location TEXT NOT NULL,                -- owner.modules.name
+  item_kind TEXT NOT NULL,              -- fn | type | value
+  local_hash TEXT NOT NULL,             -- the content we had
+  incoming_hash TEXT NOT NULL,          -- the content the peer sent
+  chosen_hash TEXT NOT NULL,            -- which won (auto: last-writer-wins)
+  resolved_by TEXT NOT NULL,            -- 'auto:last-writer-wins' | 'human'
+  status TEXT NOT NULL DEFAULT 'auto-resolved',  -- auto-resolved | acknowledged | overridden
+  detected_at TIMESTAMP NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sync_conflicts_detected_at ON sync_conflicts(detected_at DESC);
+
+-- resolutions: SYNCED override overlay. A resolution binds a contested location to a chosen content,
+-- competing in the same timestamp-LWW that orders bindings (by `at`). id is a wire-carried uuid (idempotent).
+-- Effective binding = fold(package_ops)[LWW] -> apply resolutions[last-resolver-wins by `at`]. Per-branch.
+CREATE TABLE IF NOT EXISTS resolutions (
+  id TEXT PRIMARY KEY,                   -- wire-carried uuid (INSERT OR IGNORE dedup)
+  branch_id TEXT NOT NULL,
+  location TEXT NOT NULL,
+  item_kind TEXT NOT NULL,
+  chosen_hash TEXT NOT NULL,            -- the content this resolution binds the location to
+  resolved_by TEXT NOT NULL,            -- 'auto:<policy>' | 'human'
+  at TEXT NOT NULL                      -- LWW stamp (same format as op origin_ts / locations)
+);
+CREATE INDEX IF NOT EXISTS idx_resolutions_at ON resolutions(at);
 
 
 --------------------
@@ -127,7 +180,8 @@ CREATE TABLE IF NOT EXISTS package_types (
   hash TEXT PRIMARY KEY,
   pt_def BLOB NOT NULL,
   rt_def BLOB NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  description TEXT NOT NULL DEFAULT ''         -- plain-text doc comment for SQL package search
 );
 
 CREATE TABLE IF NOT EXISTS package_values (
@@ -135,7 +189,8 @@ CREATE TABLE IF NOT EXISTS package_values (
   pt_def BLOB NOT NULL,
   rt_dval BLOB,                  -- NULL until evaluated
   value_type BLOB,               -- for finding values of a given ValueType
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  description TEXT NOT NULL DEFAULT ''         -- plain-text doc comment for SQL package search
 );
 CREATE INDEX IF NOT EXISTS idx_package_values_type ON package_values(value_type);
 
@@ -143,7 +198,8 @@ CREATE TABLE IF NOT EXISTS package_functions (
   hash TEXT PRIMARY KEY,
   pt_def BLOB NOT NULL,
   rt_instrs BLOB NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  description TEXT NOT NULL DEFAULT ''         -- plain-text doc comment for SQL package search
 );
 
 -- Content-addressed bytes (Blob refs). Dedup comes for free via PK
@@ -169,7 +225,12 @@ CREATE TABLE IF NOT EXISTS locations (
   branch_id TEXT NOT NULL REFERENCES branches(id),
   commit_hash TEXT REFERENCES commits(hash),  -- NULL = WIP
   created_at TIMESTAMP NOT NULL DEFAULT (datetime('now')),
-  unlisted_at TIMESTAMP NULL              -- set when a later row supersedes this one
+  unlisted_at TIMESTAMP NULL,             -- set when a later row supersedes this one
+  -- The origin_ts of the op that set THIS binding — the name→authoring-time mapping that lets
+  -- playback order by CREATION, not arrival (timestamp-LWW). A SetName whose op was created
+  -- EARLIER than the current binding (an old op arriving late via sync) is stale: playback skips
+  -- the rebind, so the latest-by-creation name wins on every instance regardless of sync order.
+  origin_ts TEXT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_locations_branch_lookup
   ON locations(branch_id, owner, modules, name, item_type)

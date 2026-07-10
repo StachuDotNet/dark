@@ -17,6 +17,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Sqlite.fs" />
+    <Compile Include="Lww.fs" />
     <Compile Include="PackageLocation.fs" />
     <Compile Include="Caching.fs" />
     <Compile Include="Purge.fs" />
@@ -41,9 +42,14 @@
     <Compile Include="PackageManager.fs" />
     <Compile Include="Scripts.fs" />
     <Compile Include="PackageRefsGenerator.fs" />
+    <Compile Include="Conflicts.fs" />
+    <Compile Include="Resolutions.fs" />
     <Compile Include="Seed.fs" />
     <Compile Include="CapabilityGrants.fs" />
     <Compile Include="PackageCaps.fs" />
+
+    <!-- The Release migrator: move a store forward one Release at a time; refuse a newer store. /-->
+    <Compile Include="Releases.fs" />
 
     <!-- ex-LibCloud SQLite-bound modules /-->
     <Compile Include="Tracing.fs" />

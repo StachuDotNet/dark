@@ -1383,7 +1383,8 @@ module Dval =
       // (probably forces us to make this fn async?)
       | AppNamedFn _named -> ValueType.Unknown
 
-    // CLEANUP follow up when DDB has a typeReference
+    // CLEANUP follow up when DDB carries a typeReference (the name alone doesn't pin the
+    // element type, so it stays Unknown — permissive against any declared DB<_>).
     | DDB _ -> ValueType.Unknown
 
     | DBlob _ -> ValueType.Known KTBlob

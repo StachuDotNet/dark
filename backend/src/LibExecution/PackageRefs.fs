@@ -101,6 +101,8 @@ module Type =
     let result = p [ "Result" ] "Result"
     let option = p [ "Option" ] "Option"
 
+    let sqliteValue = p [ "Sqlite" ] "Value"
+
     let intParseError = p [ "Int" ] "ParseError"
     let int8ParseError = p [ "Int8" ] "ParseError"
     let uint8ParseError = p [ "UInt8" ] "ParseError"
@@ -139,6 +141,14 @@ module Type =
       let private p addl = p ("AltJson" :: addl)
       let parseError = p [ "ParseError" ] "ParseError"
       let json = p [] "Json"
+
+    module EventLog =
+      let private p addl = p ("EventLog" :: addl)
+      let cursor = p [] "Cursor"
+      let event = p [] "Event"
+      let commit = p [] "Commit"
+      let branchOpEvent = p [] "BranchOpEvent"
+      let resolutionEvent = p [] "ResolutionEvent"
 
     module Cli =
       let private p addl = p ("Cli" :: addl)

@@ -7,8 +7,12 @@ order on top of `../schema.sql` and name-dedup'd via
 When to add a file here vs editing `schema.sql`:
 
 - **Edit `schema.sql`**: structural redesigns, adding a new table or
-  column where rebuilding from source is fine. The file is hashed +
-  kill-and-fill'd; data in the affected tables is lost.
+  column. The file is hashed; on a change the runtime does a
+  preserve-and-refold — it drops only the regenerable projection
+  tables and re-folds them from the op log, so the canonical op
+  log / blobs / branch+commit state survive. (A canonical-table
+  *shape* change still needs a Release migration — CREATE IF NOT
+  EXISTS can't alter an existing table.)
 - **Add a file here**: data backfills, transforms, additive
   alterations on populated dev/test DBs you don't want to nuke.
 
