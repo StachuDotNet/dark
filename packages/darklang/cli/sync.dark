@@ -1,0 +1,430 @@
+module Darklang.Cli.Sync
+
+// `dark sync` — keep your packages in step with your other instances, over HTTP. Local-first: sync is opt-in,
+// and once you connect a peer, `dark sync daemon start` keeps things current in the background.
+// Peers are URLs (running instances), never files — sync exchanges ops, not databases.
+
+// "1 instance" / "2 instances" — count + correctly-pluralized noun, so no message reads "1 instance(s)".
+let private plural (n: Int) (noun: String) : String =
+  if n == 1I then
+    $"{Stdlib.Int.toString n} {noun}"
+  else
+    $"{Stdlib.Int.toString n} {noun}s"
+
+// Serve the sync endpoint so peers can pull from you. Blocks until Ctrl+C (foreground); for boot, use
+// `dark sync daemon start`. Same router `dark serve Darklang.Sync.Server.router` would run — just less
+// to type, and it prints the address peers actually need.
+let private serveOn (port: Int) (state: AppState) : AppState =
+  let portStr = Stdlib.Int.toString port
+
+  [ Colors.success $"Serving sync on http://localhost:{portStr} — peers can pull from you here."
+    Colors.hint $"  Remote peers use your tailnet address, e.g. http://you.tailnet:{portStr}"
+    Colors.hint "  Keep it running (serve on boot):  dark sync daemon start"
+    "  Press Ctrl+C to stop." ]
+  |> Stdlib.printLines
+
+  Stdlib.HttpServer.serve
+    (Stdlib.HttpServer.Config.defaults port)
+    Darklang.Sync.Server.router
+
+  state
+
+// ── `dark sync daemon` — automatic sync: ONE toggle over both the pull daemon (`sync`) and the serve
+// daemon (`sync-server`). Settings live in cli-config (mode / interval / port / on-boot), adjustable via
+// `dark sync daemon config`. Replaces `dark apps enable sync` as the blessed surface.
+
+let private daemonMode () : String =
+  match Darklang.Cli.Config.get "sync.daemon.mode" with
+  | Some m -> m
+  | None -> "pull+serve"
+
+let private daemonSlugs (mode: String) : List<String> =
+  match mode with
+  | "pull-only" -> [ "sync" ]
+  | "serve-only" -> [ "sync-server" ]
+  | _ -> [ "sync"; "sync-server" ]
+
+let private intervalSec () : Int =
+  (Darklang.Cli.Config.getInt "apps.sync.intervalMs" 30000I) / 1000I
+
+let private servePort () : Int =
+  Darklang.Cli.Config.getInt "apps.sync-server.port" 9000I
+
+let private onBoot () : Bool =
+  match Darklang.Cli.Config.get "sync.daemon.onBoot" with
+  | Some "no" -> false
+  | _ -> true
+
+let private settingsLine () : String =
+  let boot = if onBoot () then "on boot" else "not on boot"
+
+  $"mode: {daemonMode ()} · every {Stdlib.Int.toString (intervalSec ())}s · port {Stdlib.Int.toString (servePort ())} · {boot}"
+
+let private setConfig (key: String) (value: String) : Unit =
+  let updated =
+    Stdlib.Dict.setOverridingDuplicates (Darklang.Cli.Config.readConfig ()) key value
+
+  let _ = Darklang.Cli.Config.writeConfig updated
+  ()
+
+// The first-run dialog: explain the defaults, offer to adjust them inline. In a non-interactive context
+// (piped/no TTY) the "Adjust?" prompt reads EOF → No, so it falls through to defaults without blocking.
+let private firstRunDialog () : Unit =
+  Stdlib.printLine "Setting up automatic sync. Defaults:"
+
+  Stdlib.printLine (
+    Colors.hint
+      $"  · pull from peers + serve to them, every {Stdlib.Int.toString (intervalSec ())}s")
+
+  Stdlib.printLine (
+    Colors.hint
+      $"  · serve on port {Stdlib.Int.toString (servePort ())} — all branches, open to anyone who can reach you")
+
+  Stdlib.printLine (Colors.hint "  · start automatically on boot")
+
+  let _ =
+    if Stdlib.Cli.UI.Prompt.confirm "Adjust these settings?" then
+      let intervalIn =
+        Stdlib.Cli.UI.Prompt.ask
+          $"  interval seconds [{Stdlib.Int.toString (intervalSec ())}]:"
+
+      let _ =
+        match Stdlib.Int.parse intervalIn with
+        | Ok secs -> setConfig "apps.sync.intervalMs" (Stdlib.Int.toString (secs * 1000I))
+        | Error _ -> ()
+
+      let portIn =
+        Stdlib.Cli.UI.Prompt.ask $"  port [{Stdlib.Int.toString (servePort ())}]:"
+
+      let _ =
+        match Stdlib.Int.parse portIn with
+        | Ok _ -> setConfig "apps.sync-server.port" portIn
+        | Error _ -> ()
+
+      let modeIn =
+        Stdlib.Cli.UI.Prompt.select
+          "  mode:"
+          [ "pull+serve"; "pull-only"; "serve-only" ]
+
+      let _ = setConfig "sync.daemon.mode" modeIn
+      let boot = Stdlib.Cli.UI.Prompt.confirm "  start on boot?"
+      setConfig "sync.daemon.onBoot" (if boot then "yes" else "no")
+    else
+      ()
+
+  setConfig "sync.daemon.configured" "yes"
+
+let private daemonStart (state: AppState) : AppState =
+  let firstRun =
+    match Darklang.Cli.Config.get "sync.daemon.configured" with
+    | Some "yes" -> false
+    | _ -> true
+
+  let _ =
+    if firstRun then
+      firstRunDialog ()
+    else
+      Stdlib.printLine (
+        Colors.success $"Automatic sync started — {settingsLine ()}.")
+
+  Stdlib.List.fold (daemonSlugs (daemonMode ())) state (fun s slug ->
+    Darklang.Cli.Apps.Command.startDaemon s slug)
+
+let private daemonStop (state: AppState) : AppState =
+  let _ =
+    Stdlib.List.map [ "sync"; "sync-server" ] (fun slug ->
+      match Stdlib.Cli.Daemon.stop slug with
+      | Ok _ -> Stdlib.printLine (Colors.success $"Stopped {slug}.")
+      | Error _ -> ())
+
+  Stdlib.printLine (
+    Colors.hint
+      "Automatic sync off. One-off: dark sync (pull) · dark sync serve (be reachable).")
+
+  state
+
+let private daemonStatusCmd (state: AppState) : AppState =
+  Stdlib.printLine "Automatic sync:"
+  Stdlib.printLine $"  pull    {Stdlib.Cli.Daemon.statusLine "sync"}"
+  Stdlib.printLine $"  serve   {Stdlib.Cli.Daemon.statusLine "sync-server"}"
+  Stdlib.printLine (Colors.hint $"  {settingsLine ()} · settings: dark sync daemon config")
+  state
+
+let private daemonConfigShow (state: AppState) : AppState =
+  Stdlib.printLine "Automatic sync settings:"
+  Stdlib.printLine $"  mode      {daemonMode ()}   (pull+serve | pull-only | serve-only)"
+  Stdlib.printLine $"  interval  {Stdlib.Int.toString (intervalSec ())}s"
+  Stdlib.printLine $"  port      {Stdlib.Int.toString (servePort ())}"
+  Stdlib.printLine $"  on-boot   {if onBoot () then "yes" else "no"}"
+
+  Stdlib.printLine (
+    Colors.hint
+      "  change: dark sync daemon config <mode|interval|port|on-boot> <value>")
+
+  state
+
+/// Validate a daemon config `(key, value)` and map it to its stored `(config-key, store-value)`, or None if
+/// the value is invalid. Pure + exported so the validation is directly testable. An invalid value → None → the
+/// caller reports an error instead of storing junk that silently reverts to a default (a `port abc` or
+/// `on-boot false` that looks like it took but doesn't).
+let daemonConfigValue
+  (key: String)
+  (value: String)
+  : Stdlib.Option.Option<(String * String)> =
+  match key with
+  | "mode" ->
+    if Stdlib.List.member_v0 [ "pull+serve"; "pull-only"; "serve-only" ] value then
+      Stdlib.Option.Option.Some(("sync.daemon.mode", value))
+    else
+      Stdlib.Option.Option.None
+  | "port" ->
+    match Stdlib.Int.parse value with
+    | Ok p ->
+      if p > 0I && p <= 65535I then
+        Stdlib.Option.Option.Some(("apps.sync-server.port", value))
+      else
+        Stdlib.Option.Option.None
+    | Error _ -> Stdlib.Option.Option.None
+  | "on-boot" ->
+    if Stdlib.List.member_v0 [ "yes"; "no" ] value then
+      Stdlib.Option.Option.Some(("sync.daemon.onBoot", value))
+    else
+      Stdlib.Option.Option.None
+  | "interval" ->
+    match Stdlib.Int.parse value with
+    | Ok secs ->
+      // reject non-positive — a 0/negative interval would make the daemon busy-loop (see nextPollMs clamp).
+      if secs > 0I then
+        Stdlib.Option.Option.Some(
+          ("apps.sync.intervalMs", Stdlib.Int.toString (secs * 1000I))
+        )
+      else
+        Stdlib.Option.Option.None
+    | Error _ -> Stdlib.Option.Option.None
+  | _ -> Stdlib.Option.Option.None
+
+let private daemonConfigSet
+  (state: AppState)
+  (key: String)
+  (value: String)
+  : AppState =
+  let stored = daemonConfigValue key value
+
+  let _ =
+    match stored with
+    | Some((configKey, storeValue)) ->
+      let updated =
+        Stdlib.Dict.setOverridingDuplicates
+          (Darklang.Cli.Config.readConfig ())
+          configKey
+          storeValue
+
+      let _ = Darklang.Cli.Config.writeConfig updated
+
+      Stdlib.printLine (
+        Colors.success
+          $"Set {key} = {value}. Apply: dark sync daemon stop, then dark sync daemon start.")
+    | None ->
+      Stdlib.printLine (
+        Colors.error
+          $"Can't set '{key}' to '{value}'. Keys: mode | interval (seconds) | port | on-boot (yes/no).")
+
+  state
+
+let help (state: AppState) : AppState =
+  [ "dark sync — keep your packages in step with your other instances, over HTTP."
+    "Local-first: sync is opt-in, and once you connect a peer it stays current."
+    ""
+    "  dark sync                    pull now from every instance you're connected to"
+    "  dark sync connect <url>      start syncing with an instance (e.g. http://ocean.tailnet:9000)"
+    "  dark sync disconnect <url>   stop syncing with an instance"
+    "  dark sync serve              let peers pull from you (add --port N; default 9000)"
+    "  dark sync status             who you're syncing with, and how current each is"
+    "  dark sync pull <url>         pull once from a single instance"
+    ""
+    "All your branches sync wholesale — a branch is the same on every instance you connect."
+    ""
+    "Automatic (background, and across reboots):"
+    "  dark sync daemon start       pull from + serve to your peers on an interval"
+    "  dark sync daemon status      whether it's running, and with what settings"
+    "  dark sync daemon config      view/adjust interval · port · mode · on-boot"
+    "  dark sync daemon stop        turn automatic sync off"
+    ""
+    "When two instances edit the same name, sync auto-resolves (latest wins) but records it:"
+    "  dark conflicts               review + override sync divergences" ]
+  |> Stdlib.printLines
+
+  state
+
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  match args with
+  | [] ->
+    // bare `dark sync` = pull now from every connected instance (the daemon automates this).
+    match Darklang.Sync.peers () with
+    | [] ->
+      Stdlib.printLine "You're not syncing with anyone yet."
+
+      Stdlib.printLine (
+        Colors.hint "  dark sync connect <url>   sync with one of your instances")
+
+      state
+    | ps ->
+      let results = Stdlib.List.map ps (fun p -> Darklang.Sync.pull p)
+
+      let pulled =
+        Stdlib.List.fold results 0I (fun acc r ->
+          match r with
+          | Ok n -> acc + n
+          | Error _ -> acc)
+
+      let unreachable =
+        Stdlib.List.fold results 0I (fun acc r ->
+          match r with
+          | Ok _ -> acc
+          | Error _ -> acc + 1I)
+
+      let reached = (Stdlib.List.length ps) - unreachable
+
+      let _ =
+        if unreachable > 0I then
+          Stdlib.printLine (
+            Colors.error
+              $"Couldn't reach {Stdlib.Int.toString unreachable} of {plural (Stdlib.List.length ps) "instance"}")
+        else
+          ()
+
+      if pulled > 0I then
+        Stdlib.printLine (
+          Colors.success
+            $"Pulled {plural pulled "change"} from {plural reached "instance"}")
+      else if reached > 0I then
+        Stdlib.printLine (
+          Colors.success
+            $"Already up to date with {plural reached "instance"}")
+      else
+        ()
+
+      state
+
+  | [ "status" ] ->
+    match Darklang.Sync.status () with
+    | [] ->
+      Stdlib.printLine "You're not syncing with anyone yet."
+
+      Stdlib.printLine (
+        Colors.hint "  dark sync connect <url>   sync with one of your instances")
+
+      state
+    | sts ->
+      let header =
+        $"Syncing with {plural (Stdlib.List.length sts) "instance"} (run `dark sync` to pull the latest):"
+
+      // Pad each peer to the longest so the state column lines up.
+      let width =
+        Stdlib.List.fold sts 0I (fun acc pc ->
+          let len = Stdlib.String.length (Stdlib.Tuple2.first pc)
+          if len > acc then len else acc)
+
+      let lines =
+        Stdlib.List.map sts (fun pc ->
+          let peer = Stdlib.Tuple2.first pc
+          let cursor = Stdlib.Tuple2.second pc
+
+          let padded =
+            match Stdlib.String.padEnd peer " " width with
+            | Ok s -> s
+            | Error _ -> peer
+
+          // Cursor is the PEER's rowid — meaningless to show. What's honest is whether we've pulled it yet;
+          // "current" is always as-of the last pull (we can't know if the peer moved without pulling).
+          let mark = if cursor == 0L then "(not pulled yet)" else "(pulled)"
+          $"  {padded}   {mark}")
+
+      // Every branch syncs wholesale — the same branches exist on every instance you connect.
+      let branchNames =
+        Stdlib.List.map (Darklang.SCM.Branch.list ()) (fun b -> b.name)
+
+      let branchLine =
+        match branchNames with
+        | [] -> []
+        | names ->
+          [ Colors.hint
+              $"  {plural (Stdlib.List.length names) "branch"} syncing: {Stdlib.String.join names ", "}" ]
+
+      Stdlib.printLines (
+        Stdlib.List.append (Stdlib.List.append [ header ] lines) branchLine)
+
+      state
+
+  | [ "connect"; peer ] ->
+    match Darklang.Sync.connect peer with
+    | Ok _ ->
+      // Probe the peer now, so a wrong URL/port shows up here (when you can fix it) instead of on a later
+      // silent `dark sync`. The peer is added either way — an offline instance will just sync once it's up.
+      match Darklang.Sync.reachable peer with
+      | Ok n ->
+        Stdlib.printLine (
+          Colors.success $"Now syncing with {peer} — reachable ({Stdlib.Int64.toString n} ops)")
+        Stdlib.printLine (
+          Colors.hint "  dark sync   pull now  ·  dark sync daemon start   keep current on boot")
+      | Error _ ->
+        Stdlib.printLine (Colors.success $"Added {peer}")
+        Stdlib.printLine (
+          Colors.hint
+            "  can't reach it yet — check the URL and that the instance is running `dark sync serve`; it'll sync once it's up")
+    | Error e -> Stdlib.printLine (Colors.error e)
+
+    state
+
+  | [ "pull"; peer ] ->
+    match Darklang.Sync.pull peer with
+    | Ok n ->
+      if n == 0I then
+        Stdlib.printLine (Colors.success $"Already up to date with {peer}")
+      else
+        Stdlib.printLine (
+          Colors.success $"Pulled {plural n "change"} from {peer}")
+    | Error e -> Stdlib.printLine (Colors.error e)
+
+    state
+
+  | [ "disconnect"; peer ] ->
+    if Darklang.Sync.disconnect peer then
+      Stdlib.printLine (Colors.success $"Stopped syncing with {peer}")
+    else
+      Stdlib.printLine (Colors.hint $"You weren't syncing with {peer}")
+
+    state
+
+  | [ "daemon" ]
+  | [ "daemon"; "status" ] -> daemonStatusCmd state
+  | [ "daemon"; "start" ] -> daemonStart state
+  | [ "daemon"; "stop" ] -> daemonStop state
+  | [ "daemon"; "config" ] -> daemonConfigShow state
+  | [ "daemon"; "config"; key; value ] -> daemonConfigSet state key value
+
+  | [ "serve" ] -> serveOn 9000I state
+  | [ "serve"; "--port"; portStr ] ->
+    match Stdlib.Int.parse portStr with
+    | Ok p -> serveOn p state
+    | Error _ ->
+      Stdlib.printLine (Colors.error $"Invalid --port: {portStr}")
+      state
+
+  | [ "help" ] -> help state
+  | _ ->
+    Stdlib.printLine (Colors.error $"Unknown: dark sync {Stdlib.String.join args " "}")
+    Stdlib.printLine ""
+    help state
+
+
+let complete
+  (state: AppState)
+  (args: List<String>)
+  : List<Completion.CompletionItem> =
+  match args with
+  | [] ->
+    [ "status"; "connect"; "disconnect"; "serve"; "pull"; "daemon" ]
+    |> Stdlib.List.map Completion.simple
+  | _ -> []

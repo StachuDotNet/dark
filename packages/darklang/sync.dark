@@ -1,0 +1,361 @@
+module Darklang.Sync
+
+// Sync = replicate the op log over HTTP. A peer SERVES its committed events since a cursor (`wireSince`, the
+// `GET /sync/events?since=` body); a puller GETs them and appends them (folding happens invisibly). Everything
+// that crosses the wire is OPS — never a database file, never ATTACH. Sync owns no event mechanics: it's thin
+// policy (transport + per-peer cursors) on the general event-log seam, `Stdlib.EventLog`.
+
+/// The wire (JSON): the version handshake + one bounded batch from EACH synced log. `release` lets a puller
+/// refuse a peer on a different Dark release. `branchOps` (structure) is applied before `packageOps` (content)
+/// so package ops' branch_ids resolve on the receiver. Each log carries its own resume cursor.
+type Wire =
+  { release: Int
+    branchEvents: List<Stdlib.EventLog.BranchOpEvent>
+    branchCursor: Stdlib.EventLog.Cursor
+    commits: List<Stdlib.EventLog.Commit>
+    packageEvents: List<Stdlib.EventLog.Event>
+    packageCursor: Stdlib.EventLog.Cursor
+    resolutionEvents: List<Stdlib.EventLog.ResolutionEvent>
+    resolutionCursor: Stdlib.EventLog.Cursor }
+
+/// The `GET /sync/events?package=<c>&branch=<c>&resolution=<c>` body: this instance's Release + one bounded
+/// batch from each log after the given cursors, as JSON. Served by `Sync.Server`, pulled by `Sync.pull`.
+let wireSince
+  (packageCursor: Int64)
+  (branchCursor: Int64)
+  (resolutionCursor: Int64)
+  : String =
+  // One bounded batch PER LOG so a large log never becomes one giant response — the puller loops on the
+  // cursors until all come back empty. 1000 ops (~1 MB) balances round-trips against response size; the
+  // native reads make even a whole log milliseconds, so the batch is for bounded responses + resumability.
+  let branchBatch =
+    Stdlib.EventLog.readBranchOps
+      (Stdlib.EventLog.cursorFromInt branchCursor)
+      1000L
+
+  let pkgBatch =
+    Stdlib.EventLog.readSince
+      (Stdlib.EventLog.cursorFromInt packageCursor)
+      1000L
+
+  let resolutionBatch =
+    Stdlib.EventLog.readResolutions
+      (Stdlib.EventLog.cursorFromInt resolutionCursor)
+      1000L
+
+  // Wholesale sync: every committed branch/package/resolution op in the batch crosses the wire, so a branch is
+  // the SAME on every instance you sync (a branch `whatever` is `whatever` everywhere — never scoped by peer or
+  // account). Per-branch controls (private / follow) were removed as a half-measure; a future PR can add real
+  // per-branch scoping properly. // CLEANUP(per-branch-sync): reintroduce scoped controls when done right.
+  Stdlib.Json.serialize<Wire> (
+    Wire
+      { release = Builtin.currentRelease()
+        branchEvents = Stdlib.Stream.toList branchBatch.events
+        branchCursor = branchBatch.next
+        commits = pkgBatch.commits
+        packageEvents = Stdlib.Stream.toList pkgBatch.events
+        packageCursor = pkgBatch.next
+        resolutionEvents = Stdlib.Stream.toList resolutionBatch.events
+        resolutionCursor = resolutionBatch.next }
+  )
+
+
+// ── peer config + per-peer resume cursors (LOCAL, per-instance; never synced, like `caps`) ──
+
+let private syncDb () : String =
+  let db = Builtin.localDbPath ()
+
+  let _ =
+    Stdlib.Sqlite.exec db "CREATE TABLE IF NOT EXISTS sync_peers_v0 (url TEXT PRIMARY KEY)"
+
+  // One resume cursor per (peer, log-kind) — "package_ops" and "branch_ops" advance independently.
+  let _ =
+    Stdlib.Sqlite.exec
+      db
+      "CREATE TABLE IF NOT EXISTS sync_cursors_v1 (peer TEXT NOT NULL, kind TEXT NOT NULL, cursor INTEGER NOT NULL, PRIMARY KEY (peer, kind))"
+
+  db
+
+/// The peers this instance pulls from — http(s) URLs only. Local config; never travels.
+let peers () : List<String> =
+  Stdlib.Sqlite.column (syncDb ()) "SELECT url FROM sync_peers_v0 ORDER BY url" "url"
+
+// The one message for "that's not a peer" — a peer is always an http(s) URL (a running instance), never a
+// file. Shared by connect + pull so both reject a `.db`/path identically.
+let private peerMustBeUrl : String =
+  "A peer is a URL like http://ocean.tailnet:9000 — sync exchanges ops with a running instance over HTTP, not a .db file."
+
+/// Connect a peer by its URL. Sync talks to running instances over HTTP — a `.db` file is not a peer.
+let connect (url: String) : Stdlib.Result.Result<Unit, String> =
+  if Stdlib.String.startsWith url "http" then
+    let _ =
+      Stdlib.Sqlite.execP
+        (syncDb ())
+        "INSERT OR IGNORE INTO sync_peers_v0 (url) VALUES (@p0)"
+        [ url ]
+
+    Stdlib.Result.Result.Ok()
+  else
+    Stdlib.Result.Result.Error peerMustBeUrl
+
+/// Stop syncing with <param url> — forget the peer and drop its resume cursor. Returns whether it was
+/// actually a peer, so the caller can tell you if you weren't syncing with it. Purely local; the peer is
+/// untouched (this just stops *you* pulling from it).
+let disconnect (url: String) : Bool =
+  let wasConnected = Stdlib.List.member_v0 (peers ()) url
+  let _ =
+    Stdlib.Sqlite.execP (syncDb ()) "DELETE FROM sync_peers_v0 WHERE url = @p0" [ url ]
+
+  let _ =
+    Stdlib.Sqlite.execP (syncDb ()) "DELETE FROM sync_cursors_v1 WHERE peer = @p0" [ url ]
+
+  wasConnected
+
+let private cursorFor (peer: String) (kind: String) : Int64 =
+  (Stdlib.Sqlite.scalarIntP
+    (syncDb ())
+    "SELECT cursor FROM sync_cursors_v1 WHERE peer = @p0 AND kind = @p1"
+    [ peer; kind ]
+    "cursor")
+  |> Stdlib.Option.withDefault 0L
+
+let private setCursor (peer: String) (kind: String) (cursor: Int64) : Unit =
+  let _ =
+    Stdlib.Sqlite.execP
+      (syncDb ())
+      "INSERT OR REPLACE INTO sync_cursors_v1 (peer, kind, cursor) VALUES (@p0, @p1, @p2)"
+      [ peer; kind; Stdlib.Int64.toString cursor ]
+
+  ()
+
+
+// ── the client: pull a peer's new ops over HTTP + apply (folding invisible) ──
+
+// The ONE reference to the SSRF-unguarded fetch builtin. Every sync GET (events, blobs) goes through here, so
+// the raw builtin has a single reviewable call site (the security surface) even as more channels are added.
+let private syncHttpGet (url: String) : Stdlib.Result.Result<Blob, String> =
+  Builtin.httpGetUnsafeBytes url
+
+/// Quick liveness probe of a peer: GET /sync/health. Ok n = reachable, with the peer's committed op count;
+/// Error = couldn't reach it (wrong URL, not serving, or a different network). `connect` uses this so a typo'd
+/// URL surfaces the moment you type it, instead of on a later silent `dark sync` that just says "couldn't reach".
+let reachable (url: String) : Stdlib.Result.Result<Int64, String> =
+  match syncHttpGet $"{url}/sync/health" with
+  | Error e -> Stdlib.Result.Result.Error e
+  | Ok body ->
+    match Stdlib.Blob.toString body with
+    | Error _ -> Stdlib.Result.Result.Error "unreadable response"
+    | Ok text ->
+      // The health body is "ok ops=<n>".
+      if Stdlib.String.startsWith text "ok" then
+        match Stdlib.String.split text "=" with
+        | [ _; nStr ] ->
+          match Stdlib.Int64.parse (Stdlib.String.trim nStr) with
+          | Ok n -> Stdlib.Result.Result.Ok n
+          | Error _ -> Stdlib.Result.Result.Ok 0L
+        | _ -> Stdlib.Result.Result.Ok 0L
+      else
+        Stdlib.Result.Result.Error "not a Dark sync endpoint"
+
+// One pull batch: GET the peer's next bounded batch of ops after our cursor, apply them, advance the cursor, and recurse
+// until a batch comes back empty (caught up). Advancing the cursor per batch means an interrupted pull resumes
+// where it left off. <param applied> accumulates the total across batches.
+let rec private pullLoop
+  (peer: String)
+  (applied: Int)
+  (budget: Int)
+  : Stdlib.Result.Result<Int, String> =
+  // Bounded against a misbehaving/hostile peer that never lets us catch up: `budget` caps total batches (100k
+  // × 1000 ops ≫ any real store), and the strict-advance check at the recursion below stops a peer that
+  // returns events without moving any cursor forward.
+  let pkgSent = cursorFor peer "package_ops"
+  let branchSent = cursorFor peer "branch_ops"
+  let resSent = cursorFor peer "resolutions"
+
+  let url =
+    $"{peer}/sync/events?package={Stdlib.Int64.toString pkgSent}&branch={Stdlib.Int64.toString branchSent}&resolution={Stdlib.Int64.toString resSent}"
+
+  match syncHttpGet url with
+  | Ok body ->
+    match Stdlib.Blob.toString body with
+    | Ok wire ->
+      match Stdlib.Json.parse<Wire> wire with
+      | Ok(w) ->
+        if w.release != Builtin.currentRelease() then
+          Stdlib.Result.Result.Error
+            $"{peer} is on Dark release {Stdlib.Int.toString w.release}; you're on {Stdlib.Int.toString (Builtin.currentRelease())} — upgrade to the same release to sync"
+        else
+          // Apply branch STRUCTURE before content, so package ops' branch_ids resolve on this side. Each append
+          // returns the count applied, or -1 on a DB error (distinct from 0 = idempotent/nothing new). We
+          // compute all three BEFORE advancing any cursor: on a DB error we must NOT advance, or the lost ops
+          // would be silently skipped past (divergence) until the peer is reconnected. A malformed individual
+          // op is a parse-skip inside the append (correctly counted as applied), not a -1.
+          let branchApplied =
+            if Stdlib.List.length w.branchEvents == 0I then
+              0I
+            else
+              Stdlib.EventLog.appendBranchOps w.branchEvents
+
+          let packageApplied =
+            if Stdlib.List.length w.packageEvents == 0I then
+              0I
+            else
+              Stdlib.EventLog.append w.commits w.packageEvents
+
+          // Resolutions LAST — they overlay the folded bindings, so a peer's "keep mine" override wins and
+          // converges. Each is idempotent + LWW-gated by its own `at`.
+          let resolutionApplied =
+            if Stdlib.List.length w.resolutionEvents == 0I then
+              0I
+            else
+              Stdlib.EventLog.appendResolutions w.resolutionEvents
+
+          if
+            branchApplied < 0I || packageApplied < 0I || resolutionApplied < 0I
+          then
+            Stdlib.Result.Result.Error
+              $"{peer}: a database error applying ops — stopped without advancing the cursor (retries on the next pull)"
+          else
+            let _ = setCursor peer "branch_ops" (Stdlib.EventLog.cursorToInt w.branchCursor)
+            let _ = setCursor peer "package_ops" (Stdlib.EventLog.cursorToInt w.packageCursor)
+
+            let _ =
+              setCursor peer "resolutions" (Stdlib.EventLog.cursorToInt w.resolutionCursor)
+
+            let caughtUp =
+              Stdlib.List.length w.branchEvents == 0I
+              && Stdlib.List.length w.packageEvents == 0I
+              && Stdlib.List.length w.resolutionEvents == 0I
+
+            // A well-behaved peer that returns events moves at least one cursor strictly forward; if it
+            // doesn't, it's replaying and we'd loop forever — stop.
+            let advanced =
+              (Stdlib.EventLog.cursorToInt w.packageCursor) > pkgSent
+              || (Stdlib.EventLog.cursorToInt w.branchCursor) > branchSent
+              || (Stdlib.EventLog.cursorToInt w.resolutionCursor) > resSent
+
+            let total =
+              applied + branchApplied + packageApplied + resolutionApplied
+
+            if caughtUp then
+              Stdlib.Result.Result.Ok applied
+            else if Stdlib.Bool.not advanced then
+              Stdlib.Result.Result.Error
+                $"{peer} returned ops but advanced no cursor — stopping (misbehaving peer)"
+            else if budget <= 1I then
+              Stdlib.Result.Result.Error
+                $"{peer} kept sending ops without catching up — stopped after the batch budget (possible misbehaving peer)"
+            else
+              pullLoop peer total (budget - 1I)
+      | Error _ ->
+        Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
+    | Error _ -> Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
+  | Error _ -> Stdlib.Result.Result.Error $"Couldn't reach {peer}"
+
+/// After a pull's ops apply, fetch the content blobs we now lack. A value's large `package_blobs` content
+/// rides its OWN channel, not the op stream — so the ops can reference a blob we don't have yet. GET the peer's
+/// manifest, keep the hashes we're missing, GET + insert each. Best-effort: a failed GET or empty body is
+/// skipped — content-addressed, so it retries + dedups on the next pull. Returns the count inserted.
+let private fetchMissingBlobs (peer: String) : Int =
+  let manifestUrl = $"{peer}/sync/blobs"
+
+  match syncHttpGet manifestUrl with
+  | Ok body ->
+    match Stdlib.Blob.toString body with
+    | Ok manifest ->
+      let offered =
+        Stdlib.List.filter (Stdlib.String.split manifest "\n") (fun h -> h != "")
+
+      Stdlib.List.fold (Builtin.syncBlobMissing offered) 0I (fun acc h ->
+        let blobUrl = $"{peer}/sync/blob?hash={h}"
+
+        match syncHttpGet blobUrl with
+        | Ok b ->
+          match Stdlib.Blob.toString b with
+          | Ok b64 -> if Builtin.syncBlobInsert h b64 then acc + 1I else acc
+          | Error _ -> acc
+        | Error _ -> acc)
+    | Error _ -> 0I
+  | Error _ -> 0I
+
+/// Pull new ops from <param peer> (an http URL) since our stored cursor, in bounded batches until caught up,
+/// applying each and advancing the cursor. Ok(n) = n events transferred (0 = already current); Error = the
+/// peer was unreachable, version-skewed, or spoke nonsense. Honest about the difference so a caller never
+/// reports "up to date" when it actually couldn't reach the peer.
+let pull (peer: String) : Stdlib.Result.Result<Int, String> =
+  if Stdlib.String.startsWith peer "http" then
+    match pullLoop peer 0I 100000I with
+    | Ok applied ->
+      // fetch the content blobs those ops reference but we lack (best-effort; retries next pull)
+      let _ = fetchMissingBlobs peer
+      Stdlib.Result.Result.Ok applied
+    | Error e -> Stdlib.Result.Result.Error e
+  else
+    Stdlib.Result.Result.Error peerMustBeUrl
+
+/// Pull from every configured peer; returns the total events applied (unreachable peers contribute 0). Used by
+/// the background daemon, which pulls what it can and stays quiet about peers that happen to be offline.
+let pullAll () : Int =
+  Stdlib.List.fold (peers ()) 0I (fun acc peer ->
+    match pull peer with
+    | Ok n -> acc + n
+    | Error _ -> acc)
+
+/// Each connected peer paired with how far we've pulled it (the peer's rowid; 0 = never pulled). For
+/// `dark sync status` — so you can see, at a glance, who you sync with and whether you're current.
+let status () : List<(String * Int64)> =
+  Stdlib.List.map (peers ()) (fun peer -> (peer, cursorFor peer "package_ops"))
+
+
+// ── the autosync daemon: pull from every peer on an interval, in the background. Driven by
+//    `dark sync daemon start/stop` on the shared Stdlib.Cli.Daemon substrate. Poll-based v1. ──
+
+// The IDLE poll interval (30s): a converged tailnet settles here — two small GETs/min per peer, each a no-op
+// when you're already up to date. Sync isn't chat. It's a CEILING, not a fixed gap: after a pull that saw
+// changes the daemon snaps to a responsive floor and backs off (doubling) up to this while idle, so a real
+// commit propagates within ~the floor without hammering a quiet tailnet. Overridable via `dark sync daemon
+// config interval N` (stored as `apps.<name>.intervalMs`), read on start.
+let private defaultPollIntervalMs : Int = 30000I
+
+// The responsive floor — the gap right after a pull that saw changes.
+let private pollFloorMs : Int = 2000I
+
+// Adaptive interval (pure): snap to the floor after changes, else back off (double) up to the ceiling. This
+// is what lets a converged tailnet quiet down instead of polling at the floor forever.
+let nextPollMs (sawChanges: Bool) (currentMs: Int) (ceilingMs: Int) : Int =
+  if sawChanges then
+    pollFloorMs
+  else
+    let doubled = currentMs * 2I
+    if doubled > ceilingMs then ceilingMs else doubled
+
+let rec private syncLoop (intervalMs: Int) (ceilingMs: Int) (remaining: Int) : Int =
+  if remaining <= 0I then
+    0I
+  else
+    let applied = pullAll ()
+    let _ = Stdlib.Cli.Posix.sleep (Stdlib.Int.toFloat intervalMs)
+    // cursor delta > 0 ⇒ changes arrived ⇒ stay responsive; a converged/empty pull ⇒ back off
+    syncLoop (nextPollMs (applied > 0I) intervalMs ceilingMs) ceilingMs (remaining - 1I)
+
+/// The autosync daemon entrypoint: claim the pidfile, then pull from every peer forever (ended by
+/// `dark sync daemon stop`/SIGTERM). Started by `dark sync daemon start`.
+let daemon (name: String) : Int =
+  let _ =
+    match Stdlib.Cli.Daemon.claimPidfile name with
+    | Error e -> Stdlib.printLine $"{name}: could not write pidfile: {e}"
+    | Ok _ ->
+      Stdlib.printLine
+        $"{name}: keeping your peers in sync in the background (pid {Stdlib.Int.toString (Stdlib.Cli.Sys.currentPid ())})"
+
+  // The configured interval is the idle CEILING (set by `dark sync daemon config interval N`); the daemon
+  // starts responsive (at the floor) and backs off toward this while a converged tailnet is quiet. Clamp to at
+  // least the floor: a 0/negative interval (bad config that slipped past validation) would make `sleep 0`
+  // busy-loop, hammering peers with no delay.
+  let configured =
+    Darklang.Cli.Config.getInt $"apps.{name}.intervalMs" defaultPollIntervalMs
+
+  let ceilingMs =
+    if configured < pollFloorMs then pollFloorMs else configured
+
+  syncLoop pollFloorMs ceilingMs 1000000000I
