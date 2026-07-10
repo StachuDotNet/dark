@@ -26,6 +26,8 @@
 
     <!-- Accounts -->
     <Compile Include="Libs/Account.fs" />
+    <Compile Include="Libs/Sqlite.fs" />
+    <Compile Include="Libs/Conflicts.fs" />
 
     <Compile Include="Builtin.fs" />
   </ItemGroup>

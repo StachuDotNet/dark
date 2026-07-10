@@ -358,10 +358,16 @@ let fns () : List<BuiltInFn> =
          preserving the order."
       fn =
         (function
-        | _, vm, _, [ DList(vt1, l1); DList(_vt2, l2) ] ->
-          // VTTODO should fail here in the case of vt1 conflicting with vt2?
-          // (or is this handled by the interpreter?)
-          Ply(TypeChecker.DvalCreator.list vm.threadID vt1 (List.append l1 l2))
+        | _, vm, _, [ DList(vt1, l1); DList(vt2, l2) ] ->
+          // Both inputs are already-validated DLists, so their concatenation is valid iff their element
+          // types merge (O(1)) — no need to re-typecheck every element. This keeps `push` (= `append
+          // [x] list`), and therefore `map`/`filter`/`reverse`/every fold-built list op, O(n) instead of
+          // O(n²): re-validating the whole growing list on each push was quadratic. On a genuine type
+          // conflict, fall back to `DvalCreator.list` for the precise element-level error.
+          match VT.merge vt1 vt2 with
+          | Ok merged -> Ply(DList(merged, List.append l1 l2))
+          | Error() ->
+            Ply(TypeChecker.DvalCreator.list vm.threadID vt1 (List.append l1 l2))
         | _ -> incorrectArgs ())
       sqlSpec = NotYetImplemented
       previewable = Pure
