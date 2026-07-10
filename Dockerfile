@@ -113,8 +113,10 @@ RUN DEBIAN_FRONTEND=noninteractive \
       libstdc++6 \
       zlib1g \
       # end .NET dependencies
-      # for compiling native dependencies
-      build-essential \
+      # NativeAOT builds (`scripts/build/build-release-cli-exes.sh --aot`) need
+      # gcc as the platform linker. It also brings in binutils, whose objcopy
+      # strips symbols.
+      gcc \
       psmisc \
       # CLI integration tests
       expect \
@@ -259,7 +261,7 @@ RUN set -e; \
   rm zig.tar.xz; \
   mv ~/zig/zig-linux-${ZIG_ARCH}-${ZIG_VERSION}/* ~/zig;
 
-ENV PATH="$PATH:~/zig"
+ENV PATH="$PATH:/home/dark/zig"
 
 
 ############################
