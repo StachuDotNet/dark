@@ -93,12 +93,12 @@ let listDBs (state: Cli.AppState) : Cli.AppState =
 
     // Print table header
     let nameHeader =
-      (Stdlib.String.padEnd "Name" " " 20I) |> Builtin.unwrap
+      (Stdlib.String.padEnd "Name" " " 20) |> Builtin.unwrap
 
     let typeHeader = "Type"
 
     Stdlib.printLine $"{nameHeader}{typeHeader}"
-    Stdlib.printLine (Stdlib.String.repeat "─" 60I)
+    Stdlib.printLine (Stdlib.String.repeat "─" 60)
 
     // Print each DB
     dbs
@@ -106,7 +106,7 @@ let listDBs (state: Cli.AppState) : Cli.AppState =
       let (name, typeName) = db
 
       let nameCol =
-        (Stdlib.String.padEnd name " " 20I) |> Builtin.unwrap
+        (Stdlib.String.padEnd name " " 20) |> Builtin.unwrap
 
       Stdlib.printLine $"{nameCol}{typeName}")
 
@@ -151,7 +151,7 @@ let viewDB (state: Cli.AppState) (dbName: String) : Cli.AppState =
       let result = resultOpt |> Stdlib.Option.withDefault ""
       Stdlib.printLine ""
 
-      let colWidth = 15I
+      let colWidth = 15
 
       // Print header
       let keyHeader =

@@ -1,37 +1,51 @@
-# Parser
+# LibParser
 
-Parses code as F#, and maps it into Dark code, programs, etc.
+The hand-written recursive-descent parser for Darklang source. One lexer, one
+parser, one syntax tree.
 
+**[GRAMMAR.md](GRAMMAR.md) is the spec for the grammar it accepts** — operator
+precedence, offside rules, dialect decisions, and diagnostic codes.
 
-## Parsing process
+## Pipeline
 
-The result of a parse is some ProgramTypes types. ProgramTypes are used to represent
-how users write the code, but also have enough information to make RuntimeTypes
-without further analysis. As such, when creating ProgramTypes we need to resolve
-several ambiguities, including what a name refers to (eg what is MyFunc.myFn
-actually) and the concrete type of an alias.
+```
+source
+  │  Lexer.tokenize                  tokens + trivia (comments preserved;
+  │                                  byte-exact source reconstruction)
+  ▼
+  │  Parser.parse / parseTestFile    range-complete WrittenTypes tree +
+  │                                  structured diagnostics (recovers from
+  │                                  syntax errors with EError holes)
+  ▼
+  ├─ WrittenTypesToProgramTypes      execution lowering → ProgramTypes
+  │                                  (package loading, testfiles, CLI)
+  └─ Builtins.Language.WrittenTypesToDarkTypes
+                                     tooling path → Dark WrittenTypes (Dvals)
+                                     → Dark WT2PT (LSP, highlighting, round-trip)
+```
 
-To get here, Dark has a 2-stage parsing process, where we first get all the code, and
-secondly resolve the names/aliases.
+The two lowerings are kept in agreement by a differential test
+(`Tests/WrittenTypesLoweringParity.Tests.fs`) that compares their ProgramTypes
+output over the real package corpus; they must be identical (node ids aside).
 
-Dark's parsing process:
-1. FSharpToWrittenTypes
-  - Parse the code using the F# parser
-  - See https://fsharp.github.io/fsharp-compiler-docs for details on the F# AST
-  - Traverse the F# AST and convert it to WrittenTypes
-2. WrittenTypesToProgramTypes
-  - Go through the AST, resolving names and aliases and creating ProgramTypes values.
-    This will involve fetching the actual names and code in the case of packages and
-    userProgram contents.
-  - Names are resolved with a NameResolver
-  - TODO: Aliases will be resolved
-  - If errors are found, the errors are encoded in ProgramTypes, where they will
-    error at runtime (it is a goal of Dark to be able to run incomplete and broken code
-    to allow debugging/analysis).
-  - We can add various options for how to statically report the presence of these
-    errors, including warnings at parse time or program analysis.
-3. ProgramTypes
-  - Once we have ProgramTypes, the parsing is finished. ProgramTypes are the
-    representation used by clients and editors. They're also used for the execution
-    environment, where they are fetched as ProgramTypes and converted very simply to
-    RuntimeTypes. They are stored as SerializedTypes, which is a 1-1 representation of ProgramTypes.
+## Files
+
+- `Tokenizer.fs` — shared token/position types (`Token`, `Pos`, `TokenRange`)
+- `Lexer.fs` — the lexer: tokens with ranges, doc comments, trivia
+- `Parser.fs` — the parser: `ParserState` + module-level parse functions;
+  offside scope stack; recovery; structured `Diagnostic` + `renderDiagnostic`
+- `SourceFile.fs` — shared flat view over `WrittenTypes.SourceFile` items
+- `WrittenTypes.fs` — the syntax tree (every node carries source ranges) plus
+  the normalized package IR
+- `WrittenTypesToProgramTypes.fs` — execution lowering + name resolution glue
+- `NameResolver.fs` — name → FQName resolution against the package manager
+- `Package.fs` — package-file entrypoint used by the loader
+- `TestModule.fs` — testfile (`.dark` test dialect) harness
+
+## Testing
+
+- `Tests/LibParser.Tests.fs` — structure, offside, types, literals,
+  recovery, golden diagnostics, fuzzer, range invariants, and the corpus gate
+  (every real package file must parse cleanly)
+- `Tests/WrittenTypesLoweringParity.Tests.fs` — F# vs Dark lowering agreement
+- `Tests/LibParser.RoundTrip.Tests.fs` — source → PT → pretty-print round-trips

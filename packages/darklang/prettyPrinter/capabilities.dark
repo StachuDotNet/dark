@@ -40,7 +40,7 @@ let detail (spec: String) : String =
   | [ "exec"; prog ] -> prog
   | "exec" :: prog :: progArgs -> $"""{prog}  ({Stdlib.String.join progArgs " "})"""
   | [ _ ] -> "" // flag domains
-  | _ -> Stdlib.String.join (Stdlib.List.drop parts 1I) " "
+  | _ -> Stdlib.String.join (Stdlib.List.drop parts 1) " "
 
 /// One aligned "domain   detail" line for a single spec — the single source of truth for a caps row
 /// (used by `caps list`, `caps <fn>`, and the interactive editor's rows).
@@ -49,7 +49,7 @@ let line (spec: String) : String =
   if det == "" then
     PrettyPrinter.Capabilities.domainOf spec
   else
-    $"{PrettyPrinter.Capabilities.pad (PrettyPrinter.Capabilities.domainOf spec) 14I}{det}"
+    $"{PrettyPrinter.Capabilities.pad (PrettyPrinter.Capabilities.domainOf spec) 14}{det}"
 
 /// The multi-line view: one aligned line per spec.
 let lines (specs: List<String>) : List<String> =

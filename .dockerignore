@@ -6,9 +6,6 @@
 backend/Build/
 rundir/
 
-# Node modules (tree-sitter)
-tree-sitter-darklang/node_modules/
-tree-sitter-darklang/build/
 node_modules/
 
 # IDE

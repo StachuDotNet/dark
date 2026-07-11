@@ -104,14 +104,14 @@ let initState () : AppState =
       currentBranchId = branchId
       accountID = accountID
       accountName = accountName
-      previousRenderedRows = 0I
+      previousRenderedRows = 0
       nonInteractive = false
       cachedHintInput = ""
       cachedHintValue = ""
       allCommandsCache = Registry.allCommands ()
       commandOptionsCache = commandOptions ()
       cachedStatusBar = ""
-      cachedStatusBarBranch = Builtin.unwrap (Stdlib.Uuid.parse_v0 "00000000-0000-0000-0000-000000000000")
+      cachedStatusBarBranch = Builtin.unwrap (Stdlib.Uuid.parse "00000000-0000-0000-0000-000000000000")
       telemetryEnabled = (Builtin.environmentGet "DARK_TELEMETRY") == Stdlib.Option.Option.Some "1" }
 
 type Msg =
@@ -170,7 +170,7 @@ module StatusBar =
   let init () : Unit =
     let terminalHeight = Terminal.getHeight ()
     // Set scroll region to all rows except the last one
-    Stdlib.print (Colors.setScrollRegion 1I (terminalHeight - 1I))
+    Stdlib.print (Colors.setScrollRegion 1 (terminalHeight - 1))
 
   /// Build the status bar string for the given state
   let build (state: AppState) : String =
@@ -188,7 +188,7 @@ module StatusBar =
     let paddingLen = terminalWidth - leftLen
 
     let padding =
-      if paddingLen > 0I then
+      if paddingLen > 0 then
         Colors.colorize Colors.grayBg (Stdlib.String.repeat " " paddingLen)
       else
         ""
@@ -200,7 +200,7 @@ module StatusBar =
     let terminalHeight = Terminal.getHeight ()
     Stdlib.print
       (Colors.saveCursor
-       ++ Colors.moveCursorTo terminalHeight 1I
+       ++ Colors.moveCursorTo terminalHeight 1
        ++ statusLine
        ++ Colors.restoreCursor)
 
@@ -211,7 +211,7 @@ module StatusBar =
     Stdlib.print
       (Colors.saveCursor
        ++ Colors.resetScrollRegion
-       ++ Colors.moveCursorTo terminalHeight 1I
+       ++ Colors.moveCursorTo terminalHeight 1
        ++ Colors.clearLine
        ++ Colors.restoreCursor)
 
@@ -328,7 +328,7 @@ module Registry =
     let handler = findCommandIn state.allCommandsCache name
 
     let hasHelpFlag =
-      (Stdlib.List.member_v0 args "--help") || (Stdlib.List.member_v0 args "-h")
+      (Stdlib.List.member args "--help") || (Stdlib.List.member args "-h")
 
     if hasHelpFlag then
       executeCommandHelp name state
@@ -705,10 +705,10 @@ let runInteractiveLoop (state: AppState) : Int =
     // Clear status bar and prompt line before exiting
     StatusBar.clear ()
     // Move to column 1, clear entire line, then newline for clean shell prompt
-    Stdlib.print (Colors.moveCursorToColumn 1I ++ "\u001b[2K" ++ "\n")
-    0I
+    Stdlib.print (Colors.moveCursorToColumn 1 ++ "\u001b[2K" ++ "\n")
+    0
   else
-    let tLoopStart = if state.telemetryEnabled then Telemetry.now () else 0I
+    let tLoopStart = if state.telemetryEnabled then Telemetry.now () else 0
     if state.telemetryEnabled then
       let _ = Builtin.interpreterStatsReset ()
       ()
@@ -716,7 +716,7 @@ let runInteractiveLoop (state: AppState) : Int =
     // TODO: handle terminal resize and Unicode display width
     let location = locationStr state
 
-    let tHint = if state.telemetryEnabled then Telemetry.now () else 0I
+    let tHint = if state.telemetryEnabled then Telemetry.now () else 0
     let inputStartColumn =
       Prompt.Display.calculateInputStartColumn location
     let hintCached = state.cachedHintInput == state.prompt.text
@@ -733,16 +733,16 @@ let runInteractiveLoop (state: AppState) : Int =
     // Fall back to 80 if the size query returns 0 (can happen at startup) — never divide by 0 below.
     let terminalWidth =
       let w = Terminal.getWidth ()
-      if w <= 0I then 80I else w
+      if w <= 0 then 80 else w
     // Visual length (0-based char count; inputStartColumn is 1-based so subtract 1)
     let visualLength =
-      (inputStartColumn - 1I) + (Stdlib.String.length state.prompt.text) + (Stdlib.String.length hint)
+      (inputStartColumn - 1) + (Stdlib.String.length state.prompt.text) + (Stdlib.String.length hint)
     let renderedRows =
-      if visualLength <= terminalWidth then 1I
-      else (Stdlib.Int.divide (visualLength - 1I) terminalWidth) + 1I
+      if visualLength <= terminalWidth then 1
+      else (Stdlib.Int.divide (visualLength - 1) terminalWidth) + 1
 
     // Display current page
-    let tRender = if state.telemetryEnabled then Telemetry.now () else 0I
+    let tRender = if state.telemetryEnabled then Telemetry.now () else 0
 
     match state.currentPage with
     | MainPrompt ->
@@ -751,25 +751,25 @@ let runInteractiveLoop (state: AppState) : Int =
       // Move up to prompt start if previous render occupied multiple rows
       // Skip on full redraw — cursor is already positioned after command output
       if Stdlib.Bool.not state.needsFullRedraw then
-        if state.previousRenderedRows > 1I then
-          Stdlib.print (Colors.moveCursorUp (state.previousRenderedRows - 1I))
+        if state.previousRenderedRows > 1 then
+          Stdlib.print (Colors.moveCursorUp (state.previousRenderedRows - 1))
 
       Stdlib.print Colors.carriageReturn
       Stdlib.print promptOutput
       Stdlib.print "\u001b[J" // Clear any leftover rows
 
       // Position cursor at correct location within user input
-      let absoluteCursorPos = (inputStartColumn - 1I) + state.prompt.cursorPosition
-      if renderedRows > 1I then
+      let absoluteCursorPos = (inputStartColumn - 1) + state.prompt.cursorPosition
+      if renderedRows > 1 then
         let cursorRow = Stdlib.Int.divide absoluteCursorPos terminalWidth
-        let cursorCol = (absoluteCursorPos % terminalWidth) + 1I
-        let textEndRow = renderedRows - 1I
+        let cursorCol = (absoluteCursorPos % terminalWidth) + 1
+        let textEndRow = renderedRows - 1
         let rowDiff = textEndRow - cursorRow
-        if rowDiff > 0I then
+        if rowDiff > 0 then
           Stdlib.print (Colors.moveCursorUp rowDiff)
         Stdlib.print (Colors.moveCursorToColumn cursorCol)
       else
-        Stdlib.print (Colors.moveCursorToColumn (absoluteCursorPos + 1I))
+        Stdlib.print (Colors.moveCursorToColumn (absoluteCursorPos + 1))
 
       Stdlib.print "\u001b[?25h" // Show cursor
 
@@ -803,7 +803,7 @@ let runInteractiveLoop (state: AppState) : Int =
       Telemetry.log "preInput" tLoopStart
 
     // Read keystroke input
-    let tReadKey = if state.telemetryEnabled then Telemetry.now () else 0I
+    let tReadKey = if state.telemetryEnabled then Telemetry.now () else 0
     let keyInput = Stdlib.Cli.Stdin.readKey ()
 
     // Process the key
@@ -841,7 +841,7 @@ let parseBranchFlag (args: List<String>) : (Stdlib.Option.Option<Uuid> * List<St
     let (idx, _flag) = flagPair
 
     let branchName =
-      match Stdlib.List.getAt args (idx + 1I) with
+      match Stdlib.List.getAt args (idx + 1) with
       | Some name -> name
       | None -> ""
 
@@ -854,7 +854,7 @@ let parseBranchFlag (args: List<String>) : (Stdlib.Option.Option<Uuid> * List<St
         indexed
         |> Stdlib.List.filter (fun pair ->
           let (i, _a) = pair
-          i != idx && i != (idx + 1I))
+          i != idx && i != (idx + 1))
         |> Stdlib.List.map (fun pair ->
           let (_i, a) = pair
           a)
@@ -901,4 +901,4 @@ let executeCliCommand (args: List<String>) : Int =
     | SubApp _ ->
       StatusBar.init ()
       runInteractiveLoop resultState
-    | _ -> 0I
+    | _ -> 0

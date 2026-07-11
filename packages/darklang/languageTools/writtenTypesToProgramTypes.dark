@@ -84,51 +84,6 @@ module Identifiers =
   module Value =
     let toPT (v: WrittenTypes.ValueIdentifier) : String = v.name
 
-  module ValueOrFn =
-    let toPT (v: WrittenTypes.ValueOrFnIdentifier) : String = v.name
-
-
-  module QualifiedValueOrFn =
-    type ValueOrFn =
-      | Value of
-        ProgramTypes.NameResolution<ProgramTypes.FQValueName.FQValueName>
-      | Fn of ProgramTypes.NameResolution<ProgramTypes.FQFnName.FQFnName>
-
-    // CLEANUP: why do we return a Result here? NameResolution already wraps a Result
-    let toPT
-      (ctx: NameResolver.NRContext)
-      (v: WrittenTypes.QualifiedValueOrFnIdentifier)
-      : (Stdlib.Result.Result<ValueOrFn, ProgramTypes.NameResolution<ProgramTypes.FQValueName.FQValueName>> *
-        List<WrittenTypes.UnresolvedName>)
-      =
-      let nameToResolve =
-        Stdlib.List.append
-          (Stdlib.List.map v.modules (fun (id, _) -> id.name))
-          [ v.valueOrFn |> ValueOrFn.toPT ]
-
-      let isValue =
-        NameResolver.ValueName.resolve
-          ctx
-          (WrittenTypes.Name.Unresolved(v.range, nameToResolve))
-
-      let isFn =
-        NameResolver.FnName.resolve
-          ctx
-          (WrittenTypes.Name.Unresolved(v.range, nameToResolve))
-
-      match isFn.resolved with
-      | Ok _ ->
-        let isFn = isFn |> ValueOrFn.Fn |> Stdlib.Result.Result.Ok
-        (isFn, [])
-      | Error _ ->
-        match isValue.resolved with
-        | Ok _ ->
-          let isValue =
-            isValue |> ValueOrFn.Value |> Stdlib.Result.Result.Ok
-
-          (isValue, [])
-        | Error e -> (Stdlib.Result.Result.Error isValue, [ (v.range, isValue.originalName, e) ])
-
   module Fn =
     let toPT (fn: WrittenTypes.FnIdentifier) : String = fn.name
 
@@ -432,6 +387,11 @@ module Expr =
           Stdlib.List.map patterns (fun p -> toPT onMissing p)
         )
 
+      | MPError _ ->
+        // a parse-error hole (recovery node); execution consumers gate on
+        // clean parses, so this never runs — a benign wildcard if it somehow does
+        ProgramTypes.MatchPattern.MPVariable(gid (), "_")
+
   module PipeExpr =
     let toPT
       (ctx: NameResolver.NRContext)
@@ -488,13 +448,31 @@ module Expr =
         (ProgramTypes.PipeExpr.EPipeEnum(gid (), typeName, caseName, fields),
           unresolvedNames)
 
-      // TODO: rename to EPipeVariableOrFnCall
-      | EPipeFnCall(_, fn, args) ->
+      | EPipeVariableOrFnCall(range, name) ->
+        // `x |> foo` with a bare, unqualified name. Mirror the F# lowering: a local
+        // (let / lambda / match) binding stays a variable so it can shadow a package
+        // fn; every other bare name resolves FUNCTION-first (a self-call resolves
+        // here too) and only falls back to a variable if it doesn't resolve.
+        if Stdlib.List.``member`` context.localBindings name then
+          (ProgramTypes.PipeExpr.EPipeVariable(gid (), name, []), [])
+        else
+          let resolvedFn =
+            NameResolver.FnName.resolve
+              ctx
+              (WrittenTypes.Name.Unresolved(range, [ name ]))
+
+          match resolvedFn.resolved with
+          | Ok _ ->
+            (ProgramTypes.PipeExpr.EPipeFnCall(gid (), resolvedFn, [], []), [])
+          | Error _ ->
+            (ProgramTypes.PipeExpr.EPipeVariable(gid (), name, []), [])
+
+      | EPipeFnCall(_, fn, typeArgs, args) ->
         let (fnName, _fnUnresolvedNames) =
           Identifiers.QualifiedFn.toPT ctx fn
 
         let (typeArgs, tpUnresolvedNames) =
-          fn.typeArgs
+          typeArgs
           |> Stdlib.List.map (fun t ->
             TypeReference.toPT ctx t)
           |> Stdlib.List.unzip
@@ -510,36 +488,23 @@ module Expr =
             [ tpUnresolvedNames |> Stdlib.List.flatten
               argsUnresolvedNames |> Stdlib.List.flatten ]
 
-        // Check if this is an unqualified identifier
+        // Unqualified callee: a local binding stays a variable (shadowing); every
+        // other bare name resolves FUNCTION-first (self-call included), falling back
+        // to a variable if unresolved. Mirrors the F# lowering; keeps typeArgs.
         if fn.modules |> Stdlib.List.isEmpty then
-          // Check if this matches the current function name (self-reference)
-          match context.currentFnName with
-          | Some currentFnName ->
-            let functionName = Stdlib.List.last currentFnName
-            match functionName with
-            | Some fnName when fn.fn.name == fnName ->
-              // This is a recursive call - resolve as function
-              let (fnName, _fnUnresolvedNames) =
-                Identifiers.QualifiedFn.toPT ctx fn
-
-              match fnName.resolved with
-              | Ok _ ->
-                (ProgramTypes.PipeExpr.EPipeFnCall(gid (), fnName, typeArgs, args),
-                  unresolvedNames)
-              | Error e ->
-                let unresolvedNames =
-                  Stdlib.List.append unresolvedNames [ (fn.range, fnName.originalName, e) ]
-
-                (ProgramTypes.PipeExpr.EPipeFnCall(gid (), fnName, typeArgs, args),
-                  unresolvedNames)
-            | _ ->
-              // Not a self-reference - treat as variable to allow shadowing
-              (ProgramTypes.PipeExpr.EPipeVariable(gid (), fn.fn.name, args),
-                unresolvedNames)
-          | None ->
-            // No self context - treat as variable
+          if Stdlib.List.``member`` context.localBindings fn.fn.name then
             (ProgramTypes.PipeExpr.EPipeVariable(gid (), fn.fn.name, args),
               unresolvedNames)
+          else
+            let (resolvedFn, _fnUnresolvedNames) = Identifiers.QualifiedFn.toPT ctx fn
+
+            match resolvedFn.resolved with
+            | Ok _ ->
+              (ProgramTypes.PipeExpr.EPipeFnCall(gid (), resolvedFn, typeArgs, args),
+                unresolvedNames)
+            | Error _ ->
+              (ProgramTypes.PipeExpr.EPipeVariable(gid (), fn.fn.name, args),
+                unresolvedNames)
         else
           // Qualified call - resolve as function
           let (fnName, _fnUnresolvedNames) =
@@ -688,23 +653,40 @@ module Expr =
       (ProgramTypes.Expr.ERecordUpdate(gid (), record, updates),
         unresolvedNames)
 
-    | EEnum(_, typeName, (_, caseName), fields, _) ->
-      let (typeName, typeArgs, typeNameUnresolvedNames) =
-        Identifiers.QualifiedType.toPT ctx typeName
+    | EEnum(range, typeName, (_, caseName), fields, _) ->
+      let typeNameElided =
+        (Stdlib.List.isEmpty typeName.modules) && (typeName.typ.name == "")
 
-      let (fields, fieldsUnresolvedNames) =
-        fields
-        |> Stdlib.List.map (fun expr ->
-          toPT ctx context expr)
-        |> Stdlib.List.unzip
+      // An UNQUALIFIED uppercase name (`Red`, `XDB`) parses as a zero-field EEnum,
+      // but it's ambiguous — it could be an enum case, a DB, or an uppercase-bound
+      // variable (values/fns are lowercase, so never those). Lower it to an
+      // EVariable and let name resolution disambiguate — this mirrors the F# WT2PT
+      // so the two lowerings agree.
+      if typeNameElided && (Stdlib.List.isEmpty fields) then
+        toPT ctx context (WrittenTypes.Expr.EVariable(range, caseName))
+      else
+        let (typeName, typeArgs, typeNameUnresolvedNames) =
+          Identifiers.QualifiedType.toPT ctx typeName
 
-      let unresolvedNames =
-        Stdlib.List.flatten
-          [ typeNameUnresolvedNames
-            fieldsUnresolvedNames |> Stdlib.List.flatten ]
+        let (fields, fieldsUnresolvedNames) =
+          fields
+          |> Stdlib.List.map (fun expr ->
+            toPT ctx context expr)
+          |> Stdlib.List.unzip
 
-      (ProgramTypes.Expr.EEnum(gid (), typeName, typeArgs, caseName, fields),
-        unresolvedNames)
+        // A bare constructor WITH fields (`Ok 5`) has an elided type name that can't
+        // be constructed without a resolved type — the runtime rejects it. Constructors
+        // must be qualified (`Stdlib.Result.Result.Ok 5`); the corpus does this
+        // universally. So the elided-type-name resolution stays tracked, and CLI create
+        // reports it as an invalid name (fail fast) rather than saving a fn that fails
+        // at runtime. `typeNameElided` is bound above; kept for the nullary-case check.
+        let unresolvedNames =
+          Stdlib.List.flatten
+            [ typeNameUnresolvedNames
+              fieldsUnresolvedNames |> Stdlib.List.flatten ]
+
+        (ProgramTypes.Expr.EEnum(gid (), typeName, typeArgs, caseName, fields),
+          unresolvedNames)
 
     // declaring and accessing variables
     | ELet(_, pat, rhs, body, _, _) ->
@@ -767,23 +749,6 @@ module Expr =
             | Ok _ -> (ProgramTypes.Expr.EFnName(gid (), asFn), [])
             | Error _ -> (ProgramTypes.Expr.EVariable(gid (), var), [])
 
-    | EValueOrFn(_, id) ->
-      let (valueOrFn, unresolvedNames) =
-        Identifiers.QualifiedValueOrFn.toPT ctx id
-
-      match valueOrFn with
-      | Ok(Value v) ->
-        (ProgramTypes.Expr.EValue(gid (), v), unresolvedNames)
-      | Ok(Fn f) -> (ProgramTypes.Expr.EFnName(gid (), f), unresolvedNames)
-      | Error nr ->
-        // Qualified name didn't resolve. Keep the failed NameResolution
-        // (with originalName preserved) so DeferredResolver can refresh
-        // it once the target lands. The earlier fallback to
-        // `EVariable(lastName)` threw away the qualification and
-        // looked indistinguishable from a let-bound local — which
-        // meant forward references to values never auto-resolved.
-        (ProgramTypes.Expr.EValue(gid (), nr), unresolvedNames)
-
     | ERecordFieldAccess(_, expr, (_, fieldName), _) ->
       let (expr, unresolvedNames) = toPT ctx context expr
 
@@ -816,16 +781,30 @@ module Expr =
           let wtPat = Stdlib.Tuple3.second case.pat
           let pat = MatchPattern.toPT ctx.onMissing wtPat
 
-          // Match patterns introduce names into the arm's scope. Add
-          // them to localBindings so `EVariable` lookups in `rhs` /
-          // `whenCondition` know these names are local and shouldn't
-          // be re-resolved as package references.
+          // Match patterns introduce names into the arm's scope. They shadow
+          // function args and (if a name matches the fn's own name) the self-
+          // recursion context — mirror the F# lowering so a pattern var binds the
+          // pattern, not a same-named parameter (EArg) or a spurious self-call.
+          let bindings = MatchPattern.bindings wtPat
+
+          let armArgMap =
+            Stdlib.List.fold bindings context.argMap (fun m b ->
+              Stdlib.Dict.remove m b)
+
+          let armCurrentFnName =
+            match context.currentFnName with
+            | Some qn ->
+              match Stdlib.List.last qn with
+              | Some lastSeg when Stdlib.List.``member`` bindings lastSeg ->
+                Stdlib.Option.Option.None
+              | _ -> context.currentFnName
+            | None -> Stdlib.Option.Option.None
+
           let armContext =
             { context with
-                localBindings =
-                  Stdlib.List.append
-                    context.localBindings
-                    (MatchPattern.bindings wtPat) }
+                localBindings = Stdlib.List.append context.localBindings bindings
+                argMap = armArgMap
+                currentFnName = armCurrentFnName }
 
           let (whenCondition, whenUnresolvedNames) =
             match case.whenCondition with
@@ -923,8 +902,30 @@ module Expr =
           (ProgramTypes.Expr.EVariable(gid (), fnName.fn.name), [])
         else
           (ProgramTypes.Expr.EFnName(gid (), resolvedFnName), unresolvedNames)
+      | Error _ ->
+        // Qualified fn resolution failed. The parser emits EFnName for *any*
+        // qualified reference, including standalone VALUES (e.g. `Stdlib.Blob.empty`
+        // — a `let`-value used as an argument), so fall back to value resolution
+        // before giving up.
+        let nameToResolve =
+          Stdlib.List.append
+            (Stdlib.List.map fnName.modules (fun (m, _) -> m.name))
+            [ fnName.fn.name ]
+
+        let asValue =
+          NameResolver.ValueName.resolve
+            ctx
+            (WrittenTypes.Name.Unresolved(fnName.range, nameToResolve))
+
+        match asValue.resolved with
+        | Ok _ -> (ProgramTypes.Expr.EValue(gid (), asValue), [])
+        | Error _ ->
+          // neither fn nor value: keep the failed VALUE resolution as EValue,
+          // matching the F# lowering, so DeferredResolver can refresh forward
+          // references to values
+          (ProgramTypes.Expr.EValue(gid (), asValue), unresolvedNames)
       | _ ->
-        // Function resolution succeeded or it's a qualified name, keep as EFnName
+        // Function resolution succeeded, keep as EFnName
         (ProgramTypes.Expr.EFnName(gid (), resolvedFnName), unresolvedNames)
 
     | EApply(_, fn, typeArgs, args) ->
@@ -953,29 +954,14 @@ module Expr =
           | EVariable(_, varName) ->
             (Stdlib.List.last currentFnName) == Stdlib.Option.Option.Some varName
           | EFnName(_, fnName) ->
-            let qualifiedName =
-              Stdlib.List.append
-                (Stdlib.List.map fnName.modules (fun (m, _) -> m.name))
-                [ fnName.fn.name ]
-            let fullQualifiedName =
-              if Stdlib.List.isEmpty fnName.modules then
-                Stdlib.List.append ctx.currentModule [ fnName.fn.name ]
-              else
-                let moduleNames = Stdlib.List.map fnName.modules (fun (m, _) -> m.name)
-                let fnName = fnName.fn.name
-                let currentModuleBaseName = Stdlib.List.last ctx.currentModule
-                match currentModuleBaseName with
-                | Some baseName when moduleNames == [ baseName ] ->
-                  Stdlib.List.append ctx.currentModule [ fnName ]
-                | _ ->
-                  Stdlib.List.append ctx.currentModule qualifiedName
-            fullQualifiedName == currentFnName
-          | EValueOrFn(_, id) ->
-            let qualifiedName =
-              Stdlib.List.append
-                (Stdlib.List.map id.modules (fun (m, _) -> m.name))
-                [ id.valueOrFn.name ]
-            (Stdlib.List.append ctx.currentModule qualifiedName) == currentFnName
+            // Only an UNQUALIFIED self-reference is recursion (ESelf); a qualified
+            // call resolves normally (matches the F# lowering and the documented
+            // "recurse by short name" convention — a qualified self-call is a normal
+            // reference, not ESelf).
+            if Stdlib.List.isEmpty fnName.modules then
+              (Stdlib.List.last currentFnName) == Stdlib.Option.Option.Some fnName.fn.name
+            else
+              false
           | _ -> false
 
       if isSelfCall then
@@ -1002,6 +988,11 @@ module Expr =
 
       (ProgramTypes.Expr.EStatement(gid (), first, next), unresolvedNames)
 
+    | EError _ ->
+      // a parse-error hole (recovery node), mirroring the F# lowering. Execution
+      // consumers gate on clean parses so this only survives for tooling.
+      (ProgramTypes.Expr.EError(gid ()), [])
+
 
 
 
@@ -1023,189 +1014,6 @@ module ModuleDeclaration =
           values = acc.values |> Stdlib.List.append m.values
           fns = acc.fns |> Stdlib.List.append m.fns
           exprs = acc.exprs |> Stdlib.List.append m.exprs })
-
-  let submoduleToPT
-    (ctx: NameResolver.NRContext)
-    (submodule: WrittenTypes.ModuleDeclaration.ModuleDeclaration)
-    : (ProgramTypes.Definitions *
-      List<WrittenTypes.UnresolvedName>)
-    =
-    let (_, m) = submodule.name
-    let ctx = { ctx with currentModule = Stdlib.List.append ctx.currentModule [ m ] }
-
-    let (types, typesUnresolvedNames) =
-      submodule.declarations
-      |> Stdlib.List.filterMap (fun d ->
-        match d with
-        | Type t ->
-          let (t, unresolvedNames) =
-            TypeDeclaration.toPackageTypePT ctx t
-
-          Stdlib.Option.Option.Some((t, unresolvedNames))
-        | _ -> Stdlib.Option.Option.None)
-      |> Stdlib.List.unzip
-
-    let (fns, fnUnresolvedNames) =
-      submodule.declarations
-      |> Stdlib.List.filterMap (fun d ->
-        match d with
-        | Function f ->
-          let (f, unresolvedNames) =
-            FunctionDeclaration.toPackageFnPT ctx f
-
-          Stdlib.Option.Option.Some((f, unresolvedNames))
-        | _ -> Stdlib.Option.Option.None)
-      |> Stdlib.List.unzip
-
-    let (values, valueUnresolvedNames) =
-      submodule.declarations
-      |> Stdlib.List.filterMap (fun d ->
-        match d with
-        | Value v ->
-          let (v, unresolvedNames) =
-            ValueDeclaration.toPackageValuePT ctx v
-
-          Stdlib.Option.Option.Some((v, unresolvedNames))
-        | _ -> Stdlib.Option.Option.None)
-      |> Stdlib.List.unzip
-
-    let (exprs, exprUnresolvedNames) =
-      submodule.declarations
-      |> Stdlib.List.filterMap (fun d ->
-        match d with
-        | Expr e ->
-          let exprContext = defaultContext
-          let (expr, exprUnresolvedNames) =
-            Expr.toPT ctx exprContext e
-
-          let modules = Stdlib.List.push ctx.currentModule ctx.owner
-          Stdlib.Option.Option.Some(((expr, modules), exprUnresolvedNames))
-        | _ -> Stdlib.Option.Option.None)
-      |> Stdlib.List.unzip
-
-    let (submodules, subModUnresolvedNames) =
-      submodule.declarations
-      |> Stdlib.List.filterMap (fun d ->
-        match d with
-        | SubModule m ->
-          Stdlib.Option.Option.Some(
-            submoduleToPT ctx m
-          )
-        | _ -> Stdlib.Option.Option.None)
-      |> Stdlib.List.unzip
-
-    let submodules = combineSubmodules submodules
-
-    let unresolvedNames =
-      Stdlib.List.flatten
-        [ typesUnresolvedNames |> Stdlib.List.flatten
-          fnUnresolvedNames |> Stdlib.List.flatten
-          valueUnresolvedNames |> Stdlib.List.flatten
-          exprUnresolvedNames |> Stdlib.List.flatten
-          subModUnresolvedNames |> Stdlib.List.flatten ]
-
-    (ProgramTypes.Definitions
-      { types = types |> Stdlib.List.append submodules.types
-        values = values |> Stdlib.List.append submodules.values
-        fns = fns |> Stdlib.List.append submodules.fns
-        exprs = exprs |> Stdlib.List.append submodules.exprs },
-      unresolvedNames)
-
-
-  let toPT
-    (ctx: NameResolver.NRContext)
-    (d: WrittenTypes.ModuleDeclaration.ModuleDeclaration)
-    : (ProgramTypes.Definitions *
-      List<WrittenTypes.UnresolvedName>)
-    =
-    let (_, owner) = d.name
-    let ctx = { ctx with owner = owner }
-
-    let (types, typesUnresolvedNames) =
-      d.declarations
-      |> Stdlib.List.filterMap (fun d ->
-        match d with
-        | Type t ->
-          let (t, unresolvedNames) =
-            TypeDeclaration.toPackageTypePT ctx t
-
-          Stdlib.Option.Option.Some((t, unresolvedNames))
-        | _ -> Stdlib.Option.Option.None)
-      |> Stdlib.List.unzip
-
-    let (fns, fnUnresolvedNames) =
-      d.declarations
-      |> Stdlib.List.filterMap (fun d ->
-        match d with
-        | Function f ->
-          let (f, unresolvedNames) =
-            FunctionDeclaration.toPackageFnPT ctx f
-
-          Stdlib.Option.Option.Some((f, unresolvedNames))
-        | _ -> Stdlib.Option.Option.None)
-      |> Stdlib.List.unzip
-
-    let (values, valueUnresolvedNames) =
-      d.declarations
-      |> Stdlib.List.filterMap (fun d ->
-        match d with
-        | Value v ->
-          let (v, unresolvedNames) =
-            ValueDeclaration.toPackageValuePT ctx v
-
-          Stdlib.Option.Option.Some((v, unresolvedNames))
-        | _ -> Stdlib.Option.Option.None)
-      |> Stdlib.List.unzip
-
-    let (exprs, exprUnresolvedNames) =
-      d.declarations
-      |> Stdlib.List.filterMap (fun d ->
-        match d with
-        | Expr e ->
-          let (expr, unresolvedNames) =
-            Expr.toPT ctx defaultContext e
-
-          Stdlib.Option.Option.Some(((expr, [ owner ]), unresolvedNames))
-        | _ -> Stdlib.Option.Option.None)
-      |> Stdlib.List.unzip
-
-    let moduleUnresolvedNames =
-      Stdlib.List.flatten
-        [ typesUnresolvedNames |> Stdlib.List.flatten
-          fnUnresolvedNames |> Stdlib.List.flatten
-          valueUnresolvedNames |> Stdlib.List.flatten
-          exprUnresolvedNames |> Stdlib.List.flatten ]
-
-    let init =
-      ProgramTypes.Definitions
-        { types = []
-          values = []
-          fns = []
-          exprs = [] }
-
-    let (submodules, subModUnresolvedNames) =
-      d.declarations
-      |> Stdlib.List.filterMap (fun d ->
-        match d with
-        | SubModule m ->
-          Stdlib.Option.Option.Some(
-            submoduleToPT ctx m
-          )
-        | _ -> Stdlib.Option.Option.Some((init, [])))
-      |> Stdlib.List.unzip
-
-    let submodules = ModuleDeclaration.combineSubmodules submodules
-
-    let unresolvedNames =
-      Stdlib.List.flatten
-        [ moduleUnresolvedNames; subModUnresolvedNames |> Stdlib.List.flatten ]
-
-    (ProgramTypes.Definitions
-      { types = types |> Stdlib.List.append submodules.types
-        values = values |> Stdlib.List.append submodules.values
-        fns = fns |> Stdlib.List.append submodules.fns
-        exprs = exprs |> Stdlib.List.append submodules.exprs },
-      unresolvedNames)
 
 
 module TypeDeclaration =

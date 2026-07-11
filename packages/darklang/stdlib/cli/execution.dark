@@ -22,7 +22,7 @@ let executeWithUnitOrStdErr
   : Stdlib.Result.Result<Unit, String> =
   let result = execute command
 
-  if result.exitCode == 0I then
+  if result.exitCode == 0 then
     Stdlib.Result.Result.Ok()
   else
     Stdlib.Result.Result.Error result.stderr
@@ -36,7 +36,7 @@ let executeWithStdOutOrStdErr
   : Stdlib.Result.Result<String, String> =
   let result = execute command
 
-  if result.exitCode == 0I then
+  if result.exitCode == 0 then
     Stdlib.Result.Result.Ok result.stdout
   else
     Stdlib.Result.Result.Error result.stderr

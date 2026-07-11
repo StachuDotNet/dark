@@ -103,11 +103,11 @@ let handleKey
     match key with
     | Escape -> Action.Exit state
     | UpArrow ->
-      let newIdx = if selected > 0I then selected - 1I else selected
+      let newIdx = if selected > 0 then selected - 1 else selected
       Action.Continue ({ state with screen = Screen.ViewList newIdx })
     | DownArrow ->
-      let maxIdx = viewCount - 1I
-      let newIdx = if selected < maxIdx then selected + 1I else selected
+      let maxIdx = viewCount - 1
+      let newIdx = if selected < maxIdx then selected + 1 else selected
       Action.Continue ({ state with screen = Screen.ViewList newIdx })
     | Enter ->
       Action.Continue ({ state with screen = Screen.ViewDisplay selected })
@@ -115,7 +115,7 @@ let handleKey
 
   | ViewDisplay _viewIndex ->
     match key with
-    | Escape -> Action.Continue ({ state with screen = Screen.ViewList 0I })
+    | Escape -> Action.Continue ({ state with screen = Screen.ViewList 0 })
     | _ -> Action.Continue state
 
 
@@ -174,7 +174,7 @@ let execute (cliState: Darklang.Cli.AppState) (args: List<String>) : Darklang.Cl
       Stdlib.printLine (Darklang.Cli.Colors.dimText "No views available.")
       cliState
     | _ ->
-      let state = State { screen = Screen.ViewList 0I; views = views }
+      let state = State { screen = Screen.ViewList 0; views = views }
       let app = makeSubApp state
       { cliState with
           currentPage = Darklang.Cli.Page.SubApp app

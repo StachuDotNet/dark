@@ -6,10 +6,10 @@ module Darklang.Stdlib.Cli.UI.Progress
 /// total: total value
 /// label: text to show after the bar
 let bar (current: Int) (total: Int) (label: String) : Unit =
-  let width = 30I
+  let width = 30
 
   let filled =
-    if total == 0I then 0I
+    if total == 0 then 0
     else Stdlib.Int.divide (current * width) total
 
   let empty = width - filled
@@ -18,8 +18,8 @@ let bar (current: Int) (total: Int) (label: String) : Unit =
   let emptyStr = Stdlib.String.repeat "-" empty
 
   let pct =
-    if total == 0I then 0I
-    else Stdlib.Int.divide (current * 100I) total
+    if total == 0 then 0
+    else Stdlib.Int.divide (current * 100) total
 
   Builtin.print
     $"\r[{filledStr}{emptyStr}] {Stdlib.Int.toString pct}% {label}"

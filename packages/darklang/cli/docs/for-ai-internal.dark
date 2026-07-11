@@ -126,7 +126,7 @@ Kill anything already on the port if needed.
 
 ## Debug
   Builtin.debug "label" value   # prints DEBUG: label: <repr> to stdout
-  eval <expr>                   # test small pieces (uses tree-sitter parser, not F# parser)
+  eval <expr>                   # test small pieces
 
 ## Enum case construction across modules
 To construct an enum case from outside its defining module, you must name

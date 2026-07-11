@@ -99,6 +99,7 @@ let rec symbolsUsedInExpr (expr : Expr) : Set<string> =
 
   | EStatement(_, expr, next) -> Set.union (r expr) (r next)
   | ESelf _ -> Set.empty
+  | EError _ -> Set.empty
 
 and symbolsUsedInPipeExpr (pipeExpr : PipeExpr) : Set<string> =
   let r = symbolsUsedInExpr
@@ -210,6 +211,7 @@ let rec unqualifiedResolvedNamesInExpr (expr : Expr) : Set<string> =
 
   | EStatement(_, expr, next) -> Set.union (r expr) (r next)
   | ESelf _ -> Set.empty
+  | EError _ -> Set.empty
 
 and unqualifiedResolvedNamesInPipeExpr (pipeExpr : PipeExpr) : Set<string> =
   let r = unqualifiedResolvedNamesInExpr

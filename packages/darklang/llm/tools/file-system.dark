@@ -32,7 +32,7 @@ let resolveSafePath (path: String) : Stdlib.Result.Result<String, String> =
       if path == "." then
         ""
       else if Stdlib.String.startsWith path "./" then
-        Stdlib.String.dropFirst path 2I
+        Stdlib.String.dropFirst path 2
       else
         path
 
@@ -77,8 +77,8 @@ type SearchState =
     hitResultLimit: Bool
     hitFileLimit: Bool }
 
-let maxSearchResults : Int = 50I
-let maxSearchFiles : Int = 200I
+let maxSearchResults : Int = 50
+let maxSearchFiles : Int = 200
 
 let filePathToDisplayPath (fullPath: String) : String =
   let cwd = Builtin.directoryCurrent ()
@@ -98,7 +98,7 @@ let searchFileForPattern
   if state.hitResultLimit || state.hitFileLimit then
     state
   else
-    let nextState = { state with filesScanned = state.filesScanned + 1I }
+    let nextState = { state with filesScanned = state.filesScanned + 1 }
     if nextState.filesScanned > maxSearchFiles then
       { nextState with hitFileLimit = true }
     else
@@ -111,9 +111,9 @@ let searchFileForPattern
 
         let (_, finalState) =
           lines
-          |> Stdlib.List.fold (1I, nextState) (fun (lineNumber, currentState) line ->
+          |> Stdlib.List.fold (1, nextState) (fun (lineNumber, currentState) line ->
             if currentState.hitResultLimit then
-              (lineNumber + 1I, currentState)
+              (lineNumber + 1, currentState)
             else if Stdlib.String.contains line pattern then
               let matchText = $"{displayPath}:{Stdlib.Int.toString lineNumber}: {line}"
               let updatedMatches = Stdlib.List.append currentState.matches [ matchText ]
@@ -122,9 +122,9 @@ let searchFileForPattern
                 { currentState with
                     matches = updatedMatches
                     hitResultLimit = reachedLimit }
-              (lineNumber + 1I, updatedState)
+              (lineNumber + 1, updatedState)
             else
-              (lineNumber + 1I, currentState))
+              (lineNumber + 1, currentState))
 
         finalState
 
@@ -233,7 +233,7 @@ let handleSearch (input: Json) : Stdlib.Result.Result<ToolOutput, String> =
         | Ok fullPath ->
           let initialState =
             SearchState
-              { filesScanned = 0I
+              { filesScanned = 0
                 matches = []
                 hitResultLimit = false
                 hitFileLimit = false }

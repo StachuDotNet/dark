@@ -17,6 +17,27 @@ module PackageLocation = LibDB.PackageLocation
 open Utils
 
 
+// A parse failure surfaces loudly rather than being silently masked.
+// Every package file is expected to parse cleanly
+let private parsePackageFile
+  (builtins : RT.Builtins)
+  (pm : PT.PackageManager)
+  (onMissing : NR.OnMissing)
+  (path : string)
+  (contents : string)
+  : Ply<List<PT.PackageOp>> =
+  uply {
+    match! LibParser.Package.parse builtins pm onMissing contents with
+    | Ok ops -> return ops
+    | Error diagnostics ->
+      let rendered = String.concat "\n" diagnostics
+      return
+        Exception.raiseInternal
+          $"Failed to parse package file {path}:\n{rendered}"
+          [ "path", path ]
+  }
+
+
 /// Reads and parses all .dark files in `packages` dir,
 /// failing upon any individual failure
 let load (builtins : RT.Builtins) : Ply<List<PT.PackageOp>> =
@@ -37,7 +58,7 @@ let load (builtins : RT.Builtins) : Ply<List<PT.PackageOp>> =
       |> Ply.List.mapSequentially (fun (path, contents) ->
         try
           debuG "  parsing" path
-          LibParser.Parser.parsePackageFile
+          parsePackageFile
             builtins
             PT.PackageManager.empty
             NR.OnMissing.Allow
@@ -67,12 +88,7 @@ let load (builtins : RT.Builtins) : Ply<List<PT.PackageOp>> =
       let! newRawOps =
         filesWithContents
         |> Ply.List.mapSequentially (fun (path, contents) ->
-          LibParser.Parser.parsePackageFile
-            builtins
-            pm
-            NR.OnMissing.ThrowError
-            path
-            contents)
+          parsePackageFile builtins pm NR.OnMissing.ThrowError path contents)
         |> Ply.map List.flatten
       let remapped = HS.remapSetNames newRawOps currentOps
       let newOps = HS.computeRealHashes remapped

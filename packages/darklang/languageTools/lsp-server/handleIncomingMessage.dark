@@ -310,7 +310,7 @@ let handleIncomingMessage
           Scm.handleGetCommitsRequest state requestId (Stdlib.Int.fromFloat n)
 
         | ("dark/scm/getCommits", Some requestId, _) ->
-          Scm.handleGetCommitsRequest state requestId 10I
+          Scm.handleGetCommitsRequest state requestId 10
 
         | ("dark/scm/getWipOps", Some requestId, _) ->
           Scm.handleGetWipOpsRequest state requestId

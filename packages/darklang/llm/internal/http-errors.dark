@@ -11,12 +11,12 @@ type ProviderError = Darklang.LLM.Provider.ProviderError
 /// This provides consistent error semantics across all providers.
 let mapStatusToError (statusCode: Int) (body: String) : ProviderError =
   match statusCode with
-  | 400I -> ProviderError.InvalidRequestError body
-  | 401I -> ProviderError.AuthenticationError "Invalid API key"
-  | 403I -> ProviderError.AuthenticationError "Access forbidden"
-  | 404I -> ProviderError.InvalidRequestError "Resource not found"
-  | 429I -> ProviderError.RateLimitError "Rate limit exceeded"
-  | code when code >= 500I && code < 600I -> ProviderError.ServerError body
+  | 400 -> ProviderError.InvalidRequestError body
+  | 401 -> ProviderError.AuthenticationError "Invalid API key"
+  | 403 -> ProviderError.AuthenticationError "Access forbidden"
+  | 404 -> ProviderError.InvalidRequestError "Resource not found"
+  | 429 -> ProviderError.RateLimitError "Rate limit exceeded"
+  | code when code >= 500 && code < 600 -> ProviderError.ServerError body
   | code -> ProviderError.Unknown("HTTP " ++ Stdlib.Int.toString code ++ ": " ++ body)
 
 
@@ -26,7 +26,7 @@ let handleResponse
   (body: String)
   (parseSuccess: String -> Stdlib.Result.Result<'a, ProviderError>)
   : Stdlib.Result.Result<'a, ProviderError> =
-  if statusCode >= 200I && statusCode < 300I then
+  if statusCode >= 200 && statusCode < 300 then
     parseSuccess body
   else
     Stdlib.Result.Result.Error(mapStatusToError statusCode body)

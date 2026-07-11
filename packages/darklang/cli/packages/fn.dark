@@ -65,15 +65,23 @@ let createFnInline
     // Build full source code for parsing
     let fullSource = $"let {location.name} {definition}"
 
-    // Parse the function definition string using tree-sitter
-    let tree = LanguageTools.Parser.parseToSimplifiedTree fullSource
+    // Parse the function definition
+    match Builtin.parserParseToWrittenTypes fullSource with
+    | Some(SourceFile sourceFile) ->
+      // The parser may recover a tree after errors; do not save it.
+      let hasParseError = Errors.reportParseErrors (Builtin.parserParseDiagnostics fullSource)
+      let found =
+        if hasParseError then
+          Stdlib.Option.Option.None
+        else
+          sourceFile.declarations
+          |> Stdlib.List.findFirst (fun d ->
+            match d with
+            | Function _ -> true
+            | _ -> false)
 
-    // Find the fn_decl node
-    match tree.children |> Stdlib.List.findFirst (fun node -> node.typ == "fn_decl") with
-    | Some fnDeclNode ->
-      // Parse node to WrittenTypes
-      match LanguageTools.Parser.FunctionDeclaration.parse fnDeclNode with
-      | Ok writtenFn ->
+      match found with
+      | Some(Function writtenFn) ->
         // Convert to ProgramTypes.PackageFn
         let pm = LanguageTools.PackageManager.pm ()
 
@@ -129,17 +137,21 @@ let createFnInline
 
             state
 
-      | Error unparseable ->
-        let r = unparseable.source.range
-        let detail =
-          match unparseable.note with
-          | Some note -> note
-          | None -> "Make sure your syntax is correct."
-        [ Colors.error "Failed to parse function definition"
-          $"  at line {Stdlib.Int.toString (r.start.row + 1I)}, column {Stdlib.Int.toString (r.start.column + 1I)}"
-          detail ]
-        |> Stdlib.printLines
-        state
+      | _ ->
+        // a precise parse error was already printed above; don't stack the
+        // generic hint on top of it
+        if hasParseError then
+          state
+        else
+          [
+            (Colors.error "Failed to parse function definition")
+            ""
+            "Make sure your syntax is correct. Examples:"
+            "  fn double (x: Int): Int = Stdlib.Int.multiply x 2"
+            "  fn greet (name: String): String = \"Hello, \" ++ name"
+            ""
+          ] |> Stdlib.printLines
+          state
     | None ->
       [
         (Colors.error "Failed to parse function definition")

@@ -6,11 +6,11 @@ module Darklang.Cli.Run
 
 let execute (state: AppState) (args: List<String>) : AppState =
   let allowHarmful =
-    Stdlib.List.member_v0 args "--allow-harmful"
+    Stdlib.List.member args "--allow-harmful"
   // `dark run` respects the host's configured grant by default (same as `eval`).
   // `--sandbox` drops to NO capabilities, for running untrusted scripts.
   let sandbox =
-    Stdlib.List.member_v0 args "--sandbox"
+    Stdlib.List.member args "--sandbox"
   let args =
     args
     |> Stdlib.List.filter (fun a ->
@@ -52,7 +52,7 @@ let executeScript
 
     match result with
     | Ok exitCode ->
-      if exitCode == 0I then
+      if exitCode == 0 then
         state
       else
         Stdlib.printLine $"Script exited with code {Stdlib.Int.toString exitCode}"

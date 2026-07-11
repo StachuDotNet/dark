@@ -1,5 +1,5 @@
 let c (arg: String) : Char =
-  (Builtin.testToChar_v0 arg) |> Builtin.unwrap
+  (Builtin.testToChar arg) |> Builtin.unwrap
 
 module Equality =
   "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
@@ -29,28 +29,28 @@ module Append =
 
 
 module Join =
-  (Stdlib.String.join_v0 [ "a"; "b"; "c"; "d" ] "|") = "a|b|c|d"
-  (Stdlib.String.join_v0 [ "a"; "̂" ] "") |> Stdlib.String.base64UrlEncode_v0 = "w6I"
-  Stdlib.String.join_v0 [ "hello"; " world" ] "" = "hello world"
-  Stdlib.String.join_v0 [ "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽"; "🧟‍♀️" ] "" = "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽🧟‍♀️"
-  Stdlib.String.join_v0 [ "👱👱🏻👱🏼👱🏽👱🏾👱🏿"; "👨‍❤️‍💋‍👨"; "﷽﷽﷽" ] "" = "👱👱🏻👱🏼👱🏽👱🏾👱🏿👨‍❤️‍💋‍👨﷽﷽﷽"
-  Stdlib.String.join_v0 [ "🧟‍♀️🧟‍♂️"; "🧟‍♀️🧑🏽‍🦰" ] "" = "🧟‍♀️🧟‍♂️🧟‍♀️🧑🏽‍🦰"
-  Stdlib.String.join_v0 [ "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️"; "‍⚧️‍️🇵🇷" ] "" = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷"
-  Stdlib.String.join_v0 [ "🧟‍♀️🧟‍♂️‍"; "🧟‍♀️🧑🏽‍🦰‍‍" ] "" = "🧟‍♀️🧟‍♂️‍🧟‍♀️🧑🏽‍🦰‍‍"
-  Stdlib.String.join_v0 [ "🧑🏽‍🦰‍"; "🧑🏼‍💻‍‍" ] "" = "🧑🏽‍🦰‍🧑🏼‍💻‍‍"
+  (Stdlib.String.join [ "a"; "b"; "c"; "d" ] "|") = "a|b|c|d"
+  (Stdlib.String.join [ "a"; "̂" ] "") |> Stdlib.String.base64UrlEncode = "w6I"
+  Stdlib.String.join [ "hello"; " world" ] "" = "hello world"
+  Stdlib.String.join [ "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽"; "🧟‍♀️" ] "" = "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽🧟‍♀️"
+  Stdlib.String.join [ "👱👱🏻👱🏼👱🏽👱🏾👱🏿"; "👨‍❤️‍💋‍👨"; "﷽﷽﷽" ] "" = "👱👱🏻👱🏼👱🏽👱🏾👱🏿👨‍❤️‍💋‍👨﷽﷽﷽"
+  Stdlib.String.join [ "🧟‍♀️🧟‍♂️"; "🧟‍♀️🧑🏽‍🦰" ] "" = "🧟‍♀️🧟‍♂️🧟‍♀️🧑🏽‍🦰"
+  Stdlib.String.join [ "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️"; "‍⚧️‍️🇵🇷" ] "" = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷"
+  Stdlib.String.join [ "🧟‍♀️🧟‍♂️‍"; "🧟‍♀️🧑🏽‍🦰‍‍" ] "" = "🧟‍♀️🧟‍♂️‍🧟‍♀️🧑🏽‍🦰‍‍"
+  Stdlib.String.join [ "🧑🏽‍🦰‍"; "🧑🏼‍💻‍‍" ] "" = "🧑🏽‍🦰‍🧑🏼‍💻‍‍"
 
 module ToBytes =
-  Stdlib.List.length (Stdlib.String.toBytes_v0 "🧑🏽‍🦰🧑🏼‍💻🧑🏻‍🍼✋✋🏻✋🏿") = 62I
-  Stdlib.List.length (Stdlib.String.toBytes_v0 "😄APPLE🍏") = 13I
-  Stdlib.List.length (Stdlib.String.toBytes_v0 "Είναι προικισμένοι με λογική") = 53I
-  Stdlib.List.length (Stdlib.String.toBytes_v0 "") = 0I
-  Stdlib.List.length (Stdlib.String.toBytes_v0 "🧑🏽‍🦰🧑🏼‍💻🧑🏻‍🍼✋✋🏻✋🏿") = 62I
-  Stdlib.List.length (Stdlib.String.toBytes_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽") = 48I
-  Stdlib.List.length (Stdlib.String.toBytes_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿") = 44I
-  Stdlib.List.length (Stdlib.String.toBytes_v0 "🧟‍♀️🧟‍♂️") = 26I
-  Stdlib.List.length (Stdlib.String.toBytes_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷") = 82I
-  Stdlib.List.length (Stdlib.String.toBytes_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇") = 49I
-  Stdlib.List.length (Stdlib.String.toBytes_v0 "") = 0I
+  Stdlib.List.length (Stdlib.String.toBytes "🧑🏽‍🦰🧑🏼‍💻🧑🏻‍🍼✋✋🏻✋🏿") = 62
+  Stdlib.List.length (Stdlib.String.toBytes "😄APPLE🍏") = 13
+  Stdlib.List.length (Stdlib.String.toBytes "Είναι προικισμένοι με λογική") = 53
+  Stdlib.List.length (Stdlib.String.toBytes "") = 0
+  Stdlib.List.length (Stdlib.String.toBytes "🧑🏽‍🦰🧑🏼‍💻🧑🏻‍🍼✋✋🏻✋🏿") = 62
+  Stdlib.List.length (Stdlib.String.toBytes "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽") = 48
+  Stdlib.List.length (Stdlib.String.toBytes "👱👱🏻👱🏼👱🏽👱🏾👱🏿") = 44
+  Stdlib.List.length (Stdlib.String.toBytes "🧟‍♀️🧟‍♂️") = 26
+  Stdlib.List.length (Stdlib.String.toBytes "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷") = 82
+  Stdlib.List.length (Stdlib.String.toBytes "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇") = 49
+  Stdlib.List.length (Stdlib.String.toBytes "") = 0
 
 
 // `Stdlib.String.{fromBytes, fromBytesWithReplacement, toBytes}` still
@@ -59,102 +59,102 @@ module ToBytes =
 // out of scope. So we bridge from Blob via `Stdlib.Blob.toList` here.
 
 module FromBytesWithReplacement =
-  ((Stdlib.Base64.decode_v0 "w6I")
+  ((Stdlib.Base64.decode "w6I")
    |> Builtin.unwrap
    |> Stdlib.Blob.toList
-   |> Stdlib.String.fromBytesWithReplacement_v0)
+   |> Stdlib.String.fromBytesWithReplacement)
     = "â"
 
-  ((Stdlib.Base64.decode_v0 "aGVsbG8g8J+YgA==")
+  ((Stdlib.Base64.decode "aGVsbG8g8J+YgA==")
    |> Builtin.unwrap
    |> Stdlib.Blob.toList
-   |> Stdlib.String.fromBytesWithReplacement_v0)
+   |> Stdlib.String.fromBytesWithReplacement)
     = "hello 😀"
 
-  ((Stdlib.Base64.decode_v0 "ww==")
+  ((Stdlib.Base64.decode "ww==")
    |> Builtin.unwrap
    |> Stdlib.Blob.toList
-   |> Stdlib.String.fromBytesWithReplacement_v0)
+   |> Stdlib.String.fromBytesWithReplacement)
     = "�"
 
-  ((Stdlib.Base64.decode_v0 "7aCA")
+  ((Stdlib.Base64.decode "7aCA")
    |> Builtin.unwrap
    |> Stdlib.Blob.toList
-   |> Stdlib.String.fromBytesWithReplacement_v0)
+   |> Stdlib.String.fromBytesWithReplacement)
     = "���"
 
-  ((Stdlib.Base64.decode_v0 "aMM=")
+  ((Stdlib.Base64.decode "aMM=")
    |> Builtin.unwrap
    |> Stdlib.Blob.toList
-   |> Stdlib.String.fromBytesWithReplacement_v0)
+   |> Stdlib.String.fromBytesWithReplacement)
     = "h�"
 
 
 module FromBytes =
-  ((Stdlib.Base64.decode_v0 "w6I")
+  ((Stdlib.Base64.decode "w6I")
    |> Builtin.unwrap
    |> Stdlib.Blob.toList
-   |> Stdlib.String.fromBytes_v0)
+   |> Stdlib.String.fromBytes)
     = Stdlib.Option.Option.Some "â"
 
-  ((Stdlib.Base64.decode_v0 "aGVsbG8g8J+YgA==")
+  ((Stdlib.Base64.decode "aGVsbG8g8J+YgA==")
    |> Builtin.unwrap
    |> Stdlib.Blob.toList
-   |> Stdlib.String.fromBytes_v0)
+   |> Stdlib.String.fromBytes)
     = Stdlib.Option.Option.Some "hello 😀"
 
-  ((Stdlib.Base64.decode_v0 "ww==")
+  ((Stdlib.Base64.decode "ww==")
    |> Builtin.unwrap
    |> Stdlib.Blob.toList
-   |> Stdlib.String.fromBytes_v0)
+   |> Stdlib.String.fromBytes)
     = Stdlib.Option.Option.None
 
-  ((Stdlib.Base64.decode_v0 "7aCA")
+  ((Stdlib.Base64.decode "7aCA")
    |> Builtin.unwrap
    |> Stdlib.Blob.toList
-   |> Stdlib.String.fromBytes_v0)
+   |> Stdlib.String.fromBytes)
     = Stdlib.Option.Option.None
 
-  ((Stdlib.Base64.decode_v0 "aMM=")
+  ((Stdlib.Base64.decode "aMM=")
    |> Builtin.unwrap
    |> Stdlib.Blob.toList
-   |> Stdlib.String.fromBytes_v0)
+   |> Stdlib.String.fromBytes)
     = Stdlib.Option.Option.None
 
 
 module StartsWith =
-  Stdlib.String.startsWith_v0 "a string" "a s" = true
-  Stdlib.String.startsWith_v0 "a string" " s" = false
-  Stdlib.String.startsWith_v0 "żółw" "żó" = true
-  Stdlib.String.startsWith_v0 "żółw" "r22" = false
-  Stdlib.String.startsWith_v0 "👩🏻‍🚀🍇" "🍇" = false
-  Stdlib.String.startsWith_v0 "123456" "123" = true
-  Stdlib.String.startsWith_v0 "" "" = true
-  Stdlib.String.startsWith_v0 "E" "\u0014\u0004" = false
-  Stdlib.String.startsWith_v0 "🧑🏽‍🦰🧑🏼‍💻🧑🏻‍🍼✋✋🏻✋🏿" "🧑🏾‍🦰" = false
-  Stdlib.String.startsWith_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚" = true
-  Stdlib.String.startsWith_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "﷽﷽﷽﷽" = true
-  Stdlib.String.startsWith_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "👱🏿" = false
-  Stdlib.String.startsWith_v0 "🧟‍♀️🧟‍♂️" "🧟‍♂️" = false
-  Stdlib.String.startsWith_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️" = true
-  Stdlib.String.startsWith_v0 "a string" "" = true
+  Stdlib.String.startsWith "a string" "a s" = true
+  Stdlib.String.startsWith "a string" " s" = false
+  Stdlib.String.startsWith "żółw" "żó" = true
+  Stdlib.String.startsWith "żółw" "r22" = false
+  Stdlib.String.startsWith "👩🏻‍🚀🍇" "🍇" = false
+  Stdlib.String.startsWith "123456" "123" = true
+  Stdlib.String.startsWith "" "" = true
+  Stdlib.String.startsWith "E" "\u0014\u0004" = false
+  Stdlib.String.startsWith "🧑🏽‍🦰🧑🏼‍💻🧑🏻‍🍼✋✋🏻✋🏿" "🧑🏾‍🦰" = false
+  Stdlib.String.startsWith "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚" = true
+  Stdlib.String.startsWith "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "﷽﷽﷽﷽" = true
+  Stdlib.String.startsWith "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "👱🏿" = false
+  Stdlib.String.startsWith "🧟‍♀️🧟‍♂️" "🧟‍♂️" = false
+  Stdlib.String.startsWith "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️" = true
+  Stdlib.String.startsWith "a string" "" = true
 
 module EndsWith =
-  Stdlib.String.endsWith_v0 "a string" "in" = false
-  Stdlib.String.endsWith_v0 "a string" "ing" = true
-  Stdlib.String.endsWith_v0 "a string" "" = true
-  Stdlib.String.endsWith_v0 "żółw" "żó" = false
-  Stdlib.String.endsWith_v0 "żółw" "łw" = true
-  Stdlib.String.endsWith_v0 "👩🏻‍🚀🍇" "🍇" = true
-  Stdlib.String.endsWith_v0 "123456" "56" = true
-  Stdlib.String.endsWith_v0 "" "" = true
-  Stdlib.String.endsWith_v0 "E" "\u0014\u0004" = false
-  Stdlib.String.endsWith_v0 "🧑🏽‍🦰🧑🏼‍💻🧑🏻‍🍼✋✋🏻✋🏿" "✋✋🏿✋🏿" = false
-  Stdlib.String.endsWith_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" "ǧ̗͚̚o̙̔ͮ̇͐̇" = true
-  Stdlib.String.endsWith_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "12xsd" = false
-  Stdlib.String.endsWith_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "﷽" = false
-  Stdlib.String.endsWith_v0 "🧟‍♀️🧟‍♂️" "🧟‍♀️" = false
-  Stdlib.String.endsWith_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "🏳️‍⚧️‍️🇵🇷" = true
+  Stdlib.String.endsWith "a string" "in" = false
+  Stdlib.String.endsWith "a string" "ing" = true
+  Stdlib.String.endsWith "a string" "" = true
+  Stdlib.String.endsWith "żółw" "żó" = false
+  Stdlib.String.endsWith "żółw" "łw" = true
+  Stdlib.String.endsWith "👩🏻‍🚀🍇" "🍇" = true
+  Stdlib.String.endsWith "123456" "56" = true
+  Stdlib.String.endsWith "" "" = true
+  Stdlib.String.endsWith "E" "\u0014\u0004" = false
+  Stdlib.String.endsWith "🧑🏽‍🦰🧑🏼‍💻🧑🏻‍🍼✋✋🏻✋🏿" "✋✋🏿✋🏿" = false
+  Stdlib.String.endsWith "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" "ǧ̗͚̚o̙̔ͮ̇͐̇" = true
+  Stdlib.String.endsWith "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "12xsd" = false
+  Stdlib.String.endsWith "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "﷽" = false
+  Stdlib.String.endsWith "🧟‍♀️🧟‍♂️" "🧟‍♀️" = false
+  Stdlib.String.endsWith "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "🏳️‍⚧️‍️🇵🇷" = true
 
 
 module Map =
@@ -181,9 +181,9 @@ module Map =
   // Check that map executes the right number of times
   (let v =
     Stdlib.String.map "a string" (fun x ->
-      let _ = Builtin.testIncrementSideEffectCounter_v0 false in 'c')
+      let _ = Builtin.testIncrementSideEffectCounter false in 'c')
 
-   (v, Builtin.testSideEffectCount_v0 ())) = ("cccccccc", 8L)
+   (v, Builtin.testSideEffectCount ())) = ("cccccccc", 8L)
 
 
 module FromChar =
@@ -197,136 +197,136 @@ module FromChar =
 
 
 module Base64Decode =
-  Stdlib.String.base64Decode_v0 "" = Stdlib.Result.Result.Ok "" // empty case
-  Stdlib.String.base64Decode_v0 "Kw" = Stdlib.Result.Result.Ok "+"
-  Stdlib.String.base64Decode_v0 "LyotKygmQDk4NTIx" = Stdlib.Result.Result.Ok "/*-+(&@98521"
-  Stdlib.String.base64Decode_v0 "yLo" = Stdlib.Result.Result.Ok "Ⱥ"
-  Stdlib.String.base64Decode_v0 "xbzDs8WCdw" = Stdlib.Result.Result.Ok "żółw"
+  Stdlib.String.base64Decode "" = Stdlib.Result.Result.Ok "" // empty case
+  Stdlib.String.base64Decode "Kw" = Stdlib.Result.Result.Ok "+"
+  Stdlib.String.base64Decode "LyotKygmQDk4NTIx" = Stdlib.Result.Result.Ok "/*-+(&@98521"
+  Stdlib.String.base64Decode "yLo" = Stdlib.Result.Result.Ok "Ⱥ"
+  Stdlib.String.base64Decode "xbzDs8WCdw" = Stdlib.Result.Result.Ok "żółw"
 
-  Stdlib.String.base64Decode_v0 "random string" = Stdlib.Result.Result.Error "Not a valid base64 string"
-  Stdlib.String.base64Decode_v0 "illegal chars&@:" = Stdlib.Result.Result.Error "Not a valid base64 string"
+  Stdlib.String.base64Decode "random string" = Stdlib.Result.Result.Error "Not a valid base64 string"
+  Stdlib.String.base64Decode "illegal chars&@:" = Stdlib.Result.Result.Error "Not a valid base64 string"
 
 
   // Test cases from the spec with padding added
-  Stdlib.String.base64Decode_v0 "Zg" = Stdlib.Result.Result.Ok "f"
-  Stdlib.String.base64Decode_v0 "Zg==" = Stdlib.Result.Result.Ok "f"
-  Stdlib.String.base64Decode_v0 "Zm8" = Stdlib.Result.Result.Ok "fo"
-  Stdlib.String.base64Decode_v0 "Zm8=" = Stdlib.Result.Result.Ok "fo"
-  Stdlib.String.base64Decode_v0 "Zm9v" = Stdlib.Result.Result.Ok "foo"
-  Stdlib.String.base64Decode_v0 "Zm9vYg" = Stdlib.Result.Result.Ok "foob"
-  Stdlib.String.base64Decode_v0 "Zm9vYg==" = Stdlib.Result.Result.Ok "foob"
-  Stdlib.String.base64Decode_v0 "Zm9vYmE" = Stdlib.Result.Result.Ok "fooba"
-  Stdlib.String.base64Decode_v0 "Zm9vYmE=" = Stdlib.Result.Result.Ok "fooba"
-  Stdlib.String.base64Decode_v0 "Zm9vYmFy" = Stdlib.Result.Result.Ok "foobar"
+  Stdlib.String.base64Decode "Zg" = Stdlib.Result.Result.Ok "f"
+  Stdlib.String.base64Decode "Zg==" = Stdlib.Result.Result.Ok "f"
+  Stdlib.String.base64Decode "Zm8" = Stdlib.Result.Result.Ok "fo"
+  Stdlib.String.base64Decode "Zm8=" = Stdlib.Result.Result.Ok "fo"
+  Stdlib.String.base64Decode "Zm9v" = Stdlib.Result.Result.Ok "foo"
+  Stdlib.String.base64Decode "Zm9vYg" = Stdlib.Result.Result.Ok "foob"
+  Stdlib.String.base64Decode "Zm9vYg==" = Stdlib.Result.Result.Ok "foob"
+  Stdlib.String.base64Decode "Zm9vYmE" = Stdlib.Result.Result.Ok "fooba"
+  Stdlib.String.base64Decode "Zm9vYmE=" = Stdlib.Result.Result.Ok "fooba"
+  Stdlib.String.base64Decode "Zm9vYmFy" = Stdlib.Result.Result.Ok "foobar"
 
 
   // "Impossible cases" from apache
   // https://commons.apache.org/proper/commons-codec/xref-test/org/apache/commons/codec/binary/Base64Test.html
-  Stdlib.String.base64Decode_v0 "ZE==" = Stdlib.Result.Result.Ok "d"
-  Stdlib.String.base64Decode_v0 "ZmC=" = Stdlib.Result.Result.Ok "f`"
-  Stdlib.String.base64Decode_v0 "Zm9vYE==" = Stdlib.Result.Result.Ok "foo`"
-  Stdlib.String.base64Decode_v0 "Zm9vYmC=" = Stdlib.Result.Result.Ok "foob`"
+  Stdlib.String.base64Decode "ZE==" = Stdlib.Result.Result.Ok "d"
+  Stdlib.String.base64Decode "ZmC=" = Stdlib.Result.Result.Ok "f`"
+  Stdlib.String.base64Decode "Zm9vYE==" = Stdlib.Result.Result.Ok "foo`"
+  Stdlib.String.base64Decode "Zm9vYmC=" = Stdlib.Result.Result.Ok "foob`"
 
-  Stdlib.String.base64Decode_v0 "ZnJvbT0wNi8wNy8yMDEzIHF1ZXJ5PSLOms6xzrvPjs-CIM6_z4HOr8-DzrHPhM61Ig" =
+  Stdlib.String.base64Decode "ZnJvbT0wNi8wNy8yMDEzIHF1ZXJ5PSLOms6xzrvPjs-CIM6_z4HOr8-DzrHPhM61Ig" =
     Stdlib.Result.Result.Ok "from=06/07/2013 query=\"Καλώς ορίσατε\""
 
-  Stdlib.String.base64Decode_v0 "8J-RsfCfkbHwn4-78J-RsfCfj7zwn5Gx8J-PvfCfkbHwn4--8J-RsfCfj78" =
+  Stdlib.String.base64Decode "8J-RsfCfkbHwn4-78J-RsfCfj7zwn5Gx8J-PvfCfkbHwn4--8J-RsfCfj78" =
     Stdlib.Result.Result.Ok "👱👱🏻👱🏼👱🏽👱🏾👱🏿"
 
-  Stdlib.String.base64Decode_v0 "-p" = Stdlib.Result.Result.Error "Invalid UTF-8 string"
-  Stdlib.String.base64Decode_v0 "lI" = Stdlib.Result.Result.Error "Invalid UTF-8 string"
-  Stdlib.String.base64Decode_v0 "5Sk" = Stdlib.Result.Result.Error "Invalid UTF-8 string"
+  Stdlib.String.base64Decode "-p" = Stdlib.Result.Result.Error "Invalid UTF-8 string"
+  Stdlib.String.base64Decode "lI" = Stdlib.Result.Result.Error "Invalid UTF-8 string"
+  Stdlib.String.base64Decode "5Sk" = Stdlib.Result.Result.Error "Invalid UTF-8 string"
 
 
 module Base64UrlEncode =
-  Stdlib.String.base64UrlEncode_v0 "+" = "Kw"
-  Stdlib.String.base64UrlEncode_v0 "Ⱥ" = "yLo"
-  Stdlib.String.base64UrlEncode_v0 "żółw" = "xbzDs8WCdw"
-  Stdlib.String.base64UrlEncode_v0 "/*-+(&@98521" = "LyotKygmQDk4NTIx"
-  Stdlib.String.base64UrlEncode_v0 "" = ""
-  Stdlib.String.base64UrlEncode_v0 "f" = "Zg"
-  Stdlib.String.base64UrlEncode_v0 "fo" = "Zm8"
-  Stdlib.String.base64UrlEncode_v0 "foo" = "Zm9v"
-  Stdlib.String.base64UrlEncode_v0 "foob" = "Zm9vYg"
-  Stdlib.String.base64UrlEncode_v0 "fooba" = "Zm9vYmE"
-  Stdlib.String.base64UrlEncode_v0 "foobar" = "Zm9vYmFy"
-  Stdlib.String.base64UrlEncode_v0 "Hello World" = "SGVsbG8gV29ybGQ"
+  Stdlib.String.base64UrlEncode "+" = "Kw"
+  Stdlib.String.base64UrlEncode "Ⱥ" = "yLo"
+  Stdlib.String.base64UrlEncode "żółw" = "xbzDs8WCdw"
+  Stdlib.String.base64UrlEncode "/*-+(&@98521" = "LyotKygmQDk4NTIx"
+  Stdlib.String.base64UrlEncode "" = ""
+  Stdlib.String.base64UrlEncode "f" = "Zg"
+  Stdlib.String.base64UrlEncode "fo" = "Zm8"
+  Stdlib.String.base64UrlEncode "foo" = "Zm9v"
+  Stdlib.String.base64UrlEncode "foob" = "Zm9vYg"
+  Stdlib.String.base64UrlEncode "fooba" = "Zm9vYmE"
+  Stdlib.String.base64UrlEncode "foobar" = "Zm9vYmFy"
+  Stdlib.String.base64UrlEncode "Hello World" = "SGVsbG8gV29ybGQ"
 
-  Stdlib.String.base64UrlEncode_v0 "from=06/07/2013 query=\"Καλώς ορίσατε\"" = "ZnJvbT0wNi8wNy8yMDEzIHF1ZXJ5PSLOms6xzrvPjs-CIM6_z4HOr8-DzrHPhM61Ig"
+  Stdlib.String.base64UrlEncode "from=06/07/2013 query=\"Καλώς ορίσατε\"" = "ZnJvbT0wNi8wNy8yMDEzIHF1ZXJ5PSLOms6xzrvPjs-CIM6_z4HOr8-DzrHPhM61Ig"
 
-  Stdlib.String.base64UrlEncode_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" = "8J-RsfCfkbHwn4-78J-RsfCfj7zwn5Gx8J-PvfCfkbHwn4--8J-RsfCfj78"
+  Stdlib.String.base64UrlEncode "👱👱🏻👱🏼👱🏽👱🏾👱🏿" = "8J-RsfCfkbHwn4-78J-RsfCfj7zwn5Gx8J-PvfCfkbHwn4--8J-RsfCfj78"
 
 
 module Base64Encode =
-  Stdlib.String.base64Encode_v0 "+" = "Kw=="
-  Stdlib.String.base64Encode_v0 "Ⱥ" = "yLo="
-  Stdlib.String.base64Encode_v0 "żółw" = "xbzDs8WCdw=="
-  Stdlib.String.base64Encode_v0 "/*-+(&@98521" = "LyotKygmQDk4NTIx"
-  Stdlib.String.base64Encode_v0 "" = ""
-  Stdlib.String.base64Encode_v0 "f" = "Zg=="
-  Stdlib.String.base64Encode_v0 "fo" = "Zm8="
-  Stdlib.String.base64Encode_v0 "foo" = "Zm9v"
-  Stdlib.String.base64Encode_v0 "foob" = "Zm9vYg=="
-  Stdlib.String.base64Encode_v0 "fooba" = "Zm9vYmE="
-  Stdlib.String.base64Encode_v0 "foobar" = "Zm9vYmFy"
-  Stdlib.String.base64Encode_v0 "Hello World" = "SGVsbG8gV29ybGQ="
+  Stdlib.String.base64Encode "+" = "Kw=="
+  Stdlib.String.base64Encode "Ⱥ" = "yLo="
+  Stdlib.String.base64Encode "żółw" = "xbzDs8WCdw=="
+  Stdlib.String.base64Encode "/*-+(&@98521" = "LyotKygmQDk4NTIx"
+  Stdlib.String.base64Encode "" = ""
+  Stdlib.String.base64Encode "f" = "Zg=="
+  Stdlib.String.base64Encode "fo" = "Zm8="
+  Stdlib.String.base64Encode "foo" = "Zm9v"
+  Stdlib.String.base64Encode "foob" = "Zm9vYg=="
+  Stdlib.String.base64Encode "fooba" = "Zm9vYmE="
+  Stdlib.String.base64Encode "foobar" = "Zm9vYmFy"
+  Stdlib.String.base64Encode "Hello World" = "SGVsbG8gV29ybGQ="
 
-  Stdlib.String.base64Encode_v0 "from=06/07/2013 query=\"Καλώς ορίσατε\"" = "ZnJvbT0wNi8wNy8yMDEzIHF1ZXJ5PSLOms6xzrvPjs+CIM6/z4HOr8+DzrHPhM61Ig=="
+  Stdlib.String.base64Encode "from=06/07/2013 query=\"Καλώς ορίσατε\"" = "ZnJvbT0wNi8wNy8yMDEzIHF1ZXJ5PSLOms6xzrvPjs+CIM6/z4HOr8+DzrHPhM61Ig=="
 
-  Stdlib.String.base64Encode_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" = "8J+RsfCfkbHwn4+78J+RsfCfj7zwn5Gx8J+PvfCfkbHwn4++8J+RsfCfj78="
+  Stdlib.String.base64Encode "👱👱🏻👱🏼👱🏽👱🏾👱🏿" = "8J+RsfCfkbHwn4+78J+RsfCfj7zwn5Gx8J+PvfCfkbHwn4++8J+RsfCfj78="
 
 
 module Digest =
-  Stdlib.String.digest_v0 "" = "OLBgp1GsljhM2TJ-sbHjaiH9txEUvgdDTAzHv2P24donTt6_529l-9Ua0vFImLlb"
-  Stdlib.String.digest_v0 "😄" = "Z2Y7YuyYHR9miKrg6mLtxSTaHRpGZuaenmGQl3QFY58pwhPCK2bIYxJQ728ChJwA"
-  Stdlib.String.digest_v0 "ελπίδα" = "j4uJEeBe6g8QrzbuxoI2roUgapGQiExE8CWEQqZao61eZVN1iSZ8cV39IM1nGqsa"
-  Stdlib.String.digest_v0 "/*-+(&@98521" = "wSGXFkLMpPufNoF2mUBAjT4YlUEb9cl0Iliy4qohwt1XFpg51PRJVTWndn5PewSr"
-  Stdlib.String.digest_v0 "👩🏻‍🚀🍇" = "hVrNUSbFOfYXwZe6zQRUFFfGPe90qr-aROG2n-hMk8kAC-xodOyHOqecLWb9HIKJ"
-  Stdlib.String.digest_v0 "🧑🏽‍🦰🧑🏼‍💻🧑🏻‍🍼✋✋🏻✋🏿" = "7Fo0ImavUzoUM_9kdjucgh6pYAHk5VovpTOUObvxacS31QoCTkcE4rpcQbJJpshE"
-  Stdlib.String.digest_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" = "U2v72uGbUR_UIiD5qF6L21pKzYi4B6OB76HGtbpM0o-2_4YB3ytPjJ7w9png3L9k"
-  Stdlib.String.digest_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" = "c1Wm67axXlBaejcJZxct80MvexdTtyyrTK9J9-_4RqgP1pf4Bk9SoMZpsnXpvLIx"
-  Stdlib.String.digest_v0 "🧟‍♀️🧟‍♂️" = "FBnrDureCzgPeGP9qOuW1BIiF2Wz5WejO5XtJWa81qCxcD6cZ4A_WAB0ZJzhOErc"
-  Stdlib.String.digest_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" = "3QFqrhTPpxeje6XUNObFt2eJZZ1t0pAcX42AFdFVv42hco0bTOopQK3py4KMBT0m"
+  Stdlib.String.digest "" = "OLBgp1GsljhM2TJ-sbHjaiH9txEUvgdDTAzHv2P24donTt6_529l-9Ua0vFImLlb"
+  Stdlib.String.digest "😄" = "Z2Y7YuyYHR9miKrg6mLtxSTaHRpGZuaenmGQl3QFY58pwhPCK2bIYxJQ728ChJwA"
+  Stdlib.String.digest "ελπίδα" = "j4uJEeBe6g8QrzbuxoI2roUgapGQiExE8CWEQqZao61eZVN1iSZ8cV39IM1nGqsa"
+  Stdlib.String.digest "/*-+(&@98521" = "wSGXFkLMpPufNoF2mUBAjT4YlUEb9cl0Iliy4qohwt1XFpg51PRJVTWndn5PewSr"
+  Stdlib.String.digest "👩🏻‍🚀🍇" = "hVrNUSbFOfYXwZe6zQRUFFfGPe90qr-aROG2n-hMk8kAC-xodOyHOqecLWb9HIKJ"
+  Stdlib.String.digest "🧑🏽‍🦰🧑🏼‍💻🧑🏻‍🍼✋✋🏻✋🏿" = "7Fo0ImavUzoUM_9kdjucgh6pYAHk5VovpTOUObvxacS31QoCTkcE4rpcQbJJpshE"
+  Stdlib.String.digest "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" = "U2v72uGbUR_UIiD5qF6L21pKzYi4B6OB76HGtbpM0o-2_4YB3ytPjJ7w9png3L9k"
+  Stdlib.String.digest "👱👱🏻👱🏼👱🏽👱🏾👱🏿" = "c1Wm67axXlBaejcJZxct80MvexdTtyyrTK9J9-_4RqgP1pf4Bk9SoMZpsnXpvLIx"
+  Stdlib.String.digest "🧟‍♀️🧟‍♂️" = "FBnrDureCzgPeGP9qOuW1BIiF2Wz5WejO5XtJWa81qCxcD6cZ4A_WAB0ZJzhOErc"
+  Stdlib.String.digest "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" = "3QFqrhTPpxeje6XUNObFt2eJZZ1t0pAcX42AFdFVv42hco0bTOopQK3py4KMBT0m"
 
 
 module Random =
-  (Stdlib.String.random 5I) == (Stdlib.String.random 5I) = false
+  (Stdlib.String.random 5) == (Stdlib.String.random 5) = false
 
-  Stdlib.String.length ((Stdlib.String.random 10I) |> Builtin.unwrap) = 10I
-  Stdlib.String.length ((Stdlib.String.random 5I) |> Builtin.unwrap) = 5I
-  Stdlib.String.length ((Stdlib.String.random 0I) |> Builtin.unwrap) = 0I
+  Stdlib.String.length ((Stdlib.String.random 10) |> Builtin.unwrap) = 10
+  Stdlib.String.length ((Stdlib.String.random 5) |> Builtin.unwrap) = 5
+  Stdlib.String.length ((Stdlib.String.random 0) |> Builtin.unwrap) = 0
 
-  Stdlib.String.random -1I = Stdlib.Result.Result.Error "Expected `length` to be positive, but it was `-1`"
+  Stdlib.String.random -1 = Stdlib.Result.Result.Error "Expected `length` to be positive, but it was `-1`"
 
 
 module HtmlEscape =
-  Stdlib.String.htmlEscape_v0 "test<>&\"" = "test&lt;&gt;&amp;&quot;" // HTML escaping works reasonably
+  Stdlib.String.htmlEscape "test<>&\"" = "test&lt;&gt;&amp;&quot;" // HTML escaping works reasonably
 
-  Stdlib.String.htmlEscape_v0
+  Stdlib.String.htmlEscape
     "<html><head></head><body><h1>This is f#</h1></body></html>" = "&lt;html&gt;&lt;head&gt;&lt;/head&gt;&lt;body&gt;&lt;h1&gt;This is f#&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;" // HTML escaping works reasonably
 
-  Stdlib.String.htmlEscape_v0
+  Stdlib.String.htmlEscape
     "<html><head><!-- head definitions go here --></head><body><!-- the content goes here --></body></html>" = "&lt;html&gt;&lt;head&gt;&lt;!-- head definitions go here --&gt;&lt;/head&gt;&lt;body&gt;&lt;!-- the content goes here --&gt;&lt;/body&gt;&lt;/html&gt;"
 
-  Stdlib.String.htmlEscape_v0 "" = ""
-  Stdlib.String.htmlEscape_v0 "😄" = "😄"
-  Stdlib.String.htmlEscape_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
+  Stdlib.String.htmlEscape "" = ""
+  Stdlib.String.htmlEscape "😄" = "😄"
+  Stdlib.String.htmlEscape "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
 
-  Stdlib.String.htmlEscape_v0 "<html><head></head><body><h1>﷽﷽﷽﷽﷽</h1></body></html>" = "&lt;html&gt;&lt;head&gt;&lt;/head&gt;&lt;body&gt;&lt;h1&gt;﷽﷽﷽﷽﷽&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;"
+  Stdlib.String.htmlEscape "<html><head></head><body><h1>﷽﷽﷽﷽﷽</h1></body></html>" = "&lt;html&gt;&lt;head&gt;&lt;/head&gt;&lt;body&gt;&lt;h1&gt;﷽﷽﷽﷽﷽&lt;/h1&gt;&lt;/body&gt;&lt;/html&gt;"
 
-  Stdlib.String.htmlEscape_v0 "<head>🧟‍♀️🧟‍♂️</head>" = "&lt;head&gt;🧟‍♀️🧟‍♂️&lt;/head&gt;"
-  Stdlib.String.htmlEscape_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷"
+  Stdlib.String.htmlEscape "<head>🧟‍♀️🧟‍♂️</head>" = "&lt;head&gt;🧟‍♀️🧟‍♂️&lt;/head&gt;"
+  Stdlib.String.htmlEscape "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷"
 
 
 module IsEmpty =
-  Stdlib.String.isEmpty_v0 "" = true
-  Stdlib.String.isEmpty_v0 "a" = false
-  Stdlib.String.isEmpty_v0 "🧑🏼‍💻🧑🏻‍🍼" = false
-  Stdlib.String.isEmpty_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" = false
-  Stdlib.String.isEmpty_v0 "﷽﷽﷽﷽﷽" = false
-  Stdlib.String.isEmpty_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" = false
-  Stdlib.String.isEmpty_v0 "🧟‍♀️🧟‍♂️" = false
-  Stdlib.String.isEmpty_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" = false
+  Stdlib.String.isEmpty "" = true
+  Stdlib.String.isEmpty "a" = false
+  Stdlib.String.isEmpty "🧑🏼‍💻🧑🏻‍🍼" = false
+  Stdlib.String.isEmpty "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" = false
+  Stdlib.String.isEmpty "﷽﷽﷽﷽﷽" = false
+  Stdlib.String.isEmpty "👱👱🏻👱🏼👱🏽👱🏾👱🏿" = false
+  Stdlib.String.isEmpty "🧟‍♀️🧟‍♂️" = false
+  Stdlib.String.isEmpty "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" = false
 
 
 module NewLine =
@@ -334,48 +334,48 @@ module NewLine =
 
 
 module Length =
-  Stdlib.String.length "😄" = 1I
-  Stdlib.String.length "" = 0I
-  Stdlib.String.length "abcdef" = 6I
-  Stdlib.String.length "🧑🏽‍🦰🧑🏼‍💻🧑🏻‍🍼✋✋🏻✋🏿" = 6I
-  Stdlib.String.length "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" = 5I
-  Stdlib.String.length "﷽﷽﷽﷽﷽" = 5I
-  Stdlib.String.length "👱👱🏻👱🏼👱🏽👱🏾👱🏿" = 6I
-  Stdlib.String.length "🧟‍♀️🧟‍♂️" = 2I
-  Stdlib.String.length "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" = 4I
+  Stdlib.String.length "😄" = 1
+  Stdlib.String.length "" = 0
+  Stdlib.String.length "abcdef" = 6
+  Stdlib.String.length "🧑🏽‍🦰🧑🏼‍💻🧑🏻‍🍼✋✋🏻✋🏿" = 6
+  Stdlib.String.length "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" = 5
+  Stdlib.String.length "﷽﷽﷽﷽﷽" = 5
+  Stdlib.String.length "👱👱🏻👱🏼👱🏽👱🏾👱🏿" = 6
+  Stdlib.String.length "🧟‍♀️🧟‍♂️" = 2
+  Stdlib.String.length "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" = 4
 
 
 module Prepend =
-  Stdlib.String.prepend_v0 "hello" "world" = "worldhello" // Stdlib.String.prepend works for ASCII range
-  Stdlib.String.prepend_v0 "hello" "" = "hello"
-  Stdlib.String.prepend_v0 "" "hello" = "hello"
-  Stdlib.String.prepend_v0 "żółw" "😄" = "😄żółw" // Stdlib.String.prepend works on non-ascii strings
-  Stdlib.String.prepend_v0 "123" "456" = "456123"
-  Stdlib.String.prepend_v0 "óñÜá" "abc" = "abcóñÜá"
-  Stdlib.String.prepend_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" "Z̤͔ͧ̑̓" = "Z̤͔ͧ̑̓Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
-  Stdlib.String.prepend_v0 "﷽﷽﷽﷽﷽" "👨‍❤️‍💋‍👨" = "👨‍❤️‍💋‍👨﷽﷽﷽﷽﷽"
-  Stdlib.String.prepend_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "﷽﷽" = "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽"
-  Stdlib.String.prepend_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "✋🏻" = "✋🏻👱👱🏻👱🏼👱🏽👱🏾👱🏿"
-  Stdlib.String.prepend_v0 "🧟‍♀️🧟‍♂️" "🧟‍♂️" = "🧟‍♂️🧟‍♀️🧟‍♂️"
-  Stdlib.String.prepend_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "👨‍❤️‍💋‍👨" = "👨‍❤️‍💋‍👨👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷"
-  Stdlib.String.prepend_v0 "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "🧟‍♂️" = "🧟‍♂️żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿"
+  Stdlib.String.prepend "hello" "world" = "worldhello" // Stdlib.String.prepend works for ASCII range
+  Stdlib.String.prepend "hello" "" = "hello"
+  Stdlib.String.prepend "" "hello" = "hello"
+  Stdlib.String.prepend "żółw" "😄" = "😄żółw" // Stdlib.String.prepend works on non-ascii strings
+  Stdlib.String.prepend "123" "456" = "456123"
+  Stdlib.String.prepend "óñÜá" "abc" = "abcóñÜá"
+  Stdlib.String.prepend "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" "Z̤͔ͧ̑̓" = "Z̤͔ͧ̑̓Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
+  Stdlib.String.prepend "﷽﷽﷽﷽﷽" "👨‍❤️‍💋‍👨" = "👨‍❤️‍💋‍👨﷽﷽﷽﷽﷽"
+  Stdlib.String.prepend "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "﷽﷽" = "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽"
+  Stdlib.String.prepend "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "✋🏻" = "✋🏻👱👱🏻👱🏼👱🏽👱🏾👱🏿"
+  Stdlib.String.prepend "🧟‍♀️🧟‍♂️" "🧟‍♂️" = "🧟‍♂️🧟‍♀️🧟‍♂️"
+  Stdlib.String.prepend "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "👨‍❤️‍💋‍👨" = "👨‍❤️‍💋‍👨👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷"
+  Stdlib.String.prepend "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "🧟‍♂️" = "🧟‍♂️żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿"
 
 
 module ReplaceAll =
-  Stdlib.String.replaceAll_v0 "abcABCcbaCBA" "b" "x" = "axcABCcxaCBA"
-  Stdlib.String.replaceAll_v0 "abcABCcbaCBA" "" "x" = "xaxbxcxAxBxCxcxbxaxCxBxAx"
-  Stdlib.String.replaceAll_v0 "" "" "&" = "&"
-  Stdlib.String.replaceAll_v0 "abcABCcbaCBA" "b" "" = "acABCcaCBA"
+  Stdlib.String.replaceAll "abcABCcbaCBA" "b" "x" = "axcABCcxaCBA"
+  Stdlib.String.replaceAll "abcABCcbaCBA" "" "x" = "xaxbxcxAxBxCxcxbxaxCxBxAx"
+  Stdlib.String.replaceAll "" "" "&" = "&"
+  Stdlib.String.replaceAll "abcABCcbaCBA" "b" "" = "acABCcaCBA"
 
-  Stdlib.String.replaceAll_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" "ä͖̭̈̇" "$" = "Z̤͔ͧ̑̓$lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
+  Stdlib.String.replaceAll "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" "ä͖̭̈̇" "$" = "Z̤͔ͧ̑̓$lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
 
-  Stdlib.String.replaceAll_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "﷽﷽" "$" = "$$$$$$$$"
-  Stdlib.String.replaceAll_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "👱🏽" "✋🏻" = "👱👱🏻👱🏼✋🏻👱🏾👱🏿"
-  Stdlib.String.replaceAll_v0 "🧟‍♀️🧟‍♂️" "🧟‍♂️" "🧑🏽‍🦰" = "🧟‍♀️🧑🏽‍🦰"
+  Stdlib.String.replaceAll "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "﷽﷽" "$" = "$$$$$$$$"
+  Stdlib.String.replaceAll "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "👱🏽" "✋🏻" = "👱👱🏻👱🏼✋🏻👱🏾👱🏿"
+  Stdlib.String.replaceAll "🧟‍♀️🧟‍♂️" "🧟‍♂️" "🧑🏽‍🦰" = "🧟‍♀️🧑🏽‍🦰"
 
-  Stdlib.String.replaceAll_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "👨‍❤️‍💋‍👨" "👨‍❤️‍💋‍👨" = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷"
+  Stdlib.String.replaceAll "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "👨‍❤️‍💋‍👨" "👨‍❤️‍💋‍👨" = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷"
 
-  Stdlib.String.replaceAll_v0 "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "🧑🏻‍🍼" "🧟‍♂️" = "żółw🧑🏽‍🦰🧟‍♂️✋✋🏻✋🏿"
+  Stdlib.String.replaceAll "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "🧑🏻‍🍼" "🧟‍♂️" = "żółw🧑🏽‍🦰🧟‍♂️✋✋🏻✋🏿"
 
 
 module Slugify =
@@ -527,41 +527,41 @@ module SplitFirst =
 
 
 module SplitN =
-  Stdlib.String.splitN "a|b|c|d" "|" 2I = [ "a"; "b|c|d" ]
-  Stdlib.String.splitN "a|b|c|d" "|" 3I = [ "a"; "b"; "c|d" ]
-  Stdlib.String.splitN "a|b|c|d" "|" 4I = [ "a"; "b"; "c"; "d" ]
-  Stdlib.String.splitN "a|b|c|d" "|" 99I = [ "a"; "b"; "c"; "d" ]
+  Stdlib.String.splitN "a|b|c|d" "|" 2 = [ "a"; "b|c|d" ]
+  Stdlib.String.splitN "a|b|c|d" "|" 3 = [ "a"; "b"; "c|d" ]
+  Stdlib.String.splitN "a|b|c|d" "|" 4 = [ "a"; "b"; "c"; "d" ]
+  Stdlib.String.splitN "a|b|c|d" "|" 99 = [ "a"; "b"; "c"; "d" ]
 
-  Stdlib.String.splitN "a|b|c|d" "|" 1I = [ "a|b|c|d" ]
-  Stdlib.String.splitN "a|b|c|d" "|" 0I = [ "a|b|c|d" ]
-  Stdlib.String.splitN "a|b|c|d" "|" -1I = [ "a|b|c|d" ]
+  Stdlib.String.splitN "a|b|c|d" "|" 1 = [ "a|b|c|d" ]
+  Stdlib.String.splitN "a|b|c|d" "|" 0 = [ "a|b|c|d" ]
+  Stdlib.String.splitN "a|b|c|d" "|" -1 = [ "a|b|c|d" ]
 
-  Stdlib.String.splitN "abc" "|" 3I = [ "abc" ]
-  Stdlib.String.splitN "" "|" 3I = [ "" ]
+  Stdlib.String.splitN "abc" "|" 3 = [ "abc" ]
+  Stdlib.String.splitN "" "|" 3 = [ "" ]
 
-  Stdlib.String.splitN "abc" "" 3I = [ "abc" ]
-  Stdlib.String.splitN "a|b" "" 2I = [ "a|b" ]
+  Stdlib.String.splitN "abc" "" 3 = [ "abc" ]
+  Stdlib.String.splitN "a|b" "" 2 = [ "a|b" ]
 
-  Stdlib.String.splitN "hello😄world😄sun" "😄" 2I = [ "hello"; "world😄sun" ]
-  Stdlib.String.splitN "a==b==c==d" "==" 3I = [ "a"; "b"; "c==d" ]
+  Stdlib.String.splitN "hello😄world😄sun" "😄" 2 = [ "hello"; "world😄sun" ]
+  Stdlib.String.splitN "a==b==c==d" "==" 3 = [ "a"; "b"; "c==d" ]
 
   // ZWJ-bearing prefixes work because splitN routes through indexOfEgc.
-  Stdlib.String.splitN "🧑🏽‍🦰|🧑🏼‍💻|🧑🏻‍🍼" "|" 2I = [ "🧑🏽‍🦰"; "🧑🏼‍💻|🧑🏻‍🍼" ]
-  Stdlib.String.splitN "🧑🏽‍🦰|🧑🏼‍💻|🧑🏻‍🍼" "|" 3I = [ "🧑🏽‍🦰"; "🧑🏼‍💻"; "🧑🏻‍🍼" ]
+  Stdlib.String.splitN "🧑🏽‍🦰|🧑🏼‍💻|🧑🏻‍🍼" "|" 2 = [ "🧑🏽‍🦰"; "🧑🏼‍💻|🧑🏻‍🍼" ]
+  Stdlib.String.splitN "🧑🏽‍🦰|🧑🏼‍💻|🧑🏻‍🍼" "|" 3 = [ "🧑🏽‍🦰"; "🧑🏼‍💻"; "🧑🏻‍🍼" ]
 
   // ZWJ separator with mixed-width content on both sides.
-  Stdlib.String.splitN "a🧑🏼‍💻b🧑🏼‍💻c" "🧑🏼‍💻" 2I = [ "a"; "b🧑🏼‍💻c" ]
-  Stdlib.String.splitN "a🧑🏼‍💻b🧑🏼‍💻c" "🧑🏼‍💻" 3I = [ "a"; "b"; "c" ]
-  Stdlib.String.splitN "żółw🧑🏼‍💻x🧑🏼‍💻y" "🧑🏼‍💻" 2I = [ "żółw"; "x🧑🏼‍💻y" ]
+  Stdlib.String.splitN "a🧑🏼‍💻b🧑🏼‍💻c" "🧑🏼‍💻" 2 = [ "a"; "b🧑🏼‍💻c" ]
+  Stdlib.String.splitN "a🧑🏼‍💻b🧑🏼‍💻c" "🧑🏼‍💻" 3 = [ "a"; "b"; "c" ]
+  Stdlib.String.splitN "żółw🧑🏼‍💻x🧑🏼‍💻y" "🧑🏼‍💻" 2 = [ "żółw"; "x🧑🏼‍💻y" ]
 
   // Adjacent separators yield empty pieces, with a ZWJ separator.
-  Stdlib.String.splitN "🧑🏼‍💻🧑🏼‍💻x" "🧑🏼‍💻" 3I = [ ""; ""; "x" ]
+  Stdlib.String.splitN "🧑🏼‍💻🧑🏼‍💻x" "🧑🏼‍💻" 3 = [ ""; ""; "x" ]
 
 
 module ToLowercase =
   Stdlib.String.toLowercase "HELLO😄WORLD" = "hello😄world"
   Stdlib.String.toLowercase "" = ""
-  Stdlib.String.toLowercase "ABCDEF" = "abcdef" // Stdlib.String.toLowercase_v0 works for ASCII range
+  Stdlib.String.toLowercase "ABCDEF" = "abcdef" // Stdlib.String.toLowercase works for ASCII range
   Stdlib.String.toLowercase "AB323CDEF" = "ab323cdef"
   Stdlib.String.toLowercase "SÁNCHEZ" = "sánchez" // not lowercase a
   Stdlib.String.toLowercase "sánchez" = "sánchez"
@@ -623,295 +623,295 @@ module ToUppercase =
 
 
 module TrimEnd =
-  Stdlib.String.trimEnd_v0 "      " = ""
-  Stdlib.String.trimEnd_v0 "" = ""
-  Stdlib.String.trimEnd_v0 "  foo  " = "  foo"
-  Stdlib.String.trimEnd_v0 "  foo bar  " = "  foo bar"
-  Stdlib.String.trimEnd_v0 "  foo" = "  foo"
-  Stdlib.String.trimEnd_v0 " 😄foobar😄 " = " 😄foobar😄"
-  Stdlib.String.trimEnd_v0 "  foo bar  " = "  foo bar"
-  Stdlib.String.trimEnd_v0 "foo  " = "foo"
-  Stdlib.String.trimEnd_v0 "foo" = "foo"
-  Stdlib.String.trimEnd_v0 " \xe2\x80\x83foo\xe2\x80\x83bar\xe2\x80\x83 " = " \xe2\x80\x83foo\xe2\x80\x83bar\xe2\x80\x83"
-  Stdlib.String.trimEnd_v0 " \xf0\x9f\x98\x84foobar\xf0\x9f\x98\x84 " = " \xf0\x9f\x98\x84foobar\xf0\x9f\x98\x84"
-  Stdlib.String.trimEnd_v0 "     żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿   " = "     żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿"
-  Stdlib.String.trimEnd_v0 "  Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇  " = "  Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
-  Stdlib.String.trimEnd_v0 "       ﷽﷽  " = "       ﷽﷽"
-  Stdlib.String.trimEnd_v0 " 🧟‍♀️🧟‍♂️ " = " 🧟‍♀️🧟‍♂️"
-  Stdlib.String.trimEnd_v0 " 👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷     " = " 👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷"
-  Stdlib.String.trimEnd_v0 "          żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿  " = "          żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿"
-  Stdlib.String.trimEnd_v0 "🇺🇸🇷🇺🇸 🇦🇫🇦🇲🇸" = "🇺🇸🇷🇺🇸 🇦🇫🇦🇲🇸"
+  Stdlib.String.trimEnd "      " = ""
+  Stdlib.String.trimEnd "" = ""
+  Stdlib.String.trimEnd "  foo  " = "  foo"
+  Stdlib.String.trimEnd "  foo bar  " = "  foo bar"
+  Stdlib.String.trimEnd "  foo" = "  foo"
+  Stdlib.String.trimEnd " 😄foobar😄 " = " 😄foobar😄"
+  Stdlib.String.trimEnd "  foo bar  " = "  foo bar"
+  Stdlib.String.trimEnd "foo  " = "foo"
+  Stdlib.String.trimEnd "foo" = "foo"
+  Stdlib.String.trimEnd " \xe2\x80\x83foo\xe2\x80\x83bar\xe2\x80\x83 " = " \xe2\x80\x83foo\xe2\x80\x83bar\xe2\x80\x83"
+  Stdlib.String.trimEnd " \xf0\x9f\x98\x84foobar\xf0\x9f\x98\x84 " = " \xf0\x9f\x98\x84foobar\xf0\x9f\x98\x84"
+  Stdlib.String.trimEnd "     żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿   " = "     żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿"
+  Stdlib.String.trimEnd "  Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇  " = "  Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
+  Stdlib.String.trimEnd "       ﷽﷽  " = "       ﷽﷽"
+  Stdlib.String.trimEnd " 🧟‍♀️🧟‍♂️ " = " 🧟‍♀️🧟‍♂️"
+  Stdlib.String.trimEnd " 👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷     " = " 👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷"
+  Stdlib.String.trimEnd "          żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿  " = "          żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿"
+  Stdlib.String.trimEnd "🇺🇸🇷🇺🇸 🇦🇫🇦🇲🇸" = "🇺🇸🇷🇺🇸 🇦🇫🇦🇲🇸"
 
 
 module TrimStart =
-  Stdlib.String.trimStart_v0 " \xe2\x80\x83foo\xe2\x80\x83bar\xe2\x80\x83 " = "\xe2\x80\x83foo\xe2\x80\x83bar\xe2\x80\x83 "
-  Stdlib.String.trimStart_v0 " \xf0\x9f\x98\x84foobar\xf0\x9f\x98\x84 " = "\xf0\x9f\x98\x84foobar\xf0\x9f\x98\x84 "
-  Stdlib.String.trimStart_v0 "      " = ""
-  Stdlib.String.trimStart_v0 "" = ""
-  Stdlib.String.trimStart_v0 "  foo  " = "foo  "
-  Stdlib.String.trimStart_v0 "  foo bar  " = "foo bar  "
-  Stdlib.String.trimStart_v0 "  foo" = "foo"
-  Stdlib.String.trimStart_v0 " 😄foobar😄 " = "😄foobar😄 "
-  Stdlib.String.trimStart_v0 "  foo bar  " = "foo bar  "
-  Stdlib.String.trimStart_v0 "foo  " = "foo  "
-  Stdlib.String.trimStart_v0 "foo" = "foo"
-  Stdlib.String.trimStart_v0 "     żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿   " = "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿   "
-  Stdlib.String.trimStart_v0 "  Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇  " = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇  "
-  Stdlib.String.trimStart_v0 "       ﷽﷽  " = "﷽﷽  "
-  Stdlib.String.trimStart_v0 " 🧟‍♀️🧟‍♂️ " = "🧟‍♀️🧟‍♂️ "
-  Stdlib.String.trimStart_v0 " 👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷     " = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷     "
-  Stdlib.String.trimStart_v0 "          żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿  " = "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿  "
+  Stdlib.String.trimStart " \xe2\x80\x83foo\xe2\x80\x83bar\xe2\x80\x83 " = "\xe2\x80\x83foo\xe2\x80\x83bar\xe2\x80\x83 "
+  Stdlib.String.trimStart " \xf0\x9f\x98\x84foobar\xf0\x9f\x98\x84 " = "\xf0\x9f\x98\x84foobar\xf0\x9f\x98\x84 "
+  Stdlib.String.trimStart "      " = ""
+  Stdlib.String.trimStart "" = ""
+  Stdlib.String.trimStart "  foo  " = "foo  "
+  Stdlib.String.trimStart "  foo bar  " = "foo bar  "
+  Stdlib.String.trimStart "  foo" = "foo"
+  Stdlib.String.trimStart " 😄foobar😄 " = "😄foobar😄 "
+  Stdlib.String.trimStart "  foo bar  " = "foo bar  "
+  Stdlib.String.trimStart "foo  " = "foo  "
+  Stdlib.String.trimStart "foo" = "foo"
+  Stdlib.String.trimStart "     żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿   " = "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿   "
+  Stdlib.String.trimStart "  Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇  " = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇  "
+  Stdlib.String.trimStart "       ﷽﷽  " = "﷽﷽  "
+  Stdlib.String.trimStart " 🧟‍♀️🧟‍♂️ " = "🧟‍♀️🧟‍♂️ "
+  Stdlib.String.trimStart " 👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷     " = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷     "
+  Stdlib.String.trimStart "          żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿  " = "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿  "
 
 
 module Trim =
-  Stdlib.String.trim_v0 "      " = ""
-  Stdlib.String.trim_v0 "" = ""
-  Stdlib.String.trim_v0 "  foo  " = "foo" // String trims both leading + trailing spaces
-  Stdlib.String.trim_v0 "  foo bar  " = "foo bar" // String trims both leading + trailing spaces, leaving inner untouched
-  Stdlib.String.trim_v0 "  foo" = "foo" // String trims leading spaces
-  Stdlib.String.trim_v0 " 😄foobar😄 " = "😄foobar😄" // String trims both leading + trailing spaces, preserving emoji
-  Stdlib.String.trim_v0 "  foo bar " = "foo bar" // String trims both leading + trailing spaces, leaving inner untouched w/ unicode spaces
-  Stdlib.String.trim_v0 "foo  " = "foo" // String trims trailing spaces
-  Stdlib.String.trim_v0 "foo" = "foo" // String trim noops
-  Stdlib.String.trim_v0 "     żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿   " = "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿"
-  Stdlib.String.trim_v0 "  Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇  " = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
-  Stdlib.String.trim_v0 "       ﷽﷽" = "﷽﷽"
-  Stdlib.String.trim_v0 " 🧟‍♀️🧟‍♂️ " = "🧟‍♀️🧟‍♂️"
-  Stdlib.String.trim_v0 " 👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷     " = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷"
-  Stdlib.String.trim_v0 "          żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" = "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿"
-  Stdlib.String.trim_v0 " \xe2\x80\x83foo\xe2\x80\x83bar\xe2\x80\x83 " = "\xe2\x80\x83foo\xe2\x80\x83bar\xe2\x80\x83"
-  Stdlib.String.trim_v0 " \xf0\x9f\x98\x84foobar\xf0\x9f\x98\x84 " = "\xf0\x9f\x98\x84foobar\xf0\x9f\x98\x84"
-  Stdlib.String.trim_v0 "쉆ꥨ逴皪巌䖑ⱝዓ淋" = "쉆ꥨ逴皪巌䖑ⱝዓ淋"
+  Stdlib.String.trim "      " = ""
+  Stdlib.String.trim "" = ""
+  Stdlib.String.trim "  foo  " = "foo" // String trims both leading + trailing spaces
+  Stdlib.String.trim "  foo bar  " = "foo bar" // String trims both leading + trailing spaces, leaving inner untouched
+  Stdlib.String.trim "  foo" = "foo" // String trims leading spaces
+  Stdlib.String.trim " 😄foobar😄 " = "😄foobar😄" // String trims both leading + trailing spaces, preserving emoji
+  Stdlib.String.trim "  foo bar " = "foo bar" // String trims both leading + trailing spaces, leaving inner untouched w/ unicode spaces
+  Stdlib.String.trim "foo  " = "foo" // String trims trailing spaces
+  Stdlib.String.trim "foo" = "foo" // String trim noops
+  Stdlib.String.trim "     żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿   " = "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿"
+  Stdlib.String.trim "  Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇  " = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
+  Stdlib.String.trim "       ﷽﷽" = "﷽﷽"
+  Stdlib.String.trim " 🧟‍♀️🧟‍♂️ " = "🧟‍♀️🧟‍♂️"
+  Stdlib.String.trim " 👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷     " = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷"
+  Stdlib.String.trim "          żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" = "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿"
+  Stdlib.String.trim " \xe2\x80\x83foo\xe2\x80\x83bar\xe2\x80\x83 " = "\xe2\x80\x83foo\xe2\x80\x83bar\xe2\x80\x83"
+  Stdlib.String.trim " \xf0\x9f\x98\x84foobar\xf0\x9f\x98\x84 " = "\xf0\x9f\x98\x84foobar\xf0\x9f\x98\x84"
+  Stdlib.String.trim "쉆ꥨ逴皪巌䖑ⱝዓ淋" = "쉆ꥨ逴皪巌䖑ⱝዓ淋"
 
 
 module Reverse =
-  Stdlib.String.reverse_v0 "abcde" = "edcba"
-  Stdlib.String.reverse_v0 "0abcde" = "edcba0"
-  Stdlib.String.reverse_v0 "a" = "a"
-  Stdlib.String.reverse_v0 "" = ""
-  Stdlib.String.reverse_v0 "ábc" = "cbá"
-  Stdlib.String.reverse_v0 "🎁🧸Ǆʠ123" = "321ʠǄ🧸🎁"
-  Stdlib.String.reverse_v0 "😄foobar👽" = "👽raboof😄"
-  Stdlib.String.reverse_v0 "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" = "✋🏿✋🏻✋🧑🏻‍🍼🧑🏽‍🦰włóż"
-  Stdlib.String.reverse_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" = "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽"
-  Stdlib.String.reverse_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" = "👱🏿👱🏾👱🏽👱🏼👱🏻👱"
-  Stdlib.String.reverse_v0 "🧟‍♀️🧟‍♂️" = "🧟‍♂️🧟‍♀️"
-  Stdlib.String.reverse_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" = "🇵🇷🏳️‍⚧️‍️👩‍👩‍👧‍👦👨‍❤️‍💋‍👨"
-  Stdlib.String.reverse_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" = "o̙̔ͮ̇͐̇ǧ̗͚̚lͮ̒ͫä͖̭̈̇Z̤͔ͧ̑̓"
+  Stdlib.String.reverse "abcde" = "edcba"
+  Stdlib.String.reverse "0abcde" = "edcba0"
+  Stdlib.String.reverse "a" = "a"
+  Stdlib.String.reverse "" = ""
+  Stdlib.String.reverse "ábc" = "cbá"
+  Stdlib.String.reverse "🎁🧸Ǆʠ123" = "321ʠǄ🧸🎁"
+  Stdlib.String.reverse "😄foobar👽" = "👽raboof😄"
+  Stdlib.String.reverse "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" = "✋🏿✋🏻✋🧑🏻‍🍼🧑🏽‍🦰włóż"
+  Stdlib.String.reverse "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" = "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽"
+  Stdlib.String.reverse "👱👱🏻👱🏼👱🏽👱🏾👱🏿" = "👱🏿👱🏾👱🏽👱🏼👱🏻👱"
+  Stdlib.String.reverse "🧟‍♀️🧟‍♂️" = "🧟‍♂️🧟‍♀️"
+  Stdlib.String.reverse "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" = "🇵🇷🏳️‍⚧️‍️👩‍👩‍👧‍👦👨‍❤️‍💋‍👨"
+  Stdlib.String.reverse "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" = "o̙̔ͮ̇͐̇ǧ̗͚̚lͮ̒ͫä͖̭̈̇Z̤͔ͧ̑̓"
 
 
 module DropFirst =
-  Stdlib.String.dropFirst_v0 "abcd" -3I = "abcd"
-  Stdlib.String.dropFirst_v0 "abcd" 0I = "abcd"
-  Stdlib.String.dropFirst_v0 "abcd" 3I = "d"
-  Stdlib.String.dropFirst_v0 "" 3I = ""
-  Stdlib.String.dropFirst_v0 "abcd" 3I = "d"
-  Stdlib.String.dropFirst_v0 "🍏🍒🍒" 1I = "🍒🍒"
-  Stdlib.String.dropFirst_v0 "🍏🍒🍍" 2I = "🍍"
-  Stdlib.String.dropFirst_v0 "🍏a🍒b🍍c" 2I = "🍒b🍍c"
-  Stdlib.String.dropFirst_v0 "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" 5I = "🧑🏻‍🍼✋✋🏻✋🏿"
-  Stdlib.String.dropFirst_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 1I = "ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
-  Stdlib.String.dropFirst_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 2I = "lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
-  Stdlib.String.dropFirst_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 3I = "ǧ̗͚̚o̙̔ͮ̇͐̇"
-  Stdlib.String.dropFirst_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" 1I = "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽"
-  Stdlib.String.dropFirst_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" 1I = "👱🏻👱🏼👱🏽👱🏾👱🏿"
-  Stdlib.String.dropFirst_v0 "🧟‍♀️🧟‍♂️" 20I = ""
-  Stdlib.String.dropFirst_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" 3I = "🇵🇷"
+  Stdlib.String.dropFirst "abcd" -3 = "abcd"
+  Stdlib.String.dropFirst "abcd" 0 = "abcd"
+  Stdlib.String.dropFirst "abcd" 3 = "d"
+  Stdlib.String.dropFirst "" 3 = ""
+  Stdlib.String.dropFirst "abcd" 3 = "d"
+  Stdlib.String.dropFirst "🍏🍒🍒" 1 = "🍒🍒"
+  Stdlib.String.dropFirst "🍏🍒🍍" 2 = "🍍"
+  Stdlib.String.dropFirst "🍏a🍒b🍍c" 2 = "🍒b🍍c"
+  Stdlib.String.dropFirst "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" 5 = "🧑🏻‍🍼✋✋🏻✋🏿"
+  Stdlib.String.dropFirst "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 1 = "ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
+  Stdlib.String.dropFirst "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 2 = "lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
+  Stdlib.String.dropFirst "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 3 = "ǧ̗͚̚o̙̔ͮ̇͐̇"
+  Stdlib.String.dropFirst "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" 1 = "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽"
+  Stdlib.String.dropFirst "👱👱🏻👱🏼👱🏽👱🏾👱🏿" 1 = "👱🏻👱🏼👱🏽👱🏾👱🏿"
+  Stdlib.String.dropFirst "🧟‍♀️🧟‍♂️" 20 = ""
+  Stdlib.String.dropFirst "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" 3 = "🇵🇷"
 
 
 module DropLast =
-  Stdlib.String.dropLast_v0 "abcd" -3I = "abcd"
-  Stdlib.String.dropLast_v0 "abcd" 0I = "abcd"
-  Stdlib.String.dropLast_v0 "abcd" 3I = "a"
-  Stdlib.String.dropLast_v0 "" 3I = ""
-  Stdlib.String.dropLast_v0 "🍏🍒🍒" 1I = "🍏🍒"
-  Stdlib.String.dropLast_v0 "🍏🍒🍍" 2I = "🍏"
-  Stdlib.String.dropLast_v0 "🍏a🍒b🍍c" 2I = "🍏a🍒b"
-  Stdlib.String.dropLast_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 2I = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫ"
-  Stdlib.String.dropLast_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" 10I = "﷽﷽﷽﷽﷽﷽"
-  Stdlib.String.dropLast_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" 3I = "👱👱🏻👱🏼"
-  Stdlib.String.dropLast_v0 "🧟‍♀️🧟‍♂️" 20I = ""
-  Stdlib.String.dropLast_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" 2I = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦"
-  Stdlib.String.dropLast_v0 "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" 4I = "żółw🧑🏽‍🦰"
+  Stdlib.String.dropLast "abcd" -3 = "abcd"
+  Stdlib.String.dropLast "abcd" 0 = "abcd"
+  Stdlib.String.dropLast "abcd" 3 = "a"
+  Stdlib.String.dropLast "" 3 = ""
+  Stdlib.String.dropLast "🍏🍒🍒" 1 = "🍏🍒"
+  Stdlib.String.dropLast "🍏🍒🍍" 2 = "🍏"
+  Stdlib.String.dropLast "🍏a🍒b🍍c" 2 = "🍏a🍒b"
+  Stdlib.String.dropLast "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 2 = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫ"
+  Stdlib.String.dropLast "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" 10 = "﷽﷽﷽﷽﷽﷽"
+  Stdlib.String.dropLast "👱👱🏻👱🏼👱🏽👱🏾👱🏿" 3 = "👱👱🏻👱🏼"
+  Stdlib.String.dropLast "🧟‍♀️🧟‍♂️" 20 = ""
+  Stdlib.String.dropLast "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" 2 = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦"
+  Stdlib.String.dropLast "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" 4 = "żółw🧑🏽‍🦰"
 
 
 module Last =
-  Stdlib.String.last_v0 "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" 4I = "🧑🏻‍🍼✋✋🏻✋🏿"
-  Stdlib.String.last_v0 "abcd" -3I = ""
-  Stdlib.String.last_v0 "abcd" 0I = ""
-  Stdlib.String.last_v0 "" 7I = ""
-  Stdlib.String.last_v0 "abcd" 1I = "d"
-  Stdlib.String.last_v0 "abcd" 2I = "cd"
-  Stdlib.String.last_v0 "abcd" 3I = "bcd"
-  Stdlib.String.last_v0 "🍍🍍🍏" 1I = "🍏"
-  Stdlib.String.last_v0 "🍊🍍🍏" 2I = "🍍🍏"
-  Stdlib.String.last_v0 "🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿🧑🏻‍🍼" 1I = "🧑🏻‍🍼"
-  Stdlib.String.last_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 2I = "ǧ̗͚̚o̙̔ͮ̇͐̇"
-  Stdlib.String.last_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" 2I = "﷽﷽"
-  Stdlib.String.last_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" 3I = "👱🏽👱🏾👱🏿"
-  Stdlib.String.last_v0 "🧟‍♀️🧟‍♂️" 1I = "🧟‍♂️"
-  Stdlib.String.last_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" 1I = "🇵🇷"
+  Stdlib.String.last "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" 4 = "🧑🏻‍🍼✋✋🏻✋🏿"
+  Stdlib.String.last "abcd" -3 = ""
+  Stdlib.String.last "abcd" 0 = ""
+  Stdlib.String.last "" 7 = ""
+  Stdlib.String.last "abcd" 1 = "d"
+  Stdlib.String.last "abcd" 2 = "cd"
+  Stdlib.String.last "abcd" 3 = "bcd"
+  Stdlib.String.last "🍍🍍🍏" 1 = "🍏"
+  Stdlib.String.last "🍊🍍🍏" 2 = "🍍🍏"
+  Stdlib.String.last "🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿🧑🏻‍🍼" 1 = "🧑🏻‍🍼"
+  Stdlib.String.last "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 2 = "ǧ̗͚̚o̙̔ͮ̇͐̇"
+  Stdlib.String.last "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" 2 = "﷽﷽"
+  Stdlib.String.last "👱👱🏻👱🏼👱🏽👱🏾👱🏿" 3 = "👱🏽👱🏾👱🏿"
+  Stdlib.String.last "🧟‍♀️🧟‍♂️" 1 = "🧟‍♂️"
+  Stdlib.String.last "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" 1 = "🇵🇷"
 
 
 module Contains =
-  Stdlib.String.contains_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "2223" = false
-  Stdlib.String.contains_v0 "👱👱🏻👱🏼👱🏽👱🏾" "👱🏿" = false
-  Stdlib.String.contains_v0 "🧟‍♀️🧟‍♂️" "🧟‍♂️" = true
-  Stdlib.String.contains_v0 "🧟‍♀️🧟‍♂️" "🧟‍♂️🧟‍♂️" = false
-  Stdlib.String.contains_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️🇵🇷" "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦" = true
-  Stdlib.String.contains_v0 "اختبار" "اختبار" = true
-  Stdlib.String.contains_v0 "" "" = true
-  Stdlib.String.contains_v0 "a" "" = true
-  Stdlib.String.contains_v0 "" "a" = false
+  Stdlib.String.contains "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "2223" = false
+  Stdlib.String.contains "👱👱🏻👱🏼👱🏽👱🏾" "👱🏿" = false
+  Stdlib.String.contains "🧟‍♀️🧟‍♂️" "🧟‍♂️" = true
+  Stdlib.String.contains "🧟‍♀️🧟‍♂️" "🧟‍♂️🧟‍♂️" = false
+  Stdlib.String.contains "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️🇵🇷" "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦" = true
+  Stdlib.String.contains "اختبار" "اختبار" = true
+  Stdlib.String.contains "" "" = true
+  Stdlib.String.contains "a" "" = true
+  Stdlib.String.contains "" "a" = false
 
 
 module Slice =
-  Stdlib.String.slice_v0 "abcd" -2I 4I = "cd"
-  Stdlib.String.slice_v0 "abcd" -5I -6I = ""
-  Stdlib.String.slice_v0 "abcd" -5I 1I = "a"
-  Stdlib.String.slice_v0 "abcd" 0I -1I = "abc"
-  Stdlib.String.slice_v0 "abcd" 2I 3I = "c"
-  Stdlib.String.slice_v0 "abcd" 2I 6I = "cd"
-  Stdlib.String.slice_v0 "abcd" 3I 2I = ""
-  Stdlib.String.slice_v0 "abcd" 5I 6I = ""
-  Stdlib.String.slice_v0 "🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" 2I 10I = "✋✋🏻✋🏿"
-  Stdlib.String.slice_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 1I 3I = "ä͖̭̈̇lͮ̒ͫ"
-  Stdlib.String.slice_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" 2I 6I = "﷽﷽﷽﷽"
-  Stdlib.String.slice_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" 2I 6I = "👱🏼👱🏽👱🏾👱🏿"
-  Stdlib.String.slice_v0 "🧟‍♀️🧟‍♂️" 2I 4I = ""
-  Stdlib.String.slice_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" 2I 10I = "🏳️‍⚧️‍️🇵🇷"
-  Stdlib.String.slice_v0 "abc" 0I 4503599627370498I = "abc"
+  Stdlib.String.slice "abcd" -2 4 = "cd"
+  Stdlib.String.slice "abcd" -5 -6 = ""
+  Stdlib.String.slice "abcd" -5 1 = "a"
+  Stdlib.String.slice "abcd" 0 -1 = "abc"
+  Stdlib.String.slice "abcd" 2 3 = "c"
+  Stdlib.String.slice "abcd" 2 6 = "cd"
+  Stdlib.String.slice "abcd" 3 2 = ""
+  Stdlib.String.slice "abcd" 5 6 = ""
+  Stdlib.String.slice "🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" 2 10 = "✋✋🏻✋🏿"
+  Stdlib.String.slice "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 1 3 = "ä͖̭̈̇lͮ̒ͫ"
+  Stdlib.String.slice "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" 2 6 = "﷽﷽﷽﷽"
+  Stdlib.String.slice "👱👱🏻👱🏼👱🏽👱🏾👱🏿" 2 6 = "👱🏼👱🏽👱🏾👱🏿"
+  Stdlib.String.slice "🧟‍♀️🧟‍♂️" 2 4 = ""
+  Stdlib.String.slice "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" 2 10 = "🏳️‍⚧️‍️🇵🇷"
+  Stdlib.String.slice "abc" 0 4503599627370498 = "abc"
 
 
 module First =
-  Stdlib.String.first_v0 "abcd" -3I = ""
-  Stdlib.String.first_v0 "abcd" 0I = ""
-  Stdlib.String.first_v0 "abcd" 1I = "a"
-  Stdlib.String.first_v0 "abcd" 2I = "ab"
-  Stdlib.String.first_v0 "abcd" 3I = "abc"
-  Stdlib.String.first_v0 "abcd" 3000000000000000I = "abcd"
-  Stdlib.String.first_v0 "" 7I = ""
-  Stdlib.String.first_v0 "🍊🍍🍏" 1I = "🍊"
-  Stdlib.String.first_v0 "🍊🍍🍏" 2I = "🍊🍍"
-  Stdlib.String.first_v0 "🍊🍍🍏" 3I = "🍊🍍🍏"
-  Stdlib.String.first_v0 "🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" 1I = "🧑🏽‍🦰"
-  Stdlib.String.first_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 10I = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
-  Stdlib.String.first_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 2I = "Z̤͔ͧ̑̓ä͖̭̈̇"
-  Stdlib.String.first_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 3I = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫ"
-  Stdlib.String.first_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 4I = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚"
-  Stdlib.String.first_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" 1I = "﷽"
-  Stdlib.String.first_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" 2I = "👱👱🏻"
-  Stdlib.String.first_v0 "🧟‍♀️🧟‍♂️" 1I = "🧟‍♀️"
-  Stdlib.String.first_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" 3I = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️"
+  Stdlib.String.first "abcd" -3 = ""
+  Stdlib.String.first "abcd" 0 = ""
+  Stdlib.String.first "abcd" 1 = "a"
+  Stdlib.String.first "abcd" 2 = "ab"
+  Stdlib.String.first "abcd" 3 = "abc"
+  Stdlib.String.first "abcd" 3000000000000000 = "abcd"
+  Stdlib.String.first "" 7 = ""
+  Stdlib.String.first "🍊🍍🍏" 1 = "🍊"
+  Stdlib.String.first "🍊🍍🍏" 2 = "🍊🍍"
+  Stdlib.String.first "🍊🍍🍏" 3 = "🍊🍍🍏"
+  Stdlib.String.first "🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" 1 = "🧑🏽‍🦰"
+  Stdlib.String.first "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 10 = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
+  Stdlib.String.first "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 2 = "Z̤͔ͧ̑̓ä͖̭̈̇"
+  Stdlib.String.first "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 3 = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫ"
+  Stdlib.String.first "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 4 = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚"
+  Stdlib.String.first "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" 1 = "﷽"
+  Stdlib.String.first "👱👱🏻👱🏼👱🏽👱🏾👱🏿" 2 = "👱👱🏻"
+  Stdlib.String.first "🧟‍♀️🧟‍♂️" 1 = "🧟‍♀️"
+  Stdlib.String.first "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" 3 = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️"
 
 
 module PadStart =
-  Stdlib.String.padStart_v0 "123" "0" 3I = Stdlib.Result.Result.Ok "123"
-  Stdlib.String.padStart_v0 "123" "0" -3I = Stdlib.Result.Result.Ok "123"
-  Stdlib.String.padStart_v0 "123" "0" 6I = Stdlib.Result.Result.Ok "000123"
-  Stdlib.String.padStart_v0 "" "0" 0I = Stdlib.Result.Result.Ok ""
-  Stdlib.String.padStart_v0 "123🍊🍊" "0" 3I = Stdlib.Result.Result.Ok "123🍊🍊"
-  Stdlib.String.padStart_v0 "🍍🍍🍊🍊" "0" 7I = Stdlib.Result.Result.Ok "000🍍🍍🍊🍊"
-  Stdlib.String.padStart_v0 "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "0" 10I = Stdlib.Result.Result.Ok "0żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿"
-  Stdlib.String.padStart_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" "0" 10I = Stdlib.Result.Result.Ok "00000Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
-  Stdlib.String.padStart_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "0" 20I = Stdlib.Result.Result.Ok "0000﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽"
-  Stdlib.String.padStart_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "0" 10I = Stdlib.Result.Result.Ok "0000👱👱🏻👱🏼👱🏽👱🏾👱🏿"
-  Stdlib.String.padStart_v0 "🧟‍♀️🧟‍♂️" "0" 5I = Stdlib.Result.Result.Ok "000🧟‍♀️🧟‍♂️"
-  Stdlib.String.padStart_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️🇵🇷" "0" 10I = Stdlib.Result.Result.Ok "000000👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️🇵🇷"
-  Stdlib.String.padStart_v0 "鷝" "觌഻" 0I = Stdlib.Result.Result.Ok "鷝"
+  Stdlib.String.padStart "123" "0" 3 = Stdlib.Result.Result.Ok "123"
+  Stdlib.String.padStart "123" "0" -3 = Stdlib.Result.Result.Ok "123"
+  Stdlib.String.padStart "123" "0" 6 = Stdlib.Result.Result.Ok "000123"
+  Stdlib.String.padStart "" "0" 0 = Stdlib.Result.Result.Ok ""
+  Stdlib.String.padStart "123🍊🍊" "0" 3 = Stdlib.Result.Result.Ok "123🍊🍊"
+  Stdlib.String.padStart "🍍🍍🍊🍊" "0" 7 = Stdlib.Result.Result.Ok "000🍍🍍🍊🍊"
+  Stdlib.String.padStart "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "0" 10 = Stdlib.Result.Result.Ok "0żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿"
+  Stdlib.String.padStart "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" "0" 10 = Stdlib.Result.Result.Ok "00000Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇"
+  Stdlib.String.padStart "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "0" 20 = Stdlib.Result.Result.Ok "0000﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽"
+  Stdlib.String.padStart "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "0" 10 = Stdlib.Result.Result.Ok "0000👱👱🏻👱🏼👱🏽👱🏾👱🏿"
+  Stdlib.String.padStart "🧟‍♀️🧟‍♂️" "0" 5 = Stdlib.Result.Result.Ok "000🧟‍♀️🧟‍♂️"
+  Stdlib.String.padStart "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️🇵🇷" "0" 10 = Stdlib.Result.Result.Ok "000000👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️🇵🇷"
+  Stdlib.String.padStart "鷝" "觌഻" 0 = Stdlib.Result.Result.Ok "鷝"
 
-  Stdlib.String.padStart_v0 "123" "_-" 4I = Stdlib.Result.Result.Error "Expected `padWith` to be 1 character long, but it was `\"_-\"`"
-  Stdlib.String.padStart_v0 "123" "" 10I = Stdlib.Result.Result.Error "Expected `padWith` to be 1 character long, but it was `\"\"`"
+  Stdlib.String.padStart "123" "_-" 4 = Stdlib.Result.Result.Error "Expected `padWith` to be 1 character long, but it was `\"_-\"`"
+  Stdlib.String.padStart "123" "" 10 = Stdlib.Result.Result.Error "Expected `padWith` to be 1 character long, but it was `\"\"`"
 
 
 module PadEnd =
-  Stdlib.String.padEnd_v0 "" "0" 0I = Stdlib.Result.Result.Ok ""
-  Stdlib.String.padEnd_v0 "123" "0" 3I = Stdlib.Result.Result.Ok "123"
-  Stdlib.String.padEnd_v0 "123" "0" 6I = Stdlib.Result.Result.Ok "123000"
-  Stdlib.String.padEnd_v0 "123" "0" -3I = Stdlib.Result.Result.Ok "123"
-  Stdlib.String.padEnd_v0 "123🍊🍊" "0" 8I = Stdlib.Result.Result.Ok "123🍊🍊000"
-  Stdlib.String.padEnd_v0 "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "0" 10I = Stdlib.Result.Result.Ok "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿0"
-  Stdlib.String.padEnd_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" "0" 10I = Stdlib.Result.Result.Ok "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇00000"
-  Stdlib.String.padEnd_v0 "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "0" 20I = Stdlib.Result.Result.Ok "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽0000"
-  Stdlib.String.padEnd_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "0" 10I = Stdlib.Result.Result.Ok "👱👱🏻👱🏼👱🏽👱🏾👱🏿0000"
-  Stdlib.String.padEnd_v0 "🧟‍♀️🧟‍♂️" "0" 5I = Stdlib.Result.Result.Ok "🧟‍♀️🧟‍♂️000"
-  Stdlib.String.padEnd_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️🇵🇷" "0" 10I = Stdlib.Result.Result.Ok "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️🇵🇷000000"
-  Stdlib.String.padEnd_v0 "鷝" "觌഻" 0I = Stdlib.Result.Result.Ok "鷝"
+  Stdlib.String.padEnd "" "0" 0 = Stdlib.Result.Result.Ok ""
+  Stdlib.String.padEnd "123" "0" 3 = Stdlib.Result.Result.Ok "123"
+  Stdlib.String.padEnd "123" "0" 6 = Stdlib.Result.Result.Ok "123000"
+  Stdlib.String.padEnd "123" "0" -3 = Stdlib.Result.Result.Ok "123"
+  Stdlib.String.padEnd "123🍊🍊" "0" 8 = Stdlib.Result.Result.Ok "123🍊🍊000"
+  Stdlib.String.padEnd "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "0" 10 = Stdlib.Result.Result.Ok "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿0"
+  Stdlib.String.padEnd "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" "0" 10 = Stdlib.Result.Result.Ok "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇00000"
+  Stdlib.String.padEnd "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽" "0" 20 = Stdlib.Result.Result.Ok "﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽﷽0000"
+  Stdlib.String.padEnd "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "0" 10 = Stdlib.Result.Result.Ok "👱👱🏻👱🏼👱🏽👱🏾👱🏿0000"
+  Stdlib.String.padEnd "🧟‍♀️🧟‍♂️" "0" 5 = Stdlib.Result.Result.Ok "🧟‍♀️🧟‍♂️000"
+  Stdlib.String.padEnd "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️🇵🇷" "0" 10 = Stdlib.Result.Result.Ok "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️🇵🇷000000"
+  Stdlib.String.padEnd "鷝" "觌഻" 0 = Stdlib.Result.Result.Ok "鷝"
 
-  Stdlib.String.padEnd_v0 "123" "_-" 3I = Stdlib.Result.Result.Error "Expected `padWith` to be 1 character long, but it was `\"_-\"`"
-  Stdlib.String.padEnd_v0 "123" "" 10I = Stdlib.Result.Result.Error "Expected `padWith` to be 1 character long, but it was `\"\"`"
+  Stdlib.String.padEnd "123" "_-" 3 = Stdlib.Result.Result.Error "Expected `padWith` to be 1 character long, but it was `\"_-\"`"
+  Stdlib.String.padEnd "123" "" 10 = Stdlib.Result.Result.Error "Expected `padWith` to be 1 character long, but it was `\"\"`"
 
 
 module IndexOf =
-  Stdlib.String.indexOf_v0 "hello world" "world" = Stdlib.Option.Option.Some 6I
-  Stdlib.String.indexOf_v0 "hello world" "earth" = Stdlib.Option.Option.None
-  Stdlib.String.indexOf_v0 "" "" = Stdlib.Option.Option.Some 0I
-  Stdlib.String.indexOf_v0 "hello" "" = Stdlib.Option.Option.Some 0I
-  Stdlib.String.indexOf_v0 "" "hello" = Stdlib.Option.Option.None
-  Stdlib.String.indexOf_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "👱🏼👱🏽" = Stdlib.Option.Option.Some 6I
-  Stdlib.String.indexOf_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "👱🏼👱🏿" = Stdlib.Option.Option.None
-  Stdlib.String.indexOf_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "👩‍👩‍👧‍👦" = Stdlib.Option.Option.Some 11I
-  Stdlib.String.indexOf_v0 "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "🧑🏽‍🦰" = Stdlib.Option.Option.Some 4I
-  Stdlib.String.indexOf_v0 "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "👱🏽" = Stdlib.Option.Option.None
-  Stdlib.String.indexOf_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "🧑🏻‍🍼" = Stdlib.Option.Option.None
+  Stdlib.String.indexOf "hello world" "world" = Stdlib.Option.Option.Some 6
+  Stdlib.String.indexOf "hello world" "earth" = Stdlib.Option.Option.None
+  Stdlib.String.indexOf "" "" = Stdlib.Option.Option.Some 0
+  Stdlib.String.indexOf "hello" "" = Stdlib.Option.Option.Some 0
+  Stdlib.String.indexOf "" "hello" = Stdlib.Option.Option.None
+  Stdlib.String.indexOf "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "👱🏼👱🏽" = Stdlib.Option.Option.Some 6
+  Stdlib.String.indexOf "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "👱🏼👱🏿" = Stdlib.Option.Option.None
+  Stdlib.String.indexOf "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "👩‍👩‍👧‍👦" = Stdlib.Option.Option.Some 11
+  Stdlib.String.indexOf "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "🧑🏽‍🦰" = Stdlib.Option.Option.Some 4
+  Stdlib.String.indexOf "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "👱🏽" = Stdlib.Option.Option.None
+  Stdlib.String.indexOf "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "🧑🏻‍🍼" = Stdlib.Option.Option.None
 
 
 module IndexOfEgc =
   // Mirror of the IndexOf module above, but in EGC units. Pair with first /
   // dropFirst / slice / length for correct emoji-safe slicing.
-  Stdlib.String.indexOfEgc "hello world" "world" = Stdlib.Option.Option.Some 6I
+  Stdlib.String.indexOfEgc "hello world" "world" = Stdlib.Option.Option.Some 6
   Stdlib.String.indexOfEgc "hello world" "earth" = Stdlib.Option.Option.None
-  Stdlib.String.indexOfEgc "" "" = Stdlib.Option.Option.Some 0I
-  Stdlib.String.indexOfEgc "hello" "" = Stdlib.Option.Option.Some 0I
+  Stdlib.String.indexOfEgc "" "" = Stdlib.Option.Option.Some 0
+  Stdlib.String.indexOfEgc "hello" "" = Stdlib.Option.Option.Some 0
   Stdlib.String.indexOfEgc "" "hello" = Stdlib.Option.Option.None
 
   // "👱👱🏻" is 2 EGCs, "👨‍❤️‍💋‍👨" is 1 EGC, "żółw" is 4 EGCs.
-  Stdlib.String.indexOfEgc "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "👱🏼👱🏽" = Stdlib.Option.Option.Some 2I
+  Stdlib.String.indexOfEgc "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "👱🏼👱🏽" = Stdlib.Option.Option.Some 2
   Stdlib.String.indexOfEgc "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "👱🏼👱🏿" = Stdlib.Option.Option.None
-  Stdlib.String.indexOfEgc "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "👩‍👩‍👧‍👦" = Stdlib.Option.Option.Some 1I
-  Stdlib.String.indexOfEgc "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "🧑🏽‍🦰" = Stdlib.Option.Option.Some 4I
+  Stdlib.String.indexOfEgc "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷" "👩‍👩‍👧‍👦" = Stdlib.Option.Option.Some 1
+  Stdlib.String.indexOfEgc "żółw🧑🏽‍🦰🧑🏻‍🍼✋✋🏻✋🏿" "🧑🏽‍🦰" = Stdlib.Option.Option.Some 4
 
   // Matches must align to EGC boundaries on both sides. Searching for a partial
   // grapheme inside a full one returns None: 🧑 is not a complete EGC of 🧑🏼‍💻.
   Stdlib.String.indexOfEgc "🧑🏼‍💻" "🧑" = Stdlib.Option.Option.None
   // Standalone 🧑 at EGC index 0 is matchable when it stands on its own.
-  Stdlib.String.indexOfEgc "🧑🧑🏼‍💻" "🧑" = Stdlib.Option.Option.Some 0I
+  Stdlib.String.indexOfEgc "🧑🧑🏼‍💻" "🧑" = Stdlib.Option.Option.Some 0
 
 
 module LastIndexOfEgc =
   // Basic ASCII: last occurrence wins.
-  Stdlib.String.lastIndexOfEgc "hello world hello" "hello" = Stdlib.Option.Option.Some 12I
+  Stdlib.String.lastIndexOfEgc "hello world hello" "hello" = Stdlib.Option.Option.Some 12
   Stdlib.String.lastIndexOfEgc "hello world" "earth" = Stdlib.Option.Option.None
   Stdlib.String.lastIndexOfEgc "" "hello" = Stdlib.Option.Option.None
 
   // Empty-string searches return string length in EGCs.
-  Stdlib.String.lastIndexOfEgc "" "" = Stdlib.Option.Option.Some 0I
-  Stdlib.String.lastIndexOfEgc "hello" "" = Stdlib.Option.Option.Some 5I
+  Stdlib.String.lastIndexOfEgc "" "" = Stdlib.Option.Option.Some 0
+  Stdlib.String.lastIndexOfEgc "hello" "" = Stdlib.Option.Option.Some 5
   // "👱👱🏻" is 2 EGCs even though it's 4 UTF-16 code units.
-  Stdlib.String.lastIndexOfEgc "👱👱🏻" "" = Stdlib.Option.Option.Some 2I
+  Stdlib.String.lastIndexOfEgc "👱👱🏻" "" = Stdlib.Option.Option.Some 2
 
   // EGC offsets across multi-codepoint graphemes.
-  Stdlib.String.lastIndexOfEgc "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "👱🏼" = Stdlib.Option.Option.Some 2I
-  Stdlib.String.lastIndexOfEgc "a🧑🏼‍💻b🧑🏼‍💻c" "🧑🏼‍💻" = Stdlib.Option.Option.Some 3I
-  Stdlib.String.lastIndexOfEgc "żółw🧑🏽‍🦰🧑🏻‍🍼" "🧑🏻‍🍼" = Stdlib.Option.Option.Some 5I
+  Stdlib.String.lastIndexOfEgc "👱👱🏻👱🏼👱🏽👱🏾👱🏿" "👱🏼" = Stdlib.Option.Option.Some 2
+  Stdlib.String.lastIndexOfEgc "a🧑🏼‍💻b🧑🏼‍💻c" "🧑🏼‍💻" = Stdlib.Option.Option.Some 3
+  Stdlib.String.lastIndexOfEgc "żółw🧑🏽‍🦰🧑🏻‍🍼" "🧑🏻‍🍼" = Stdlib.Option.Option.Some 5
 
   // Partial-grapheme search returns None on both sides (start and end must
   // align to EGC boundaries).
   Stdlib.String.lastIndexOfEgc "🧑🏼‍💻🧑🏼‍💻" "🧑" = Stdlib.Option.Option.None
   // Standalone 🧑 at the end is matchable when it stands on its own.
-  Stdlib.String.lastIndexOfEgc "🧑🏼‍💻🧑" "🧑" = Stdlib.Option.Option.Some 1I
+  Stdlib.String.lastIndexOfEgc "🧑🏼‍💻🧑" "🧑" = Stdlib.Option.Option.Some 1
 
 
 module Ellipsis =
-  Stdlib.String.ellipsis_v0 "hello world" 5I = "hello..."
-  Stdlib.String.ellipsis_v0 "hello world" 9I = "hello wor..."
-  Stdlib.String.ellipsis_v0 "hello world" 11I = "hello world"
-  Stdlib.String.ellipsis_v0 "hello world" 12I = "hello world"
-  Stdlib.String.ellipsis_v0 "👱👱🏻👱🏼👱🏽👱🏾👱🏿" 5I = "👱👱🏻👱🏼👱🏽👱🏾..."
-  Stdlib.String.ellipsis_v0 "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 3I = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫ..."
-  Stdlib.String.ellipsis_v0 "👩‍👩‍👧‍👦" 2I = "👩‍👩‍👧‍👦"
+  Stdlib.String.ellipsis "hello world" 5 = "hello..."
+  Stdlib.String.ellipsis "hello world" 9 = "hello wor..."
+  Stdlib.String.ellipsis "hello world" 11 = "hello world"
+  Stdlib.String.ellipsis "hello world" 12 = "hello world"
+  Stdlib.String.ellipsis "👱👱🏻👱🏼👱🏽👱🏾👱🏿" 5 = "👱👱🏻👱🏼👱🏽👱🏾..."
+  Stdlib.String.ellipsis "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫǧ̗͚̚o̙̔ͮ̇͐̇" 3 = "Z̤͔ͧ̑̓ä͖̭̈̇lͮ̒ͫ..."
+  Stdlib.String.ellipsis "👩‍👩‍👧‍👦" 2 = "👩‍👩‍👧‍👦"
 
-  Stdlib.String.ellipsis_v0 "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷✋✋🏻✋🏿" 4I = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷..."
+  Stdlib.String.ellipsis "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷✋✋🏻✋🏿" 4 = "👨‍❤️‍💋‍👨👩‍👩‍👧‍👦🏳️‍⚧️‍️🇵🇷..."
 
 module Head =
   Stdlib.String.head "hello world" = Stdlib.Option.Option.Some 'h'

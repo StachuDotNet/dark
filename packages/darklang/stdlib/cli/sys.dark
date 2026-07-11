@@ -42,4 +42,4 @@ let currentPid () : Int =
 
 /// Check if the current user is root (uid 0).
 let isRoot () : Bool =
-  (Builtin.posixGetuid ()) == 0I
+  (Builtin.posixGetuid ()) == 0

@@ -3,8 +3,8 @@ module Darklang.LanguageTools.LspServer.Diagnostics
 
 let gatherAndReportDiagnostics
   (requestUri: String)
-  (parsedText: WrittenTypes.SourceFile.SourceFile)
   (unresolvedNames: List<WrittenTypes.UnresolvedName>)
+  (parseDiagnostics: List<(Parser.Range * String)>)
   : Unit =
   let warningDiagnostics =
     unresolvedNames
@@ -13,14 +13,12 @@ let gatherAndReportDiagnostics
         range
         (PrettyPrinter.ProgramTypes.NameResolutionError.error originalName error))
 
-  let errorDiagnostics =
-    parsedText.unparseableStuff
-    |> Stdlib.List.map (fun unparseable ->
-      createErrorDiagnostic
-        unparseable.source.range
-        "Couldn't parse this part of the file")
+  // precise syntax errors from the parser
+  let syntaxErrorDiagnostics =
+    parseDiagnostics
+    |> Stdlib.List.map (fun (range, message) -> createErrorDiagnostic range message)
 
-  let diagnostics = Stdlib.List.append warningDiagnostics errorDiagnostics
+  let diagnostics = Stdlib.List.append warningDiagnostics syntaxErrorDiagnostics
 
   sendDiagnostic requestUri diagnostics
 

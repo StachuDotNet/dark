@@ -76,7 +76,7 @@ module RuntimeError =
           | Count(i, singular, plural) ->
             let count = Stdlib.Int.toString i
 
-            if i == 1I then
+            if i == 1 then
               let segment = segmentsToString branchId [ singular ]
               $"{count} {segment}"
             else
@@ -110,7 +110,7 @@ module RuntimeError =
           | InlineValue dv ->
             // CLEANUP for strings that are cut off, the closing `"` is missing.
             (dval branchId dv)
-            |> Stdlib.String.ellipsis 10I
+            |> Stdlib.String.ellipsis 10
             |> Stdlib.String.splitOnNewline
             |> Stdlib.String.join ""
           | FullValue dv -> dval branchId dv
@@ -435,7 +435,7 @@ module RuntimeError =
       | FnParameterNotExpectedType(fnName, paramIndex, paramName, expectedType, actualType, actualValue) ->
         [ ES.FunctionName fnName
           ES.String "'s "
-          ES.Ordinal(paramIndex + 1I)
+          ES.Ordinal(paramIndex + 1)
           ES.String " parameter "
           ES.ParamName paramName
           ES.String " expects "
@@ -483,9 +483,9 @@ module RuntimeError =
         [ ES.String "Unsupported type in JSON: "
           ES.TypeReference typ
           ES.String ". Some types are not supported in Json serialization, and cannot be used as arguments to "
-          ES.FunctionName (LanguageTools.RuntimeTypes.FQFnName.FQFnName.Builtin(LanguageTools.RuntimeTypes.FQFnName.Builtin { name = "jsonParse"; version = 0 }))
+          ES.FunctionName (LanguageTools.RuntimeTypes.FQFnName.FQFnName.Builtin(LanguageTools.RuntimeTypes.FQFnName.Builtin { name = "jsonParse"; version = 0l }))
           ES.String " or "
-          ES.FunctionName (LanguageTools.RuntimeTypes.FQFnName.FQFnName.Builtin(LanguageTools.RuntimeTypes.FQFnName.Builtin { name = "jsonSerialize"; version = 0 })) ]
+          ES.FunctionName (LanguageTools.RuntimeTypes.FQFnName.FQFnName.Builtin(LanguageTools.RuntimeTypes.FQFnName.Builtin { name = "jsonSerialize"; version = 0l })) ]
       | CannotSerializeValue dv ->
         [ ES.String "Cannot serialize "
           ES.FullValue dv

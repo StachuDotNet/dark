@@ -8,25 +8,25 @@ type DiffLine =
 /// Helper to safely index into a 2D list
 let tableGet (table: List<List<Int>>) (row: Int) (col: Int) : Int =
   let r = Stdlib.Option.withDefault (Stdlib.List.getAt table row) []
-  Stdlib.Option.withDefault (Stdlib.List.getAt r col) 0I
+  Stdlib.Option.withDefault (Stdlib.List.getAt r col) 0
 
 /// Build the LCS length table
 let buildTable (oldLines: List<String>) (newLines: List<String>) : List<List<Int>> =
   let zeroRow =
     Stdlib.List.map
-      (Stdlib.List.range 0I (Stdlib.List.length oldLines))
-      (fun _i -> 0I)
+      (Stdlib.List.range 0 (Stdlib.List.length oldLines))
+      (fun _i -> 0)
   Stdlib.List.fold newLines [zeroRow] (fun table newLine ->
     let prevRow = Stdlib.Option.withDefault (Stdlib.List.last table) []
     let pairs = Stdlib.List.indexedMap oldLines (fun i oldLine -> (i, oldLine))
     let nextRow =
-      Stdlib.List.fold pairs [0I] (fun row pair ->
+      Stdlib.List.fold pairs [0] (fun row pair ->
         let (i, oldLine) = pair
-        let above = Stdlib.Option.withDefault (Stdlib.List.getAt prevRow (i + 1I)) 0I
-        let diag = Stdlib.Option.withDefault (Stdlib.List.getAt prevRow i) 0I
-        let left = Stdlib.Option.withDefault (Stdlib.List.last row) 0I
+        let above = Stdlib.Option.withDefault (Stdlib.List.getAt prevRow (i + 1)) 0
+        let diag = Stdlib.Option.withDefault (Stdlib.List.getAt prevRow i) 0
+        let left = Stdlib.Option.withDefault (Stdlib.List.last row) 0
         let cell =
-          if oldLine == newLine then diag + 1I
+          if oldLine == newLine then diag + 1
           else if above >= left then above
           else left
         Stdlib.List.append row [cell])
@@ -40,26 +40,26 @@ let trace
   (i: Int)
   (j: Int)
   : List<DiffLine> =
-  if (i == 0I) && (j == 0I) then
+  if (i == 0) && (j == 0) then
     []
-  else if (i > 0I) && (j > 0I) then
-    let o = Stdlib.Option.withDefault (Stdlib.List.getAt oldLines (i - 1I)) ""
-    let n = Stdlib.Option.withDefault (Stdlib.List.getAt newLines (j - 1I)) ""
+  else if (i > 0) && (j > 0) then
+    let o = Stdlib.Option.withDefault (Stdlib.List.getAt oldLines (i - 1)) ""
+    let n = Stdlib.Option.withDefault (Stdlib.List.getAt newLines (j - 1)) ""
     if o == n then
-      Stdlib.List.append (trace oldLines newLines table (i - 1I) (j - 1I)) [DiffLine.Same o]
+      Stdlib.List.append (trace oldLines newLines table (i - 1) (j - 1)) [DiffLine.Same o]
     else
-      let up = tableGet table (j - 1I) i
-      let left = tableGet table j (i - 1I)
+      let up = tableGet table (j - 1) i
+      let left = tableGet table j (i - 1)
       if up >= left then
-        Stdlib.List.append (trace oldLines newLines table i (j - 1I)) [DiffLine.Added n]
+        Stdlib.List.append (trace oldLines newLines table i (j - 1)) [DiffLine.Added n]
       else
-        Stdlib.List.append (trace oldLines newLines table (i - 1I) j) [DiffLine.Removed o]
-  else if j > 0I then
-    let n = Stdlib.Option.withDefault (Stdlib.List.getAt newLines (j - 1I)) ""
-    Stdlib.List.append (trace oldLines newLines table i (j - 1I)) [DiffLine.Added n]
+        Stdlib.List.append (trace oldLines newLines table (i - 1) j) [DiffLine.Removed o]
+  else if j > 0 then
+    let n = Stdlib.Option.withDefault (Stdlib.List.getAt newLines (j - 1)) ""
+    Stdlib.List.append (trace oldLines newLines table i (j - 1)) [DiffLine.Added n]
   else
-    let o = Stdlib.Option.withDefault (Stdlib.List.getAt oldLines (i - 1I)) ""
-    Stdlib.List.append (trace oldLines newLines table (i - 1I) j) [DiffLine.Removed o]
+    let o = Stdlib.Option.withDefault (Stdlib.List.getAt oldLines (i - 1)) ""
+    Stdlib.List.append (trace oldLines newLines table (i - 1) j) [DiffLine.Removed o]
 
 /// Compute a line-based diff between two strings.
 let lines (oldText: String) (newText: String) : List<DiffLine> =

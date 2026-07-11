@@ -31,9 +31,9 @@ let parseRouteSegments (route: String) : List<RouteSegment> =
     if String.isEmpty seg then
       Option.Option.None
     else if String.startsWith seg ":" then
-      Option.Option.Some(RouteSegment.Variable (String.dropFirst seg 1I))
+      Option.Option.Some(RouteSegment.Variable (String.dropFirst seg 1))
     else if String.startsWith seg "*" then
-      Option.Option.Some(RouteSegment.Wildcard (String.dropFirst seg 1I))
+      Option.Option.Some(RouteSegment.Wildcard (String.dropFirst seg 1))
     else
       Option.Option.Some(RouteSegment.Literal seg))
 
@@ -66,7 +66,7 @@ let matchRoute (routePattern: String) (requestPath: String) : RouteMatch =
   let routeLen = List.length routeSegs
   let pathLen = List.length pathSegs
 
-  if (routeLen == 0I) && (pathLen == 0I) then
+  if (routeLen == 0) && (pathLen == 0) then
     RouteMatch { matched = true; vars = [] }
   else if routeLen != pathLen then
     RouteMatch { matched = false; vars = [] }
@@ -189,7 +189,7 @@ let getPathParam (req: Http.Request) (routePattern: String) (paramName: String) 
 
 
 /// Configuration for `serve`. Build defaults with `Config.defaults port`, then override any field with
-/// record-update, e.g. `{ HttpServer.Config.defaults 8080I with logRequests = false }`.
+/// record-update, e.g. `{ HttpServer.Config.defaults 8080 with logRequests = false }`.
 module Config =
   type Config =
     { port: Int
@@ -203,7 +203,7 @@ module Config =
       logRequests: Bool }
 
   /// Default max request body size: 30 MB.
-  let defaultMaxBodyBytes : Int = 31457280I
+  let defaultMaxBodyBytes : Int = 31457280
 
   /// Sensible serve defaults for `port`: 30 MB max body, standard headers, proto canonicalization, logging.
   let defaults (port: Int) : Config =

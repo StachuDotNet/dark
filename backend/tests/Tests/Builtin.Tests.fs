@@ -1,7 +1,6 @@
 module Tests.Builtin
 
-// Misc tests of Builtin (both LibCloud and LibExecution) that could not be
-// tested via LibExecution.tests
+// Misc builtin tests that do not fit in LibExecution.tests.
 
 open Expecto
 open System.IO
@@ -50,25 +49,20 @@ let oldFunctionsAreDeprecated =
 
 // -- Builtin access in package matter --
 //
-// Walks every .dark under packages/ and counts textual references to
+// Walk every .dark under packages/ and count textual references to
 // `Builtin.<name>` (or `Builtin.<name>_v<digits>`) for every registered
 // builtin fn. Anything with >1 textual reference must appear in the
-// hardcoded allowlist below; otherwise the test fails.
+// allowlist below.
 //
-// The intent: a builtin should normally have exactly one wrapper
-// package fn. Multi-use is a smell — usually it means we forgot to
-// route through a wrapper. The allowlist names the cases where
-// multi-use is intentional (helpers called from many CLI commands,
-// reflection fns the LSP/CLI both pull through, etc.).
+// A builtin should normally have one package wrapper. The allowlist names
+// the cases where direct multi-use is intentional.
 //
 // Infix-dispatched builtins (`+`, `==`, etc.) are dispatched through
-// operator syntax, so they show up as 0 textual `Builtin.X` references
-// but are still load-bearing. They go in `infixDispatched`.
+// operator syntax, so they have no textual `Builtin.X` references.
 
 /// Builtins called via infix operators rather than `Builtin.X` syntax.
 /// Source: LibExecution/ProgramTypesToRuntimeTypes.fs InfixFnName.toFnName
-/// for binary ops; LibParser/FSharpToWrittenTypes.fs op_UnaryNegation
-/// for `-x`.
+/// for binary ops; LibParser/Parser.fs lowers unary `-x` to Builtin.negate.
 let private infixDispatched : Set<string> =
   Set.ofList
     [ // Polymorphic numeric operators
@@ -88,35 +82,28 @@ let private infixDispatched : Set<string> =
       "notEquals" ]
 
 
-/// Builtins that are intentionally referenced from more than one
-/// place in `packages/`. Add a comment per group naming why it's
-/// multi-use; if a name shouldn't be here, route the second caller
-/// through a wrapper and remove it. Keep alphabetical.
+/// Builtins intentionally referenced from more than one place in `packages/`.
+/// Add a short comment for each group. Keep alphabetical within each group.
 ///
 /// TODO continue routing direct `Builtin.X` callers through stdlib
-/// wrappers in batches and shrink this list. Phase 0 (delete unused),
-/// Phase 1 (int conversions/ops), Phase 2 (json + blob + string codecs)
-/// landed; remaining batches: Phase 3 CLI/IO surface (`unwrap`, `print*`,
-/// `file*`, `stdinRead*`, `directoryCurrent`, `environmentGet`, `debug`,
-/// `toRepr`, `timeSleep`, `getCurrentExecutablePath`,
-/// `getAllBuiltinFns`); Phase 4 Posix; Phase 5 PM browse + traces;
-/// Phase 6 Streams; Phase 7 misc (`httpServerServe`,
-/// `interpreterStatsReset`, `cliEvaluateExpression`, `dbListAll`,
-/// `depsGetDependents`, `pmScripts*`). For each callsite: either
-/// route via a sibling stdlib wrapper, or document why it must stay
-/// direct (e.g. `stringIndexOf` is direct in `String.contains` because
-/// the `SqlCallback2` SQL-compile path breaks if wrapped in
-/// match-on-Option).
+/// wrappers in batches and shrink this list. Finished: delete unused,
+/// int conversions/ops, json/blob/string codecs. Remaining: CLI/IO,
+/// Posix, package-manager browsing, traces, streams, and misc runtime
+/// entry points. Route each caller through a wrapper unless direct builtin
+/// access is required.
 let private multiUseAllowlist : Set<string> =
   Set.ofList
     [ // `Stdlib.String.contains` and `Stdlib.String.indexOf` both call the
-      // builtin directly. `contains` *must* — the query compiler routes
-      // the builtin via SqlCallback2 → SQLite INSTR; routing through the
-      // Option-returning wrapper breaks SQL queryability and trips
-      // `Stdlib.DB.queryAll` callers (cloud/db.dark line 815+).
+      // builtin directly. `contains` stays direct because the SQL compiler
+      // maps the builtin to SQLite INSTR; the Option-returning wrapper is
+      // not queryable.
       "stringIndexOf"
 
-      // CLI / IO surface — direct calls from many CLI commands.
+      // Structured parse diagnostics used by CLI package creation,
+      // CLI-script parsing, and LSP diagnostics.
+      "parserParseDiagnostics"
+
+      // CLI / IO surface called by many CLI commands.
       "debug"
       "directoryCurrent"
       "directoryList"
@@ -142,7 +129,7 @@ let private multiUseAllowlist : Set<string> =
       "posixReadlink"
       "posixUname"
 
-      // Package manager browsing — used by CLI/LSP/agent.
+      // Package manager browsing used by CLI, LSP, and agent code.
       "dbListAll"
       "depsGetDependents"
       "getAllBuiltinFns"
@@ -160,7 +147,7 @@ let private multiUseAllowlist : Set<string> =
       "pmScriptsUpdate"
       "pmSearch"
 
-      // HTTP server entry — bypassed via `dark serve` wrapper.
+      // HTTP server entry called by the `dark serve` wrapper.
       "httpServerServe"
 
       // Streams (CLI / agent / scripts use them directly).
@@ -172,11 +159,15 @@ let private multiUseAllowlist : Set<string> =
       "streamToList"
       "streamUnfold"
 
-      // Trace surface — CLI commands + LSP both read.
+      // Trace surface read by CLI commands and LSP.
       "tracesFind"
       "tracesHotspots"
       "tracesList"
       "tracesStatsByHandler"
+
+      // Parser entry point used by CLI syntax highlighting, package display,
+      // LSP, and CLI-script parsing.
+      "parserParseToWrittenTypes"
 
       // Misc.
       "interpreterStatsReset" ]

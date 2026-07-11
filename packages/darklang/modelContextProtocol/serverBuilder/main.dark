@@ -37,7 +37,7 @@ let runServerCliLoop (state: State.BuilderServerState) : Int =
   // Handle empty messages (client disconnected)
   if incomingMessageRaw == "" then
     logWithPath state.logFilePath "Received empty message, client disconnected"
-    0I
+    0
   else
     let updatedState =
       // parse a json-rpc message from stdin, and call `handleIncomingMessage` on it when relevant
@@ -194,7 +194,7 @@ let runServerCliLoop (state: State.BuilderServerState) : Int =
     // shut down if instructed, or listen for the next message
     if updatedState.shouldShutdown then
       logWithPath updatedState.logFilePath "Server shutting down"
-      0I
+      0
     else
       runServerCliLoop updatedState
 
@@ -218,7 +218,7 @@ let run (server: McpServerBuilder) : Int =
   // clear log file and write a timestamp of the start-up
   let _deleted = Builtin.fileDelete logFilePath
 
-  (Stdlib.DateTime.now_v0 ())
+  (Stdlib.DateTime.now ())
   |> Stdlib.DateTime.toString
   |> fun nowStr -> logWithPath logFilePath $"Running {server.name} MCP Server {nowStr}"
 

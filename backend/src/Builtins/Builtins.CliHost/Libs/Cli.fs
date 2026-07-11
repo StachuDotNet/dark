@@ -1,5 +1,5 @@
-/// Builtin functions for building the CLI
-/// (as opposed to functions needed by CLI programs, which are in StdLibCli)
+/// Builtin functions for building the CLI itself
+/// (as opposed to functions CLI programs call, which live in packages)
 module Builtins.CliHost.Libs.Cli
 
 open System.Threading.Tasks
@@ -27,6 +27,12 @@ module D = LibExecution.DvalDecoder
 module Utils = Builtins.CliHost.Utils
 module Toplevels = LibCloud.Toplevels
 module Tracing = LibDB.Tracing
+module P = LibParser.Parser
+module WT = LibParser.WrittenTypes
+module WT2PT = LibParser.WrittenTypesToProgramTypes
+module WTSourceFile = LibParser.SourceFile
+module NRslv = LibParser.NameResolver
+module Hashing = LibSerialization.Hashing.Hashing
 
 
 /// Load all DBs from the global toplevel set.
@@ -50,98 +56,244 @@ module CliTraceSource =
 
 
 module ParseError =
-  type Unparseable =
-    { text : string; line : int64; column : int64; note : Option<string> }
-
-  type ParseError =
-    | Unparseable of Unparseable
-    | Other of string
+  type ParseError = Message of string
 
   let fqTypeName () =
     FQTypeName.fqPackage (
       PackageRefs.Type.LanguageTools.Parser.CliScript.parseError ()
     )
 
-  let unparseableTypeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.Parser.CliScript.unparseable ()
-    )
-
-  let unparseableToDT (u : Unparseable) : Dval =
-    let typeName = unparseableTypeName ()
-    let fields =
-      [ "text", DString u.text
-        "line", Dval.int (bigint u.line)
-        "column", Dval.int (bigint u.column)
-        "note", C2DT.Option.toDT DString KTString u.note ]
-    DRecord(typeName, typeName, [], Map fields)
-
-  let unparseableFromDT (d : Dval) : Unparseable =
-    match d with
-    | DRecord(_, _, _, fields) ->
-      { text = fields |> D.field "text" |> D.string
-        line = fields |> D.field "line" |> D.int64FromInt
-        column = fields |> D.field "column" |> D.int64FromInt
-        note = C2DT.Option.fromDT D.string (fields |> D.field "note") }
-    | _ -> Exception.raiseInternal "Invalid Unparseable Dval" [ "dval", d ]
-
   let toDT (err : ParseError) : Dval =
     let typeName = fqTypeName ()
     let (caseName, fields) =
       match err with
-      | Unparseable u -> "Unparseable", [ unparseableToDT u ]
-      | Other msg -> "Other", [ DString msg ]
+      | Message msg -> "Message", [ DString msg ]
     DEnum(typeName, typeName, [], caseName, fields)
 
   let fromDT (d : Dval) : ParseError =
     match d with
-    | DEnum(_, _, _, "Unparseable", [ uDval ]) ->
-      Unparseable(unparseableFromDT uDval)
-    | DEnum(_, _, _, "Other", [ DString msg ]) -> Other msg
+    | DEnum(_, _, _, "Message", [ DString msg ]) -> Message msg
     | _ -> Exception.raiseInternal "Invalid ParseError Dval" [ "dval", d ]
 
-/// Parse CLI script code via the single-shot `parseForCli` Dark function.
-/// Keeping PM creation and parsing in the same execution context avoids
-/// lambda instructions crossing VM boundaries.
+/// Lower a script's source items to a PTCliScriptModule. CLI execution identifies
+/// the script by owner/scriptName; nested `module` blocks only affect the package
+/// module path used when lowering declarations. `WTSourceFile.items` provides the
+/// shared flat view over the parser's nested module tree.
+///
+/// Two passes: lower once against the base package manager, add the script's own
+/// declarations to a package-manager overlay, then re-lower so declarations can
+/// refer to siblings in the same script (for example, `main` calling `helper`).
+/// The two passes are inherent: pass 1 cannot resolve those sibling references
+/// because the declarations are not in the PM yet.
+///
+let private declarationsToModule
+  (state : RT.ExecutionState)
+  (owner : string)
+  (scriptName : string)
+  (sourceItems : List<WTSourceFile.Item>)
+  : Ply<Utils.CliScript.PTCliScriptModule> =
+  uply {
+    let builtins : RT.Builtins =
+      { values = state.values.builtIn; fns = state.fns.builtIn }
+    let baseModules = if scriptName = "" then [] else [ scriptName ]
+
+    // Build WT package declarations + top-level expressions.
+    let wtFns = ResizeArray<WT.PackageFn.PackageFn>()
+    let wtTypes = ResizeArray<WT.PackageType.PackageType>()
+    let wtValues = ResizeArray<WT.PackageValue.PackageValue>()
+    // Each trailing expr keeps its module path, so an expr inside `module M =`
+    // can still resolve M's declarations by short name.
+    let wtExprs = ResizeArray<List<string> * WT.Expr>()
+    for item in sourceItems do
+      match item with
+      | WTSourceFile.Fn(declPath, fn) ->
+        wtFns.Add(WT.packageFn owner (baseModules @ declPath) fn)
+      | WTSourceFile.Type(declPath, t) ->
+        wtTypes.Add(WT.packageType owner (baseModules @ declPath) t)
+      | WTSourceFile.Value(declPath, v) ->
+        wtValues.Add(WT.packageValue owner (baseModules @ declPath) v)
+      | WTSourceFile.Expr(declPath, e) -> wtExprs.Add(baseModules @ declPath, e)
+      // DB/test decls are produced only by test-mode parsing, not the CLI path.
+      | WTSourceFile.TypeDB _
+      | WTSourceFile.Test _ -> ()
+
+    let onMissing = NRslv.OnMissing.Allow
+    let fnList = List.ofSeq wtFns
+    let typeList = List.ofSeq wtTypes
+    let valueList = List.ofSeq wtValues
+
+    // Graft locations are derived from names only, so they're identical across
+    // both lowering passes (pass 2 keeps each decl's name, changing only body/hash).
+    let fnLocations =
+      fnList |> List.map (fun f -> WT2PT.PackageFn.Name.toLocation f.name)
+    let typeLocations =
+      typeList |> List.map (fun t -> WT2PT.PackageType.Name.toLocation t.name)
+    let valueLocations =
+      valueList |> List.map (fun v -> WT2PT.PackageValue.Name.toLocation v.name)
+
+    let lowerFns pm =
+      fnList
+      |> Ply.List.mapSequentially (fun fn ->
+        WT2PT.PackageFn.toPT
+          builtins
+          pm
+          onMissing
+          state.branchId
+          (WT2PT.PackageFn.Name.toModules fn.name)
+          fn)
+    let lowerTypes pm =
+      typeList
+      |> Ply.List.mapSequentially (fun t ->
+        WT2PT.PackageType.toPT
+          pm
+          onMissing
+          state.branchId
+          (WT2PT.PackageType.Name.toModules t.name)
+          t)
+    let lowerValues pm =
+      valueList
+      |> Ply.List.mapSequentially (fun v ->
+        WT2PT.PackageValue.toPT
+          builtins
+          pm
+          onMissing
+          state.branchId
+          (WT2PT.PackageValue.Name.toModules v.name)
+          v)
+
+    // WT2PT gives each declaration an empty `Hash ""` placeholder. The graft
+    // below keys declarations by hash, so without real content hashes a script's
+    // types, values, or fns can collapse to one entry and only the last one
+    // survives.
+    //
+    // Use the same `Hashing.compute*Hash` helpers package playback uses for
+    // `Hash ""` declarations. SCC-aware hash stabilization is not needed here
+    // because pass-1 bodies do not contain resolved sibling references.
+    let hashType (t : PT.PackageType.PackageType) =
+      { t with hash = Hashing.computeTypeHash Hashing.Normal t }
+    let hashValue (v : PT.PackageValue.PackageValue) =
+      { v with hash = Hashing.computeValueHash Hashing.Normal v }
+    let hashFn (f : PT.PackageFn.PackageFn) =
+      { f with hash = Hashing.computeFnHash Hashing.Normal f }
+
+    // Pass 1: lower against the base pm (intra-script refs unresolved, allowed).
+    // The resolver looks up packages on `state.branchId` (threaded through WT2PT),
+    // so WIP on this branch resolves without wrapping the pm.
+    let pm0 = LibDB.PackageManager.pt
+    let! fns1 = lowerFns pm0 |> Ply.map (List.map hashFn)
+    let! types1 = lowerTypes pm0 |> Ply.map (List.map hashType)
+    let! values1 = lowerValues pm0 |> Ply.map (List.map hashValue)
+
+    // Graft the script's own declarations into the pm, keyed by location.
+    let pm1 =
+      pm0
+      |> PT.PackageManager.withExtras
+        (List.zip types1 typeLocations)
+        (List.zip values1 valueLocations)
+        (List.zip fns1 fnLocations)
+
+    // Pass 2: re-lower with the grafted pm so intra-script references resolve.
+    // Keep each declaration's pass-1 hash, because pass-2 bodies contain refs to
+    // those hashes. Re-hashing the resolved bodies would make registered hashes
+    // disagree with refs embedded in callers.
+    let! fns = lowerFns pm1
+    let fns =
+      List.map2
+        (fun (f1 : PT.PackageFn.PackageFn) (f2 : PT.PackageFn.PackageFn) ->
+          { f2 with hash = f1.hash })
+        fns1
+        fns
+    let! types = lowerTypes pm1
+    let types =
+      List.map2
+        (fun (t1 : PT.PackageType.PackageType) (t2 : PT.PackageType.PackageType) ->
+          { t2 with hash = t1.hash })
+        types1
+        types
+    let! values = lowerValues pm1
+    let values =
+      List.map2
+        (fun (v1 : PT.PackageValue.PackageValue) (v2 : PT.PackageValue.PackageValue) ->
+          { v2 with hash = v1.hash })
+        values1
+        values
+
+    // Graft the pass-2 declarations (resolved bodies, pass-1 hashes) for the
+    // expressions' lowering — their refs then match the returned decls exactly.
+    let pm2 =
+      pm0
+      |> PT.PackageManager.withExtras
+        (List.zip types typeLocations)
+        (List.zip values valueLocations)
+        (List.zip fns fnLocations)
+
+    let emptyContext =
+      { WT2PT.Context.currentFnName = None
+        WT2PT.Context.isInFunction = false
+        WT2PT.Context.argMap = Map.empty
+        WT2PT.Context.localBindings = Set.empty }
+    let! exprs =
+      wtExprs
+      |> List.ofSeq
+      |> Ply.List.mapSequentially (fun (modules, e) ->
+        WT2PT.Expr.toPT
+          builtins
+          pm2
+          onMissing
+          state.branchId
+          (owner :: modules)
+          emptyContext
+          e)
+
+    let emptyDefs : Utils.CliScript.Definitions =
+      { types = []; values = []; fns = [] }
+    return
+      { Utils.CliScript.PTCliScriptModule.types = types
+        values = values
+        fns = fns
+        submodules = emptyDefs
+        exprs = exprs }
+  }
+
+/// Parse a whole CLI script with the hand-written parser, lowering `WT → PT`. One
+/// parser feeds both the editor (WrittenTypes directly) and execution (via this
+/// lowering).
 let parseCliScript
-  (exeState : RT.ExecutionState)
-  (branchId : System.Guid)
+  (state : RT.ExecutionState)
   (owner : string)
   (scriptName : string)
   (code : string)
-  : Ply<Result<Utils.CliScript.PTCliScriptModule, ParseError.ParseError>> =
+  : Ply<Result<Utils.CliScript.PTCliScriptModule, List<P.Diagnostic>>> =
   uply {
-    let args =
-      NEList.ofList
-        (DUuid branchId)
-        [ DString owner; DString scriptName; DString scriptName; DString code ]
+    let result = P.parse code
+    match result.parsed with
+    | None -> return Error result.diagnostics
+    | Some(WT.SourceFile sf) ->
+      let sourceItems = WTSourceFile.items sf
+      match result.diagnostics with
+      | (_ :: _) as ds -> return Error ds
+      | [] ->
+        let! m = declarationsToModule state owner scriptName sourceItems
+        return Ok m
+  }
 
-    let parseForCliFnName =
-      FQFnName.fqPackage (
-        PackageRefs.Fn.LanguageTools.Parser.CliScript.parseForCli ()
-      )
-
-    let! execResult = Exe.executeFunction exeState parseForCliFnName [] args
-
-    match execResult with
-    | Ok dval ->
-      match C2DT.Result.fromDT identity dval identity with
-      | Ok parsedModuleAndUnresolvedNames ->
-        return (Utils.CliScript.fromDT parsedModuleAndUnresolvedNames) |> Ok
-      | Error parseErrorDval -> return Error(ParseError.fromDT parseErrorDval)
-    | Error(rte, _cs) ->
-      let! rteString = Exe.runtimeErrorToString exeState rte
-      match rteString with
-      | Ok errorDval ->
-        return
-          Exception.raiseInternal
-            "Error executing parseCliScript function"
-            [ "rte", errorDval ]
-      | Error(nestedRte, _cs) ->
-        return
-          Exception.raiseInternal
-            "Error running runtimeErrorToString"
-            [ "original rte", rte; "nested rte", nestedRte ]
+/// Parse a single expression (the `eval` path) with the hand-written parser,
+/// lowering `WT → PT`. Reuses the script lowering so `let x = … in x` and short
+/// statement sequences also work; a bare expression is just `exprs`.
+let parseCliExpr
+  (state : RT.ExecutionState)
+  (expression : string)
+  : Ply<Result<Utils.CliScript.PTCliScriptModule, List<P.Diagnostic>>> =
+  uply {
+    let result = P.parse expression
+    match result.parsed with
+    | None -> return Error result.diagnostics
+    | Some(WT.SourceFile sf) ->
+      match result.diagnostics with
+      | (_ :: _) as ds -> return Error ds
+      | [] ->
+        let! m = declarationsToModule state "" "" (WTSourceFile.items sf)
+        return Ok m
   }
 
 
@@ -159,9 +311,8 @@ module ExecutionError =
     | Unhandled of Unhandled
 
   /// Capture an exception's message and metadata for the `Unhandled` case.
-  /// `Exception.toMetadata` only ever produces string-stringified values,
-  /// so `List<string * string>` faithfully represents what we have without
-  /// the Dval-wrapping machinery.
+  /// Metadata values are `obj`; we accept the lossy `string v` here (rather than
+  /// the Dval-wrapping machinery) because this metadata is only ever displayed.
   let unhandledFromExn (e : exn) : Unhandled =
     { message = Exception.getMessages e |> String.concat "\n"
       metadata = Exception.toMetadata e |> List.map (fun (k, v) -> (k, string v)) }
@@ -335,14 +486,21 @@ let fns () : List<BuiltInFn> =
             // Use branch-specific state for parsing so name resolution uses the right branch.
             // Parsing keeps the host's caps — name resolution / package loading needs
             // cli-host effects to boot (the noCaps-breaks-bootstrap case). Only the script
-            // *body* is sandboxed below (`runState`).
+            // *body* is sandboxed below (`runCaps` on `exeState`).
             let branchState = createBranchState exeState branchId allowHarmful
 
             try
-              // parseCliScript itself can raise (e.g. deep VM failures); keep
-              // it inside the try so its exceptions hit the Unhandled net.
+              // A parse failure surfaces a precise diagnostic as a `ParseError`
+              let! parseResult = parseCliScript branchState "CliScript" filename code
               let! parsedScript =
-                parseCliScript branchState branchId "CliScript" filename code
+                match parseResult with
+                | Ok m -> Ply(Ok m)
+                | Error diags ->
+                  let pe =
+                    match diags with
+                    | d :: _ -> ParseError.Message(P.renderDiagnostic code d)
+                    | [] -> ParseError.Message "Parse error"
+                  Ply(Error pe)
 
               let! dbs = loadDBs ()
 
@@ -451,15 +609,19 @@ let fns () : List<BuiltInFn> =
             let branchState = createBranchState exeState branchId allowHarmful
 
             try
-              // parseCliScript itself can raise (e.g. deep VM failures); keep
-              // it inside the try so its exceptions hit the Unhandled net.
+              // Parsing can raise (e.g. deep VM failures); keep it inside the try
+              // so its exceptions hit the Unhandled net. `eval` is single-expression
+              // only; parse failures surface a precise diagnostic (no fallback).
+              let! parseResult = parseCliExpr branchState expression
               let! parsedScript =
-                parseCliScript
-                  branchState
-                  branchId
-                  "CliScript"
-                  "exprWrapper"
-                  expression
+                match parseResult with
+                | Ok m -> Ply(Ok m)
+                | Error diags ->
+                  let pe =
+                    match diags with
+                    | d :: _ -> ParseError.Message(P.renderDiagnostic expression d)
+                    | [] -> ParseError.Message "Parse error"
+                  Ply(Error pe)
 
               let! dbs = loadDBs ()
 

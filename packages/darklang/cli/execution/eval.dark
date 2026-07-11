@@ -4,7 +4,7 @@ module Darklang.Cli.Eval
 
 let execute (state: AppState) (args: List<String>) : AppState =
   let allowHarmful =
-    Stdlib.List.member_v0 args "--allow-harmful"
+    Stdlib.List.member args "--allow-harmful"
   let args =
     args |> Stdlib.List.filter (fun a -> a != "--allow-harmful")
 

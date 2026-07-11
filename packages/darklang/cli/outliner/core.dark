@@ -45,7 +45,7 @@ let emptyOutline () : Outline =
     { nodes = Stdlib.Dict.empty
       structure = Stdlib.Dict.empty
       rootChildren = []
-      nextId = 1I }
+      nextId = 1 }
 
 let getNodeText (outline: Outline) (id: Int) : String =
   match Stdlib.Dict.get outline.nodes (k id) with
@@ -112,7 +112,7 @@ let findParentId (outline: Outline) (targetId: Int) : Stdlib.Option.Option<Int> 
       let (key, _s) = pair
       match Stdlib.Int.parse key with
       | Ok id -> id
-      | Error _ -> 0I)
+      | Error _ -> 0)
 
 
 // --- List helpers ---
@@ -127,9 +127,9 @@ let insertIdAfter (ids: List<Int>) (afterId: Int) (newId: Int) : List<Int> =
 
 let swapAt (ids: List<Int>) (i: Int) (j: Int) : List<Int> =
   let iVal =
-    (Stdlib.List.getAt ids i) |> Stdlib.Option.withDefault 0I
+    (Stdlib.List.getAt ids i) |> Stdlib.Option.withDefault 0
   let jVal =
-    (Stdlib.List.getAt ids j) |> Stdlib.Option.withDefault 0I
+    (Stdlib.List.getAt ids j) |> Stdlib.Option.withDefault 0
   ids
   |> Stdlib.List.indexedMap (fun idx id ->
     if idx == i then jVal
@@ -157,11 +157,11 @@ let flattenVisibleHelper (outline: Outline) (ids: List<Int>) (depth: Int) : List
       if s.collapsed then
         []
       else
-        flattenVisibleHelper outline s.children (depth + 1I)
+        flattenVisibleHelper outline s.children (depth + 1)
     Stdlib.List.append acc (Stdlib.List.append [vn] childNodes))
 
 let flattenVisible (outline: Outline) : List<VisibleNode> =
-  flattenVisibleHelper outline outline.rootChildren 0I
+  flattenVisibleHelper outline outline.rootChildren 0
 
 
 // --- Outline builder ---

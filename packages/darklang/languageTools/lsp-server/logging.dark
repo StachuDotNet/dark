@@ -18,7 +18,7 @@ let logAndSendToClient (response: String) : Unit =
 
   let contentLengthInBytes =
     response
-    |> Stdlib.String.toBytes_v0
+    |> Stdlib.String.toBytes
     |> Stdlib.List.length
     |> Stdlib.Int.toString
 

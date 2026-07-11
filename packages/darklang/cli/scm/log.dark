@@ -9,8 +9,8 @@ let execute (state: AppState) (args: List<String>) : AppState =
     | [ limitStr ] ->
       match Stdlib.Int.parse limitStr with
       | Ok n -> n
-      | Error _ -> 20I
-    | _ -> 20I
+      | Error _ -> 20
+    | _ -> 20
 
   let commits = SCM.PackageOps.getCommitsWithAncestors branchId limit
 
@@ -22,7 +22,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
     commits
     |> Stdlib.List.iter (fun c ->
       let id = LanguageTools.ProgramTypes.hashToShort c.hash
-      let createdAt = Stdlib.DateTime.toString_v0 c.createdAt
+      let createdAt = Stdlib.DateTime.toString c.createdAt
       let opCount = Stdlib.Int.toString c.opCount
       let commitBranchId = Stdlib.Uuid.toString c.branchId
 

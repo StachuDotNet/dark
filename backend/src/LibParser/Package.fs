@@ -1,206 +1,188 @@
-module internal LibParser.Package
-
-open FSharp.Compiler.Syntax
+/// Parse + lower package files with the hand-written parser. `parse` is the public
+/// entrypoint used by the package loader (LocalExec).
+module LibParser.Package
 
 open Prelude
 open LibExecution.ProgramTypes
 
-module FS2WT = FSharpToWrittenTypes
+module P = LibParser.Parser
 module WT = WrittenTypes
 module WT2PT = WrittenTypesToProgramTypes
-module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
+module WTSourceFile = SourceFile
 module PT = LibExecution.ProgramTypes
 module RT = LibExecution.RuntimeTypes
 module NR = NameResolver
 module PackageLocation = LibDB.PackageLocation
 open LibSerialization.Hashing
 
-open Utils
 
-type WTPackageModule =
+type private WTPackageModule =
   { fns : List<WT.PackageFn.PackageFn>
     types : List<WT.PackageType.PackageType>
     values : List<WT.PackageValue.PackageValue> }
-let emptyWTModule = { fns = []; types = []; values = [] }
+/// Lower a WT package module to PackageOps (WT2PT lowering + AddX/SetName op
+/// generation).
+let private wtModuleToOps
+  (builtins : RT.Builtins)
+  (pm : PT.PackageManager)
+  (onMissing : NR.OnMissing)
+  (modul : WTPackageModule)
+  : Ply<List<PT.PackageOp>> =
+  uply {
+    let! fns =
+      modul.fns
+      |> Ply.List.mapSequentially (fun fn ->
+        WT2PT.PackageFn.toPT
+          builtins
+          pm
+          onMissing
+          PT.mainBranchId
+          (WT2PT.PackageFn.Name.toModules fn.name)
+          fn)
 
+    let! types =
+      modul.types
+      |> Ply.List.mapSequentially (fun typ ->
+        WT2PT.PackageType.toPT
+          pm
+          onMissing
+          PT.mainBranchId
+          (WT2PT.PackageType.Name.toModules typ.name)
+          typ)
 
-/// Update a Package by parsing a single F# let binding
-let parseLetBinding
-  (fileName : string)
-  (modules : List<string>)
-  (letBinding : SynBinding)
-  : List<WT.PackageFn.PackageFn> * List<WT.PackageValue.PackageValue> =
-  match modules with
-  | owner :: modules ->
-    if FS2WT.Function.hasArguments letBinding then
-      [ FS2WT.PackageFn.fromSynBinding owner modules letBinding ], []
-    else
-      [], [ FS2WT.PackageValue.fromSynBinding owner modules letBinding ]
-  | _ ->
-    Exception.raiseInternal
-      "Expected owner module containing things"
-      [ "modules", modules; "binding", letBinding; "fileName", fileName ]
+    let! values =
+      modul.values
+      |> Ply.List.mapSequentially (fun value ->
+        WT2PT.PackageValue.toPT
+          builtins
+          pm
+          onMissing
+          PT.mainBranchId
+          (WT2PT.PackageValue.Name.toModules value.name)
+          value)
 
-let parseTypeDef
-  (fileName : string)
-  (modules : List<string>)
-  (defn : SynTypeDefn)
-  : WT.PackageType.PackageType =
-  match modules with
-  | owner :: modules -> FS2WT.PackageType.fromSynTypeDefn owner modules defn
-  | _ ->
-    Exception.raiseInternal
-      "Expected owner module"
-      [ "modules", modules; "defn", defn; "fileName", fileName ]
+    // Compute a deterministic name-based placeholder hash for Set*Name ops.
+    // The real hash replaces this in LoadPackagesFromDisk.computeRealHashes.
+    let nameBasedHash (loc : PT.PackageLocation) : Hash =
+      let nameKey = PackageLocation.toFQN loc
+      let nameBytes =
+        System.Security.Cryptography.SHA256.HashData(
+          System.Text.Encoding.UTF8.GetBytes(nameKey)
+        )
+      Hash(
+        System.BitConverter.ToString(nameBytes).Replace("-", "").ToLowerInvariant()
+      )
 
+    let ops : List<PT.PackageOp> =
+      [ for (wtType, ptType) in List.zip modul.types types do
+          yield PT.PackageOp.AddType ptType
+          let loc = WT2PT.PackageType.Name.toLocation wtType.name
+          yield PT.PackageOp.SetName(loc, PT.PackageType(nameBasedHash loc))
 
-let rec parseDecls
-  (fileName : string)
-  (moduleNames : List<string>)
-  (decls : List<SynModuleDecl>)
-  : WTPackageModule =
-  List.fold
-    (fun m decl ->
-      match decl with
-      | SynModuleDecl.Let(_, bindings, _) ->
-        let (fns, values) =
-          bindings |> List.map (parseLetBinding fileName moduleNames) |> List.unzip
-        { m with
-            fns = m.fns @ List.flatten fns
-            values = m.values @ List.flatten values }
+        for (wtValue, ptValue) in List.zip modul.values values do
+          yield PT.PackageOp.AddValue ptValue
+          let loc = WT2PT.PackageValue.Name.toLocation wtValue.name
+          yield PT.PackageOp.SetName(loc, PT.PackageValue(nameBasedHash loc))
 
-      | SynModuleDecl.Types(defns, _) ->
-        let types = List.map (parseTypeDef fileName moduleNames) defns
-        { m with types = m.types @ types }
+        for (wtFn, ptFn) in List.zip modul.fns fns do
+          yield PT.PackageOp.AddFn ptFn
+          let loc = WT2PT.PackageFn.Name.toLocation wtFn.name
+          yield PT.PackageOp.SetName(loc, PT.PackageFn(nameBasedHash loc)) ]
 
-      | SynModuleDecl.NestedModule(SynComponentInfo(_,
-                                                    _,
-                                                    _,
-                                                    nestedModuleNames,
-                                                    _,
-                                                    _,
-                                                    _,
-                                                    _),
-                                   _,
-                                   nested,
-                                   _,
-                                   _,
-                                   _) ->
-        let moduleNames = moduleNames @ (nestedModuleNames |> List.map _.idText)
-        let nestedDecls = parseDecls fileName moduleNames nested
+    return ops
+  }
 
-        { fns = m.fns @ nestedDecls.fns
-          types = m.types @ nestedDecls.types
-          values = m.values @ nestedDecls.values }
+// --- classify package declarations from a parsed package file ---
+//
+// Package declarations must live under `module Owner...`; the path's first
+// segment is the owner and the rest are modules. Items that cannot be package
+// declarations become errors.
 
+type private PkgItem =
+  | PFn of WT.PackageFn.PackageFn
+  | PType of WT.PackageType.PackageType
+  | PValue of WT.PackageValue.PackageValue
+  | PErr of WT.Range * string
 
-      | _ ->
-        Exception.raiseInternal
-          $"Unsupported declaration"
-          [ "decl", decl; "moduleNames", moduleNames ])
-    emptyWTModule
-    decls
+let private noOwner (kind : string) (name : string) : string =
+  $"{kind} '{name}' is outside any 'module Owner.…' — package declarations must live inside an owner module"
 
+let private packageItem (item : WTSourceFile.Item) : PkgItem =
+  match item with
+  | WTSourceFile.Fn(path, fn) ->
+    match path with
+    | owner :: modules -> PFn(WT.packageFn owner modules fn)
+    | [] -> PErr(fn.range, noOwner "function" fn.name.name)
+  | WTSourceFile.Type(path, t) ->
+    match path with
+    | owner :: modules -> PType(WT.packageType owner modules t)
+    | [] -> PErr(t.range, noOwner "type" t.name.name)
+  | WTSourceFile.Value(path, v) ->
+    match path with
+    | owner :: modules -> PValue(WT.packageValue owner modules v)
+    | [] -> PErr(v.range, noOwner "value" v.name.name)
+  | WTSourceFile.Expr(_, e) ->
+    PErr(WT.exprRange e, "expressions are not allowed in package files")
+  | WTSourceFile.TypeDB(_, t) ->
+    PErr(t.range, "[<DB>] declarations are not allowed in package files")
+  | WTSourceFile.Test(_, t) ->
+    PErr(t.range, "test assertions are not allowed in package files")
 
+/// Lower a parsed package file to module-qualified package declarations, plus
+/// errors for declarations a package file can't hold.
+let private packageDecls
+  (sf : WT.SourceFile)
+  : WTPackageModule * List<WT.Range * string> =
+  let items = WTSourceFile.items sf |> List.map packageItem
+  let fns =
+    items
+    |> List.choose (function
+      | PFn f -> Some f
+      | _ -> None)
+  let types =
+    items
+    |> List.choose (function
+      | PType t -> Some t
+      | _ -> None)
+  let values =
+    items
+    |> List.choose (function
+      | PValue v -> Some v
+      | _ -> None)
+  let errors =
+    items
+    |> List.choose (function
+      | PErr(r, msg) -> Some(r, msg)
+      | _ -> None)
+  ({ fns = fns; types = types; values = values }, errors)
+
+/// Parse + lower a package file: the nested module tree gives module-qualified
+/// names. Returns `Error diagnostics` on parse failure.
 let parse
   (builtins : RT.Builtins)
   (pm : PT.PackageManager)
   (onMissing : NR.OnMissing)
-  (filename : string)
   (contents : string)
-  : Ply<List<PT.PackageOp>> =
+  : Ply<Result<List<PT.PackageOp>, List<string>>> =
   uply {
-    match parseAsFSharpSourceFile filename contents with
-    | ParsedImplFileInput(_,
-                          _,
-                          _,
-                          _,
-                          [ SynModuleOrNamespace(longId,
-                                                 _,
-                                                 kind,
-                                                 decls,
-                                                 _,
-                                                 _,
-                                                 _,
-                                                 _,
-                                                 _) ],
-                          _,
-                          _,
-                          _) ->
-      let baseModule =
-        match kind with
-        | SynModuleOrNamespaceKind.NamedModule -> longIdentToList longId
-        | _ -> []
-
-      let modul : WTPackageModule = parseDecls filename baseModule decls
-
-
-      let! fns =
-        modul.fns
-        |> Ply.List.mapSequentially (fun fn ->
-          WT2PT.PackageFn.toPT
-            builtins
-            pm
-            onMissing
-            (WT2PT.PackageFn.Name.toModules fn.name)
-            fn)
-
-      let! types =
-        modul.types
-        |> Ply.List.mapSequentially (fun typ ->
-          WT2PT.PackageType.toPT
-            pm
-            onMissing
-            (WT2PT.PackageType.Name.toModules typ.name)
-            typ)
-
-      let! values =
-        modul.values
-        |> Ply.List.mapSequentially (fun value ->
-          WT2PT.PackageValue.toPT
-            builtins
-            pm
-            onMissing
-            (WT2PT.PackageValue.Name.toModules value.name)
-            value)
-
-      // Generate PackageOps from parsed items
-      // Compute a deterministic name-based placeholder hash for Set*Name ops.
-      // Each item needs a unique key so computeRealHashes' maps work correctly.
-      // The real hash replaces this in LoadPackagesFromDisk.computeRealHashes.
-      let nameBasedHash (loc : PT.PackageLocation) : Hash =
-        let nameKey = PackageLocation.toFQN loc
-        let nameBytes =
-          System.Security.Cryptography.SHA256.HashData(
-            System.Text.Encoding.UTF8.GetBytes(nameKey)
+    let result = P.parse contents
+    match result.parsed with
+    | Some(WT.SourceFile sf) when List.isEmpty result.diagnostics ->
+      let (modul, declErrors) = packageDecls sf
+      match declErrors with
+      | [] ->
+        let! ops = wtModuleToOps builtins pm onMissing modul
+        return Ok ops
+      | errors ->
+        return
+          Error(
+            errors
+            |> List.map (fun (r, msg) ->
+              $"error at {r.start.row + 1}:{r.start.column + 1}: {msg}")
           )
-        Hash(
-          System.BitConverter.ToString(nameBytes).Replace("-", "").ToLowerInvariant()
-        )
-
-      let ops : List<PT.PackageOp> =
-        [ // Add all types and their locations
-          for (wtType, ptType) in List.zip modul.types types do
-            yield PT.PackageOp.AddType ptType
-            let loc = WT2PT.PackageType.Name.toLocation wtType.name
-            yield PT.PackageOp.SetName(loc, PT.PackageType(nameBasedHash loc))
-
-          // Add all values and their locations
-          for (wtValue, ptValue) in List.zip modul.values values do
-            yield PT.PackageOp.AddValue ptValue
-            let loc = WT2PT.PackageValue.Name.toLocation wtValue.name
-            yield PT.PackageOp.SetName(loc, PT.PackageValue(nameBasedHash loc))
-
-          // Add all functions and their locations
-          for (wtFn, ptFn) in List.zip modul.fns fns do
-            yield PT.PackageOp.AddFn ptFn
-            let loc = WT2PT.PackageFn.Name.toLocation wtFn.name
-            yield PT.PackageOp.SetName(loc, PT.PackageFn(nameBasedHash loc)) ]
-
-      return ops
-
-    // in the parsed package, types are being read as user, as opposed to the package that's right there
-    | decl ->
+    | _ ->
+      let msgs = result.diagnostics |> List.map (P.renderDiagnostic contents)
+      // Guard against a parser failure with no diagnostics.
       return
-        Exception.raiseInternal "Unsupported Package declaration" [ "decl", decl ]
+        Error(if List.isEmpty msgs then [ "failed to parse package file" ] else msgs)
   }

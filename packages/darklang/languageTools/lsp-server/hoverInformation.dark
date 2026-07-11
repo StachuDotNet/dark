@@ -1478,7 +1478,7 @@ let collectPipeExprHoverInfoAtPos
     else
       Stdlib.Option.Option.None
 
-  | EPipeFnCall(r, fnName, args) ->
+  | EPipeFnCall(r, fnName, typeArgs, args) ->
     // check if position is within the PipeFnCall range first
     if CursorPosition.isLineNumberInRange position r then
       // check if we are hovering over the fn name
@@ -1504,14 +1504,14 @@ let collectPipeExprHoverInfoAtPos
           match tryGetFnAndCollectHoverInfo ctx fn range with
           | Some r -> Stdlib.Option.Option.Some r
           | None ->
-            fnName.typeArgs
+            typeArgs
             |> Stdlib.List.filterMap (fun tr ->
               collectTypeRefHoverInfoAtPos ctx tr position)
             |> Stdlib.List.head
 
       | None ->
         let typeArgs =
-          fnName.typeArgs
+          typeArgs
           |> Stdlib.List.filterMap (fun tr ->
             collectTypeRefHoverInfoAtPos ctx tr position)
           |> Stdlib.List.head
@@ -1971,56 +1971,7 @@ let collectExpressionHoverInfoAtPos
 
         tryGetFnAndCollectHoverInfo ctx fnName name.fn.range
 
-      | None -> collectModuleNameHoverInfoAtPos name.modules position
-    else
-      Stdlib.Option.Option.None
-
-  | EValueOrFn(r, fnOrValueName) ->
-    // check if position is within the EValueOrFn range
-    if CursorPosition.isLineNumberInRange position r then
-      let modules =
-        collectModuleNameHoverInfoAtPos fnOrValueName.modules position
-
-      match modules with
-      | Some r -> Stdlib.Option.Option.Some r
-      | None ->
-        let modules =
-          fnOrValueName.modules |> Stdlib.List.map (fun (m, _) -> m.name)
-
-        let fnOrValueNameList =
-          Stdlib.List.append modules [ fnOrValueName.valueOrFn.name ]
-
-        match CursorPosition.checkIfPositionWithinRange position r with
-        | Some r ->
-          // check if we are hovering over a function
-          match tryGetFnAndCollectHoverInfo ctx fnOrValueNameList r with
-          | Some r -> Stdlib.Option.Option.Some r
-          | None ->
-            // check if we are hovering over a value
-            let getValue =
-              tryGetPkgVal ctx fnOrValueNameList fnOrValueName.valueOrFn.range
-
-            match getValue with
-            | Some value ->
-              let description =
-                if value.description == "" then
-                  Stdlib.Option.Option.None
-                else
-                  Stdlib.Option.Option.Some value.description
-
-              let thingAtPosition =
-                CursorPosition.ThingAtPosition.PackageValue(
-                  fnOrValueNameList,
-                  value,
-                  description
-                )
-
-              (hoverInfoForThingAtPosition ctx thingAtPosition r)
-              |> Stdlib.Option.Option.Some
-
-            | None -> Stdlib.Option.Option.None
-        | None -> Stdlib.Option.Option.None
-
+      | None -> collectModuleNameHoverInfoAtPos ctx name.modules position
     else
       Stdlib.Option.Option.None
 

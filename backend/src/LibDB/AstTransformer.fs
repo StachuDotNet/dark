@@ -193,7 +193,8 @@ and private transformExpr (mapping : HashMapping) (expr : PT.Expr) : PT.Expr =
   | PT.EChar _
   | PT.EVariable _
   | PT.EArg _
-  | PT.ESelf _ -> expr
+  | PT.ESelf _
+  | PT.EError _ -> expr
 
   | PT.EString(id, segments) ->
     PT.EString(id, segments |> List.map (transformStringSegment mapping))

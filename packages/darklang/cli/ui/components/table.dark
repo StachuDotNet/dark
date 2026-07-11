@@ -23,16 +23,16 @@ let createColumnWithAlignment (header: String) (width: Int) (alignment: Core.Typ
 let createTable (columns: List<Column>) (rows: List<List<String>>) : Core.Types.Component<TableModel> =
   let totalWidth =
     columns
-    |> Stdlib.List.map (fun col -> col.width + 1I)
-    |> Stdlib.List.fold 1I (fun acc w -> acc + w)
+    |> Stdlib.List.map (fun col -> col.width + 1)
+    |> Stdlib.List.fold 1 (fun acc w -> acc + w)
 
-  let height = (Stdlib.List.length rows) + 3I
+  let height = (Stdlib.List.length rows) + 3
 
   let model =
     TableModel
       { columns = columns
         rows = rows
-        selectedRow = -1I
+        selectedRow = -1
         showHeader = true
         borderStyle = Core.Rendering.BoxStyle.Single
         headerColor = Core.Types.Color.Primary
@@ -40,7 +40,7 @@ let createTable (columns: List<Column>) (rows: List<List<String>>) : Core.Types.
 
   let bounds =
     Core.Types.Bounds
-      { position = Core.Types.Position { x = 0I; y = 0I }
+      { position = Core.Types.Position { x = 0; y = 0 }
         dimensions = Core.Types.Dimensions { width = totalWidth; height = height } }
 
   Core.Types.Component
@@ -133,10 +133,10 @@ let addTableRow (component: Core.Types.Component<TableModel>) (row: List<String>
 
 let selectRow (component: Core.Types.Component<TableModel>) (index: Int) : Core.Types.Component<TableModel> =
   let model = component.model
-  let maxIndex = (Stdlib.List.length model.rows) - 1I
+  let maxIndex = (Stdlib.List.length model.rows) - 1
   let clampedIndex =
-    if index < 0I then
-      0I
+    if index < 0 then
+      0
     else if index > maxIndex then
       maxIndex
     else
@@ -145,10 +145,10 @@ let selectRow (component: Core.Types.Component<TableModel>) (index: Int) : Core.
 
 let selectNextRow (component: Core.Types.Component<TableModel>) : Core.Types.Component<TableModel> =
   let model = component.model
-  let maxIndex = (Stdlib.List.length model.rows) - 1I
+  let maxIndex = (Stdlib.List.length model.rows) - 1
   let nextIndex =
     if model.selectedRow < maxIndex then
-      model.selectedRow + 1I
+      model.selectedRow + 1
     else
       model.selectedRow
   { component with model = { model with selectedRow = nextIndex } }
@@ -156,10 +156,10 @@ let selectNextRow (component: Core.Types.Component<TableModel>) : Core.Types.Com
 let selectPreviousRow (component: Core.Types.Component<TableModel>) : Core.Types.Component<TableModel> =
   let model = component.model
   let prevIndex =
-    if model.selectedRow > 0I then
-      model.selectedRow - 1I
+    if model.selectedRow > 0 then
+      model.selectedRow - 1
     else
-      0I
+      0
   { component with model = { model with selectedRow = prevIndex } }
 
 let setTableBorderStyle (component: Core.Types.Component<TableModel>) (style: Core.Rendering.BoxStyle) : Core.Types.Component<TableModel> =
@@ -180,7 +180,7 @@ let showTableHeader (component: Core.Types.Component<TableModel>) : Core.Types.C
 
 let getSelectedRow (component: Core.Types.Component<TableModel>) : Stdlib.Option.Option<List<String>> =
   let model = component.model
-  if model.selectedRow >= 0I then
+  if model.selectedRow >= 0 then
     Stdlib.List.getAt model.rows model.selectedRow
   else
     Stdlib.Option.Option.None

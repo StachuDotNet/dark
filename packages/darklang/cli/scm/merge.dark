@@ -3,7 +3,7 @@ module Darklang.Cli.SCM.Merge
 
 let execute (state: AppState) (args: List<String>) : AppState =
   let dryRun =
-    (Stdlib.List.member_v0 args "--dry-run") || (Stdlib.List.member_v0 args "-n")
+    (Stdlib.List.member args "--dry-run") || (Stdlib.List.member args "-n")
 
   if dryRun then
     match SCM.Merge.canMerge state.currentBranchId with

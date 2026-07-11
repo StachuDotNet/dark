@@ -1,12 +1,9 @@
-/// Tests the new tree-sitter-based parser.
+/// Tests the hand-written parser (LibParser).
 ///
-/// Currently just focused on round-tripping:
-///   source (input)
-///   -> parsed TreeSitter tree
-///   -> parsed CLI Script
-///   -> PT.SourceFile
-///   -> pretty-print back to text (expected)
-module Tests.NewParser
+/// Most cases parse source into ProgramTypes, then pretty-print it back to the
+/// expected text. A few cases also evaluate parsed expressions or assert parse
+/// errors for rejected syntax.
+module Tests.LibParserRoundTrip
 
 open System.Threading.Tasks
 open FSharp.Control.Tasks
@@ -20,9 +17,6 @@ module PT = LibExecution.ProgramTypes
 module RT = LibExecution.RuntimeTypes
 module Dval = LibExecution.Dval
 module PackageRefs = LibExecution.PackageRefs
-
-// Test package type definitions as tuples with locations
-
 
 let t
   (name : string)
@@ -42,58 +36,70 @@ let t
     RT.FQFnName.fqPackage (PackageRefs.Fn.PrettyPrinter.ProgramTypes.sourceFile ())
 
   testTask name {
-    // First phase: parse with base PM to get PackageOps
     let basePM =
       if allowUnresolved then
         pmPT
       else
         pmPT |> PT.PackageManager.withExtras extraTypes extraValues extraFns
-    let! parseExeState = executionStateFor basePM false Map.empty
 
-    let args = NEList.singleton (RT.DString input)
-    let! parseResult =
-      LibExecution.Execution.executeFunction parseExeState parseFnName [] args
-    let! parseDval = unwrapExecutionResult parseExeState parseResult |> Ply.toTask
+    // Parse `src` (so its declarations produce PackageOps), then pretty-print it
+    // back to source with those ops available for name resolution.
+    let roundOnce (src : string) : Task<string> =
+      task {
+        let! parseExeState = executionStateFor basePM false Map.empty
+        let args = NEList.singleton (RT.DString src)
+        let! parseResult =
+          LibExecution.Execution.executeFunction parseExeState parseFnName [] args
+        let! parseDval =
+          unwrapExecutionResult parseExeState parseResult |> Ply.toTask
 
-    match parseDval with
-    | RT.DEnum(tn, _, _, "Ok", [ RT.DTuple(sourceFile, opsList, []) ]) when
-      tn = Dval.resultType ()
-      ->
-      // Extract PackageOps from the Dval list
-      let packageOps =
-        match opsList with
-        | RT.DList(_vt, ops) ->
-          ops |> List.choose LibExecution.ProgramTypesToDarkTypes.PackageOp.fromDT
-        | _ -> []
+        match parseDval with
+        | RT.DEnum(tn, _, _, "Ok", [ RT.DTuple(sourceFile, opsList, []) ]) when
+          tn = Dval.resultType ()
+          ->
+          let packageOps =
+            match opsList with
+            | RT.DList(_vt, ops) ->
+              ops
+              |> List.choose LibExecution.ProgramTypesToDarkTypes.PackageOp.fromDT
+            | _ -> []
 
-      // Second phase: enhance PM with PackageOps and pretty print
-      let enhancedPM = LibDB.PackageManager.withExtraOps basePM packageOps
-      let! ppExeState = executionStateFor enhancedPM false Map.empty
+          let enhancedPM = LibDB.PackageManager.withExtraOps basePM packageOps
+          let! ppExeState = executionStateFor enhancedPM false Map.empty
 
-      let ppArgs = NEList.ofList (RT.DUuid PT.mainBranchId) [ sourceFile ]
-      let! ppResult =
-        LibExecution.Execution.executeFunction ppExeState prettyPrintFnName [] ppArgs
-      let! resultDval = unwrapExecutionResult ppExeState ppResult |> Ply.toTask
+          let ppArgs = NEList.ofList (RT.DUuid PT.mainBranchId) [ sourceFile ]
+          let! ppResult =
+            LibExecution.Execution.executeFunction
+              ppExeState
+              prettyPrintFnName
+              []
+              ppArgs
+          let! resultDval = unwrapExecutionResult ppExeState ppResult |> Ply.toTask
 
-      match resultDval with
-      | RT.DString result ->
-        return
-          Expect.RT.equalDval
-            (RT.DString result)
-            (RT.DString expected)
-            "Didn't round-trip as expected"
-      | _ -> return failtest $"Unexpected pretty print result: {resultDval}"
+          match resultDval with
+          | RT.DString result -> return result
+          | _ -> return failtest $"Unexpected pretty print result: {resultDval}"
 
-    | RT.DEnum(tn, _, _, "Error", [ RT.DString errMsg ]) when tn = Dval.resultType () ->
-      return failtest $"Parse error: {errMsg}"
-    | _ -> return failtest $"Unexpected parse result format: {parseDval}"
+        | RT.DEnum(tn, _, _, "Error", [ RT.DString errMsg ]) when
+          tn = Dval.resultType ()
+          ->
+          return failtest $"Parse error: {errMsg}"
+        | _ -> return failtest $"Unexpected parse result format: {parseDval}"
+      }
+
+    let! firstPrint = roundOnce input
+    return
+      Expect.RT.equalDval
+        (RT.DString firstPrint)
+        (RT.DString expected)
+        "Didn't round-trip as expected"
   }
 
 
 /// Parses `input` as a Darklang expression, evaluates it, and asserts the
 /// resulting runtime Dval equals `expected`. Distinct from `t` (which
 /// compares pretty-printed source) because round-trip tests can hide
-/// symmetric bugs between decode and re-encode — this catches a decode bug
+/// symmetric bugs between decode and re-encode; this catches a decode bug
 /// directly.
 let tEval (name : string) (input : string) (expected : RT.Dval) =
   let parseFnName =
@@ -215,19 +221,18 @@ let parseForCliDval (input : string) =
   }
 
 
-let tParseErrorVariant (name : string) (input : string) (expectedCaseName : string) =
+/// Asserts `input` is rejected with `Result.Error (ParseError ...)`
+/// instead of succeeding. `ParseError` has a single case today, so this
+/// checks that parsing failed, not which variant.
+let tParseRejected (name : string) (input : string) =
   testTask name {
     let! parseDval = parseForCliDval input
 
     match parseDval with
-    | RT.DEnum(tn, _, _, "Error", [ RT.DEnum(_, _, _, caseName, _) ]) when
+    | RT.DEnum(tn, _, _, "Error", [ RT.DEnum(_, _, _, _, _) ]) when
       tn = Dval.resultType ()
       ->
-      return
-        Expect.equal
-          caseName
-          expectedCaseName
-          $"wrong ParseError variant for {input}"
+      return ()
     | _ ->
       return
         failtest
@@ -235,7 +240,9 @@ let tParseErrorVariant (name : string) (input : string) (expectedCaseName : stri
   }
 
 
-/// Like `tParseErrorVariant`, but also asserts the exact `Unparseable` note.
+/// Like `tParseRejected`, but also asserts the rendered `Message` names the
+/// given note. The message carries a "Parse error at line/col: ..." prefix, so we
+/// assert containment rather than exact equality.
 let tParseErrorNote (name : string) (input : string) (expectedNote : string) =
   testTask name {
     let! parseDval = parseForCliDval input
@@ -243,16 +250,17 @@ let tParseErrorNote (name : string) (input : string) (expectedNote : string) =
     match parseDval with
     | RT.DEnum(tn, _, _, "Error", [ errVariant ]) when tn = Dval.resultType () ->
       match errVariant with
-      | RT.DEnum(_, _, _, "Unparseable", [ RT.DRecord(_, _, _, fields) ]) ->
-        match Map.tryFind "note" fields with
-        | Some(RT.DEnum(_, _, _, "Some", [ RT.DString note ])) ->
-          return Expect.equal note expectedNote $"wrong Unparseable note for {input}"
-        | other ->
-          return
-            failtest $"Expected an Unparseable with a Some note; got note = {other}"
-      | other -> return failtest $"Expected an Unparseable variant; got {other}"
+      | RT.DEnum(_, _, _, "Message", [ RT.DString message ]) ->
+        return
+          Expect.stringContains
+            message
+            expectedNote
+            $"wrong ParseError note for {input}"
+      | other -> return failtest $"Expected a Message variant; got {other}"
     | _ ->
-      return failtest $"Expected Result.Error (Unparseable ...); got {parseDval}"
+      return
+        failtest
+          $"Expected Result.Error containing a ParseError variant; got {parseDval}"
   }
 
 
@@ -663,6 +671,24 @@ let typeReferences =
 let typeDeclarations =
   [ t "unit" "type SimpleAlias = Unit" "type SimpleAlias =\n  Unit" [] [] [] false
 
+    t
+      "type doc comment"
+      "/// User-facing id\ntype UserID = Int64"
+      "/// User-facing id\ntype UserID =\n  Int64"
+      []
+      []
+      []
+      false
+
+    t
+      "four slash comment is not a doc comment"
+      "//// plain comment\ntype Plain = Int64"
+      "type Plain =\n  Int64"
+      []
+      []
+      []
+      false
+
     // Alias with type params
     t
       "type param list"
@@ -695,6 +721,24 @@ let typeDeclarations =
       "record, 1 field"
       "type Person = {name: String}"
       "type Person =\n  { name: String }"
+      []
+      []
+      []
+      false
+
+    t
+      "record type field name with hyphen"
+      "type Headers = { ``Content-Length``: String }"
+      "type Headers =\n  { ``Content-Length``: String }"
+      []
+      []
+      []
+      false
+
+    t
+      "record type field name that is a keyword"
+      "type Metadata = { ``type``: String }"
+      "type Metadata =\n  { ``type``: String }"
       []
       []
       []
@@ -745,9 +789,7 @@ let typeDeclarations =
       []
       false
 
-    // // Enum type TODO
-    // ("type Thing = | A | B of Int64 | C of String * Bool"  "type Thing =\n  | A\n  | B of Int64\n  | C of String * Bool"
-    // Enum type decls
+    // Enum type declarations.
     t
       "type param, enum"
       "type MyEnum<'a> = | A | B of 'a"
@@ -793,6 +835,22 @@ let typeDeclarations =
       "enum, named tuple fields"
       "type MyEnum = | A of x:Int64 * y:Int64"
       "type MyEnum =\n  | A of x: Int64 * y: Int64"
+      []
+      []
+      []
+      false
+    t
+      "enum field label with hyphen"
+      "type MyEnum = | A of ``Content-Length``: String"
+      "type MyEnum =\n  | A of ``Content-Length``: String"
+      []
+      []
+      []
+      false
+    t
+      "enum field label that is a keyword"
+      "type MyEnum = | A of ``type``: String"
+      "type MyEnum =\n  | A of ``type``: String"
       []
       []
       []
@@ -858,7 +916,7 @@ let exprs =
     t "int literal 1UL" "1UL" "1UL" [] [] [] false
     t "int literal 1Q" "1Q" "1Q" [] [] [] false
     t "int literal -1Q" "-1Q" "-1Q" [] [] [] false
-    t "int literal 1Q" "1Q" "1Q" [] [] [] false
+    t "int literal 1Z" "1Z" "1Z" [] [] [] false
 
     // float literals
     t "float literal -1.0" "-1.0" "-1.0" [] [] [] false
@@ -902,7 +960,7 @@ let exprs =
       "decoded \\u00E9 above-BMP \\U0001F600"
       "\"\\U0001F600\""
       (RT.DString "\U0001F600")
-    // Interpolation: bare-text segment must decode escapes correctly.
+    // Interpolation text segments decode escapes too.
     tEval
       "decoded interpolation with escape"
       "$\"a\\nb {\"x\"}\""
@@ -936,59 +994,45 @@ let exprs =
       []
       []
       false
-    // Invalid escape sequences must be rejected (not silently dropped to "").
-    // Asserts both failure AND `Unparseable` variant
-    tParseErrorVariant "invalid escape in string literal" "\"\\d+\"" "Unparseable"
-    tParseErrorVariant "invalid escape in interpolation" "$\"a\\d+b\"" "Unparseable"
-    tParseErrorVariant "invalid escape in char literal" "'\\d'" "Unparseable"
-    tParseErrorVariant
+    // Invalid escape sequences are rejected instead of dropped.
+    tParseRejected "invalid escape in string literal" "\"\\d+\""
+    tParseRejected "invalid escape in interpolation" "$\"a\\d+b\""
+    tParseRejected "invalid escape in char literal" "'\\d'"
+    tParseRejected
       "invalid escape in string match pattern"
       "match s with\n| \"\\d+\" -> 1L\n| _ -> 0L"
-      "Unparseable"
-    tParseErrorVariant
+    tParseRejected
       "invalid escape in char match pattern"
       "match c with\n| '\\d' -> 1L\n| _ -> 0L"
-      "Unparseable"
     // A qualified enum-case pattern is unsupported (use the unqualified case name).
-    // tree-sitter keeps only the first path segment and error-recovers the
-    // rest; reject it instead of silently building a truncated pattern. The
-    // rejection holds across path lengths and whether or not fields are bound.
-    tParseErrorVariant
+    // Reject it instead of building a truncated pattern from the first path
+    // segment. The rejection holds across path lengths and field bindings.
+    tParseRejected
       "qualified enum-case match pattern (fully qualified)"
       "match x with\n| Stdlib.Result.Result.Ok n -> 1L\n| _ -> 0L"
-      "Unparseable"
-    tParseErrorVariant
+    tParseRejected
       "qualified enum-case match pattern (two segments)"
       "match x with\n| Result.Ok n -> 1L\n| _ -> 0L"
-      "Unparseable"
-    tParseErrorVariant
+    tParseRejected
       "qualified enum-case match pattern (no field binding)"
       "match x with\n| Stdlib.Result.Ok -> 1L\n| _ -> 0L"
-      "Unparseable"
-    // The diagnostic must name the actual problem (qualified path) so the user
-    // knows to use the unqualified case name, not just report a generic failure.
+    // The diagnostic names the qualified path problem and points to the
+    // unqualified case-name form.
     tParseErrorNote
       "qualified enum-case match pattern suggests unqualified case name"
       "match x with\n| Stdlib.Result.Result.Ok n -> 1L\n| _ -> 0L"
       "Invalid match pattern. Enum patterns use the unqualified case name (e.g. `| Ok n`), not a qualified path like `| Stdlib.Result.Result.Ok n`."
-    // Codepoints that tree-sitter accepts as well-formed escapes but that
-    // are not valid Unicode scalars must be rejected by the decoder:
+    // Well-formed escapes that are not valid Unicode scalars are rejected:
     //   - surrogate range (D800..DFFF)
     //   - above the Unicode max (>0x10FFFF)
-    tParseErrorVariant "surrogate codepoint \\uD800" "\"\\uD800\"" "Unparseable"
-    tParseErrorVariant
-      "surrogate codepoint \\U0000D800"
-      "\"\\U0000D800\""
-      "Unparseable"
-    tParseErrorVariant
-      "codepoint above max \\U00110000"
-      "\"\\U00110000\""
-      "Unparseable"
-    tParseErrorVariant "surrogate codepoint in char" "'\\uD800'" "Unparseable"
-    tParseErrorVariant "codepoint above max in char" "'\\U00110000'" "Unparseable"
+    tParseRejected "surrogate codepoint \\uD800" "\"\\uD800\""
+    tParseRejected "surrogate codepoint \\U0000D800" "\"\\U0000D800\""
+    tParseRejected "codepoint above max \\U00110000" "\"\\U00110000\""
+    tParseRejected "surrogate codepoint in char" "'\\uD800'"
+    tParseRejected "codepoint above max in char" "'\\U00110000'"
     // Pure syntax-rejection cases (no escape involvement).
-    tParseErrorVariant "bang produces Unparseable" "!true" "Unparseable"
-    tParseErrorVariant "garbage tokens produce Unparseable" "@@@" "Unparseable"
+    tParseRejected "bang produces a parse error" "!true"
+    tParseRejected "garbage tokens produce a parse error" "@@@"
     t
       "string interpolation - multiple expr to eval"
       "$\"Name: {name}, Age: {age}\""
@@ -1100,7 +1144,50 @@ let exprs =
     t
       "dict with double_backtick_identifier"
       "Dict { ``Content-Length`` = 1L }"
-      "Dict { Content-Length = 1L }"
+      "Dict { ``Content-Length`` = 1L }"
+      []
+      []
+      []
+      false
+
+    // Keep the printer's field-name rule in sync with the lexer: quote names
+    // that cannot be bare, and leave legal bare names alone.
+    t
+      "dict field name that is a keyword"
+      "Dict { ``type`` = 1L }"
+      "Dict { ``type`` = 1L }"
+      []
+      []
+      []
+      false
+    t
+      "dict field name that is a keyword (match)"
+      "Dict { ``match`` = 1L }"
+      "Dict { ``match`` = 1L }"
+      []
+      []
+      []
+      false
+    t
+      "dict field name with a leading digit"
+      "Dict { ``2fa`` = 1L }"
+      "Dict { ``2fa`` = 1L }"
+      []
+      []
+      []
+      false
+    t
+      "dict field name with an apostrophe stays bare"
+      "Dict { foo' = 1L }"
+      "Dict { foo' = 1L }"
+      []
+      []
+      []
+      false
+    t
+      "dict bare field name is not over-quoted"
+      "Dict { name = 1L }"
+      "Dict { name = 1L }"
       []
       []
       []
@@ -1117,13 +1204,31 @@ let exprs =
       []
       []
       false
-    t "tuple with expr" "(1L, 2L + 3L, 4L)" "(1L, (2L) + (3L), 4L)" [] [] [] false // CLEANUP
+    t "tuple with expr" "(1L, 2L + 3L, 4L)" "(1L, (2L) + (3L), 4L)" [] [] [] false
 
     // record literals
     t
       "record, 1 field"
       "Person1 {name =\"John\"} "
       "Person1 { name = \"John\" }"
+      []
+      []
+      []
+      true
+
+    t
+      "record field name with hyphen"
+      "Headers { ``Content-Length`` = \"text/html\" }"
+      "Headers { ``Content-Length`` = \"text/html\" }"
+      []
+      []
+      []
+      true
+
+    t
+      "record field name that is a keyword"
+      "Metadata { ``type`` = \"json\" }"
+      "Metadata { ``type`` = \"json\" }"
       []
       []
       []
@@ -1181,6 +1286,14 @@ let exprs =
       []
       []
       false
+    t
+      "record update field name that is a keyword"
+      "{ metadata with ``type`` = \"json\" }"
+      "{ metadata with ``type`` = \"json\" }"
+      []
+      []
+      []
+      true
     t
       "record update 3"
       "{ person with age = 31L; hasPet = false }"
@@ -1290,7 +1403,7 @@ let exprs =
       []
       []
       false
-    // TODO: this is ugly
+    // Pretty-printing normalizes the let body indentation.
     t "simple let expr" "let x = 1L\n  x" "let x =\n  1L\nx" [] [] [] false
     // A nested function definition desugars to a lambda bound by a let, so the
     // roundtrip is intentionally lossy: the param/return types are dropped and the
@@ -1332,6 +1445,22 @@ let exprs =
       "(Tests.Person { name =\"Janice\" }).name"
       "(Tests.Person { name = \"Janice\" }).name"
       [ person ]
+      []
+      []
+      false
+    t
+      "field access with hyphenated field name"
+      "headers.``Content-Length``"
+      "headers.``Content-Length``"
+      []
+      []
+      []
+      false
+    t
+      "field access with keyword field name"
+      "metadata.``type``"
+      "metadata.``type``"
+      []
       []
       []
       false
@@ -1852,8 +1981,7 @@ else
       []
       false
 
-    // fn calls
-    // CLEANUP these are ugly
+    // Infix calls pretty-print with explicit operand parentheses.
     t "fn call, add once" "1L + 2L" "(1L) + (2L)" [] [] [] false
     t "fn call, add twice" "1L + b + 3L" "((1L) + (b)) + (3L)" [] [] [] false
     t
@@ -1944,6 +2072,15 @@ else
 
 let valueDeclarations =
   [ t "unit" "val unitVal = ()" "val unitVal = ()" [] [] [] false
+
+    t
+      "value doc comment"
+      "/// Default retry count\nval retries = 3L"
+      "/// Default retry count\nval retries = 3L"
+      []
+      []
+      []
+      false
 
     // ints
     t "int8, max" "val maxInt8 = 127y" "val maxInt8 = 127y" [] [] [] false
@@ -2120,6 +2257,15 @@ let valueDeclarations =
 
 let functionDeclarations =
   [ t
+      "function doc comment"
+      "/// Greets a user\nlet greet (name: String): String = \"Hello \" ++ name"
+      "/// Greets a user\nlet greet (name: String): String =\n  (\"Hello \") ++ (name)"
+      []
+      []
+      []
+      false
+
+    t
       "single builtin param"
       "let helloWorld (i: Int64): String = \"Hello world\""
       "let helloWorld (i: Int64): String =\n  \"Hello world\""
@@ -2315,7 +2461,7 @@ let moduleDeclarations =
 
 let sourceFiles =
   [
-    // CLEANUP the output here is a bit broken
+    // Source files pretty-print declarations and trailing expressions together.
     t
       "simple script"
       "
@@ -2344,6 +2490,22 @@ Builtin.printLine (getTitle curiousGeorgeBookId)
       []
       false
 
+    t
+      "mixed module, declaration, and trailing expression"
+      """module Helpers =
+  /// One from Helpers
+  val one = 1L
+
+/// Top-level value
+val two = 2L
+
+two"""
+      "module Tests =\n  module Helpers =\n    /// One from Helpers\n    val one = 1L\n\n/// Top-level value\nval two = 2L\n\ntwo"
+      []
+      []
+      []
+      false
+
     // In the CLI/LSP path, a nested recursive fn should resolve its own name as
     // a local variable while WT2PT converts the body, not as an unresolved fn
     // name. This test executes the fn so we catch that case directly.
@@ -2367,7 +2529,7 @@ Builtin.printLine (getTitle curiousGeorgeBookId)
 
 let tests =
   testList
-    "NewParser"
+    "LibParserRoundTrip"
     [ typeReferences
       typeDeclarations
       valueDeclarations

@@ -24,7 +24,7 @@
 ///   // Anthropic-specific features
 ///   Agent.create ()
 ///   |> Agent.withModel Models.Anthropic.opus46
-///   |> Agent.withThinking 8000I
+///   |> Agent.withThinking 8000
 ///   |> Agent.withWebSearch
 ///   |> Agent.run "Research this topic..."
 ///
@@ -107,8 +107,8 @@ let create () : Agent =
     { model = Darklang.LLM.Models.Anthropic.sonnet45
       systemPrompt = Stdlib.Option.Option.None
       tools = []
-      maxTokens = 4096I
-      maxTurns = 10I
+      maxTokens = 4096
+      maxTurns = 10
       temperature = Stdlib.Option.Option.None
       toolChoice = Stdlib.Option.Option.None
       disableParallelToolUse = false
@@ -173,7 +173,7 @@ let withShellTool
   let tool =
     makeTool name description [] (fun _input ->
       let result = Stdlib.Cli.execute command
-      if result.exitCode == 0I then
+      if result.exitCode == 0 then
         let output = if result.stdout == "" then "(no output)" else result.stdout
         Stdlib.Result.Result.Ok(ToolOutput.Text output)
       else

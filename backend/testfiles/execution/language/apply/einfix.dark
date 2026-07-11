@@ -1,7 +1,7 @@
 5L + 3L = 8L
 "xx" ++ "yy" = "xxyy"
 (5L + (3L)) = 8L
-Stdlib.Int64.add_v0 5L 3L = 8L
+Stdlib.Int64.add 5L 3L = 8L
 
 // Numeric operators are polymorphic over numeric types at runtime
 1.0 + 2.0 = 3.0
@@ -41,7 +41,7 @@ Stdlib.Int64.add_v0 5L 3L = 8L
 // Integer division by zero raises a clean RTE
 10L / 0L = error="Cannot divide by 0"
 // Float overflow follows IEEE (infinity), not an error
-2.0 ^ 100000.0 = Builtin.testInfinity_v0
+2.0 ^ 100000.0 = Builtin.testInfinity
 
 // `^` (power) works on every integer type and Float; Int128/UInt128 are unsupported
 2y ^ 3y = 8y
@@ -49,8 +49,8 @@ Stdlib.Int64.add_v0 5L 3L = 8L
 2l ^ 10l = 1024l
 2Q ^ 3Q = error="Cannot perform numeric operation on Int128 and Int128"
 // unary `-` works on every signed integer type and Float
--(Stdlib.Int8.add_v0 2y 3y) = -5y
--(Stdlib.Float.add_v0 1.0 1.5) = -2.5
+-(Stdlib.Int8.add 2y 3y) = -5y
+-(Stdlib.Float.add 1.0 1.5) = -2.5
 5L + (Builtin.testRuntimeError "error") = error="Uncaught exception: error"
 (Builtin.testRuntimeError "error") + 5L = error="Uncaught exception: error"
 (Builtin.testRuntimeError "one") + (Builtin.testRuntimeError "two") = error="Uncaught exception: one"

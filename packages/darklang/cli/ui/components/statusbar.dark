@@ -12,7 +12,7 @@ type StatusBarModel =
 
 let createStatusBar (leftText: String) (rightText: String) (width: Int) : Core.Types.Component<StatusBarModel> =
   let model = StatusBarModel { leftText = leftText; rightText = rightText; centerText = ""; width = width; backgroundColor = Core.Types.Color.Dark }
-  let bounds = Core.Types.Bounds { position = Core.Types.Position { x = 0I; y = 0I }; dimensions = Core.Types.Dimensions { width = width; height = 1I } }
+  let bounds = Core.Types.Bounds { position = Core.Types.Position { x = 0; y = 0 }; dimensions = Core.Types.Dimensions { width = width; height = 1 } }
   Core.Types.Component
     { id = "statusbar"
       model = model
@@ -32,7 +32,7 @@ let renderStatusBar (component: Core.Types.Component<StatusBarModel>) (context: 
     if Stdlib.String.isEmpty model.centerText then
       let paddingSpace = model.width - leftLen - rightLen
       let padding =
-        if paddingSpace > 0I then
+        if paddingSpace > 0 then
           Stdlib.String.repeat " " paddingSpace
         else
           ""
@@ -40,17 +40,17 @@ let renderStatusBar (component: Core.Types.Component<StatusBarModel>) (context: 
     else
       let totalContentLen = leftLen + centerLen + rightLen
       if totalContentLen >= model.width then
-        Stdlib.String.slice (model.leftText ++ model.centerText ++ model.rightText) 0I model.width
+        Stdlib.String.slice (model.leftText ++ model.centerText ++ model.rightText) 0 model.width
       else
-        let leftPadding = Stdlib.Int.divide (model.width - centerLen) 2I - leftLen
+        let leftPadding = Stdlib.Int.divide (model.width - centerLen) 2 - leftLen
         let rightPadding = model.width - leftLen - centerLen - leftPadding
         let leftPad =
-          if leftPadding > 0I then
+          if leftPadding > 0 then
             Stdlib.String.repeat " " leftPadding
           else
             ""
         let rightPad =
-          if rightPadding > 0I then
+          if rightPadding > 0 then
             Stdlib.String.repeat " " rightPadding
           else
             ""

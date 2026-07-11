@@ -39,7 +39,7 @@ let openaiConfig () : Stdlib.Result.Result<Config, String> =
           baseUrl = "https://api.openai.com/v1/chat/completions"
           providerId = "openai"
           providerName = "OpenAI"
-          maxContextTokens = 128000I })
+          maxContextTokens = 128000 })
   | Error e -> Stdlib.Result.Result.Error e
 
 
@@ -58,7 +58,7 @@ let azureConfig
           baseUrl = endpoint ++ "/openai/deployments/" ++ deploymentName ++ "/chat/completions?api-version=" ++ apiVersion
           providerId = "azure"
           providerName = "Azure OpenAI"
-          maxContextTokens = 128000I })
+          maxContextTokens = 128000 })
   | Error e -> Stdlib.Result.Result.Error e
 
 
@@ -296,7 +296,7 @@ let extractUsage (fields: List<(String * Json)>) : Provider.Usage =
   Provider.Usage
     { inputTokens = promptTokens
       outputTokens = completionTokens
-      cacheCreationTokens = 0I  // OpenAI doesn't track cache creation separately
+      cacheCreationTokens = 0  // OpenAI doesn't track cache creation separately
       cacheReadTokens = cachedTokens }
 
 
@@ -578,7 +578,7 @@ let createWithKey (apiKey: String) : Stdlib.Result.Result<Provider, String> =
   match Internal.ApiKeys.validate apiKey with
   | Ok _ ->
     let config =
-      { (customConfig "https://api.openai.com/v1/chat/completions" "OpenAI" 128000I) with
+      { (customConfig "https://api.openai.com/v1/chat/completions" "OpenAI" 128000) with
           apiKey = Stdlib.Option.Option.Some apiKey
           providerId = "openai" }
     Stdlib.Result.Result.Ok(buildProvider config true)

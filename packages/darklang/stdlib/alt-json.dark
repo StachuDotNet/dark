@@ -81,8 +81,8 @@ module Helpers =
     | Some pair ->
       match Tuple2.second pair with
       | Number n -> Int.fromFloat n
-      | _ -> 0I
-    | None -> 0I
+      | _ -> 0
+    | None -> 0
 
 
   /// Get an optional integer value from a JSON object's fields

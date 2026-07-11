@@ -170,11 +170,11 @@ let runCliCommand
   match parts with
   | [] -> Stdlib.Result.Result.Error "command required"
   | commandName :: _ ->
-    let isWriteCommand = Stdlib.List.member_v0 writeCommands commandName
+    let isWriteCommand = Stdlib.List.member writeCommands commandName
     let writesAllowed = writeMode != WriteMode.Denied
 
     let allCommands = Stdlib.List.append readOnlyCommands writeCommands
-    let commandExists = Stdlib.List.member_v0 allCommands commandName
+    let commandExists = Stdlib.List.member allCommands commandName
 
     // Check confirmation for write commands
     let userRejected =
@@ -197,12 +197,12 @@ let runCliCommand
         let result = Stdlib.Cli.execute fullCmd
 
         match result.exitCode with
-        | 0I ->
+        | 0 ->
           let output = if result.stdout == "" then "(no output)" else result.stdout
           if Stdlib.String.startsWith (Stdlib.String.trim output) "Error:" then
             Stdlib.Result.Result.Error (Stdlib.String.trim output)
           else
-            let preview = if (Stdlib.String.length output) > 100I then (Stdlib.String.slice output 0I 100I) ++ "..." else output
+            let preview = if (Stdlib.String.length output) > 100 then (Stdlib.String.slice output 0 100) ++ "..." else output
             Stdlib.printLine (Colors.dimText ("  -> " ++ preview))
             Stdlib.Result.Result.Ok (Darklang.LLM.Agent.ToolOutput.text output)
         | exitCode ->
@@ -239,8 +239,8 @@ let currentBranchName (state: Cli.AppState) : String =
 let createAgent (model: Darklang.LLM.Models.Model) (branchName: String) (writeMode: WriteMode) : Darklang.LLM.Agent.Agent =
   (Darklang.LLM.Agent.create ())
   |> Darklang.LLM.Agent.withSystemPrompt systemPrompt
-  |> Darklang.LLM.Agent.withMaxTokens 4000I
-  |> Darklang.LLM.Agent.withMaxTurns 20I
+  |> Darklang.LLM.Agent.withMaxTokens 4000
+  |> Darklang.LLM.Agent.withMaxTurns 20
   |> Darklang.LLM.Agent.withTemperature 0.2
   |> Darklang.LLM.Agent.withModel model
   |> Darklang.LLM.Agent.withTool (makeCliTool branchName writeMode)
@@ -384,7 +384,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   let options = parseOptions args defaultOptions
   let provider = resolveProvider options.provider
 
-  if Stdlib.Bool.not (Stdlib.List.member_v0 validProviders provider) then
+  if Stdlib.Bool.not (Stdlib.List.member validProviders provider) then
     Stdlib.printLine (Colors.error $"Unknown provider: {provider}. Use: anthropic, openai, local")
     state
   else
@@ -407,7 +407,7 @@ let help (state: Cli.AppState) : Cli.AppState =
   let lines =
     Stdlib.List.map subcommands (fun s ->
       let padded =
-        match Stdlib.String.padEnd s.usage " " 40I with
+        match Stdlib.String.padEnd s.usage " " 40 with
         | Ok p -> p
         | Error _ -> s.usage
       $"  {padded} - {s.description}")

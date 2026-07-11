@@ -25,7 +25,7 @@ let buildVersionStack
       if srcLoc == location && LanguageTools.ProgramTypes.Reference.kind restoredRef == itemKind then
         // Pop back to restoredHash: keep entries up to and including it
         let restoredHash = LanguageTools.ProgramTypes.Reference.hash restoredRef
-        if Stdlib.List.member_v0 stack restoredHash then
+        if Stdlib.List.member stack restoredHash then
           let before = Stdlib.List.takeWhile stack (fun id -> id != restoredHash)
           Stdlib.List.append before [restoredHash]
         else
@@ -39,7 +39,7 @@ let buildVersionStack
 let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   let branchId = state.currentBranchId
   let autoConfirm =
-    (Stdlib.List.member_v0 args "--yes") || (Stdlib.List.member_v0 args "-y")
+    (Stdlib.List.member args "--yes") || (Stdlib.List.member args "-y")
   let args =
     args
     |> Stdlib.List.filter (fun a -> a != "--yes" && a != "-y")
@@ -120,7 +120,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
               match op with
               | PropagateUpdate (propId, srcLoc, _, _, repoints) ->
                 if srcLoc != location &&
-                    Stdlib.Bool.not (Stdlib.List.member_v0 revertedPropagationIds propId) then
+                    Stdlib.Bool.not (Stdlib.List.member revertedPropagationIds propId) then
                   Stdlib.Option.Option.Some
                     (repoints |> Stdlib.List.map (fun r -> r.location))
                 else
@@ -132,12 +132,12 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
             myRepoints
             |> Stdlib.List.filter (fun r ->
               Stdlib.Bool.not
-                (Stdlib.List.member_v0 otherRepointLocations r.location))
+                (Stdlib.List.member otherRepointLocations r.location))
 
           let overlapping =
             myRepoints
             |> Stdlib.List.filter (fun r ->
-              Stdlib.List.member_v0 otherRepointLocations r.location)
+              Stdlib.List.member otherRepointLocations r.location)
 
           // Resolve names before undo (locations get unlisted by undo)
           let repointNamesDict =

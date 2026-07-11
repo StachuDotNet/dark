@@ -158,10 +158,10 @@ let defaultPortFor
   match schemes with
   | Only [ scheme ] ->
     (match scheme with
-     | "https" -> LanguageTools.Capabilities.Scope.Only [ 443I ]
-     | "wss" -> LanguageTools.Capabilities.Scope.Only [ 443I ]
-     | "http" -> LanguageTools.Capabilities.Scope.Only [ 80I ]
-     | "ws" -> LanguageTools.Capabilities.Scope.Only [ 80I ]
+     | "https" -> LanguageTools.Capabilities.Scope.Only [ 443 ]
+     | "wss" -> LanguageTools.Capabilities.Scope.Only [ 443 ]
+     | "http" -> LanguageTools.Capabilities.Scope.Only [ 80 ]
+     | "ws" -> LanguageTools.Capabilities.Scope.Only [ 80 ]
      | _ -> LanguageTools.Capabilities.Scope.Any)
   | _ -> LanguageTools.Capabilities.Scope.Any
 
@@ -189,7 +189,7 @@ let parseUrl (pattern: String) : LanguageTools.Capabilities.UrlScope =
       [ LanguageTools.Capabilities.HostMatch.AnyHost ]
     else if Stdlib.String.startsWith hostStr "*." then
       [ LanguageTools.Capabilities.HostMatch.Subdomain(
-          Stdlib.String.toLowercase (Stdlib.String.dropFirst hostStr 2I)) ]
+          Stdlib.String.toLowercase (Stdlib.String.dropFirst hostStr 2)) ]
     else
       [ LanguageTools.Capabilities.HostMatch.ExactHost(Stdlib.String.toLowercase hostStr) ]
   let ports =
@@ -358,11 +358,11 @@ let parse
 
 let defaultPortValue (schemeTok: String) : Int =
   match schemeTok with
-  | "https" -> 443I
-  | "wss" -> 443I
-  | "http" -> 80I
-  | "ws" -> 80I
-  | _ -> -1I
+  | "https" -> 443
+  | "wss" -> 443
+  | "http" -> 80
+  | "ws" -> 80
+  | _ -> -1
 
 /// Inverse of `parseUrl` for the single-valued scopes `parseGrant` produces.
 let urlToPattern (url: LanguageTools.Capabilities.UrlScope) : String =

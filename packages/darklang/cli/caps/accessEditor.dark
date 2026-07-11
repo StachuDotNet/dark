@@ -24,13 +24,13 @@ let accesses : List<String> = [ "read"; "write"; "read+write" ]
 let forDomain (domain: String) : State =
   State
     { domain = domain
-      accessIdx = 0I
+      accessIdx = 0
       scope = LineInput.empty
       field = Field.AccessField }
 
 let indexOfAccess (a: String) : Int =
   let indexed = Stdlib.List.indexedMap accesses (fun i x -> (i, x))
-  Stdlib.List.fold indexed 0I (fun acc pair ->
+  Stdlib.List.fold indexed 0 (fun acc pair ->
     let (i, x) = pair
     if x == a then i else acc)
 
@@ -64,8 +64,8 @@ let cycleAccess (state: State) (delta: Int) : State =
   let count = (Stdlib.List.length accesses)
   let raw = state.accessIdx + delta
   let next =
-    if raw < 0I then count - 1I
-    else if raw >= count then 0I
+    if raw < 0 then count - 1
+    else if raw >= count then 0
     else raw
   { state with accessIdx = next }
 
@@ -102,13 +102,13 @@ let handleKey
   | UpArrow -> EditResult.Editing ({ state with field = Field.AccessField })
   | DownArrow -> EditResult.Editing ({ state with field = Field.ScopeField })
   | LeftArrow ->
-    if onAccess then EditResult.Editing (cycleAccess state (0I - 1I))
+    if onAccess then EditResult.Editing (cycleAccess state (0 - 1))
     else EditResult.Editing (applyScopeKey state key keyChar)
   | RightArrow ->
-    if onAccess then EditResult.Editing (cycleAccess state 1I)
+    if onAccess then EditResult.Editing (cycleAccess state 1)
     else EditResult.Editing (applyScopeKey state key keyChar)
   | Spacebar ->
-    if onAccess then EditResult.Editing (cycleAccess state 1I)
+    if onAccess then EditResult.Editing (cycleAccess state 1)
     else EditResult.Editing (applyScopeKey state key keyChar)
   | _ -> EditResult.Editing (applyScopeKey state key keyChar)
 

@@ -1,34 +1,45 @@
-/// CLEANUP still feels like this can be tidied/shortened a bit.
+/// Resolves WrittenTypes names against builtins and branch-aware package lookups.
 module LibParser.NameResolver
 
 open Prelude
 open LibExecution.ProgramTypes
 
-module FS2WT = FSharpToWrittenTypes
 module WT = WrittenTypes
 module PT = LibExecution.ProgramTypes
-module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module RT = LibExecution.RuntimeTypes
 type NRE = PT.NameResolutionError
 
+// Package fn/value names are `name` or `name_vN`; type names are `Name` or
+// `Name_v0`.
+let private parseFnNameString (fnName : string) : Result<string * int, string> =
+  match fnName with
+  | Regex.Regex "^([a-z][a-z0-9A-Z]*[']?)_v(\d+)$" [ name; version ] ->
+    // TryParse (not `int`) so an absurdly long version string is a format error, not
+    // an OverflowException raised from a function that otherwise returns Result
+    match System.Int32.TryParse version with
+    | true, v -> Ok(name, v)
+    | false, _ -> Error "Bad format in fn name"
+  | Regex.Regex "^([a-z][a-z0-9A-Z]*[']?)$" [ name ] -> Ok(name, 0)
+  | _ -> Error "Bad format in fn name"
 
-/// If a name is not found, should we raise an exception?
+let private parseTypeNameString (typeName : string) : Result<string, string> =
+  match typeName with
+  | Regex.Regex "^([A-Z][a-z0-9A-Z]*[']?)_v0$" [ name ] -> Ok name
+  | Regex.Regex "^([A-Z][a-z0-9A-Z]*[']?)$" [ name ] -> Ok name
+  | _ -> Error "Bad format in type name"
+
+
+/// Controls whether unresolved names are allowed.
 ///
-/// - when the local package DB is fully empty, and we're filling it in for the
-///   first time, we want to allow all names to be NotFound -- other package
-///   items won't be there yet
-/// - sometimes when parsing, we're not sure whether something is:
-///   - a variable
-///   - or something else, like a value or fn.
-///   During these times, we _also_ want to allow errors as well, so we can
-///   parse it as a variable as a fallback if nothing is found under that name.
+/// Package loading uses `Allow` while the package manager is being filled, since
+/// sibling package items may not exist yet. Expression lowering also uses
+/// `Allow` for ambiguous names so it can fall back to local variables.
 [<RequireQualifiedAccess>]
 type OnMissing =
   | ThrowError
   | Allow
 
-// TODO: we should probably just return the Result, and let the caller
-// handle the error if they want to...
+// CLEANUP: return the Result directly and let callers decide how to handle it.
 let throwIfRelevant
   (onMissing : OnMissing)
   (currentModule : List<string>)
@@ -52,16 +63,20 @@ type GenericName = LibDB.NameLookup.GenericName
 let namesToTry = LibDB.NameLookup.namesToTry
 
 
-/// Generic name resolution that handles the common pattern across Type/Value/Fn resolution.
-/// Returns the matched location alongside the resolved name (None for
-/// builtins / unresolved). The location is what the user typed, after
-/// `namesToTry` candidate expansion — captured at resolution time so
-/// dep-edge inserts can populate location columns directly without a
-/// post-hoc lookup.
-/// Note: F# parser always uses mainBranchId for package lookups
+/// Shared resolver for type, value, and function names.
+/// Returns the matched package location alongside the resolved name. Builtins and
+/// unresolved names have no package location.
+///
+/// The location comes from the winning `namesToTry` candidate, so dependency
+/// edges can record it directly.
+///
+/// `branchId` selects which branch's package view the lookups see (WIP included).
+/// Package loading and tests pass `mainBranchId`; CLI-script parsing passes the
+/// run's branch so intra-branch WIP resolves.
 let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
   (builtins : Option<Set<'Builtin>>)
   (onMissing : OnMissing)
+  (branchId : PT.BranchId)
   (currentModule : List<string>)
   (given : NEList<string>)
   (parseName : string -> Result<string * int, string>)
@@ -77,7 +92,14 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
 
     match parseName name with
     | Error _ ->
-      return { originalName = originalName; resolved = Error NRE.InvalidName }
+      // Invalid names should obey `OnMissing` too. In `ThrowError` mode, fail
+      // hard just like `NotFound`.
+      return
+        throwIfRelevant
+          onMissing
+          currentModule
+          given
+          { originalName = originalName; resolved = Error NRE.InvalidName }
     | Ok(name, version) ->
       let genericName : GenericName =
         { modules = modules; name = name; version = version }
@@ -104,7 +126,7 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
               // Try package manager lookup
               let location : PT.PackageLocation =
                 { owner = owner; modules = modules; name = nameToTry.name }
-              match! findInPM (PT.mainBranchId, location) with
+              match! findInPM (branchId, location) with
               | Some id -> return Ok(makePackageFQName id, Some location)
               | None -> return Error()
         }
@@ -137,6 +159,7 @@ let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
 let resolveTypeName
   (packageManager : PT.PackageManager)
   (onMissing : OnMissing)
+  (branchId : PT.BranchId)
   (currentModule : List<string>)
   (name : WT.Name)
   : Ply<PT.NameResolution<PT.FQTypeName.FQTypeName>> =
@@ -149,12 +172,12 @@ let resolveTypeName
   | WT.Unresolved given ->
     // Types don't have builtins, so pass None
     // parseTypeName returns just name (version always 0 for types)
-    let parseTypeName name =
-      FS2WT.Expr.parseTypeName name |> Result.map (fun n -> (n, 0))
+    let parseTypeName name = parseTypeNameString name |> Result.map (fun n -> (n, 0))
 
     resolveGenericName
       emptyBuiltins
       onMissing
+      branchId
       currentModule
       given
       parseTypeName
@@ -169,6 +192,7 @@ let resolveValueName
   (builtins : Set<RT.FQValueName.Builtin>)
   (packageManager : PT.PackageManager)
   (onMissing : OnMissing)
+  (branchId : PT.BranchId)
   (currentModule : List<string>)
   (name : WT.Name)
   : Ply<PT.NameResolution<PT.FQValueName.FQValueName>> =
@@ -184,9 +208,10 @@ let resolveValueName
     resolveGenericName
       (Some builtins)
       onMissing
+      branchId
       currentModule
       given
-      FS2WT.Expr.parseFnName
+      parseFnNameString
       packageManager.findValue
       PT.FQValueName.FQValueName.Package
       (fun (n, v) -> PT.FQValueName.Builtin { name = n; version = v })
@@ -197,6 +222,7 @@ let resolveFnName
   (builtinFns : Set<RT.FQFnName.Builtin>)
   (packageManager : PT.PackageManager)
   (onMissing : OnMissing)
+  (branchId : PT.BranchId)
   (currentModule : List<string>)
   (name : WT.Name)
   : Ply<PT.NameResolution<PT.FQFnName.FQFnName>> =
@@ -211,9 +237,10 @@ let resolveFnName
     resolveGenericName
       (Some builtinFns)
       onMissing
+      branchId
       currentModule
       given
-      FS2WT.Expr.parseFnName
+      parseFnNameString
       packageManager.findFn
       PT.FQFnName.FQFnName.Package
       (fun (n, v) -> PT.FQFnName.Builtin { name = n; version = v })

@@ -1,14 +1,14 @@
 // function
 let userFn () : Int64 = 6L
 (() |> userFn) = 6L
-([] |> Stdlib.List.push_v0 2L) = [ 2L ]
+([] |> Stdlib.List.push 2L) = [ 2L ]
 
 // nested function
-([] |> Stdlib.List.push_v0 (Stdlib.Int64.add_v0 1L (Stdlib.Int64.add_v0 1L 3L))) = [ 5L ]
+([] |> Stdlib.List.push (Stdlib.Int64.add 1L (Stdlib.Int64.add 1L 3L))) = [ 5L ]
 
-([] |> Stdlib.List.push_v0 (Stdlib.Int64.add_v0 1L ((+) 1L 3L))) = [ 5L ]
+([] |> Stdlib.List.push (Stdlib.Int64.add 1L ((+) 1L 3L))) = [ 5L ]
 
-([] |> Stdlib.List.push_v0 (Builtin.testRuntimeError "err")) = error="Uncaught exception: err"
+([] |> Stdlib.List.push (Builtin.testRuntimeError "err")) = error="Uncaught exception: err"
 
 // general
 (4L |> (-) 3L) = 1L
@@ -16,7 +16,7 @@ let userFn () : Int64 = 6L
 ([ 5L ]
  |> Stdlib.List.head
  |> Builtin.unwrap
- |> Stdlib.Int64.add_v0 1L
+ |> Stdlib.Int64.add 1L
  |> (+) 3L
  |> (fun x -> if (x + 4L) > 1L then x else (1L + x))) = 9L
 
@@ -36,7 +36,7 @@ type Y = { z: Z }
 type X = { y: Y }
 
 (let x = X { y = Y { z = Z { a = [ 1L; 2L; 3L; 4L; 5L ] } } }
- (x.y.z.a |> Stdlib.List.length_v0)) = 5I
+ (x.y.z.a |> Stdlib.List.length)) = 5
 
 type MyEnum = A of Int64 * Int64 * Int64
 (33L |> MyEnum.A 21L 42L) = MyEnum.A 33L 21L 42L
@@ -60,25 +60,25 @@ type MyEnum = A of Int64 * Int64 * Int64
   Stdlib.Option.Option.Some 4L
 
 ((Stdlib.Option.Option.Some 3L)
- |> Stdlib.Option.withDefault_v0 0L
+ |> Stdlib.Option.withDefault 0L
  |> (+) 3L) = 6L
 
-((Stdlib.Result.Result.Ok 3L) |> Stdlib.Result.withDefault_v0 0L |> (+) 3L) = 6L
+((Stdlib.Result.Result.Ok 3L) |> Stdlib.Result.withDefault 0L |> (+) 3L) = 6L
 
-((Stdlib.Result.Result.Error "err") |> Stdlib.Result.withDefault_v0 0L |> (+) 3L) = 3L
+((Stdlib.Result.Result.Error "err") |> Stdlib.Result.withDefault 0L |> (+) 3L) = 3L
 
-(let x = fun a -> Stdlib.Result.withDefault_v0 a 1L
+(let x = fun a -> Stdlib.Result.withDefault a 1L
  (Stdlib.Result.Result.Error "err") |> x |> (+) 3L) = 4L
 
 (let x =
   fun x ->
-    Stdlib.Option.andThen_v0 (Stdlib.Option.Option.Some x) (fun x ->
+    Stdlib.Option.andThen (Stdlib.Option.Option.Some x) (fun x ->
       Stdlib.Option.Option.Some(1L + x))
 
  3L |> x) = Stdlib.Option.Option.Some 4L
 
 (let x =
-  fun x -> Stdlib.Option.andThen_v0 x (fun x -> Stdlib.Option.Option.Some(1L + x))
+  fun x -> Stdlib.Option.andThen x (fun x -> Stdlib.Option.Option.Some(1L + x))
 
  3L |> Stdlib.Option.Option.Some |> x) = Stdlib.Option.Option.Some 4L
 

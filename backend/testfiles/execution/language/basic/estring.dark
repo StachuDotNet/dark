@@ -10,3 +10,19 @@ $"""test {"1"}""" = "test 1"
 
 (let two = 2L in "test 1" == $"test {one}") = error="There is no variable named: one"
 (let one = 1L in $"test {Stdlib.Int64.toString one}") = "test 1"
+
+// --- interpolation scanner and brace escapes ---
+
+// A brace inside a char literal in an interpolation should not end the interpolation.
+($"{Stdlib.String.fromChar '}'}") = "}"
+($"x{Stdlib.String.append "a" "}"}y") = "xa}y"
+
+// An escaped-quote char literal should not affect later brace scanning.
+($"{Stdlib.String.append (Stdlib.String.fromChar '\'') (Stdlib.String.fromChar '}')}") = "'}"
+
+// `\{` and `\}` are literal-brace escapes; `\{\{` yields `{{`.
+"\{\}" = "{}"
+($"\{\{") = "{{"
+
+// `{{` and `}}` are interpolation escapes for literal braces.
+($"a{{b}}c") = "a{b}c"

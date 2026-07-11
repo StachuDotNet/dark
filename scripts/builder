@@ -20,8 +20,6 @@ fi
 rm -Rf backend/src/*/obj
 rm -Rf backend/tests/*/obj
 rm -Rf backend/Build
-rm -Rf tree-sitter-darklang/build
-rm -Rf tree-sitter-darklang/node_modules
 
 # See Dockerfile for an explanation of uid/gid.
 gid="$(id -g)"
@@ -102,8 +100,6 @@ docker run \
   --env-file "$ENV_FILE" \
   --env HOST_PWD="$PWD" \
   --env IN_DEV_CONTAINER=true \
-  -v tree-sitter-node-modules:/home/dark/app/tree-sitter-darklang/node_modules \
-  -v tree-sitter-build:/home/dark/app/tree-sitter-darklang/build \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -p 10011:10011 \
   -p 10012:10012 \

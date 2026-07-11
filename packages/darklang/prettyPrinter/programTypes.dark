@@ -89,7 +89,7 @@ let packageNameWithContext
       Stdlib.String.dropFirst fullName (Stdlib.String.length prefix)
     else if owner == "Darklang" then
       // For Darklang packages, drop the "Darklang." prefix for brevity
-      let withoutDarklang = Stdlib.String.dropFirst fullName 9I // "Darklang.".length
+      let withoutDarklang = Stdlib.String.dropFirst fullName 9 // "Darklang.".length
       withoutDarklang
     else
       fullName
@@ -155,7 +155,7 @@ module FQValueName =
       let namePart = t.name
 
       let versionPart =
-        if t.version == 0 then
+        if t.version == 0l then
           ""
         else
           $"_v{Stdlib.Int32.toString t.version}"
@@ -212,7 +212,7 @@ module FQFnName =
       let namePart = t.name
 
       let versionPart =
-        if t.version == 0 then
+        if t.version == 0l then
           ""
         else
           $"_v{Stdlib.Int32.toString t.version}"
@@ -595,7 +595,7 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
       pairs
       |> Stdlib.List.map (fun pair ->
         let (key, value) = pair
-        $"{key} = {expr ctx value}")
+        $"{PrettyPrinter.formatFieldName key} = {expr ctx value}")
       |> Stdlib.String.join "; "
       |> fun parts -> "{ " ++ parts ++ " }"
 
@@ -625,7 +625,7 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
       fields
       |> Stdlib.List.map (fun pair ->
         let (name, value) = pair
-        $"{name} = {expr ctx value}")
+        $"{PrettyPrinter.formatFieldName name} = {expr ctx value}")
       |> Stdlib.String.join "; "
       |> fun parts -> "{ " ++ parts ++ " }"
 
@@ -644,14 +644,19 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
         |> Stdlib.String.join ", "
         |> fun parts -> $"<{parts}>"
 
+    // A bare, unqualified enum case (no type name) prints as just the case name —
+    // e.g. an unresolved `TestDB` — not `.TestDB`. The leading `.` only separates a
+    // present type name from its case (`Result.Ok`, `Generic<Int64>.A`).
+    let sep = if typeNamePart == "" then "" else "."
+
     match fields with
-    | [] -> $"{typeNamePart}{typeArgsPart}.{caseName}"
+    | [] -> $"{typeNamePart}{typeArgsPart}{sep}{caseName}"
     | fields ->
       let fieldPart =
         fields
         |> Stdlib.List.map (fun field -> expr ctx field)
         |> Stdlib.String.join ", "
-      $"{typeNamePart}{typeArgsPart}.{caseName}({fieldPart})"
+      $"{typeNamePart}{typeArgsPart}{sep}{caseName}({fieldPart})"
 
 
   // declaring and accessing variables
@@ -667,8 +672,9 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
     // TODO: only sometimes need to wrap exprPart in parens
     match e with
     | EVariable(_, _)
-    | ERecordFieldAccess(_, _, _) -> $"{exprPart}.{fieldName}"
-    | _ -> $"({exprPart}).{fieldName}"
+    | ERecordFieldAccess(_, _, _) ->
+      $"{exprPart}.{PrettyPrinter.formatFieldName fieldName}"
+    | _ -> $"({exprPart}).{PrettyPrinter.formatFieldName fieldName}"
 
   | EVariable(_id, name) -> name
 
@@ -797,7 +803,7 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
       updates
       |> Stdlib.List.map (fun pair ->
         let (fieldName, value) = pair
-        $"{fieldName} = {expr ctx value}")
+        $"{PrettyPrinter.formatFieldName fieldName} = {expr ctx value}")
       |> Stdlib.String.join "; "
 
     // TODO: don't always need the parens
@@ -818,6 +824,11 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
     // This should never happen - ESelf should only appear within a function body
     // CLEANUP: consider making this a runtime error instead
     | None -> "ESelf"
+
+  // Unreachable in practice: format/round-trip callers reject parses with
+  // diagnostics before lowering, so a broken tree never reaches pretty-printing.
+  // Rendered visibly (not "" or a crash) in case one ever slips through.
+  | EError _id -> "<parse error>"
 
   // CLEANUP: remove this case before shipping to users
   | expr ->
@@ -844,7 +855,7 @@ module TypeDeclaration =
     (d: LanguageTools.ProgramTypes.TypeDeclaration.RecordField)
     : String =
     // TODO: /// for description
-    $"{d.name}: {typeReference ctx d.typ}"
+    $"{PrettyPrinter.formatFieldName d.name}: {typeReference ctx d.typ}"
 
   let enumField
     (ctx: Context)
@@ -853,7 +864,7 @@ module TypeDeclaration =
     match d.label with
     | None -> typeReference ctx d.typ
     | Some label ->
-      $"{label}: {typeReference ctx d.typ}"
+      $"{PrettyPrinter.formatFieldName label}: {typeReference ctx d.typ}"
 
   let enumCase
     (ctx: Context)
@@ -899,7 +910,7 @@ let db
   (db: LanguageTools.ProgramTypes.DB)
   : String =
   let versionPart =
-    if db.version == 0 then
+    if db.version == 0l then
       ""
     else
       $"_v{Stdlib.Int32.toString db.version}"

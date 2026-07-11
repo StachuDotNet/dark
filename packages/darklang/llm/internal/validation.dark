@@ -11,11 +11,11 @@ let clamp (value: Int) (min: Int) (max: Int) : Int =
 
 /// Validate max tokens is within reasonable bounds
 let validateMaxTokens (tokens: Int) (maxAllowed: Int) : Int =
-  clamp tokens 1I maxAllowed
+  clamp tokens 1 maxAllowed
 
 /// Validate max turns is reasonable
 let validateMaxTurns (turns: Int) : Int =
-  clamp turns 1I 100I
+  clamp turns 1 100
 
 /// Validate temperature with a custom max (provider-specific)
 let validateTemperature (temp: Float) (maxTemp: Float) : Float =

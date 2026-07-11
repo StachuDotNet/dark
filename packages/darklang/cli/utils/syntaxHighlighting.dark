@@ -1,7 +1,7 @@
 module Darklang.Cli.SyntaxHighlighting
 
 
-/// Maps semantic token types to CLI colors
+/// Maps semantic token types to CLI colors.
 let tokenTypeToCliColor (tokenType: LanguageTools.SemanticTokens.TokenType) : String =
   match tokenType with
   | Symbol -> Colors.blue
@@ -26,54 +26,81 @@ let tokenTypeToCliColor (tokenType: LanguageTools.SemanticTokens.TokenType) : St
   | RegularExpression -> Colors.stringColor
 
 
-/// Highlights a single line by inserting color codes at token positions
+/// Highlights one line by inserting color codes at token boundaries.
 let highlightLine (line: String) (lineTokens: List<LanguageTools.SemanticTokens.SemanticToken>) : String =
-  // create a list of color insertions: (position, colorCode)
   let insertions =
     lineTokens
-    |> Stdlib.List.fold [] (fun acc token ->
-        // extract start and end positions for the token
-        let startPos = token.range.start.column
-        let endPos = token.range.end_.column
-        let color = tokenTypeToCliColor token.tokenType
+    |> Stdlib.List.collect (fun token ->
+        [ (token.range.start.column, tokenTypeToCliColor token.tokenType)
+          (token.range.end_.column, Colors.reset) ])
+    // stable sort keeps a token's end before the next token's start at a shared
+    // column, so adjacent tokens render as `…reset<next-color>…`
+    |> Stdlib.List.sortBy (fun (pos, _) -> pos)
 
-        // add color start and reset positions
-        let colorStart = (startPos, color)
-        let colorEnd = (endPos, Colors.reset)
-
-        Stdlib.List.append acc [colorStart; colorEnd])
-  |> Stdlib.List.sortBy (fun (pos, _) -> pos)
-
-  // apply insertions from right to left to avoid position shifts when inserting color codes
+  // Insert from right to left so earlier insertions do not shift later positions.
   let reversedInsertions = Stdlib.List.reverse insertions
 
   reversedInsertions
   |> Stdlib.List.fold line (fun currentLine (pos, colorCode) ->
-      // validate insertion position is within current line bounds
-      if pos >= 0I && pos <= Stdlib.String.length currentLine then
-        let before = Stdlib.String.slice currentLine 0I pos // everything before the position
-        let after = Stdlib.String.dropFirst currentLine pos // everything after the position
-        // insert color code at the position
+      if pos >= 0 && pos <= Stdlib.String.length currentLine then
+        let before = Stdlib.String.slice currentLine 0 pos
+        let after = Stdlib.String.dropFirst currentLine pos
         before ++ colorCode ++ after
       else
         currentLine)
 
 
-/// Takes the source code and all semantic tokens, returns the highlighted version
+/// Splits a token that spans multiple rows into one single-line token per row it
+/// covers, so `highlightLine` can assume single-line tokens. A token already on
+/// one row passes through unchanged.
+let splitTokenByLine
+  (lines: List<String>)
+  (token: LanguageTools.SemanticTokens.SemanticToken)
+  : List<LanguageTools.SemanticTokens.SemanticToken> =
+  let startRow = token.range.start.row
+  let endRow = token.range.end_.row
+
+  if startRow == endRow then
+    [ token ]
+  else
+    Stdlib.List.range startRow endRow
+    |> Stdlib.List.map (fun row ->
+      // first row keeps the token's start column, later rows start at 0;
+      // last row keeps its end column, earlier rows run to end of line
+      let startCol = if row == startRow then token.range.start.column else 0
+
+      let endCol =
+        if row == endRow then
+          token.range.end_.column
+        else
+          match Stdlib.List.getAt lines row with
+          | Some line -> Stdlib.String.length line
+          | None -> 0
+
+      let newRange =
+        { token.range with
+            start = { token.range.start with row = row; column = startCol }
+            end_ = { token.range.end_ with row = row; column = endCol } }
+
+      { token with range = newRange })
+
+
+/// Applies semantic-token colors to source code.
 let applyTokenColors
   (sourceCode: String)
   (tokens: List<LanguageTools.SemanticTokens.SemanticToken>)
   : String =
-  // Sort tokens by both row and column
+  let lines = Stdlib.String.split sourceCode "\n"
+
+  // split any multi-line token into one single-line token per row it covers, so
+  // each line below sees only single-line tokens
   let sortedTokens =
     tokens
+    |> Stdlib.List.collect (splitTokenByLine lines)
     |> Stdlib.List.sortBy (fun token -> (token.range.start.row, token.range.start.column))
-
-  let lines = Stdlib.String.split sourceCode "\n"
 
   lines
   |> Stdlib.List.indexedMap (fun lineIndex line ->
-    // For the current line, find all tokens that belong to it by filtering tokens where the row matches the current line index
     let lineTokens =
       sortedTokens
       |> Stdlib.List.filter (fun token -> token.range.start.row == lineIndex)
@@ -85,19 +112,14 @@ let applyTokenColors
   |> Stdlib.String.join "\n"
 
 
+/// Applies full-parse semantic-token colors to source code — distinguishes
+/// module / type / function / parameter names (not possible from lexing alone).
 let highlightCode (sourceCode: String) : String =
-  let parsedTree = LanguageTools.Parser.parseToSimplifiedTree sourceCode
-
-  match LanguageTools.Parser.parseFromTree parsedTree with
-  | Ok parsedFile ->
-    let tokens = LanguageTools.SemanticTokens.ParsedFile.tokenize parsedFile
-    if Stdlib.List.isEmpty tokens then
-      // TODO: create a fallback highlighting when parsing and tokenization fail
-      Builtin.debug "what" parsedFile
-      sourceCode
-    else
-      applyTokenColors sourceCode tokens
-
-  | Error err ->
-    Builtin.debug "err" err
-    sourceCode
+  // The parser is best-effort: its lexer recovers from malformed input, so it
+  // returns `Some` (a partial tree; precise diagnostics are reported separately)
+  // for virtually all input. `None` only on a hard lex failure — fall back to
+  // the uncolored source.
+  match Builtin.parserParseToWrittenTypes sourceCode with
+  | Some parsedFile ->
+    applyTokenColors sourceCode (LanguageTools.SemanticTokens.ParsedFile.tokenize parsedFile)
+  | None -> sourceCode

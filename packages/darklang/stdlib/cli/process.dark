@@ -51,7 +51,7 @@ let exec (program: String) (args: List<String>) : Result.Result<String, String> 
   (run program args)
   |> Stdlib.Result.mapError (fun e -> e.message)
   |> Stdlib.Result.andThen (fun output ->
-    if output.exitCode == 0I then
+    if output.exitCode == 0 then
       Stdlib.Result.Result.Ok(Stdlib.String.trimEnd output.stdout)
     else
       let err = Stdlib.String.trimEnd output.stderr
@@ -115,7 +115,7 @@ let runWithEnv
       let (k, _v) = pair
       (Stdlib.String.contains k "=") || (Stdlib.String.contains k " "))
 
-  if (Stdlib.List.length invalid) > 0I then
+  if (Stdlib.List.length invalid) > 0 then
     let badName =
       (Stdlib.List.head invalid)
       |> Builtin.unwrap
@@ -144,7 +144,7 @@ let runWithTimeout
   (program: String)
   (args: List<String>)
   : Result.Result<Output, String> =
-  if timeoutMs <= 0I then
+  if timeoutMs <= 0 then
     Stdlib.Result.Result.Error "timeoutMs must be positive"
   else
 

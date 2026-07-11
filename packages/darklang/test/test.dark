@@ -8,17 +8,17 @@ let fnWithTypeArgAndOneParam<'a> (arg: 'a) : 'a = Stdlib.Json.parse<'a> arg
 let twoStringFn (str1: String) (str2: String) : String =
   str1 ++ " appended " ++ str2
 
-let returnsInt () : Int = 5I
+let returnsInt () : Int = 5
 
 let returnsString () : String = "string"
 
 let returnsOptionSome () : Stdlib.Option.Option<Int> =
-  Stdlib.Option.Option.Some 5I
+  Stdlib.Option.Option.Some 5
 
 let returnsOptionNone () : Stdlib.Option.Option<'a> = Stdlib.Option.Option.None
 
 let returnsResultOk () : Stdlib.Result.Result<Int, String> =
-  Stdlib.Result.Result.Ok 5I
+  Stdlib.Result.Result.Ok 5
 
 let returnsResultError () : Stdlib.Result.Result<Char, Bool> =
   Stdlib.Result.Result.Error false
@@ -41,7 +41,7 @@ module Values =
   let stringValue = "test"
   let int128Value = 5Q
   let uint128Value = 5Z
-  let intValue = 5I
+  let intValue = 5
   let int64Value = 5L
   let uint64Value = 5UL
   let int32Value = 5l

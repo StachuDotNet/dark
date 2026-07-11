@@ -140,7 +140,7 @@ let initialState
     { messages =
         Stdlib.List.append history [ Provider.userMessage userMessage ]
       toolCalls = []
-      turn = 1I
+      turn = 1
       totalUsage = Provider.emptyUsage
       isDone = false
       thinking = Stdlib.Option.Option.None
@@ -237,7 +237,7 @@ let runExtendedLoop
         { state with
             messages = updatedMessages
             toolCalls = newToolCalls
-            turn = state.turn + 1I
+            turn = state.turn + 1
             totalUsage = newUsage
             thinking = accumulatedThinking
             webSearchResults = accumulatedSearches

@@ -21,10 +21,10 @@ let countMatchingPrefix (a: List<String>) (b: List<String>) : Int =
   match (a, b) with
   | (aHead :: aTail, bHead :: bTail) ->
     if aHead == bHead then
-      1I + (countMatchingPrefix aTail bTail)
+      1 + (countMatchingPrefix aTail bTail)
     else
-      0I
-  | _ -> 0I
+      0
+  | _ -> 0
 
 /// Given a list of locations for a hash, pick the best one using context.
 /// Scoring: most matching prefix segments with currentModule, then shortest path,

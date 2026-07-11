@@ -42,7 +42,7 @@ module Simple =
   (AorB.A == AorB.A) = true
   (AorB.A == AorB.B) = false
 
-  Stdlib.List.unique_v0 [ AorB.A; AorB.B; AorB.A; AorB.A; AorB.B ] = [ AorB.A; AorB.B ]
+  Stdlib.List.unique [ AorB.A; AorB.B; AorB.A; AorB.A; AorB.B ] = [ AorB.A; AorB.B ]
 
   module EnumReference =
     type CorD =
@@ -76,7 +76,7 @@ module MixedCases =
       EnumOfMixedCases.X "testX"
       EnumOfMixedCases.Y(5L)
       EnumOfMixedCases.Z("testZ", 2L) ]
-  match Stdlib.List.getAt values 3I with
+  match Stdlib.List.getAt values 3 with
   | Some z -> Stdlib.Result.Result.Ok z
   | None -> Stdlib.Result.Result.Error "Failure") =
     Darklang.Stdlib.Result.Result.Ok(EnumOfMixedCases.Z("testZ", 2L))
@@ -85,11 +85,11 @@ module MixedCases =
      EnumOfMixedCases.X "testX"
      EnumOfMixedCases.Y(5L)
      EnumOfMixedCases.Z("testZ", 2L) ]
-  |> Stdlib.List.map_v0 (fun v ->
+  |> Stdlib.List.map (fun v ->
     match v with
     | X s -> "X " ++ s
     | Z(s, _i) -> "Z " ++ s
-    | Y y -> "Y " ++ (Stdlib.Int64.toString_v0 y)
+    | Y y -> "Y " ++ (Stdlib.Int64.toString y)
     | W -> "a simple W")) = [ "a simple W"; "X testX"; "Y 5"; "Z testZ" ]
 
 
@@ -148,7 +148,7 @@ module Polymorphism =
     insert' tree value cmp
 
   let ofList (values: List<'a>) (cmp: ('a * 'a) -> Int64) : RBTree<'a> =
-    Stdlib.List.fold_v0 values RBTree.Empty (fun tree value -> insert tree value cmp)
+    Stdlib.List.fold values RBTree.Empty (fun tree value -> insert tree value cmp)
 
   let toList' (tree: RBTree<'a>) (acc: List<'a>) : List<'a> =
     match tree with

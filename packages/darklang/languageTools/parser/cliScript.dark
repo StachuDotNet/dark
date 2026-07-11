@@ -1,37 +1,18 @@
 module Darklang.LanguageTools.Parser.CliScript
 
 
-/// Location of an unparseable subtree in the source.
-type Unparseable =
-  { text: String
-    line: Int
-    column: Int
-    note: Stdlib.Option.Option<String> }
-
-
-/// Why a parse attempt failed.
+/// Why a parse attempt failed. A DU (not a bare String) so structured cases
+/// can be added later; today every failure is a rendered diagnostic message.
 type ParseError =
-  /// A token or subtree couldn't be matched to any grammar production
-  /// (e.g. `!true`).
-  | Unparseable of Unparseable
-
-  /// Lower-level parser failure (tree-sitter / AST conversion) that
-  /// produced a string error before declarations could be split out.
-  /// Rarer than `Unparseable` since tree-sitter usually recovers via
-  /// ERROR nodes that flow through `Unparseable` instead.
-  | Other of String
+  /// A rendered parser diagnostic — line/column (when known) are already
+  /// formatted into the message.
+  | Message of String
 
 
 module ParseError =
   let toString (err: ParseError) : String =
     match err with
-    | Unparseable u ->
-      let noteText =
-        match u.note with
-        | Some n -> $": {n}"
-        | None -> ""
-      $"Parse error at line {Stdlib.Int.toString u.line}, column {Stdlib.Int.toString u.column}: unexpected '{u.text}'{noteText}"
-    | Other msg -> msg
+    | Message msg -> msg
 
 
 type WTCliScriptModule =
@@ -56,23 +37,21 @@ type PTCliScriptModule =
 let parseDecls
   (owner: String)
   (scriptName: String)
+  (diagnostics: List<(LanguageTools.Parser.Range * String)>)
   (source: LanguageTools.WrittenTypes.ParsedFile)
   : Stdlib.Result.Result<WTCliScriptModule, ParseError> =
-  // `ParsedFile` is a single-case DU (`SourceFile of ...`). No `| _` fallback.
-  match source with
-  | SourceFile source ->
-    // Check for unparseable content (e.g., invalid syntax like `!true`)
-    match source.unparseableStuff with
-    | first :: _ ->
-      let u =
-        Unparseable
-          { text = first.source.text
-            line = first.source.range.start.row + 1I
-            column = first.source.range.start.column
-            note = first.note }
-      Stdlib.Result.Result.Error(ParseError.Unparseable u)
+  // A parse error blocks declaration extraction — the recovered tree would be broken.
+  match diagnostics with
+  | (range, message) :: _ ->
+    let rendered =
+      $"Parse error at line {Stdlib.Int.toString (range.start.row + 1)}, column {Stdlib.Int.toString range.start.column}: {message}"
 
-    | [] ->
+    Stdlib.Result.Result.Error(ParseError.Message rendered)
+
+  | [] ->
+    // `ParsedFile` is a single-case DU (`SourceFile of ...`). No `| _` fallback.
+    match source with
+    | SourceFile source ->
       let types =
         source.declarations
         |> Stdlib.List.filterMap (fun decl ->
@@ -252,16 +231,15 @@ let toPT
     unresolvedNames)
 
 
-let parse
+/// Name-resolves + lowers an ALREADY-PARSED WrittenTypes file. The LSP parses
+/// and feeds the result here directly (no re-parse).
+let parseFromWT
   (ctx: NameResolver.NRContext)
   (scriptName: String)
-  (filename: String)
-  (source: String)
+  (diagnostics: List<(LanguageTools.Parser.Range * String)>)
+  (parsedFile: WrittenTypes.ParsedFile)
   : Stdlib.Result.Result<(PTCliScriptModule * List<WrittenTypes.UnresolvedName>), ParseError> =
-  match source |> LanguageTools.Parser.TestParsing.initialParse with
-  | Error e -> Stdlib.Result.Result.Error(ParseError.Other e)
-  | Ok parsedFile ->
-    match parseDecls ctx.owner scriptName parsedFile with
+    match parseDecls ctx.owner scriptName diagnostics parsedFile with
     | Error e -> Stdlib.Result.Result.Error e
     | Ok moduleWT ->
       // First pass: parse and generate ops (allowing unresolved names)
@@ -349,6 +327,20 @@ let parse
       Stdlib.Result.Result.Ok ((adjusted, unresolvedNames))
 
 
+/// Parse from source, then name-resolve + lower. Used by the parse-error test
+/// harness; the LSP uses `parseFromWT` directly with an already-parsed tree.
+let parse
+  (ctx: NameResolver.NRContext)
+  (scriptName: String)
+  (filename: String)
+  (source: String)
+  : Stdlib.Result.Result<(PTCliScriptModule * List<WrittenTypes.UnresolvedName>), ParseError> =
+  match source |> LanguageTools.Parser.Parse.initialParse with
+  | Error e -> Stdlib.Result.Result.Error(ParseError.Message e)
+  | Ok parsedFile ->
+    parseFromWT ctx scriptName (Builtin.parserParseDiagnostics source) parsedFile
+
+
 /// Single-shot parse for CLI use: creates PM and NRContext internally
 /// so that lambdas in the PM stay within the same execution context.
 let parseForCli
@@ -377,10 +369,13 @@ let pmWithExtras
   (filename: String)
   (source: String)
   : Stdlib.Result.Result<ProgramTypes.PackageManager.PackageManager, ParseError> =
-  match source |> LanguageTools.Parser.TestParsing.initialParse with
-  | Error e -> Stdlib.Result.Result.Error(ParseError.Other e)
-  | Ok parsedFile ->
-    match parseDecls ctx.owner scriptName parsedFile with
+  // The range-complete parser, matching the rest of the LSP.
+  match Builtin.parserParseToWrittenTypes source with
+  | None -> Stdlib.Result.Result.Error(ParseError.Message "parse failed")
+  | Some parsedFile ->
+    match
+      parseDecls ctx.owner scriptName (Builtin.parserParseDiagnostics source) parsedFile
+    with
     | Error e -> Stdlib.Result.Result.Error e
     | Ok moduleWT ->
       let (_, ops, _) = toPT ctx moduleWT

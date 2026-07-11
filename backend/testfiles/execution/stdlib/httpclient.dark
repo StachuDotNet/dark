@@ -4,10 +4,10 @@
 
 // Tests that don't use the internet
 module NoInternet =
-  Stdlib.HttpClient.ContentType.form_v0 = ("content-type", "application/x-www-form-urlencoded")
-  Stdlib.HttpClient.ContentType.json_v0 = ("content-type", "application/json")
-  Stdlib.HttpClient.ContentType.plainText_v0 = ("content-type", "text/plain; charset=utf-8")
-  Stdlib.HttpClient.ContentType.html_v0 = ("content-type", "text/html; charset=utf-8")
+  Stdlib.HttpClient.ContentType.form = ("content-type", "application/x-www-form-urlencoded")
+  Stdlib.HttpClient.ContentType.json = ("content-type", "application/json")
+  Stdlib.HttpClient.ContentType.plainText = ("content-type", "text/plain; charset=utf-8")
+  Stdlib.HttpClient.ContentType.html = ("content-type", "text/html; charset=utf-8")
 
   Stdlib.HttpClient.bearerToken "YWxhZGRpbjpvcGVuc2VzYW1l" = (("authorization", "bearer YWxhZGRpbjpvcGVuc2VzYW1l"))
 

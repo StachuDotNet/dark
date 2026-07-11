@@ -66,7 +66,7 @@ let listModule
 let execute (state: AppState) (args: List<String>) : AppState =
   let branchId = state.currentBranchId
   let includeDeprecated =
-    Stdlib.List.member_v0 args "--include-deprecated"
+    Stdlib.List.member args "--include-deprecated"
   let positional =
     args |> Stdlib.List.filter (fun a -> a != "--include-deprecated")
   match positional with

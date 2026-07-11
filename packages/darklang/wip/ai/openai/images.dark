@@ -103,7 +103,7 @@ let defaultOptions (prompt: String) : Options =
       size = Size.square1024
       quality = Quality.standard
       style = Stdlib.Option.Option.Some Style.vivid
-      n = 1I
+      n = 1
       outputFormat = Stdlib.Option.Option.None
       background = Stdlib.Option.Option.None
       outputCompression = Stdlib.Option.Option.None
@@ -117,7 +117,7 @@ let gptImageOptions (prompt: String) : Options =
       size = Size.auto
       quality = Quality.medium
       style = Stdlib.Option.Option.None
-      n = 1I
+      n = 1
       outputFormat = Stdlib.Option.Option.Some OutputFormat.Png
       background = Stdlib.Option.Option.Some Background.Auto
       outputCompression = Stdlib.Option.Option.None
@@ -283,7 +283,7 @@ let generateWithOptions
       let bodyStr = Stdlib.String.fromBlobWithReplacement response.body
 
       match response.statusCode with
-      | code when code >= 200I && code < 300I ->
+      | code when code >= 200 && code < 300 ->
         match Stdlib.AltJson.parse bodyStr with
         | Ok (Object fields) ->
           let dataArray = Stdlib.AltJson.Helpers.getArray "data" fields
@@ -308,8 +308,8 @@ let generateWithOptions
               | _ -> Stdlib.Option.Option.None)
           Stdlib.Result.Result.Ok images
         | _ -> Stdlib.Result.Result.Error "Invalid response format"
-      | 401I -> Stdlib.Result.Result.Error "Authentication failed: Invalid API key"
-      | 429I -> Stdlib.Result.Result.Error "Rate limit exceeded"
+      | 401 -> Stdlib.Result.Result.Error "Authentication failed: Invalid API key"
+      | 429 -> Stdlib.Result.Result.Error "Rate limit exceeded"
       | _ -> Stdlib.Result.Result.Error("API error: " ++ bodyStr)
 
 /// Generate an image with default DALL-E 3 settings (returns URL)
@@ -403,7 +403,7 @@ let defaultEditOptions (prompt: String) (imageBase64: String) : EditOptions =
       image = imageBase64
       mask = Stdlib.Option.Option.None
       size = Size.square1024
-      n = 1I
+      n = 1
       user = Stdlib.Option.Option.None }
 
 /// Edit options with mask
@@ -448,7 +448,7 @@ let edit
       let bodyStr = Stdlib.String.fromBlobWithReplacement response.body
 
       match response.statusCode with
-      | code when code >= 200I && code < 300I ->
+      | code when code >= 200 && code < 300 ->
         match Stdlib.AltJson.parse bodyStr with
         | Ok (Object fields) ->
           let dataArray = Stdlib.AltJson.Helpers.getArray "data" fields
@@ -470,8 +470,8 @@ let edit
               | _ -> Stdlib.Option.Option.None)
           Stdlib.Result.Result.Ok images
         | _ -> Stdlib.Result.Result.Error "Invalid response format"
-      | 401I -> Stdlib.Result.Result.Error "Authentication failed: Invalid API key"
-      | 429I -> Stdlib.Result.Result.Error "Rate limit exceeded"
+      | 401 -> Stdlib.Result.Result.Error "Authentication failed: Invalid API key"
+      | 429 -> Stdlib.Result.Result.Error "Rate limit exceeded"
       | _ -> Stdlib.Result.Result.Error("API error: " ++ bodyStr)
 
 // =============================================================================
@@ -494,7 +494,7 @@ let defaultVariationOptions (imageBase64: String) : VariationOptions =
     { image = imageBase64
       model = Models.dalle2
       size = Size.square1024
-      n = 1I
+      n = 1
       user = Stdlib.Option.Option.None }
 
 /// Create variations of an image (DALL-E 2 only)
@@ -529,7 +529,7 @@ let createVariations
       let bodyStr = Stdlib.String.fromBlobWithReplacement response.body
 
       match response.statusCode with
-      | code when code >= 200I && code < 300I ->
+      | code when code >= 200 && code < 300 ->
         match Stdlib.AltJson.parse bodyStr with
         | Ok (Object fields) ->
           let dataArray = Stdlib.AltJson.Helpers.getArray "data" fields
@@ -546,6 +546,6 @@ let createVariations
               | _ -> Stdlib.Option.Option.None)
           Stdlib.Result.Result.Ok images
         | _ -> Stdlib.Result.Result.Error "Invalid response format"
-      | 401I -> Stdlib.Result.Result.Error "Authentication failed: Invalid API key"
-      | 429I -> Stdlib.Result.Result.Error "Rate limit exceeded"
+      | 401 -> Stdlib.Result.Result.Error "Authentication failed: Invalid API key"
+      | 429 -> Stdlib.Result.Result.Error "Rate limit exceeded"
       | _ -> Stdlib.Result.Result.Error("API error: " ++ bodyStr)

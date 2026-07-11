@@ -32,9 +32,9 @@ let getModifiedTime (path: String) : Result.Result<Int, Posix.Error> =
 let copy (src: String) (dst: String) : Result.Result<Unit, Posix.Error> =
   (Posix.stat src)
   |> Stdlib.Result.andThen (fun srcStat ->
-    let srcMode = Stdlib.Int.bitwiseAnd srcStat.mode 511I
+    let srcMode = Stdlib.Int.bitwiseAnd srcStat.mode 511
 
-    match Posix.openFile src (Posix.OpenFlags.rdonly ()) 0I with
+    match Posix.openFile src (Posix.OpenFlags.rdonly ()) 0 with
     | Ok srcFd ->
       let readResult = Posix.fdReadAll srcFd []
       let _ = Builtin.posixFdClose srcFd
@@ -68,7 +68,7 @@ let move (src: String) (dst: String) : Result.Result<Unit, Posix.Error> =
 
 /// Read the entire contents of a file as a Blob.
 let readBytes (path: String) : Result.Result<Blob, Posix.Error> =
-  match Posix.openFile path (Posix.OpenFlags.rdonly ()) 0I with
+  match Posix.openFile path (Posix.OpenFlags.rdonly ()) 0 with
   | Ok fd ->
     let result = Posix.fdReadAll fd []
 
@@ -79,7 +79,7 @@ let readBytes (path: String) : Result.Result<Blob, Posix.Error> =
 
 /// Read the entire contents of a file as a string.
 let readText (path: String) : Result.Result<String, Posix.Error> =
-  match Posix.openFile path (Posix.OpenFlags.rdonly ()) 0I with
+  match Posix.openFile path (Posix.OpenFlags.rdonly ()) 0 with
   | Ok fd ->
     let result = Posix.fdReadAll fd []
 
@@ -91,7 +91,7 @@ let readText (path: String) : Result.Result<String, Posix.Error> =
       | Ok s -> Stdlib.Result.Result.Ok s
       | Error msg ->
         Stdlib.Result.Result.Error
-          (Posix.Error { errno = -1I; message = $"File contents not valid UTF-8: {msg}" })
+          (Posix.Error { errno = -1; message = $"File contents not valid UTF-8: {msg}" })
     | Error e -> Stdlib.Result.Result.Error e
   | Error e -> Stdlib.Result.Result.Error e
 
@@ -310,7 +310,7 @@ let glob (basePath: String) (pattern: String) : Result.Result<List<String>, Posi
   |> Stdlib.Result.map (fun allPaths ->
     allPaths
     |> Stdlib.List.filter (fun fullPath ->
-      let rel = Stdlib.String.dropFirst fullPath ((Stdlib.String.length cleanBase) + 1I)
+      let rel = Stdlib.String.dropFirst fullPath ((Stdlib.String.length cleanBase) + 1)
       let pathSegs = Stdlib.String.split rel "/"
       globMatchSegments patternSegs pathSegs))
 

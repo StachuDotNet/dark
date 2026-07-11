@@ -357,6 +357,7 @@ and private reResolveExpr
     | PT.EVariable _
     | PT.EArg _
     | PT.ESelf _ -> return expr
+    | PT.EError _ -> return expr
 
     | PT.EString(id, segments) ->
       let! segments =
@@ -487,7 +488,20 @@ and private reResolveExpr
 
     | PT.EValue(id, nr) ->
       let! nr = reResolveValueName branchId contextModules pm.findValue nr
-      return PT.EValue(id, nr)
+      match nr.resolved with
+      | Error PT.NameResolutionError.NotFound ->
+        // A qualified fn used in value position (`let f = Mod.fn`) lowers to EValue
+        // when NEITHER a value nor a fn resolves at parse time (value-first default).
+        // Once the fn lands, refreshing only the value namespace misses it — so retry
+        // the SAME name as a fn and promote to EFnName if it now resolves.
+        let fnNr : PT.NameResolution<PT.FQFnName.FQFnName> =
+          { originalName = nr.originalName
+            resolved = Error PT.NameResolutionError.NotFound }
+        let! fnNr = reResolveFnName branchId contextModules pm.findFn fnNr
+        match fnNr.resolved with
+        | Ok _ -> return PT.EFnName(id, fnNr)
+        | Error _ -> return PT.EValue(id, nr)
+      | _ -> return PT.EValue(id, nr)
 
     | PT.EStatement(id, first, next) ->
       let! first = reResolveExpr branchId contextModules pm first

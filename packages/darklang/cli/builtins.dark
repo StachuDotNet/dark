@@ -202,7 +202,7 @@ let execute (state: AppState) (args: List<String>): AppState =
   let totalCount =
     filteredGroups
     |> Stdlib.List.map (fun pair -> Stdlib.List.length (Stdlib.Tuple2.second pair))
-    |> Stdlib.List.fold 0I (fun acc n -> acc + n)
+    |> Stdlib.List.fold 0 (fun acc n -> acc + n)
 
   let summary =
     match filter with

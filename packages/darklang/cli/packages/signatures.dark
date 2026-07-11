@@ -245,12 +245,12 @@ let executeFiltered
   let totalFns =
     (Stdlib.Dict.values fnsBy)
     |> Stdlib.List.map (fun xs -> Stdlib.List.length xs)
-    |> Stdlib.List.fold 0I (fun a b -> a + b)
+    |> Stdlib.List.fold 0 (fun a b -> a + b)
 
   let totalTypes =
     (Stdlib.Dict.values typesBy)
     |> Stdlib.List.map (fun xs -> Stdlib.List.length xs)
-    |> Stdlib.List.fold 0I (fun a b -> a + b)
+    |> Stdlib.List.fold 0 (fun a b -> a + b)
 
   let title =
     match filterText with

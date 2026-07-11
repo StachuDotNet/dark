@@ -46,17 +46,17 @@ let load () : State =
   State
     { specs = specs
       saved = specs
-      cursor = 0I
+      cursor = 0
       dirty = false
       screen = Screen.Browsing }
 
-let isFlag (domain: String) : Bool = Stdlib.List.member_v0 flagDomains domain
+let isFlag (domain: String) : Bool = Stdlib.List.member flagDomains domain
 
 // the visible rows: the flag checklist, then one row per scoped/coupled rule spec
 let rows (state: State) : List<Row> =
   let flagRows =
     Stdlib.List.map flagDomains (fun d ->
-      let granted = Stdlib.List.member_v0 state.specs d
+      let granted = Stdlib.List.member state.specs d
       Row.FlagRow(d, granted))
   let ruleRows =
     state.specs
@@ -69,7 +69,7 @@ let rows (state: State) : List<Row> =
 let rowCount (state: State) : Int = (Stdlib.List.length (rows state))
 
 let toggleFlag (state: State) (domain: String) : State =
-  if Stdlib.List.member_v0 state.specs domain then
+  if Stdlib.List.member state.specs domain then
     let next = Stdlib.List.filter state.specs (fun s -> s != domain)
     { state with specs = next; dirty = true }
   else
@@ -121,9 +121,9 @@ let editNew (state: State) (domain: String) : State =
 let private clampCursor (state: State) : State =
   let count = rowCount state
   let c =
-    if count == 0I then 0I
-    else if state.cursor >= count then count - 1I
-    else if state.cursor < 0I then 0I
+    if count == 0 then 0
+    else if state.cursor >= count then count - 1
+    else if state.cursor < 0 then 0
     else state.cursor
   { state with cursor = c }
 
@@ -137,11 +137,11 @@ let handleBrowsing
     // discard unsaved edits: restore the last-saved set so onSave writes it unchanged
     KeyResult.Exit ({ state with specs = state.saved })
   | UpArrow ->
-    let c = if state.cursor > 0I then state.cursor - 1I else 0I
+    let c = if state.cursor > 0 then state.cursor - 1 else 0
     KeyResult.Continue ({ state with cursor = c })
   | DownArrow ->
-    let maxIdx = rowCount state - 1I
-    let c = if state.cursor < maxIdx then state.cursor + 1I else maxIdx
+    let maxIdx = rowCount state - 1
+    let c = if state.cursor < maxIdx then state.cursor + 1 else maxIdx
     KeyResult.Continue ({ state with cursor = c })
   | Spacebar ->
     match Stdlib.List.getAt (rows state) state.cursor with
@@ -152,12 +152,12 @@ let handleBrowsing
     | Some(FlagRow(d, _)) -> KeyResult.Continue (toggleFlag state d)
     | Some(RuleRow spec) -> KeyResult.Continue (editSpec state spec)
     | Some AddRuleRow ->
-      KeyResult.Continue ({ state with screen = Screen.AddPickDomain 0I })
+      KeyResult.Continue ({ state with screen = Screen.AddPickDomain 0 })
     | None -> KeyResult.Continue state
   | _ ->
     match keyChar with
-    | Some "a" -> KeyResult.Continue ({ state with screen = Screen.AddPickDomain 0I })
-    | Some "p" -> KeyResult.Continue ({ state with screen = Screen.PickProfile 0I })
+    | Some "a" -> KeyResult.Continue ({ state with screen = Screen.AddPickDomain 0 })
+    | Some "p" -> KeyResult.Continue ({ state with screen = Screen.PickProfile 0 })
     | Some "d" ->
       match Stdlib.List.getAt (rows state) state.cursor with
       | Some(RuleRow spec) -> KeyResult.Continue (clampCursor (removeSpec state spec))
@@ -175,10 +175,10 @@ let handleMenu
   // returns Some newCursor while browsing; None signals Enter/Escape handled by caller via key match
   match key with
   | UpArrow ->
-    let c = if cursor > 0I then cursor - 1I else 0I
+    let c = if cursor > 0 then cursor - 1 else 0
     Stdlib.Option.Option.Some c
   | DownArrow ->
-    let c = if cursor < count - 1I then cursor + 1I else count - 1I
+    let c = if cursor < count - 1 then cursor + 1 else count - 1
     Stdlib.Option.Option.Some c
   | _ -> Stdlib.Option.Option.None
 

@@ -509,11 +509,11 @@ let extractCitationsFromBlock (fields: List<(String * Json)>) : List<Provider.Ci
             citedText = Stdlib.AltJson.Helpers.getString "cited_text" citFields
             startIndex =
               let idx = Stdlib.AltJson.Helpers.getInt "start_index" citFields
-              if idx == 0I then Stdlib.Option.Option.None
+              if idx == 0 then Stdlib.Option.Option.None
               else Stdlib.Option.Option.Some idx
             endIndex =
               let idx = Stdlib.AltJson.Helpers.getInt "end_index" citFields
-              if idx == 0I then Stdlib.Option.Option.None
+              if idx == 0 then Stdlib.Option.Option.None
               else Stdlib.Option.Option.Some idx })
     | _ -> Stdlib.Option.Option.None)
 
@@ -677,7 +677,7 @@ let buildProvider (config: Config) : Provider =
             supportsStreaming = false
             supportsSystemPrompt = true
             supportsImages = true
-            maxContextTokens = 200000I } }
+            maxContextTokens = 200000 } }
 
 
 /// Create an Anthropic provider with default configuration

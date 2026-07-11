@@ -1,7 +1,7 @@
 module Darklang.Cli.Packages.Search
 
 // Max results rendered per entity type.
-let displayCap = 20I
+let displayCap = 20
 
 
 // Operator symbols aren't function names, so a literal search for one finds
@@ -38,11 +38,11 @@ let operatorAlias (query: String) : Stdlib.Option.Option<String> =
 let matchRank (query: String) (name: String) : Int =
   let q = Stdlib.String.toLowercase query
   let n = Stdlib.String.toLowercase name
-  if n == q then 0I
-  else if Stdlib.String.startsWith q n then 1I // query elaborates name: parseInt ⊃ parse
-  else if Stdlib.String.startsWith n q then 2I // name elaborates query: parseIntLiteral ⊃ parseInt
-  else if Stdlib.String.contains n q then 3I
-  else 4I
+  if n == q then 0
+  else if Stdlib.String.startsWith q n then 1 // query elaborates name: parseInt ⊃ parse
+  else if Stdlib.String.startsWith n q then 2 // name elaborates query: parseIntLiteral ⊃ parseInt
+  else if Stdlib.String.contains n q then 3
+  else 4
 
 
 let isStdlib (owner: String) (modules: List<String>) : Bool =
@@ -69,14 +69,14 @@ let bestItemRank
   (items: List<LanguageTools.ProgramTypes.LocatedItem<'a>>)
   : Int =
   items
-  |> Stdlib.List.fold 9I (fun acc item ->
+  |> Stdlib.List.fold 9 (fun acc item ->
     let r = matchRank query item.location.name
     if r < acc then r else acc)
 
 
 let bestModuleRank (query: String) (modules: List<List<String>>) : Int =
   modules
-  |> Stdlib.List.fold 9I (fun acc modulePath ->
+  |> Stdlib.List.fold 9 (fun acc modulePath ->
     let modName = Stdlib.Option.withDefault (Stdlib.List.last modulePath) ""
     let r = matchRank query modName
     if r < acc then r else acc)
@@ -105,7 +105,7 @@ let withOptionalDoc (withDocs: Bool) (headline: String) (desc: String) : String 
 
 let overflowNote (total: Int) (shown: Int) : Unit =
   let extra = total - shown
-  if extra > 0I then
+  if extra > 0 then
     Stdlib.printLine (
       Colors.hint
         $"  ... and {Stdlib.Int.toString extra} more (narrow with --exact or `nav` into a module)")
@@ -272,7 +272,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
           if Stdlib.List.isEmpty parsed.entityTypes then
             Stdlib.List.length results.submodules
           else
-            0I
+            0
 
         let totalResults =
           (Stdlib.List.length results.types)
@@ -280,7 +280,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
           + (Stdlib.List.length results.fns)
           + submodulesCount
 
-        if totalResults == 0I then
+        if totalResults == 0 then
           Stdlib.printLine (Colors.dimText $"No results found for: {queryText}")
           Stdlib.printLine ""
         else
@@ -297,7 +297,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
             if Stdlib.List.isEmpty parsed.entityTypes then
               bestModuleRank queryText results.submodules
             else
-              9I
+              9
 
           // Suffix orders sections on a rank tie. Modules are navigation, not the
           // usual discovery target, so they sort last - a wall of namespace

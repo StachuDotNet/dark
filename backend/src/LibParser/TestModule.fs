@@ -1,19 +1,16 @@
 module LibParser.TestModule
 
-open FSharp.Compiler.Syntax
-
 open Prelude
 
-module FS2WT = FSharpToWrittenTypes
 module WT = WrittenTypes
 module WT2PT = WrittenTypesToProgramTypes
 module PT = LibExecution.ProgramTypes
 module RT = LibExecution.RuntimeTypes
 module NR = NameResolver
+module P = LibParser.Parser
 open LibSerialization.Hashing
 module HS = LibDB.HashStabilization
 
-open Utils
 
 type WTExpected =
   | WTExpectedExpr of WT.Expr
@@ -48,197 +45,97 @@ type PTModule =
     dbs : List<PT.DB.T>
     tests : List<PTTest> }
 
-let emptyPTModule = { name = []; ops = []; dbs = []; tests = [] }
 
-
-module UserDB =
-  let fromSynTypeDefn (typeDef : SynTypeDefn) : WT.DB.T =
-    match typeDef with
-    | SynTypeDefn(SynComponentInfo(_, _params, _, [ id ], _, _, _, _),
-                  SynTypeDefnRepr.Simple(SynTypeDefnSimpleRepr.TypeAbbrev(_, typ, _),
-                                         _),
-                  _members,
-                  _,
-                  _,
-                  _) ->
-      { name = id.idText; version = 0; typ = FS2WT.TypeReference.fromSynType typ }
-    | _ ->
-      Exception.raiseInternal $"Unsupported db definition" [ "typeDef", typeDef ]
-
-
-/// Extracts a test from a SynExpr.
-/// The test must be in the format `actual = expected`, `actual = error="msg"`,
-/// or `actual = sqlerror="msg"`,
-/// otherwise an exception is raised.
-let parseTest (ast : SynExpr) : WTTest =
-  let convert (x : SynExpr) : WT.Expr = FS2WT.Expr.fromSynExpr x
-
-  let rec unwrapEqualityLhs (expr : SynExpr) : SynExpr =
-    match expr with
-    | SynExpr.Paren(inner, _, _, _) -> unwrapEqualityLhs inner
-    | SynExpr.Typed(inner, _, _) -> unwrapEqualityLhs inner
-    | SynExpr.App(_,
-                  _,
-                  SynExpr.LongIdent(_, SynLongIdent([ ident ], _, _), _, _),
-                  lhs,
-                  _) when ident.idText = "op_Equality" -> lhs
-    | _ -> expr
-
-  match ast with
-  | SynExpr.App(_,
-                _,
-                SynExpr.App(_,
-                            _,
-                            SynExpr.LongIdent(_, SynLongIdent([ ident ], _, _), _, _),
-                            actual,
-                            _),
-                expectedExpr,
-                range) when ident.idText = "op_Equality" ->
-    let actual, expected =
-      match actual, expectedExpr with
-      // `x = error="msg"` is parsed as `(x = error) = "msg"`
-      | SynExpr.App(_, _, actualExpr, SynExpr.Ident marker, _),
-        SynExpr.Const(SynConst.String(errorMessage, _, _), _) when
-        marker.idText = "error"
-        ->
-        convert (unwrapEqualityLhs actualExpr),
-        WTExpectedError(String.normalize errorMessage)
-      // `x = sqlerror="msg"` is parsed as `(x = sqlerror) = "msg"`
-      | SynExpr.App(_, _, actualExpr, SynExpr.Ident marker, _),
-        SynExpr.Const(SynConst.String(errorMessage, _, _), _) when
-        marker.idText = "sqlerror"
-        ->
-        convert (unwrapEqualityLhs actualExpr),
-        WTExpectedSqlError(String.normalize errorMessage)
-      // Also support direct shape where RHS parses as `error "msg"`
-      | _,
-        SynExpr.App(_,
-                    _,
-                    SynExpr.Ident marker,
-                    SynExpr.Const(SynConst.String(errorMessage, _, _), _),
-                    _) when marker.idText = "error" ->
-        convert actual, WTExpectedError(String.normalize errorMessage)
-      // Also support direct shape where RHS parses as `sqlerror "msg"`
-      | _,
-        SynExpr.App(_,
-                    _,
-                    SynExpr.Ident marker,
-                    SynExpr.Const(SynConst.String(errorMessage, _, _), _),
-                    _) when marker.idText = "sqlerror" ->
-        convert actual, WTExpectedSqlError(String.normalize errorMessage)
-      | _ -> convert actual, WTExpectedExpr(convert expectedExpr)
-
-    { name = "test"
-      lineNumber = range.Start.Line
-      actual = actual
-      expected = expected }
-  | _ ->
+/// Parse a testfile with the hand-written parser in test-mode (`actual = expected`
+/// assertions + `[<DB>]` user DBs). Produces `WTModule`s for the shared `toPT`
+/// pipeline.
+let parseFile (owner : string) (source : string) : List<WTModule> =
+  let result = P.parseTestFile source
+  match result.parsed with
+  | None ->
     Exception.raiseInternal
-      "Test case not in format `x = y`, `x = error=\"msg\"`, or `x = sqlerror=\"msg\"`"
-      [ "ast", ast ]
-
-
-let parseFile
-  (owner : string)
-  (parsedAsFSharp : ParsedImplFileInput)
-  : List<WTModule> =
-  let parseTypeDecl
-    (currentModule : List<string>)
-    (typeDefn : SynTypeDefn)
-    : List<WT.DB.T> * List<WT.PackageType.PackageType> =
-    match typeDefn with
-    | SynTypeDefn(SynComponentInfo(attrs, _, _, _, _, _, _, _), _, _, _, _, _) ->
-      let attrs = attrs |> List.map _.Attributes |> List.concat
-      let isDB =
-        attrs
-        |> List.exists (fun attr ->
-          longIdentToList attr.TypeName.LongIdent = [ "DB" ])
-      if isDB then
-        // TODO
-        [ UserDB.fromSynTypeDefn typeDefn ], []
-      else
-        [], [ FS2WT.PackageType.fromSynTypeDefn owner currentModule typeDefn ]
-
-
-  let parseSynBinding
-    (currentModule : List<string>)
-    (binding : SynBinding)
-    : List<WT.PackageFn.PackageFn> * List<WT.PackageValue.PackageValue> =
-    match binding with
-    | SynBinding(_, _, _, _, _, _, _, signature, _, _, _, _, _) ->
-      match signature with
-      | SynPat.LongIdent(SynLongIdent _, _, _, _, _, _) ->
-        [ FS2WT.PackageFn.fromSynBinding owner currentModule binding ], []
-      | SynPat.Named _ ->
-        [], [ FS2WT.PackageValue.fromSynBinding owner currentModule binding ]
-      | _ -> Exception.raiseInternal $"Unsupported binding" [ "binding", binding ]
-
-  let rec parseModule
-    (currentModule : List<string>)
-    (parentDBs : List<WT.DB.T>)
-    (decls : List<SynModuleDecl>)
-    : List<WTModule> =
-    let (m, nested) =
-      List.fold
-        (fun ((m : WTModule), nested) decl ->
-          match decl with
-          | SynModuleDecl.Let(_, bindings, _) ->
-            let (newUserFns, newPackageValues) =
-              bindings |> List.map (parseSynBinding currentModule) |> List.unzip
-            ({ m with
-                fns = m.fns @ List.concat newUserFns
-                values = m.values @ List.concat newPackageValues },
-             nested)
-
-          | SynModuleDecl.Types(defns, _) ->
-            let (dbs, types) =
-              List.map (parseTypeDecl currentModule) defns |> List.unzip
-            ({ m with
-                types = m.types @ List.concat types
-                dbs = m.dbs @ List.concat dbs },
-             nested)
-
-          | SynModuleDecl.Expr(expr, _) ->
-            ({ m with tests = m.tests @ [ parseTest expr ] }, nested)
-
-          | SynModuleDecl.NestedModule(SynComponentInfo(_,
-                                                        _,
-                                                        _,
-                                                        [ modName ],
-                                                        _,
-                                                        _,
-                                                        _,
-                                                        _),
-                                       _,
-                                       decls,
-                                       _,
-                                       _,
-                                       _) ->
-            (m,
-             parseModule (currentModule @ [ modName.idText ]) m.dbs decls @ nested)
+      "test parse failed"
+      [ "diagnostics", box (result.diagnostics |> List.map (fun d -> d.message)) ]
+  | Some(WT.SourceFile sf) ->
+    match result.diagnostics with
+    | (_ :: _) as ds ->
+      Exception.raiseInternal
+        "test parse produced diagnostics"
+        [ "diagnostics",
+          box (
+            ds |> List.map (fun d -> $"L{int d.range.start.row + 1}: {d.message}")
+          ) ]
+    | [] ->
+      let dbFromTypeDecl (t : WT.TypeDecl) : WT.DB.T =
+        let typ =
+          match t.definition with
+          | WT.TDAlias tr -> tr
           | _ ->
             Exception.raiseInternal
-              $"Unsupported declaration"
-              [ "decl", decl; "currentModule", currentModule ])
-        ({ emptyWTModule with name = currentModule; dbs = parentDBs }, [])
-        decls
-    m :: nested
+              "[<DB>] type must be a type alias"
+              [ "name", t.name.name ]
+        { name = t.name.name; version = 0; typ = typ }
 
-  let decls =
-    match parsedAsFSharp with
-    | ParsedImplFileInput(_,
-                          _,
-                          _,
-                          _,
-                          [ SynModuleOrNamespace(_, _, _, decls, _, _, _, _, _) ],
-                          _,
-                          _,
-                          _) -> decls
-    | _ ->
-      Exception.raiseInternal
-        $"wrong shape tree - ensure that input is a single expression, perhaps by wrapping the existing code in parens"
-        [ "parsedAsFsharp", parsedAsFSharp ]
-  parseModule [] [] decls
+      let wtTest (test : WT.Test) : WTTest =
+        let expected =
+          match test.expected with
+          | WT.TEExpr e -> WTExpectedExpr e
+          | WT.TEError msg -> WTExpectedError(String.normalize msg)
+          | WT.TESqlError msg -> WTExpectedSqlError(String.normalize msg)
+        { name = "test"
+          lineNumber = int test.range.start.row + 1
+          actual = test.actual
+          expected = expected }
+
+      let rec walk
+        (currentModule : List<string>)
+        (parentDBs : List<WT.DB.T>)
+        (decls : List<WT.Declaration>)
+        : List<WTModule> =
+        let fns = ResizeArray()
+        let values = ResizeArray()
+        let types = ResizeArray()
+        let dbs = ResizeArray parentDBs // seeded with the parent module's DBs
+        let tests = ResizeArray()
+        let nested = ResizeArray()
+        for d in decls do
+          match d with
+          | WT.DFunction fn -> fns.Add(WT.packageFn owner currentModule fn)
+          | WT.DValue v -> values.Add(WT.packageValue owner currentModule v)
+          | WT.DType t -> types.Add(WT.packageType owner currentModule t)
+          | WT.DTypeDB t -> dbs.Add(dbFromTypeDecl t)
+          | WT.DTest test -> tests.Add(wtTest test)
+          // Testfiles evaluate `actual = expected` assertions. A bare expression
+          // is a broken assertion, so report it instead of skipping it.
+          | WT.DExpr e ->
+            Exception.raiseInternal
+              "Test case not in format `x = y`"
+              [ "line", box ((WT.exprRange e).start.row + 1) ]
+          // Recurse where the module appears, passing the DBs accumulated so far
+          // so a nested module inherits only the parent's earlier-declared DBs.
+          | WT.DModule sub ->
+            nested.AddRange(
+              walk
+                (currentModule @ WT.moduleNameParts sub)
+                (List.ofSeq dbs)
+                sub.declarations
+            )
+        { emptyWTModule with
+            name = currentModule
+            fns = List.ofSeq fns
+            values = List.ofSeq values
+            types = List.ofSeq types
+            dbs = List.ofSeq dbs
+            tests = List.ofSeq tests }
+        :: List.ofSeq nested
+
+      // Top-level bare expressions land in exprsToEval, not declarations.
+      match sf.exprsToEval with
+      | e :: _ ->
+        Exception.raiseInternal
+          "Test case not in format `x = y`"
+          [ "line", box ((WT.exprRange e).start.row + 1) ]
+      | [] -> walk [] [] sf.declarations
 
 
 let toPT
@@ -255,7 +152,8 @@ let toPT
       m.types
       |> Ply.List.mapSequentially (fun wtType ->
         uply {
-          let! ptType = WT2PT.PackageType.toPT pm onMissing currentModule wtType
+          let! ptType =
+            WT2PT.PackageType.toPT pm onMissing PT.mainBranchId currentModule wtType
           let hash = Hashing.computeTypeHash Hashing.Normal ptType
           return
             [ PT.PackageOp.AddType ptType
@@ -271,7 +169,13 @@ let toPT
       |> Ply.List.mapSequentially (fun wtValue ->
         uply {
           let! ptValue =
-            WT2PT.PackageValue.toPT builtins pm onMissing currentModule wtValue
+            WT2PT.PackageValue.toPT
+              builtins
+              pm
+              onMissing
+              PT.mainBranchId
+              currentModule
+              wtValue
           return
             [ PT.PackageOp.AddValue ptValue
               PT.PackageOp.SetName(
@@ -285,7 +189,14 @@ let toPT
       m.fns
       |> Ply.List.mapSequentially (fun wtFn ->
         uply {
-          let! ptFn = WT2PT.PackageFn.toPT builtins pm onMissing currentModule wtFn
+          let! ptFn =
+            WT2PT.PackageFn.toPT
+              builtins
+              pm
+              onMissing
+              PT.mainBranchId
+              currentModule
+              wtFn
           let hash = Hashing.computeFnHash Hashing.Normal ptFn
           return
             [ PT.PackageOp.AddFn ptFn
@@ -297,7 +208,10 @@ let toPT
       |> Ply.map List.flatten
 
     let! dbs =
-      m.dbs |> Ply.List.mapSequentially (WT2PT.DB.toPT pm onMissing currentModule)
+      m.dbs
+      |> Ply.List.mapSequentially (
+        WT2PT.DB.toPT pm onMissing PT.mainBranchId currentModule
+      )
 
     let! (tests : List<PTTest>) =
       m.tests
@@ -308,7 +222,14 @@ let toPT
               WT2PT.Context.isInFunction = false
               WT2PT.Context.argMap = Map.empty
               WT2PT.Context.localBindings = Set.empty }
-          let exprToPT = WT2PT.Expr.toPT builtins pm onMissing currentModule context
+          let exprToPT =
+            WT2PT.Expr.toPT
+              builtins
+              pm
+              onMissing
+              PT.mainBranchId
+              currentModule
+              context
           let! actual = exprToPT test.actual
           let! expected =
             uply {
@@ -342,13 +263,9 @@ let parseTestFile
   uply {
     let onMissing = NR.OnMissing.Allow
 
-    let modulesWT =
-      filename
-      |> System.IO.File.ReadAllText
-      |> parseAsFSharpSourceFile filename
-      |> parseFile owner
+    let modulesWT = filename |> System.IO.File.ReadAllText |> parseFile owner
 
-    // First pass: parse with empty PM, then compute real SCC-aware hashes
+    // First pass: lower with an empty PM, then compute real SCC-aware hashes.
     let! firstPassModules =
       modulesWT
       |> Ply.List.mapSequentially (
@@ -357,14 +274,16 @@ let parseTestFile
 
     let firstPassOps = firstPassModules |> List.collect _.ops
 
-    // Iteratively re-parse until ALL hashes converge.
+    // Iteratively re-lower until all hashes converge.
     // Same approach as LoadPackagesFromDisk: remapSetNames + computeRealHashes.
     let mutable currentOps = HS.computeRealHashes firstPassOps
     let mutable currentModules = firstPassModules
-    let mutable prevHashes = []
+    // Seed with the first-pass hashes so an already-stable file converges on iter 1.
+    let mutable prevHashes = HS.extractAllHashes currentOps
     let mutable converged = false
     let mutable iteration = 0
-    while not converged && iteration < 50 do
+    let maxIterations = 50
+    while not converged && iteration < maxIterations do
       iteration <- iteration + 1
       let enhancedPM = LibDB.PackageManager.withExtraOps pm currentOps
       let! newModules =
@@ -379,18 +298,25 @@ let parseTestFile
       currentOps <- newOps
       currentModules <- newModules
 
-    // currentModules has correct test expressions (parsed with converged PM)
-    // but its ops are from raw parsing (not through computeRealHashes).
+    // Non-convergence means non-deterministic hashing: a bug, not user error.
+    // Fail instead of returning whichever ops the last iteration produced.
+    if not converged then
+      Exception.raiseInternal
+        "test module hashes did not converge"
+        [ "filename", filename; "iterations", box maxIterations ]
+
+    // currentModules has correct test expressions (lowered with the converged PM),
+    // but its ops are from raw lowering (not through computeRealHashes).
     // Replace each module's ops with the corresponding converged ops.
     // Op count per module is preserved by remapSetNames + computeRealHashes.
-    let mutable opsRemaining = currentOps
-    let result =
+    let result, _remaining =
       currentModules
-      |> List.map (fun m ->
-        let count = List.length m.ops
-        let (these, rest) = List.splitAt count opsRemaining
-        opsRemaining <- rest
-        { m with ops = these })
+      |> List.mapFold
+        (fun opsRemaining m ->
+          let count = List.length m.ops
+          let (these, rest) = List.splitAt count opsRemaining
+          ({ m with ops = these }, rest))
+        currentOps
 
     return result
   }

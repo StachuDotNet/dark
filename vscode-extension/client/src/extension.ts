@@ -35,9 +35,10 @@ function createLSPClient(isDebug: boolean): LanguageClient {
   const cli = "./scripts/run-cli";
 
   const command = isDebug ? "bash" : "dark";
+  const serverExpr = "Darklang.LanguageTools.LspServer.runServerCli ()";
   const args = isDebug
-    ? [cli, "--no-log", "run", "@Darklang.LanguageTools.LspServer.runServerCli", "()"]
-    : ["run", "@Darklang.LanguageTools.LspServer.runServerCli", "()"];
+    ? [cli, "--no-log", "eval", serverExpr]
+    : ["eval", serverExpr];
 
   const baseRun = {
     options: { cwd },
