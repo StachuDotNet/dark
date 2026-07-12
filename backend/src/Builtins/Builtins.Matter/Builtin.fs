@@ -15,6 +15,12 @@ let builtins (pm : PT.PackageManager) : Builtins =
     [ // DB
       Libs.DB.builtins ()
 
+      // Sqlite (raw SQLite access — the Stdlib.Sqlite floor primitive spike)
+      Libs.Sqlite.builtins ()
+
+      // Conflicts (dark conflicts — the sync Conflict/Resolution UX)
+      Libs.Conflicts.builtins ()
+
       // PM (package manager — packages, branches, ops, merge, …)
       Libs.PM.Packages.builtins pm
       Libs.PM.PackageOps.builtins pm

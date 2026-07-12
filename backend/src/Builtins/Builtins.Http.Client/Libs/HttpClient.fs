@@ -202,8 +202,12 @@ module BaseClient =
               // Use this to hide more specific errors when looking at loopback
               Exception.raiseInternal "Could not connect" []
 
+            // Create the socket with the resolved IP's address family (v4 vs v6). The 2-arg ctor defaults
+            // to IPv6, which only reaches an IPv4 literal (e.g. 127.0.0.1) when the host has IPv6 dual-mode
+            // — absent in some containers, giving a NetworkError. Matching the family connects either way.
             let socket =
               new System.Net.Sockets.Socket(
+                ips[0].AddressFamily,
                 System.Net.Sockets.SocketType.Stream,
                 System.Net.Sockets.ProtocolType.Tcp
               )
@@ -339,6 +343,27 @@ module LocalAccess =
     else
       true // not ipv4 or ipv6, so banned
 
+  /// The subset of banned ranges that stay banned even for a trusted tailnet SYNC pull: 169.254.0.0/16
+  /// (link-local + cloud-metadata), GCP private endpoints, and 0.0.0.0. Loopback, RFC-1918, and the
+  /// Tailscale CGN range (100.64/10) are deliberately ALLOWED here — reaching a tailnet/LAN peer is the
+  /// whole point — but the cloud-metadata SSRF target is never reachable, even by an unsafe pull.
+  let private metadataOrLinkLocalV4 (ip : System.Net.IPAddress) : bool =
+    oneSixNine.Contains ip
+    || oneNineNineFour.Contains ip
+    || oneNineNineEight.Contains ip
+    || zero = ip
+
+  let metadataOrLinkLocal (ip : System.Net.IPAddress) : bool =
+    if ip.AddressFamily = System.Net.Sockets.AddressFamily.InterNetworkV6 then
+      if ip.IsIPv4MappedToIPv6 then
+        metadataOrLinkLocalV4 (ip.MapToIPv4())
+      else
+        ip.IsIPv6LinkLocal // ipv6 link-local / metadata
+    else if ip.AddressFamily = System.Net.Sockets.AddressFamily.InterNetwork then
+      metadataOrLinkLocalV4 ip
+    else
+      true
+
   let bannedHost (host : string) : bool =
     let host = host.Trim().ToLower()
     let badIP =
@@ -373,6 +398,17 @@ let defaultConfig : Configuration =
   { looseConfig with
       allowedIP = fun ip -> not (LocalAccess.bannedIp ip)
       allowedHost = fun host -> not (LocalAccess.bannedHost host)
+      allowedScheme = fun scheme -> scheme = "https" || scheme = "http"
+      allowedHeaders =
+        fun headers -> not (LocalAccess.hasInstanceMetadataHeader headers) }
+
+/// Config for trusted tailnet SYNC pulls (`httpGetUnsafeBytes`). Unlike `defaultConfig` it reaches
+/// loopback / RFC-1918 / the Tailscale range so a peer's server is reachable — but unlike `looseConfig` it
+/// still blocks cloud-metadata + link-local, so even a sync pull can't be aimed at 169.254.169.254. Also
+/// drops the metadata request-header (defence-in-depth; sync sends no headers anyway).
+let syncConfig : Configuration =
+  { looseConfig with
+      allowedIP = fun ip -> not (LocalAccess.metadataOrLinkLocal ip)
       allowedScheme = fun scheme -> scheme = "https" || scheme = "http"
       allowedHeaders =
         fun headers -> not (LocalAccess.hasInstanceMetadataHeader headers) }
@@ -778,6 +814,52 @@ let fns (config : Configuration) : List<BuiltInFn> =
     // runs the same disposer chain when the DStream becomes
     // unreachable.
     // ——————————————————————————————————————————————————————————
+    // GET with SSRF guards OFF, returning raw BYTES — for pulling a peer's op wire over the tailnet.
+    // (The safe `httpClientRequest` bans loopback/RFC-1918/tailnet, which a peer's sync server sits behind;
+    // the Blob variant hands the body back as bytes for the caller to decode — `Stdlib.Blob.toString` for the
+    // JSON wire.) TRUSTED-CLI use: the caller IS the code author; used by `Sync.pull` / `dark sync pull <url>`.
+    // TODO(sync-ssrf): this is registered in the general builtin set, so it's reachable from any CLI-run Dark
+    // (incl. packages pulled from a peer). Gate it to the sync surface (its own library or a sync capability).
+    { name = fn "httpGetUnsafeBytes" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "uri"
+            TString
+            "URL to GET with SSRF guards OFF (loopback/RFC-1918/tailnet reachable)" ]
+      returnType = TypeReference.result TBlob TString
+      description =
+        "GET <param uri> with NO SSRF guards, returning the raw response body as Bytes (Ok) or an error message (Error). For pulling a peer's store over the tailnet."
+      fn =
+        let syncClient = BaseClient.create syncConfig
+
+        (function
+        | _, _, _, [ DString uri ] ->
+          uply {
+            let request : Request =
+              { url = uri; method = HttpMethod "GET"; headers = []; body = [||] }
+
+            let! response = makeRequest syncConfig syncClient request
+
+            match response with
+            | Ok r -> return Dval.resultOk KTBlob KTString (Blob.newEphemeral r.body)
+            | Error err ->
+              let reason =
+                match err with
+                | RequestError.BadUrl _ -> "bad url"
+                | RequestError.Timeout -> "timeout"
+                | RequestError.BadHeader _ -> "bad header"
+                | RequestError.NetworkError -> "network error"
+                | RequestError.BadMethod -> "bad method"
+              return
+                Dval.resultError KTBlob KTString (DString $"fetch failed: {reason}")
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.Needs.http
+      deprecated = NotDeprecated }
+
     { name = fn "httpClientStream" 0
       typeParams = []
       parameters =
