@@ -30,9 +30,10 @@ let tokenTypeToCliColor (tokenType: LanguageTools.SemanticTokens.TokenType) : St
 let highlightLine (line: String) (lineTokens: List<LanguageTools.SemanticTokens.SemanticToken>) : String =
   let insertions =
     lineTokens
-    |> Stdlib.List.collect (fun token ->
+    |> Stdlib.List.map (fun token ->
         [ (token.range.start.column, tokenTypeToCliColor token.tokenType)
           (token.range.end_.column, Colors.reset) ])
+    |> Stdlib.List.flatten
     // stable sort keeps a token's end before the next token's start at a shared
     // column, so adjacent tokens render as `…reset<next-color>…`
     |> Stdlib.List.sortBy (fun (pos, _) -> pos)
@@ -96,7 +97,8 @@ let applyTokenColors
   // each line below sees only single-line tokens
   let sortedTokens =
     tokens
-    |> Stdlib.List.collect (splitTokenByLine lines)
+    |> Stdlib.List.map (splitTokenByLine lines)
+    |> Stdlib.List.flatten
     |> Stdlib.List.sortBy (fun token -> (token.range.start.row, token.range.start.column))
 
   lines
