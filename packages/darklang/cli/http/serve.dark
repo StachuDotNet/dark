@@ -88,34 +88,35 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
         let portStr = Stdlib.Int.toString parsed.port
         let maxBytesStr = Stdlib.Int.toString parsed.maxBodyBytes
 
-        [ $"Using router: {parsed.routerPath}"
-          $"Max body bytes: {maxBytesStr}"
-          ""
-          Colors.success $"Listening on http://localhost:{portStr}"
-          "Press Ctrl+C to stop"
-          "" ]
-        |> Stdlib.printLines
+        let baseConfig = Stdlib.HttpServer.Config.defaults parsed.port
 
-        // serve via the stdlib helper; only a non-default max body needs a record-update on the config.
-        let configExpr =
+        let config =
           if parsed.maxBodyBytes == Stdlib.HttpServer.Config.defaultMaxBodyBytes then
-            $"Stdlib.HttpServer.Config.defaults {portStr}I"
+            baseConfig
           else
-            $"{{ Stdlib.HttpServer.Config.defaults {portStr}I with maxBodyBytes = {maxBytesStr}I }}"
+            { baseConfig with maxBodyBytes = parsed.maxBodyBytes }
 
-        let expr = $"Stdlib.HttpServer.serve ({configExpr}) {parsed.routerPath}"
+        // Resolve the router to a callable value and call serve DIRECTLY — no string-eval. The CLI expression
+        // parser mis-tokenizes an int literal in argument position (`defaults 8080` → "no variable named: I"),
+        // which breaks the string-eval form of serve; applicableByName sidesteps it.
+        // TODO(serve-parser): fix the underlying parser (NI-literal in argument position) — pre-existing platform bug.
+        // Resolve BEFORE announcing "Listening" so a bad router name reports cleanly, never a false start.
+        match Builtin.applicableByName state.currentBranchId parsed.routerPath with
+        | Ok router ->
+          [ $"Using router: {parsed.routerPath}"
+            $"Max body bytes: {maxBytesStr}"
+            ""
+            Colors.success $"Listening on http://localhost:{portStr}"
+            "Press Ctrl+C to stop"
+            "" ]
+          |> Stdlib.printLines
 
-        match
-          Builtin.cliEvaluateExpression
-            state.accountID
-            state.currentBranchId
-            expr
-            false
-         with
-        | Ok _ -> state
-        | Error err ->
-          let pretty = Cli.ExecutionError.toString state.currentBranchId err
-          Stdlib.printLine (Colors.error $"Server failed: {pretty}")
+          Stdlib.HttpServer.serve config router
+          state
+        | Error msg ->
+          Stdlib.printLine (
+            Colors.error $"{msg} — is it defined and committed on this branch?")
+
           state
 
 

@@ -56,8 +56,8 @@ let help (state: AppState) : AppState =
     "  login              List available accounts"
     "  login <name>       Log in as that account"
     ""
-    "Logging in unblocks `commit`, `serve`, and other ops/commit-time"
-    "actions. Use `logout` to clear the active account." ]
+    "Logging in unblocks `commit` and other authoring actions — it records"
+    "who authors each change (serving needs no login). `logout` clears it." ]
   |> Stdlib.printLines
   state
 
