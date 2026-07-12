@@ -24,6 +24,34 @@ let computeOpHash (op : PT.PackageOp) : System.Guid =
   System.Guid(hashBytes[0..15])
 
 
+/// A process-monotonic authoring stamp (`origin_ts`). Millisecond-resolution wall clock, but never
+/// non-increasing: within one millisecond a batch's ops would otherwise share a stamp, and the
+/// timestamp-LWW in `applySetName` would then break the tie by content hash — silently reordering *local
+/// sequential* edits (rename v1 then v2 could leave v1 winning). So each call returns `max(nowMs, last+1ms)`:
+/// a local batch gets strictly-increasing stamps, so a later edit always wins its location. The string
+/// format matches the schema default `strftime('%Y-%m-%dT%H:%M:%fZ')`, so it stays lexically comparable
+/// with existing rows and peers. (A future hardening could generalize this to a hybrid logical clock that
+/// also advances the stamp on receive, so a skewed peer clock can't pin a binding.)
+let private originTsLock = System.Object()
+let mutable private lastOriginTs = System.DateTime.MinValue
+
+let nextOriginTs () : string =
+  lock originTsLock (fun () ->
+    let nowMs =
+      let n = System.DateTime.UtcNow
+      System.DateTime(
+        n.Ticks - (n.Ticks % System.TimeSpan.TicksPerMillisecond),
+        System.DateTimeKind.Utc
+      )
+    let next =
+      if nowMs > lastOriginTs then nowMs else lastOriginTs.AddMilliseconds 1.0
+    lastOriginTs <- next
+    next.ToString(
+      "yyyy-MM-ddTHH:mm:ss.fffZ",
+      System.Globalization.CultureInfo.InvariantCulture
+    ))
+
+
 /// Insert PackageOps into the package_ops table and apply them to projection tables.
 /// branchId = branch context
 /// commitHash = None means WIP (commit_hash = NULL), Some id means committed
@@ -55,20 +83,22 @@ let insertAndApplyOps
           | PT.PackageOp.RevertPropagation(rid, _, _, _, _) -> Some rid
           | _ -> None)
 
+      // Each op gets a strictly-increasing authoring stamp (see `nextOriginTs`), assigned in list order so
+      // sequential edits within one wall-clock millisecond are still ordered by creation for the LWW.
       let opsWithIds =
         ops
         |> List.map (fun op ->
           let opId = computeOpHash op
           let opBlob = BS.PT.PackageOp.serialize opId op
-          (opId, op, opBlob, batchPropagationId))
+          (opId, op, opBlob, batchPropagationId, nextOriginTs ()))
 
       let insertStatements =
         opsWithIds
-        |> List.map (fun (opId, _op, opBlob, propagationId) ->
+        |> List.map (fun (opId, _op, opBlob, propagationId, originTs) ->
           let sql =
             """
-            INSERT OR IGNORE INTO package_ops (id, op_blob, branch_id, applied, commit_hash, propagation_id)
-            VALUES (@id, @op_blob, @branch_id, @applied, @commit_hash, @propagation_id)
+            INSERT OR IGNORE INTO package_ops (id, op_blob, branch_id, applied, commit_hash, propagation_id, origin_ts)
+            VALUES (@id, @op_blob, @branch_id, @applied, @commit_hash, @propagation_id, @origin_ts)
             """
 
           let commitHashParam =
@@ -85,7 +115,8 @@ let insertAndApplyOps
               "propagation_id",
               (match propagationId with
                | Some id -> Sql.uuid id
-               | None -> Sql.dbnull) ]
+               | None -> Sql.dbnull)
+              "origin_ts", Sql.string originTs ]
 
           (sql, [ parameters ]))
 
@@ -100,9 +131,9 @@ let insertAndApplyOps
         |> List.filter (fun (_, affected) -> affected > 0)
         |> List.map fst
 
-      let opsToApply = insertedOpsWithIds |> List.map (fun (_, op, _, _) -> op)
+      let opsToApply = insertedOpsWithIds |> List.map (fun (_, op, _, _, _) -> op)
       let insertedOpIds =
-        insertedOpsWithIds |> List.map (fun (opId, _, _, _) -> opId)
+        insertedOpsWithIds |> List.map (fun (opId, _, _, _, _) -> opId)
 
       do! PackageOpPlayback.applyOps branchId commitHash opsToApply
 
