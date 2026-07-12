@@ -1,0 +1,85 @@
+// Sync unit tests (pure + db-backed, no HTTP): the blob channel builtins and the adaptive daemon interval.
+// Cross-instance convergence over the real wire is covered by MultiInstance/SyncScenarios/SyncE2E.
+// (Per-branch controls — follow/private — were removed; sync is wholesale, so their filters are gone.)
+
+// ── receive robustness: a malformed wire op is SKIPPED, never a crash ──────────────────────────────────
+// The append path parses each event and drops any it can't (bad hex op / bad uuid) — "a bad peer skips, not
+// crashes". A batch of only-garbage folds nothing and returns 0, totally, rather than throwing.
+module AppendSkipsMalformedOp =
+  (Stdlib.EventLog.append
+    []
+    [ Stdlib.EventLog.Event
+        { id = "00000000-0000-0000-0000-000000000001"
+          op = "zznothexatall"
+          branchId = "89282547-e4e6-4986-bcb6-db74bc6a8c0f"
+          commitHash = "deadbeef"
+          originTs = "2026-07-08T00:00:00.000Z" } ]) = 0
+
+// ── blob channel (fetch-on-miss over the sync builtins; content-addressed, real SHA-256 hashes) ────────
+// Hashes are the SHA-256 of the decoded bytes: "aGVsbG8=" = "hello", "d29ybGQ=" = "world". syncBlobInsert
+// VERIFIES bytes hash to the claimed hash (rejects a poisoned/mismatched blob), so the tests use real hashes.
+
+// syncBlobInsert stores a blob (base64-decoded, hash-verified); syncBlobBytes reads it back, base64.
+module BlobRoundtrip =
+  (let h = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+   let _ = Builtin.syncBlobInsert h "aGVsbG8="
+   Builtin.syncBlobBytes h) = "aGVsbG8="
+
+// A mismatched hash (bytes don't hash to it) is REJECTED — nothing stored, returns false.
+module BlobInsertRejectsMismatch =
+  (Builtin.syncBlobInsert "0000000000000000000000000000000000000000000000000000000000000000" "aGVsbG8=") = false
+
+// syncBlobMissing returns a hash we DON'T hold (the ones to fetch).
+module BlobMissingAbsent =
+  (Builtin.syncBlobMissing [ "testblob-absent-zzz999" ]) = [ "testblob-absent-zzz999" ]
+
+// …and nothing for a hash we DO hold.
+module BlobMissingPresent =
+  (let h = "486ea46224d1bb4fb680f34f7c9ad96a8f24ec88be73ea8e5a6c65260e9cb8a7"
+   let _ = Builtin.syncBlobInsert h "d29ybGQ="
+   Builtin.syncBlobMissing [ h ]) = []
+
+// ── adaptive daemon interval (pure nextPollMs) ─────────────────────────────────────────────────────────
+
+// After a pull that saw changes, snap to the responsive floor (2s).
+module NextPollSnapsToFloor =
+  (Darklang.Sync.nextPollMs true 8000 30000) = 2000
+
+// While idle, back off by doubling.
+module NextPollDoublesIdle =
+  (Darklang.Sync.nextPollMs false 8000 30000) = 16000
+
+// …capped at the configured ceiling.
+module NextPollCapsAtCeiling =
+  (Darklang.Sync.nextPollMs false 20000 30000) = 30000
+
+// ── daemon config validation (S8): a bad value is REJECTED (None), not stored as junk that reverts ─────────
+module ConfigRejectsBadPort =
+  (Darklang.Cli.Sync.daemonConfigValue "port" "abc") = Stdlib.Option.Option.None
+
+module ConfigRejectsPortOutOfRange =
+  (Darklang.Cli.Sync.daemonConfigValue "port" "0") = Stdlib.Option.Option.None
+
+module ConfigAcceptsPort =
+  (Darklang.Cli.Sync.daemonConfigValue "port" "9000") = Stdlib.Option.Option.Some(
+    ("apps.sync-server.port", "9000")
+  )
+
+module ConfigRejectsBadMode =
+  (Darklang.Cli.Sync.daemonConfigValue "mode" "bogus") = Stdlib.Option.Option.None
+
+module ConfigAcceptsMode =
+  (Darklang.Cli.Sync.daemonConfigValue "mode" "pull-only") = Stdlib.Option.Option.Some(
+    ("sync.daemon.mode", "pull-only")
+  )
+
+module ConfigRejectsOnBootTypo =
+  (Darklang.Cli.Sync.daemonConfigValue "on-boot" "false") = Stdlib.Option.Option.None
+
+module ConfigRejectsZeroInterval =
+  (Darklang.Cli.Sync.daemonConfigValue "interval" "0") = Stdlib.Option.Option.None
+
+module ConfigAcceptsInterval =
+  (Darklang.Cli.Sync.daemonConfigValue "interval" "30") = Stdlib.Option.Option.Some(
+    ("apps.sync.intervalMs", "30000")
+  )
