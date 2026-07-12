@@ -16,6 +16,16 @@ let available () : List<Model.App> =
         description = "Demo daemon: logs a heartbeat every interval until stopped"
         target = Model.Target.Daemon "Darklang.Cli.Apps.Examples.heartbeat" }
     Model.App
+      { name = "Sync"
+        slug = "sync"
+        description = "Keep your packages in sync with your other instances (background autosync)"
+        target = Model.Target.Daemon "Darklang.Sync.daemon" }
+    Model.App
+      { name = "Sync Server"
+        slug = "sync-server"
+        description = "Serve your ops so peers can pull from you (the serving side of sync)"
+        target = Model.Target.Daemon "Darklang.Cli.Apps.Servers.syncServer" }
+    Model.App
       { name = "Outliner"
         slug = "outliner"
         description = "Interactive tree outliner (full-screen TUI)"
