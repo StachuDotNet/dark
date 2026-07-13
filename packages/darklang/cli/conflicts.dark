@@ -211,11 +211,12 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | [ "keep-mine"; location ] ->
     match findOpen location with
     | Some c ->
-      let _ = keep location c.localHash
-
-      Stdlib.printLine (
-        Colors.success
-          $"Kept yours ({short c.localHash}) at {location}. This resolution will sync to your peers.")
+      if keep location c.localHash then
+        Stdlib.printLine (
+          Colors.success
+            $"Kept yours ({short c.localHash}) at {location}. This resolution will sync to your peers.")
+      else
+        Stdlib.printLine (Colors.error (noneMsg location))
 
       state
     | None ->
@@ -225,11 +226,12 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | [ "keep-theirs"; location ] ->
     match findOpen location with
     | Some c ->
-      let _ = keep location c.incomingHash
-
-      Stdlib.printLine (
-        Colors.success
-          $"Kept theirs ({short c.incomingHash}) at {location}. This resolution will sync to your peers.")
+      if keep location c.incomingHash then
+        Stdlib.printLine (
+          Colors.success
+            $"Kept theirs ({short c.incomingHash}) at {location}. This resolution will sync to your peers.")
+      else
+        Stdlib.printLine (Colors.error (noneMsg location))
 
       state
     | None ->
