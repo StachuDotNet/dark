@@ -144,23 +144,36 @@ let private reseedAndReport
 let private reconcileExistingStore (dbPath : string) : unit =
   let current = LibDB.Releases.currentRelease
   match readStoredRelease dbPath with
-  | Stamped r when r = current -> () // up to date — nothing to do
   | Unreadable -> () // couldn't read it — don't touch it; the normal open will proceed or fail loudly
-  | Stamped r when r > current ->
-    // A newer store must not be opened by older code (it could corrupt the newer format). Refuse.
-    eprintfn
-      $"This Darklang data directory is from a newer release (Release {r}); this binary is Release {current}."
-    eprintfn
-      $"Upgrade the CLI, or move {dbPath} aside to start fresh — refusing to open it with older code."
-    exit 1
-  | Stamped r ->
-    // Stamped older than this binary. Crossing into the current Release is a clean break (content hashing
-    // changed), so the old package data can't be reused in place — re-seed from the embedded current-Release
-    // store, keeping the old one as a recoverable backup.
-    reseedAndReport dbPath current $"release{r}"
-  | PreTracking ->
-    // Predates Release tracking — same clean-break reseed as an older stamped store.
-    reseedAndReport dbPath current "pretracking"
+  | storeRel ->
+    let stored =
+      match storeRel with
+      | Stamped r -> Some r
+      | _ -> None
+    let label =
+      match storeRel with
+      | Stamped r -> $"release{r}"
+      | _ -> "pretracking"
+    match LibDB.Releases.planCliUpgrade LibDB.Releases.releases stored current with
+    | LibDB.Releases.CliUpgrade.Proceed -> () // up to date
+    | LibDB.Releases.CliUpgrade.RefuseNewer r ->
+      // A newer store must not be opened by older code (it could corrupt the newer format). Refuse.
+      eprintfn
+        $"This Darklang data directory is from a newer release (Release {r}); this binary is Release {current}."
+      eprintfn
+        $"Upgrade the CLI, or move {dbPath} aside to start fresh — refusing to open it with older code."
+      exit 1
+    | LibDB.Releases.CliUpgrade.MigrateInPlace ->
+      // Every pending step is durable — migrate the store forward in place, PRESERVING the data (schema
+      // copy-swap + op-format re-serialize + refold). No source needed, so the CLI can run it directly.
+      LibDB.Releases.applyPending current
+      eprintfn
+        $"Upgraded this data directory from {label} to Release {current} (data preserved)."
+    | LibDB.Releases.CliUpgrade.Reseed ->
+      // A clean-break Release (content hashing changed) or a pre-tracking store of unknown format: the old
+      // package data can't be reused in place, so back it up and re-seed from the embedded current-Release
+      // store.
+      reseedAndReport dbPath current label
 
 let extract () : unit =
   // The embedded resource is `data.db.gz` (the seed db, gzip-compressed at
