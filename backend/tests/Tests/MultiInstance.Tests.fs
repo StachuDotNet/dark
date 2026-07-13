@@ -767,6 +767,50 @@ let tests =
       }
 
       testTask
+        "a durable Release migrates a seeded store IN PLACE, preserving its data (not a clean-break)" {
+        // Guards the CLI data-preserving upgrade path (planCliUpgrade MigrateInPlace -> applyPending ->
+        // applyRelease's durable branch). A durable step (here an additive schema column) must land on an
+        // EXISTING store and keep every op + its projected content — unlike a clean-break, which clears.
+        let mutable insts : List<Instance> = []
+        try
+          let! a = seededInstance "durablemig"
+          insts <- [ a ]
+          activate a
+          let countOps () =
+            Sql.query "SELECT COUNT(*) AS n FROM package_ops"
+            |> Sql.executeRowAsync (fun read -> read.int64 "n")
+          let! opsBefore = countOps ()
+          let! probeFn = undeprecatedFunctionHash ()
+          Expect.isGreaterThan opsBefore 0L "the seeded store has ops to preserve"
+
+          LibDB.Releases.applyRelease
+            ({ n = 999
+               sql = "ALTER TABLE package_ops ADD COLUMN migration_probe TEXT"
+               reserialize = None
+               clearForRebuild = false }
+            : LibDB.Releases.Release)
+
+          let! hasCol =
+            Sql.query
+              "SELECT COUNT(*) AS n FROM pragma_table_info('package_ops') WHERE name = 'migration_probe'"
+            |> Sql.executeRowAsync (fun read -> read.int64 "n")
+          let! opsAfter = countOps ()
+          let! fnStillThere =
+            Sql.query "SELECT COUNT(*) AS n FROM package_functions WHERE hash = @h"
+            |> Sql.parameters [ "h", Sql.string probeFn ]
+            |> Sql.executeRowAsync (fun read -> read.int64 "n")
+
+          Expect.equal hasCol 1L "the durable schema step added the column in place"
+          Expect.equal
+            opsAfter
+            opsBefore
+            "every op preserved (durable is not a clean-break — nothing cleared)"
+          Expect.equal fnStillThere 1L "the package content survived the in-place migration"
+        finally
+          teardown insts
+      }
+
+      testTask
         "branch merge syncs across stores: a branch's create + merge land on B (merged_at set)" {
         let mutable insts : List<Instance> = []
 
