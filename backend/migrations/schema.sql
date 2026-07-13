@@ -153,6 +153,10 @@ CREATE TABLE IF NOT EXISTS sync_conflicts (
   detected_at TIMESTAMP NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_sync_conflicts_detected_at ON sync_conflicts(detected_at DESC);
+-- markOverriddenByLocation (run per resolution on every reapplyAll, i.e. every grow/pull) filters on
+-- (branch_id, location, status); without this it full-scans sync_conflicts once per stored resolution.
+CREATE INDEX IF NOT EXISTS idx_sync_conflicts_branch_location
+  ON sync_conflicts(branch_id, location, status);
 
 -- resolutions: SYNCED override overlay. A resolution binds a contested location to a chosen content,
 -- competing in the same timestamp-LWW that orders bindings (by `at`). id is a wire-carried uuid (idempotent).
