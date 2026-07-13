@@ -90,6 +90,18 @@ let tests =
         Expect.equal (h [] mx) (h [] my) "alpha-equivalent match cases hash equal"
       }
 
+      test "match binder position matters: `| (x,y) -> x` ≢ `| (x,y) -> y`" {
+        // guards that multi-binder normalization keeps WHICH bound var the rhs uses — not just that it
+        // renames binders. Both patterns bind the same two names; only the rhs's choice differs.
+        let tuplePat = PT.MPTuple(gid (), mpVar "x", mpVar "y", [])
+        let mFirst = eMatch (eInt64 0L) [ caseOf tuplePat (eVar "x") ]
+        let mSecond = eMatch (eInt64 0L) [ caseOf tuplePat (eVar "y") ]
+        Expect.notEqual
+          (h [] mFirst)
+          (h [] mSecond)
+          "which tuple-bound variable the rhs returns is a real difference"
+      }
+
       test
         "free variables are preserved (a free var is a real reference, not a binder)" {
         // `z` / `w` are neither parameters nor locally bound — they must survive normalization distinctly
@@ -118,10 +130,23 @@ let tests =
       }
 
       test
-        "normalization is idempotent (normalizing an already-normalized fn is a no-op)" {
-        let f = fnOf [ "x"; "y" ] (eTuple (eVar "y") (eVar "x") [])
+        "normalization is idempotent (re-normalizing an already-normalized expr is a structural no-op)" {
+        // Compare the normalized EXPR structures directly (not through computeFnHash, which normalizes
+        // internally — that would re-normalize both sides and hide a first-pass difference). normalizeExpr
+        // preserves ids and only renames binders, so a second pass over the canonical form must be identity.
+        // Use real binders (let + lambda + a shadowing inner let) so there is something to normalize.
+        let body =
+          eLet
+            (lpVar "outer")
+            (eInt64 1L)
+            (eLambda
+              (gid ())
+              [ lpVar "p" ]
+              (eLet (lpVar "inner") (eVar "p") (eVar "inner")))
+        let once = Hashing.normalizeExpr body
+        let twice = Hashing.normalizeExpr once
         Expect.equal
-          (Hashing.computeFnHash Hashing.Normal (normalizeFn (normalizeFn f)))
-          (Hashing.computeFnHash Hashing.Normal (normalizeFn f))
-          "normalizeFn (normalizeFn f) hashes the same as normalizeFn f"
+          twice
+          once
+          "normalizeExpr (normalizeExpr e) is structurally identical to normalizeExpr e"
       } ]
