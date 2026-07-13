@@ -119,7 +119,9 @@ let fns () : List<BuiltInFn> =
               |> List.tryFind (fun c ->
                 c.location = location && c.status = "auto-resolved")
             with
-            | Some c ->
+            // A resolution must bind one of the TWO conflicting candidates; refuse an arbitrary hash so a
+            // caller can't mint a synced Resolution to content that was never in contention at this location.
+            | Some c when chosenHash = c.localHash || chosenHash = c.incomingHash ->
               let loc = LibDB.Conflicts.parseLocation location
               let itemKind = PT.ItemKind.fromString c.itemKind
               let chosenRef =
@@ -132,6 +134,7 @@ let fns () : List<BuiltInFn> =
               do! LibDB.Resolutions.recordAndApply r
               do! LibDB.Conflicts.markOverridden c.id
               return DBool true
+            | Some _
             | None -> return DBool false
           }
         | _ -> incorrectArgs ())
