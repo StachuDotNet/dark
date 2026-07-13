@@ -182,12 +182,18 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     state
 
   | [ "status" ] ->
+    // Every daemon that's installed OR currently running — a daemon started with `apps start` but not
+    // "installed" (auto-start on login) is still running and MUST show here, else `apps status` misleadingly
+    // reports "nothing" right after you start one (e.g. `apps start sync`).
     let daemons =
-      (Registry.installed state.currentBranchId)
+      (Registry.catalog state.currentBranchId)
       |> Stdlib.List.filter (fun a -> Model.isDaemon a.target)
+      |> Stdlib.List.filter (fun a ->
+        Registry.isInstalled a.slug || Stdlib.Cli.Daemon.isRunning a.slug)
 
     if Stdlib.List.isEmpty daemons then
-      Stdlib.printLine (Colors.dimText "no daemon apps installed")
+      Stdlib.printLine (
+        Colors.dimText "No daemons running or installed. Start one, e.g.: dark apps start sync")
     else
       Stdlib.printLine "Daemon status:"
       daemons
