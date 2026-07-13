@@ -117,9 +117,52 @@ let private readStoredRelease (dbPath : string) : StoreRelease =
   with _ ->
     Unreadable
 
-/// Move the stale store (and its WAL/SHM sidecars, so a leftover WAL can't attach to the new db) aside to
-/// a timestamped backup, then re-extract the embedded current-Release seed. Returns the backup path.
-let private reseedStore (dbPath : string) (storedLabel : string) : string =
+/// The peer URLs configured in a store, or [] if the table is absent / unreadable. Peers are sync CONFIG
+/// (owned by `sync_peers_v0` in packages/darklang/sync.dark), not disposable package content.
+let private readPeerUrls (path : string) : List<string> =
+  try
+    use conn =
+      new Microsoft.Data.Sqlite.SqliteConnection(
+        $"Data Source={path};Mode=ReadOnly;Pooling=false"
+      )
+    conn.Open()
+    use cmd = conn.CreateCommand()
+    cmd.CommandText <- "SELECT url FROM sync_peers_v0"
+    use reader = cmd.ExecuteReader()
+    [ while reader.Read() do
+        yield reader.GetString 0 ]
+  with _ ->
+    []
+
+/// Best-effort: carry the peer URLs from the backed-up store into the fresh one, so a clean-break upgrade
+/// doesn't make you re-add your peers. Cursors are deliberately NOT carried — a clean break means the fresh
+/// store must re-pull from scratch, so a stale cursor would skip ops. Returns how many peers were carried.
+let private carryForwardPeers (backupPath : string) (dbPath : string) : int =
+  let urls = readPeerUrls backupPath
+  if List.isEmpty urls then
+    0
+  else
+    try
+      use conn =
+        new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};Pooling=false")
+      conn.Open()
+      use create = conn.CreateCommand()
+      create.CommandText <-
+        "CREATE TABLE IF NOT EXISTS sync_peers_v0 (url TEXT PRIMARY KEY)"
+      create.ExecuteNonQuery() |> ignore
+      for url in urls do
+        use ins = conn.CreateCommand()
+        ins.CommandText <- "INSERT OR IGNORE INTO sync_peers_v0 (url) VALUES ($u)"
+        ins.Parameters.AddWithValue("$u", url) |> ignore
+        ins.ExecuteNonQuery() |> ignore
+      List.length urls
+    with _ ->
+      0
+
+/// Move the stale store (and its WAL/SHM sidecars, so a leftover WAL can't attach to the new db) aside to a
+/// timestamped backup, then re-extract the embedded current-Release seed and carry the peer list forward.
+/// Returns (backup path, number of peers carried).
+let private reseedStore (dbPath : string) (storedLabel : string) : string * int =
   let stamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss")
   let backup = $"{dbPath}.{storedLabel}-{stamp}.bak"
   File.Move(dbPath, backup)
@@ -127,7 +170,8 @@ let private reseedStore (dbPath : string) (storedLabel : string) : string =
     let side = dbPath + suffix
     if File.Exists side then File.Move(side, backup + suffix)
   extractGzippedResource "data.db.gz" dbPath
-  backup
+  let peers = carryForwardPeers backup dbPath
+  (backup, peers)
 
 /// Back up + re-seed the store, then tell the user what happened and how to repopulate it.
 let private reseedAndReport
@@ -135,10 +179,14 @@ let private reseedAndReport
   (current : int)
   (storedLabel : string)
   : unit =
-  let backup = reseedStore dbPath storedLabel
+  let (backup, peers) = reseedStore dbPath storedLabel
   eprintfn
     $"Upgraded this data directory to Release {current} (was {storedLabel}); previous store backed up to {backup}."
-  eprintfn "Re-connect and pull from your peers, or re-author, to repopulate it."
+  if peers > 0 then
+    eprintfn
+      $"Kept your {peers} peer connection(s) — run `dark sync` to re-pull and repopulate."
+  else
+    eprintfn "Re-connect and pull from your peers, or re-author, to repopulate it."
 
 /// Reconcile an existing store's Release with this binary's. Called only when data.db already exists.
 let private reconcileExistingStore (dbPath : string) : unit =
