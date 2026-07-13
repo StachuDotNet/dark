@@ -177,6 +177,11 @@ let reapplyAll () : Task<unit> =
           at = read.string "at" })
     for r in rows do
       do! applyToLocations r
+      // Keep the conflict log consistent with the overlay: a location that carries a resolution is settled, so
+      // its recorded divergence is 'overridden', not a still-open 'auto-resolved'. (recordAndApply does this on
+      // the live path; a re-fold that goes through reapplyAll must do it too, or the resolved conflict pops back
+      // up as unreviewed in `dark conflicts` after a grow.)
+      do! Conflicts.markOverriddenByLocation r.branchId (Conflicts.locationString r.location)
   }
 
 

@@ -639,6 +639,14 @@ let growIfNeeded
     if appliedCount > 0L then
       log $"Growing package DB from ops ({appliedCount} ops to apply)..."
       Telemetry.event "seed.applyOps.count" [ ("count", string appliedCount) ]
+      // The incremental fold just re-derived bindings by LWW from the newly-applied ops — which CLOBBERS any
+      // resolution overlay (a human / keep-local "keep theirs" decision). Re-apply the overlay, exactly like
+      // rebuildProjections does after a full re-fold: without this, a synced-in resolution is silently reverted
+      // to the LWW loser on the next grow, so two peers that agreed via a resolution DIVERGE. (Effective
+      // binding = fold(package_ops)[LWW] -> then apply resolutions.)
+      do!
+        Telemetry.timeTask "seed.reapplyResolutions" [] (fun () ->
+          Resolutions.reapplyAll ())
       do!
         Telemetry.timeTask "seed.generateRefs" [] (fun () ->
           task {
