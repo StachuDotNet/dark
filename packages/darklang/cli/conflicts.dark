@@ -86,6 +86,26 @@ let private renderContent
     Stdlib.String.join indentedLines "\n"
   | None -> $"      <{short hashStr}> (content unavailable)"
 
+// A one-line preview of a candidate — for the conflict LIST, so you see WHAT each side set the name to at a
+// glance ("111" vs "222") without running `show`. For a value it drops the redundant "val <name> =" prefix and
+// shows just the body; for a fn/type it shows the trimmed first line (the signature).
+let private renderInline
+  (branchId: Uuid)
+  (itemKind: String)
+  (hashStr: String)
+  : String =
+  let full = renderContent branchId itemKind hashStr
+  let firstLine =
+    match
+      Stdlib.List.filter (Stdlib.String.split full "\n") (fun s ->
+        (Stdlib.String.trim s) != "")
+    with
+    | first :: _ -> Stdlib.String.trim first
+    | [] -> $"<{short hashStr}>"
+  match Stdlib.String.split firstLine " = " with
+  | [ lhs; rhs ] -> if rhs == "" then lhs else rhs
+  | _ -> firstLine
+
 let help (state: AppState) : AppState =
   Stdlib.printLine "dark conflicts — review + resolve sync divergences"
   Stdlib.printLine ""
@@ -109,12 +129,18 @@ let execute (state: AppState) (args: List<String>) : AppState =
       let noun = if n == 1 then "conflict" else "conflicts"
       Stdlib.printLine $"{Stdlib.Int.toString n} unreviewed {noun}:"
 
+      let branchId = state.currentBranchId
       Stdlib.List.iter cs (fun c ->
-        let kept =
+        let yoursV = renderInline branchId c.itemKind c.localHash
+        let theirsV = renderInline branchId c.itemKind c.incomingHash
+        let activeSide =
           if c.chosenHash == c.incomingHash then "theirs" else "yours"
 
+        Stdlib.printLine $"  {c.location} ({c.itemKind})"
+
         Stdlib.printLine
-          $"  {c.location}   active: {short c.chosenHash} ({kept}, {c.resolvedBy})   yours: {short c.localHash} · theirs: {short c.incomingHash}")
+          (Colors.hint
+            $"    yours {yoursV}  ·  theirs {theirsV}   → {activeSide} active ({c.resolvedBy})"))
 
       Stdlib.printLine (
         Colors.hint
