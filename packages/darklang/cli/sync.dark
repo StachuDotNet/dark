@@ -278,21 +278,22 @@ let execute (state: AppState) (args: List<String>) : AppState =
           | Ok n -> acc + n
           | Error _ -> acc)
 
-      let unreachable =
-        Stdlib.List.fold results 0 (fun acc r ->
+      // Each pull error is already peer-prefixed and self-describing — a genuine
+      // "Couldn't reach {peer}" reads differently from a "{peer}: a database error
+      // applying ops …". Surface the real message instead of bucketing every
+      // failure as "unreachable" (which hides apply/DB errors behind a network lie).
+      let errors =
+        Stdlib.List.fold results [] (fun acc r ->
           match r with
           | Ok _ -> acc
-          | Error _ -> acc + 1)
+          | Error e -> Stdlib.List.append acc [ e ])
 
-      let reached = (Stdlib.List.length ps) - unreachable
+      let reached = (Stdlib.List.length ps) - (Stdlib.List.length errors)
 
       let _ =
-        if unreachable > 0 then
-          Stdlib.printLine (
-            Colors.error
-              $"Couldn't reach {Stdlib.Int.toString unreachable} of {plural (Stdlib.List.length ps) "instance"}")
-        else
-          ()
+        errors
+        |> Stdlib.List.map (fun e -> Colors.error e)
+        |> Stdlib.printLines
 
       if pulled > 0 then
         Stdlib.printLine (
