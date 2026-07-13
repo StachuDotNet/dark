@@ -411,6 +411,49 @@ let private realTests =
                 (ver = "")
                 "the CLI + store are still usable after the failed sync"
             })
+      }
+
+      testTask
+        "daemon disk-safety: serving pulls accumulates NO traces + NO oversized blobs (trace-off is a true no-op)" {
+        // Guards the two overnight daemon disk-fill fixes (same root: the tracing subsystem). A served instance,
+        // hit by repeated pulls, must NOT grow: trace storage defaults off in the shipped binary, AND off is a
+        // TRUE no-op — the serve used to promote every request's captured ephemeral blobs into package_blobs
+        // even with trace rows suppressed, so the server's blob store ballooned per pull. This is the test class
+        // that would have caught the 90-186 GB overnight disk-fills; it asserts on the SERVER's own store.
+        do!
+          withRoot "disksafety" (fun root ->
+            task {
+              let a = mk root "A"
+              let b = mk root "B"
+              darkIn a.dir [ "login"; "Feriel" ] |> ignore<string>
+              darkIn b.dir [ "login"; "Stachu" ] |> ignore<string>
+              author a "SyncTest.Disk.v" "12345"
+              commit a "add v"
+              let port = 9340
+              let! server = serve a port
+              try
+                presync b $"http://127.0.0.1:{port}"
+                // Several pulls — each hits A's /sync/events + blob channel, the path that used to trace + promote.
+                for _ in 1 .. 6 do
+                  darkIn b.dir [ "sync" ] |> ignore<string>
+                // A is the SERVER (it only serves, never pulls), so serving must add NOTHING to its store:
+                // trace_fn_calls stays 0, and package_blobs stays exactly at the seed baseline. Comparing the
+                // COUNT (not just >1MB rows) catches ANY promotion — the bug persisted a fresh blob per request,
+                // small at first, so a size threshold would miss it while the store still grew unbounded.
+                let seedBlobs = (sqlite (seedDb.Force()) "SELECT COUNT(*) FROM package_blobs").Trim()
+                let traceRows = (sqlite (dbOf a) "SELECT COUNT(*) FROM trace_fn_calls").Trim()
+                let servedBlobs = (sqlite (dbOf a) "SELECT COUNT(*) FROM package_blobs").Trim()
+                Expect.equal
+                  traceRows
+                  "0"
+                  "the serve wrote NO trace rows (trace storage off in the shipped binary)"
+                Expect.equal
+                  servedBlobs
+                  seedBlobs
+                  "serving promoted NO new blobs into package_blobs — any growth here is the disk-fill bug"
+              finally
+                stop server
+            })
       } ]
 
 /// A single skipped test carrying `msg` — keeps the "SyncE2E" name in the run without paying any cost.

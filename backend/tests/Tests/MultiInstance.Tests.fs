@@ -723,6 +723,50 @@ let tests =
       }
 
       testTask
+        "resolution survives the INCREMENTAL fold on the pull path (receiveOps re-applies the overlay)" {
+        // Guards the overnight divergence fix. rebuildProjections already re-applied the overlay (test above),
+        // but the INCREMENTAL fold on the PULL path (receiveOps -> applyUnappliedOps) did NOT — so a synced-in
+        // resolution was silently reverted the moment a later op folded, and two peers that had agreed DIVERGED.
+        // The nastiest shape (reproduced here): the resolution's apply is an idempotent no-op because the binding
+        // already holds the chosen content, so the binding keeps the OLD op's origin_ts; a newer op then folds
+        // and out-ranks it, and only a post-fold reapply (the fix) restores the human's pick.
+        let mutable insts : List<Instance> = []
+        try
+          let! a = seededInstance "a"
+          insts <- [ a ]
+          let loc : PT.PackageLocation =
+            { owner = "Test"; modules = [ "ResIncFold" ]; name = "pick" }
+          activate a
+          let! (fnA, fnB) = twoFunctionHashes ()
+          let! commit = existingCommit ()
+          // Binding is fnA at .100. A human resolution ALSO picks fnA (at .300) — so applyToLocations is an
+          // idempotent no-op and the binding's origin_ts stays .100, NOT .300.
+          let! _ = Seed.receiveOps [] [ setNameEvent loc fnA commit "2026-07-08T00:00:00.100Z" ]
+          let res =
+            Resolutions.mk
+              loc
+              (PT.Reference.PackageFn(PT.Hash fnA))
+              "human"
+              PT.mainBranchId
+              "2026-07-08T00:00:00.300Z"
+          do! Resolutions.recordAndApply res
+          let! beforeFold = liveHash loc
+          Expect.equal beforeFold [ fnA ] "the resolution's pick (fnA) is bound"
+          // A fresh fnB op (.200) now arrives and folds via the INCREMENTAL pull path. .200 out-ranks the
+          // binding's stale .100, so the fold flips it to fnB — but the resolution (.300) is newer than .200, so
+          // after receiveOps re-applies the overlay the human's pick MUST win again.
+          let! folded = Seed.receiveOps [] [ setNameEvent loc fnB commit "2026-07-08T00:00:00.200Z" ]
+          Expect.isGreaterThan folded 0L "the fnB op actually folded (so the reapply path runs)"
+          let! afterFold = liveHash loc
+          Expect.equal
+            afterFold
+            [ fnA ]
+            "the override SURVIVED the incremental fold — before the fix receiveOps folded to fnB and dropped it"
+        finally
+          teardown insts
+      }
+
+      testTask
         "branch merge syncs across stores: a branch's create + merge land on B (merged_at set)" {
         let mutable insts : List<Instance> = []
 
