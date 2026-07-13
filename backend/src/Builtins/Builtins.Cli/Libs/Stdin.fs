@@ -35,6 +35,16 @@ let private readKeyOrPaste () : ConsoleKeyInfo * string option =
   let isPrintable (k : ConsoleKeyInfo) =
     k.KeyChar <> '\u0000' && not (Char.IsControl k.KeyChar)
 
+  // No interactive console (stdin redirected / not a TTY — e.g. an interactive
+  // view launched from a script, a pipe, or a daemon). `Console.ReadKey` and
+  // `Console.KeyAvailable` both throw InvalidOperation_ConsoleReadKeyOnFile here,
+  // which would crash a TUI's key loop with a raw stack dump. Report Escape
+  // instead — every full-screen view treats it as "exit" — so the view closes
+  // cleanly rather than blowing up.
+  if Console.IsInputRedirected then
+    (ConsoleKeyInfo('\u001b', ConsoleKey.Escape, false, false, false), None)
+  else
+
   let first = Console.ReadKey true
   if not Console.KeyAvailable then
     (first, None)
