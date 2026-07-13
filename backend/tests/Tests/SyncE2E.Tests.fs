@@ -415,11 +415,10 @@ let private realTests =
 
       testTask
         "daemon disk-safety: serving pulls accumulates NO traces + NO oversized blobs (trace-off is a true no-op)" {
-        // Guards the two overnight daemon disk-fill fixes (same root: the tracing subsystem). A served instance,
-        // hit by repeated pulls, must NOT grow: trace storage defaults off in the shipped binary, AND off is a
-        // TRUE no-op — the serve used to promote every request's captured ephemeral blobs into package_blobs
-        // even with trace rows suppressed, so the server's blob store ballooned per pull. This is the test class
-        // that would have caught the 90-186 GB overnight disk-fills; it asserts on the SERVER's own store.
+        // A served instance, hit by repeated pulls, must not grow its own store: trace storage defaults off in
+        // the shipped binary, and off is a true no-op. (Otherwise the serve promotes every request's captured
+        // ephemeral blobs into package_blobs even with trace rows suppressed, so the blob store grows per pull.)
+        // Asserts on the SERVER's store — the instance that only serves, never pulls.
         do!
           withRoot "disksafety" (fun root ->
             task {
@@ -464,7 +463,7 @@ let tests =
   if not enabled then
     skippedWith "set DARK_E2E=1 to run the heavy real-process sync tests"
   elif cliExe = "" then
-    // Enabled but nothing to drive — fail loudly-but-skipped with the fix, not a cryptic Process error.
+    // Enabled but nothing to drive — fail loudly-but-skipped, not with a cryptic Process error.
     skippedWith
       "DARK_E2E=1 but no Cli exe found under backend/Build/out/Cli/Debug — build it first (dotnet build backend/src/Cli/Cli.fsproj)"
   else

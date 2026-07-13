@@ -92,13 +92,11 @@ module TraceDetail =
     | Off
     | On
 
-  // Default OFF. Traces have NO retention/GC (see TraceStorage.store TODO) and a single trace row can be
-  // ~1 GB (a `serve` request records its whole response — e.g. a sync op/blob batch — as trace args). On a
-  // long-running `serve`/daemon that's an unbounded disk-fill: two sync daemons cross-pulling every 30s grew
-  // data.db to ~180 GB in ~40 min via trace_fn_calls before this default flipped. Traces are dev telemetry
-  // (stripped from the exported seed), so the SHIPPED binary must not accumulate them; dev + CI opt back in via
-  // DARK_CONFIG_TRACE_DETAIL=on (set in config/dev + config/circleci). Re-enable-by-default only once retention
-  // (size cap + GC) lands.
+  // Default OFF: traces have no retention/GC (see TraceStorage.store) and a single row can reach ~1 GB (a
+  // `serve` request records its whole response — e.g. a sync op/blob batch — as trace args), so a long-running
+  // `serve`/daemon fills the disk unbounded. Traces are dev telemetry (stripped from the exported seed), so
+  // the shipped binary must not accumulate them; dev/CI opt in via DARK_CONFIG_TRACE_DETAIL=on. Default back
+  // to on only once retention (size cap + GC) exists.
   let private readEnv () : T =
     match System.Environment.GetEnvironmentVariable "DARK_CONFIG_TRACE_DETAIL" with
     | "on" -> On
@@ -482,11 +480,10 @@ let private storeTrace
   (exeState : RT.ExecutionState)
   : Ply.Ply<unit> =
   uply {
-    // Trace detail OFF ⇒ a TRUE no-op. `prepareTraceForStorage` (below) promotes captured ephemeral blobs into
-    // package_blobs BEFORE `TraceStorage.store`'s own off-check — so gating only the store still let every
-    // traced `serve` request (sync responses = whole op/blob batches) grow package_blobs without bound. Bail
-    // here so neither the promote nor the store runs when tracing is off. (This is the single choke point for
-    // BOTH the sqlite and CLI tracers; the serve uses the CLI one.)
+    // Trace detail OFF must be a true no-op. `prepareTraceForStorage` (below) promotes captured ephemeral
+    // blobs into package_blobs before `TraceStorage.store`'s own off-check, so gating only the store still
+    // grows package_blobs on every traced request. Bail here so neither the promote nor the store runs. This
+    // is the single choke point for both the sqlite and CLI tracers (the serve uses the CLI one).
     if TraceDetail.current = TraceDetail.Off then
       return ()
     else

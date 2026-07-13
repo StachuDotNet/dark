@@ -8,10 +8,10 @@ module Darklang.Stdlib.EventLog
 // Records and the Stream are built NATIVELY (`packageOpsReadNative` / `packageOpsAppendNative` / …), so a
 // 1000-op batch stays milliseconds — never per-row Dark interpreter overhead.
 //
-// CLEANUP(eventlog-generic): a generic first-class `EventLog` type-triple (like `DDB`/`KTDB`) was surveyed +
-// prototyped, then dropped for these concrete per-log tables + native builtins (simpler, and the perf lives in
-// the native reader). A truly generic event-log primitive (tracing/messaging/cron as named logs on one
-// substrate) is a plausible future direction — premature for this PR.
+// CLEANUP(eventlog-generic): these are concrete per-log tables + native builtins rather than a generic
+// first-class `EventLog` type-triple (like `DDB`/`KTDB`) — simpler, and the perf lives in the native reader.
+// A truly generic event-log primitive (tracing/messaging/cron as named logs on one substrate) is a plausible
+// future direction.
 
 /// An opaque position in a log. You advance it by reading, and resume from where you left off. Compare or
 /// serialize it, but don't depend on the wrapped value — it's the log's private cursor representation.

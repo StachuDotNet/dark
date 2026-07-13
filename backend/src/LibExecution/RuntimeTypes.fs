@@ -516,8 +516,7 @@ type EphemeralBlob =
 ///   `| Subblob of parent: BlobRef * offset: int64 * length: int64`
 /// so `Bytes.slice` returns a view rather than copying. `readBlobBytes`
 /// would walk to the root; promotion would promote just the slice
-/// (default) or the parent. Skip until a profile shows slice-copy is
-/// hot — neither phase-1 nor phase-2 measurements flagged it.
+/// (default) or the parent. Skip until a profile shows slice-copy is hot.
 type BlobRef =
   | Ephemeral of EphemeralBlob
   | Persistent of hash : string * length : int64
