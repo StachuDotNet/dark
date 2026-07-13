@@ -92,10 +92,17 @@ module TraceDetail =
     | Off
     | On
 
+  // Default OFF. Traces have NO retention/GC (see TraceStorage.store TODO) and a single trace row can be
+  // ~1 GB (a `serve` request records its whole response — e.g. a sync op/blob batch — as trace args). On a
+  // long-running `serve`/daemon that's an unbounded disk-fill: two sync daemons cross-pulling every 30s grew
+  // data.db to ~180 GB in ~40 min via trace_fn_calls before this default flipped. Traces are dev telemetry
+  // (stripped from the exported seed), so the SHIPPED binary must not accumulate them; dev + CI opt back in via
+  // DARK_CONFIG_TRACE_DETAIL=on (set in config/dev + config/circleci). Re-enable-by-default only once retention
+  // (size cap + GC) lands.
   let private readEnv () : T =
     match System.Environment.GetEnvironmentVariable "DARK_CONFIG_TRACE_DETAIL" with
-    | "off" -> Off
-    | _ -> On
+    | "on" -> On
+    | _ -> Off
 
   let mutable current : T = readEnv ()
 
