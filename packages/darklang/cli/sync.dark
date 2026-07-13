@@ -88,18 +88,20 @@ let private firstRunDialog () : Unit =
         Stdlib.Cli.UI.Prompt.ask
           $"  interval seconds [{Stdlib.Int.toString (intervalSec ())}]:"
 
+      // Validate through daemonConfigValue (the same range checks `dark sync daemon config` enforces) so the
+      // first-run dialog can't store an out-of-range interval/port that only fails later at daemon start.
       let _ =
-        match Stdlib.Int.parse intervalIn with
-        | Ok secs -> setConfig "apps.sync.intervalMs" (Stdlib.Int.toString (secs * 1000))
-        | Error _ -> ()
+        match daemonConfigValue "interval" intervalIn with
+        | Some((k, v)) -> setConfig k v
+        | None -> ()
 
       let portIn =
         Stdlib.Cli.UI.Prompt.ask $"  port [{Stdlib.Int.toString (servePort ())}]:"
 
       let _ =
-        match Stdlib.Int.parse portIn with
-        | Ok _ -> setConfig "apps.sync-server.port" portIn
-        | Error _ -> ()
+        match daemonConfigValue "port" portIn with
+        | Some((k, v)) -> setConfig k v
+        | None -> ()
 
       let modeIn =
         Stdlib.Cli.UI.Prompt.select
