@@ -482,6 +482,15 @@ let private storeTrace
   (exeState : RT.ExecutionState)
   : Ply.Ply<unit> =
   uply {
+    // Trace detail OFF ⇒ a TRUE no-op. `prepareTraceForStorage` (below) promotes captured ephemeral blobs into
+    // package_blobs BEFORE `TraceStorage.store`'s own off-check — so gating only the store still let every
+    // traced `serve` request (sync responses = whole op/blob batches) grow package_blobs without bound. Bail
+    // here so neither the promote nor the store runs when tracing is off. (This is the single choke point for
+    // BOTH the sqlite and CLI tracers; the serve uses the CLI one.)
+    if TraceDetail.current = TraceDetail.Off then
+      return ()
+    else
+
     let traceIdStr = string traceID
     use _span = Telemetry.span "trace.store" [ "traceId", traceIdStr ]
     try
@@ -569,8 +578,17 @@ let createNonTracer (_traceID : AT.TraceID.T) : T =
 
 
 let create (rootTLID : tlid) (traceID : AT.TraceID.T) : T =
-  let config = TracingConfig.forHandler rootTLID traceID
-  match config with
-  | TracingConfig.DoTrace
-  | TracingConfig.TraceWithTelemetry -> createSqliteTracer rootTLID traceID
-  | TracingConfig.DontTrace -> createNonTracer traceID
+  // Trace detail OFF must mean FULLY off — not just "don't write the trace rows". The sqlite tracer captures
+  // call events during execution and, at store time, `prepareDvalForStorage` PROMOTES their ephemeral blobs into
+  // package_blobs (so a trace survives its VM) BEFORE `TraceStorage.store`'s off-check runs. So gating only the
+  // store still leaves that blob-promotion firing on every `serve` request — which, for the sync endpoints
+  // (responses = whole op/blob batches), grew package_blobs unboundedly even with trace storage "off". Returning
+  // the non-tracer here makes Off a true no-op: no capture, no promote, no store.
+  if TraceDetail.current = TraceDetail.Off then
+    createNonTracer traceID
+  else
+    let config = TracingConfig.forHandler rootTLID traceID
+    match config with
+    | TracingConfig.DoTrace
+    | TracingConfig.TraceWithTelemetry -> createSqliteTracer rootTLID traceID
+    | TracingConfig.DontTrace -> createNonTracer traceID
