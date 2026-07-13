@@ -87,6 +87,11 @@ let export (outputPath : string) : Task<unit> =
         SELECT id FROM branches WHERE archived_at IS NOT NULL);
       DELETE FROM branches WHERE archived_at IS NOT NULL;
 
+      -- Execution traces are dev telemetry, never part of a seed. Leaving them in bloats the shipped seed
+      -- (trace_fn_calls alone was 268 MB of a 305 MB dev store); strip them so the seed is just canon.
+      DELETE FROM trace_fn_calls;
+      DELETE FROM traces;
+
       UPDATE package_ops SET applied = 0;
       UPDATE branch_ops SET applied = 1;
       """
