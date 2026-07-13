@@ -450,6 +450,13 @@ let receiveOps
       // lowered (marked unapplied) so they re-fold. A pure re-pull folds nothing → 0. (Insert rows-affected
       // can't be used now that the op insert is an upsert: a DO UPDATE counts even a no-op re-pull.)
       let! foldedCount = applyUnappliedOps ()
+      // The fold just re-derived bindings by LWW, which CLOBBERS the resolution overlay (a human keep-mine /
+      // keep-theirs decision). Restore it, so a manual resolution DOMINATES the auto (LWW) pick — locally and
+      // on any peer that synced the resolution in. This is the pull-path counterpart of the reapply that
+      // rebuildProjections / growIfNeeded do after their folds; without it a synced-in "keep theirs" is lost
+      // the moment the op it overrides folds (esp. when the overlay was applied BEFORE that op, so its own
+      // apply was an idempotent no-op), and the two peers DIVERGE. Effective binding = fold[LWW] -> overlay.
+      if foldedCount > 0L then do! Resolutions.reapplyAll ()
       return foldedCount
   }
 
