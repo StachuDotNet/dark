@@ -425,8 +425,8 @@ let tests =
 
       testTask
         "deprecation converges: a Deprecate authored on A folds into `deprecations` on B via the wire" {
-        // Coverage for a NON-SetName op kind end to end — the `deprecations` projection (new this PR) folds +
-        // syncs like locations do. Proves the fold/wire path isn't SetName-specific.
+        // Coverage for a NON-SetName op kind end to end — the `deprecations` projection folds + syncs like
+        // locations do. Proves the fold/wire path isn't SetName-specific.
         let mutable insts : List<Instance> = []
         try
           let! a = seededInstance "a"
@@ -724,12 +724,12 @@ let tests =
 
       testTask
         "resolution survives the INCREMENTAL fold on the pull path (receiveOps re-applies the overlay)" {
-        // Guards the overnight divergence fix. rebuildProjections already re-applied the overlay (test above),
-        // but the INCREMENTAL fold on the PULL path (receiveOps -> applyUnappliedOps) did NOT — so a synced-in
-        // resolution was silently reverted the moment a later op folded, and two peers that had agreed DIVERGED.
-        // The nastiest shape (reproduced here): the resolution's apply is an idempotent no-op because the binding
-        // already holds the chosen content, so the binding keeps the OLD op's origin_ts; a newer op then folds
-        // and out-ranks it, and only a post-fold reapply (the fix) restores the human's pick.
+        // The incremental fold on the PULL path (receiveOps -> applyUnappliedOps) must re-apply the resolution
+        // overlay, just as rebuildProjections does (test above); otherwise a synced-in resolution is silently
+        // reverted the moment a later op folds, and two peers that had agreed diverge. The hard shape covered
+        // here: the resolution's apply is an idempotent no-op because the binding already holds the chosen
+        // content, so the binding keeps the OLD op's origin_ts; a newer op then folds and out-ranks it, and
+        // only a post-fold reapply restores the human's pick.
         let mutable insts : List<Instance> = []
         try
           let! a = seededInstance "a"
@@ -761,7 +761,7 @@ let tests =
           Expect.equal
             afterFold
             [ fnA ]
-            "the override SURVIVED the incremental fold — before the fix receiveOps folded to fnB and dropped it"
+            "the override survives the incremental fold (without the post-fold reapply, receiveOps folds to fnB)"
         finally
           teardown insts
       }
