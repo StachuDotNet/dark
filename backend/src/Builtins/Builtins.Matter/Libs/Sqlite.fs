@@ -213,6 +213,16 @@ let private recField (name : string) (fields : Map<string, Dval>) : string =
       "eventLog record missing expected string field"
       [ "field", name ]
 
+/// A peer sent a `kind` row (op / commit / resolution) we can't parse. Peers are fully trusted for now, so
+/// the append skips it rather than crash the pull — but that must be VISIBLE, not silent: a skipped row is
+/// dropped while the pull cursor still advances past it, so on divergence the operator needs to see it.
+/// (The proper hardening — quarantine + retry per-op instead of skip — is tracked in CLEANUP(sync-security).)
+let private warnSkippedSyncRow (kind : string) : unit =
+  System.Console.Error.WriteLine(
+    $"sync: skipped an unparseable {kind} from a peer (dropped, not applied). This can diverge the store; "
+    + "re-pull once the peer is fixed."
+  )
+
 let fns () : List<BuiltInFn> =
   [ { name = fn "sqliteExec" 0
       typeParams = []
@@ -419,8 +429,11 @@ let fns () : List<BuiltInFn> =
                       recField "createdAt" f
                     )
                   with _ ->
+                    warnSkippedSyncRow "commit"
                     None
-                | _ -> None)
+                | _ ->
+                  warnSkippedSyncRow "commit"
+                  None)
 
             let parsedEvents =
               events
@@ -436,16 +449,20 @@ let fns () : List<BuiltInFn> =
                       recField "originTs" f
                     )
                   with _ ->
+                    warnSkippedSyncRow "package op"
                     None
-                | _ -> None)
+                | _ ->
+                  warnSkippedSyncRow "package op"
+                  None)
 
             try
               let! applied = LibDB.Seed.receiveOps parsedCommits parsedEvents
               return Dval.int (bigint applied)
             with _ ->
               // -1 = a DB error applying the batch (distinct from 0 = idempotent/nothing new). The puller
-              // must NOT advance the cursor on this, or the ops are silently skipped (divergence). Parse-skips
-              // of individual bad ops already happened above (List.choose) — those correctly count as applied.
+              // must NOT advance the cursor on this, or the ops are silently skipped (divergence). Any
+              // individually unparseable ops were skipped above and surfaced via warnSkippedSyncRow — they are
+              // dropped (not applied) while the cursor still advances, so they're logged, not silently lost.
               return Dval.int (bigint -1L)
           }
         | _ -> incorrectArgs ())
@@ -527,8 +544,11 @@ let fns () : List<BuiltInFn> =
                       recField "originTs" f
                     )
                   with _ ->
+                    warnSkippedSyncRow "branch op"
                     None
-                | _ -> None)
+                | _ ->
+                  warnSkippedSyncRow "branch op"
+                  None)
 
             try
               let! applied = LibDB.Seed.receiveBranchOps parsed
@@ -620,8 +640,11 @@ let fns () : List<BuiltInFn> =
                       recField "at" f
                     )
                   with _ ->
+                    warnSkippedSyncRow "resolution"
                     None
-                | _ -> None)
+                | _ ->
+                  warnSkippedSyncRow "resolution"
+                  None)
 
             try
               let! applied = LibDB.Resolutions.receiveResolutions parsed
