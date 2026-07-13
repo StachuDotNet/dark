@@ -83,7 +83,7 @@ let peers () : List<String> =
 // The one message for "that's not a peer" — a peer is always an http(s) URL (a running instance), never a
 // file. Shared by connect + pull so both reject a `.db`/path identically.
 let private peerMustBeUrl : String =
-  "A peer is a URL like http://ocean.tailnet:9000 — sync exchanges ops with a running instance over HTTP, not a .db file."
+  "A peer is a URL like http://feriel.tailnet:9000 — sync exchanges ops with a running instance over HTTP, not a .db file."
 
 /// Connect a peer by its URL. Sync talks to running instances over HTTP — a `.db` file is not a peer.
 let connect (url: String) : Stdlib.Result.Result<Unit, String> =

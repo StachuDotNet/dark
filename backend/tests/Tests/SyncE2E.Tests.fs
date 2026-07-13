@@ -237,7 +237,7 @@ let private realTests =
             task {
               let a = mk root "A"
               let b = mk root "B"
-              darkIn a.dir [ "login"; "Ocean" ] |> ignore<string>
+              darkIn a.dir [ "login"; "Feriel" ] |> ignore<string>
               darkIn b.dir [ "login"; "Stachu" ] |> ignore<string>
               author a "SyncTest.Basic.x" "42"
               commit a "add x"
@@ -273,7 +273,7 @@ let private realTests =
             task {
               let a = mk root "A"
               let b = mk root "B"
-              darkIn a.dir [ "login"; "Ocean" ] |> ignore<string>
+              darkIn a.dir [ "login"; "Feriel" ] |> ignore<string>
               darkIn b.dir [ "login"; "Stachu" ] |> ignore<string>
               author a "SyncTest.Race.n" "1"
               commit a "A=1"
@@ -315,7 +315,7 @@ let private realTests =
             task {
               let a = mk root "A"
               let b = mk root "B"
-              darkIn a.dir [ "login"; "Ocean" ] |> ignore<string>
+              darkIn a.dir [ "login"; "Feriel" ] |> ignore<string>
               darkIn b.dir [ "login"; "Stachu" ] |> ignore<string>
               // B commits FIRST (earlier stamp = LWW loser), A SECOND (later = LWW winner). So A holds the
               // conflict with its own value winning; keep-theirs must flip A to B's losing value — a real
@@ -363,7 +363,7 @@ let private realTests =
             task {
               let a = mk root "A"
               let b = mk root "B"
-              darkIn a.dir [ "login"; "Ocean" ] |> ignore<string>
+              darkIn a.dir [ "login"; "Feriel" ] |> ignore<string>
               darkIn b.dir [ "login"; "Stachu" ] |> ignore<string>
               darkIn a.dir [ "branch"; "create"; "syncfeature" ] |> ignore<string>
               let port = 9330

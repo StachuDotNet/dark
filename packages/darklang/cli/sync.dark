@@ -236,7 +236,7 @@ let help (state: AppState) : AppState =
     "Local-first: sync is opt-in, and once you connect a peer it stays current."
     ""
     "  dark sync                    pull now from every instance you're connected to"
-    "  dark sync connect <url>      start syncing with an instance (e.g. http://ocean.tailnet:9000)"
+    "  dark sync connect <url>      start syncing with an instance (e.g. http://feriel.tailnet:9000)"
     "  dark sync disconnect <url>   stop syncing with an instance"
     "  dark sync serve              let peers pull from you (add --port N; default 9000)"
     "  dark sync status             who you're syncing with, and how current each is"
