@@ -1,13 +1,13 @@
 module Darklang.Cli.Config
 
-// Config file path - uses rundir/ in portable mode, ~/.darklang/ when installed
+// The config lives next to this instance's store (`localDbPath`), so the path is absolute and its directory
+// always exists — independent of the process CWD and of install mode. (The old portable path,
+// "rundir/cli-config.json", was CWD-relative: `login` silently no-op'd — printed "Logged in" but persisted
+// nothing — whenever the CLI ran from a directory without a `rundir/` subdir, e.g. a released exe run from $HOME.)
 let configFilePath () : String =
-  match Installation.System.getInstallationMode () with
-  | Portable -> "rundir/cli-config.json"
-  | Installed ->
-    let host = (Stdlib.Cli.Host.getRuntimeHost ()) |> Builtin.unwrap
-    let darklangHomeDir = Installation.Config.getDarklangHomeDir host
-    $"{darklangHomeDir}/cli-config.json"
+  let dbPath = Builtin.localDbPath ()
+  let dir = Stdlib.String.join (Stdlib.List.dropLast (Stdlib.String.split dbPath "/")) "/"
+  $"{dir}/cli-config.json"
 
 // Read config from disk
 let readConfig () : Dict<String> =

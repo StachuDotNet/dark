@@ -113,11 +113,8 @@ let private mk (root : string) (name : string) : Instance =
   let dir = System.IO.Path.Combine(root, name)
   System.IO.Directory.CreateDirectory(System.IO.Path.Combine(dir, "logs"))
   |> ignore<System.IO.DirectoryInfo>
-  // The CLI stores its login/session config at `<CWD>/rundir/cli-config.json` (a path relative to the
-  // process's working directory — which we set to this instance dir). Create that subdir so `login`
-  // persists and later `commit` processes see a logged-in user — and so each instance's login is isolated.
-  System.IO.Directory.CreateDirectory(System.IO.Path.Combine(dir, "rundir"))
-  |> ignore<System.IO.DirectoryInfo>
+  // The CLI stores its login/session config next to this instance's store (`<dir>/cli-config.json`), so
+  // `login` persists here and a later `commit` process sees the logged-in user — each instance isolated.
   System.IO.File.Copy(
     seedDb.Force(),
     System.IO.Path.Combine(dir, "data.db"),
