@@ -34,6 +34,12 @@ let private conflicts () : List<Conflict> =
 let private short (h: String) : String =
   Stdlib.String.slice h 0 8
 
+// The leaf name of a location ("Stachu.Lib.greet" -> "greet").
+let private leafName (location: String) : String =
+  match Stdlib.List.last (Stdlib.String.split location ".") with
+  | Some n -> n
+  | None -> location
+
 let private unreviewed () : List<Conflict> =
   Stdlib.List.filter (conflicts ()) (fun c -> c.status == "auto-resolved")
 
@@ -53,6 +59,7 @@ let private keep (location: String) (hash: String) : Bool =
 // if a version somehow can't be loaded.
 let private renderContent
   (branchId: Uuid)
+  (location: String)
   (itemKind: String)
   (hashStr: String)
   : String =
@@ -81,30 +88,48 @@ let private renderContent
     | _ -> Stdlib.Option.Option.None
   match rendered with
   | Some src ->
+    // A name isn't part of an item's content-addressed hash — the pretty-printer
+    // resolves it from the live binding. The NON-ACTIVE candidate's hash has no
+    // live binding, so it renders the item's own name as "<hash:SHORT>". We know
+    // the real name (the conflict's location), so restore it for a readable diff.
+    let restored =
+      Stdlib.String.replaceAll
+        src
+        $"<hash:{LanguageTools.ProgramTypes.hashToShort hash}>"
+        (leafName location)
     let indentedLines =
-      Stdlib.List.map (Stdlib.String.split src "\n") (fun line -> $"      {line}")
+      Stdlib.List.map (Stdlib.String.split restored "\n") (fun line -> $"      {line}")
     Stdlib.String.join indentedLines "\n"
   | None -> $"      <{short hashStr}> (content unavailable)"
 
 // A one-line preview of a candidate — for the conflict LIST, so you see WHAT each side set the name to at a
-// glance ("111" vs "222") without running `show`. For a value it drops the redundant "val <name> =" prefix and
-// shows just the body; for a fn/type it shows the trimmed first line (the signature).
+// glance without running `show`. It shows the DEFINITION BODY (the part after the first " = "): for a value
+// that's the expression ("111"), for a fn the body ("(\"Hello, \") ++ name"), for a type the shape
+// ("{ x: Int; y: Int }"). The name/signature is dropped — it's the same on both sides (and shown in the list
+// header), so the body is the only thing that actually differs. Collapsed to one line and truncated to fit.
 let private renderInline
   (branchId: Uuid)
+  (location: String)
   (itemKind: String)
   (hashStr: String)
   : String =
-  let full = renderContent branchId itemKind hashStr
-  let firstLine =
-    match
-      Stdlib.List.filter (Stdlib.String.split full "\n") (fun s ->
-        (Stdlib.String.trim s) != "")
-    with
-    | first :: _ -> Stdlib.String.trim first
-    | [] -> $"<{short hashStr}>"
-  match Stdlib.String.split firstLine " = " with
-  | [ lhs; rhs ] -> if rhs == "" then lhs else rhs
-  | _ -> firstLine
+  // Collapse the (indented, possibly multi-line) render to a single trimmed line.
+  let oneLine =
+    Stdlib.String.split (renderContent branchId location itemKind hashStr) "\n"
+    |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
+    |> Stdlib.List.filter (fun s -> s != "")
+    |> Stdlib.String.join " "
+  // Everything after the first " = " is the body (rejoin so a body containing " = " survives).
+  let body =
+    match Stdlib.String.split oneLine " = " with
+    | [] -> oneLine
+    | [ _ ] -> oneLine
+    | _ :: rest -> Stdlib.String.join rest " = "
+  let body = Stdlib.String.trim body
+  if Stdlib.String.length body > 56 then
+    (Stdlib.String.slice body 0 56) ++ "…"
+  else
+    body
 
 let help (state: AppState) : AppState =
   Stdlib.printLine "dark conflicts — review + resolve sync divergences"
@@ -131,8 +156,8 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
       let branchId = state.currentBranchId
       Stdlib.List.iter cs (fun c ->
-        let yoursV = renderInline branchId c.itemKind c.localHash
-        let theirsV = renderInline branchId c.itemKind c.incomingHash
+        let yoursV = renderInline branchId c.location c.itemKind c.localHash
+        let theirsV = renderInline branchId c.location c.itemKind c.incomingHash
         let activeSide =
           if c.chosenHash == c.incomingHash then "theirs" else "yours"
 
@@ -160,10 +185,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
       Stdlib.printLine $"{c.location} — two versions ({c.itemKind}):"
       Stdlib.printLine ""
       Stdlib.printLine $"  yours   {short c.localHash}{yoursActive}"
-      Stdlib.printLine (renderContent branchId c.itemKind c.localHash)
+      Stdlib.printLine (renderContent branchId c.location c.itemKind c.localHash)
       Stdlib.printLine ""
       Stdlib.printLine $"  theirs  {short c.incomingHash}{theirsActive}"
-      Stdlib.printLine (renderContent branchId c.itemKind c.incomingHash)
+      Stdlib.printLine (renderContent branchId c.location c.itemKind c.incomingHash)
       Stdlib.printLine ""
 
       Stdlib.printLine (
