@@ -198,6 +198,38 @@ let planRelease
   | Some s when s > codeRelease -> RefuseNewer s
   | Some s -> Migrate(pendingReleases registry s codeRelease)
 
+
+/// What the CLI should do with an EXISTING store, given the same (registry, stored, code) inputs as
+/// `planRelease`. The CLI has no package source to rebuild from, so its clean-break path RE-SEEDS from the
+/// embedded current-Release store (discarding + backing up the old data); a DURABLE migration instead runs
+/// the steps in place and PRESERVES the store.
+[<RequireQualifiedAccess>]
+type CliUpgrade =
+  | Proceed // already at the code Release
+  | RefuseNewer of storeN : int // a newer store — older code must not open it
+  | MigrateInPlace // every pending step is durable — migrate forward, keeping the data
+  | Reseed // a pending clean-break step, or a pre-tracking store of unknown format — discard + re-seed
+
+/// Pure: the CLI's upgrade decision. Reuses `planRelease`, then splits a `Migrate` on whether ANY pending
+/// step is a clean-break (`clearForRebuild`): a clean break invalidates the on-disk content (e.g. a hashing
+/// change), so it can't migrate in place — the CLI re-seeds; an all-durable run migrates forward in place.
+/// `StampFresh` here means a pre-tracking store (no Release stamp) — the CLI can't trust its on-disk format,
+/// so it re-seeds rather than assume it's already current.
+let planCliUpgrade
+  (registry : Release list)
+  (stored : int option)
+  (codeRelease : int)
+  : CliUpgrade =
+  match planRelease registry stored codeRelease with
+  | UpToDate -> CliUpgrade.Proceed
+  | RefuseNewer s -> CliUpgrade.RefuseNewer s
+  | StampFresh -> CliUpgrade.Reseed
+  | Migrate steps ->
+    if steps |> List.exists (fun r -> r.clearForRebuild) then
+      CliUpgrade.Reseed
+    else
+      CliUpgrade.MigrateInPlace
+
 /// Reconcile the store's Release with this binary's (`codeRelease = currentRelease`) and execute the
 /// decision. The *decision* is `planRelease` (pure, tested); this wraps it with the DB read/write.
 let applyPending (codeRelease : int) : unit =

@@ -12,9 +12,13 @@ open Prelude
 
 module Releases = LibDB.Releases
 
-/// a step that only declares its Release number (no migration body) — enough for the planning tests
+/// a DURABLE step that only declares its Release number (no migration body) — enough for the planning tests
 let private step (n : int) : Releases.Release =
   { n = n; sql = ""; reserialize = None; clearForRebuild = false }
+
+/// a CLEAN-BREAK step (invalidates on-disk content, e.g. a hashing change)
+let private cleanBreakStep (n : int) : Releases.Release =
+  { n = n; sql = ""; reserialize = None; clearForRebuild = true }
 
 let tests =
   testList
@@ -146,6 +150,45 @@ let tests =
             [ 3; 4 ]
             "store 2 → code 4 migrates exactly 3,4 ascending"
         | other -> failtest $"expected Migrate [3;4], got %A{other}"
+      }
+
+      // planCliUpgrade — the CLI's data-preserving vs re-seed decision, layered on planRelease. Pure, so the
+      // "durable migrates in place / clean-break re-seeds / newer refuses" policy is pinned without a store.
+      test "planCliUpgrade: store == code → Proceed" {
+        Expect.equal
+          (Releases.planCliUpgrade [ step 3 ] (Some 3) 3)
+          Releases.CliUpgrade.Proceed
+          "already current → nothing to do"
+      }
+
+      test "planCliUpgrade: store > code → RefuseNewer (older code must not open it)" {
+        Expect.equal
+          (Releases.planCliUpgrade [ step 3 ] (Some 5) 3)
+          (Releases.CliUpgrade.RefuseNewer 5)
+          "a newer store is refused, reporting its Release"
+      }
+
+      test
+        "planCliUpgrade: all-durable pending steps → MigrateInPlace (data preserved)" {
+        Expect.equal
+          (Releases.planCliUpgrade [ step 2; step 3; step 4 ] (Some 2) 4)
+          Releases.CliUpgrade.MigrateInPlace
+          "durable-only migration runs in place and keeps the store"
+      }
+
+      test
+        "planCliUpgrade: any pending clean-break step → Reseed (content can't migrate in place)" {
+        Expect.equal
+          (Releases.planCliUpgrade [ step 2; cleanBreakStep 3; step 4 ] (Some 2) 4)
+          Releases.CliUpgrade.Reseed
+          "a clean break anywhere in the pending range forces a re-seed"
+      }
+
+      test "planCliUpgrade: pre-tracking store (no stamp) → Reseed (unknown format)" {
+        Expect.equal
+          (Releases.planCliUpgrade [ step 3 ] None 3)
+          Releases.CliUpgrade.Reseed
+          "the CLI can't trust an unstamped store's on-disk format → re-seed"
       }
 
       // The boot guard end-to-end over the real store (the pure decision is tested above; this exercises
