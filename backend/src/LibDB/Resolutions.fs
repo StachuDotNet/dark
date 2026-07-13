@@ -150,6 +150,9 @@ let recordAndApply (r : Resolution) : Task<unit> =
   task {
     do! record r
     do! applyToLocations r
+    // The override settled this location — clear any conflict recorded here (on THIS instance, and on a peer
+    // that received the resolution), so it stops showing as an unreviewed conflict after it's been resolved.
+    do! Conflicts.markOverriddenByLocation r.branchId (Conflicts.locationString r.location)
   }
 
 /// Replay EVERY stored resolution (ordered by `at`) onto the `locations` projection — the overlay half of
