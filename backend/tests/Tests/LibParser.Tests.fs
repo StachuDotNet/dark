@@ -932,6 +932,19 @@ let private recoveryTests =
               (P.parse source).diagnostics
               $"valid identifier: {source}")
 
+      testCase "package function parameters cannot be blank" (fun _ ->
+        let invalid = P.parse "let f (___: Int64) (x: Int64) : Int64 = x"
+        Expect.exists
+          invalid.diagnostics
+          (fun diagnostic ->
+            diagnostic.message.Contains "Blank parameter '___' is not allowed")
+          "blank package parameter diagnostic"
+
+        for source in [ "let f () : Unit = ()"; "fun ___ -> 1L" ] do
+          Expect.isEmpty
+            (P.parse source).diagnostics
+            $"valid ignored parameter form: {source}")
+
       testCase "same-line collection items require separators" (fun _ ->
         for source in
           [ "[1L 2L]"

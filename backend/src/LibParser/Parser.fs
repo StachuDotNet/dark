@@ -2634,6 +2634,17 @@ and parseDecl (state : ParserState) (i : int) : WT.Declaration * int =
       let (p, kk2) = parseParam state kk
       ps.Add p
       if kk2 = kk then more <- false else kk <- kk2
+    for parameter in ps do
+      match parameter with
+      | WT.FPNormal(_, name, _, _, _, _) when name.name = "" ->
+        state.diagnostics.Add
+          { code = DiagnosticCode.pattern
+            severity = DiagError
+            range = name.range
+            message = "Blank parameter '___' is not allowed in a package function"
+            related = []
+            hint = Some "use () for a unit parameter or give the parameter a name" }
+      | _ -> ()
     let (colon, afterColon) =
       if tok state kk = TColon then
         (rng state kk, kk + 1)

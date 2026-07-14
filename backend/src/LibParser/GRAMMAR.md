@@ -250,6 +250,9 @@ not curried functions. Enum case fields separate with `*` at atom level:
 
 ## Declarations
 
+Package function parameters cannot use the blank name `___`; give the parameter
+a name, or use `()` when the parameter is unit.
+
 Declaration forms:
 
 - `let f (p: T) … : R = body` defines a function. Parameters are parenthesized
