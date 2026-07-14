@@ -107,6 +107,11 @@ CREATE TABLE IF NOT EXISTS package_ops (
   -- max(origin_ts) picks the same divergence winner → no swap. Distinct from `created_at` (which
   -- is local-insert time and differs per instance for the same op).
   origin_ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  -- Monotonic COMMIT-order stamp (NULL while WIP), assigned when the op is committed or received. Sync reads
+  -- (`eventsSince`) page by this, NOT by rowid: rowid is authoring order, but an op becomes syncable only when
+  -- committed, which can be much later (WIP on one branch while another is committed + synced). Paging by
+  -- rowid would skip a late commit of an early-authored op forever; committed_seq can't.
+  committed_seq INTEGER,
   -- Composite, not bare `id`: an identical op authored on two branches hashes equal (the id is the op's
   -- content hash), so a bare-`id` INSERT OR IGNORE would drop the second and the fn would be invisible on
   -- that branch. (id, branch_id) lets IGNORE catch only true within-branch repeats.
@@ -118,6 +123,8 @@ CREATE INDEX IF NOT EXISTS idx_package_ops_created ON package_ops(created_at);
 CREATE INDEX IF NOT EXISTS idx_package_ops_applied
   ON package_ops(applied) WHERE applied = 0;
 CREATE INDEX IF NOT EXISTS idx_package_ops_commit_hash ON package_ops(commit_hash);
+CREATE INDEX IF NOT EXISTS idx_package_ops_committed_seq
+  ON package_ops(committed_seq) WHERE committed_seq IS NOT NULL;
 -- Partial index on propagation_id for efficient lookups (only non-null values)
 CREATE INDEX IF NOT EXISTS idx_package_ops_propagation_id
   ON package_ops(propagation_id) WHERE propagation_id IS NOT NULL;

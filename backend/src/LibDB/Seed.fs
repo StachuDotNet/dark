@@ -234,10 +234,15 @@ let applyUnappliedOps () : Task<int64> =
   }
 
 
-/// The committed events after `cursor` (≤ `limit`), the commits they reference, and the new cursor (max
-/// rowid, or `cursor` if nothing new) — what a peer serves. Native so a large batch is milliseconds, not the
-/// seconds a per-row Dark fold would cost. Event = (id, opBlobHex, branchId, commitHash, originTs); commit =
-/// (hash, message, branchId, accountId, createdAt).
+/// The committed events after `cursor` (≤ `limit`), the commits they reference, and the new cursor — what a
+/// peer serves.
+///
+/// The cursor is `committed_seq`, NOT `rowid`. `rowid` is an op's AUTHORING order, but an op only becomes
+/// syncable when it's COMMITTED, which can happen much later than it was authored (e.g. a WIP op on branch X
+/// while branch Y is committed + synced). `committed_seq` is assigned when the op is committed (or received),
+/// so it reflects COMMIT order: a late commit of an early-authored op gets a high seq and is served after the
+/// cursor has passed the earlier commits — never skipped. Native so a large batch is milliseconds. Event =
+/// (id, opBlobHex, branchId, commitHash, originTs); commit = (hash, message, branchId, accountId, createdAt).
 let eventsSince
   (cursor : int64)
   (limit : int64)
@@ -248,13 +253,13 @@ let eventsSince
   task {
     let! opRows =
       Sql.query
-        $"SELECT rowid AS rid, id, hex(op_blob) AS blob, branch_id, commit_hash, origin_ts
+        $"SELECT committed_seq AS cseq, id, hex(op_blob) AS blob, branch_id, commit_hash, origin_ts
           FROM package_ops
-          WHERE rowid > {cursor} AND commit_hash IS NOT NULL
-          ORDER BY rowid
+          WHERE committed_seq > {cursor} AND commit_hash IS NOT NULL
+          ORDER BY committed_seq
           LIMIT {limit}"
       |> Sql.executeAsync (fun read ->
-        (read.int64 "rid",
+        (read.int64 "cseq",
          read.string "id",
          read.string "blob",
          read.string "branch_id",
@@ -267,17 +272,17 @@ let eventsSince
     let newCursor =
       match opRows with
       | [] -> cursor
-      | rows -> rows |> List.map (fun (rid, _, _, _, _, _) -> rid) |> List.max
+      | rows -> rows |> List.map (fun (cseq, _, _, _, _, _) -> cseq) |> List.max
 
-    // Only the commits the batch's ops reference (rowid in (cursor, newCursor]) — a bounded event batch
-    // carries a bounded set of commits, never the whole commit history.
+    // Only the commits the batch's ops reference (committed_seq in (cursor, newCursor]) — a bounded event
+    // batch carries a bounded set of commits, never the whole commit history.
     let! commits =
       Sql.query
         $"SELECT DISTINCT c.hash AS hash, c.message AS message, c.branch_id AS branch_id,
             c.account_id AS account_id, c.created_at AS created_at
           FROM commits c
           JOIN package_ops o ON o.commit_hash = c.hash
-          WHERE o.rowid > {cursor} AND o.rowid <= {newCursor}"
+          WHERE o.committed_seq > {cursor} AND o.committed_seq <= {newCursor}"
       |> Sql.executeAsync (fun read ->
         (read.string "hash",
          read.string "message",
@@ -378,9 +383,16 @@ let receiveOps
               "created_at", Sql.string createdAt ]
           (sql, [ ps ]))
 
+      // A received op arrives already committed, so it gets a `committed_seq` on insert (a monotonic
+      // COMMIT-order stamp local to this store) — that's what this instance serves onward by. Kept on
+      // CONFLICT so a re-pulled op keeps its original seq. Single-writer, so MAX+i is race-free.
+      let! seqBase =
+        Sql.query "SELECT COALESCE(MAX(committed_seq), 0) AS m FROM package_ops"
+        |> Sql.executeRowAsync (fun read -> read.int64 "m")
+
       let opInserts =
         events
-        |> List.map (fun (opId, opBlob, branchId, commitHash, originTs) ->
+        |> List.mapi (fun i (opId, opBlob, branchId, commitHash, originTs) ->
           // Convergence fix (canonical origin_ts): the op id is content-only, so two instances that
           // independently author the SAME op stamp it with different local `origin_ts`. If we kept
           // first-writer's stamp (INSERT OR IGNORE), a later competing edit could resolve differently on each
@@ -390,8 +402,8 @@ let receiveOps
           let sql =
             """
             INSERT INTO package_ops
-              (id, op_blob, branch_id, applied, commit_hash, propagation_id, origin_ts)
-            VALUES (@id, @op_blob, @branch_id, @applied, @commit_hash, @propagation_id, @origin_ts)
+              (id, op_blob, branch_id, applied, commit_hash, propagation_id, origin_ts, committed_seq)
+            VALUES (@id, @op_blob, @branch_id, @applied, @commit_hash, @propagation_id, @origin_ts, @committed_seq)
             ON CONFLICT(id, branch_id) DO UPDATE SET
               origin_ts = MIN(package_ops.origin_ts, excluded.origin_ts),
               applied =
@@ -405,7 +417,8 @@ let receiveOps
               "applied", Sql.bool false
               "commit_hash", Sql.string commitHash
               "propagation_id", Sql.dbnull
-              "origin_ts", Sql.string originTs ]
+              "origin_ts", Sql.string originTs
+              "committed_seq", Sql.int64 (seqBase + int64 (i + 1)) ]
           (sql, [ ps ]))
 
       let _ = (commitInserts @ opInserts) |> Sql.executeTransactionSync

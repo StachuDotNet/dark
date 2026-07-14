@@ -712,11 +712,71 @@ let viewsRealSeededItem =
   }
 
 
+let opCommittedLateAcrossBranchesStillSyncs =
+  testTask
+    "an op authored early but committed late (on another branch) is still served by eventsSince" {
+    // Regression (coworker repro): author x on a feature branch, author y on main, commit + sync main, THEN
+    // commit the feature branch. sync used to page by op rowid (authoring order), but an op only becomes
+    // syncable when COMMITTED — so x, authored first (low rowid) but committed after the cursor passed it,
+    // was skipped forever. eventsSince now pages by committed_seq (commit order), so the late commit is served.
+    let! a = seededInstance "a"
+    activate a
+
+    let featureId = System.Guid.NewGuid()
+    let! _ =
+      Seed.receiveBranchOps
+        [ branchEvent (
+            PT.BranchOp.CreateBranch(
+              featureId,
+              "syncfeature",
+              Some PT.mainBranchId,
+              None
+            )
+          ) ]
+
+    let! (fnLost, fnSeen) = twoFunctionHashes ()
+    let lostLoc : PT.PackageLocation =
+      { owner = "SyncTest"; modules = [ "Lost" ]; name = "x" }
+    let seenLoc : PT.PackageLocation =
+      { owner = "SyncTest"; modules = [ "Seen" ]; name = "y" }
+    let lostOp =
+      PT.PackageOp.SetName(lostLoc, PT.Reference.PackageFn(PT.Hash fnLost))
+    let seenOp =
+      PT.PackageOp.SetName(seenLoc, PT.Reference.PackageFn(PT.Hash fnSeen))
+    let lostOpId = string (LibDB.Inserts.computeOpHash lostOp)
+
+    // author x on the feature branch (lower rowid), then y on main — both WIP
+    let! _ = LibDB.Inserts.insertAndApplyOpsAsWip featureId [ lostOp ]
+    let! _ = LibDB.Inserts.insertAndApplyOpsAsWip PT.mainBranchId [ seenOp ]
+
+    let! cur0 = currentCursor ()
+
+    // commit + "sync" main: the peer reads events since cur0 and its cursor advances past y
+    let! _ =
+      LibDB.Inserts.commitWipOps Account.IDs.darklang PT.mainBranchId "on main"
+    let! (_, batch1, c1) = Seed.eventsSince cur0 100000L
+    Expect.isGreaterThan c1 cur0 "the cursor advanced past the main commit"
+    Expect.isFalse
+      (batch1 |> List.exists (fun (id, _, _, _, _) -> id = lostOpId))
+      "x isn't served yet (still WIP on the feature branch)"
+
+    // NOW commit the feature branch — x is authored-early but committed-late
+    let! _ = LibDB.Inserts.commitWipOps Account.IDs.darklang featureId "late commit"
+    let! (_, batch2, _) = Seed.eventsSince c1 100000L
+
+    Expect.isTrue
+      (batch2 |> List.exists (fun (id, _, _, _, _) -> id = lostOpId))
+      "x IS served after its late commit — not lost below the cursor"
+    teardown [ a ]
+  }
+
+
 let tests =
   testSequenced
   <| testList
     "MultiInstance"
-    [ freshInstancesAreIsolated
+    [ opCommittedLateAcrossBranchesStillSyncs
+      freshInstancesAreIsolated
       branchIdentityIsGlobal
       freshSchemaStoreRunsSyncPath
       packageRenameConverges
