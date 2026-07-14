@@ -18,6 +18,9 @@ let builtins (pm : PT.PackageManager) : Builtins =
       // Sqlite (raw SQLite access — the Stdlib.Sqlite floor primitive spike)
       Libs.Sqlite.builtins ()
 
+      // Sync (internal: op-log read/append wire, blob channel, store path + Release coordinate)
+      Libs.Sync.builtins ()
+
       // Conflicts (dark conflicts — the sync Conflict/Resolution UX)
       Libs.Conflicts.builtins ()
 
