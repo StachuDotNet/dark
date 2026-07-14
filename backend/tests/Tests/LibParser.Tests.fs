@@ -86,6 +86,9 @@ let private corpusTests =
 module P = LibParser.Parser
 module Tok = LibParser.Tokenizer
 
+let private expectColumns label expected (range : Tok.TokenRange) =
+  Expect.equal (range.start.column, range.end_.column) expected label
+
 let private parserStructureTests =
   testList
     "parser-structure"
@@ -155,6 +158,68 @@ let private parserStructureTests =
                                                           _,
                                                           _) ] }) -> ()
         | other -> failtest $"unexpected: {other}")
+
+      testCase "numeric literal ranges split digits from suffixes" (fun _ ->
+        match (P.parse "-1L").parsed with
+        | Some(WT.SourceFile { exprsToEval = [ WT.EInt64(_, (digits, _), suffix) ] }) ->
+          expectColumns "signed digits include '-'" (0, 2) digits
+          expectColumns "one-character suffix" (2, 3) suffix
+        | other -> failtest $"unexpected signed int: {other}"
+        match (P.parse "1uy").parsed with
+        | Some(WT.SourceFile { exprsToEval = [ WT.EUInt8(_, (digits, _), suffix) ] }) ->
+          expectColumns "unsigned digits" (0, 1) digits
+          expectColumns "two-character suffix" (1, 3) suffix
+        | other -> failtest $"unexpected unsigned int: {other}"
+        match (P.parse "match x with | 1L -> x").parsed with
+        | Some(WT.SourceFile { exprsToEval = [ WT.EMatch(_, _, [ arm ], _, _) ] }) ->
+          match arm.pat with
+          | WT.MPInt64(_, (digits, _), suffix) ->
+            expectColumns "pattern digits" (15, 16) digits
+            expectColumns "pattern suffix" (16, 17) suffix
+          | other -> failtest $"unexpected int pattern: {other}"
+        | other -> failtest $"unexpected int pattern: {other}")
+
+      testCase "quoted literal ranges split delimiters from contents" (fun _ ->
+        match (P.parse "\"hi\"").parsed with
+        | Some(WT.SourceFile { exprsToEval = [ WT.EString(_,
+                                                          _,
+                                                          [ WT.StringText(contents,
+                                                                          _) ],
+                                                          openQuote,
+                                                          closeQuote) ] }) ->
+          expectColumns "string opening quote" (0, 1) openQuote
+          expectColumns "string contents" (1, 3) contents
+          expectColumns "string closing quote" (3, 4) closeQuote
+        | other -> failtest $"unexpected string: {other}"
+        match (P.parse "'x'").parsed with
+        | Some(WT.SourceFile { exprsToEval = [ WT.EChar(_,
+                                                        Some(contents, _),
+                                                        openQuote,
+                                                        closeQuote) ] }) ->
+          expectColumns "char opening quote" (0, 1) openQuote
+          expectColumns "char contents" (1, 2) contents
+          expectColumns "char closing quote" (2, 3) closeQuote
+        | other -> failtest $"unexpected char: {other}"
+        match (P.parse "\"\"\"hi\"\"\"").parsed with
+        | Some(WT.SourceFile { exprsToEval = [ WT.EString(_,
+                                                          _,
+                                                          [ WT.StringText(contents,
+                                                                          _) ],
+                                                          openQuote,
+                                                          closeQuote) ] }) ->
+          expectColumns "triple-string opening quote" (0, 3) openQuote
+          expectColumns "triple-string contents" (3, 5) contents
+          expectColumns "triple-string closing quote" (5, 8) closeQuote
+        | other -> failtest $"unexpected triple string: {other}"
+        match (P.parse "match x with | 'y' -> x").parsed with
+        | Some(WT.SourceFile { exprsToEval = [ WT.EMatch(_, _, [ arm ], _, _) ] }) ->
+          match arm.pat with
+          | WT.MPChar(_, Some(contents, _), openQuote, closeQuote) ->
+            expectColumns "pattern opening quote" (15, 16) openQuote
+            expectColumns "pattern contents" (16, 17) contents
+            expectColumns "pattern closing quote" (17, 18) closeQuote
+          | other -> failtest $"unexpected char pattern: {other}"
+        | other -> failtest $"unexpected char pattern: {other}")
 
       testCase "parses a qualified function call" (fun _ ->
         match (P.parse "Stdlib.Int64.add 1L 2L").parsed with
@@ -275,6 +340,15 @@ let private parserStructureTests =
         | Some(WT.SourceFile { declarations = [ WT.DType { definition = WT.TDAlias _ } ] }) ->
           ()
         | other -> failtest $"alias: {other}")
+
+      testCase "custom generic type range includes closing angle bracket" (fun _ ->
+        match (P.parse "type X = Result<Int64, String>").parsed with
+        | Some(WT.SourceFile { declarations = [ WT.DType { definition = definition } ] }) ->
+          match definition with
+          | WT.TDAlias(WT.TCustom custom) ->
+            Expect.equal custom.range.end_.column 30 "range ends after '>'"
+          | other -> failtest $"unexpected definition: {other}"
+        | other -> failtest $"unexpected type: {other}")
 
       testCase "parses enum constructors (bare + qualified)" (fun _ ->
         match (P.parse "Some 5L").parsed with

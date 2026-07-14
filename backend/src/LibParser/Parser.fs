@@ -260,6 +260,44 @@ let docOf (state : ParserState) i =
 let zeroWidthAtEnd (r : TokenRange) : TokenRange = { start = r.end_; end_ = r.end_ }
 let span (a : TokenRange) (b : TokenRange) : TokenRange =
   { start = a.start; end_ = b.end_ }
+
+let private advancePos (start : Pos) (text : string) (count : int) : Pos =
+  let mutable pos = start
+  for index in 0 .. min count text.Length - 1 do
+    if text[index] = '\n' then
+      pos <- { row = pos.row + 1; column = 0 }
+    else
+      pos <- { pos with column = pos.column + 1 }
+  pos
+
+let private splitTrailingRange
+  (state : ParserState)
+  (i : int)
+  (trailingLength : int)
+  : TokenRange * TokenRange =
+  let whole = rng state i
+  let text = txt state i
+  let boundary = advancePos whole.start text (max 0 (text.Length - trailingLength))
+  ({ start = whole.start; end_ = boundary }, { start = boundary; end_ = whole.end_ })
+
+let private literalTextRanges
+  (state : ParserState)
+  (i : int)
+  (delimiter : string)
+  : TokenRange * TokenRange * TokenRange =
+  let whole = rng state i
+  let text = txt state i
+  let delimiterLength = delimiter.Length
+  let hasClose =
+    text.Length >= delimiterLength * 2 && text.EndsWith delimiter
+  let openEnd = advancePos whole.start text (min delimiterLength text.Length)
+  let contentEndIndex =
+    if hasClose then text.Length - delimiterLength else text.Length
+  let contentEnd = advancePos whole.start text contentEndIndex
+  let closeEnd = if hasClose then whole.end_ else contentEnd
+  ({ start = whole.start; end_ = openEnd },
+   { start = openEnd; end_ = contentEnd },
+   { start = contentEnd; end_ = closeEnd })
 // set when a guard abandons the parse: suppresses the cascade of secondary
 // diagnostics from the unwinding frames
 let errFull
@@ -935,25 +973,35 @@ and parsePatternBaseInner (state : ParserState) (i : int) : WT.MatchPattern * in
   | TUnderscore -> (WT.MPVariable(rng state i, "_"), i + 1)
   | TInt v -> (WT.MPInt(rng state i, (rng state i, v)), i + 1)
   | TInt64 v ->
-    (WT.MPInt64(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.MPInt64(rng state i, (digits, v), suffix), i + 1)
   | TInt32 v ->
-    (WT.MPInt32(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.MPInt32(rng state i, (digits, v), suffix), i + 1)
   | TInt8 v ->
-    (WT.MPInt8(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.MPInt8(rng state i, (digits, v), suffix), i + 1)
   | TUInt8 v ->
-    (WT.MPUInt8(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.MPUInt8(rng state i, (digits, v), suffix), i + 1)
   | TInt16 v ->
-    (WT.MPInt16(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.MPInt16(rng state i, (digits, v), suffix), i + 1)
   | TUInt16 v ->
-    (WT.MPUInt16(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.MPUInt16(rng state i, (digits, v), suffix), i + 1)
   | TUInt32 v ->
-    (WT.MPUInt32(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.MPUInt32(rng state i, (digits, v), suffix), i + 1)
   | TUInt64 v ->
-    (WT.MPUInt64(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.MPUInt64(rng state i, (digits, v), suffix), i + 1)
   | TInt128 v ->
-    (WT.MPInt128(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.MPInt128(rng state i, (digits, v), suffix), i + 1)
   | TUInt128 v ->
-    (WT.MPUInt128(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.MPUInt128(rng state i, (digits, v), suffix), i + 1)
   // unary minus on a numeric literal pattern: `-5L`, `-1y`, `-2.0` (unsigned
   // types can't be negative, so only the signed literals + float are handled).
   | TMinus ->
@@ -961,11 +1009,21 @@ and parsePatternBaseInner (state : ParserState) (i : int) : WT.MatchPattern * in
     let r = span (rng state i) r1
     match tok state (i + 1) with
     | TInt v -> (WT.MPInt(r, (r, -v)), i + 2)
-    | TInt64 v -> (WT.MPInt64(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt32 v -> (WT.MPInt32(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt8 v -> (WT.MPInt8(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt16 v -> (WT.MPInt16(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt128 v -> (WT.MPInt128(r, (r, -v), zeroWidthAtEnd r1), i + 2)
+    | TInt64 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.MPInt64(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt32 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.MPInt32(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt8 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.MPInt8(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt16 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.MPInt16(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt128 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.MPInt128(r, (span (rng state i) digits, -v), suffix), i + 2)
     | TFloat v ->
       let (whole, frac) = floatParts state (i + 1) v
       (WT.MPFloat(r, true, whole, frac), i + 2)
@@ -980,22 +1038,13 @@ and parsePatternBaseInner (state : ParserState) (i : int) : WT.MatchPattern * in
   | TFalse -> (WT.MPBool(rng state i, false), i + 1)
   | TStringLit s ->
     let r = rng state i
-    (WT.MPString(
-      r,
-      Some(r, s),
-      { start = r.start; end_ = r.start },
-      { start = r.end_; end_ = r.end_ }
-     ),
-     i + 1)
+    let delimiter = if (txt state i).StartsWith "\"\"\"" then "\"\"\"" else "\""
+    let (openQuote, contents, closeQuote) = literalTextRanges state i delimiter
+    (WT.MPString(r, Some(contents, s), openQuote, closeQuote), i + 1)
   | TCharLit c ->
     let r = rng state i
-    (WT.MPChar(
-      r,
-      Some(r, c),
-      { start = r.start; end_ = r.start },
-      { start = r.end_; end_ = r.end_ }
-     ),
-     i + 1)
+    let (openQuote, contents, closeQuote) = literalTextRanges state i "'"
+    (WT.MPChar(r, Some(contents, c), openQuote, closeQuote), i + 1)
   | TLParen ->
     if tok state (i + 1) = TRParen then
       (WT.MPUnit(span (rng state i) (rng state (i + 1))), i + 2)
@@ -1695,25 +1744,35 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
   match tok state i with
   | TInt v -> (WT.EInt(rng state i, (rng state i, v)), i + 1)
   | TInt64 v ->
-    (WT.EInt64(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.EInt64(rng state i, (digits, v), suffix), i + 1)
   | TInt8 v ->
-    (WT.EInt8(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.EInt8(rng state i, (digits, v), suffix), i + 1)
   | TUInt8 v ->
-    (WT.EUInt8(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.EUInt8(rng state i, (digits, v), suffix), i + 1)
   | TInt16 v ->
-    (WT.EInt16(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.EInt16(rng state i, (digits, v), suffix), i + 1)
   | TUInt16 v ->
-    (WT.EUInt16(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.EUInt16(rng state i, (digits, v), suffix), i + 1)
   | TInt32 v ->
-    (WT.EInt32(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.EInt32(rng state i, (digits, v), suffix), i + 1)
   | TUInt32 v ->
-    (WT.EUInt32(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.EUInt32(rng state i, (digits, v), suffix), i + 1)
   | TUInt64 v ->
-    (WT.EUInt64(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.EUInt64(rng state i, (digits, v), suffix), i + 1)
   | TInt128 v ->
-    (WT.EInt128(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.EInt128(rng state i, (digits, v), suffix), i + 1)
   | TUInt128 v ->
-    (WT.EUInt128(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.EUInt128(rng state i, (digits, v), suffix), i + 1)
   // unary minus on a numeric literal: `-5L`, `-2.0` (infix `a - b` is handled in
   // parseInfixRhs, so a `-` reaching here always prefixes a literal)
   | TMinus ->
@@ -1721,11 +1780,21 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
     let r = span (rng state i) r1
     match tok state (i + 1) with
     | TInt v -> (WT.EInt(r, (r, -v)), i + 2)
-    | TInt64 v -> (WT.EInt64(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt8 v -> (WT.EInt8(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt16 v -> (WT.EInt16(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt32 v -> (WT.EInt32(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt128 v -> (WT.EInt128(r, (r, -v), zeroWidthAtEnd r1), i + 2)
+    | TInt64 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.EInt64(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt8 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.EInt8(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt16 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.EInt16(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt32 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.EInt32(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt128 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.EInt128(r, (span (rng state i) digits, -v), suffix), i + 2)
     | TFloat v ->
       let (whole, frac) = floatParts state (i + 1) v
       (WT.EFloat(r, true, whole, frac), i + 2)
@@ -1753,21 +1822,16 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
     (WT.EFloat(r, v < 0.0, whole, frac), i + 1)
   | TCharLit c ->
     let r = rng state i
-    (WT.EChar(
-      r,
-      Some(r, c),
-      { start = r.start; end_ = r.start },
-      { start = r.end_; end_ = r.end_ }
-     ),
-     i + 1)
+    let (openQuote, contents, closeQuote) = literalTextRanges state i "'"
+    (WT.EChar(r, Some(contents, c), openQuote, closeQuote), i + 1)
   | TTrue -> (WT.EBool(rng state i, true), i + 1)
   | TFalse -> (WT.EBool(rng state i, false), i + 1)
   | TStringLit s ->
-    // single-segment string; quote ranges approximated to the token edges
     let r = rng state i
-    let openQ = { start = r.start; end_ = r.start }
-    let closeQ = { start = r.end_; end_ = r.end_ }
-    (WT.EString(r, None, [ WT.StringText(r, s) ], openQ, closeQ), i + 1)
+    let delimiter = if (txt state i).StartsWith "\"\"\"" then "\"\"\"" else "\""
+    let (openQuote, contents, closeQuote) = literalTextRanges state i delimiter
+    (WT.EString(r, None, [ WT.StringText(contents, s) ], openQuote, closeQuote),
+     i + 1)
   | TInterpString -> parseInterpString state i
   | TIdent name ->
     let (mods0, final0, j0) = parseQualified state i
@@ -1779,7 +1843,11 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
       && (rng state j0).start.row = final0.range.end_.row
       && (rng state j0).start.column = final0.range.end_.column
     let (nameTypeArgs, jTA) =
-      if hasAdjacentLt then parseTypeArgs state j0 else ([], j0)
+      if hasAdjacentLt then
+        let (args, _, next) = parseTypeArgs state j0
+        (args, next)
+      else
+        ([], j0)
     // `Type<T>.Case`: fold `Type` (which carries the type args) into the module
     // path so the enum branch treats the trailing `.Case` as the case name.
     let (mods, final, j) =
@@ -2273,10 +2341,14 @@ and parseTupleType (state : ParserState) (i : int) : WT.TypeReference * int =
      m)
 
 // `<T1, T2, …>` generic type-args on a custom type; uses expectGt so a trailing
-// `>>` splits correctly. Returns the args + the index after the closing `>`.
-and parseTypeArgs (state : ParserState) (i : int) : List<WT.TypeReference> * int =
+// `>>` splits correctly. Returns the args, the real or recovered closing `>`
+// range, and the index after it.
+and parseTypeArgs
+  (state : ParserState)
+  (i : int)
+  : List<WT.TypeReference> * Option<TokenRange> * int =
   if tok state i <> TLt then
-    ([], i)
+    ([], None, i)
   else
     let args = System.Collections.Generic.List<WT.TypeReference>()
     let (first, j) = parseTypeRef state (i + 1)
@@ -2289,8 +2361,8 @@ and parseTypeArgs (state : ParserState) (i : int) : List<WT.TypeReference> * int
       let (a, k2) = parseTypeRef state (k + 1)
       args.Add a
       k <- if k2 > k then k2 else k + 1
-    let (_closeR, k3) = expectGt state k
-    (List.ofSeq args, k3)
+    let (closeR, k3) = expectGt state k
+    (List.ofSeq args, Some closeR, k3)
 
 and parseAtomType (state : ParserState) (i : int) : WT.TypeReference * int =
   match tok state i with
@@ -2341,11 +2413,12 @@ and parseAtomType (state : ParserState) (i : int) : WT.TypeReference * int =
      i + 1)
   | TIdent name when name.Length > 0 && System.Char.IsUpper name[0] ->
     let (mods, final, j) = parseQualified state i
-    let (typeArgs, j2) = parseTypeArgs state j
+    let (typeArgs, closeGeneric, j2) = parseTypeArgs state j
     let endR =
-      match List.rev typeArgs with
-      | last :: _ -> WT.typeReferenceRange last
-      | [] -> final.range
+      match closeGeneric, List.rev typeArgs with
+      | Some closeRange, _ -> closeRange
+      | None, last :: _ -> WT.typeReferenceRange last
+      | None, [] -> final.range
     (WT.TCustom
       { range = span (rng state i) endR
         modules = mods
