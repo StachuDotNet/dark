@@ -118,7 +118,7 @@ let editNew (state: State) (domain: String) : State =
 // key handling
 // ─────────────────────────────────────────────────────────────────────
 
-let private clampCursor (state: State) : State =
+let clampCursor (state: State) : State =
   let count = rowCount state
   let c =
     if count == 0 then 0
@@ -237,7 +237,7 @@ let handleKey
 // rendering
 // ─────────────────────────────────────────────────────────────────────
 
-let private rowText (row: Row) : String =
+let rowText (row: Row) : String =
   match row with
   | FlagRow(d, granted) ->
     let box = if granted then "[x]" else "[ ]"
@@ -245,7 +245,7 @@ let private rowText (row: Row) : String =
   | RuleRow spec -> Darklang.PrettyPrinter.Capabilities.line spec
   | AddRuleRow -> "+ Add rule…"
 
-let private printOneRow (state: State) (pair: (Int * Row)) : Unit =
+let printOneRow (state: State) (pair: (Int * Row)) : Unit =
   let (i, r) = pair
   let selected = i == state.cursor
   let prefix = if selected then "›" else " "
@@ -257,7 +257,7 @@ let private printOneRow (state: State) (pair: (Int * Row)) : Unit =
 
 // flag checklist on top, then a labelled "Scoped rules" section (existing rules + the "+ Add rule…"
 // affordance). The cursor index maps into `rows`; the section label is printed between, not selectable.
-let private printRows (state: State) : Unit =
+let printRows (state: State) : Unit =
   let flagCount = (Stdlib.List.length flagDomains)
   let indexed = Stdlib.List.indexedMap (rows state) (fun i r -> (i, r))
   indexed
@@ -269,7 +269,7 @@ let private printRows (state: State) : Unit =
   |> Stdlib.List.filter (fun pair -> Stdlib.Tuple2.first pair >= flagCount)
   |> Stdlib.List.iter (fun pair -> printOneRow state pair)
 
-let private printMenu (title: String) (items: List<String>) (cursor: Int) : Unit =
+let printMenu (title: String) (items: List<String>) (cursor: Int) : Unit =
   Stdlib.printLine title
   Stdlib.printLine ""
   let indexed = Stdlib.List.indexedMap items (fun i x -> (i, x))

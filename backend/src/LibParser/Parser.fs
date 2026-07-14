@@ -1349,12 +1349,7 @@ and parseLetPattern (state : ParserState) (i : int) : WT.LetPattern * int =
 
 and parseLet (state : ParserState) (i : int) : WT.Expr * int =
   let keywordLet = rng state i
-  // optional `let rec` / `let private` before the binding pattern
-  let patIdx =
-    match tok state (i + 1) with
-    | TIdent("rec" | "private" | "internal") -> i + 2
-    | _ -> i + 1
-  let (pat, j) = parseLetPattern state patIdx
+  let (pat, j) = parseLetPattern state (i + 1)
   match pat with
   | WT.LPVariable _ when tok state j = TLParen ->
     // nested function definition: `let f (x: T) (y) [: R] = body` — bind a lambda
@@ -2623,11 +2618,7 @@ and parseParam (state : ParserState) (i : int) : WT.FnParam * int =
 // or value `let x [: T] = body`. `i` is TLet, `i+1` the name.
 and parseDecl (state : ParserState) (i : int) : WT.Declaration * int =
   let keywordLet = rng state i
-  // optional modifiers: `let private name …`, `let rec name …`
-  let nameIdx =
-    match tok state (i + 1) with
-    | TIdent("private" | "internal" | "rec") -> i + 2
-    | _ -> i + 1
+  let nameIdx = i + 1
   let nameId : WT.Identifier =
     match tok state nameIdx with
     | TIdent nm -> { range = rng state nameIdx; name = nm }

@@ -71,7 +71,7 @@ type DeprecationSets =
 
 
 /// Build a Dict<Bool> keyed by each hash's underlying hex string.
-let private hashListToDict
+let hashListToDict
   (hashes: List<LanguageTools.ProgramTypes.Hash>)
   : Dict<Bool> =
   hashes
@@ -90,7 +90,7 @@ let loadDeprecationSets (branchId: Uuid) : DeprecationSets =
       hidden = hashListToDict hidden }
 
 
-let private memberOf
+let memberOf
   (d: Dict<Bool>)
   (hash: LanguageTools.ProgramTypes.Hash)
   : Bool =

@@ -16,7 +16,7 @@ type Component<'s> =
     onKey: 's -> Stdlib.Cli.Stdin.Key.Key -> Stdlib.Cli.Stdin.Modifiers.Modifiers -> Stdlib.Option.Option<String> -> Step<'s> }
 
 
-let private toSubApp (c: Component<'s>) (state: 's) : Cli.SubApp =
+let toSubApp (c: Component<'s>) (state: 's) : Cli.SubApp =
   Cli.SubApp
     { onKey =
         fun key modifiers keyChar ->

@@ -260,6 +260,10 @@ Declaration forms:
 - `module A.B` is a file header and wraps the rest of the file.
 - `module X =` starts an indented module body.
 
+`rec`, `private`, and `internal` are ordinary identifier names, not let
+modifiers. Functions are automatically self-recursive, so modifier-shaped forms
+such as `let rec f ...` are invalid.
+
 Modules nest. The path builds the package location: `owner.modules.name`.
 
 `///` doc comments become descriptions.

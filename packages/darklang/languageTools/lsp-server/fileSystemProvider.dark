@@ -152,7 +152,7 @@ module WriteFile =
 
   // Recursively collect (extraModules, declaration) for every leaf declaration,
   // descending into nested modules and accumulating the module path.
-  let rec collectDecls
+  let collectDecls
     (currentExtraModules: List<String>)
     (decls: List<LanguageTools.WrittenTypes.ModuleDeclaration.Declaration>)
     : List<List<String> * LanguageTools.WrittenTypes.ModuleDeclaration.Declaration> =

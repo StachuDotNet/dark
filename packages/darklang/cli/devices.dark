@@ -5,7 +5,7 @@ module Darklang.Cli.Devices
 
 // `devices` with no subcommand is the interactive landing: the device list, then the actions you can
 // take next. `devices status` is the clean, pipeable form (just the list).
-let private showStatus () : Unit =
+let showStatus () : Unit =
   match Darklang.Tailscale.status () with
   | Ok out -> Stdlib.printLine out
   | Error e -> Stdlib.printLine (Colors.error $"devices: status failed: {e}")

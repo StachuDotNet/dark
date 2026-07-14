@@ -912,6 +912,26 @@ let private recoveryTests =
         | Some(WT.SourceFile { exprsToEval = [ WT.EVariable(_, "def") ] }) -> ()
         | other -> failtest $"unexpected def parse: {other}")
 
+      testCase
+        "rec, private, and internal are identifiers, not let modifiers"
+        (fun _ ->
+          for source in
+            [ "module M =\n  let rec f (x: Int64) : Int64 = x"
+              "module M =\n  let private f (x: Int64) : Int64 = x"
+              "module M =\n  let internal f (x: Int64) : Int64 = x"
+              "if true then let private f (x: Int64) : Int64 = x in f 1L else 0L" ] do
+            Expect.isNonEmpty
+              (P.parse source).diagnostics
+              $"invalid binding form: {source}"
+
+          for source in
+            [ "let rec = 1L in rec"
+              "let private = 1L in private"
+              "let internal = 1L in internal" ] do
+            Expect.isEmpty
+              (P.parse source).diagnostics
+              $"valid identifier: {source}")
+
       testCase "same-line collection items require separators" (fun _ ->
         for source in
           [ "[1L 2L]"
