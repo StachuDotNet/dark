@@ -169,7 +169,11 @@ For dotted names, lowercase steps are fields and uppercase steps are module path
 segments. A bare dotted name like `Stdlib.List.map` is itself a value/function
 reference.
 
-A nested function let lowers to a let-bound lambda; its types are discarded.
+A nested function let lowers to a let-bound lambda. Its annotations are
+currently compatibility syntax and are not enforced by this parser/type path.
+Local bindings and value declarations do not accept annotations. Write
+`let x = value` locally or `val x = value` at declaration scope, without
+`: Type`.
 
 ### Enum constructors
 

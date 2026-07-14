@@ -1405,9 +1405,20 @@ and parseLet (state : ParserState) (i : int) : WT.Expr * int =
      ),
      p)
   | _ ->
-    // optional type annotation: `let x : T = v` (the type is discarded)
+    // Value annotations are not part of Dark. Consume the type for recovery,
+    // but reject the source instead of silently discarding it.
     let afterAnno =
-      if tok state j = TColon then snd (parseTypeRef state (j + 1)) else j
+      if tok state j = TColon then
+        state.diagnostics.Add
+          { code = DiagnosticCode.unexpected
+            severity = DiagError
+            range = rng state j
+            message = "Value annotations are not supported"
+            related = []
+            hint = Some "remove ': Type' from this value binding" }
+        snd (parseTypeRef state (j + 1))
+      else
+        j
     let (symbolEquals, k) =
       if tok state afterAnno = TEquals then
         (rng state afterAnno, afterAnno + 1)
@@ -2674,6 +2685,13 @@ and parseDecl (state : ParserState) (i : int) : WT.Declaration * int =
   else
     let afterAnno =
       if tok state afterName = TColon then
+        state.diagnostics.Add
+          { code = DiagnosticCode.unexpected
+            severity = DiagError
+            range = rng state afterName
+            message = "Value annotations are not supported"
+            related = []
+            hint = Some "remove ': Type' from this value declaration" }
         snd (parseTypeRef state (afterName + 1))
       else
         afterName

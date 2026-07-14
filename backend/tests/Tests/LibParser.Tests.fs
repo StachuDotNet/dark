@@ -759,6 +759,17 @@ let private loweringRegressionTests =
         | PT.EPipe(_, _, [ PT.EPipeVariable(_, "map", []) ]) -> ()
         | other -> failtest $"expected variable pipe segment, got {other}") ]
 
+let private valueAnnotationTests =
+  testList
+    "value-annotations"
+    [ testCase "value annotations are rejected instead of discarded" (fun _ ->
+        for source in [ "let x : String = 1L in x"; "val x : String = 1L" ] do
+          Expect.exists
+            (P.parse source).diagnostics
+            (fun diagnostic ->
+              diagnostic.message = "Value annotations are not supported")
+            $"annotation diagnostic for {source}") ]
+
 /// Literal edge cases: min-magnitude wrap and exponent floats.
 let private literalTests =
   testList
@@ -1566,6 +1577,7 @@ let tests =
       typeTests
       desugarTests
       loweringRegressionTests
+      valueAnnotationTests
       literalTests
       recoveryTests
       lexicalFailureTests
