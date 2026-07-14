@@ -12,10 +12,8 @@
 /// Projections are dropped+refolded, never migrated. Forward-only; the undo is "restore from a peer"
 /// (every peer holds the whole log, so the tailnet is the backup).
 ///
-/// The current baseline is **Release 3** — a fresh store is born here. The lone registry entry records
-/// why 3 is a clean break (meaning-stable hashing redefined every content hash), but because no older
-/// store exists, no store ever replays it; the machinery is in place for the first real format change,
-/// which appends the next entry. See `releases`.
+/// The current baseline is **Release 3** — a fresh store is born here; see `releases` for why 3 is a
+/// clean break and how the first real format change appends the next entry.
 module LibDB.Releases
 
 open Prelude
@@ -23,10 +21,8 @@ open Prelude
 open Fumble
 open LibDB.Sqlite
 
-/// THE version coordinate: the single integer spanning {language/`ProgramTypes`, op-serialization format,
-/// SQL schema, content-hashing}. A store is stamped with this Release; older code refuses to open a store
-/// stamped NEWER. Cross-instance sync's wire-format version IS this same integer — one coordinate gates both
-/// the local store upgrade and cross-instance compatibility.
+/// THE version coordinate (see the module doc). A store is stamped with this Release; older code refuses
+/// to open a store stamped NEWER, and cross-instance sync uses this same integer as its wire-format version.
 let currentRelease : int = 3
 
 /// One forward step that ARRIVES at Release `n` (apply it to move a store from `n-1` to `n`).
@@ -39,12 +35,10 @@ type Release =
     /// op-format remap (old `op_blob` bytes → new), only when the serialization format changed.
     /// `None` = the op format is unchanged at this step (the common case).
     reserialize : (byte[] -> byte[]) option
-    /// CLEAN-BREAK boundary: when `true`, pre-this-Release data is treated as disposable and the package
-    /// dataset is CLEARED so the store rebuilds from source (dev) or re-pulls from a same-Release peer
-    /// (tailnet). Use this only when the change can't be cheaply migrated AND the old data is disposable
-    /// — e.g. a content-hash redefinition. The default (`false`) is the durable path (sql/reserialize +
-    /// re-fold). The PRINCIPLE: PT (the op log) is the source of truth and migrates forward; RT-derived
-    /// data (rt_dval, traces) is never migrated — it's dropped and recomputed from PT.
+    /// CLEAN-BREAK boundary: when `true`, pre-this-Release data is disposable — the package dataset is
+    /// CLEARED and rebuilds from source (dev) or re-pulls from a same-Release peer. Use only when the
+    /// change can't be cheaply migrated (e.g. a content-hash redefinition). The default (`false`) is the
+    /// durable path: the canonical copy-swap `.sql` + op-format reserialize + re-fold, keeping the log.
     clearForRebuild : bool
   }
 
@@ -53,10 +47,9 @@ type Release =
 /// migrator does the rest. Each `n` must be exactly one greater than the previous (see
 /// `registryIsWellFormed`).
 ///
-/// **Release 3 — meaning-stable hashing.** Content hashes are now over the alpha-normalized canonical
-/// form, so older `op_blob`s would embed stale hashes and can't be cheaply migrated — hence the
-/// CLEAN-BREAK marker (`clearForRebuild`). In practice every store is BORN at Release 3 and never runs
-/// this step; it stands as the worked example of the clean-break path and the registry's upper bound.
+/// **Release 3 — meaning-stable hashing.** Hashes are now over the alpha-normalized canonical form, so
+/// older `op_blob`s embed stale hashes and can't be cheaply migrated — hence the CLEAN-BREAK marker. Every
+/// store is BORN at Release 3 and never replays this step; it's the worked example of the clean-break path.
 let releases : Release list =
   [ { n = 3; sql = ""; reserialize = None; clearForRebuild = true } ]
 
