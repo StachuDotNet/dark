@@ -467,6 +467,102 @@ let resolutionSurvivesIncrementalFold =
   }
 
 
+let resolutionSurvivesDiscard =
+  testTask
+    "a human resolution survives `discard` of WIP ops (the overlay is not WIP)" {
+    // `discard` deletes WIP bindings (commit_hash IS NULL). A resolution overlay is ALSO commit_hash NULL,
+    // so without the `source` marker discard would sweep it too — silently reverting the location to the LWW
+    // loser while the `resolutions` row survives → divergence from a peer that synced the resolution.
+    let! a = seededInstance "resdiscard"
+
+    let loc : PT.PackageLocation =
+      { owner = "Test"; modules = [ "ResDiscard" ]; name = "pick" }
+    activate a
+    let! (fnA, fnB) = twoFunctionHashes ()
+    let! commit = existingCommit ()
+    // fnB is the committed LWW winner (.200 > .100); a human overrides back to fnA at a later `at`.
+    let! _ =
+      Seed.receiveOps [] [ setNameEvent loc fnA commit "2026-07-08T00:00:00.100Z" ]
+    let! _ =
+      Seed.receiveOps [] [ setNameEvent loc fnB commit "2026-07-08T00:00:00.200Z" ]
+    let res =
+      Resolutions.mk
+        loc
+        (PT.Reference.PackageFn(PT.Hash fnA))
+        "human"
+        PT.mainBranchId
+        "2026-07-08T00:00:00.300Z"
+    do! Resolutions.recordAndApply res
+    let! beforeDiscard = liveHash loc
+    Expect.equal beforeDiscard [ fnA ] "the override took (fnA over the LWW winner fnB)"
+
+    // An UNRELATED WIP op, so discard actually runs (it's a no-op with zero WIP ops). Bind to fnB (not fnA)
+    // so the rename path can't touch the overlay's item_hash.
+    let wipLoc : PT.PackageLocation =
+      { owner = "Test"; modules = [ "ResDiscard" ]; name = "scratch" }
+    let! _ =
+      LibDB.Inserts.insertAndApplyOpsAsWip
+        PT.mainBranchId
+        [ PT.PackageOp.SetName(wipLoc, PT.Reference.PackageFn(PT.Hash fnB)) ]
+
+    let! _ = LibDB.Inserts.discardWipOps PT.mainBranchId
+    let! afterDiscard = liveHash loc
+    Expect.equal
+      afterDiscard
+      [ fnA ]
+      "the resolution SURVIVED discard (else it reverts to the LWW loser fnB)"
+    teardown [ a ]
+  }
+
+
+let identicalContentAuthoringConverges =
+  testTask
+    "two instances authoring identical content for one name converge, so a later edit resolves the same" {
+    // Same name, same content (fnX), authored on two instances at DIFFERENT local stamps. The op id is
+    // content-only, so it's one op arriving with two stamps; it must settle to the SAME origin_ts on both
+    // (the MIN reconcile + an equal-hash fold that never raises the stamp) — otherwise a later different-hash
+    // op stamped BETWEEN the two would win on one instance and lose on the other → divergence.
+    let! a = seededInstance "conva"
+    let! b = seededInstance "convb"
+
+    let loc : PT.PackageLocation =
+      { owner = "Test"; modules = [ "SameContent" ]; name = "pick" }
+
+    activate a
+    let! (fnX, fnY) = twoFunctionHashes ()
+    let! commit = existingCommit ()
+    let! curA = currentCursor ()
+    let! _ =
+      Seed.receiveOps [] [ setNameEvent loc fnX commit "2026-07-08T00:00:00.200Z" ] // A stamps fnX .200
+    let! (commitsA, eventsA) = wireSince curA
+
+    activate b
+    let! curB = currentCursor ()
+    let! _ =
+      Seed.receiveOps [] [ setNameEvent loc fnX commit "2026-07-08T00:00:00.100Z" ] // B stamps the SAME op .100
+    let! (commitsB, eventsB) = wireSince curB
+
+    // Cross-sync the identical-content op; both must reconcile to the earliest stamp (.100).
+    activate b
+    let! _ = Seed.receiveOps commitsA eventsA
+    activate a
+    let! _ = Seed.receiveOps commitsB eventsB
+
+    // A later, DIFFERENT-hash edit (.150) folds on both — .150 out-ranks the reconciled .100 on each.
+    let mid = setNameEvent loc fnY commit "2026-07-08T00:00:00.150Z"
+    activate a
+    let! _ = Seed.receiveOps [] [ mid ]
+    let! aFinal = liveHash loc
+    activate b
+    let! _ = Seed.receiveOps [] [ mid ]
+    let! bFinal = liveHash loc
+
+    Expect.equal aFinal bFinal "both instances converge on the same binding for the name"
+    Expect.equal aFinal [ fnY ] "the later different-hash edit wins on both (reconciled stamp is .100 < .150)"
+    teardown [ a; b ]
+  }
+
+
 let durableReleaseMigratesInPlace =
   testTask
     "a durable Release migrates a seeded store IN PLACE, preserving its data (not a clean-break)" {
@@ -787,6 +883,8 @@ let tests =
       resolutionConverges
       resolutionSurvivesRebuild
       resolutionSurvivesIncrementalFold
+      resolutionSurvivesDiscard
+      identicalContentAuthoringConverges
       durableReleaseMigratesInPlace
       branchMergeSyncs
       concurrentRebasesConverge

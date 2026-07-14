@@ -238,7 +238,12 @@ CREATE TABLE IF NOT EXISTS locations (
   -- playback order by CREATION, not arrival (timestamp-LWW). A SetName whose op was created
   -- EARLIER than the current binding (an old op arriving late via sync) is stale: playback skips
   -- the rebind, so the latest-by-creation name wins on every instance regardless of sync order.
-  origin_ts TEXT NULL
+  origin_ts TEXT NULL,
+  -- What put this binding here: 'op' = the normal op-fold (incl. WIP authoring), 'resolution' = a
+  -- human/keep-local resolution OVERLAY. Both an overlay and a WIP binding have commit_hash NULL, so
+  -- without this marker `discard` (which deletes WIP by commit_hash IS NULL) would also sweep the
+  -- overlay and silently revert a synced resolution → divergence. `discard` excludes 'resolution'.
+  source TEXT NOT NULL DEFAULT 'op'
 );
 CREATE INDEX IF NOT EXISTS idx_locations_branch_lookup
   ON locations(branch_id, owner, modules, name, item_type)
