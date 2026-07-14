@@ -1,5 +1,5 @@
-/// Tests for ops⊥projections (LibDB.Seed.rebuildProjections).
-/// Proves the central claim of the storage split: the projection tables are
+/// Tests for LibDB.Seed.rebuildProjections.
+/// Proves the projection tables are
 /// *regenerable from the op log* — drop them, re-fold package_ops, and they
 /// come back identical. The op log (package_ops) is canonical and untouched.
 module Tests.OpsProjections
@@ -132,7 +132,7 @@ let tests =
       // authored work. A *durable* Release step carries the op log forward (a schema copy-swap + an optional
       // op-format re-serialize); the projections are then dropped and RE-FOLDED from that same log in the
       // new Release's format. This is exactly why the two design pieces exist:
-      //   • ops ⊥ projections — you migrate the LOG (the authored work), never the derived tables; the
+      //   • the op log is canonical — you migrate the LOG (the authored work), never the derived tables; the
       //     projections are disposable and regenerated. Losing a projection costs only CPU.
       //   • meaning-stable hashing — a format re-serialize keeps each op's IDENTITY (the id hashes the op's
       //     MEANING, not its bytes), so names/dependencies don't churn across the migration.
