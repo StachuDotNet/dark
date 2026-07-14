@@ -17,7 +17,7 @@ module Darklang.Sync.Server
 // GET /sync/health — liveness + servable op count. Counts COMMITTED ops only — the ones a peer can actually
 // pull (WIP stays local) — so two instances comparing counts to gauge convergence are comparing like for like.
 let healthFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
-  let db = Builtin.localDbPath ()
+  let db = Darklang.Sync.localDbPath ()
 
   let n =
     (Stdlib.Sqlite.scalarInt

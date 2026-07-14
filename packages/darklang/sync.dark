@@ -49,7 +49,7 @@ let wireSince
   // per-branch scoping properly. // CLEANUP(per-branch-sync): reintroduce scoped controls when done right.
   Stdlib.Json.serialize<Wire> (
     Wire
-      { release = Builtin.currentRelease()
+      { release = currentRelease()
         branchEvents = Stdlib.Stream.toList branchBatch.events
         branchCursor = branchBatch.next
         commits = pkgBatch.commits
@@ -62,8 +62,18 @@ let wireSince
 
 // ── peer config + per-peer resume cursors (LOCAL, per-instance; never synced, like `caps`) ──
 
+/// This instance's local store path (its default SQLite db). The single package caller of the localDbPath
+/// builtin — everything else goes through here — so the builtin keeps one reference.
+let localDbPath () : String =
+  Builtin.localDbPath ()
+
+/// This binary's Release coordinate (the version integer sync's wire handshake compares; see LibDB.Releases).
+/// The single package caller of the currentRelease builtin.
+let currentRelease () : Int =
+  Builtin.currentRelease ()
+
 let private syncDb () : String =
-  let db = Builtin.localDbPath ()
+  let db = localDbPath ()
 
   let _ =
     Stdlib.Sqlite.exec db "CREATE TABLE IF NOT EXISTS sync_peers_v0 (url TEXT PRIMARY KEY)"
@@ -181,9 +191,9 @@ let rec pullLoop
     | Ok wire ->
       match Stdlib.Json.parse<Wire> wire with
       | Ok(w) ->
-        if w.release != Builtin.currentRelease() then
+        if w.release != currentRelease() then
           Stdlib.Result.Result.Error
-            $"{peer} is on Dark release {Stdlib.Int.toString w.release}; you're on {Stdlib.Int.toString (Builtin.currentRelease())} — upgrade to the same release to sync"
+            $"{peer} is on Dark release {Stdlib.Int.toString w.release}; you're on {Stdlib.Int.toString (currentRelease())} — upgrade to the same release to sync"
         else
           // Apply branch STRUCTURE before content, so package ops' branch_ids resolve on this side. Each append
           // returns the count applied, or -1 on a DB error (distinct from 0 = idempotent/nothing new). We
