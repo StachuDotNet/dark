@@ -16,12 +16,15 @@ Supported comments:
 - `(* block *)`, which nests
 
 `(*)` is the multiply operator section, not a comment. Comments are preserved on
-tokens as `leadingTrivia`. The token stream reconstructs the source byte-exactly
-except for trailing whitespace.
+tokens as `leadingTrivia`. Whitespace text is not stored, so the token stream
+preserves positions and comments but cannot reconstruct spaces, tabs, line
+endings, or trailing whitespace byte-for-byte.
 
 ### Identifiers
 
-Normal identifiers match `[A-Za-z_][A-Za-z0-9_']*`.
+Normal identifiers start with a Unicode letter or `_`, followed by Unicode
+letters/digits, `_`, or `'`. Package names use a separate, stricter naming rule
+during name resolution.
 
 Backtick-quoted ``` ``name`` ``` permits anything up to the closing backticks.
 `___` is the blank identifier and has the empty name.
@@ -57,7 +60,8 @@ out-of-range diagnostic, never a silent wrap.
 ### Float literals
 
 `digits[.digits][eE[±]exp]`. Lowered to exponent-free whole/fraction decimal
-strings (`1e300` → `1` + 300 zeros).
+strings (`1e300` → `1` + 300 zeros). Exponents outside `-400..400` are rejected
+because ProgramTypes stores expanded decimal strings rather than an exponent.
 
 ### String literals
 
