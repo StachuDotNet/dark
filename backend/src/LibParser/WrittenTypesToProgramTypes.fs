@@ -14,9 +14,6 @@ type Context =
   { // Fully qualified path of the function currently being lowered, used to
     // recognize self-recursive calls.
     currentFnName : List<string> option
-    // Whether this expression is inside a function body. This decides whether an
-    // unqualified call prefers a local variable or a package function.
-    isInFunction : bool
     // Function parameters by name, used to lower references to `EArg`.
     argMap : Map<string, int>
     // Local bindings from lets and patterns, used before global name resolution.
@@ -411,21 +408,35 @@ module Expr =
           | [] -> Ply(NEList.singleton (PT.EUnit(gid ())))
           | h :: t -> Ply.NEList.mapSequentially (toPT context) (NEList.ofList h t)
 
-        // An unqualified applied name (`f x`) resolves function-first because
-        // only a function, or function-typed value, can be called. This differs
-        // from bare references, which are value-first. The one
-        // exception is a lambda body with no self-context, where we keep the bare
-        // variable so a param can shadow a same-named function. The callee node gets
-        // its own id, distinct from the wrapping EApply's.
+        // Arguments and local bindings shadow package functions in calls, just
+        // as they do for bare references. Only an unshadowed callee resolves as
+        // self/package function first. The callee gets its own id, distinct from
+        // the wrapping EApply's.
         match name with
         | WT.Unresolved { head = varName; tail = [] } ->
-          match context.currentFnName with
-          | Some currentFnName ->
-            let varQualifiedName = currentModule @ [ varName ]
-            if varQualifiedName = currentFnName then
+          match Map.tryFind varName context.argMap with
+          | Some index ->
+            return
+              PT.EApply(id, PT.EArg(gid (), index), processedTypeArgs, processedArgs)
+          | None when Set.contains varName context.localBindings ->
+            return
+              PT.EApply(
+                id,
+                PT.EVariable(gid (), varName),
+                processedTypeArgs,
+                processedArgs
+              )
+          | None ->
+            let isSelfCall =
+              match context.currentFnName with
+              | Some currentFnName -> currentModule @ [ varName ] = currentFnName
+              | None -> false
+            if isSelfCall then
               return
                 PT.EApply(id, PT.ESelf(gid ()), processedTypeArgs, processedArgs)
             else
+              // Applied names resolve function-first, then value, after lexical
+              // bindings and self-recursion have had a chance to shadow them.
               let! fnName =
                 NR.resolveFnName
                   (builtins.fns |> Map.keys |> Set)
@@ -434,39 +445,29 @@ module Expr =
                   branchId
                   currentModule
                   name
-              let expr =
-                match fnName.resolved with
-                | Ok _ -> PT.EFnName(gid (), fnName)
-                | Error _ ->
-                  match Map.tryFind varName context.argMap with
-                  | Some index -> PT.EArg(gid (), index)
-                  | None -> PT.EVariable(gid (), varName)
-              return PT.EApply(id, expr, processedTypeArgs, processedArgs)
-          | None when context.isInFunction ->
-            // Inside a function, let variables shadow unqualified function calls.
-            let varExpr =
-              match Map.tryFind varName context.argMap with
-              | Some index -> PT.EArg(gid (), index)
-              | None -> PT.EVariable(gid (), varName)
-            return PT.EApply(id, varExpr, processedTypeArgs, processedArgs)
-          | None ->
-            // At global scope, resolve function-first and fall back to a variable.
-            let! fnName =
-              NR.resolveFnName
-                (builtins.fns |> Map.keys |> Set)
-                pm
-                NR.OnMissing.Allow
-                branchId
-                currentModule
-                name
-            let expr =
               match fnName.resolved with
-              | Ok _ -> PT.EFnName(gid (), fnName)
+              | Ok _ ->
+                return
+                  PT.EApply(
+                    id,
+                    PT.EFnName(gid (), fnName),
+                    processedTypeArgs,
+                    processedArgs
+                  )
               | Error _ ->
-                match Map.tryFind varName context.argMap with
-                | Some index -> PT.EArg(gid (), index)
-                | None -> PT.EVariable(gid (), varName)
-            return PT.EApply(id, expr, processedTypeArgs, processedArgs)
+                let! valueName =
+                  NR.resolveValueName
+                    (builtins.values |> Map.keys |> Set)
+                    pm
+                    NR.OnMissing.Allow
+                    branchId
+                    currentModule
+                    name
+                let callee =
+                  match valueName.resolved with
+                  | Ok _ -> PT.EValue(gid (), valueName)
+                  | Error _ -> PT.EVariable(gid (), varName)
+                return PT.EApply(id, callee, processedTypeArgs, processedArgs)
         | _ ->
           // Qualified callees also resolve function-first. Fall back to the
           // value-first path when no function matches, preserving bare-reference
@@ -546,9 +547,13 @@ module Expr =
           | Error _, None -> return PT.EFnName(id, fnName)
       | WT.ELambda(_, pats, body, _, _) ->
         let id = gid ()
-        // Lambda params do not inherit function arg slots, but outer local
-        // bindings remain visible.
-        let lambdaContext = { context with argMap = Map.empty }
+        // Lambda params do not inherit function arg slots. The enclosing
+        // function's args become ordinary locals so the lambda closes over them.
+        let lambdaContext =
+          { context with
+              argMap = Map.empty
+              localBindings =
+                Set.union context.localBindings (context.argMap |> Map.keys |> Set) }
         // Blank (`___`) params parse as empty-name vars; drop them.
         let kept =
           pats
@@ -563,12 +568,20 @@ module Expr =
         return PT.ELambda(id, patsNel, body)
       | WT.ELet(_, pat, rhs, body, _, _) ->
         let id = gid ()
-        // If a let-bound lambda refers to its own name, treat that name as local
-        // while lowering the rhs. Resolved package names still stay resolved.
+        // A let binder is not in scope in its rhs. For a let-bound lambda, an
+        // unresolved reference to the binding name therefore stays EVariable
+        // (and becomes recursion at runtime), while a package fn/value resolves
+        // normally so the runtime can report the ambiguity.
+        //
+        // The one inherited context that can pre-empt that distinction is ESelf:
+        // when the nested binding has the enclosing package fn's name, resolve it
+        // normally instead of treating it as an unconditional outer self-call.
         let rhsContext =
-          match pat, rhs with
-          | WT.LPVariable(_, name), WT.ELambda _ ->
-            { context with localBindings = Set.add name context.localBindings }
+          match pat, rhs, context.currentFnName with
+          | WT.LPVariable(_, name), WT.ELambda _, Some qualifiedName when
+            List.tryLast qualifiedName = Some name
+            ->
+            { context with currentFnName = None }
           | _ -> context
         let! rhs = toPT rhsContext rhs
         let (newContext, ptPat) = LetPattern.toPT context pat
@@ -751,14 +764,14 @@ module Expr =
       match pipeExpr with
       | WT.EPipeVariableOrFnCall(_, name) ->
         let id = gid ()
-        // In a lambda body with no self-context, keep the bare variable so a param
-        // can shadow a same-named function; otherwise (a package fn body, or the
-        // global scope) resolve function-first and fall back to a variable. The
-        // self-recursion case resolves function-first too, so it needs no special
-        // handling here.
-        match context.currentFnName, context.isInFunction with
-        | None, true -> return PT.EPipeVariable(id, name, [])
-        | _ ->
+        // Arguments and locals shadow package functions in pipe segments too.
+        // Only an unshadowed bare name resolves function-first.
+        if
+          Map.containsKey name context.argMap
+          || Set.contains name context.localBindings
+        then
+          return PT.EPipeVariable(id, name, [])
+        else
           let! resolved =
             NR.resolveFnName
               (builtins.fns |> Map.keys |> Set)
@@ -774,9 +787,13 @@ module Expr =
 
       | WT.EPipeLambda(_, pats, body, _, _) ->
         let id = gid ()
-        // Lambda params do not inherit function arg slots, but outer local
-        // bindings remain visible.
-        let lambdaContext = { context with argMap = Map.empty }
+        // Lambda params do not inherit function arg slots. The enclosing
+        // function's args become ordinary locals so the lambda closes over them.
+        let lambdaContext =
+          { context with
+              argMap = Map.empty
+              localBindings =
+                Set.union context.localBindings (context.argMap |> Map.keys |> Set) }
         let kept =
           pats
           |> List.filter (fun p ->
@@ -801,18 +818,24 @@ module Expr =
         | WT.Unresolved { head = varName; tail = [] }, [] ->
           // A bare pipe segment with args might be a function call or a variable
           // application. Resolve function-first, then fall back to variable.
-          let! fnName =
-            NR.resolveFnName
-              (builtins.fns |> Map.keys |> Set)
-              pm
-              NR.OnMissing.Allow
-              branchId
-              currentModule
-              name
           let! args = Ply.List.mapSequentially (toPT context) args
-          match fnName.resolved with
-          | Ok _ -> return PT.EPipeFnCall(id, fnName, [], args)
-          | Error _ -> return PT.EPipeVariable(id, varName, args)
+          if
+            Map.containsKey varName context.argMap
+            || Set.contains varName context.localBindings
+          then
+            return PT.EPipeVariable(id, varName, args)
+          else
+            let! fnName =
+              NR.resolveFnName
+                (builtins.fns |> Map.keys |> Set)
+                pm
+                NR.OnMissing.Allow
+                branchId
+                currentModule
+                name
+            match fnName.resolved with
+            | Ok _ -> return PT.EPipeFnCall(id, fnName, [], args)
+            | Error _ -> return PT.EPipeVariable(id, varName, args)
         | _ ->
           // Missing names use Allow here, like other fn-name lowering. Package
           // loading can continue and unresolved names are handled later.
@@ -981,10 +1004,7 @@ module PackageValue =
     : Ply<PT.PackageValue.PackageValue> =
     uply {
       let context =
-        { currentFnName = None
-          isInFunction = false
-          argMap = Map.empty
-          localBindings = Set.empty }
+        { currentFnName = None; argMap = Map.empty; localBindings = Set.empty }
       let! body =
         Expr.toPT builtins pm onMissing branchId currentModule context c.body
       return { hash = Hash ""; description = c.description; body = body }
@@ -1060,7 +1080,6 @@ module PackageFn =
         |> Map.ofList
       let context =
         { currentFnName = Some(currentModule @ [ fn.name.name ])
-          isInFunction = true
           argMap = argMap
           localBindings = Set.empty }
       let! body =

@@ -409,12 +409,17 @@ module Expr =
           unresolvedNames)
 
       | EPipeLambda(_, pats, body, _, _) ->
-        // Start with a clean argMap to prevent lambda params from being converted to EArg
+        // Start with a clean argMap to prevent lambda params from being converted
+        // to EArg. Enclosing function args become locals so this lambda closes over
+        // them and they continue to shadow package names.
         let lambdaContext =
           Context
             { currentFnName = context.currentFnName
               argMap = Stdlib.Dict.empty
-              localBindings = context.localBindings }
+              localBindings =
+                Stdlib.List.append
+                  context.localBindings
+                  (Stdlib.Dict.keys context.argMap) }
         // Run patterns through LetPattern.toPT first so the lambda
         // body's context knows about the bound names — otherwise they
         // look unresolved and `EVariable` falls through to package
@@ -456,11 +461,15 @@ module Expr =
           unresolvedNames)
 
       | EPipeVariableOrFnCall(range, name) ->
-        // `x |> foo` with a bare, unqualified name. Mirror the F# lowering: a local
-        // (let / lambda / match) binding stays a variable so it can shadow a package
-        // fn; every other bare name resolves FUNCTION-first (a self-call resolves
-        // here too) and only falls back to a variable if it doesn't resolve.
-        if Stdlib.List.``member`` context.localBindings name then
+        // `x |> foo` with a bare, unqualified name. Arguments and locals stay
+        // variables so they can shadow package functions. Only an unshadowed bare
+        // name resolves function-first.
+        let isArgument =
+          match Stdlib.Dict.get context.argMap name with
+          | Some _ -> true
+          | None -> false
+
+        if isArgument || (Stdlib.List.``member`` context.localBindings name) then
           (ProgramTypes.PipeExpr.EPipeVariable(gid (), name, []), [])
         else
           let resolvedFn =
@@ -495,11 +504,15 @@ module Expr =
             [ tpUnresolvedNames |> Stdlib.List.flatten
               argsUnresolvedNames |> Stdlib.List.flatten ]
 
-        // Unqualified callee: a local binding stays a variable (shadowing); every
-        // other bare name resolves FUNCTION-first (self-call included), falling back
-        // to a variable if unresolved. Mirrors the F# lowering; keeps typeArgs.
+        // Arguments and locals shadow package functions in pipe calls too.
+        // Unshadowed names resolve function-first. Mirrors the F# lowering.
         if fn.modules |> Stdlib.List.isEmpty then
-          if Stdlib.List.``member`` context.localBindings fn.fn.name then
+          let isArgument =
+            match Stdlib.Dict.get context.argMap fn.fn.name with
+            | Some _ -> true
+            | None -> false
+
+          if isArgument || (Stdlib.List.``member`` context.localBindings fn.fn.name) then
             (ProgramTypes.PipeExpr.EPipeVariable(gid (), fn.fn.name, args),
               unresolvedNames)
           else
@@ -697,16 +710,23 @@ module Expr =
 
     // declaring and accessing variables
     | ELet(_, pat, rhs, body, _, _) ->
-      // If a let-bound lambda refers to its own name, treat that name as a
-      // local while converting the rhs so recursion becomes an `EVariable`.
-      // Resolved package names still stay resolved.
+      // A let binder is not in scope in its rhs. For a let-bound lambda, an
+      // unresolved reference to the binding name therefore stays EVariable
+      // (and becomes recursion at runtime), while a package fn/value resolves
+      // normally so the runtime can report the ambiguity.
+      //
+      // The one inherited context that can pre-empt that distinction is ESelf:
+      // when the nested binding has the enclosing package fn's name, resolve it
+      // normally instead of treating it as an unconditional outer self-call.
       let rhsContext =
-        match (pat, rhs) with
-        | (LPVariable(_, name), ELambda(_, _, _, _, _)) ->
+        match (pat, rhs, context.currentFnName) with
+        | (LPVariable(_, name), ELambda(_, _, _, _, _), Some qualifiedName) when
+          Stdlib.List.last qualifiedName == Stdlib.Option.Option.Some name
+          ->
           Context
-            { currentFnName = context.currentFnName
+            { currentFnName = Stdlib.Option.Option.None
               argMap = context.argMap
-              localBindings = Stdlib.List.push context.localBindings name }
+              localBindings = context.localBindings }
         | _ -> context
 
       let (rhs, rhsUnresolvedNames) = toPT ctx rhsContext rhs
@@ -878,12 +898,17 @@ module Expr =
       (ProgramTypes.Expr.EInfix(gid (), infix, left, right), unresolvedNames)
 
     | ELambda(_, pats, body, _, _) ->
-      // Start with a clean argMap to prevent lambda params from being converted to EArg
+      // Start with a clean argMap to prevent lambda params from being converted
+      // to EArg. Enclosing function args become locals so this lambda closes over
+      // them and they continue to shadow package names.
       let lambdaContext =
         Context
           { currentFnName = context.currentFnName
             argMap = Stdlib.Dict.empty
-            localBindings = context.localBindings }
+            localBindings =
+              Stdlib.List.append
+                context.localBindings
+                (Stdlib.Dict.keys context.argMap) }
       let keptPats =
         pats
         |> Stdlib.List.filter (fun p ->
@@ -959,6 +984,37 @@ module Expr =
           [ tpUnresolvedNames |> Stdlib.List.flatten
             argsUnresolvedNames |> Stdlib.List.flatten ]
 
+      let shadowedCallee =
+        let name =
+          match fn with
+          | EVariable(_, name) -> Stdlib.Option.Option.Some name
+          | EFnName(_, fnName) when Stdlib.List.isEmpty fnName.modules ->
+            Stdlib.Option.Option.Some fnName.fn.name
+          | _ -> Stdlib.Option.Option.None
+
+        match name with
+        | None -> Stdlib.Option.Option.None
+        | Some name ->
+          match Stdlib.Dict.get context.argMap name with
+          | Some index ->
+            Stdlib.Option.Option.Some (ProgramTypes.Expr.EArg(gid (), index))
+          | None ->
+            if Stdlib.List.``member`` context.localBindings name then
+              Stdlib.Option.Option.Some (ProgramTypes.Expr.EVariable(gid (), name))
+            else
+              Stdlib.Option.Option.None
+
+      let resolveAppliedName (range: WrittenTypes.Range) (name: String) =
+        let unresolvedName = WrittenTypes.Name.Unresolved(range, [ name ])
+        let fnName = NameResolver.FnName.resolve ctx unresolvedName
+        match fnName.resolved with
+        | Ok _ -> ProgramTypes.Expr.EFnName(gid (), fnName)
+        | Error _ ->
+          let valueName = NameResolver.ValueName.resolve ctx unresolvedName
+          match valueName.resolved with
+          | Ok _ -> ProgramTypes.Expr.EValue(gid (), valueName)
+          | Error _ -> ProgramTypes.Expr.EVariable(gid (), name)
+
       // Determine if this is a self-recursive call, and resolve the fn expr
       let isSelfCall =
         match context.currentFnName with
@@ -978,19 +1034,22 @@ module Expr =
               false
           | _ -> false
 
-      if isSelfCall then
-        (ProgramTypes.Expr.EApply(gid (), ProgramTypes.Expr.ESelf(gid ()), typeArgs, args), baseUnresolved)
-      else
-        // Special case: unqualified EFnName with no currentFnName → treat as EVariable
-        let (fnExpr, fnUnresolvedNames) =
-          match fn with
-          | EFnName(_, fnName) when (Stdlib.List.isEmpty fnName.modules) && (context.currentFnName == Stdlib.Option.Option.None) ->
-            (ProgramTypes.Expr.EVariable(gid (), fnName.fn.name), [])
-          | _ ->
-            toPT ctx context fn
+      match shadowedCallee with
+      | Some fnExpr ->
+        (ProgramTypes.Expr.EApply(gid (), fnExpr, typeArgs, args), baseUnresolved)
+      | None ->
+        if isSelfCall then
+          (ProgramTypes.Expr.EApply(gid (), ProgramTypes.Expr.ESelf(gid ()), typeArgs, args), baseUnresolved)
+        else
+          let (fnExpr, fnUnresolvedNames) =
+            match fn with
+            | EVariable(range, name) -> (resolveAppliedName range name, [])
+            | EFnName(range, fnName) when Stdlib.List.isEmpty fnName.modules ->
+              (resolveAppliedName range fnName.fn.name, [])
+            | _ -> toPT ctx context fn
 
-        let unresolvedNames = Stdlib.List.append baseUnresolved fnUnresolvedNames
-        (ProgramTypes.Expr.EApply(gid (), fnExpr, typeArgs, args), unresolvedNames)
+          let unresolvedNames = Stdlib.List.append baseUnresolved fnUnresolvedNames
+          (ProgramTypes.Expr.EApply(gid (), fnExpr, typeArgs, args), unresolvedNames)
 
     | EStatement (_, first, next) ->
       let (first, firstUnresolvedNames) = toPT ctx context first

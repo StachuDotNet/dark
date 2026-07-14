@@ -603,10 +603,7 @@ let private parsedType (tsrc : string) : WT.TypeReference =
 let private toPT (e : WT.Expr) : PT.Expr =
   let emptyBuiltins : RTT.Builtins = { values = Map.empty; fns = Map.empty }
   let ctx : WT2PT.Context =
-    { currentFnName = None
-      isInFunction = false
-      argMap = Map.empty
-      localBindings = Set.empty }
+    { currentFnName = None; argMap = Map.empty; localBindings = Set.empty }
   (WT2PT.Expr.toPT
     emptyBuiltins
     PT.PackageManager.empty
@@ -617,6 +614,31 @@ let private toPT (e : WT.Expr) : PT.Expr =
     e
    |> Ply.toTask)
     .Result
+
+let private toPTWithInModule
+  (currentModule : List<string>)
+  (pm : PT.PackageManager)
+  (context : WT2PT.Context)
+  (e : WT.Expr)
+  : PT.Expr =
+  let emptyBuiltins : RTT.Builtins = { values = Map.empty; fns = Map.empty }
+  (WT2PT.Expr.toPT
+    emptyBuiltins
+    pm
+    NR.OnMissing.Allow
+    PT.mainBranchId
+    currentModule
+    context
+    e
+   |> Ply.toTask)
+    .Result
+
+let private toPTWith
+  (pm : PT.PackageManager)
+  (context : WT2PT.Context)
+  (e : WT.Expr)
+  : PT.Expr =
+  toPTWithInModule [] pm context e
 
 /// WT2PT structural desugars (fused in from the old R→WT lowering).
 let private desugarTests =
@@ -664,6 +686,74 @@ let private desugarTests =
         match toPT (lowerExpr "MyType<Int64>.Case 1L") with
         | PT.EEnum(_, _, [ PT.TInt64 ], "Case", [ _ ]) -> ()
         | other -> failtest $"expected EEnum with one Int64 type arg, got: {other}") ]
+
+let private loweringRegressionTests =
+  let globalMapPM : PT.PackageManager =
+    { PT.PackageManager.empty with
+        findFn =
+          fun (_, _) ->
+            Prelude.uply { return Some(PT.FQFnName.package "global-map") } }
+  let context args locals : WT2PT.Context =
+    { currentFnName = Some [ "Darklang"; "Test"; "outer" ]
+      argMap = args
+      localBindings = locals }
+  testList
+    "lowering-regressions"
+    [ testCase "applied argument shadows a same-named package function" (fun _ ->
+        match
+          toPTWith
+            globalMapPM
+            (context (Map [ ("map", 0) ]) Set.empty)
+            (lowerExpr "map 1L")
+        with
+        | PT.EApply(_, PT.EArg(_, 0), _, _) -> ()
+        | other -> failtest $"expected argument callee, got {other}")
+      testCase "applied local shadows a same-named package function" (fun _ ->
+        match
+          toPTWith
+            globalMapPM
+            (context Map.empty (Set [ "map" ]))
+            (lowerExpr "map 1L")
+        with
+        | PT.EApply(_, PT.EVariable(_, "map"), _, _) -> ()
+        | other -> failtest $"expected local callee, got {other}")
+      testCase
+        "a lambda captures an enclosing argument before global resolution"
+        (fun _ ->
+          match
+            toPTWith
+              globalMapPM
+              (context (Map [ ("map", 0) ]) Set.empty)
+              (lowerExpr "fun x -> map x")
+          with
+          | PT.ELambda(_, _, PT.EApply(_, PT.EVariable(_, "map"), _, _)) -> ()
+          | other -> failtest $"expected captured argument callee, got {other}")
+      testCase
+        "same-named nested lambda preserves a package collision in its rhs"
+        (fun _ ->
+          let collisionContext : WT2PT.Context =
+            { currentFnName = Some [ "Darklang"; "Test"; "map" ]
+              argMap = Map.empty
+              localBindings = Set.empty }
+          match
+            toPTWithInModule
+              [ "Darklang"; "Test" ]
+              globalMapPM
+              collisionContext
+              (lowerExpr "let map = (fun x -> map x) in map 1L")
+          with
+          | PT.ELet(_, _, PT.ELambda(_, _, PT.EApply(_, PT.EFnName _, _, _)), _) ->
+            ()
+          | other -> failtest $"expected resolved package collision, got {other}")
+      testCase "pipe argument shadows a same-named package function" (fun _ ->
+        match
+          toPTWith
+            globalMapPM
+            (context (Map [ ("map", 0) ]) Set.empty)
+            (lowerExpr "1L |> map")
+        with
+        | PT.EPipe(_, _, [ PT.EPipeVariable(_, "map", []) ]) -> ()
+        | other -> failtest $"expected variable pipe segment, got {other}") ]
 
 /// Literal edge cases: min-magnitude wrap and exponent floats.
 let private literalTests =
@@ -1471,6 +1561,7 @@ let tests =
       offsideTests
       typeTests
       desugarTests
+      loweringRegressionTests
       literalTests
       recoveryTests
       lexicalFailureTests
