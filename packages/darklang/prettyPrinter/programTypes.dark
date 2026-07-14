@@ -825,11 +825,6 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
     // CLEANUP: consider making this a runtime error instead
     | None -> "ESelf"
 
-  // Unreachable in practice: format/round-trip callers reject parses with
-  // diagnostics before lowering, so a broken tree never reaches pretty-printing.
-  // Rendered visibly (not "" or a crash) in case one ever slips through.
-  | EError _id -> "<parse error>"
-
   // CLEANUP: remove this case before shipping to users
   | expr ->
     let s = Builtin.Json.serialize<LanguageTools.ProgramTypes.Expr> expr

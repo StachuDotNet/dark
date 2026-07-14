@@ -654,6 +654,10 @@ let private desugarTests =
         match toPT (fnBody "let f () : Unit =\n  foo ()\n  bar ()") with
         | PT.EStatement(_, PT.EApply _, PT.EApply _) -> ()
         | other -> failtest $"expected EStatement(a, b), got: {other}")
+      testCase "lowering rejects a WrittenTypes recovery hole" (fun _ ->
+        Expect.throws
+          (fun () -> toPT (WT.EError WT.synthRange) |> ignore<PT.Expr>)
+          "recovery holes must not enter ProgramTypes")
       testCase
         "normal and pipe lambdas drop blank placeholders consistently"
         (fun _ ->

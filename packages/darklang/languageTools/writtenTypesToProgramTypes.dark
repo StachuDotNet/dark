@@ -548,6 +548,8 @@ module Expr =
     : (ProgramTypes.Expr *
       List<WrittenTypes.UnresolvedName>)
     =
+    // Callers must reject parser diagnostics before lowering. EError is a
+    // WrittenTypes-only recovery hole and intentionally has no ProgramTypes form.
     match e with
     // simple
     | EUnit _ -> (ProgramTypes.Expr.EUnit(gid ()), [])
@@ -1060,14 +1062,6 @@ module Expr =
         Stdlib.List.flatten [ firstUnresolvedNames; nextUnresolvedNames ]
 
       (ProgramTypes.Expr.EStatement(gid (), first, next), unresolvedNames)
-
-    | EError _ ->
-      // a parse-error hole (recovery node), mirroring the F# lowering. Execution
-      // consumers gate on clean parses so this only survives for tooling.
-      (ProgramTypes.Expr.EError(gid ()), [])
-
-
-
 
 module ModuleDeclaration =
   let combineSubmodules

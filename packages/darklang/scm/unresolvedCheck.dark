@@ -154,7 +154,6 @@ let checkExpr (expr: LanguageTools.ProgramTypes.Expr) : List<String> =
     Stdlib.List.append (checkExpr first) (checkExpr next)
   | EUnit _
   | ESelf _
-  | EError _
   | EFloat (_id, _sign, _whole, _frac) -> []
   | EBool (_id, _v)
   | EInt8 (_id, _v)

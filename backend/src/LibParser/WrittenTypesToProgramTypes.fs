@@ -728,9 +728,10 @@ module Expr =
         let! next = toPT context next
         return PT.EStatement(gid (), first, next)
       | WT.EError _ ->
-        // Recovery node. Execution paths reject parses with diagnostics before
-        // lowering; if this reaches execution, PT2RT rejects it at the RT boundary.
-        return PT.EError(gid ())
+        return
+          Exception.raiseInternal
+            "parse-error hole (EError) reached lowering"
+            [ "hint", box "validate the WrittenTypes tree before lowering" ]
     }
 
   and stringSegmentToPT

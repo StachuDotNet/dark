@@ -583,9 +583,6 @@ module Expr =
     | ESelf id ->
       w.Write 33uy
       w.Write id
-    | EError id ->
-      w.Write 36uy
-      w.Write id
     | EArg(id, index) ->
       w.Write 34uy
       w.Write id
@@ -765,8 +762,8 @@ module Expr =
       let id = r.ReadUInt64()
       ESelf id
     | 36uy ->
-      let id = r.ReadUInt64()
-      EError id
+      raiseFormatError
+        "ProgramTypes Expr tag 36 is a legacy parse-recovery hole and cannot be loaded"
     | 34uy ->
       let id = r.ReadUInt64()
       let index = r.ReadInt32()
