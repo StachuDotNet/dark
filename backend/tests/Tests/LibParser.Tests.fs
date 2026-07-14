@@ -906,6 +906,7 @@ let private lexicalFailureTests =
       mustDiagnose "malformed float exponent (sign only)" "1.5e+"
       mustDiagnose "out-of-range Int64" "99999999999999999999L"
       mustDiagnose "out-of-range Int8" "9000y"
+      mustDiagnose "unterminated block comment" "(* never closed"
       mustDiagnose
         "multiple interpolation expressions"
         "$\"{1L\n2L}\""

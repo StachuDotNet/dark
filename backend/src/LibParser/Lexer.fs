@@ -341,6 +341,12 @@ let tokenize
   // `leadingTrivia`.
   let pendingTrivia = ResizeArray<Trivia>()
 
+  // Lexical diagnostics collected during recovery. Defined before trivia
+  // scanning so an unterminated block comment can report its own range.
+  let diagnostics = System.Collections.Generic.List<TokenRange * string>()
+  let addDiagnostic (range : TokenRange) (message : string) =
+    diagnostics.Add((range, message))
+
   let step (position : Pos) (character : char) : Pos =
     if character = '\n' then
       { row = position.row + 1; column = 0 }
@@ -395,7 +401,7 @@ let tokenize
       then
         // F#-style nestable block comment. `(*)` is the multiply operator
         // section, so it is excluded here.
-        let rec skipBlock (scanIndex : int) (commentDepth : int) : int =
+        let rec skipBlock (scanIndex : int) (commentDepth : int) : int * bool =
           if
             scanIndex + 1 < inputLength
             && input[scanIndex] = '('
@@ -407,18 +413,22 @@ let tokenize
             && input[scanIndex] = '*'
             && input[scanIndex + 1] = ')'
           then
-            if commentDepth = 0 then scanIndex + 2
-            else skipBlock (scanIndex + 2) (commentDepth - 1)
+            if commentDepth = 0 then
+              (scanIndex + 2, true)
+            else
+              skipBlock (scanIndex + 2) (commentDepth - 1)
           elif scanIndex >= inputLength then
-            scanIndex
+            (scanIndex, false)
           else
             skipBlock (scanIndex + 1) commentDepth
-        let endIndex = skipBlock (index + 2) 0
+        let (endIndex, closed) = skipBlock (index + 2) 0
+        let commentRange =
+          { start = position; end_ = advance position index endIndex }
         pendingTrivia.Add
           { kind = BlockComment
             text = input.Substring(index, endIndex - index)
-            range =
-              { start = position; end_ = advance position index endIndex } }
+            range = commentRange }
+        if not closed then addDiagnostic commentRange "unterminated block comment"
         skipTrivia endIndex (advance position index endIndex)
       else
         (index, position)
@@ -639,12 +649,6 @@ let tokenize
     match loop (if isTripleQuoted then startIndex + 4 else startIndex + 2) with
     | Ok endIndex -> Ok(TInterpString, endIndex)
     | Error message -> Error message
-
-  // Lexical diagnostics collected during recovery. The tokenizer keeps lexing so
-  // partial files still highlight, and malformed lexemes still get reported.
-  let diagnostics = System.Collections.Generic.List<TokenRange * string>()
-  let addDiagnostic (range : TokenRange) (message : string) =
-    diagnostics.Add((range, message))
 
   let rec go
     (index : int)
