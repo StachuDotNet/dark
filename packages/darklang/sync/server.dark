@@ -4,7 +4,7 @@ module Darklang.Sync.Server
 // Run with `dark serve Darklang.Sync.Server.router --port <N>` and expose it over your tailnet with
 // `dark devices serve <N>`.
 //
-// The wire is JSON — `Darklang.Sync.wireSince` (← `Stdlib.EventLog.readSince`): the serving Release, the batch's
+// The wire is JSON — `Darklang.Sync.wireSince` (← `Darklang.Sync.EventLog.readSince`): the serving Release, the batch's
 // commits, its events ((id, opBlobHex, branchId, commitHash, originTs) — the op_blob rides as hex), and the
 // cursor. Committed ops only (WIP stays local); one bounded batch per request. No .db files — ops over HTTP.
 //

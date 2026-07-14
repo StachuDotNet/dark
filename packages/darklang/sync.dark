@@ -3,20 +3,20 @@ module Darklang.Sync
 // Sync = replicate the op log over HTTP. A peer SERVES its committed events since a cursor (`wireSince`, the
 // `GET /sync/events?since=` body); a puller GETs them and appends them (folding happens invisibly). Everything
 // that crosses the wire is OPS — never a database file, never ATTACH. Sync owns no event mechanics: it's thin
-// policy (transport + per-peer cursors) on the general event-log seam, `Stdlib.EventLog`.
+// policy (transport + per-peer cursors) on the general event-log seam, `Darklang.Sync.EventLog`.
 
 /// The wire (JSON): the version handshake + one bounded batch from EACH synced log. `release` lets a puller
 /// refuse a peer on a different Dark release. `branchOps` (structure) is applied before `packageOps` (content)
 /// so package ops' branch_ids resolve on the receiver. Each log carries its own resume cursor.
 type Wire =
   { release: Int
-    branchEvents: List<Stdlib.EventLog.BranchOpEvent>
-    branchCursor: Stdlib.EventLog.Cursor
-    commits: List<Stdlib.EventLog.Commit>
-    packageEvents: List<Stdlib.EventLog.Event>
-    packageCursor: Stdlib.EventLog.Cursor
-    resolutionEvents: List<Stdlib.EventLog.ResolutionEvent>
-    resolutionCursor: Stdlib.EventLog.Cursor }
+    branchEvents: List<Darklang.Sync.EventLog.BranchOpEvent>
+    branchCursor: Darklang.Sync.EventLog.Cursor
+    commits: List<Darklang.Sync.EventLog.Commit>
+    packageEvents: List<Darklang.Sync.EventLog.Event>
+    packageCursor: Darklang.Sync.EventLog.Cursor
+    resolutionEvents: List<Darklang.Sync.EventLog.ResolutionEvent>
+    resolutionCursor: Darklang.Sync.EventLog.Cursor }
 
 /// The `GET /sync/events?package=<c>&branch=<c>&resolution=<c>` body: this instance's Release + one bounded
 /// batch from each log after the given cursors, as JSON. Served by `Sync.Server`, pulled by `Sync.pull`.
@@ -29,18 +29,18 @@ let wireSince
   // cursors until all come back empty. 1000 ops (~1 MB) balances round-trips against response size; the
   // native reads make even a whole log milliseconds, so the batch is for bounded responses + resumability.
   let branchBatch =
-    Stdlib.EventLog.readBranchOps
-      (Stdlib.EventLog.cursorFromInt branchCursor)
+    Darklang.Sync.EventLog.readBranchOps
+      (Darklang.Sync.EventLog.cursorFromInt branchCursor)
       1000L
 
   let pkgBatch =
-    Stdlib.EventLog.readSince
-      (Stdlib.EventLog.cursorFromInt packageCursor)
+    Darklang.Sync.EventLog.readSince
+      (Darklang.Sync.EventLog.cursorFromInt packageCursor)
       1000L
 
   let resolutionBatch =
-    Stdlib.EventLog.readResolutions
-      (Stdlib.EventLog.cursorFromInt resolutionCursor)
+    Darklang.Sync.EventLog.readResolutions
+      (Darklang.Sync.EventLog.cursorFromInt resolutionCursor)
       1000L
 
   // Wholesale sync: every committed branch/package/resolution op in the batch crosses the wire, so a branch is
@@ -204,13 +204,13 @@ let rec pullLoop
             if Stdlib.List.length w.branchEvents == 0 then
               0
             else
-              Stdlib.EventLog.appendBranchOps w.branchEvents
+              Darklang.Sync.EventLog.appendBranchOps w.branchEvents
 
           let packageApplied =
             if Stdlib.List.length w.packageEvents == 0 then
               0
             else
-              Stdlib.EventLog.append w.commits w.packageEvents
+              Darklang.Sync.EventLog.append w.commits w.packageEvents
 
           // Resolutions LAST — they overlay the folded bindings, so a peer's "keep mine" override wins and
           // converges. Each is idempotent + LWW-gated by its own `at`.
@@ -218,7 +218,7 @@ let rec pullLoop
             if Stdlib.List.length w.resolutionEvents == 0 then
               0
             else
-              Stdlib.EventLog.appendResolutions w.resolutionEvents
+              Darklang.Sync.EventLog.appendResolutions w.resolutionEvents
 
           if
             branchApplied < 0 || packageApplied < 0 || resolutionApplied < 0
@@ -226,11 +226,11 @@ let rec pullLoop
             Stdlib.Result.Result.Error
               $"{peer}: a database error applying ops — stopped without advancing the cursor (retries on the next pull)"
           else
-            let _ = setCursor peer "branch_ops" (Stdlib.EventLog.cursorToInt w.branchCursor)
-            let _ = setCursor peer "package_ops" (Stdlib.EventLog.cursorToInt w.packageCursor)
+            let _ = setCursor peer "branch_ops" (Darklang.Sync.EventLog.cursorToInt w.branchCursor)
+            let _ = setCursor peer "package_ops" (Darklang.Sync.EventLog.cursorToInt w.packageCursor)
 
             let _ =
-              setCursor peer "resolutions" (Stdlib.EventLog.cursorToInt w.resolutionCursor)
+              setCursor peer "resolutions" (Darklang.Sync.EventLog.cursorToInt w.resolutionCursor)
 
             let caughtUp =
               Stdlib.List.length w.branchEvents == 0
@@ -240,9 +240,9 @@ let rec pullLoop
             // A well-behaved peer that returns events moves at least one cursor strictly forward; if it
             // doesn't, it's replaying and we'd loop forever — stop.
             let advanced =
-              (Stdlib.EventLog.cursorToInt w.packageCursor) > pkgSent
-              || (Stdlib.EventLog.cursorToInt w.branchCursor) > branchSent
-              || (Stdlib.EventLog.cursorToInt w.resolutionCursor) > resSent
+              (Darklang.Sync.EventLog.cursorToInt w.packageCursor) > pkgSent
+              || (Darklang.Sync.EventLog.cursorToInt w.branchCursor) > branchSent
+              || (Darklang.Sync.EventLog.cursorToInt w.resolutionCursor) > resSent
 
             let total =
               applied + branchApplied + packageApplied + resolutionApplied
