@@ -1896,6 +1896,7 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
       let (p, k2) = parseLetPattern state k
       pats.Add p
       if k2 = k then k <- k + 1 else k <- k2
+    if pats.Count = 0 then errExpected state k "at least one lambda parameter"
     let (arrow, m) =
       if tok state k = TArrow then
         (rng state k, k + 1)
