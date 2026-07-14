@@ -95,10 +95,7 @@ let teardown (insts : List<Instance>) : unit =
 
 // ── helpers (build wire events, inspect projections, convert the JSON-ish wire) ───────────────────────
 
-let branchEventAt
-  (op : PT.BranchOp)
-  (originTs : string)
-  : string * byte[] * string =
+let branchEventAt (op : PT.BranchOp) (originTs : string) : string * byte[] * string =
   let (PT.Hash h) = Hashing.computeBranchOpHash op
   (h, BS.PT.BranchOp.serialize h op, originTs)
 

@@ -104,7 +104,8 @@ let writeRelease (n : int) : unit =
   Sql.query
     $"CREATE TABLE IF NOT EXISTS {releaseTable} (id INTEGER PRIMARY KEY, \"release\" INTEGER NOT NULL)"
   |> Sql.executeStatementSync
-  Sql.query $"INSERT OR REPLACE INTO {releaseTable} (id, \"release\") VALUES (0, @release)"
+  Sql.query
+    $"INSERT OR REPLACE INTO {releaseTable} (id, \"release\") VALUES (0, @release)"
   |> Sql.parameters [ "release", Sql.int64 (int64 n) ]
   |> Sql.executeStatementSync
 

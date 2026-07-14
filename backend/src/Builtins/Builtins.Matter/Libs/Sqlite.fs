@@ -126,7 +126,10 @@ let fns () : List<BuiltInFn> =
       typeParams = []
       parameters =
         [ Param.make "path" TString "the SQLite file to open"
-          Param.make "sql" TString "a statement to run (CREATE/INSERT/UPDATE/DELETE…)"
+          Param.make
+            "sql"
+            TString
+            "a statement to run (CREATE/INSERT/UPDATE/DELETE…)"
           Param.make
             "params"
             (TList TString)
@@ -164,7 +167,6 @@ let fns () : List<BuiltInFn> =
       sqlSpec = NotQueryable
       previewable = Impure
       capabilities = LibExecution.Capabilities.Needs.fileReadWrite
-      deprecated = NotDeprecated }
-  ]
+      deprecated = NotDeprecated } ]
 
 let builtins () = LibExecution.Builtin.make [] (fns ())

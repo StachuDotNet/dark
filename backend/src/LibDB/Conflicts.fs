@@ -176,7 +176,8 @@ let detectDivergences
       // a long-superseded SetName records a phantom conflict (curBinding is the newer winner, so it looks
       // divergent) that surfaces in `dark conflicts` though nothing actually changed.
       let! applied =
-        Sql.query "SELECT applied FROM package_ops WHERE id = @id AND branch_id = @branchID"
+        Sql.query
+          "SELECT applied FROM package_ops WHERE id = @id AND branch_id = @branchID"
         |> Sql.parameters [ "id", Sql.uuid opId; "branchID", Sql.uuid branchId ]
         |> Sql.executeRowOptionAsync (fun read -> read.int64 "applied")
 
