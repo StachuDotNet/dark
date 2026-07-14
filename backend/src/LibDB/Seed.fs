@@ -9,9 +9,9 @@
 /// On CLI startup the grow step runs automatically — if everything is already
 /// applied it's a single fast SELECT COUNT and returns immediately.
 ///
-/// This module is also the home of **ops ⊥ projections**: the op log
-/// (`package_ops`) is canonical; the package tables (functions/types/values,
-/// locations, dependencies, deprecations) are regenerable *projections* folded
+/// The op log (`package_ops`) is canonical; the package tables
+/// (functions/types/values, locations, dependencies, deprecations) are
+/// regenerable projections folded
 /// from it (`projectionTables`). `applyUnappliedOps` folds pending ops (append
 /// and fold are separable — the `applied` flag is the seam); `rebuildProjections`
 /// drops the projections, marks every op unapplied, and re-folds → byte-identical
@@ -472,8 +472,8 @@ let projectionTables : List<string> =
     "package_dependencies"
     "deprecations" ]
 
-/// ops⊥projections: drop every projection table and re-fold the whole `package_ops` log to rebuild them.
-/// Projections are regenerable from the ops (the ops⊥projections split) — losing one costs only the CPU to
+/// Drop every projection table and re-fold the whole `package_ops` log to rebuild them.
+/// Projections are regenerable from the ops — losing one costs only the CPU to
 /// re-fold; the op log is the canonical durable state and is never touched here. This is the schema-change /
 /// durable-canon path (drop projections, re-fold). Returns the count of ops re-applied.
 let rebuildProjections () : Task<int64> =
