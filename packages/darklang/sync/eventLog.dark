@@ -1,4 +1,4 @@
-module Darklang.Stdlib.EventLog
+module Darklang.Sync.EventLog
 
 // The native read/append API over the three op-log tables (`package_ops`, `branch_ops`, `resolutions`).
 // Read the events SINCE a cursor (a peer serves them; the events come back as a filterable Stream), and

@@ -202,9 +202,11 @@ module BaseClient =
               // Use this to hide more specific errors when looking at loopback
               Exception.raiseInternal "Could not connect" []
 
-            // Create the socket with the resolved IP's address family (v4 vs v6). The 2-arg ctor defaults
-            // to IPv6, which only reaches an IPv4 literal (e.g. 127.0.0.1) when the host has IPv6 dual-mode
-            // — absent in some containers, giving a NetworkError. Matching the family connects either way.
+            // Create the socket with the resolved IP's address family (v4 vs v6).
+            // The 2-arg ctor defaults to IPv6, which only reaches an IPv4 literal
+            // (e.g. 127.0.0.1) when the host has IPv6 dual-mode
+            // — absent in some containers, giving a NetworkError.
+            // Matching the family connects either way.
             let socket =
               new System.Net.Sockets.Socket(
                 ips[0].AddressFamily,
