@@ -873,7 +873,30 @@ let private typeTests =
 let private recoveryTests =
   testList
     "recovery"
-    [ testCase "empty record update `{ r with }` is rejected" (fun _ ->
+    [ testCase "reserved expression syntax diagnoses explicitly" (fun _ ->
+        for source in [ "<<"; ">>"; "&"; "|||"; "~~~"; "!"; "..." ] do
+          Expect.exists
+            (P.parse source).diagnostics
+            (fun diagnostic ->
+              diagnostic.message.Contains "reserved but not supported")
+            $"unsupported diagnostic for {source}")
+
+      testCase "rest patterns diagnose explicitly" (fun _ ->
+        Expect.exists
+          (P.parse "match xs with | ... -> xs").diagnostics
+          (fun diagnostic ->
+            diagnostic.message.Contains
+              "rest patterns are reserved but not supported")
+          "unsupported rest-pattern diagnostic")
+
+      testCase "def remains an ordinary identifier" (fun _ ->
+        let result = P.parse "def"
+        Expect.isEmpty result.diagnostics "def is not reserved"
+        match result.parsed with
+        | Some(WT.SourceFile { exprsToEval = [ WT.EVariable(_, "def") ] }) -> ()
+        | other -> failtest $"unexpected def parse: {other}")
+
+      testCase "empty record update `{ r with }` is rejected" (fun _ ->
         // an empty update lowers to a degenerate node in both WT2PTs — reject it
         Expect.isNonEmpty
           (P.parse "{ x with }").diagnostics

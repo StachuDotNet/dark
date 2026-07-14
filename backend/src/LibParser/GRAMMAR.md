@@ -101,6 +101,11 @@ Loosest to tightest; one table (`infixBindingPower`) drives the parser.
 | 7 | `^` | right | exponentiation (`2^3^2 = 2^(3^2)`) |
 | 8 | application `f a b` | left | tightest |
 
+`<<`, `>>`, `&`, `|||`, `~~~`, `!`, and `...` are reserved tokens but are not
+supported expression operators. `...` is also reserved for unsupported rest
+patterns. These forms produce an unsupported-syntax diagnostic. `def` is not
+reserved and lexes as a normal identifier.
+
 Operator sections `(op)` are two-arg lambdas.
 
 `x |> (op) y` means `x op y`; the piped value is the *left* operand.

@@ -41,7 +41,6 @@ type Token =
   | TElif // elif
   | TThen // then
   | TElse // else
-  | TDef // def (function definition)
   | TType // type (type definition)
   | TCons // :: (list cons pattern)
   | TColon // : (type annotation)

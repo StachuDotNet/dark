@@ -103,7 +103,6 @@ let private isIntLit (t : Token) : bool =
   | TElif
   | TThen
   | TElse
-  | TDef
   | TType
   | TCons
   | TColon
@@ -1155,6 +1154,15 @@ and parsePatternBaseInner (state : ParserState) (i : int) : WT.MatchPattern * in
        ),
        k)
   | TIdent name -> (WT.MPVariable(rng state i, name), i + 1)
+  // TODO: Support `...` list rest patterns once WrittenTypes and ProgramTypes
+  // represent their binding and matching semantics.
+  | TDotDotDot ->
+    err
+      state
+      DiagnosticCode.unexpected
+      i
+      "'...' rest patterns are reserved but not supported"
+    (WT.MPError(rng state i), i + 1)
   | _ ->
     errExpected state i "a pattern"
     // recovery: an explicit error-hole node; leave closing/separating/decl-start
@@ -1994,6 +2002,21 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
         { range = z; modules = []; typ = { range = z; name = "" }; typeArgs = [] }
       parseRecord state emptyType (rng state i) i
     | _ -> parseRecordUpdate state i
+  // TODO: Support these reserved operators once their precedence and
+  // polymorphic numeric/Bool dispatch are defined end to end.
+  | TShl
+  | TShr
+  | TBitAnd
+  | TBitOr
+  | TBitNot
+  | TNot
+  | TDotDotDot ->
+    err
+      state
+      DiagnosticCode.unexpected
+      i
+      $"'{txt state i}' is reserved but not supported by the expression grammar"
+    (WT.EError(rng state i), i + 1)
   | _ ->
     errExpected state i "an expression"
     // recovery: an explicit error-hole node; leave closing/separating/decl-start
