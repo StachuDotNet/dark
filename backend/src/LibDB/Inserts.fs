@@ -470,7 +470,20 @@ and commitWipOpsByIds
           let projStmts =
             projectionStatements commitHashStr branchId allSelected selectedOps
 
-          let statements = [ branchOpStmt; commitStmt ] @ projStmts
+          // Stamp each committed op with a monotonic COMMIT-order `committed_seq`, so sync (`eventsSince`)
+          // pages by commit order, not authoring order (rowid). Single-writer SCM, so MAX+i is race-free.
+          let! seqBase =
+            Sql.query "SELECT COALESCE(MAX(committed_seq), 0) AS m FROM package_ops"
+            |> Sql.executeRowAsync (fun read -> read.int64 "m")
+          let seqStmts =
+            selectedOps
+            |> List.mapi (fun i (opId, _) ->
+              ("UPDATE package_ops SET committed_seq = @seq WHERE id = @id AND branch_id = @branch_id",
+               [ [ "seq", Sql.int64 (seqBase + int64 (i + 1))
+                   "id", Sql.uuid opId
+                   "branch_id", Sql.uuid branchId ] ]))
+
+          let statements = [ branchOpStmt; commitStmt ] @ projStmts @ seqStmts
 
           let _ = Sql.executeTransactionSync statements
 

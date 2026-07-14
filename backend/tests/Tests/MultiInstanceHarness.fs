@@ -167,10 +167,10 @@ let twoFunctionHashes () : Task<string * string> =
     | _ -> return Exception.raiseInternal "seed needs >= 2 functions" []
   }
 
-/// The active instance's current op-log high-water mark, so a later `eventsSince` returns only NEW ops
-/// (not the whole seed).
+/// The active instance's current sync high-water mark (max `committed_seq` — the coordinate `eventsSince`
+/// pages by), so a later `eventsSince` returns only NEW committed ops (not the whole seed).
 let currentCursor () : Task<int64> =
-  Sql.query "SELECT COALESCE(MAX(rowid), 0) AS c FROM package_ops"
+  Sql.query "SELECT COALESCE(MAX(committed_seq), 0) AS c FROM package_ops"
   |> Sql.executeRowAsync (fun read -> read.int64 "c")
 
 /// The count of unreviewed conflicts recorded on the active instance.
