@@ -130,8 +130,8 @@ let applyToLocations (r : Resolution) : Task<unit> =
         Sql.query
           """
           INSERT INTO locations
-            (location_id, item_hash, owner, modules, name, item_type, branch_id, commit_hash, origin_ts)
-          VALUES (@lid, @hash, @owner, @modules, @name, @itemType, @branchID, NULL, @at)
+            (location_id, item_hash, owner, modules, name, item_type, branch_id, commit_hash, origin_ts, source)
+          VALUES (@lid, @hash, @owner, @modules, @name, @itemType, @branchID, NULL, @at, 'resolution')
           """
         |> Sql.parameters
           [ "lid", Sql.string (System.Guid.NewGuid() |> string)

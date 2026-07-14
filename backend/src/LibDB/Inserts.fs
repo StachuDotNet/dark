@@ -625,6 +625,7 @@ let discardWipOps (branchId : PT.BranchId) : Task<Result<int64, string>> =
                  AND committed_loc.unlisted_at IS NOT NULL
                WHERE wip_loc.branch_id = @branch_id
                  AND wip_loc.commit_hash IS NULL
+                 AND wip_loc.source <> 'resolution'
                  AND NOT EXISTS (
                    SELECT 1 FROM locations active
                    WHERE active.owner = wip_loc.owner
@@ -650,7 +651,8 @@ let discardWipOps (branchId : PT.BranchId) : Task<Result<int64, string>> =
              """,
              branchParam)
 
-            ("DELETE FROM locations WHERE branch_id = @branch_id AND commit_hash IS NULL",
+            ("DELETE FROM locations WHERE branch_id = @branch_id AND commit_hash IS NULL \
+              AND source <> 'resolution'",
              branchParam)
 
             ("DELETE FROM deprecations WHERE branch_id = @branch_id AND commit_hash IS NULL",

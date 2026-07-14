@@ -348,6 +348,14 @@ let private applySetName
       // never ties — `Inserts` self-stamps each op with a strictly-increasing origin_ts.
       | Some(curHash, Some curTs), Some t when curHash <> itemHashStr ->
         Lww.isStale t itemHashStr curTs curHash
+      // Same content re-applied (a re-pull, or two instances that independently authored identical bytes for
+      // this name): keep the EARLIEST origin_ts so the binding's stamp is identical on every instance
+      // regardless of fold/arrival order. Skip unless this op is strictly earlier (then re-bind to lower it).
+      // Without this the fold would re-stamp the binding with a LATER equal-hash op, and a different-hash op
+      // stamped between the two could then win on one instance and lose on another → divergence. (receiveOps'
+      // MIN-reconcile already keeps ops from arriving with a raised stamp; this makes the fold correct on its
+      // own, for any caller.)
+      | Some(curHash, Some curTs), Some t when curHash = itemHashStr -> t >= curTs
       | _ -> false
 
     if isStale then
