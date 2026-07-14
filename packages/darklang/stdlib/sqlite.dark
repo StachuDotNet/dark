@@ -28,13 +28,23 @@ let asInt (v: Value) : Stdlib.Option.Option<Int64> =
 /// Run a statement (CREATE/INSERT/UPDATE/DELETE/DDL) against the SQLite file at
 /// <param dbPath>; returns the number of rows affected. Users call this, not the
 /// raw builtin.
-let exec (dbPath: String) (sql: String) : Stdlib.Result.Result<Int, String> =
-  Builtin.sqliteExec dbPath sql
-
 /// Like <fn exec> but binds <param params> to @p0..@pN placeholders in <param sql>,
-/// so values are never string-spliced into SQL (injection-safe).
+/// so values are never string-spliced into SQL (injection-safe). The single caller of the exec builtin —
+/// <fn exec> delegates here — so the builtin keeps exactly one package reference.
 let execP (dbPath: String) (sql: String) (params: List<String>) : Stdlib.Result.Result<Int, String> =
-  Builtin.sqliteExecP dbPath sql params
+  Builtin.sqliteExec dbPath sql params
+
+let exec (dbPath: String) (sql: String) : Stdlib.Result.Result<Int, String> =
+  execP dbPath sql []
+
+/// Like <fn query> but binds <param params> to @p0..@pN placeholders (injection-safe). The single caller of
+/// the query builtin — <fn query> delegates here.
+let queryP
+  (dbPath: String)
+  (sql: String)
+  (params: List<String>)
+  : Stdlib.Result.Result<List<Dict<Value>>, String> =
+  Builtin.sqliteQuery dbPath sql params
 
 /// Run a SELECT against <param dbPath>; returns each row as a dict of column name
 /// to a typed <type Value> (so ints/reals/blobs keep their types).
@@ -42,15 +52,7 @@ let query
   (dbPath: String)
   (sql: String)
   : Stdlib.Result.Result<List<Dict<Value>>, String> =
-  Builtin.sqliteQuery dbPath sql
-
-/// Like <fn query> but binds <param params> to @p0..@pN placeholders (injection-safe).
-let queryP
-  (dbPath: String)
-  (sql: String)
-  (params: List<String>)
-  : Stdlib.Result.Result<List<Dict<Value>>, String> =
-  Builtin.sqliteQueryP dbPath sql params
+  queryP dbPath sql []
 
 
 // ── convenience layer (pure Dark on top of exec/query) ──────────────────────────────────────────────
