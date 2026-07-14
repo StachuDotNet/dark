@@ -41,8 +41,8 @@ let private fromB64 (s : string) : Cap.Capabilities =
 let get (hash : string) : Task<Option<Cap.Capabilities>> =
   task {
     let! rows =
-      Sql.query "SELECT caps FROM package_caps WHERE hash = @h"
-      |> Sql.parameters [ "h", Sql.string hash ]
+      Sql.query "SELECT caps FROM package_caps WHERE hash = @hash"
+      |> Sql.parameters [ "hash", Sql.string hash ]
       |> Sql.executeAsync (fun read -> read.string "caps")
 
     match rows with
@@ -54,8 +54,8 @@ let get (hash : string) : Task<Option<Cap.Capabilities>> =
 /// Cache a fn's computed caps. Write-once (re-inserting the same hash is a no-op).
 let put (hash : string) (caps : Cap.Capabilities) : Task<unit> =
   Sql.query
-    "INSERT INTO package_caps (hash, caps) VALUES (@h, @c) ON CONFLICT(hash) DO NOTHING"
-  |> Sql.parameters [ "h", Sql.string hash; "c", Sql.string (toB64 caps) ]
+    "INSERT INTO package_caps (hash, caps) VALUES (@hash, @caps) ON CONFLICT(hash) DO NOTHING"
+  |> Sql.parameters [ "hash", Sql.string hash; "caps", Sql.string (toB64 caps) ]
   |> Sql.executeStatementAsync
 
 
