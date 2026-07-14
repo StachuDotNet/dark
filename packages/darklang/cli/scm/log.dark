@@ -28,8 +28,6 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
       let isAncestor = commitBranchId != currentBranchIdStr && commitBranchId != ""
 
-      // Show the committer — the account that authored the commit (resolved from accounts, synced across
-      // instances), so on a shared/multi-user tailnet you can see WHO made each change, not just what + when.
       if isAncestor then
         Stdlib.printLine $"{Cli.Colors.dim}{id}  {createdAt}  {c.committerName}  ({opCount} ops)  [{c.branchName}]{Cli.Colors.reset}"
         Stdlib.printLine $"{Cli.Colors.dim}    {c.message}{Cli.Colors.reset}"
