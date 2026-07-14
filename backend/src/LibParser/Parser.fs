@@ -2747,6 +2747,8 @@ and parseItemsBody
              parseItems state true (nk + 1) (moduleCol + 1)
            else
              parseItems state true nk minCol
+         if tok state nk = TEquals && List.isEmpty mdecls && List.isEmpty mexprs then
+           errExpected state (nk + 1) "an indented module body"
          // A module's trailing expressions belong to the module (as `DExpr`
          // declarations), not the enclosing scope — so they pretty-print nested.
          // span the whole module (header through last child), like other decls —

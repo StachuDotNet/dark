@@ -905,6 +905,7 @@ let private lexicalFailureTests =
       mustDiagnose "bad expression inside interpolation" "$\"{1L +++ 2L}\""
       mustDiagnose "empty match" "match x with"
       mustDiagnose "empty lambda parameter list" "fun -> 1L"
+      mustDiagnose "empty module body" "module X =\nlet y = 1L"
       mustDiagnose "malformed float exponent (no digits)" "1e"
       mustDiagnose "malformed float exponent (sign only)" "1.5e+"
       mustDiagnose "oversized float exponent" "1e401"
