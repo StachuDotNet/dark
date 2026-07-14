@@ -1858,7 +1858,9 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
       // position, so a constructor used as an ARGUMENT (`f None (g)`) stays nullary
       // instead of over-grabbing its sibling arg.
       let endR =
-        if fields.Count > 0 then WT.exprRange (Seq.last fields) else final.range
+        if tok state j = TLParen && k > j then rng state (k - 1)
+        elif fields.Count > 0 then WT.exprRange (Seq.last fields)
+        else final.range
       (WT.EEnum(
         span (rng state i) endR,
         typeName,

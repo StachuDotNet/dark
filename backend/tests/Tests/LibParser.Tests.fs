@@ -291,6 +291,15 @@ let private parserStructureTests =
           Expect.equal (List.length typeName.modules) 2 "two module segments"
         | other -> failtest $"qualified ctor: {other}")
 
+      testCase "parenthesized constructor range includes closing parenthesis" (fun _ ->
+        match (P.parse "Pair(1L, 2L)").parsed with
+        | Some(WT.SourceFile { exprsToEval = [ expression ] }) ->
+          Expect.equal
+            (WT.exprRange expression).end_.column
+            12
+            "range ends after ')'"
+        | other -> failtest $"unexpected constructor: {other}")
+
       testCase "parses match (enum / cons / or patterns)" (fun _ ->
         match (P.parse "match x with | Ok v -> v | Error e -> e").parsed with
         | Some(WT.SourceFile { exprsToEval = [ WT.EMatch(_, _, cases, _, _) ] }) ->
