@@ -905,6 +905,7 @@ let private lexicalFailureTests =
       mustDiagnose "bad expression inside interpolation" "$\"{1L +++ 2L}\""
       mustDiagnose "malformed float exponent (no digits)" "1e"
       mustDiagnose "malformed float exponent (sign only)" "1.5e+"
+      mustDiagnose "oversized float exponent" "1e401"
       mustDiagnose "out-of-range Int64" "99999999999999999999L"
       mustDiagnose "out-of-range Int8" "9000y"
       mustDiagnose "unterminated block comment" "(* never closed"

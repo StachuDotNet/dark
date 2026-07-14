@@ -388,10 +388,24 @@ let floatParts (state : ParserState) (i : int) (v : float) : string * string =
     let (mant, exp) =
       match t.Split([| 'e'; 'E' |]) with
       | [| m; e |] ->
-        (m,
-         (match System.Int32.TryParse e with
-          | true, x -> max -400 (min 400 x)
-          | _ -> 0))
+        let exponent =
+          match System.Int32.TryParse e with
+          | true, x when x >= -400 && x <= 400 -> x
+          | true, x ->
+            err
+              state
+              DiagnosticCode.intRange
+              i
+              $"Float exponent {x} is outside the supported range -400..400"
+            max -400 (min 400 x)
+          | _ ->
+            err
+              state
+              DiagnosticCode.intRange
+              i
+              "Float exponent is too large to represent"
+            0
+        (m, exponent)
       | _ -> (t, 0)
     let (w, f) =
       match mant.Split('.') with
