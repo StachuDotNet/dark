@@ -1,9 +1,10 @@
 /// Raw SQLite access from Darklang — the `Stdlib.Sqlite` floor primitive that lets sync/SCM policy live in
 /// Dark over an ordinary database, plus the native op-log read/append + blob-channel builtins sync rides on.
 ///
-/// Surface: `sqliteExec`/`sqliteQuery` (no params) and `sqliteExecP`/`sqliteQueryP` (positional params bound
-/// to @p0..@pN — the injection-safe way to pass values). `exec` returns rows affected; `query` returns each
-/// row as `Dict<String>` (cells stringified so the row is homogeneous).
+/// Surface: `sqliteExec` (DDL/DML → rows affected) and `sqliteQuery` (SELECT → each row as a typed
+/// `Dict<Value>`), each taking a `params` list bound to @p0..@pN (injection-safe; [] for none). The `.dark`
+/// `Stdlib.Sqlite.exec/execP/query/queryP` wrappers layer the with/without-params convenience on top, so
+/// there's one builtin per operation rather than four.
 ///
 /// The `sqlite*` builtins open a caller-supplied file path, so they declare `Needs.fileReadWrite` (the CLI host
 /// grants it; untrusted `dark run` under a narrowed grant is denied). They still don't scope to a SPECIFIC
@@ -224,35 +225,21 @@ let private warnSkippedSyncRow (kind : string) : unit =
   )
 
 let fns () : List<BuiltInFn> =
+  // Two raw-SQLite primitives — exec (DDL/DML) and query (SELECT) — each binding @p0..@pN params
+  // (injection-safe; pass [] for none). The `.dark` Stdlib.Sqlite.exec/execP/query/queryP wrappers layer the
+  // with-params / without-params convenience on top, so there's one builtin per operation rather than four.
   [ { name = fn "sqliteExec" 0
       typeParams = []
       parameters =
         [ Param.make "path" TString "the SQLite file to open"
+          Param.make "sql" TString "a statement to run (CREATE/INSERT/UPDATE/DELETE…)"
           Param.make
-            "sql"
-            TString
-            "a statement to run (CREATE/INSERT/UPDATE/DELETE…)" ]
+            "params"
+            (TList TString)
+            "values bound to @p0..@pN placeholders, in order (injection-safe); [] for none" ]
       returnType = TypeReference.result TInt TString
       description =
-        "Opens the SQLite file at <param path> and runs <param sql>. Ok = rows affected; Error = the SQLite message. Never throws."
-      fn =
-        (function
-        | _, _, _, [ DString path; DString sql ] -> execImpl path sql []
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.Needs.fileReadWrite
-      deprecated = NotDeprecated }
-
-    { name = fn "sqliteExecP" 0
-      typeParams = []
-      parameters =
-        [ Param.make "path" TString "the SQLite file to open"
-          Param.make "sql" TString "a statement with @p0..@pN placeholders"
-          Param.make "params" (TList TString) "values bound to @p0..@pN, in order" ]
-      returnType = TypeReference.result TInt TString
-      description =
-        "Like <fn sqliteExec> but binds <param params> to @p0..@pN placeholders (injection-safe). Ok = rows affected; Error = message."
+        "Opens the SQLite file at <param path> and runs <param sql>, binding <param params> to @p0..@pN placeholders (injection-safe; pass [] for none). Ok = rows affected; Error = the SQLite message. Never throws."
       fn =
         (function
         | _, _, _, [ DString path; DString sql; DList(_, ps) ] ->
@@ -267,29 +254,14 @@ let fns () : List<BuiltInFn> =
       typeParams = []
       parameters =
         [ Param.make "path" TString "the SQLite file to open"
-          Param.make "sql" TString "a SELECT to run" ]
+          Param.make "sql" TString "a SELECT to run"
+          Param.make
+            "params"
+            (TList TString)
+            "values bound to @p0..@pN placeholders, in order (injection-safe); [] for none" ]
       returnType = TypeReference.result (TList(TDict Value.typeRef)) TString
       description =
-        "Opens the SQLite file at <param path> and runs the SELECT <param sql>. Ok = each row as a dict of "
-        + "column-name to its typed value; Error = the SQLite message. Never throws."
-      fn =
-        (function
-        | _, _, _, [ DString path; DString sql ] -> queryImpl path sql []
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.Needs.fileReadWrite
-      deprecated = NotDeprecated }
-
-    { name = fn "sqliteQueryP" 0
-      typeParams = []
-      parameters =
-        [ Param.make "path" TString "the SQLite file to open"
-          Param.make "sql" TString "a SELECT with @p0..@pN placeholders"
-          Param.make "params" (TList TString) "values bound to @p0..@pN, in order" ]
-      returnType = TypeReference.result (TList(TDict Value.typeRef)) TString
-      description =
-        "Like <fn sqliteQuery> but binds <param params> to @p0..@pN placeholders (injection-safe). Ok = rows; Error = message."
+        "Opens the SQLite file at <param path> and runs the SELECT <param sql>, binding <param params> to @p0..@pN placeholders (injection-safe; pass [] for none). Ok = each row as a dict of column-name to its typed value; Error = the SQLite message. Never throws."
       fn =
         (function
         | _, _, _, [ DString path; DString sql; DList(_, ps) ] ->
