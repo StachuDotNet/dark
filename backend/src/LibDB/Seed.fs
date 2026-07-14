@@ -1,23 +1,14 @@
 /// Package seed: extract and grow.
 ///
-/// A seed is a copy of data.db with projection tables emptied and ops marked
-/// unapplied. It has the full schema so it can be used directly as a data.db.
+/// A seed is a copy of data.db with the projection tables emptied and its ops marked unapplied (it carries
+/// the full schema, so it works directly as a data.db). Export copies data.db, strips derived data, VACUUMs;
+/// grow folds the unapplied ops back into the projections + evaluates values — runs on CLI startup, a single
+/// SELECT COUNT when nothing's pending.
 ///
-/// Export ("extract"): copy data.db, strip derived data, VACUUM.
-/// Grow: apply unapplied ops to rebuild projection tables, evaluate values.
-///
-/// On CLI startup the grow step runs automatically — if everything is already
-/// applied it's a single fast SELECT COUNT and returns immediately.
-///
-/// The op log (`package_ops`) is canonical; the package tables
-/// (functions/types/values, locations, dependencies, deprecations) are
-/// regenerable projections folded
-/// from it (`projectionTables`). `applyUnappliedOps` folds pending ops (append
-/// and fold are separable — the `applied` flag is the seam); `rebuildProjections`
-/// drops the projections, marks every op unapplied, and re-folds → byte-identical
-/// tables. This is what makes a schema change safe (drop projections, re-fold —
-/// the op log is never touched: "durable-canon") and lets a synced peer's ops
-/// fold in like any local edit.
+/// The op log (`package_ops`) is canonical; the package tables are regenerable projections folded from it.
+/// `applyUnappliedOps` folds pending ops (the `applied` flag is the append/fold seam); `rebuildProjections`
+/// drops the projections, marks every op unapplied, and re-folds. So a schema change is safe (drop + re-fold,
+/// never touching the log) and a synced peer's ops fold in like a local edit.
 module LibDB.Seed
 
 open System.Threading.Tasks
@@ -128,10 +119,8 @@ let applyUnappliedOps () : Task<int64> =
         SELECT id, op_blob, branch_id, commit_hash
         FROM package_ops
         WHERE applied = 0
-        -- rowid (insertion order) is the deterministic tiebreak: created_at is second-resolution, so a
-        -- batch's ops share it and ordering by created_at alone leaves same-second ops in an unspecified
-        -- order. The fold's final state is order-independent for the cases that matter (SetName resolves by
-        -- origin_ts; AddFn is by-hash), but a deterministic replay order keeps re-folds byte-identical.
+        -- rowid breaks ties: created_at is second-resolution so a batch's ops share it. The fold's final
+        -- state is order-independent, but a deterministic replay order keeps re-folds byte-identical.
         ORDER BY created_at ASC, rowid ASC
         """
         |> Sql.executeAsync (fun read ->
@@ -151,25 +140,13 @@ let applyUnappliedOps () : Task<int64> =
             (branchId, commitHash))
           |> Map.toList
 
-        // Bulk cold-start path: open one connection, run all groups + the
-        // applied=1 sweep inside a single transaction with synchronous=OFF.
-        // For 9000+ ops this turns ~20k individual WAL commits into one and
-        // takes the apply phase from ~5s to well under a second. Crash
-        // safety isn't a concern here: an aborted run leaves applied=0 on
-        // the same ops, and the next boot replays them. Replay isn't strictly
-        // idempotent (location_id / deprecation_id come from Guid.NewGuid()
-        // so a partial-then-replay produces distinct rows for the same op)
-        // but the final-state projection is equivalent — pre-existing rows
-        // from the crashed run keep unlisted_at=NULL and get superseded by
-        // the replay's fresh inserts the same way a normal re-add would.
-        //
-        // FK enforcement is disabled for the duration. Microsoft.Data.Sqlite
-        // defaults `Foreign Keys=True` on the connection string; with that
-        // on, replaying ops in any order other than perfect topological
-        // tripped FK violations (locations referencing branches that arrive
-        // later in the batch, etc.). Standard bulk-load practice in SQLite
-        // is OFF-bulk-load-CHECK; we run `PRAGMA foreign_key_check` after
-        // commit and fail loudly if any actual violations were introduced.
+        // Apply every group + the applied=1 sweep in ONE transaction with synchronous=OFF: for 9000+ ops
+        // this collapses ~20k WAL commits into one (apply phase ~5s → sub-second). Not crash-safe by design —
+        // an aborted run leaves applied=0 and the next boot replays; replay isn't byte-idempotent (fresh Guid
+        // ids) but the final projection is equivalent (crashed-run rows get superseded like a normal re-add).
+        // FK enforcement is off for the load — replaying ops out of topological order trips FKs (e.g. a
+        // location before the branch it references) — so we `PRAGMA foreign_key_check` after commit and fail
+        // loudly on any real violation.
         use conn = new SqliteConnection(LibDB.Sqlite.connString)
         do! conn.OpenAsync()
         let runRaw (sql : string) : Task<unit> =
@@ -257,11 +234,9 @@ let applyUnappliedOps () : Task<int64> =
   }
 
 
-/// The committed events after `cursor` from this instance's own log (≤ `limit`), the commits they
-/// reference, and the new cursor (max rowid in the batch, or `cursor` if nothing is new). Exactly what a
-/// peer serves — the READ half of the event-log seam. Native (F#) so serving a large batch doesn't pay
-/// per-row interpreter overhead (a Dark `List.map` + `Dict.get` over thousands of rows is seconds; this
-/// is milliseconds). Each event is (id, opBlobHex, branchId, commitHash, originTs); each commit is
+/// The committed events after `cursor` (≤ `limit`), the commits they reference, and the new cursor (max
+/// rowid, or `cursor` if nothing new) — what a peer serves. Native so a large batch is milliseconds, not the
+/// seconds a per-row Dark fold would cost. Event = (id, opBlobHex, branchId, commitHash, originTs); commit =
 /// (hash, message, branchId, accountId, createdAt).
 let eventsSince
   (cursor : int64)
@@ -313,11 +288,9 @@ let eventsSince
     return (commits, events, newCursor)
   }
 
-/// The branch ops after <param cursor> from this instance's `branch_ops` log, as (id, opBlob-as-hex, originTs)
-/// triples, plus the new cursor (max rowid, or <param cursor> if nothing new). Branch ops carry their own
-/// structure (branch, commit, merge, …) inside the blob, so — unlike package events — they need no side
-/// metadata beyond the authoring stamp. Ordered by rowid so a receiver applies them in the same order
-/// (CreateBranch before dependent ops).
+/// The branch ops after `cursor` as (id, opBlobHex, originTs) + the new cursor. Branch ops carry their
+/// structure (branch/commit/merge/…) in the blob, so — unlike package events — they need no side metadata
+/// beyond the authoring stamp. Ordered by rowid so a receiver applies them in order (CreateBranch first).
 let branchOpsSince
   (cursor : int64)
   (limit : int64)
@@ -370,13 +343,11 @@ let receiveBranchOps (events : List<string * byte[] * string>) : Task<int64> =
     return applied
   }
 
-/// Append events RECEIVED from a peer (over HTTP) into the local op log, then fold them into the
-/// projections — the general event-log append (`Builtin.appendEvents`). Unlike `insertAndApplyOps`
-/// (the LOCAL-authoring path, which stamps a fresh `nextOriginTs`), this PRESERVES each op's original
-/// `origin_ts` — essential for the timestamp-LWW to converge the same on every instance regardless of
-/// arrival order. Idempotent: `INSERT OR IGNORE` on the content-addressed id, and only unapplied ops
-/// fold. Returns the number of ops NEWLY applied (INSERT OR IGNORE skips already-present ones), so a puller
-/// reports the real change count. Folding stays here (F#) — invisible to Dark.
+/// Append peer-received events into the local op log, then fold them into the projections. Unlike the
+/// local-authoring path, this PRESERVES each op's original `origin_ts` — the timestamp-LWW needs it to
+/// converge the same on every instance regardless of arrival order. Idempotent (`INSERT OR IGNORE` on the
+/// content-addressed id; only unapplied ops fold). Returns the count NEWLY applied, so a puller reports the
+/// real change count.
 let receiveOps
   (commits : List<string * string * System.Guid * System.Guid * string>)
   (events : List<System.Guid * byte[] * System.Guid * string * string>)
@@ -616,12 +587,9 @@ let evaluateAllValues
   }
 
 
-/// The grow step for CLI/test startup.
-/// Applies any unapplied ops, generates package ref hashes, then evaluates values.
-/// On a warm DB this is a single fast SELECT COUNT and returns immediately.
-///
-/// builtins is a function (not a value) because it must be constructed AFTER
-/// hashes are generated — builtin construction triggers PackageRefs hash lookups.
+/// The grow step for CLI/test startup: apply unapplied ops, generate package ref hashes, evaluate values.
+/// On a warm DB it's a single fast SELECT COUNT. `getBuiltins` is a function, not a value, because builtins
+/// must be constructed AFTER the hashes exist (construction triggers PackageRefs hash lookups).
 let growIfNeeded
   (getBuiltins : unit -> RT.Builtins)
   (pm : RT.PackageManager)
