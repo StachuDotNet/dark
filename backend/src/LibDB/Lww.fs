@@ -1,14 +1,12 @@
 /// The timestamp last-writer-wins staleness rule, in ONE place.
 ///
-/// A candidate binding LOSES (is "stale") when its authoring stamp is older than the current binding's — or,
-/// on an exact stamp tie, when its content hash is the lower of the two (a portable, instance-independent
-/// tiebreak). The op-fold (`applySetName`), divergence detection (`Conflicts.detectDivergences`), and the
-/// resolution overlay (`Resolutions.applyToLocations`) must ALL apply this identical rule; if any copy drifts,
-/// two instances can pick different winners for the same name and silently diverge. Keeping it here makes that
-/// impossible by construction.
+/// Distributed instances editing the same name must pick the SAME winner without coordinating. A candidate
+/// is stale (loses) when its authoring stamp is older, or — on an exact tie — when its content hash is the
+/// lower of the two (a portable, instance-independent tiebreak). The op-fold, divergence detection
+/// (`Conflicts`), and the resolution overlay (`Resolutions`) all apply this one rule; keeping it here means
+/// no copy can drift and make two instances diverge.
 ///
-/// Stamps are the portable `yyyy-MM-ddTHH:mm:ss.fffZ` strings; lexical `<` is chronological for that fixed
-/// format, so no parsing is needed.
+/// Stamps are `yyyy-MM-ddTHH:mm:ss.fffZ` strings, so lexical `<` is already chronological — no parsing.
 module LibDB.Lww
 
 /// True iff binding (newTs, newHash) loses to the live binding (curTs, curHash) under timestamp-LWW.
