@@ -777,8 +777,14 @@ module Expr =
         // Lambda params do not inherit function arg slots, but outer local
         // bindings remain visible.
         let lambdaContext = { context with argMap = Map.empty }
+        let kept =
+          pats
+          |> List.filter (fun p ->
+            match p with
+            | WT.LPVariable(_, "") -> false
+            | _ -> true)
         let (finalContext, ptPats) =
-          pats |> foldMapContext LetPattern.toPT lambdaContext
+          kept |> foldMapContext LetPattern.toPT lambdaContext
         let! body = toPT finalContext body
         let patsNel = neListOrSingleton (PT.LPUnit(gid ())) ptPats
         return PT.EPipeLambda(id, patsNel, body)

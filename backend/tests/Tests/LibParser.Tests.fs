@@ -632,6 +632,17 @@ let private desugarTests =
         match toPT (fnBody "let f () : Unit =\n  foo ()\n  bar ()") with
         | PT.EStatement(_, PT.EApply _, PT.EApply _) -> ()
         | other -> failtest $"expected EStatement(a, b), got: {other}")
+      testCase
+        "normal and pipe lambdas drop blank placeholders consistently"
+        (fun _ ->
+          match toPT (lowerExpr "fun x ___ -> x") with
+          | PT.ELambda(_, pats, _) ->
+            Expect.equal (NEList.length pats) 1 "normal lambda arity"
+          | other -> failtest $"expected lambda, got {other}"
+          match toPT (lowerExpr "1L |> fun x ___ -> x") with
+          | PT.EPipe(_, _, [ PT.EPipeLambda(_, pats, _) ]) ->
+            Expect.equal (NEList.length pats) 1 "pipe lambda arity"
+          | other -> failtest $"expected pipe lambda, got {other}")
       testCase "a type-args-only call seeds a unit placeholder arg" (fun _ ->
         match toPT (lowerExpr "Stdlib.List.empty<String>") with
         | PT.EApply(_, _, [ PT.TString ], args) ->

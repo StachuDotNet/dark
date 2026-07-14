@@ -419,8 +419,15 @@ module Expr =
         // body's context knows about the bound names — otherwise they
         // look unresolved and `EVariable` falls through to package
         // lookup.
-        let (bodyContext, pats) =
+        let keptPats =
           pats
+          |> Stdlib.List.filter (fun p ->
+            match p with
+            | LPVariable(_, "") -> false
+            | _ -> true)
+
+        let (bodyContext, pats) =
+          keptPats
           |> Stdlib.List.fold (lambdaContext, []) (fun (ctx, acc) p ->
             let (newCtx, ptPattern) = LetPattern.toPT ctx p
             (newCtx, Stdlib.List.append acc [ ptPattern ]))
@@ -877,8 +884,15 @@ module Expr =
           { currentFnName = context.currentFnName
             argMap = Stdlib.Dict.empty
             localBindings = context.localBindings }
-      let (finalContext, pats) =
+      let keptPats =
         pats
+        |> Stdlib.List.filter (fun p ->
+          match p with
+          | LPVariable(_, "") -> false
+          | _ -> true)
+
+      let (finalContext, pats) =
+        keptPats
         |> Stdlib.List.fold (lambdaContext, []) (fun (lctx, acc) p ->
           let (newCtx, ptPattern) = LetPattern.toPT lctx p
           (newCtx, Stdlib.List.append acc [ ptPattern ]))
