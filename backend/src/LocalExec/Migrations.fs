@@ -26,10 +26,6 @@
 /// synchronously.
 ///
 /// CLEANUP maybe move this to LibDB?
-///
-/// A legacy DB (one whose `system_migrations_v0` already lists the full
-/// set of old migration names) is adopted: stamp the current schema hash
-/// without dropping data.
 module LocalExec.Migrations
 
 open System.IO
@@ -121,31 +117,6 @@ let private writeHash (hash : string) : unit =
   |> Sql.executeStatementSync
 
 
-/// A legacy DB was migrated by name through `system_migrations_v0`. If one
-/// already has the full set of old migration names applied, treat it as
-/// fully migrated under the schema-hash flow — write the current schema
-/// hash so subsequent runs see "up to date" and don't kill-and-fill.
-let private adoptLegacyDB (currentHash : string) : bool =
-  if not (tableExists "system_migrations_v0") then
-    false
-  else
-    let count =
-      match
-        Sql.query "SELECT COUNT(*) AS c FROM system_migrations_v0"
-        |> Sql.execute (fun read -> read.int "c")
-      with
-      | Ok [ c ] -> c
-      | _ -> 0
-    if count >= 13 then
-      print
-        $"Adopting legacy DB ({count} migrations on record). \
-          Stamping schema hash; no data dropped."
-      writeHash currentHash
-      true
-    else
-      false
-
-
 let private runSchemaBootstrap () : unit =
   let sql = File.readfile Config.Migrations schemaFile
   let want = computeHash sql
@@ -168,15 +139,9 @@ let private runSchemaBootstrap () : unit =
     markOpsUnapplied ()
     writeHash want
   | None ->
-    // Fresh OR legacy DB with no schema-hash: always run schema.sql first (CREATE TABLE IF NOT EXISTS —
-    // creates any missing tables, e.g. `resolutions`/`sync_conflicts`, and is a no-op for existing ones), THEN
-    // stamp. Previously the adopt path stamped WITHOUT running schema.sql, so a legacy DB was marked current
-    // while missing the new sync tables and crashed on the first receive/resolution.
-    // CLEANUP(legacy-shape): CREATE IF NOT EXISTS can't ADD columns to a pre-existing legacy table (an old
-    // package_ops without origin_ts / the (id, branch_id) PK), so a genuine pre-cutover DB still needs a manual
-    // rebuild before it can sync. A loud shape-mismatch check is the follow-up if any such DB is still around.
+    // A store with no schema-hash stamp (fresh, or predates hash tracking): run schema.sql
+    // (CREATE TABLE IF NOT EXISTS creates missing tables and no-ops existing ones), then stamp.
     Sql.query sql |> Sql.executeStatementSync
-    let _ = adoptLegacyDB want // logs the adoption note for a legacy DB; a fresh DB just falls through
     writeHash want
 
 
@@ -263,10 +228,7 @@ let private runIncrementalMigrations () : unit =
 
 let run () : unit =
   runSchemaBootstrap ()
-  // The Release migrator: after the schema-hash bootstrap, reconcile the store's Release coordinate
-  // (the op-format/language/hash version) with this binary's. A fresh store is stamped at the current
-  // Release; an older store runs the pending migration steps; a NEWER store is refused (older code
-  // must not open it). The single coordinate is `LibDB.Releases.currentRelease` (when sync returns, its
-  // wire-format version is this same integer). The step registry lives in `LibDB.Releases`.
+  // Then reconcile the store's Release (op-format/hash version) with this binary's: stamp a fresh store,
+  // migrate an older one forward, refuse a newer one. Registry + logic live in `LibDB.Releases`.
   LibDB.Releases.applyPending LibDB.Releases.currentRelease
   runIncrementalMigrations ()
