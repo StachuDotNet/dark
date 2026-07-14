@@ -123,8 +123,6 @@ CREATE INDEX IF NOT EXISTS idx_package_ops_created ON package_ops(created_at);
 CREATE INDEX IF NOT EXISTS idx_package_ops_applied
   ON package_ops(applied) WHERE applied = 0;
 CREATE INDEX IF NOT EXISTS idx_package_ops_commit_hash ON package_ops(commit_hash);
-CREATE INDEX IF NOT EXISTS idx_package_ops_committed_seq
-  ON package_ops(committed_seq) WHERE committed_seq IS NOT NULL;
 -- Partial index on propagation_id for efficient lookups (only non-null values)
 CREATE INDEX IF NOT EXISTS idx_package_ops_propagation_id
   ON package_ops(propagation_id) WHERE propagation_id IS NOT NULL;
