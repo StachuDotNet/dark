@@ -2687,7 +2687,16 @@ and parseItemsBody
          // `[<DB>] type Name = AliasedType` — a user DB declaration
          let (d, k2) = parseTypeDecl state (k + 5)
          (match d with
-          | WT.DType t -> decls.Add(WT.DTypeDB t)
+          | WT.DType t ->
+            match t.definition with
+            | WT.TDAlias _ -> decls.Add(WT.DTypeDB t)
+            | _ ->
+              err
+                state
+                DiagnosticCode.expected
+                (k + 5)
+                "[<DB>] type must be a type alias"
+              decls.Add(WT.DTypeDB t)
           | other -> decls.Add other)
          k <- k2
        | TVal, TIdent _ ->

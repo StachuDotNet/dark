@@ -907,6 +907,12 @@ let private lexicalFailureTests =
       mustDiagnose "empty lambda parameter list" "fun -> 1L"
       mustDiagnose "empty module body" "module X =\nlet y = 1L"
       mustDiagnose "anonymous record" "{ a = 1L }"
+      testCase "DB declarations must be aliases" (fun _ ->
+        let result = P.parseTestFile "[<DB>] type X = { a: Int64 }"
+        Expect.exists
+          result.diagnostics
+          (fun diagnostic -> diagnostic.message = "[<DB>] type must be a type alias")
+          "alias diagnostic")
       mustDiagnose "malformed float exponent (no digits)" "1e"
       mustDiagnose "malformed float exponent (sign only)" "1.5e+"
       mustDiagnose "oversized float exponent" "1e401"
