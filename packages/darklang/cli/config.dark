@@ -5,7 +5,7 @@ module Darklang.Cli.Config
 // "rundir/cli-config.json", was CWD-relative: `login` silently no-op'd — printed "Logged in" but persisted
 // nothing — whenever the CLI ran from a directory without a `rundir/` subdir, e.g. a released exe run from $HOME.)
 let configFilePath () : String =
-  let dbPath = Builtin.localDbPath ()
+  let dbPath = Darklang.Sync.localDbPath ()
   let dir = Stdlib.String.join (Stdlib.List.dropLast (Stdlib.String.split dbPath "/")) "/"
   $"{dir}/cli-config.json"
 

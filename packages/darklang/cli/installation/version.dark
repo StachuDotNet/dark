@@ -7,12 +7,12 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
   // Release coordinate — the store format/version this Dark speaks vs what your local data is stamped at.
   // (This is what the boot-time migrator + sync's wire-version key off; see `dark update`.)
-  let exeRel = Stdlib.Int.toString (Builtin.currentRelease ())
+  let exeRel = Stdlib.Int.toString (Darklang.Sync.currentRelease ())
 
   let storeRel =
     match
       Stdlib.Sqlite.query
-        (Builtin.localDbPath ())
+        (Darklang.Sync.localDbPath ())
         "SELECT release FROM release_state_v0 WHERE id = 0"
     with
     | Ok [ row ] ->
