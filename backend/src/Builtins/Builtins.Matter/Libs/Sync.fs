@@ -15,12 +15,12 @@ module PackageRefs = LibExecution.PackageRefs
 module NR = LibExecution.RuntimeTypes.NameResolution
 module Blob = LibExecution.Blob
 
-module EventLogRefs = LibExecution.PackageRefs.Type.Stdlib.EventLog
+module EventLogRefs = LibExecution.PackageRefs.Type.Sync.EventLog
 let private eventLogEventType () = FQTypeName.fqPackage (EventLogRefs.event ())
 let private eventLogCommitType () = FQTypeName.fqPackage (EventLogRefs.commit ())
 let private eventLogCursorType () = FQTypeName.fqPackage (EventLogRefs.cursor ())
 
-/// Build the `Stdlib.EventLog.Event` record for one op row — natively, so a 1000-op batch never pays the
+/// Build the `Darklang.Sync.EventLog.Event` record for one op row — natively, so a 1000-op batch never pays the
 /// per-row Dark interpreter cost the native read exists to avoid.
 let private eventRecord
   ((id, op, br, ch, ts) : string * string * string * string * string)
@@ -61,7 +61,7 @@ let private cursorValue (n : int64) : Dval =
 let private branchOpEventType () =
   FQTypeName.fqPackage (EventLogRefs.branchOpEvent ())
 
-/// Build the `Stdlib.EventLog.BranchOpEvent` record for one branch_ops row — natively (no per-row Dark cost).
+/// Build the `Darklang.Sync.EventLog.BranchOpEvent` record for one branch_ops row — natively (no per-row Dark cost).
 let private branchOpEventRecord
   ((id, op, originTs) : string * string * string)
   : Dval =
@@ -76,7 +76,7 @@ let private branchOpEventRecord
 let private resolutionEventType () =
   FQTypeName.fqPackage (EventLogRefs.resolutionEvent ())
 
-/// Build the `Stdlib.EventLog.ResolutionEvent` record for one resolutions row.
+/// Build the `Darklang.Sync.EventLog.ResolutionEvent` record for one resolutions row.
 let private resolutionEventRecord
   ((id, branchId, location, itemKind, chosenHash, resolvedBy, at) :
     string * string * string * string * string * string * string)

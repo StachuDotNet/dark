@@ -95,6 +95,18 @@ module Type =
         else
           Exception.raiseInternal "PackageRefs: type hash not found" [ "fqn", fqn ]
 
+  // Darklang.Sync.* — internal sync machinery (op-log wire types)
+  module Sync =
+    let private p addl = p ("Sync" :: addl)
+
+    module EventLog =
+      let private p addl = p ("EventLog" :: addl)
+      let cursor = p [] "Cursor"
+      let event = p [] "Event"
+      let commit = p [] "Commit"
+      let branchOpEvent = p [] "BranchOpEvent"
+      let resolutionEvent = p [] "ResolutionEvent"
+
   module Stdlib =
     let private p addl = p ("Stdlib" :: addl)
 
@@ -141,14 +153,6 @@ module Type =
       let private p addl = p ("AltJson" :: addl)
       let parseError = p [ "ParseError" ] "ParseError"
       let json = p [] "Json"
-
-    module EventLog =
-      let private p addl = p ("EventLog" :: addl)
-      let cursor = p [] "Cursor"
-      let event = p [] "Event"
-      let commit = p [] "Commit"
-      let branchOpEvent = p [] "BranchOpEvent"
-      let resolutionEvent = p [] "ResolutionEvent"
 
     module Cli =
       let private p addl = p ("Cli" :: addl)

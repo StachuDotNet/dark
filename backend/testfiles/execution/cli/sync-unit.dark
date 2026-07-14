@@ -6,9 +6,9 @@
 // The append path parses each event and drops any it can't (bad hex op / bad uuid) — "a bad peer skips, not
 // crashes". A batch of only-garbage folds nothing and returns 0, totally, rather than throwing.
 module AppendSkipsMalformedOp =
-  (Stdlib.EventLog.append
+  (Darklang.Sync.EventLog.append
     []
-    [ Stdlib.EventLog.Event
+    [ Darklang.Sync.EventLog.Event
         { id = "00000000-0000-0000-0000-000000000001"
           op = "zznothexatall"
           branchId = "89282547-e4e6-4986-bcb6-db74bc6a8c0f"
