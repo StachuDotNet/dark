@@ -81,9 +81,7 @@ let private execImpl
       return Dval.resultError KTInt KTString (DString e.Message)
   }
 
-// query returns a `Result<List<Dict<Value>>, String>` (Ok rows / Error message) to match exec — a bad path
-// or malformed SQL surfaces as a value, never an uncaught throw. Lets a caller read a peer's Release / op
-// count (or its own config) without a throw taking down the caller.
+// query mirrors exec: a bad path / malformed SQL surfaces as an Error value, never an uncaught throw.
 let private queryImpl
   (path : string)
   (sql : string)

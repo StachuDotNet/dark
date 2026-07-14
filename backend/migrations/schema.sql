@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS branch_ops (
   applied INTEGER NOT NULL DEFAULT 0,   -- 0=pending, 1=applied (for crash recovery)
   -- Authoring stamp, PORTABLE across sync (mirrors package_ops.origin_ts): a locally-authored op self-stamps,
   -- a SYNCED op preserves the peer's, so a structural op (rebase) converges by CREATION time (LWW) rather than
-  -- by arrival order. Distinct from `created_at` (local-insert time, differs per instance for the same op).
+  -- by arrival order.
   origin_ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   created_at TIMESTAMP NOT NULL DEFAULT (datetime('now'))
 );

@@ -173,7 +173,6 @@ let private reseedStore (dbPath : string) (storedLabel : string) : string * int 
   let peers = carryForwardPeers backup dbPath
   (backup, peers)
 
-/// Back up + re-seed the store, then tell the user what happened and how to repopulate it.
 let private reseedAndReport
   (dbPath : string)
   (current : int)
@@ -245,6 +244,4 @@ let extract () : unit =
 
       printfn "CLI data directory setup complete"
     else
-      // An existing store from a previous run/release — reconcile its Release with this binary's before any
-      // LibDB connection opens (a mismatch either refuses to open or re-seeds; a match is a no-op).
       reconcileExistingStore dbPath

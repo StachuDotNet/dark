@@ -18,8 +18,7 @@ let private eventLogEventType () = FQTypeName.fqPackage (EventLogRefs.event ())
 let private eventLogCommitType () = FQTypeName.fqPackage (EventLogRefs.commit ())
 let private eventLogCursorType () = FQTypeName.fqPackage (EventLogRefs.cursor ())
 
-/// Build the `Darklang.Sync.EventLog.Event` record for one op row — natively, so a 1000-op batch never pays the
-/// per-row Dark interpreter cost the native read exists to avoid.
+/// Build the `Darklang.Sync.EventLog.Event` record for one op row.
 let private eventRecord
   ((id, op, br, ch, ts) : string * string * string * string * string)
   : Dval =
@@ -59,7 +58,7 @@ let private cursorValue (n : int64) : Dval =
 let private branchOpEventType () =
   FQTypeName.fqPackage (EventLogRefs.branchOpEvent ())
 
-/// Build the `Darklang.Sync.EventLog.BranchOpEvent` record for one branch_ops row — natively (no per-row Dark cost).
+/// Build the `Darklang.Sync.EventLog.BranchOpEvent` record for one branch_ops row.
 let private branchOpEventRecord
   ((id, op, originTs) : string * string * string)
   : Dval =
@@ -95,8 +94,7 @@ let private resolutionEventRecord
         "at", DString at ]
   )
 
-/// Read a string field out of an EventLog Event/Commit record (built by the peer + parsed from JSON) —
-/// natively, so appending a 1000-op batch never pays the per-row Dark interpreter cost.
+/// Read a string field out of an EventLog Event/Commit record (built by the peer + parsed from JSON).
 let private recField (name : string) (fields : Map<string, Dval>) : string =
   match Map.tryFind name fields with
   | Some(DString s) -> s

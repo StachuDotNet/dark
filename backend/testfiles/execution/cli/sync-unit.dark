@@ -1,10 +1,9 @@
 // Sync unit tests (pure + db-backed, no HTTP): the blob channel builtins and the adaptive daemon interval.
 // Cross-instance convergence over the real wire is covered by MultiInstance/SyncScenarios/SyncE2E.
-// (Per-branch controls — follow/private — were removed; sync is wholesale, so their filters are gone.)
 
 // ── receive robustness: a malformed wire op is SKIPPED, never a crash ──────────────────────────────────
-// The append path parses each event and drops any it can't (bad hex op / bad uuid) — "a bad peer skips, not
-// crashes". A batch of only-garbage folds nothing and returns 0, totally, rather than throwing.
+// The append path parses each event and drops any it can't (bad hex op / bad uuid); a batch of only
+// garbage applies nothing and returns 0 rather than throwing.
 module AppendSkipsMalformedOp =
   (Darklang.Sync.EventLog.append
     []

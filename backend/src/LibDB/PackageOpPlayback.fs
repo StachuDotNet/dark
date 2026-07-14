@@ -342,13 +342,10 @@ let private applySetName
 
     let isStale =
       match curBinding, thisTs with
-      // Order a binding by its op's CREATION time (origin_ts); a stale op arriving late via sync loses
-      // to the newer binding. On an EXACT TIE (two DIFFERENT ops for one name stamped the same
-      // millisecond — a genuine cross-instance race), break deterministically by item hash: the higher
-      // hash wins. That tie-break is PORTABLE (content, not arrival/rowid), so every instance — and a
-      // from-scratch projection rebuild — converges on the same winner. Local sequential authoring
-      // (v2 replacing v1 in one batch) never reaches this tie: `Inserts` self-stamps each op in a
-      // local batch with a strictly-increasing origin_ts, so v2 is newer-by-creation and just wins.
+      // On an EXACT TIE (two DIFFERENT ops for one name stamped the same millisecond — a genuine
+      // cross-instance race), break by item hash: the higher wins. That tie-break is PORTABLE (content,
+      // not arrival/rowid), so every instance converges on the same winner. Local sequential authoring
+      // never ties — `Inserts` self-stamps each op with a strictly-increasing origin_ts.
       | Some(curHash, Some curTs), Some t when curHash <> itemHashStr ->
         Lww.isStale t itemHashStr curTs curHash
       | _ -> false
