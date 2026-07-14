@@ -6,6 +6,10 @@
 /// tests here apply an op multiset in different orders and assert an identical `locations` outcome — that
 /// order-independence IS the two-instance convergence guarantee. testSequenced + self-cleanup so these ride
 /// the shared store safely (they only ever touch their own `Test.*` names/branches).
+///
+/// The lightest of three sync-test layers: this proves the fold is order-independent (one store, op-set
+/// replay); `MultiInstance` runs two real isolated stores over the in-process wire; `SyncE2E` runs real
+/// processes over HTTP.
 module Tests.SyncScenarios
 
 open Expecto
