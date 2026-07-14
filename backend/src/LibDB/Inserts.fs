@@ -24,14 +24,11 @@ let computeOpHash (op : PT.PackageOp) : System.Guid =
   System.Guid(hashBytes[0..15])
 
 
-/// A process-monotonic authoring stamp (`origin_ts`). Millisecond-resolution wall clock, but never
-/// non-increasing: within one millisecond a batch's ops would otherwise share a stamp, and the
-/// timestamp-LWW in `applySetName` would then break the tie by content hash — silently reordering *local
-/// sequential* edits (rename v1 then v2 could leave v1 winning). So each call returns `max(nowMs, last+1ms)`:
-/// a local batch gets strictly-increasing stamps, so a later edit always wins its location. The string
-/// format matches the schema default `strftime('%Y-%m-%dT%H:%M:%fZ')`, so it stays lexically comparable
-/// with existing rows and peers. (A future hardening could generalize this to a hybrid logical clock that
-/// also advances the stamp on receive, so a skewed peer clock can't pin a binding.)
+/// A process-monotonic authoring stamp (`origin_ts`): millisecond wall clock, but returns `max(nowMs,
+/// last+1ms)` so it never repeats within a batch. Otherwise same-ms ops would tie and the LWW in
+/// `applySetName` would break it by content hash — silently reordering local sequential edits (rename v1
+/// then v2 could leave v1 winning). Strictly-increasing stamps mean the later edit always wins. Format
+/// matches the schema default `strftime('%Y-%m-%dT%H:%M:%fZ')` so it stays lexically comparable across peers.
 let private originTsLock = System.Object()
 let mutable private lastOriginTs = System.DateTime.MinValue
 
@@ -52,17 +49,9 @@ let nextOriginTs () : string =
     ))
 
 
-/// Insert PackageOps into the package_ops table and apply them to projection tables.
-/// branchId = branch context
-/// commitHash = None means WIP (commit_hash = NULL), Some id means committed
-/// Returns the count of ops actually inserted (duplicates are skipped via INSERT OR IGNORE)
-///
-/// Uses a two-phase approach for consistency:
-/// 1. Insert ops with applied=false
-/// 2. Apply ops to projection tables
-/// 3. Mark ops as applied=true
-///
-/// This ensures that if step 2 fails, we can identify unapplied ops and retry/rollback.
+/// Insert PackageOps and fold them into the projections. `commitHash = None` = WIP (commit_hash NULL), `Some`
+/// = committed. Returns the count actually inserted (duplicates skipped via INSERT OR IGNORE). Insert with
+/// applied=false, fold, then mark applied=true — so a mid-fold failure leaves the ops identifiable + retryable.
 let insertAndApplyOps
   (branchId : PT.BranchId)
   (commitHash : Option<string>)
@@ -387,16 +376,9 @@ let rec commitWipOps
   }
 
 
-/// Commit exactly the WIP ops with the given IDs.
-///
-/// The caller owns selection policy. This function validates that every
-/// requested id is still WIP, creates the commit, and stamps the selected ops
-/// plus their derived projection rows. If the requested ids cover the whole WIP
-/// set, it uses the commit-all projection path.
-///
-/// CLEANUP: if SCM becomes a shared multi-writer service, move validation,
-/// parent lookup, commit creation, and row stamping into one transaction
-/// on one connection.
+/// Commit exactly the WIP ops with the given ids (the caller owns selection policy): validate each is still
+/// WIP, create the commit, stamp the ops + their projection rows. A full-WIP set uses the commit-all path.
+/// CLEANUP: if SCM becomes multi-writer, do validation + commit creation + stamping in one transaction.
 and commitWipOpsByIds
   (accountId : AccountID)
   (branchId : PT.BranchId)

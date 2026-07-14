@@ -421,14 +421,9 @@ let private serializeAnnotation
   ms.ToArray()
 
 
-/// Apply a Deprecate op to the deprecations projection table.
-/// Supersedes any prior un-superseded row for (branch, item_hash, item_kind).
-///
-/// CLEANUP: deprecation identity is hash-keyed (`Reference` carries only a
-/// Hash). When two unrelated FQNs share a content hash, deprecating one
-/// deprecates both. We need to extend `Reference` (and the `deprecations`
-/// table) to carry location, then teach the query to filter by
-/// `(owner, modules, name)` like dependent lookups do.
+/// Apply a Deprecate op — supersede any prior un-superseded row for (branch, item_hash, item_kind).
+/// CLEANUP: identity is hash-keyed (`Reference` carries only a Hash), so two unrelated FQNs sharing a hash
+/// deprecate together. Fix: carry location on `Reference` + the `deprecations` table and filter by it.
 let private applyDeprecate
   (ctx : Ctx)
   (branchId : PT.BranchId)
@@ -678,9 +673,8 @@ let private collectAddedHashes (ops : List<PT.PackageOp>) : Set<Hash> =
 /// fresh prepared-statement cache (Ctx) is created and disposed per call,
 /// so the cache lifetime matches a single `applyOpsOnConnection` invocation.
 ///
-/// Dep-edge location columns are populated directly from each `Dependency`'s
-/// `location` field (the resolver stashes it onto `NameResolution<_>` at
-/// resolve time). No post-hoc backfill needed.
+/// Dep-edge location columns come straight from each `Dependency`'s `location` (stashed on `NameResolution`
+/// at resolve time) — no post-hoc backfill.
 let applyOpsOnConnection
   (conn : SqliteConnection)
   (branchId : PT.BranchId)
