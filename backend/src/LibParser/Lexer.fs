@@ -580,6 +580,26 @@ let tokenize
        | true, value -> Ok(TInt value, 0)
        | _ -> Error $"Invalid integer literal: {digits}")
 
+  let recognizedIntSuffixLength (suffixIndex : int) : int =
+    if
+      matchesAt "uy" suffixIndex
+      || matchesAt "us" suffixIndex
+      || matchesAt "ul" suffixIndex
+      || matchesAt "UL" suffixIndex
+    then
+      2
+    elif
+      matchesAt "L" suffixIndex
+      || matchesAt "Q" suffixIndex
+      || matchesAt "Z" suffixIndex
+      || matchesAt "y" suffixIndex
+      || matchesAt "s" suffixIndex
+      || matchesAt "l" suffixIndex
+    then
+      1
+    else
+      0
+
   let rec scanString (scanIndex : int) (closing : char) : Result<int, string> =
     if scanIndex >= inputLength then
       Error "Unterminated string literal"
@@ -804,9 +824,11 @@ let tokenize
               $"invalid number literal: {input.Substring(index, errorEndIndex - index)}"
             go nextIndex nextPosition (spannedToken :: tokensRev)
           | Error message ->
-            // Emit a placeholder so out-of-range ints still highlight as numbers.
+            // Consume a recognized suffix even on range failure so it cannot
+            // reappear as a separate identifier in the recovery tree.
+            let suffixLength = recognizedIntSuffixLength digitEndIndex
             let (spannedToken, nextIndex, nextPosition) =
-              emit (TInt64 0L) index digitEndIndex position
+              emit (TInt64 0L) index (digitEndIndex + suffixLength) position
             addDiagnostic spannedToken.range message
             go nextIndex nextPosition (spannedToken :: tokensRev)
       // triple-quoted string: """ ... """ (raw, may contain single/double quotes)

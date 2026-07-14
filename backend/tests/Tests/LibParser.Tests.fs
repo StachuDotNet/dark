@@ -907,6 +907,16 @@ let private lexicalFailureTests =
       mustDiagnose "out-of-range Int64" "99999999999999999999L"
       mustDiagnose "out-of-range Int8" "9000y"
       mustDiagnose "unterminated block comment" "(* never closed"
+      testCase "bad integer suffix is consumed as one recovered token" (fun _ ->
+        match LibParser.Lexer.tokenize "256uy" with
+        | Ok(tokens, diagnostics) ->
+          Expect.equal diagnostics.Length 1 "one range diagnostic"
+          match tokens with
+          | token :: eof :: [] ->
+            Expect.equal token.text "256uy" "the recovered token covers the suffix"
+            Expect.equal eof.token Tok.TEOF "then EOF"
+          | other -> failtest $"unexpected tokens: {other}"
+        | Error error -> failtest error)
       mustDiagnose
         "multiple interpolation expressions"
         "$\"{1L\n2L}\""
