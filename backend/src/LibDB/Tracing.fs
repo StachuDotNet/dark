@@ -488,25 +488,26 @@ let private storeTrace
       return ()
     else
 
-    let traceIdStr = string traceID
-    use _span = Telemetry.span "trace.store" [ "traceId", traceIdStr ]
-    try
-      let! preparedInput = prepareTraceForStorage exeState inputDval state
-      TraceStorage.store
-        rootTLID
-        traceID
-        handlerDesc
-        inputVarName
-        preparedInput
-        (Seq.toList state.events)
-        exeState.accountID
-    with ex ->
-      System.Console.Error.WriteLine $"[tracing] Failed to store trace: {ex.Message}"
-      Telemetry.event
-        "trace.storeFailed"
-        [ "traceId", traceIdStr
-          "exception", ex.GetType().FullName
-          "message", ex.Message ]
+      let traceIdStr = string traceID
+      use _span = Telemetry.span "trace.store" [ "traceId", traceIdStr ]
+      try
+        let! preparedInput = prepareTraceForStorage exeState inputDval state
+        TraceStorage.store
+          rootTLID
+          traceID
+          handlerDesc
+          inputVarName
+          preparedInput
+          (Seq.toList state.events)
+          exeState.accountID
+      with ex ->
+        System.Console.Error.WriteLine
+          $"[tracing] Failed to store trace: {ex.Message}"
+        Telemetry.event
+          "trace.storeFailed"
+          [ "traceId", traceIdStr
+            "exception", ex.GetType().FullName
+            "message", ex.Message ]
   }
 
 

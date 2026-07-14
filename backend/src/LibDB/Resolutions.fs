@@ -152,7 +152,10 @@ let recordAndApply (r : Resolution) : Task<unit> =
     do! applyToLocations r
     // The override settled this location — clear any conflict recorded here (on THIS instance, and on a peer
     // that received the resolution), so it stops showing as an unreviewed conflict after it's been resolved.
-    do! Conflicts.markOverriddenByLocation r.branchId (Conflicts.locationString r.location)
+    do!
+      Conflicts.markOverriddenByLocation
+        r.branchId
+        (Conflicts.locationString r.location)
   }
 
 /// Replay EVERY stored resolution (ordered by `at`) onto the `locations` projection — the overlay half of
@@ -181,7 +184,10 @@ let reapplyAll () : Task<unit> =
       // its recorded divergence is 'overridden', not a still-open 'auto-resolved'. (recordAndApply does this on
       // the live path; a re-fold that goes through reapplyAll must do it too, or the resolved conflict pops back
       // up as unreviewed in `dark conflicts` after a grow.)
-      do! Conflicts.markOverriddenByLocation r.branchId (Conflicts.locationString r.location)
+      do!
+        Conflicts.markOverriddenByLocation
+          r.branchId
+          (Conflicts.locationString r.location)
   }
 
 

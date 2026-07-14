@@ -142,7 +142,9 @@ let private carryForwardPeers (backupPath : string) (dbPath : string) : int =
   else
     try
       use conn =
-        new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};Pooling=false")
+        new Microsoft.Data.Sqlite.SqliteConnection(
+          $"Data Source={dbPath};Pooling=false"
+        )
       conn.Open()
       use create = conn.CreateCommand()
       create.CommandText <-
@@ -207,7 +209,8 @@ let private reconcileExistingStore (dbPath : string) : unit =
     // Every pending step is durable — migrate the store forward in place, PRESERVING the data (schema
     // copy-swap + op-format re-serialize + refold). No source needed, so the CLI can run it directly.
     LibDB.Releases.applyPending current
-    eprintfn $"Upgraded this data directory from {label} to Release {current} (data preserved)."
+    eprintfn
+      $"Upgraded this data directory from {label} to Release {current} (data preserved)."
   | LibDB.Releases.CliUpgrade.Reseed ->
     // A clean-break Release (content hashing changed) or an untracked store of unknown format: the old
     // package data can't be reused in place, so back it up and re-seed from the embedded current-Release

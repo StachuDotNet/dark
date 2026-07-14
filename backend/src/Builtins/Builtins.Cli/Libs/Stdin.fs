@@ -47,26 +47,26 @@ let private readKeyOrPaste () : ConsoleKeyInfo * string option =
     (ConsoleKeyInfo('\u001b', ConsoleKey.Escape, false, false, false), None)
   else
 
-  let first = Console.ReadKey true
-  if not Console.KeyAvailable then
-    (first, None)
-  else
-    let sb = System.Text.StringBuilder()
-    let append (text : string) : unit =
-      sb.Append text |> ignore<System.Text.StringBuilder>
-    let mutable last = first
-    let mutable printableKey = if isPrintable first then Some first else None
-    pasteText first |> Option.iter append
-    while Console.KeyAvailable do
-      let k = Console.ReadKey true
-      last <- k
-      pasteText k |> Option.iter append
-      if isPrintable k then printableKey <- Some k
-    let pasted = sb.ToString()
-    if pasted = "" then
-      (last, None) // only control keys queued, e.g. a scroll
+    let first = Console.ReadKey true
+    if not Console.KeyAvailable then
+      (first, None)
     else
-      (Option.defaultValue last printableKey, Some pasted)
+      let sb = System.Text.StringBuilder()
+      let append (text : string) : unit =
+        sb.Append text |> ignore<System.Text.StringBuilder>
+      let mutable last = first
+      let mutable printableKey = if isPrintable first then Some first else None
+      pasteText first |> Option.iter append
+      while Console.KeyAvailable do
+        let k = Console.ReadKey true
+        last <- k
+        pasteText k |> Option.iter append
+        if isPrintable k then printableKey <- Some k
+      let pasted = sb.ToString()
+      if pasted = "" then
+        (last, None) // only control keys queued, e.g. a scroll
+      else
+        (Option.defaultValue last printableKey, Some pasted)
 
 let fns () : List<BuiltInFn> =
   [ { name = fn "stdinReadKey" 0

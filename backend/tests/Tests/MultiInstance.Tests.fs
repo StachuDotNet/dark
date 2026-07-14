@@ -503,7 +503,10 @@ let tests =
           let! commit = existingCommit ()
           // Binding is fnA at .100. A human resolution ALSO picks fnA (at .300) — so applyToLocations is an
           // idempotent no-op and the binding's origin_ts stays .100, NOT .300.
-          let! _ = Seed.receiveOps [] [ setNameEvent loc fnA commit "2026-07-08T00:00:00.100Z" ]
+          let! _ =
+            Seed.receiveOps
+              []
+              [ setNameEvent loc fnA commit "2026-07-08T00:00:00.100Z" ]
           let res =
             Resolutions.mk
               loc
@@ -517,8 +520,14 @@ let tests =
           // A fresh fnB op (.200) now arrives and folds via the INCREMENTAL pull path. .200 out-ranks the
           // binding's stale .100, so the fold flips it to fnB — but the resolution (.300) is newer than .200, so
           // after receiveOps re-applies the overlay the human's pick MUST win again.
-          let! folded = Seed.receiveOps [] [ setNameEvent loc fnB commit "2026-07-08T00:00:00.200Z" ]
-          Expect.isGreaterThan folded 0L "the fnB op actually folded (so the reapply path runs)"
+          let! folded =
+            Seed.receiveOps
+              []
+              [ setNameEvent loc fnB commit "2026-07-08T00:00:00.200Z" ]
+          Expect.isGreaterThan
+            folded
+            0L
+            "the fnB op actually folded (so the reapply path runs)"
           let! afterFold = liveHash loc
           Expect.equal
             afterFold
@@ -545,12 +554,13 @@ let tests =
           let! probeFn = undeprecatedFunctionHash ()
           Expect.isGreaterThan opsBefore 0L "the seeded store has ops to preserve"
 
-          LibDB.Releases.applyRelease
-            ({ n = 999
-               sql = "ALTER TABLE package_ops ADD COLUMN migration_probe TEXT"
-               reserialize = None
-               clearForRebuild = false }
-            : LibDB.Releases.Release)
+          LibDB.Releases.applyRelease (
+            { n = 999
+              sql = "ALTER TABLE package_ops ADD COLUMN migration_probe TEXT"
+              reserialize = None
+              clearForRebuild = false }
+            : LibDB.Releases.Release
+          )
 
           let! hasCol =
             Sql.query
@@ -567,7 +577,10 @@ let tests =
             opsAfter
             opsBefore
             "every op preserved (durable is not a clean-break — nothing cleared)"
-          Expect.equal fnStillThere 1L "the package content survived the in-place migration"
+          Expect.equal
+            fnStillThere
+            1L
+            "the package content survived the in-place migration"
         finally
           teardown insts
       }
