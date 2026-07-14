@@ -219,7 +219,6 @@ let toPT
         uply {
           let context =
             { WT2PT.Context.currentFnName = None
-              WT2PT.Context.isInFunction = false
               WT2PT.Context.argMap = Map.empty
               WT2PT.Context.localBindings = Set.empty }
           let exprToPT =
