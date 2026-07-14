@@ -834,6 +834,8 @@ and parseMatch (state : ParserState) (i : int) : WT.Expr * int =
         rhs = rhs }
     )
     if k5 > k then k <- k5 else k <- k + 1
+  if cases.Count = 0 then
+    errExpected state afterWith "at least one match case starting with '|'"
   let endR = if cases.Count > 0 then WT.exprRange (Seq.last cases).rhs else kwWith
   (WT.EMatch(span kwMatch endR, expr, List.ofSeq cases, kwMatch, kwWith), k)
 
