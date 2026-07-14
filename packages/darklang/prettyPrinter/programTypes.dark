@@ -480,7 +480,7 @@ let infix (i: LanguageTools.ProgramTypes.Infix) : String =
 let stringSegment (ctx: Context) (s: LanguageTools.ProgramTypes.StringSegment) : String =
   match s with
   | StringText text -> PrettyPrinter.escapeSpecialCharacters text
-  | StringInterpolation expr -> $"{{{expr ctx expr}}}"
+  | StringInterpolation interpolationExpr -> $"{{{expr ctx interpolationExpr}}}"
 
 let pipeExpr (ctx: Context) (p: LanguageTools.ProgramTypes.PipeExpr) : String =
   match p with

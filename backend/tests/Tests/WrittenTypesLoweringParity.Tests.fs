@@ -227,10 +227,7 @@ let tests =
             )
           let fsBuiltins = localBuiltIns pmPT
           let ctx : WT2PT.Context =
-            { currentFnName = None
-              isInFunction = false
-              argMap = Map.empty
-              localBindings = Set.empty }
+            { currentFnName = None; argMap = Map.empty; localBindings = Set.empty }
 
           let mismatches = ResizeArray<string * string>()
           let mutable darkSideErrors = 0
@@ -323,7 +320,6 @@ let tests =
         for (label, cmod, cfn, prms, snip) in cases do
           let ctx : WT2PT.Context =
             { currentFnName = (if List.isEmpty cfn then None else Some cfn)
-              isInFunction = not (List.isEmpty cfn)
               argMap = prms |> List.mapi (fun i p -> (p, i)) |> Map.ofList
               localBindings = Set.empty }
           match (P.parse snip).parsed with
