@@ -35,7 +35,7 @@ type Token =
   | TLParen
   | TRParen
   | TLet
-  | TVal // val (top-level value declaration; always a value, never a let-expr)
+  | TVal // val (declaration-scope value; never a local let-expression)
   | TIn
   | TIf // if
   | TElif // elif

@@ -261,9 +261,9 @@ Declaration forms:
 
 - `let f (p: T) … : R = body` defines a function. Parameters are parenthesized
   and annotated. `()` is a unit parameter.
-- `let x = e` defines a value **inside a module**. At a file's top level it is a
-  let-expression that sequences with what follows.
-- `val x = e` always defines a value.
+- `val x = e` defines a module or test-setup value.
+- `let x = e` is a local/script binding. At declaration scope it is rejected;
+  use `val` for a value declaration.
 - `module A.B` is a file header and wraps the rest of the file.
 - `module X =` starts an indented module body.
 

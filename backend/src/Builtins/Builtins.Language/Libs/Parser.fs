@@ -1002,7 +1002,7 @@ module WrittenTypesToDarkTypes =
           "name", identifierToDT WTRefs.valueIdentifier v.name
           "body", exprToDT v.body
           "description", DString v.description
-          "keywordVal", rangeToDT v.keywordLet
+          "keywordVal", rangeToDT v.keywordVal
           "symbolEquals", rangeToDT v.symbolEquals ]
     )
 

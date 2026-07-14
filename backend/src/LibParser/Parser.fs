@@ -2625,8 +2625,9 @@ and parseParam (state : ParserState) (i : int) : WT.FnParam * int =
         (zeroWidthAtEnd (rng state afterTyp), afterTyp)
     (WT.FPNormal(span lparen rparen, nameId, typ, lparen, colon, rparen), afterRP)
 
-// a top-level `let` declaration: function `let f (p: T) … : R = body`
-// or value `let x [: T] = body`. `i` is TLet, `i+1` the name.
+// A declaration-scope function (`let f (p: T) … : R = body`) or value
+// (`val x = body`). Legacy module-level `let x = body` also comes through here
+// to retain a recovery DValue beside its focused diagnostic.
 and parseDecl (state : ParserState) (i : int) : WT.Declaration * int =
   let keywordLet = rng state i
   let nameIdx = i + 1
@@ -2706,7 +2707,7 @@ and parseDecl (state : ParserState) (i : int) : WT.Declaration * int =
       { range = span keywordLet (WT.exprRange body)
         name = nameId
         body = body
-        keywordLet = keywordLet
+        keywordVal = keywordLet
         symbolEquals = eq
         description = docOf state i },
      afterBody)
@@ -2956,6 +2957,14 @@ and parseItemsBody
          // `val x = …` is ALWAYS a value DECLARATION (the explicit value-decl
          // keyword), in a module or at file top level alike.
          let (d, k2) = parseDecl state k
+         match d with
+         | WT.DFunction _ ->
+           err
+             state
+             DiagnosticCode.expected
+             k
+             "'val' declares a value and cannot have function parameters"
+         | _ -> ()
          decls.Add d
          k <- k2
        | TLet, TIdent _ ->
@@ -2964,13 +2973,10 @@ and parseItemsBody
          // errors aren't reported twice
          let diagnosticsBefore = state.diagnostics.Count
          let (d, k2) = parseDecl state k
-         // A no-param `let x = …` is a value DECLARATION inside a module (a
-         // package constant), but a script EXPRESSION at a file's top level —
-         // there it sequences with the statements after it (`parseBlock` folds
-         // them into the let body), so a COMPUTED binding is run by the
-         // interpreter, not the constant-only package-value evaluator. An
-         // explicit `in` is always an expression; `let f (p) … = …` is a
-         // DFunction (never reparsed).
+         // A no-param `let x = …` is a script EXPRESSION at file top level and
+         // with explicit `in`. At module declaration scope it is retained as a
+         // DValue recovery node with a diagnostic requiring `val`; `let f (p) …`
+         // is a DFunction and is never reparsed.
          let asExpr =
            match d with
            | WT.DValue _ -> tok state k2 = TIn || not insideModule
@@ -2984,6 +2990,17 @@ and parseItemsBody
            exprs.Add e
            k <- k3
          else
+           match d with
+           | WT.DValue _ when insideModule ->
+             state.diagnostics.Add
+               { code = DiagnosticCode.unexpected
+                 severity = DiagError
+                 range = rng state k
+                 message =
+                   "Module value declarations must use 'val'; 'let' is reserved for functions and local bindings"
+                 related = []
+                 hint = Some "replace 'let' with 'val'" }
+           | _ -> ()
            decls.Add d
            k <- k2
        | TType, TIdent _ ->

@@ -92,46 +92,42 @@ let private expectColumns label expected (range : Tok.TokenRange) =
 let private parserStructureTests =
   testList
     "parser-structure"
-    [ testCase
-        "captures keyword/symbol ranges for a value decl (inside a module)"
-        (fun _ ->
-          // a no-param `let` is a value DECLARATION inside a module (at a file's top
-          // level it's a let-EXPRESSION instead — see the test below).
-          // row 1 `  let x = 1 + 2`: let=2..5  x=6  ==8  1=10  +=12  2=14
-          let r = P.parse "module M =\n  let x = 1 + 2"
-          Expect.isEmpty r.diagnostics "no diagnostics"
-          match r.parsed with
-          | Some(WT.SourceFile { declarations = [ WT.DModule m ] }) ->
-            match m.declarations with
-            | [ WT.DValue v ] ->
+    [ testCase "captures keyword/symbol ranges for a value declaration" (fun _ ->
+        // row 1 `  val x = 1 + 2`: val=2..5  x=6  ==8  1=10  +=12  2=14
+        let r = P.parse "module M =\n  val x = 1 + 2"
+        Expect.isEmpty r.diagnostics "no diagnostics"
+        match r.parsed with
+        | Some(WT.SourceFile { declarations = [ WT.DModule m ] }) ->
+          match m.declarations with
+          | [ WT.DValue v ] ->
+            Expect.equal
+              v.keywordVal.start
+              { Tok.row = 1; Tok.column = 2 }
+              "`val` start"
+            Expect.equal
+              v.keywordVal.end_
+              { Tok.row = 1; Tok.column = 5 }
+              "`val` end"
+            Expect.equal
+              v.name.range.start
+              { Tok.row = 1; Tok.column = 6 }
+              "name start"
+            Expect.equal
+              v.symbolEquals.start
+              { Tok.row = 1; Tok.column = 8 }
+              "`=` start"
+            match v.body with
+            | WT.EInfix(_,
+                        (opR, WT.InfixFnCall WT.ArithmeticPlus),
+                        WT.EInt(_, (_, n1)),
+                        WT.EInt(_, (_, n2))) when n1 = 1I && n2 = 2I ->
               Expect.equal
-                v.keywordLet.start
-                { Tok.row = 1; Tok.column = 2 }
-                "`let` start"
-              Expect.equal
-                v.keywordLet.end_
-                { Tok.row = 1; Tok.column = 5 }
-                "`let` end"
-              Expect.equal
-                v.name.range.start
-                { Tok.row = 1; Tok.column = 6 }
-                "name start"
-              Expect.equal
-                v.symbolEquals.start
-                { Tok.row = 1; Tok.column = 8 }
-                "`=` start"
-              match v.body with
-              | WT.EInfix(_,
-                          (opR, WT.InfixFnCall WT.ArithmeticPlus),
-                          WT.EInt(_, (_, n1)),
-                          WT.EInt(_, (_, n2))) when n1 = 1I && n2 = 2I ->
-                Expect.equal
-                  opR.start
-                  { Tok.row = 1; Tok.column = 12 }
-                  "`+` operator start"
-              | other -> failtest $"unexpected value body: {other}"
-            | other -> failtest $"unexpected module body: {other}"
-          | other -> failtest $"unexpected: {other}")
+                opR.start
+                { Tok.row = 1; Tok.column = 12 }
+                "`+` operator start"
+            | other -> failtest $"unexpected value body: {other}"
+          | other -> failtest $"unexpected module body: {other}"
+        | other -> failtest $"unexpected: {other}")
 
       testCase
         "top-level `let x = …` is a let-EXPRESSION (sequences with what follows)"
@@ -289,13 +285,32 @@ let private parserStructureTests =
         | other -> failtest $"fn decl: {other}")
 
       testCase "parses a value declaration" (fun _ ->
-        // value declarations are module members (a top-level `let` is an expression)
-        match (P.parse "module M =\n  let pi = 3").parsed with
+        match (P.parse "module M =\n  val pi = 3").parsed with
         | Some(WT.SourceFile { declarations = [ WT.DModule m ]; exprsToEval = [] }) ->
           match m.declarations with
           | [ WT.DValue v ] -> Expect.equal v.name.name "pi" "value name"
           | other -> failtest $"value decl: {other}"
         | other -> failtest $"value decl: {other}")
+
+      testCase "module value declarations require val" (fun _ ->
+        let result = P.parse "module M =\n  let pi = 3"
+        match result.diagnostics with
+        | [ diagnostic ] ->
+          Expect.equal diagnostic.code P.DiagnosticCode.unexpected "diagnostic code"
+          Expect.equal
+            diagnostic.hint
+            (Some "replace 'let' with 'val'")
+            "migration hint"
+        | other -> failtest $"expected one diagnostic, got {other}")
+
+      testCase "val cannot declare a function" (fun _ ->
+        let result = P.parse "val f (x: Int64) : Int64 = x"
+        Expect.exists
+          result.diagnostics
+          (fun diagnostic ->
+            diagnostic.message =
+              "'val' declares a value and cannot have function parameters")
+          "val function diagnostic")
 
       testCase "file-level module header wraps the file's declarations" (fun _ ->
         match
@@ -311,7 +326,7 @@ let private parserStructureTests =
 
       testCase "nested `module X =` block nests its indented declarations" (fun _ ->
         match
-          (P.parse "module Darklang.Foo\nmodule Bar =\n  let a = 1L\nlet b = 2L")
+          (P.parse "module Darklang.Foo\nmodule Bar =\n  val a = 1L\nval b = 2L")
             .parsed
         with
         | Some(WT.SourceFile { declarations = [ WT.DModule outer ] }) ->

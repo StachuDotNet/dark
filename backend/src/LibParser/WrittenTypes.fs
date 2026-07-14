@@ -419,7 +419,7 @@ type ValueDecl =
   { range : Range
     name : Identifier
     body : Expr
-    keywordLet : Range
+    keywordVal : Range
     symbolEquals : Range
     description : string }
 

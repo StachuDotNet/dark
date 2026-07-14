@@ -477,9 +477,8 @@ let tokenize
   let keyword (text : string) : Token =
     match text with
     | "let" -> TLet
-    // `val x = e` always parses as a value declaration. A no-param `let` is a
-    // value declaration only inside a module, and a let-expression at file top
-    // level. The distinct token lets `parseItems` keep them apart.
+    // `val x = e` is a value declaration. `let` is reserved for functions and
+    // local/script bindings. The distinct token lets `parseItems` keep them apart.
     | "val" -> TVal
     | "in" -> TIn
     | "if" -> TIf
