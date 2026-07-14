@@ -913,6 +913,9 @@ let private lexicalFailureTests =
           result.diagnostics
           (fun diagnostic -> diagnostic.message = "[<DB>] type must be a type alias")
           "alias diagnostic")
+      mustDiagnose
+        "misaligned match arm"
+        "match x with\n  | Some x -> x\n    | None -> 0L"
       mustDiagnose "malformed float exponent (no digits)" "1e"
       mustDiagnose "malformed float exponent (sign only)" "1.5e+"
       mustDiagnose "oversized float exponent" "1e401"

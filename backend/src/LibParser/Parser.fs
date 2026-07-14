@@ -808,8 +808,11 @@ and parseMatch (state : ParserState) (i : int) : WT.Expr * int =
   // to an enclosing match (so a nested match doesn't swallow the outer's arms).
   let armCol =
     if tok state afterWith = TBar then (rng state afterWith).start.column else 0
+  let armRow =
+    if tok state afterWith = TBar then (rng state afterWith).start.row else -1
   let mutable k = afterWith
-  while tok state k = TBar && (rng state k).start.column >= armCol do
+  while (tok state k = TBar
+         && ((rng state k).start.row = armRow || (rng state k).start.column = armCol)) do
     let barR = rng state k
     let (pat, k2) = parseMatchPattern state (k + 1)
     let (whenCond, k3) =
