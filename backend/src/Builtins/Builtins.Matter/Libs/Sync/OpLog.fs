@@ -1,8 +1,7 @@
-/// Native builtins for the sync surface: the op-log read/append wire (package_ops/branch_ops/resolutions),
-/// the content-addressed blob channel, and the instance's store path + Release coordinate. Internal machinery
-/// the CLI/sync engine calls (wrapped under `Darklang.Sync.*`) — NOT stdlib. Generic SQLite access lives in
-/// `Libs/Sqlite.fs`; these ride on the op log via `LibDB`, not raw SQL.
-module Builtins.Matter.Libs.Sync
+/// The op-log read/append wire: native read/append builtins over the three logs — `package_ops`,
+/// `branch_ops`, and `resolutions`. Internal machinery under `Darklang.Sync.*` (NOT stdlib); records are
+/// assembled natively (like `Traces`) so a 1000-op batch stays milliseconds.
+module Builtins.Matter.Libs.Sync.OpLog
 
 open FSharp.Control.Tasks
 
@@ -13,7 +12,6 @@ open LibExecution.Builtin.Shortcuts
 module Dval = LibExecution.Dval
 module PackageRefs = LibExecution.PackageRefs
 module NR = LibExecution.RuntimeTypes.NameResolution
-module Blob = LibExecution.Blob
 
 module EventLogRefs = LibExecution.PackageRefs.Type.Sync.EventLog
 let private eventLogEventType () = FQTypeName.fqPackage (EventLogRefs.event ())
@@ -119,39 +117,6 @@ let private warnSkippedSyncRow (kind : string) : unit =
 
 let fns () : List<BuiltInFn> =
   [
-    // This instance's OWN package store path (data.db). The op-log builtins write ops here; the sync config
-    // tables (sync_peers/sync_cursors) live here too — the daemon/CLI don't have to know the path.
-    { name = fn "localDbPath" 0
-      typeParams = []
-      parameters = [ Param.make "unit" TUnit "" ]
-      returnType = TString
-      description = "The file path of this instance's own package store (data.db)."
-      fn =
-        (function
-        | _, _, _, [ DUnit ] -> uply { return DString LibConfig.Config.dbPath }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-    // The Release (store format/version coordinate: language + op-format + schema + hashing) this Dark
-    // binary speaks. Compared against the store's stamped Release for the upgrade/`dark version` surface.
-    { name = fn "currentRelease" 0
-      typeParams = []
-      parameters = [ Param.make "unit" TUnit "" ]
-      returnType = TInt
-      description = "The Release (store format/version) this Dark binary speaks."
-      fn =
-        (function
-        | _, _, _, [ DUnit ] ->
-          uply { return Dval.int (bigint LibDB.Releases.currentRelease) }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
     // ── native op-log read/append + blob-channel builtins (the ops-queue seam sync rides on) ──
     // CLEANUP(sync-builtins): these operate on the FIXED local store (not an arbitrary path) and still declare
     // noCaps, so untrusted `dark run` can read/append the op log. Lower-risk than the arbitrary-path sqlite* above
@@ -479,121 +444,6 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // ── HTTP blob channel — package_blobs (a value's large content) don't ride the op stream, so after
-    //    applying a peer's ops the puller fetches the blobs it now lacks. Content-addressed = idempotent.
-
-    // Sender: the blob MANIFEST — every content hash this instance holds, newline-joined (GET /sync/blobs).
-    { name = fn "syncBlobManifest" 0
-      typeParams = []
-      parameters = [ Param.make "unit" TUnit "" ]
-      returnType = TString
-      description =
-        "The blob manifest (the GET /sync/blobs body): every content hash this instance holds, newline-joined."
-      fn =
-        (function
-        | _, _, _, [ DUnit ] ->
-          uply {
-            let! hashes = LibDB.RuntimeTypes.Blob.allHashes ()
-            return DString(String.concat "\n" hashes)
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-    // Sender: the bytes for one hash, base64 (GET /sync/blob?hash=), or empty if this instance lacks it.
-    { name = fn "syncBlobBytes" 0
-      typeParams = []
-      parameters = [ Param.make "hash" TString "The content hash to fetch" ]
-      returnType = TString
-      description =
-        "The bytes for one content hash, base64-encoded (the GET /sync/blob?hash= body), or empty if this instance lacks it."
-      fn =
-        (function
-        | _, _, _, [ DString hash ] ->
-          uply {
-            match! LibDB.RuntimeTypes.Blob.get hash with
-            | Some bytes -> return DString(System.Convert.ToBase64String bytes)
-            | None -> return DString ""
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-    // Receiver: of a peer's offered hashes, which this instance LACKS — exactly the blobs to fetch.
-    { name = fn "syncBlobMissing" 0
-      typeParams = []
-      parameters =
-        [ Param.make
-            "hashes"
-            (TList TString)
-            "A peer's offered content hashes (its manifest)" ]
-      returnType = TList TString
-      description =
-        "Of the peer's offered content hashes, which this instance lacks — a pure content-addressed set-difference (no cursor)."
-      fn =
-        (function
-        | _, _, _, [ DList(_, hashDvals) ] ->
-          uply {
-            let hashes =
-              hashDvals
-              |> List.choose (fun d ->
-                match d with
-                | DString s -> Some s
-                | _ -> None)
-            let! missing = LibDB.RuntimeTypes.Blob.missing hashes
-            return Dval.list KTString (missing |> List.map DString)
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-    // Receiver: store a fetched blob — base64-decode + insert under its content hash. Idempotent (dedup).
-    { name = fn "syncBlobInsert" 0
-      typeParams = []
-      parameters =
-        [ Param.make "hash" TString "The content hash"
-          Param.make
-            "base64Bytes"
-            TString
-            "The blob's bytes, base64-encoded (empty = skip)" ]
-      returnType = TBool
-      description =
-        "Store a fetched blob: base64-decode + insert under its content hash. Idempotent. Returns true if non-empty bytes were inserted, false if the peer's body was empty."
-      fn =
-        (function
-        | _, _, _, [ DString hash; DString b64 ] ->
-          uply {
-            if b64 = "" then
-              return DBool false
-            else
-              // Total against a hostile/garbled peer body (bad base64 must not throw), and — the integrity
-              // core of a content-addressed store — only store bytes that ACTUALLY hash to the claimed hash.
-              // Without this a peer could serve arbitrary bytes for a legitimate hash and poison the store
-              // (a value silently becomes different code) for every branch that references it.
-              match
-                (try
-                  Some(System.Convert.FromBase64String b64)
-                 with _ ->
-                   None)
-              with
-              | None -> return DBool false
-              | Some bytes ->
-                if LibExecution.Blob.sha256Hex bytes = hash then
-                  do! LibDB.RuntimeTypes.Blob.insert hash bytes
-                  return DBool true
-                else
-                  return DBool false
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated } ]
+  ]
 
 let builtins () = LibExecution.Builtin.make [] (fns ())

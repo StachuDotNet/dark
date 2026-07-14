@@ -27,7 +27,9 @@
     <!-- Accounts -->
     <Compile Include="Libs/Account.fs" />
     <Compile Include="Libs/Sqlite.fs" />
-    <Compile Include="Libs/Sync.fs" />
+    <Compile Include="Libs/Sync/Store.fs" />
+    <Compile Include="Libs/Sync/OpLog.fs" />
+    <Compile Include="Libs/Sync/Blobs.fs" />
     <Compile Include="Libs/Conflicts.fs" />
 
     <Compile Include="Builtin.fs" />
