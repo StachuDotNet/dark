@@ -23,7 +23,7 @@ open LibDB.Sqlite
 
 /// THE version coordinate (see the module doc). A store is stamped with this Release; older code refuses
 /// to open a store stamped NEWER, and cross-instance sync uses this same integer as its wire-format version.
-let currentRelease : int = 3
+let currentRelease : int = 4
 
 /// One forward step that ARRIVES at Release `n` (apply it to move a store from `n-1` to `n`).
 type Release =
@@ -47,11 +47,22 @@ type Release =
 /// migrator does the rest. Each `n` must be exactly one greater than the previous (see
 /// `registryIsWellFormed`).
 ///
-/// **Release 3 — meaning-stable hashing.** Hashes are now over the alpha-normalized canonical form, so
-/// older `op_blob`s embed stale hashes and can't be cheaply migrated — hence the CLEAN-BREAK marker. Every
-/// store is BORN at Release 3 and never replays this step; it's the worked example of the clean-break path.
+/// **Release 3 — meaning-stable hashing.** Hashes are now over the alpha-normalized canonical form, so older
+/// `op_blob`s embed stale hashes and can't be cheaply migrated — hence the CLEAN-BREAK marker. A fresh store
+/// is born at the current Release and never replays this step; it's the worked example of the clean-break path.
+///
+/// **Release 4 — sync commit-order stamp.** Adds `package_ops.committed_seq` (the coordinate sync's
+/// `eventsSince` pages by) and backfills existing committed ops by rowid — a DURABLE step (the op log is
+/// preserved). Fresh stores get the column from schema.sql; this step is only for a real Release-3 → 4 store.
 let releases : Release list =
-  [ { n = 3; sql = ""; reserialize = None; clearForRebuild = true } ]
+  [ { n = 3; sql = ""; reserialize = None; clearForRebuild = true }
+    { n = 4
+      sql =
+        "ALTER TABLE package_ops ADD COLUMN committed_seq INTEGER;"
+        + " UPDATE package_ops SET committed_seq = rowid"
+        + " WHERE commit_hash IS NOT NULL AND committed_seq IS NULL"
+      reserialize = None
+      clearForRebuild = false } ]
 
 
 // ── The pure planning half (unit-tested; takes the registry explicitly so tests inject their own) ──
