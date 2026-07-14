@@ -295,8 +295,7 @@ let private literalTextRanges
   let whole = rng state i
   let text = txt state i
   let delimiterLength = delimiter.Length
-  let hasClose =
-    text.Length >= delimiterLength * 2 && text.EndsWith delimiter
+  let hasClose = text.Length >= delimiterLength * 2 && text.EndsWith delimiter
   let openEnd = advancePos whole.start text (min delimiterLength text.Length)
   let contentEndIndex =
     if hasClose then text.Length - delimiterLength else text.Length

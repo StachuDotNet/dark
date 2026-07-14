@@ -309,8 +309,7 @@ let private parserStructureTests =
         Expect.exists
           result.diagnostics
           (fun diagnostic ->
-            diagnostic.message =
-              "'val' declares a value and cannot have function parameters")
+            diagnostic.message = "'val' declares a value and cannot have function parameters")
           "val function diagnostic")
 
       testCase "file-level module header wraps the file's declarations" (fun _ ->
@@ -381,14 +380,16 @@ let private parserStructureTests =
           Expect.equal (List.length typeName.modules) 2 "two module segments"
         | other -> failtest $"qualified ctor: {other}")
 
-      testCase "parenthesized constructor range includes closing parenthesis" (fun _ ->
-        match (P.parse "Pair(1L, 2L)").parsed with
-        | Some(WT.SourceFile { exprsToEval = [ expression ] }) ->
-          Expect.equal
-            (WT.exprRange expression).end_.column
-            12
-            "range ends after ')'"
-        | other -> failtest $"unexpected constructor: {other}")
+      testCase
+        "parenthesized constructor range includes closing parenthesis"
+        (fun _ ->
+          match (P.parse "Pair(1L, 2L)").parsed with
+          | Some(WT.SourceFile { exprsToEval = [ expression ] }) ->
+            Expect.equal
+              (WT.exprRange expression).end_.column
+              12
+              "range ends after ')'"
+          | other -> failtest $"unexpected constructor: {other}")
 
       testCase "parses match (enum / cons / or patterns)" (fun _ ->
         match (P.parse "match x with | Ok v -> v | Error e -> e").parsed with
@@ -856,7 +857,9 @@ let private validationTests =
             "no cascaded recovery-hole diagnostic")
       testCase "parser surfaces shared structural validation diagnostics" (fun _ ->
         for (source, expectedCode) in
-          [ ("let (x, x) = (1L, 2L) in x", Validation.DuplicateBinder)
+          [ ("fun x x -> x", Validation.DuplicateBinder)
+            ("let (x, x) = (1L, 2L) in x", Validation.DuplicateBinder)
+            ("let f (x: Int64) (x: Int64) : Int64 = x", Validation.DuplicateBinder)
             ("match x with | Some a | None -> a", Validation.OrBindingMismatch)
             ("match pair with | ((x | _), y) -> x", Validation.OrBindingMismatch) ] do
           Expect.exists
@@ -1380,7 +1383,8 @@ let private lexicalFailureTests =
         let result = P.parseTestFile "[<DB>] type X = { a: Int64 }"
         Expect.exists
           result.diagnostics
-          (fun diagnostic -> diagnostic.message = "[<DB>] type must be a type alias")
+          (fun diagnostic ->
+            diagnostic.message = "[<DB>] type must be a type alias")
           "alias diagnostic")
       mustDiagnose
         "misaligned match arm"
@@ -1401,13 +1405,9 @@ let private lexicalFailureTests =
             Expect.equal eof.token Tok.TEOF "then EOF"
           | other -> failtest $"unexpected tokens: {other}"
         | Error error -> failtest error)
-      mustDiagnose
-        "multiple interpolation expressions"
-        "$\"{1L\n2L}\""
+      mustDiagnose "multiple interpolation expressions" "$\"{1L\n2L}\""
       mustDiagnose "empty interpolation" "$\"{}\""
-      mustDiagnose
-        "declaration-only interpolation"
-        "$\"{val x = 1L}\""
+      mustDiagnose "declaration-only interpolation" "$\"{val x = 1L}\""
       mustDiagnose "single interpolation close brace" "$\"hello } world\""
       testCase "comments and raw strings do not close interpolation" (fun _ ->
         for src in [ "$\"{(* } *) 1L}\""; "$\"{\"\"\" } \"\"\"}\"" ] do

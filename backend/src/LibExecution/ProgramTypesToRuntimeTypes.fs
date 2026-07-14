@@ -1223,7 +1223,11 @@ module PackageType =
     { hash = Hash.toRT t.hash; declaration = TypeDeclaration.toRT t.declaration }
 
 module PackageValue =
-  // TODO: do a proper eval (Execution.execute)
+  // CLEANUP: Replace this partial evaluator with normal package-value evaluation.
+  // Unsupported expressions silently fall through to DUnit below. Reproduce from
+  // the repository root:
+  //   ./scripts/run-cli eval $'val answer = 1L + 2L\nanswer == ()'
+  // This currently prints `true`; `answer` should evaluate to `3L`.
   let rec evalConstantExpr
     (builtinValues : Map<RT.FQValueName.Builtin, RT.BuiltInValue>)
     (expr : PT.Expr)
