@@ -218,6 +218,10 @@ Qualified enum patterns such as `| Result.Ok x` are rejected.
 `Name<T, …>` requires `<` to be *adjacent* to the name. A spaced `<` is a
 comparison.
 
+Generic type parameters declared after a type or function name must be
+apostrophe-prefixed and comma-separated; the list cannot be empty. For example:
+`type Pair<'a, 'b> = 'a * 'b`.
+
 Generics work on:
 
 - calls: `parse<Int64> x`

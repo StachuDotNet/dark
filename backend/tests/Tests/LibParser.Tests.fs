@@ -855,6 +855,22 @@ let private typeTests =
           ->
           ()
         | o -> failtest $"{o}")
+      testCase "generic syntax is explicit and unambiguous" (fun _ ->
+        Expect.isEmpty
+          (P.parse "type Pair<'a, 'b> = 'a * 'b").diagnostics
+          "valid generic declaration"
+        for source in
+          [ "type Box <'a> = 'a"
+            "type Box<a> = a"
+            "type Pair<'a 'b> = 'a"
+            "type Box<> = Int64"
+            "type Box<'a,> = 'a"
+            "type Box = List < Int64 >"
+            "type Box = Dict < String >"
+            "type Box = Stdlib.Option.Option < Int64 >" ] do
+          Expect.isNonEmpty
+            (P.parse source).diagnostics
+            $"expected generic-syntax diagnostic for {source}")
       testCase "qualified custom type with arg" (fun _ ->
         match parsedType "Stdlib.Option.Option<Int64>" with
         | WT.TCustom q ->

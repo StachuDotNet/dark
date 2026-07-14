@@ -582,13 +582,42 @@ let parseTypeParams
   if tok state i <> TLt then
     ([], i)
   else
+    if
+      i > 0
+      && ((rng state i).start.row <> (rng state (i - 1)).end_.row
+          || (rng state i).start.column <> (rng state (i - 1)).end_.column)
+    then
+      err
+        state
+        DiagnosticCode.expected
+        i
+        "Generic type parameters must be adjacent to the declaration name"
     let names = System.Collections.Generic.List<string * TokenRange>()
     let mutable k = i + 1
+    let mutable expectingName = true
     while tok state k <> TGt && tok state k <> TShr && tok state k <> TEOF do
-      (match tok state k with
-       | TIdent name -> names.Add(name, rng state k)
-       | _ -> ())
-      k <- k + 1
+      match expectingName, tok state k with
+      | true, TIdent name ->
+        if not ((txt state k).StartsWith "'") then
+          err
+            state
+            DiagnosticCode.expected
+            k
+            "Declared type parameters must start with an apostrophe, such as 'a"
+        names.Add(name, rng state k)
+        expectingName <- false
+        k <- k + 1
+      | false, TComma ->
+        expectingName <- true
+        k <- k + 1
+      | false, TIdent _ ->
+        errExpected state k "a comma between type parameters"
+        expectingName <- true
+      | _ ->
+        errExpected state k "a type parameter"
+        k <- k + 1
+    if names.Count = 0 then errExpected state (i + 1) "at least one type parameter"
+    elif expectingName then errExpected state k "a type parameter after ','"
     let k2 =
       if tok state k = TGt || tok state k = TShr then
         k + 1
@@ -2403,12 +2432,30 @@ and parseAtomType (state : ParserState) (i : int) : WT.TypeReference * int =
       errUnclosed state j ")" "(" openP
       (inner, j)
   | TIdent "List" when tok state (i + 1) = TLt ->
+    if
+      (rng state (i + 1)).start.row <> (rng state i).end_.row
+      || (rng state (i + 1)).start.column <> (rng state i).end_.column
+    then
+      err
+        state
+        DiagnosticCode.expected
+        (i + 1)
+        "Generic type arguments must be adjacent to the type name"
     let kwList = rng state i
     let openB = rng state (i + 1)
     let (inner, j) = parseTypeRef state (i + 2)
     let (closeB, k) = expectGt state j
     (WT.TList(span (rng state i) closeB, kwList, openB, inner, closeB), k)
   | TIdent "Dict" when tok state (i + 1) = TLt ->
+    if
+      (rng state (i + 1)).start.row <> (rng state i).end_.row
+      || (rng state (i + 1)).start.column <> (rng state i).end_.column
+    then
+      err
+        state
+        DiagnosticCode.expected
+        (i + 1)
+        "Generic type arguments must be adjacent to the type name"
     let kwDict = rng state i
     let openB = rng state (i + 1)
     let (inner, j) = parseTypeRef state (i + 2)
@@ -2436,6 +2483,16 @@ and parseAtomType (state : ParserState) (i : int) : WT.TypeReference * int =
      i + 1)
   | TIdent name when name.Length > 0 && System.Char.IsUpper name[0] ->
     let (mods, final, j) = parseQualified state i
+    if
+      tok state j = TLt
+      && ((rng state j).start.row <> final.range.end_.row
+          || (rng state j).start.column <> final.range.end_.column)
+    then
+      err
+        state
+        DiagnosticCode.expected
+        j
+        "Generic type arguments must be adjacent to the type name"
     let (typeArgs, closeGeneric, j2) = parseTypeArgs state j
     let endR =
       match closeGeneric, List.rev typeArgs with
