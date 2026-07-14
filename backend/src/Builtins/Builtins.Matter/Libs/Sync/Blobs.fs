@@ -12,9 +12,6 @@ module Dval = LibExecution.Dval
 
 let fns () : List<BuiltInFn> =
   [
-    // ── HTTP blob channel — package_blobs (a value's large content) don't ride the op stream, so after
-    //    applying a peer's ops the puller fetches the blobs it now lacks. Content-addressed = idempotent.
-
     // Sender: the blob MANIFEST — every content hash this instance holds, newline-joined (GET /sync/blobs).
     { name = fn "syncBlobManifest" 0
       typeParams = []

@@ -7,15 +7,12 @@ module Darklang.Cli.Ops
 
 let private db () : String = Darklang.Sync.localDbPath ()
 
-/// First 8 chars of a hash/uuid for compact display.
 let private short (s: String) : String =
   if Stdlib.String.length s <= 8 then s else Stdlib.String.slice s 0 8
 
-/// A text cell from a Sqlite row for display, or "" if missing/non-text.
 let private textCell (row: Dict<Stdlib.Sqlite.Value>) (col: String) : String =
   (Stdlib.Sqlite.textField row col) |> Stdlib.Option.withDefault ""
 
-/// Total ops in the log.
 let private countOps () : Int64 =
   (Stdlib.Sqlite.scalarInt (db ()) "SELECT count(*) AS n FROM package_ops" "n")
   |> Stdlib.Option.withDefault 0L

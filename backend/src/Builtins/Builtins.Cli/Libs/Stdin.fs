@@ -35,14 +35,9 @@ let private readKeyOrPaste () : ConsoleKeyInfo * string option =
   let isPrintable (k : ConsoleKeyInfo) =
     k.KeyChar <> '\u0000' && not (Char.IsControl k.KeyChar)
 
-  // Safety net for launching an interactive view without a terminal: when stdin is redirected — a pipe, a
-  // file, `< /dev/null`, a script, or a daemon — it's not a TTY. The full-screen views drive this in a tight
-  // key loop, and with no terminal `Console.ReadKey`/`Console.KeyAvailable` throw
-  // InvalidOperation_ConsoleReadKeyOnFile the moment the loop waits for a keypress — which would crash the
-  // view with a raw .NET stack trace (e.g. `dark <some-view> < /dev/null`). We report Escape, which every
-  // full-screen view treats as "quit", so the view exits cleanly instead. A view could also bail up front via
-  // the `stdinIsInteractive` builtin; this guard is the last resort at the primitive that actually throws, so
-  // no key loop can blow up even if it forgets to check.
+  // Redirected stdin (pipe / file / `< /dev/null` / daemon) isn't a TTY, so `Console.ReadKey` throws
+  // InvalidOperation_ConsoleReadKeyOnFile mid-loop and crashes a full-screen view with a raw stack trace.
+  // Report Escape (every view treats it as "quit") so it exits cleanly instead.
   if Console.IsInputRedirected then
     (ConsoleKeyInfo('\u001b', ConsoleKey.Escape, false, false, false), None)
   else

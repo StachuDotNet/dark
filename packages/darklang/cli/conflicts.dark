@@ -8,7 +8,6 @@ module Darklang.Cli.Conflicts
 let private conflicts () : List<Darklang.Sync.Conflicts.Conflict> =
   Builtin.conflictsList ()
 
-// First 8 chars of a hash for compact display.
 let private short (h: String) : String =
   Stdlib.String.slice h 0 8
 

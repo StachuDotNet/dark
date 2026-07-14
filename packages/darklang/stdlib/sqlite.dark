@@ -18,7 +18,6 @@ let asText (v: Value) : Stdlib.Option.Option<String> =
   | Text s -> Stdlib.Option.Option.Some s
   | _ -> Stdlib.Option.Option.None
 
-/// The Int of an <param Int> cell (Some), else None.
 let asInt (v: Value) : Stdlib.Option.Option<Int64> =
   match v with
   | Int i -> Stdlib.Option.Option.Some i
