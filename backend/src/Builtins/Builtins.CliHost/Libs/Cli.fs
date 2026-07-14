@@ -31,6 +31,7 @@ module P = LibParser.Parser
 module WT = LibParser.WrittenTypes
 module WT2PT = LibParser.WrittenTypesToProgramTypes
 module WTSourceFile = LibParser.SourceFile
+module Validation = LibParser.Validation
 module NRslv = LibParser.NameResolver
 module Hashing = LibSerialization.Hashing.Hashing
 
@@ -90,9 +91,13 @@ let private declarationsToModule
   (state : RT.ExecutionState)
   (owner : string)
   (scriptName : string)
-  (sourceItems : List<WTSourceFile.Item>)
+  (validated : Validation.ValidatedSourceFile)
   : Ply<Utils.CliScript.PTCliScriptModule> =
   uply {
+    let sourceItems =
+      validated
+      |> Validation.ValidatedSourceFile.toWrittenTypes
+      |> WTSourceFile.items
     let builtins : RT.Builtins =
       { values = state.values.builtIn; fns = state.fns.builtIn }
     let baseModules = if scriptName = "" then [] else [ scriptName ]
@@ -264,16 +269,11 @@ let parseCliScript
   (code : string)
   : Ply<Result<Utils.CliScript.PTCliScriptModule, List<P.Diagnostic>>> =
   uply {
-    let result = P.parse code
-    match result.parsed with
-    | None -> return Error result.diagnostics
-    | Some(WT.SourceFile sf) ->
-      let sourceItems = WTSourceFile.items sf
-      match result.diagnostics with
-      | (_ :: _) as ds -> return Error ds
-      | [] ->
-        let! m = declarationsToModule state owner scriptName sourceItems
-        return Ok m
+    match P.parseFor Validation.Script code with
+    | Error diagnostics -> return Error diagnostics
+    | Ok validated ->
+      let! m = declarationsToModule state owner scriptName validated
+      return Ok m
   }
 
 /// Parse a single expression (the `eval` path) with the hand-written parser,
@@ -284,15 +284,11 @@ let parseCliExpr
   (expression : string)
   : Ply<Result<Utils.CliScript.PTCliScriptModule, List<P.Diagnostic>>> =
   uply {
-    let result = P.parse expression
-    match result.parsed with
-    | None -> return Error result.diagnostics
-    | Some(WT.SourceFile sf) ->
-      match result.diagnostics with
-      | (_ :: _) as ds -> return Error ds
-      | [] ->
-        let! m = declarationsToModule state "" "" (WTSourceFile.items sf)
-        return Ok m
+    match P.parseFor Validation.Script expression with
+    | Error diagnostics -> return Error diagnostics
+    | Ok validated ->
+      let! m = declarationsToModule state "" "" validated
+      return Ok m
   }
 
 

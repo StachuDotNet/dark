@@ -16,6 +16,7 @@ type TestResult = Result<unit, string>
 
 module WT = LibParser.WrittenTypes
 module WT2PT = LibParser.WrittenTypesToProgramTypes
+module Validation = LibParser.Validation
 module NR = LibParser.NameResolver
 module PT = LibExecution.ProgramTypes
 module RTT = LibExecution.RuntimeTypes
@@ -785,6 +786,161 @@ let private valueAnnotationTests =
               diagnostic.message = "Value annotations are not supported")
             $"annotation diagnostic for {source}") ]
 
+let private validationTests =
+  let sourceFile source =
+    match (P.parse source).parsed with
+    | Some(WT.SourceFile sf) -> sf
+    | None -> failtest $"parser returned no tree for {source}"
+  let validationIssues mode sourceFile =
+    match Validation.validate mode sourceFile with
+    | Ok _ -> []
+    | Error issues -> NEList.toList issues
+  testList
+    "validation"
+    [ testCase "parseFor returns a mode-tagged validated source" (fun _ ->
+        match
+          P.parseFor
+            Validation.Script
+            "match x with | Some value -> value | None -> 0L"
+        with
+        | Error diagnostics -> failtest $"unexpected diagnostics: {diagnostics}"
+        | Ok validated ->
+          Expect.equal
+            (Validation.ValidatedSourceFile.mode validated)
+            Validation.Script
+            "validated mode")
+      testCase "validate gates a manually supplied syntax tree" (fun _ ->
+        let sf = sourceFile "match x with | Some value -> value | None -> 0L"
+        match Validation.validate Validation.Script sf with
+        | Error issues -> failtest $"unexpected validation issues: {issues}"
+        | Ok validated ->
+          Expect.equal
+            (Validation.ValidatedSourceFile.mode validated)
+            Validation.Script
+            "validated mode"
+          Expect.equal
+            (Validation.ValidatedSourceFile.toWrittenTypes validated)
+            sf
+            "validated tree")
+      testCase "parseFor applies purpose rules without changing parse" (fun _ ->
+        let assertion = "1L = 1L"
+        Expect.isEmpty (P.parse assertion).diagnostics "neutral parse"
+        match P.parseFor Validation.Script assertion with
+        | Ok _ -> failtest "script accepted a test assertion"
+        | Error diagnostics ->
+          Expect.exists
+            diagnostics
+            (fun diagnostic ->
+              diagnostic.code = Validation.IssueCode.toString Validation.TestMode)
+            "script purpose diagnostic"
+        Expect.isOk (P.parseFor Validation.Test assertion) "test purpose accepts it"
+        match P.parseFor Validation.Package "1L" with
+        | Ok _ -> failtest "package accepted a trailing expression"
+        | Error diagnostics ->
+          Expect.exists
+            diagnostics
+            (fun diagnostic ->
+              diagnostic.code = Validation.IssueCode.toString
+                Validation.PackageExpression)
+            "package purpose diagnostic")
+      testCase "parseFor does not validate syntax-recovery trees" (fun _ ->
+        match P.parseFor Validation.Script "let x =" with
+        | Ok _ -> failtest "invalid syntax passed validation"
+        | Error diagnostics ->
+          Expect.isNonEmpty diagnostics "syntax diagnostic"
+          Expect.isFalse
+            (diagnostics
+             |> List.exists (fun diagnostic ->
+               diagnostic.code = Validation.IssueCode.toString
+                 Validation.RecoveryHole))
+            "no cascaded recovery-hole diagnostic")
+      testCase "parser surfaces shared structural validation diagnostics" (fun _ ->
+        for (source, expectedCode) in
+          [ ("let (x, x) = (1L, 2L) in x", Validation.DuplicateBinder)
+            ("match x with | Some a | None -> a", Validation.OrBindingMismatch)
+            ("match pair with | ((x | _), y) -> x", Validation.OrBindingMismatch) ] do
+          Expect.exists
+            (P.parse source).diagnostics
+            (fun diagnostic ->
+              diagnostic.code = Validation.IssueCode.toString expectedCode)
+            $"shared validation diagnostic for {source}")
+      testCase "duplicate binders are independently rejected after parsing" (fun _ ->
+        let issues =
+          sourceFile "let (x, x) = (1L, 2L) in x"
+          |> validationIssues Validation.Script
+        Expect.exists
+          issues
+          (fun issue -> issue.code = Validation.DuplicateBinder)
+          "duplicate binder issue")
+      testCase "package mode rejects trailing expressions" (fun _ ->
+        let issues = sourceFile "1L" |> validationIssues Validation.Package
+        Expect.exists
+          issues
+          (fun issue -> issue.code = Validation.PackageExpression)
+          "package expression issue")
+      testCase "file purpose is classified after a shared parse" (fun _ ->
+        let source = "val x = 1L\nx = 1L"
+        let normal = P.parse source
+        let compatibility = P.parseTestFile source
+        Expect.equal normal.parsed compatibility.parsed "one parse shape"
+        Expect.equal
+          normal.diagnostics
+          compatibility.diagnostics
+          "one diagnostic shape"
+        Expect.isEmpty normal.diagnostics "neutral syntax parses cleanly"
+        match normal.parsed with
+        | Some(WT.SourceFile sf) ->
+          Expect.exists
+            (validationIssues Validation.Script sf)
+            (fun issue -> issue.code = Validation.TestMode)
+            "script classification rejects the assertion"
+          Expect.isEmpty
+            (validationIssues Validation.Test sf)
+            "test classification accepts the same tree"
+        | None -> failtest "parser returned no tree")
+      testCase "DB syntax is also classified after parsing" (fun _ ->
+        let sf = sourceFile "[<DB>] type UserDB = String"
+        Expect.exists
+          (validationIssues Validation.Script sf)
+          (fun issue -> issue.code = Validation.DBMode)
+          "script classification rejects DB declarations"
+        Expect.isEmpty
+          (validationIssues Validation.Test sf)
+          "test classification accepts DB declarations")
+      testCase
+        "test classification rejects bare expressions and script lets"
+        (fun _ ->
+          for source in [ "1L"; "let x = 1L" ] do
+            Expect.exists
+              (sourceFile source |> validationIssues Validation.Test)
+              (fun issue -> issue.code = Validation.TestAssertion)
+              $"test classification rejects {source}")
+      testCase "empty record updates are rejected independently" (fun _ ->
+        Expect.exists
+          (sourceFile "{ value with }" |> validationIssues Validation.Script)
+          (fun issue -> issue.code = Validation.EmptyRecordUpdate)
+          "empty update issue")
+      testCase "empty or-patterns cannot pass the lowering gate" (fun _ ->
+        let r = WT.synthRange
+        let expr =
+          WT.EMatch(
+            r,
+            WT.EUnit r,
+            [ { barRange = r
+                pat = WT.MPOr(r, [])
+                arrowRange = r
+                whenCondition = None
+                rhs = WT.EUnit r } ],
+            r,
+            r
+          )
+        let sf : WT.SourceFile =
+          { range = r; declarations = []; exprsToEval = [ expr ] }
+        Expect.exists
+          (validationIssues Validation.Script sf)
+          (fun issue -> issue.code = Validation.EmptyOrPattern)
+          "empty or-pattern issue") ]
+
 /// Literal edge cases: min-magnitude wrap and exponent floats.
 let private literalTests =
   testList
@@ -1408,9 +1564,10 @@ let private fuzzTests =
               with e ->
                 failtest $"parser THREW on {shown}: {e.Message}"
             (try
-              P.parseTestFile cur |> ignore // test-mode must not throw either
+              P.parseTestFile cur |> ignore // compatibility entrypoint must not throw either
              with e ->
-               failtest $"test-mode parser THREW on {shown}: {e.Message}")
+               failtest
+                 $"compatibility parser entrypoint THREW on {shown}: {e.Message}")
             let r3 = P.parse cur
             Expect.isTrue (Option.isSome r1.parsed) "always returns a tree"
             Expect.equal
@@ -1593,6 +1750,7 @@ let tests =
       desugarTests
       loweringRegressionTests
       valueAnnotationTests
+      validationTests
       literalTests
       recoveryTests
       lexicalFailureTests

@@ -131,8 +131,9 @@ let private packageItem (item : WTSourceFile.Item) : PkgItem =
 /// Lower a parsed package file to module-qualified package declarations, plus
 /// errors for declarations a package file can't hold.
 let private packageDecls
-  (sf : WT.SourceFile)
+  (validated : Validation.ValidatedSourceFile)
   : WTPackageModule * List<WT.Range * string> =
+  let sf = Validation.ValidatedSourceFile.toWrittenTypes validated
   let items = WTSourceFile.items sf |> List.map packageItem
   let fns =
     items
@@ -165,11 +166,12 @@ let parse
   (contents : string)
   : Ply<Result<List<PT.PackageOp>, List<string>>> =
   uply {
-    let result = P.parse contents
-    match result.parsed with
-    | Some(WT.SourceFile sf) when List.isEmpty result.diagnostics ->
-      let (modul, declErrors) = packageDecls sf
-      match declErrors with
+    match P.parseFor Validation.Package contents with
+    | Error diagnostics ->
+      return Error(diagnostics |> List.map (P.renderDiagnostic contents))
+    | Ok validated ->
+      let (modul, packageErrors) = packageDecls validated
+      match packageErrors with
       | [] ->
         let! ops = wtModuleToOps builtins pm onMissing modul
         return Ok ops
@@ -180,9 +182,4 @@ let parse
             |> List.map (fun (r, msg) ->
               $"error at {r.start.row + 1}:{r.start.column + 1}: {msg}")
           )
-    | _ ->
-      let msgs = result.diagnostics |> List.map (P.renderDiagnostic contents)
-      // Guard against a parser failure with no diagnostics.
-      return
-        Error(if List.isEmpty msgs then [ "failed to parse package file" ] else msgs)
   }

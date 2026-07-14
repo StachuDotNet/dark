@@ -7,6 +7,7 @@ open LibParser.Tokenizer // Pos, TokenRange, Token
 open LibParser.Lexer // SpannedToken, tokenize
 
 module WT = LibParser.WrittenTypes
+module Validation = LibParser.Validation
 
 type DiagnosticSeverity =
   | DiagError
@@ -37,6 +38,14 @@ type Diagnostic =
     hint : Option<string> }
 
 type ParseResult = { parsed : Option<WT.ParsedFile>; diagnostics : List<Diagnostic> }
+
+let diagnosticOfValidationIssue (issue : Validation.Issue) : Diagnostic =
+  { code = Validation.IssueCode.toString issue.code
+    severity = DiagError
+    range = issue.range
+    message = issue.message
+    related = issue.related
+    hint = issue.hint }
 
 /// One offside scope: the current statement's anchor column (`stmtCol`; -1 = none)
 /// and `stmtExact`, a flag marking a parenthesized body — there the closing `)`
@@ -212,7 +221,6 @@ let private isRecoveryBarrier (t : Token) : bool =
 type ParserState =
   { toks : SpannedToken[] // the token stream being parsed
     tokenCount : int // = toks.Length, cached (read on every bounds check)
-    testMode : bool // testfile dialect: `actual = expected` assertions + `[<DB>]` DBs
     diagnostics : System.Collections.Generic.List<Diagnostic> // parse errors collected during recovery
     scopes : System.Collections.Generic.Stack<OffsideScope> // offside anchor stack (a frame per let/if/match/paren body)
     // Closing a nested generic like `Dict<List<Int>>` ends in `>>`, which the
@@ -1483,21 +1491,16 @@ and parseInfixRhs
     // would be wrongly glued on as `1L - 8L …`. On a new line, a pure infix
     // operator at the statement column continues (`x\n++ y` — `++` can't start
     // a statement), but `-` there begins a new statement (a negative literal),
-    // so it must be indented PAST it. Packages keep the permissive rule
-    // (operators always continue); the guard applies in test-mode, where a
-    // following test can start with `-`.
+    // so it must be indented PAST it. This rule is identical for every caller.
     let opContinues =
       let s = state.scopes.Peek()
       let so = s.stmtCol
       let col = (rng state j).start.column
       (rng state j).start.row = (WT.exprRange left).end_.row
       || so < 0
-      || (if s.stmtExact then
-            tok state j <> TMinus || (not state.testMode) || col <> so
-          elif tok state j = TMinus then
-            (not state.testMode) || col > so
-          else
-            col >= so)
+      || (if s.stmtExact then tok state j <> TMinus || col <> so
+          elif tok state j = TMinus then col > so
+          else col >= so)
     match infixBindingPower (tok state j) with
     | Some(bp, rightAssoc) when bp >= minBp && opContinues ->
       let opTok = tok state j
@@ -1768,7 +1771,7 @@ and parseInterpString (state : ParserState) (i : int) : WT.Expr * int =
                 |> List.map (fun (t : SpannedToken) ->
                   { t with range = offRange t.range })
                 |> List.toArray
-              let subResult = parseTokensAt (state.interpDepth + 1) false offToks
+              let subResult = parseTokensAt (state.interpDepth + 1) offToks
               // surface parse errors from inside the interpolation `{…}` (their
               // ranges are already offset to the outer source) rather than dropping them
               subResult.diagnostics |> List.iter state.diagnostics.Add
@@ -2886,7 +2889,8 @@ and parseTestExpected (state : ParserState) (i : int) : WT.TestExpected * int =
   | TIdent "sqlerror", TStringLit s, _ -> (WT.TESqlError s, i + 2)
   | _ -> let (e, j) = parseExpr state i in (WT.TEExpr e, j)
 
-// `[<DB>]` attribute prefix on a type decl (test-mode only): 5 tokens
+// `[<DB>]` attribute prefix on a type decl: 5 tokens. Parsing represents it;
+// post-parse validation restricts it to Test source.
 // `[` `<` `DB` `>` `]`.
 and isDbAttr (state : ParserState) (i : int) : bool =
   tok state i = TLBracket
@@ -2898,11 +2902,12 @@ and isDbAttr (state : ParserState) (i : int) : bool =
 // Parse declarations/expressions whose start column is >= minCol (offside): a
 // less-indented item ends the scope. Used for the file body and, recursively,
 // for nested `module X =` blocks, so module nesting is preserved (FQN paths).
-// `insideModule` distinguishes a module body (declarations only — a no-param
-// `let x = …` is a value DECLARATION) from a file's top level (a no-param
-// `let x = …` is a script EXPRESSION that sequences with what follows).
-// `state.testMode` enables testfile syntax: `actual = expected` assertions (→ DTest)
-// and `[<DB>] type …` user DBs (→ DTypeDB).
+// `insideModule` distinguishes a module body (declarations only — values require
+// `val`) from a file's top level (a no-param `let x = …` is a script EXPRESSION
+// that sequences with what follows).
+// Test assertions and `[<DB>]` declarations are represented in every parse.
+// Validation later decides whether Script, Package, or Test source may contain
+// them. This keeps file purpose out of expression parsing.
 and parseItems
   (state : ParserState)
   (insideModule : bool)
@@ -2935,9 +2940,7 @@ and parseItemsBody
       setStmtCol state (rng state k).start.column
       state.declAnchor <- (rng state k).start.column
       (match tok state k, tok state (k + 1) with
-       | TLBracket, TLt when
-         state.testMode && isDbAttr state k && tok state (k + 5) = TType
-         ->
+       | TLBracket, TLt when isDbAttr state k && tok state (k + 5) = TType ->
          // `[<DB>] type Name = AliasedType` — a user DB declaration
          let (d, k2) = parseTypeDecl state (k + 5)
          (match d with
@@ -3049,8 +3052,9 @@ and parseItemsBody
          if tok state nk <> TEquals then go <- false // file header consumed the rest
        | _ ->
          let (e, k2) = parseExpr state k
-         // test-mode: a top-level `actual = expected` is a test assertion
-         if state.testMode && tok state k2 = TEquals then
+         // A source-level `actual = expected` is represented as a test node.
+         // Its validity for this caller is decided after parsing.
+         if tok state k2 = TEquals then
            let (expected, k3) = parseTestExpected state (k2 + 1)
            let endR = if k3 > 0 then rng state (k3 - 1) else rng state k2
            decls.Add(
@@ -3066,11 +3070,9 @@ and parseItemsBody
       if k = before then if tok state k = TEOF then go <- false else k <- k + 1
   (List.ofSeq decls, List.ofSeq exprs, k)
 
-// testfiles treat their top level as a module body (top-level `let x = …` is a
-// value declaration), so insideModule = testMode.
 and parseFile (state : ParserState) : ParseResult =
   validateLiterals state
-  let (topDecls, topExprs, _) = parseItems state state.testMode 0 0
+  let (topDecls, topExprs, _) = parseItems state false 0 0
   let fileRange =
     if state.tokenCount > 1 then
       span (rng state 0) (rng state (state.tokenCount - 2))
@@ -3082,17 +3084,12 @@ and parseFile (state : ParserState) : ParseResult =
 
 /// Parse a pre-tokenized stream. Part of the rec chain so string interpolation
 /// can recursively parse the (range-offset) sub-tokens of each `{expr}`.
-and parseTokensAt
-  (interpDepth : int)
-  (testMode : bool)
-  (toks : SpannedToken[])
-  : ParseResult =
+and parseTokensAt (interpDepth : int) (toks : SpannedToken[]) : ParseResult =
   let scopes = System.Collections.Generic.Stack<OffsideScope>()
   scopes.Push { stmtCol = -1; stmtExact = false }
   let state =
     { toks = toks
       tokenCount = toks.Length
-      testMode = testMode
       diagnostics = System.Collections.Generic.List<Diagnostic>()
       scopes = scopes
       pendingGt = 0
@@ -3105,10 +3102,9 @@ and parseTokensAt
       interpDepth = interpDepth }
   parseFile state
 
-and parseTokens (testMode : bool) (toks : SpannedToken[]) : ParseResult =
-  parseTokensAt 0 testMode toks
+and parseTokens (toks : SpannedToken[]) : ParseResult = parseTokensAt 0 toks
 
-let parseWithMode (testMode : bool) (source : string) : ParseResult =
+let private parseSyntax (source : string) : ParseResult =
   match tokenize source with
   | Error e ->
     { parsed = None
@@ -3123,7 +3119,7 @@ let parseWithMode (testMode : bool) (source : string) : ParseResult =
   | Ok(toksList, lexDiags) ->
     // lexical-recovery diagnostics (malformed lexemes the tokenizer recovered from)
     // are surfaced alongside the parser's own diagnostics.
-    let result = parseTokens testMode (List.toArray toksList)
+    let result = parseTokens (List.toArray toksList)
     let lexDiagnostics =
       lexDiags
       |> List.map (fun (r, m) ->
@@ -3135,11 +3131,48 @@ let parseWithMode (testMode : bool) (source : string) : ParseResult =
           hint = None })
     { result with diagnostics = lexDiagnostics @ result.diagnostics }
 
-let parse (source : string) : ParseResult = parseWithMode false source
+/// Parse for tooling: return a recoverable tree and include mode-independent
+/// structural diagnostics after a clean syntax pass.
+let parse (source : string) : ParseResult =
+  let result = parseSyntax source
+  let syntaxDiagnostics = result.diagnostics
+  // Tree-wide rules have one implementation in Validation. Run them only
+  // after a clean syntax pass so recovery holes do not create cascaded errors.
+  let structuralDiagnostics =
+    match syntaxDiagnostics, result.parsed with
+    | [], Some(WT.SourceFile sourceFile) ->
+      sourceFile
+      |> Validation.validateStructure
+      |> List.map diagnosticOfValidationIssue
+    | _ -> []
+  { result with diagnostics = syntaxDiagnostics @ structuralDiagnostics }
 
-/// Parse a testfile (`.dark` test) — enables `actual = expected` assertions and
-/// `[<DB>] type …` user DBs (the `=`-as-assertion dialect normal parsing rejects).
-let parseTestFile (source : string) : ParseResult = parseWithMode true source
+/// Parse for execution: syntax, structural, and file-purpose validation run
+/// once, and only a validated source file can be returned on success.
+let parseFor
+  (mode : Validation.Mode)
+  (source : string)
+  : Result<Validation.ValidatedSourceFile, List<Diagnostic>> =
+  let result = parseSyntax source
+  match result.diagnostics, result.parsed with
+  | [], Some(WT.SourceFile sourceFile) ->
+    match Validation.validate mode sourceFile with
+    | Ok validated -> Ok validated
+    | Error issues ->
+      issues |> NEList.toList |> List.map diagnosticOfValidationIssue |> Error
+  | (_ :: _ as diagnostics), _ -> Error diagnostics
+  | [], None ->
+    Error
+      [ { code = DiagnosticCode.unexpected
+          severity = DiagError
+          range = { start = { row = 0; column = 0 }; end_ = { row = 0; column = 0 } }
+          message = "Parser did not produce a source tree"
+          related = []
+          hint = None } ]
+
+/// Kept as a compatibility entrypoint. Test syntax has the same parse shape as
+/// all other source; parseFor Validation.Test applies the Test purpose rules.
+let parseTestFile (source : string) : ParseResult = parse source
 
 /// Render a diagnostic for humans: code, position, message, a source snippet
 /// with caret markers, related locations, and the hint if any. E.g.

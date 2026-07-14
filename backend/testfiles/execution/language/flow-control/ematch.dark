@@ -373,13 +373,6 @@ module List =
    | head :: tail -> "fail"
    | [] -> "pass") = "pass"
 
-  // duplicate variable name
-  (match [ 1L; 2L; 5L ] with
-   | [ a; a; a ] -> a
-   | name -> name ++ "var") = 5L
-
-
-
   module NestedList =
     (match [ [ 1L; 2L ]; [ 3L; 4L ] ] with
      | [] -> "fail"
@@ -520,15 +513,6 @@ module Tuple =
    | (true, [ 1L; 2L; 3L ]) -> "fail"
    | (false, _) -> "fail"
    | (true, [ 1L; 2L ]) -> "pass") = "pass"
-
-  // duplicate tuple variables
-  (let tpl = (1L, 2L, (3L, 4L), 5L)
-
-   match tpl with
-   | (a, b, (a, b), a) -> (a, b)
-   | name -> name ++ "var") = (5L, 4L)
-
-
 
   module NestedTuple =
 
@@ -810,16 +794,9 @@ module PatternGrouping =
    | _ -> "fail") = "pass"
 
   (match ([1L;2L], 3L) with
-   | ([x], y) | (x :: xs, y) when x > 0L -> "pass"
+   | ([x], y) | (x :: _, y) when x > 0L -> "pass"
    | _ -> "fail") = "pass"
 
-  (match (1L,2L) with
-   | (x,2L) | (2L,y) when x == y -> "fail"
-   | _ -> "fail") = error="There is no variable named: x"
-  (match (1L,2L) with
-    | (x,y) | (x,_) when y > 0L -> "fail"
-    | _ -> "pass") = error="There is no variable named: y"
-  // CLEANUP these should fail when we have at-rest checking
   (match [1L;2L] with
    | [x;y] | x::y -> "fail"
    | _ -> "pass") = "fail"

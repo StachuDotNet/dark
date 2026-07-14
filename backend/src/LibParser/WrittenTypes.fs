@@ -462,14 +462,14 @@ type ModuleDecl =
     declarations : List<Declaration>
     keywordModule : Range }
 
-/// A testfile assertion's expected side: a value expression, or an expected
-/// runtime / SQL error message. (Test-mode parsing only.)
+/// A test assertion's expected side: a value expression, or an expected
+/// runtime / SQL error message. Validation restricts it to Test source.
 and TestExpected =
   | TEExpr of Expr
   | TEError of string
   | TESqlError of string
 
-/// A testfile assertion `actual = expected` (test-mode parsing only).
+/// A test assertion `actual = expected`; post-parse validation restricts it to Test source.
 and Test = { range : Range; actual : Expr; expected : TestExpected }
 
 and Declaration =
@@ -479,9 +479,9 @@ and Declaration =
   | DType of TypeDecl
   /// A trailing expression inside a module body (`module M = … \n expr`).
   | DExpr of Expr
-  /// `[<DB>] type Name = AliasedType` — a user DB (test-mode parsing only).
+  /// `[<DB>] type Name = AliasedType` — a Test-only user DB.
   | DTypeDB of TypeDecl
-  /// `actual = expected` testfile assertion (test-mode parsing only).
+  /// `actual = expected` assertion accepted only by Test validation.
   | DTest of Test
 
 /// The whole file: top-level declarations + trailing expressions to eval.

@@ -220,6 +220,9 @@ Pattern forms:
 - enum patterns with **unqualified** case names, such as `| Ok x`
 - unit
 
+Names in one pattern cannot be repeated. Every or-pattern branch must bind the
+same non-ignored names. `_` and names beginning with `_` are ignored bindings.
+
 Qualified enum patterns such as `| Result.Ok x` are rejected.
 
 ### Generics
@@ -282,13 +285,18 @@ Modules nest. The path builds the package location: `owner.modules.name`.
   `|`);
 - an **alias** to another type: `type Id = String`, `type Pair = Int * Int`.
 
-### Testfile dialect
+### Test classification
 
-Only `parseTestFile` enables this dialect.
+The parser represents test assertions and DB declarations in the same syntax
+tree for every caller. `Parser.parseFor Validation.Test` accepts them; Script
+and Package modes reject them. Successful validation returns a
+`ValidatedSourceFile`, which package, test, and CLI entry points require before
+lowering. `Parser.parse` remains mode-neutral for tooling.
 
 At the top level:
 
-- `let x = …` is treated like a module value declaration
+- `val x = …` declares a test setup value; `let x = …` keeps its normal script
+  expression meaning
 - `actual = expected` is a test assertion
 - expected forms may be `error "msg"` or `sqlerror "msg"`
 - `[<DB>] type X = T` declares a user DB
@@ -311,6 +319,24 @@ Codes are stable identifiers (key on these, never on message text):
 | `PARSE-INTERPOLATION` | malformed interpolation body or brace boundary |
 | `PARSE-INTERNAL-LOOP` | parser step budget exhausted — a parser bug, please report |
 | `LEX` | tokenizer-level recovery (unterminated literal, …) |
+
+Post-parse validation uses these stable codes:
+
+| code | meaning |
+|---|---|
+| `VALIDATION-DUPLICATE-BINDER` | one pattern or parameter list binds the same usable name more than once |
+| `VALIDATION-OR-BINDINGS` | or-pattern alternatives bind different usable names |
+| `VALIDATION-OR-PATTERN` | an invalid tree contains an empty or-pattern |
+| `VALIDATION-RECOVERY-HOLE` | an `EError` or `MPError` recovery node reached validation |
+| `VALIDATION-LAMBDA` | a lambda has no parameter |
+| `VALIDATION-MATCH` | a match has no case |
+| `VALIDATION-ANONYMOUS-RECORD` | the tree contains an unsupported anonymous record |
+| `VALIDATION-RECORD-UPDATE` | a record update has no fields |
+| `VALIDATION-PACKAGE-EXPR` | a package contains an executable expression |
+| `VALIDATION-TEST-ASSERTION` | a test expression is not an assertion |
+| `VALIDATION-DB-MODE` | a DB declaration occurs outside Test mode |
+| `VALIDATION-DB-SHAPE` | a DB declaration is not a type alias |
+| `VALIDATION-TEST-MODE` | a test assertion occurs outside Test mode |
 
 `renderDiagnostic` renders code + position + message + a caret snippet +
 related locations + hint; the CLI uses it. The LSP wire (`parserParseDiagnostics`,
