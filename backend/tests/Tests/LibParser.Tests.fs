@@ -900,6 +900,7 @@ let private lexicalFailureTests =
     [ mustDiagnose "unknown character" "let x = §"
       mustDiagnose "unterminated string" "\"abc"
       mustDiagnose "unterminated char" "'a"
+      mustDiagnose "multi-grapheme escaped char" "'\\na'"
       mustDiagnose "unterminated interpolation" "$\"{1L"
       mustDiagnose "bad expression inside interpolation" "$\"{1L +++ 2L}\""
       mustDiagnose "malformed float exponent (no digits)" "1e"

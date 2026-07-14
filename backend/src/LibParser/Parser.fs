@@ -434,6 +434,16 @@ let validateLiterals (state : ParserState) : unit =
           DiagnosticCode.escape
           vi
           "Invalid escape sequence or codepoint in character literal"
+      match state.toks[vi].token with
+      | TCharLit value when
+        System.Globalization.StringInfo.ParseCombiningCharacters(value).Length <> 1
+        ->
+        err
+          state
+          DiagnosticCode.escape
+          vi
+          "Character literal must contain exactly one grapheme"
+      | _ -> ()
     | TInterpString when not ((txt state vi).StartsWith "$\"\"\"") ->
       let inner = stripDelims (txt state vi) "$\"" "\""
       if Lexer.hasInvalidEscapeInterp inner then
