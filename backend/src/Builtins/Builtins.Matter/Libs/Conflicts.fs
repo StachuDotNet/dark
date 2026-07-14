@@ -1,7 +1,6 @@
 /// Builtins for the sync Conflict/Resolution UX (`dark conflicts`). Conflicts are the LOCAL review log of
 /// divergences; a human decision (`conflictKeep`) mints a SYNCED `Resolution` that overrides the op-fold and
-/// converges on peers. Low-volume (a handful of divergences), so these return plain tuples — no native record
-/// construction needed.
+/// converges on peers.
 module Builtins.Matter.Libs.Conflicts
 
 open FSharp.Control.Tasks
@@ -11,50 +10,44 @@ open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
 
 module PT = LibExecution.ProgramTypes
-module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
+module PackageRefs = LibExecution.PackageRefs
+module NR = LibExecution.RuntimeTypes.NameResolution
 
-/// The tuple shape a conflict crosses as: (id, location, itemKind, localHash, incomingHash, chosenHash,
-/// resolvedBy, status).
-let private conflictTupleKT =
-  KTTuple(
-    VT.string,
-    VT.string,
-    [ VT.string; VT.string; VT.string; VT.string; VT.string; VT.string ]
-  )
+let private conflictType () =
+  FQTypeName.fqPackage (PackageRefs.Type.Sync.Conflicts.conflict ())
 
-let private toTuple (c : LibDB.Conflicts.Conflict) : Dval =
-  DTuple(
-    DString c.id,
-    DString c.location,
-    [ DString c.itemKind
-      DString c.localHash
-      DString c.incomingHash
-      DString c.chosenHash
-      DString c.resolvedBy
-      DString c.status ]
+let private toRecord (c : LibDB.Conflicts.Conflict) : Dval =
+  let t = conflictType ()
+  DRecord(
+    t,
+    t,
+    [],
+    Map
+      [ "id", DString c.id
+        "location", DString c.location
+        "itemKind", DString c.itemKind
+        "localHash", DString c.localHash
+        "incomingHash", DString c.incomingHash
+        "chosenHash", DString c.chosenHash
+        "resolvedBy", DString c.resolvedBy
+        "status", DString c.status ]
   )
 
 let fns () : List<BuiltInFn> =
   [ { name = fn "conflictsList" 0
       typeParams = []
       parameters = [ Param.make "unit" TUnit "" ]
-      returnType =
-        TList(
-          TTuple(
-            TString,
-            TString,
-            [ TString; TString; TString; TString; TString; TString ]
-          )
-        )
+      returnType = TList(TCustomType(NR.ok (conflictType ()), []))
       description =
-        "This instance's recorded sync conflicts as (id, location, itemKind, localHash, incomingHash, chosenHash, resolvedBy, status). Local-only review log."
+        "This instance's recorded sync conflicts, each as a `Darklang.Sync.Conflicts.Conflict`. Local-only review log."
       fn =
         (function
         | _, _, _, [ DUnit ] ->
           uply {
             let! conflicts = LibDB.Conflicts.list ()
-            return conflicts |> List.map toTuple |> Dval.list conflictTupleKT
+            let kt = KTCustomType(conflictType (), [])
+            return conflicts |> List.map toRecord |> Dval.list kt
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

@@ -1,0 +1,12 @@
+module Darklang.Sync.Conflicts
+
+// A recorded sync divergence, read by the `dark conflicts` UX.
+type Conflict =
+  { id: String
+    location: String
+    itemKind: String
+    localHash: String
+    incomingHash: String
+    chosenHash: String
+    resolvedBy: String
+    status: String }

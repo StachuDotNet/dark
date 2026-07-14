@@ -5,30 +5,8 @@ module Darklang.Cli.Conflicts
 // auto choice, or override it — an override mints a SYNCED Resolution that propagates so peers converge on
 // your pick.
 
-type Conflict =
-  { id: String
-    location: String
-    itemKind: String
-    localHash: String
-    incomingHash: String
-    chosenHash: String
-    resolvedBy: String
-    status: String }
-
-let private conflicts () : List<Conflict> =
-  Stdlib.List.map (Builtin.conflictsList ()) (fun t ->
-    let (id, location, itemKind, localHash, incomingHash, chosenHash, resolvedBy, status) =
-      t
-
-    Conflict
-      { id = id
-        location = location
-        itemKind = itemKind
-        localHash = localHash
-        incomingHash = incomingHash
-        chosenHash = chosenHash
-        resolvedBy = resolvedBy
-        status = status })
+let private conflicts () : List<Darklang.Sync.Conflicts.Conflict> =
+  Builtin.conflictsList ()
 
 // First 8 chars of a hash for compact display.
 let private short (h: String) : String =
@@ -40,10 +18,12 @@ let private leafName (location: String) : String =
   | Some n -> n
   | None -> location
 
-let private unreviewed () : List<Conflict> =
+let private unreviewed () : List<Darklang.Sync.Conflicts.Conflict> =
   Stdlib.List.filter (conflicts ()) (fun c -> c.status == "auto-resolved")
 
-let private findOpen (location: String) : Stdlib.Option.Option<Conflict> =
+let private findOpen
+  (location: String)
+  : Stdlib.Option.Option<Darklang.Sync.Conflicts.Conflict> =
   Stdlib.List.findFirst (unreviewed ()) (fun c -> c.location == location)
 
 let private noneMsg (location: String) : String =

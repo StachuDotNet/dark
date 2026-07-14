@@ -107,6 +107,10 @@ module Type =
       let branchOpEvent = p [] "BranchOpEvent"
       let resolutionEvent = p [] "ResolutionEvent"
 
+    module Conflicts =
+      let private p addl = p ("Conflicts" :: addl)
+      let conflict = p [] "Conflict"
+
   module Stdlib =
     let private p addl = p ("Stdlib" :: addl)
 
