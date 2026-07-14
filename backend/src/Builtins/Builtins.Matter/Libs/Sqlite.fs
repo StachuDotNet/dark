@@ -2,15 +2,13 @@
 /// live in Dark over an ordinary database. (The internal sync machinery — op-log read/append, blob channel,
 /// store path + Release coordinate — lives in `Libs/Sync.fs`, not here.)
 ///
-/// Surface: `sqliteExec` (DDL/DML → rows affected) and `sqliteQuery` (SELECT → each row as a typed
-/// `Dict<Value>`), each taking a `params` list bound to @p0..@pN (injection-safe; [] for none). The `.dark`
-/// `Stdlib.Sqlite.exec/execP/query/queryP` wrappers layer the with/without-params convenience on top, so
-/// there's one builtin per operation rather than four.
+/// `sqliteExec` (DDL/DML → rows affected) and `sqliteQuery` (SELECT → each row as a typed `Dict<Value>`)
+/// are the two primitives; the `.dark` wrappers add the with/without-params convenience so there's one
+/// builtin per operation rather than four. Both open a caller-supplied path, so they declare
+/// `Needs.fileReadWrite` (the CLI host grants it; a narrowed `dark run` is denied).
 ///
-/// The `sqlite*` builtins open a caller-supplied file path, so they declare `Needs.fileReadWrite` (the CLI host
-/// grants it; untrusted `dark run` under a narrowed grant is denied). They still don't scope to a SPECIFIC
-/// path in-body — that (a `sqlite:open:<glob>` cap) is a follow-up. Minimal extras also deferred: an opaque
-/// connection-registry `Db` handle, a typed `Sqlite.Value` enum, and `transact`.
+/// Deferred (not needed yet): scoping the grant to a specific path/glob, binding typed params (params are
+/// string-only today; results already carry types via `Value`), an opaque connection handle, and `transact`.
 /// CLEANUP(sqlite-scope): add the in-body path/glob capability check.
 module Builtins.Matter.Libs.Sqlite
 
@@ -124,9 +122,6 @@ let private queryImpl
   }
 
 let fns () : List<BuiltInFn> =
-  // Two raw-SQLite primitives — exec (DDL/DML) and query (SELECT) — each binding @p0..@pN params
-  // (injection-safe; pass [] for none). The `.dark` Stdlib.Sqlite.exec/execP/query/queryP wrappers layer the
-  // with-params / without-params convenience on top, so there's one builtin per operation rather than four.
   [ { name = fn "sqliteExec" 0
       typeParams = []
       parameters =
