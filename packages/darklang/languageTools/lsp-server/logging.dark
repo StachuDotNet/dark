@@ -1,7 +1,7 @@
 module Darklang.LanguageTools.LspServer
 
 
-let logFilePath = "/home/dark/app/rundir/logs/lsp-server.log"
+val logFilePath = "/home/dark/app/rundir/logs/lsp-server.log"
 
 let log (input: String) : Unit =
   // returns Result -- ignored

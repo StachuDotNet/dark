@@ -3,7 +3,7 @@ module Darklang.CLI.UI.Demo
 /// Simple demo to visually verify UI components render correctly.
 /// Run with: dark run Darklang.CLI.UI.Demo.run
 
-let demoContext : Core.Types.RenderContext =
+val demoContext =
   Core.Types.RenderContext
     { availableWidth = 60
       availableHeight = 20

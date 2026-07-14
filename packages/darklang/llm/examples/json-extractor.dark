@@ -15,11 +15,11 @@ let jsonExtractorAgent (systemPrompt: String) (maxTokens: Int) : Agent.Agent =
 
 // CONTACT EXTRACTION
 
-let contactPrompt =
+val contactPrompt =
   "Extract contact info as JSON: {name, email, phone, company, title, address}. Use null for missing fields."
 
 
-let contactAgent = jsonExtractorAgent contactPrompt 500
+val contactAgent = jsonExtractorAgent contactPrompt 500
 
 
 /// Run an extraction agent with a prompt prefix
@@ -62,11 +62,11 @@ let extractContactParsed (text: String) : Stdlib.Result.Result<ContactInfo, Stri
 
 // EVENT EXTRACTION
 
-let eventPrompt =
+val eventPrompt =
   "Extract event info as JSON: {title, date (YYYY-MM-DD), time (HH:MM), location, description, attendees:[]}."
 
 
-let eventAgent = jsonExtractorAgent eventPrompt 500
+val eventAgent = jsonExtractorAgent eventPrompt 500
 
 
 /// Extract event information from text
@@ -77,11 +77,11 @@ let extractEvent (text: String) : String =
 
 // ENTITY EXTRACTION
 
-let entityPrompt =
+val entityPrompt =
   "Extract named entities as JSON: {people:[], organizations:[], locations:[], dates:[], amounts:[]}."
 
 
-let entityAgent = jsonExtractorAgent entityPrompt 1000
+val entityAgent = jsonExtractorAgent entityPrompt 1000
 
 
 /// Extract named entities from text
@@ -92,11 +92,11 @@ let extractEntities (text: String) : String =
 
 // SENTIMENT ANALYSIS
 
-let sentimentPrompt =
+val sentimentPrompt =
   "Analyze sentiment as JSON: {overall_sentiment, confidence (0-1), emotions:[], key_phrases:[], summary}."
 
 
-let sentimentAgent = jsonExtractorAgent sentimentPrompt 500
+val sentimentAgent = jsonExtractorAgent sentimentPrompt 500
 
 
 /// Analyze sentiment of text

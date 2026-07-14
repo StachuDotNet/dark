@@ -4,13 +4,13 @@
 module Darklang.LLM.Examples.NewsDigest
 
 
-let systemPrompt =
+val systemPrompt =
   "You are a News Digest Agent. Research current news and summarize concisely.
 Format: ## [Topic] News → 3 headlines with 1-sentence summaries → ### Takeaways"
 
 
 /// News digest agent with web search
-let agent =
+val agent =
   (Darklang.LLM.Agent.create ())
   |> Darklang.LLM.Agent.withSystemPrompt systemPrompt
   |> Darklang.LLM.Agent.withWebSearch

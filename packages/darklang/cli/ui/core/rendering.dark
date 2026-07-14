@@ -36,43 +36,43 @@ type BoxStyle =
 // Box drawing characters organized by style
 module BoxChars =
   // Single line (default)
-  let horizontal = "─"
-  let vertical = "│"
-  let topLeft = "┌"
-  let topRight = "┐"
-  let bottomLeft = "└"
-  let bottomRight = "┘"
-  let cross = "┼"
-  let teeUp = "┴"
-  let teeDown = "┬"
-  let teeLeft = "┤"
-  let teeRight = "├"
+  val horizontal = "─"
+  val vertical = "│"
+  val topLeft = "┌"
+  val topRight = "┐"
+  val bottomLeft = "└"
+  val bottomRight = "┘"
+  val cross = "┼"
+  val teeUp = "┴"
+  val teeDown = "┬"
+  val teeLeft = "┤"
+  val teeRight = "├"
 
   // Double line
-  let doubleHorizontal = "═"
-  let doubleVertical = "║"
-  let doubleTopLeft = "╔"
-  let doubleTopRight = "╗"
-  let doubleBottomLeft = "╚"
-  let doubleBottomRight = "╝"
+  val doubleHorizontal = "═"
+  val doubleVertical = "║"
+  val doubleTopLeft = "╔"
+  val doubleTopRight = "╗"
+  val doubleBottomLeft = "╚"
+  val doubleBottomRight = "╝"
 
   // Rounded corners (uses single line for edges)
-  let roundedTopLeft = "╭"
-  let roundedTopRight = "╮"
-  let roundedBottomLeft = "╰"
-  let roundedBottomRight = "╯"
+  val roundedTopLeft = "╭"
+  val roundedTopRight = "╮"
+  val roundedBottomLeft = "╰"
+  val roundedBottomRight = "╯"
 
   // Heavy (thick) line
-  let heavyHorizontal = "━"
-  let heavyVertical = "┃"
-  let heavyTopLeft = "┏"
-  let heavyTopRight = "┓"
-  let heavyBottomLeft = "┗"
-  let heavyBottomRight = "┛"
+  val heavyHorizontal = "━"
+  val heavyVertical = "┃"
+  val heavyTopLeft = "┏"
+  val heavyTopRight = "┓"
+  val heavyBottomLeft = "┗"
+  val heavyBottomRight = "┛"
 
   // Dashed line
-  let dashedHorizontal = "┄"
-  let dashedVertical = "┆"
+  val dashedHorizontal = "┄"
+  val dashedVertical = "┆"
 
 // Get box characters for a given style
 let getBoxCharsForStyle (style: BoxStyle) : (String * String * String * String * String * String) =

@@ -2,7 +2,7 @@ module Darklang.Cli.Builtins
 
 // Known groups in display order with their display names
 // Format: (prefix, displayName)
-let knownGroups: List<String * String> =
+val knownGroups =
   [ ("int", "Int")
     ("float", "Float")
     ("bool", "Bool")

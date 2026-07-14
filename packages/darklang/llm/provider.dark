@@ -296,7 +296,7 @@ type Usage =
     /// Tokens read from prompt cache (Anthropic)
     cacheReadTokens: Int }
 
-let emptyUsage : Usage =
+val emptyUsage =
   Usage
     { inputTokens = 0
       outputTokens = 0
@@ -400,7 +400,7 @@ type RetryConfig =
   { maxRetries: Int }
 
 /// Default retry configuration (3 retries, no delay)
-let defaultRetryConfig : RetryConfig =
+val defaultRetryConfig =
   RetryConfig { maxRetries = 3 }
 
 /// Retry state for tracking attempts
@@ -501,7 +501,7 @@ type WebSearchConfig =
     allowedDomains: Stdlib.Option.Option<List<String>>
     blockedDomains: Stdlib.Option.Option<List<String>> }
 
-let defaultWebSearch : WebSearchConfig =
+val defaultWebSearch =
   WebSearchConfig
     { maxUses = Stdlib.Option.Option.None
       allowedDomains = Stdlib.Option.Option.None
@@ -514,7 +514,7 @@ type WebFetchConfig =
     blockedDomains: Stdlib.Option.Option<List<String>>
     enableCitations: Bool }
 
-let defaultWebFetch : WebFetchConfig =
+val defaultWebFetch =
   WebFetchConfig
     { maxUses = Stdlib.Option.Option.None
       allowedDomains = Stdlib.Option.Option.None
@@ -552,7 +552,7 @@ type RequestExtensions =
     /// Top-p nucleus sampling 0.0 to 1.0 (OpenAI)
     topP: Stdlib.Option.Option<Float> }
 
-let emptyExtensions : RequestExtensions =
+val emptyExtensions =
   RequestExtensions
     { toolChoice = Stdlib.Option.Option.None
       thinking = Stdlib.Option.Option.None

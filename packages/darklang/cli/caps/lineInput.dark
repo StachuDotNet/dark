@@ -8,7 +8,7 @@ type State = { text: String; cursor: Int }
 let make (text: String) : State =
   State { text = text; cursor = Stdlib.String.length text }
 
-let empty : State = State { text = ""; cursor = 0 }
+val empty = State { text = ""; cursor = 0 }
 
 let insert (state: State) (ch: String) : State =
   let before = Stdlib.String.slice state.text 0 state.cursor

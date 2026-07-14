@@ -55,7 +55,7 @@ module Context =
         currentModule = Stdlib.Option.Option.None
         currentFunction = Stdlib.Option.Option.None }
 
-  let forMain : Context = forBranch SCM.Branch.mainBranchId
+  val forMain = forBranch SCM.Branch.mainBranchId
 
   let toPickContext (ctx: Context) : LanguageTools.PackageManager.PickContext =
     LanguageTools.PackageManager.PickContext

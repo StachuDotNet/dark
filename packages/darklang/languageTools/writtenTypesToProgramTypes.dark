@@ -16,7 +16,7 @@ type Context =
     argMap: Dict<Int>
     localBindings: List<String> }
 
-let defaultContext =
+val defaultContext =
   Context
     { currentFnName = Stdlib.Option.Option.None
       argMap = Dict {}

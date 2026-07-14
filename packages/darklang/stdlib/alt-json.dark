@@ -152,7 +152,7 @@ module Builder =
   type Fields = List<(String * Json)>
 
   /// Start with an empty JSON object
-  let empty : Fields = []
+  val empty = []
 
   /// Add a required string field
   let addString (fields: Fields) (key: String) (value: String) : Fields =

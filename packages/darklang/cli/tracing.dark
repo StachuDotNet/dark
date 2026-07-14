@@ -25,7 +25,7 @@ type ViewOptions =
     slowThresholdMs: Stdlib.Option.Option<Int> }
 
 
-let defaultViewOptions: ViewOptions =
+val defaultViewOptions =
   ViewOptions
     { maxDepth = Stdlib.Option.Option.None
       hideBuiltins = false

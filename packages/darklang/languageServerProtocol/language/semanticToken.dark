@@ -107,7 +107,7 @@ module SemanticTokens =
 
 
 module SemanticTokensRequest =
-  let method = "textDocument/semanticTokens/full"
+  val method = "textDocument/semanticTokens/full"
   // let messageDirection = MessageDirection.clientToServer;
   // registration: SemanticTokensRegistrationType.method;
 

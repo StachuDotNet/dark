@@ -5,11 +5,11 @@ module Darklang.Cli.Caps.Main
 // rules (http-client/file/env/db/exec) open the matching composable editor. Profiles replace the set.
 
 // the toggle-only domains (no scope/coupling) — shown as a checklist at the top
-let flagDomains : List<String> =
+val flagDomains =
   [ "random"; "clock"; "stdout"; "stdin"; "llm"; "http-server" ]
 
 // the domains that need a rule editor (and which one)
-let ruleDomains : List<String> =
+val ruleDomains =
   [ "http-client"; "file"; "env"; "db"; "exec" ]
 
 type Row =

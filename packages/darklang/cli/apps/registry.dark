@@ -47,7 +47,7 @@ let available () : List<Model.App> =
 let discover (branchId: Uuid) : List<Model.App> =
   match Packages.FindValues.resolveTypeHash branchId "Darklang.Cli.Apps.Model.App" with
   | Ok typeHash ->
-    let found : List<Stdlib.ValueSearch.FoundValue<Model.App>> =
+    let found =
       Stdlib.ValueSearch.findByType branchId "" typeHash
     found |> Stdlib.List.map (fun f -> f.value)
   | Error _ -> []
@@ -69,7 +69,7 @@ let findBySlug (branchId: Uuid) (slug: String) : Stdlib.Option.Option<Model.App>
 
 // ── the installed list ── persisted per-instance in cli-config.json (comma-separated slugs under one key)
 
-let installedKey : String = "apps.installed"
+val installedKey = "apps.installed"
 
 let installedSlugs () : List<String> =
   match Config.get installedKey with

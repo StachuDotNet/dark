@@ -20,31 +20,31 @@ type Json = Stdlib.AltJson.Json
 /// Image size options
 module Size =
   // GPT Image / DALL-E 3 sizes
-  let square1024 : String = "1024x1024"
-  let landscape : String = "1792x1024"
-  let portrait : String = "1024x1792"
+  val square1024 = "1024x1024"
+  val landscape = "1792x1024"
+  val portrait = "1024x1792"
   // GPT Image additional sizes
-  let landscapeWide : String = "1536x1024"
-  let portraitTall : String = "1024x1536"
-  let auto : String = "auto"
+  val landscapeWide = "1536x1024"
+  val portraitTall = "1024x1536"
+  val auto = "auto"
   // DALL-E 2 sizes (deprecated May 2026)
-  let square256 : String = "256x256"
-  let square512 : String = "512x512"
+  val square256 = "256x256"
+  val square512 = "512x512"
 
 /// Image quality options
 module Quality =
   // DALL-E 3 quality
-  let standard : String = "standard"
-  let hd : String = "hd"
+  val standard = "standard"
+  val hd = "hd"
   // GPT Image quality levels
-  let low : String = "low"
-  let medium : String = "medium"
-  let high : String = "high"
+  val low = "low"
+  val medium = "medium"
+  val high = "high"
 
 /// Image style options (DALL-E 3 only)
 module Style =
-  let vivid : String = "vivid"
-  let natural : String = "natural"
+  val vivid = "vivid"
+  val natural = "natural"
 
 /// Output format for GPT Image models
 type OutputFormat =

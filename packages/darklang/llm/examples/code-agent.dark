@@ -4,14 +4,14 @@
 module Darklang.LLM.Examples.CodeAgent
 
 
-let systemPrompt =
+val systemPrompt =
   "You are a coding assistant. You can read, write, list, and search files.
 Use the tools to help the user with their coding tasks.
 Be concise and helpful."
 
 
 /// Code agent with all file tools
-let agent =
+val agent =
   (Darklang.LLM.Agent.create ())
   |> Darklang.LLM.Agent.withSystemPrompt systemPrompt
   |> Darklang.LLM.Agent.withFileTools

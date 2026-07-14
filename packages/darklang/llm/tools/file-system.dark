@@ -9,7 +9,7 @@ type ToolOutput = Darklang.LLM.Internal.AgentLoop.ToolOutput
 
 // PATH SAFETY
 
-let unsafePathError : String =
+val unsafePathError =
   "Unsafe path: only relative paths within the current working directory are allowed"
 
 let isUnsafePath (path: String) : Bool =
@@ -77,8 +77,8 @@ type SearchState =
     hitResultLimit: Bool
     hitFileLimit: Bool }
 
-let maxSearchResults : Int = 50
-let maxSearchFiles : Int = 200
+val maxSearchResults = 50
+val maxSearchFiles = 200
 
 let filePathToDisplayPath (fullPath: String) : String =
   let cwd = Builtin.directoryCurrent ()
@@ -253,7 +253,7 @@ let handleSearch (input: Json) : Stdlib.Result.Result<ToolOutput, String> =
 // TOOLS
 
 /// Tool for reading file contents
-let readTool : Tool =
+val readTool =
   Internal.AgentLoop.Tool
     { schema =
         Provider.ToolSchema
@@ -264,7 +264,7 @@ let readTool : Tool =
 
 
 /// Tool for writing file contents
-let writeTool : Tool =
+val writeTool =
   Internal.AgentLoop.Tool
     { schema =
         Provider.ToolSchema
@@ -277,7 +277,7 @@ let writeTool : Tool =
 
 
 /// Tool for listing directory contents
-let listTool : Tool =
+val listTool =
   Internal.AgentLoop.Tool
     { schema =
         Provider.ToolSchema
@@ -288,7 +288,7 @@ let listTool : Tool =
 
 
 /// Tool for searching file contents
-let searchTool : Tool =
+val searchTool =
   Internal.AgentLoop.Tool
     { schema =
         Provider.ToolSchema
@@ -301,5 +301,5 @@ let searchTool : Tool =
 
 
 /// All file system tools
-let all : List<Tool> =
+val all =
   [ readTool; writeTool; listTool; searchTool ]

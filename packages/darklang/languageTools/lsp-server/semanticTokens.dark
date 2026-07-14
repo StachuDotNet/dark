@@ -9,7 +9,7 @@ module Darklang.LanguageTools.LspServer.SemanticTokens
 /// defined by the LSP spec, but there are a few that are 'custom'
 /// for our language:
 /// - "symbol"
-let tokenTypes =
+val tokenTypes =
   [ // universal
     "symbol" // [0] for (, ), [, ], {, }, etc.
     "keyword" // [1] for words 'let' and 'in'
@@ -29,7 +29,7 @@ let tokenTypes =
     "enumMember" // [11] for enum case names
     "typeParameter" ] // [12] for type parameter names
 
-let tokenModifiers = []
+val tokenModifiers = []
 
 
 /// Maps from "exact" semantic tokens that try to remain ignorant of

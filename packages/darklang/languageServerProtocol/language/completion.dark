@@ -460,7 +460,7 @@ module CompletionOptions =
 /// request. However, properties that are needed for the initial sorting and filtering, like `sortText`,
 /// `filterText`, `insertText`, and `textEdit`, must not be changed during resolve.
 module CompletionRequest =
-  let method = "textDocument/completion"
+  val method = "textDocument/completion"
   // let messageDirection = MessageDirection.ClientToServer
   // params: CompletionParams
   // result: CompletionItem[] | CompletionList | null

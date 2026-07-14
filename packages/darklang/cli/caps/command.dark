@@ -15,7 +15,7 @@ module Darklang.Cli.Caps.Command
 // Named PRESET grants — common bundles you apply in one go (`caps profile local-dev`). The http-client
 // grant is a LIST of (method × URL) rules that couple per-rule, so a preset CAN say "any method to
 // localhost, but GET-only externally": `http-client * *://localhost:*` + `http-client GET`.
-let profiles : List<(String * List<String>)> =
+val profiles =
   [ ("read-only",
      [ "http-client GET"; "file read"; "db read"; "env read"; "clock"; "random"; "stdin"; "stdout" ])
     ("local-dev",

@@ -7,7 +7,7 @@ module Darklang.ModelContextProtocol
 // </aliases>
 
 /// The version of the Model Context Protocol implemented
-let protocolVersion = "2025-06-18"
+val protocolVersion = "2025-06-18"
 
 /// A URI identifying a resource
 type ResourceUri = String
@@ -150,12 +150,12 @@ type CompletionCapabilities =
 
 /// Error codes for the Model Context Protocol
 module ErrorCodes =
-  let parseError = -32700
-  let invalidRequest = -32600
-  let methodNotFound = -32601
-  let invalidParams = -32602
-  let internalError = -32603
-  let resourceNotFound = -32800
-  let resourceAccessDenied = -32801
-  let toolExecutionError = -32900
-  let promptNotFound = -32950
+  val parseError = -32700
+  val invalidRequest = -32600
+  val methodNotFound = -32601
+  val invalidParams = -32602
+  val internalError = -32603
+  val resourceNotFound = -32800
+  val resourceAccessDenied = -32801
+  val toolExecutionError = -32900
+  val promptNotFound = -32950

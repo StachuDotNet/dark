@@ -3,7 +3,7 @@
 module Darklang.LanguageServerProtocol.Lifecycle.InitializeRequest
 
 
-let method = "initialize"
+val method = "initialize"
 
 module ClientInfo =
   /// Information about the client, provided by the client

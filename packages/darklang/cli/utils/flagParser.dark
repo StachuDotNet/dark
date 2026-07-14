@@ -29,7 +29,7 @@ type Parsed =
     errors: List<ParseError> }
 
 
-let emptyParsed: Parsed =
+val emptyParsed =
   Parsed { flags = []; options = []; positionals = []; errors = [] }
 
 

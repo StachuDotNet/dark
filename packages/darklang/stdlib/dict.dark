@@ -2,7 +2,7 @@ module Darklang.Stdlib.Dict
 
 
 /// Returns an empty dictionary
-let empty = Dict { }
+val empty = Dict { }
 
 /// Returns {{true}} if the <param dict> contains no entries
 let isEmpty (dict: Dict<'a>) : Bool =

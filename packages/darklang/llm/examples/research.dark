@@ -4,13 +4,13 @@
 module Darklang.LLM.Examples.Research
 
 
-let systemPrompt =
+val systemPrompt =
   "You are a Research Assistant. Research topics using web search, think critically, and cite sources.
 Format: ## Research: [Topic] → ### Summary → ### Key Findings → ### Analysis → ### Sources"
 
 
 /// Full research agent with thinking and web search
-let agent =
+val agent =
   (Darklang.LLM.Agent.create ())
   |> Darklang.LLM.Agent.withSystemPrompt systemPrompt
   |> Darklang.LLM.Agent.useSonnet
@@ -22,7 +22,7 @@ let agent =
 
 
 /// Quick research agent (no thinking, faster)
-let quickAgent =
+val quickAgent =
   (Darklang.LLM.Agent.create ())
   |> Darklang.LLM.Agent.withSystemPrompt systemPrompt
   |> Darklang.LLM.Agent.useHaiku

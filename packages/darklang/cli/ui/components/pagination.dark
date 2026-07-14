@@ -59,7 +59,7 @@ let renderPagination (component: Core.Types.Component<PaginationModel>) (context
   let model = component.model
   let hasFocus = context.hasFocus && component.state == Core.Types.ComponentState.Focused
 
-  let generatePageNumbers : List<String> =
+  let generatePageNumbers =
     let halfVisible = Stdlib.Int.divide model.maxVisiblePages 2
     let startPage = Stdlib.Int.max 1 (model.currentPage - halfVisible)
     let endPage = Stdlib.Int.min model.totalPages (startPage + model.maxVisiblePages - 1)

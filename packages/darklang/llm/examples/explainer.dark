@@ -4,13 +4,13 @@
 module Darklang.LLM.Examples.Explainer
 
 
-let systemPrompt =
+val systemPrompt =
   "You are an Expert Explainer. Break down complex concepts clearly.
 Format: ## Concept → ### Core Idea → ### How It Works → ### Example → ### Key Takeaways"
 
 
 /// Create an explainer agent with extended thinking
-let thinkingAgent =
+val thinkingAgent =
   (Darklang.LLM.Agent.create ())
   |> Darklang.LLM.Agent.withSystemPrompt systemPrompt
   |> Darklang.LLM.Agent.withThinking 2000
@@ -18,7 +18,7 @@ let thinkingAgent =
 
 
 /// Create a basic explainer without extended thinking (faster)
-let basicAgent =
+val basicAgent =
   (Darklang.LLM.Agent.create ())
   |> Darklang.LLM.Agent.withSystemPrompt systemPrompt
   |> Darklang.LLM.Agent.withMaxTokens 1500

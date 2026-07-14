@@ -49,7 +49,7 @@ let toJson (format: Format) : Json =
                  ("strict", Json.Bool true) ]))) ]
 
 /// Create JSON object response format
-let jsonObject : Format = Format.JsonObject
+val jsonObject = Format.JsonObject
 
 /// Create JSON schema response format
 let jsonSchema

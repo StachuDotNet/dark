@@ -9,7 +9,7 @@ type Result =
   | Finished of String
   | Cancelled
 
-let empty : State =
+val empty =
   State { text = ""; cursor = 0 }
 
 let fromText (text: String) : State =

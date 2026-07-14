@@ -20,7 +20,7 @@ module Darklang.LanguageServerProtocol
 module Messages =
   /// server -> client `textDocument/publishDiagnostics` notification
   module PublishDiagnostics =
-    let method = "textDocument/publishDiagnostics"
+    val method = "textDocument/publishDiagnostics"
 
     module PublishDiagnosticsParams =
       type PublishDiagnosticsParams =

@@ -7,7 +7,7 @@ type State =
     commandPrefix: String
     hasBeenDisplayed: Bool }
 
-let maxVisibleItems: Int = 10
+val maxVisibleItems = 10
 
 /// Create picker state from completions
 let create (promptText: String) (items: List<Completion.CompletionItem>) : State =

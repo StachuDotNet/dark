@@ -5,7 +5,7 @@ module Darklang.DemoData.HttpServerTest
 let helloHandlerFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
   Stdlib.Http.responseWithText "Hello, World!" 200
 
-let helloHandler: Stdlib.HttpServer.Handler =
+val helloHandler =
   Stdlib.HttpServer.Handler
     { route = "/hello"
       method = "GET"
@@ -16,7 +16,7 @@ let echoHandlerFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
   let bodyText = Stdlib.String.fromBlobWithReplacement req.body
   Stdlib.Http.responseWithText bodyText 200
 
-let echoHandler: Stdlib.HttpServer.Handler =
+val echoHandler =
   Stdlib.HttpServer.Handler
     { route = "/echo"
       method = "POST"
@@ -26,7 +26,7 @@ let echoHandler: Stdlib.HttpServer.Handler =
 let rootHandlerFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
   Stdlib.Http.responseWithText "Welcome to Darklang HTTP Server!" 200
 
-let rootHandler: Stdlib.HttpServer.Handler =
+val rootHandler =
   Stdlib.HttpServer.Handler
     { route = "/"
       method = "GET"
@@ -35,7 +35,7 @@ let rootHandler: Stdlib.HttpServer.Handler =
 
 // CLEANUP
 /// All handlers for the test server
-let handlers: List<Stdlib.HttpServer.Handler> =
+val handlers =
   [ helloHandler; echoHandler; rootHandler ]
 
 

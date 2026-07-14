@@ -9,7 +9,7 @@ type TocEntry =
     description: String }
 
 // Define the table of contents structure
-let tocEntries: List<TocEntry> =
+val tocEntries =
   [ // Platform Core
     TocEntry
       { category = "PLATFORM CORE"

@@ -36,7 +36,7 @@ let toJson (hover: Hover) : Json =
   Json.Object fields
 
 module HoverRequest =
-  let method = "textDocument/hover"
+  val method = "textDocument/hover"
 
   module HoverParams =
     type HoverParams =

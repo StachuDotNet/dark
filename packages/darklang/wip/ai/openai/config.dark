@@ -3,7 +3,7 @@
 /// For most use cases, prefer `Darklang.LLM.Agent`.
 module Darklang.WIP.AI.OpenAI.Config
 
-let baseUrl : String = "https://api.openai.com/v1"
+val baseUrl = "https://api.openai.com/v1"
 
 let getHeaders (apiKey: String) : List<(String * String)> =
   [ ("Authorization", "Bearer " ++ apiKey)

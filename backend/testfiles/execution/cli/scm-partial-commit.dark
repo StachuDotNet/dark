@@ -72,9 +72,9 @@ module PartialCommitPlanning =
     Darklang.LanguageTools.ProgramTypes.PackageLocation
       { owner = "Test"; modules = [ "M" ]; name = name }
 
-  let fnHash = "1111111111111111111111111111111111111111111111111111111111111111"
-  let helperHash = "2222222222222222222222222222222222222222222222222222222222222222"
-  let typeHash = "3333333333333333333333333333333333333333333333333333333333333333"
+  val fnHash = "1111111111111111111111111111111111111111111111111111111111111111"
+  val helperHash = "2222222222222222222222222222222222222222222222222222222222222222"
+  val typeHash = "3333333333333333333333333333333333333333333333333333333333333333"
 
   // wipHashForLocation: (loc "main", Fn) -> the fn's hash, not the type's.
   (Darklang.SCM.PartialCommit.wipHashForLocation
@@ -113,8 +113,8 @@ module PartialCommitPlanning =
 
   // Two WIP fns at one FQN (a same-kind duplicate) also resolve to >1 item, so
   // resolveSelection fails closed rather than committing an arbitrary one.
-  let dupA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-  let dupB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  val dupA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  val dupB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
   let dupWip2 () : List<Darklang.SCM.PackageOps.WipOpEntry> =
     [ setNameEntry "00000000-0000-0000-0000-0000000000a1" "dup" (fnRef dupA)

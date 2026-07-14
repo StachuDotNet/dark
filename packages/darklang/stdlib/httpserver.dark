@@ -203,7 +203,7 @@ module Config =
       logRequests: Bool }
 
   /// Default max request body size: 30 MB.
-  let defaultMaxBodyBytes : Int = 31457280
+  val defaultMaxBodyBytes = 31457280
 
   /// Sensible serve defaults for `port`: 30 MB max body, standard headers, proto canonicalization, logging.
   let defaults (port: Int) : Config =

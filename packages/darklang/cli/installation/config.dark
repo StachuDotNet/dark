@@ -2,7 +2,7 @@
 /// to manage the local installation of the Darklang CLI.
 module Darklang.Cli.Installation.Config
 
-let defaultConfig =
+val defaultConfig =
   Dict
     { version = "v0.0.0"
       lastUpdateTimestamp = "0" }

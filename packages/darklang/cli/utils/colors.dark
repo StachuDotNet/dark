@@ -1,96 +1,96 @@
 module Darklang.Cli.Colors
 
 // Basic colors and formatting
-let reset = "\u001b[0m"
-let bold = "\u001b[1m"
-let dim = "\u001b[2m"
-let italic = "\u001b[3m"
-let underline = "\u001b[4m"
-let reverse = "\u001b[7m"
+val reset = "\u001b[0m"
+val bold = "\u001b[1m"
+val dim = "\u001b[2m"
+val italic = "\u001b[3m"
+val underline = "\u001b[4m"
+val reverse = "\u001b[7m"
 
 // Cursor and line control
-let clearLine = "\u001b[K"
-let carriageReturn = "\r"
+val clearLine = "\u001b[K"
+val carriageReturn = "\r"
 let moveCursorToColumn (col: Int) : String = $"\u001b[{Stdlib.Int.toString col}G"
 let moveCursorUp (n: Int) : String = $"\u001b[{Stdlib.Int.toString n}A"
-let saveCursor = "\u001b[s"
-let restoreCursor = "\u001b[u"
+val saveCursor = "\u001b[s"
+val restoreCursor = "\u001b[u"
 /// Move cursor to absolute position (row, col). Used to jump to the status bar without disrupting where the user is typing.
 let moveCursorTo (row: Int) (col: Int) : String = $"\u001b[{Stdlib.Int.toString row};{Stdlib.Int.toString col}H"
 /// Define which rows can scroll. Content outside this region stays fixed. Used to keep the status bar pinned at the bottom.
 let setScrollRegion (top: Int) (bottom: Int) : String = $"\u001b[{Stdlib.Int.toString top};{Stdlib.Int.toString bottom}r"
-let resetScrollRegion = "\u001b[r"
+val resetScrollRegion = "\u001b[r"
 
 // Standard colors
-let black = "\u001b[30m"
-let red = "\u001b[31m"
-let green = "\u001b[32m"
-let yellow = "\u001b[33m"
-let blue = "\u001b[34m"
-let magenta = "\u001b[35m"
-let cyan = "\u001b[36m"
-let white = "\u001b[37m"
+val black = "\u001b[30m"
+val red = "\u001b[31m"
+val green = "\u001b[32m"
+val yellow = "\u001b[33m"
+val blue = "\u001b[34m"
+val magenta = "\u001b[35m"
+val cyan = "\u001b[36m"
+val white = "\u001b[37m"
 
 // Bright colors
-let brightBlack = "\u001b[90m"
-let brightRed = "\u001b[91m"
-let brightGreen = "\u001b[92m"
-let brightYellow = "\u001b[93m"
-let brightBlue = "\u001b[94m"
-let brightMagenta = "\u001b[95m"
-let brightCyan = "\u001b[96m"
-let brightWhite = "\u001b[97m"
+val brightBlack = "\u001b[90m"
+val brightRed = "\u001b[91m"
+val brightGreen = "\u001b[92m"
+val brightYellow = "\u001b[93m"
+val brightBlue = "\u001b[94m"
+val brightMagenta = "\u001b[95m"
+val brightCyan = "\u001b[96m"
+val brightWhite = "\u001b[97m"
 
 // Background colors
-let bgBlack = "\u001b[40m"
-let bgRed = "\u001b[41m"
-let bgGreen = "\u001b[42m"
-let bgYellow = "\u001b[43m"
-let bgBlue = "\u001b[44m"
-let bgMagenta = "\u001b[45m"
-let bgCyan = "\u001b[46m"
-let bgWhite = "\u001b[47m"
+val bgBlack = "\u001b[40m"
+val bgRed = "\u001b[41m"
+val bgGreen = "\u001b[42m"
+val bgYellow = "\u001b[43m"
+val bgBlue = "\u001b[44m"
+val bgMagenta = "\u001b[45m"
+val bgCyan = "\u001b[46m"
+val bgWhite = "\u001b[47m"
 
 // Extended 256-colors (foreground)
-let pink = "\x1b[38;5;213m"
-let purple = "\x1b[38;5;141m"
-let orange = "\x1b[38;5;208m"
+val pink = "\x1b[38;5;213m"
+val purple = "\x1b[38;5;141m"
+val orange = "\x1b[38;5;208m"
 
 // Background colors
-let grayBg = "\x1b[48;5;236m"
-let purpleBg = "\x1b[48;5;61m"
-let magentaBg = "\x1b[48;5;134m"
-let lightPinkBg = "\x1b[48;5;218m"
-let pinkBg = "\x1b[48;5;176m"
-let blueBg = "\x1b[48;5;38m"
-let greenBg = "\x1b[48;5;115m"
-let yellowBg = "\x1b[48;5;229m"
-let brownBg = "\x1b[48;5;180m"
-let orangeBg = "\x1b[48;5;222m"
-let peachBg = "\x1b[48;5;216m"
-let salmonBg = "\x1b[48;5;223m"
+val grayBg = "\x1b[48;5;236m"
+val purpleBg = "\x1b[48;5;61m"
+val magentaBg = "\x1b[48;5;134m"
+val lightPinkBg = "\x1b[48;5;218m"
+val pinkBg = "\x1b[48;5;176m"
+val blueBg = "\x1b[48;5;38m"
+val greenBg = "\x1b[48;5;115m"
+val yellowBg = "\x1b[48;5;229m"
+val brownBg = "\x1b[48;5;180m"
+val orangeBg = "\x1b[48;5;222m"
+val peachBg = "\x1b[48;5;216m"
+val salmonBg = "\x1b[48;5;223m"
 
 // Semantic colors for CLI elements
-let commandColor = "\u001b[34m"
-let argumentColor = "\u001b[32m"
-let keywordColor = "\u001b[35m"
-let stringColor = "\u001b[33m"
-let numberColor = "\u001b[36m"
-let commentColor = "\u001b[90m"
-let errorColor = "\u001b[31m"
-let warningColor = "\u001b[33m"
-let successColor = "\u001b[32m"
-let infoColor = "\u001b[34m"
-let hintColor = "\u001b[2m"
-let promptColor = "\u001b[97m"
-let logoColor = "\u001b[90m"
+val commandColor = "\u001b[34m"
+val argumentColor = "\u001b[32m"
+val keywordColor = "\u001b[35m"
+val stringColor = "\u001b[33m"
+val numberColor = "\u001b[36m"
+val commentColor = "\u001b[90m"
+val errorColor = "\u001b[31m"
+val warningColor = "\u001b[33m"
+val successColor = "\u001b[32m"
+val infoColor = "\u001b[34m"
+val hintColor = "\u001b[2m"
+val promptColor = "\u001b[97m"
+val logoColor = "\u001b[90m"
 
 // Interactive viewing colors
-let primary = "\u001b[94m"       // bright blue for primary elements
-let muted = "\u001b[90m"         // dim gray for secondary text
-let accent = "\u001b[93m"        // bright yellow for highlights
-let selection = "\u001b[103;30m" // yellow background with black text for selection
-let completionSelection = "\u001b[44;97m" // blue background with white text
+val primary = "\u001b[94m"       // bright blue for primary elements
+val muted = "\u001b[90m"         // dim gray for secondary text
+val accent = "\u001b[93m"        // bright yellow for highlights
+val selection = "\u001b[103;30m" // yellow background with black text for selection
+val completionSelection = "\u001b[44;97m" // blue background with white text
 
 // Helper functions for applying colors
 let colorize (color: String) (text: String) : String =

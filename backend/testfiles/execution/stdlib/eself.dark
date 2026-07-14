@@ -102,7 +102,7 @@ module ShadowingTest =
     | pipeWithShadowing -> x |> Stdlib.Int.add pipeWithShadowing
 
 
-  let valueShadowing = 120
+  val valueShadowing = 120
   let valueShadowing (x: Int) : Int =
     if x <= 0 then
       10

@@ -1,72 +1,72 @@
 module UserDefined =
-  let stringValue = "test"
+  val stringValue = "test"
   stringValue = "test"
   "test" = stringValue
   UserDefined.stringValue = "test"
 
-  let int64Value = 5L
+  val int64Value = 5L
   int64Value = 5L
   UserDefined.int64Value = 5L
 
-  let intValue = 5
+  val intValue = 5
   intValue = 5
   UserDefined.intValue = 5
 
-  let uint64Value = 5UL
+  val uint64Value = 5UL
   uint64Value = 5UL
   UserDefined.uint64Value = 5UL
 
-  let int32Value = 5l
+  val int32Value = 5l
   int32Value = 5l
   UserDefined.int32Value = 5l
 
-  let uint32Value = 5ul
+  val uint32Value = 5ul
   uint32Value = 5ul
   UserDefined.uint32Value = 5ul
 
-  let int16Value = 5s
+  val int16Value = 5s
   int16Value = 5s
   UserDefined.int16Value = 5s
 
-  let uint16Value = 5us
+  val uint16Value = 5us
   uint16Value = 5us
   UserDefined.uint16Value = 5us
 
-  let int8Value = 5y
+  val int8Value = 5y
   int8Value = 5y
   UserDefined.int8Value = 5y
 
-  let uint8Value = 5uy
+  val uint8Value = 5uy
   uint8Value = 5uy
   UserDefined.uint8Value = 5uy
 
-  let floatValue = 5.6
+  val floatValue = 5.6
   floatValue = 5.6
   UserDefined.floatValue = 5.6
 
-  let boolValue = true
+  val boolValue = true
   boolValue = true
   UserDefined.boolValue = true
 
-  let tupleValue = (1L, 2L, 3L)
+  val tupleValue = (1L, 2L, 3L)
   tupleValue = (1L, 2L, 3L)
   UserDefined.tupleValue = (1L, 2L, 3L)
 
-  let charValue = 'c'
+  val charValue = 'c'
   charValue = 'c'
   UserDefined.charValue = 'c'
 
-  let unitValue = ()
+  val unitValue = ()
   unitValue = ()
   UserDefined.unitValue = ()
 
-  let enumValue = Stdlib.Option.Option.Some 5L
+  val enumValue = Stdlib.Option.Option.Some 5L
   enumValue = Stdlib.Option.Option.Some 5L
   UserDefined.enumValue = Stdlib.Option.Option.Some 5L
 
   Ok 5L = error="Ok is not a valid name"
   type MyRecord = { a: Bool; b: String }
-  let recordValue = MyRecord { a = true; b = "glasses" }
+  val recordValue = MyRecord { a = true; b = "glasses" }
   (Stdlib.Bool.not recordValue.a) = false
 
 

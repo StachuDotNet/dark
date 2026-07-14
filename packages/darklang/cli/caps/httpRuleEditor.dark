@@ -18,10 +18,10 @@ type EditResult =
   | Finished of String
   | Cancelled
 
-let methods : List<String> =
+val methods =
   [ "*"; "GET"; "POST"; "PUT"; "PATCH"; "DELETE"; "HEAD"; "OPTIONS" ]
 
-let empty : State =
+val empty =
   State
     { methodIdx = 1
       url = LineInput.empty

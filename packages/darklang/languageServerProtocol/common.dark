@@ -57,7 +57,7 @@ type MarkupContent =
     value: String
   }
 
-let knownEOLs = [ "\n"; "\r\n"; "\r" ]
+val knownEOLs = [ "\n"; "\r\n"; "\r" ]
 
 
 module Position =

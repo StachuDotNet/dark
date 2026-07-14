@@ -4,7 +4,7 @@
 module Darklang.LLM.Examples.ImageDescriber
 
 
-let systemPrompt =
+val systemPrompt =
   "You are an Image Analysis Agent. Describe images concisely.
 Format: **Subject:** [Main subject] **Details:** [Key details] **Context:** [Setting/mood]"
 
