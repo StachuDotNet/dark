@@ -912,6 +912,33 @@ let private recoveryTests =
         | Some(WT.SourceFile { exprsToEval = [ WT.EVariable(_, "def") ] }) -> ()
         | other -> failtest $"unexpected def parse: {other}")
 
+      testCase "same-line collection items require separators" (fun _ ->
+        for source in
+          [ "[1L 2L]"
+            "match xs with | [a b] -> a"
+            "Pair(1L 2L)"
+            "match pair with | Pair(a b) -> a"
+            "Person { a = 1L b = 2L }"
+            "Dict { a = 1L b = 2L }"
+            "{ value with a = 1L b = 2L }"
+            "type R = { a: Int64 b: String }" ] do
+          Expect.isNonEmpty
+            (P.parse source).diagnostics
+            $"expected separator diagnostic for {source}"
+
+        for source in
+          [ "[1L, 2L]"
+            "match xs with | [a; b] -> a"
+            "Pair(1L, 2L)"
+            "match pair with | Pair(a, b) -> a"
+            "Person { a = 1L; b = 2L }"
+            "Dict { a = 1L; b = 2L }"
+            "{ value with a = 1L; b = 2L }"
+            "type R = { a: Int64; b: String }" ] do
+          Expect.isEmpty
+            (P.parse source).diagnostics
+            $"valid separators parse cleanly for {source}")
+
       testCase "empty record update `{ r with }` is rejected" (fun _ ->
         // an empty update lowers to a degenerate node in both WT2PTs — reject it
         Expect.isNonEmpty

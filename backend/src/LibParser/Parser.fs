@@ -714,6 +714,18 @@ let isNegLitArg (state : ParserState) (k : int) : bool =
       || (rng state k).start.row <> (rng state (k - 1)).end_.row
       || (rng state k).start.column > (rng state (k - 1)).end_.column) // space before `-`
 
+let private requireElementSeparator
+  (state : ParserState)
+  (previousRange : TokenRange)
+  (nextIndex : int)
+  (expected : string)
+  : unit =
+  if
+    tok state nextIndex <> TEOF
+    && (rng state nextIndex).start.row <= previousRange.end_.row
+  then
+    errExpected state nextIndex expected
+
 let rec parseExpr (state : ParserState) (i : int) : WT.Expr * int =
   if tooDeep state i || outOfFuel state i then
     (WT.EError(rng state i), state.tokenCount - 1)
@@ -1112,6 +1124,12 @@ and parsePatternBaseInner (state : ParserState) (i : int) : WT.MatchPattern * in
         k <- k2 + 1
       else
         elems.Add(p, None)
+        if tok state k2 <> TRBracket then
+          requireElementSeparator
+            state
+            (WT.mpRange p)
+            k2
+            "a comma, semicolon, or newline between list-pattern elements"
         k <- k2
     let (closeB, p2) =
       if tok state k = TRBracket then
@@ -1149,9 +1167,18 @@ and parsePatternBaseInner (state : ParserState) (i : int) : WT.MatchPattern * in
       while go && tok state k <> TRParen && tok state k <> TEOF do
         let (p, k2) = parsePatternOr state k
         fieldPats.Add p
-        if tok state k2 = TComma then k <- k2 + 1
-        elif k2 > k then k <- k2
-        else go <- false
+        if tok state k2 = TComma then
+          k <- k2 + 1
+        elif k2 > k then
+          if tok state k2 <> TRParen then
+            requireElementSeparator
+              state
+              (WT.mpRange p)
+              k2
+              "a comma or newline between constructor-pattern fields"
+          k <- k2
+        else
+          go <- false
       let k3 =
         if tok state k = TRParen then
           k + 1
@@ -1511,9 +1538,18 @@ and parseCtorParenFields
           && not (declBarrier state m) do
       let (a, m2) = parseExpr state m
       sink.Add a
-      if tok state m2 = TComma then m <- m2 + 1
-      elif m2 > m then m <- m2
-      else go <- false
+      if tok state m2 = TComma then
+        m <- m2 + 1
+      elif m2 > m then
+        if tok state m2 <> TRParen then
+          requireElementSeparator
+            state
+            (WT.exprRange a)
+            m2
+            "a comma or newline between constructor fields"
+        m <- m2
+      else
+        go <- false
     let m =
       if tok state m = TRParen then
         m + 1
@@ -2183,6 +2219,12 @@ and parseList (state : ParserState) (i : int) : WT.Expr * int =
         k <- k2 + 1
       else
         elems.Add(e, None)
+        if tok state k2 <> TRBracket then
+          requireElementSeparator
+            state
+            (WT.exprRange e)
+            k2
+            "a comma, semicolon, or newline between list elements"
         k <- k2
     let (closeB, p) =
       if tok state k = TRBracket then
@@ -2215,9 +2257,18 @@ and parseRecord
         setStmtCol state (rng state k).start.column
         let (value, k2) = parseExpr state (k + 2)
         fields.Add(span fnameR (WT.exprRange value), (fnameR, fname), value)
-        if tok state k2 = TSemicolon || tok state k2 = TComma then k <- k2 + 1
-        elif k2 > k then k <- k2
-        else go <- false
+        if tok state k2 = TSemicolon || tok state k2 = TComma then
+          k <- k2 + 1
+        elif k2 > k then
+          if tok state k2 <> TRBrace then
+            requireElementSeparator
+              state
+              (WT.exprRange value)
+              k2
+              "a comma, semicolon, or newline between record fields"
+          k <- k2
+        else
+          go <- false
       | _ ->
         errExpected state k "a record field 'name = value'"
         go <- false
@@ -2251,9 +2302,18 @@ and parseDict
         setStmtCol state (rng state k).start.column
         let (value, k2) = parseExpr state (k + 2)
         entries.Add(span knameR (WT.exprRange value), (knameR, kname), value)
-        if tok state k2 = TSemicolon || tok state k2 = TComma then k <- k2 + 1
-        elif k2 > k then k <- k2
-        else go <- false
+        if tok state k2 = TSemicolon || tok state k2 = TComma then
+          k <- k2 + 1
+        elif k2 > k then
+          if tok state k2 <> TRBrace then
+            requireElementSeparator
+              state
+              (WT.exprRange value)
+              k2
+              "a comma, semicolon, or newline between dict entries"
+          k <- k2
+        else
+          go <- false
       | _ ->
         errExpected state k "a dict entry 'key = value'"
         go <- false
@@ -2297,9 +2357,18 @@ and parseRecordUpdate (state : ParserState) (i : int) : WT.Expr * int =
         setStmtCol state (rng state k).start.column
         let (value, k2) = parseExpr state (k + 2)
         updates.Add((fnameR, fname), eqR, value)
-        if tok state k2 = TSemicolon || tok state k2 = TComma then k <- k2 + 1
-        elif k2 > k then k <- k2
-        else go <- false
+        if tok state k2 = TSemicolon || tok state k2 = TComma then
+          k <- k2 + 1
+        elif k2 > k then
+          if tok state k2 <> TRBrace then
+            requireElementSeparator
+              state
+              (WT.exprRange value)
+              k2
+              "a comma, semicolon, or newline between record-update fields"
+          k <- k2
+        else
+          go <- false
       | _ ->
         errExpected state k "a record-update field 'name = value'"
         go <- false
@@ -2683,6 +2752,12 @@ and parseRecordDef (state : ParserState) (i : int) : WT.TypeDefinition * int =
         k <- k2 + 1
       elif k2 > k then
         fields.Add(field, None)
+        if tok state k2 <> TRBrace then
+          requireElementSeparator
+            state
+            (WT.typeReferenceRange typ)
+            k2
+            "a comma, semicolon, or newline between record-type fields"
         k <- k2
       else
         go <- false

@@ -160,6 +160,11 @@ Expression forms include:
 - pipes
 - statement sequences, separated by newlines or `;`
 
+Adjacent same-line items never imply a separator. Lists and list patterns,
+dicts, records, record updates, and record-type fields use `,` or `;`;
+constructor fields and constructor-pattern fields use `,`. A newline separates
+items in all of these forms.
+
 For dotted names, lowercase steps are fields and uppercase steps are module path
 segments. A bare dotted name like `Stdlib.List.map` is itself a value/function
 reference.
