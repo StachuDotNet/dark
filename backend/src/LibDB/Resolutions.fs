@@ -59,11 +59,11 @@ let record (r : Resolution) : Task<unit> =
   Sql.query
     """
     INSERT OR IGNORE INTO resolutions (id, branch_id, location, item_kind, chosen_hash, resolved_by, at)
-    VALUES (@id, @b, @location, @item_kind, @hash, @by, @at)
+    VALUES (@id, @branchID, @location, @item_kind, @hash, @by, @at)
     """
   |> Sql.parameters
     [ "id", Sql.string r.id
-      "b", Sql.string (string r.branchId)
+      "branchID", Sql.string (string r.branchId)
       "location", Sql.string (Conflicts.locationString r.location)
       "item_kind", Sql.string (r.choice.kind.toString ())
       "hash", Sql.string h
@@ -86,16 +86,16 @@ let applyToLocations (r : Resolution) : Task<unit> =
       Sql.query
         """
         SELECT item_hash, origin_ts FROM locations
-        WHERE owner = @o AND modules = @m AND name = @n AND item_type = @t
-          AND branch_id = @b AND unlisted_at IS NULL
+        WHERE owner = @owner AND modules = @modules AND name = @name AND item_type = @itemType
+          AND branch_id = @branchID AND unlisted_at IS NULL
         LIMIT 1
         """
       |> Sql.parameters
-        [ "o", Sql.string loc.owner
-          "m", Sql.string modulesStr
-          "n", Sql.string loc.name
-          "t", Sql.string itemTypeStr
-          "b", Sql.string (string r.branchId) ]
+        [ "owner", Sql.string loc.owner
+          "modules", Sql.string modulesStr
+          "name", Sql.string loc.name
+          "itemType", Sql.string itemTypeStr
+          "branchID", Sql.string (string r.branchId) ]
       |> Sql.executeRowOptionAsync (fun read ->
         (read.string "item_hash", read.stringOrNone "origin_ts"))
 
@@ -115,15 +115,15 @@ let applyToLocations (r : Resolution) : Task<unit> =
         Sql.query
           """
           UPDATE locations SET unlisted_at = datetime('now')
-          WHERE owner = @o AND modules = @m AND name = @n AND item_type = @t
-            AND branch_id = @b AND unlisted_at IS NULL
+          WHERE owner = @owner AND modules = @modules AND name = @name AND item_type = @itemType
+            AND branch_id = @branchID AND unlisted_at IS NULL
           """
         |> Sql.parameters
-          [ "o", Sql.string loc.owner
-            "m", Sql.string modulesStr
-            "n", Sql.string loc.name
-            "t", Sql.string itemTypeStr
-            "b", Sql.string (string r.branchId) ]
+          [ "owner", Sql.string loc.owner
+            "modules", Sql.string modulesStr
+            "name", Sql.string loc.name
+            "itemType", Sql.string itemTypeStr
+            "branchID", Sql.string (string r.branchId) ]
         |> Sql.executeStatementAsync
 
       do!
@@ -131,16 +131,16 @@ let applyToLocations (r : Resolution) : Task<unit> =
           """
           INSERT INTO locations
             (location_id, item_hash, owner, modules, name, item_type, branch_id, commit_hash, origin_ts)
-          VALUES (@lid, @hash, @o, @m, @n, @t, @b, NULL, @at)
+          VALUES (@lid, @hash, @owner, @modules, @name, @itemType, @branchID, NULL, @at)
           """
         |> Sql.parameters
           [ "lid", Sql.string (System.Guid.NewGuid() |> string)
             "hash", Sql.string chosenHash
-            "o", Sql.string loc.owner
-            "m", Sql.string modulesStr
-            "n", Sql.string loc.name
-            "t", Sql.string itemTypeStr
-            "b", Sql.string (string r.branchId)
+            "owner", Sql.string loc.owner
+            "modules", Sql.string modulesStr
+            "name", Sql.string loc.name
+            "itemType", Sql.string itemTypeStr
+            "branchID", Sql.string (string r.branchId)
             "at", Sql.string r.at ]
         |> Sql.executeStatementAsync
   }
