@@ -92,8 +92,8 @@ let private releaseTable = "release_state_v0"
 /// The Release this store was last stamped at, or `None` if it predates Release tracking (or is fresh).
 let storedRelease () : int option =
   let exists =
-    Sql.query "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = @n"
-    |> Sql.parameters [ "n", Sql.string releaseTable ]
+    Sql.query "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = @name"
+    |> Sql.parameters [ "name", Sql.string releaseTable ]
     |> Sql.executeExistsSync
   if not exists then
     None
@@ -111,8 +111,8 @@ let writeRelease (n : int) : unit =
   Sql.query
     $"CREATE TABLE IF NOT EXISTS {releaseTable} (id INTEGER PRIMARY KEY, \"release\" INTEGER NOT NULL)"
   |> Sql.executeStatementSync
-  Sql.query $"INSERT OR REPLACE INTO {releaseTable} (id, \"release\") VALUES (0, @r)"
-  |> Sql.parameters [ "r", Sql.int64 (int64 n) ]
+  Sql.query $"INSERT OR REPLACE INTO {releaseTable} (id, \"release\") VALUES (0, @release)"
+  |> Sql.parameters [ "release", Sql.int64 (int64 n) ]
   |> Sql.executeStatementSync
 
 
