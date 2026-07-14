@@ -86,17 +86,12 @@ let private hasEmbeddedResource (resourceName : string) : bool =
 // LocalExec migrator. So on startup we reconcile the store's Release stamp with this binary's
 // `LibDB.Releases.currentRelease` before any LibDB connection is opened.
 
-/// The store's Release, as read at startup.
-type private StoreRelease =
-  | Stamped of int // release_state_v0 has a row — a definitive answer
-  | PreTracking // opened fine, but no release_state_v0 — predates Release tracking
-  | Unreadable // couldn't open/query the db at all — do NOT destroy it (may be locked, not stale)
-
-/// Read the store's Release stamp via a throwaway, NON-POOLED connection, so LibDB's own (pooled) shared
-/// connection is never opened here — a reseed moves the db file aside, and a pooled handle would keep
-/// pointing at the moved inode. Distinguishes "opened fine but stale" (safe to reseed) from "couldn't read"
-/// (a transient lock / permission issue — must NOT trigger a data-destroying reseed).
-let private readStoredRelease (dbPath : string) : StoreRelease =
+/// Read the store's Release stamp via a throwaway, NON-POOLED read-only connection, so LibDB's own (pooled)
+/// shared connection is never opened here — a reseed moves the db file aside, and a pooled handle would keep
+/// pointing at the moved inode. `Some r` = stamped; `None` = opened fine but no stamp (treated as a stale
+/// store to re-seed). If the db can't be opened/read at all, hard-fail — a lock or corruption must not be
+/// mistaken for "stale" and trigger a data-destroying reseed.
+let private readStoredRelease (dbPath : string) : int option =
   try
     use conn =
       new Microsoft.Data.Sqlite.SqliteConnection(
@@ -107,15 +102,18 @@ let private readStoredRelease (dbPath : string) : StoreRelease =
     tableCmd.CommandText <-
       "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'release_state_v0'"
     match tableCmd.ExecuteScalar() with
-    | null -> PreTracking
+    | null -> None
     | _ ->
       use cmd = conn.CreateCommand()
       cmd.CommandText <- "SELECT \"release\" FROM release_state_v0 WHERE id = 0"
       match cmd.ExecuteScalar() with
-      | null -> PreTracking
-      | v -> Stamped(Convert.ToInt32 v)
-  with _ ->
-    Unreadable
+      | null -> None
+      | v -> Some(Convert.ToInt32 v)
+  with ex ->
+    eprintfn $"Cannot open the Darklang data store at {dbPath}: {ex.Message}"
+    eprintfn
+      "Close any other Darklang processes and retry, or move that file aside to start fresh."
+    exit 1
 
 /// The peer URLs configured in a store, or [] if the table is absent / unreadable. Peers are sync CONFIG
 /// (owned by `sync_peers_v0` in packages/darklang/sync.dark), not disposable package content.
@@ -191,37 +189,30 @@ let private reseedAndReport
 /// Reconcile an existing store's Release with this binary's. Called only when data.db already exists.
 let private reconcileExistingStore (dbPath : string) : unit =
   let current = LibDB.Releases.currentRelease
-  match readStoredRelease dbPath with
-  | Unreadable -> () // couldn't read it — don't touch it; the normal open will proceed or fail loudly
-  | storeRel ->
-    let stored =
-      match storeRel with
-      | Stamped r -> Some r
-      | _ -> None
-    let label =
-      match storeRel with
-      | Stamped r -> $"release{r}"
-      | _ -> "pretracking"
-    match LibDB.Releases.planCliUpgrade LibDB.Releases.releases stored current with
-    | LibDB.Releases.CliUpgrade.Proceed -> () // up to date
-    | LibDB.Releases.CliUpgrade.RefuseNewer r ->
-      // A newer store must not be opened by older code (it could corrupt the newer format). Refuse.
-      eprintfn
-        $"This Darklang data directory is from a newer release (Release {r}); this binary is Release {current}."
-      eprintfn
-        $"Upgrade the CLI, or move {dbPath} aside to start fresh — refusing to open it with older code."
-      exit 1
-    | LibDB.Releases.CliUpgrade.MigrateInPlace ->
-      // Every pending step is durable — migrate the store forward in place, PRESERVING the data (schema
-      // copy-swap + op-format re-serialize + refold). No source needed, so the CLI can run it directly.
-      LibDB.Releases.applyPending current
-      eprintfn
-        $"Upgraded this data directory from {label} to Release {current} (data preserved)."
-    | LibDB.Releases.CliUpgrade.Reseed ->
-      // A clean-break Release (content hashing changed) or a pre-tracking store of unknown format: the old
-      // package data can't be reused in place, so back it up and re-seed from the embedded current-Release
-      // store.
-      reseedAndReport dbPath current label
+  let stored = readStoredRelease dbPath
+  let label =
+    match stored with
+    | Some r -> $"release{r}"
+    | None -> "an untracked store"
+  match LibDB.Releases.planCliUpgrade LibDB.Releases.releases stored current with
+  | LibDB.Releases.CliUpgrade.Proceed -> () // up to date
+  | LibDB.Releases.CliUpgrade.RefuseNewer r ->
+    // A newer store must not be opened by older code (it could corrupt the newer format). Refuse.
+    eprintfn
+      $"This Darklang data directory is from a newer release (Release {r}); this binary is Release {current}."
+    eprintfn
+      $"Upgrade the CLI, or move {dbPath} aside to start fresh — refusing to open it with older code."
+    exit 1
+  | LibDB.Releases.CliUpgrade.MigrateInPlace ->
+    // Every pending step is durable — migrate the store forward in place, PRESERVING the data (schema
+    // copy-swap + op-format re-serialize + refold). No source needed, so the CLI can run it directly.
+    LibDB.Releases.applyPending current
+    eprintfn $"Upgraded this data directory from {label} to Release {current} (data preserved)."
+  | LibDB.Releases.CliUpgrade.Reseed ->
+    // A clean-break Release (content hashing changed) or an untracked store of unknown format: the old
+    // package data can't be reused in place, so back it up and re-seed from the embedded current-Release
+    // store.
+    reseedAndReport dbPath current label
 
 let extract () : unit =
   // The embedded resource is `data.db.gz` (the seed db, gzip-compressed at
