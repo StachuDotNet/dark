@@ -825,6 +825,8 @@ let private validationTests =
             "validated tree")
       testCase "parseFor applies purpose rules without changing parse" (fun _ ->
         let assertion = "1L = 1L"
+        let packageExpressionCode =
+          Validation.IssueCode.toString Validation.PackageExpression
         Expect.isEmpty (P.parse assertion).diagnostics "neutral parse"
         match P.parseFor Validation.Script assertion with
         | Ok _ -> failtest "script accepted a test assertion"
@@ -840,20 +842,17 @@ let private validationTests =
         | Error diagnostics ->
           Expect.exists
             diagnostics
-            (fun diagnostic ->
-              diagnostic.code = Validation.IssueCode.toString
-                Validation.PackageExpression)
+            (fun diagnostic -> diagnostic.code = packageExpressionCode)
             "package purpose diagnostic")
       testCase "parseFor does not validate syntax-recovery trees" (fun _ ->
+        let recoveryHoleCode = Validation.IssueCode.toString Validation.RecoveryHole
         match P.parseFor Validation.Script "let x =" with
         | Ok _ -> failtest "invalid syntax passed validation"
         | Error diagnostics ->
           Expect.isNonEmpty diagnostics "syntax diagnostic"
           Expect.isFalse
             (diagnostics
-             |> List.exists (fun diagnostic ->
-               diagnostic.code = Validation.IssueCode.toString
-                 Validation.RecoveryHole))
+             |> List.exists (fun diagnostic -> diagnostic.code = recoveryHoleCode))
             "no cascaded recovery-hole diagnostic")
       testCase "parser surfaces shared structural validation diagnostics" (fun _ ->
         for (source, expectedCode) in
