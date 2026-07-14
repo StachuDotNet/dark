@@ -906,6 +906,29 @@ let private lexicalFailureTests =
       mustDiagnose "malformed float exponent (sign only)" "1.5e+"
       mustDiagnose "out-of-range Int64" "99999999999999999999L"
       mustDiagnose "out-of-range Int8" "9000y"
+      mustDiagnose
+        "multiple interpolation expressions"
+        "$\"{1L\n2L}\""
+      mustDiagnose "empty interpolation" "$\"{}\""
+      mustDiagnose
+        "declaration-only interpolation"
+        "$\"{val x = 1L}\""
+      mustDiagnose "single interpolation close brace" "$\"hello } world\""
+      testCase "comments and raw strings do not close interpolation" (fun _ ->
+        for src in [ "$\"{(* } *) 1L}\""; "$\"{\"\"\" } \"\"\"}\"" ] do
+          Expect.isEmpty (P.parse src).diagnostics $"valid interpolation: {src}")
+      testCase
+        "unterminated interpolation preserves text and synthesizes EOF close"
+        (fun _ ->
+          match (P.parse "$\"abc").parsed with
+          | Some(WT.SourceFile { exprsToEval = [ WT.EString(_,
+                                                            _,
+                                                            [ WT.StringText(_, "abc") ],
+                                                            _,
+                                                            close) ] }) ->
+            Expect.equal close.start close.end_ "synthetic close is zero-width"
+            Expect.equal close.start.column 5 "synthetic close is at EOF"
+          | other -> failtest $"unexpected recovered interpolation: {other}")
       testCase
         "lex failures inside interpolation bodies surface with offset positions"
         (fun _ ->

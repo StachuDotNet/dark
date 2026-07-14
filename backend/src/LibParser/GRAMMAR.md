@@ -282,6 +282,7 @@ Codes are stable identifiers (key on these, never on message text):
 | `PARSE-UNEXPECTED` | stray token inside a construct |
 | `PARSE-PIPE-SEGMENT` | pipe RHS isn't a valid segment |
 | `PARSE-PATTERN` | invalid match pattern shape |
+| `PARSE-INTERPOLATION` | malformed interpolation body or brace boundary |
 | `PARSE-INTERNAL-LOOP` | parser step budget exhausted — a parser bug, please report |
 | `LEX` | tokenizer-level recovery (unterminated literal, …) |
 

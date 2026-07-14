@@ -23,6 +23,7 @@ module DiagnosticCode =
   let unexpected = "PARSE-UNEXPECTED" // stray token inside a construct
   let pipeSegment = "PARSE-PIPE-SEGMENT" // pipe RHS isn't a valid segment
   let pattern = "PARSE-PATTERN" // invalid match pattern shape
+  let interpolation = "PARSE-INTERPOLATION" // malformed interpolation body/braces
   let internalLoop = "PARSE-INTERNAL-LOOP" // parser step budget exhausted (parser bug)
   let lex = "LEX" // tokenizer-level recovery (unterminated literal, …)
 
@@ -434,12 +435,27 @@ let validateLiterals (state : ParserState) : unit =
           vi
           "Invalid escape sequence or codepoint in character literal"
     | TInterpString when not ((txt state vi).StartsWith "$\"\"\"") ->
-      if Lexer.hasInvalidEscapeInterp (stripDelims (txt state vi) "$\"" "\"") then
+      let inner = stripDelims (txt state vi) "$\"" "\""
+      if Lexer.hasInvalidEscapeInterp inner then
         err
           state
           DiagnosticCode.escape
           vi
           "Invalid escape sequence or codepoint in interpolated string"
+      if Lexer.hasSingleCloseBraceInterp inner false then
+        err
+          state
+          DiagnosticCode.interpolation
+          vi
+          "Single '}' in interpolated string text; use '}}' or '\\}' for a literal brace"
+    | TInterpString ->
+      let inner = stripDelims (txt state vi) "$\"\"\"" "\"\"\""
+      if Lexer.hasSingleCloseBraceInterp inner true then
+        err
+          state
+          DiagnosticCode.interpolation
+          vi
+          "Single '}' in raw interpolated string text; use '}}' for a literal brace"
     | _ -> ()
 
 // qualified name: ident (. ident)*  → (modules, finalIdent, nextIndex)
@@ -1508,6 +1524,7 @@ and parseInterpString (state : ParserState) (i : int) : WT.Expr * int =
   let mutable textStart = bodyStart
   let mutable k = bodyStart
   let mutable go = true
+  let mutable foundClosingQuote = false
   let flushText (endOff : int) =
     if endOff > textStart then
       let raw = fullText.Substring(textStart, endOff - textStart)
@@ -1532,6 +1549,7 @@ and parseInterpString (state : ParserState) (i : int) : WT.Expr * int =
         fullText[k] = '"'
     if atClose then
       flushText k
+      foundClosingQuote <- true
       go <- false
     // skip `\X` so an escaped quote `\"` doesn't end the string (regular only)
     elif fullText[k] = '\\' && not triple && k + 1 < m then
@@ -1599,9 +1617,28 @@ and parseInterpString (state : ParserState) (i : int) : WT.Expr * int =
               subResult.diagnostics |> List.iter state.diagnostics.Add
               match subResult.parsed with
               | Some(WT.SourceFile sf) ->
-                match sf.exprsToEval with
-                | e :: _ -> e
-                | [] -> WT.EUnit(rangeAt (k + 1) found)
+                let bodyRange = rangeAt (k + 1) found
+                let interpolationError (message : string) =
+                  state.diagnostics.Add
+                    { code = DiagnosticCode.interpolation
+                      severity = DiagError
+                      range = bodyRange
+                      message = message
+                      related = []
+                      hint = None }
+                if not (List.isEmpty sf.declarations) then
+                  interpolationError
+                    "Interpolation body must be one expression, not a declaration"
+                match sf.declarations, sf.exprsToEval with
+                | [], [ e ] -> e
+                | [], e :: _ ->
+                  interpolationError
+                    "Interpolation body must contain exactly one expression"
+                  e
+                | _ ->
+                  if List.isEmpty sf.declarations then
+                    interpolationError "Interpolation body cannot be empty"
+                  WT.EUnit bodyRange
               | None -> WT.EUnit(rangeAt (k + 1) found)
             | Error e ->
               // a hard tokenize failure inside `{…}` (e.g. nesting cap) was
@@ -1620,7 +1657,8 @@ and parseInterpString (state : ParserState) (i : int) : WT.Expr * int =
         textStart <- k
     else
       k <- k + 1
-  let closeQ = rangeAt (m - closeLen) m
+  if not foundClosingQuote then flushText m
+  let closeQ = if foundClosingQuote then rangeAt (m - closeLen) m else rangeAt m m
   (WT.EString(spanned.range, Some dollarR, List.ofSeq contents, openQ, closeQ), i + 1)
 
 and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =

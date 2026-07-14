@@ -134,6 +134,71 @@ let hasInvalidEscape (content : string) : bool =
         index <- index + 1
     hasBadEscape
 
+let private skipLineComment
+  (source : string)
+  (endLimit : int)
+  (startIndex : int)
+  : int =
+  let mutable index = startIndex + 2
+  while index < endLimit && source[index] <> '\n' do
+    index <- index + 1
+  index
+
+let private skipBlockComment
+  (source : string)
+  (endLimit : int)
+  (startIndex : int)
+  : int =
+  let mutable index = startIndex + 2
+  let mutable commentDepth = 1
+  while index < endLimit && commentDepth > 0 do
+    if index + 1 < endLimit && source[index] = '(' && source[index + 1] = '*' then
+      commentDepth <- commentDepth + 1
+      index <- index + 2
+    elif index + 1 < endLimit && source[index] = '*' && source[index + 1] = ')' then
+      commentDepth <- commentDepth - 1
+      index <- index + 2
+    else
+      index <- index + 1
+  index
+
+let private skipRawString
+  (source : string)
+  (endLimit : int)
+  (startIndex : int)
+  : int =
+  let mutable index = startIndex + 3
+  let mutable stillScanning = true
+  while stillScanning && index < endLimit do
+    if
+      index + 2 < endLimit
+      && source[index] = '"'
+      && source[index + 1] = '"'
+      && source[index + 2] = '"'
+    then
+      index <- index + 3
+      stillScanning <- false
+    else
+      index <- index + 1
+  index
+
+let private skipRegularString
+  (source : string)
+  (endLimit : int)
+  (startIndex : int)
+  : int =
+  let mutable index = startIndex + 1
+  let mutable stillScanning = true
+  while stillScanning && index < endLimit do
+    if source[index] = '\\' then
+      index <- index + 2
+    elif source[index] = '"' then
+      index <- index + 1
+      stillScanning <- false
+    else
+      index <- index + 1
+  index
+
 
 /// Find the `}` that closes an interpolation expression region.
 /// `startIndex` is just past the opening `{`. The scan tracks nested braces and skips
@@ -145,18 +210,30 @@ let findInterpExprClose (source : string) (endLimit : int) (startIndex : int) : 
   let mutable braceDepth = 0
   let mutable closingBraceIndex = -1
   while closingBraceIndex < 0 && scanIndex < endLimit do
-    if source[scanIndex] = '"' then
-      let mutable stringIndex = scanIndex + 1
-      let mutable scanningString = true
-      while scanningString && stringIndex < endLimit do
-        if source[stringIndex] = '\\' then
-          stringIndex <- stringIndex + 2
-        elif source[stringIndex] = '"' then
-          stringIndex <- stringIndex + 1
-          scanningString <- false
-        else
-          stringIndex <- stringIndex + 1
-      scanIndex <- stringIndex
+    // Comments are code trivia, so braces inside them cannot close an
+    // interpolation. Block comments nest just like top-level lexer comments.
+    if
+      source[scanIndex] = '/'
+      && scanIndex + 1 < endLimit
+      && source[scanIndex + 1] = '/'
+    then
+      scanIndex <- skipLineComment source endLimit scanIndex
+    elif
+      source[scanIndex] = '('
+      && scanIndex + 1 < endLimit
+      && source[scanIndex + 1] = '*'
+    then
+      scanIndex <- skipBlockComment source endLimit scanIndex
+    // A raw triple-quoted string may contain unescaped quotes and braces.
+    elif
+      source[scanIndex] = '"'
+      && scanIndex + 2 < endLimit
+      && source[scanIndex + 1] = '"'
+      && source[scanIndex + 2] = '"'
+    then
+      scanIndex <- skipRawString source endLimit scanIndex
+    elif source[scanIndex] = '"' then
+      scanIndex <- skipRegularString source endLimit scanIndex
     // Skip char literals so braces inside them do not affect interpolation
     // depth. A leading `'` that is not a char literal, such as type var `'a` or
     // tick-ident tail `x'`, falls through harmlessly.
@@ -220,6 +297,29 @@ let hasInvalidEscapeInterp (inner : string) : bool =
     else
       index <- index + 1
   hasBadEscape
+
+/// Does interpolated-string literal text contain a single unescaped `}`?
+/// Literal braces must be doubled (`}}`) or escaped (`\}` in regular strings).
+/// Braces inside `{ expression }` regions are code and are skipped.
+let hasSingleCloseBraceInterp (inner : string) (isRaw : bool) : bool =
+  let innerLength = inner.Length
+  let mutable index = 0
+  let mutable hasSingleCloseBrace = false
+  while index < innerLength && not hasSingleCloseBrace do
+    if index + 1 < innerLength && inner[index] = '{' && inner[index + 1] = '{' then
+      index <- index + 2
+    elif index + 1 < innerLength && inner[index] = '}' && inner[index + 1] = '}' then
+      index <- index + 2
+    elif inner[index] = '{' then
+      let closeIndex = findInterpExprClose inner innerLength (index + 1)
+      index <- if closeIndex < 0 then innerLength else closeIndex + 1
+    elif inner[index] = '}' then
+      hasSingleCloseBrace <- true
+    elif inner[index] = '\\' && not isRaw && index + 1 < innerLength then
+      index <- index + 2
+    else
+      index <- index + 1
+  hasSingleCloseBrace
 
 
 /// The parser parses each `{expr}` body recursively. Nested interpolated strings
