@@ -1911,6 +1911,11 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
     match tok state (i + 1), tok state (i + 2) with
     | TRBrace, _
     | TIdent _, TEquals ->
+      err
+        state
+        DiagnosticCode.expected
+        i
+        "Anonymous records are not supported; use a named record type"
       let z = zeroWidthAtEnd (rng state i)
       let emptyType : WT.QualifiedTypeIdentifier =
         { range = z; modules = []; typ = { range = z; name = "" }; typeArgs = [] }

@@ -143,7 +143,8 @@ Expression forms include:
 - tuples `(a, b, …)`
 - lists `[a; b]`, separated by `;`, `,`, or newlines
 - dicts `Dict { k = v }`
-- records `Type { f = v }` and anonymous records `{ f = v }`
+- named records `Type { f = v }`; anonymous records are rejected until they
+  have a real inferred/represented type
 - record updates `{ r with f = v }`
 - field access `x.f`
 - lambdas `fun p1 p2 -> body`, including tuple patterns
