@@ -655,6 +655,50 @@ let conflictIdDistinguishesItemKind =
   }
 
 
+let kindAwareResolutionKeepsOtherKind =
+  testTask
+    "resolving a conflict at one location+kind leaves the other kind's conflict untouched" {
+    // B1: a name can hold a fn AND a value at once (two distinct conflicts at one location).
+    // markOverriddenByLocationAndKind must clear ONLY the named kind — not both. (Was: the location-only
+    // override cleared every kind, so resolving the fn silently cleared the value's conflict too.)
+    let! a = seededInstance "kindaware"
+    activate a
+    let branch = PT.mainBranchId
+    let loc = "Test.KindResolve.dup"
+    do!
+      LibDB.Conflicts.record
+        branch
+        loc
+        "fn"
+        "fnLocal"
+        "fnIncoming"
+        "fnIncoming"
+        "auto:test"
+    do!
+      LibDB.Conflicts.record
+        branch
+        loc
+        "value"
+        "valLocal"
+        "valIncoming"
+        "valIncoming"
+        "auto:test"
+    do! LibDB.Conflicts.markOverriddenByLocationAndKind branch loc "fn"
+    let! all = LibDB.Conflicts.list ()
+    let statusOf (k : string) =
+      all
+      |> List.filter (fun (c : LibDB.Conflicts.Conflict) -> c.location = loc)
+      |> List.tryFind (fun c -> c.itemKind = k)
+      |> Option.map (fun c -> c.status)
+    Expect.equal (statusOf "fn") (Some "overridden") "the fn conflict was overridden"
+    Expect.equal
+      (statusOf "value")
+      (Some "auto-resolved")
+      "the value conflict is UNTOUCHED — still unreviewed"
+    teardown [ a ]
+  }
+
+
 let durableReleaseMigratesInPlace =
   testTask
     "a durable Release migrates a seeded store IN PLACE, preserving its data (not a clean-break)" {
@@ -979,6 +1023,7 @@ let tests =
       identicalContentAuthoringConverges
       resolutionSurvivesDiscardAfterRebuild
       conflictIdDistinguishesItemKind
+      kindAwareResolutionKeepsOtherKind
       durableReleaseMigratesInPlace
       branchMergeSyncs
       concurrentRebasesConverge

@@ -28,9 +28,76 @@ let private findOpen
 let private noneMsg (location: String) : String =
   $"No open conflict at {location}. See: dark conflicts"
 
-// Override at <location> with <hash> — mints a synced Resolution + marks the conflict overridden.
-let private keep (location: String) (hash: String) : Bool =
-  Builtin.conflictKeep location hash
+// Override at <location> of <kind> with <hash> — mints a synced Resolution + marks THAT conflict overridden.
+let private keep (location: String) (kind: String) (hash: String) : Bool =
+  Builtin.conflictKeep location kind hash
+
+// All unreviewed conflicts at a location (a name can hold a fn AND a value → more than one at one location).
+let private openAt (location: String) : List<Darklang.Sync.Conflicts.Conflict> =
+  Stdlib.List.filter (unreviewed ()) (fun c -> c.location == location)
+
+// "fn, value" — the kinds still conflicting at a location, for the ambiguity message.
+let private kindsAt (cs: List<Darklang.Sync.Conflicts.Conflict>) : String =
+  cs |> Stdlib.List.map (fun c -> c.itemKind) |> Stdlib.String.join ", "
+
+// Parse `<location>` or `<location> --kind <k>` from a resolution command's args.
+let private locKind
+  (rest: List<String>)
+  : Stdlib.Option.Option<(String * Stdlib.Option.Option<String>)> =
+  match rest with
+  | [ loc ] -> Stdlib.Option.Option.Some((loc, Stdlib.Option.Option.None))
+  | [ loc; "--kind"; k ] -> Stdlib.Option.Option.Some((loc, Stdlib.Option.Option.Some k))
+  | _ -> Stdlib.Option.Option.None
+
+// Pick the single conflict to resolve: honor an explicit --kind; else resolve the one if unambiguous, else
+// refuse and list the kinds (so resolving a fn conflict can't silently also clear a value conflict at the name).
+let private pickConflict
+  (location: String)
+  (kindOpt: Stdlib.Option.Option<String>)
+  : Stdlib.Result.Result<Darklang.Sync.Conflicts.Conflict, String> =
+  match openAt location with
+  | [] -> Stdlib.Result.Result.Error(noneMsg location)
+  | cs ->
+    match kindOpt with
+    | Some k ->
+      match Stdlib.List.findFirst cs (fun c -> c.itemKind == k) with
+      | Some c -> Stdlib.Result.Result.Ok c
+      | None ->
+        Stdlib.Result.Result.Error
+          $"No {k} conflict at {location}. Kinds in conflict here: {kindsAt cs}"
+    | None ->
+      match cs with
+      | [ c ] -> Stdlib.Result.Result.Ok c
+      | many ->
+        Stdlib.Result.Result.Error
+          $"{location} has more than one conflict ({kindsAt many}). Disambiguate with --kind <fn|type|value>."
+
+
+// Shared resolution flow for keep-mine/keep-theirs/ok: pick the conflict (kind-aware), run <act> on it, report.
+let private resolveCmd
+  (state: AppState)
+  (rest: List<String>)
+  (verb: String)
+  (act: Darklang.Sync.Conflicts.Conflict -> Bool)
+  (okMsg: Darklang.Sync.Conflicts.Conflict -> String)
+  : AppState =
+  match locKind rest with
+  | Some((location, kindOpt)) ->
+    let _ =
+      match pickConflict location kindOpt with
+      | Ok c ->
+        if act c then
+          Stdlib.printLine (Colors.success (okMsg c))
+        else
+          Stdlib.printLine (Colors.error (noneMsg location))
+      | Error e -> Stdlib.printLine (Colors.error e)
+
+    state
+  | None ->
+    Stdlib.printLine (
+      Colors.error $"usage: dark conflicts {verb} <loc> [--kind fn|type|value]")
+
+    state
 
 // Pretty-print one candidate's actual content (its source), indented, so `show` lets you compare the two
 // versions by WHAT THEY ARE — not just opaque hashes. pmGet* return the always-present PT definition (pt_def,
@@ -179,43 +246,18 @@ let execute (state: AppState) (args: List<String>) : AppState =
       Stdlib.printLine (Colors.error (noneMsg location))
       state
 
-  | [ "ok"; location ] ->
-    if Builtin.conflictAcknowledge location then
-      Stdlib.printLine (Colors.success $"Acknowledged {location} — the auto choice stands.")
-    else
-      Stdlib.printLine (Colors.error (noneMsg location))
+  | "ok" :: rest ->
+    resolveCmd state rest "ok" (fun c ->
+      Builtin.conflictAcknowledge c.location c.itemKind) (fun c ->
+      $"Acknowledged {c.location} ({c.itemKind}) — the auto choice stands.")
 
-    state
+  | "keep-mine" :: rest ->
+    resolveCmd state rest "keep-mine" (fun c -> keep c.location c.itemKind c.localHash) (fun c ->
+      $"Kept yours ({short c.localHash}) at {c.location} ({c.itemKind}). This resolution will sync to your peers.")
 
-  | [ "keep-mine"; location ] ->
-    match findOpen location with
-    | Some c ->
-      if keep location c.localHash then
-        Stdlib.printLine (
-          Colors.success
-            $"Kept yours ({short c.localHash}) at {location}. This resolution will sync to your peers.")
-      else
-        Stdlib.printLine (Colors.error (noneMsg location))
-
-      state
-    | None ->
-      Stdlib.printLine (Colors.error (noneMsg location))
-      state
-
-  | [ "keep-theirs"; location ] ->
-    match findOpen location with
-    | Some c ->
-      if keep location c.incomingHash then
-        Stdlib.printLine (
-          Colors.success
-            $"Kept theirs ({short c.incomingHash}) at {location}. This resolution will sync to your peers.")
-      else
-        Stdlib.printLine (Colors.error (noneMsg location))
-
-      state
-    | None ->
-      Stdlib.printLine (Colors.error (noneMsg location))
-      state
+  | "keep-theirs" :: rest ->
+    resolveCmd state rest "keep-theirs" (fun c -> keep c.location c.itemKind c.incomingHash) (fun c ->
+      $"Kept theirs ({short c.incomingHash}) at {c.location} ({c.itemKind}). This resolution will sync to your peers.")
 
   | _ -> help state
 

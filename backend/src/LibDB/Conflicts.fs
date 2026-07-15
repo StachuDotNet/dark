@@ -128,17 +128,22 @@ let markOverridden (id : string) : Task<unit> =
   |> Sql.parameters [ "id", Sql.string id ]
   |> Sql.executeStatementAsync
 
-/// Mark any auto-resolved conflict at this location overridden. Used when a Resolution is applied (local OR
-/// synced-in from a peer): the override converges the effective value, so the divergence is settled — a peer
-/// that independently recorded the same conflict must stop listing it as unreviewed.
-let markOverriddenByLocation
+/// Mark the auto-resolved conflict at this location AND item kind overridden. Used when a Resolution is applied
+/// (local OR synced-in from a peer): the override converges the effective value, so the divergence is settled —
+/// a peer that independently recorded the same conflict must stop listing it as unreviewed. Keyed by
+/// `item_kind` too: a name can hold a fn AND a value at once (two distinct conflicts at one location), so
+/// resolving the fn must NOT also clear the value's conflict.
+let markOverriddenByLocationAndKind
   (branchId : System.Guid)
   (location : string)
+  (itemKind : string)
   : Task<unit> =
   Sql.query
-    "UPDATE sync_conflicts SET status = 'overridden' WHERE branch_id = @branch_id AND location = @location AND status = 'auto-resolved'"
+    "UPDATE sync_conflicts SET status = 'overridden' WHERE branch_id = @branch_id AND location = @location AND item_kind = @item_kind AND status = 'auto-resolved'"
   |> Sql.parameters
-    [ "branch_id", Sql.string (string branchId); "location", Sql.string location ]
+    [ "branch_id", Sql.string (string branchId)
+      "location", Sql.string location
+      "item_kind", Sql.string itemKind ]
   |> Sql.executeStatementAsync
 
 /// The current live binding (item_hash, origin_ts) for a location on a branch, if any.
