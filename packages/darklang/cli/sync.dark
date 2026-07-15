@@ -251,12 +251,12 @@ let help (state: AppState) : AppState =
   [ "dark sync — keep your packages in step with your other instances, over HTTP."
     "Local-first: sync is opt-in, and once you connect a peer it stays current."
     ""
-    "  dark sync                    pull now from every instance you're connected to"
+    "  dark sync                    sync now from every instance you're connected to"
     "  dark sync connect <url>      start syncing with an instance (e.g. http://feriel.tailnet:9000)"
     "  dark sync disconnect <url>   stop syncing with an instance"
     "  dark sync serve              let peers pull from you (add --port N; default 9000)"
     "  dark sync status             who you're syncing with, and how current each is"
-    "  dark sync pull <url>         pull once from a single instance"
+    "  dark sync fetch <url>        sync once from a single instance"
     ""
     "All your branches sync wholesale — a branch is the same on every instance you connect."
     ""
@@ -385,7 +385,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
         Stdlib.printLine (
           Colors.success $"Now syncing with {peer} — reachable ({Stdlib.Int64.toString n} ops)")
         Stdlib.printLine (
-          Colors.hint "  dark sync   pull now  ·  dark sync daemon start   keep current on boot")
+          Colors.hint "  dark sync   sync now  ·  dark sync daemon start   keep current on boot")
       | Error _ ->
         Stdlib.printLine (Colors.success $"Added {peer}")
         Stdlib.printLine (
@@ -395,7 +395,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
     state
 
-  | [ "pull"; peer ] ->
+  | [ "fetch"; peer ] ->
     match Darklang.Sync.pull peer with
     | Ok n ->
       if n == 0 then
@@ -444,6 +444,6 @@ let complete
   : List<Completion.CompletionItem> =
   match args with
   | [] ->
-    [ "status"; "connect"; "disconnect"; "serve"; "pull"; "daemon" ]
+    [ "status"; "connect"; "disconnect"; "serve"; "fetch"; "daemon" ]
     |> Stdlib.List.map Completion.simple
   | _ -> []

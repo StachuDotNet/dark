@@ -429,12 +429,12 @@ let private realTests =
             task {
               let b = mk root "B"
               darkIn b.dir [ "login"; "Stachu" ] |> ignore<string>
-              // No server on this port — the peer is "down". `sync pull <url>` (single peer) surfaces the
+              // No server on this port — the peer is "down". `sync fetch <url>` (single peer) surfaces the
               // error, unlike bare `sync` which pulls-all and stays quiet about offline peers.
               let deadPort = 9339
               let deadUrl = $"http://127.0.0.1:{deadPort}"
               presync b deadUrl
-              let out = (darkIn b.dir [ "sync"; "pull"; deadUrl ]).ToLower()
+              let out = (darkIn b.dir [ "sync"; "fetch"; deadUrl ]).ToLower()
               Expect.isFalse
                 (out.Contains "pulled")
                 "it must not claim to have pulled anything from a peer that isn't there"
