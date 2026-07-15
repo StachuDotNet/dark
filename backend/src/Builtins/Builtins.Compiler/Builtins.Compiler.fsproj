@@ -19,6 +19,8 @@
     <ProjectReference Include="../../Prelude/Prelude.fsproj" />
     <ProjectReference Include="../../LibExecution/LibExecution.fsproj" />
     <ProjectReference Include="../../LibCompiler/LibCompiler.fsproj" />
+    <!-- DB-backed PT PackageManager, to fetch a stored fn's ProgramTypes by hash -->
+    <ProjectReference Include="../../LibDB/LibDB.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="paket.references" />

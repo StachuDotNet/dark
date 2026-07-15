@@ -163,6 +163,55 @@ let fns () : List<BuiltInFn> =
       sqlSpec = NotQueryable
       previewable = Impure
       capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "compileFnByHash" 0
+      typeParams = []
+      parameters =
+        [ Param.make "hash" TString "content hash of a package function"
+          Param.make "args" (TList TInt64) "Int64 arguments to call the function with" ]
+      returnType = TTuple(TBool, TString, [])
+      description =
+        "Fetches a package function's ProgramTypes by hash, lowers it to compiler AST via the §6 bridge, compiles a call to it with <args>, runs the native binary, and returns (true, <stdout>) or (false, <reason>). Pure-core leaves only; anything the bridge can't lower hard-fails with an `unsupported-*` reason. (Dark resolves a name to its hash; this takes the hash.)"
+      fn =
+        (function
+        | _, _, _, [ DString hash; DList(_, argDvals) ] ->
+          uply {
+            let! fnOpt = LibDB.PackageManager.pt.getFn (PT.FQFnName.package hash)
+            match fnOpt with
+            | None -> return outcome false $"no package fn with hash {hash}"
+            | Some ptFn ->
+              let argLits =
+                argDvals
+                |> List.choose (fun d ->
+                  match d with
+                  | DInt64 n -> Some(AST.Int64Literal n)
+                  | _ -> None)
+              if List.length argLits <> List.length argDvals then
+                return outcome false "only Int64 args are supported"
+              elif List.isEmpty argLits then
+                return outcome false "need >= 1 arg (nullary calls not yet supported)"
+              else
+                match Bridge.bridgeFn "bridgedFn" ptFn with
+                | Error e -> return outcome false $"bridge: {e}"
+                | Ok fd ->
+                  let program : AST.Program =
+                    AST.Program
+                      [ AST.FunctionDef fd
+                        AST.Expression(
+                          AST.Call("bridgedFn", AST.NonEmptyList.fromList argLits)) ]
+                  match compileAst program with
+                  | Error e -> return outcome false $"compile: {e}"
+                  | Ok binary ->
+                    let out = CompilerLibrary.execute 0 binary
+                    return
+                      (if out.ExitCode = 0 then outcome true out.Stdout
+                       else outcome false $"exit {out.ExitCode}: {out.Stderr}")
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated } ]
 
 let builtins () = LibExecution.Builtin.make [] (fns ())
