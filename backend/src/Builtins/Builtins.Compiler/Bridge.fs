@@ -53,7 +53,18 @@ let rec bridgeType (t : PT.TypeReference) : Result<AST.Type, string> =
   | PT.TFloat -> Ok AST.TFloat64
   | PT.TChar -> Ok AST.TChar
   | PT.TUnit -> Ok AST.TUnit
-  | other -> err "type" (string other)
+  // Clean, short blocker tags (the raw `string` dump of e.g. TCustomType is a
+  // multi-line record — useless as a rankable blocker key).
+  | PT.TCustomType _ -> err "type" "TCustomType"
+  | PT.TList _ -> err "type" "TList"
+  | PT.TTuple _ -> err "type" "TTuple"
+  | PT.TDict _ -> err "type" "TDict"
+  | PT.TFn _ -> err "type" "TFn"
+  | PT.TDB _ -> err "type" "TDB"
+  | PT.TVariable v -> err "type" $"TVariable {v}"
+  | PT.TUuid -> err "type" "TUuid"
+  | PT.TDateTime -> err "type" "TDateTime"
+  | other -> err "type" (other.GetType().Name)
 
 // ---------------------------------------------------------------------------
 // Infix operators

@@ -59,6 +59,27 @@ let private compileAst (program : AST.Program) : Result<byte array, string> =
 let private outcome (ok : bool) (detail : string) : Dval =
   DTuple(DBool ok, DString detail, [])
 
+/// A zero/default literal for a compiler type, so a function can be made
+/// reachable (called) to check that it actually compiles, without real args.
+let rec private zeroLit (t : AST.Type) : Result<AST.Expr, string> =
+  match t with
+  | AST.TInt64 -> Ok(AST.Int64Literal 0L)
+  | AST.TInt8 -> Ok(AST.Int8Literal 0y)
+  | AST.TInt16 -> Ok(AST.Int16Literal 0s)
+  | AST.TInt32 -> Ok(AST.Int32Literal 0l)
+  | AST.TInt128 -> Ok(AST.Int128Literal System.Int128.Zero)
+  | AST.TUInt8 -> Ok(AST.UInt8Literal 0uy)
+  | AST.TUInt16 -> Ok(AST.UInt16Literal 0us)
+  | AST.TUInt32 -> Ok(AST.UInt32Literal 0ul)
+  | AST.TUInt64 -> Ok(AST.UInt64Literal 0UL)
+  | AST.TUInt128 -> Ok(AST.UInt128Literal System.UInt128.Zero)
+  | AST.TBool -> Ok(AST.BoolLiteral false)
+  | AST.TString -> Ok(AST.StringLiteral "")
+  | AST.TFloat64 -> Ok(AST.FloatLiteral 0.0)
+  | AST.TChar -> Ok(AST.CharLiteral "a")
+  | AST.TUnit -> Ok AST.UnitLiteral
+  | other -> Error $"no zero literal for {other}"
+
 let fns () : List<BuiltInFn> =
   [ { name = fn "compilerInfo" 0
       typeParams = []
@@ -207,6 +228,43 @@ let fns () : List<BuiltInFn> =
                     return
                       (if out.ExitCode = 0 then outcome true out.Stdout
                        else outcome false $"exit {out.ExitCode}: {out.Stderr}")
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "compileFnCheck" 0
+      typeParams = []
+      parameters = [ Param.make "hash" TString "content hash of a package function" ]
+      returnType = TTuple(TBool, TString, [])
+      description =
+        "Checks whether a package function compiles via the §6 bridge, WITHOUT running it: fetches its ProgramTypes by hash, lowers to compiler AST, makes it reachable with zero-valued args, and compiles. Returns (true, \"<n> bytes\") if it compiles or (false, \"<unsupported-*>\") with the first blocker. This is the `dark <fn> compile` semantic (compilability, not execution)."
+      fn =
+        (function
+        | _, _, _, [ DString hash ] ->
+          uply {
+            let! fnOpt = LibDB.PackageManager.pt.getFn (PT.FQFnName.package hash)
+            match fnOpt with
+            | None -> return outcome false $"no package fn with hash {hash}"
+            | Some ptFn ->
+              match Bridge.bridgeFn "bridgedFn" ptFn with
+              | Error e -> return outcome false e
+              | Ok fd ->
+                let dummyArgs = fd.Params |> AST.NonEmptyList.toList |> List.map (snd >> zeroLit)
+                match List.tryPick (function Error e -> Some e | Ok _ -> None) dummyArgs with
+                | Some e -> return outcome false $"arg-synthesis: {e}"
+                | None ->
+                  let args = dummyArgs |> List.choose (function Ok x -> Some x | Error _ -> None)
+                  let program : AST.Program =
+                    AST.Program
+                      [ AST.FunctionDef fd
+                        AST.Expression(
+                          AST.Call("bridgedFn", AST.NonEmptyList.fromList args)) ]
+                  match compileAst program with
+                  | Ok binary -> return outcome true $"{binary.Length} bytes"
+                  | Error e -> return outcome false e
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
