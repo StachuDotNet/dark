@@ -13,6 +13,7 @@ module PT = LibExecution.ProgramTypes
 module Branches = LibDB.Branches
 module Inserts = LibDB.Inserts
 module BranchOpPlayback = LibDB.BranchOpPlayback
+module Rebase = LibDB.Rebase
 
 open Fumble
 open LibDB.Sqlite
@@ -387,6 +388,66 @@ let testPartialCommitDeprecationState =
   }
 
 
+/// Content-aware rebase conflicts: a location changed on both a branch and its parent is a conflict only
+/// when the two versions actually DIFFER. Identical edits on both sides aren't a conflict — and the
+/// path-only check that predated this could never be cleared by editing (re-editing keeps the path
+/// "modified"), a permanent deadlock behind an impossible "fix it, then rebase" instruction.
+let testRebaseConflictsAreContentAware =
+  testTask
+    "rebase conflicts: only DIVERGENT both-sides edits are conflicts, not identical ones" {
+    // Parent P (off main) with one commit, so a child branch gets a real base.
+    let! (parent : PT.Branch) = Branches.create "rebase-ca-parent" PT.mainBranchId
+    let seedFn = makeFn (eInt64 0L)
+    let! (_ : int64) =
+      Inserts.insertAndApplyOpsAsWip
+        parent.id
+        [ PT.PackageOp.AddFn seedFn
+          PT.PackageOp.SetName(loc "caSeed", PT.PackageFn seedFn.hash) ]
+    let! (_ : Result<PT.Hash, string>) =
+      Inserts.commitWipOps LibCloud.Account.IDs.darklang parent.id "seed"
+
+    // Child B off P — base = P's seed commit.
+    let! (child : PT.Branch) = Branches.create "rebase-ca-child" parent.id
+
+    // One fn identical on both sides (same body → same content hash); two DIFFERENT fns for the divergent one.
+    let converged = makeFn (eInt64 7L)
+    let childDiverge = makeFn (eInt64 1L)
+    let parentDiverge = makeFn (eInt64 2L)
+
+    // B edits both locations (after base).
+    let! (_ : int64) =
+      Inserts.insertAndApplyOpsAsWip
+        child.id
+        [ PT.PackageOp.AddFn childDiverge
+          PT.PackageOp.SetName(loc "caDiverge", PT.PackageFn childDiverge.hash)
+          PT.PackageOp.AddFn converged
+          PT.PackageOp.SetName(loc "caConverge", PT.PackageFn converged.hash) ]
+    let! (_ : Result<PT.Hash, string>) =
+      Inserts.commitWipOps LibCloud.Account.IDs.darklang child.id "child edits"
+
+    // P edits the SAME two locations after B forked: caDiverge to a DIFFERENT fn, caConverge to the identical one.
+    let! (_ : int64) =
+      Inserts.insertAndApplyOpsAsWip
+        parent.id
+        [ PT.PackageOp.AddFn parentDiverge
+          PT.PackageOp.SetName(loc "caDiverge", PT.PackageFn parentDiverge.hash)
+          PT.PackageOp.AddFn converged
+          PT.PackageOp.SetName(loc "caConverge", PT.PackageFn converged.hash) ]
+    let! (_ : Result<PT.Hash, string>) =
+      Inserts.commitWipOps LibCloud.Account.IDs.darklang parent.id "parent edits"
+
+    let! conflicts = Rebase.getConflicts child.id
+    let names =
+      conflicts |> List.map (fun (c : Rebase.RebaseConflict) -> c.name) |> Set.ofList
+    Expect.isTrue
+      (Set.contains "caDiverge" names)
+      "a location bound to DIFFERENT content on each side is a conflict"
+    Expect.isFalse
+      (Set.contains "caConverge" names)
+      "a location bound to IDENTICAL content on each side is NOT a conflict (content-aware)"
+  }
+
+
 let tests =
   testList
     "BranchOps"
@@ -396,4 +457,5 @@ let tests =
       testGhostFunctionCrossBranch
       testPartialCommit
       testPartialCommitSameFqn
-      testPartialCommitDeprecationState ]
+      testPartialCommitDeprecationState
+      testRebaseConflictsAreContentAware ]

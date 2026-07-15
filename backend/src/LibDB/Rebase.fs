@@ -64,7 +64,35 @@ let private getLocationPathsModifiedSince
   }
 
 
-/// Check for rebase conflicts without performing rebase
+/// The branch's current live binding hash for a location, if any.
+let private currentHash
+  (branchId : PT.BranchId)
+  (c : RebaseConflict)
+  : Task<Option<string>> =
+  Sql.query
+    """
+    SELECT item_hash FROM locations
+    WHERE owner = @owner AND modules = @modules AND name = @name AND item_type = @item_type
+      AND branch_id = @branch_id AND unlisted_at IS NULL
+    LIMIT 1
+    """
+  |> Sql.parameters
+    [ "owner", Sql.string c.owner
+      "modules", Sql.string c.modules
+      "name", Sql.string c.name
+      "item_type", Sql.string c.itemType
+      "branch_id", Sql.uuid branchId ]
+  |> Sql.executeRowOptionAsync (fun read -> read.string "item_hash")
+
+
+/// Check for rebase conflicts without performing rebase.
+///
+/// CONTENT-AWARE: a conflict is a location modified on both sides since the base whose branch and parent
+/// bindings actually DIFFER. The "modified on both" gate alone is content-blind — it fires even when both
+/// sides converged to identical content, and (worse) it can NEVER be cleared by editing, since re-editing a
+/// location keeps it "modified": a permanent deadlock, with an error that told you to do the impossible.
+/// Comparing the live hashes fixes both: identical edits aren't a conflict, and reconciling a genuine one to
+/// match the parent makes the hashes equal → it clears → `rebase` proceeds.
 let getConflicts (branchId : PT.BranchId) : Task<List<RebaseConflict>> =
   task {
     let! branchOpt = Branches.get branchId
@@ -82,18 +110,24 @@ let getConflicts (branchId : PT.BranchId) : Task<List<RebaseConflict>> =
         let! branchLocs = branchLocations
         let! parentLocs = parentLocations
 
-        // Conflict = same (owner, modules, name, itemType) modified on both sides
+        // Candidate = same (owner, modules, name, itemType) modified on both sides.
         let branchSet =
           branchLocs
           |> List.map (fun l -> (l.owner, l.modules, l.name, l.itemType))
           |> Set.ofList
 
-        let conflicts =
+        let candidates =
           parentLocs
           |> List.filter (fun l ->
             Set.contains (l.owner, l.modules, l.name, l.itemType) branchSet)
 
-        return conflicts
+        // Keep only candidates whose branch and parent bindings genuinely differ.
+        let mutable conflicts = []
+        for l in candidates do
+          let! branchHash = currentHash branchId l
+          let! parentHash = currentHash parentId l
+          if branchHash <> parentHash then conflicts <- l :: conflicts
+        return List.rev conflicts
   }
 
 
