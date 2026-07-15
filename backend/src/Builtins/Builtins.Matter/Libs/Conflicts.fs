@@ -61,20 +61,26 @@ let fns () : List<BuiltInFn> =
         [ Param.make
             "location"
             TString
-            "the conflicted location (owner.modules.name)" ]
+            "the conflicted location (owner.modules.name)"
+          Param.make
+            "itemKind"
+            TString
+            "the item kind (fn | type | value) — a location can hold more than one" ]
       returnType = TBool
       description =
-        "Acknowledge the auto-resolved conflict at <param location> — the auto (last-writer-wins) choice stands. Returns whether one was found."
+        "Acknowledge the auto-resolved conflict at <param location> of <param itemKind> — the auto (last-writer-wins) choice stands. Returns whether one was found."
       fn =
         (function
-        | _, _, _, [ DString location ] ->
+        | _, _, _, [ DString location; DString itemKind ] ->
           uply {
             let! conflicts = LibDB.Conflicts.list ()
 
             match
               conflicts
               |> List.tryFind (fun c ->
-                c.location = location && c.status = "auto-resolved")
+                c.location = location
+                && c.itemKind = itemKind
+                && c.status = "auto-resolved")
             with
             | Some c ->
               do! LibDB.Conflicts.acknowledge c.id
@@ -95,30 +101,36 @@ let fns () : List<BuiltInFn> =
             TString
             "the conflicted location (owner.modules.name)"
           Param.make
+            "itemKind"
+            TString
+            "the item kind (fn | type | value) — a location can hold more than one"
+          Param.make
             "chosenHash"
             TString
             "the candidate content hash to keep (local or incoming)" ]
       returnType = TBool
       description =
-        "Override the auto-resolution at <param location>: bind it to <param chosenHash> by minting a SYNCED Resolution (applied locally now; converges on peers). Marks the conflict overridden. Returns whether one was found."
+        "Override the auto-resolution at <param location> of <param itemKind>: bind it to <param chosenHash> by minting a SYNCED Resolution (applied locally now; converges on peers). Marks that conflict overridden. Returns whether one was found."
       fn =
         (function
-        | _, _, _, [ DString location; DString chosenHash ] ->
+        | _, _, _, [ DString location; DString itemKind; DString chosenHash ] ->
           uply {
             let! conflicts = LibDB.Conflicts.list ()
 
             match
               conflicts
               |> List.tryFind (fun c ->
-                c.location = location && c.status = "auto-resolved")
+                c.location = location
+                && c.itemKind = itemKind
+                && c.status = "auto-resolved")
             with
             // A resolution must bind one of the TWO conflicting candidates; refuse an arbitrary hash so a
             // caller can't mint a synced Resolution to content that was never in contention at this location.
             | Some c when chosenHash = c.localHash || chosenHash = c.incomingHash ->
               let loc = LibDB.Conflicts.parseLocation location
-              let itemKind = PT.ItemKind.fromString c.itemKind
+              let chosenKind = PT.ItemKind.fromString c.itemKind
               let chosenRef =
-                PT.Reference.fromHashAndKind (PT.Hash chosenHash, itemKind)
+                PT.Reference.fromHashAndKind (PT.Hash chosenHash, chosenKind)
               // The resolution's `at` competes in the same string-LWW as op origin_ts, so it MUST be minted
               // by the one canonical stamp source (lock-guarded, monotonic, InvariantCulture) — not a raw
               // UtcNow, which can tie/regress and formats locale-dependently.
