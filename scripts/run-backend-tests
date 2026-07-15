@@ -36,11 +36,30 @@ else
   LOCALEXEC=Build/out/LocalExec/Debug/net10.0/LocalExec
 fi
 
-
-LOGS="${DARK_CONFIG_RUNDIR}/logs"
-
 grey="\033[1;30m"
 reset="\033[0m"
+
+# Build the binaries this script runs, and ABORT on any compile error, BEFORE we touch the DB / run anything.
+# Otherwise run-backend-tests just executes the pre-built ${EXE}/${LOCALEXEC} — so a failed rebuild silently
+# falls back to the last good binary and reports "Success" on stale code (a compile error in a new test hid as
+# a passing run). `set -euo pipefail` makes a non-zero build abort here. Published mode is built by a separate
+# publish step, so there we only assert the artifacts exist rather than rebuild.
+if [[ "$PUBLISHED" == "true" ]]; then
+  for exe in "$EXE" "$LOCALEXEC"; do
+    if [[ ! -x "backend/$exe" ]]; then
+      echo "ERROR: published binary missing: backend/$exe — run the publish step first." >&2
+      exit 1
+    fi
+  done
+else
+  echo -e "Building backend ${grey}(fail fast on compile errors)${reset}"
+  ( cd backend \
+      && DARK_CONFIG_TELEMETRY_EXPORTER=none dotnet build src/LocalExec/LocalExec.fsproj -c Debug --nologo -v q \
+      && DARK_CONFIG_TELEMETRY_EXPORTER=none dotnet build tests/Tests/Tests.fsproj -c Debug --nologo -v q )
+fi
+
+
+LOGS="${DARK_CONFIG_RUNDIR}/logs"
 
 
 # Delete the database file before running tests.

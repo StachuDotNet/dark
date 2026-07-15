@@ -172,12 +172,16 @@ let private stop (p : System.Diagnostics.Process) : unit =
 /// transfer (matches the bash harness; keeps the batch tiny + avoids re-shipping the whole seed).
 let private presync (inst : Instance) (peerUrl : string) : unit =
   darkIn inst.dir [ "sync"; "connect"; peerUrl ] |> ignore<string>
-  let baseline (table : string) =
-    let v = sqlite (seedDb.Force()) $"SELECT COALESCE(MAX(rowid),0) FROM {table}"
+  // The seed-baseline cursor per log — "already synced up to the common seed" so only a scenario's authored
+  // ops transfer. Each log's cursor is in the units that log PAGES by: package_ops now pages by `committed_seq`
+  // (a commit-order stamp; seed ops are NULL → MAX is 0, so authored ops with committed_seq > 0 still ship, and
+  // the seed itself — NULL committed_seq — never does), while branch_ops/resolutions still page by `rowid`.
+  let baseline (table : string) (col : string) =
+    let v = sqlite (seedDb.Force()) $"SELECT COALESCE(MAX({col}),0) FROM {table}"
     if v = "" then "0" else v
-  let pkg = baseline "package_ops"
-  let br = baseline "branch_ops"
-  let res = baseline "resolutions"
+  let pkg = baseline "package_ops" "committed_seq"
+  let br = baseline "branch_ops" "rowid"
+  let res = baseline "resolutions" "rowid"
   sqlite
     (dbOf inst)
     $"INSERT OR REPLACE INTO sync_cursors_v1(peer,kind,cursor) VALUES('{peerUrl}','package_ops',{pkg}),('{peerUrl}','branch_ops',{br}),('{peerUrl}','resolutions',{res})"
@@ -205,6 +209,39 @@ let private assertRealHash (label : string) (h : string) : unit =
   Expect.isFalse
     (low.Contains "error" || low.Contains "not found" || low.Contains "no such")
     $"{label}: hash line looks like an error, not a hash: '{h}'"
+
+// Real-process sync is eventually-consistent: a single `dark sync` transfers the ops, but the peer's
+// fold + value-eval + blob fetch-on-miss can still be settling when a read fires immediately after (the DIAG
+// was "Pulled 1 change" yet `view` → "Not found"). So the convergence assertions RE-PULL and re-check up to a
+// deadline instead of asserting once — the logic is proven deterministically by the in-process MultiInstance
+// suite; this only absorbs cross-process timing. (A re-`sync` also re-triggers blob fetch-on-miss.)
+
+/// Re-pull on <inst> until <loc> hashes to <target>, up to ~8s. Returns whether it converged.
+let private pullUntilHash (inst : Instance) (loc : string) (target : string) : bool =
+  let mutable h = hashOf inst loc
+  let mutable waited = 0
+  while h <> target && waited < 8000 do
+    System.Threading.Thread.Sleep 300
+    darkIn inst.dir [ "sync" ] |> ignore<string>
+    h <- hashOf inst loc
+    waited <- waited + 300
+  h = target
+
+/// Re-pull on <inst> until `<produce>()` contains <needle>, up to ~8s. Returns the last output (so a failed
+/// assertion still shows a real value). Used for "the conflict was recorded/shown" after a cross-sync.
+let private syncUntilShows
+  (inst : Instance)
+  (produce : unit -> string)
+  (needle : string)
+  : string =
+  let mutable out = produce ()
+  let mutable waited = 0
+  while not (out.Contains needle) && waited < 8000 do
+    System.Threading.Thread.Sleep 300
+    darkIn inst.dir [ "sync" ] |> ignore<string>
+    out <- produce ()
+    waited <- waited + 300
+  out
 
 // ── scenarios ───────────────────────────────────────────────────────────────────────────────────────
 let private withRoot (name : string) (body : string -> Task<unit>) : Task<unit> =
@@ -244,15 +281,15 @@ let private realTests =
                 presync b $"http://127.0.0.1:{port}"
                 let out = darkIn b.dir [ "sync" ]
                 Expect.stringContains out "Pulled" "B pulled A's change"
+                let target = hashOf a "SyncTest.Basic.x"
+                assertRealHash "A's hash" target
+                Expect.isTrue
+                  (pullUntilHash b "SyncTest.Basic.x" target)
+                  "the hash converged (re-pull until settled)"
                 Expect.equal
                   (viewOf b "SyncTest.Basic.x")
                   (viewOf a "SyncTest.Basic.x")
                   "the value converged"
-                assertRealHash "A's hash" (hashOf a "SyncTest.Basic.x")
-                Expect.equal
-                  (hashOf b "SyncTest.Basic.x")
-                  (hashOf a "SyncTest.Basic.x")
-                  "the hash converged (the convergence assertion)"
                 let resync = darkIn b.dir [ "sync" ]
                 Expect.stringContains
                   resync
@@ -285,19 +322,17 @@ let private realTests =
                 presync b $"http://127.0.0.1:{pA}"
                 darkIn a.dir [ "sync" ] |> ignore<string>
                 darkIn b.dir [ "sync" ] |> ignore<string>
+                // A records the conflict when it pulls B's diverging op; re-pull until it shows.
                 Expect.stringContains
-                  (darkIn a.dir [ "conflicts" ])
+                  (syncUntilShows a (fun () -> darkIn a.dir [ "conflicts" ]) "SyncTest.Race.n")
                   "SyncTest.Race.n"
                   "the divergence was recorded + shown (never silent)"
                 darkIn a.dir [ "conflicts"; "keep-mine"; "SyncTest.Race.n" ]
                 |> ignore<string>
-                darkIn b.dir [ "sync" ] |> ignore<string>
-                assertRealHash
-                  "A's post-resolution hash"
-                  (hashOf a "SyncTest.Race.n")
-                Expect.equal
-                  (hashOf b "SyncTest.Race.n")
-                  (hashOf a "SyncTest.Race.n")
+                let target = hashOf a "SyncTest.Race.n"
+                assertRealHash "A's post-resolution hash" target
+                Expect.isTrue
+                  (pullUntilHash b "SyncTest.Race.n" target)
                   "B adopts A's resolution → both converge on A's pick"
               finally
                 stop serverA
@@ -330,15 +365,15 @@ let private realTests =
                 presync b $"http://127.0.0.1:{pA}"
                 darkIn a.dir [ "sync" ] |> ignore<string>
                 darkIn b.dir [ "sync" ] |> ignore<string>
+                // A must hold the conflict before it can keep-theirs; re-pull until it does.
+                syncUntilShows a (fun () -> darkIn a.dir [ "conflicts" ]) "SyncTest.RaceT.n"
+                |> ignore<string>
                 darkIn a.dir [ "conflicts"; "keep-theirs"; "SyncTest.RaceT.n" ]
                 |> ignore<string>
-                darkIn b.dir [ "sync" ] |> ignore<string>
-                assertRealHash
-                  "A's post-keep-theirs hash"
-                  (hashOf a "SyncTest.RaceT.n")
-                Expect.equal
-                  (hashOf b "SyncTest.RaceT.n")
-                  (hashOf a "SyncTest.RaceT.n")
+                let target = hashOf a "SyncTest.RaceT.n"
+                assertRealHash "A's post-keep-theirs hash" target
+                Expect.isTrue
+                  (pullUntilHash b "SyncTest.RaceT.n" target)
                   "both converge on the kept-theirs pick"
                 Expect.stringContains
                   (viewOf a "SyncTest.RaceT.n")
