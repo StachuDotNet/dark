@@ -97,6 +97,38 @@ let getConflicts (branchId : PT.BranchId) : Task<List<RebaseConflict>> =
   }
 
 
+/// The parent branch's latest commit hash (None if the parent has no commits yet).
+let private parentLatestCommit (parentId : PT.BranchId) : Task<Option<Hash>> =
+  Sql.query
+    """
+    SELECT hash FROM commits
+    WHERE branch_id = @parent_id
+    ORDER BY created_at DESC
+    LIMIT 1
+    """
+  |> Sql.parameters [ "parent_id", Sql.uuid parentId ]
+  |> Sql.executeRowOptionAsync (fun read -> Hash(read.string "hash"))
+
+
+/// Is the branch behind its parent — would a rebase actually move its base? Read-only.
+///
+/// Distinct from `getConflicts`, which is empty BOTH when the branch is up to date AND when it's
+/// behind-but-clean (parent advanced, no overlapping edits). So `rebase --status` needs this to tell
+/// "nothing to do" apart from "a clean rebase is waiting."
+let needsRebase (branchId : PT.BranchId) : Task<bool> =
+  task {
+    let! branchOpt = Branches.get branchId
+    match branchOpt with
+    | None -> return false
+    | Some branch ->
+      match branch.parentBranchId with
+      | None -> return false // main branch: nothing to rebase onto
+      | Some parentId ->
+        let! parentLatest = parentLatestCommit parentId
+        return branch.baseCommitHash <> parentLatest
+  }
+
+
 /// Perform rebase: verify no conflicts, update base_commit_hash to parent's latest.
 ///
 /// TODO (multi-tenant): same TOCTOU shape as Merge.merge — reads
@@ -112,16 +144,7 @@ let rebase (branchId : PT.BranchId) : Task<Result<string, List<RebaseConflict>>>
       | None -> return Ok "Main branch, nothing to rebase"
       | Some parentId ->
         // Get parent's latest commit
-        let! parentLatest =
-          Sql.query
-            """
-            SELECT hash FROM commits
-            WHERE branch_id = @parent_id
-            ORDER BY created_at DESC
-            LIMIT 1
-            """
-          |> Sql.parameters [ "parent_id", Sql.uuid parentId ]
-          |> Sql.executeRowOptionAsync (fun read -> Hash(read.string "hash"))
+        let! parentLatest = parentLatestCommit parentId
 
         if branch.baseCommitHash = parentLatest then
           return Ok "Already up to date"

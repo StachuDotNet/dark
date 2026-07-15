@@ -45,6 +45,26 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "scmRebaseNeeded" 0
+      typeParams = []
+      parameters = [ Param.make "branchId" TUuid "Branch to check" ]
+      returnType = TBool
+      description =
+        "Whether the branch is behind its parent — i.e. a rebase would move it. Distinct from having conflicts: a branch can need a (clean) rebase with no conflicts."
+      fn =
+        function
+        | _, _, _, [ DUuid branchId ] ->
+          uply {
+            let! needed = LibDB.Rebase.needsRebase branchId
+            return DBool needed
+          }
+        | _ -> incorrectArgs ()
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+
     { name = fn "scmGetRebaseConflicts" 0
       typeParams = []
       parameters = [ Param.make "branchId" TUuid "Branch to check" ]
