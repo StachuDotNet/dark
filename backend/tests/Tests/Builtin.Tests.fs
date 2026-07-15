@@ -169,6 +169,11 @@ let private multiUseAllowlist : Set<string> =
       // LSP, and CLI-script parsing.
       "parserParseToWrittenTypes"
 
+      // Sync conflict-review surface: the recorded-divergence log, read by the
+      // `dark conflicts` review UI and by the `dark sync` pull nudge (which
+      // counts unreviewed conflicts so last-writer-wins is never silent).
+      "conflictsList"
+
       // Misc.
       "interpreterStatsReset" ]
 
