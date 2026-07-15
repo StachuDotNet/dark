@@ -494,7 +494,10 @@ let resolutionSurvivesDiscard =
         "2026-07-08T00:00:00.300Z"
     do! Resolutions.recordAndApply res
     let! beforeDiscard = liveHash loc
-    Expect.equal beforeDiscard [ fnA ] "the override took (fnA over the LWW winner fnB)"
+    Expect.equal
+      beforeDiscard
+      [ fnA ]
+      "the override took (fnA over the LWW winner fnB)"
 
     // An UNRELATED WIP op, so discard actually runs (it's a no-op with zero WIP ops). Bind to fnB (not fnA)
     // so the rename path can't touch the overlay's item_hash.
@@ -557,8 +560,14 @@ let identicalContentAuthoringConverges =
     let! _ = Seed.receiveOps [] [ mid ]
     let! bFinal = liveHash loc
 
-    Expect.equal aFinal bFinal "both instances converge on the same binding for the name"
-    Expect.equal aFinal [ fnY ] "the later different-hash edit wins on both (reconciled stamp is .100 < .150)"
+    Expect.equal
+      aFinal
+      bFinal
+      "both instances converge on the same binding for the name"
+    Expect.equal
+      aFinal
+      [ fnY ]
+      "the later different-hash edit wins on both (reconciled stamp is .100 < .150)"
     teardown [ a; b ]
   }
 

@@ -324,7 +324,10 @@ let private realTests =
                 darkIn b.dir [ "sync" ] |> ignore<string>
                 // A records the conflict when it pulls B's diverging op; re-pull until it shows.
                 Expect.stringContains
-                  (syncUntilShows a (fun () -> darkIn a.dir [ "conflicts" ]) "SyncTest.Race.n")
+                  (syncUntilShows
+                    a
+                    (fun () -> darkIn a.dir [ "conflicts" ])
+                    "SyncTest.Race.n")
                   "SyncTest.Race.n"
                   "the divergence was recorded + shown (never silent)"
                 darkIn a.dir [ "conflicts"; "keep-mine"; "SyncTest.Race.n" ]
@@ -366,7 +369,10 @@ let private realTests =
                 darkIn a.dir [ "sync" ] |> ignore<string>
                 darkIn b.dir [ "sync" ] |> ignore<string>
                 // A must hold the conflict before it can keep-theirs; re-pull until it does.
-                syncUntilShows a (fun () -> darkIn a.dir [ "conflicts" ]) "SyncTest.RaceT.n"
+                syncUntilShows
+                  a
+                  (fun () -> darkIn a.dir [ "conflicts" ])
+                  "SyncTest.RaceT.n"
                 |> ignore<string>
                 darkIn a.dir [ "conflicts"; "keep-theirs"; "SyncTest.RaceT.n" ]
                 |> ignore<string>
