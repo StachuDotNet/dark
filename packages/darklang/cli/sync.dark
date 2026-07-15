@@ -11,6 +11,20 @@ let private plural (n: Int) (noun: String) : String =
   else
     $"{Stdlib.Int.toString n} {noun}s"
 
+// After a pull, nudge about any unreviewed divergences — so last-writer-wins is never SILENT: you always see
+// that a name was contested and can review the winner (`dark conflicts`).
+let private conflictNudge () : Unit =
+  let unreviewed =
+    Builtin.conflictsList ()
+    |> Stdlib.List.filter (fun c -> c.status == "auto-resolved")
+    |> Stdlib.List.length
+
+  if unreviewed > 0 then
+    Stdlib.printLine (
+      Colors.warning $"  {plural unreviewed "conflict"} to review — run `dark conflicts`")
+  else
+    ()
+
 // Serve the sync endpoint so peers can pull from you. Blocks until Ctrl+C (foreground); for boot, use
 // `dark sync daemon start`. Same router `dark serve Darklang.Sync.Server.router` would run — just less
 // to type, and it prints the address peers actually need.
@@ -308,6 +322,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
       else
         ()
 
+      let _ = conflictNudge ()
       state
 
   | [ "status" ] ->
@@ -390,6 +405,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
           Colors.success $"Pulled {plural n "change"} from {peer}")
     | Error e -> Stdlib.printLine (Colors.error e)
 
+    let _ = conflictNudge ()
     state
 
   | [ "disconnect"; peer ] ->
