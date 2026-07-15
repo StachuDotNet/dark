@@ -66,7 +66,12 @@ let builtins : RT.Builtins =
   LibExecution.Builtin.combine
     [ Builtins.CliHost.Libs.Cli.builtinsToUse ()
       Builtins.CliHost.Builtin.builtins ()
-      BuiltinCli.builtins () ]
+      BuiltinCli.builtins ()
+#if DARK_WITH_COMPILER
+      // 10th entry: the airlifted compiler extension (build-gated).
+      Builtins.Compiler.Builtin.builtins ()
+#endif
+      ]
     []
 
 

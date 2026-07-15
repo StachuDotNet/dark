@@ -107,4 +107,21 @@
     <Compile Include="CompilerLibrary.fs" />
   </ItemGroup>
 
+  <!--
+    Runtime data: CompilerLibrary.buildStdlib reads these .dark files relative to
+    the executing assembly's directory (loadDarkFileAllowInternal -> exeDir/...).
+    Ship them next to LibCompiler.dll so an in-process compile works wherever the
+    assembly lands. (This bundled stdlib retires once the PT->AST bridge consumes
+    the main-repo package tree — plan §11 Q8.)
+  -->
+  <ItemGroup>
+    <Content Include="stdlib/**/*.dark">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>stdlib/%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
+    <Content Include="unicode_data.dark">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
