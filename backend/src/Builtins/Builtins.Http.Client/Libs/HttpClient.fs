@@ -819,7 +819,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
     // GET with SSRF guards OFF, returning raw BYTES — for pulling a peer's op wire over the tailnet.
     // (The safe `httpClientRequest` bans loopback/RFC-1918/tailnet, which a peer's sync server sits behind;
     // the Blob variant hands the body back as bytes for the caller to decode — `Stdlib.Blob.toString` for the
-    // JSON wire.) TRUSTED-CLI use: the caller IS the code author; used by `Sync.pull` / `dark sync pull <url>`.
+    // JSON wire.) TRUSTED-CLI use: the caller IS the code author; used by `Sync.pull` / `dark sync from <url>`.
     // TODO(sync-ssrf): this is registered in the general builtin set, so it's reachable from any CLI-run Dark
     // (incl. packages pulled from a peer). Gate it to the sync surface (its own library or a sync capability).
     { name = fn "httpGetUnsafeBytes" 0
