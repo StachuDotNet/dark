@@ -1272,6 +1272,9 @@ type private UserCompilePlan = {
     Labels: UserCompileLabels
     SourceFile: string
     Source: string
+    /// When Some, the pipeline skips the text parser and uses this AST directly.
+    /// This is the seam the PT->AST bridge feeds (compiler-merge airlift, plan §6).
+    PrebuiltAst: AST.Program option
 }
 
 /// Parse source text into AST using a selected Darklang syntax
@@ -1289,9 +1292,12 @@ let private compileUserWithPlan (plan: UserCompilePlan) : CompileReport =
     let sw = Stopwatch.StartNew()
     let result =
         try
-            // Pass 1: Parse user code only
+            // Pass 1: Parse user code only (or use a pre-built AST from the bridge)
             if plan.Verbosity >= 1 then println plan.Labels.Parse
-            let parseResult = parseProgram plan.SourceSyntax plan.AllowInternal plan.Source
+            let parseResult =
+                match plan.PrebuiltAst with
+                | Some ast -> Ok ast
+                | None -> parseProgram plan.SourceSyntax plan.AllowInternal plan.Source
             let parseTime = sw.Elapsed.TotalMilliseconds
             recordPassTiming plan.PassTimingRecorder "Parse" parseTime
             if plan.Verbosity >= 2 then
@@ -1718,11 +1724,20 @@ let private buildCompilePlan (request: CompileRequest) : UserCompilePlan =
         Labels = labelsForMode request.Mode
         SourceFile = request.SourceFile
         Source = request.Source
+        PrebuiltAst = None
     }
 
 /// Compile source code to binary (in-memory, no file I/O)
 let compile (request: CompileRequest) : CompileReport =
     let plan = buildCompilePlan request
+    compileUserWithPlan plan
+
+/// Compile a pre-built AST.Program (bridged from ProgramTypes), skipping the
+/// text parser entirely. The request supplies context/mode/options; its Source
+/// field is ignored. This is the entry the compiler-merge PT->AST bridge uses
+/// (plan §6) so we never round-trip through the compiler's diverged parser.
+let compileAstProgram (request: CompileRequest) (ast: AST.Program) : CompileReport =
+    let plan = { buildCompilePlan request with PrebuiltAst = Some ast }
     compileUserWithPlan plan
 
 /// Execute compiled binary and capture output
