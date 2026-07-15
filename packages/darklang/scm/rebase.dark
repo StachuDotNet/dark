@@ -9,3 +9,9 @@ let rebase (branchId: Uuid) : Stdlib.Result.Result<String, List<String>> =
 /// Get list of conflicting location paths for rebase
 let getConflicts (branchId: Uuid) : List<String> =
   Builtin.scmGetRebaseConflicts branchId
+
+
+/// Whether the branch is behind its parent (a rebase would move it). Distinct from having
+/// conflicts — a branch can need a clean rebase with none.
+let needed (branchId: Uuid) : Bool =
+  Builtin.scmRebaseNeeded branchId

@@ -8,10 +8,17 @@ let execute (state: AppState) (args: List<String>) : AppState =
   if showStatus then
     let conflicts = SCM.Rebase.getConflicts state.currentBranchId
 
+    // Conflicts can only exist when the parent has advanced past your base, so a non-empty list already
+    // means a rebase is needed. When it's empty, `needed` splits the two cases the old wording ran
+    // together: genuinely up to date vs. behind-but-clean (parent moved, nothing overlaps).
     if Stdlib.List.isEmpty conflicts then
-      Stdlib.printLine (Colors.success "No rebase needed, or no conflicts.")
+      if SCM.Rebase.needed state.currentBranchId then
+        Stdlib.printLine (Colors.warning "Rebase needed — your branch is behind its parent.")
+        Stdlib.printLine (Colors.hint "  No conflicts. Run `rebase` to catch up.")
+      else
+        Stdlib.printLine (Colors.success "Up to date with parent — no rebase needed.")
     else
-      Stdlib.printLine (Colors.warning "Rebase conflicts:")
+      Stdlib.printLine (Colors.warning "Rebase needed, but these locations conflict:")
       conflicts |> Stdlib.List.iter (fun c -> Stdlib.printLine $"  {c}")
       [ ""; "Fix these on your branch, then run 'rebase' again." ]
       |> Stdlib.printLines
