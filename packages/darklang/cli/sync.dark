@@ -285,10 +285,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
       // applying ops …". Surface the real message instead of bucketing every
       // failure as "unreachable" (which hides apply/DB errors behind a network lie).
       let errors =
-        Stdlib.List.fold results [] (fun acc r ->
+        Stdlib.List.filterMap results (fun r ->
           match r with
-          | Ok _ -> acc
-          | Error e -> Stdlib.List.append acc [ e ])
+          | Ok _ -> Stdlib.Option.Option.None
+          | Error e -> Stdlib.Option.Option.Some e)
 
       let reached = (Stdlib.List.length ps) - (Stdlib.List.length errors)
 

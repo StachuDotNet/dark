@@ -563,6 +563,89 @@ let identicalContentAuthoringConverges =
   }
 
 
+let resolutionSurvivesDiscardAfterRebuild =
+  testTask
+    "a resolution survives `discard` even after a projection rebuild (reapplyAll re-tags the overlay)" {
+    // rebuildProjections re-derives `locations` from the op log and re-applies the overlay via reapplyAll —
+    // which must re-tag it source='resolution', or a later discard would sweep the rebuilt overlay. Guards
+    // the marker across a full re-fold (not just the freshly-authored path).
+    let! a = seededInstance "resdiscardrebuild"
+
+    let loc : PT.PackageLocation =
+      { owner = "Test"; modules = [ "ResDiscardRebuild" ]; name = "pick" }
+    activate a
+    let! (fnA, fnB) = twoFunctionHashes ()
+    let! commit = existingCommit ()
+    let! _ =
+      Seed.receiveOps [] [ setNameEvent loc fnA commit "2026-07-08T00:00:00.100Z" ]
+    let! _ =
+      Seed.receiveOps [] [ setNameEvent loc fnB commit "2026-07-08T00:00:00.200Z" ]
+    let res =
+      Resolutions.mk
+        loc
+        (PT.Reference.PackageFn(PT.Hash fnA))
+        "human"
+        PT.mainBranchId
+        "2026-07-08T00:00:00.300Z"
+    do! Resolutions.recordAndApply res
+    let! _ = Seed.rebuildProjections () // overlay re-applied via reapplyAll — must re-tag source
+    let! afterRebuild = liveHash loc
+    Expect.equal afterRebuild [ fnA ] "override survived the rebuild"
+
+    let wipLoc : PT.PackageLocation =
+      { owner = "Test"; modules = [ "ResDiscardRebuild" ]; name = "scratch" }
+    let! _ =
+      LibDB.Inserts.insertAndApplyOpsAsWip
+        PT.mainBranchId
+        [ PT.PackageOp.SetName(wipLoc, PT.Reference.PackageFn(PT.Hash fnB)) ]
+    let! _ = LibDB.Inserts.discardWipOps PT.mainBranchId
+    let! afterDiscard = liveHash loc
+    Expect.equal
+      afterDiscard
+      [ fnA ]
+      "override survived discard AFTER a rebuild (source was re-tagged by reapplyAll)"
+    teardown [ a ]
+  }
+
+
+let conflictIdDistinguishesItemKind =
+  testTask
+    "conflicts at one location with the same hashes but different item kinds stay distinct" {
+    // conflictId hashes item_kind, so a fn-kind and a type-kind divergence at the same name with the same
+    // candidate hashes are two records — not one collapsed by INSERT OR IGNORE. (A name can hold a fn AND a
+    // type at once, so both are real.)
+    let! a = seededInstance "conflictkind"
+    activate a
+    let locStr = "Test.KindConflict.dup"
+    do!
+      LibDB.Conflicts.record
+        PT.mainBranchId
+        locStr
+        "fn"
+        "hashLocal"
+        "hashIncoming"
+        "hashIncoming"
+        "auto:test"
+    do!
+      LibDB.Conflicts.record
+        PT.mainBranchId
+        locStr
+        "type"
+        "hashLocal"
+        "hashIncoming"
+        "hashIncoming"
+        "auto:test"
+    let! all = LibDB.Conflicts.list ()
+    let atLoc =
+      all |> List.filter (fun (c : LibDB.Conflicts.Conflict) -> c.location = locStr)
+    Expect.equal
+      (List.length atLoc)
+      2
+      "both the fn-kind and type-kind conflicts are recorded (not collapsed to one id)"
+    teardown [ a ]
+  }
+
+
 let durableReleaseMigratesInPlace =
   testTask
     "a durable Release migrates a seeded store IN PLACE, preserving its data (not a clean-break)" {
@@ -885,6 +968,8 @@ let tests =
       resolutionSurvivesIncrementalFold
       resolutionSurvivesDiscard
       identicalContentAuthoringConverges
+      resolutionSurvivesDiscardAfterRebuild
+      conflictIdDistinguishesItemKind
       durableReleaseMigratesInPlace
       branchMergeSyncs
       concurrentRebasesConverge

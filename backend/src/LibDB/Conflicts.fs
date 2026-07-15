@@ -53,10 +53,14 @@ let parseLocation (s : string) : PT.PackageLocation =
 let private conflictId
   (branchId : System.Guid)
   (location : string)
+  (itemKind : string)
   (localHash : string)
   (incomingHash : string)
   : string =
-  let raw = $"{branchId}|{location}|{localHash}|{incomingHash}"
+  // item_kind is part of the identity: a name can hold a fn AND a type at once, so a fn-kind and a
+  // type-kind divergence at the same location are DISTINCT conflicts. Omitting it would collapse them to
+  // one id and INSERT OR IGNORE would drop the second.
+  let raw = $"{branchId}|{location}|{itemKind}|{localHash}|{incomingHash}"
 
   System.Security.Cryptography.SHA256.HashData(
     System.Text.Encoding.UTF8.GetBytes raw
@@ -82,7 +86,7 @@ let record
       (@id, @branch_id, @location, @item_kind, @local_hash, @incoming_hash, @chosen_hash, @resolved_by, 'auto-resolved')
     """
   |> Sql.parameters
-    [ "id", Sql.string (conflictId branchId location localHash incomingHash)
+    [ "id", Sql.string (conflictId branchId location itemKind localHash incomingHash)
       "branch_id", Sql.string (string branchId)
       "location", Sql.string location
       "item_kind", Sql.string itemKind
