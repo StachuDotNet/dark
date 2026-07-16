@@ -142,6 +142,7 @@ let private buildEffectfulMap
   let optStr = TypeReference.option TString
   let resStrStr = TypeReference.result TString TString
   let resUnitStr = TypeReference.result TUnit TString
+  let resIntStr = TypeReference.result TInt64 TString
   exeState.fns.builtIn
   |> Map.toList
   |> List.choose (fun (name, bfn) ->
@@ -153,14 +154,19 @@ let private buildEffectfulMap
         | TInt64 -> Some Bridge.WAInt
         | TInt -> Some Bridge.WAInt
         | TBool -> Some Bridge.WABool
+        | TFloat -> Some Bridge.WAFloat
         | _ -> None)
     let wireRet =
       match bfn.returnType with
       | TUnit -> Some Bridge.WRUnit
       | TString -> Some Bridge.WRString
+      | TInt64 -> Some Bridge.WRInt
+      | TInt -> Some Bridge.WRInt
+      | TBool -> Some Bridge.WRBool
       | t when t = optStr -> Some Bridge.WROptString
       | t when t = resStrStr -> Some Bridge.WRResStrStr
       | t when t = resUnitStr -> Some Bridge.WRResUnitStr
+      | t when t = resIntStr -> Some Bridge.WRResIntStr
       | _ -> None
     match wireRet with
     | Some ret when not (List.exists Option.isNone argWires) ->

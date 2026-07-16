@@ -17,3 +17,25 @@ def Stdlib.hostRpcPoll(u: Unit) : String =
 def Stdlib.hostRpc(request: String) : String =
     let _ = Stdlib.File.writeText("/tmp/dark-rpc-req", request) in
     Stdlib.hostRpcPoll(())
+
+// --- wire-response parsers (unmarshal numeric returns from the daemon) ---
+// The daemon marshals a builtin's return value to a decimal string; the compiled
+// side has no Int64.parse, so these reconstruct the native value from codepoints.
+
+def Stdlib.hostRpcDigits(cps: List<Int64>, acc: Int64) : Int64 =
+    match cps with
+    | [] -> acc
+    | [h, ...t] -> Stdlib.hostRpcDigits(t, acc * 10 + (h - 48))
+
+// Negatives accumulate downward so Int64.MIN (whose magnitude exceeds MAX) is
+// representable — parsing the magnitude then negating would overflow and crash.
+def Stdlib.hostRpcDigitsNeg(cps: List<Int64>, acc: Int64) : Int64 =
+    match cps with
+    | [] -> acc
+    | [h, ...t] -> Stdlib.hostRpcDigitsNeg(t, acc * 10 - (h - 48))
+
+def Stdlib.hostRpcParseInt(s: String) : Int64 =
+    if Stdlib.String.startsWith(s, "-") then
+        Stdlib.hostRpcDigitsNeg(Stdlib.String.toCodepoints(Stdlib.String.dropFirst(s, 1)), 0)
+    else
+        Stdlib.hostRpcDigits(Stdlib.String.toCodepoints(s), 0)

@@ -37,14 +37,18 @@ type WireArg =
   | WAString
   | WAInt
   | WABool
+  | WAFloat
 
 /// How a builtin's wire response is unmarshaled back into a native value.
 type WireRet =
   | WRUnit
   | WRString
+  | WRInt // Int64
+  | WRBool
   | WROptString // Option<String>
   | WRResStrStr // Result<String, String>
   | WRResUnitStr // Result<Unit, String>
+  | WRResIntStr // Result<Int64, String>
 
 type BridgeCtx =
   { Params : string[]
@@ -345,8 +349,12 @@ let private unmarshalReturn (ret : WireRet) (call : AST.Expr) : AST.Expr =
     AST.Call("Stdlib.String.slice", AST.NonEmptyList.fromList [ e; a; b ])
   let starts e p =
     AST.Call("Stdlib.String.startsWith", AST.NonEmptyList.fromList [ e; AST.StringLiteral p ])
+  let parseInt e = AST.Call("Stdlib.hostRpcParseInt", AST.NonEmptyList.singleton e)
   match ret with
   | WRString -> call
+  | WRInt -> parseInt call
+  | WRBool ->
+    AST.Let("__rpc_r", call, AST.Call("Stdlib.String.equals", AST.NonEmptyList.fromList [ r; AST.StringLiteral "true" ]))
   | WRUnit -> AST.Let("__rpc_ignore", call, AST.UnitLiteral)
   | WROptString ->
     AST.Let(
@@ -372,6 +380,14 @@ let private unmarshalReturn (ret : WireRet) (call : AST.Expr) : AST.Expr =
         starts r "Error\n",
         AST.Constructor(resT, "Error", Some(slice r (AST.Int64Literal 6L) (len r))),
         AST.Constructor(resT, "Ok", Some(slice r (AST.Int64Literal 3L) (len r)))))
+  | WRResIntStr ->
+    AST.Let(
+      "__rpc_r",
+      call,
+      AST.If(
+        starts r "Error\n",
+        AST.Constructor(resT, "Error", Some(slice r (AST.Int64Literal 6L) (len r))),
+        AST.Constructor(resT, "Ok", Some(parseInt (slice r (AST.Int64Literal 3L) (len r))))))
 
 let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
   let recurse = bridgeExpr ctx
@@ -480,7 +496,8 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
                       match w with
                       | WAString -> a
                       | WAInt -> AST.Call("Stdlib.Int64.toString", AST.NonEmptyList.singleton a)
-                      | WABool -> AST.Call("Stdlib.Bool.toString", AST.NonEmptyList.singleton a))
+                      | WABool -> AST.Call("Stdlib.Bool.toString", AST.NonEmptyList.singleton a)
+                      | WAFloat -> AST.Call("Stdlib.Float.toString", AST.NonEmptyList.singleton a))
                     argWires
                     bas
                 let request =
