@@ -110,6 +110,27 @@ let rec private fetchTypeClosure
           return! fetchTypeClosure (Set.add h visited) (acc @ [ (h, pt) ]) (rest @ deps)
   }
 
+/// Fetch the transitive closure of package constants referenced by the seeds.
+let rec private fetchValueClosure
+  (visited : Set<string>)
+  (acc : List<string * PT.PackageValue.PackageValue>)
+  (worklist : List<string>)
+  : Ply<Result<List<string * PT.PackageValue.PackageValue>, string>> =
+  uply {
+    match worklist with
+    | [] -> return Ok acc
+    | h :: rest ->
+      if Set.contains h visited then
+        return! fetchValueClosure visited acc rest
+      else
+        let! vOpt = LibDB.PackageManager.pt.getValue (PT.FQValueName.package h)
+        match vOpt with
+        | None -> return! fetchValueClosure (Set.add h visited) acc rest
+        | Some pv ->
+          let deps = Bridge.valueRefsInExpr pv.body
+          return! fetchValueClosure (Set.add h visited) (acc @ [ (h, pv) ]) (rest @ deps)
+  }
+
 /// Fetch + bridge the whole graph (fns and their non-generic custom types),
 /// returning the compiler TypeDefs, FunctionDefs, and the root's compiled name.
 let private buildPieces
@@ -120,8 +141,17 @@ let private buildPieces
     match fnClosure with
     | Error e -> return Error e
     | Ok fns ->
+      let valueSeeds =
+        fns |> List.collect (fun (_, fn) -> Bridge.valueRefsInExpr fn.body) |> List.distinct
+      let! valueClosure = fetchValueClosure Set.empty [] valueSeeds
+      let values =
+        match valueClosure with
+        | Ok vs -> vs
+        | Error _ -> []
       let typeSeeds =
-        fns |> List.collect (fun (_, fn) -> Bridge.typeRefsInFn fn) |> List.distinct
+        ((fns |> List.collect (fun (_, fn) -> Bridge.typeRefsInFn fn))
+         @ (values |> List.collect (fun (_, pv) -> Bridge.typeRefsInExpr pv.body)))
+        |> List.distinct
       let! typeClosure = fetchTypeClosure Set.empty [] typeSeeds
       match typeClosure with
       | Error e -> return Error e
@@ -154,8 +184,19 @@ let private buildPieces
           |> List.filter (fun (h, _) -> Map.containsKey h baseEnv)
           |> List.map (fun (h, pt) -> Bridge.bridgeTypeDef typeEnv (Bridge.nameForType h) pt)
           |> allOk
+        // Bridge each package constant's body (no params/self) into an inline
+        // expression, accumulating so a value can reference an earlier one.
+        let valuesMap =
+          (Map.empty, values)
+          ||> List.fold (fun m (h, pv) ->
+            let ctx : Bridge.BridgeCtx = { Params = [||]; Self = ""; Values = m }
+            match Bridge.bridgeExpr ctx pv.body with
+            | Ok e -> Map.add h e m
+            | Error _ -> m)
         let fnDefs =
-          fns |> List.map (fun (h, fn) -> Bridge.bridgeFn typeEnv Map.empty (Bridge.nameFor h) fn) |> allOk
+          fns
+          |> List.map (fun (h, fn) -> Bridge.bridgeFn typeEnv valuesMap (Bridge.nameFor h) fn)
+          |> allOk
         match typeDefs, fnDefs with
         | Error e, _ -> return Error e
         | _, Error e -> return Error e

@@ -752,3 +752,33 @@ let typeRefsInTypeDef (pt : PT.PackageType.PackageType) : List<string> =
     cases
     |> NEList.toList
     |> List.collect (fun c -> c.fields |> List.collect (fun ef -> typeRefsInType ef.typ))
+
+/// The package-value hashes an expression references (for the value closure).
+let rec valueRefsInExpr (e : PT.Expr) : List<string> =
+  let r = valueRefsInExpr
+  match e with
+  | PT.EValue(_, nr) ->
+    match nr.resolved with
+    | Ok resolved ->
+      match resolved.name with
+      | PT.FQValueName.Package(PT.Hash h) -> [ h ]
+      | PT.FQValueName.Builtin _ -> []
+    | Error _ -> []
+  | PT.EInfix(_, _, l, rhs) -> r l @ r rhs
+  | PT.EIf(_, c, t, Some el) -> r c @ r t @ r el
+  | PT.EIf(_, c, t, None) -> r c @ r t
+  | PT.ELet(_, _, v, body) -> r v @ r body
+  | PT.EList(_, elems) -> elems |> List.collect r
+  | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
+  | PT.ERecord(_, _, _, fields) -> fields |> List.collect (snd >> r)
+  | PT.ERecordFieldAccess(_, record, _) -> r record
+  | PT.ERecordUpdate(_, record, ups) ->
+    r record @ (ups |> NEList.toList |> List.collect (snd >> r))
+  | PT.EEnum(_, _, _, _, fields) -> fields |> List.collect r
+  | PT.EMatch(_, arg, cases) ->
+    r arg @ (cases |> List.collect (fun c -> r c.rhs))
+  | PT.EString(_, segs) ->
+    segs |> List.collect (fun s -> match s with PT.StringInterpolation e -> r e | PT.StringText _ -> [])
+  | PT.ELambda(_, _, body) -> r body
+  | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
+  | _ -> []
