@@ -100,7 +100,8 @@ let rec bridgeType
           else AST.TRecord(nameForType h, args)))
   | PT.TVariable v -> Ok(AST.TVar v)
   | PT.TList inner -> recurse inner |> Result.map AST.TList
-  | PT.TTuple _ -> err "type" "TTuple"
+  | PT.TTuple(a, b, rest) ->
+    (a :: b :: rest) |> List.map recurse |> allOk |> Result.map AST.TTuple
   | PT.TDict _ -> err "type" "TDict"
   | PT.TFn _ -> err "type" "TFn"
   | PT.TDB _ -> err "type" "TDB"
@@ -191,6 +192,30 @@ let rec bridgePattern (p : PT.MatchPattern) : Result<AST.Pattern, string> =
   | PT.MPFloat _ -> err "pattern" "MPFloat"
   | PT.MPOr _ -> err "pattern" "nested MPOr"
 
+/// Bind a let-pattern over an already-bridged value and body. Tuple patterns
+/// desugar to a temp binding plus per-element tuple-access lets. The temp name
+/// is reused across nesting levels safely: each RHS is evaluated (reading the
+/// outer temp) before the inner temp shadows it.
+let rec private bindPattern
+  (pat : PT.LetPattern)
+  (value : AST.Expr)
+  (body : AST.Expr)
+  : Result<AST.Expr, string> =
+  match pat with
+  | PT.LPVariable(_, name) -> Ok(AST.Let(name, value, body))
+  | PT.LPWildcard _ -> Ok(AST.Let("__dark_wild", value, body))
+  | PT.LPUnit _ -> Ok(AST.Let("__dark_unit", value, body))
+  | PT.LPTuple(_, first, second, rest) ->
+    let tmp = "__dark_tuple_tmp"
+    let subs = first :: second :: rest
+    let rec build (i : int) (ps : List<PT.LetPattern>) : Result<AST.Expr, string> =
+      match ps with
+      | [] -> Ok body
+      | p :: more ->
+        build (i + 1) more
+        |> Result.bind (fun inner -> bindPattern p (AST.TupleAccess(AST.Var tmp, i)) inner)
+    build 0 subs |> Result.map (fun inner -> AST.Let(tmp, value, inner))
+
 let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, string> =
   let recurse = bridgeExpr paramNames
   match e with
@@ -220,10 +245,9 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
       recurse thenE
       |> Result.bind (fun t -> recurse elseE |> Result.map (fun el -> AST.If(c, t, el))))
   | PT.EIf(_, _, _, None) -> err "if" "if without else"
-  | PT.ELet(_, PT.LPVariable(_, name), value, body) ->
+  | PT.ELet(_, pat, value, body) ->
     recurse value
-    |> Result.bind (fun v -> recurse body |> Result.map (fun b -> AST.Let(name, v, b)))
-  | PT.ELet(_, _, _, _) -> err "let" "non-variable let pattern"
+    |> Result.bind (fun v -> recurse body |> Result.bind (fun b -> bindPattern pat v b))
   // Records (type args, if any, are inferred by the compiler's monomorphizer)
   | PT.ERecord(_, nr, _, fields) ->
     typeHash nr
@@ -273,7 +297,8 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
       |> allOk
       |> Result.map (fun cs -> AST.Match(scrut, cs)))
   | PT.EList(_, elems) -> elems |> List.map recurse |> allOk |> Result.map AST.ListLiteral
-  | PT.ETuple(_, _, _, _) -> err "expr" "ETuple"
+  | PT.ETuple(_, a, b, rest) ->
+    (a :: b :: rest) |> List.map recurse |> allOk |> Result.map AST.TupleLiteral
   | PT.EPipe(_, _, _) -> err "expr" "EPipe"
   | _ -> err "expr" (e.GetType().Name)
 
@@ -401,6 +426,7 @@ let rec referencedPackageFns (e : PT.Expr) : List<string> =
       | Error _ -> []
     here @ (args |> NEList.toList |> List.collect r)
   | PT.EList(_, elems) -> elems |> List.collect r
+  | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
   | _ -> []
 
@@ -432,6 +458,7 @@ let rec typeRefsInExpr (e : PT.Expr) : List<string> =
        |> List.collect (fun c ->
          r c.rhs @ (match c.whenCondition with Some g -> r g | None -> [])))
   | PT.EList(_, elems) -> elems |> List.collect r
+  | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
   | _ -> []
 
