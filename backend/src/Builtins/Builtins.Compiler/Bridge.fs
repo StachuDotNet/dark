@@ -602,6 +602,21 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
     // `first; next` — evaluate first, discard, then next.
     recurse first
     |> Result.bind (fun f -> recurse next |> Result.map (fun n -> AST.Let("__dark_stmt", f, n)))
+  // A bare function reference (passed as a value, e.g. `List.map(xs, someFn)`)
+  // lowers to a captureless Closure — the compiler's first-class function value.
+  // A package fn references its bridged name; a pure builtin references the native
+  // stdlib fn it routes to. Effectful builtins have no direct function value (they
+  // need the hostRpc wrapper), so a bare reference to one hard-fails.
+  | PT.EFnName(_, nr) ->
+    match nr.resolved with
+    | Error _ -> err "fnref" "unresolved fn name"
+    | Ok resolved ->
+      match resolved.name with
+      | PT.FQFnName.Package(PT.Hash h) -> Ok(AST.Closure(nameFor h, []))
+      | PT.FQFnName.Builtin b ->
+        match Map.tryFind b.name builtinToStdlib with
+        | Some stdlibFn -> Ok(AST.Closure(stdlibFn, []))
+        | None -> err "fnref" $"effectful builtin as value: {b.name}"
   | _ -> err "expr" (e.GetType().Name)
 
 /// Lower one match case. A PT case has a single pattern (alternatives live in
