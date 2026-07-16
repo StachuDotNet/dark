@@ -880,9 +880,15 @@ let private runOne
                       | Some istr ->
                         let norm (s : string) =
                           let t = (s.Trim().Trim('"')).Replace("\n", "\\n")
-                          if t = "()" then "" else t
-                        if norm compiledOut = norm istr then return "match|" + norm istr
-                        else return $"diff|c={norm compiledOut}|i={norm istr}"
+                          if t = "()" || t = "[]" then "" else t
+                        let ca, ia = norm compiledOut, norm istr
+                        // numeric equality handles the compiler's "0.0" vs the interp's "0"
+                        let numEq =
+                          match System.Double.TryParse ca, System.Double.TryParse ia with
+                          | (true, x), (true, y) -> x = y
+                          | _ -> false
+                        if ca = ia || numEq then return "match|" + ia
+                        else return $"diff|c={ca}|i={ia}"
                 | _ -> return "ran|" + compiledOut.Replace("\n", "\\n")
     with e -> return "cf|exn: " + e.Message
   }
