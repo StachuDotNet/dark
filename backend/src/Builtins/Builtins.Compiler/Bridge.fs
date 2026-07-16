@@ -112,7 +112,14 @@ let compilerTypeName (h : string) : string =
 /// runtime seam (daemon). Keyed by the main-repo builtin's bare name.
 let builtinToStdlib : Map<string, string> =
   Map
-    [ // String
+    [ // `unwrap` is a compiler INTRINSIC, not a stdlib fn: the typechecker
+      // special-cases the name `Builtin.unwrap` (1.5_TypeChecking.fs) and lowers
+      // it to a variant-tag check that yields the Some/Ok payload or panics on
+      // None/Error (2_AST_to_ANF.fs). Our Option/Result are already the native
+      // types, so the arg matches. Emitting `AST.Call("Builtin.unwrap", [arg])`
+      // (same shape as a routed stdlib call) is exactly what the compiler wants.
+      "unwrap", "Builtin.unwrap"
+      // String
       "stringLength", "Stdlib.String.length"
       "stringIsEmpty", "Stdlib.String.isEmpty"
       "stringContains", "Stdlib.String.contains"
