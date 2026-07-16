@@ -103,7 +103,10 @@ let rec bridgeType
   | PT.TTuple(a, b, rest) ->
     (a :: b :: rest) |> List.map recurse |> allOk |> Result.map AST.TTuple
   | PT.TDict _ -> err "type" "TDict"
-  | PT.TFn _ -> err "type" "TFn"
+  | PT.TFn(args, ret) ->
+    (NEList.toList args |> List.map recurse |> allOk, recurse ret)
+    |> fun (a, r) ->
+      a |> Result.bind (fun args' -> r |> Result.map (fun ret' -> AST.TFunction(args', ret')))
   | PT.TDB _ -> err "type" "TDB"
   | PT.TUuid -> err "type" "TUuid"
   | PT.TDateTime -> err "type" "TDateTime"
@@ -303,7 +306,18 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
             Ok(AST.Call(nameFor h, AST.NonEmptyList.fromList bas))
           else
             Ok(AST.TypeApp(nameFor h, tas, AST.NonEmptyList.fromList bas))
-  | PT.EApply(_, _, _, _) -> err "expr" "EApply of a non-fn-name (higher-order)"
+  // Higher-order application: apply a fn value (variable/lambda/expr) to args.
+  | PT.EApply(_, funcExpr, typeArgs, args) ->
+    if not (List.isEmpty typeArgs) then
+      err "generics" "type args on higher-order apply"
+    else
+      recurse funcExpr
+      |> Result.bind (fun f ->
+        args
+        |> NEList.toList
+        |> List.map recurse
+        |> allOk
+        |> Result.map (fun bas -> AST.Apply(f, AST.NonEmptyList.fromList bas)))
   | PT.EMatch(_, arg, cases) ->
     recurse arg
     |> Result.bind (fun scrut ->
@@ -320,6 +334,19 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
       (Ok start, parts)
       ||> List.fold (fun accR part ->
         accR |> Result.bind (fun acc -> bridgePipePart paramNames acc part)))
+  // Lambda: untyped Dark params get a fresh TVar (unique per node id) that the
+  // compiler's inference/monomorphizer resolves from the call context.
+  | PT.ELambda(lamId, pats, body) ->
+    pats
+    |> NEList.toList
+    |> List.map (fun p ->
+      match p with
+      | PT.LPVariable(_, name) -> Ok(name, AST.TVar $"__lam_{lamId}_{name}")
+      | _ -> err "lambda" "non-variable lambda param")
+    |> allOk
+    |> Result.bind (fun ps ->
+      recurse body
+      |> Result.map (fun b -> AST.Lambda(AST.NonEmptyList.fromList ps, b)))
   | _ -> err "expr" (e.GetType().Name)
 
 /// Lower one match case. A PT case has a single pattern (alternatives live in
@@ -390,7 +417,11 @@ and bridgePipePart
     |> allOk
     |> Result.map (fun bas ->
       AST.Apply(AST.Var varName, AST.NonEmptyList.fromList (piped :: bas)))
-  | PT.EPipeLambda(_, _, _) -> err "expr" "EPipeLambda"
+  // `x |> fun p -> body` beta-reduces to binding p = x in body.
+  | PT.EPipeLambda(_, pats, body) ->
+    match NEList.toList pats with
+    | [ single ] -> recurse body |> Result.bind (fun b -> bindPattern single piped b)
+    | _ -> err "pipe" "multi-param pipe lambda"
 
 // ---------------------------------------------------------------------------
 // Type definitions
@@ -513,6 +544,7 @@ let rec referencedPackageFns (e : PT.Expr) : List<string> =
          | PT.EPipeLambda(_, _, body) -> r body))
   | PT.EList(_, elems) -> elems |> List.collect r
   | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
+  | PT.ELambda(_, _, body) -> r body
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
   | _ -> []
 
@@ -566,6 +598,7 @@ let rec typeRefsInExpr (e : PT.Expr) : List<string> =
          | PT.EPipeLambda(_, _, body) -> r body))
   | PT.EList(_, elems) -> elems |> List.collect r
   | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
+  | PT.ELambda(_, _, body) -> r body
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
   | _ -> []
 
