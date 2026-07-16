@@ -228,7 +228,14 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
   | PT.EBool(_, b) -> Ok(AST.BoolLiteral b)
   | PT.EUnit _ -> Ok AST.UnitLiteral
   | PT.EString(_, [ PT.StringText s ]) -> Ok(AST.StringLiteral s)
-  | PT.EString(_, _) -> err "expr" "EString with interpolation/multi-segment"
+  | PT.EString(_, segments) ->
+    segments
+    |> List.map (fun seg ->
+      match seg with
+      | PT.StringText s -> Ok(AST.StringText s)
+      | PT.StringInterpolation e -> recurse e |> Result.map AST.StringExpr)
+    |> allOk
+    |> Result.map AST.InterpolatedString
   | PT.EChar(_, c) -> Ok(AST.CharLiteral c)
   | PT.EVariable(_, name) -> Ok(AST.Var name)
   | PT.EArg(_, i) ->
@@ -258,6 +265,14 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
       |> Result.map (fun fs -> AST.RecordLiteral(nameForType h, fs)))
   | PT.ERecordFieldAccess(_, record, fieldName) ->
     recurse record |> Result.map (fun r -> AST.RecordAccess(r, fieldName))
+  | PT.ERecordUpdate(_, record, updates) ->
+    recurse record
+    |> Result.bind (fun r ->
+      updates
+      |> NEList.toList
+      |> List.map (fun (fname, fexpr) -> recurse fexpr |> Result.map (fun be -> (fname, be)))
+      |> allOk
+      |> Result.map (fun ups -> AST.RecordUpdate(r, ups)))
   // Enum construction
   | PT.EEnum(_, nr, _, caseName, fields) ->
     typeHash nr
@@ -425,6 +440,10 @@ let rec referencedPackageFns (e : PT.Expr) : List<string> =
         | PT.FQFnName.Builtin _ -> []
       | Error _ -> []
     here @ (args |> NEList.toList |> List.collect r)
+  | PT.EString(_, segs) ->
+    segs |> List.collect (fun s -> match s with PT.StringInterpolation e -> r e | PT.StringText _ -> [])
+  | PT.ERecordUpdate(_, record, ups) ->
+    r record @ (ups |> NEList.toList |> List.collect (snd >> r))
   | PT.EList(_, elems) -> elems |> List.collect r
   | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
@@ -457,6 +476,10 @@ let rec typeRefsInExpr (e : PT.Expr) : List<string> =
     @ (cases
        |> List.collect (fun c ->
          r c.rhs @ (match c.whenCondition with Some g -> r g | None -> [])))
+  | PT.EString(_, segs) ->
+    segs |> List.collect (fun s -> match s with PT.StringInterpolation e -> r e | PT.StringText _ -> [])
+  | PT.ERecordUpdate(_, record, ups) ->
+    r record @ (ups |> NEList.toList |> List.collect (snd >> r))
   | PT.EList(_, elems) -> elems |> List.collect r
   | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
