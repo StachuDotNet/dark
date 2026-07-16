@@ -21,6 +21,14 @@ module PT = LibExecution.ProgramTypes
 
 // AST here is the airlifted compiler's AST (top-level module in LibCompiler).
 
+/// The type environment: what a referenced custom type is. Records/enums lower
+/// to a named TRecord/TSum + a TypeDef; a (non-generic) alias inlines to its
+/// already-bridged target type.
+type TypeEntry =
+  | TERecord
+  | TESum
+  | TEAlias of AST.Type
+
 let private err (category : string) (detail : string) : Result<'a, string> =
   Error $"unsupported-{category}: {detail}"
 
@@ -62,10 +70,10 @@ let private typeHashOpt
 // ---------------------------------------------------------------------------
 
 let rec bridgeType
-  (isSum : Map<string, bool>)
+  (types : Map<string, TypeEntry>)
   (t : PT.TypeReference)
   : Result<AST.Type, string> =
-  let recurse = bridgeType isSum
+  let recurse = bridgeType types
   match t with
   | PT.TInt64 -> Ok AST.TInt64
   | PT.TInt8 -> Ok AST.TInt8
@@ -88,16 +96,20 @@ let rec bridgeType
   | PT.TCustomType(nr, typeArgs) ->
     typeHash nr
     |> Result.bind (fun h ->
-      match Map.tryFind h isSum with
-      // Not in the type env => generic / alias / unfetched: hard-fail cleanly.
+      match Map.tryFind h types with
+      // Not in the type env => unfetched / unsupported: hard-fail cleanly.
       | None -> err "type" "TCustomType"
-      | Some sum ->
+      | Some(TEAlias target) ->
+        if List.isEmpty typeArgs then Ok target
+        else err "generics" "generic type alias"
+      | Some entry ->
         typeArgs
         |> List.map recurse
         |> allOk
         |> Result.map (fun args ->
-          if sum then AST.TSum(nameForType h, args)
-          else AST.TRecord(nameForType h, args)))
+          match entry with
+          | TESum -> AST.TSum(nameForType h, args)
+          | _ -> AST.TRecord(nameForType h, args)))
   | PT.TVariable v -> Ok(AST.TVar v)
   | PT.TList inner -> recurse inner |> Result.map AST.TList
   | PT.TTuple(a, b, rest) ->
@@ -430,7 +442,7 @@ and bridgePipePart
 /// Lower a package type (non-generic record/enum) to a compiler TypeDef under
 /// the given compiler-side name.
 let bridgeTypeDef
-  (isSum : Map<string, bool>)
+  (types : Map<string, TypeEntry>)
   (name : string)
   (pt : PT.PackageType.PackageType)
   : Result<AST.TypeDef, string> =
@@ -442,7 +454,7 @@ let bridgeTypeDef
     fields
     |> NEList.toList
     |> List.map (fun (f : PT.TypeDeclaration.RecordField) ->
-      bridgeType isSum f.typ |> Result.map (fun t -> (f.name, t)))
+      bridgeType types f.typ |> Result.map (fun t -> (f.name, t)))
     |> allOk
     |> Result.map (fun fs -> AST.RecordDef(name, tps, fs))
   | PT.TypeDeclaration.Enum cases ->
@@ -450,7 +462,7 @@ let bridgeTypeDef
     |> NEList.toList
     |> List.map (fun (c : PT.TypeDeclaration.EnumCase) ->
       c.fields
-      |> List.map (fun (ef : PT.TypeDeclaration.EnumField) -> bridgeType isSum ef.typ)
+      |> List.map (fun (ef : PT.TypeDeclaration.EnumField) -> bridgeType types ef.typ)
       |> allOk
       |> Result.map (fun fieldTypes ->
         let payload =
@@ -470,7 +482,7 @@ let bridgeTypeDef
 /// compiler-side name. Params keep their Dark names (positional EArg refs and
 /// any by-name refs both resolve). Generics are not yet supported.
 let bridgeFn
-  (isSum : Map<string, bool>)
+  (types : Map<string, TypeEntry>)
   (compiledName : string)
   (fn : PT.PackageFn.PackageFn)
   : Result<AST.FunctionDef, string> =
@@ -478,11 +490,11 @@ let bridgeFn
   let paramNames = paramList |> List.map (fun p -> p.name) |> Array.ofList
   let bridgedParams =
     paramList
-    |> List.map (fun p -> bridgeType isSum p.typ |> Result.map (fun t -> (p.name, t)))
+    |> List.map (fun p -> bridgeType types p.typ |> Result.map (fun t -> (p.name, t)))
     |> allOk
   bridgedParams
   |> Result.bind (fun ps ->
-    bridgeType isSum fn.returnType
+    bridgeType types fn.returnType
     |> Result.bind (fun retType ->
       bridgeExpr paramNames fn.body
       |> Result.map (fun body ->

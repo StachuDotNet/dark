@@ -128,21 +128,34 @@ let private buildPieces
       | Ok types ->
         // The type env: non-generic record (false) / enum (true) types only.
         // Generic + alias types are omitted, so any fn using one hard-fails.
-        let isSum =
+        // Records/enums emit a TypeDef and lower to a named TRecord/TSum.
+        let baseEnv =
           types
           |> List.choose (fun (h, pt) ->
             match pt.declaration.definition with
-            | PT.TypeDeclaration.Record _ -> Some(h, false)
-            | PT.TypeDeclaration.Enum _ -> Some(h, true)
+            | PT.TypeDeclaration.Record _ -> Some(h, Bridge.TERecord)
+            | PT.TypeDeclaration.Enum _ -> Some(h, Bridge.TESum)
             | PT.TypeDeclaration.Alias _ -> None)
           |> Map.ofList
+        // Non-generic aliases inline to their (bridged) target. Resolved against
+        // baseEnv, so an alias of a record/enum works; alias-of-alias is skipped
+        // (its users then hard-fail cleanly on TCustomType).
+        let typeEnv =
+          (baseEnv, types)
+          ||> List.fold (fun env (h, pt) ->
+            match pt.declaration.definition with
+            | PT.TypeDeclaration.Alias t when List.isEmpty pt.declaration.typeParams ->
+              match Bridge.bridgeType baseEnv t with
+              | Ok bt -> Map.add h (Bridge.TEAlias bt) env
+              | Error _ -> env
+            | _ -> env)
         let typeDefs =
           types
-          |> List.filter (fun (h, _) -> Map.containsKey h isSum)
-          |> List.map (fun (h, pt) -> Bridge.bridgeTypeDef isSum (Bridge.nameForType h) pt)
+          |> List.filter (fun (h, _) -> Map.containsKey h baseEnv)
+          |> List.map (fun (h, pt) -> Bridge.bridgeTypeDef typeEnv (Bridge.nameForType h) pt)
           |> allOk
         let fnDefs =
-          fns |> List.map (fun (h, fn) -> Bridge.bridgeFn isSum (Bridge.nameFor h) fn) |> allOk
+          fns |> List.map (fun (h, fn) -> Bridge.bridgeFn typeEnv (Bridge.nameFor h) fn) |> allOk
         match typeDefs, fnDefs with
         | Error e, _ -> return Error e
         | _, Error e -> return Error e
