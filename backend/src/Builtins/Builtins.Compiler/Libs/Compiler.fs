@@ -343,6 +343,85 @@ let private checkOne (hash : string) : Ply<bool * string> =
 let private outcome (ok : bool) (detail : string) : Dval =
   DTuple(DBool ok, DString detail, [])
 
+// ---------------------------------------------------------------------------
+// Runtime seam: an in-process F# daemon that services builtin-call requests
+// from compiled native code and dispatches them to the REAL builtins in the
+// live ExecutionState. Channel = the FIFO/file prototype (Stdlib.hostRpc).
+// v1 marshals scalars only; container types are TODO. (BUILTINS-ARCHITECTURE.md)
+// ---------------------------------------------------------------------------
+
+/// Scalar Dval -> wire string.
+let private dvalToWire (d : Dval) : string =
+  match d with
+  | DString s -> s
+  | DInt n -> string (DarkInt.toBigInt n)
+  | DInt8 n -> string n
+  | DInt16 n -> string n
+  | DInt32 n -> string n
+  | DInt64 n -> string n
+  | DInt128 n -> string n
+  | DUInt8 n -> string n
+  | DUInt16 n -> string n
+  | DUInt32 n -> string n
+  | DUInt64 n -> string n
+  | DUInt128 n -> string n
+  | DBool b -> if b then "true" else "false"
+  | DUnit -> "unit"
+  | DFloat f -> string f
+  | DChar c -> c
+  | other -> $"?unmarshalable:{other.GetType().Name}"
+
+/// wire string -> scalar Dval, per the builtin param's declared type.
+let private wireToDval (t : TypeReference) (s : string) : Dval =
+  match t with
+  | TString -> DString s
+  | TInt64 -> DInt64(int64 s)
+  | TBool -> DBool(s = "true")
+  | TUnit -> DUnit
+  | TFloat -> DFloat(float s)
+  | TChar -> DChar s
+  | _ -> DString s
+
+/// Dispatch one request ("name\narg1\narg2…") to the real builtin, return the
+/// wire response.
+let private dispatchBuiltin
+  (exeState : ExecutionState)
+  (vm : VMState)
+  (request : string)
+  : Ply<string> =
+  uply {
+    let parts = request.Split('\n')
+    let name = parts[0]
+    let wireArgs = parts[1..] |> Array.toList
+    match Map.tryFind (FQFnName.builtin name 0) exeState.fns.builtIn with
+    | None -> return $"ERR:no-builtin:{name}"
+    | Some bfn ->
+      let n = min bfn.parameters.Length wireArgs.Length
+      let dvalArgs =
+        List.map2
+          (fun (p : BuiltInParam) (a : string) -> wireToDval p.typ a)
+          (List.truncate n bfn.parameters)
+          (List.truncate n wireArgs)
+      let! result = bfn.fn (exeState, vm, [], dvalArgs)
+      return dvalToWire result
+  }
+
+/// Set up the channel and service ONE builtin request in a background task
+/// (single-call v1; multi-call needs a read-until-EOF intrinsic / socket).
+let private serveOneRequest (exeState : ExecutionState) (vm : VMState) : System.Threading.Tasks.Task =
+  let reqFifo = "/tmp/dark-rpc-req"
+  let respFile = "/tmp/dark-rpc-resp"
+  for f in [ respFile; reqFifo ] do
+    if System.IO.File.Exists f then System.IO.File.Delete f
+  let psi = System.Diagnostics.ProcessStartInfo("mkfifo", reqFifo)
+  psi.UseShellExecute <- false
+  (System.Diagnostics.Process.Start psi).WaitForExit()
+  System.Threading.Tasks.Task.Run(fun () ->
+    let req = System.IO.File.ReadAllText reqFifo
+    let resp = (dispatchBuiltin exeState vm req |> Ply.toTask).Result
+    System.IO.File.WriteAllText(respFile + ".tmp", resp)
+    System.IO.File.Move(respFile + ".tmp", respFile, true))
+
 let fns () : List<BuiltInFn> =
   [ { name = fn "compilerInfo" 0
       typeParams = []
@@ -396,6 +475,38 @@ let fns () : List<BuiltInFn> =
             let out = CompilerLibrary.execute 0 binary
             if out.ExitCode = 0 then outcome true out.Stdout |> Ply
             else outcome false $"exit {out.ExitCode}: {out.Stderr}" |> Ply
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "compilerDaemonSelfTest" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TString
+      description =
+        "Proves the runtime seam dispatches to a REAL builtin: compiles a program calling Stdlib.hostRpc(\"stringLength\\nhello\"); an in-process F# daemon reads the request, invokes the real stringLength builtin (DString hello -> DInt64 5), writes the response; the native binary reads it back. Returns the binary's stdout (expect 5)."
+      fn =
+        (function
+        | exeState, vm, _, [ DUnit ] ->
+          uply {
+            let daemon = serveOneRequest exeState vm
+            let program : AST.Program =
+              AST.Program
+                [ AST.Expression(
+                    AST.Call(
+                      "Stdlib.hostRpc",
+                      AST.NonEmptyList.singleton (AST.StringLiteral "stringLength\nhello"))) ]
+            match compileAst program with
+            | Error e ->
+              daemon.Wait()
+              return DString $"compile-error: {e}"
+            | Ok binary ->
+              let out = CompilerLibrary.execute 0 binary
+              daemon.Wait()
+              return DString $"binary stdout={out.Stdout.Trim()} (expected 5)"
+          }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

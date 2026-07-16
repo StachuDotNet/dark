@@ -1,0 +1,17 @@
+// Rpc.dark - the compiler-merge runtime seam's compiled-side RPC stub (internal).
+//
+// A compiled program calls Stdlib.hostRpc(request) to invoke a host builtin: it
+// writes the request to a well-known path (a FIFO the host reads), then polls a
+// response file the host writes. This is the FIFO/file prototype channel proven
+// in notes/compiler-merge/BUILTINS-ARCHITECTURE.md §4.5; it will be replaced by a
+// blocking socket/pipe intrinsic (§Phase F) once it's the bottleneck.
+
+def Stdlib.hostRpcPoll(u: Unit) : String =
+    if Stdlib.File.exists("/tmp/dark-rpc-resp") then
+        Stdlib.Result.withDefault(Stdlib.File.readText("/tmp/dark-rpc-resp"), "")
+    else
+        Stdlib.hostRpcPoll(())
+
+def Stdlib.hostRpc(request: String) : String =
+    let _ = Stdlib.File.writeText("/tmp/dark-rpc-req", request) in
+    Stdlib.hostRpcPoll(())
