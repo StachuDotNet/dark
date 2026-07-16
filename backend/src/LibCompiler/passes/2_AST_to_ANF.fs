@@ -1967,6 +1967,15 @@ let rec simpleInferType
         match simpleInferType thenExpr typeEnv funcParams funcReturnTypes genericFuncDefs typeReg variantLookup,
               simpleInferType elseExpr typeEnv funcParams funcReturnTypes genericFuncDefs typeReg variantLookup with
         | Some thenType, Some elseType when thenType = elseType -> Some thenType
+        // This pass runs AFTER typechecking, so the branches are already proven to
+        // have the same type. When one side is still an unresolved type variable --
+        // e.g. `fun i -> if i < 0 then 0 else i`, where the lambda param carries a
+        // placeholder tvar -- the concrete side IS the type. Without this, such a
+        // lambda body fails with "could not infer return type".
+        | Some thenType, Some elseType when containsTypeVar elseType && not (containsTypeVar thenType) ->
+            Some thenType
+        | Some thenType, Some elseType when containsTypeVar thenType && not (containsTypeVar elseType) ->
+            Some elseType
         | _ -> None
     | AST.Match (scrutinee, cases) ->
         let scrutineeType = simpleInferType scrutinee typeEnv funcParams funcReturnTypes genericFuncDefs typeReg variantLookup
@@ -2008,6 +2017,33 @@ let rec simpleInferType
             else
                 None
         | _ -> None
+    // Forms below are all trivially typed, but were falling through to None and
+    // failing lambda lifting with "could not infer return type" for any lambda
+    // whose body was e.g. a string interpolation or a list literal.
+    | AST.InterpolatedString _ -> Some AST.TString
+    | AST.UnaryOp (AST.Not, _) -> Some AST.TBool
+    | AST.UnaryOp ((AST.Neg | AST.BitNot), operand) ->
+        // Neg/BitNot preserve the operand's type.
+        simpleInferType operand typeEnv funcParams funcReturnTypes genericFuncDefs typeReg variantLookup
+    | AST.RecordUpdate (recordExpr, _) ->
+        // `{ r with ... }` has r's type.
+        simpleInferType recordExpr typeEnv funcParams funcReturnTypes genericFuncDefs typeReg variantLookup
+    | AST.ListLiteral (first :: _) ->
+        // Elements are homogeneous (the typechecker already enforced it), so the
+        // first element's type determines the list's. An empty literal carries no
+        // element type here, so it stays unknown.
+        simpleInferType first typeEnv funcParams funcReturnTypes genericFuncDefs typeReg variantLookup
+        |> Option.map AST.TList
+    | AST.ListCons (headElements, tail) ->
+        // Prefer the tail: it's already a List<t>. Fall back to the head elements.
+        match simpleInferType tail typeEnv funcParams funcReturnTypes genericFuncDefs typeReg variantLookup with
+        | Some (AST.TList _ as listType) -> Some listType
+        | _ ->
+            match headElements with
+            | first :: _ ->
+                simpleInferType first typeEnv funcParams funcReturnTypes genericFuncDefs typeReg variantLookup
+                |> Option.map AST.TList
+            | [] -> None
     | _ -> None  // Complex expressions require full type inference
 
 let inferLambdaReturnType (body: AST.Expr) (state: LiftState) : Result<AST.Type, string> =
