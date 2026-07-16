@@ -136,22 +136,33 @@ let rec private fetchValueClosure
 /// Effectful builtins routable through the host RPC seam, from the live runtime:
 /// name -> returns-String (true) / returns-Unit (false); included only when all
 /// params are String (the wire-marshalable subset in v1).
-let private buildEffectfulMap (exeState : ExecutionState) : Map<string, bool> =
+let private buildEffectfulMap
+  (exeState : ExecutionState)
+  : Map<string, Bridge.WireArg list * bool> =
   exeState.fns.builtIn
   |> Map.toList
   |> List.choose (fun (name, bfn) ->
-    let allStringArgs = bfn.parameters |> List.forall (fun p -> p.typ = TString)
-    if not allStringArgs then
+    let argWires =
+      bfn.parameters
+      |> List.map (fun p ->
+        match p.typ with
+        | TString -> Some Bridge.WAString
+        | TInt64 -> Some Bridge.WAInt
+        | TInt -> Some Bridge.WAInt
+        | TBool -> Some Bridge.WABool
+        | _ -> None)
+    if List.exists Option.isNone argWires then
       None
     else
+      let wires = argWires |> List.map Option.get
       match bfn.returnType with
-      | TUnit -> Some(name.name, false)
-      | TString -> Some(name.name, true)
+      | TUnit -> Some(name.name, (wires, false))
+      | TString -> Some(name.name, (wires, true))
       | _ -> None)
   |> Map.ofList
 
 let private buildPieces
-  (effectful : Map<string, bool>)
+  (effectful : Map<string, Bridge.WireArg list * bool>)
   (rootHash : string)
   : Ply<Result<List<AST.TypeDef> * List<AST.FunctionDef> * string, string>> =
   uply {
@@ -326,7 +337,7 @@ let rec private zeroValue
 /// Compile-check one package fn by hash (bridge its call-graph, make it
 /// reachable with zero-valued args, compile — don't run). Returns (ok, detail).
 /// Wrapped so an unexpected crash in one fn can't abort a batch sweep.
-let private checkOne (effectful : Map<string, bool>) (hash : string) : Ply<bool * string> =
+let private checkOne (effectful : Map<string, Bridge.WireArg list * bool>) (hash : string) : Ply<bool * string> =
   uply {
     try
       let! pieces = buildPieces effectful hash

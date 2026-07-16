@@ -32,14 +32,21 @@ type TypeEntry =
 /// Threaded through expression bridging. `Params` maps EArg indices to the
 /// enclosing fn's compiler-side param names; `Self` is the current fn's compiled
 /// name (for ESelf recursion); `Values` inlines referenced package constants.
+/// How a wire-marshalable builtin arg is stringified on the compiled side.
+type WireArg =
+  | WAString
+  | WAInt
+  | WABool
+
 type BridgeCtx =
   { Params : string[]
     Self : string
     Values : Map<string, AST.Expr>
-    /// Effectful builtins routable through the host RPC seam: name -> returns-a-
-    /// String (true) vs returns Unit (false). Presence implies all args are
-    /// String (only those are wire-marshalable in v1). Built from the live runtime.
-    Effectful : Map<string, bool> }
+    /// Effectful builtins routable through the host RPC seam: name -> (per-arg
+    /// wire types, returns-a-String?). Return is Unit (false) or String (true);
+    /// Int-returning builtins aren't routable yet (no string->int on the compiled
+    /// side). Built from the live runtime.
+    Effectful : Map<string, WireArg list * bool> }
 
 let private err (category : string) (detail : string) : Result<'a, string> =
   Error $"unsupported-{category}: {detail}"
@@ -406,22 +413,36 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
           // request = "name\narg0\narg1…" (all args String), result per the
           // builtin's return type.
           match Map.tryFind b.name ctx.Effectful with
-          | Some retIsString ->
+          | Some(argWires, retIsString) ->
             args
             |> NEList.toList
             |> List.map recurse
             |> allOk
-            |> Result.map (fun bas ->
-              let request =
-                (AST.StringLiteral b.name, bas)
-                ||> List.fold (fun acc arg ->
-                  AST.BinOp(
-                    AST.StringConcat,
-                    AST.BinOp(AST.StringConcat, acc, AST.StringLiteral "\n"),
-                    arg))
-              let call = AST.Call("Stdlib.hostRpc", AST.NonEmptyList.singleton request)
-              if retIsString then call
-              else AST.Let("__rpc_ignore", call, AST.UnitLiteral))
+            |> Result.bind (fun bas ->
+              if List.length bas <> List.length argWires then
+                err "builtin" $"{b.name}: arg count mismatch"
+              else
+                // stringify each arg per its wire type
+                let marshaled =
+                  List.map2
+                    (fun w a ->
+                      match w with
+                      | WAString -> a
+                      | WAInt -> AST.Call("Stdlib.Int64.toString", AST.NonEmptyList.singleton a)
+                      | WABool -> AST.Call("Stdlib.Bool.toString", AST.NonEmptyList.singleton a))
+                    argWires
+                    bas
+                let request =
+                  (AST.StringLiteral b.name, marshaled)
+                  ||> List.fold (fun acc arg ->
+                    AST.BinOp(
+                      AST.StringConcat,
+                      AST.BinOp(AST.StringConcat, acc, AST.StringLiteral "\n"),
+                      arg))
+                let call = AST.Call("Stdlib.hostRpc", AST.NonEmptyList.singleton request)
+                Ok(
+                  if retIsString then call
+                  else AST.Let("__rpc_ignore", call, AST.UnitLiteral)))
           | None -> err "builtin" $"{b.name}_v{b.version}"
       | PT.FQFnName.Package(PT.Hash h) ->
         let bridgedArgs = args |> NEList.toList |> List.map recurse |> allOk
@@ -643,7 +664,7 @@ let bridgeTypeDef
 let bridgeFn
   (types : Map<string, TypeEntry>)
   (values : Map<string, AST.Expr>)
-  (effectful : Map<string, bool>)
+  (effectful : Map<string, WireArg list * bool>)
   (compiledName : string)
   (fn : PT.PackageFn.PackageFn)
   : Result<AST.FunctionDef, string> =
