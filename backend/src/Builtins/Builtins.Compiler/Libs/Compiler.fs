@@ -221,14 +221,23 @@ let private buildPieces
           |> List.map (fun (h, pt) -> Bridge.bridgeTypeDef typeEnv (Bridge.nameForType h) pt)
           |> allOk
         // Bridge each package constant's body (no params/self) into an inline
-        // expression, accumulating so a value can reference an earlier one.
-        let valuesMap =
-          (Map.empty, values)
+        // expression. A value can reference another value; the fetch order isn't
+        // dependency order, so iterate to a fixpoint — each pass bridges any value
+        // whose referenced values are now in the map — rather than dropping a
+        // forward reference on a single ordered pass.
+        let bridgeValuesOnce (m : Map<string, AST.Expr>) : Map<string, AST.Expr> =
+          (m, values)
           ||> List.fold (fun m (h, pv) ->
-            let ctx : Bridge.BridgeCtx = { Params = [||]; Self = ""; Values = m; Effectful = Map.empty }
-            match Bridge.bridgeExpr ctx pv.body with
-            | Ok e -> Map.add h e m
-            | Error _ -> m)
+            if Map.containsKey h m then m
+            else
+              let ctx : Bridge.BridgeCtx = { Params = [||]; Self = ""; Values = m; Effectful = Map.empty }
+              match Bridge.bridgeExpr ctx pv.body with
+              | Ok e -> Map.add h e m
+              | Error _ -> m)
+        let rec fixpoint (m : Map<string, AST.Expr>) : Map<string, AST.Expr> =
+          let m' = bridgeValuesOnce m
+          if Map.count m' = Map.count m then m' else fixpoint m'
+        let valuesMap = fixpoint Map.empty
         let fnDefs =
           fns
           |> List.map (fun (h, fn) -> Bridge.bridgeFn typeEnv valuesMap effectful (Bridge.nameFor h) fn)
@@ -364,6 +373,11 @@ let rec private zeroValue
     ts |> List.map (zeroValue defs seen) |> allOk |> Result.map AST.TupleLiteral
   | AST.TList _ -> Ok(AST.ListLiteral [])
   | AST.TVar _ -> zeroLit AST.TInt64 // an unmapped signature tvar: monomorphize at Int64
+  | AST.TBytes ->
+    // No bytes literal exists in the AST; synthesize an empty blob via the cast
+    // intrinsic. Only ever used to make a fn reachable for a compile-check (never
+    // run), so it just needs to typecheck to Bytes.
+    Ok(AST.Call("Stdlib.__int64_to_bytes", AST.NonEmptyList.fromList [ AST.Int64Literal 0L ]))
   | prim -> zeroLit prim
 
 /// Compile-check one package fn by hash (bridge its call-graph, make it

@@ -220,6 +220,7 @@ let rec bridgeType
     (NEList.toList args |> List.map recurse |> allOk, recurse ret)
     |> fun (a, r) ->
       a |> Result.bind (fun args' -> r |> Result.map (fun ret' -> AST.TFunction(args', ret')))
+  | PT.TBlob -> Ok AST.TBytes
   | PT.TDB _ -> err "type" "TDB"
   | PT.TUuid -> err "type" "TUuid"
   | PT.TDateTime -> err "type" "TDateTime"
@@ -382,6 +383,10 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
     else
       err "literal" "Int outside Int64 range"
   | PT.EBool(_, b) -> Ok(AST.BoolLiteral b)
+  | PT.EFloat(_, sign, whole, fraction) ->
+    // Same construction the interpreter uses (Prelude.makeFloat), so a compiled
+    // float literal is bit-identical to the interpreted one.
+    Ok(AST.FloatLiteral(makeFloat sign whole fraction))
   | PT.EUnit _ -> Ok AST.UnitLiteral
   | PT.EString(_, [ PT.StringText s ]) -> Ok(AST.StringLiteral s)
   | PT.EString(_, segments) ->
