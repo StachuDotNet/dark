@@ -98,12 +98,12 @@ let rec bridgeType
         |> Result.map (fun args ->
           if sum then AST.TSum(nameForType h, args)
           else AST.TRecord(nameForType h, args)))
+  | PT.TVariable v -> Ok(AST.TVar v)
   | PT.TList _ -> err "type" "TList"
   | PT.TTuple _ -> err "type" "TTuple"
   | PT.TDict _ -> err "type" "TDict"
   | PT.TFn _ -> err "type" "TFn"
   | PT.TDB _ -> err "type" "TDB"
-  | PT.TVariable v -> err "type" $"TVariable {v}"
   | PT.TUuid -> err "type" "TUuid"
   | PT.TDateTime -> err "type" "TDateTime"
   | other -> err "type" (other.GetType().Name)
@@ -224,48 +224,46 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
     recurse value
     |> Result.bind (fun v -> recurse body |> Result.map (fun b -> AST.Let(name, v, b)))
   | PT.ELet(_, _, _, _) -> err "let" "non-variable let pattern"
-  // Records
-  | PT.ERecord(_, nr, typeArgs, fields) ->
-    if not (List.isEmpty typeArgs) then
-      err "generics" "type args on record literal"
-    else
-      typeHash nr
-      |> Result.bind (fun h ->
-        fields
-        |> List.map (fun (fname, fexpr) -> recurse fexpr |> Result.map (fun be -> (fname, be)))
-        |> allOk
-        |> Result.map (fun fs -> AST.RecordLiteral(nameForType h, fs)))
+  // Records (type args, if any, are inferred by the compiler's monomorphizer)
+  | PT.ERecord(_, nr, _, fields) ->
+    typeHash nr
+    |> Result.bind (fun h ->
+      fields
+      |> List.map (fun (fname, fexpr) -> recurse fexpr |> Result.map (fun be -> (fname, be)))
+      |> allOk
+      |> Result.map (fun fs -> AST.RecordLiteral(nameForType h, fs)))
   | PT.ERecordFieldAccess(_, record, fieldName) ->
     recurse record |> Result.map (fun r -> AST.RecordAccess(r, fieldName))
   // Enum construction
-  | PT.EEnum(_, nr, typeArgs, caseName, fields) ->
-    if not (List.isEmpty typeArgs) then
-      err "generics" "type args on enum construction"
-    else
-      typeHash nr
-      |> Result.bind (fun h ->
-        fields
-        |> List.map recurse
-        |> allOk
-        |> Result.map (fun fs -> AST.Constructor(nameForType h, caseName, tuplePayload fs)))
-  // Cross-fn calls: a direct call to a package fn lowers to AST.Call; the
-  // callee itself is bridged separately (the builtin walks the call graph).
+  | PT.EEnum(_, nr, _, caseName, fields) ->
+    typeHash nr
+    |> Result.bind (fun h ->
+      fields
+      |> List.map recurse
+      |> allOk
+      |> Result.map (fun fs -> AST.Constructor(nameForType h, caseName, tuplePayload fs)))
+  // Cross-fn calls: a direct call to a package fn lowers to AST.Call, or
+  // AST.TypeApp when the call site carries type args (the compiler monomorphizes
+  // it). The callee itself is bridged separately (the builtin walks the graph).
   | PT.EApply(_, PT.EFnName(_, nr), typeArgs, args) ->
-    if not (List.isEmpty typeArgs) then
-      err "generics" "type args at call site"
-    else
-      match nr.resolved with
-      | Error _ -> err "call" "unresolved fn name"
-      | Ok resolved ->
-        match resolved.name with
-        | PT.FQFnName.Builtin b -> err "builtin" $"{b.name}_v{b.version}"
-        | PT.FQFnName.Package(PT.Hash h) ->
-          args
-          |> NEList.toList
-          |> List.map recurse
-          |> allOk
-          |> Result.map (fun bridged ->
-            AST.Call(nameFor h, AST.NonEmptyList.fromList bridged))
+    match nr.resolved with
+    | Error _ -> err "call" "unresolved fn name"
+    | Ok resolved ->
+      match resolved.name with
+      | PT.FQFnName.Builtin b -> err "builtin" $"{b.name}_v{b.version}"
+      | PT.FQFnName.Package(PT.Hash h) ->
+        let bridgedArgs = args |> NEList.toList |> List.map recurse |> allOk
+        let bridgedTypeArgs = typeArgs |> List.map (bridgeType Map.empty)
+        // NB: type args reference only TVar/prims here; a custom type in a type
+        // arg would need the type env (rare) — falls through as an error then.
+        match allOk bridgedTypeArgs, bridgedArgs with
+        | Error e, _ -> Error e
+        | _, Error e -> Error e
+        | Ok tas, Ok bas ->
+          if List.isEmpty tas then
+            Ok(AST.Call(nameFor h, AST.NonEmptyList.fromList bas))
+          else
+            Ok(AST.TypeApp(nameFor h, tas, AST.NonEmptyList.fromList bas))
   | PT.EApply(_, _, _, _) -> err "expr" "EApply of a non-fn-name (higher-order)"
   | PT.EMatch(_, arg, cases) ->
     recurse arg
@@ -316,34 +314,32 @@ let bridgeTypeDef
   (pt : PT.PackageType.PackageType)
   : Result<AST.TypeDef, string> =
   let d = pt.declaration
-  if not (List.isEmpty d.typeParams) then
-    err "generics" "generic type definition"
-  else
-    match d.definition with
-    | PT.TypeDeclaration.Alias _ -> err "type" "type alias"
-    | PT.TypeDeclaration.Record fields ->
-      fields
-      |> NEList.toList
-      |> List.map (fun (f : PT.TypeDeclaration.RecordField) ->
-        bridgeType isSum f.typ |> Result.map (fun t -> (f.name, t)))
+  let tps = d.typeParams
+  match d.definition with
+  | PT.TypeDeclaration.Alias _ -> err "type" "type alias"
+  | PT.TypeDeclaration.Record fields ->
+    fields
+    |> NEList.toList
+    |> List.map (fun (f : PT.TypeDeclaration.RecordField) ->
+      bridgeType isSum f.typ |> Result.map (fun t -> (f.name, t)))
+    |> allOk
+    |> Result.map (fun fs -> AST.RecordDef(name, tps, fs))
+  | PT.TypeDeclaration.Enum cases ->
+    cases
+    |> NEList.toList
+    |> List.map (fun (c : PT.TypeDeclaration.EnumCase) ->
+      c.fields
+      |> List.map (fun (ef : PT.TypeDeclaration.EnumField) -> bridgeType isSum ef.typ)
       |> allOk
-      |> Result.map (fun fs -> AST.RecordDef(name, [], fs))
-    | PT.TypeDeclaration.Enum cases ->
-      cases
-      |> NEList.toList
-      |> List.map (fun (c : PT.TypeDeclaration.EnumCase) ->
-        c.fields
-        |> List.map (fun (ef : PT.TypeDeclaration.EnumField) -> bridgeType isSum ef.typ)
-        |> allOk
-        |> Result.map (fun fieldTypes ->
-          let payload =
-            match fieldTypes with
-            | [] -> None
-            | [ t ] -> Some t
-            | ts -> Some(AST.TTuple ts)
-          ({ Name = c.name; Payload = payload } : AST.Variant)))
-      |> allOk
-      |> Result.map (fun variants -> AST.SumTypeDef(name, [], variants))
+      |> Result.map (fun fieldTypes ->
+        let payload =
+          match fieldTypes with
+          | [] -> None
+          | [ t ] -> Some t
+          | ts -> Some(AST.TTuple ts)
+        ({ Name = c.name; Payload = payload } : AST.Variant)))
+    |> allOk
+    |> Result.map (fun variants -> AST.SumTypeDef(name, tps, variants))
 
 // ---------------------------------------------------------------------------
 // Functions
@@ -357,26 +353,23 @@ let bridgeFn
   (compiledName : string)
   (fn : PT.PackageFn.PackageFn)
   : Result<AST.FunctionDef, string> =
-  if not (List.isEmpty fn.typeParams) then
-    err "generics" $"function has type params: {fn.typeParams}"
-  else
-    let paramList = NEList.toList fn.parameters
-    let paramNames = paramList |> List.map (fun p -> p.name) |> Array.ofList
-    let bridgedParams =
-      paramList
-      |> List.map (fun p -> bridgeType isSum p.typ |> Result.map (fun t -> (p.name, t)))
-      |> allOk
-    bridgedParams
-    |> Result.bind (fun ps ->
-      bridgeType isSum fn.returnType
-      |> Result.bind (fun retType ->
-        bridgeExpr paramNames fn.body
-        |> Result.map (fun body ->
-          ({ Name = compiledName
-             TypeParams = []
-             Params = AST.NonEmptyList.fromList ps
-             ReturnType = retType
-             Body = body } : AST.FunctionDef))))
+  let paramList = NEList.toList fn.parameters
+  let paramNames = paramList |> List.map (fun p -> p.name) |> Array.ofList
+  let bridgedParams =
+    paramList
+    |> List.map (fun p -> bridgeType isSum p.typ |> Result.map (fun t -> (p.name, t)))
+    |> allOk
+  bridgedParams
+  |> Result.bind (fun ps ->
+    bridgeType isSum fn.returnType
+    |> Result.bind (fun retType ->
+      bridgeExpr paramNames fn.body
+      |> Result.map (fun body ->
+        ({ Name = compiledName
+           TypeParams = fn.typeParams
+           Params = AST.NonEmptyList.fromList ps
+           ReturnType = retType
+           Body = body } : AST.FunctionDef))))
 
 // ---------------------------------------------------------------------------
 // Reference collectors (for the transitive fetch closures in the builtin)

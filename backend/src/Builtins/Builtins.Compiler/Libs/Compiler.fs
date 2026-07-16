@@ -127,13 +127,10 @@ let private buildPieces
         let isSum =
           types
           |> List.choose (fun (h, pt) ->
-            if List.isEmpty pt.declaration.typeParams then
-              match pt.declaration.definition with
-              | PT.TypeDeclaration.Record _ -> Some(h, false)
-              | PT.TypeDeclaration.Enum _ -> Some(h, true)
-              | PT.TypeDeclaration.Alias _ -> None
-            else
-              None)
+            match pt.declaration.definition with
+            | PT.TypeDeclaration.Record _ -> Some(h, false)
+            | PT.TypeDeclaration.Enum _ -> Some(h, true)
+            | PT.TypeDeclaration.Alias _ -> None)
           |> Map.ofList
         let typeDefs =
           types
@@ -148,19 +145,49 @@ let private buildPieces
         | Ok tds, Ok fds -> return Ok(tds, fds, Bridge.nameFor rootHash)
   }
 
-/// Build the program (type defs + all bridged fns + a call to the root) and
-/// compile it.
+/// Substitute type variables (used to instantiate a generic root fn's type
+/// params to a concrete type so it has a monomorphic entry point).
+let rec private substTVars (m : Map<string, AST.Type>) (t : AST.Type) : AST.Type =
+  let s = substTVars m
+  match t with
+  | AST.TVar v -> Map.tryFind v m |> Option.defaultValue t
+  | AST.TRecord(n, args) -> AST.TRecord(n, List.map s args)
+  | AST.TSum(n, args) -> AST.TSum(n, List.map s args)
+  | AST.TList inner -> AST.TList(s inner)
+  | AST.TTuple ts -> AST.TTuple(List.map s ts)
+  | AST.TDict(k, v) -> AST.TDict(s k, s v)
+  | AST.TFunction(args, ret) -> AST.TFunction(List.map s args, s ret)
+  | other -> other
+
+/// The entry call to the root fn. A generic root is instantiated at Int64 (so
+/// it monomorphizes to a concrete entry point) via TypeApp.
+let private mainCall (rootFd : AST.FunctionDef) (args : List<AST.Expr>) : AST.Expr =
+  let nParams = List.length rootFd.TypeParams
+  if nParams = 0 then
+    AST.Call(rootFd.Name, AST.NonEmptyList.fromList args)
+  else
+    AST.TypeApp(
+      rootFd.Name,
+      List.replicate nParams AST.TInt64,
+      AST.NonEmptyList.fromList args)
+
+/// Concrete param types of the root, with its generic params instantiated at
+/// Int64 (matching mainCall) — so zero args can be synthesized.
+let private rootParamTypes (rootFd : AST.FunctionDef) : List<AST.Type> =
+  let subst = rootFd.TypeParams |> List.map (fun tp -> (tp, AST.TInt64)) |> Map.ofList
+  rootFd.Params |> AST.NonEmptyList.toList |> List.map (snd >> substTVars subst)
+
+/// Build the program (type defs + all bridged fns + the entry call) and compile.
 let private compileClosure
   (typeDefs : List<AST.TypeDef>)
   (fds : List<AST.FunctionDef>)
-  (rootName : string)
-  (args : List<AST.Expr>)
+  (mainExpr : AST.Expr)
   : Result<byte array, string> =
   let program : AST.Program =
     AST.Program(
       (typeDefs |> List.map AST.TypeDef)
       @ (fds |> List.map AST.FunctionDef)
-      @ [ AST.Expression(AST.Call(rootName, AST.NonEmptyList.fromList args)) ])
+      @ [ AST.Expression mainExpr ])
   compileAst program
 
 /// A zero/default literal for a compiler type, so a function can be made
@@ -241,14 +268,12 @@ let private checkOne (hash : string) : Ply<bool * string> =
               | AST.TypeAlias(n, _, _) -> Some(n, td))
             |> Map.ofList
           let dummy =
-            rootFd.Params
-            |> AST.NonEmptyList.toList
-            |> List.map (snd >> zeroValue defsByName Set.empty)
+            rootParamTypes rootFd |> List.map (zeroValue defsByName Set.empty)
           match List.tryPick (function Error e -> Some e | Ok _ -> None) dummy with
           | Some e -> return (false, $"arg-synthesis: {e}")
           | None ->
             let args = dummy |> List.choose (function Ok x -> Some x | Error _ -> None)
-            match compileClosure typeDefs fds rootName args with
+            match compileClosure typeDefs fds (mainCall rootFd args) with
             | Ok binary -> return (true, $"{binary.Length} bytes")
             | Error e -> return (false, e)
     with e ->
@@ -392,7 +417,10 @@ let fns () : List<BuiltInFn> =
               match pieces with
               | Error e -> return outcome false e
               | Ok(typeDefs, fds, rootName) ->
-                match compileClosure typeDefs fds rootName argLits with
+                match fds |> List.tryFind (fun fd -> fd.Name = rootName) with
+                | None -> return outcome false "root fn not bridged"
+                | Some rootFd ->
+                match compileClosure typeDefs fds (mainCall rootFd argLits) with
                 | Error e -> return outcome false $"compile: {e}"
                 | Ok binary ->
                   let out = CompilerLibrary.execute 0 binary
