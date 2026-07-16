@@ -20,7 +20,7 @@ let defaultArgs (): Args =
 /// Parse a list of args left-to-right. Recognized: a single positional
 /// (the router path), `--port N`, `--max-body-bytes N`. Unknown flags or
 /// duplicate positionals → an error string in `args.error`.
-let rec parseArgs (rest: List<String>) (acc: Args) : Args =
+let parseArgs (rest: List<String>) (acc: Args) : Args =
   match rest with
   | [] -> acc
   | "--port" :: value :: tail ->

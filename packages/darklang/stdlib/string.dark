@@ -2,7 +2,7 @@ module Darklang.Stdlib.String
 
 
 /// Returns a string containing a single '\n'
-let newline = "\n"
+val newline = "\n"
 
 
 /// Truncates the string <param s> to the specified <param length> and appends an ellipsis ("...")

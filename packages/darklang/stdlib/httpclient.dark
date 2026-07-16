@@ -142,16 +142,16 @@ let bearerToken (token: String) : (String * String) =
 
 module ContentType =
   /// A header <type (String*String))> with {{content-type}} set for HTML form requests or responses
-  let form = ("content-type", "application/x-www-form-urlencoded")
+  val form = ("content-type", "application/x-www-form-urlencoded")
 
   /// A header <type (String*String))> with {{content-type}} set for JSON requests or responses
-  let json = ("content-type", "application/json")
+  val json = ("content-type", "application/json")
 
   /// A header <type (String*String))> with {{'content-type'}} set for plain text requests or responses
-  let plainText = ("content-type", "text/plain; charset=utf-8")
+  val plainText = ("content-type", "text/plain; charset=utf-8")
 
   /// A header <type (String*String))> with {{'content-type'}} set for html requests
-  let html = ("content-type", "text/html; charset=utf-8")
+  val html = ("content-type", "text/html; charset=utf-8")
 
 
 module Sse =

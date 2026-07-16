@@ -16,12 +16,15 @@ Supported comments:
 - `(* block *)`, which nests
 
 `(*)` is the multiply operator section, not a comment. Comments are preserved on
-tokens as `leadingTrivia`. The token stream reconstructs the source byte-exactly
-except for trailing whitespace.
+tokens as `leadingTrivia`. Whitespace text is not stored, so the token stream
+preserves positions and comments but cannot reconstruct spaces, tabs, line
+endings, or trailing whitespace byte-for-byte.
 
 ### Identifiers
 
-Normal identifiers match `[A-Za-z_][A-Za-z0-9_']*`.
+Normal identifiers start with a Unicode letter or `_`, followed by Unicode
+letters/digits, `_`, or `'`. Package names use a separate, stricter naming rule
+during name resolution.
 
 Backtick-quoted ``` ``name`` ``` permits anything up to the closing backticks.
 `___` is the blank identifier and has the empty name.
@@ -57,7 +60,8 @@ out-of-range diagnostic, never a silent wrap.
 ### Float literals
 
 `digits[.digits][eE[±]exp]`. Lowered to exponent-free whole/fraction decimal
-strings (`1e300` → `1` + 300 zeros).
+strings (`1e300` → `1` + 300 zeros). Exponents outside `-400..400` are rejected
+because ProgramTypes stores expanded decimal strings rather than an exponent.
 
 ### String literals
 
@@ -101,6 +105,11 @@ Loosest to tightest; one table (`infixBindingPower`) drives the parser.
 | 7 | `^` | right | exponentiation (`2^3^2 = 2^(3^2)`) |
 | 8 | application `f a b` | left | tightest |
 
+`<<`, `>>`, `&`, `|||`, `~~~`, `!`, and `...` are reserved tokens but are not
+supported expression operators. `...` is also reserved for unsupported rest
+patterns. These forms produce an unsupported-syntax diagnostic. `def` is not
+reserved and lexes as a normal identifier.
+
 Operator sections `(op)` are two-arg lambdas.
 
 `x |> (op) y` means `x op y`; the piped value is the *left* operand.
@@ -143,7 +152,8 @@ Expression forms include:
 - tuples `(a, b, …)`
 - lists `[a; b]`, separated by `;`, `,`, or newlines
 - dicts `Dict { k = v }`
-- records `Type { f = v }` and anonymous records `{ f = v }`
+- named records `Type { f = v }`; anonymous records are rejected until they
+  have a real inferred/represented type
 - record updates `{ r with f = v }`
 - field access `x.f`
 - lambdas `fun p1 p2 -> body`, including tuple patterns
@@ -154,11 +164,20 @@ Expression forms include:
 - pipes
 - statement sequences, separated by newlines or `;`
 
+Adjacent same-line items never imply a separator. Lists and list patterns,
+dicts, records, record updates, and record-type fields use `,` or `;`;
+constructor fields and constructor-pattern fields use `,`. A newline separates
+items in all of these forms.
+
 For dotted names, lowercase steps are fields and uppercase steps are module path
 segments. A bare dotted name like `Stdlib.List.map` is itself a value/function
 reference.
 
-A nested function let lowers to a let-bound lambda; its types are discarded.
+A nested function let lowers to a let-bound lambda. Its annotations are
+currently compatibility syntax and are not enforced by this parser/type path.
+Local bindings and value declarations do not accept annotations. Write
+`let x = value` locally or `val x = value` at declaration scope, without
+`: Type`.
 
 ### Enum constructors
 
@@ -205,12 +224,19 @@ Pattern forms:
 - enum patterns with **unqualified** case names, such as `| Ok x`
 - unit
 
+Names in one pattern cannot be repeated. Every or-pattern branch must bind the
+same non-ignored names. `_` and names beginning with `_` are ignored bindings.
+
 Qualified enum patterns such as `| Result.Ok x` are rejected.
 
 ### Generics
 
 `Name<T, …>` requires `<` to be *adjacent* to the name. A spaced `<` is a
 comparison.
+
+Generic type parameters declared after a type or function name must be
+apostrophe-prefixed and comma-separated; the list cannot be empty. For example:
+`type Pair<'a, 'b> = 'a * 'b`.
 
 Generics work on:
 
@@ -235,15 +261,22 @@ not curried functions. Enum case fields separate with `*` at atom level:
 
 ## Declarations
 
+Package function parameters cannot use the blank name `___`; give the parameter
+a name, or use `()` when the parameter is unit.
+
 Declaration forms:
 
 - `let f (p: T) … : R = body` defines a function. Parameters are parenthesized
   and annotated. `()` is a unit parameter.
-- `let x = e` defines a value **inside a module**. At a file's top level it is a
-  let-expression that sequences with what follows.
-- `val x = e` always defines a value.
+- `val x = e` defines a module or test-setup value.
+- `let x = e` is a local/script binding. At declaration scope it is rejected;
+  use `val` for a value declaration.
 - `module A.B` is a file header and wraps the rest of the file.
 - `module X =` starts an indented module body.
+
+`rec`, `private`, and `internal` are ordinary identifier names, not let
+modifiers. Functions are automatically self-recursive, so modifier-shaped forms
+such as `let rec f ...` are invalid.
 
 Modules nest. The path builds the package location: `owner.modules.name`.
 
@@ -256,13 +289,18 @@ Modules nest. The path builds the package location: `owner.modules.name`.
   `|`);
 - an **alias** to another type: `type Id = String`, `type Pair = Int * Int`.
 
-### Testfile dialect
+### Test classification
 
-Only `parseTestFile` enables this dialect.
+The parser represents test assertions and DB declarations in the same syntax
+tree for every caller. `Parser.parseFor Validation.Test` accepts them; Script
+and Package modes reject them. Successful validation returns a
+`ValidatedSourceFile`, which package, test, and CLI entry points require before
+lowering. `Parser.parse` remains mode-neutral for tooling.
 
 At the top level:
 
-- `let x = …` is treated like a module value declaration
+- `val x = …` declares a test setup value; `let x = …` keeps its normal script
+  expression meaning
 - `actual = expected` is a test assertion
 - expected forms may be `error "msg"` or `sqlerror "msg"`
 - `[<DB>] type X = T` declares a user DB
@@ -282,8 +320,27 @@ Codes are stable identifiers (key on these, never on message text):
 | `PARSE-UNEXPECTED` | stray token inside a construct |
 | `PARSE-PIPE-SEGMENT` | pipe RHS isn't a valid segment |
 | `PARSE-PATTERN` | invalid match pattern shape |
+| `PARSE-INTERPOLATION` | malformed interpolation body or brace boundary |
 | `PARSE-INTERNAL-LOOP` | parser step budget exhausted — a parser bug, please report |
 | `LEX` | tokenizer-level recovery (unterminated literal, …) |
+
+Post-parse validation uses these stable codes:
+
+| code | meaning |
+|---|---|
+| `VALIDATION-DUPLICATE-BINDER` | one pattern or parameter list binds the same usable name more than once |
+| `VALIDATION-OR-BINDINGS` | or-pattern alternatives bind different usable names |
+| `VALIDATION-OR-PATTERN` | an invalid tree contains an empty or-pattern |
+| `VALIDATION-RECOVERY-HOLE` | an `EError` or `MPError` recovery node reached validation |
+| `VALIDATION-LAMBDA` | a lambda has no parameter |
+| `VALIDATION-MATCH` | a match has no case |
+| `VALIDATION-ANONYMOUS-RECORD` | the tree contains an unsupported anonymous record |
+| `VALIDATION-RECORD-UPDATE` | a record update has no fields |
+| `VALIDATION-PACKAGE-EXPR` | a package contains an executable expression |
+| `VALIDATION-TEST-ASSERTION` | a test expression is not an assertion |
+| `VALIDATION-DB-MODE` | a DB declaration occurs outside Test mode |
+| `VALIDATION-DB-SHAPE` | a DB declaration is not a type alias |
+| `VALIDATION-TEST-MODE` | a test assertion occurs outside Test mode |
 
 `renderDiagnostic` renders code + position + message + a caret snippet +
 related locations + hint; the CLI uses it. The LSP wire (`parserParseDiagnostics`,

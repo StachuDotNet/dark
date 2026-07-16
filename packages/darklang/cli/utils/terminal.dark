@@ -3,9 +3,9 @@ module Darklang.Cli.Terminal
 
 /// Display control constants
 module Display =
-  let clearScreen = "\x1b[2J\x1b[H"
-  let enterAltScreen = "\x1b[?1049h"
-  let exitAltScreen = "\x1b[?1049l"
+  val clearScreen = "\x1b[2J\x1b[H"
+  val enterAltScreen = "\x1b[?1049h"
+  val exitAltScreen = "\x1b[?1049l"
 
 /// Gets terminal height
 let getHeight () : Int =

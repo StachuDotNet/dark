@@ -27,7 +27,7 @@ type UserLocation =
 // -----------------------------------------------------------------------------
 
 /// Create an empty user location (no location data)
-let emptyLocation : UserLocation =
+val emptyLocation =
   UserLocation
     { country = Stdlib.Option.Option.None
       city = Stdlib.Option.Option.None
@@ -164,7 +164,7 @@ type WebSearchTool =
 // -----------------------------------------------------------------------------
 
 /// Create a default web search tool (no filters, live access)
-let defaultTool : WebSearchTool =
+val defaultTool =
   WebSearchTool
     { userLocation = Stdlib.Option.Option.None
       filters = Stdlib.Option.Option.None
@@ -185,7 +185,7 @@ let withFilters (f: DomainFilters) : WebSearchTool =
       externalWebAccess = Stdlib.Option.Option.None }
 
 /// Create a web search tool in offline/cache-only mode
-let offlineMode : WebSearchTool =
+val offlineMode =
   WebSearchTool
     { userLocation = Stdlib.Option.Option.None
       filters = Stdlib.Option.Option.None

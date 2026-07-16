@@ -831,17 +831,17 @@ module Translations =
 
 module Speech =
   module Voice =
-    let alloy : String = "alloy"
-    let echo : String = "echo"
-    let fable : String = "fable"
-    let onyx : String = "onyx"
-    let nova : String = "nova"
-    let shimmer : String = "shimmer"
-    let ash : String = "ash"
-    let coral : String = "coral"
-    let sage : String = "sage"
-    let ballad : String = "ballad"
-    let verse : String = "verse"
+    val alloy = "alloy"
+    val echo = "echo"
+    val fable = "fable"
+    val onyx = "onyx"
+    val nova = "nova"
+    val shimmer = "shimmer"
+    val ash = "ash"
+    val coral = "coral"
+    val sage = "sage"
+    val ballad = "ballad"
+    val verse = "verse"
 
   type ResponseFormat =
     | Mp3

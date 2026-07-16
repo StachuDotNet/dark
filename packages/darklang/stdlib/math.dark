@@ -3,12 +3,12 @@ module Darklang.Stdlib.Math
 
 /// Returns an approximation for the mathematical constant {{π}},
 /// the ratio of a circle's circumference to its diameter.
-let pi = 3.141592653589793
+val pi = 3.141592653589793
 
 
 /// Returns an approximation for the mathematical constant {{τ}}, the number of
 /// radians in one turn. Equivalent to {{Float.multiply Stdlib.Math.pi 2}}.
-let tau = 6.283185307179586
+val tau = 6.283185307179586
 
 
 /// Returns the equivalent of <param angleInDegrees> in radians, the unit used

@@ -11,7 +11,7 @@ module Darklang.Cli.Telemetry
 ///   // Or for spans with extra context:
 ///   Telemetry.logWithContext "completionHint" t0 [("input", promptText)]
 
-let logFilePath: String =
+val logFilePath =
   (Builtin.cliGetLogDir ()) ++ "/telemetry.jsonl"
 
 /// Returns monotonic millisecond timestamp (only differences are meaningful)

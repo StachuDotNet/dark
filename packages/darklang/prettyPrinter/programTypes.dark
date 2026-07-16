@@ -55,7 +55,7 @@ module Context =
         currentModule = Stdlib.Option.Option.None
         currentFunction = Stdlib.Option.Option.None }
 
-  let forMain : Context = forBranch SCM.Branch.mainBranchId
+  val forMain = forBranch SCM.Branch.mainBranchId
 
   let toPickContext (ctx: Context) : LanguageTools.PackageManager.PickContext =
     LanguageTools.PackageManager.PickContext
@@ -480,7 +480,7 @@ let infix (i: LanguageTools.ProgramTypes.Infix) : String =
 let stringSegment (ctx: Context) (s: LanguageTools.ProgramTypes.StringSegment) : String =
   match s with
   | StringText text -> PrettyPrinter.escapeSpecialCharacters text
-  | StringInterpolation expr -> $"{{{expr ctx expr}}}"
+  | StringInterpolation interpolationExpr -> $"{{{expr ctx interpolationExpr}}}"
 
 let pipeExpr (ctx: Context) (p: LanguageTools.ProgramTypes.PipeExpr) : String =
   match p with
@@ -824,11 +824,6 @@ let expr (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
     // This should never happen - ESelf should only appear within a function body
     // CLEANUP: consider making this a runtime error instead
     | None -> "ESelf"
-
-  // Unreachable in practice: format/round-trip callers reject parses with
-  // diagnostics before lowering, so a broken tree never reaches pretty-printing.
-  // Rendered visibly (not "" or a crash) in case one ever slips through.
-  | EError _id -> "<parse error>"
 
   // CLEANUP: remove this case before shipping to users
   | expr ->

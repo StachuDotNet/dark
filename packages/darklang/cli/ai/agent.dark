@@ -12,7 +12,7 @@ type AgentOptions =
     model: Stdlib.Option.Option<String>
     args: List<String> }
 
-let defaultOptions =
+val defaultOptions =
   AgentOptions
     { writeMode = WriteMode.Confirm
       provider = Stdlib.Option.Option.None
@@ -36,7 +36,7 @@ let parseOptions (args: List<String>) (options: AgentOptions) : AgentOptions =
 
 
 // CONFIGURATION: PROVIDERS
-let validProviders : List<String> = [ "anthropic"; "openai"; "local" ]
+val validProviders = [ "anthropic"; "openai"; "local" ]
 
 let resolveProvider (requested: Stdlib.Option.Option<String>) : String =
   match requested with
@@ -83,7 +83,7 @@ let lookupModelAlias (modelName: String) : Stdlib.Option.Option<Darklang.LLM.Mod
 
 
 // CONFIGURATION: PROMPTS
-let systemPrompt : String =
+val systemPrompt =
   """You are a Darklang CLI assistant with a `cli` tool. Darklang is a live programming environment—code lives in a persistent package tree, not files.
 
 ## Workflow
@@ -119,20 +119,20 @@ Branch context is handled automatically—don't pass --branch.
 
 Be concise. Run commands to verify. If stuck, use `docs` or `help`."""
 
-let toolDescriptionReadOnly : String =
+val toolDescriptionReadOnly =
   "Run a Darklang CLI command (read-only). Explore: tree, search, view, deps, nav, ls, back. Test: run, eval. Info: status, log, help, docs, builtins, find-values, scripts, clear."
 
-let toolDescriptionWriteEnabled : String =
+val toolDescriptionWriteEnabled =
   "Run a Darklang CLI command. Create: fn, type, val (use full paths). Test: run, eval. SCM: status, commit, discard, branch, rebase, merge. Explore: tree, search, view, deps, help, docs."
 
 
 
 // CLI TOOL (what the agent calls)
-let readOnlyCommands : List<String> =
+val readOnlyCommands =
   [ "run"; "eval"; "nav"; "ls"; "back"; "search"; "view"; "status"; "tree"
     "deps"; "builtins"; "find-values"; "scripts"; "log"; "clear"; "help"; "docs" ]
 
-let writeCommands : List<String> =
+val writeCommands =
   [ "fn"; "val"; "type"; "commit"; "discard"; "branch"; "rebase"; "merge" ]
 
 let hasUnsafeChars (input: String) : Bool =
@@ -140,7 +140,7 @@ let hasUnsafeChars (input: String) : Bool =
   Stdlib.String.contains input "&" || Stdlib.String.contains input "\n" ||
   Stdlib.String.contains input "$" || Stdlib.String.contains input "`"
 
-let findCliExecutable : Stdlib.Option.Option<String> =
+val findCliExecutable =
   if Builtin.fileExists "./scripts/run-cli" then Stdlib.Option.Option.Some "./scripts/run-cli"
   else if Stdlib.Cli.Unix.isCommandAvailable "dark" then Stdlib.Option.Option.Some "dark"
   else Stdlib.Option.Option.None
@@ -371,7 +371,7 @@ let executeFix (state: Cli.AppState) (provider: String) (options: AgentOptions) 
 
 type Subcommand = { name: String; description: String; usage: String; execute: Cli.AppState -> String -> AgentOptions -> Unit }
 
-let subcommands : List<Subcommand> =
+val subcommands =
   [ Subcommand { name = "ask"; description = "Read-only assistant (or interactive if no task)"; usage = "agent ask [task]"; execute = executeAsk }
     Subcommand { name = "code"; description = "Write-enabled assistant (confirms each write)"; usage = "agent code <task> [--yes]"; execute = executeCode }
     Subcommand { name = "review"; description = "Read-only review for a package item"; usage = "agent review <item>"; execute = executeReview }

@@ -7,6 +7,7 @@ open LibParser.Tokenizer // Pos, TokenRange, Token
 open LibParser.Lexer // SpannedToken, tokenize
 
 module WT = LibParser.WrittenTypes
+module Validation = LibParser.Validation
 
 type DiagnosticSeverity =
   | DiagError
@@ -23,6 +24,7 @@ module DiagnosticCode =
   let unexpected = "PARSE-UNEXPECTED" // stray token inside a construct
   let pipeSegment = "PARSE-PIPE-SEGMENT" // pipe RHS isn't a valid segment
   let pattern = "PARSE-PATTERN" // invalid match pattern shape
+  let interpolation = "PARSE-INTERPOLATION" // malformed interpolation body/braces
   let internalLoop = "PARSE-INTERNAL-LOOP" // parser step budget exhausted (parser bug)
   let lex = "LEX" // tokenizer-level recovery (unterminated literal, …)
 
@@ -36,6 +38,14 @@ type Diagnostic =
     hint : Option<string> }
 
 type ParseResult = { parsed : Option<WT.ParsedFile>; diagnostics : List<Diagnostic> }
+
+let diagnosticOfValidationIssue (issue : Validation.Issue) : Diagnostic =
+  { code = Validation.IssueCode.toString issue.code
+    severity = DiagError
+    range = issue.range
+    message = issue.message
+    related = issue.related
+    hint = issue.hint }
 
 /// One offside scope: the current statement's anchor column (`stmtCol`; -1 = none)
 /// and `stmtExact`, a flag marking a parenthesized body — there the closing `)`
@@ -102,7 +112,6 @@ let private isIntLit (t : Token) : bool =
   | TElif
   | TThen
   | TElse
-  | TDef
   | TType
   | TCons
   | TColon
@@ -212,7 +221,6 @@ let private isRecoveryBarrier (t : Token) : bool =
 type ParserState =
   { toks : SpannedToken[] // the token stream being parsed
     tokenCount : int // = toks.Length, cached (read on every bounds check)
-    testMode : bool // testfile dialect: `actual = expected` assertions + `[<DB>]` DBs
     diagnostics : System.Collections.Generic.List<Diagnostic> // parse errors collected during recovery
     scopes : System.Collections.Generic.Stack<OffsideScope> // offside anchor stack (a frame per let/if/match/paren body)
     // Closing a nested generic like `Dict<List<Int>>` ends in `>>`, which the
@@ -259,6 +267,43 @@ let docOf (state : ParserState) i =
 let zeroWidthAtEnd (r : TokenRange) : TokenRange = { start = r.end_; end_ = r.end_ }
 let span (a : TokenRange) (b : TokenRange) : TokenRange =
   { start = a.start; end_ = b.end_ }
+
+let private advancePos (start : Pos) (text : string) (count : int) : Pos =
+  let mutable pos = start
+  for index in 0 .. min count text.Length - 1 do
+    if text[index] = '\n' then
+      pos <- { row = pos.row + 1; column = 0 }
+    else
+      pos <- { pos with column = pos.column + 1 }
+  pos
+
+let private splitTrailingRange
+  (state : ParserState)
+  (i : int)
+  (trailingLength : int)
+  : TokenRange * TokenRange =
+  let whole = rng state i
+  let text = txt state i
+  let boundary = advancePos whole.start text (max 0 (text.Length - trailingLength))
+  ({ start = whole.start; end_ = boundary }, { start = boundary; end_ = whole.end_ })
+
+let private literalTextRanges
+  (state : ParserState)
+  (i : int)
+  (delimiter : string)
+  : TokenRange * TokenRange * TokenRange =
+  let whole = rng state i
+  let text = txt state i
+  let delimiterLength = delimiter.Length
+  let hasClose = text.Length >= delimiterLength * 2 && text.EndsWith delimiter
+  let openEnd = advancePos whole.start text (min delimiterLength text.Length)
+  let contentEndIndex =
+    if hasClose then text.Length - delimiterLength else text.Length
+  let contentEnd = advancePos whole.start text contentEndIndex
+  let closeEnd = if hasClose then whole.end_ else contentEnd
+  ({ start = whole.start; end_ = openEnd },
+   { start = openEnd; end_ = contentEnd },
+   { start = contentEnd; end_ = closeEnd })
 // set when a guard abandons the parse: suppresses the cascade of secondary
 // diagnostics from the unwinding frames
 let errFull
@@ -387,10 +432,24 @@ let floatParts (state : ParserState) (i : int) (v : float) : string * string =
     let (mant, exp) =
       match t.Split([| 'e'; 'E' |]) with
       | [| m; e |] ->
-        (m,
-         (match System.Int32.TryParse e with
-          | true, x -> max -400 (min 400 x)
-          | _ -> 0))
+        let exponent =
+          match System.Int32.TryParse e with
+          | true, x when x >= -400 && x <= 400 -> x
+          | true, x ->
+            err
+              state
+              DiagnosticCode.intRange
+              i
+              $"Float exponent {x} is outside the supported range -400..400"
+            max -400 (min 400 x)
+          | _ ->
+            err
+              state
+              DiagnosticCode.intRange
+              i
+              "Float exponent is too large to represent"
+            0
+        (m, exponent)
       | _ -> (t, 0)
     let (w, f) =
       match mant.Split('.') with
@@ -433,13 +492,38 @@ let validateLiterals (state : ParserState) : unit =
           DiagnosticCode.escape
           vi
           "Invalid escape sequence or codepoint in character literal"
+      match state.toks[vi].token with
+      | TCharLit value when
+        System.Globalization.StringInfo.ParseCombiningCharacters(value).Length <> 1
+        ->
+        err
+          state
+          DiagnosticCode.escape
+          vi
+          "Character literal must contain exactly one grapheme"
+      | _ -> ()
     | TInterpString when not ((txt state vi).StartsWith "$\"\"\"") ->
-      if Lexer.hasInvalidEscapeInterp (stripDelims (txt state vi) "$\"" "\"") then
+      let inner = stripDelims (txt state vi) "$\"" "\""
+      if Lexer.hasInvalidEscapeInterp inner then
         err
           state
           DiagnosticCode.escape
           vi
           "Invalid escape sequence or codepoint in interpolated string"
+      if Lexer.hasSingleCloseBraceInterp inner false then
+        err
+          state
+          DiagnosticCode.interpolation
+          vi
+          "Single '}' in interpolated string text; use '}}' or '\\}' for a literal brace"
+    | TInterpString ->
+      let inner = stripDelims (txt state vi) "$\"\"\"" "\"\"\""
+      if Lexer.hasSingleCloseBraceInterp inner true then
+        err
+          state
+          DiagnosticCode.interpolation
+          vi
+          "Single '}' in raw interpolated string text; use '}}' for a literal brace"
     | _ -> ()
 
 // qualified name: ident (. ident)*  → (modules, finalIdent, nextIndex)
@@ -505,13 +589,42 @@ let parseTypeParams
   if tok state i <> TLt then
     ([], i)
   else
+    if
+      i > 0
+      && ((rng state i).start.row <> (rng state (i - 1)).end_.row
+          || (rng state i).start.column <> (rng state (i - 1)).end_.column)
+    then
+      err
+        state
+        DiagnosticCode.expected
+        i
+        "Generic type parameters must be adjacent to the declaration name"
     let names = System.Collections.Generic.List<string * TokenRange>()
     let mutable k = i + 1
+    let mutable expectingName = true
     while tok state k <> TGt && tok state k <> TShr && tok state k <> TEOF do
-      (match tok state k with
-       | TIdent name -> names.Add(name, rng state k)
-       | _ -> ())
-      k <- k + 1
+      match expectingName, tok state k with
+      | true, TIdent name ->
+        if not ((txt state k).StartsWith "'") then
+          err
+            state
+            DiagnosticCode.expected
+            k
+            "Declared type parameters must start with an apostrophe, such as 'a"
+        names.Add(name, rng state k)
+        expectingName <- false
+        k <- k + 1
+      | false, TComma ->
+        expectingName <- true
+        k <- k + 1
+      | false, TIdent _ ->
+        errExpected state k "a comma between type parameters"
+        expectingName <- true
+      | _ ->
+        errExpected state k "a type parameter"
+        k <- k + 1
+    if names.Count = 0 then errExpected state (i + 1) "at least one type parameter"
+    elif expectingName then errExpected state k "a type parameter after ','"
     let k2 =
       if tok state k = TGt || tok state k = TShr then
         k + 1
@@ -607,6 +720,18 @@ let isNegLitArg (state : ParserState) (k : int) : bool =
   && (k = 0
       || (rng state k).start.row <> (rng state (k - 1)).end_.row
       || (rng state k).start.column > (rng state (k - 1)).end_.column) // space before `-`
+
+let private requireElementSeparator
+  (state : ParserState)
+  (previousRange : TokenRange)
+  (nextIndex : int)
+  (expected : string)
+  : unit =
+  if
+    tok state nextIndex <> TEOF
+    && (rng state nextIndex).start.row <= previousRange.end_.row
+  then
+    errExpected state nextIndex expected
 
 let rec parseExpr (state : ParserState) (i : int) : WT.Expr * int =
   if tooDeep state i || outOfFuel state i then
@@ -768,8 +893,11 @@ and parseMatch (state : ParserState) (i : int) : WT.Expr * int =
   // to an enclosing match (so a nested match doesn't swallow the outer's arms).
   let armCol =
     if tok state afterWith = TBar then (rng state afterWith).start.column else 0
+  let armRow =
+    if tok state afterWith = TBar then (rng state afterWith).start.row else -1
   let mutable k = afterWith
-  while tok state k = TBar && (rng state k).start.column >= armCol do
+  while (tok state k = TBar
+         && ((rng state k).start.row = armRow || (rng state k).start.column = armCol)) do
     let barR = rng state k
     let (pat, k2) = parseMatchPattern state (k + 1)
     let (whenCond, k3) =
@@ -794,6 +922,8 @@ and parseMatch (state : ParserState) (i : int) : WT.Expr * int =
         rhs = rhs }
     )
     if k5 > k then k <- k5 else k <- k + 1
+  if cases.Count = 0 then
+    errExpected state afterWith "at least one match case starting with '|'"
   let endR = if cases.Count > 0 then WT.exprRange (Seq.last cases).rhs else kwWith
   (WT.EMatch(span kwMatch endR, expr, List.ofSeq cases, kwMatch, kwWith), k)
 
@@ -890,25 +1020,35 @@ and parsePatternBaseInner (state : ParserState) (i : int) : WT.MatchPattern * in
   | TUnderscore -> (WT.MPVariable(rng state i, "_"), i + 1)
   | TInt v -> (WT.MPInt(rng state i, (rng state i, v)), i + 1)
   | TInt64 v ->
-    (WT.MPInt64(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.MPInt64(rng state i, (digits, v), suffix), i + 1)
   | TInt32 v ->
-    (WT.MPInt32(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.MPInt32(rng state i, (digits, v), suffix), i + 1)
   | TInt8 v ->
-    (WT.MPInt8(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.MPInt8(rng state i, (digits, v), suffix), i + 1)
   | TUInt8 v ->
-    (WT.MPUInt8(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.MPUInt8(rng state i, (digits, v), suffix), i + 1)
   | TInt16 v ->
-    (WT.MPInt16(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.MPInt16(rng state i, (digits, v), suffix), i + 1)
   | TUInt16 v ->
-    (WT.MPUInt16(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.MPUInt16(rng state i, (digits, v), suffix), i + 1)
   | TUInt32 v ->
-    (WT.MPUInt32(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.MPUInt32(rng state i, (digits, v), suffix), i + 1)
   | TUInt64 v ->
-    (WT.MPUInt64(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.MPUInt64(rng state i, (digits, v), suffix), i + 1)
   | TInt128 v ->
-    (WT.MPInt128(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.MPInt128(rng state i, (digits, v), suffix), i + 1)
   | TUInt128 v ->
-    (WT.MPUInt128(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.MPUInt128(rng state i, (digits, v), suffix), i + 1)
   // unary minus on a numeric literal pattern: `-5L`, `-1y`, `-2.0` (unsigned
   // types can't be negative, so only the signed literals + float are handled).
   | TMinus ->
@@ -916,11 +1056,21 @@ and parsePatternBaseInner (state : ParserState) (i : int) : WT.MatchPattern * in
     let r = span (rng state i) r1
     match tok state (i + 1) with
     | TInt v -> (WT.MPInt(r, (r, -v)), i + 2)
-    | TInt64 v -> (WT.MPInt64(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt32 v -> (WT.MPInt32(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt8 v -> (WT.MPInt8(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt16 v -> (WT.MPInt16(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt128 v -> (WT.MPInt128(r, (r, -v), zeroWidthAtEnd r1), i + 2)
+    | TInt64 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.MPInt64(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt32 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.MPInt32(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt8 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.MPInt8(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt16 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.MPInt16(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt128 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.MPInt128(r, (span (rng state i) digits, -v), suffix), i + 2)
     | TFloat v ->
       let (whole, frac) = floatParts state (i + 1) v
       (WT.MPFloat(r, true, whole, frac), i + 2)
@@ -935,22 +1085,13 @@ and parsePatternBaseInner (state : ParserState) (i : int) : WT.MatchPattern * in
   | TFalse -> (WT.MPBool(rng state i, false), i + 1)
   | TStringLit s ->
     let r = rng state i
-    (WT.MPString(
-      r,
-      Some(r, s),
-      { start = r.start; end_ = r.start },
-      { start = r.end_; end_ = r.end_ }
-     ),
-     i + 1)
+    let delimiter = if (txt state i).StartsWith "\"\"\"" then "\"\"\"" else "\""
+    let (openQuote, contents, closeQuote) = literalTextRanges state i delimiter
+    (WT.MPString(r, Some(contents, s), openQuote, closeQuote), i + 1)
   | TCharLit c ->
     let r = rng state i
-    (WT.MPChar(
-      r,
-      Some(r, c),
-      { start = r.start; end_ = r.start },
-      { start = r.end_; end_ = r.end_ }
-     ),
-     i + 1)
+    let (openQuote, contents, closeQuote) = literalTextRanges state i "'"
+    (WT.MPChar(r, Some(contents, c), openQuote, closeQuote), i + 1)
   | TLParen ->
     if tok state (i + 1) = TRParen then
       (WT.MPUnit(span (rng state i) (rng state (i + 1))), i + 2)
@@ -990,6 +1131,12 @@ and parsePatternBaseInner (state : ParserState) (i : int) : WT.MatchPattern * in
         k <- k2 + 1
       else
         elems.Add(p, None)
+        if tok state k2 <> TRBracket then
+          requireElementSeparator
+            state
+            (WT.mpRange p)
+            k2
+            "a comma, semicolon, or newline between list-pattern elements"
         k <- k2
     let (closeB, p2) =
       if tok state k = TRBracket then
@@ -1027,9 +1174,18 @@ and parsePatternBaseInner (state : ParserState) (i : int) : WT.MatchPattern * in
       while go && tok state k <> TRParen && tok state k <> TEOF do
         let (p, k2) = parsePatternOr state k
         fieldPats.Add p
-        if tok state k2 = TComma then k <- k2 + 1
-        elif k2 > k then k <- k2
-        else go <- false
+        if tok state k2 = TComma then
+          k <- k2 + 1
+        elif k2 > k then
+          if tok state k2 <> TRParen then
+            requireElementSeparator
+              state
+              (WT.mpRange p)
+              k2
+              "a comma or newline between constructor-pattern fields"
+          k <- k2
+        else
+          go <- false
       let k3 =
         if tok state k = TRParen then
           k + 1
@@ -1061,6 +1217,15 @@ and parsePatternBaseInner (state : ParserState) (i : int) : WT.MatchPattern * in
        ),
        k)
   | TIdent name -> (WT.MPVariable(rng state i, name), i + 1)
+  // TODO: Support `...` list rest patterns once WrittenTypes and ProgramTypes
+  // represent their binding and matching semantics.
+  | TDotDotDot ->
+    err
+      state
+      DiagnosticCode.unexpected
+      i
+      "'...' rest patterns are reserved but not supported"
+    (WT.MPError(rng state i), i + 1)
   | _ ->
     errExpected state i "a pattern"
     // recovery: an explicit error-hole node; leave closing/separating/decl-start
@@ -1191,12 +1356,7 @@ and parseLetPattern (state : ParserState) (i : int) : WT.LetPattern * int =
 
 and parseLet (state : ParserState) (i : int) : WT.Expr * int =
   let keywordLet = rng state i
-  // optional `let rec` / `let private` before the binding pattern
-  let patIdx =
-    match tok state (i + 1) with
-    | TIdent("rec" | "private" | "internal") -> i + 2
-    | _ -> i + 1
-  let (pat, j) = parseLetPattern state patIdx
+  let (pat, j) = parseLetPattern state (i + 1)
   match pat with
   | WT.LPVariable _ when tok state j = TLParen ->
     // nested function definition: `let f (x: T) (y) [: R] = body` — bind a lambda
@@ -1252,9 +1412,20 @@ and parseLet (state : ParserState) (i : int) : WT.Expr * int =
      ),
      p)
   | _ ->
-    // optional type annotation: `let x : T = v` (the type is discarded)
+    // Value annotations are not part of Dark. Consume the type for recovery,
+    // but reject the source instead of silently discarding it.
     let afterAnno =
-      if tok state j = TColon then snd (parseTypeRef state (j + 1)) else j
+      if tok state j = TColon then
+        state.diagnostics.Add
+          { code = DiagnosticCode.unexpected
+            severity = DiagError
+            range = rng state j
+            message = "Value annotations are not supported"
+            related = []
+            hint = Some "remove ': Type' from this value binding" }
+        snd (parseTypeRef state (j + 1))
+      else
+        j
     let (symbolEquals, k) =
       if tok state afterAnno = TEquals then
         (rng state afterAnno, afterAnno + 1)
@@ -1319,21 +1490,16 @@ and parseInfixRhs
     // would be wrongly glued on as `1L - 8L …`. On a new line, a pure infix
     // operator at the statement column continues (`x\n++ y` — `++` can't start
     // a statement), but `-` there begins a new statement (a negative literal),
-    // so it must be indented PAST it. Packages keep the permissive rule
-    // (operators always continue); the guard applies in test-mode, where a
-    // following test can start with `-`.
+    // so it must be indented PAST it. This rule is identical for every caller.
     let opContinues =
       let s = state.scopes.Peek()
       let so = s.stmtCol
       let col = (rng state j).start.column
       (rng state j).start.row = (WT.exprRange left).end_.row
       || so < 0
-      || (if s.stmtExact then
-            tok state j <> TMinus || (not state.testMode) || col <> so
-          elif tok state j = TMinus then
-            (not state.testMode) || col > so
-          else
-            col >= so)
+      || (if s.stmtExact then tok state j <> TMinus || col <> so
+          elif tok state j = TMinus then col > so
+          else col >= so)
     match infixBindingPower (tok state j) with
     | Some(bp, rightAssoc) when bp >= minBp && opContinues ->
       let opTok = tok state j
@@ -1380,9 +1546,18 @@ and parseCtorParenFields
           && not (declBarrier state m) do
       let (a, m2) = parseExpr state m
       sink.Add a
-      if tok state m2 = TComma then m <- m2 + 1
-      elif m2 > m then m <- m2
-      else go <- false
+      if tok state m2 = TComma then
+        m <- m2 + 1
+      elif m2 > m then
+        if tok state m2 <> TRParen then
+          requireElementSeparator
+            state
+            (WT.exprRange a)
+            m2
+            "a comma or newline between constructor fields"
+        m <- m2
+      else
+        go <- false
     let m =
       if tok state m = TRParen then
         m + 1
@@ -1508,6 +1683,7 @@ and parseInterpString (state : ParserState) (i : int) : WT.Expr * int =
   let mutable textStart = bodyStart
   let mutable k = bodyStart
   let mutable go = true
+  let mutable foundClosingQuote = false
   let flushText (endOff : int) =
     if endOff > textStart then
       let raw = fullText.Substring(textStart, endOff - textStart)
@@ -1532,6 +1708,7 @@ and parseInterpString (state : ParserState) (i : int) : WT.Expr * int =
         fullText[k] = '"'
     if atClose then
       flushText k
+      foundClosingQuote <- true
       go <- false
     // skip `\X` so an escaped quote `\"` doesn't end the string (regular only)
     elif fullText[k] = '\\' && not triple && k + 1 < m then
@@ -1593,15 +1770,34 @@ and parseInterpString (state : ParserState) (i : int) : WT.Expr * int =
                 |> List.map (fun (t : SpannedToken) ->
                   { t with range = offRange t.range })
                 |> List.toArray
-              let subResult = parseTokensAt (state.interpDepth + 1) false offToks
+              let subResult = parseTokensAt (state.interpDepth + 1) offToks
               // surface parse errors from inside the interpolation `{…}` (their
               // ranges are already offset to the outer source) rather than dropping them
               subResult.diagnostics |> List.iter state.diagnostics.Add
               match subResult.parsed with
               | Some(WT.SourceFile sf) ->
-                match sf.exprsToEval with
-                | e :: _ -> e
-                | [] -> WT.EUnit(rangeAt (k + 1) found)
+                let bodyRange = rangeAt (k + 1) found
+                let interpolationError (message : string) =
+                  state.diagnostics.Add
+                    { code = DiagnosticCode.interpolation
+                      severity = DiagError
+                      range = bodyRange
+                      message = message
+                      related = []
+                      hint = None }
+                if not (List.isEmpty sf.declarations) then
+                  interpolationError
+                    "Interpolation body must be one expression, not a declaration"
+                match sf.declarations, sf.exprsToEval with
+                | [], [ e ] -> e
+                | [], e :: _ ->
+                  interpolationError
+                    "Interpolation body must contain exactly one expression"
+                  e
+                | _ ->
+                  if List.isEmpty sf.declarations then
+                    interpolationError "Interpolation body cannot be empty"
+                  WT.EUnit bodyRange
               | None -> WT.EUnit(rangeAt (k + 1) found)
             | Error e ->
               // a hard tokenize failure inside `{…}` (e.g. nesting cap) was
@@ -1620,7 +1816,8 @@ and parseInterpString (state : ParserState) (i : int) : WT.Expr * int =
         textStart <- k
     else
       k <- k + 1
-  let closeQ = rangeAt (m - closeLen) m
+  if not foundClosingQuote then flushText m
+  let closeQ = if foundClosingQuote then rangeAt (m - closeLen) m else rangeAt m m
   (WT.EString(spanned.range, Some dollarR, List.ofSeq contents, openQ, closeQ), i + 1)
 
 and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
@@ -1628,25 +1825,35 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
   match tok state i with
   | TInt v -> (WT.EInt(rng state i, (rng state i, v)), i + 1)
   | TInt64 v ->
-    (WT.EInt64(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.EInt64(rng state i, (digits, v), suffix), i + 1)
   | TInt8 v ->
-    (WT.EInt8(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.EInt8(rng state i, (digits, v), suffix), i + 1)
   | TUInt8 v ->
-    (WT.EUInt8(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.EUInt8(rng state i, (digits, v), suffix), i + 1)
   | TInt16 v ->
-    (WT.EInt16(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.EInt16(rng state i, (digits, v), suffix), i + 1)
   | TUInt16 v ->
-    (WT.EUInt16(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.EUInt16(rng state i, (digits, v), suffix), i + 1)
   | TInt32 v ->
-    (WT.EInt32(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.EInt32(rng state i, (digits, v), suffix), i + 1)
   | TUInt32 v ->
-    (WT.EUInt32(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.EUInt32(rng state i, (digits, v), suffix), i + 1)
   | TUInt64 v ->
-    (WT.EUInt64(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 2
+    (WT.EUInt64(rng state i, (digits, v), suffix), i + 1)
   | TInt128 v ->
-    (WT.EInt128(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.EInt128(rng state i, (digits, v), suffix), i + 1)
   | TUInt128 v ->
-    (WT.EUInt128(rng state i, (rng state i, v), zeroWidthAtEnd (rng state i)), i + 1)
+    let (digits, suffix) = splitTrailingRange state i 1
+    (WT.EUInt128(rng state i, (digits, v), suffix), i + 1)
   // unary minus on a numeric literal: `-5L`, `-2.0` (infix `a - b` is handled in
   // parseInfixRhs, so a `-` reaching here always prefixes a literal)
   | TMinus ->
@@ -1654,11 +1861,21 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
     let r = span (rng state i) r1
     match tok state (i + 1) with
     | TInt v -> (WT.EInt(r, (r, -v)), i + 2)
-    | TInt64 v -> (WT.EInt64(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt8 v -> (WT.EInt8(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt16 v -> (WT.EInt16(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt32 v -> (WT.EInt32(r, (r, -v), zeroWidthAtEnd r1), i + 2)
-    | TInt128 v -> (WT.EInt128(r, (r, -v), zeroWidthAtEnd r1), i + 2)
+    | TInt64 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.EInt64(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt8 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.EInt8(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt16 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.EInt16(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt32 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.EInt32(r, (span (rng state i) digits, -v), suffix), i + 2)
+    | TInt128 v ->
+      let (digits, suffix) = splitTrailingRange state (i + 1) 1
+      (WT.EInt128(r, (span (rng state i) digits, -v), suffix), i + 2)
     | TFloat v ->
       let (whole, frac) = floatParts state (i + 1) v
       (WT.EFloat(r, true, whole, frac), i + 2)
@@ -1686,21 +1903,16 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
     (WT.EFloat(r, v < 0.0, whole, frac), i + 1)
   | TCharLit c ->
     let r = rng state i
-    (WT.EChar(
-      r,
-      Some(r, c),
-      { start = r.start; end_ = r.start },
-      { start = r.end_; end_ = r.end_ }
-     ),
-     i + 1)
+    let (openQuote, contents, closeQuote) = literalTextRanges state i "'"
+    (WT.EChar(r, Some(contents, c), openQuote, closeQuote), i + 1)
   | TTrue -> (WT.EBool(rng state i, true), i + 1)
   | TFalse -> (WT.EBool(rng state i, false), i + 1)
   | TStringLit s ->
-    // single-segment string; quote ranges approximated to the token edges
     let r = rng state i
-    let openQ = { start = r.start; end_ = r.start }
-    let closeQ = { start = r.end_; end_ = r.end_ }
-    (WT.EString(r, None, [ WT.StringText(r, s) ], openQ, closeQ), i + 1)
+    let delimiter = if (txt state i).StartsWith "\"\"\"" then "\"\"\"" else "\""
+    let (openQuote, contents, closeQuote) = literalTextRanges state i delimiter
+    (WT.EString(r, None, [ WT.StringText(contents, s) ], openQuote, closeQuote),
+     i + 1)
   | TInterpString -> parseInterpString state i
   | TIdent name ->
     let (mods0, final0, j0) = parseQualified state i
@@ -1712,7 +1924,11 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
       && (rng state j0).start.row = final0.range.end_.row
       && (rng state j0).start.column = final0.range.end_.column
     let (nameTypeArgs, jTA) =
-      if hasAdjacentLt then parseTypeArgs state j0 else ([], j0)
+      if hasAdjacentLt then
+        let (args, _, next) = parseTypeArgs state j0
+        (args, next)
+      else
+        ([], j0)
     // `Type<T>.Case`: fold `Type` (which carries the type args) into the module
     // path so the enum branch treats the trailing `.Case` as the case name.
     let (mods, final, j) =
@@ -1791,7 +2007,9 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
       // position, so a constructor used as an ARGUMENT (`f None (g)`) stays nullary
       // instead of over-grabbing its sibling arg.
       let endR =
-        if fields.Count > 0 then WT.exprRange (Seq.last fields) else final.range
+        if tok state j = TLParen && k > j then rng state (k - 1)
+        elif fields.Count > 0 then WT.exprRange (Seq.last fields)
+        else final.range
       (WT.EEnum(
         span (rng state i) endR,
         typeName,
@@ -1832,6 +2050,7 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
       let (p, k2) = parseLetPattern state k
       pats.Add p
       if k2 = k then k <- k + 1 else k <- k2
+    if pats.Count = 0 then errExpected state k "at least one lambda parameter"
     let (arrow, m) =
       if tok state k = TArrow then
         (rng state k, k + 1)
@@ -1846,11 +2065,31 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
     match tok state (i + 1), tok state (i + 2) with
     | TRBrace, _
     | TIdent _, TEquals ->
+      err
+        state
+        DiagnosticCode.expected
+        i
+        "Anonymous records are not supported; use a named record type"
       let z = zeroWidthAtEnd (rng state i)
       let emptyType : WT.QualifiedTypeIdentifier =
         { range = z; modules = []; typ = { range = z; name = "" }; typeArgs = [] }
       parseRecord state emptyType (rng state i) i
     | _ -> parseRecordUpdate state i
+  // TODO: Support these reserved operators once their precedence and
+  // polymorphic numeric/Bool dispatch are defined end to end.
+  | TShl
+  | TShr
+  | TBitAnd
+  | TBitOr
+  | TBitNot
+  | TNot
+  | TDotDotDot ->
+    err
+      state
+      DiagnosticCode.unexpected
+      i
+      $"'{txt state i}' is reserved but not supported by the expression grammar"
+    (WT.EError(rng state i), i + 1)
   | _ ->
     errExpected state i "an expression"
     // recovery: an explicit error-hole node; leave closing/separating/decl-start
@@ -1988,6 +2227,12 @@ and parseList (state : ParserState) (i : int) : WT.Expr * int =
         k <- k2 + 1
       else
         elems.Add(e, None)
+        if tok state k2 <> TRBracket then
+          requireElementSeparator
+            state
+            (WT.exprRange e)
+            k2
+            "a comma, semicolon, or newline between list elements"
         k <- k2
     let (closeB, p) =
       if tok state k = TRBracket then
@@ -2020,9 +2265,18 @@ and parseRecord
         setStmtCol state (rng state k).start.column
         let (value, k2) = parseExpr state (k + 2)
         fields.Add(span fnameR (WT.exprRange value), (fnameR, fname), value)
-        if tok state k2 = TSemicolon || tok state k2 = TComma then k <- k2 + 1
-        elif k2 > k then k <- k2
-        else go <- false
+        if tok state k2 = TSemicolon || tok state k2 = TComma then
+          k <- k2 + 1
+        elif k2 > k then
+          if tok state k2 <> TRBrace then
+            requireElementSeparator
+              state
+              (WT.exprRange value)
+              k2
+              "a comma, semicolon, or newline between record fields"
+          k <- k2
+        else
+          go <- false
       | _ ->
         errExpected state k "a record field 'name = value'"
         go <- false
@@ -2056,9 +2310,18 @@ and parseDict
         setStmtCol state (rng state k).start.column
         let (value, k2) = parseExpr state (k + 2)
         entries.Add(span knameR (WT.exprRange value), (knameR, kname), value)
-        if tok state k2 = TSemicolon || tok state k2 = TComma then k <- k2 + 1
-        elif k2 > k then k <- k2
-        else go <- false
+        if tok state k2 = TSemicolon || tok state k2 = TComma then
+          k <- k2 + 1
+        elif k2 > k then
+          if tok state k2 <> TRBrace then
+            requireElementSeparator
+              state
+              (WT.exprRange value)
+              k2
+              "a comma, semicolon, or newline between dict entries"
+          k <- k2
+        else
+          go <- false
       | _ ->
         errExpected state k "a dict entry 'key = value'"
         go <- false
@@ -2102,9 +2365,18 @@ and parseRecordUpdate (state : ParserState) (i : int) : WT.Expr * int =
         setStmtCol state (rng state k).start.column
         let (value, k2) = parseExpr state (k + 2)
         updates.Add((fnameR, fname), eqR, value)
-        if tok state k2 = TSemicolon || tok state k2 = TComma then k <- k2 + 1
-        elif k2 > k then k <- k2
-        else go <- false
+        if tok state k2 = TSemicolon || tok state k2 = TComma then
+          k <- k2 + 1
+        elif k2 > k then
+          if tok state k2 <> TRBrace then
+            requireElementSeparator
+              state
+              (WT.exprRange value)
+              k2
+              "a comma, semicolon, or newline between record-update fields"
+          k <- k2
+        else
+          go <- false
       | _ ->
         errExpected state k "a record-update field 'name = value'"
         go <- false
@@ -2198,10 +2470,14 @@ and parseTupleType (state : ParserState) (i : int) : WT.TypeReference * int =
      m)
 
 // `<T1, T2, …>` generic type-args on a custom type; uses expectGt so a trailing
-// `>>` splits correctly. Returns the args + the index after the closing `>`.
-and parseTypeArgs (state : ParserState) (i : int) : List<WT.TypeReference> * int =
+// `>>` splits correctly. Returns the args, the real or recovered closing `>`
+// range, and the index after it.
+and parseTypeArgs
+  (state : ParserState)
+  (i : int)
+  : List<WT.TypeReference> * Option<TokenRange> * int =
   if tok state i <> TLt then
-    ([], i)
+    ([], None, i)
   else
     let args = System.Collections.Generic.List<WT.TypeReference>()
     let (first, j) = parseTypeRef state (i + 1)
@@ -2214,8 +2490,8 @@ and parseTypeArgs (state : ParserState) (i : int) : List<WT.TypeReference> * int
       let (a, k2) = parseTypeRef state (k + 1)
       args.Add a
       k <- if k2 > k then k2 else k + 1
-    let (_closeR, k3) = expectGt state k
-    (List.ofSeq args, k3)
+    let (closeR, k3) = expectGt state k
+    (List.ofSeq args, Some closeR, k3)
 
 and parseAtomType (state : ParserState) (i : int) : WT.TypeReference * int =
   match tok state i with
@@ -2233,12 +2509,30 @@ and parseAtomType (state : ParserState) (i : int) : WT.TypeReference * int =
       errUnclosed state j ")" "(" openP
       (inner, j)
   | TIdent "List" when tok state (i + 1) = TLt ->
+    if
+      (rng state (i + 1)).start.row <> (rng state i).end_.row
+      || (rng state (i + 1)).start.column <> (rng state i).end_.column
+    then
+      err
+        state
+        DiagnosticCode.expected
+        (i + 1)
+        "Generic type arguments must be adjacent to the type name"
     let kwList = rng state i
     let openB = rng state (i + 1)
     let (inner, j) = parseTypeRef state (i + 2)
     let (closeB, k) = expectGt state j
     (WT.TList(span (rng state i) closeB, kwList, openB, inner, closeB), k)
   | TIdent "Dict" when tok state (i + 1) = TLt ->
+    if
+      (rng state (i + 1)).start.row <> (rng state i).end_.row
+      || (rng state (i + 1)).start.column <> (rng state i).end_.column
+    then
+      err
+        state
+        DiagnosticCode.expected
+        (i + 1)
+        "Generic type arguments must be adjacent to the type name"
     let kwDict = rng state i
     let openB = rng state (i + 1)
     let (inner, j) = parseTypeRef state (i + 2)
@@ -2266,11 +2560,22 @@ and parseAtomType (state : ParserState) (i : int) : WT.TypeReference * int =
      i + 1)
   | TIdent name when name.Length > 0 && System.Char.IsUpper name[0] ->
     let (mods, final, j) = parseQualified state i
-    let (typeArgs, j2) = parseTypeArgs state j
+    if
+      tok state j = TLt
+      && ((rng state j).start.row <> final.range.end_.row
+          || (rng state j).start.column <> final.range.end_.column)
+    then
+      err
+        state
+        DiagnosticCode.expected
+        j
+        "Generic type arguments must be adjacent to the type name"
+    let (typeArgs, closeGeneric, j2) = parseTypeArgs state j
     let endR =
-      match List.rev typeArgs with
-      | last :: _ -> WT.typeReferenceRange last
-      | [] -> final.range
+      match closeGeneric, List.rev typeArgs with
+      | Some closeRange, _ -> closeRange
+      | None, last :: _ -> WT.typeReferenceRange last
+      | None, [] -> final.range
     (WT.TCustom
       { range = span (rng state i) endR
         modules = mods
@@ -2322,15 +2627,12 @@ and parseParam (state : ParserState) (i : int) : WT.FnParam * int =
         (zeroWidthAtEnd (rng state afterTyp), afterTyp)
     (WT.FPNormal(span lparen rparen, nameId, typ, lparen, colon, rparen), afterRP)
 
-// a top-level `let` declaration: function `let f (p: T) … : R = body`
-// or value `let x [: T] = body`. `i` is TLet, `i+1` the name.
+// A declaration-scope function (`let f (p: T) … : R = body`) or value
+// (`val x = body`). Legacy module-level `let x = body` also comes through here
+// to retain a recovery DValue beside its focused diagnostic.
 and parseDecl (state : ParserState) (i : int) : WT.Declaration * int =
   let keywordLet = rng state i
-  // optional modifiers: `let private name …`, `let rec name …`
-  let nameIdx =
-    match tok state (i + 1) with
-    | TIdent("private" | "internal" | "rec") -> i + 2
-    | _ -> i + 1
+  let nameIdx = i + 1
   let nameId : WT.Identifier =
     match tok state nameIdx with
     | TIdent nm -> { range = rng state nameIdx; name = nm }
@@ -2346,6 +2648,17 @@ and parseDecl (state : ParserState) (i : int) : WT.Declaration * int =
       let (p, kk2) = parseParam state kk
       ps.Add p
       if kk2 = kk then more <- false else kk <- kk2
+    for parameter in ps do
+      match parameter with
+      | WT.FPNormal(_, name, _, _, _, _) when name.name = "" ->
+        state.diagnostics.Add
+          { code = DiagnosticCode.pattern
+            severity = DiagError
+            range = name.range
+            message = "Blank parameter '___' is not allowed in a package function"
+            related = []
+            hint = Some "use () for a unit parameter or give the parameter a name" }
+      | _ -> ()
     let (colon, afterColon) =
       if tok state kk = TColon then
         (rng state kk, kk + 1)
@@ -2375,6 +2688,13 @@ and parseDecl (state : ParserState) (i : int) : WT.Declaration * int =
   else
     let afterAnno =
       if tok state afterName = TColon then
+        state.diagnostics.Add
+          { code = DiagnosticCode.unexpected
+            severity = DiagError
+            range = rng state afterName
+            message = "Value annotations are not supported"
+            related = []
+            hint = Some "remove ': Type' from this value declaration" }
         snd (parseTypeRef state (afterName + 1))
       else
         afterName
@@ -2389,7 +2709,7 @@ and parseDecl (state : ParserState) (i : int) : WT.Declaration * int =
       { range = span keywordLet (WT.exprRange body)
         name = nameId
         body = body
-        keywordLet = keywordLet
+        keywordVal = keywordLet
         symbolEquals = eq
         description = docOf state i },
      afterBody)
@@ -2455,6 +2775,12 @@ and parseRecordDef (state : ParserState) (i : int) : WT.TypeDefinition * int =
         k <- k2 + 1
       elif k2 > k then
         fields.Add(field, None)
+        if tok state k2 <> TRBrace then
+          requireElementSeparator
+            state
+            (WT.typeReferenceRange typ)
+            k2
+            "a comma, semicolon, or newline between record-type fields"
         k <- k2
       else
         go <- false
@@ -2562,7 +2888,8 @@ and parseTestExpected (state : ParserState) (i : int) : WT.TestExpected * int =
   | TIdent "sqlerror", TStringLit s, _ -> (WT.TESqlError s, i + 2)
   | _ -> let (e, j) = parseExpr state i in (WT.TEExpr e, j)
 
-// `[<DB>]` attribute prefix on a type decl (test-mode only): 5 tokens
+// `[<DB>]` attribute prefix on a type decl: 5 tokens. Parsing represents it;
+// post-parse validation restricts it to Test source.
 // `[` `<` `DB` `>` `]`.
 and isDbAttr (state : ParserState) (i : int) : bool =
   tok state i = TLBracket
@@ -2574,11 +2901,12 @@ and isDbAttr (state : ParserState) (i : int) : bool =
 // Parse declarations/expressions whose start column is >= minCol (offside): a
 // less-indented item ends the scope. Used for the file body and, recursively,
 // for nested `module X =` blocks, so module nesting is preserved (FQN paths).
-// `insideModule` distinguishes a module body (declarations only — a no-param
-// `let x = …` is a value DECLARATION) from a file's top level (a no-param
-// `let x = …` is a script EXPRESSION that sequences with what follows).
-// `state.testMode` enables testfile syntax: `actual = expected` assertions (→ DTest)
-// and `[<DB>] type …` user DBs (→ DTypeDB).
+// `insideModule` distinguishes a module body (declarations only — values require
+// `val`) from a file's top level (a no-param `let x = …` is a script EXPRESSION
+// that sequences with what follows).
+// Test assertions and `[<DB>]` declarations are represented in every parse.
+// Validation later decides whether Script, Package, or Test source may contain
+// them. This keeps file purpose out of expression parsing.
 and parseItems
   (state : ParserState)
   (insideModule : bool)
@@ -2611,19 +2939,34 @@ and parseItemsBody
       setStmtCol state (rng state k).start.column
       state.declAnchor <- (rng state k).start.column
       (match tok state k, tok state (k + 1) with
-       | TLBracket, TLt when
-         state.testMode && isDbAttr state k && tok state (k + 5) = TType
-         ->
+       | TLBracket, TLt when isDbAttr state k && tok state (k + 5) = TType ->
          // `[<DB>] type Name = AliasedType` — a user DB declaration
          let (d, k2) = parseTypeDecl state (k + 5)
          (match d with
-          | WT.DType t -> decls.Add(WT.DTypeDB t)
+          | WT.DType t ->
+            match t.definition with
+            | WT.TDAlias _ -> decls.Add(WT.DTypeDB t)
+            | _ ->
+              err
+                state
+                DiagnosticCode.expected
+                (k + 5)
+                "[<DB>] type must be a type alias"
+              decls.Add(WT.DTypeDB t)
           | other -> decls.Add other)
          k <- k2
        | TVal, TIdent _ ->
          // `val x = …` is ALWAYS a value DECLARATION (the explicit value-decl
          // keyword), in a module or at file top level alike.
          let (d, k2) = parseDecl state k
+         match d with
+         | WT.DFunction _ ->
+           err
+             state
+             DiagnosticCode.expected
+             k
+             "'val' declares a value and cannot have function parameters"
+         | _ -> ()
          decls.Add d
          k <- k2
        | TLet, TIdent _ ->
@@ -2632,13 +2975,10 @@ and parseItemsBody
          // errors aren't reported twice
          let diagnosticsBefore = state.diagnostics.Count
          let (d, k2) = parseDecl state k
-         // A no-param `let x = …` is a value DECLARATION inside a module (a
-         // package constant), but a script EXPRESSION at a file's top level —
-         // there it sequences with the statements after it (`parseBlock` folds
-         // them into the let body), so a COMPUTED binding is run by the
-         // interpreter, not the constant-only package-value evaluator. An
-         // explicit `in` is always an expression; `let f (p) … = …` is a
-         // DFunction (never reparsed).
+         // A no-param `let x = …` is a script EXPRESSION at file top level and
+         // with explicit `in`. At module declaration scope it is retained as a
+         // DValue recovery node with a diagnostic requiring `val`; `let f (p) …`
+         // is a DFunction and is never reparsed.
          let asExpr =
            match d with
            | WT.DValue _ -> tok state k2 = TIn || not insideModule
@@ -2652,6 +2992,17 @@ and parseItemsBody
            exprs.Add e
            k <- k3
          else
+           match d with
+           | WT.DValue _ when insideModule ->
+             state.diagnostics.Add
+               { code = DiagnosticCode.unexpected
+                 severity = DiagError
+                 range = rng state k
+                 message =
+                   "Module value declarations must use 'val'; 'let' is reserved for functions and local bindings"
+                 related = []
+                 hint = Some "replace 'let' with 'val'" }
+           | _ -> ()
            decls.Add d
            k <- k2
        | TType, TIdent _ ->
@@ -2682,6 +3033,8 @@ and parseItemsBody
              parseItems state true (nk + 1) (moduleCol + 1)
            else
              parseItems state true nk minCol
+         if tok state nk = TEquals && List.isEmpty mdecls && List.isEmpty mexprs then
+           errExpected state (nk + 1) "an indented module body"
          // A module's trailing expressions belong to the module (as `DExpr`
          // declarations), not the enclosing scope — so they pretty-print nested.
          // span the whole module (header through last child), like other decls —
@@ -2698,8 +3051,9 @@ and parseItemsBody
          if tok state nk <> TEquals then go <- false // file header consumed the rest
        | _ ->
          let (e, k2) = parseExpr state k
-         // test-mode: a top-level `actual = expected` is a test assertion
-         if state.testMode && tok state k2 = TEquals then
+         // A source-level `actual = expected` is represented as a test node.
+         // Its validity for this caller is decided after parsing.
+         if tok state k2 = TEquals then
            let (expected, k3) = parseTestExpected state (k2 + 1)
            let endR = if k3 > 0 then rng state (k3 - 1) else rng state k2
            decls.Add(
@@ -2715,11 +3069,9 @@ and parseItemsBody
       if k = before then if tok state k = TEOF then go <- false else k <- k + 1
   (List.ofSeq decls, List.ofSeq exprs, k)
 
-// testfiles treat their top level as a module body (top-level `let x = …` is a
-// value declaration), so insideModule = testMode.
 and parseFile (state : ParserState) : ParseResult =
   validateLiterals state
-  let (topDecls, topExprs, _) = parseItems state state.testMode 0 0
+  let (topDecls, topExprs, _) = parseItems state false 0 0
   let fileRange =
     if state.tokenCount > 1 then
       span (rng state 0) (rng state (state.tokenCount - 2))
@@ -2731,17 +3083,12 @@ and parseFile (state : ParserState) : ParseResult =
 
 /// Parse a pre-tokenized stream. Part of the rec chain so string interpolation
 /// can recursively parse the (range-offset) sub-tokens of each `{expr}`.
-and parseTokensAt
-  (interpDepth : int)
-  (testMode : bool)
-  (toks : SpannedToken[])
-  : ParseResult =
+and parseTokensAt (interpDepth : int) (toks : SpannedToken[]) : ParseResult =
   let scopes = System.Collections.Generic.Stack<OffsideScope>()
   scopes.Push { stmtCol = -1; stmtExact = false }
   let state =
     { toks = toks
       tokenCount = toks.Length
-      testMode = testMode
       diagnostics = System.Collections.Generic.List<Diagnostic>()
       scopes = scopes
       pendingGt = 0
@@ -2754,10 +3101,9 @@ and parseTokensAt
       interpDepth = interpDepth }
   parseFile state
 
-and parseTokens (testMode : bool) (toks : SpannedToken[]) : ParseResult =
-  parseTokensAt 0 testMode toks
+and parseTokens (toks : SpannedToken[]) : ParseResult = parseTokensAt 0 toks
 
-let parseWithMode (testMode : bool) (source : string) : ParseResult =
+let private parseSyntax (source : string) : ParseResult =
   match tokenize source with
   | Error e ->
     { parsed = None
@@ -2772,7 +3118,7 @@ let parseWithMode (testMode : bool) (source : string) : ParseResult =
   | Ok(toksList, lexDiags) ->
     // lexical-recovery diagnostics (malformed lexemes the tokenizer recovered from)
     // are surfaced alongside the parser's own diagnostics.
-    let result = parseTokens testMode (List.toArray toksList)
+    let result = parseTokens (List.toArray toksList)
     let lexDiagnostics =
       lexDiags
       |> List.map (fun (r, m) ->
@@ -2784,11 +3130,48 @@ let parseWithMode (testMode : bool) (source : string) : ParseResult =
           hint = None })
     { result with diagnostics = lexDiagnostics @ result.diagnostics }
 
-let parse (source : string) : ParseResult = parseWithMode false source
+/// Parse for tooling: return a recoverable tree and include mode-independent
+/// structural diagnostics after a clean syntax pass.
+let parse (source : string) : ParseResult =
+  let result = parseSyntax source
+  let syntaxDiagnostics = result.diagnostics
+  // Tree-wide rules have one implementation in Validation. Run them only
+  // after a clean syntax pass so recovery holes do not create cascaded errors.
+  let structuralDiagnostics =
+    match syntaxDiagnostics, result.parsed with
+    | [], Some(WT.SourceFile sourceFile) ->
+      sourceFile
+      |> Validation.validateStructure
+      |> List.map diagnosticOfValidationIssue
+    | _ -> []
+  { result with diagnostics = syntaxDiagnostics @ structuralDiagnostics }
 
-/// Parse a testfile (`.dark` test) — enables `actual = expected` assertions and
-/// `[<DB>] type …` user DBs (the `=`-as-assertion dialect normal parsing rejects).
-let parseTestFile (source : string) : ParseResult = parseWithMode true source
+/// Parse for execution: syntax, structural, and file-purpose validation run
+/// once, and only a validated source file can be returned on success.
+let parseFor
+  (mode : Validation.Mode)
+  (source : string)
+  : Result<Validation.ValidatedSourceFile, List<Diagnostic>> =
+  let result = parseSyntax source
+  match result.diagnostics, result.parsed with
+  | [], Some(WT.SourceFile sourceFile) ->
+    match Validation.validate mode sourceFile with
+    | Ok validated -> Ok validated
+    | Error issues ->
+      issues |> NEList.toList |> List.map diagnosticOfValidationIssue |> Error
+  | (_ :: _ as diagnostics), _ -> Error diagnostics
+  | [], None ->
+    Error
+      [ { code = DiagnosticCode.unexpected
+          severity = DiagError
+          range = { start = { row = 0; column = 0 }; end_ = { row = 0; column = 0 } }
+          message = "Parser did not produce a source tree"
+          related = []
+          hint = None } ]
+
+/// Kept as a compatibility entrypoint. Test syntax has the same parse shape as
+/// all other source; parseFor Validation.Test applies the Test purpose rules.
+let parseTestFile (source : string) : ParseResult = parse source
 
 /// Render a diagnostic for humans: code, position, message, a source snippet
 /// with caret markers, related locations, and the hint if any. E.g.

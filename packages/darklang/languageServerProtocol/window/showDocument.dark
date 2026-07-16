@@ -5,7 +5,7 @@ module Darklang.LanguageServerProtocol.Window.ShowDocument
 type ShowDocumentClientCapabilities = { support: Bool }
 
 module ShowDocumentRequest =
-  let method = "window/showDocument"
+  val method = "window/showDocument"
   // let messageDirection = MessageDirection.ServerToClient
 
   module ShowDocumentParams =

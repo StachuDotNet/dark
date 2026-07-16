@@ -18,7 +18,7 @@ type EditResult =
   | Finished of String
   | Cancelled
 
-let empty : State =
+val empty =
   State
     { program = LineInput.empty
       args = LineInput.empty

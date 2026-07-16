@@ -1,7 +1,7 @@
 // recording some personal notes on ideas for working with JSON in Dark
 module Stachu =
   module Json =
-    let todo = "uncomment and process below"
+    val todo = "uncomment and process below"
 
 // module JsonPath =
 //   module Part =

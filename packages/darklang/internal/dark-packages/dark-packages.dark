@@ -95,7 +95,7 @@ let parseExactMatch (s: String) : Stdlib.Result.Result<Bool, String> =
 
 /// Branch the package server reads/writes against. Single-tenant install →
 /// always main.
-let serverBranchId: Uuid = SCM.Branch.mainBranchId
+val serverBranchId = SCM.Branch.mainBranchId
 
 
 // ────────────────────────── handlers ──────────────────────────
@@ -103,7 +103,7 @@ let serverBranchId: Uuid = SCM.Branch.mainBranchId
 let pingHandlerFn (req: HttpRequest) : HttpResponse =
   Stdlib.Http.responseWithText "pong" 200
 
-let pingHandler: Handler =
+val pingHandler =
   Handler { route = "/ping"; method = "GET"; handler = pingHandlerFn }
 
 
@@ -119,7 +119,7 @@ let opsPostHandlerFn (req: HttpRequest) : HttpResponse =
   | Error _err ->
     Stdlib.Http.badRequest "Invalid request body. Expected JSON list of PackageOp."
 
-let opsPostHandler: Handler =
+val opsPostHandler =
   Handler { route = "/ops"; method = "POST"; handler = opsPostHandlerFn }
 
 
@@ -134,7 +134,7 @@ let opsGetHandlerFn (req: HttpRequest) : HttpResponse =
       let json = ops |> Stdlib.Json.serialize<List<LanguageTools.ProgramTypes.PackageOp>>
       Stdlib.Http.responseWithJson json 200
 
-let opsGetHandler: Handler =
+val opsGetHandler =
   Handler { route = "/ops"; method = "GET"; handler = opsGetHandlerFn }
 
 
@@ -147,7 +147,7 @@ let statsHandlerFn (req: HttpRequest) : HttpResponse =
 - values: {stats.values |> Stdlib.Int.toString}"
   Stdlib.Http.responseWithText body 200
 
-let statsHandler: Handler =
+val statsHandler =
   Handler
     { route = "/stats"; method = "GET"; handler = statsHandlerFn }
 
@@ -200,14 +200,14 @@ let searchHandlerFn (req: HttpRequest) : HttpResponse =
               let json = results |> Stdlib.Json.serialize<LanguageTools.ProgramTypes.Search.SearchResults>
               Stdlib.Http.responseWithJson json 200
 
-let searchHandler: Handler =
+val searchHandler =
   Handler { route = "/search"; method = "GET"; handler = searchHandlerFn }
 
 
 /// `/:location` — interpret the single path segment as a dotted name. For a
 /// one-segment owner, returns direct descendants. For longer names, resolves
 /// via `findAny` (type/fn/value) and falls back to a module browse on miss.
-let locationHandlerRoute = "/:location"
+val locationHandlerRoute = "/:location"
 
 let locationHandlerFn (req: HttpRequest) : HttpResponse =
   match Stdlib.HttpServer.getPathParam req locationHandlerRoute "location" with
@@ -275,7 +275,7 @@ let locationHandlerFn (req: HttpRequest) : HttpResponse =
             |> Stdlib.Json.serialize<LanguageTools.ProgramTypes.Search.SearchResults>
           Stdlib.Http.responseWithJson json 200
 
-let locationHandler: Handler =
+val locationHandler =
   Handler
     { route = locationHandlerRoute
       method = "GET"
@@ -289,7 +289,7 @@ let locationHandler: Handler =
 // schema moved to content-addressed hashes, so we accept the hash hex
 // directly with no parse step.
 
-let typeFindRoute = "/type/find/:name"
+val typeFindRoute = "/type/find/:name"
 let typeFindHandlerFn (req: HttpRequest) : HttpResponse =
   match Stdlib.HttpServer.getPathParam req typeFindRoute "name" with
   | None -> Stdlib.Http.badRequest "Missing :name segment"
@@ -302,11 +302,11 @@ let typeFindHandlerFn (req: HttpRequest) : HttpResponse =
         Stdlib.Http.responseWithJson (hash |> Stdlib.Json.serialize<LanguageTools.ProgramTypes.Hash>) 200
       | None -> Stdlib.Http.notFound ()
 
-let typeFindHandler: Handler =
+val typeFindHandler =
   Handler
     { route = typeFindRoute; method = "GET"; handler = typeFindHandlerFn }
 
-let typeGetRoute = "/type/get/:hash"
+val typeGetRoute = "/type/get/:hash"
 let typeGetHandlerFn (req: HttpRequest) : HttpResponse =
   match Stdlib.HttpServer.getPathParam req typeGetRoute "hash" with
   | None -> Stdlib.Http.badRequest "Missing :hash segment"
@@ -318,11 +318,11 @@ let typeGetHandlerFn (req: HttpRequest) : HttpResponse =
       Stdlib.Http.responseWithJson json 200
     | None -> Stdlib.Http.notFound ()
 
-let typeGetHandler: Handler =
+val typeGetHandler =
   Handler { route = typeGetRoute; method = "GET"; handler = typeGetHandlerFn }
 
 
-let typeGetWithLocationRoute = "/type/get/with-location/:hash"
+val typeGetWithLocationRoute = "/type/get/with-location/:hash"
 let typeGetWithLocationHandlerFn
   (req: HttpRequest)
   : HttpResponse =
@@ -338,14 +338,14 @@ let typeGetWithLocationHandlerFn
       Stdlib.Http.responseWithJson json 200
     | None -> Stdlib.Http.notFound ()
 
-let typeGetWithLocationHandler: Handler =
+val typeGetWithLocationHandler =
   Handler
     { route = typeGetWithLocationRoute
       method = "GET"
       handler = typeGetWithLocationHandlerFn }
 
 
-let valueFindRoute = "/value/find/:name"
+val valueFindRoute = "/value/find/:name"
 let valueFindHandlerFn (req: HttpRequest) : HttpResponse =
   match Stdlib.HttpServer.getPathParam req valueFindRoute "name" with
   | None -> Stdlib.Http.badRequest "Missing :name segment"
@@ -358,12 +358,12 @@ let valueFindHandlerFn (req: HttpRequest) : HttpResponse =
         Stdlib.Http.responseWithJson (hash |> Stdlib.Json.serialize<LanguageTools.ProgramTypes.Hash>) 200
       | None -> Stdlib.Http.notFound ()
 
-let valueFindHandler: Handler =
+val valueFindHandler =
   Handler
     { route = valueFindRoute; method = "GET"; handler = valueFindHandlerFn }
 
 
-let valueGetRoute = "/value/get/:hash"
+val valueGetRoute = "/value/get/:hash"
 let valueGetHandlerFn (req: HttpRequest) : HttpResponse =
   match Stdlib.HttpServer.getPathParam req valueGetRoute "hash" with
   | None -> Stdlib.Http.badRequest "Missing :hash segment"
@@ -375,12 +375,12 @@ let valueGetHandlerFn (req: HttpRequest) : HttpResponse =
       Stdlib.Http.responseWithJson json 200
     | None -> Stdlib.Http.notFound ()
 
-let valueGetHandler: Handler =
+val valueGetHandler =
   Handler
     { route = valueGetRoute; method = "GET"; handler = valueGetHandlerFn }
 
 
-let valueGetWithLocationRoute = "/value/get/with-location/:hash"
+val valueGetWithLocationRoute = "/value/get/with-location/:hash"
 let valueGetWithLocationHandlerFn
   (req: HttpRequest)
   : HttpResponse =
@@ -396,14 +396,14 @@ let valueGetWithLocationHandlerFn
       Stdlib.Http.responseWithJson json 200
     | None -> Stdlib.Http.notFound ()
 
-let valueGetWithLocationHandler: Handler =
+val valueGetWithLocationHandler =
   Handler
     { route = valueGetWithLocationRoute
       method = "GET"
       handler = valueGetWithLocationHandlerFn }
 
 
-let functionFindRoute = "/function/find/:name"
+val functionFindRoute = "/function/find/:name"
 let functionFindHandlerFn (req: HttpRequest) : HttpResponse =
   match Stdlib.HttpServer.getPathParam req functionFindRoute "name" with
   | None -> Stdlib.Http.badRequest "Missing :name segment"
@@ -416,14 +416,14 @@ let functionFindHandlerFn (req: HttpRequest) : HttpResponse =
         Stdlib.Http.responseWithJson (hash |> Stdlib.Json.serialize<LanguageTools.ProgramTypes.Hash>) 200
       | None -> Stdlib.Http.notFound ()
 
-let functionFindHandler: Handler =
+val functionFindHandler =
   Handler
     { route = functionFindRoute
       method = "GET"
       handler = functionFindHandlerFn }
 
 
-let functionGetRoute = "/function/get/:hash"
+val functionGetRoute = "/function/get/:hash"
 let functionGetHandlerFn (req: HttpRequest) : HttpResponse =
   match Stdlib.HttpServer.getPathParam req functionGetRoute "hash" with
   | None -> Stdlib.Http.badRequest "Missing :hash segment"
@@ -435,12 +435,12 @@ let functionGetHandlerFn (req: HttpRequest) : HttpResponse =
       Stdlib.Http.responseWithJson json 200
     | None -> Stdlib.Http.notFound ()
 
-let functionGetHandler: Handler =
+val functionGetHandler =
   Handler
     { route = functionGetRoute; method = "GET"; handler = functionGetHandlerFn }
 
 
-let functionGetWithLocationRoute = "/function/get/with-location/:hash"
+val functionGetWithLocationRoute = "/function/get/with-location/:hash"
 let functionGetWithLocationHandlerFn
   (req: HttpRequest)
   : HttpResponse =
@@ -460,7 +460,7 @@ let functionGetWithLocationHandlerFn
       Stdlib.Http.responseWithJson json 200
     | None -> Stdlib.Http.notFound ()
 
-let functionGetWithLocationHandler: Handler =
+val functionGetWithLocationHandler =
   Handler
     { route = functionGetWithLocationRoute
       method = "GET"
@@ -474,7 +474,7 @@ let functionGetWithLocationHandler: Handler =
 // first by convention only — they cannot collide with single-segment
 // paths regardless of order.
 
-let handlers: List<Handler> =
+val handlers =
   [ // multi-segment: /type/...
     typeFindHandler
     typeGetWithLocationHandler

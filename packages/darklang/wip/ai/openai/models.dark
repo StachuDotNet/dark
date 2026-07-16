@@ -144,78 +144,78 @@ let delete
 
 // GPT-5 family (flagship, Dec 2025)
 // https://platform.openai.com/docs/models
-let gpt5 = "gpt-5"
-let gpt51 = "gpt-5.1"
-let gpt52 = "gpt-5.2"
-let gpt5Mini = "gpt-5-mini"
+val gpt5 = "gpt-5"
+val gpt51 = "gpt-5.1"
+val gpt52 = "gpt-5.2"
+val gpt5Mini = "gpt-5-mini"
 
 // GPT-4.1 family (Apr 2025)
 // https://openai.com/index/gpt-4-1/
-let gpt41 = "gpt-4.1-2025-04-14"
-let gpt41Mini = "gpt-4.1-mini-2025-04-14"
-let gpt41Nano = "gpt-4.1-nano-2025-04-14"
+val gpt41 = "gpt-4.1-2025-04-14"
+val gpt41Mini = "gpt-4.1-mini-2025-04-14"
+val gpt41Nano = "gpt-4.1-nano-2025-04-14"
 
 // GPT-4o family (legacy, largely replaced by GPT-4.1 in API)
-let gpt4o = "gpt-4o"
-let gpt4oLatest = "gpt-4o-2024-11-20"
-let gpt4oMini = "gpt-4o-mini"
+val gpt4o = "gpt-4o"
+val gpt4oLatest = "gpt-4o-2024-11-20"
+val gpt4oMini = "gpt-4o-mini"
 
 // O-series (reasoning models)
 // https://platform.openai.com/docs/guides/reasoning
 // https://openai.com/index/introducing-o3-and-o4-mini/
 // Note: These don't support temperature, top_p, presence_penalty, frequency_penalty
 // They require max_completion_tokens instead of max_tokens
-let o1 = "o1"
-let o1Pro = "o1-pro"
-let o3 = "o3"
-let o3Mini = "o3-mini"
-let o3Pro = "o3-pro"
-let o4Mini = "o4-mini"
+val o1 = "o1"
+val o1Pro = "o1-pro"
+val o3 = "o3"
+val o3Mini = "o3-mini"
+val o3Pro = "o3-pro"
+val o4Mini = "o4-mini"
 
 // O-series (deep research models)
-let o3DeepResearch = "o3-deep-research"
-let o4MiniDeepResearch = "o4-mini-deep-research"
+val o3DeepResearch = "o3-deep-research"
+val o4MiniDeepResearch = "o4-mini-deep-research"
 
 // GPT-4 Turbo (legacy)
-let gpt4Turbo = "gpt-4-turbo"
+val gpt4Turbo = "gpt-4-turbo"
 
 // Embeddings
-let textEmbedding3Small = "text-embedding-3-small"
-let textEmbedding3Large = "text-embedding-3-large"
-let textEmbeddingAda002 = "text-embedding-ada-002"
+val textEmbedding3Small = "text-embedding-3-small"
+val textEmbedding3Large = "text-embedding-3-large"
+val textEmbeddingAda002 = "text-embedding-ada-002"
 
 // Audio - Text-to-Speech
 // https://openai.com/index/introducing-our-next-generation-audio-models/
-let tts1 = "tts-1"
-let tts1Hd = "tts-1-hd"
-let gpt4oMiniTts = "gpt-4o-mini-tts"
-let gpt4oMiniTtsSnapshot = "gpt-4o-mini-tts-2025-12-15"
+val tts1 = "tts-1"
+val tts1Hd = "tts-1-hd"
+val gpt4oMiniTts = "gpt-4o-mini-tts"
+val gpt4oMiniTtsSnapshot = "gpt-4o-mini-tts-2025-12-15"
 
 // Audio - Speech-to-Text (Transcription)
 // https://developers.openai.com/api/docs/guides/speech-to-text/
-let whisper1 = "whisper-1"
-let gpt4oTranscribe = "gpt-4o-transcribe"
-let gpt4oMiniTranscribe = "gpt-4o-mini-transcribe"
-let gpt4oMiniTranscribeSnapshot = "gpt-4o-mini-transcribe-2025-12-15"
-let gpt4oTranscribeDiarize = "gpt-4o-transcribe-diarize"
+val whisper1 = "whisper-1"
+val gpt4oTranscribe = "gpt-4o-transcribe"
+val gpt4oMiniTranscribe = "gpt-4o-mini-transcribe"
+val gpt4oMiniTranscribeSnapshot = "gpt-4o-mini-transcribe-2025-12-15"
+val gpt4oTranscribeDiarize = "gpt-4o-transcribe-diarize"
 
 // Audio - Chat with audio input/output
-let gpt4oAudioPreview = "gpt-4o-audio-preview"
-let gpt4oMiniAudioPreview = "gpt-4o-mini-audio-preview"
+val gpt4oAudioPreview = "gpt-4o-audio-preview"
+val gpt4oMiniAudioPreview = "gpt-4o-mini-audio-preview"
 
 // Images - GPT Image (recommended)
 // https://platform.openai.com/docs/guides/image-generation
-let gptImage1 = "gpt-image-1"
-let gptImage15 = "gpt-image-1.5"
-let gptImage1Mini = "gpt-image-1-mini"
+val gptImage1 = "gpt-image-1"
+val gptImage15 = "gpt-image-1.5"
+val gptImage1Mini = "gpt-image-1-mini"
 
 // Images - DALL-E (deprecated, sunset May 12, 2026)
 // https://platform.openai.com/docs/deprecations
-let dalle3 = "dall-e-3"
-let dalle2 = "dall-e-2"
+val dalle3 = "dall-e-3"
+val dalle2 = "dall-e-2"
 
 // Default model for chat
-let default_ = gpt4o
+val default_ = gpt4o
 
 
 // =============================================================================

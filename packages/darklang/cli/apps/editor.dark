@@ -27,14 +27,14 @@ let selectedApp (state: State) : Stdlib.Option.Option<Model.App> =
 // ── rendering ──
 
 // `s` cut to `maxLen` display columns, with a trailing ellipsis when it doesn't fit.
-let private truncate (s: String) (maxLen: Int) : String =
+let truncate (s: String) (maxLen: Int) : String =
   if (Stdlib.String.length s) <= maxLen then
     s
   else
     (Stdlib.String.slice s 0 (maxLen - 1)) ++ "…"
 
 
-let private appRow (state: State) (idx: Int) (app: Model.App) : String =
+let appRow (state: State) (idx: Int) (app: Model.App) : String =
   let pointer =
     if idx == state.selected then
       Colors.colorize (Colors.bold ++ Colors.cyan) "▸ "
@@ -79,7 +79,7 @@ let private appRow (state: State) (idx: Int) (app: Model.App) : String =
 
 // A titled group of rows (nothing if the group is empty). `rows` carries each app's catalog index so the
 // selection highlight stays correct across the split.
-let private printSection (state: State) (title: String) (rows: List<(Int * Model.App)>) : Unit =
+let printSection (state: State) (title: String) (rows: List<(Int * Model.App)>) : Unit =
   if Stdlib.List.isEmpty rows then
     ()
   else

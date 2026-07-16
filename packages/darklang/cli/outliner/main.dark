@@ -80,7 +80,7 @@ let makeDocPicker (state: State) : ListPicker.State<Document> =
     let nodeCount = Stdlib.List.length doc.outline.rootChildren
     $"{doc.title}  ({Stdlib.Int.toString nodeCount} items)")
 
-let exportFormats : List<(String * String)> =
+val exportFormats =
   [ ("Markdown", ".md")
     ("OPML", ".opml") ]
 

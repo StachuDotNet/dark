@@ -63,7 +63,7 @@ module FileSystemProviderOptions =
 
 
 module ReadFile =
-  let method = "fileSystem/read"
+  val method = "fileSystem/read"
 
   module ReadFileParams =
     type ReadFileParams = { uri: URI }
@@ -85,7 +85,7 @@ module ReadFile =
 
 
 module WriteFile =
-  let method = "fileSystem/write"
+  val method = "fileSystem/write"
 
   module WriteFileOptions =
     type WriteFileOptions =
@@ -156,7 +156,7 @@ module FileChange =
 
 
 module Delete =
-  let method = "fileSystem/delete"
+  val method = "fileSystem/delete"
 
   module DeleteFileOptions =
     type DeleteFileOptions =
@@ -202,7 +202,7 @@ module Delete =
 
 
 module Rename =
-  let method = "fileSystem/rename"
+  val method = "fileSystem/rename"
 
   module RenameFileOptions =
     type RenameFileOptions =

@@ -25,7 +25,7 @@ type ViewOptions =
     slowThresholdMs: Stdlib.Option.Option<Int> }
 
 
-let defaultViewOptions: ViewOptions =
+val defaultViewOptions =
   ViewOptions
     { maxDepth = Stdlib.Option.Option.None
       hideBuiltins = false
@@ -163,7 +163,7 @@ let parseViewOptions
 /// scripts, test runs, CI) also skips so callers don't hang or
 /// fail on EOF. Only an interactive user without `--yes` sees the
 /// prompt — matching the `rm -i` shape.
-let private confirmDestructive (autoConfirm: Bool) (action: String) : Bool =
+let confirmDestructive (autoConfirm: Bool) (action: String) : Bool =
   if autoConfirm then
     true
   else if Stdlib.Bool.not (Builtin.stdinIsInteractive ()) then
@@ -785,7 +785,7 @@ let executeStatsJson (state: Cli.AppState) (limit: Int) : Cli.AppState =
 /// Returns the new `lastSeen` (the newest id pulled this tick). When
 /// `jsonMode`, each new trace prints as one NDJSON line; otherwise the
 /// human-readable two-space-indent form.
-let rec followLoop
+let followLoop
   (routeFilter: Stdlib.Option.Option<String>)
   (lastSeen: String)
   (jsonMode: Bool)

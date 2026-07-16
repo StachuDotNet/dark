@@ -926,7 +926,6 @@ module Expr =
         "EStatement", [ DInt64(int64 id); toDT expr; toDT next ]
 
       | PT.ESelf id -> "ESelf", [ DInt64(int64 id) ]
-      | PT.EError id -> "EError", [ DInt64(int64 id) ]
 
     DEnum(typeName (), typeName (), [], caseName, fields)
 
@@ -1109,7 +1108,6 @@ module Expr =
       PT.EValue(uint64 id, NameResolution.fromDT FQValueName.fromDT name)
 
     | DEnum(_, _, [], "ESelf", [ DInt64 id ]) -> PT.ESelf(uint64 id)
-    | DEnum(_, _, [], "EError", [ DInt64 id ]) -> PT.EError(uint64 id)
 
     | e -> Exception.raiseInternal "Invalid Expr" [ "e", e ]
 

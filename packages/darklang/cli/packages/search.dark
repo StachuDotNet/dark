@@ -1,7 +1,7 @@
 module Darklang.Cli.Packages.Search
 
 // Max results rendered per entity type.
-let displayCap = 20
+val displayCap = 20
 
 
 // Operator symbols aren't function names, so a literal search for one finds
@@ -167,7 +167,7 @@ type ParsedArgs =
 
 // TODO: `--shallow` is current-location scoped, which is confusing for
 // qualified queries like `search Darklang.Stdlib.List --shallow`.
-let argSpec: FlagParser.Spec =
+val argSpec =
   FlagParser.Spec
     { flags =
         [ ("--type", [])
@@ -209,7 +209,7 @@ let parseArgs (args: List<String>) : ParsedArgs =
       parseErrors = p.errors }
 
 
-let usage =
+val usage =
   "Usage: search <query> [--type] [--fn] [--val] [--exact] [--shallow] [--with-docs] [--include-deprecated]"
 
 

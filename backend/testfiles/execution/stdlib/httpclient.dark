@@ -29,16 +29,16 @@ module NoInternet =
 let get (url: String) (headers: List<String * String>): Stdlib.Result.Result<Stdlib.HttpClient.Response, Stdlib.HttpClient.RequestError> =
   Stdlib.HttpClient.get url headers
 
-let errInvalidHost = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.BadUrl(Stdlib.HttpClient.BadUrlDetails.InvalidHost))
-let errInvalidUri = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.BadUrl(Stdlib.HttpClient.BadUrlDetails.InvalidUri))
-let errInvalidRequest = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.BadUrl(Stdlib.HttpClient.BadUrlDetails.InvalidRequest))
+val errInvalidHost = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.BadUrl(Stdlib.HttpClient.BadUrlDetails.InvalidHost))
+val errInvalidUri = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.BadUrl(Stdlib.HttpClient.BadUrlDetails.InvalidUri))
+val errInvalidRequest = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.BadUrl(Stdlib.HttpClient.BadUrlDetails.InvalidRequest))
 
-let errNetworkError = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.NetworkError)
+val errNetworkError = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.NetworkError)
 
-let errBadHeaderEmptyKey = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.BadHeader(Stdlib.HttpClient.BadHeader.EmptyKey))
-let errBadMethod = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.BadMethod)
+val errBadHeaderEmptyKey = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.BadHeader(Stdlib.HttpClient.BadHeader.EmptyKey))
+val errBadMethod = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.BadMethod)
 
-let errUnsupportedProtocol = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.BadUrl(Stdlib.HttpClient.BadUrlDetails.UnsupportedProtocol))
+val errUnsupportedProtocol = Stdlib.Result.Result.Error(Stdlib.HttpClient.RequestError.BadUrl(Stdlib.HttpClient.BadUrlDetails.UnsupportedProtocol))
 
 // basic requests work
 // TODO: these tests are flaky – replace httpbin.org call with a local server

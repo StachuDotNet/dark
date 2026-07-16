@@ -17,10 +17,10 @@ type StatResult =
 /// Standard permission modes
 module Modes =
   /// 0755 — owner rwx, group rx, others rx
-  let defaultDir = 493
+  val defaultDir = 493
 
   /// 0644 — owner rw, group r, others r
-  let defaultFile = 420
+  val defaultFile = 420
 
 
 // -- Open flags ---------------------------------------------------
@@ -156,29 +156,29 @@ let getenv (name: String) : Stdlib.Option.Option<String> =
 let kill (pid: Int) (signal: Int) : Result.Result<Unit, Error> =
   Builtin.posixKill pid signal
 
-let sigterm = 15
-let sigkill = 9
-let sigint = 2
+val sigterm = 15
+val sigkill = 9
+val sigint = 2
 
 /// Common errno values (Linux/macOS)
 module Errno =
   /// Invalid argument
-  let einval = 22
+  val einval = 22
 
   /// No such process
-  let esrch = 3
+  val esrch = 3
 
   /// Operation not permitted
-  let eperm = 1
+  val eperm = 1
 
 
 /// Stat file-type mask and constants
 module StatMode =
   /// S_IFMT — bitmask for the file type fields
-  let ifmt = 61440
+  val ifmt = 61440
 
   /// S_IFDIR — directory
-  let ifdir = 16384
+  val ifdir = 16384
 
 
 /// Sleep for the given number of milliseconds.

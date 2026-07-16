@@ -10,7 +10,7 @@ type Json = Stdlib.AltJson.Json
 // ENDPOINTS
 // ---------------------------------------------------------------------------
 
-let batchEndpoint = "https://api.anthropic.com/v1/messages/batches"
+val batchEndpoint = "https://api.anthropic.com/v1/messages/batches"
 
 let batchEndpointWithId (batchId: String) : String =
   batchEndpoint ++ "/" ++ batchId

@@ -2,7 +2,7 @@ module Darklang.Stdlib.List
 
 
 /// Returns an empty list
-let empty = []
+val empty = []
 
 /// Returns a one-element list containing the given <param val>
 let singleton (value: 'a) : List<'a> =

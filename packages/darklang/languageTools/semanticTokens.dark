@@ -128,8 +128,8 @@ module TypeReference =
       | TUuid r
       | TDateTime r
       | TBlob r -> [ makeToken r TokenType.TypeName ]
-      | TStream(r, rk, ro, t, rc)
-      | TList(r, rk, ro, t, rc)
+      | TStream(_r, rk, ro, t, rc)
+      | TList(_r, rk, ro, t, rc)
       | TDict(_r, rk, ro, t, rc) ->
         Stdlib.List.flatten (
           [ [ makeToken rk TokenType.Keyword ]

@@ -13,7 +13,7 @@ type PickContext =
   { currentModule: List<String> }
 
 module PickContext =
-  let empty : PickContext =
+  val empty =
     PickContext { currentModule = [] }
 
 /// Count how many leading segments of two lists match.

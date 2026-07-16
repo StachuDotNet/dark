@@ -20,7 +20,7 @@ let platform () : Platform =
   | Ok "Darwin" -> Platform.Mac
   | _ -> Platform.Unsupported
 
-let private home () : String =
+let home () : String =
   Stdlib.Option.withDefault (Stdlib.Cli.Env.home ()) ""
 
 /// Where the OS service file lives for `slug` on this platform ("" if unsupported).
@@ -31,16 +31,16 @@ let unitPath (slug: String) : String =
   | Unsupported -> ""
 
 /// The foreground command the OS service supervises — the daemon entrypoint, `eval`'d by the running exe.
-let private daemonCommand (app: Model.App) : String =
+let daemonCommand (app: Model.App) : String =
   match app.target with
   | Daemon entrypoint ->
     (Stdlib.Cli.Daemon.launcher ()) ++ " eval '" ++ entrypoint ++ " \"" ++ app.slug ++ "\"'"
   | Foreground _ -> ""
 
-let private systemdUnit (app: Model.App) : String =
+let systemdUnit (app: Model.App) : String =
   $"[Unit]\nDescription={app.name} (Dark app)\n\n[Service]\nExecStart={daemonCommand app}\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n"
 
-let private launchdPlist (app: Model.App) : String =
+let launchdPlist (app: Model.App) : String =
   $"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>\n  <key>Label</key><string>com.darklang.{app.slug}</string>\n  <key>ProgramArguments</key><array><string>/bin/sh</string><string>-c</string><string>{daemonCommand app}</string></array>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n</dict></plist>\n"
 
 /// Register `app` as an OS service by writing its unit, then activating it.

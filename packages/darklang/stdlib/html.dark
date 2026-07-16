@@ -68,7 +68,7 @@ type Node =
 ///
 /// These elements are rendered without a closing tag (e.g., `<br>` not `<br></br>`).
 /// The HTML spec defines these elements as void, meaning they cannot contain any content.
-let voidElements =
+val voidElements =
   [ "area"
     "base"
     "br"

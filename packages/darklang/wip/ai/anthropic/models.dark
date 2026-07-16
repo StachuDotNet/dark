@@ -75,33 +75,33 @@ module Model =
     | _ -> Model.Custom s
 
   /// Recommended default model (balanced speed/quality)
-  let latest : Model = Model.Sonnet46
+  val latest = Model.Sonnet46
 
   /// Fast model for simple tasks
-  let fast : Model = Model.Haiku45
+  val fast = Model.Haiku45
 
   /// Most capable model for complex reasoning
-  let smart : Model = Model.Opus46
+  val smart = Model.Opus46
 
 // Legacy string constants (deprecated, use Model enum instead)
-let opus46 = "claude-opus-4-6"
-let sonnet46 = "claude-sonnet-4-6"
-let opus45 = "claude-opus-4-5-20251101"
-let sonnet45 = "claude-sonnet-4-5-20250929"
-let haiku45 = "claude-haiku-4-5-20251001"
-let opus41 = "claude-opus-4-1-20250805"
-let sonnet4 = "claude-sonnet-4-20250514"
-let opus4 = "claude-opus-4-20250514"
-let sonnet37 = "claude-3-7-sonnet-20250219"
-let sonnet37Latest = "claude-3-7-sonnet-latest"
-let sonnet35 = "claude-3-5-sonnet-20241022"
-let sonnet35Latest = "claude-3-5-sonnet-latest"
-let haiku35 = "claude-3-5-haiku-20241022"
-let haiku35Latest = "claude-3-5-haiku-latest"
-let haiku3 = "claude-3-haiku-20240307"
-let latest = "claude-sonnet-4-6"
-let latestFast = "claude-haiku-4-5-20251001"
-let latestSmart = "claude-opus-4-6"
+val opus46 = "claude-opus-4-6"
+val sonnet46 = "claude-sonnet-4-6"
+val opus45 = "claude-opus-4-5-20251101"
+val sonnet45 = "claude-sonnet-4-5-20250929"
+val haiku45 = "claude-haiku-4-5-20251001"
+val opus41 = "claude-opus-4-1-20250805"
+val sonnet4 = "claude-sonnet-4-20250514"
+val opus4 = "claude-opus-4-20250514"
+val sonnet37 = "claude-3-7-sonnet-20250219"
+val sonnet37Latest = "claude-3-7-sonnet-latest"
+val sonnet35 = "claude-3-5-sonnet-20241022"
+val sonnet35Latest = "claude-3-5-sonnet-latest"
+val haiku35 = "claude-3-5-haiku-20241022"
+val haiku35Latest = "claude-3-5-haiku-latest"
+val haiku3 = "claude-3-haiku-20240307"
+val latest = "claude-sonnet-4-6"
+val latestFast = "claude-haiku-4-5-20251001"
+val latestSmart = "claude-opus-4-6"
 
 
 // ---------------------------------------------------------------------------
@@ -109,9 +109,9 @@ let latestSmart = "claude-opus-4-6"
 // API endpoints and request headers
 // ---------------------------------------------------------------------------
 
-let apiEndpoint = "https://api.anthropic.com/v1/messages"
-let tokenCountEndpoint = "https://api.anthropic.com/v1/messages/count_tokens"
-let apiVersion = "2023-06-01"
+val apiEndpoint = "https://api.anthropic.com/v1/messages"
+val tokenCountEndpoint = "https://api.anthropic.com/v1/messages/count_tokens"
+val apiVersion = "2023-06-01"
 
 let getHeaders (apiKey: String) : List<(String * String)> =
   [ ("x-api-key", apiKey)
@@ -134,19 +134,19 @@ let getHeadersWithBeta
 /// Common beta feature flags
 module BetaFeatures =
   /// Computer use for most models (computer_20250124)
-  let computerUse = "computer-use-2025-01-24"
+  val computerUse = "computer-use-2025-01-24"
   /// Computer use for Opus 4.6/4.5 (computer_20251124) - includes zoom capability
-  let computerUseOpus = "computer-use-2025-11-24"
-  let mcp = "mcp-2025-03-26"
-  let codeExecution = "code-execution-2025-08-25"
-  let maxTokens128k = "max-tokens-3-5-sonnet-2024-07-15"
-  let tokenCounting = "token-counting-2024-11-01"
-  let messagesBatches = "message-batches-2024-09-24"
-  let promptCaching = "prompt-caching-2024-07-31"
-  let context1m = "context-1m-2025-08-07"
-  let output128k = "output-128k-2025-02-19"
-  let interleavedThinking = "interleaved-thinking-2025-05-14"
-  let webFetch = "web-fetch-2025-09-10"
+  val computerUseOpus = "computer-use-2025-11-24"
+  val mcp = "mcp-2025-03-26"
+  val codeExecution = "code-execution-2025-08-25"
+  val maxTokens128k = "max-tokens-3-5-sonnet-2024-07-15"
+  val tokenCounting = "token-counting-2024-11-01"
+  val messagesBatches = "message-batches-2024-09-24"
+  val promptCaching = "prompt-caching-2024-07-31"
+  val context1m = "context-1m-2025-08-07"
+  val output128k = "output-128k-2025-02-19"
+  val interleavedThinking = "interleaved-thinking-2025-05-14"
+  val webFetch = "web-fetch-2025-09-10"
 
 
 // ---------------------------------------------------------------------------

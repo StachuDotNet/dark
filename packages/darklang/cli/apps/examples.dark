@@ -53,7 +53,7 @@ module TextEdit =
     | Finished _ -> Component.Step.Exit
     | Cancelled -> Component.Step.Exit
 
-  let component : Component.Component<Outliner.TextEditor.State> =
+  val component =
     Component.Component { render = render; onKey = onKey }
 
   let execute (cliState: Cli.AppState) (_args: List<String>) : Cli.AppState =

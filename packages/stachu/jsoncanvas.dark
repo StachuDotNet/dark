@@ -339,7 +339,7 @@ module Examples =
 // ---------------------
 
 module Viewer =
-  let css: String =
+  val css =
     "* { margin: 0; padding: 0; box-sizing: border-box; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -381,7 +381,7 @@ svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-ev
 line.edge { stroke: #4fc3f7; stroke-width: 2; opacity: 0.6; }
 .edge-label { fill: #81d4fa; font-size: 12px; font-weight: 600; }"
 
-  let js: String =
+  val js =
     "let offsetX = 0, offsetY = 0;
 let isPanning = false, isDraggingNode = false;
 let startX, startY, draggedNode = null;
@@ -521,13 +521,13 @@ module Server =
   // Pre-rendered JSON — httpServerServe's executeNamedFn doesn't support
   // lambdas (e.g. List.map) in the handler call chain, so we inline the
   // JSON instead of calling Json.canvasToJson at request time.
-  let exampleJson: String =
+  val exampleJson =
     "{\"nodes\":[{\"id\":\"group1\",\"type\":\"group\",\"x\":0,\"y\":0,\"width\":600,\"height\":400,\"label\":\"Main Group\"},{\"id\":\"node1\",\"type\":\"text\",\"x\":20,\"y\":50,\"width\":250,\"height\":100,\"text\":\"Hello from Darklang!\"},{\"id\":\"node2\",\"type\":\"text\",\"x\":320,\"y\":50,\"width\":250,\"height\":100,\"text\":\"This is a JSON Canvas\"},{\"id\":\"node3\",\"type\":\"link\",\"x\":150,\"y\":220,\"width\":300,\"height\":80,\"url\":\"https://jsoncanvas.org\"}],\"edges\":[{\"id\":\"edge1\",\"fromNode\":\"node1\",\"toNode\":\"node2\"},{\"id\":\"edge2\",\"fromNode\":\"node2\",\"toNode\":\"node3\",\"label\":\"learn more\"}]}"
 
-  let mindmapJson: String =
+  val mindmapJson =
     "{\"nodes\":[{\"id\":\"center\",\"type\":\"text\",\"x\":400,\"y\":300,\"width\":200,\"height\":80,\"text\":\"Darklang\"},{\"id\":\"branch1\",\"type\":\"text\",\"x\":100,\"y\":200,\"width\":150,\"height\":60,\"text\":\"Type Safety\"},{\"id\":\"branch2\",\"type\":\"text\",\"x\":100,\"y\":400,\"width\":150,\"height\":60,\"text\":\"Packages\"},{\"id\":\"branch3\",\"type\":\"text\",\"x\":700,\"y\":200,\"width\":150,\"height\":60,\"text\":\"HTTP Handlers\"},{\"id\":\"branch4\",\"type\":\"text\",\"x\":700,\"y\":400,\"width\":150,\"height\":60,\"text\":\"Cloud Native\"}],\"edges\":[{\"id\":\"e1\",\"fromNode\":\"branch1\",\"toNode\":\"center\",\"label\":\"enables\"},{\"id\":\"e2\",\"fromNode\":\"branch2\",\"toNode\":\"center\",\"label\":\"extend\"},{\"id\":\"e3\",\"fromNode\":\"center\",\"toNode\":\"branch3\",\"label\":\"supports\"},{\"id\":\"e4\",\"fromNode\":\"center\",\"toNode\":\"branch4\",\"label\":\"runs in\"}]}"
 
-  let workflowJson: String =
+  val workflowJson =
     "{\"nodes\":[{\"id\":\"step1\",\"type\":\"text\",\"x\":50,\"y\":50,\"width\":180,\"height\":80,\"text\":\"Receive Request\"},{\"id\":\"step2\",\"type\":\"text\",\"x\":50,\"y\":180,\"width\":180,\"height\":80,\"text\":\"Parse JSON\"},{\"id\":\"step3\",\"type\":\"text\",\"x\":50,\"y\":310,\"width\":180,\"height\":80,\"text\":\"Validate Data\"},{\"id\":\"step4\",\"type\":\"text\",\"x\":50,\"y\":440,\"width\":180,\"height\":80,\"text\":\"Process & Respond\"},{\"id\":\"error\",\"type\":\"text\",\"x\":300,\"y\":250,\"width\":180,\"height\":80,\"text\":\"Return Error\"}],\"edges\":[{\"id\":\"f1\",\"fromNode\":\"step1\",\"toNode\":\"step2\"},{\"id\":\"f2\",\"fromNode\":\"step2\",\"toNode\":\"step3\"},{\"id\":\"f3\",\"fromNode\":\"step3\",\"toNode\":\"step4\",\"label\":\"valid\"},{\"id\":\"f4\",\"fromNode\":\"step3\",\"toNode\":\"error\",\"label\":\"invalid\"}]}"
 
   let exampleHandler (req: Stdlib.Http.Request) : Stdlib.Http.Response =

@@ -52,7 +52,7 @@ let getCompletionText (name: String) (currentPrefix: String) : String =
     | None ->
         match Stdlib.String.split name "." with
         | _owner :: rest -> Stdlib.String.join rest "."
-      | [] -> name
+        | [] -> name
 
 let processSearchResults (names: List<String>) (kind: LanguageServerProtocol.Completions.CompletionItem.CompletionItemKind.CompletionItemKind) (description: String) (currentPrefix: String): List<LanguageServerProtocol.Completions.CompletionItem.CompletionItem> =
   names

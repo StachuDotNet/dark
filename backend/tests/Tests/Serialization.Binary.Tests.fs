@@ -80,6 +80,17 @@ module PT =
         tl |> BS.PT.Toplevel.serialize tlid |> BS.PT.Toplevel.deserialize tlid)
       Values.ProgramTypes.toplevels
 
+  let legacyRecoveryHoleTagRejected =
+    test "legacy ProgramTypes recovery-hole tag is rejected" {
+      use stream = new System.IO.MemoryStream([| 36uy |])
+      use reader = new System.IO.BinaryReader(stream)
+      Expect.throws
+        (fun () ->
+          LibSerialization.Binary.Serializers.PT.Expr.Expr.read reader
+          |> ignore<LibExecution.ProgramTypes.Expr>)
+        "WrittenTypes recovery holes must not be deserialized as ProgramTypes"
+    }
+
 
 module RT =
   let packageTypeTests =
@@ -209,7 +220,8 @@ let tests =
           PT.packageTypeTests
           PT.packageValTests
           PT.packageFnTests
-          PT.toplevelTests ]
+          PT.toplevelTests
+          PT.legacyRecoveryHoleTagRejected ]
 
       testList
         "RT Roundtrip Tests"

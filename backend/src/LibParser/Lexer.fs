@@ -28,36 +28,43 @@ type SpannedToken =
     // Trailing comments at EOF land on the TEOF token.
     leadingTrivia : List<Trivia> }
 
-/// Decode the escape starting at `s[i]`, which must be `\`.
+/// Decode the escape starting at `source[escapeStartIndex]`, which must be `\`.
 /// Returns `Some(charsConsumed, decodedText)`, or `None` for an invalid escape:
 /// unknown escape letter, short/non-hex Unicode escape, surrogate, or codepoint
 /// above `0x10FFFF`. `unescape` and the validators share this function so they
 /// cannot drift.
-let private decodeEscape (s : string) (i : int) : Option<int * string> =
-  let len = s.Length
-  let hexInt (start : int) (count : int) : int option =
-    if start + count <= len then
+let private decodeEscape
+  (source : string)
+  (escapeStartIndex : int)
+  : Option<int * string> =
+  let sourceLength = source.Length
+  let hexInt (hexStartIndex : int) (digitCount : int) : int option =
+    if hexStartIndex + digitCount <= sourceLength then
       match
         System.Int32.TryParse(
-          s.Substring(start, count),
+          source.Substring(hexStartIndex, digitCount),
           System.Globalization.NumberStyles.AllowHexSpecifier,
           null
         )
       with
-      | true, v -> Some v
+      | true, value -> Some value
       | _ -> None
     else
       None
   // a Unicode scalar value → its UTF-16 string (a surrogate pair above the BMP)
-  let scalar (start : int) (count : int) : string option =
-    match hexInt start count with
-    | Some cp when cp >= 0 && cp <= 0x10FFFF && not (cp >= 0xD800 && cp <= 0xDFFF) ->
-      Some(System.Char.ConvertFromUtf32 cp)
+  let scalar (hexStartIndex : int) (digitCount : int) : string option =
+    match hexInt hexStartIndex digitCount with
+    | Some codepoint when
+      codepoint >= 0
+      && codepoint <= 0x10FFFF
+      && not (codepoint >= 0xD800 && codepoint <= 0xDFFF)
+      ->
+      Some(System.Char.ConvertFromUtf32 codepoint)
     | _ -> None
-  if i + 1 >= len then
+  if escapeStartIndex + 1 >= sourceLength then
     None // trailing backslash
   else
-    match s[i + 1] with
+    match source[escapeStartIndex + 1] with
     | 'n' -> Some(2, "\n")
     | 't' -> Some(2, "\t")
     | 'r' -> Some(2, "\r")
@@ -72,12 +79,14 @@ let private decodeEscape (s : string) (i : int) : Option<int * string> =
     | '0' -> Some(2, "\000")
     | '{' -> Some(2, "{")
     | '}' -> Some(2, "}")
-    | 'x' -> hexInt (i + 2) 2 |> Option.map (fun v -> (4, string (char v))) // \xHH
+    | 'x' ->
+      hexInt (escapeStartIndex + 2) 2
+      |> Option.map (fun value -> (4, string (char value))) // \xHH
     // \XHHHH and \uHHHH both denote a Unicode scalar, so both reject surrogates /
     // out-of-range codepoints via `scalar` (a lone `\XD800` is invalid, like `\uD800`)
-    | 'X' -> scalar (i + 2) 4 |> Option.map (fun t -> (6, t)) // \XHHHH
-    | 'u' -> scalar (i + 2) 4 |> Option.map (fun t -> (6, t)) // \uHHHH (BMP)
-    | 'U' -> scalar (i + 2) 8 |> Option.map (fun t -> (10, t)) // \UHHHHHHHH
+    | 'X' -> scalar (escapeStartIndex + 2) 4 |> Option.map (fun text -> (6, text)) // \XHHHH
+    | 'u' -> scalar (escapeStartIndex + 2) 4 |> Option.map (fun text -> (6, text)) // \uHHHH (BMP)
+    | 'U' -> scalar (escapeStartIndex + 2) 8 |> Option.map (fun text -> (10, text)) // \UHHHHHHHH
     | _ -> None
 
 /// Process escape sequences in regular string/char content. Triple-quoted
@@ -85,27 +94,27 @@ let private decodeEscape (s : string) (i : int) : Option<int * string> =
 /// Module-level so the parser can reuse it for interpolated-string literal parts.
 /// The result is NFC-normalized so decomposed and composed graphemes have the
 /// same stored form.
-let unescape (s : string) : string =
+let unescape (source : string) : string =
   let decoded =
-    if not (s.Contains '\\') then
-      s
+    if not (source.Contains '\\') then
+      source
     else
-      let sb = System.Text.StringBuilder(s.Length)
-      let len = s.Length
-      let mutable i = 0
-      while i < len do
-        if s[i] = '\\' then
-          match decodeEscape s i with
-          | Some(k, text) ->
-            sb.Append text |> ignore
-            i <- i + k
+      let builder = System.Text.StringBuilder(source.Length)
+      let sourceLength = source.Length
+      let mutable index = 0
+      while index < sourceLength do
+        if source[index] = '\\' then
+          match decodeEscape source index with
+          | Some(charsConsumed, text) ->
+            builder.Append text |> ignore
+            index <- index + charsConsumed
           | None ->
-            sb.Append s[i] |> ignore
-            i <- i + 1
+            builder.Append source[index] |> ignore
+            index <- index + 1
         else
-          sb.Append s[i] |> ignore
-          i <- i + 1
-      sb.ToString()
+          builder.Append source[index] |> ignore
+          index <- index + 1
+      builder.ToString()
   decoded.Normalize()
 
 /// Does the raw inner text of a regular string/char contain an invalid escape?
@@ -113,96 +122,204 @@ let hasInvalidEscape (content : string) : bool =
   if not (content.Contains '\\') then
     false
   else
-    let len = content.Length
-    let mutable i = 0
-    let mutable bad = false
-    while i < len && not bad do
-      if content[i] = '\\' then
-        match decodeEscape content i with
-        | Some(k, _) -> i <- i + k
-        | None -> bad <- true
+    let contentLength = content.Length
+    let mutable index = 0
+    let mutable hasBadEscape = false
+    while index < contentLength && not hasBadEscape do
+      if content[index] = '\\' then
+        match decodeEscape content index with
+        | Some(charsConsumed, _) -> index <- index + charsConsumed
+        | None -> hasBadEscape <- true
       else
-        i <- i + 1
-    bad
+        index <- index + 1
+    hasBadEscape
+
+let private skipLineComment
+  (source : string)
+  (endLimit : int)
+  (startIndex : int)
+  : int =
+  let mutable index = startIndex + 2
+  while index < endLimit && source[index] <> '\n' do
+    index <- index + 1
+  index
+
+let private skipBlockComment
+  (source : string)
+  (endLimit : int)
+  (startIndex : int)
+  : int =
+  let mutable index = startIndex + 2
+  let mutable commentDepth = 1
+  while index < endLimit && commentDepth > 0 do
+    if index + 1 < endLimit && source[index] = '(' && source[index + 1] = '*' then
+      commentDepth <- commentDepth + 1
+      index <- index + 2
+    elif index + 1 < endLimit && source[index] = '*' && source[index + 1] = ')' then
+      commentDepth <- commentDepth - 1
+      index <- index + 2
+    else
+      index <- index + 1
+  index
+
+let private skipRawString
+  (source : string)
+  (endLimit : int)
+  (startIndex : int)
+  : int =
+  let mutable index = startIndex + 3
+  let mutable stillScanning = true
+  while stillScanning && index < endLimit do
+    if
+      index + 2 < endLimit
+      && source[index] = '"'
+      && source[index + 1] = '"'
+      && source[index + 2] = '"'
+    then
+      index <- index + 3
+      stillScanning <- false
+    else
+      index <- index + 1
+  index
+
+let private skipRegularString
+  (source : string)
+  (endLimit : int)
+  (startIndex : int)
+  : int =
+  let mutable index = startIndex + 1
+  let mutable stillScanning = true
+  while stillScanning && index < endLimit do
+    if source[index] = '\\' then
+      index <- index + 2
+    elif source[index] = '"' then
+      index <- index + 1
+      stillScanning <- false
+    else
+      index <- index + 1
+  index
 
 
 /// Find the `}` that closes an interpolation expression region.
-/// `start` is just past the opening `{`. The scan tracks nested braces and skips
+/// `startIndex` is just past the opening `{`. The scan tracks nested braces and skips
 /// embedded string and char literals, so braces inside them do not desync the
 /// scan. Returns `-1` if unclosed. The tokenizer, escape validator, and parser
 /// all use this scanner so they agree on where interpolation regions end.
-let findInterpExprClose (s : string) (limit : int) (start : int) : int =
-  let mutable k = start
-  let mutable depth = 0
-  let mutable found = -1
-  while found < 0 && k < limit do
-    if s[k] = '"' then
-      let mutable m = k + 1
-      let mutable inStr = true
-      while inStr && m < limit do
-        if s[m] = '\\' then
-          m <- m + 2
-        elif s[m] = '"' then
-          m <- m + 1
-          inStr <- false
-        else
-          m <- m + 1
-      k <- m
+let findInterpExprClose (source : string) (endLimit : int) (startIndex : int) : int =
+  let mutable scanIndex = startIndex
+  let mutable braceDepth = 0
+  let mutable closingBraceIndex = -1
+  while closingBraceIndex < 0 && scanIndex < endLimit do
+    // Comments are code trivia, so braces inside them cannot close an
+    // interpolation. Block comments nest just like top-level lexer comments.
+    if
+      source[scanIndex] = '/'
+      && scanIndex + 1 < endLimit
+      && source[scanIndex + 1] = '/'
+    then
+      scanIndex <- skipLineComment source endLimit scanIndex
+    elif
+      source[scanIndex] = '('
+      && scanIndex + 1 < endLimit
+      && source[scanIndex + 1] = '*'
+    then
+      scanIndex <- skipBlockComment source endLimit scanIndex
+    // A raw triple-quoted string may contain unescaped quotes and braces.
+    elif
+      source[scanIndex] = '"'
+      && scanIndex + 2 < endLimit
+      && source[scanIndex + 1] = '"'
+      && source[scanIndex + 2] = '"'
+    then
+      scanIndex <- skipRawString source endLimit scanIndex
+    elif source[scanIndex] = '"' then
+      scanIndex <- skipRegularString source endLimit scanIndex
     // Skip char literals so braces inside them do not affect interpolation
     // depth. A leading `'` that is not a char literal, such as type var `'a` or
     // tick-ident tail `x'`, falls through harmlessly.
-    elif s[k] = '\'' && k + 1 < limit && s[k + 1] = '\\' then
+    elif
+      source[scanIndex] = '\''
+      && scanIndex + 1 < endLimit
+      && source[scanIndex + 1] = '\\'
+    then
       // Start at the `\` so `'\''` skips the escape before looking for the
       // closing quote.
-      let mutable m = k + 1
-      let mutable inCh = true
-      while inCh && m < limit do
-        if s[m] = '\\' then
-          m <- m + 2
-        elif s[m] = '\'' then
-          m <- m + 1
-          inCh <- false
+      let mutable charIndex = scanIndex + 1
+      let mutable scanningChar = true
+      while scanningChar && charIndex < endLimit do
+        if source[charIndex] = '\\' then
+          charIndex <- charIndex + 2
+        elif source[charIndex] = '\'' then
+          charIndex <- charIndex + 1
+          scanningChar <- false
         else
-          m <- m + 1
-      k <- m
-    elif s[k] = '\'' && k + 2 < limit && s[k + 2] = '\'' then
-      k <- k + 3
-    elif s[k] = '{' then
-      depth <- depth + 1
-      k <- k + 1
-    elif s[k] = '}' && depth = 0 then
-      found <- k
-    elif s[k] = '}' then
-      depth <- depth - 1
-      k <- k + 1
+          charIndex <- charIndex + 1
+      scanIndex <- charIndex
+    elif
+      source[scanIndex] = '\''
+      && scanIndex + 2 < endLimit
+      && source[scanIndex + 2] = '\''
+    then
+      scanIndex <- scanIndex + 3
+    elif source[scanIndex] = '{' then
+      braceDepth <- braceDepth + 1
+      scanIndex <- scanIndex + 1
+    elif source[scanIndex] = '}' && braceDepth = 0 then
+      closingBraceIndex <- scanIndex
+    elif source[scanIndex] = '}' then
+      braceDepth <- braceDepth - 1
+      scanIndex <- scanIndex + 1
     else
-      k <- k + 1
-  found
+      scanIndex <- scanIndex + 1
+  closingBraceIndex
 
 
 /// Like `hasInvalidEscape`, but for regular `$"…"` interpolated strings.
 /// `{{`/`}}` are literal braces and `{ … }` regions are code, so only literal
 /// string text is escape-checked.
 let hasInvalidEscapeInterp (inner : string) : bool =
-  let len = inner.Length
-  let mutable i = 0
-  let mutable bad = false
-  while i < len && not bad do
-    if i + 1 < len && inner[i] = '{' && inner[i + 1] = '{' then
-      i <- i + 2
-    elif i + 1 < len && inner[i] = '}' && inner[i + 1] = '}' then
-      i <- i + 2
-    elif inner[i] = '{' then
+  let innerLength = inner.Length
+  let mutable index = 0
+  let mutable hasBadEscape = false
+  while index < innerLength && not hasBadEscape do
+    if index + 1 < innerLength && inner[index] = '{' && inner[index + 1] = '{' then
+      index <- index + 2
+    elif index + 1 < innerLength && inner[index] = '}' && inner[index + 1] = '}' then
+      index <- index + 2
+    elif inner[index] = '{' then
       // skip the `{ … }` interpolation region
-      let close = findInterpExprClose inner len (i + 1)
-      i <- if close < 0 then len else close + 1
-    elif inner[i] = '\\' then
-      match decodeEscape inner i with
-      | Some(k, _) -> i <- i + k
-      | None -> bad <- true
+      let closeIndex = findInterpExprClose inner innerLength (index + 1)
+      index <- if closeIndex < 0 then innerLength else closeIndex + 1
+    elif inner[index] = '\\' then
+      match decodeEscape inner index with
+      | Some(charsConsumed, _) -> index <- index + charsConsumed
+      | None -> hasBadEscape <- true
     else
-      i <- i + 1
-  bad
+      index <- index + 1
+  hasBadEscape
+
+/// Does interpolated-string literal text contain a single unescaped `}`?
+/// Literal braces must be doubled (`}}`) or escaped (`\}` in regular strings).
+/// Braces inside `{ expression }` regions are code and are skipped.
+let hasSingleCloseBraceInterp (inner : string) (isRaw : bool) : bool =
+  let innerLength = inner.Length
+  let mutable index = 0
+  let mutable hasSingleCloseBrace = false
+  while index < innerLength && not hasSingleCloseBrace do
+    if index + 1 < innerLength && inner[index] = '{' && inner[index + 1] = '{' then
+      index <- index + 2
+    elif index + 1 < innerLength && inner[index] = '}' && inner[index + 1] = '}' then
+      index <- index + 2
+    elif inner[index] = '{' then
+      let closeIndex = findInterpExprClose inner innerLength (index + 1)
+      index <- if closeIndex < 0 then innerLength else closeIndex + 1
+    elif inner[index] = '}' then
+      hasSingleCloseBrace <- true
+    elif inner[index] = '\\' && not isRaw && index + 1 < innerLength then
+      index <- index + 2
+    else
+      index <- index + 1
+  hasSingleCloseBrace
 
 
 /// The parser parses each `{expr}` body recursively. Nested interpolated strings
@@ -214,83 +331,107 @@ let maxInterpNesting = 64
 let tokenize
   (input : string)
   : Result<List<SpannedToken> * List<TokenRange * string>, string> =
-  let n = input.Length
+  let inputLength = input.Length
 
   // `///` doc comments lex as trivia, but their text also lands on the next
   // emitted token. `emit` consumes and clears this.
-  let mutable pendingDoc : string option = None
+  let mutable pendingDocComment : string option = None
 
   // Comments scanned since the last emitted token. `emit` drains them into
   // `leadingTrivia`.
   let pendingTrivia = ResizeArray<Trivia>()
 
-  let step (p : Pos) (c : char) : Pos =
-    if c = '\n' then
-      { row = p.row + 1; column = 0 }
-    else
-      { p with column = p.column + 1 }
+  // Lexical diagnostics collected during recovery. Defined before trivia
+  // scanning so an unterminated block comment can report its own range.
+  let diagnostics = System.Collections.Generic.List<TokenRange * string>()
+  let addDiagnostic (range : TokenRange) (message : string) =
+    diagnostics.Add((range, message))
 
-  let advance (p : Pos) (i : int) (j : int) : Pos =
-    let mutable q = p
-    let mutable k = i
-    while k < j do
-      q <- step q input[k]
-      k <- k + 1
-    q
-
-  let rec skipTrivia (i : int) (p : Pos) : int * Pos =
-    if i >= n then
-      (i, p)
+  let step (position : Pos) (character : char) : Pos =
+    if character = '\n' then
+      { row = position.row + 1; column = 0 }
     else
-      let c = input[i]
-      if c = ' ' || c = '\t' || c = '\r' || c = '\n' then
-        skipTrivia (i + 1) (step p c)
-      elif c = '/' && i + 1 < n && input[i + 1] = '/' then
-        let mutable j = i
-        while j < n && input[j] <> '\n' do
-          j <- j + 1
+      { position with column = position.column + 1 }
+
+  let advance (position : Pos) (startIndex : int) (endIndex : int) : Pos =
+    let mutable currentPosition = position
+    let mutable index = startIndex
+    while index < endIndex do
+      currentPosition <- step currentPosition input[index]
+      index <- index + 1
+    currentPosition
+
+  let rec skipTrivia (index : int) (position : Pos) : int * Pos =
+    if index >= inputLength then
+      (index, position)
+    else
+      let character = input[index]
+      if
+        character = ' ' || character = '\t' || character = '\r' || character = '\n'
+      then
+        skipTrivia (index + 1) (step position character)
+      elif character = '/' && index + 1 < inputLength && input[index + 1] = '/' then
+        let mutable lineEndIndex = index
+        while lineEndIndex < inputLength && input[lineEndIndex] <> '\n' do
+          lineEndIndex <- lineEndIndex + 1
         // `/// …` is a doc comment for the next declaration. `////` and plain
         // `//` are ordinary comments.
-        let isDoc =
-          i + 2 < n && input[i + 2] = '/' && (i + 3 >= n || input[i + 3] <> '/')
-        if isDoc then
-          let text = input.Substring(i + 3, j - (i + 3)).Trim()
-          pendingDoc <-
+        let isDocComment =
+          index + 2 < inputLength
+          && input[index + 2] = '/'
+          && (index + 3 >= inputLength || input[index + 3] <> '/')
+        if isDocComment then
+          let text = input.Substring(index + 3, lineEndIndex - (index + 3)).Trim()
+          pendingDocComment <-
             Some(
-              match pendingDoc with
-              | Some d -> d + " " + text
+              match pendingDocComment with
+              | Some existingText -> existingText + " " + text
               | None -> text
             )
         pendingTrivia.Add
-          { kind = (if isDoc then DocComment else LineComment)
-            text = input.Substring(i, j - i)
-            range = { start = p; end_ = advance p i j } }
-        skipTrivia j (advance p i j)
+          { kind = (if isDocComment then DocComment else LineComment)
+            text = input.Substring(index, lineEndIndex - index)
+            range = { start = position; end_ = advance position index lineEndIndex } }
+        skipTrivia lineEndIndex (advance position index lineEndIndex)
       elif
-        c = '('
-        && i + 1 < n
-        && input[i + 1] = '*'
-        && not (i + 2 < n && input[i + 2] = ')')
+        character = '('
+        && index + 1 < inputLength
+        && input[index + 1] = '*'
+        && not (index + 2 < inputLength && input[index + 2] = ')')
       then
         // F#-style nestable block comment. `(*)` is the multiply operator
         // section, so it is excluded here.
-        let rec skipBlock (j : int) (depth : int) : int =
-          if j + 1 < n && input[j] = '(' && input[j + 1] = '*' then
-            skipBlock (j + 2) (depth + 1)
-          elif j + 1 < n && input[j] = '*' && input[j + 1] = ')' then
-            if depth = 0 then j + 2 else skipBlock (j + 2) (depth - 1)
-          elif j >= n then
-            j
+        let rec skipBlock (scanIndex : int) (commentDepth : int) : int * bool =
+          if
+            scanIndex + 1 < inputLength
+            && input[scanIndex] = '('
+            && input[scanIndex + 1] = '*'
+          then
+            skipBlock (scanIndex + 2) (commentDepth + 1)
+          elif
+            scanIndex + 1 < inputLength
+            && input[scanIndex] = '*'
+            && input[scanIndex + 1] = ')'
+          then
+            if commentDepth = 0 then
+              (scanIndex + 2, true)
+            else
+              skipBlock (scanIndex + 2) (commentDepth - 1)
+          elif scanIndex >= inputLength then
+            (scanIndex, false)
           else
-            skipBlock (j + 1) depth
-        let endIdx = skipBlock (i + 2) 0
+            skipBlock (scanIndex + 1) commentDepth
+        let (endIndex, closed) = skipBlock (index + 2) 0
+        let commentRange =
+          { start = position; end_ = advance position index endIndex }
         pendingTrivia.Add
           { kind = BlockComment
-            text = input.Substring(i, endIdx - i)
-            range = { start = p; end_ = advance p i endIdx } }
-        skipTrivia endIdx (advance p i endIdx)
+            text = input.Substring(index, endIndex - index)
+            range = commentRange }
+        if not closed then addDiagnostic commentRange "unterminated block comment"
+        skipTrivia endIndex (advance position index endIndex)
       else
-        (i, p)
+        (index, position)
 
   // longest-match operators (order matters)
   let operators : (string * Token) list =
@@ -333,12 +474,11 @@ let tokenize
       "@", TAt
       "|", TBar ]
 
-  let keyword (s : string) : Token =
-    match s with
+  let keyword (text : string) : Token =
+    match text with
     | "let" -> TLet
-    // `val x = e` always parses as a value declaration. A no-param `let` is a
-    // value declaration only inside a module, and a let-expression at file top
-    // level. The distinct token lets `parseItems` keep them apart.
+    // `val x = e` is a value declaration. `let` is reserved for functions and
+    // local/script bindings. The distinct token lets `parseItems` keep them apart.
     | "val" -> TVal
     | "in" -> TIn
     | "if" -> TIf
@@ -358,206 +498,280 @@ let tokenize
     | "_" -> TUnderscore
     // `___` is the blank-name placeholder: an identifier with an empty name.
     | "___" -> TIdent ""
-    | _ -> TIdent s
+    | _ -> TIdent text
 
-  let matchesAt (s : string) (i : int) : bool =
-    i + s.Length <= n && System.String.CompareOrdinal(input, i, s, 0, s.Length) = 0
+  let matchesAt (text : string) (index : int) : bool =
+    index + text.Length <= inputLength
+    && System.String.CompareOrdinal(input, index, text, 0, text.Length) = 0
 
-  let emit (tok : Token) (i : int) (j : int) (p : Pos) : SpannedToken * int * Pos =
-    let endP = advance p i j
-    let dc = pendingDoc
-    pendingDoc <- None
-    let trivia = List.ofSeq pendingTrivia
+  let emit
+    (token : Token)
+    (startIndex : int)
+    (endIndex : int)
+    (position : Pos)
+    : SpannedToken * int * Pos =
+    let endPosition = advance position startIndex endIndex
+    let docComment = pendingDocComment
+    pendingDocComment <- None
+    let leadingTrivia = List.ofSeq pendingTrivia
     pendingTrivia.Clear()
-    ({ token = tok
-       text = input.Substring(i, j - i)
-       range = { start = p; end_ = endP }
-       docComment = dc
-       leadingTrivia = trivia },
-     j,
-     endP)
+    ({ token = token
+       text = input.Substring(startIndex, endIndex - startIndex)
+       range = { start = position; end_ = endPosition }
+       docComment = docComment
+       leadingTrivia = leadingTrivia },
+     endIndex,
+     endPosition)
 
   // integer suffix → token; returns (token, charsConsumedAfterDigits)
-  let intToken (digits : string) (i : int) : Result<Token * int, string> =
+  let intToken (digits : string) (suffixIndex : int) : Result<Token * int, string> =
     let parseInt64 () =
       match System.Int64.TryParse digits with
-      | true, v -> Ok(TInt64 v)
+      | true, value -> Ok(TInt64 value)
       | _ when digits = "9223372036854775808" -> Ok(TInt64 System.Int64.MinValue)
       | _ -> Error $"Integer literal too large: {digits}"
-    if matchesAt "uy" i then
+    if matchesAt "uy" suffixIndex then
       (match System.Byte.TryParse digits with
-       | true, v -> Ok(TUInt8 v, 2)
+       | true, value -> Ok(TUInt8 value, 2)
        | _ -> Error $"out of range for UInt8: {digits}")
-    elif matchesAt "us" i then
+    elif matchesAt "us" suffixIndex then
       (match System.UInt16.TryParse digits with
-       | true, v -> Ok(TUInt16 v, 2)
+       | true, value -> Ok(TUInt16 value, 2)
        | _ -> Error $"out of range for UInt16: {digits}")
-    elif matchesAt "ul" i then
+    elif matchesAt "ul" suffixIndex then
       (match System.UInt32.TryParse digits with
-       | true, v -> Ok(TUInt32 v, 2)
+       | true, value -> Ok(TUInt32 value, 2)
        | _ -> Error $"out of range for UInt32: {digits}")
-    elif matchesAt "UL" i then
+    elif matchesAt "UL" suffixIndex then
       (match System.UInt64.TryParse digits with
-       | true, v -> Ok(TUInt64 v, 2)
+       | true, value -> Ok(TUInt64 value, 2)
        | _ -> Error $"out of range for UInt64: {digits}")
-    elif matchesAt "L" i then
-      parseInt64 () |> Result.map (fun t -> (t, 1))
-    elif matchesAt "Q" i then
+    elif matchesAt "L" suffixIndex then
+      parseInt64 () |> Result.map (fun token -> (token, 1))
+    elif matchesAt "Q" suffixIndex then
       (match System.Int128.TryParse digits with
-       | true, v -> Ok(TInt128 v, 1)
+       | true, value -> Ok(TInt128 value, 1)
        | _ when digits = "170141183460469231731687303715884105728" ->
          Ok(TInt128 System.Int128.MinValue, 1)
        | _ -> Error $"out of range for Int128: {digits}")
-    elif matchesAt "Z" i then
+    elif matchesAt "Z" suffixIndex then
       (match System.UInt128.TryParse digits with
-       | true, v -> Ok(TUInt128 v, 1)
+       | true, value -> Ok(TUInt128 value, 1)
        | _ -> Error $"out of range for UInt128: {digits}")
-    elif matchesAt "y" i then
+    elif matchesAt "y" suffixIndex then
       (match System.SByte.TryParse digits with
-       | true, v -> Ok(TInt8 v, 1)
+       | true, value -> Ok(TInt8 value, 1)
        | _ when digits = "128" -> Ok(TInt8 System.SByte.MinValue, 1)
        | _ -> Error $"out of range for Int8: {digits}")
-    elif matchesAt "s" i then
+    elif matchesAt "s" suffixIndex then
       (match System.Int16.TryParse digits with
-       | true, v -> Ok(TInt16 v, 1)
+       | true, value -> Ok(TInt16 value, 1)
        | _ when digits = "32768" -> Ok(TInt16 System.Int16.MinValue, 1)
        | _ -> Error $"out of range for Int16: {digits}")
-    elif matchesAt "l" i then
+    elif matchesAt "l" suffixIndex then
       (match System.Int32.TryParse digits with
-       | true, v -> Ok(TInt32 v, 1)
+       | true, value -> Ok(TInt32 value, 1)
        | _ when digits = "2147483648" -> Ok(TInt32 System.Int32.MinValue, 1)
        | _ -> Error $"out of range for Int32: {digits}")
     // bare literal (no suffix) → arbitrary-precision `Int` (the default).
     else
       (match System.Numerics.BigInteger.TryParse digits with
-       | true, v -> Ok(TInt v, 0)
+       | true, value -> Ok(TInt value, 0)
        | _ -> Error $"Invalid integer literal: {digits}")
 
-  let rec scanString (j : int) (closing : char) : Result<int, string> =
-    if j >= n then Error "Unterminated string literal"
-    elif input[j] = '\\' && j + 1 < n then scanString (j + 2) closing
-    elif input[j] = closing then Ok(j + 1)
-    else scanString (j + 1) closing
+  let recognizedIntSuffixLength (suffixIndex : int) : int =
+    if
+      matchesAt "uy" suffixIndex
+      || matchesAt "us" suffixIndex
+      || matchesAt "ul" suffixIndex
+      || matchesAt "UL" suffixIndex
+    then
+      2
+    elif
+      matchesAt "L" suffixIndex
+      || matchesAt "Q" suffixIndex
+      || matchesAt "Z" suffixIndex
+      || matchesAt "y" suffixIndex
+      || matchesAt "s" suffixIndex
+      || matchesAt "l" suffixIndex
+    then
+      1
+    else
+      0
+
+  let rec scanString (scanIndex : int) (closing : char) : Result<int, string> =
+    if scanIndex >= inputLength then
+      Error "Unterminated string literal"
+    elif input[scanIndex] = '\\' && scanIndex + 1 < inputLength then
+      scanString (scanIndex + 2) closing
+    elif input[scanIndex] = closing then
+      Ok(scanIndex + 1)
+    else
+      scanString (scanIndex + 1) closing
 
   // Recovery for unterminated lexemes: scan to the current line end or EOF so a
   // half-typed string/char does not swallow the rest of the document.
-  let rec scanToLineEnd (j : int) : int =
-    if j >= n || input[j] = '\n' then j else scanToLineEnd (j + 1)
+  let rec scanToLineEnd (scanIndex : int) : int =
+    if scanIndex >= inputLength || input[scanIndex] = '\n' then
+      scanIndex
+    else
+      scanToLineEnd (scanIndex + 1)
 
   // Scan `$"text {expr} text"` or `$"""…"""`. The token carries no payload; the
   // parser re-reads the source text and scans `{expr}` bodies itself. This only
   // needs to find the token end while skipping escapes, literal braces, and
   // interpolation regions with `findInterpExprClose`.
-  let scanInterp (start : int) : Result<Token * int, string> =
+  let scanInterp (startIndex : int) : Result<Token * int, string> =
     // triple-quoted `$"""…"""` (raw; a single `"` is literal text)
-    let triple =
-      start + 3 < n
-      && input[start + 1] = '"'
-      && input[start + 2] = '"'
-      && input[start + 3] = '"'
-    let atClose (j : int) : bool =
-      if triple then
-        j + 2 < n && input[j] = '"' && input[j + 1] = '"' && input[j + 2] = '"'
+    let isTripleQuoted =
+      startIndex + 3 < inputLength
+      && input[startIndex + 1] = '"'
+      && input[startIndex + 2] = '"'
+      && input[startIndex + 3] = '"'
+    let atClose (scanIndex : int) : bool =
+      if isTripleQuoted then
+        scanIndex + 2 < inputLength
+        && input[scanIndex] = '"'
+        && input[scanIndex + 1] = '"'
+        && input[scanIndex + 2] = '"'
       else
-        input[j] = '"'
-    let closeLen = if triple then 3 else 1
-    let rec loop (j : int) : Result<int, string> =
-      if j >= n then
+        input[scanIndex] = '"'
+    let closeLength = if isTripleQuoted then 3 else 1
+    let rec loop (scanIndex : int) : Result<int, string> =
+      if scanIndex >= inputLength then
         Error "Unterminated interpolated string"
-      elif atClose j then
-        Ok(j + closeLen)
-      elif input[j] = '\\' && j + 1 < n && not triple then
-        loop (j + 2)
+      elif atClose scanIndex then
+        Ok(scanIndex + closeLength)
+      elif
+        input[scanIndex] = '\\' && scanIndex + 1 < inputLength && not isTripleQuoted
+      then
+        loop (scanIndex + 2)
       // `{{` / `}}` are escaped literal braces, not an interpolation
-      elif input[j] = '{' && j + 1 < n && input[j + 1] = '{' then
-        loop (j + 2)
-      elif input[j] = '}' && j + 1 < n && input[j + 1] = '}' then
-        loop (j + 2)
-      elif input[j] = '{' then
-        match findInterpExprClose input n (j + 1) with
+      elif
+        input[scanIndex] = '{'
+        && scanIndex + 1 < inputLength
+        && input[scanIndex + 1] = '{'
+      then
+        loop (scanIndex + 2)
+      elif
+        input[scanIndex] = '}'
+        && scanIndex + 1 < inputLength
+        && input[scanIndex + 1] = '}'
+      then
+        loop (scanIndex + 2)
+      elif input[scanIndex] = '{' then
+        match findInterpExprClose input inputLength (scanIndex + 1) with
         | -1 -> Error "Unterminated interpolated expression"
-        | closeIdx -> loop (closeIdx + 1)
+        | closeIndex -> loop (closeIndex + 1)
       else
-        loop (j + 1)
-    match loop (if triple then start + 4 else start + 2) with
-    | Ok endIdx -> Ok(TInterpString, endIdx)
-    | Error e -> Error e
-
-  // Lexical diagnostics collected during recovery. The tokenizer keeps lexing so
-  // partial files still highlight, and malformed lexemes still get reported.
-  let diagnostics = System.Collections.Generic.List<TokenRange * string>()
-  let lexDiag (range : TokenRange) (msg : string) = diagnostics.Add((range, msg))
+        loop (scanIndex + 1)
+    match loop (if isTripleQuoted then startIndex + 4 else startIndex + 2) with
+    | Ok endIndex -> Ok(TInterpString, endIndex)
+    | Error message -> Error message
 
   let rec go
-    (i : int)
-    (p : Pos)
-    (acc : List<SpannedToken>)
+    (index : int)
+    (position : Pos)
+    (tokensRev : List<SpannedToken>)
     : Result<List<SpannedToken>, string> =
-    let (i, p) = skipTrivia i p
-    if i >= n then
-      let (eof, _, _) = emit TEOF i i p
-      Ok(List.rev (eof :: acc))
+    let (index, position) = skipTrivia index position
+    if index >= inputLength then
+      let (eofToken, _, _) = emit TEOF index index position
+      Ok(List.rev (eofToken :: tokensRev))
     else
-      let c = input[i]
+      let character = input[index]
       // Tolerate compiler-syntax `=>` by lexing `=` then `>`. The parser rejects
       // it later, but tokenization can continue.
-      if c = '=' && i + 1 < n && input[i + 1] = '>' then
-        let (st, i', p') = emit TEquals i (i + 1) p
-        go i' p' (st :: acc)
+      if character = '=' && index + 1 < inputLength && input[index + 1] = '>' then
+        let (spannedToken, nextIndex, nextPosition) =
+          emit TEquals index (index + 1) position
+        go nextIndex nextPosition (spannedToken :: tokensRev)
       // backtick identifiers: ``name``
-      elif c = '`' && i + 1 < n && input[i + 1] = '`' then
-        let mutable j = i + 2
-        while j + 1 < n
-              && not (input[j] = '`' && input[j + 1] = '`')
-              && input[j] <> '\n' do
-          j <- j + 1
-        if j + 1 < n && input[j] = '`' && input[j + 1] = '`' then
-          let (st, i', p') =
-            emit (TIdent(input.Substring(i + 2, j - i - 2))) i (j + 2) p
-          go i' p' (st :: acc)
+      elif character = '`' && index + 1 < inputLength && input[index + 1] = '`' then
+        let mutable closeIndex = index + 2
+        while closeIndex + 1 < inputLength
+              && not (input[closeIndex] = '`' && input[closeIndex + 1] = '`')
+              && input[closeIndex] <> '\n' do
+          closeIndex <- closeIndex + 1
+        if
+          closeIndex + 1 < inputLength
+          && input[closeIndex] = '`'
+          && input[closeIndex + 1] = '`'
+        then
+          let (spannedToken, nextIndex, nextPosition) =
+            emit
+              (TIdent(input.Substring(index + 2, closeIndex - index - 2)))
+              index
+              (closeIndex + 2)
+              position
+          go nextIndex nextPosition (spannedToken :: tokensRev)
         else
           // unterminated ``…`` — best-effort ident to end of line
-          let e = scanToLineEnd (i + 2)
-          let (st, i', p') = emit (TIdent(input.Substring(i + 2, e - i - 2))) i e p
-          lexDiag st.range "unterminated backtick identifier"
-          go i' p' (st :: acc)
+          let endIndex = scanToLineEnd (index + 2)
+          let (spannedToken, nextIndex, nextPosition) =
+            emit
+              (TIdent(input.Substring(index + 2, endIndex - index - 2)))
+              index
+              endIndex
+              position
+          addDiagnostic spannedToken.range "unterminated backtick identifier"
+          go nextIndex nextPosition (spannedToken :: tokensRev)
       // identifiers / keywords
-      elif System.Char.IsLetter c || c = '_' then
-        let mutable j = i + 1
-        while j < n
-              && (System.Char.IsLetterOrDigit input[j]
-                  || input[j] = '_'
-                  || input[j] = '\'') do
-          j <- j + 1
-        let (st, i', p') = emit (keyword (input.Substring(i, j - i))) i j p
-        go i' p' (st :: acc)
+      elif System.Char.IsLetter character || character = '_' then
+        let mutable endIndex = index + 1
+        while endIndex < inputLength
+              && (System.Char.IsLetterOrDigit input[endIndex]
+                  || input[endIndex] = '_'
+                  || input[endIndex] = '\'') do
+          endIndex <- endIndex + 1
+        let (spannedToken, nextIndex, nextPosition) =
+          emit
+            (keyword (input.Substring(index, endIndex - index)))
+            index
+            endIndex
+            position
+        go nextIndex nextPosition (spannedToken :: tokensRev)
       // numbers
-      elif System.Char.IsDigit c then
+      elif System.Char.IsDigit character then
         // A number token must end at a non-identifier boundary. Glued suffix text
         // like `123abc` or `12l3` is a typo, not two tokens.
-        let isIdentCont k =
-          k < n
-          && (System.Char.IsLetterOrDigit input[k]
-              || input[k] = '_'
-              || input[k] = '\'')
-        let mutable j = i + 1
-        while j < n && System.Char.IsDigit input[j] do
-          j <- j + 1
+        let isIdentifierContinue boundaryIndex =
+          boundaryIndex < inputLength
+          && (System.Char.IsLetterOrDigit input[boundaryIndex]
+              || input[boundaryIndex] = '_'
+              || input[boundaryIndex] = '\'')
+        let mutable digitEndIndex = index + 1
+        while digitEndIndex < inputLength && System.Char.IsDigit input[digitEndIndex] do
+          digitEndIndex <- digitEndIndex + 1
         // float?
-        let isFrac = j + 1 < n && input[j] = '.' && System.Char.IsDigit input[j + 1]
-        let isExp = j < n && (input[j] = 'e' || input[j] = 'E')
-        if isFrac || isExp then
-          let mutable k = j
-          if isFrac then
-            k <- k + 1
-            while k < n && System.Char.IsDigit input[k] do
-              k <- k + 1
-          if k < n && (input[k] = 'e' || input[k] = 'E') then
-            k <- k + 1
-            if k < n && (input[k] = '+' || input[k] = '-') then k <- k + 1
-            while k < n && System.Char.IsDigit input[k] do
-              k <- k + 1
-          let text = input.Substring(i, k - i)
+        let hasFraction =
+          digitEndIndex + 1 < inputLength
+          && input[digitEndIndex] = '.'
+          && System.Char.IsDigit input[digitEndIndex + 1]
+        let hasExponent =
+          digitEndIndex < inputLength
+          && (input[digitEndIndex] = 'e' || input[digitEndIndex] = 'E')
+        if hasFraction || hasExponent then
+          let mutable floatEndIndex = digitEndIndex
+          if hasFraction then
+            floatEndIndex <- floatEndIndex + 1
+            while (floatEndIndex < inputLength
+                   && System.Char.IsDigit input[floatEndIndex]) do
+              floatEndIndex <- floatEndIndex + 1
+          if
+            floatEndIndex < inputLength
+            && (input[floatEndIndex] = 'e' || input[floatEndIndex] = 'E')
+          then
+            floatEndIndex <- floatEndIndex + 1
+            if
+              floatEndIndex < inputLength
+              && (input[floatEndIndex] = '+' || input[floatEndIndex] = '-')
+            then
+              floatEndIndex <- floatEndIndex + 1
+            while (floatEndIndex < inputLength
+                   && System.Char.IsDigit input[floatEndIndex]) do
+              floatEndIndex <- floatEndIndex + 1
+          let text = input.Substring(index, floatEndIndex - index)
           match
             System.Double.TryParse(
               text,
@@ -565,87 +779,137 @@ let tokenize
               System.Globalization.CultureInfo.InvariantCulture
             )
           with
-          | true, v when not (isIdentCont k) ->
-            let (st, i', p') = emit (TFloat v) i k p in go i' p' (st :: acc)
+          | true, value when not (isIdentifierContinue floatEndIndex) ->
+            let (spannedToken, nextIndex, nextPosition) =
+              emit (TFloat value) index floatEndIndex position
+            go nextIndex nextPosition (spannedToken :: tokensRev)
           | true, _ ->
             // Float glued to identifier chars (`1.5abc`): consume the run and
             // diagnose it as one malformed literal.
-            let mutable e = k
-            while isIdentCont e do
-              e <- e + 1
-            let (st, i', p') = emit (TFloat 0.0) i e p
-            lexDiag st.range $"invalid number literal: {input.Substring(i, e - i)}"
-            go i' p' (st :: acc)
+            let mutable errorEndIndex = floatEndIndex
+            while isIdentifierContinue errorEndIndex do
+              errorEndIndex <- errorEndIndex + 1
+            let (spannedToken, nextIndex, nextPosition) =
+              emit (TFloat 0.0) index errorEndIndex position
+            addDiagnostic
+              spannedToken.range
+              $"invalid number literal: {input.Substring(index, errorEndIndex - index)}"
+            go nextIndex nextPosition (spannedToken :: tokensRev)
           | _ ->
             // Emit a placeholder so malformed floats still highlight as numbers.
-            let (st, i', p') = emit (TFloat 0.0) i k p
-            lexDiag st.range $"malformed float literal: {text}"
-            go i' p' (st :: acc)
+            let (spannedToken, nextIndex, nextPosition) =
+              emit (TFloat 0.0) index floatEndIndex position
+            addDiagnostic spannedToken.range $"malformed float literal: {text}"
+            go nextIndex nextPosition (spannedToken :: tokensRev)
         else
-          let digits = input.Substring(i, j - i)
-          match intToken digits j with
-          | Ok(tok, suffixLen) when not (isIdentCont (j + suffixLen)) ->
-            let (st, i', p') = emit tok i (j + suffixLen) p in go i' p' (st :: acc)
-          | Ok(_, suffixLen) ->
+          let digits = input.Substring(index, digitEndIndex - index)
+          match intToken digits digitEndIndex with
+          | Ok(token, suffixLength) when
+            not (isIdentifierContinue (digitEndIndex + suffixLength))
+            ->
+            let (spannedToken, nextIndex, nextPosition) =
+              emit token index (digitEndIndex + suffixLength) position
+            go nextIndex nextPosition (spannedToken :: tokensRev)
+          | Ok(_, suffixLength) ->
             // Int glued to identifier chars: consume the run and diagnose it as
             // one malformed literal.
-            let mutable e = j + suffixLen
-            while isIdentCont e do
-              e <- e + 1
-            let (st, i', p') = emit (TInt64 0L) i e p
-            lexDiag st.range $"invalid number literal: {input.Substring(i, e - i)}"
-            go i' p' (st :: acc)
-          | Error msg ->
-            // Emit a placeholder so out-of-range ints still highlight as numbers.
-            let (st, i', p') = emit (TInt64 0L) i j p
-            lexDiag st.range msg
-            go i' p' (st :: acc)
+            let mutable errorEndIndex = digitEndIndex + suffixLength
+            while isIdentifierContinue errorEndIndex do
+              errorEndIndex <- errorEndIndex + 1
+            let (spannedToken, nextIndex, nextPosition) =
+              emit (TInt64 0L) index errorEndIndex position
+            addDiagnostic
+              spannedToken.range
+              $"invalid number literal: {input.Substring(index, errorEndIndex - index)}"
+            go nextIndex nextPosition (spannedToken :: tokensRev)
+          | Error message ->
+            // Consume a recognized suffix even on range failure so it cannot
+            // reappear as a separate identifier in the recovery tree.
+            let suffixLength = recognizedIntSuffixLength digitEndIndex
+            let (spannedToken, nextIndex, nextPosition) =
+              emit (TInt64 0L) index (digitEndIndex + suffixLength) position
+            addDiagnostic spannedToken.range message
+            go nextIndex nextPosition (spannedToken :: tokensRev)
       // triple-quoted string: """ ... """ (raw, may contain single/double quotes)
-      elif c = '"' && i + 2 < n && input[i + 1] = '"' && input[i + 2] = '"' then
-        let rec findTriple (j : int) : Result<int, string> =
+      elif
+        character = '"'
+        && index + 2 < inputLength
+        && input[index + 1] = '"'
+        && input[index + 2] = '"'
+      then
+        let rec findTriple (scanIndex : int) : Result<int, string> =
           if
-            j + 2 < n && input[j] = '"' && input[j + 1] = '"' && input[j + 2] = '"'
+            scanIndex + 2 < inputLength
+            && input[scanIndex] = '"'
+            && input[scanIndex + 1] = '"'
+            && input[scanIndex + 2] = '"'
           then
-            Ok(j + 3)
-          elif j >= n then
+            Ok(scanIndex + 3)
+          elif scanIndex >= inputLength then
             Error "Unterminated triple-quoted string literal"
           else
-            findTriple (j + 1)
-        match findTriple (i + 3) with
-        | Ok j ->
+            findTriple (scanIndex + 1)
+        match findTriple (index + 3) with
+        | Ok endIndex ->
           // Triple-quoted strings are raw, so normalize here to match the regular
           // literal path through `unescape`.
-          let (st, i', p') =
-            emit (TStringLit((input.Substring(i + 3, j - i - 6)).Normalize())) i j p
-          go i' p' (st :: acc)
+          let (spannedToken, nextIndex, nextPosition) =
+            emit
+              (TStringLit(
+                (input.Substring(index + 3, endIndex - index - 6)).Normalize()
+              ))
+              index
+              endIndex
+              position
+          go nextIndex nextPosition (spannedToken :: tokensRev)
         | Error _ ->
           // Unterminated `"""…`: take the rest as string content.
-          let (st, i', p') =
-            emit (TStringLit((input.Substring(i + 3, n - i - 3)).Normalize())) i n p
-          lexDiag st.range "unterminated triple-quoted string literal"
-          go i' p' (st :: acc)
+          let (spannedToken, nextIndex, nextPosition) =
+            emit
+              (TStringLit(
+                (input.Substring(index + 3, inputLength - index - 3)).Normalize()
+              ))
+              index
+              inputLength
+              position
+          addDiagnostic
+            spannedToken.range
+            "unterminated triple-quoted string literal"
+          go nextIndex nextPosition (spannedToken :: tokensRev)
       // strings / chars (escape processing deferred — raw content)
-      elif c = '"' then
-        match scanString (i + 1) '"' with
-        | Ok j ->
-          let (st, i', p') =
-            emit (TStringLit(unescape (input.Substring(i + 1, j - i - 2)))) i j p in
-          go i' p' (st :: acc)
+      elif character = '"' then
+        match scanString (index + 1) '"' with
+        | Ok endIndex ->
+          let (spannedToken, nextIndex, nextPosition) =
+            emit
+              (TStringLit(
+                unescape (input.Substring(index + 1, endIndex - index - 2))
+              ))
+              index
+              endIndex
+              position in
+          go nextIndex nextPosition (spannedToken :: tokensRev)
         | Error _ ->
           // Unterminated `"…`: take to end of line for mid-typing recovery.
-          let j = scanToLineEnd (i + 1)
-          let (st, i', p') =
-            emit (TStringLit(unescape (input.Substring(i + 1, j - i - 1)))) i j p
-          lexDiag st.range "unterminated string literal"
-          go i' p' (st :: acc)
-      elif c = '\'' then
+          let endIndex = scanToLineEnd (index + 1)
+          let (spannedToken, nextIndex, nextPosition) =
+            emit
+              (TStringLit(
+                unescape (input.Substring(index + 1, endIndex - index - 1))
+              ))
+              index
+              endIndex
+              position
+          addDiagnostic spannedToken.range "unterminated string literal"
+          go nextIndex nextPosition (spannedToken :: tokensRev)
+      elif character = '\'' then
         // A leading `'` is a type variable (`'a`) in type context, decided by
         // the previous token. Otherwise it starts a char literal. Type variables
         // lex to the bare name as `TIdent`.
         let inTypeContext =
-          match acc with
-          | prev :: _ ->
-            match prev.token with
+          match tokensRev with
+          | previousToken :: _ ->
+            match previousToken.token with
             | TLParen
             | TStar
             | TLt
@@ -658,96 +922,142 @@ let tokenize
           | [] -> false
         if
           inTypeContext
-          && i + 1 < n
-          && (System.Char.IsLetter input[i + 1] || input[i + 1] = '_')
+          && index + 1 < inputLength
+          && (System.Char.IsLetter input[index + 1] || input[index + 1] = '_')
         then
-          let mutable j = i + 1
-          while j < n && (System.Char.IsLetterOrDigit input[j] || input[j] = '_') do
-            j <- j + 1
+          let mutable typeVariableEndIndex = index + 1
+          while (typeVariableEndIndex < inputLength
+                 && (System.Char.IsLetterOrDigit input[typeVariableEndIndex]
+                     || input[typeVariableEndIndex] = '_')) do
+            typeVariableEndIndex <- typeVariableEndIndex + 1
           // a closing quote right after the name means it was a char literal
-          if j < n && input[j] = '\'' then
-            match scanString (i + 1) '\'' with
-            | Ok j2 ->
-              let (st, i', p') =
-                emit (TCharLit(unescape (input.Substring(i + 1, j2 - i - 2)))) i j2 p
-              go i' p' (st :: acc)
+          if
+            typeVariableEndIndex < inputLength && input[typeVariableEndIndex] = '\''
+          then
+            match scanString (index + 1) '\'' with
+            | Ok endIndex ->
+              let (spannedToken, nextIndex, nextPosition) =
+                emit
+                  (TCharLit(
+                    unescape (input.Substring(index + 1, endIndex - index - 2))
+                  ))
+                  index
+                  endIndex
+                  position
+              go nextIndex nextPosition (spannedToken :: tokensRev)
             | Error _ ->
-              let j2 = scanToLineEnd (i + 1)
-              let (st, i', p') =
-                emit (TCharLit(unescape (input.Substring(i + 1, j2 - i - 1)))) i j2 p
-              lexDiag st.range "unterminated char literal"
-              go i' p' (st :: acc)
+              let endIndex = scanToLineEnd (index + 1)
+              let (spannedToken, nextIndex, nextPosition) =
+                emit
+                  (TCharLit(
+                    unescape (input.Substring(index + 1, endIndex - index - 1))
+                  ))
+                  index
+                  endIndex
+                  position
+              addDiagnostic spannedToken.range "unterminated char literal"
+              go nextIndex nextPosition (spannedToken :: tokensRev)
           else
-            let (st, i', p') = emit (TIdent(input.Substring(i + 1, j - i - 1))) i j p
-            go i' p' (st :: acc)
+            let (spannedToken, nextIndex, nextPosition) =
+              emit
+                (TIdent(input.Substring(index + 1, typeVariableEndIndex - index - 1)))
+                index
+                typeVariableEndIndex
+                position
+            go nextIndex nextPosition (spannedToken :: tokensRev)
         else if
           // Char literal: read one char, or one escape, then the closing quote.
           // `'''` is the apostrophe char, not an empty literal.
-          i + 1 < n && input[i + 1] = '\\'
+          index + 1 < inputLength && input[index + 1] = '\\'
         then
           // Escaped char: scan to the closing quote so multi-char escapes decode,
           // such as `'\x41'` or `'\U0001F600'`.
-          match scanString (i + 1) '\'' with
-          | Ok j2 ->
-            let (st, i', p') =
-              emit (TCharLit(unescape (input.Substring(i + 1, j2 - i - 2)))) i j2 p
-            go i' p' (st :: acc)
+          match scanString (index + 1) '\'' with
+          | Ok endIndex ->
+            let (spannedToken, nextIndex, nextPosition) =
+              emit
+                (TCharLit(
+                  unescape (input.Substring(index + 1, endIndex - index - 2))
+                ))
+                index
+                endIndex
+                position
+            go nextIndex nextPosition (spannedToken :: tokensRev)
           | Error _ ->
-            let j2 = scanToLineEnd (i + 1)
-            let (st, i', p') =
-              emit (TCharLit(unescape (input.Substring(i + 1, j2 - i - 1)))) i j2 p
-            lexDiag st.range "unterminated char literal"
-            go i' p' (st :: acc)
+            let endIndex = scanToLineEnd (index + 1)
+            let (spannedToken, nextIndex, nextPosition) =
+              emit
+                (TCharLit(
+                  unescape (input.Substring(index + 1, endIndex - index - 1))
+                ))
+                index
+                endIndex
+                position
+            addDiagnostic spannedToken.range "unterminated char literal"
+            go nextIndex nextPosition (spannedToken :: tokensRev)
         else
           // Unescaped char: one extended grapheme cluster, then the closing
           // quote. A grapheme may span multiple UTF-16 code units.
-          let contentEnd =
-            if i + 1 < n then
-              i
+          let contentEndIndex =
+            if index + 1 < inputLength then
+              index
               + 1
-              + (System.Globalization.StringInfo.GetNextTextElement(input, i + 1))
+              + (System.Globalization.StringInfo.GetNextTextElement(input, index + 1))
                 .Length
             else
-              i + 1
-          if contentEnd < n && input[contentEnd] = '\'' then
-            let (st, i', p') =
+              index + 1
+          if contentEndIndex < inputLength && input[contentEndIndex] = '\'' then
+            let (spannedToken, nextIndex, nextPosition) =
               emit
-                (TCharLit(unescape (input.Substring(i + 1, contentEnd - i - 1))))
-                i
-                (contentEnd + 1)
-                p
-            go i' p' (st :: acc)
+                (TCharLit(
+                  unescape (input.Substring(index + 1, contentEndIndex - index - 1))
+                ))
+                index
+                (contentEndIndex + 1)
+                position
+            go nextIndex nextPosition (spannedToken :: tokensRev)
           else
             // Unterminated/half-typed char: recover through the grapheme end.
-            let endIdx = min n (max (i + 1) contentEnd)
-            let (st, i', p') =
+            let endIndex = min inputLength (max (index + 1) contentEndIndex)
+            let (spannedToken, nextIndex, nextPosition) =
               emit
-                (TCharLit(unescape (input.Substring(i + 1, endIdx - i - 1))))
-                i
-                endIdx
-                p
-            lexDiag st.range "unterminated char literal"
-            go i' p' (st :: acc)
-      elif c = '$' && i + 1 < n && input[i + 1] = '"' then
-        match scanInterp i with
-        | Ok(tok, j) -> let (st, i', p') = emit tok i j p in go i' p' (st :: acc)
+                (TCharLit(
+                  unescape (input.Substring(index + 1, endIndex - index - 1))
+                ))
+                index
+                endIndex
+                position
+            addDiagnostic spannedToken.range "unterminated char literal"
+            go nextIndex nextPosition (spannedToken :: tokensRev)
+      elif character = '$' && index + 1 < inputLength && input[index + 1] = '"' then
+        match scanInterp index with
+        | Ok(token, endIndex) ->
+          let (spannedToken, nextIndex, nextPosition) =
+            emit token index endIndex position
+          go nextIndex nextPosition (spannedToken :: tokensRev)
         | Error _ ->
           // Unterminated `$"…`: take to end of line.
-          let j = scanToLineEnd (i + 2)
-          let (st, i', p') = emit TInterpString i j p
-          lexDiag st.range "unterminated interpolated string"
-          go i' p' (st :: acc)
+          let endIndex = scanToLineEnd (index + 2)
+          let (spannedToken, nextIndex, nextPosition) =
+            emit TInterpString index endIndex position
+          addDiagnostic spannedToken.range "unterminated interpolated string"
+          go nextIndex nextPosition (spannedToken :: tokensRev)
       else
-        match operators |> List.tryFind (fun (s, _) -> matchesAt s i) with
-        | Some(s, tok) ->
-          let (st, i', p') = emit tok i (i + s.Length) p in go i' p' (st :: acc)
+        match
+          operators
+          |> List.tryFind (fun (operatorText, _) -> matchesAt operatorText index)
+        with
+        | Some(operatorText, token) ->
+          let (spannedToken, nextIndex, nextPosition) =
+            emit token index (index + operatorText.Length) position
+          go nextIndex nextPosition (spannedToken :: tokensRev)
         | None ->
           // Unknown character: record it, skip it, and keep lexing.
-          lexDiag
-            { start = p; end_ = advance p i (i + 1) }
-            $"unexpected character: '{input[i]}'"
-          go (i + 1) (advance p i (i + 1)) acc
+          addDiagnostic
+            { start = position; end_ = advance position index (index + 1) }
+            $"unexpected character: '{input[index]}'"
+          go (index + 1) (advance position index (index + 1)) tokensRev
 
   match go 0 { row = 0; column = 0 } [] with
-  | Ok toks -> Ok(toks, List.ofSeq diagnostics)
-  | Error e -> Error e
+  | Ok tokens -> Ok(tokens, List.ofSeq diagnostics)
+  | Error message -> Error message

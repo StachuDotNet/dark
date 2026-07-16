@@ -46,96 +46,91 @@ type PTModule =
     tests : List<PTTest> }
 
 
-/// Parse a testfile with the hand-written parser in test-mode (`actual = expected`
-/// assertions + `[<DB>]` user DBs). Produces `WTModule`s for the shared `toPT`
-/// pipeline.
+/// Parse a testfile with the shared parser, then apply Test classification.
+/// Produces `WTModule`s for the shared `toPT` pipeline.
 let parseFile (owner : string) (source : string) : List<WTModule> =
-  let result = P.parseTestFile source
-  match result.parsed with
-  | None ->
+  match P.parseFor Validation.Test source with
+  | Error diagnostics ->
     Exception.raiseInternal
-      "test parse failed"
-      [ "diagnostics", box (result.diagnostics |> List.map (fun d -> d.message)) ]
-  | Some(WT.SourceFile sf) ->
-    match result.diagnostics with
-    | (_ :: _) as ds ->
+      "test source produced diagnostics"
+      [ "diagnostics",
+        box (
+          diagnostics
+          |> List.map (fun d -> $"L{int d.range.start.row + 1}: {d.message}")
+        ) ]
+  | Ok validated ->
+    let sf = Validation.ValidatedSourceFile.toWrittenTypes validated
+
+    let dbFromTypeDecl (t : WT.TypeDecl) : WT.DB.T =
+      let typ =
+        match t.definition with
+        | WT.TDAlias tr -> tr
+        | _ ->
+          Exception.raiseInternal
+            "[<DB>] type must be a type alias"
+            [ "name", t.name.name ]
+      { name = t.name.name; version = 0; typ = typ }
+
+    let wtTest (test : WT.Test) : WTTest =
+      let expected =
+        match test.expected with
+        | WT.TEExpr e -> WTExpectedExpr e
+        | WT.TEError msg -> WTExpectedError(String.normalize msg)
+        | WT.TESqlError msg -> WTExpectedSqlError(String.normalize msg)
+      { name = "test"
+        lineNumber = int test.range.start.row + 1
+        actual = test.actual
+        expected = expected }
+
+    let rec walk
+      (currentModule : List<string>)
+      (parentDBs : List<WT.DB.T>)
+      (decls : List<WT.Declaration>)
+      : List<WTModule> =
+      let fns = ResizeArray()
+      let values = ResizeArray()
+      let types = ResizeArray()
+      let dbs = ResizeArray parentDBs // seeded with the parent module's DBs
+      let tests = ResizeArray()
+      let nested = ResizeArray()
+      for d in decls do
+        match d with
+        | WT.DFunction fn -> fns.Add(WT.packageFn owner currentModule fn)
+        | WT.DValue v -> values.Add(WT.packageValue owner currentModule v)
+        | WT.DType t -> types.Add(WT.packageType owner currentModule t)
+        | WT.DTypeDB t -> dbs.Add(dbFromTypeDecl t)
+        | WT.DTest test -> tests.Add(wtTest test)
+        // Testfiles evaluate `actual = expected` assertions. A bare expression
+        // is a broken assertion, so report it instead of skipping it.
+        | WT.DExpr e ->
+          Exception.raiseInternal
+            "Test case not in format `x = y`"
+            [ "line", box ((WT.exprRange e).start.row + 1) ]
+        // Recurse where the module appears, passing the DBs accumulated so far
+        // so a nested module inherits only the parent's earlier-declared DBs.
+        | WT.DModule sub ->
+          nested.AddRange(
+            walk
+              (currentModule @ WT.moduleNameParts sub)
+              (List.ofSeq dbs)
+              sub.declarations
+          )
+      { emptyWTModule with
+          name = currentModule
+          fns = List.ofSeq fns
+          values = List.ofSeq values
+          types = List.ofSeq types
+          dbs = List.ofSeq dbs
+          tests = List.ofSeq tests }
+      :: List.ofSeq nested
+
+    // Top-level bare expressions land in exprsToEval, not declarations.
+    match sf.exprsToEval with
+    | e :: _ ->
       Exception.raiseInternal
-        "test parse produced diagnostics"
-        [ "diagnostics",
-          box (
-            ds |> List.map (fun d -> $"L{int d.range.start.row + 1}: {d.message}")
-          ) ]
-    | [] ->
-      let dbFromTypeDecl (t : WT.TypeDecl) : WT.DB.T =
-        let typ =
-          match t.definition with
-          | WT.TDAlias tr -> tr
-          | _ ->
-            Exception.raiseInternal
-              "[<DB>] type must be a type alias"
-              [ "name", t.name.name ]
-        { name = t.name.name; version = 0; typ = typ }
-
-      let wtTest (test : WT.Test) : WTTest =
-        let expected =
-          match test.expected with
-          | WT.TEExpr e -> WTExpectedExpr e
-          | WT.TEError msg -> WTExpectedError(String.normalize msg)
-          | WT.TESqlError msg -> WTExpectedSqlError(String.normalize msg)
-        { name = "test"
-          lineNumber = int test.range.start.row + 1
-          actual = test.actual
-          expected = expected }
-
-      let rec walk
-        (currentModule : List<string>)
-        (parentDBs : List<WT.DB.T>)
-        (decls : List<WT.Declaration>)
-        : List<WTModule> =
-        let fns = ResizeArray()
-        let values = ResizeArray()
-        let types = ResizeArray()
-        let dbs = ResizeArray parentDBs // seeded with the parent module's DBs
-        let tests = ResizeArray()
-        let nested = ResizeArray()
-        for d in decls do
-          match d with
-          | WT.DFunction fn -> fns.Add(WT.packageFn owner currentModule fn)
-          | WT.DValue v -> values.Add(WT.packageValue owner currentModule v)
-          | WT.DType t -> types.Add(WT.packageType owner currentModule t)
-          | WT.DTypeDB t -> dbs.Add(dbFromTypeDecl t)
-          | WT.DTest test -> tests.Add(wtTest test)
-          // Testfiles evaluate `actual = expected` assertions. A bare expression
-          // is a broken assertion, so report it instead of skipping it.
-          | WT.DExpr e ->
-            Exception.raiseInternal
-              "Test case not in format `x = y`"
-              [ "line", box ((WT.exprRange e).start.row + 1) ]
-          // Recurse where the module appears, passing the DBs accumulated so far
-          // so a nested module inherits only the parent's earlier-declared DBs.
-          | WT.DModule sub ->
-            nested.AddRange(
-              walk
-                (currentModule @ WT.moduleNameParts sub)
-                (List.ofSeq dbs)
-                sub.declarations
-            )
-        { emptyWTModule with
-            name = currentModule
-            fns = List.ofSeq fns
-            values = List.ofSeq values
-            types = List.ofSeq types
-            dbs = List.ofSeq dbs
-            tests = List.ofSeq tests }
-        :: List.ofSeq nested
-
-      // Top-level bare expressions land in exprsToEval, not declarations.
-      match sf.exprsToEval with
-      | e :: _ ->
-        Exception.raiseInternal
-          "Test case not in format `x = y`"
-          [ "line", box ((WT.exprRange e).start.row + 1) ]
-      | [] -> walk [] [] sf.declarations
+        "Test case not in format `x = y`"
+        [ "line", box ((WT.exprRange e).start.row + 1) ]
+    | [] -> walk [] [] sf.declarations
 
 
 let toPT
@@ -219,7 +214,6 @@ let toPT
         uply {
           let context =
             { WT2PT.Context.currentFnName = None
-              WT2PT.Context.isInFunction = false
               WT2PT.Context.argMap = Map.empty
               WT2PT.Context.localBindings = Set.empty }
           let exprToPT =
