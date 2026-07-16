@@ -435,6 +435,18 @@ let rec private zeroValue
   | AST.TTuple ts ->
     ts |> List.map (zeroValue defs seen) |> allOk |> Result.map AST.TupleLiteral
   | AST.TList _ -> Ok(AST.ListLiteral [])
+  | AST.TFunction(argTypes, retType) ->
+    // A function param: synthesize a dummy lambda `(a0, a1, …) => <zero of ret>`
+    // that ignores its args, so a higher-order fn can be made reachable. Param
+    // types are TVar so the compiler infers them at the call site.
+    zeroValue defs seen retType
+    |> Result.map (fun body ->
+      let ps =
+        argTypes
+        |> List.mapi (fun i _ -> ($"__zlam{i}", AST.TVar $"__zlamt{i}"))
+      match ps with
+      | [] -> AST.Lambda(AST.NonEmptyList.fromList [ ("__zlam0", AST.TVar "__zlamt0") ], body)
+      | _ -> AST.Lambda(AST.NonEmptyList.fromList ps, body))
   | AST.TVar _ -> zeroLit AST.TInt64 // an unmapped signature tvar: monomorphize at Int64
   | AST.TBytes ->
     // No bytes literal exists in the AST; synthesize an empty blob via the cast
