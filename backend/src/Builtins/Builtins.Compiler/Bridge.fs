@@ -35,7 +35,11 @@ type TypeEntry =
 type BridgeCtx =
   { Params : string[]
     Self : string
-    Values : Map<string, AST.Expr> }
+    Values : Map<string, AST.Expr>
+    /// Effectful builtins routable through the host RPC seam: name -> returns-a-
+    /// String (true) vs returns Unit (false). Presence implies all args are
+    /// String (only those are wire-marshalable in v1). Built from the live runtime.
+    Effectful : Map<string, bool> }
 
 let private err (category : string) (detail : string) : Result<'a, string> =
   Error $"unsupported-{category}: {detail}"
@@ -397,7 +401,28 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
           |> List.map recurse
           |> allOk
           |> Result.map (fun bas -> AST.Call(stdlibFn, AST.NonEmptyList.fromList bas))
-        | None -> err "builtin" $"{b.name}_v{b.version}"
+        | None ->
+          // Effectful builtins route through the host RPC seam (Stdlib.hostRpc):
+          // request = "name\narg0\narg1…" (all args String), result per the
+          // builtin's return type.
+          match Map.tryFind b.name ctx.Effectful with
+          | Some retIsString ->
+            args
+            |> NEList.toList
+            |> List.map recurse
+            |> allOk
+            |> Result.map (fun bas ->
+              let request =
+                (AST.StringLiteral b.name, bas)
+                ||> List.fold (fun acc arg ->
+                  AST.BinOp(
+                    AST.StringConcat,
+                    AST.BinOp(AST.StringConcat, acc, AST.StringLiteral "\n"),
+                    arg))
+              let call = AST.Call("Stdlib.hostRpc", AST.NonEmptyList.singleton request)
+              if retIsString then call
+              else AST.Let("__rpc_ignore", call, AST.UnitLiteral))
+          | None -> err "builtin" $"{b.name}_v{b.version}"
       | PT.FQFnName.Package(PT.Hash h) ->
         let bridgedArgs = args |> NEList.toList |> List.map recurse |> allOk
         let bridgedTypeArgs = typeArgs |> List.map (bridgeType Map.empty)
@@ -618,12 +643,17 @@ let bridgeTypeDef
 let bridgeFn
   (types : Map<string, TypeEntry>)
   (values : Map<string, AST.Expr>)
+  (effectful : Map<string, bool>)
   (compiledName : string)
   (fn : PT.PackageFn.PackageFn)
   : Result<AST.FunctionDef, string> =
   let paramList = NEList.toList fn.parameters
   let paramNames = paramList |> List.map (fun p -> p.name) |> Array.ofList
-  let ctx = { Params = paramNames; Self = compiledName; Values = values }
+  let ctx =
+    { Params = paramNames
+      Self = compiledName
+      Values = values
+      Effectful = effectful }
   let bridgedParams =
     paramList
     |> List.map (fun p -> bridgeType types p.typ |> Result.map (fun t -> (p.name, t)))

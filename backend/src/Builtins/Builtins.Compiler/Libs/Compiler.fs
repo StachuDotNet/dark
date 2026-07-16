@@ -133,7 +133,25 @@ let rec private fetchValueClosure
 
 /// Fetch + bridge the whole graph (fns and their non-generic custom types),
 /// returning the compiler TypeDefs, FunctionDefs, and the root's compiled name.
+/// Effectful builtins routable through the host RPC seam, from the live runtime:
+/// name -> returns-String (true) / returns-Unit (false); included only when all
+/// params are String (the wire-marshalable subset in v1).
+let private buildEffectfulMap (exeState : ExecutionState) : Map<string, bool> =
+  exeState.fns.builtIn
+  |> Map.toList
+  |> List.choose (fun (name, bfn) ->
+    let allStringArgs = bfn.parameters |> List.forall (fun p -> p.typ = TString)
+    if not allStringArgs then
+      None
+    else
+      match bfn.returnType with
+      | TUnit -> Some(name.name, false)
+      | TString -> Some(name.name, true)
+      | _ -> None)
+  |> Map.ofList
+
 let private buildPieces
+  (effectful : Map<string, bool>)
   (rootHash : string)
   : Ply<Result<List<AST.TypeDef> * List<AST.FunctionDef> * string, string>> =
   uply {
@@ -189,13 +207,13 @@ let private buildPieces
         let valuesMap =
           (Map.empty, values)
           ||> List.fold (fun m (h, pv) ->
-            let ctx : Bridge.BridgeCtx = { Params = [||]; Self = ""; Values = m }
+            let ctx : Bridge.BridgeCtx = { Params = [||]; Self = ""; Values = m; Effectful = Map.empty }
             match Bridge.bridgeExpr ctx pv.body with
             | Ok e -> Map.add h e m
             | Error _ -> m)
         let fnDefs =
           fns
-          |> List.map (fun (h, fn) -> Bridge.bridgeFn typeEnv valuesMap (Bridge.nameFor h) fn)
+          |> List.map (fun (h, fn) -> Bridge.bridgeFn typeEnv valuesMap effectful (Bridge.nameFor h) fn)
           |> allOk
         match typeDefs, fnDefs with
         | Error e, _ -> return Error e
@@ -308,10 +326,10 @@ let rec private zeroValue
 /// Compile-check one package fn by hash (bridge its call-graph, make it
 /// reachable with zero-valued args, compile — don't run). Returns (ok, detail).
 /// Wrapped so an unexpected crash in one fn can't abort a batch sweep.
-let private checkOne (hash : string) : Ply<bool * string> =
+let private checkOne (effectful : Map<string, bool>) (hash : string) : Ply<bool * string> =
   uply {
     try
-      let! pieces = buildPieces hash
+      let! pieces = buildPieces effectful hash
       match pieces with
       | Error e -> return (false, e)
       | Ok(typeDefs, fds, rootName) ->
@@ -538,7 +556,7 @@ let fns () : List<BuiltInFn> =
                   [ { name = "b"; typ = PT.TInt64; description = "" } ]
               returnType = PT.TInt64
               description = "" }
-          match Bridge.bridgeFn Map.empty Map.empty "bridgedFn" ptFn with
+          match Bridge.bridgeFn Map.empty Map.empty Map.empty "bridgedFn" ptFn with
           | Error e -> outcome false $"bridge: {e}" |> Ply
           | Ok fd ->
             let program : AST.Program =
@@ -570,8 +588,9 @@ let fns () : List<BuiltInFn> =
         "Fetches a package function's ProgramTypes by hash, lowers it to compiler AST via the §6 bridge, compiles a call to it with <args>, runs the native binary, and returns (true, <stdout>) or (false, <reason>). Pure-core leaves only; anything the bridge can't lower hard-fails with an `unsupported-*` reason. (Dark resolves a name to its hash; this takes the hash.)"
       fn =
         (function
-        | _, _, _, [ DString hash; DList(_, argDvals) ] ->
+        | exeState, _, _, [ DString hash; DList(_, argDvals) ] ->
           uply {
+            let effectful = buildEffectfulMap exeState
             let argLits =
               argDvals
               |> List.choose (fun d ->
@@ -583,7 +602,7 @@ let fns () : List<BuiltInFn> =
             elif List.isEmpty argLits then
               return outcome false "need >= 1 arg (nullary calls not yet supported)"
             else
-              let! pieces = buildPieces hash
+              let! pieces = buildPieces effectful hash
               match pieces with
               | Error e -> return outcome false e
               | Ok(typeDefs, fds, rootName) ->
@@ -612,9 +631,9 @@ let fns () : List<BuiltInFn> =
         "Checks whether a package function compiles via the §6 bridge, WITHOUT running it: fetches its ProgramTypes by hash, lowers to compiler AST, makes it reachable with zero-valued args, and compiles. Returns (true, \"<n> bytes\") if it compiles or (false, \"<unsupported-*>\") with the first blocker. This is the `dark <fn> compile` semantic (compilability, not execution)."
       fn =
         (function
-        | _, _, _, [ DString hash ] ->
+        | exeState, _, _, [ DString hash ] ->
           uply {
-            let! (ok, detail) = checkOne hash
+            let! (ok, detail) = checkOne (buildEffectfulMap exeState) hash
             return outcome ok detail
           }
         | _ -> incorrectArgs ())
@@ -632,13 +651,14 @@ let fns () : List<BuiltInFn> =
         "The §4 bring-up loop, in ONE process (stdlib built once): compile-checks every fn hash and returns a newline-joined report, one `<ok>|<detail>` line per input hash in order (ok = true/false). Feed it every fn hash to get a whole-tree coverage number + ranked blockers without the per-process stdlib rebuild."
       fn =
         (function
-        | _, _, _, [ DList(_, hashes) ] ->
+        | exeState, _, _, [ DList(_, hashes) ] ->
           uply {
+            let effectful = buildEffectfulMap exeState
             let mutable lines : List<string> = []
             for hd in hashes do
               match hd with
               | DString hash ->
-                let! (ok, detail) = checkOne hash
+                let! (ok, detail) = checkOne effectful hash
                 lines <- lines @ [ $"{ok}|{detail}" ]
               | _ -> lines <- lines @ [ "false|non-string-hash" ]
             return DString(String.concat "\n" lines)
