@@ -775,7 +775,14 @@ let private runOne
                         | Ok v -> Some v
                         | Error _ -> None
                       with _ -> None
-                    let scalarRepr (d : Dval) : string option =
+                    // Repr matching the compiler's own print format so outputs can be
+                    // compared: strings raw at top level but quoted inside a list,
+                    // list as [a, b], Unit as "". None => not comparable (skip).
+                    let rec reprNested (d : Dval) : string option =
+                      match d with
+                      | DString s -> Some("\"" + s + "\"")
+                      | _ -> scalarRepr d
+                    and scalarRepr (d : Dval) : string option =
                       match d with
                       | DInt64 n -> Some(string n)
                       | DInt n -> Some(string (DarkInt.toBigInt n))
@@ -784,6 +791,12 @@ let private runOne
                       | DFloat f -> Some(string f)
                       | DChar c -> Some c
                       | DUnit -> Some ""
+                      | DList(_, xs) ->
+                        let parts = xs |> List.map reprNested
+                        if List.exists Option.isNone parts then None
+                        else
+                          let strs = parts |> List.choose (fun (x : string option) -> x)
+                          Some("[" + String.concat ", " strs + "]")
                       | _ -> None
                     let iv1, iv2 = runInterp (), runInterp ()
                     match iv1, iv2 with
