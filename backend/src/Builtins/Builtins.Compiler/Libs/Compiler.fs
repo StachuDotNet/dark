@@ -142,8 +142,7 @@ let rec private rtToMarshalable (t : TypeReference) : AST.Type option =
   | TInt -> Some AST.TInt64
   | TBool -> Some AST.TBool
   | TUnit -> Some AST.TUnit
-  // TList is excluded pending a runtime hang in the compiled list-decode path
-  // (Option/Result are proven); the unmarshalTyped TList case stays for when it lands.
+  | TList inner -> rtToMarshalable inner |> Option.map AST.TList
   | TCustomType(nr, args) ->
     match nr.resolved with
     | Ok(FQTypeName.Package(Hash h)) ->
@@ -1237,6 +1236,31 @@ let fns () : List<BuiltInFn> =
                 lines <- lines @ [ $"{ok}|{detail}" ]
               | _ -> lines <- lines @ [ "false|non-string-hash" ]
             return DString(String.concat "\n" lines)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "compilerNativeListTest" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TString
+      description = "Debug: does a native multi-element list [7,8,9] match head work at runtime (no daemon)? Returns 7, or hangs/crashes if the finger-tree is broken."
+      fn =
+        (function
+        | _, _, _, [ DUnit ] ->
+          uply {
+            // Decode a wire list "alpha\\nbeta\\ngamma" via unmarshalTyped(List<String>), no daemon -> length 3
+            let decoded = Bridge.unmarshalTyped 0 (AST.TList AST.TString) (AST.StringLiteral "alpha\nbeta\ngamma")
+            let len = AST.TypeApp("Stdlib.List.length", [ AST.TString ], AST.NonEmptyList.singleton decoded)
+            let program = AST.Program [ AST.Expression(AST.Call("Stdlib.Int64.toString", AST.NonEmptyList.singleton len)) ]
+            match compileAst program with
+            | Error e -> return DString ("compile: " + e)
+            | Ok binary ->
+              let out = CompilerLibrary.execute 0 5000 binary
+              return DString (if out.ExitCode = -999 then "HANG" elif out.ExitCode <> 0 then $"crash {out.ExitCode}" else out.Stdout.Trim())
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
