@@ -99,7 +99,7 @@ let rec bridgeType
           if sum then AST.TSum(nameForType h, args)
           else AST.TRecord(nameForType h, args)))
   | PT.TVariable v -> Ok(AST.TVar v)
-  | PT.TList _ -> err "type" "TList"
+  | PT.TList inner -> recurse inner |> Result.map AST.TList
   | PT.TTuple _ -> err "type" "TTuple"
   | PT.TDict _ -> err "type" "TDict"
   | PT.TFn _ -> err "type" "TFn"
@@ -272,7 +272,7 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
       |> List.map (bridgeCase paramNames)
       |> allOk
       |> Result.map (fun cs -> AST.Match(scrut, cs)))
-  | PT.EList(_, _) -> err "expr" "EList"
+  | PT.EList(_, elems) -> elems |> List.map recurse |> allOk |> Result.map AST.ListLiteral
   | PT.ETuple(_, _, _, _) -> err "expr" "ETuple"
   | PT.EPipe(_, _, _) -> err "expr" "EPipe"
   | _ -> err "expr" (e.GetType().Name)
@@ -400,6 +400,7 @@ let rec referencedPackageFns (e : PT.Expr) : List<string> =
         | PT.FQFnName.Builtin _ -> []
       | Error _ -> []
     here @ (args |> NEList.toList |> List.collect r)
+  | PT.EList(_, elems) -> elems |> List.collect r
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
   | _ -> []
 
@@ -430,6 +431,7 @@ let rec typeRefsInExpr (e : PT.Expr) : List<string> =
     @ (cases
        |> List.collect (fun c ->
          r c.rhs @ (match c.whenCondition with Some g -> r g | None -> [])))
+  | PT.EList(_, elems) -> elems |> List.collect r
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
   | _ -> []
 

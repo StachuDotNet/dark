@@ -244,6 +244,7 @@ let rec private zeroValue
       | _ -> Error $"no sum def {name}"
   | AST.TTuple ts ->
     ts |> List.map (zeroValue defs seen) |> allOk |> Result.map AST.TupleLiteral
+  | AST.TList _ -> Ok(AST.ListLiteral [])
   | prim -> zeroLit prim
 
 /// Compile-check one package fn by hash (bridge its call-graph, make it
