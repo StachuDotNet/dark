@@ -155,6 +155,10 @@ let private buildEffectfulMap
         | TInt -> Some Bridge.WAInt
         | TBool -> Some Bridge.WABool
         | TFloat -> Some Bridge.WAFloat
+        // Host-opaque types travel as their canonical string (see bridgeType).
+        // Uuid round-trips cleanly (Guid parse); DateTime args are omitted until
+        // wire->DateTime ISO parsing is in (return-only for now).
+        | TUuid -> Some Bridge.WAString
         | _ -> None)
     let wireRet =
       match bfn.returnType with
@@ -163,6 +167,8 @@ let private buildEffectfulMap
       | TInt64 -> Some Bridge.WRInt
       | TInt -> Some Bridge.WRInt
       | TBool -> Some Bridge.WRBool
+      | TUuid -> Some Bridge.WRString
+      | TDateTime -> Some Bridge.WRString
       | t when t = optStr -> Some Bridge.WROptString
       | t when t = resStrStr -> Some Bridge.WRResStrStr
       | t when t = resUnitStr -> Some Bridge.WRResUnitStr
@@ -455,6 +461,9 @@ let rec private dvalToWire (d : Dval) : string =
   | DUnit -> "unit"
   | DFloat f -> string f
   | DChar c -> c
+  // Host-opaque types -> canonical string (see Bridge.bridgeType for soundness).
+  | DUuid g -> string g
+  | DDateTime dt -> LibExecution.DarkDateTime.toIsoString dt
   | other -> $"?unmarshalable:{other.GetType().Name}"
 
 /// wire string -> scalar Dval, per the builtin param's declared type.
@@ -466,6 +475,7 @@ let private wireToDval (t : TypeReference) (s : string) : Dval =
   | TUnit -> DUnit
   | TFloat -> DFloat(float s)
   | TChar -> DChar s
+  | TUuid -> DUuid(System.Guid.Parse s)
   | _ -> DString s
 
 /// Dispatch one request ("name\narg1\narg2…") to the real builtin, return the

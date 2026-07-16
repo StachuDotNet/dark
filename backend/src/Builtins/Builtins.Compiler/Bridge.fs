@@ -226,8 +226,13 @@ let rec bridgeType
       a |> Result.bind (fun args' -> r |> Result.map (fun ret' -> AST.TFunction(args', ret')))
   | PT.TBlob -> Ok AST.TBytes
   | PT.TDB _ -> err "type" "TDB"
-  | PT.TUuid -> err "type" "TUuid"
-  | PT.TDateTime -> err "type" "TDateTime"
+  // Host types with no compiler representation are carried as their canonical
+  // string form. Sound for well-typed programs: Dark treats a Uuid/DateTime
+  // opaquely (pass, store, compare-by-equality), and every builtin that produces
+  // or consumes one marshals through the daemon (Guid/ISO string round-trip), so
+  // the compiled value stays in lockstep with the interpreter's.
+  | PT.TUuid -> Ok AST.TString
+  | PT.TDateTime -> Ok AST.TString
   | other -> err "type" (other.GetType().Name)
 
 // ---------------------------------------------------------------------------
