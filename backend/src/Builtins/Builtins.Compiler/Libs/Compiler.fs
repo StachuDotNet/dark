@@ -96,10 +96,6 @@ let private compileClosure
       @ [ AST.Expression(AST.Call(rootName, AST.NonEmptyList.fromList args)) ])
   compileAst program
 
-/// Return a (Bool ok, String detail) tuple as a Dark value.
-let private outcome (ok : bool) (detail : string) : Dval =
-  DTuple(DBool ok, DString detail, [])
-
 /// A zero/default literal for a compiler type, so a function can be made
 /// reachable (called) to check that it actually compiles, without real args.
 let rec private zeroLit (t : AST.Type) : Result<AST.Expr, string> =
@@ -120,6 +116,37 @@ let rec private zeroLit (t : AST.Type) : Result<AST.Expr, string> =
   | AST.TChar -> Ok(AST.CharLiteral "a")
   | AST.TUnit -> Ok AST.UnitLiteral
   | other -> Error $"no zero literal for {other}"
+
+/// Compile-check one package fn by hash (bridge its call-graph, make it
+/// reachable with zero-valued args, compile — don't run). Returns (ok, detail).
+/// Wrapped so an unexpected crash in one fn can't abort a batch sweep.
+let private checkOne (hash : string) : Ply<bool * string> =
+  uply {
+    try
+      let rootName = Bridge.nameFor hash
+      let! closure = bridgeClosure hash
+      match closure with
+      | Error e -> return (false, e)
+      | Ok fds ->
+        match fds |> List.tryFind (fun fd -> fd.Name = rootName) with
+        | None -> return (false, "root fn not bridged")
+        | Some rootFd ->
+          let dummy =
+            rootFd.Params |> AST.NonEmptyList.toList |> List.map (snd >> zeroLit)
+          match List.tryPick (function Error e -> Some e | Ok _ -> None) dummy with
+          | Some e -> return (false, $"arg-synthesis: {e}")
+          | None ->
+            let args = dummy |> List.choose (function Ok x -> Some x | Error _ -> None)
+            match compileClosure fds rootName args with
+            | Ok binary -> return (true, $"{binary.Length} bytes")
+            | Error e -> return (false, e)
+    with e ->
+      return (false, $"exn: {e.Message}")
+  }
+
+/// Return a (Bool ok, String detail) tuple as a Dark value.
+let private outcome (ok : bool) (detail : string) : Dval =
+  DTuple(DBool ok, DString detail, [])
 
 let fns () : List<BuiltInFn> =
   [ { name = fn "compilerInfo" 0
@@ -278,23 +305,34 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString hash ] ->
           uply {
-            let rootName = Bridge.nameFor hash
-            let! closure = bridgeClosure hash
-            match closure with
-            | Error e -> return outcome false e
-            | Ok fds ->
-              match fds |> List.tryFind (fun fd -> fd.Name = rootName) with
-              | None -> return outcome false "root fn not bridged"
-              | Some rootFd ->
-                let dummyArgs =
-                  rootFd.Params |> AST.NonEmptyList.toList |> List.map (snd >> zeroLit)
-                match List.tryPick (function Error e -> Some e | Ok _ -> None) dummyArgs with
-                | Some e -> return outcome false $"arg-synthesis: {e}"
-                | None ->
-                  let args = dummyArgs |> List.choose (function Ok x -> Some x | Error _ -> None)
-                  match compileClosure fds rootName args with
-                  | Ok binary -> return outcome true $"{binary.Length} bytes"
-                  | Error e -> return outcome false e
+            let! (ok, detail) = checkOne hash
+            return outcome ok detail
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "compilerCoverageSweep" 0
+      typeParams = []
+      parameters =
+        [ Param.make "hashes" (TList TString) "package fn content hashes to compile-check" ]
+      returnType = TString
+      description =
+        "The §4 bring-up loop, in ONE process (stdlib built once): compile-checks every fn hash and returns a newline-joined report, one `<ok>|<detail>` line per input hash in order (ok = true/false). Feed it every fn hash to get a whole-tree coverage number + ranked blockers without the per-process stdlib rebuild."
+      fn =
+        (function
+        | _, _, _, [ DList(_, hashes) ] ->
+          uply {
+            let mutable lines : List<string> = []
+            for hd in hashes do
+              match hd with
+              | DString hash ->
+                let! (ok, detail) = checkOne hash
+                lines <- lines @ [ $"{ok}|{detail}" ]
+              | _ -> lines <- lines @ [ "false|non-string-hash" ]
+            return DString(String.concat "\n" lines)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
