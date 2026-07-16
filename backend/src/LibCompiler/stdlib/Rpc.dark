@@ -8,7 +8,9 @@
 
 def Stdlib.hostRpcPoll(u: Unit) : String =
     if Stdlib.File.exists("/tmp/dark-rpc-resp") then
-        Stdlib.Result.withDefault(Stdlib.File.readText("/tmp/dark-rpc-resp"), "")
+        let r = Stdlib.Result.withDefault(Stdlib.File.readText("/tmp/dark-rpc-resp"), "") in
+        let _ = Stdlib.File.delete("/tmp/dark-rpc-resp") in
+        r
     else
         Stdlib.hostRpcPoll(())
 

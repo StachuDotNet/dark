@@ -424,21 +424,53 @@ let private dispatchBuiltin
       return dvalToWire result
   }
 
+let private rpcReqFifo = "/tmp/dark-rpc-req"
+let private rpcRespFile = "/tmp/dark-rpc-resp"
+let private rpcShutdown = "__DARK_RPC_SHUTDOWN__"
+
 /// Set up the channel and service ONE builtin request in a background task
-/// (single-call v1; multi-call needs a read-until-EOF intrinsic / socket).
+/// (used by the daemon self-test).
 let private serveOneRequest (exeState : ExecutionState) (vm : VMState) : System.Threading.Tasks.Task =
-  let reqFifo = "/tmp/dark-rpc-req"
-  let respFile = "/tmp/dark-rpc-resp"
-  for f in [ respFile; reqFifo ] do
+  for f in [ rpcRespFile; rpcReqFifo ] do
     if System.IO.File.Exists f then System.IO.File.Delete f
-  let psi = System.Diagnostics.ProcessStartInfo("mkfifo", reqFifo)
+  let psi = System.Diagnostics.ProcessStartInfo("mkfifo", rpcReqFifo)
   psi.UseShellExecute <- false
   (System.Diagnostics.Process.Start psi).WaitForExit()
   System.Threading.Tasks.Task.Run(fun () ->
-    let req = System.IO.File.ReadAllText reqFifo
+    let req = System.IO.File.ReadAllText rpcReqFifo
     let resp = (dispatchBuiltin exeState vm req |> Ply.toTask).Result
-    System.IO.File.WriteAllText(respFile + ".tmp", resp)
-    System.IO.File.Move(respFile + ".tmp", respFile, true))
+    System.IO.File.WriteAllText(rpcRespFile + ".tmp", resp)
+    System.IO.File.Move(rpcRespFile + ".tmp", rpcRespFile, true))
+
+/// Start a looping daemon that services builtin requests until shutdown. Each
+/// request: read from the FIFO (blocks), dispatch, write the response file (the
+/// compiled hostRpc deletes it after reading, so the next poll waits for a fresh
+/// one). Returns the task + a shutdown fn (unblocks the FIFO read with a sentinel).
+let private startDaemon
+  (exeState : ExecutionState)
+  (vm : VMState)
+  : System.Threading.Tasks.Task * (unit -> unit) =
+  for f in [ rpcRespFile; rpcReqFifo ] do
+    if System.IO.File.Exists f then System.IO.File.Delete f
+  let psi = System.Diagnostics.ProcessStartInfo("mkfifo", rpcReqFifo)
+  psi.UseShellExecute <- false
+  (System.Diagnostics.Process.Start psi).WaitForExit()
+  let task =
+    System.Threading.Tasks.Task.Run(fun () ->
+      let mutable running = true
+      while running do
+        let req = System.IO.File.ReadAllText rpcReqFifo // blocks until a writer
+        if req = rpcShutdown || req = "" then
+          running <- false
+        else
+          let resp = (dispatchBuiltin exeState vm req |> Ply.toTask).Result
+          System.IO.File.WriteAllText(rpcRespFile + ".tmp", resp)
+          System.IO.File.Move(rpcRespFile + ".tmp", rpcRespFile, true))
+  let shutdown () =
+    try
+      System.IO.File.WriteAllText(rpcReqFifo, rpcShutdown)
+    with _ -> ()
+  (task, shutdown)
 
 let fns () : List<BuiltInFn> =
   [ { name = fn "compilerInfo" 0
@@ -588,7 +620,7 @@ let fns () : List<BuiltInFn> =
         "Fetches a package function's ProgramTypes by hash, lowers it to compiler AST via the §6 bridge, compiles a call to it with <args>, runs the native binary, and returns (true, <stdout>) or (false, <reason>). Pure-core leaves only; anything the bridge can't lower hard-fails with an `unsupported-*` reason. (Dark resolves a name to its hash; this takes the hash.)"
       fn =
         (function
-        | exeState, _, _, [ DString hash; DList(_, argDvals) ] ->
+        | exeState, vm, _, [ DString hash; DList(_, argDvals) ] ->
           uply {
             let effectful = buildEffectfulMap exeState
             let argLits =
@@ -612,7 +644,12 @@ let fns () : List<BuiltInFn> =
                 match compileClosure typeDefs fds (mainCall rootFd argLits) with
                 | Error e -> return outcome false $"compile: {e}"
                 | Ok binary ->
+                  // Start the host-RPC daemon so any effectful builtins the fn
+                  // calls are serviced by the real runtime, then run the binary.
+                  let (daemon, shutdown) = startDaemon exeState vm
                   let out = CompilerLibrary.execute 0 binary
+                  shutdown ()
+                  daemon.Wait()
                   return
                     (if out.ExitCode = 0 then outcome true out.Stdout
                      else outcome false $"exit {out.ExitCode}: {out.Stderr}")
