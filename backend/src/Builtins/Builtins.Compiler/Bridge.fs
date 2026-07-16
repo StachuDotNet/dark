@@ -84,6 +84,35 @@ let private allOk (results : List<Result<'a, string>>) : Result<List<'a>, string
 let nameFor (hash : string) : string = "fn." + hash
 let nameForType (hash : string) : string = "T_" + hash
 
+// Pure Darklang stdlib fns for which the compiler ships a REALLY-equivalent native
+// implementation. A call to one is emitted as a call to the compiler's native fn,
+// and its Dark definition is NOT bridged. This is deliberately restricted to fns
+// that (a) do NOT currently compile as Dark and (b) have a native equivalent whose
+// signature (arg order + lambda arg order) is verified identical — so routing is
+// purely additive (the Dark version was failing anyway) and semantics match. The
+// four here are all defined via a bare-`[]` fold accumulator (or a missing helper)
+// the compiler can't infer; the native versions annotate `empty<b>()` and compile.
+// Keyed by (owner, modules, name); the native name is `modules...name` joined by ".".
+// Equivalence is additionally gated by the differential run-sweep (0 diffs required).
+let private nativeStdlibRoutes : Set<string * string list * string> =
+  [ "map"; "filter"; "indexedMap"; "reverse" ]
+  |> List.map (fun n -> ("Darklang", [ "Stdlib"; "List" ], n))
+  |> Set.ofList
+
+/// If a resolved fn ref points at an allowlisted stdlib fn, the compiler's native
+/// name to route it to; else None.
+let routeNativeName (loc : PT.PackageLocation) : string option =
+  if Set.contains (loc.owner, loc.modules, loc.name) nativeStdlibRoutes then
+    Some(String.concat "." (loc.modules @ [ loc.name ]))
+  else
+    None
+
+/// Route a resolved fn-name reference (checks its binding location).
+let routeResolved (resolved : PT.ResolvedName<PT.FQFnName.FQFnName>) : string option =
+  match resolved.location with
+  | Some loc -> routeNativeName loc
+  | None -> None
+
 // Dark's Option/Result are ordinary package types, but the compiler ships its OWN
 // native Stdlib.Option.Option / Stdlib.Result.Result (its stdlib and the daemon's
 // unmarshaller use them). Bridging Dark's versions to a distinct T_<hash> splits
@@ -815,10 +844,14 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
         | Error e, _ -> Error e
         | _, Error e -> Error e
         | Ok tas, Ok bas ->
-          if List.isEmpty tas then
-            Ok(AST.Call(nameFor h, AST.NonEmptyList.fromList bas))
+          // A stdlib fn with a REALLY-equivalent native impl calls the native fn
+          // directly (its Dark def isn't bridged). Emit a bare Call so the compiler
+          // infers the native fn's type args (dotted name -> module-scoped).
+          let callName = routeResolved resolved |> Option.defaultValue (nameFor h)
+          if List.isEmpty tas || Option.isSome (routeResolved resolved) then
+            Ok(AST.Call(callName, AST.NonEmptyList.fromList bas))
           else
-            Ok(AST.TypeApp(nameFor h, tas, AST.NonEmptyList.fromList bas))
+            Ok(AST.TypeApp(callName, tas, AST.NonEmptyList.fromList bas))
   // Self-recursion: `self(args)` calls the current fn by its compiled name.
   | PT.EApply(_, PT.ESelf _, _, args) ->
     args
@@ -970,8 +1003,10 @@ and bridgePipePart
         | _, Error e -> Error e
         | Ok tl, Ok bas ->
           let full = piped :: bas
-          if List.isEmpty tl then Ok(AST.Call(nameFor h, AST.NonEmptyList.fromList full))
-          else Ok(AST.TypeApp(nameFor h, tl, AST.NonEmptyList.fromList full))
+          let callName = routeResolved resolved |> Option.defaultValue (nameFor h)
+          if List.isEmpty tl || Option.isSome (routeResolved resolved) then
+            Ok(AST.Call(callName, AST.NonEmptyList.fromList full))
+          else Ok(AST.TypeApp(callName, tl, AST.NonEmptyList.fromList full))
   | PT.EPipeEnum(_, nr, caseName, fields) ->
     typeHash nr
     |> Result.bind (fun h ->
@@ -1115,6 +1150,9 @@ let rec referencedPackageFns (e : PT.Expr) : List<string> =
   | PT.EApply(_, PT.EFnName(_, nr), _, args) ->
     let here =
       match nr.resolved with
+      // A routed stdlib fn is served by the compiler's native impl, so its Dark
+      // definition is never bridged — don't pull it into the compile closure.
+      | Ok resolved when Option.isSome (routeResolved resolved) -> []
       | Ok resolved ->
         match resolved.name with
         | PT.FQFnName.Package(PT.Hash h) -> [ h ]
@@ -1132,6 +1170,7 @@ let rec referencedPackageFns (e : PT.Expr) : List<string> =
          match p with
          | PT.EPipeFnCall(_, nr, _, args) ->
            (match nr.resolved with
+            | Ok res when Option.isSome (routeResolved res) -> []
             | Ok res ->
               match res.name with
               | PT.FQFnName.Package(PT.Hash h) -> [ h ]
@@ -1187,6 +1226,7 @@ let rec typeRefsInExpr (e : PT.Expr) : List<string> =
          match p with
          | PT.EPipeFnCall(_, nr, _, args) ->
            (match nr.resolved with
+            | Ok res when Option.isSome (routeResolved res) -> []
             | Ok res ->
               match res.name with
               | PT.FQFnName.Package(PT.Hash h) -> [ h ]
