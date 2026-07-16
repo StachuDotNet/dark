@@ -531,7 +531,17 @@ let rec private dvalToWire (d : Dval) : string =
   | DEnum(_, _, _, caseName, []) -> caseName
   | DEnum(_, _, _, caseName, fields) ->
     caseName + "\n" + (fields |> List.map (dvalToWire >> escWire) |> String.concat "\n")
-  | DList _ -> string (storeHandle d)
+  // A list marshals as its escaped elements joined by "\n" (same shape as DTuple),
+  // which is exactly what Bridge.unmarshalTyped's TList decoder expects: split on
+  // "\n", unescape + decode each, empty string -> []. It used to store an opaque
+  // HANDLE here (a leftover from the handle-model detour, which the finger-tree
+  // misdiagnosis motivated and native lists made unnecessary). Since TList
+  // marshalling was re-enabled, that silently corrupted EVERY effectful builtin
+  // returning a List: the daemon sent the handle id and the decoder read it back
+  // as a one-element list, so `Directory.list` returned ["1"] instead of the
+  // actual entries. Found by the differential run-sweep, not by a compile check.
+  // The __list* handle primitives call storeHandle directly, so they're unaffected.
+  | DList(_, xs) -> xs |> List.map (dvalToWire >> escWire) |> String.concat "\n"
   | DTuple(a, b, rest) ->
     (a :: b :: rest) |> List.map (dvalToWire >> escWire) |> String.concat "\n"
   | DString s -> s
