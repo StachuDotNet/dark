@@ -145,6 +145,52 @@ let private tuplePayload (xs : List<AST.Expr>) : AST.Expr option =
   | [ x ] -> Some x
   | many -> Some(AST.TupleLiteral many)
 
+/// Multi-field enum patterns become a single tuple sub-pattern (mirrors the
+/// tuple-payload convention used when constructing enums).
+let private tuplePatPayload (ps : List<AST.Pattern>) : AST.Pattern option =
+  match ps with
+  | [] -> None
+  | [ p ] -> Some p
+  | many -> Some(AST.PTuple many)
+
+let rec bridgePattern (p : PT.MatchPattern) : Result<AST.Pattern, string> =
+  let r = bridgePattern
+  match p with
+  | PT.MPUnit _ -> Ok AST.PUnit
+  | PT.MPBool(_, b) -> Ok(AST.PBool b)
+  | PT.MPInt64(_, n) -> Ok(AST.PInt64 n)
+  | PT.MPInt(_, big) ->
+    if big >= bigint System.Int64.MinValue && big <= bigint System.Int64.MaxValue then
+      Ok(AST.PInt64(int64 big))
+    else
+      err "pattern" "Int outside Int64 range"
+  | PT.MPInt8(_, n) -> Ok(AST.PInt8Literal n)
+  | PT.MPInt16(_, n) -> Ok(AST.PInt16Literal n)
+  | PT.MPInt32(_, n) -> Ok(AST.PInt32Literal n)
+  | PT.MPInt128(_, n) -> Ok(AST.PInt128Literal n)
+  | PT.MPUInt8(_, n) -> Ok(AST.PUInt8Literal n)
+  | PT.MPUInt16(_, n) -> Ok(AST.PUInt16Literal n)
+  | PT.MPUInt32(_, n) -> Ok(AST.PUInt32Literal n)
+  | PT.MPUInt64(_, n) -> Ok(AST.PUInt64Literal n)
+  | PT.MPUInt128(_, n) -> Ok(AST.PUInt128Literal n)
+  | PT.MPString(_, s) -> Ok(AST.PString s)
+  | PT.MPChar(_, c) -> Ok(AST.PChar c)
+  | PT.MPVariable(_, "_") -> Ok AST.PWildcard
+  | PT.MPVariable(_, name) -> Ok(AST.PVar name)
+  | PT.MPTuple(_, a, b, rest) ->
+    (a :: b :: rest) |> List.map r |> allOk |> Result.map AST.PTuple
+  | PT.MPList(_, pats) -> pats |> List.map r |> allOk |> Result.map AST.PList
+  | PT.MPListCons(_, head, tail) ->
+    r head
+    |> Result.bind (fun h -> r tail |> Result.map (fun t -> AST.PListCons([ h ], t)))
+  | PT.MPEnum(_, caseName, fieldPats) ->
+    fieldPats
+    |> List.map r
+    |> allOk
+    |> Result.map (fun ps -> AST.PConstructor(caseName, tuplePatPayload ps))
+  | PT.MPFloat _ -> err "pattern" "MPFloat"
+  | PT.MPOr _ -> err "pattern" "nested MPOr"
+
 let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, string> =
   let recurse = bridgeExpr paramNames
   match e with
@@ -221,11 +267,42 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
           |> Result.map (fun bridged ->
             AST.Call(nameFor h, AST.NonEmptyList.fromList bridged))
   | PT.EApply(_, _, _, _) -> err "expr" "EApply of a non-fn-name (higher-order)"
-  | PT.EMatch(_, _, _) -> err "expr" "EMatch"
+  | PT.EMatch(_, arg, cases) ->
+    recurse arg
+    |> Result.bind (fun scrut ->
+      cases
+      |> List.map (bridgeCase paramNames)
+      |> allOk
+      |> Result.map (fun cs -> AST.Match(scrut, cs)))
   | PT.EList(_, _) -> err "expr" "EList"
   | PT.ETuple(_, _, _, _) -> err "expr" "ETuple"
   | PT.EPipe(_, _, _) -> err "expr" "EPipe"
   | _ -> err "expr" (e.GetType().Name)
+
+/// Lower one match case. A PT case has a single pattern (alternatives live in
+/// MPOr); the compiler groups alternatives in MatchCase.Patterns.
+and bridgeCase
+  (paramNames : string[])
+  (c : PT.MatchCase)
+  : Result<AST.MatchCase, string> =
+  let patterns =
+    match c.pat with
+    | PT.MPOr(_, alts) -> alts |> NEList.toList |> List.map bridgePattern |> allOk
+    | p -> bridgePattern p |> Result.map (fun x -> [ x ])
+  patterns
+  |> Result.bind (fun pats ->
+    let guard =
+      match c.whenCondition with
+      | None -> Ok None
+      | Some g -> bridgeExpr paramNames g |> Result.map Some
+    guard
+    |> Result.bind (fun gd ->
+      bridgeExpr paramNames c.rhs
+      |> Result.map (fun body ->
+        ({ Patterns = AST.NonEmptyList.fromList pats
+           Guard = gd
+           Body = body }
+        : AST.MatchCase))))
 
 // ---------------------------------------------------------------------------
 // Type definitions
@@ -316,6 +393,11 @@ let rec referencedPackageFns (e : PT.Expr) : List<string> =
   | PT.ERecord(_, _, _, fields) -> fields |> List.collect (snd >> r)
   | PT.ERecordFieldAccess(_, record, _) -> r record
   | PT.EEnum(_, _, _, _, fields) -> fields |> List.collect r
+  | PT.EMatch(_, arg, cases) ->
+    r arg
+    @ (cases
+       |> List.collect (fun c ->
+         r c.rhs @ (match c.whenCondition with Some g -> r g | None -> [])))
   | PT.EApply(_, PT.EFnName(_, nr), _, args) ->
     let here =
       match nr.resolved with
@@ -350,6 +432,11 @@ let rec typeRefsInExpr (e : PT.Expr) : List<string> =
   | PT.EIf(_, c, t, Some el) -> r c @ r t @ r el
   | PT.EIf(_, c, t, None) -> r c @ r t
   | PT.ELet(_, _, v, body) -> r v @ r body
+  | PT.EMatch(_, arg, cases) ->
+    r arg
+    @ (cases
+       |> List.collect (fun c ->
+         r c.rhs @ (match c.whenCondition with Some g -> r g | None -> [])))
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
   | _ -> []
 
