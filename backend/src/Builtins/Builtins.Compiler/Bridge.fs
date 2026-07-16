@@ -73,7 +73,15 @@ let private allOk (results : List<Result<'a, string>>) : Result<List<'a>, string
 
 /// Deterministic compiler-side identifier for a package fn / type, from its
 /// content hash — so a whole call/type graph lowers with consistent names.
-let nameFor (hash : string) : string = "fn_" + hash
+// The "fn." prefix is deliberately dotted: the compiler's typechecker treats
+// dotted names as module-scoped (like `Stdlib.List.map`) and INFERS type args
+// for bare generic calls, whereas a dotless name is a "local user-defined
+// generic" that `RequireExplicitTypeArgsForBareCalls` demands explicit type args
+// for. Package fns are qualified, so module-scoped is correct — and it unblocks
+// every bare generic call site. The dot is only a resolver signal: x64 labels are
+// internal Map<string,pos> keys (never emitted as assembler text), so it's
+// codegen-safe and normalizes to the same binary.
+let nameFor (hash : string) : string = "fn." + hash
 let nameForType (hash : string) : string = "T_" + hash
 
 // Dark's Option/Result are ordinary package types, but the compiler ships its OWN
