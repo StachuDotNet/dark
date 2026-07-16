@@ -1742,7 +1742,10 @@ let compileAstProgram (request: CompileRequest) (ast: AST.Program) : CompileRepo
     compileUserWithPlan plan
 
 /// Execute compiled binary and capture output
-let execute (verbosity: int) (binary: byte array) : ExecutionOutput =
+/// Execute a compiled binary. timeoutMs > 0 kills the process (exit -999,
+/// stderr "TIMEOUT") if it doesn't finish in time — essential for sweeping fns
+/// that may hang (e.g. the x64 multi-element list runtime bug). <= 0 = no timeout.
+let execute (verbosity: int) (timeoutMs: int) (binary: byte array) : ExecutionOutput =
     let sw = Stopwatch.StartNew()
     let finish (exitCode: int) (stdout: string) (stderr: string) : ExecutionOutput =
         sw.Stop()
@@ -1837,20 +1840,27 @@ let execute (verbosity: int) (binary: byte array) : ExecutionOutput =
                     let stdoutTask = proc.StandardOutput.ReadToEndAsync()
                     let stderrTask = proc.StandardError.ReadToEndAsync()
 
-                    // Wait for process to complete
-                    proc.WaitForExit()
+                    // Wait for process to complete (with optional timeout)
+                    let exited =
+                        if timeoutMs > 0 then proc.WaitForExit(timeoutMs)
+                        else proc.WaitForExit(); true
 
-                    // Now wait for output to be fully read
-                    let stdout = stdoutTask.Result
-                    let stderr = stderrTask.Result
+                    if not exited then
+                        // Hung: kill it and report a distinct timeout result.
+                        (try proc.Kill(true) with _ -> ())
+                        finish -999 "" "TIMEOUT"
+                    else
+                        // Now wait for output to be fully read
+                        let stdout = stdoutTask.Result
+                        let stderr = stderrTask.Result
 
-                    let execTime = sw.Elapsed.TotalMilliseconds - execStart
-                    if verbosity >= 2 then println $"      {System.Math.Round(execTime, 1)}ms"
+                        let execTime = sw.Elapsed.TotalMilliseconds - execStart
+                        if verbosity >= 2 then println $"      {System.Math.Round(execTime, 1)}ms"
 
-                    if verbosity >= 1 then
-                        println $"  ✓ Execution complete ({System.Math.Round(sw.Elapsed.TotalMilliseconds, 1)}ms)"
+                        if verbosity >= 1 then
+                            println $"  ✓ Execution complete ({System.Math.Round(sw.Elapsed.TotalMilliseconds, 1)}ms)"
 
-                    finish proc.ExitCode stdout stderr
+                        finish proc.ExitCode stdout stderr
         finally
             // Cleanup - ignore deletion errors
             tryDeleteFile tempPath

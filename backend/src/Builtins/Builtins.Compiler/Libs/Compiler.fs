@@ -695,6 +695,54 @@ let private startDaemon
     with _ -> ()
   (task, shutdown)
 
+/// Compile a fn by hash, make it reachable with zero args, RUN it (daemon up, so
+/// effectful builtins are serviced) with a timeout, and classify the outcome:
+/// "cf|<blocker>" compile-fail, "hang" (timed out — e.g. multi-element list),
+/// "crash|<code>", or "ran|<stdout>". This is the runnable-vs-compilable measure.
+let private runOne
+  (exeState : ExecutionState)
+  (vm : VMState)
+  (effectful : Map<string, Bridge.WireArg list * Bridge.WireRet>)
+  (timeoutMs : int)
+  (hash : string)
+  : Ply<string> =
+  uply {
+    try
+      let! pieces = buildPieces effectful hash
+      match pieces with
+      | Error e -> return "cf|" + e
+      | Ok(typeDefs, fds, rootName) ->
+        match fds |> List.tryFind (fun fd -> fd.Name = rootName) with
+        | None -> return "cf|root not bridged"
+        | Some rootFd ->
+          let defsByName =
+            typeDefs
+            |> List.choose (fun td ->
+              match td with
+              | AST.RecordDef(n, _, _) -> Some(n, td)
+              | AST.SumTypeDef(n, _, _) -> Some(n, td)
+              | AST.TypeAlias(n, _, _) -> Some(n, td))
+            |> Map.ofList
+          let dummy = rootParamTypes rootFd |> List.map (zeroValue defsByName Set.empty)
+          match List.tryPick (function Error e -> Some e | Ok _ -> None) dummy with
+          | Some e -> return "cf|arg-synth: " + e
+          | None ->
+            let args = dummy |> List.choose (function Ok x -> Some x | Error _ -> None)
+            match compileClosure typeDefs fds (mainCall rootFd args) with
+            | Error e -> return "cf|" + e
+            | Ok binary ->
+              let (daemon, shutdown) = startDaemon exeState vm
+              let out =
+                try CompilerLibrary.execute 0 timeoutMs binary
+                with e -> { ExitCode = -1; Stdout = ""; Stderr = e.Message; RuntimeTime = System.TimeSpan.Zero }
+              shutdown ()
+              let _ = (try daemon.Wait() with _ -> ())
+              if out.ExitCode = -999 then return "hang"
+              elif out.ExitCode <> 0 then return $"crash|{out.ExitCode}"
+              else return "ran|" + out.Stdout.Trim()
+    with e -> return "cf|exn: " + e.Message
+  }
+
 let fns () : List<BuiltInFn> =
   [ { name = fn "compilerInfo" 0
       typeParams = []
@@ -745,7 +793,7 @@ let fns () : List<BuiltInFn> =
           match compileSource source with
           | Error e -> outcome false $"compile: {e}" |> Ply
           | Ok binary ->
-            let out = CompilerLibrary.execute 0 binary
+            let out = CompilerLibrary.execute 0 10000 binary
             if out.ExitCode = 0 then outcome true out.Stdout |> Ply
             else outcome false $"exit {out.ExitCode}: {out.Stderr}" |> Ply
         | _ -> incorrectArgs ())
@@ -776,7 +824,7 @@ let fns () : List<BuiltInFn> =
               daemon.Wait()
               return DString $"compile-error: {e}"
             | Ok binary ->
-              let out = CompilerLibrary.execute 0 binary
+              let out = CompilerLibrary.execute 0 10000 binary
               daemon.Wait()
               return DString $"binary stdout={out.Stdout.Trim()} (expected 5)"
           }
@@ -816,7 +864,7 @@ let fns () : List<BuiltInFn> =
               daemon.Wait()
               return DString $"compile-error: {e}"
             | Ok binary ->
-              let out = CompilerLibrary.execute 0 binary
+              let out = CompilerLibrary.execute 0 10000 binary
               daemon.Wait()
               return DString(out.Stdout.Trim())
           }
@@ -864,7 +912,7 @@ let fns () : List<BuiltInFn> =
             match compileAst program with
             | Error e -> outcome false $"compile: {e}" |> Ply
             | Ok binary ->
-              let out = CompilerLibrary.execute 0 binary
+              let out = CompilerLibrary.execute 0 10000 binary
               if out.ExitCode = 0 then outcome true out.Stdout |> Ply
               else outcome false $"exit {out.ExitCode}: {out.Stderr}" |> Ply
         | _ -> incorrectArgs ())
@@ -899,7 +947,7 @@ let fns () : List<BuiltInFn> =
               daemon.Wait()
               return DString $"compile-error: {e}"
             | Ok binary ->
-              let out = CompilerLibrary.execute 0 binary
+              let out = CompilerLibrary.execute 0 10000 binary
               shutdown ()
               daemon.Wait()
               return DString(out.Stdout.Trim())
@@ -939,7 +987,7 @@ let fns () : List<BuiltInFn> =
               daemon.Wait()
               return DString $"compile-error: {e}"
             | Ok binary ->
-              let out = CompilerLibrary.execute 0 binary
+              let out = CompilerLibrary.execute 0 10000 binary
               shutdown ()
               daemon.Wait()
               return DString(out.Stdout.Trim())
@@ -987,7 +1035,7 @@ let fns () : List<BuiltInFn> =
                   // Start the host-RPC daemon so any effectful builtins the fn
                   // calls are serviced by the real runtime, then run the binary.
                   let (daemon, shutdown) = startDaemon exeState vm
-                  let out = CompilerLibrary.execute 0 binary
+                  let out = CompilerLibrary.execute 0 10000 binary
                   shutdown ()
                   daemon.Wait()
                   return
@@ -1038,6 +1086,33 @@ let fns () : List<BuiltInFn> =
                 let! (ok, detail) = checkOne effectful hash
                 lines <- lines @ [ $"{ok}|{detail}" ]
               | _ -> lines <- lines @ [ "false|non-string-hash" ]
+            return DString(String.concat "\n" lines)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "compilerRunSweep" 0
+      typeParams = []
+      parameters =
+        [ Param.make "hashes" (TList TString) "package fn content hashes to compile AND run" ]
+      returnType = TString
+      description =
+        "Runnable-vs-compilable sweep: for each fn hash, compiles it, makes it reachable with zero args, and RUNS the binary (daemon up) with a 2s timeout. One line per hash: cf|<blocker> (didn't compile), hang (timed out — e.g. the multi-element list bug), crash|<code>, or ran|<stdout>. Turns the compile-coverage number into an actually-executes number and surfaces runtime hangs as failures."
+      fn =
+        (function
+        | exeState, vm, _, [ DList(_, hashes) ] ->
+          uply {
+            let effectful = buildEffectfulMap exeState
+            let mutable lines : List<string> = []
+            for hd in hashes do
+              match hd with
+              | DString hash ->
+                let! r = runOne exeState vm effectful 2000 hash
+                lines <- lines @ [ r ]
+              | _ -> lines <- lines @ [ "cf|non-string-hash" ]
             return DString(String.concat "\n" lines)
           }
         | _ -> incorrectArgs ())
