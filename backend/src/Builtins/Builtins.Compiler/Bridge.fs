@@ -398,6 +398,15 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
   let recurse = bridgeExpr ctx
   match e with
   | PT.EInt64(_, n) -> Ok(AST.Int64Literal n)
+  | PT.EInt8(_, n) -> Ok(AST.Int8Literal n)
+  | PT.EUInt8(_, n) -> Ok(AST.UInt8Literal n)
+  | PT.EInt16(_, n) -> Ok(AST.Int16Literal n)
+  | PT.EUInt16(_, n) -> Ok(AST.UInt16Literal n)
+  | PT.EInt32(_, n) -> Ok(AST.Int32Literal n)
+  | PT.EUInt32(_, n) -> Ok(AST.UInt32Literal n)
+  | PT.EUInt64(_, n) -> Ok(AST.UInt64Literal n)
+  | PT.EInt128(_, n) -> Ok(AST.Int128Literal n)
+  | PT.EUInt128(_, n) -> Ok(AST.UInt128Literal n)
   | PT.EInt(_, big) ->
     if big >= bigint System.Int64.MinValue && big <= bigint System.Int64.MaxValue then
       Ok(AST.Int64Literal(int64 big))
