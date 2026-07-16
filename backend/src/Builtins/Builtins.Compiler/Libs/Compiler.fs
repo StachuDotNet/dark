@@ -131,6 +131,39 @@ let rec private fetchValueClosure
           return! fetchValueClosure (Set.add h visited) (acc @ [ (h, pv) ]) (rest @ deps)
   }
 
+/// A builtin's RUNTIME return type -> the marshalable compiler AST.Type it decodes
+/// to, or None if it can't be recursively unmarshaled. Handles primitives and
+/// Option/Result/List of marshalable types (Option/Result recognized by hash);
+/// custom-enum payloads (which need the type-def env) return None.
+let rec private rtToMarshalable (t : TypeReference) : AST.Type option =
+  match t with
+  | TString -> Some AST.TString
+  | TInt64 -> Some AST.TInt64
+  | TInt -> Some AST.TInt64
+  | TBool -> Some AST.TBool
+  | TUnit -> Some AST.TUnit
+  // TList is excluded pending a runtime hang in the compiled list-decode path
+  // (Option/Result are proven); the unmarshalTyped TList case stays for when it lands.
+  | TCustomType(nr, args) ->
+    match nr.resolved with
+    | Ok(FQTypeName.Package(Hash h)) ->
+      if h = Bridge.optionTypeHash then
+        match args with
+        | [ inner ] ->
+          rtToMarshalable inner
+          |> Option.map (fun a -> AST.TSum("Stdlib.Option.Option", [ a ]))
+        | _ -> None
+      elif h = Bridge.resultTypeHash then
+        match args with
+        | [ a; b ] ->
+          match rtToMarshalable a, rtToMarshalable b with
+          | Some ab, Some bb -> Some(AST.TSum("Stdlib.Result.Result", [ ab; bb ]))
+          | _ -> None
+        | _ -> None
+      else None
+    | _ -> None
+  | _ -> None
+
 /// Fetch + bridge the whole graph (fns and their non-generic custom types),
 /// returning the compiler TypeDefs, FunctionDefs, and the root's compiled name.
 /// Effectful builtins routable through the host RPC seam, from the live runtime:
@@ -139,10 +172,6 @@ let rec private fetchValueClosure
 let private buildEffectfulMap
   (exeState : ExecutionState)
   : Map<string, Bridge.WireArg list * Bridge.WireRet> =
-  let optStr = TypeReference.option TString
-  let resStrStr = TypeReference.result TString TString
-  let resUnitStr = TypeReference.result TUnit TString
-  let resIntStr = TypeReference.result TInt64 TString
   exeState.fns.builtIn
   |> Map.toList
   |> List.choose (fun (name, bfn) ->
@@ -169,11 +198,13 @@ let private buildEffectfulMap
       | TBool -> Some Bridge.WRBool
       | TUuid -> Some Bridge.WRString
       | TDateTime -> Some Bridge.WRString
-      | t when t = optStr -> Some Bridge.WROptString
-      | t when t = resStrStr -> Some Bridge.WRResStrStr
-      | t when t = resUnitStr -> Some Bridge.WRResUnitStr
-      | t when t = resIntStr -> Some Bridge.WRResIntStr
-      | _ -> None
+      | other ->
+        // General container returns (Option/Result/List of marshalable types);
+        // the recursive unmarshaller decodes them. Custom-enum payloads (needing
+        // the type-def env) return None here and stay unrouted.
+        match rtToMarshalable other with
+        | Some bt -> Some(Bridge.WRTyped bt)
+        | None -> None
     match wireRet with
     | Some ret when not (List.exists Option.isNone argWires) ->
       Some(name.name, (argWires |> List.map Option.get, ret))
@@ -457,12 +488,19 @@ let private outcome (ok : bool) (detail : string) : Dval =
 
 /// Dval -> wire string. Scalars are literal; an enum (Option/Result) becomes
 /// "<case>" (nullary) or "<case>\n<payload>" (recursively marshaled).
+/// Escape a child's encoding so a raw newline only ever separates children
+/// (matches Stdlib.hostRpcEscape on the compiled side); composes to any depth.
+let private escWire (s : string) : string =
+  s.Replace("\\", "\\\\").Replace("\n", "\\n")
+
 let rec private dvalToWire (d : Dval) : string =
   match d with
   | DEnum(_, _, _, caseName, []) -> caseName
-  | DEnum(_, _, _, caseName, [ payload ]) -> caseName + "\n" + dvalToWire payload
   | DEnum(_, _, _, caseName, fields) ->
-    caseName + "\n" + (fields |> List.map dvalToWire |> String.concat "")
+    caseName + "\n" + (fields |> List.map (dvalToWire >> escWire) |> String.concat "\n")
+  | DList(_, xs) -> xs |> List.map (dvalToWire >> escWire) |> String.concat "\n"
+  | DTuple(a, b, rest) ->
+    (a :: b :: rest) |> List.map (dvalToWire >> escWire) |> String.concat "\n"
   | DString s -> s
   | DInt n -> string (DarkInt.toBigInt n)
   | DInt8 n -> string n
@@ -516,8 +554,14 @@ let private dispatchBuiltin
           (fun (p : BuiltInParam) (a : string) -> wireToDval p.typ a)
           (List.truncate n bfn.parameters)
           (List.truncate n wireArgs)
-      let! result = bfn.fn (exeState, vm, [], dvalArgs)
-      return dvalToWire result
+      // A builtin that raises (e.g. a capability check, a bad arg) must still
+      // produce a response, or the compiled program polls the response file
+      // forever. Return an error marker instead of letting it propagate.
+      try
+        let! result = bfn.fn (exeState, vm, [], dvalArgs)
+        return dvalToWire result
+      with e ->
+        return $"ERR:exn:{e.Message}"
   }
 
 let private rpcReqFifo = "/tmp/dark-rpc-req"
@@ -652,6 +696,46 @@ let fns () : List<BuiltInFn> =
               let out = CompilerLibrary.execute 0 binary
               daemon.Wait()
               return DString $"binary stdout={out.Stdout.Trim()} (expected 5)"
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "compilerMarshalSelfTest" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TString
+      description =
+        "Proves the general container marshaller round-trips at runtime: compiles a program that calls the REAL environmentGet builtin through the daemon (returns Option<String>), decodes the wire response via Bridge.unmarshalTyped over Option<String>, and Option.withDefault-extracts it. Returns the binary stdout (expect the value of $HOME)."
+      fn =
+        (function
+        | exeState, vm, _, [ DUnit ] ->
+          uply {
+            let daemon = serveOneRequest exeState vm
+            // Option<String>: environmentGet "HOME" through the daemon -> decode -> withDefault
+            let optStrTy = AST.TSum("Stdlib.Option.Option", [ AST.TString ])
+            let rpcCall =
+              AST.Call(
+                "Stdlib.hostRpc",
+                AST.NonEmptyList.singleton (AST.StringLiteral "environmentGet\nHOME"))
+            let decoded = Bridge.unmarshalTyped 0 optStrTy rpcCall
+            let program : AST.Program =
+              AST.Program
+                [ AST.Expression(
+                    AST.TypeApp(
+                      "Stdlib.Option.withDefault",
+                      [ AST.TString ],
+                      AST.NonEmptyList.fromList [ decoded; AST.StringLiteral "NONE" ])) ]
+            match compileAst program with
+            | Error e ->
+              daemon.Wait()
+              return DString $"compile-error: {e}"
+            | Ok binary ->
+              let out = CompilerLibrary.execute 0 binary
+              daemon.Wait()
+              return DString(out.Stdout.Trim())
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

@@ -45,10 +45,10 @@ type WireRet =
   | WRString
   | WRInt // Int64
   | WRBool
-  | WROptString // Option<String>
-  | WRResStrStr // Result<String, String>
-  | WRResUnitStr // Result<Unit, String>
-  | WRResIntStr // Result<Int64, String>
+  /// Any container (Option/Result/List of marshalable types), decoded recursively
+  /// over the bridged return type. Replaces the old fixed Option/Result-of-String
+  /// cases with a general, composable path.
+  | WRTyped of AST.Type
 
 type BridgeCtx =
   { Params : string[]
@@ -367,57 +367,75 @@ let rec private bindPattern
         |> Result.bind (fun inner -> bindPattern p (AST.TupleAccess(AST.Var tmp, i)) inner)
     build 0 subs |> Result.map (fun inner -> AST.Let(tmp, value, inner))
 
-/// Unmarshal a host-RPC wire response (an AST expr producing the String) back
-/// into a native value, per the builtin's return wire type. Option/Result wire
-/// format: "<case>" or "<case>\n<payload>" (case-prefix length: Some/Ok/Error).
-let private unmarshalReturn (ret : WireRet) (call : AST.Expr) : AST.Expr =
+/// Whether a bridged return type can be recursively unmarshaled from the wire.
+let rec isMarshalableType (t : AST.Type) : bool =
+  match t with
+  | AST.TString | AST.TInt64 | AST.TBool | AST.TUnit -> true
+  | AST.TSum("Stdlib.Option.Option", [ inner ]) -> isMarshalableType inner
+  | AST.TSum("Stdlib.Result.Result", [ a; b ]) -> isMarshalableType a && isMarshalableType b
+  | AST.TList inner -> isMarshalableType inner
+  | _ -> false
+
+/// Recursively decode a wire response (an AST String expr) into a native value of
+/// compiler type `t`. Compound children were escaped by the daemon (escWire), so
+/// each is unescaped before decoding. `d` keeps the let-bound temp unique per depth.
+let rec unmarshalTyped (d : int) (t : AST.Type) (src : AST.Expr) : AST.Expr =
+  let rv = "__rpc_" + string d
+  let r = AST.Var rv
+  let len e = AST.Call("Stdlib.String.length", AST.NonEmptyList.singleton e)
+  let slice e a b = AST.Call("Stdlib.String.slice", AST.NonEmptyList.fromList [ e; a; b ])
+  let starts e p = AST.Call("Stdlib.String.startsWith", AST.NonEmptyList.fromList [ e; AST.StringLiteral p ])
+  let unesc e = AST.Call("Stdlib.hostRpcUnescape", AST.NonEmptyList.singleton e)
+  let parseInt e = AST.Call("Stdlib.hostRpcParseInt", AST.NonEmptyList.singleton e)
   let optT = "Stdlib.Option.Option"
   let resT = "Stdlib.Result.Result"
-  let r = AST.Var "__rpc_r"
-  let len e = AST.Call("Stdlib.String.length", AST.NonEmptyList.singleton e)
-  let slice e a b =
-    AST.Call("Stdlib.String.slice", AST.NonEmptyList.fromList [ e; a; b ])
-  let starts e p =
-    AST.Call("Stdlib.String.startsWith", AST.NonEmptyList.fromList [ e; AST.StringLiteral p ])
-  let parseInt e = AST.Call("Stdlib.hostRpcParseInt", AST.NonEmptyList.singleton e)
-  match ret with
-  | WRString -> call
-  | WRInt -> parseInt call
-  | WRBool ->
-    AST.Let("__rpc_r", call, AST.Call("Stdlib.String.equals", AST.NonEmptyList.fromList [ r; AST.StringLiteral "true" ]))
-  | WRUnit -> AST.Let("__rpc_ignore", call, AST.UnitLiteral)
-  | WROptString ->
+  match t with
+  | AST.TString -> src
+  | AST.TInt64 -> parseInt src
+  | AST.TBool -> AST.BinOp(AST.Eq, src, AST.StringLiteral "true")
+  | AST.TUnit -> AST.Let(rv, src, AST.UnitLiteral)
+  | AST.TSum("Stdlib.Option.Option", [ inner ]) ->
     AST.Let(
-      "__rpc_r",
-      call,
+      rv,
+      src,
       AST.If(
         starts r "Some\n",
-        AST.Constructor(optT, "Some", Some(slice r (AST.Int64Literal 5L) (len r))),
+        AST.Constructor(optT, "Some", Some(unmarshalTyped (d + 1) inner (unesc (slice r (AST.Int64Literal 5L) (len r))))),
         AST.Constructor(optT, "None", None)))
-  | WRResUnitStr ->
+  | AST.TSum("Stdlib.Result.Result", [ okT; errT ]) ->
     AST.Let(
-      "__rpc_r",
-      call,
+      rv,
+      src,
       AST.If(
         starts r "Error\n",
-        AST.Constructor(resT, "Error", Some(slice r (AST.Int64Literal 6L) (len r))),
-        AST.Constructor(resT, "Ok", Some AST.UnitLiteral)))
-  | WRResStrStr ->
+        AST.Constructor(resT, "Error", Some(unmarshalTyped (d + 1) errT (unesc (slice r (AST.Int64Literal 6L) (len r))))),
+        AST.Constructor(resT, "Ok", Some(unmarshalTyped (d + 1) okT (unesc (slice r (AST.Int64Literal 3L) (len r)))))))
+  | AST.TList inner ->
+    let ev = "__rpce_" + string d
+    let lam =
+      AST.Lambda(
+        AST.NonEmptyList.fromList [ (ev, AST.TString) ],
+        unmarshalTyped (d + 1) inner (unesc (AST.Var ev)))
+    let split = AST.Call("Stdlib.String.split", AST.NonEmptyList.fromList [ r; AST.StringLiteral "\n" ])
     AST.Let(
-      "__rpc_r",
-      call,
+      rv,
+      src,
       AST.If(
-        starts r "Error\n",
-        AST.Constructor(resT, "Error", Some(slice r (AST.Int64Literal 6L) (len r))),
-        AST.Constructor(resT, "Ok", Some(slice r (AST.Int64Literal 3L) (len r)))))
-  | WRResIntStr ->
-    AST.Let(
-      "__rpc_r",
-      call,
-      AST.If(
-        starts r "Error\n",
-        AST.Constructor(resT, "Error", Some(slice r (AST.Int64Literal 6L) (len r))),
-        AST.Constructor(resT, "Ok", Some(parseInt (slice r (AST.Int64Literal 3L) (len r))))))
+        AST.BinOp(AST.Eq, r, AST.StringLiteral ""),
+        AST.ListLiteral [],
+        AST.TypeApp("Stdlib.List.map", [ AST.TString; inner ], AST.NonEmptyList.fromList [ split; lam ])))
+  | _ -> src // unreachable: buildEffectfulMap only routes isMarshalableType returns
+
+/// Unmarshal a host-RPC wire response into a native value per its return wire
+/// type. Scalars are decoded inline; every container routes through the recursive
+/// unmarshalTyped over the bridged return type.
+let private unmarshalReturn (ret : WireRet) (call : AST.Expr) : AST.Expr =
+  match ret with
+  | WRString -> call
+  | WRInt -> AST.Call("Stdlib.hostRpcParseInt", AST.NonEmptyList.singleton call)
+  | WRBool -> AST.BinOp(AST.Eq, call, AST.StringLiteral "true")
+  | WRUnit -> AST.Let("__rpc_ignore", call, AST.UnitLiteral)
+  | WRTyped t -> unmarshalTyped 0 t call
 
 let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
   let recurse = bridgeExpr ctx
