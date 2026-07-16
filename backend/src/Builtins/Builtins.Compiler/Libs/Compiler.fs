@@ -184,6 +184,7 @@ let private buildEffectfulMap
         | TInt -> Some Bridge.WAInt
         | TBool -> Some Bridge.WABool
         | TFloat -> Some Bridge.WAFloat
+        | TUnit -> Some Bridge.WAUnit
         // Host-opaque types travel as their canonical string (see bridgeType).
         // Uuid round-trips cleanly (Guid parse); DateTime args are omitted until
         // wire->DateTime ISO parsing is in (return-only for now).

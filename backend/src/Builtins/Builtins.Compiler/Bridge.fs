@@ -38,6 +38,7 @@ type WireArg =
   | WAInt
   | WABool
   | WAFloat
+  | WAUnit // a Unit param carries no data; sent as the literal "unit"
 
 /// How a builtin's wire response is unmarshaled back into a native value.
 type WireRet =
@@ -776,7 +777,8 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
                       | WAString -> a
                       | WAInt -> AST.Call("Stdlib.Int64.toString", AST.NonEmptyList.singleton a)
                       | WABool -> AST.Call("Stdlib.Bool.toString", AST.NonEmptyList.singleton a)
-                      | WAFloat -> AST.Call("Stdlib.Float.toString", AST.NonEmptyList.singleton a))
+                      | WAFloat -> AST.Call("Stdlib.Float.toString", AST.NonEmptyList.singleton a)
+                      | WAUnit -> AST.Let("__rpc_unit", a, AST.StringLiteral "unit"))
                     argWires
                     bas
                 let request =
