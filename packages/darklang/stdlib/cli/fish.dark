@@ -35,7 +35,7 @@ let addAlias
   let aliasDefinition = $"alias {alias} '{command}'"
 
   (readFishConfig ())
-  |> Result.map (fun content ->
+  |> Result.andThen (fun content ->
     let updatedContent = content ++ "\n" ++ aliasDefinition
     overwriteFishConfig updatedContent)
 

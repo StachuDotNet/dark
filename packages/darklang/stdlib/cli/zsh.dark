@@ -41,10 +41,12 @@ let addAlias
   let aliasDefinition = $"alias {alias}='{command}'"
 
   (readZshrc ())
-  |> Result.map (fun content ->
+  |> Result.andThen (fun content ->
     let updatedContent = content ++ "\n" ++ aliasDefinition
-    overwriteZshrc updatedContent
-    applyZshConfigChanges ())
+
+    match overwriteZshrc updatedContent with
+    | Ok() -> applyZshConfigChanges ()
+    | Error e -> Result.Result.Error e)
 
 
 /// Add a directory to PATH in .zshrc
@@ -58,6 +60,8 @@ let addToPath (dir: String) : Result.Result<Unit, String> =
       Result.Result.Ok()
     else
       let updatedContent = content ++ "\n" ++ exportLine
-      overwriteZshrc updatedContent
-      applyZshConfigChanges ()
+
+      match overwriteZshrc updatedContent with
+      | Ok() -> applyZshConfigChanges ()
+      | Error e -> Result.Result.Error e
   | Error e -> Result.Result.Error e
