@@ -418,7 +418,29 @@ type SumTypeRegistry = Map<string, (string * int * Type option) list>
 
 /// Variant lookup - maps variant names to (type name, type params, tag index, payload type)
 /// Type params are the generic type parameters of the containing sum type
+///
+/// Every variant is registered twice: under its bare name, and under a type-scoped
+/// key (see scopedVariantKey). Bare names are ambiguous whenever two sum types share
+/// a variant name — the map keeps only the last — so anyone holding the type name
+/// should resolve with tryFindVariant instead of a bare Map.tryFind.
 type VariantLookup = Map<string, (string * string list * int * Type option)>
+
+/// The unambiguous key for a variant of a known sum type.
+let scopedVariantKey (typeName: string) (variantName: string) : string =
+    typeName + "." + variantName
+
+/// Resolve a variant, preferring the type-scoped entry when the sum type is known
+/// and falling back to the (possibly ambiguous) bare name.
+let tryFindVariant
+    (variantLookup: VariantLookup)
+    (typeName: string option)
+    (variantName: string)
+    : (string * string list * int * Type option) option =
+    let scoped =
+        typeName |> Option.bind (fun tn -> Map.tryFind (scopedVariantKey tn variantName) variantLookup)
+    match scoped with
+    | Some _ -> scoped
+    | None -> Map.tryFind variantName variantLookup
 
 /// Generic function registry and call-site policy controls.
 /// `Functions` contains entries only for functions that have type parameters.
@@ -3063,8 +3085,11 @@ let rec checkExprWithParamNames
                 Error (GenericError $"Cannot access .{fieldName} on non-record type {typeToString other}"))
 
     | Constructor (constrTypeName, variantName, payload) ->
-        // Look up the variant to find its type and expected payload
-        match Map.tryFind variantName variantLookup with
+        // Look up the variant to find its type and expected payload. The constructor
+        // carries its sum type, so resolve scoped: a bare-name lookup silently picks
+        // whichever type happened to win the collision when two enums share a variant
+        // name, which reports a bogus payload arity (or resolves the wrong variant).
+        match tryFindVariant variantLookup (Some constrTypeName) variantName with
         | None ->
             Error (GenericError $"Unknown constructor: {variantName}")
         | Some (typeName, typeParams, _tag, expectedPayload) ->
@@ -4647,6 +4672,16 @@ let private checkProgramInternal
     // Collect sum type definitions and build variant lookup from THIS program
     // Maps variant name -> (type name, type params, tag index, payload type)
     // Type params are included for generic type instantiation at constructor call sites
+    //
+    // Each variant is registered under TWO keys: its bare name (legacy — assumes
+    // variant names are globally unique, which holds for the compiler's own stdlib)
+    // and a type-scoped "TypeName.VariantName" key. Bare keys still collide and
+    // last-writer-wins exactly as before, so existing bare lookups are unchanged;
+    // but a caller that knows the type (a Constructor carries its type name) can
+    // resolve unambiguously via scopedVariantKey. This matters because a real
+    // package tree has many enums sharing variant names (Module, Error, NotFound),
+    // where the bare map silently drops all but one — surfacing as a bogus
+    // "Constructor X does not take a payload", or worse, the wrong variant tag.
     let programVariantLookup : VariantLookup =
         topLevels
         |> List.choose (function
@@ -4655,7 +4690,10 @@ let private checkProgramInternal
             | _ -> None)
         |> List.collect (fun (typeName, typeParams, variants) ->
             variants
-            |> List.mapi (fun idx variant -> (variant.Name, (typeName, typeParams, idx, variant.Payload))))
+            |> List.indexed
+            |> List.collect (fun (idx, variant) ->
+                let entry = (typeName, typeParams, idx, variant.Payload)
+                [ (variant.Name, entry); (scopedVariantKey typeName variant.Name, entry) ]))
         |> Map.ofList
 
     // Second pass: collect all function signatures from THIS program

@@ -1890,7 +1890,10 @@ let rec simpleInferType
         | _ -> None
     | AST.Constructor (typeName, variantName, payload) ->
         // Sum type constructor has the sum type; infer generic args from payload when possible.
-        match Map.tryFind variantName variantLookup with
+        // Resolve scoped by that type: a bare-name lookup picks whichever sum type won
+        // the collision when two enums share a variant name, which would infer against
+        // the wrong variant's payload.
+        match TypeChecking.tryFindVariant variantLookup (Some typeName) variantName with
         | Some (sumTypeName, typeParams, _, payloadPattern) ->
             let defaultTypeArgs = typeParams |> List.map AST.TVar
             match payloadPattern, payload with
@@ -2475,9 +2478,16 @@ let rec liftLambdasInProgram
             | AST.TypeDef (AST.SumTypeDef (typeName, typeParams, variants)) ->
                 Some (typeName, typeParams, variants)
             | _ -> None)
+        // Register each variant under both its bare name and a type-scoped key, so a
+        // caller that knows the sum type can resolve unambiguously when two enums
+        // share a variant name (see TypeChecking.scopedVariantKey / tryFindVariant).
         |> List.collect (fun (typeName, typeParams, variants) ->
             variants
-            |> List.mapi (fun idx variant -> (variant.Name, (typeName, typeParams, idx, variant.Payload))))
+            |> List.indexed
+            |> List.collect (fun (idx, variant) ->
+                let entry = (typeName, typeParams, idx, variant.Payload)
+                [ (variant.Name, entry)
+                  (TypeChecking.scopedVariantKey typeName variant.Name, entry) ]))
         |> Map.ofList
 
     let mergeMapsLocal m1 m2 = Map.fold (fun acc k v -> Map.add k v acc) m1 m2
@@ -3196,8 +3206,11 @@ let rec inferType (expr: AST.Expr) (typeEnv: Map<string, AST.Type>) (typeReg: Ty
                 Ok (List.item index elemTypes)
             | AST.TTuple _ -> Error $"Tuple index {index} out of bounds"
             | _ -> Error "Cannot access index on non-tuple type")
-    | AST.Constructor (_, variantName, payload) ->
-        match Map.tryFind variantName variantLookup with
+    | AST.Constructor (ctorTypeName, variantName, payload) ->
+        // Scoped by the constructor's own sum type where the AST carries one (it may
+        // be empty), so a variant name shared by two enums can't resolve to the wrong
+        // type. tryFindVariant falls back to the bare name when unscoped.
+        match TypeChecking.tryFindVariant variantLookup (Some ctorTypeName) variantName with
         | None ->
             Error $"Unknown constructor: {variantName}"
         | Some (typeName, typeParams, _, payloadPattern) ->
@@ -4402,8 +4415,12 @@ let rec toANF (expr: AST.Expr) (varGen: ANF.VarGen) (env: VarEnv) (typeReg: Type
             | _ ->
                 Error $"Cannot access field '{fieldName}' on non-record type")
 
-    | AST.Constructor (_, variantName, payload) ->
-        match Map.tryFind variantName variantLookup with
+    | AST.Constructor (ctorTypeName, variantName, payload) ->
+        // This is where the runtime TAG comes from, so an ambiguous bare-name lookup
+        // here is a miscompile, not just a bad error: two enums sharing a variant name
+        // would take the losing type's tag. Resolve scoped by the constructor's own sum
+        // type; tryFindVariant falls back to the bare name when the AST name is empty.
+        match TypeChecking.tryFindVariant variantLookup (Some ctorTypeName) variantName with
         | None ->
             Error $"Unknown constructor: {variantName}"
         | Some (typeName, _, tag, _) ->
@@ -8757,9 +8774,16 @@ let buildRegistries
             | AST.SumTypeDef (typeName, typeParams, variants) ->
                 Some (typeName, typeParams, variants)
             | _ -> None)
+        // Register each variant under both its bare name and a type-scoped key, so a
+        // caller that knows the sum type can resolve unambiguously when two enums
+        // share a variant name (see TypeChecking.scopedVariantKey / tryFindVariant).
         |> List.collect (fun (typeName, typeParams, variants) ->
             variants
-            |> List.mapi (fun idx variant -> (variant.Name, (typeName, typeParams, idx, variant.Payload))))
+            |> List.indexed
+            |> List.collect (fun (idx, variant) ->
+                let entry = (typeName, typeParams, idx, variant.Payload)
+                [ (variant.Name, entry)
+                  (TypeChecking.scopedVariantKey typeName variant.Name, entry) ]))
         |> Map.ofList
 
     let typeReg = expandTypeRegWithAliases typeRegBase aliasReg
