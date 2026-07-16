@@ -739,7 +739,7 @@ let private runOne
               let _ = (try daemon.Wait() with _ -> ())
               if out.ExitCode = -999 then return "hang"
               elif out.ExitCode <> 0 then return $"crash|{out.ExitCode}"
-              else return "ran|" + out.Stdout.Trim()
+              else return "ran|" + out.Stdout.Trim().Replace("\n", "\\n")
     with e -> return "cf|exn: " + e.Message
   }
 
