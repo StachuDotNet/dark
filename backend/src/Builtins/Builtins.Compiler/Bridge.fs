@@ -88,10 +88,15 @@ let private bridgeInfix (op : PT.Infix) : Result<AST.BinOp, string> =
   | PT.BinOp PT.BinOpAnd -> Ok AST.And
   | PT.BinOp PT.BinOpOr -> Ok AST.Or
 
+/// Deterministic compiler-side identifier for a package fn, from its content
+/// hash. Used to name each bridged FunctionDef and every call to it, so a whole
+/// call-graph lowers with consistent names.
+let nameFor (hash : string) : string = "fn_" + hash
+
 // ---------------------------------------------------------------------------
 // Expressions
 //
-// `paramNames.[i]` gives the compiler-side name for the i-th parameter; Dark
+// `paramNames[i]` gives the compiler-side name for the i-th parameter; Dark
 // bodies reference params positionally via EArg(id, index).
 // ---------------------------------------------------------------------------
 
@@ -128,8 +133,25 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
     recurse value
     |> Result.bind (fun v -> recurse body |> Result.map (fun b -> AST.Let(name, v, b)))
   | PT.ELet(_, _, _, _) -> err "let" "non-variable let pattern"
-  // Deliberately unsupported for the leaf subset (each is a ranked blocker):
-  | PT.EApply(_, _, _, _) -> err "expr" "EApply (cross-fn call)"
+  // Cross-fn calls: a direct call to a package fn lowers to AST.Call; the
+  // callee itself is bridged separately (the builtin walks the call graph).
+  | PT.EApply(_, PT.EFnName(_, nr), typeArgs, args) ->
+    if not (List.isEmpty typeArgs) then
+      err "generics" "type args at call site"
+    else
+      match nr.resolved with
+      | Error _ -> err "call" "unresolved fn name"
+      | Ok resolved ->
+        match resolved.name with
+        | PT.FQFnName.Builtin b -> err "builtin" $"{b.name}_v{b.version}"
+        | PT.FQFnName.Package(PT.Hash h) ->
+          args
+          |> NEList.toList
+          |> List.map recurse
+          |> allOk
+          |> Result.map (fun bridged ->
+            AST.Call(nameFor h, AST.NonEmptyList.fromList bridged))
+  | PT.EApply(_, _, _, _) -> err "expr" "EApply of a non-fn-name (higher-order)"
   | PT.EMatch(_, _, _) -> err "expr" "EMatch"
   | PT.EList(_, _) -> err "expr" "EList"
   | PT.ETuple(_, _, _, _) -> err "expr" "ETuple"
@@ -167,3 +189,26 @@ let bridgeFn
              Params = AST.NonEmptyList.fromList ps
              ReturnType = retType
              Body = body } : AST.FunctionDef))))
+
+/// The package-fn hashes a body calls directly (over the supported subset),
+/// so the builtin can walk the call graph and bridge every callee. Only needs
+/// to be correct for nodes bridgeExpr supports — an unsupported node hard-fails
+/// during bridging anyway.
+let rec referencedPackageFns (e : PT.Expr) : List<string> =
+  let r = referencedPackageFns
+  match e with
+  | PT.EInfix(_, _, l, rhs) -> r l @ r rhs
+  | PT.EIf(_, c, t, Some el) -> r c @ r t @ r el
+  | PT.EIf(_, c, t, None) -> r c @ r t
+  | PT.ELet(_, _, v, body) -> r v @ r body
+  | PT.EApply(_, PT.EFnName(_, nr), _, args) ->
+    let here =
+      match nr.resolved with
+      | Ok resolved ->
+        match resolved.name with
+        | PT.FQFnName.Package(PT.Hash h) -> [ h ]
+        | _ -> []
+      | Error _ -> []
+    here @ (args |> NEList.toList |> List.collect r)
+  | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
+  | _ -> []

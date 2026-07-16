@@ -55,6 +55,47 @@ let private compileAst (program : AST.Program) : Result<byte array, string> =
         PassTimingRecorder = None }
     (CompilerLibrary.compileAstProgram request program).Result
 
+/// Walk a package fn's call graph, fetching and bridging every transitively
+/// called package fn. Returns all FunctionDefs (root + callees) or the first
+/// hard-fail. Builtin calls / unresolved names / unsupported nodes fail here.
+let rec private walkGraph
+  (visited : Set<string>)
+  (acc : List<AST.FunctionDef>)
+  (worklist : List<string>)
+  : Ply<Result<List<AST.FunctionDef>, string>> =
+  uply {
+    match worklist with
+    | [] -> return Ok acc
+    | h :: rest ->
+      if Set.contains h visited then
+        return! walkGraph visited acc rest
+      else
+        let! fnOpt = LibDB.PackageManager.pt.getFn (PT.FQFnName.package h)
+        match fnOpt with
+        | None -> return Error $"missing dependency fn {h}"
+        | Some ptFn ->
+          match Bridge.bridgeFn (Bridge.nameFor h) ptFn with
+          | Error e -> return Error e
+          | Ok fd ->
+            let deps = Bridge.referencedPackageFns ptFn.body
+            return! walkGraph (Set.add h visited) (acc @ [ fd ]) (rest @ deps)
+  }
+
+let private bridgeClosure (rootHash : string) : Ply<Result<List<AST.FunctionDef>, string>> =
+  walkGraph Set.empty [] [ rootHash ]
+
+/// Build the program (all bridged fns + a call to the root) and compile it.
+let private compileClosure
+  (fds : List<AST.FunctionDef>)
+  (rootName : string)
+  (args : List<AST.Expr>)
+  : Result<byte array, string> =
+  let program : AST.Program =
+    AST.Program(
+      (fds |> List.map AST.FunctionDef)
+      @ [ AST.Expression(AST.Call(rootName, AST.NonEmptyList.fromList args)) ])
+  compileAst program
+
 /// Return a (Bool ok, String detail) tuple as a Dark value.
 let private outcome (ok : bool) (detail : string) : Dval =
   DTuple(DBool ok, DString detail, [])
@@ -198,36 +239,28 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString hash; DList(_, argDvals) ] ->
           uply {
-            let! fnOpt = LibDB.PackageManager.pt.getFn (PT.FQFnName.package hash)
-            match fnOpt with
-            | None -> return outcome false $"no package fn with hash {hash}"
-            | Some ptFn ->
-              let argLits =
-                argDvals
-                |> List.choose (fun d ->
-                  match d with
-                  | DInt64 n -> Some(AST.Int64Literal n)
-                  | _ -> None)
-              if List.length argLits <> List.length argDvals then
-                return outcome false "only Int64 args are supported"
-              elif List.isEmpty argLits then
-                return outcome false "need >= 1 arg (nullary calls not yet supported)"
-              else
-                match Bridge.bridgeFn "bridgedFn" ptFn with
-                | Error e -> return outcome false $"bridge: {e}"
-                | Ok fd ->
-                  let program : AST.Program =
-                    AST.Program
-                      [ AST.FunctionDef fd
-                        AST.Expression(
-                          AST.Call("bridgedFn", AST.NonEmptyList.fromList argLits)) ]
-                  match compileAst program with
-                  | Error e -> return outcome false $"compile: {e}"
-                  | Ok binary ->
-                    let out = CompilerLibrary.execute 0 binary
-                    return
-                      (if out.ExitCode = 0 then outcome true out.Stdout
-                       else outcome false $"exit {out.ExitCode}: {out.Stderr}")
+            let argLits =
+              argDvals
+              |> List.choose (fun d ->
+                match d with
+                | DInt64 n -> Some(AST.Int64Literal n)
+                | _ -> None)
+            if List.length argLits <> List.length argDvals then
+              return outcome false "only Int64 args are supported"
+            elif List.isEmpty argLits then
+              return outcome false "need >= 1 arg (nullary calls not yet supported)"
+            else
+              let! closure = bridgeClosure hash
+              match closure with
+              | Error e -> return outcome false e
+              | Ok fds ->
+                match compileClosure fds (Bridge.nameFor hash) argLits with
+                | Error e -> return outcome false $"compile: {e}"
+                | Ok binary ->
+                  let out = CompilerLibrary.execute 0 binary
+                  return
+                    (if out.ExitCode = 0 then outcome true out.Stdout
+                     else outcome false $"exit {out.ExitCode}: {out.Stderr}")
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -245,24 +278,21 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString hash ] ->
           uply {
-            let! fnOpt = LibDB.PackageManager.pt.getFn (PT.FQFnName.package hash)
-            match fnOpt with
-            | None -> return outcome false $"no package fn with hash {hash}"
-            | Some ptFn ->
-              match Bridge.bridgeFn "bridgedFn" ptFn with
-              | Error e -> return outcome false e
-              | Ok fd ->
-                let dummyArgs = fd.Params |> AST.NonEmptyList.toList |> List.map (snd >> zeroLit)
+            let rootName = Bridge.nameFor hash
+            let! closure = bridgeClosure hash
+            match closure with
+            | Error e -> return outcome false e
+            | Ok fds ->
+              match fds |> List.tryFind (fun fd -> fd.Name = rootName) with
+              | None -> return outcome false "root fn not bridged"
+              | Some rootFd ->
+                let dummyArgs =
+                  rootFd.Params |> AST.NonEmptyList.toList |> List.map (snd >> zeroLit)
                 match List.tryPick (function Error e -> Some e | Ok _ -> None) dummyArgs with
                 | Some e -> return outcome false $"arg-synthesis: {e}"
                 | None ->
                   let args = dummyArgs |> List.choose (function Ok x -> Some x | Error _ -> None)
-                  let program : AST.Program =
-                    AST.Program
-                      [ AST.FunctionDef fd
-                        AST.Expression(
-                          AST.Call("bridgedFn", AST.NonEmptyList.fromList args)) ]
-                  match compileAst program with
+                  match compileClosure fds rootName args with
                   | Ok binary -> return outcome true $"{binary.Length} bytes"
                   | Error e -> return outcome false e
           }
