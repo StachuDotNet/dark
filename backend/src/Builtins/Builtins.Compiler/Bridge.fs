@@ -46,6 +46,82 @@ let private allOk (results : List<Result<'a, string>>) : Result<List<'a>, string
 let nameFor (hash : string) : string = "fn_" + hash
 let nameForType (hash : string) : string = "T_" + hash
 
+/// Pure-tier builtin migration (row 1 of the seam's dispatch table, see
+/// notes/compiler-merge/BUILTINS-ARCHITECTURE.md): a call to one of these
+/// main-repo builtins lowers to a call to the compiler's OWN native stdlib fn,
+/// which implements the same Darklang semantics on ~12 intrinsics. Curated and
+/// conservative — the type checker rejects any signature mismatch (safe), and
+/// each entry must be differential-tested (compiled vs interpreter) before it's
+/// trusted for execution. Effectful builtins are NOT here — those await the
+/// runtime seam (daemon). Keyed by the main-repo builtin's bare name.
+let builtinToStdlib : Map<string, string> =
+  Map
+    [ // String
+      "stringLength", "Stdlib.String.length"
+      "stringIsEmpty", "Stdlib.String.isEmpty"
+      "stringContains", "Stdlib.String.contains"
+      "stringJoin", "Stdlib.String.join"
+      "stringSplit", "Stdlib.String.split"
+      "stringSlice", "Stdlib.String.slice"
+      "stringTrim", "Stdlib.String.trim"
+      "stringTrimStart", "Stdlib.String.trimStart"
+      "stringTrimEnd", "Stdlib.String.trimEnd"
+      "stringReverse", "Stdlib.String.reverse"
+      "stringToLowercase", "Stdlib.String.toLowerCase"
+      "stringToUppercase", "Stdlib.String.toUpperCase"
+      "stringStartsWith", "Stdlib.String.startsWith"
+      "stringEndsWith", "Stdlib.String.endsWith"
+      "stringPrepend", "Stdlib.String.prepend"
+      "stringIndexOf", "Stdlib.String.indexOf"
+      "stringPadStart", "Stdlib.String.padStart"
+      "stringPadEnd", "Stdlib.String.padEnd"
+      "stringRepeat", "Stdlib.String.repeat"
+      // List
+      "listLength", "Stdlib.List.length"
+      "listAppend", "Stdlib.List.append"
+      "listReverse", "Stdlib.List.reverse"
+      "listMap", "Stdlib.List.map"
+      "listFilter", "Stdlib.List.filter"
+      "listFold", "Stdlib.List.fold"
+      "listFlatten", "Stdlib.List.flatten"
+      "listIsEmpty", "Stdlib.List.isEmpty"
+      "listTake", "Stdlib.List.take"
+      "listDrop", "Stdlib.List.drop"
+      "listPush", "Stdlib.List.push"
+      "listPushBack", "Stdlib.List.pushBack"
+      "listSingleton", "Stdlib.List.singleton"
+      "listGetAt", "Stdlib.List.getAt"
+      "listMember", "Stdlib.List.member"
+      // Bool
+      "boolNot", "Stdlib.Bool.not"
+      "boolAnd", "Stdlib.Bool.and"
+      "boolOr", "Stdlib.Bool.or"
+      "boolXor", "Stdlib.Bool.xor"
+      // Int (lowered to Int64, matching TInt->TInt64)
+      "intToString", "Stdlib.Int64.toString"
+      "int64ToString", "Stdlib.Int64.toString"
+      "intGreaterThan", "Stdlib.Int64.greaterThan"
+      "int64GreaterThan", "Stdlib.Int64.greaterThan"
+      "intGreaterThanOrEqualTo", "Stdlib.Int64.greaterThanOrEqualTo"
+      "intLessThan", "Stdlib.Int64.lessThan"
+      "int64LessThan", "Stdlib.Int64.lessThan"
+      "intDivide", "Stdlib.Int64.div"
+      "int64Divide", "Stdlib.Int64.div"
+      "intMax", "Stdlib.Int64.max"
+      "intMin", "Stdlib.Int64.min"
+      "intAbsoluteValue", "Stdlib.Int64.absoluteValue"
+      // Option / Result
+      "optionMap", "Stdlib.Option.map"
+      "optionWithDefault", "Stdlib.Option.withDefault"
+      "optionAndThen", "Stdlib.Option.andThen"
+      "optionIsSome", "Stdlib.Option.isSome"
+      "optionIsNone", "Stdlib.Option.isNone"
+      "resultMap", "Stdlib.Result.map"
+      "resultWithDefault", "Stdlib.Result.withDefault"
+      "resultAndThen", "Stdlib.Result.andThen"
+      "resultIsOk", "Stdlib.Result.isOk"
+      "resultIsError", "Stdlib.Result.isError" ]
+
 /// The package-type hash a type-name resolution points at.
 let private typeHash
   (nr : PT.NameResolution<PT.FQTypeName.FQTypeName>)
@@ -304,7 +380,16 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
     | Error _ -> err "call" "unresolved fn name"
     | Ok resolved ->
       match resolved.name with
-      | PT.FQFnName.Builtin b -> err "builtin" $"{b.name}_v{b.version}"
+      | PT.FQFnName.Builtin b ->
+        // Pure builtins route to the compiler's native stdlib (dispatch row 1).
+        match Map.tryFind b.name builtinToStdlib with
+        | Some stdlibFn ->
+          args
+          |> NEList.toList
+          |> List.map recurse
+          |> allOk
+          |> Result.map (fun bas -> AST.Call(stdlibFn, AST.NonEmptyList.fromList bas))
+        | None -> err "builtin" $"{b.name}_v{b.version}"
       | PT.FQFnName.Package(PT.Hash h) ->
         let bridgedArgs = args |> NEList.toList |> List.map recurse |> allOk
         let bridgedTypeArgs = typeArgs |> List.map (bridgeType Map.empty)
@@ -404,7 +489,15 @@ and bridgePipePart
     | Error _ -> err "call" "unresolved fn name (pipe)"
     | Ok resolved ->
       match resolved.name with
-      | PT.FQFnName.Builtin b -> err "builtin" $"{b.name}_v{b.version}"
+      | PT.FQFnName.Builtin b ->
+        match Map.tryFind b.name builtinToStdlib with
+        | Some stdlibFn ->
+          args
+          |> List.map recurse
+          |> allOk
+          |> Result.map (fun bas ->
+            AST.Call(stdlibFn, AST.NonEmptyList.fromList (piped :: bas)))
+        | None -> err "builtin" $"{b.name}_v{b.version}"
       | PT.FQFnName.Package(PT.Hash h) ->
         let bargs = args |> List.map recurse |> allOk
         let tas = typeArgs |> List.map (bridgeType Map.empty) |> allOk
