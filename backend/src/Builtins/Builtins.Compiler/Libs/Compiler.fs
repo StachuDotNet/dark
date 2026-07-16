@@ -791,7 +791,9 @@ let private runOne
                       match irepr with
                       | None -> return "ran|" + compiledOut.Replace("\n", "\\n")
                       | Some istr ->
-                        let norm (s : string) = s.Trim().Trim('"')
+                        let norm (s : string) =
+                          let t = (s.Trim().Trim('"')).Replace("\n", "\\n")
+                          if t = "()" then "" else t
                         if norm compiledOut = norm istr then return "match|" + norm istr
                         else return $"diff|c={norm compiledOut}|i={norm istr}"
                 | _ -> return "ran|" + compiledOut.Replace("\n", "\\n")
@@ -1166,8 +1168,8 @@ let fns () : List<BuiltInFn> =
               match hd with
               | DString hash ->
                 let! r = runOne exeState vm effectful 2000 hash
-                lines <- lines @ [ r ]
-              | _ -> lines <- lines @ [ "cf|non-string-hash" ]
+                lines <- lines @ [ hash + "\t" + r ]
+              | _ -> lines <- lines @ [ "?\tcf|non-string-hash" ]
             return DString(String.concat "\n" lines)
           }
         | _ -> incorrectArgs ())
