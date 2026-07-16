@@ -29,6 +29,14 @@ type TypeEntry =
   | TESum
   | TEAlias of AST.Type
 
+/// Threaded through expression bridging. `Params` maps EArg indices to the
+/// enclosing fn's compiler-side param names; `Self` is the current fn's compiled
+/// name (for ESelf recursion); `Values` inlines referenced package constants.
+type BridgeCtx =
+  { Params : string[]
+    Self : string
+    Values : Map<string, AST.Expr> }
+
 let private err (category : string) (detail : string) : Result<'a, string> =
   Error $"unsupported-{category}: {detail}"
 
@@ -307,8 +315,8 @@ let rec private bindPattern
         |> Result.bind (fun inner -> bindPattern p (AST.TupleAccess(AST.Var tmp, i)) inner)
     build 0 subs |> Result.map (fun inner -> AST.Let(tmp, value, inner))
 
-let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, string> =
-  let recurse = bridgeExpr paramNames
+let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
+  let recurse = bridgeExpr ctx
   match e with
   | PT.EInt64(_, n) -> Ok(AST.Int64Literal n)
   | PT.EInt(_, big) ->
@@ -330,7 +338,7 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
   | PT.EChar(_, c) -> Ok(AST.CharLiteral c)
   | PT.EVariable(_, name) -> Ok(AST.Var name)
   | PT.EArg(_, i) ->
-    if i >= 0 && i < paramNames.Length then Ok(AST.Var paramNames[i])
+    if i >= 0 && i < ctx.Params.Length then Ok(AST.Var ctx.Params[i])
     else err "arg" $"EArg index {i} out of range"
   | PT.EInfix(_, op, l, r) ->
     bridgeInfix op
@@ -403,6 +411,25 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
             Ok(AST.Call(nameFor h, AST.NonEmptyList.fromList bas))
           else
             Ok(AST.TypeApp(nameFor h, tas, AST.NonEmptyList.fromList bas))
+  // Self-recursion: `self(args)` calls the current fn by its compiled name.
+  | PT.EApply(_, PT.ESelf _, _, args) ->
+    args
+    |> NEList.toList
+    |> List.map recurse
+    |> allOk
+    |> Result.map (fun bas -> AST.Call(ctx.Self, AST.NonEmptyList.fromList bas))
+  // A referenced package constant is inlined (its bridged body, from ctx.Values).
+  | PT.EValue(_, nr) ->
+    match nr.resolved with
+    | Error _ -> err "value" "unresolved value name"
+    | Ok resolved ->
+      match resolved.name with
+      | PT.FQValueName.Builtin b -> err "value-builtin" b.name
+      | PT.FQValueName.Package(PT.Hash h) ->
+        match Map.tryFind h ctx.Values with
+        | Some e -> Ok e
+        | None -> err "value" "package value not resolved"
+  | PT.ESelf _ -> err "expr" "bare ESelf (self as a value)"
   // Higher-order application: apply a fn value (variable/lambda/expr) to args.
   | PT.EApply(_, funcExpr, typeArgs, args) ->
     if not (List.isEmpty typeArgs) then
@@ -419,7 +446,7 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
     recurse arg
     |> Result.bind (fun scrut ->
       cases
-      |> List.map (bridgeCase paramNames)
+      |> List.map (bridgeCase ctx)
       |> allOk
       |> Result.map (fun cs -> AST.Match(scrut, cs)))
   | PT.EList(_, elems) -> elems |> List.map recurse |> allOk |> Result.map AST.ListLiteral
@@ -430,7 +457,7 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
     |> Result.bind (fun start ->
       (Ok start, parts)
       ||> List.fold (fun accR part ->
-        accR |> Result.bind (fun acc -> bridgePipePart paramNames acc part)))
+        accR |> Result.bind (fun acc -> bridgePipePart ctx acc part)))
   // Lambda: untyped Dark params get a fresh TVar (unique per node id) that the
   // compiler's inference/monomorphizer resolves from the call context.
   | PT.ELambda(lamId, pats, body) ->
@@ -449,7 +476,7 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
 /// Lower one match case. A PT case has a single pattern (alternatives live in
 /// MPOr); the compiler groups alternatives in MatchCase.Patterns.
 and bridgeCase
-  (paramNames : string[])
+  (ctx : BridgeCtx)
   (c : PT.MatchCase)
   : Result<AST.MatchCase, string> =
   let patterns =
@@ -461,10 +488,10 @@ and bridgeCase
     let guard =
       match c.whenCondition with
       | None -> Ok None
-      | Some g -> bridgeExpr paramNames g |> Result.map Some
+      | Some g -> bridgeExpr ctx g |> Result.map Some
     guard
     |> Result.bind (fun gd ->
-      bridgeExpr paramNames c.rhs
+      bridgeExpr ctx c.rhs
       |> Result.map (fun body ->
         ({ Patterns = AST.NonEmptyList.fromList pats
            Guard = gd
@@ -475,11 +502,11 @@ and bridgeCase
 /// first input. `x |> f a` -> f(x, a); `x |> (+) a` -> x + a; `x |> Some` ->
 /// Some x; `x |> v a` -> v(x, a) (v is a fn value). Lambda stages need lambdas.
 and bridgePipePart
-  (paramNames : string[])
+  (ctx : BridgeCtx)
   (piped : AST.Expr)
   (part : PT.PipeExpr)
   : Result<AST.Expr, string> =
-  let recurse = bridgeExpr paramNames
+  let recurse = bridgeExpr ctx
   match part with
   | PT.EPipeInfix(_, op, rhs) ->
     bridgeInfix op
@@ -576,11 +603,13 @@ let bridgeTypeDef
 /// any by-name refs both resolve). Generics are not yet supported.
 let bridgeFn
   (types : Map<string, TypeEntry>)
+  (values : Map<string, AST.Expr>)
   (compiledName : string)
   (fn : PT.PackageFn.PackageFn)
   : Result<AST.FunctionDef, string> =
   let paramList = NEList.toList fn.parameters
   let paramNames = paramList |> List.map (fun p -> p.name) |> Array.ofList
+  let ctx = { Params = paramNames; Self = compiledName; Values = values }
   let bridgedParams =
     paramList
     |> List.map (fun p -> bridgeType types p.typ |> Result.map (fun t -> (p.name, t)))
@@ -589,7 +618,7 @@ let bridgeFn
   |> Result.bind (fun ps ->
     bridgeType types fn.returnType
     |> Result.bind (fun retType ->
-      bridgeExpr paramNames fn.body
+      bridgeExpr ctx fn.body
       |> Result.map (fun body ->
         ({ Name = compiledName
            TypeParams = fn.typeParams

@@ -155,7 +155,7 @@ let private buildPieces
           |> List.map (fun (h, pt) -> Bridge.bridgeTypeDef typeEnv (Bridge.nameForType h) pt)
           |> allOk
         let fnDefs =
-          fns |> List.map (fun (h, fn) -> Bridge.bridgeFn typeEnv (Bridge.nameFor h) fn) |> allOk
+          fns |> List.map (fun (h, fn) -> Bridge.bridgeFn typeEnv Map.empty (Bridge.nameFor h) fn) |> allOk
         match typeDefs, fnDefs with
         | Error e, _ -> return Error e
         | _, Error e -> return Error e
@@ -386,7 +386,7 @@ let fns () : List<BuiltInFn> =
                   [ { name = "b"; typ = PT.TInt64; description = "" } ]
               returnType = PT.TInt64
               description = "" }
-          match Bridge.bridgeFn Map.empty "bridgedFn" ptFn with
+          match Bridge.bridgeFn Map.empty Map.empty "bridgedFn" ptFn with
           | Error e -> outcome false $"bridge: {e}" |> Ply
           | Ok fd ->
             let program : AST.Program =
