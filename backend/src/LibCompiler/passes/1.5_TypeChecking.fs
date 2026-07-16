@@ -4005,7 +4005,13 @@ let rec checkExprWithParamNames
                         | arg :: restArgs, paramTy :: restParams ->
                             checkExpr arg env typeReg variantLookup genericFuncReg warningSettings moduleRegistry aliasReg (Some paramTy)
                             |> Result.bind (fun (argType, arg') ->
-                                if typesEqual aliasReg argType paramTy then
+                                // typesCompatibleWithAliases, not typesEqual: an applied fn VALUE
+                                // often still carries type-variable params (a let-bound lambda's
+                                // params keep the parser's placeholder tvar), and strict equality
+                                // rejects `normalize(5)` as "expected 'a, got Int64". This matches
+                                // what the named-Call path already does; concrete mismatches
+                                // (String vs Int64) still fail, since matchTypes only unifies tvars.
+                                if typesCompatibleWithAliases aliasReg paramTy argType then
                                     checkProvidedArgs restArgs restParams (arg' :: checkedArgs)
                                 else
                                     Error (TypeMismatch (paramTy, argType, "function argument")))
@@ -4039,7 +4045,9 @@ let rec checkExprWithParamNames
                         | arg :: restArgs, paramTy :: restParams ->
                             checkExpr arg env typeReg variantLookup genericFuncReg warningSettings moduleRegistry aliasReg (Some paramTy)
                             |> Result.bind (fun (argType, arg') ->
-                                if typesEqual aliasReg argType paramTy then
+                                // See the partial-application branch above: a fn value's params can
+                                // still be type variables, so unify rather than demand equality.
+                                if typesCompatibleWithAliases aliasReg paramTy argType then
                                     checkArgs restArgs restParams (arg' :: checkedArgs)
                                 else
                                     Error (TypeMismatch (paramTy, argType, "function argument")))
