@@ -185,6 +185,7 @@ let private buildEffectfulMap
         | TBool -> Some Bridge.WABool
         | TFloat -> Some Bridge.WAFloat
         | TUnit -> Some Bridge.WAUnit
+        | TChar -> Some Bridge.WAString // a Char is a single grapheme, sent as a string
         // Host-opaque types travel as their canonical string (see bridgeType).
         // Uuid round-trips cleanly (Guid parse); DateTime args are omitted until
         // wire->DateTime ISO parsing is in (return-only for now).
