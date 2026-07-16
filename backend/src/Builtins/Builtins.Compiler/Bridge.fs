@@ -6,9 +6,14 @@ module Builtins.Compiler.Bridge
 // hard-fail (never a guess, never a silent drop). Each `Error` string is a
 // blocker record: "unsupported-<what>: <detail>" — greppable and rank-able.
 //
-// Scope today: the pure-core leaf subset (Int/Bool arithmetic, let, if, vars,
-// params). Expands reactively, driven by which hard-fails block the most
-// entities — not speculatively.
+// Scope: Int/Bool/String/Char arithmetic + if/let/vars/params, cross-fn calls
+// (whole call-graph), and NON-generic custom types (records + enums: type defs,
+// construction, field access). Still hard-failing: pattern match (EMatch),
+// generics, lists/tuples/dicts, pipes, lambdas, builtins.
+//
+// `isSum` (below) is the type environment: a map from a custom type's content
+// hash to whether it's a sum type (true) or record (false). The builtin builds
+// it by fetching the transitive type-def closure; only types in the map lower.
 
 open Prelude
 
@@ -28,11 +33,39 @@ let private allOk (results : List<Result<'a, string>>) : Result<List<'a>, string
     | Ok _, Error e -> Error e
     | Ok xs, Ok x -> Ok(xs @ [ x ]))
 
+/// Deterministic compiler-side identifier for a package fn / type, from its
+/// content hash — so a whole call/type graph lowers with consistent names.
+let nameFor (hash : string) : string = "fn_" + hash
+let nameForType (hash : string) : string = "T_" + hash
+
+/// The package-type hash a type-name resolution points at.
+let private typeHash
+  (nr : PT.NameResolution<PT.FQTypeName.FQTypeName>)
+  : Result<string, string> =
+  match nr.resolved with
+  | Error _ -> err "type" "unresolved type name"
+  | Ok resolved ->
+    match resolved.name with
+    | PT.FQTypeName.Package(PT.Hash h) -> Ok h
+
+let private typeHashOpt
+  (nr : PT.NameResolution<PT.FQTypeName.FQTypeName>)
+  : List<string> =
+  match nr.resolved with
+  | Ok resolved ->
+    match resolved.name with
+    | PT.FQTypeName.Package(PT.Hash h) -> [ h ]
+  | Error _ -> []
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-let rec bridgeType (t : PT.TypeReference) : Result<AST.Type, string> =
+let rec bridgeType
+  (isSum : Map<string, bool>)
+  (t : PT.TypeReference)
+  : Result<AST.Type, string> =
+  let recurse = bridgeType isSum
   match t with
   | PT.TInt64 -> Ok AST.TInt64
   | PT.TInt8 -> Ok AST.TInt8
@@ -45,17 +78,26 @@ let rec bridgeType (t : PT.TypeReference) : Result<AST.Type, string> =
   | PT.TUInt64 -> Ok AST.TUInt64
   | PT.TUInt128 -> Ok AST.TUInt128
   // Dark's default Int is arbitrary-precision; the compiler has no bigint, so
-  // we lower it to Int64. Sound for values in range (which a pure-core leaf's
-  // literals/params are); wrapping semantics would differ at the Int64 edges.
+  // we lower it to Int64. Sound for values in range; wraps at the Int64 edges.
   | PT.TInt -> Ok AST.TInt64
   | PT.TBool -> Ok AST.TBool
   | PT.TString -> Ok AST.TString
   | PT.TFloat -> Ok AST.TFloat64
   | PT.TChar -> Ok AST.TChar
   | PT.TUnit -> Ok AST.TUnit
-  // Clean, short blocker tags (the raw `string` dump of e.g. TCustomType is a
-  // multi-line record — useless as a rankable blocker key).
-  | PT.TCustomType _ -> err "type" "TCustomType"
+  | PT.TCustomType(nr, typeArgs) ->
+    typeHash nr
+    |> Result.bind (fun h ->
+      match Map.tryFind h isSum with
+      // Not in the type env => generic / alias / unfetched: hard-fail cleanly.
+      | None -> err "type" "TCustomType"
+      | Some sum ->
+        typeArgs
+        |> List.map recurse
+        |> allOk
+        |> Result.map (fun args ->
+          if sum then AST.TSum(nameForType h, args)
+          else AST.TRecord(nameForType h, args)))
   | PT.TList _ -> err "type" "TList"
   | PT.TTuple _ -> err "type" "TTuple"
   | PT.TDict _ -> err "type" "TDict"
@@ -88,17 +130,20 @@ let private bridgeInfix (op : PT.Infix) : Result<AST.BinOp, string> =
   | PT.BinOp PT.BinOpAnd -> Ok AST.And
   | PT.BinOp PT.BinOpOr -> Ok AST.Or
 
-/// Deterministic compiler-side identifier for a package fn, from its content
-/// hash. Used to name each bridged FunctionDef and every call to it, so a whole
-/// call-graph lowers with consistent names.
-let nameFor (hash : string) : string = "fn_" + hash
-
 // ---------------------------------------------------------------------------
 // Expressions
 //
 // `paramNames[i]` gives the compiler-side name for the i-th parameter; Dark
 // bodies reference params positionally via EArg(id, index).
 // ---------------------------------------------------------------------------
+
+/// Multi-field enum payloads / record constructions become a single tuple
+/// payload on the compiler side (its Constructor takes one optional payload).
+let private tuplePayload (xs : List<AST.Expr>) : AST.Expr option =
+  match xs with
+  | [] -> None
+  | [ x ] -> Some x
+  | many -> Some(AST.TupleLiteral many)
 
 let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, string> =
   let recurse = bridgeExpr paramNames
@@ -133,6 +178,30 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
     recurse value
     |> Result.bind (fun v -> recurse body |> Result.map (fun b -> AST.Let(name, v, b)))
   | PT.ELet(_, _, _, _) -> err "let" "non-variable let pattern"
+  // Records
+  | PT.ERecord(_, nr, typeArgs, fields) ->
+    if not (List.isEmpty typeArgs) then
+      err "generics" "type args on record literal"
+    else
+      typeHash nr
+      |> Result.bind (fun h ->
+        fields
+        |> List.map (fun (fname, fexpr) -> recurse fexpr |> Result.map (fun be -> (fname, be)))
+        |> allOk
+        |> Result.map (fun fs -> AST.RecordLiteral(nameForType h, fs)))
+  | PT.ERecordFieldAccess(_, record, fieldName) ->
+    recurse record |> Result.map (fun r -> AST.RecordAccess(r, fieldName))
+  // Enum construction
+  | PT.EEnum(_, nr, typeArgs, caseName, fields) ->
+    if not (List.isEmpty typeArgs) then
+      err "generics" "type args on enum construction"
+    else
+      typeHash nr
+      |> Result.bind (fun h ->
+        fields
+        |> List.map recurse
+        |> allOk
+        |> Result.map (fun fs -> AST.Constructor(nameForType h, caseName, tuplePayload fs)))
   // Cross-fn calls: a direct call to a package fn lowers to AST.Call; the
   // callee itself is bridged separately (the builtin walks the call graph).
   | PT.EApply(_, PT.EFnName(_, nr), typeArgs, args) ->
@@ -159,6 +228,47 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
   | _ -> err "expr" (e.GetType().Name)
 
 // ---------------------------------------------------------------------------
+// Type definitions
+// ---------------------------------------------------------------------------
+
+/// Lower a package type (non-generic record/enum) to a compiler TypeDef under
+/// the given compiler-side name.
+let bridgeTypeDef
+  (isSum : Map<string, bool>)
+  (name : string)
+  (pt : PT.PackageType.PackageType)
+  : Result<AST.TypeDef, string> =
+  let d = pt.declaration
+  if not (List.isEmpty d.typeParams) then
+    err "generics" "generic type definition"
+  else
+    match d.definition with
+    | PT.TypeDeclaration.Alias _ -> err "type" "type alias"
+    | PT.TypeDeclaration.Record fields ->
+      fields
+      |> NEList.toList
+      |> List.map (fun (f : PT.TypeDeclaration.RecordField) ->
+        bridgeType isSum f.typ |> Result.map (fun t -> (f.name, t)))
+      |> allOk
+      |> Result.map (fun fs -> AST.RecordDef(name, [], fs))
+    | PT.TypeDeclaration.Enum cases ->
+      cases
+      |> NEList.toList
+      |> List.map (fun (c : PT.TypeDeclaration.EnumCase) ->
+        c.fields
+        |> List.map (fun (ef : PT.TypeDeclaration.EnumField) -> bridgeType isSum ef.typ)
+        |> allOk
+        |> Result.map (fun fieldTypes ->
+          let payload =
+            match fieldTypes with
+            | [] -> None
+            | [ t ] -> Some t
+            | ts -> Some(AST.TTuple ts)
+          ({ Name = c.name; Payload = payload } : AST.Variant)))
+      |> allOk
+      |> Result.map (fun variants -> AST.SumTypeDef(name, [], variants))
+
+// ---------------------------------------------------------------------------
 // Functions
 // ---------------------------------------------------------------------------
 
@@ -166,6 +276,7 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
 /// compiler-side name. Params keep their Dark names (positional EArg refs and
 /// any by-name refs both resolve). Generics are not yet supported.
 let bridgeFn
+  (isSum : Map<string, bool>)
   (compiledName : string)
   (fn : PT.PackageFn.PackageFn)
   : Result<AST.FunctionDef, string> =
@@ -176,11 +287,11 @@ let bridgeFn
     let paramNames = paramList |> List.map (fun p -> p.name) |> Array.ofList
     let bridgedParams =
       paramList
-      |> List.map (fun p -> bridgeType p.typ |> Result.map (fun t -> (p.name, t)))
+      |> List.map (fun p -> bridgeType isSum p.typ |> Result.map (fun t -> (p.name, t)))
       |> allOk
     bridgedParams
     |> Result.bind (fun ps ->
-      bridgeType fn.returnType
+      bridgeType isSum fn.returnType
       |> Result.bind (fun retType ->
         bridgeExpr paramNames fn.body
         |> Result.map (fun body ->
@@ -190,10 +301,11 @@ let bridgeFn
              ReturnType = retType
              Body = body } : AST.FunctionDef))))
 
-/// The package-fn hashes a body calls directly (over the supported subset),
-/// so the builtin can walk the call graph and bridge every callee. Only needs
-/// to be correct for nodes bridgeExpr supports — an unsupported node hard-fails
-/// during bridging anyway.
+// ---------------------------------------------------------------------------
+// Reference collectors (for the transitive fetch closures in the builtin)
+// ---------------------------------------------------------------------------
+
+/// The package-fn hashes a body calls directly (over the supported subset).
 let rec referencedPackageFns (e : PT.Expr) : List<string> =
   let r = referencedPackageFns
   match e with
@@ -201,14 +313,59 @@ let rec referencedPackageFns (e : PT.Expr) : List<string> =
   | PT.EIf(_, c, t, Some el) -> r c @ r t @ r el
   | PT.EIf(_, c, t, None) -> r c @ r t
   | PT.ELet(_, _, v, body) -> r v @ r body
+  | PT.ERecord(_, _, _, fields) -> fields |> List.collect (snd >> r)
+  | PT.ERecordFieldAccess(_, record, _) -> r record
+  | PT.EEnum(_, _, _, _, fields) -> fields |> List.collect r
   | PT.EApply(_, PT.EFnName(_, nr), _, args) ->
     let here =
       match nr.resolved with
       | Ok resolved ->
         match resolved.name with
         | PT.FQFnName.Package(PT.Hash h) -> [ h ]
-        | _ -> []
+        | PT.FQFnName.Builtin _ -> []
       | Error _ -> []
     here @ (args |> NEList.toList |> List.collect r)
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
   | _ -> []
+
+/// The custom-type hashes a TypeReference mentions.
+let rec typeRefsInType (t : PT.TypeReference) : List<string> =
+  let r = typeRefsInType
+  match t with
+  | PT.TCustomType(nr, args) -> typeHashOpt nr @ List.collect r args
+  | PT.TList inner -> r inner
+  | PT.TTuple(a, b, rest) -> r a @ r b @ List.collect r rest
+  | PT.TDict inner -> r inner
+  | PT.TFn(args, ret) -> (NEList.toList args |> List.collect r) @ r ret
+  | _ -> []
+
+/// The custom-type hashes a body mentions (record/enum constructions).
+let rec typeRefsInExpr (e : PT.Expr) : List<string> =
+  let r = typeRefsInExpr
+  match e with
+  | PT.ERecord(_, nr, _, fields) -> typeHashOpt nr @ (fields |> List.collect (snd >> r))
+  | PT.EEnum(_, nr, _, _, fields) -> typeHashOpt nr @ (fields |> List.collect r)
+  | PT.ERecordFieldAccess(_, record, _) -> r record
+  | PT.EInfix(_, _, l, rhs) -> r l @ r rhs
+  | PT.EIf(_, c, t, Some el) -> r c @ r t @ r el
+  | PT.EIf(_, c, t, None) -> r c @ r t
+  | PT.ELet(_, _, v, body) -> r v @ r body
+  | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
+  | _ -> []
+
+/// The custom-type hashes a whole package fn mentions (signature + body).
+let typeRefsInFn (fn : PT.PackageFn.PackageFn) : List<string> =
+  (fn.parameters |> NEList.toList |> List.collect (fun p -> typeRefsInType p.typ))
+  @ typeRefsInType fn.returnType
+  @ typeRefsInExpr fn.body
+
+/// The custom-type hashes a type definition mentions (field/case types).
+let typeRefsInTypeDef (pt : PT.PackageType.PackageType) : List<string> =
+  match pt.declaration.definition with
+  | PT.TypeDeclaration.Alias t -> typeRefsInType t
+  | PT.TypeDeclaration.Record fields ->
+    fields |> NEList.toList |> List.collect (fun f -> typeRefsInType f.typ)
+  | PT.TypeDeclaration.Enum cases ->
+    cases
+    |> NEList.toList
+    |> List.collect (fun c -> c.fields |> List.collect (fun ef -> typeRefsInType ef.typ))

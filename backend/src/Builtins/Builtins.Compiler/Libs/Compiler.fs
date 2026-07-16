@@ -55,44 +55,111 @@ let private compileAst (program : AST.Program) : Result<byte array, string> =
         PassTimingRecorder = None }
     (CompilerLibrary.compileAstProgram request program).Result
 
-/// Walk a package fn's call graph, fetching and bridging every transitively
-/// called package fn. Returns all FunctionDefs (root + callees) or the first
-/// hard-fail. Builtin calls / unresolved names / unsupported nodes fail here.
-let rec private walkGraph
+let private allOk (rs : List<Result<'a, string>>) : Result<List<'a>, string> =
+  (Ok [], rs)
+  ||> List.fold (fun acc r ->
+    match acc, r with
+    | Error e, _ -> Error e
+    | Ok _, Error e -> Error e
+    | Ok xs, Ok x -> Ok(xs @ [ x ]))
+
+/// Fetch a package fn's transitive call graph (PT fns only — no bridging yet,
+/// since bridging needs the type env which we build afterwards).
+let rec private fetchFnClosure
   (visited : Set<string>)
-  (acc : List<AST.FunctionDef>)
+  (acc : List<string * PT.PackageFn.PackageFn>)
   (worklist : List<string>)
-  : Ply<Result<List<AST.FunctionDef>, string>> =
+  : Ply<Result<List<string * PT.PackageFn.PackageFn>, string>> =
   uply {
     match worklist with
     | [] -> return Ok acc
     | h :: rest ->
       if Set.contains h visited then
-        return! walkGraph visited acc rest
+        return! fetchFnClosure visited acc rest
       else
         let! fnOpt = LibDB.PackageManager.pt.getFn (PT.FQFnName.package h)
         match fnOpt with
         | None -> return Error $"missing dependency fn {h}"
         | Some ptFn ->
-          match Bridge.bridgeFn (Bridge.nameFor h) ptFn with
-          | Error e -> return Error e
-          | Ok fd ->
-            let deps = Bridge.referencedPackageFns ptFn.body
-            return! walkGraph (Set.add h visited) (acc @ [ fd ]) (rest @ deps)
+          let deps = Bridge.referencedPackageFns ptFn.body
+          return! fetchFnClosure (Set.add h visited) (acc @ [ (h, ptFn) ]) (rest @ deps)
   }
 
-let private bridgeClosure (rootHash : string) : Ply<Result<List<AST.FunctionDef>, string>> =
-  walkGraph Set.empty [] [ rootHash ]
+/// Fetch the transitive closure of custom types referenced by the seeds.
+let rec private fetchTypeClosure
+  (visited : Set<string>)
+  (acc : List<string * PT.PackageType.PackageType>)
+  (worklist : List<string>)
+  : Ply<Result<List<string * PT.PackageType.PackageType>, string>> =
+  uply {
+    match worklist with
+    | [] -> return Ok acc
+    | h :: rest ->
+      if Set.contains h visited then
+        return! fetchTypeClosure visited acc rest
+      else
+        let! tOpt = LibDB.PackageManager.pt.getType (PT.FQTypeName.package h)
+        match tOpt with
+        | None -> return Error $"missing type {h}"
+        | Some pt ->
+          let deps = Bridge.typeRefsInTypeDef pt
+          return! fetchTypeClosure (Set.add h visited) (acc @ [ (h, pt) ]) (rest @ deps)
+  }
 
-/// Build the program (all bridged fns + a call to the root) and compile it.
+/// Fetch + bridge the whole graph (fns and their non-generic custom types),
+/// returning the compiler TypeDefs, FunctionDefs, and the root's compiled name.
+let private buildPieces
+  (rootHash : string)
+  : Ply<Result<List<AST.TypeDef> * List<AST.FunctionDef> * string, string>> =
+  uply {
+    let! fnClosure = fetchFnClosure Set.empty [] [ rootHash ]
+    match fnClosure with
+    | Error e -> return Error e
+    | Ok fns ->
+      let typeSeeds =
+        fns |> List.collect (fun (_, fn) -> Bridge.typeRefsInFn fn) |> List.distinct
+      let! typeClosure = fetchTypeClosure Set.empty [] typeSeeds
+      match typeClosure with
+      | Error e -> return Error e
+      | Ok types ->
+        // The type env: non-generic record (false) / enum (true) types only.
+        // Generic + alias types are omitted, so any fn using one hard-fails.
+        let isSum =
+          types
+          |> List.choose (fun (h, pt) ->
+            if List.isEmpty pt.declaration.typeParams then
+              match pt.declaration.definition with
+              | PT.TypeDeclaration.Record _ -> Some(h, false)
+              | PT.TypeDeclaration.Enum _ -> Some(h, true)
+              | PT.TypeDeclaration.Alias _ -> None
+            else
+              None)
+          |> Map.ofList
+        let typeDefs =
+          types
+          |> List.filter (fun (h, _) -> Map.containsKey h isSum)
+          |> List.map (fun (h, pt) -> Bridge.bridgeTypeDef isSum (Bridge.nameForType h) pt)
+          |> allOk
+        let fnDefs =
+          fns |> List.map (fun (h, fn) -> Bridge.bridgeFn isSum (Bridge.nameFor h) fn) |> allOk
+        match typeDefs, fnDefs with
+        | Error e, _ -> return Error e
+        | _, Error e -> return Error e
+        | Ok tds, Ok fds -> return Ok(tds, fds, Bridge.nameFor rootHash)
+  }
+
+/// Build the program (type defs + all bridged fns + a call to the root) and
+/// compile it.
 let private compileClosure
+  (typeDefs : List<AST.TypeDef>)
   (fds : List<AST.FunctionDef>)
   (rootName : string)
   (args : List<AST.Expr>)
   : Result<byte array, string> =
   let program : AST.Program =
     AST.Program(
-      (fds |> List.map AST.FunctionDef)
+      (typeDefs |> List.map AST.TypeDef)
+      @ (fds |> List.map AST.FunctionDef)
       @ [ AST.Expression(AST.Call(rootName, AST.NonEmptyList.fromList args)) ])
   compileAst program
 
@@ -123,11 +190,10 @@ let rec private zeroLit (t : AST.Type) : Result<AST.Expr, string> =
 let private checkOne (hash : string) : Ply<bool * string> =
   uply {
     try
-      let rootName = Bridge.nameFor hash
-      let! closure = bridgeClosure hash
-      match closure with
+      let! pieces = buildPieces hash
+      match pieces with
       | Error e -> return (false, e)
-      | Ok fds ->
+      | Ok(typeDefs, fds, rootName) ->
         match fds |> List.tryFind (fun fd -> fd.Name = rootName) with
         | None -> return (false, "root fn not bridged")
         | Some rootFd ->
@@ -137,7 +203,7 @@ let private checkOne (hash : string) : Ply<bool * string> =
           | Some e -> return (false, $"arg-synthesis: {e}")
           | None ->
             let args = dummy |> List.choose (function Ok x -> Some x | Error _ -> None)
-            match compileClosure fds rootName args with
+            match compileClosure typeDefs fds rootName args with
             | Ok binary -> return (true, $"{binary.Length} bytes")
             | Error e -> return (false, e)
     with e ->
@@ -232,7 +298,7 @@ let fns () : List<BuiltInFn> =
                   [ { name = "b"; typ = PT.TInt64; description = "" } ]
               returnType = PT.TInt64
               description = "" }
-          match Bridge.bridgeFn "bridgedFn" ptFn with
+          match Bridge.bridgeFn Map.empty "bridgedFn" ptFn with
           | Error e -> outcome false $"bridge: {e}" |> Ply
           | Ok fd ->
             let program : AST.Program =
@@ -277,11 +343,11 @@ let fns () : List<BuiltInFn> =
             elif List.isEmpty argLits then
               return outcome false "need >= 1 arg (nullary calls not yet supported)"
             else
-              let! closure = bridgeClosure hash
-              match closure with
+              let! pieces = buildPieces hash
+              match pieces with
               | Error e -> return outcome false e
-              | Ok fds ->
-                match compileClosure fds (Bridge.nameFor hash) argLits with
+              | Ok(typeDefs, fds, rootName) ->
+                match compileClosure typeDefs fds rootName argLits with
                 | Error e -> return outcome false $"compile: {e}"
                 | Ok binary ->
                   let out = CompilerLibrary.execute 0 binary
