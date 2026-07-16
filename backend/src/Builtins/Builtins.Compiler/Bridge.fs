@@ -75,6 +75,24 @@ let private allOk (results : List<Result<'a, string>>) : Result<List<'a>, string
 let nameFor (hash : string) : string = "fn_" + hash
 let nameForType (hash : string) : string = "T_" + hash
 
+// Dark's Option/Result are ordinary package types, but the compiler ships its OWN
+// native Stdlib.Option.Option / Stdlib.Result.Result (its stdlib and the daemon's
+// unmarshaller use them). Bridging Dark's versions to a distinct T_<hash> splits
+// Option/Result into two non-unifying types AND double-defines the Some/None/Ok/
+// Error constructors. So map both hashes to the native names everywhere and skip
+// emitting a TypeDef for them (buildPieces filters via isNativeType).
+let optionTypeHash : string = LibExecution.PackageRefs.Type.Stdlib.option ()
+let resultTypeHash : string = LibExecution.PackageRefs.Type.Stdlib.result ()
+
+let isNativeType (h : string) : bool = h = optionTypeHash || h = resultTypeHash
+
+/// The compiler-side type name for a package type hash: the native Option/Result
+/// for those two, else a T_<hash>.
+let compilerTypeName (h : string) : string =
+  if h = optionTypeHash then "Stdlib.Option.Option"
+  elif h = resultTypeHash then "Stdlib.Result.Result"
+  else nameForType h
+
 /// Pure-tier builtin migration (row 1 of the seam's dispatch table, see
 /// notes/compiler-merge/BUILTINS-ARCHITECTURE.md): a call to one of these
 /// main-repo builtins lowers to a call to the compiler's OWN native stdlib fn,
@@ -201,6 +219,13 @@ let rec bridgeType
   | PT.TCustomType(nr, typeArgs) ->
     typeHash nr
     |> Result.bind (fun h ->
+      // Option/Result -> native compiler sum types, independent of the type env.
+      if isNativeType h then
+        typeArgs
+        |> List.map recurse
+        |> allOk
+        |> Result.map (fun args -> AST.TSum(compilerTypeName h, args))
+      else
       match Map.tryFind h types with
       // Not in the type env => unfetched / unsupported: hard-fail cleanly.
       | None -> err "type" "TCustomType"
@@ -471,7 +496,7 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
       fields
       |> List.map recurse
       |> allOk
-      |> Result.map (fun fs -> AST.Constructor(nameForType h, caseName, tuplePayload fs)))
+      |> Result.map (fun fs -> AST.Constructor(compilerTypeName h, caseName, tuplePayload fs)))
   // Cross-fn calls: a direct call to a package fn lowers to AST.Call, or
   // AST.TypeApp when the call site carries type args (the compiler monomorphizes
   // it). The callee itself is bridged separately (the builtin walks the graph).

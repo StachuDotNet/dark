@@ -203,7 +203,12 @@ let private buildPieces
       let! typeClosure = fetchTypeClosure Set.empty [] typeSeeds
       match typeClosure with
       | Error e -> return Error e
-      | Ok types ->
+      | Ok typesRaw ->
+        // Option/Result are defined natively by the compiler stdlib and bridged to
+        // those native types (Bridge.isNativeType). Drop them from the fetched
+        // closure so we don't ALSO emit T_<hash> defs — that would double-define
+        // Some/None/Ok/Error and make every use ambiguous.
+        let types = typesRaw |> List.filter (fun (h, _) -> not (Bridge.isNativeType h))
         // The type env: non-generic record (false) / enum (true) types only.
         // Generic + alias types are omitted, so any fn using one hard-fails.
         // Records/enums emit a TypeDef and lower to a named TRecord/TSum.
@@ -359,6 +364,19 @@ let rec private zeroValue
         |> allOk
         |> Result.map (fun fs -> AST.RecordLiteral(name, fs))
       | _ -> Error $"no record def {name}"
+  // Native Option/Result have no emitted TypeDef (the compiler stdlib defines
+  // them), so synthesize their zeros directly: None for Option, Ok<zero> for
+  // Result (falling back to Error<zero> if the Ok type can't be zeroed).
+  | AST.TSum("Stdlib.Option.Option", _) ->
+    Ok(AST.Constructor("Stdlib.Option.Option", "None", None))
+  | AST.TSum("Stdlib.Result.Result", args) ->
+    let okT = List.tryItem 0 args |> Option.defaultValue AST.TInt64
+    let errT = List.tryItem 1 args |> Option.defaultValue AST.TString
+    match zeroValue defs seen okT with
+    | Ok v -> Ok(AST.Constructor("Stdlib.Result.Result", "Ok", Some v))
+    | Error _ ->
+      zeroValue defs seen errT
+      |> Result.map (fun v -> AST.Constructor("Stdlib.Result.Result", "Error", Some v))
   | AST.TSum(name, args) ->
     if Set.contains name seen then Error $"recursive type {name}"
     else
