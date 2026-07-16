@@ -138,7 +138,10 @@ let rec private fetchValueClosure
 /// params are String (the wire-marshalable subset in v1).
 let private buildEffectfulMap
   (exeState : ExecutionState)
-  : Map<string, Bridge.WireArg list * bool> =
+  : Map<string, Bridge.WireArg list * Bridge.WireRet> =
+  let optStr = TypeReference.option TString
+  let resStrStr = TypeReference.result TString TString
+  let resUnitStr = TypeReference.result TUnit TString
   exeState.fns.builtIn
   |> Map.toList
   |> List.choose (fun (name, bfn) ->
@@ -151,18 +154,22 @@ let private buildEffectfulMap
         | TInt -> Some Bridge.WAInt
         | TBool -> Some Bridge.WABool
         | _ -> None)
-    if List.exists Option.isNone argWires then
-      None
-    else
-      let wires = argWires |> List.map Option.get
+    let wireRet =
       match bfn.returnType with
-      | TUnit -> Some(name.name, (wires, false))
-      | TString -> Some(name.name, (wires, true))
-      | _ -> None)
+      | TUnit -> Some Bridge.WRUnit
+      | TString -> Some Bridge.WRString
+      | t when t = optStr -> Some Bridge.WROptString
+      | t when t = resStrStr -> Some Bridge.WRResStrStr
+      | t when t = resUnitStr -> Some Bridge.WRResUnitStr
+      | _ -> None
+    match wireRet with
+    | Some ret when not (List.exists Option.isNone argWires) ->
+      Some(name.name, (argWires |> List.map Option.get, ret))
+    | _ -> None)
   |> Map.ofList
 
 let private buildPieces
-  (effectful : Map<string, Bridge.WireArg list * bool>)
+  (effectful : Map<string, Bridge.WireArg list * Bridge.WireRet>)
   (rootHash : string)
   : Ply<Result<List<AST.TypeDef> * List<AST.FunctionDef> * string, string>> =
   uply {
@@ -337,7 +344,7 @@ let rec private zeroValue
 /// Compile-check one package fn by hash (bridge its call-graph, make it
 /// reachable with zero-valued args, compile — don't run). Returns (ok, detail).
 /// Wrapped so an unexpected crash in one fn can't abort a batch sweep.
-let private checkOne (effectful : Map<string, Bridge.WireArg list * bool>) (hash : string) : Ply<bool * string> =
+let private checkOne (effectful : Map<string, Bridge.WireArg list * Bridge.WireRet>) (hash : string) : Ply<bool * string> =
   uply {
     try
       let! pieces = buildPieces effectful hash
@@ -379,9 +386,14 @@ let private outcome (ok : bool) (detail : string) : Dval =
 // v1 marshals scalars only; container types are TODO. (BUILTINS-ARCHITECTURE.md)
 // ---------------------------------------------------------------------------
 
-/// Scalar Dval -> wire string.
-let private dvalToWire (d : Dval) : string =
+/// Dval -> wire string. Scalars are literal; an enum (Option/Result) becomes
+/// "<case>" (nullary) or "<case>\n<payload>" (recursively marshaled).
+let rec private dvalToWire (d : Dval) : string =
   match d with
+  | DEnum(_, _, _, caseName, []) -> caseName
+  | DEnum(_, _, _, caseName, [ payload ]) -> caseName + "\n" + dvalToWire payload
+  | DEnum(_, _, _, caseName, fields) ->
+    caseName + "\n" + (fields |> List.map dvalToWire |> String.concat "")
   | DString s -> s
   | DInt n -> string (DarkInt.toBigInt n)
   | DInt8 n -> string n

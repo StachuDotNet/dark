@@ -38,15 +38,21 @@ type WireArg =
   | WAInt
   | WABool
 
+/// How a builtin's wire response is unmarshaled back into a native value.
+type WireRet =
+  | WRUnit
+  | WRString
+  | WROptString // Option<String>
+  | WRResStrStr // Result<String, String>
+  | WRResUnitStr // Result<Unit, String>
+
 type BridgeCtx =
   { Params : string[]
     Self : string
     Values : Map<string, AST.Expr>
     /// Effectful builtins routable through the host RPC seam: name -> (per-arg
-    /// wire types, returns-a-String?). Return is Unit (false) or String (true);
-    /// Int-returning builtins aren't routable yet (no string->int on the compiled
-    /// side). Built from the live runtime.
-    Effectful : Map<string, WireArg list * bool> }
+    /// wire types, return wire type). Built from the live runtime.
+    Effectful : Map<string, WireArg list * WireRet> }
 
 let private err (category : string) (detail : string) : Result<'a, string> =
   Error $"unsupported-{category}: {detail}"
@@ -326,6 +332,46 @@ let rec private bindPattern
         |> Result.bind (fun inner -> bindPattern p (AST.TupleAccess(AST.Var tmp, i)) inner)
     build 0 subs |> Result.map (fun inner -> AST.Let(tmp, value, inner))
 
+/// Unmarshal a host-RPC wire response (an AST expr producing the String) back
+/// into a native value, per the builtin's return wire type. Option/Result wire
+/// format: "<case>" or "<case>\n<payload>" (case-prefix length: Some/Ok/Error).
+let private unmarshalReturn (ret : WireRet) (call : AST.Expr) : AST.Expr =
+  let optT = "Stdlib.Option.Option"
+  let resT = "Stdlib.Result.Result"
+  let r = AST.Var "__rpc_r"
+  let len e = AST.Call("Stdlib.String.length", AST.NonEmptyList.singleton e)
+  let slice e a b =
+    AST.Call("Stdlib.String.slice", AST.NonEmptyList.fromList [ e; a; b ])
+  let starts e p =
+    AST.Call("Stdlib.String.startsWith", AST.NonEmptyList.fromList [ e; AST.StringLiteral p ])
+  match ret with
+  | WRString -> call
+  | WRUnit -> AST.Let("__rpc_ignore", call, AST.UnitLiteral)
+  | WROptString ->
+    AST.Let(
+      "__rpc_r",
+      call,
+      AST.If(
+        starts r "Some\n",
+        AST.Constructor(optT, "Some", Some(slice r (AST.Int64Literal 5L) (len r))),
+        AST.Constructor(optT, "None", None)))
+  | WRResUnitStr ->
+    AST.Let(
+      "__rpc_r",
+      call,
+      AST.If(
+        starts r "Error\n",
+        AST.Constructor(resT, "Error", Some(slice r (AST.Int64Literal 6L) (len r))),
+        AST.Constructor(resT, "Ok", Some AST.UnitLiteral)))
+  | WRResStrStr ->
+    AST.Let(
+      "__rpc_r",
+      call,
+      AST.If(
+        starts r "Error\n",
+        AST.Constructor(resT, "Error", Some(slice r (AST.Int64Literal 6L) (len r))),
+        AST.Constructor(resT, "Ok", Some(slice r (AST.Int64Literal 3L) (len r)))))
+
 let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
   let recurse = bridgeExpr ctx
   match e with
@@ -413,7 +459,7 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
           // request = "name\narg0\narg1…" (all args String), result per the
           // builtin's return type.
           match Map.tryFind b.name ctx.Effectful with
-          | Some(argWires, retIsString) ->
+          | Some(argWires, wireRet) ->
             args
             |> NEList.toList
             |> List.map recurse
@@ -440,9 +486,7 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
                       AST.BinOp(AST.StringConcat, acc, AST.StringLiteral "\n"),
                       arg))
                 let call = AST.Call("Stdlib.hostRpc", AST.NonEmptyList.singleton request)
-                Ok(
-                  if retIsString then call
-                  else AST.Let("__rpc_ignore", call, AST.UnitLiteral)))
+                Ok(unmarshalReturn wireRet call))
           | None -> err "builtin" $"{b.name}_v{b.version}"
       | PT.FQFnName.Package(PT.Hash h) ->
         let bridgedArgs = args |> NEList.toList |> List.map recurse |> allOk
@@ -664,7 +708,7 @@ let bridgeTypeDef
 let bridgeFn
   (types : Map<string, TypeEntry>)
   (values : Map<string, AST.Expr>)
-  (effectful : Map<string, WireArg list * bool>)
+  (effectful : Map<string, WireArg list * WireRet>)
   (compiledName : string)
   (fn : PT.PackageFn.PackageFn)
   : Result<AST.FunctionDef, string> =
