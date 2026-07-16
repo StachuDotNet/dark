@@ -768,27 +768,31 @@ let private runOne
                       match dvalArgs with
                       | [] -> NEList.singleton DUnit
                       | args -> NEList.ofListUnsafe "runOne diff args" [] args
-                    let interpResult =
+                    let runInterp () =
                       try
                         match (LibExecution.Execution.executeFunction
                                  exeState (FQFnName.fqPackage hash) [] argsNE).Result with
                         | Ok v -> Some v
                         | Error _ -> None
                       with _ -> None
-                    match interpResult with
-                    | None -> return "ierr|" + compiledOut.Replace("\n", "\\n")
-                    | Some iv ->
-                      let irepr =
-                        match iv with
-                        | DInt64 n -> Some(string n)
-                        | DInt n -> Some(string (DarkInt.toBigInt n))
-                        | DString s -> Some s
-                        | DBool b -> Some(if b then "true" else "false")
-                        | DFloat f -> Some(string f)
-                        | DChar c -> Some c
-                        | DUnit -> Some ""
-                        | _ -> None
-                      match irepr with
+                    let scalarRepr (d : Dval) : string option =
+                      match d with
+                      | DInt64 n -> Some(string n)
+                      | DInt n -> Some(string (DarkInt.toBigInt n))
+                      | DString s -> Some s
+                      | DBool b -> Some(if b then "true" else "false")
+                      | DFloat f -> Some(string f)
+                      | DChar c -> Some c
+                      | DUnit -> Some ""
+                      | _ -> None
+                    let iv1, iv2 = runInterp (), runInterp ()
+                    match iv1, iv2 with
+                    | Some a, Some b when (scalarRepr a) <> (scalarRepr b) ->
+                      // interpreter itself gave two answers -> effectful/non-deterministic; don't compare
+                      return "nondet|" + compiledOut.Replace("\n", "\\n")
+                    | None, _ | _, None -> return "ierr|" + compiledOut.Replace("\n", "\\n")
+                    | Some iv, _ ->
+                      match scalarRepr iv with
                       | None -> return "ran|" + compiledOut.Replace("\n", "\\n")
                       | Some istr ->
                         let norm (s : string) =
@@ -1144,6 +1148,31 @@ let fns () : List<BuiltInFn> =
                 lines <- lines @ [ $"{ok}|{detail}" ]
               | _ -> lines <- lines @ [ "false|non-string-hash" ]
             return DString(String.concat "\n" lines)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "compilerShowFn" 0
+      typeParams = []
+      parameters = [ Param.make "hash" TString "package fn content hash" ]
+      returnType = TString
+      description = "Debug: fetch a package fn by hash and return its name + F# structural repr of params and body."
+      fn =
+        (function
+        | _, _, _, [ DString hash ] ->
+          uply {
+            let! fnOpt = LibDB.PackageManager.pt.getFn (PT.FQFnName.package hash)
+            match fnOpt with
+            | None -> return DString "not found"
+            | Some(f : PT.PackageFn.PackageFn) ->
+              let ps =
+                NEList.toList f.parameters
+                |> List.map (fun (p : PT.PackageFn.Parameter) -> $"{p.name}: {p.typ}")
+                |> String.concat ", "
+              return DString $"ret={f.returnType}\ntypeParams={f.typeParams}\nparams=({ps})\nbody={f.body}"
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
