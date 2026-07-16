@@ -1293,6 +1293,57 @@ let fns () : List<BuiltInFn> =
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
 
+    { name = fn "compilerPerfCompare" 0
+      typeParams = []
+      parameters =
+        [ Param.make "hash" TString "package fn hash (Int64 -> Int64)"
+          Param.make "n" TInt64 "the Int64 argument" ]
+      returnType = TString
+      description = "Benchmarks one Int64->Int64 fn at arg n: runs it compiled (native binary) and interpreted (executeFunction), times each with a Stopwatch, and reports both wall times + the result. For a fair compute comparison use a heavy fn (e.g. naive fib)."
+      fn =
+        (function
+        | exeState, _, _, [ DString hash; DInt64 n ] ->
+          uply {
+            let effectful = buildEffectfulMap exeState
+            // --- compiled ---
+            let! pieces = buildPieces effectful hash
+            match pieces with
+            | Error e -> return DString ("bridge: " + e)
+            | Ok(typeDefs, fds, rootName) ->
+              let program : AST.Program =
+                AST.Program(
+                  (typeDefs |> List.map AST.TypeDef)
+                  @ (fds |> List.map AST.FunctionDef)
+                  @ [ AST.Expression(AST.Call(rootName, AST.NonEmptyList.singleton (AST.Int64Literal n))) ])
+              match compileAst program with
+              | Error e -> return DString ("compile: " + e)
+              | Ok binary ->
+                // warm once, then time
+                let _warm = CompilerLibrary.execute 0 60000 binary
+                let swC = System.Diagnostics.Stopwatch.StartNew()
+                let outC = CompilerLibrary.execute 0 60000 binary
+                swC.Stop()
+                // --- interpreted ---
+                let args = NEList.singleton (DInt64 n)
+                let swI = System.Diagnostics.Stopwatch.StartNew()
+                let interp =
+                  try
+                    match (LibExecution.Execution.executeFunction exeState (FQFnName.fqPackage hash) [] args).Result with
+                    | Ok v -> dvalToWire v
+                    | Error _ -> "interp-error"
+                  with e -> "interp-exn: " + e.Message
+                swI.Stop()
+                let cMs = swC.Elapsed.TotalMilliseconds
+                let iMs = swI.Elapsed.TotalMilliseconds
+                let speedup = if cMs > 0.0 then iMs / cMs else 0.0
+                return DString $"n={n}  compiled={outC.Stdout.Trim()} in {System.Math.Round(cMs,2)}ms (incl process launch)  |  interpreted={interp} in {System.Math.Round(iMs,2)}ms  |  interp/compiled = {System.Math.Round(speedup,1)}x"
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
     { name = fn "compilerRunSweep" 0
       typeParams = []
       parameters =
