@@ -739,7 +739,62 @@ let private runOne
               let _ = (try daemon.Wait() with _ -> ())
               if out.ExitCode = -999 then return "hang"
               elif out.ExitCode <> 0 then return $"crash|{out.ExitCode}"
-              else return "ran|" + out.Stdout.Trim().Replace("\n", "\\n")
+              else
+                let compiledOut = out.Stdout.Trim()
+                // Differential check: run the SAME fn in the interpreter with the
+                // same zero args and compare. Restricted to non-generic fns whose
+                // params are scalars (so the Dval zeros exactly match the compiled
+                // zeroValue and the printed formats align) — otherwise just "ran".
+                let! ptFnOpt = LibDB.PackageManager.pt.getFn (PT.FQFnName.package hash)
+                match ptFnOpt with
+                | Some ptFn when List.isEmpty ptFn.typeParams ->
+                  let scalarZero (t : PT.TypeReference) : Dval option =
+                    match t with
+                    | PT.TInt64 | PT.TInt -> Some(DInt64 0L)
+                    | PT.TString -> Some(DString "")
+                    | PT.TBool -> Some(DBool false)
+                    | PT.TChar -> Some(DChar "a")
+                    | PT.TUnit -> Some DUnit
+                    | PT.TFloat -> Some(DFloat 0.0)
+                    | _ -> None
+                  let paramList = NEList.toList ptFn.parameters
+                  let zeros : List<Dval option> =
+                    paramList |> List.map (fun (p : PT.PackageFn.Parameter) -> scalarZero p.typ)
+                  if List.exists Option.isNone zeros then
+                    return "ran|" + compiledOut.Replace("\n", "\\n")
+                  else
+                    let dvalArgs : List<Dval> = zeros |> List.choose (fun x -> x)
+                    let argsNE =
+                      match dvalArgs with
+                      | [] -> NEList.singleton DUnit
+                      | args -> NEList.ofListUnsafe "runOne diff args" [] args
+                    let interpResult =
+                      try
+                        match (LibExecution.Execution.executeFunction
+                                 exeState (FQFnName.fqPackage hash) [] argsNE).Result with
+                        | Ok v -> Some v
+                        | Error _ -> None
+                      with _ -> None
+                    match interpResult with
+                    | None -> return "ierr|" + compiledOut.Replace("\n", "\\n")
+                    | Some iv ->
+                      let irepr =
+                        match iv with
+                        | DInt64 n -> Some(string n)
+                        | DInt n -> Some(string (DarkInt.toBigInt n))
+                        | DString s -> Some s
+                        | DBool b -> Some(if b then "true" else "false")
+                        | DFloat f -> Some(string f)
+                        | DChar c -> Some c
+                        | DUnit -> Some ""
+                        | _ -> None
+                      match irepr with
+                      | None -> return "ran|" + compiledOut.Replace("\n", "\\n")
+                      | Some istr ->
+                        let norm (s : string) = s.Trim().Trim('"')
+                        if norm compiledOut = norm istr then return "match|" + norm istr
+                        else return $"diff|c={norm compiledOut}|i={norm istr}"
+                | _ -> return "ran|" + compiledOut.Replace("\n", "\\n")
     with e -> return "cf|exn: " + e.Message
   }
 
