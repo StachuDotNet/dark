@@ -184,6 +184,41 @@ let rec private zeroLit (t : AST.Type) : Result<AST.Expr, string> =
   | AST.TUnit -> Ok AST.UnitLiteral
   | other -> Error $"no zero literal for {other}"
 
+/// A zero value for any bridged type — including records/enums, built from the
+/// bridged type defs — so compileFnCheck can make a fn taking custom-type params
+/// reachable. `seen` guards against infinite recursion on recursive types.
+let rec private zeroValue
+  (defs : Map<string, AST.TypeDef>)
+  (seen : Set<string>)
+  (t : AST.Type)
+  : Result<AST.Expr, string> =
+  match t with
+  | AST.TRecord(name, _) ->
+    if Set.contains name seen then Error $"recursive type {name}"
+    else
+      match Map.tryFind name defs with
+      | Some(AST.RecordDef(_, _, fields)) ->
+        fields
+        |> List.map (fun (fname, ft) ->
+          zeroValue defs (Set.add name seen) ft |> Result.map (fun v -> (fname, v)))
+        |> allOk
+        |> Result.map (fun fs -> AST.RecordLiteral(name, fs))
+      | _ -> Error $"no record def {name}"
+  | AST.TSum(name, _) ->
+    if Set.contains name seen then Error $"recursive type {name}"
+    else
+      match Map.tryFind name defs with
+      | Some(AST.SumTypeDef(_, _, variant :: _)) ->
+        match variant.Payload with
+        | None -> Ok(AST.Constructor(name, variant.Name, None))
+        | Some pt ->
+          zeroValue defs (Set.add name seen) pt
+          |> Result.map (fun pv -> AST.Constructor(name, variant.Name, Some pv))
+      | _ -> Error $"no sum def {name}"
+  | AST.TTuple ts ->
+    ts |> List.map (zeroValue defs seen) |> allOk |> Result.map AST.TupleLiteral
+  | prim -> zeroLit prim
+
 /// Compile-check one package fn by hash (bridge its call-graph, make it
 /// reachable with zero-valued args, compile — don't run). Returns (ok, detail).
 /// Wrapped so an unexpected crash in one fn can't abort a batch sweep.
@@ -197,8 +232,18 @@ let private checkOne (hash : string) : Ply<bool * string> =
         match fds |> List.tryFind (fun fd -> fd.Name = rootName) with
         | None -> return (false, "root fn not bridged")
         | Some rootFd ->
+          let defsByName =
+            typeDefs
+            |> List.choose (fun td ->
+              match td with
+              | AST.RecordDef(n, _, _) -> Some(n, td)
+              | AST.SumTypeDef(n, _, _) -> Some(n, td)
+              | AST.TypeAlias(n, _, _) -> Some(n, td))
+            |> Map.ofList
           let dummy =
-            rootFd.Params |> AST.NonEmptyList.toList |> List.map (snd >> zeroLit)
+            rootFd.Params
+            |> AST.NonEmptyList.toList
+            |> List.map (snd >> zeroValue defsByName Set.empty)
           match List.tryPick (function Error e -> Some e | Ok _ -> None) dummy with
           | Some e -> return (false, $"arg-synthesis: {e}")
           | None ->
