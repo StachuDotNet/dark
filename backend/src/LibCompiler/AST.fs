@@ -58,7 +58,7 @@ type Type =
     | TList of Type                    // List<T> - polymorphic list type
     | TVar of string                  // type variable: T, A, B, etc. (for generics)
     | TRawPtr                         // Raw pointer to unmanaged memory (internal, for HAMT)
-    | TDict of keyType:Type * valueType:Type  // Dict<K, V> - HAMT dictionary (K=Int64 for now)
+    | TDict of keyType:Type * valueType:Type  // Dict<K, V> - HAMT dictionary; K is generic (Int64/Bool/String), monomorphized via __hash<k>/__key_eq<k> (see stdlib/__Hash.dark)
 
 /// Binary operators
 type BinOp =

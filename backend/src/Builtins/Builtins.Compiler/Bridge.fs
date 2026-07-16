@@ -290,6 +290,27 @@ let builtinToStdlib : Map<string, string> =
       "uint64Multiply", "Stdlib.UInt64.mul"
       "uint64Divide", "Stdlib.UInt64.div"
       "uint64Mod", "Stdlib.UInt64.mod"
+      // Dict. Dark's key is always String, which is the compiler's `k`, and Dark's
+      // Option return IS the compiler's native Option (already unified). Only pairs
+      // whose SEMANTICS match are routed, not merely their signatures:
+      //
+      // NOT routed, and why (each was verified, not assumed):
+      //  - dictSet: Dark RAISES if the key already exists; native Dict.set overwrites.
+      //    `dictSetOverridingDuplicates` is the real equivalent of native set.
+      //  - dictFromList: Dark returns Option (None on duplicate keys); native
+      //    fromList overwrites and returns a bare Dict. fromListOverwritingDuplicates
+      //    is the real equivalent.
+      //  - dictKeys/dictValues/dictToList: ORDER DIFFERS. Dark's Dict is an F# Map
+      //    (key-sorted iteration); the compiler's is a HAMT (hash order). Measured:
+      //    compiled ["apple","zebra","mango"] vs interpreted ["apple","mango","zebra"].
+      //  - dictMerge: native merge is __mergeHelper(dict2, dict1) — the conflict
+      //    winner needs proving before it can be called equivalent.
+      "dictGet", "Stdlib.Dict.get"
+      "dictMember", "Stdlib.Dict.contains"
+      "dictSize", "Stdlib.Dict.size"
+      "dictRemove", "Stdlib.Dict.remove"
+      "dictSetOverridingDuplicates", "Stdlib.Dict.set"
+      "dictFromListOverwritingDuplicates", "Stdlib.Dict.fromList"
       // Float
       "floatMultiply", "Stdlib.Float.multiply"
       // Compiler INTRINSICS (2_AST_to_ANF.fs lowers these names to an ANF op ->
@@ -518,7 +539,12 @@ let rec bridgeType
   | PT.TList inner -> recurse inner |> Result.map AST.TList
   | PT.TTuple(a, b, rest) ->
     (a :: b :: rest) |> List.map recurse |> allOk |> Result.map AST.TTuple
-  | PT.TDict _ -> err "type" "TDict"
+  // Dark's Dict is always String-keyed (PT.TDict carries only a value type). The
+  // compiler's Dict IS key-generic -- Dict<k,v> over a HAMT, with __hash<k> and
+  // __key_eq<k> monomorphized per key type, and __Hash.dark ships __hash_str
+  // (FNV-1a over UTF-8 bytes) + __key_eq_str. So String keys are fully supported;
+  // the "K=Int64 for now" note on AST.TDict is stale.
+  | PT.TDict v -> recurse v |> Result.map (fun v' -> AST.TDict(AST.TString, v'))
   | PT.TFn(args, ret) ->
     (NEList.toList args |> List.map recurse |> allOk, recurse ret)
     |> fun (a, r) ->
@@ -898,6 +924,19 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
       |> allOk
       |> Result.map (fun cs -> AST.Match(scrut, cs)))
   | PT.EList(_, elems) -> elems |> List.map recurse |> allOk |> Result.map AST.ListLiteral
+  // The compiler AST has no dict literal, so build one with Stdlib.Dict.fromList over
+  // a list of (key, value) tuples: the list literal pins k=String and v, so the call
+  // needs no explicit type args. An EMPTY dict literal pins nothing, and inference
+  // would have to come from context we don't have here, so it hard-fails cleanly
+  // rather than emitting a Dict<String, ?> the compiler can't monomorphize.
+  | PT.EDict(_, []) -> err "dict" "empty dict literal (no element type to infer)"
+  | PT.EDict(_, pairs) ->
+    pairs
+    |> List.map (fun (k, v) ->
+      recurse v |> Result.map (fun v' -> AST.TupleLiteral [ AST.StringLiteral k; v' ]))
+    |> allOk
+    |> Result.map (fun entries ->
+      AST.Call("Stdlib.Dict.fromList", AST.NonEmptyList.singleton (AST.ListLiteral entries)))
   | PT.ETuple(_, a, b, rest) ->
     (a :: b :: rest) |> List.map recurse |> allOk |> Result.map AST.TupleLiteral
   | PT.EPipe(_, lhs, parts) ->
@@ -1189,6 +1228,7 @@ let rec referencedPackageFns (e : PT.Expr) : List<string> =
          | PT.EPipeVariable(_, _, args) -> args |> List.collect r
          | PT.EPipeLambda(_, _, body) -> r body))
   | PT.EList(_, elems) -> elems |> List.collect r
+  | PT.EDict(_, pairs) -> pairs |> List.collect (snd >> r)
   | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
   | PT.ELambda(_, _, body) -> r body
   | PT.EStatement(_, first, next) -> r first @ r next
@@ -1245,6 +1285,7 @@ let rec typeRefsInExpr (e : PT.Expr) : List<string> =
          | PT.EPipeVariable(_, _, args) -> args |> List.collect r
          | PT.EPipeLambda(_, _, body) -> r body))
   | PT.EList(_, elems) -> elems |> List.collect r
+  | PT.EDict(_, pairs) -> pairs |> List.collect (snd >> r)
   | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
   | PT.ELambda(_, _, body) -> r body
   | PT.EStatement(_, first, next) -> r first @ r next
@@ -1284,6 +1325,7 @@ let rec valueRefsInExpr (e : PT.Expr) : List<string> =
   | PT.EIf(_, c, t, None) -> r c @ r t
   | PT.ELet(_, _, v, body) -> r v @ r body
   | PT.EList(_, elems) -> elems |> List.collect r
+  | PT.EDict(_, pairs) -> pairs |> List.collect (snd >> r)
   | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
   | PT.ERecord(_, _, _, fields) -> fields |> List.collect (snd >> r)
   | PT.ERecordFieldAccess(_, record, _) -> r record

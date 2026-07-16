@@ -434,6 +434,11 @@ let rec private zeroValue
   | AST.TTuple ts ->
     ts |> List.map (zeroValue defs seen) |> allOk |> Result.map AST.TupleLiteral
   | AST.TList _ -> Ok(AST.ListLiteral [])
+  // Dict.empty is nullary AND generic, so give it explicit type args (we know k/v
+  // here) rather than relying on inference from a call site that has none. The Unit
+  // arg is how the compiler spells a nullary call (normalizeNullaryCallArgs drops it).
+  | AST.TDict(k, v) ->
+    Ok(AST.TypeApp("Stdlib.Dict.empty", [ k; v ], AST.NonEmptyList.singleton AST.UnitLiteral))
   | AST.TFunction(argTypes, retType) ->
     // A function param: synthesize a dummy lambda `(a0, a1, …) => <zero of ret>`
     // that ignores its args, so a higher-order fn can be made reachable. Param
