@@ -314,7 +314,12 @@ let rec bridgeExpr (paramNames : string[]) (e : PT.Expr) : Result<AST.Expr, stri
   | PT.EList(_, elems) -> elems |> List.map recurse |> allOk |> Result.map AST.ListLiteral
   | PT.ETuple(_, a, b, rest) ->
     (a :: b :: rest) |> List.map recurse |> allOk |> Result.map AST.TupleLiteral
-  | PT.EPipe(_, _, _) -> err "expr" "EPipe"
+  | PT.EPipe(_, lhs, parts) ->
+    recurse lhs
+    |> Result.bind (fun start ->
+      (Ok start, parts)
+      ||> List.fold (fun accR part ->
+        accR |> Result.bind (fun acc -> bridgePipePart paramNames acc part)))
   | _ -> err "expr" (e.GetType().Name)
 
 /// Lower one match case. A PT case has a single pattern (alternatives live in
@@ -341,6 +346,51 @@ and bridgeCase
            Guard = gd
            Body = body }
         : AST.MatchCase))))
+
+/// Desugar one pipe stage: the accumulated value `piped` becomes the stage's
+/// first input. `x |> f a` -> f(x, a); `x |> (+) a` -> x + a; `x |> Some` ->
+/// Some x; `x |> v a` -> v(x, a) (v is a fn value). Lambda stages need lambdas.
+and bridgePipePart
+  (paramNames : string[])
+  (piped : AST.Expr)
+  (part : PT.PipeExpr)
+  : Result<AST.Expr, string> =
+  let recurse = bridgeExpr paramNames
+  match part with
+  | PT.EPipeInfix(_, op, rhs) ->
+    bridgeInfix op
+    |> Result.bind (fun o -> recurse rhs |> Result.map (fun r -> AST.BinOp(o, piped, r)))
+  | PT.EPipeFnCall(_, nr, typeArgs, args) ->
+    match nr.resolved with
+    | Error _ -> err "call" "unresolved fn name (pipe)"
+    | Ok resolved ->
+      match resolved.name with
+      | PT.FQFnName.Builtin b -> err "builtin" $"{b.name}_v{b.version}"
+      | PT.FQFnName.Package(PT.Hash h) ->
+        let bargs = args |> List.map recurse |> allOk
+        let tas = typeArgs |> List.map (bridgeType Map.empty) |> allOk
+        match tas, bargs with
+        | Error e, _ -> Error e
+        | _, Error e -> Error e
+        | Ok tl, Ok bas ->
+          let full = piped :: bas
+          if List.isEmpty tl then Ok(AST.Call(nameFor h, AST.NonEmptyList.fromList full))
+          else Ok(AST.TypeApp(nameFor h, tl, AST.NonEmptyList.fromList full))
+  | PT.EPipeEnum(_, nr, caseName, fields) ->
+    typeHash nr
+    |> Result.bind (fun h ->
+      fields
+      |> List.map recurse
+      |> allOk
+      |> Result.map (fun fs ->
+        AST.Constructor(nameForType h, caseName, tuplePayload (piped :: fs))))
+  | PT.EPipeVariable(_, varName, args) ->
+    args
+    |> List.map recurse
+    |> allOk
+    |> Result.map (fun bas ->
+      AST.Apply(AST.Var varName, AST.NonEmptyList.fromList (piped :: bas)))
+  | PT.EPipeLambda(_, _, _) -> err "expr" "EPipeLambda"
 
 // ---------------------------------------------------------------------------
 // Type definitions
@@ -444,6 +494,23 @@ let rec referencedPackageFns (e : PT.Expr) : List<string> =
     segs |> List.collect (fun s -> match s with PT.StringInterpolation e -> r e | PT.StringText _ -> [])
   | PT.ERecordUpdate(_, record, ups) ->
     r record @ (ups |> NEList.toList |> List.collect (snd >> r))
+  | PT.EPipe(_, lhs, parts) ->
+    r lhs
+    @ (parts
+       |> List.collect (fun p ->
+         match p with
+         | PT.EPipeFnCall(_, nr, _, args) ->
+           (match nr.resolved with
+            | Ok res ->
+              match res.name with
+              | PT.FQFnName.Package(PT.Hash h) -> [ h ]
+              | PT.FQFnName.Builtin _ -> []
+            | Error _ -> [])
+           @ (args |> List.collect r)
+         | PT.EPipeInfix(_, _, e) -> r e
+         | PT.EPipeEnum(_, _, _, fields) -> fields |> List.collect r
+         | PT.EPipeVariable(_, _, args) -> args |> List.collect r
+         | PT.EPipeLambda(_, _, body) -> r body))
   | PT.EList(_, elems) -> elems |> List.collect r
   | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
@@ -480,6 +547,23 @@ let rec typeRefsInExpr (e : PT.Expr) : List<string> =
     segs |> List.collect (fun s -> match s with PT.StringInterpolation e -> r e | PT.StringText _ -> [])
   | PT.ERecordUpdate(_, record, ups) ->
     r record @ (ups |> NEList.toList |> List.collect (snd >> r))
+  | PT.EPipe(_, lhs, parts) ->
+    r lhs
+    @ (parts
+       |> List.collect (fun p ->
+         match p with
+         | PT.EPipeFnCall(_, nr, _, args) ->
+           (match nr.resolved with
+            | Ok res ->
+              match res.name with
+              | PT.FQFnName.Package(PT.Hash h) -> [ h ]
+              | PT.FQFnName.Builtin _ -> []
+            | Error _ -> [])
+           @ (args |> List.collect r)
+         | PT.EPipeInfix(_, _, e) -> r e
+         | PT.EPipeEnum(_, _, _, fields) -> fields |> List.collect r
+         | PT.EPipeVariable(_, _, args) -> args |> List.collect r
+         | PT.EPipeLambda(_, _, body) -> r body))
   | PT.EList(_, elems) -> elems |> List.collect r
   | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)

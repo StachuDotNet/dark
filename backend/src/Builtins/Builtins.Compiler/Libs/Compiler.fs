@@ -100,7 +100,11 @@ let rec private fetchTypeClosure
       else
         let! tOpt = LibDB.PackageManager.pt.getType (PT.FQTypeName.package h)
         match tOpt with
-        | None -> return Error $"missing type {h}"
+        // A hash that doesn't resolve to a type (e.g. an over-collected fn hash,
+        // or a genuinely absent type) is skipped rather than failing the whole
+        // fn. If it was a real type the fn needs, bridgeType hard-fails on it
+        // cleanly (TCustomType not in env); if it was noise, no harm.
+        | None -> return! fetchTypeClosure (Set.add h visited) acc rest
         | Some pt ->
           let deps = Bridge.typeRefsInTypeDef pt
           return! fetchTypeClosure (Set.add h visited) (acc @ [ (h, pt) ]) (rest @ deps)
