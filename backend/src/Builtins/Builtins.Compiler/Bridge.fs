@@ -292,6 +292,13 @@ let builtinToStdlib : Map<string, string> =
       "uint64Mod", "Stdlib.UInt64.mod"
       // Float
       "floatMultiply", "Stdlib.Float.multiply"
+      // Compiler INTRINSICS (2_AST_to_ANF.fs lowers these names to an ANF op ->
+      // MIR -> LIR -> x64), not stdlib fns. Equivalent by type: the bridge maps
+      // PT.TInt/TInt64 -> AST.TInt64 and PT.TFloat -> AST.TFloat64, so Dark's
+      // intToFloat (TInt -> TFloat) IS Int64.toFloat (Int64 -> Float64).
+      "intToFloat", "Stdlib.Int64.toFloat"
+      "int64ToFloat", "Stdlib.Int64.toFloat"
+      "floatSqrt", "Stdlib.Float.sqrt"
       // Int64 (full)
       "int64LessThan", "Stdlib.Int64.lessThan"
       "int64GreaterThan", "Stdlib.Int64.greaterThan"
