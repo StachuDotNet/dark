@@ -760,7 +760,22 @@ let private runOne
                 let! ptFnOpt = LibDB.PackageManager.pt.getFn (PT.FQFnName.package hash)
                 match ptFnOpt with
                 | Some ptFn when List.isEmpty ptFn.typeParams ->
-                  let scalarZero (t : PT.TypeReference) : Dval option =
+                  let paramList = NEList.toList ptFn.parameters
+                  // Fetch the param types' closure so record/enum params can be
+                  // zeroed the same way the compiled zeroValue does.
+                  let typeSeeds =
+                    paramList
+                    |> List.collect (fun (p : PT.PackageFn.Parameter) -> Bridge.typeRefsInType p.typ)
+                    |> List.distinct
+                  let! typeClosure = fetchTypeClosure Set.empty [] typeSeeds
+                  let declMap =
+                    match typeClosure with
+                    | Ok ts -> ts |> List.map (fun (h, pt) -> (h, pt.declaration)) |> Map.ofList
+                    | Error _ -> Map.empty
+                  // Interpreter-side zero, mirroring zeroValue. Conservative: None
+                  // (skip the diff) for generics/aliases/functions/dicts, so a
+                  // synthesis mismatch can never masquerade as a miscompile.
+                  let rec zeroDvalPT (seen : Set<string>) (t : PT.TypeReference) : Dval option =
                     match t with
                     | PT.TInt64 | PT.TInt -> Some(DInt64 0L)
                     | PT.TString -> Some(DString "")
@@ -768,10 +783,53 @@ let private runOne
                     | PT.TChar -> Some(DChar "a")
                     | PT.TUnit -> Some DUnit
                     | PT.TFloat -> Some(DFloat 0.0)
+                    | PT.TList _ -> Some(DList(ValueType.Unknown, []))
+                    | PT.TTuple(a, b, rest) ->
+                      let zs = (a :: b :: rest) |> List.map (zeroDvalPT seen)
+                      if List.exists Option.isNone zs then None
+                      else
+                        match zs |> List.choose (fun x -> x) with
+                        | x1 :: x2 :: r -> Some(DTuple(x1, x2, r))
+                        | _ -> None
+                    | PT.TCustomType(nr, _) ->
+                      match nr.resolved with
+                      | Ok resolved ->
+                        match resolved.name with
+                        | PT.FQTypeName.Package(PT.Hash h) ->
+                          let tn = FQTypeName.fqPackage h
+                          if h = Bridge.optionTypeHash then
+                            Some(DEnum(tn, tn, [ ValueType.Unknown ], "None", []))
+                          elif Set.contains h seen then None
+                          else
+                            match Map.tryFind h declMap with
+                            | Some(decl : PT.TypeDeclaration.T) when List.isEmpty decl.typeParams ->
+                              match decl.definition with
+                              | PT.TypeDeclaration.Record fields ->
+                                let fzs =
+                                  NEList.toList fields
+                                  |> List.map (fun (f : PT.TypeDeclaration.RecordField) ->
+                                    (f.name, zeroDvalPT (Set.add h seen) f.typ))
+                                if fzs |> List.exists (snd >> Option.isNone) then None
+                                else
+                                  Some(
+                                    DRecord(
+                                      tn, tn, [],
+                                      fzs |> List.map (fun (n, v) -> (n, Option.get v)) |> Map.ofList))
+                              | PT.TypeDeclaration.Enum cases ->
+                                NEList.toList cases
+                                |> List.tryPick (fun (c : PT.TypeDeclaration.EnumCase) ->
+                                  let pzs =
+                                    c.fields
+                                    |> List.map (fun (ef : PT.TypeDeclaration.EnumField) ->
+                                      zeroDvalPT (Set.add h seen) ef.typ)
+                                  if pzs |> List.exists Option.isNone then None
+                                  else Some(DEnum(tn, tn, [], c.name, pzs |> List.choose (fun x -> x))))
+                              | PT.TypeDeclaration.Alias _ -> None
+                            | _ -> None
+                      | Error _ -> None
                     | _ -> None
-                  let paramList = NEList.toList ptFn.parameters
                   let zeros : List<Dval option> =
-                    paramList |> List.map (fun (p : PT.PackageFn.Parameter) -> scalarZero p.typ)
+                    paramList |> List.map (fun (p : PT.PackageFn.Parameter) -> zeroDvalPT Set.empty p.typ)
                   if List.exists Option.isNone zeros then
                     return "ran|" + compiledOut.Replace("\n", "\\n")
                   else
