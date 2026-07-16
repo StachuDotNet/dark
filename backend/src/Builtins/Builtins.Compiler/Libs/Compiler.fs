@@ -574,6 +574,46 @@ let private dispatchBuiltin
     let parts = request.Split('\n')
     let name = parts[0]
     let wireArgs = parts[1..] |> Array.toList
+    // Handle-based list primitives: build/walk a real Dval list held in the daemon,
+    // so compiled code can work with multi-element lists (which the native x64
+    // finger-tree can't) without ever constructing one. Element payloads are
+    // String for now (the common case); typed elements come later.
+    let listOf (hStr : string) : List<Dval> option =
+      match System.Int64.TryParse hStr with
+      | true, id ->
+        match getHandle id with
+        | Some(DList(_, xs)) -> Some xs
+        | _ -> None
+      | _ -> None
+    let tryPrimitive () : string option =
+      match name, wireArgs with
+      | "__listEmpty", _ -> Some(string (storeHandle (DList(ValueType.Unknown, []))))
+      | "__listConsStr", [ h; elem ] ->
+        listOf h
+        |> Option.map (fun xs ->
+          string (storeHandle (DList(ValueType.Unknown, DString elem :: xs))))
+      | "__listLen", [ h ] -> listOf h |> Option.map (List.length >> string)
+      | "__listIsEmpty", [ h ] ->
+        listOf h |> Option.map (fun xs -> if List.isEmpty xs then "true" else "false")
+      | "__listHeadStr", [ h ] ->
+        listOf h
+        |> Option.map (fun xs ->
+          match xs with
+          | DString s :: _ -> s
+          | d :: _ -> dvalToWire d
+          | [] -> "")
+      | "__listTail", [ h ] ->
+        listOf h
+        |> Option.map (fun xs ->
+          let t =
+            match xs with
+            | _ :: t -> t
+            | [] -> []
+          string (storeHandle (DList(ValueType.Unknown, t))))
+      | _ -> None
+    match tryPrimitive () with
+    | Some resp -> return resp
+    | None ->
     match Map.tryFind (FQFnName.builtin name 0) exeState.fns.builtIn with
     | None -> return $"ERR:no-builtin:{name}"
     | Some bfn ->
@@ -839,6 +879,46 @@ let fns () : List<BuiltInFn> =
                       "h",
                       rpc (AST.StringLiteral "stringSplit\na,b,c\n,"),
                       rpc (AST.BinOp(AST.StringConcat, AST.StringLiteral "listLength\n", AST.Var "h")))) ]
+            match compileAst program with
+            | Error e ->
+              shutdown ()
+              daemon.Wait()
+              return DString $"compile-error: {e}"
+            | Ok binary ->
+              let out = CompilerLibrary.execute 0 binary
+              shutdown ()
+              daemon.Wait()
+              return DString(out.Stdout.Trim())
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "compilerListHandleSelfTest" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TString
+      description =
+        "Proves the compiled side can BUILD and query a multi-element list via handles (the native x64 finger-tree cannot): conses [a,b,c] through the daemon (__listEmpty/__listConsStr) then __listLen -> 3. Every value the compiled code holds is a String/Int handle."
+      fn =
+        (function
+        | exeState, vm, _, [ DUnit ] ->
+          uply {
+            let (daemon, shutdown) = startDaemon exeState vm
+            let rpc req = AST.Call("Stdlib.hostRpc", AST.NonEmptyList.singleton req)
+            let cat a b = AST.BinOp(AST.StringConcat, a, b)
+            let consReq hVar elem =
+              cat (cat (AST.StringLiteral "__listConsStr\n") (AST.Var hVar)) (AST.StringLiteral ("\n" + elem))
+            let program : AST.Program =
+              AST.Program
+                [ AST.Expression(
+                    AST.Let("h0", rpc (AST.StringLiteral "__listEmpty"),
+                      AST.Let("h1", rpc (consReq "h0" "c"),
+                        AST.Let("h2", rpc (consReq "h1" "b"),
+                          AST.Let("h3", rpc (consReq "h2" "a"),
+                            rpc (cat (AST.StringLiteral "__listLen\n") (AST.Var "h3"))))))) ]
             match compileAst program with
             | Error e ->
               shutdown ()
