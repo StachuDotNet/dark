@@ -892,6 +892,51 @@ let private runOne
     with e -> return "cf|exn: " + e.Message
   }
 
+/// Benchmark one Int64->Int64 package fn at arg n: compile it (bridge -> native
+/// binary), run compiled vs interpreted (in-process), and return a pretty report.
+let private perfBench (exeState : ExecutionState) (hash : string) (n : int64) : Ply<string> =
+  uply {
+    let effectful = buildEffectfulMap exeState
+    let! pieces = buildPieces effectful hash
+    match pieces with
+    | Error e -> return "  ✗ does not compile: " + e
+    | Ok(typeDefs, fds, rootName) ->
+      let program : AST.Program =
+        AST.Program(
+          (typeDefs |> List.map AST.TypeDef)
+          @ (fds |> List.map AST.FunctionDef)
+          @ [ AST.Expression(AST.Call(rootName, AST.NonEmptyList.singleton (AST.Int64Literal n))) ])
+      match compileAst program with
+      | Error e -> return "  ✗ compile error: " + e
+      | Ok binary ->
+        let _warm = CompilerLibrary.execute 0 120000 binary
+        let swC = System.Diagnostics.Stopwatch.StartNew()
+        let outC = CompilerLibrary.execute 0 120000 binary
+        swC.Stop()
+        let args = NEList.singleton (DInt64 n)
+        let swI = System.Diagnostics.Stopwatch.StartNew()
+        let interp =
+          try
+            match (LibExecution.Execution.executeFunction exeState (FQFnName.fqPackage hash) [] args).Result with
+            | Ok v -> dvalToWire v
+            | Error _ -> "<interp error>"
+          with e -> "<interp exn: " + e.Message + ">"
+        swI.Stop()
+        let cOut = outC.Stdout.Trim()
+        let cMs = swC.Elapsed.TotalMilliseconds
+        let iMs = swI.Elapsed.TotalMilliseconds
+        let agree = if cOut = interp then "✓ match" else "✗ DIFFER"
+        let speedup = if cMs > 0.0 then System.Math.Round(iMs / cMs, 0) else 0.0
+        let bytes = binary.Length
+        return
+          "  arg           n = " + string n + "\n"
+          + "  result        " + cOut + "   (compiled vs interpreted: " + agree + ")\n"
+          + "  native size   " + string bytes + " bytes\n"
+          + "  interpreted   " + string (System.Math.Round(iMs, 2)) + " ms\n"
+          + "  compiled      " + string (System.Math.Round(cMs, 2)) + " ms  (incl. process launch)\n"
+          + "  speedup       " + string speedup + "x  faster (compiled)"
+  }
+
 let fns () : List<BuiltInFn> =
   [ { name = fn "compilerInfo" 0
       typeParams = []
@@ -1304,39 +1349,31 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, _, _, [ DString hash; DInt64 n ] ->
           uply {
-            let effectful = buildEffectfulMap exeState
-            // --- compiled ---
-            let! pieces = buildPieces effectful hash
-            match pieces with
-            | Error e -> return DString ("bridge: " + e)
-            | Ok(typeDefs, fds, rootName) ->
-              let program : AST.Program =
-                AST.Program(
-                  (typeDefs |> List.map AST.TypeDef)
-                  @ (fds |> List.map AST.FunctionDef)
-                  @ [ AST.Expression(AST.Call(rootName, AST.NonEmptyList.singleton (AST.Int64Literal n))) ])
-              match compileAst program with
-              | Error e -> return DString ("compile: " + e)
-              | Ok binary ->
-                // warm once, then time
-                let _warm = CompilerLibrary.execute 0 60000 binary
-                let swC = System.Diagnostics.Stopwatch.StartNew()
-                let outC = CompilerLibrary.execute 0 60000 binary
-                swC.Stop()
-                // --- interpreted ---
-                let args = NEList.singleton (DInt64 n)
-                let swI = System.Diagnostics.Stopwatch.StartNew()
-                let interp =
-                  try
-                    match (LibExecution.Execution.executeFunction exeState (FQFnName.fqPackage hash) [] args).Result with
-                    | Ok v -> dvalToWire v
-                    | Error _ -> "interp-error"
-                  with e -> "interp-exn: " + e.Message
-                swI.Stop()
-                let cMs = swC.Elapsed.TotalMilliseconds
-                let iMs = swI.Elapsed.TotalMilliseconds
-                let speedup = if cMs > 0.0 then iMs / cMs else 0.0
-                return DString $"n={n}  compiled={outC.Stdout.Trim()} in {System.Math.Round(cMs,2)}ms (incl process launch)  |  interpreted={interp} in {System.Math.Round(iMs,2)}ms  |  interp/compiled = {System.Math.Round(speedup,1)}x"
+            let! report = perfBench exeState hash n
+            return DString report
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "perfCompareEval" 0
+      typeParams = []
+      parameters =
+        [ Param.makeWithArgs "fn" (TFn(NEList.singleton TInt64, TInt64)) "an Int64 -> Int64 fn" [ "n" ]
+          Param.make "n" TInt64 "the Int64 argument" ]
+      returnType = TString
+      description = "The user-facing perf comparison: pass a fn value (e.g. Stdlib.PerfDemo.fib) and an arg; compiles it, runs compiled-native vs interpreted in-process, and returns a pretty report with both times, the speedup, and whether the results match."
+      fn =
+        (function
+        | exeState, _, _, [ DApplicable(AppNamedFn nf); DInt64 n ] ->
+          uply {
+            match nf.name with
+            | FQFnName.Package(Hash h) ->
+              let! report = perfBench exeState h n
+              return DString ("\n" + report + "\n")
+            | _ -> return DString "perfCompareEval: not a package fn"
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
