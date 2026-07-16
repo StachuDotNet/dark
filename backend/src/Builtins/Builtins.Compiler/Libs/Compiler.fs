@@ -279,7 +279,12 @@ let private buildPieces
           ||> List.fold (fun m (h, pv) ->
             if Map.containsKey h m then m
             else
-              let ctx : Bridge.BridgeCtx = { Params = [||]; Self = ""; Values = m; Effectful = Map.empty }
+              let ctx : Bridge.BridgeCtx =
+                { Params = [||]
+                  Self = ""
+                  Values = m
+                  ValueErrors = Map.empty
+                  Effectful = Map.empty }
               match Bridge.bridgeExpr ctx pv.body with
               | Ok e -> Map.add h e m
               | Error _ -> m)
@@ -287,9 +292,26 @@ let private buildPieces
           let m' = bridgeValuesOnce m
           if Map.count m' = Map.count m then m' else fixpoint m'
         let valuesMap = fixpoint Map.empty
+        // Whatever never reached the fixpoint failed for a REASON; re-bridge those
+        // once against the final map to capture it, so a fn referencing one reports
+        // the root cause rather than a bare "package value not resolved".
+        let valueErrors : Map<string, string> =
+          values
+          |> List.filter (fun (h, _) -> not (Map.containsKey h valuesMap))
+          |> List.choose (fun (h, pv) ->
+            let ctx : Bridge.BridgeCtx =
+              { Params = [||]
+                Self = ""
+                Values = valuesMap
+                ValueErrors = Map.empty
+                Effectful = Map.empty }
+            match Bridge.bridgeExpr ctx pv.body with
+            | Error e -> Some(h, e)
+            | Ok _ -> None)
+          |> Map.ofList
         let fnDefs =
           fns
-          |> List.map (fun (h, fn) -> Bridge.bridgeFn typeEnv valuesMap effectful (Bridge.nameFor h) fn)
+          |> List.map (fun (h, fn) -> Bridge.bridgeFn typeEnv valuesMap valueErrors effectful (Bridge.nameFor h) fn)
           |> allOk
         match typeDefs, fnDefs with
         | Error e, _ -> return Error e
@@ -1108,7 +1130,7 @@ let fns () : List<BuiltInFn> =
                   [ { name = "b"; typ = PT.TInt64; description = "" } ]
               returnType = PT.TInt64
               description = "" }
-          match Bridge.bridgeFn Map.empty Map.empty Map.empty "bridgedFn" ptFn with
+          match Bridge.bridgeFn Map.empty Map.empty Map.empty Map.empty "bridgedFn" ptFn with
           | Error e -> outcome false $"bridge: {e}" |> Ply
           | Ok fd ->
             let program : AST.Program =

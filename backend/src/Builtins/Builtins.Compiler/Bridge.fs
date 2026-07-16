@@ -55,6 +55,11 @@ type BridgeCtx =
   { Params : string[]
     Self : string
     Values : Map<string, AST.Expr>
+    /// Why a referenced package value ISN'T in `Values`. A value whose own body
+    /// fails to bridge is dropped, and every fn referencing it then failed with a
+    /// useless "package value not resolved" that hid the actual blocker. Carry the
+    /// real error so the fn reports the root cause instead of the symptom.
+    ValueErrors : Map<string, string>
     /// Effectful builtins routable through the host RPC seam: name -> (per-arg
     /// wire types, return wire type). Built from the live runtime.
     Effectful : Map<string, WireArg list * WireRet> }
@@ -902,7 +907,11 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
       | PT.FQValueName.Package(PT.Hash h) ->
         match Map.tryFind h ctx.Values with
         | Some e -> Ok e
-        | None -> err "value" "package value not resolved"
+        | None ->
+          // Report why the value itself couldn't be bridged, not just that it's absent.
+          match Map.tryFind h ctx.ValueErrors with
+          | Some inner -> err "value" $"package value did not bridge: {inner}"
+          | None -> err "value" "package value not resolved"
   | PT.ESelf _ -> err "expr" "bare ESelf (self as a value)"
   // Higher-order application: apply a fn value (variable/lambda/expr) to args.
   | PT.EApply(_, funcExpr, typeArgs, args) ->
@@ -929,7 +938,12 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
   // needs no explicit type args. An EMPTY dict literal pins nothing, and inference
   // would have to come from context we don't have here, so it hard-fails cleanly
   // rather than emitting a Dict<String, ?> the compiler can't monomorphize.
-  | PT.EDict(_, []) -> err "dict" "empty dict literal (no element type to infer)"
+  // An empty dict literal pins no types, so emit a bare nullary Dict.empty() and let
+  // the compiler infer k/v from context (the Unit arg is how it spells a nullary
+  // call). If context doesn't pin them it fails there instead — still better than
+  // hard-failing here, since most empty dicts ARE used somewhere that pins them.
+  | PT.EDict(_, []) ->
+    Ok(AST.Call("Stdlib.Dict.empty", AST.NonEmptyList.singleton AST.UnitLiteral))
   | PT.EDict(_, pairs) ->
     pairs
     |> List.map (fun (k, v) ->
@@ -1138,6 +1152,7 @@ let rec freeTVars (t : AST.Type) : Set<string> =
 let bridgeFn
   (types : Map<string, TypeEntry>)
   (values : Map<string, AST.Expr>)
+  (valueErrors : Map<string, string>)
   (effectful : Map<string, WireArg list * WireRet>)
   (compiledName : string)
   (fn : PT.PackageFn.PackageFn)
@@ -1148,6 +1163,7 @@ let bridgeFn
     { Params = paramNames
       Self = compiledName
       Values = values
+      ValueErrors = valueErrors
       Effectful = effectful }
   let bridgedParams =
     paramList
@@ -1313,6 +1329,16 @@ let typeRefsInTypeDef (pt : PT.PackageType.PackageType) : List<string> =
 let rec valueRefsInExpr (e : PT.Expr) : List<string> =
   let r = valueRefsInExpr
   match e with
+  // NB: EPipe is deliberately NOT walked here yet, even though referencedPackageFns
+  // walks it and its absence is a real bug: a package value used inside a pipe is
+  // never seeded, never fetched, and every fn touching it fails "package value not
+  // resolved" (~194 fns — the bulk of that bucket). Adding it is a 12-line change
+  // and it WORKS, but it is unusable until values are shared instead of inlined:
+  // bridgeExpr inlines a value's whole body at every EValue, and valuesMap[A]
+  // already contains B's body inlined, so chains of values compound. With pipes
+  // resolving, a single 50-fn sweep chunk reached 55GB RSS and nearly OOM'd the
+  // box (one fn alone is fine, ~5s). Land value let-hoisting first, then re-add
+  // this and re-measure. See the "value inlining" task.
   | PT.EValue(_, nr) ->
     match nr.resolved with
     | Ok resolved ->
