@@ -15,6 +15,10 @@ def Stdlib.hostRpcPoll(u: Unit) : String =
         Stdlib.hostRpcPoll(())
 
 def Stdlib.hostRpc(request: String) : String =
+    // Clear any stale response BEFORE issuing the request, so a multi-call program
+    // can't read the previous call's response (the daemon writes the fresh one only
+    // after it reads this request).
+    let _ = Stdlib.File.delete("/tmp/dark-rpc-resp") in
     let _ = Stdlib.File.writeText("/tmp/dark-rpc-req", request) in
     Stdlib.hostRpcPoll(())
 

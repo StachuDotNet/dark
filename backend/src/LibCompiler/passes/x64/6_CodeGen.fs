@@ -2871,9 +2871,58 @@ let private translateInstr (ctx: FuncCtx) (instr: LIR.Instr) : Result<X86_64.Ins
                 // Move result to destReg after restoring saved registers
                 @ [X86_64.MOV_reg (destReg, X86_64.RAX)]))
 
-    | LIR.FileDelete (dest, _) ->
+    | LIR.FileDelete (dest, path) ->
+        // Real unlink(path) syscall (was a no-op stub). Copies the heap string to
+        // a null-terminated stack buffer (same as FileExists) then unlinks it.
         resolveReg dest
-        |> Result.map (fun destReg -> loadImm64 destReg 0L)
+        |> Result.bind (fun destReg ->
+            let resolvePathToR10 =
+                match path with
+                | LIR.Reg reg ->
+                    resolveReg reg |> Result.map (fun srcReg ->
+                        if srcReg = X86_64.R10 then [] else [X86_64.MOV_reg (X86_64.R10, srcReg)])
+                | LIR.StackSlot offset ->
+                    Ok [X86_64.MOV_load (X86_64.R10, X86_64.RBP, int32 (adjustStackOffset ctx offset))]
+                | LIR.StringSymbol value ->
+                    Ok (emitStringLiteralNoRefCount X86_64.R10 value)
+                | _ -> Ok (loadImm64 X86_64.R10 0L)
+            let copyLabel = freshLabel "fd_copy"
+            let doneLabel = freshLabel "fd_done"
+            resolvePathToR10 |> Result.map (fun pathSetup ->
+                let unlinkSyscall = int64 syscalls.Unlink
+                let saves = [X86_64.PUSH X86_64.RDI; X86_64.PUSH X86_64.RSI; X86_64.PUSH X86_64.RCX; X86_64.PUSH X86_64.R10]
+                let restores = [X86_64.POP X86_64.R10; X86_64.POP X86_64.RCX; X86_64.POP X86_64.RSI; X86_64.POP X86_64.RDI]
+                pathSetup @ saves
+                @ [X86_64.SUB_imm (X86_64.RSP, 4096)]
+                @ [X86_64.MOV_load (X86_64.RCX, X86_64.R10, 0)
+                   X86_64.LEA (X86_64.RSI, X86_64.R10, 8)
+                   X86_64.MOV_reg (X86_64.RDI, X86_64.RSP)]
+                @ loadImm64 X86_64.R10 0L
+                @ [X86_64.Label copyLabel
+                   X86_64.CMP_reg (X86_64.R10, X86_64.RCX)
+                   X86_64.Jcc (X86_64.GE, doneLabel)
+                   X86_64.MOV_reg (scratch, X86_64.RSI)
+                   X86_64.ADD_reg (scratch, X86_64.R10)
+                   X86_64.MOV_load_byte (scratch, scratch, 0)
+                   X86_64.PUSH X86_64.R8
+                   X86_64.MOV_reg (X86_64.R8, X86_64.RDI)
+                   X86_64.ADD_reg (X86_64.R8, X86_64.R10)
+                   X86_64.MOV_store_byte (X86_64.R8, 0, scratch)
+                   X86_64.POP X86_64.R8
+                   X86_64.ADD_imm (X86_64.R10, 1)
+                   X86_64.JMP copyLabel
+                   X86_64.Label doneLabel]
+                @ [X86_64.MOV_reg (scratch, X86_64.RDI)
+                   X86_64.ADD_reg (scratch, X86_64.RCX)]
+                @ loadImm64 X86_64.R10 0L
+                @ [X86_64.MOV_store_byte (scratch, 0, X86_64.R10)]
+                // syscall: unlink(path=RSP)
+                @ [X86_64.MOV_reg (X86_64.RDI, X86_64.RSP)]
+                @ loadImm64 X86_64.RAX unlinkSyscall
+                @ [X86_64.SYSCALL
+                   X86_64.ADD_imm (X86_64.RSP, 4096)]
+                @ restores
+                @ loadImm64 destReg 0L))
 
     | LIR.FileSetExecutable (dest, _) ->
         resolveReg dest

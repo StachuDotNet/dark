@@ -486,19 +486,39 @@ let private outcome (ok : bool) (detail : string) : Dval =
 // v1 marshals scalars only; container types are TODO. (BUILTINS-ARCHITECTURE.md)
 // ---------------------------------------------------------------------------
 
-/// Dval -> wire string. Scalars are literal; an enum (Option/Result) becomes
-/// "<case>" (nullary) or "<case>\n<payload>" (recursively marshaled).
+/// Opaque-handle table: complex values (List/Dict/…) the compiler can't represent
+/// natively on x64 (the finger-tree DEEP-node runtime bug) live here as real Dvals;
+/// compiled code holds only an Int64 handle and routes every operation on them back
+/// through the daemon to the REAL builtins. Daemon requests are serviced on one
+/// thread, so a plain Dictionary is safe.
+let private handleTable = System.Collections.Generic.Dictionary<int64, Dval>()
+let mutable private handleCounter = 0L
+
+
+let private storeHandle (d : Dval) : int64 =
+  handleCounter <- handleCounter + 1L
+  handleTable[handleCounter] <- d
+  handleCounter
+
+let private getHandle (id : int64) : Dval option =
+  match handleTable.TryGetValue id with
+  | true, d -> Some d
+  | _ -> None
+
 /// Escape a child's encoding so a raw newline only ever separates children
 /// (matches Stdlib.hostRpcEscape on the compiled side); composes to any depth.
 let private escWire (s : string) : string =
   s.Replace("\\", "\\\\").Replace("\n", "\\n")
 
+/// Dval -> wire string. Scalars are literal; enums (Option/Result) recurse; a
+/// list becomes an opaque handle id (see handleTable) since the compiler can't
+/// build a native multi-element list on x64.
 let rec private dvalToWire (d : Dval) : string =
   match d with
   | DEnum(_, _, _, caseName, []) -> caseName
   | DEnum(_, _, _, caseName, fields) ->
     caseName + "\n" + (fields |> List.map (dvalToWire >> escWire) |> String.concat "\n")
-  | DList(_, xs) -> xs |> List.map (dvalToWire >> escWire) |> String.concat "\n"
+  | DList _ -> string (storeHandle d)
   | DTuple(a, b, rest) ->
     (a :: b :: rest) |> List.map (dvalToWire >> escWire) |> String.concat "\n"
   | DString s -> s
@@ -532,6 +552,15 @@ let private wireToDval (t : TypeReference) (s : string) : Dval =
   | TFloat -> DFloat(float s)
   | TChar -> DChar s
   | TUuid -> DUuid(System.Guid.Parse s)
+  // A list/dict arg arrives as an opaque handle id -> resolve to the real Dval.
+  | TList _
+  | TDict _ ->
+    match System.Int64.TryParse s with
+    | true, id ->
+      match getHandle id with
+      | Some d -> d
+      | None -> DString s
+    | _ -> DString s
   | _ -> DString s
 
 /// Dispatch one request ("name\narg1\narg2…") to the real builtin, return the
@@ -784,6 +813,43 @@ let fns () : List<BuiltInFn> =
               let out = CompilerLibrary.execute 0 binary
               if out.ExitCode = 0 then outcome true out.Stdout |> Ply
               else outcome false $"exit {out.ExitCode}: {out.Stderr}" |> Ply
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "compilerHandleSelfTest" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TString
+      description =
+        "Proves the opaque-handle model end to end: compiles a program that (1) calls the REAL stringSplit builtin through the daemon (returns a List -> stored as a handle id), then (2) passes that handle to the REAL listLength builtin. The compiled code only ever touches strings/ints (no native finger-tree), yet a list flows between two builtins via the daemon. Returns stdout (expect 3)."
+      fn =
+        (function
+        | exeState, vm, _, [ DUnit ] ->
+          uply {
+            let (daemon, shutdown) = startDaemon exeState vm
+            // let h = hostRpc("stringSplit\na,b,c\n,") in hostRpc("listLength\n" ++ h)
+            let rpc req = AST.Call("Stdlib.hostRpc", AST.NonEmptyList.singleton req)
+            let program : AST.Program =
+              AST.Program
+                [ AST.Expression(
+                    AST.Let(
+                      "h",
+                      rpc (AST.StringLiteral "stringSplit\na,b,c\n,"),
+                      rpc (AST.BinOp(AST.StringConcat, AST.StringLiteral "listLength\n", AST.Var "h")))) ]
+            match compileAst program with
+            | Error e ->
+              shutdown ()
+              daemon.Wait()
+              return DString $"compile-error: {e}"
+            | Ok binary ->
+              let out = CompilerLibrary.execute 0 binary
+              shutdown ()
+              daemon.Wait()
+              return DString(out.Stdout.Trim())
+          }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
