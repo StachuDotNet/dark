@@ -702,6 +702,22 @@ let bridgeTypeDef
 // Functions
 // ---------------------------------------------------------------------------
 
+/// Every type variable appearing in a compiler type. Darklang signatures carry
+/// free type vars (e.g. `'v`) that PT's `typeParams` list doesn't always
+/// enumerate; the compiler FunctionDef must declare all of them or the reachability
+/// harness can't monomorphize (no zero literal for an undeclared TVar).
+let rec freeTVars (t : AST.Type) : Set<string> =
+  match t with
+  | AST.TVar v -> Set.singleton v
+  | AST.TRecord(_, args)
+  | AST.TSum(_, args) -> args |> List.map freeTVars |> Set.unionMany
+  | AST.TList inner -> freeTVars inner
+  | AST.TTuple ts -> ts |> List.map freeTVars |> Set.unionMany
+  | AST.TDict(k, v) -> Set.union (freeTVars k) (freeTVars v)
+  | AST.TFunction(args, ret) ->
+    Set.union (args |> List.map freeTVars |> Set.unionMany) (freeTVars ret)
+  | _ -> Set.empty
+
 /// Lower a package function to a compiler FunctionDef under the given
 /// compiler-side name. Params keep their Dark names (positional EArg refs and
 /// any by-name refs both resolve). Generics are not yet supported.
@@ -729,8 +745,16 @@ let bridgeFn
     |> Result.bind (fun retType ->
       bridgeExpr ctx fn.body
       |> Result.map (fun body ->
+        // Declare every type var the signature actually uses — declared params
+        // first (preserving order), then any free tvars PT didn't enumerate.
+        let sigTVars =
+          (ps |> List.map (snd >> freeTVars) |> Set.unionMany)
+          |> Set.union (freeTVars retType)
+        let declared = fn.typeParams
+        let extra =
+          sigTVars |> Set.toList |> List.filter (fun v -> not (List.contains v declared))
         ({ Name = compiledName
-           TypeParams = fn.typeParams
+           TypeParams = declared @ extra
            Params = AST.NonEmptyList.fromList ps
            ReturnType = retType
            Body = body } : AST.FunctionDef))))

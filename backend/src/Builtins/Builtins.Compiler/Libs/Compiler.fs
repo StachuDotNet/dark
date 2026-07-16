@@ -308,37 +308,62 @@ let rec private zeroLit (t : AST.Type) : Result<AST.Expr, string> =
 /// A zero value for any bridged type — including records/enums, built from the
 /// bridged type defs — so compileFnCheck can make a fn taking custom-type params
 /// reachable. `seen` guards against infinite recursion on recursive types.
+/// Build a type-var substitution for a generic type def instantiated with `args`:
+/// each declared type param maps to its positional arg, or Int64 when the type is
+/// referenced with fewer args than params (the harness only needs *a* concrete
+/// monomorphization to check compilability).
+let private defSubst (typeParams : string list) (args : AST.Type list) : Map<string, AST.Type> =
+  typeParams
+  |> List.mapi (fun i tp -> (tp, List.tryItem i args |> Option.defaultValue AST.TInt64))
+  |> Map.ofList
+
 let rec private zeroValue
   (defs : Map<string, AST.TypeDef>)
   (seen : Set<string>)
   (t : AST.Type)
   : Result<AST.Expr, string> =
   match t with
-  | AST.TRecord(name, _) ->
+  | AST.TRecord(name, args) ->
     if Set.contains name seen then Error $"recursive type {name}"
     else
       match Map.tryFind name defs with
-      | Some(AST.RecordDef(_, _, fields)) ->
+      | Some(AST.RecordDef(_, tps, fields)) ->
+        // Instantiate the generic def's type params with the reference's args, so
+        // a field typed `T` becomes its concrete type before we synthesize a zero.
+        let subst = defSubst tps args
         fields
         |> List.map (fun (fname, ft) ->
-          zeroValue defs (Set.add name seen) ft |> Result.map (fun v -> (fname, v)))
+          zeroValue defs (Set.add name seen) (substTVars subst ft)
+          |> Result.map (fun v -> (fname, v)))
         |> allOk
         |> Result.map (fun fs -> AST.RecordLiteral(name, fs))
       | _ -> Error $"no record def {name}"
-  | AST.TSum(name, _) ->
+  | AST.TSum(name, args) ->
     if Set.contains name seen then Error $"recursive type {name}"
     else
       match Map.tryFind name defs with
-      | Some(AST.SumTypeDef(_, _, variant :: _)) ->
-        match variant.Payload with
-        | None -> Ok(AST.Constructor(name, variant.Name, None))
-        | Some pt ->
-          zeroValue defs (Set.add name seen) pt
-          |> Result.map (fun pv -> AST.Constructor(name, variant.Name, Some pv))
+      | Some(AST.SumTypeDef(_, tps, variants)) when not (List.isEmpty variants) ->
+        let subst = defSubst tps args
+        // Try variants in order; a recursive type (e.g. `Nil | Cons of ...`) is
+        // zeroable via its non-recursive base case, so take the first that
+        // terminates rather than forcing the first-declared variant.
+        let zeroed =
+          variants
+          |> List.tryPick (fun variant ->
+            match variant.Payload with
+            | None -> Some(AST.Constructor(name, variant.Name, None))
+            | Some pt ->
+              match zeroValue defs (Set.add name seen) (substTVars subst pt) with
+              | Ok pv -> Some(AST.Constructor(name, variant.Name, Some pv))
+              | Error _ -> None)
+        match zeroed with
+        | Some c -> Ok c
+        | None -> Error $"recursive type {name}"
       | _ -> Error $"no sum def {name}"
   | AST.TTuple ts ->
     ts |> List.map (zeroValue defs seen) |> allOk |> Result.map AST.TupleLiteral
   | AST.TList _ -> Ok(AST.ListLiteral [])
+  | AST.TVar _ -> zeroLit AST.TInt64 // an unmapped signature tvar: monomorphize at Int64
   | prim -> zeroLit prim
 
 /// Compile-check one package fn by hash (bridge its call-graph, make it
