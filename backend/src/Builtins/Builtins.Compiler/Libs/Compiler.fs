@@ -592,6 +592,18 @@ let private dispatchBuiltin
         listOf h
         |> Option.map (fun xs ->
           string (storeHandle (DList(ValueType.Unknown, DString elem :: xs))))
+      // Typed cons: prepend a wire element decoded per its type tag, so lists of
+      // Int/Bool/Float (not just String) build correctly via handles.
+      | "__listCons", [ h; tag; elem ] ->
+        listOf h
+        |> Option.map (fun xs ->
+          let dv =
+            match tag with
+            | "i" -> DInt64(int64 elem)
+            | "b" -> DBool(elem = "true")
+            | "f" -> DFloat(float elem)
+            | _ -> DString elem
+          string (storeHandle (DList(ValueType.Unknown, dv :: xs))))
       | "__listLen", [ h ] -> listOf h |> Option.map (List.length >> string)
       | "__listIsEmpty", [ h ] ->
         listOf h |> Option.map (fun xs -> if List.isEmpty xs then "true" else "false")
