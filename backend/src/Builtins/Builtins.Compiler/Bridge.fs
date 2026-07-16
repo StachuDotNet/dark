@@ -459,18 +459,32 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
       ||> List.fold (fun accR part ->
         accR |> Result.bind (fun acc -> bridgePipePart ctx acc part)))
   // Lambda: untyped Dark params get a fresh TVar (unique per node id) that the
-  // compiler's inference/monomorphizer resolves from the call context.
+  // compiler's inference/monomorphizer resolves from the call context. A
+  // non-variable param (e.g. `fun (a, b) -> …`) binds a fresh name and the body
+  // destructures it via bindPattern.
   | PT.ELambda(lamId, pats, body) ->
-    pats
-    |> NEList.toList
-    |> List.map (fun p ->
-      match p with
-      | PT.LPVariable(_, name) -> Ok(name, AST.TVar $"__lam_{lamId}_{name}")
-      | _ -> err "lambda" "non-variable lambda param")
-    |> allOk
-    |> Result.bind (fun ps ->
-      recurse body
-      |> Result.map (fun b -> AST.Lambda(AST.NonEmptyList.fromList ps, b)))
+    let named =
+      pats
+      |> NEList.toList
+      |> List.mapi (fun i p ->
+        match p with
+        | PT.LPVariable(_, name) -> (name, None)
+        | _ -> ($"__lamarg_{lamId}_{i}", Some p))
+    let compilerParams =
+      named |> List.map (fun (nm, _) -> (nm, AST.TVar $"__lamt_{lamId}_{nm}"))
+    recurse body
+    |> Result.bind (fun b ->
+      // wrap the body with a destructuring bind for each non-variable param
+      (Ok b, named)
+      ||> List.fold (fun accR (nm, patOpt) ->
+        match patOpt with
+        | None -> accR
+        | Some pat -> accR |> Result.bind (fun acc -> bindPattern pat (AST.Var nm) acc))
+      |> Result.map (fun wb -> AST.Lambda(AST.NonEmptyList.fromList compilerParams, wb)))
+  | PT.EStatement(_, first, next) ->
+    // `first; next` — evaluate first, discard, then next.
+    recurse first
+    |> Result.bind (fun f -> recurse next |> Result.map (fun n -> AST.Let("__dark_stmt", f, n)))
   | _ -> err "expr" (e.GetType().Name)
 
 /// Lower one match case. A PT case has a single pattern (alternatives live in
@@ -679,6 +693,7 @@ let rec referencedPackageFns (e : PT.Expr) : List<string> =
   | PT.EList(_, elems) -> elems |> List.collect r
   | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
   | PT.ELambda(_, _, body) -> r body
+  | PT.EStatement(_, first, next) -> r first @ r next
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
   | _ -> []
 
@@ -733,6 +748,7 @@ let rec typeRefsInExpr (e : PT.Expr) : List<string> =
   | PT.EList(_, elems) -> elems |> List.collect r
   | PT.ETuple(_, a, b, rest) -> (a :: b :: rest) |> List.collect r
   | PT.ELambda(_, _, body) -> r body
+  | PT.EStatement(_, first, next) -> r first @ r next
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
   | _ -> []
 
@@ -780,5 +796,6 @@ let rec valueRefsInExpr (e : PT.Expr) : List<string> =
   | PT.EString(_, segs) ->
     segs |> List.collect (fun s -> match s with PT.StringInterpolation e -> r e | PT.StringText _ -> [])
   | PT.ELambda(_, _, body) -> r body
+  | PT.EStatement(_, first, next) -> r first @ r next
   | PT.EApply(_, f, _, args) -> r f @ (args |> NEList.toList |> List.collect r)
   | _ -> []
