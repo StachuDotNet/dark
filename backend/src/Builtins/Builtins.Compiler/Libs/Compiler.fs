@@ -227,16 +227,16 @@ let private buildEffectfulMap
         // General container returns (Option/Result/List of marshalable types); the
         // recursive unmarshaller decodes them.
         //
-        // GATED on isMarshalableType, which is what unmarshalTyped can actually
-        // DECODE — a narrower set than rtToMarshalable can now express. Since
-        // rtToMarshalable started naming custom types (so they can be marshalled as
-        // ARGS), an ungated return would hand unmarshalTyped a record/enum, hit its
-        // `| _ -> src` fallthrough, and silently yield the raw wire string AS the
-        // value. The arg direction and the return direction have different
-        // capabilities; don't let one imply the other.
-        match rtToMarshalable other with
-        | Some bt when Bridge.isMarshalableType bt -> Some(Bridge.WRTyped bt)
-        | _ -> None
+        // NO LONGER gated on isMarshalableType. That gate existed because
+        // unmarshalTyped ended in `| _ -> src`, so an undecodable return silently
+        // yielded the raw wire string AS the value — and this map is built from the
+        // RUNTIME, with no type env, so it cannot itself tell whether a custom type
+        // decodes. Now that the decoder is TOTAL, the bridge (which does have the defs)
+        // reports a precise blocker instead, so being optimistic here is safe: the worst
+        // case is `unsupported-builtin: <name>: unmarshalable-return: <type>`, not a
+        // wrong value. That's what lets custom-type returns (altJsonParse ->
+        // Result<Json, ParseError>) route at all.
+        rtToMarshalable other |> Option.map Bridge.WRTyped
     match wireRet with
     | Some ret when not (List.exists Option.isNone argWires) ->
       Some(name.name, (argWires |> List.map Option.get, ret))
@@ -491,7 +491,11 @@ let private buildPieces
           // those transitively call). Emitting one per type polluted every program.
           let seed = fds |> List.map (fun f -> Bridge.marshalCallsInExpr f.Body) |> Set.unionMany
           let marshallers = Bridge.marshalFnDefs emittedDefs seed
-          return Ok(tds, marshallers @ valueDefs @ fds, Bridge.nameFor rootHash)
+          // Same story in the decode direction: a builtin returning a custom type calls
+          // __unmarshal.T, so emit those too -- reachable ones only, transitively closed.
+          let useed = fds |> List.map (fun f -> Bridge.unmarshalCallsInExpr f.Body) |> Set.unionMany
+          let unmarshallers = Bridge.unmarshalFnDefs emittedDefs useed
+          return Ok(tds, marshallers @ unmarshallers @ valueDefs @ fds, Bridge.nameFor rootHash)
   }
 
 /// Substitute type variables (used to instantiate a generic root fn's type

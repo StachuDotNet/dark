@@ -769,6 +769,12 @@ let defSubstB (tps : string list) (args : AST.Type list) : Map<string, AST.Type>
 /// Dotted, like every other name we hand the compiler (it splits mangled names on '_').
 let marshalFnName (typeName : string) : string = "__marshal." + typeName
 
+/// The decode-side twin of marshalFnName: one `__unmarshal.<T>(s: String) : T` per
+/// non-generic custom type, so a RECURSIVE type decodes by calling itself rather than
+/// generating AST forever (the same reason the marshal side needs a fn, learned when an
+/// inlined Json serializer core-dumped the CLI).
+let unmarshalFnName (typeName : string) = "__unmarshal." + typeName
+
 let rec marshalTypedSeen
   (inFnBody : bool)
   (seen : Set<string>)
@@ -1134,7 +1140,15 @@ let isSerializableType (defs : Map<string, AST.TypeDef>) (t : AST.Type) : bool =
 /// only while every isMarshalableType case had a decoder here, an invariant a comment
 /// cannot enforce (widening the gate for TBytes made that "unreachable" line reachable).
 /// Now the two can't drift silently: a missing decoder is a hard-fail with a named type.
-let rec unmarshalTypedR (d : int) (t : AST.Type) (src : AST.Expr) : Result<AST.Expr, string> =
+let rec unmarshalTypedSeen
+  (inFnBody : bool)
+  (seen : Set<string>)
+  (defs : Map<string, AST.TypeDef>)
+  (d : int)
+  (t : AST.Type)
+  (src : AST.Expr)
+  : Result<AST.Expr, string> =
+  let unmarshalTypedR d t src = unmarshalTypedSeen false seen defs d t src
   let rv = "__rpc_" + string d
   let r = AST.Var rv
   let len e = AST.Call("Stdlib.String.length", AST.NonEmptyList.singleton e)
@@ -1144,6 +1158,21 @@ let rec unmarshalTypedR (d : int) (t : AST.Type) (src : AST.Expr) : Result<AST.E
   let parseInt e = AST.Call("Stdlib.hostRpcParseInt", AST.NonEmptyList.singleton e)
   let optT = "Stdlib.Option.Option"
   let resT = "Stdlib.Result.Result"
+  // Split a wire string into its "\n"-separated parts, and index one out. Every part was
+  // escaped by the encoder, so each occupies exactly one line and positional indexing is
+  // sound. getAt returns an Option; the wire is well-formed by construction (dvalToWire
+  // wrote it), so "" is an unreachable default rather than a guess at a missing field.
+  let split e = AST.Call("Stdlib.String.split", AST.NonEmptyList.fromList [ e; AST.StringLiteral "\n" ])
+  let nth parts i =
+    AST.TypeApp(
+      "Stdlib.Option.withDefault",
+      [ AST.TString ],
+      AST.NonEmptyList.fromList
+        [ AST.TypeApp(
+            "Stdlib.List.getAt",
+            [ AST.TString ],
+            AST.NonEmptyList.fromList [ parts; AST.Int64Literal(int64 i) ])
+          AST.StringLiteral "" ])
   match t with
   | AST.TString -> Ok src
   | AST.TInt64 -> Ok(parseInt src)
@@ -1187,24 +1216,245 @@ let rec unmarshalTypedR (d : int) (t : AST.Type) (src : AST.Expr) : Result<AST.E
           AST.BinOp(AST.Eq, r, AST.StringLiteral ""),
           AST.ListLiteral [],
           AST.TypeApp("Stdlib.List.map", [ AST.TString; inner ], AST.NonEmptyList.fromList [ split; lam ]))))
+  // The inverse of marshalTypedSeen's TTuple case: each slot escaped, joined by "\n".
+  // Without this, ANY type containing a tuple failed to decode -- and since a failed
+  // decoder is silently dropped by unmarshalFnDefsFor while the CALL to it is still
+  // emitted, that surfaced as a dangling "no variable named __unmarshal.T.<hash>".
+  // Json's `Object of List<(String * Json)>` is exactly that shape.
+  | AST.TTuple elemTs ->
+    let tv = "__ut" + string d
+    elemTs
+    |> List.mapi (fun i et -> unmarshalTypedR (d + 1) et (unesc (nth (AST.Var tv) i)))
+    |> allOk
+    |> Result.map (fun parts -> AST.Let(tv, split src, AST.TupleLiteral parts))
   // The exact inverse of marshalTypedSeen's TBytes case: the wire is the byte values
   // one per line, so reuse the TList decoder (which already maps "" -> []) and rebuild
   // with the native Bytes.fromList; the empty wire lands on Bytes.create(0).
   | AST.TBytes ->
     unmarshalTypedR d (AST.TList AST.TInt64) src
     |> Result.map (fun l -> AST.Call("Stdlib.Bytes.fromList", AST.NonEmptyList.singleton l))
+  // A non-generic custom type decodes via its emitted fn -- one definition, called
+  // wherever needed, so recursion terminates. `inFnBody` is the single place we expand
+  // inline: while generating that fn's own body.
+  | (AST.TRecord(name, []) | AST.TSum(name, [])) when
+    not inFnBody && (match Map.tryFind name defs with Some _ -> true | None -> false) ->
+    // Only emit the CALL if the DEF will actually generate. unmarshalFnDefsFor drops a
+    // failing decoder (`| Error _ -> None`) while this call site emitted the call anyway,
+    // so the program died with a dangling "no variable named __unmarshal.T.<hash>" — an
+    // error that names the symbol and hides the cause. It cost two debug cycles to learn
+    // it meant "Json contains a Float and floats don't decode". Verify here instead, so
+    // the real reason propagates as a normal blocker.
+    //
+    // `seen` terminates the recursion: while generating T's own body, a nested T is
+    // already being generated, so take the call without re-verifying.
+    if Set.contains name seen then
+      Ok(AST.Call(unmarshalFnName name, AST.NonEmptyList.singleton src))
+    else
+      let selfT =
+        match Map.tryFind name defs with
+        | Some(AST.SumTypeDef _) -> AST.TSum(name, [])
+        | _ -> AST.TRecord(name, [])
+      // `seen`, NOT `Set.add name seen` — mirror how unmarshalFnDefsFor generates the
+      // body (with an empty seen). Adding the name first makes the record/sum case's own
+      // recursion guard fire immediately and report every type as "recursive". The body's
+      // `inner` adds the name for its CHILDREN, so a nested self-reference still lands on
+      // the call case above and terminates.
+      match unmarshalTypedSeen true seen defs 0 selfT (AST.Var "s") with
+      | Ok _ -> Ok(AST.Call(unmarshalFnName name, AST.NonEmptyList.singleton src))
+      | Error e -> Error $"{name}: {e}"
+  // A record: fields were escaped individually and joined by "\n" in NAME order, so each
+  // field occupies exactly one line. Split, unescape, decode positionally, rebuild.
+  | AST.TRecord(name, targs) | AST.TSum(name, targs) when
+    (match Map.tryFind name defs with
+     | Some(AST.RecordDef _) -> true
+     | _ -> false) ->
+    if Set.contains name seen then Error $"unmarshal: recursive {name}" else
+    match Map.tryFind name defs with
+    | Some(AST.RecordDef(_, tps, fields)) ->
+      let sub = defSubstB tps targs
+      let pv = "__up" + string d
+      let inner d t v = unmarshalTypedSeen false (Set.add name seen) defs d t v
+      fields
+      |> List.sortBy fst
+      |> List.mapi (fun i (fname, ft) ->
+        inner (d + 1) (substTVarsB sub ft) (unesc (nth (AST.Var pv) i))
+        |> Result.map (fun body -> (fname, body)))
+      |> allOk
+      |> Result.map (fun decodedFields ->
+        AST.Let(pv, split src, AST.RecordLiteral(name, decodedFields)))
+    | _ -> Error $"unmarshal: no record def {name}"
+  // A user enum: the wire is `Case` or `Case\n<escaped fields>`. Split off the first
+  // line as the case name, then dispatch. The final `else` is the last variant: the wire
+  // is well-formed by construction (dvalToWire wrote it), and an if-chain has to produce
+  // a value of the type on every path.
+  | AST.TSum(name, targs) | AST.TRecord(name, targs) ->
+    if Set.contains name seen then Error $"unmarshal: recursive {name}" else
+    match Map.tryFind name defs with
+    | Some(AST.SumTypeDef(_, tps, variants)) ->
+      let sub = defSubstB tps targs
+      let inner d t v = unmarshalTypedSeen false (Set.add name seen) defs d t v
+      let sv = "__us" + string d
+      let iv = "__ui" + string d
+      let cv = "__uc" + string d
+      let rv2 = "__ur" + string d
+      let sVar = AST.Var sv
+      let iVar = AST.Var iv
+      let restVar = AST.Var rv2
+      let decodeVariant (variant : AST.Variant) : Result<AST.Expr, string> =
+        match variant.Payload with
+        | None -> Ok(AST.Constructor(name, variant.Name, None))
+        | Some(AST.TTuple elemTs0) ->
+          // multi-field: each field escaped separately, so split the payload too
+          let elemTs = elemTs0 |> List.map (substTVarsB sub)
+          let rpv = "__urp" + string d
+          elemTs
+          |> List.mapi (fun i et -> inner (d + 1) et (unesc (nth (AST.Var rpv) i)))
+          |> allOk
+          |> Result.map (fun parts ->
+            AST.Let(rpv, split restVar, AST.Constructor(name, variant.Name, Some(AST.TupleLiteral parts))))
+        | Some pt0 ->
+          inner (d + 1) (substTVarsB sub pt0) (unesc restVar)
+          |> Result.map (fun body -> AST.Constructor(name, variant.Name, Some body))
+      variants
+      |> List.map (fun v -> decodeVariant v |> Result.map (fun e -> (v.Name, e)))
+      |> allOk
+      |> Result.bind (fun decoded ->
+        match List.rev decoded with
+        | [] -> Error $"unmarshal: no variants for {name}"
+        | (_, lastBody) :: revRest ->
+          let chain =
+            revRest
+            |> List.fold
+              (fun acc (vname, body) ->
+                AST.If(AST.BinOp(AST.Eq, AST.Var cv, AST.StringLiteral vname), body, acc))
+              lastBody
+          Ok(
+            AST.Let(
+              sv,
+              src,
+              AST.Let(
+                iv,
+                AST.TypeApp(
+                  "Stdlib.Option.withDefault",
+                  [ AST.TInt64 ],
+                  AST.NonEmptyList.fromList
+                    [ AST.Call("Stdlib.String.indexOf", AST.NonEmptyList.fromList [ sVar; AST.StringLiteral "\n" ])
+                      AST.Int64Literal -1L ]),
+                AST.Let(
+                  cv,
+                  AST.If(
+                    AST.BinOp(AST.Lt, iVar, AST.Int64Literal 0L),
+                    sVar,
+                    AST.Call("Stdlib.String.slice", AST.NonEmptyList.fromList [ sVar; AST.Int64Literal 0L; iVar ])),
+                  AST.Let(
+                    rv2,
+                    AST.If(
+                      AST.BinOp(AST.Lt, iVar, AST.Int64Literal 0L),
+                      AST.StringLiteral "",
+                      AST.Call(
+                        "Stdlib.String.slice",
+                        AST.NonEmptyList.fromList
+                          [ sVar
+                            AST.BinOp(AST.Add, iVar, AST.Int64Literal 1L)
+                            AST.Call("Stdlib.String.length", AST.NonEmptyList.singleton sVar) ])),
+                    chain))))))
+    | _ -> Error $"unmarshal: no sum def {name}"
   | other -> Error $"unmarshalable-return: {other}"
+
+let unmarshalTypedR (d : int) (t : AST.Type) (src : AST.Expr) : Result<AST.Expr, string> =
+  unmarshalTypedSeen false Set.empty Map.empty d t src
+
+/// Same shape as unmarshalTypedR but with the type env, so custom types decode.
+let unmarshalTypedD (defs : Map<string, AST.TypeDef>) (d : int) (t : AST.Type) (src : AST.Expr) =
+  unmarshalTypedSeen false Set.empty defs d t src
+
+/// Which unmarshallers does this expression call? Mirror of marshalCallsInExpr, and for
+/// the same reason: emitting one per type puts a `__unmarshal.T` into every program, and
+/// a single one that fails to typecheck breaks programs that decode nothing (that cost
+/// 11 of 60 sampled fns when the marshal side did it). Emit only what's reachable.
+let rec unmarshalCallsInExpr (e : AST.Expr) : Set<string> =
+  let r = unmarshalCallsInExpr
+  let many xs = xs |> List.map r |> Set.unionMany
+  match e with
+  | AST.Call(n, args) ->
+    let here =
+      if n.StartsWith "__unmarshal." then Set.singleton (n.Substring 12) else Set.empty
+    Set.union here (many (AST.NonEmptyList.toList args))
+  | AST.TypeApp(_, _, args) -> many (AST.NonEmptyList.toList args)
+  | AST.Apply(f, args) -> Set.union (r f) (many (AST.NonEmptyList.toList args))
+  | AST.Let(_, v, b) -> Set.union (r v) (r b)
+  | AST.If(c, t, e2) -> Set.unionMany [ r c; r t; r e2 ]
+  | AST.BinOp(_, a, b) -> Set.union (r a) (r b)
+  | AST.UnaryOp(_, a) -> r a
+  | AST.Lambda(_, b) -> r b
+  | AST.Match(v, cases) -> Set.union (r v) (cases |> List.map (fun c -> r c.Body) |> Set.unionMany)
+  | AST.ListLiteral xs -> many xs
+  | AST.TupleLiteral xs -> many xs
+  | AST.TupleAccess(v, _) -> r v
+  | AST.RecordLiteral(_, fields) -> many (fields |> List.map snd)
+  | AST.RecordAccess(v, _) -> r v
+  | AST.RecordUpdate(v, ups) -> Set.union (r v) (many (ups |> List.map snd))
+  | AST.Constructor(_, _, Some p) -> r p
+  | AST.InterpolatedString _ -> Set.empty // interpolations can't contain an unmarshaller call
+  | _ -> Set.empty
+
+/// One `__unmarshal.<T>(s: String) : T` per NON-GENERIC custom type in `needed`.
+/// Generic types are skipped for the same reason the marshal side skips them: they'd
+/// need a decoding fn per type param (higher-order), which doesn't exist yet.
+let unmarshalFnDefsFor (defs : Map<string, AST.TypeDef>) (needed : Set<string>) : List<AST.FunctionDef> =
+  defs
+  |> Map.toList
+  |> List.filter (fun (name, _) -> Set.contains name needed)
+  |> List.choose (fun (name, def) ->
+    let tps =
+      match def with
+      | AST.RecordDef(_, tps, _) -> Some tps
+      | AST.SumTypeDef(_, tps, _) -> Some tps
+      | AST.TypeAlias _ -> None
+    match tps with
+    | Some [] ->
+      let selfT =
+        match def with
+        | AST.SumTypeDef _ -> AST.TSum(name, [])
+        | _ -> AST.TRecord(name, [])
+      match unmarshalTypedSeen true Set.empty defs 0 selfT (AST.Var "s") with
+      | Ok body ->
+        Some(
+          { Name = unmarshalFnName name
+            TypeParams = []
+            Params = AST.NonEmptyList.singleton ("s", AST.TString)
+            ReturnType = selfT
+            Body = body } : AST.FunctionDef
+        )
+      | Error _ -> None
+    | _ -> None)
+
+/// Transitively close the set: an unmarshaller's body may call other unmarshallers.
+let unmarshalFnDefs (defs : Map<string, AST.TypeDef>) (seed : Set<string>) : List<AST.FunctionDef> =
+  let mutable needed = seed
+  let mutable changed = true
+  while changed do
+    let fns = unmarshalFnDefsFor defs needed
+    let more =
+      fns |> List.map (fun f -> unmarshalCallsInExpr f.Body) |> Set.unionMany |> Set.union needed
+    changed <- more <> needed
+    needed <- more
+  unmarshalFnDefsFor defs needed
 
 /// Unmarshal a host-RPC wire response into a native value per its return wire
 /// type. Scalars are decoded inline; every container routes through the recursive
 /// unmarshalTypedR over the bridged return type, which hard-fails rather than guess.
-let private unmarshalReturn (ret : WireRet) (call : AST.Expr) : Result<AST.Expr, string> =
+let private unmarshalReturn
+  (defs : Map<string, AST.TypeDef>)
+  (ret : WireRet)
+  (call : AST.Expr)
+  : Result<AST.Expr, string> =
   match ret with
   | WRString -> Ok call
   | WRInt -> Ok(AST.Call("Stdlib.hostRpcParseInt", AST.NonEmptyList.singleton call))
   | WRBool -> Ok(AST.BinOp(AST.Eq, call, AST.StringLiteral "true"))
   | WRUnit -> Ok(AST.Let("__rpc_ignore", call, AST.UnitLiteral))
-  | WRTyped t -> unmarshalTypedR 0 t call
+  | WRTyped t -> unmarshalTypedD defs 0 t call
 
 let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
   let recurse = bridgeExpr ctx
@@ -1381,7 +1631,7 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
                 // other, not a silently-wrong value. This is what lets buildEffectfulMap
                 // stop pre-gating returns on isMarshalableType: that map is built from the
                 // runtime and has no type env, whereas the failure is precise here.
-                unmarshalReturn wireRet call
+                unmarshalReturn ctx.TypeDefs wireRet call
                 |> Result.mapError (fun e -> $"unsupported-builtin: {b.name}: {e}"))
           | None -> err "builtin" $"{b.name}_v{b.version}"
       | PT.FQFnName.Package(PT.Hash h) ->
