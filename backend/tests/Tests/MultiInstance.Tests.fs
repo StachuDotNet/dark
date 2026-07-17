@@ -14,6 +14,7 @@ open LibDB.Sqlite
 
 module Seed = LibDB.Seed
 module Inserts = LibDB.Inserts
+module Releases = LibDB.Releases
 module Resolutions = LibDB.Resolutions
 module Account = LibCloud.Account
 module PT = LibExecution.ProgramTypes
@@ -785,6 +786,114 @@ let oneConflictPerName =
   }
 
 
+let release4ReachesAnExistingStoresCanonicalShape =
+  testTask
+    "Release 4 gives a pre-sync store the canonical shape schema.sql can't reach" {
+    // schema.sql DECLARES the canonical shape, but can never install it on a store that already exists:
+    // CREATE TABLE IF NOT EXISTS no-ops, and the schema-hash path drops only the regenerable projections —
+    // package_ops and branches survive by design, because the op log is the durable state. So everything sync
+    // adds to those two tables has to arrive via a Release step or not at all.
+    //
+    // Here: take a store, DEGRADE its canonical tables to the pre-sync shape (bare `id` PK, no origin_ts /
+    // committed_seq / base_ts / base_op), put an op in it, and check Release 4 restores the full shape
+    // WITHOUT losing the op.
+    let! a = freshInstance "r4shape"
+    activate a
+
+    // ── degrade to the pre-sync shape ──
+    Sql.query "PRAGMA foreign_keys = OFF" |> Sql.executeStatementSync
+    Sql.query "DROP TABLE package_ops" |> Sql.executeStatementSync
+    Sql.query
+      """
+      CREATE TABLE package_ops (
+        id TEXT PRIMARY KEY,
+        op_blob BLOB NOT NULL,
+        branch_id TEXT NOT NULL,
+        commit_hash TEXT,
+        applied INTEGER NOT NULL DEFAULT 0,
+        propagation_id TEXT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT (datetime('now'))
+      )
+      """
+    |> Sql.executeStatementSync
+    Sql.query "ALTER TABLE branches DROP COLUMN base_ts" |> Sql.executeStatementSync
+    Sql.query "ALTER TABLE branches DROP COLUMN base_op" |> Sql.executeStatementSync
+
+    // an op the migration must carry across (committed, so it also exercises the committed_seq backfill)
+    Sql.query
+      """
+      INSERT INTO package_ops (id, op_blob, branch_id, commit_hash, applied, created_at)
+      VALUES ('op-1', x'aa', 'br-1', 'c1', 1, '2026-05-01 10:00:00')
+      """
+    |> Sql.executeStatementSync
+
+    let cols (table : string) : List<string> =
+      Sql.query $"SELECT name FROM pragma_table_info('{table}')"
+      |> Sql.execute (fun read -> read.string "name")
+      |> Result.unwrap
+
+    Expect.isFalse
+      (cols "package_ops" |> List.contains "origin_ts")
+      "degraded: the pre-sync store has no origin_ts (this is what an existing store looks like)"
+
+    // ── the shipped Release 4, exactly as it runs on a real store ──
+    match
+      Releases.releases |> List.tryFind (fun (r : Releases.Release) -> r.n = 4)
+    with
+    | None -> Exception.raiseInternal "expected a Release 4 entry" []
+    | Some r4 ->
+      Releases.applyRelease r4
+
+      let after = cols "package_ops"
+      Expect.isTrue
+        (List.contains "origin_ts" after)
+        "origin_ts arrived — an ALTER can't add it (non-constant default), so the copy-and-swap must"
+      Expect.isTrue (List.contains "committed_seq" after) "committed_seq arrived"
+      Expect.isTrue
+        (cols "branches" |> List.contains "base_ts")
+        "branches.base_ts arrived (plain ALTER — constant default)"
+      Expect.isTrue
+        (cols "branches" |> List.contains "base_op")
+        "branches.base_op arrived"
+
+      // the ghost-function fix: the PK is (id, branch_id), so the same op on two branches can't collide
+      let pkCols =
+        Sql.query
+          "SELECT name FROM pragma_table_info('package_ops') WHERE pk > 0 ORDER BY pk"
+        |> Sql.execute (fun read -> read.string "name")
+        |> Result.unwrap
+      Expect.equal
+        pkCols
+        [ "id"; "branch_id" ]
+        "the PK is composite now — a bare `id` PK is the ghost-function bug"
+
+      // and the op log came THROUGH the swap, backfilled
+      let! rows =
+        Sql.query "SELECT id, origin_ts, committed_seq FROM package_ops"
+        |> Sql.executeAsync (fun read ->
+          (read.string "id",
+           read.string "origin_ts",
+           read.int64OrNone "committed_seq"))
+      match rows with
+      | [ (id, originTs, seq) ] ->
+        Expect.equal
+          id
+          "op-1"
+          "the op survived the copy-and-swap — the log is never dropped"
+        Expect.equal
+          originTs
+          "2026-05-01T10:00:00.000Z"
+          "origin_ts backfilled from created_at, so the LWW still sees the authored order"
+        Expect.isSome seq "a committed op got a committed_seq"
+      | _ ->
+        Exception.raiseInternal
+          "expected exactly one op"
+          [ "rows", List.length rows ]
+
+    teardown [ a ]
+  }
+
+
 let durableReleaseMigratesInPlace =
   testTask
     "a durable Release migrates a seeded store IN PLACE, preserving its data (not a clean-break)" {
@@ -1112,6 +1221,7 @@ let tests =
       authoringRefusesKindClash
       oneConflictPerName
       durableReleaseMigratesInPlace
+      release4ReachesAnExistingStoresCanonicalShape
       branchMergeSyncs
       concurrentRebasesConverge
       darkConflictsRendersConflict

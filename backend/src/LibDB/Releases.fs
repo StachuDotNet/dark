@@ -53,16 +53,62 @@ type Release =
 /// `op_blob`s embed stale hashes and can't be cheaply migrated — hence the CLEAN-BREAK marker. A fresh store
 /// is born at the current Release and never replays this step; it's the worked example of the clean-break path.
 ///
-/// **Release 4 — sync commit-order stamp.** Adds `package_ops.committed_seq` (the coordinate sync's
-/// `eventsSince` pages by) and backfills existing committed ops by rowid — a DURABLE step (the op log is
-/// preserved). Fresh stores get the column from schema.sql; this step is only for a real Release-3 → 4 store.
+/// **Release 4 — sync's canonical-table shape.** Everything sync adds to the two CANONICAL tables, which a
+/// schema.sql change can never reach: `CREATE TABLE IF NOT EXISTS` no-ops on a table that exists, and the
+/// schema-hash path drops only the regenerable projections (`Seed.projectionTables`) — by design, since the
+/// op log is the durable state. So a real Release-3 → 4 store gets its shape from HERE or not at all. Fresh
+/// stores get it from schema.sql and never replay this.
+///
+/// `branches` takes plain ALTERs (constant defaults). `package_ops` can't: `origin_ts`'s default is
+/// `strftime(...)`, and SQLite refuses "a column with non-constant default" on ADD COLUMN — so it's a
+/// copy-and-swap, which also carries the two things ALTER could never do anyway (the PK becoming
+/// `(id, branch_id)`, and `committed_seq`'s backfill). The op log is COPIED, never dropped.
+///
+/// `origin_ts` backfills from `created_at`: it's the authoring stamp we actually have, and it preserves
+/// local ordering, so the LWW sees these ops in the order they were written.
+///
+/// Verified against a store built from the pre-sync schema: after this step its `package_ops` (columns,
+/// types, NOT NULLs, defaults, PK, indexes) is byte-identical to a fresh store's, with the ops preserved.
+/// `branches` matches too except that ALTER appends its two columns rather than placing them beside
+/// `base_commit_hash` — cosmetic, since nothing SELECTs * off it and every read is by column name.
+/// The PK change is the old `incremental/20260519_133237_package_ops_composite_pk.sql` (the ghost-function
+/// fix: a bare `id` PK made an identical op on two branches collide, and `INSERT OR IGNORE` dropped the
+/// second). Folding it into schema.sql covers fresh stores; this covers the rest.
 let releases : Release list =
   [ { n = 3; sql = ""; reserialize = None; clearForRebuild = true }
     { n = 4
       sql =
-        "ALTER TABLE package_ops ADD COLUMN committed_seq INTEGER;"
-        + " UPDATE package_ops SET committed_seq = rowid"
-        + " WHERE commit_hash IS NOT NULL AND committed_seq IS NULL"
+        "ALTER TABLE branches ADD COLUMN base_ts TEXT NOT NULL DEFAULT '';"
+        + " ALTER TABLE branches ADD COLUMN base_op TEXT NOT NULL DEFAULT '';"
+        + " CREATE TABLE package_ops_r4 ("
+        + "   id TEXT NOT NULL,"
+        + "   op_blob BLOB NOT NULL,"
+        + "   branch_id TEXT NOT NULL REFERENCES branches(id),"
+        + "   commit_hash TEXT REFERENCES commits(hash),"
+        + "   applied INTEGER NOT NULL DEFAULT 0,"
+        + "   propagation_id TEXT NULL,"
+        + "   created_at TIMESTAMP NOT NULL DEFAULT (datetime('now')),"
+        + "   origin_ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),"
+        + "   committed_seq INTEGER,"
+        + "   PRIMARY KEY (id, branch_id));"
+        + " INSERT INTO package_ops_r4"
+        + "   (id, op_blob, branch_id, commit_hash, applied, propagation_id, created_at,"
+        + "    origin_ts, committed_seq)"
+        + " SELECT id, op_blob, branch_id, commit_hash, applied, propagation_id, created_at,"
+        + "   strftime('%Y-%m-%dT%H:%M:%fZ', created_at),"
+        + "   CASE WHEN commit_hash IS NOT NULL THEN rowid ELSE NULL END"
+        + " FROM package_ops;"
+        + " DROP TABLE package_ops;"
+        + " ALTER TABLE package_ops_r4 RENAME TO package_ops;"
+        + " CREATE INDEX IF NOT EXISTS idx_package_ops_wip"
+        + "   ON package_ops(branch_id) WHERE commit_hash IS NULL;"
+        + " CREATE INDEX IF NOT EXISTS idx_package_ops_created ON package_ops(created_at);"
+        + " CREATE INDEX IF NOT EXISTS idx_package_ops_applied"
+        + "   ON package_ops(applied) WHERE applied = 0;"
+        + " CREATE INDEX IF NOT EXISTS idx_package_ops_commit_hash"
+        + "   ON package_ops(commit_hash);"
+        + " CREATE INDEX IF NOT EXISTS idx_package_ops_propagation_id"
+        + "   ON package_ops(propagation_id) WHERE propagation_id IS NOT NULL"
       reserialize = None
       clearForRebuild = false } ]
 
