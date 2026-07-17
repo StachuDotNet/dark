@@ -145,11 +145,18 @@ let private recField (name : string) (fields : Map<string, Dval>) : string =
 /// A peer sent a `kind` row (op / commit / resolution) we can't parse. Peers are fully trusted for now, so
 /// the append skips it rather than crash the pull — but that must be VISIBLE, not silent: a skipped row is
 /// dropped while the pull cursor still advances past it, so on divergence the operator needs to see it.
+/// `idOpt` names the exact row when its id is still legible (the usual case — a corrupt op-blob or branchId
+/// with an intact id), so chasing a divergence lands on one op instead of "some package op".
 /// (The proper hardening — quarantine + retry per-op instead of skip — is tracked in CLEANUP(sync-security).)
-let private warnSkippedSyncRow (kind : string) : unit =
+let private warnSkippedSyncRow (kind : string) (idOpt : Option<string>) : unit =
+  let which =
+    match idOpt with
+    | Some id -> $" (id {id})"
+    | None -> ""
+
   System.Console.Error.WriteLine(
-    $"sync: skipped an unparseable {kind} from a peer (dropped, not applied). This can diverge the store; "
-    + "re-pull once the peer is fixed."
+    $"sync: skipped an unparseable {kind}{which} from a peer (dropped, not applied). This can diverge the "
+    + "store; re-pull once the peer is fixed."
   )
 
 
@@ -163,6 +170,12 @@ let private parseEvents
   |> List.choose (fun ev ->
     match ev with
     | DRecord(_, _, _, f) ->
+      let idOpt =
+        try
+          Some(recField "id" f)
+        with _ ->
+          None
+
       try
         Some(
           System.Guid.Parse(recField "id" f),
@@ -172,10 +185,10 @@ let private parseEvents
           recField "originTs" f
         )
       with _ ->
-        warnSkippedSyncRow "package op"
+        warnSkippedSyncRow "package op" idOpt
         None
     | _ ->
-      warnSkippedSyncRow "package op"
+      warnSkippedSyncRow "package op" None
       None)
 
 
@@ -274,6 +287,12 @@ let fns () : List<BuiltInFn> =
               |> List.choose (fun c ->
                 match c with
                 | DRecord(_, _, _, f) ->
+                  let idOpt =
+                    try
+                      Some(recField "hash" f)
+                    with _ ->
+                      None
+
                   try
                     Some(
                       recField "hash" f,
@@ -283,10 +302,10 @@ let fns () : List<BuiltInFn> =
                       recField "createdAt" f
                     )
                   with _ ->
-                    warnSkippedSyncRow "commit"
+                    warnSkippedSyncRow "commit" idOpt
                     None
                 | _ ->
-                  warnSkippedSyncRow "commit"
+                  warnSkippedSyncRow "commit" None
                   None)
 
             let parsedEvents = parseEvents events
@@ -380,6 +399,12 @@ let fns () : List<BuiltInFn> =
               |> List.choose (fun ev ->
                 match ev with
                 | DRecord(_, _, _, f) ->
+                  let idOpt =
+                    try
+                      Some(recField "id" f)
+                    with _ ->
+                      None
+
                   try
                     Some(
                       recField "id" f,
@@ -387,10 +412,10 @@ let fns () : List<BuiltInFn> =
                       recField "originTs" f
                     )
                   with _ ->
-                    warnSkippedSyncRow "branch op"
+                    warnSkippedSyncRow "branch op" idOpt
                     None
                 | _ ->
-                  warnSkippedSyncRow "branch op"
+                  warnSkippedSyncRow "branch op" None
                   None)
 
             try
@@ -474,6 +499,12 @@ let fns () : List<BuiltInFn> =
               |> List.choose (fun ev ->
                 match ev with
                 | DRecord(_, _, _, f) ->
+                  let idOpt =
+                    try
+                      Some(recField "id" f)
+                    with _ ->
+                      None
+
                   try
                     Some(
                       recField "id" f,
@@ -485,10 +516,10 @@ let fns () : List<BuiltInFn> =
                       recField "at" f
                     )
                   with _ ->
-                    warnSkippedSyncRow "resolution"
+                    warnSkippedSyncRow "resolution" idOpt
                     None
                 | _ ->
-                  warnSkippedSyncRow "resolution"
+                  warnSkippedSyncRow "resolution" None
                   None)
 
             try
