@@ -1329,16 +1329,26 @@ let typeRefsInTypeDef (pt : PT.PackageType.PackageType) : List<string> =
 let rec valueRefsInExpr (e : PT.Expr) : List<string> =
   let r = valueRefsInExpr
   match e with
-  // NB: EPipe is deliberately NOT walked here yet, even though referencedPackageFns
-  // walks it and its absence is a real bug: a package value used inside a pipe is
-  // never seeded, never fetched, and every fn touching it fails "package value not
-  // resolved" (~194 fns — the bulk of that bucket). Adding it is a 12-line change
-  // and it WORKS, but it is unusable until values are shared instead of inlined:
-  // bridgeExpr inlines a value's whole body at every EValue, and valuesMap[A]
-  // already contains B's body inlined, so chains of values compound. With pipes
-  // resolving, a single 50-fn sweep chunk reached 55GB RSS and nearly OOM'd the
-  // box (one fn alone is fine, ~5s). Land value let-hoisting first, then re-add
-  // this and re-measure. See the "value inlining" task.
+  // NB: EPipe is deliberately NOT walked here, even though referencedPackageFns walks
+  // it and its absence IS a real bug: a package value used inside a pipe is never
+  // seeded, never fetched, and every fn touching it fails "unsupported-value: package
+  // value not resolved" (~307 fns — the #1 blocker). The fix is 12 lines and correct.
+  // It still can't land, because bridgeExpr INLINES a value's whole body at every
+  // EValue and valuesMap[A] already contains B's body inlined, so value chains
+  // compound multiplicatively. All three combinations were measured:
+  //   inlined + pipes             -> 55GB on a 50-fn batch (nearly OOM'd the box)
+  //   let-shared per fn + pipes   -> 23GB on a 25-fn batch (chains gone, but the
+  //                                  remaining N-fns x M-values duplication is fatal)
+  //   let-shared per fn, no pipes -> WRONG: EValue emits `Var __val_h` while the Let
+  //                                  is only emitted for refs THIS walker sees, so a
+  //                                  pipe-referenced value becomes an unbound var (-2)
+  // So per-fn sharing is coupled to this walker, and isn't sufficient regardless: a
+  // value must be emitted ONCE PER PROGRAM. That needs a nullary FunctionDef, which
+  // needs a ReturnType, which PT.PackageValue ({ hash; description; body }) lacks.
+  // Route worth trying: a package value is a CONSTANT — evaluate it in the runtime to
+  // a Dval, take the type from the Dval, emit one shared nullary fn (or a literal),
+  // and only THEN add EPipe here and re-measure. Per-fn testing will not catch the
+  // blowup (a single fn compiles in ~5s); watch RSS across a batch.
   | PT.EValue(_, nr) ->
     match nr.resolved with
     | Ok resolved ->
