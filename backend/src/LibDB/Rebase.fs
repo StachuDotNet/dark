@@ -141,7 +141,8 @@ let private parentLatestCommit (parentId : PT.BranchId) : Task<Option<Hash>> =
     """
     SELECT hash FROM commits
     WHERE branch_id = @parent_id
-    ORDER BY created_at DESC
+    -- rowid tiebreak (see Inserts.insertAndApplyOpsWithCommit): the chain tip, deterministically.
+    ORDER BY created_at DESC, rowid DESC
     LIMIT 1
     """
   |> Sql.parameters [ "parent_id", Sql.uuid parentId ]

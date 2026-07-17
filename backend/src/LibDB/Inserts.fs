@@ -167,7 +167,12 @@ let insertAndApplyOpsWithCommit
         """
         SELECT hash FROM commits
         WHERE branch_id = @branch_id
-        ORDER BY created_at DESC
+        -- rowid tiebreak: on a same-second created_at tie, pick the chain TIP deterministically. A child
+        -- commit is always inserted after its parent (commits are sequential locally, branch ops apply in
+        -- order on receive), so the tip has the highest rowid on every peer — the same logical commit
+        -- everywhere, even though absolute rowids differ. Without it, two peers could base off different
+        -- commits and diverge.
+        ORDER BY created_at DESC, rowid DESC
         LIMIT 1
         """
       |> Sql.parameters [ "branch_id", Sql.uuid branchId ]
@@ -590,7 +595,9 @@ let findCommittedHash
           AND branch_id = @branch_id
           AND commit_hash IS NOT NULL
           AND unlisted_at IS NOT NULL
-        ORDER BY unlisted_at DESC
+        -- rowid tiebreak: unlisted_at is second-resolution; without it a tie restores an arbitrary row,
+        -- differing across a re-fold. Highest rowid = the truly-latest committed version.
+        ORDER BY unlisted_at DESC, rowid DESC
         LIMIT 1
         """
       |> Sql.parameters

@@ -561,7 +561,9 @@ let private applyRevertPropagation
             WHERE item_hash = $item_hash
               AND branch_id = $branch_id
               AND unlisted_at IS NOT NULL
-            ORDER BY unlisted_at DESC
+            -- rowid tiebreak: unlisted_at is second-resolution, so a tie would pick an arbitrary row and a
+            -- re-fold could restore a different version. Highest rowid = last-unlisted among ties = the true latest.
+            ORDER BY unlisted_at DESC, rowid DESC
             LIMIT 1
           )
           """ (fun cmd ->
@@ -600,7 +602,8 @@ let private applyRevertPropagation
           WHERE item_hash = $item_hash
             AND branch_id = $branch_id
             AND unlisted_at IS NOT NULL
-          ORDER BY unlisted_at DESC
+          -- rowid tiebreak (see the other restore query): deterministic 'latest' across a re-fold.
+          ORDER BY unlisted_at DESC, rowid DESC
           LIMIT 1
         )
         """ (fun cmd ->

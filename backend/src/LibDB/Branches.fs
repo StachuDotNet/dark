@@ -31,7 +31,8 @@ let create (name : string) (parentBranchId : PT.BranchId) : Task<PT.Branch> =
         """
         SELECT hash FROM commits
         WHERE branch_id = @parent_id
-        ORDER BY created_at DESC
+        -- rowid tiebreak (see Inserts.insertAndApplyOpsWithCommit): the chain tip, deterministically.
+        ORDER BY created_at DESC, rowid DESC
         LIMIT 1
         """
       |> Sql.parameters [ "parent_id", Sql.uuid parentBranchId ]
