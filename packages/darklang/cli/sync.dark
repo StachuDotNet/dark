@@ -249,14 +249,17 @@ let daemonConfigSet
 
 let help (state: AppState) : AppState =
   [ "dark sync — keep your packages in step with your other instances, over HTTP."
-    "Local-first: sync is opt-in, and once you connect a peer it stays current."
+    "Sync is opt-in, and only between the machines you want. Once you connect a peer it stays current."
     ""
     "  dark sync                    sync now from every instance you're connected to"
-    "  dark sync connect <url>      start syncing with an instance (e.g. http://feriel.tailnet:9000)"
-    "  dark sync disconnect <url>   stop syncing with an instance"
+    "  dark sync connect <url>      remember an instance, and sync with it from now on"
+    "  dark sync disconnect <url>   forget an instance, and stop syncing with it"
     "  dark sync serve              let peers pull from you (add --port N; default 9000)"
     "  dark sync status             who you're syncing with, and how current each is"
     "  dark sync fetch <url>        sync once from a single instance"
+    ""
+    "`connect` only records an instance on this machine — it sends nothing and changes nothing on theirs."
+    "After that, `dark sync` reads from every instance you've recorded; `fetch` reads from just the one."
     ""
     "All your branches sync wholesale — a branch is the same on every instance you connect."
     ""
@@ -399,7 +402,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
     match Darklang.Sync.pull peer with
     | Ok n ->
       if n == 0 then
-        Stdlib.printLine (Colors.success $"Already up to date with {peer}")
+        Stdlib.printLine (Colors.success "Already up to date")
       else
         Stdlib.printLine (
           Colors.success $"Pulled {plural n "change"} from {peer}")

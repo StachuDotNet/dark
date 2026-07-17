@@ -249,15 +249,28 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | "ok" :: rest ->
     resolveCmd state rest "ok" (fun c ->
       Builtin.conflictAcknowledge c.location c.itemKind) (fun c ->
-      $"Acknowledged {c.location} ({c.itemKind}) — the auto choice stands.")
+      let active =
+        renderInline state.currentBranchId c.location c.itemKind c.chosenHash
+
+      $"OK — {c.location} stays {active}   (reviewed here only; the auto pick stands)")
 
   | "keep-mine" :: rest ->
     resolveCmd state rest "keep-mine" (fun c -> keep c.location c.itemKind c.localHash) (fun c ->
-      $"Kept yours ({short c.localHash}) at {c.location} ({c.itemKind}). This resolution will sync to your peers.")
+      let mine = renderInline state.currentBranchId c.location c.itemKind c.localHash
+
+      let theirs =
+        renderInline state.currentBranchId c.location c.itemKind c.incomingHash
+
+      $"OK — {c.location} will be {mine}, not {theirs}   (syncs to your peers)")
 
   | "keep-theirs" :: rest ->
     resolveCmd state rest "keep-theirs" (fun c -> keep c.location c.itemKind c.incomingHash) (fun c ->
-      $"Kept theirs ({short c.incomingHash}) at {c.location} ({c.itemKind}). This resolution will sync to your peers.")
+      let mine = renderInline state.currentBranchId c.location c.itemKind c.localHash
+
+      let theirs =
+        renderInline state.currentBranchId c.location c.itemKind c.incomingHash
+
+      $"OK — {c.location} will be {theirs}, not {mine}   (syncs to your peers)")
 
   | _ -> help state
 
