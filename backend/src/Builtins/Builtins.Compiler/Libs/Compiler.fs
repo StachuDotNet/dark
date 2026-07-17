@@ -720,6 +720,22 @@ let private wireToDval (t : TypeReference) (s : string) : Dval =
   match t with
   | TString -> DString s
   | TInt64 -> DInt64(int64 s)
+  // Dark's TInt (arbitrary-precision) is NOT TInt64, and buildEffectfulMap happily
+  // routes a TInt param (as WAInt) -- but this fell through to `| _ -> DString s`,
+  // so a TInt-taking builtin silently received its numbers as STRINGS. intRandom(5,5)
+  // returned a fixed 3744625903238887673 instead of 5, whatever the bounds. Same
+  // shape as the DList-as-handle bug: the builtin runs, returns garbage, and only a
+  // value comparison catches it -- a compile check never would.
+  | TInt -> DInt(DarkInt.ofBigInt (System.Numerics.BigInteger.Parse s))
+  | TInt8 -> DInt8(sbyte s)
+  | TInt16 -> DInt16(int16 s)
+  | TInt32 -> DInt32(int32 s)
+  | TInt128 -> DInt128(System.Int128.Parse s)
+  | TUInt8 -> DUInt8(byte s)
+  | TUInt16 -> DUInt16(uint16 s)
+  | TUInt32 -> DUInt32(uint32 s)
+  | TUInt64 -> DUInt64(uint64 s)
+  | TUInt128 -> DUInt128(System.UInt128.Parse s)
   | TBool -> DBool(s = "true")
   | TUnit -> DUnit
   | TFloat -> DFloat(float s)
@@ -893,6 +909,39 @@ let rec private unifyType
   | AST.TFunction(pa, ra), AST.TFunction(pb, rb) -> unifyType ra rb (both pa pb acc)
   | _ -> acc
 
+/// A REALISTIC sample argument for a declared param type — 42, "hello", [1;2;3] —
+/// not the zero/empty values the compile-check synthesizes. Zeros make fns take
+/// degenerate paths (div-by-zero, unwrap-of-None, empty-list early returns), which is
+/// why the old sweep produced so many crashes and interpreter errors that proved
+/// nothing. A type var monomorphizes at Int64. Returns None for types we can't
+/// sensibly sample (custom types, Dict, fns), so the caller reports "no sample args"
+/// instead of pretending.
+let rec private sampleArg (t : PT.TypeReference) : Option<Dval> =
+  match t with
+  | PT.TUnit -> Some DUnit
+  | PT.TBool -> Some(DBool true)
+  | PT.TInt64 -> Some(DInt64 42L)
+  | PT.TInt8 -> Some(DInt8 7y)
+  | PT.TInt16 -> Some(DInt16 7s)
+  | PT.TInt32 -> Some(DInt32 7l)
+  | PT.TUInt8 -> Some(DUInt8 7uy)
+  | PT.TUInt16 -> Some(DUInt16 7us)
+  | PT.TUInt32 -> Some(DUInt32 7ul)
+  | PT.TUInt64 -> Some(DUInt64 7UL)
+  | PT.TInt -> Some(DInt(DarkInt.ofBigInt (bigint 42)))
+  | PT.TFloat -> Some(DFloat 2.5)
+  | PT.TChar -> Some(DChar "a")
+  | PT.TString -> Some(DString "hello")
+  | PT.TVariable _ -> Some(DInt64 42L) // monomorphize a type param at Int64
+  | PT.TList inner ->
+    sampleArg inner
+    |> Option.map (fun v -> DList(Dval.toValueType v, [ v; v; v ]))
+  | PT.TTuple(a, b, rest) ->
+    match sampleArg a, sampleArg b, rest |> List.map sampleArg |> List.fold (fun acc o -> match acc, o with Some xs, Some x -> Some(xs @ [ x ]) | _ -> None) (Some []) with
+    | Some a', Some b', Some rest' -> Some(DTuple(a', b', rest'))
+    | _ -> None
+  | _ -> None
+
 /// PROVE that a compiled fn agrees with the interpreter, for real arguments.
 ///
 /// The old differential compared STDOUT, which the compiler renders as empty for
@@ -936,8 +985,16 @@ let private equivOne
             let actualTypes =
               args |> List.map (fun a -> valueTypeToAst fresh (Dval.toValueType a))
             let declaredTypes = rootFd.Params |> AST.NonEmptyList.toList |> List.map snd
+            // zip, not List.zip: arity can legitimately differ (a Dark nullary fn
+            // declares one Unit param but is called with no args), and List.zip
+            // throws "the lists had different lengths" on that.
             let binding =
-              (Map.empty, List.zip declaredTypes (actualTypes |> List.map (Result.defaultValue (AST.TVar "?"))))
+              (Map.empty,
+               List.zip
+                 (declaredTypes |> List.truncate (List.length actualTypes))
+                 (actualTypes
+                  |> List.truncate (List.length declaredTypes)
+                  |> List.map (Result.defaultValue (AST.TVar "?"))))
               ||> List.fold (fun m (d, a) -> unifyType d a m)
             let retType = substTVars binding rootFd.ReturnType
             let entry =
@@ -1683,6 +1740,52 @@ let fns () : List<BuiltInFn> =
               | single -> [ single ] // exactly 1
             let! r = equivOne exeState vm (buildEffectfulMap exeState) 10000 hash args
             return DString r
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "compilerEquivSweep" 0
+      typeParams = []
+      parameters = [ Param.make "hashes" (TList TString) "package fn content hashes" ]
+      returnType = TString
+      description =
+        "Equivalence sweep: for each fn, synthesize REALISTIC args from its declared param types (42, \"hello\", [1;2;3] — not the zeros the compile-check uses, which push fns down degenerate paths), then prove compiled == interpreted by comparing the canonical wire encoding both sides emit. One `<hash>\\t<result>` line each: match / DIFF|c=..|i=.. / unprovable|<why> / noargs|<type> / cf|<blocker> / ierr / crash. This is the number that matters — compile coverage is not correctness."
+      fn =
+        (function
+        | exeState, vm, _, [ DList(_, hashes) ] ->
+          uply {
+            let effectful = buildEffectfulMap exeState
+            let mutable lines : List<string> = []
+            for hd in hashes do
+              match hd with
+              | DString hash ->
+                let! fnOpt = LibDB.PackageManager.pt.getFn (PT.FQFnName.package hash)
+                match fnOpt with
+                | None -> lines <- lines @ [ hash + "\tcf|not found" ]
+                | Some f ->
+                  let ps = NEList.toList f.parameters
+                  // A single Unit param is Dark's nullary; call with no args.
+                  let sampled =
+                    match ps with
+                    | [ p ] when p.typ = PT.TUnit -> Some []
+                    | _ ->
+                      (Some [], ps)
+                      ||> List.fold (fun acc p ->
+                        match acc, sampleArg p.typ with
+                        | Some xs, Some v -> Some(xs @ [ v ])
+                        | _ -> None)
+                  match sampled with
+                  | None ->
+                    let ts = ps |> List.map (fun p -> string p.typ) |> String.concat ", "
+                    lines <- lines @ [ hash + "\tnoargs|" + ts ]
+                  | Some args ->
+                    let! r = equivOne exeState vm effectful 10000 hash args
+                    lines <- lines @ [ hash + "\t" + r ]
+              | _ -> lines <- lines @ [ "?\tcf|non-string-hash" ]
+            return DString(String.concat "\n" lines)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
