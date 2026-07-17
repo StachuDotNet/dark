@@ -11,6 +11,17 @@ let plural (n: Int) (noun: String) : String =
   else
     $"{Stdlib.Int.toString n} {noun}s"
 
+// How to describe the instances a sync actually got through to. When some peer DIDN'T answer, this says
+// "1 of 2 instances" — because the alternative reads as a contradiction: a "Couldn't reach <peer>" line
+// directly above a bare "Pulled from 1 instance" looks like one instance that both failed and worked, when
+// it's two instances, one of each. Naming the reached peer instead would be honest too, but they're raw IPs
+// until instances get names.
+let reachedPhrase (reached: Int) (tried: Int) : String =
+  if reached == tried then
+    plural reached "instance"
+  else
+    $"{Stdlib.Int.toString reached} of {plural tried "instance"}"
+
 // Say what a pull actually DID, in human terms. A raw op count is a lie by omission: authoring one value
 // emits both the content op and the name-binding, so "5 changes" for one edit is nonsense. We describe the
 // name-bindings instead. A handful: name them, because that's what you actually want to know. Many: counts by
@@ -352,16 +363,17 @@ let execute (state: AppState) (args: List<String>) : AppState =
       if Stdlib.List.length allChanges > 0 then
         Stdlib.printLine (
           Colors.success
-            $"Pulled from {plural reached "instance"}: {changeSummary allChanges}")
+            $"Pulled from {reachedPhrase reached (Stdlib.List.length ps)}: {changeSummary allChanges}")
       else if pulled > 0 then
         // Ops applied, but nothing a human would call a change — branch structure, or content whose
         // name-binding came in an earlier batch. Say that honestly rather than invent a count.
         Stdlib.printLine (
-          Colors.success $"Synced with {plural reached "instance"} — no new names")
+          Colors.success
+            $"Synced with {reachedPhrase reached (Stdlib.List.length ps)} — no new names")
       else if reached > 0 then
         Stdlib.printLine (
           Colors.success
-            $"Already up to date with {plural reached "instance"}")
+            $"Already up to date with {reachedPhrase reached (Stdlib.List.length ps)}")
       else
         ()
 

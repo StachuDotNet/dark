@@ -69,6 +69,23 @@ module NextPollDoublesIdle =
 module NextPollCapsAtCeiling =
   (Darklang.Sync.nextPollMs false 20000 30000) = 30000
 
+// ── how a sync reports who it got through to (C12) ─────────────────────────────────────────────────────
+// A "Couldn't reach <peer>" line directly above a bare "Pulled from 1 instance" reads as a contradiction —
+// one instance that both failed and worked. It's two instances, one of each, so say so.
+
+module ReachedPhraseAllReached =
+  (Darklang.Cli.Sync.reachedPhrase 2 2) = "2 instances"
+
+module ReachedPhraseOneReached =
+  (Darklang.Cli.Sync.reachedPhrase 1 1) = "1 instance"
+
+// the case that was confusing: some peer didn't answer
+module ReachedPhrasePartial =
+  (Darklang.Cli.Sync.reachedPhrase 1 2) = "1 of 2 instances"
+
+module ReachedPhrasePartialOfThree =
+  (Darklang.Cli.Sync.reachedPhrase 2 3) = "2 of 3 instances"
+
 // ── daemon config validation (S8): a bad value is REJECTED (None), not stored as junk that reverts ─────────
 module ConfigRejectsBadPort =
   (Darklang.Cli.Sync.daemonConfigValue "port" "abc") = Stdlib.Option.Option.None
