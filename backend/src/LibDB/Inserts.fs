@@ -222,12 +222,32 @@ let kindClashes
     let mutable clashes = []
 
     for (loc, kind) in setNames do
+      // A DEPRECATED binding doesn't defend its name: `delete` retires the item, and the name is then free to
+      // be re-bound as another kind (which is exactly what the clash message tells you to do). Reusing the
+      // name is safe because dependents reference items by HASH, not by name — the retired item still
+      // resolves for anything pointing at it. "Currently deprecated" = the newest deprecations row for the
+      // item says so, matching how readers decide it (Queries.fs).
       let! live =
         Sql.query
           """
-          SELECT item_type FROM locations
-          WHERE owner = @owner AND modules = @modules AND name = @name
-            AND branch_id = @branch_id AND unlisted_at IS NULL
+          SELECT l.item_type FROM locations l
+          WHERE l.owner = @owner AND l.modules = @modules AND l.name = @name
+            AND l.branch_id = @branch_id AND l.unlisted_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM deprecations d
+              WHERE d.item_hash = l.item_hash
+                AND d.item_kind = l.item_type
+                AND d.branch_id = l.branch_id
+                AND d.unlisted_at IS NULL
+                AND d.state = 'deprecated'
+                AND d.created_at = (
+                  SELECT MAX(d2.created_at) FROM deprecations d2
+                  WHERE d2.item_hash = d.item_hash
+                    AND d2.item_kind = d.item_kind
+                    AND d2.branch_id = d.branch_id
+                    AND d2.unlisted_at IS NULL
+                )
+            )
           LIMIT 1
           """
         |> Sql.parameters
@@ -244,7 +264,7 @@ let kindClashes
         let dotted = (loc.owner :: loc.modules) @ [ loc.name ] |> String.concat "."
         clashes <-
           $"{dotted} is already a {existing} — a name holds one item, so it can't also be a {incoming}. "
-          + $"Delete the {existing} first, or pick another name."
+          + $"Retire it first (dark delete {existing} {dotted}), or pick another name."
           :: clashes
       | _ -> ()
 

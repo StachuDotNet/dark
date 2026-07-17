@@ -722,6 +722,26 @@ let authoringRefusesKindClash =
         "expected exactly one clash"
         [ "count", List.length clash ]
 
+    // ...and the message's advice has to actually WORK: retiring the fn frees the name, so the same op is
+    // then accepted. (`delete` deprecates rather than unbinding, so without this the clash message sent you
+    // to a command that didn't help.) Safe because dependents reference items by hash, not by name.
+    do!
+      Seed.receiveOps
+        []
+        [ deprecateEvent fnHash commitHash "2026-07-08T00:00:02.000Z" ]
+      |> Task.map ignore<int64>
+
+    let! afterRetire =
+      Inserts.kindClashes
+        PT.mainBranchId
+        [ PT.PackageOp.SetName(
+            loc,
+            PT.Reference.fromHashAndKind (PT.Hash otherHash, PT.ItemKind.Value)
+          ) ]
+    Expect.isEmpty
+      afterRetire
+      "a deprecated binding doesn't defend its name — the value is accepted now"
+
     teardown [ a ]
   }
 
