@@ -171,6 +171,33 @@ let execute (state: AppState) (args: List<String>) : AppState =
       Stdlib.printLine (Colors.error $"Branch '{name}' not found.")
       state
 
+  // `switch` only lasts as long as the process, which is no use to a non-interactive run — hence its own
+  // "(pass --branch or set DARK_BRANCH on the next call)". This is the durable answer: it's remembered until
+  // you change it. DARK_BRANCH still wins for one shell, and --branch still wins for one command.
+  | [ "default" ] ->
+    match Darklang.Cli.Config.get "branch.default" with
+    | Some name -> Stdlib.printLine $"Default branch: {name}"
+    | None -> Stdlib.printLine "Default branch: main (unset)"
+
+    state
+
+  | [ "default"; name ] ->
+    match SCM.Branch.getByName name with
+    | Some _ ->
+      let updated =
+        Stdlib.Dict.setOverridingDuplicates
+          (Darklang.Cli.Config.readConfig ())
+          "branch.default"
+          name
+
+      let _ = Darklang.Cli.Config.writeConfig updated
+      Stdlib.printLine (Colors.success $"Default branch is now '{name}'.")
+      Stdlib.printLine (Colors.hint "  Override once with --branch, or per-shell with DARK_BRANCH.")
+      state
+    | None ->
+      Stdlib.printLine (Colors.error $"Branch '{name}' not found.")
+      state
+
   | [ "rename"; oldName; newName ] ->
     match SCM.Branch.getByName oldName with
     | Some b ->
@@ -202,16 +229,18 @@ let execute (state: AppState) (args: List<String>) : AppState =
       state
 
   | _ ->
-    Stdlib.printLine "Usage: branch [list|create|switch|rename|archive] [args]"
+    Stdlib.printLine
+      "Usage: branch [list|create|switch|rename|archive|default] [args]"
+
     state
 
 
 let complete (_state: AppState) (args: List<String>) : List<Completion.CompletionItem> =
   match args with
   | [] ->
-    [ "list"; "create"; "switch"; "rename"; "archive" ]
+    [ "list"; "create"; "switch"; "rename"; "archive"; "default" ]
     |> Stdlib.List.map Completion.simple
-  | [ "switch" ] | [ "archive" ] | [ "delete" ] ->
+  | [ "switch" ] | [ "archive" ] | [ "delete" ] | [ "default" ] ->
     let branches = SCM.Branch.list ()
     Stdlib.List.map branches (fun b -> Completion.simple b.name)
   | _ -> []
@@ -228,6 +257,9 @@ let help (_state: AppState) : Unit =
     "  rename <old> <new>      Rename a branch"
     "  archive <name>          Archive a branch (soft delete)"
     "  delete <name>           Archive a branch (alias for archive)"
+    "  default [name]          Show, or set, the branch new CLI runs start on"
+    ""
+    "Which branch a command runs on: --branch beats DARK_BRANCH beats `default` beats main."
     ""
     "Note: branch context does not persist between CLI invocations."
     "In interactive mode, 'branch switch' works for the session."

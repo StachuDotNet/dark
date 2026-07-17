@@ -73,23 +73,42 @@ let restoreSessionAccount () : (Stdlib.Option.Option<Uuid> * String) =
         (Stdlib.Option.Option.Some account.id, account.name)
 
 
-/// Branch from `DARK_BRANCH`, falling back to main. Per-process so
-/// concurrent CLI runs don't stomp each other.
+/// Where a CLI run starts, absent a `--branch` flag: `DARK_BRANCH` if set, else the `branch.default` you
+/// configured (`dark branch default <name>`), else main.
+///
+/// That order is the usual one — flag beats env beats config beats default — and each rung is scoped tighter
+/// than the one below: the flag is this command, DARK_BRANCH is this shell (so concurrent runs don't stomp
+/// each other), the config is this machine.
+let private resolveBranchName (name: String) (source: String) : Uuid =
+  match SCM.Branch.getByName name with
+  | Some b -> b.id
+  | None ->
+    Stdlib.printLine
+      (Colors.error $"Warning: {source} '{name}' not found, using main.")
+    SCM.Branch.mainBranchId
+
 let resolveStartingBranch () : Uuid =
   let mainId = SCM.Branch.mainBranchId
-  match Builtin.environmentGet "DARK_BRANCH" with
-  | None -> mainId
-  | Some name ->
-    if Stdlib.String.isEmpty name then
-      mainId
-    else
-      match SCM.Branch.getByName name with
-      | Some b -> b.id
-      | None ->
-        Stdlib.printLine
-          (Colors.error
-            $"Warning: DARK_BRANCH='{name}' not found, using main.")
+
+  let fromEnv =
+    match Builtin.environmentGet "DARK_BRANCH" with
+    | Some name ->
+      if Stdlib.String.isEmpty name then
+        Stdlib.Option.Option.None
+      else
+        Stdlib.Option.Option.Some name
+    | None -> Stdlib.Option.Option.None
+
+  match fromEnv with
+  | Some name -> resolveBranchName name "DARK_BRANCH="
+  | None ->
+    match Darklang.Cli.Config.get "branch.default" with
+    | Some name ->
+      if Stdlib.String.isEmpty name then
         mainId
+      else
+        resolveBranchName name "default branch"
+    | None -> mainId
 
 
 let initState () : AppState =
@@ -824,44 +843,59 @@ let runInteractiveLoop (state: AppState) : Int =
     runInteractiveLoop { newState with previousRenderedRows = renderedRows; cachedHintInput = state.prompt.text; cachedHintValue = hint; cachedStatusBar = statusBar; cachedStatusBarBranch = state.currentBranchId }
 
 
-/// Extract --branch <name> from args, returning (Some branchId, remainingArgs)
-/// when the flag is present and resolvable. When the flag is absent, returns
-/// (None, args) so the caller falls back to whatever `initState` restored
-/// from cli-config.json (or main).
+/// Extract the branch flag from args, returning (Some branchId, remainingArgs) when it's present and
+/// resolvable. When it's absent, returns (None, args) so the caller falls back to whatever `initState`
+/// restored from cli-config.json (or main).
+///
+/// Both spellings work: `--branch feat` and `--branch=feat`. They're the same flag, and every other CLI in
+/// the world takes either, so accepting only one makes the other look like a bug in your typing rather than
+/// a gap here. The `=` form is one arg to drop, the space form is two.
 let parseBranchFlag (args: List<String>) : (Stdlib.Option.Option<Uuid> * List<String>) =
-  // Walk the list looking for "--branch" followed by a name
   let indexed = Stdlib.List.indexedMap args (fun i a -> (i, a))
 
+  // (index, branch name, how many args this spelling occupies)
   let branchEntry =
     indexed
-    |> Stdlib.List.findFirst (fun pair ->
-      let (_i, a) = pair
-      a == "--branch")
+    |> Stdlib.List.filterMap (fun pair ->
+      let (i, a) = pair
+
+      if a == "--branch" then
+        let name =
+          match Stdlib.List.getAt args (i + 1) with
+          | Some n -> n
+          | None -> ""
+
+        Stdlib.Option.Option.Some((i, name, 2L))
+      else if Stdlib.String.startsWith a "--branch=" then
+        Stdlib.Option.Option.Some(
+          (i, Stdlib.String.dropFirst a (Stdlib.String.length "--branch="), 1L)
+        )
+      else
+        Stdlib.Option.Option.None)
+    |> Stdlib.List.head
 
   match branchEntry with
   | None -> (Stdlib.Option.Option.None, args)
-  | Some flagPair ->
-    let (idx, _flag) = flagPair
+  | Some entry ->
+    let (idx, branchName, width) = entry
 
-    let branchName =
-      match Stdlib.List.getAt args (idx + 1) with
-      | Some name -> name
-      | None -> ""
+    // Strip the flag whatever happens next. It's consumed either way, and leaving it in on the error paths
+    // meant `dark --branch=` warned about the missing name and THEN reported `Unknown command: --branch=` —
+    // the flag falling through to be read as the command.
+    let filteredArgs =
+      indexed
+      |> Stdlib.List.filter (fun pair ->
+        let (i, _a) = pair
+        // the `=` form occupies just itself; the space form also swallows the name after it
+        if width == 2L then i != idx && i != (idx + 1) else i != idx)
+      |> Stdlib.List.map (fun pair ->
+        let (_i, a) = pair
+        a)
 
     if Stdlib.String.isEmpty branchName then
       Stdlib.printLine "Warning: --branch requires a name, using main."
-      (Stdlib.Option.Option.Some SCM.Branch.mainBranchId, args)
+      (Stdlib.Option.Option.Some SCM.Branch.mainBranchId, filteredArgs)
     else
-      // Remove --branch and its argument from args
-      let filteredArgs =
-        indexed
-        |> Stdlib.List.filter (fun pair ->
-          let (i, _a) = pair
-          i != idx && i != (idx + 1))
-        |> Stdlib.List.map (fun pair ->
-          let (_i, a) = pair
-          a)
-
       match SCM.Branch.getByName branchName with
       | Some b -> (Stdlib.Option.Option.Some b.id, filteredArgs)
       | None ->
