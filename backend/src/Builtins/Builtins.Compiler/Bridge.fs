@@ -87,7 +87,14 @@ let private allOk (results : List<Result<'a, string>>) : Result<List<'a>, string
 // internal Map<string,pos> keys (never emitted as assembler text), so it's
 // codegen-safe and normalizes to the same binary.
 let nameFor (hash : string) : string = "fn." + hash
-let nameForType (hash : string) : string = "T_" + hash
+// Dotted, NOT "T_<hash>": the compiler mangles a type into a specialized fn's name
+// and parses it back with `mangled.Split('_')` (tryParseMangledType). An underscore
+// in our name collides with that separator, so `T_<hash>` came back as the type named
+// "T" -> `TRecord("T", [])` -> "payloadSize: Record type 'T' not found in typeReg".
+// A dot is safe for the same reason it is in nameFor: the compiler's own type names
+// are already dotted (Stdlib.Option.Option) and contain no underscore, so they
+// round-trip as a single token.
+let nameForType (hash : string) : string = "T." + hash
 
 // Pure Darklang stdlib fns for which the compiler ships a REALLY-equivalent native
 // implementation. A call to one is emitted as a call to the compiler's native fn,
