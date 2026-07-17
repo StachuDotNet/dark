@@ -746,7 +746,15 @@ let defSubstB (tps : string list) (args : AST.Type list) : Map<string, AST.Type>
 ///
 /// Must stay byte-identical to dvalToWire: elements/fields escaped and joined by
 /// "\n", enums as `Case` or `Case\n<escaped payload>`, Unit as "unit".
+/// The marshaller emitted for a non-generic type. A recursive type (Json = ... |
+/// Array of List<Json>) cannot be encoded by an INLINE expression — inlining it
+/// generates AST forever. Emit one real function per type instead, so recursion
+/// becomes a CALL and terminates naturally.
+/// Dotted, like every other name we hand the compiler (it splits mangled names on '_').
+let marshalFnName (typeName : string) : string = "__marshal." + typeName
+
 let rec marshalTypedSeen
+  (inFnBody : bool)
   (seen : Set<string>)
   (defs : Map<string, AST.TypeDef>)
   (d : int)
@@ -761,7 +769,8 @@ let rec marshalTypedSeen
   let recursionGuard (name : string) =
     if Set.contains name seen then Some(Error $"recursive type {name} (needs a recursive serializer fn)")
     else None
-  let marshalTyped d t v = marshalTypedSeen seen defs d t v
+  // nested positions are never "in the fn body we're generating"
+  let marshalTyped d t v = marshalTypedSeen false seen defs d t v
   let call n args = AST.Call(n, AST.NonEmptyList.fromList args)
   let esc e = call "Stdlib.hostRpcEscape" [ e ]
   let join xs sep = call "Stdlib.String.join" [ xs; AST.StringLiteral sep ]
@@ -833,6 +842,12 @@ let rec marshalTypedSeen
   // TRecord or TSum. Callers that know a type only by hash (rtToMarshalable, which is
   // built from the runtime and has no type env) can't tell record from sum — but the
   // def can, so accept either tag and let the def decide.
+  // A non-generic custom type is marshalled by its emitted fn — one definition,
+  // called wherever needed, so recursion terminates. `inFnBody` is the one place we
+  // expand inline: when GENERATING that fn's own body.
+  | (AST.TRecord(name, []) | AST.TSum(name, [])) when
+    not inFnBody && (match Map.tryFind name defs with Some _ -> true | None -> false) ->
+    Ok(AST.Call(marshalFnName name, AST.NonEmptyList.singleton v))
   | AST.TRecord(name, targs) | AST.TSum(name, targs) when
     (match Map.tryFind name defs with
      | Some(AST.RecordDef _) -> true
@@ -843,7 +858,7 @@ let rec marshalTypedSeen
     match Map.tryFind name defs with
     | Some(AST.RecordDef(_, tps, fields)) ->
       let sub = defSubstB tps targs
-      let inner d t v = marshalTypedSeen (Set.add name seen) defs d t v
+      let inner d t v = marshalTypedSeen false (Set.add name seen) defs d t v
       fields
       |> List.sortBy fst
       |> List.map (fun (fname, ft) ->
@@ -865,7 +880,7 @@ let rec marshalTypedSeen
     match Map.tryFind name defs with
     | Some(AST.SumTypeDef(_, tps, variants)) ->
       let sub = defSubstB tps targs
-      let marshalTyped d t v = marshalTypedSeen (Set.add name seen) defs d t v
+      let marshalTyped d t v = marshalTypedSeen false (Set.add name seen) defs d t v
       variants
       |> List.map (fun (variant : AST.Variant) ->
         match variant.Payload with
@@ -908,7 +923,40 @@ let rec marshalTypedSeen
   | other -> Error $"marshal: {other}"
 
 let marshalTyped (defs : Map<string, AST.TypeDef>) (d : int) (t : AST.Type) (v : AST.Expr) =
-  marshalTypedSeen Set.empty defs d t v
+  marshalTypedSeen false Set.empty defs d t v
+
+/// One marshaller FunctionDef per non-generic type def: `__marshal.T(v: T) : String`.
+/// Its body expands T inline (inFnBody=true) while every nested custom type becomes a
+/// call — so a recursive type emits a finite, self-referential function.
+/// Generic types are skipped: their marshaller would need a marshalling fn per type
+/// param (higher-order), which isn't built yet — they stay inline, which is fine as
+/// long as they aren't recursive.
+let marshalFnDefs (defs : Map<string, AST.TypeDef>) : List<AST.FunctionDef> =
+  defs
+  |> Map.toList
+  |> List.choose (fun (name, def) ->
+    let tps =
+      match def with
+      | AST.RecordDef(_, tps, _) -> Some tps
+      | AST.SumTypeDef(_, tps, _) -> Some tps
+      | AST.TypeAlias _ -> None
+    match tps with
+    | Some [] ->
+      let selfT =
+        match def with
+        | AST.SumTypeDef _ -> AST.TSum(name, [])
+        | _ -> AST.TRecord(name, [])
+      match marshalTypedSeen true Set.empty defs 0 selfT (AST.Var "v") with
+      | Ok body ->
+        Some(
+          { Name = marshalFnName name
+            TypeParams = []
+            Params = AST.NonEmptyList.singleton ("v", selfT)
+            ReturnType = AST.TString
+            Body = body } : AST.FunctionDef
+        )
+      | Error _ -> None
+    | _ -> None)
 
 /// Can marshalTyped encode this type — and if NOT, WHY? Returning a reason rather
 /// than a bool matters: "unprovable: TRecord(T.a6fa…)" tells you nothing, and a vague
@@ -928,6 +976,9 @@ let rec serializableReasonSeen
   | AST.TTuple ts -> all ts
   | AST.TSum("Stdlib.Option.Option", [ inner ]) -> serializableReason defs inner
   | AST.TSum("Stdlib.Result.Result", [ a; b ]) -> all [ a; b ]
+  // A non-generic type is serialized via its emitted marshaller fn, so recursion is
+  // fine — stop descending once we've seen it (the fn calls itself).
+  | (AST.TRecord(name, []) | AST.TSum(name, [])) when Set.contains name seen -> Ok()
   | AST.TRecord(name, targs) | AST.TSum(name, targs) when
     (match Map.tryFind name defs with
      | Some(AST.RecordDef _) -> true

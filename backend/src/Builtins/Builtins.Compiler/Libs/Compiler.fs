@@ -474,7 +474,11 @@ let private buildPieces
         | _, Error e -> return Error e
         // The value fns go in alongside the bridged fns — one definition each,
         // shared by every reference.
-        | Ok tds, Ok fds -> return Ok(tds, valueDefs @ fds, Bridge.nameFor rootHash)
+        | Ok tds, Ok fds ->
+          // One marshaller fn per non-generic type, so a record/enum ARG (and a
+          // RECURSIVE type like Json) can cross the seam: recursion becomes a call.
+          let marshallers = Bridge.marshalFnDefs emittedDefs
+          return Ok(tds, marshallers @ valueDefs @ fds, Bridge.nameFor rootHash)
   }
 
 /// Substitute type variables (used to instantiate a generic root fn's type
