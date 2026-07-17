@@ -32,28 +32,28 @@ module AppendSkipsMalformedOpReportsNoChanges =
    Stdlib.List.length r.changes) = 0
 
 // ── blob channel (fetch-on-miss over the sync builtins; content-addressed, real SHA-256 hashes) ────────
-// Hashes are the SHA-256 of the decoded bytes: "aGVsbG8=" = "hello", "d29ybGQ=" = "world". syncBlobInsert
+// Hashes are the SHA-256 of the decoded bytes: "aGVsbG8=" = "hello", "d29ybGQ=" = "world". packageBlobInsert
 // VERIFIES bytes hash to the claimed hash (rejects a poisoned/mismatched blob), so the tests use real hashes.
 
-// syncBlobInsert stores a blob (base64-decoded, hash-verified); syncBlobBytes reads it back, base64.
+// packageBlobInsert stores a blob (base64-decoded, hash-verified); packageBlobBytes reads it back, base64.
 module BlobRoundtrip =
   (let h = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-   let _ = Builtin.syncBlobInsert h "aGVsbG8="
-   Builtin.syncBlobBytes h) = "aGVsbG8="
+   let _ = Builtin.packageBlobInsert h "aGVsbG8="
+   Builtin.packageBlobBytes h) = "aGVsbG8="
 
 // A mismatched hash (bytes don't hash to it) is REJECTED — nothing stored, returns false.
 module BlobInsertRejectsMismatch =
-  (Builtin.syncBlobInsert "0000000000000000000000000000000000000000000000000000000000000000" "aGVsbG8=") = false
+  (Builtin.packageBlobInsert "0000000000000000000000000000000000000000000000000000000000000000" "aGVsbG8=") = false
 
-// syncBlobMissing returns a hash we DON'T hold (the ones to fetch).
+// packageBlobMissing returns a hash we DON'T hold (the ones to fetch).
 module BlobMissingAbsent =
-  (Builtin.syncBlobMissing [ "testblob-absent-zzz999" ]) = [ "testblob-absent-zzz999" ]
+  (Builtin.packageBlobMissing [ "testblob-absent-zzz999" ]) = [ "testblob-absent-zzz999" ]
 
 // …and nothing for a hash we DO hold.
 module BlobMissingPresent =
   (let h = "486ea46224d1bb4fb680f34f7c9ad96a8f24ec88be73ea8e5a6c65260e9cb8a7"
-   let _ = Builtin.syncBlobInsert h "d29ybGQ="
-   Builtin.syncBlobMissing [ h ]) = []
+   let _ = Builtin.packageBlobInsert h "d29ybGQ="
+   Builtin.packageBlobMissing [ h ]) = []
 
 // ── adaptive daemon interval (pure nextPollMs) ─────────────────────────────────────────────────────────
 

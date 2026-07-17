@@ -14,7 +14,7 @@ module Dval = LibExecution.Dval
 let fns () : List<BuiltInFn> =
   [
     // Sender: the blob MANIFEST — every content hash this instance holds, newline-joined (GET /sync/blobs).
-    { name = fn "syncBlobManifest" 0
+    { name = fn "packageBlobManifest" 0
       typeParams = []
       parameters = [ Param.make "unit" TUnit "" ]
       returnType = TString
@@ -35,7 +35,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
     // Sender: the bytes for one hash, base64 (GET /sync/blob?hash=), or empty if this instance lacks it.
-    { name = fn "syncBlobBytes" 0
+    { name = fn "packageBlobBytes" 0
       typeParams = []
       parameters = [ Param.make "hash" TString "The content hash to fetch" ]
       returnType = TString
@@ -57,7 +57,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
     // Receiver: of a peer's offered hashes, which this instance LACKS — exactly the blobs to fetch.
-    { name = fn "syncBlobMissing" 0
+    { name = fn "packageBlobMissing" 0
       typeParams = []
       parameters =
         [ Param.make
@@ -88,7 +88,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
     // Receiver: store a fetched blob — base64-decode + insert under its content hash. Idempotent (dedup).
-    { name = fn "syncBlobInsert" 0
+    { name = fn "packageBlobInsert" 0
       typeParams = []
       parameters =
         [ Param.make "hash" TString "The content hash"

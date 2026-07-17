@@ -64,7 +64,7 @@ let eventsHandler : Stdlib.HttpServer.Handler =
 
 // GET /sync/blobs — the manifest: every content hash this instance holds, newline-joined.
 let blobsFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
-  Stdlib.Http.responseWithText (Builtin.syncBlobManifest ()) 200
+  Stdlib.Http.responseWithText (Darklang.SCM.Blobs.manifest ()) 200
 
 let blobsHandler : Stdlib.HttpServer.Handler =
   Stdlib.HttpServer.Handler
@@ -77,7 +77,7 @@ let parseHash (url: String) : String =
   | None -> ""
 
 let blobFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
-  Stdlib.Http.responseWithText (Builtin.syncBlobBytes (parseHash req.url)) 200
+  Stdlib.Http.responseWithText (Darklang.SCM.Blobs.bytes (parseHash req.url)) 200
 
 let blobHandler : Stdlib.HttpServer.Handler =
   Stdlib.HttpServer.Handler

@@ -275,13 +275,13 @@ let fetchMissingBlobs (peer: String) : Int =
       let offered =
         Stdlib.List.filter (Stdlib.String.split manifest "\n") (fun h -> h != "")
 
-      Stdlib.List.fold (Builtin.syncBlobMissing offered) 0 (fun acc h ->
+      Stdlib.List.fold (Darklang.SCM.Blobs.missing offered) 0 (fun acc h ->
         let blobUrl = $"{peer}/sync/blob?hash={h}"
 
         match syncHttpGet blobUrl with
         | Ok b ->
           match Stdlib.Blob.toString b with
-          | Ok b64 -> if Builtin.syncBlobInsert h b64 then acc + 1 else acc
+          | Ok b64 -> if Darklang.SCM.Blobs.insert h b64 then acc + 1 else acc
           | Error _ -> acc
         | Error _ -> acc)
     | Error _ -> 0
