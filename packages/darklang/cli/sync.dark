@@ -82,8 +82,13 @@ let daemonSlugs (mode: String) : List<String> =
   | "serve-only" -> [ "sync-server" ]
   | _ -> [ "sync"; "sync-server" ]
 
+// The default comes from the daemon itself, not a copy: this is what `dark sync status` REPORTS, and a
+// second hardcoded number here would eventually disagree with the one the daemon actually sleeps on.
 let intervalSec () : Int =
-  (Darklang.Cli.Config.getInt "apps.sync.intervalMs" 30000) / 1000
+  (Darklang.Cli.Config.getInt
+    "apps.sync.intervalMs"
+    Darklang.Sync.defaultPollIntervalMs)
+  / 1000
 
 let servePort () : Int =
   Darklang.Cli.Config.getInt "apps.sync-server.port" 9000
