@@ -200,6 +200,58 @@ let insertAndApplyOpsAsWip
   insertAndApplyOps branchId None ops
 
 
+/// Names in `ops` whose SetName would bind a name to a DIFFERENT kind than the one live there — reported as
+/// ready-to-print messages, empty when there's no clash.
+///
+/// One name holds one item, so replacing a value with a fn at the same name is a real decision, not a typo to
+/// absorb silently. Local authoring can ask the human to be explicit (delete it first); the SYNC fold cannot —
+/// it has no one to ask and must converge, so it replaces by last-writer-wins. That asymmetry is deliberate:
+/// this guard is UX, not an invariant. Anything that reaches the fold is still handled.
+let kindClashes
+  (branchId : PT.BranchId)
+  (ops : List<PT.PackageOp>)
+  : Task<List<string>> =
+  task {
+    let setNames =
+      ops
+      |> List.choose (fun op ->
+        match op with
+        | PT.PackageOp.SetName(loc, target) -> Some(loc, target.kind)
+        | _ -> None)
+
+    let mutable clashes = []
+
+    for (loc, kind) in setNames do
+      let! live =
+        Sql.query
+          """
+          SELECT item_type FROM locations
+          WHERE owner = @owner AND modules = @modules AND name = @name
+            AND branch_id = @branch_id AND unlisted_at IS NULL
+          LIMIT 1
+          """
+        |> Sql.parameters
+          [ "owner", Sql.string loc.owner
+            "modules", Sql.string (String.concat "." loc.modules)
+            "name", Sql.string loc.name
+            "branch_id", Sql.uuid branchId ]
+        |> Sql.executeRowOptionAsync (fun read -> read.string "item_type")
+
+      let incoming = kind.toString ()
+
+      match live with
+      | Some existing when existing <> incoming ->
+        let dotted = (loc.owner :: loc.modules) @ [ loc.name ] |> String.concat "."
+        clashes <-
+          $"{dotted} is already a {existing} — a name holds one item, so it can't also be a {incoming}. "
+          + $"Delete the {existing} first, or pick another name."
+          :: clashes
+      | _ -> ()
+
+    return List.rev clashes
+  }
+
+
 // A commit stamps package_ops plus the projection rows it publishes.
 // TODO: subset commits match projection rows by content key, so two WIP ops
 // that publish the same projection row cannot be committed or discarded

@@ -66,25 +66,35 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             try
               let ops = ops |> List.choose PT2DT.PackageOp.fromDT
 
-              // All ops are added as WIP - use scmCommitWipOpsByIds to commit them
-              let! insertedCount = LibDB.Inserts.insertAndApplyOpsAsWip branchId ops
+              // One name holds one item. Authoring a fn over a name that holds a value would REPLACE it
+              // (that's what the fold does, and must do — see Inserts.kindClashes), so refuse here instead
+              // and make the author say what they meant. Sync's fold still replaces; it has no one to ask.
+              let! clashes = LibDB.Inserts.kindClashes branchId ops
 
-              // Auto-refresh existing WIP items: re-resolve names and
-              // recompute SCC-aware hashes now that new items exist
-              let! _refreshed = LibDB.WipRefresh.refresh pm branchId
+              if not (List.isEmpty clashes) then
+                return resultError (Dval.string (String.concat "\n" clashes))
+              else
+                // All ops are added as WIP - use scmCommitWipOpsByIds to commit them
+                let! insertedCount =
+                  LibDB.Inserts.insertAndApplyOpsAsWip branchId ops
 
-              // Populate `rt_dval` for any package_values rows still
-              // NULL after this insert+refresh. `applyAddValue` always
-              // inserts NULL and Phase-3 `evaluateAllValues` only runs
-              // at startup when there are unapplied ops. Without this
-              // step, a CLI-added value that references another value
-              // (qualified or bare) would fail at eval with a NULL
-              // rt_dval until the next cold restart.
-              let builtins : Builtins =
-                { values = exeState.values.builtIn; fns = exeState.fns.builtIn }
-              let! _ = LibDB.Seed.evaluateAllValues builtins LibDB.PackageManager.rt
+                // Auto-refresh existing WIP items: re-resolve names and
+                // recompute SCC-aware hashes now that new items exist
+                let! _refreshed = LibDB.WipRefresh.refresh pm branchId
 
-              return resultOk (Dval.int (bigint insertedCount))
+                // Populate `rt_dval` for any package_values rows still
+                // NULL after this insert+refresh. `applyAddValue` always
+                // inserts NULL and Phase-3 `evaluateAllValues` only runs
+                // at startup when there are unapplied ops. Without this
+                // step, a CLI-added value that references another value
+                // (qualified or bare) would fail at eval with a NULL
+                // rt_dval until the next cold restart.
+                let builtins : Builtins =
+                  { values = exeState.values.builtIn; fns = exeState.fns.builtIn }
+                let! _ =
+                  LibDB.Seed.evaluateAllValues builtins LibDB.PackageManager.rt
+
+                return resultOk (Dval.int (bigint insertedCount))
             with ex ->
               return resultError (Dval.string ex.Message)
           }

@@ -13,6 +13,7 @@ open Fumble
 open LibDB.Sqlite
 
 module Seed = LibDB.Seed
+module Inserts = LibDB.Inserts
 module Resolutions = LibDB.Resolutions
 module Account = LibCloud.Account
 module PT = LibExecution.ProgramTypes
@@ -668,6 +669,63 @@ let oneItemPerName =
   }
 
 
+let authoringRefusesKindClash =
+  testTask
+    "authoring a clashing kind is REFUSED locally, though the fold would replace" {
+    // The asymmetry is deliberate. Local authoring has a human to ask, so it refuses and makes them say what
+    // they meant. The sync fold has no one to ask and must converge, so it replaces by LWW (oneItemPerName).
+    let! a = seededInstance "kindclash"
+    activate a
+
+    let loc : PT.PackageLocation =
+      { owner = "Test"; modules = [ "Clash" ]; name = "thing" }
+    let! (fnHash, otherHash) = twoFunctionHashes ()
+    let! commitHash = existingCommit ()
+
+    do!
+      Seed.receiveOps
+        []
+        [ setNameEventOfKind
+            loc
+            fnHash
+            PT.ItemKind.Fn
+            commitHash
+            "2026-07-08T00:00:00.000Z" ]
+      |> Task.map ignore<int64>
+
+    // same kind at the same name is an ordinary update — no clash
+    let! sameKind =
+      Inserts.kindClashes
+        PT.mainBranchId
+        [ PT.PackageOp.SetName(
+            loc,
+            PT.Reference.fromHashAndKind (PT.Hash otherHash, PT.ItemKind.Fn)
+          ) ]
+    Expect.isEmpty sameKind "rebinding the name to another fn is just an update"
+
+    // a DIFFERENT kind at that name is the clash
+    let! clash =
+      Inserts.kindClashes
+        PT.mainBranchId
+        [ PT.PackageOp.SetName(
+            loc,
+            PT.Reference.fromHashAndKind (PT.Hash otherHash, PT.ItemKind.Value)
+          ) ]
+    match clash with
+    | [ msg ] ->
+      Expect.stringContains
+        msg
+        "already a fn"
+        "refused, and the message says what's actually there"
+    | _ ->
+      Exception.raiseInternal
+        "expected exactly one clash"
+        [ "count", List.length clash ]
+
+    teardown [ a ]
+  }
+
+
 let oneConflictPerName =
   testTask
     "one name yields one conflict — kind is not part of a divergence's identity" {
@@ -1031,6 +1089,7 @@ let tests =
       identicalContentAuthoringConverges
       resolutionSurvivesDiscardAfterRebuild
       oneItemPerName
+      authoringRefusesKindClash
       oneConflictPerName
       durableReleaseMigratesInPlace
       branchMergeSyncs
