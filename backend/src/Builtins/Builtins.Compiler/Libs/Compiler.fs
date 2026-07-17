@@ -1283,7 +1283,20 @@ let private equivOne
               match Bridge.marshalTyped defsByName 0 retType entry with
               | Error e -> return "unprovable|" + e
               | Ok marshalled ->
-                match compileClosure typeDefs fds marshalled with
+                // buildPieces seeds marshaller reachability from the bridged fn
+                // BODIES, but this return-marshalling expr is built afterwards and
+                // calls __marshal.X for the return type -- so those defs were never
+                // emitted and the program failed with "no variable named
+                // __marshal.T.<hash>". That masqueraded as a compile failure for fns
+                // that do compile (the coverage sweep counts them True), so the
+                // harness under-reported what it could prove. Close over `marshalled`
+                // too, dropping anything buildPieces already emitted (a duplicate def
+                // is itself a compile error).
+                let have = fds |> List.map (fun f -> f.Name) |> Set.ofList
+                let extraMarshallers =
+                  Bridge.marshalFnDefs defsByName (Bridge.marshalCallsInExpr marshalled)
+                  |> List.filter (fun d -> not (Set.contains d.Name have))
+                match compileClosure typeDefs (fds @ extraMarshallers) marshalled with
                 | Error e -> return "cf|compile: " + e
                 | Ok binary ->
                   let (daemon, shutdown) = startDaemon exeState vm
