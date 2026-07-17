@@ -68,6 +68,7 @@ let serveOn (port: Int) (state: AppState) : AppState =
 
   [ Colors.success $"Serving sync on http://localhost:{portStr} — peers can pull from you here."
     Colors.hint $"  Remote peers use your tailnet address, e.g. http://you.tailnet:{portStr}"
+    Colors.hint "  Each peer's request prints here as it arrives."
     Colors.hint "  Keep it running (serve on boot):  dark sync daemon start"
     "  Press Ctrl+C to stop." ]
   |> Stdlib.printLines
@@ -183,8 +184,19 @@ let daemonStart (state: AppState) : AppState =
       Stdlib.printLine (
         Colors.success $"Automatic sync started — {settingsLine ()}.")
 
-  Stdlib.List.fold (daemonSlugs (daemonMode ())) state (fun s slug ->
-    Darklang.Cli.Apps.Command.startDaemon s slug)
+  let started =
+    Stdlib.List.fold (daemonSlugs (daemonMode ())) state (fun s slug ->
+      Darklang.Cli.Apps.Command.startDaemon s slug)
+
+  // A daemon has no terminal, so everything it says — pulls, served requests, and any startup error — goes to
+  // its log instead of to you. Without this you'd have no reason to think a log existed, and the daemon's the
+  // case where you most need one: it's the mode where nothing is printed at you.
+  let _ =
+    daemonSlugs (daemonMode ())
+    |> Stdlib.List.map (fun slug -> Colors.hint $"  Watch it:  dark apps logs {slug}")
+    |> Stdlib.printLines
+
+  started
 
 let daemonStop (state: AppState) : AppState =
   let _ =
