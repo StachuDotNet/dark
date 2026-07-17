@@ -1577,7 +1577,14 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
     |> Result.bind (fun c ->
       recurse thenE
       |> Result.bind (fun t -> recurse elseE |> Result.map (fun el -> AST.If(c, t, el))))
-  | PT.EIf(_, _, _, None) -> err "if" "if without else"
+  // `if cond then e` (no else) is exactly `if cond then e else ()`. Verified against the
+  // interpreter rather than assumed: `let f (b: Bool) : Unit = if b then printLine "x"`
+  // returns unit for BOTH b=true (branch runs) and b=false (branch skipped). The
+  // then-branch is Unit-typed or the fn wouldn't typecheck, so an implicit unit else is
+  // type-correct as well as semantically right.
+  | PT.EIf(_, cond, thenE, None) ->
+    recurse cond
+    |> Result.bind (fun c -> recurse thenE |> Result.map (fun t -> AST.If(c, t, AST.UnitLiteral)))
   | PT.ELet(_, pat, value, body) ->
     recurse value
     |> Result.bind (fun v -> recurse body |> Result.bind (fun b -> bindPattern pat v b))
