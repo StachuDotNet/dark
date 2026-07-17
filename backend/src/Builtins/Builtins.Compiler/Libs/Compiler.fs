@@ -142,6 +142,16 @@ let rec private rtToMarshalable (t : TypeReference) : AST.Type option =
   | TInt -> Some AST.TInt64
   | TBool -> Some AST.TBool
   | TUnit -> Some AST.TUnit
+  // A Blob marshals as its byte values (marshalTypedSeen's TBytes / dvalToWire's
+  // DBlob), so it can cross the seam in either direction. Without this case, any
+  // Blob-taking builtin was unroutable — which is why stringFromBlobWithReplacement
+  // (the UTF-8 DECODE, and the single largest remaining blocker at 121 fns) never
+  // compiled. Routing it to the real builtin is the sound answer: its semantics are
+  // Encoding.UTF8.GetString, which replaces invalid sequences with U+FFFD per maximal
+  // subpart. A hand-written decoder would match on valid input, and the sampler never
+  // generates invalid UTF-8 — so it would "prove" correct and be silently wrong on
+  // exactly the input the "WithReplacement" in its name is about.
+  | TBlob -> Some AST.TBytes
   | TList inner -> rtToMarshalable inner |> Option.map AST.TList
   | TCustomType(nr, args) ->
     match nr.resolved with
@@ -827,6 +837,13 @@ let private wireToDval (t : TypeReference) (s : string) : Dval =
   | TUInt128 -> DUInt128(System.UInt128.Parse s)
   | TBool -> DBool(s = "true")
   | TUnit -> DUnit
+  // Byte values, one per line -- the inverse of dvalToWire's DBlob case. Always
+  // Ephemeral: a Persistent blob is a content hash in the package store, and a value
+  // arriving over the wire has no such identity.
+  | TBlob ->
+    let bytes =
+      if s = "" then [||] else s.Split('\n') |> Array.map System.Byte.Parse
+    LibExecution.Blob.newEphemeral bytes
   // "hi:lo" bit halves -- the inverse of Bridge's WAFloat encoder.
   | TFloat ->
     match s.Split(':') with
