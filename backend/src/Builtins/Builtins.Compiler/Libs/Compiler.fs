@@ -309,6 +309,16 @@ let rec private dvalToAst (d : Dval) : Result<AST.Expr, string> =
   match d with
   | DUnit -> Ok AST.UnitLiteral
   | DBool b -> Ok(AST.BoolLiteral b)
+  // There is no Bytes literal in the AST, so rebuild the blob from its byte values via
+  // the real allocator -- the same shape marshalTypedSeen uses for TBytes. Only Ephemeral
+  // is reachable here (a sampled/So-far-computed blob); a Persistent one is a content
+  // hash needing IO, so it stays an honest Error rather than a guess.
+  | DBlob(Ephemeral eph) ->
+    Ok(
+      AST.Call(
+        "Stdlib.Bytes.fromList",
+        AST.NonEmptyList.singleton (
+          AST.ListLiteral(eph.bytes |> Array.toList |> List.map (int64 >> AST.Int64Literal)))))
   | DInt8 n -> Ok(AST.Int8Literal n)
   | DUInt8 n -> Ok(AST.UInt8Literal n)
   | DInt16 n -> Ok(AST.Int16Literal n)
@@ -654,10 +664,16 @@ let rec private zeroValue
       | _ -> AST.Lambda(AST.NonEmptyList.fromList ps, body))
   | AST.TVar _ -> zeroLit AST.TInt64 // an unmapped signature tvar: monomorphize at Int64
   | AST.TBytes ->
-    // No bytes literal exists in the AST; synthesize an empty blob via the cast
-    // intrinsic. Only ever used to make a fn reachable for a compile-check (never
-    // run), so it just needs to typecheck to Bytes.
-    Ok(AST.Call("Stdlib.__int64_to_bytes", AST.NonEmptyList.fromList [ AST.Int64Literal 0L ]))
+    // No bytes literal exists in the AST, so call the real allocator for an empty blob.
+    //
+    // This used to be `Stdlib.__int64_to_bytes(0)` and it NEVER WORKED: the intrinsic is
+    // registered and matched under its BARE name (Stdlib.fs:139, 2_AST_to_ANF.fs:291), so
+    // the qualified form resolved to nothing and every Bytes-taking fn died with "There
+    // is no variable named: Stdlib.__int64_to_bytes" — 35 fns, the 7th-biggest blocker,
+    // and a HARNESS bug wearing a compiler bug's clothes. (It also cast 0 into a NULL
+    // Bytes pointer, which the "compile-check only, never run" comment was covering for.)
+    // Bytes.create(0) is a real empty blob and is safe even if it does get run.
+    Ok(AST.Call("Stdlib.Bytes.create", AST.NonEmptyList.fromList [ AST.Int64Literal 0L ]))
   | prim -> zeroLit prim
 
 /// Compile-check one package fn by hash (bridge its call-graph, make it
@@ -1116,6 +1132,12 @@ let rec private sampleArg (t : PT.TypeReference) : Option<Dval> =
   match t with
   | PT.TUnit -> Some DUnit
   | PT.TBool -> Some(DBool true)
+  // A Blob sample: without this every Blob-taking fn was `noargs` — compiled but
+  // unprovable. Non-ASCII on purpose ("hé" = 68 c3 a9): a pure-ASCII sample can't tell a
+  // byte-correct implementation from a char-based one, which is exactly how the
+  // String.length / toUppercase routing bugs hid. Short, because the interpreter runs it
+  // twice per check.
+  | PT.TBlob -> Some(LibExecution.Blob.newEphemeral(System.Text.Encoding.UTF8.GetBytes "hé"))
   // Small on purpose: a sample arg must be cheap as well as realistic. 42 hung the
   // whole sweep on the first exponential fn it met (fib(42) interpreted is ~2000x
   // fib(27), which already takes 21s), and every chunk timed out with zero output.
