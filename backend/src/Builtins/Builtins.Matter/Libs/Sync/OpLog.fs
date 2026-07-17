@@ -16,7 +16,43 @@ module NR = LibExecution.RuntimeTypes.NameResolution
 module EventLogRefs = LibExecution.PackageRefs.Type.Sync.EventLog
 let private eventLogEventType () = FQTypeName.fqPackage (EventLogRefs.event ())
 let private eventLogCommitType () = FQTypeName.fqPackage (EventLogRefs.commit ())
-let private eventLogCursorType () = FQTypeName.fqPackage (EventLogRefs.cursor ())
+let private eventLogChangeType () = FQTypeName.fqPackage (EventLogRefs.change ())
+
+
+let private eventLogAppendResultType () =
+  FQTypeName.fqPackage (EventLogRefs.appendResult ())
+
+
+/// Build the `Darklang.Sync.EventLog.Change` record for one classified change.
+let private changeRecord (c : LibDB.ChangeSummary.Change) : Dval =
+  let t = eventLogChangeType ()
+  DRecord(
+    t,
+    t,
+    [],
+    Map
+      [ "action", DString c.action
+        "itemKind", DString c.itemKind
+        "location", DString c.location ]
+  )
+
+
+/// Build the `Darklang.Sync.EventLog.AppendResult` — ops folded + what they mean.
+let private appendResultRecord
+  (applied : int64)
+  (changes : List<LibDB.ChangeSummary.Change>)
+  : Dval =
+  let t = eventLogAppendResultType ()
+  let kt = KTCustomType(eventLogChangeType (), [])
+  DRecord(
+    t,
+    t,
+    [],
+    Map
+      [ "applied", Dval.int (bigint applied)
+        "changes", changes |> List.map changeRecord |> Dval.list kt ]
+  )
+
 
 /// Build the `Darklang.Sync.EventLog.Event` record for one op row.
 let private eventRecord
@@ -35,6 +71,7 @@ let private eventRecord
         "originTs", DString ts ]
   )
 
+
 let private commitRecord
   ((hash, msg, br, acct, at) : string * string * string * string * string)
   : Dval =
@@ -51,12 +88,10 @@ let private commitRecord
         "createdAt", DString at ]
   )
 
-let private cursorValue (n : int64) : Dval =
-  let t = eventLogCursorType ()
-  DEnum(t, t, [], "Cursor", [ DInt64 n ])
 
 let private branchOpEventType () =
   FQTypeName.fqPackage (EventLogRefs.branchOpEvent ())
+
 
 /// Build the `Darklang.Sync.EventLog.BranchOpEvent` record for one branch_ops row.
 let private branchOpEventRecord
@@ -70,8 +105,10 @@ let private branchOpEventRecord
     Map [ "id", DString id; "op", DString op; "originTs", DString originTs ]
   )
 
+
 let private resolutionEventType () =
   FQTypeName.fqPackage (EventLogRefs.resolutionEvent ())
+
 
 /// Build the `Darklang.Sync.EventLog.ResolutionEvent` record for one resolutions row.
 let private resolutionEventRecord
@@ -94,6 +131,7 @@ let private resolutionEventRecord
         "at", DString at ]
   )
 
+
 /// Read a string field out of an EventLog Event/Commit record (built by the peer + parsed from JSON).
 let private recField (name : string) (fields : Map<string, Dval>) : string =
   match Map.tryFind name fields with
@@ -102,6 +140,7 @@ let private recField (name : string) (fields : Map<string, Dval>) : string =
     Exception.raiseInternal
       "eventLog record missing expected string field"
       [ "field", name ]
+
 
 /// A peer sent a `kind` row (op / commit / resolution) we can't parse. Peers are fully trusted for now, so
 /// the append skips it rather than crash the pull — but that must be VISIBLE, not silent: a skipped row is
@@ -113,6 +152,33 @@ let private warnSkippedSyncRow (kind : string) : unit =
     + "re-pull once the peer is fixed."
   )
 
+
+/// Parse wire `Event` records into the receive path's tuples. Total against a malformed/hostile peer: a row
+/// that won't parse is surfaced + skipped rather than crashing the pull. Shared by append + summarize so the
+/// two can't disagree about what a batch contains.
+let private parseEvents
+  (events : List<Dval>)
+  : List<System.Guid * byte[] * System.Guid * string * string> =
+  events
+  |> List.choose (fun ev ->
+    match ev with
+    | DRecord(_, _, _, f) ->
+      try
+        Some(
+          System.Guid.Parse(recField "id" f),
+          System.Convert.FromHexString(recField "op" f),
+          System.Guid.Parse(recField "branchId" f),
+          recField "commitHash" f,
+          recField "originTs" f
+        )
+      with _ ->
+        warnSkippedSyncRow "package op"
+        None
+    | _ ->
+      warnSkippedSyncRow "package op"
+      None)
+
+
 let fns () : List<BuiltInFn> =
   [
     // ── native op-log read/append + blob-channel builtins (the ops-queue seam sync rides on) ──
@@ -121,21 +187,23 @@ let fns () : List<BuiltInFn> =
     // (can't touch other files), but when these are reorganized around a first-class ops-queue they should carry
     // a real store capability too.
     //
-    // The TYPED, stream-shaped read of the package op log: Event/Commit records + the resume Cursor, all built
+    // The TYPED, stream-shaped read of the package op log: Event/Commit records + the resume cursor, all built
     // NATIVELY so a 1000-op batch never pays the per-row Dark interpreter cost. `EventLog.readSince` wraps this;
     // the events Stream is drained (native loop) for the wire, and is filterable for branch-scoped reads.
     { name = fn "packageOpsReadNative" 0
-      typeParams = [ "c"; "e"; "cur" ]
+      typeParams = [ "c"; "e" ]
       parameters =
         [ Param.make
             "cursor"
             TInt64
             "read events after this cursor (0 = from the start)"
           Param.make "limit" TInt64 "at most this many events — one bounded batch" ]
-      returnType =
-        TTuple(TList(TVariable "c"), TStream(TVariable "e"), [ TVariable "cur" ])
+      returnType = TTuple(TList(TVariable "c"), TStream(TVariable "e"), [ TInt64 ])
       description =
-        "This instance's committed events after <param cursor> (at most <param limit>) as a Stream of Event records, the Commit records they reference, and the resume Cursor. Built natively — the fast typed read half of the op-log seam."
+        "This instance's committed events after <param cursor> (at most <param "
+        + "limit>) as a Stream of Event records, the Commit records they reference, "
+        + "and the resume cursor. Built natively — the fast typed read half of the "
+        + "op-log seam."
       fn =
         (function
         | _, _, _, [ DInt64 cursor; DInt64 limit ] ->
@@ -163,7 +231,7 @@ let fns () : List<BuiltInFn> =
                 nextFn
                 None
 
-            return DTuple(commitsList, eventStream, [ cursorValue newCursor ])
+            return DTuple(commitsList, eventStream, [ DInt64 newCursor ])
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -185,9 +253,13 @@ let fns () : List<BuiltInFn> =
             "events"
             (TList(TVariable "e"))
             "Event records received from a peer" ]
-      returnType = TInt
+      returnType = TCustomType(NR.ok (eventLogAppendResultType ()), [])
       description =
-        "Append received Commit + Event records to the op log (reconciling origin_ts to the MIN stamp for LWW convergence) + fold. Returns the count of ops newly applied. Idempotent. Extracts fields natively."
+        "Append received Commit + Event records to the op log + fold, reconciling "
+        + "origin_ts to the MIN stamp so LWW converges. Idempotent; extracts fields "
+        + "natively. Returns an AppendResult: `applied` = ops that folded (0 = "
+        + "nothing new, -1 = DB error, so don't advance the cursor), and `changes` "
+        + "= what those ops mean to a human, classified against the pre-fold bindings."
       fn =
         (function
         | _, _, _, [ DList(_, commits); DList(_, events) ] ->
@@ -217,35 +289,21 @@ let fns () : List<BuiltInFn> =
                   warnSkippedSyncRow "commit"
                   None)
 
-            let parsedEvents =
-              events
-              |> List.choose (fun ev ->
-                match ev with
-                | DRecord(_, _, _, f) ->
-                  try
-                    Some(
-                      System.Guid.Parse(recField "id" f),
-                      System.Convert.FromHexString(recField "op" f),
-                      System.Guid.Parse(recField "branchId" f),
-                      recField "commitHash" f,
-                      recField "originTs" f
-                    )
-                  with _ ->
-                    warnSkippedSyncRow "package op"
-                    None
-                | _ ->
-                  warnSkippedSyncRow "package op"
-                  None)
+            let parsedEvents = parseEvents events
 
             try
+              // Classify BEFORE the fold: a change is "new" vs "updated" relative to what's bound right now,
+              // and after the fold that's gone. Also self-filters a re-pull (same hash already bound = no
+              // change), so an idempotent pull reports nothing rather than re-announcing old edits.
+              let! changes = LibDB.ChangeSummary.ofIncoming parsedEvents
               let! applied = LibDB.Seed.receiveOps parsedCommits parsedEvents
-              return Dval.int (bigint applied)
+              return appendResultRecord applied changes
             with _ ->
               // -1 = a DB error applying the batch (distinct from 0 = idempotent/nothing new). The puller
               // must NOT advance the cursor on this, or the ops are silently skipped (divergence). Any
               // individually unparseable ops were skipped above and surfaced via warnSkippedSyncRow — they are
               // dropped (not applied) while the cursor still advances, so they're logged, not silently lost.
-              return Dval.int (bigint -1L)
+              return appendResultRecord -1L []
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -253,20 +311,22 @@ let fns () : List<BuiltInFn> =
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
 
+
     // The branch-structure log (CreateBranch/CreateCommit/Rebase/Merge/Archive), read as a Stream of
-    // BranchOpEvent records + the resume Cursor. Branch ops are self-contained (no side commits). Peers apply
+    // BranchOpEvent records + the resume cursor. Branch ops are self-contained (no side commits). Peers apply
     // these to LEARN branches — the structure that `packageOps` events reference by branch_id.
     { name = fn "branchOpsReadNative" 0
-      typeParams = [ "e"; "cur" ]
+      typeParams = [ "e" ]
       parameters =
         [ Param.make
             "cursor"
             TInt64
             "read branch ops after this cursor (0 = from the start)"
           Param.make "limit" TInt64 "at most this many — one bounded batch" ]
-      returnType = TTuple(TStream(TVariable "e"), TVariable "cur", [])
+      returnType = TTuple(TStream(TVariable "e"), TInt64, [])
       description =
-        "This instance's branch ops after <param cursor> as a Stream of BranchOpEvent records + the resume Cursor. Built natively."
+        "This instance's branch ops after <param cursor> as a Stream of "
+        + "BranchOpEvent records + the resume cursor. Built natively."
       fn =
         (function
         | _, _, _, [ DInt64 cursor; DInt64 limit ] ->
@@ -290,7 +350,7 @@ let fns () : List<BuiltInFn> =
                 nextFn
                 None
 
-            return DTuple(stream, cursorValue newCursor, [])
+            return DTuple(stream, DInt64 newCursor, [])
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -308,7 +368,8 @@ let fns () : List<BuiltInFn> =
             "BranchOpEvent records received from a peer" ]
       returnType = TInt
       description =
-        "Apply received BranchOpEvent records to the branch-ops log (fold into branches/commits). Returns the count processed. Idempotent."
+        "Apply received BranchOpEvent records to the branch-ops log (fold into "
+        + "branches/commits). Returns the count processed. Idempotent."
       fn =
         (function
         | _, _, _, [ DList(_, events) ] ->
@@ -348,16 +409,17 @@ let fns () : List<BuiltInFn> =
     // The resolutions log — synced override overlays. Peers apply these AFTER package ops so a human's
     // "keep mine" decision converges everywhere. Read as a Stream of ResolutionEvent records + the cursor.
     { name = fn "resolutionsReadNative" 0
-      typeParams = [ "e"; "cur" ]
+      typeParams = [ "e" ]
       parameters =
         [ Param.make
             "cursor"
             TInt64
             "read resolutions after this cursor (0 = from the start)"
           Param.make "limit" TInt64 "at most this many — one bounded batch" ]
-      returnType = TTuple(TStream(TVariable "e"), TVariable "cur", [])
+      returnType = TTuple(TStream(TVariable "e"), TInt64, [])
       description =
-        "This instance's resolutions after <param cursor> as a Stream of ResolutionEvent records + the resume Cursor. Built natively."
+        "This instance's resolutions after <param cursor> as a Stream of "
+        + "ResolutionEvent records + the resume cursor. Built natively."
       fn =
         (function
         | _, _, _, [ DInt64 cursor; DInt64 limit ] ->
@@ -382,7 +444,7 @@ let fns () : List<BuiltInFn> =
                 nextFn
                 None
 
-            return DTuple(stream, cursorValue newCursor, [])
+            return DTuple(stream, DInt64 newCursor, [])
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -401,7 +463,8 @@ let fns () : List<BuiltInFn> =
             "ResolutionEvent records received from a peer" ]
       returnType = TInt
       description =
-        "Apply received ResolutionEvent records (record + overlay onto locations). Returns the count processed. Idempotent."
+        "Apply received ResolutionEvent records (record + overlay onto locations). "
+        + "Returns the count processed. Idempotent."
       fn =
         (function
         | _, _, _, [ DList(_, events) ] ->
@@ -443,5 +506,6 @@ let fns () : List<BuiltInFn> =
 
 
     ]
+
 
 let builtins () = LibExecution.Builtin.make [] (fns ())

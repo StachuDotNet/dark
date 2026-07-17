@@ -101,9 +101,10 @@ module Type =
 
     module EventLog =
       let private p addl = p ("EventLog" :: addl)
-      let cursor = p [] "Cursor"
       let event = p [] "Event"
       let commit = p [] "Commit"
+      let change = p [] "Change"
+      let appendResult = p [] "AppendResult"
       let branchOpEvent = p [] "BranchOpEvent"
       let resolutionEvent = p [] "ResolutionEvent"
 

@@ -18,6 +18,7 @@ open LibDB.Sqlite
 module PT = LibExecution.ProgramTypes
 module BS = LibSerialization.Binary.Serialization
 
+
 /// One recorded conflict. `chosenHash` + `resolvedBy` are the auto-resolution (which content won, and the
 /// policy that picked it); `status` is where it is in review.
 type Conflict =
@@ -31,10 +32,12 @@ type Conflict =
     resolvedBy : string
     status : string }
 
+
 /// Canonical "owner.modules.name" for a location (round-trips: owner = first, name = last, modules = middle).
 /// Package name components never contain "." (dots separate modules), so this splits back cleanly.
 let locationString (loc : PT.PackageLocation) : string =
   String.concat "." (loc.owner :: (loc.modules @ [ loc.name ]))
+
 
 /// Inverse of `locationString`.
 let parseLocation (s : string) : PT.PackageLocation =
@@ -47,6 +50,7 @@ let parseLocation (s : string) : PT.PackageLocation =
     { owner = parts[0]
       modules = parts[1 .. n - 2] |> Array.toList
       name = parts[n - 1] }
+
 
 /// A content-addressed id for a divergence — same branch+location+candidates always maps to one row, so a
 /// re-detected divergence (e.g. re-pull) doesn't duplicate.
@@ -67,6 +71,7 @@ let private conflictId
   )
   |> System.Convert.ToHexString
   |> fun s -> s.ToLowerInvariant()
+
 
 /// Record an auto-resolved divergence (idempotent — INSERT OR IGNORE on the content-addressed id).
 let record
@@ -96,6 +101,7 @@ let record
       "resolved_by", Sql.string resolvedBy ]
   |> Sql.executeStatementAsync
 
+
 /// All recorded conflicts, newest first.
 let list () : Task<List<Conflict>> =
   Sql.query
@@ -115,6 +121,7 @@ let list () : Task<List<Conflict>> =
       resolvedBy = read.string "resolved_by"
       status = read.string "status" })
 
+
 /// Acknowledge a conflict — the auto choice stands, just mark it reviewed.
 let acknowledge (id : string) : Task<unit> =
   Sql.query
@@ -122,11 +129,13 @@ let acknowledge (id : string) : Task<unit> =
   |> Sql.parameters [ "id", Sql.string id ]
   |> Sql.executeStatementAsync
 
+
 /// Mark a conflict overridden — a human picked a candidate (recorded as a synced Resolution).
 let markOverridden (id : string) : Task<unit> =
   Sql.query "UPDATE sync_conflicts SET status = 'overridden' WHERE id = @id"
   |> Sql.parameters [ "id", Sql.string id ]
   |> Sql.executeStatementAsync
+
 
 /// Mark the auto-resolved conflict at this location AND item kind overridden. Used when a Resolution is applied
 /// (local OR synced-in from a peer): the override converges the effective value, so the divergence is settled —
@@ -145,6 +154,7 @@ let markOverriddenByLocationAndKind
       "location", Sql.string location
       "item_kind", Sql.string itemKind ]
   |> Sql.executeStatementAsync
+
 
 /// The current live binding (item_hash, origin_ts) for a location on a branch, if any.
 let private currentBinding
@@ -167,6 +177,7 @@ let private currentBinding
       "branch_id", Sql.string (string branchId) ]
   |> Sql.executeRowOptionAsync (fun read ->
     (read.string "item_hash", read.stringOrNone "origin_ts"))
+
 
 /// Detect + record divergences for a batch of RECEIVED ops. Called by `Seed.receiveOps` AFTER the ops are
 /// inserted but BEFORE the fold: for each incoming `SetName`, if the name is already bound LOCALLY to a

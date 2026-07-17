@@ -11,11 +11,35 @@ let plural (n: Int) (noun: String) : String =
   else
     $"{Stdlib.Int.toString n} {noun}s"
 
+// Say what a pull actually DID, in human terms. A raw op count is a lie by omission: authoring one value
+// emits both the content op and the name-binding, so "5 changes" for one edit is nonsense. We describe the
+// name-bindings instead. A handful: name them, because that's what you actually want to know. Many: counts by
+// action, because a wall of names is worse than a summary.
+let changeSummary (changes: List<Darklang.Sync.EventLog.Change>) : String =
+  if Stdlib.List.length changes <= 5 then
+    changes
+    |> Stdlib.List.map (fun c -> $"{c.action} {c.itemKind} {c.location}")
+    |> Stdlib.String.join ", "
+  else
+    let countOf (action: String) : Int =
+      changes
+      |> Stdlib.List.filter (fun c -> c.action == action)
+      |> Stdlib.List.length
+
+    let part (cnt: Int) (label: String) : List<String> =
+      if cnt > 0 then [ $"{Stdlib.Int.toString cnt} {label}" ] else []
+
+    [ part (countOf "new") "new"
+      part (countOf "updated") "updated"
+      part (countOf "deleted") "deleted" ]
+    |> Stdlib.List.flatten
+    |> Stdlib.String.join ", "
+
 // After a pull, nudge about any unreviewed divergences — so last-writer-wins is never SILENT: you always see
 // that a name was contested and can review the winner (`dark conflicts`).
 let conflictNudge () : Unit =
   let unreviewed =
-    Builtin.conflictsList ()
+    Darklang.Sync.Conflicts.list ()
     |> Stdlib.List.filter (fun c -> c.status == "auto-resolved")
     |> Stdlib.List.length
 
@@ -294,7 +318,13 @@ let execute (state: AppState) (args: List<String>) : AppState =
       let pulled =
         Stdlib.List.fold results 0 (fun acc r ->
           match r with
-          | Ok n -> acc + n
+          | Ok result -> acc + result.applied
+          | Error _ -> acc)
+
+      let allChanges =
+        Stdlib.List.fold results [] (fun acc r ->
+          match r with
+          | Ok result -> Stdlib.List.append acc result.changes
           | Error _ -> acc)
 
       // Each pull error is already peer-prefixed and self-describing — a genuine
@@ -314,10 +344,15 @@ let execute (state: AppState) (args: List<String>) : AppState =
         |> Stdlib.List.map (fun e -> Colors.error e)
         |> Stdlib.printLines
 
-      if pulled > 0 then
+      if Stdlib.List.length allChanges > 0 then
         Stdlib.printLine (
           Colors.success
-            $"Pulled {plural pulled "change"} from {plural reached "instance"}")
+            $"Pulled from {plural reached "instance"}: {changeSummary allChanges}")
+      else if pulled > 0 then
+        // Ops applied, but nothing a human would call a change — branch structure, or content whose
+        // name-binding came in an earlier batch. Say that honestly rather than invent a count.
+        Stdlib.printLine (
+          Colors.success $"Synced with {plural reached "instance"} — no new names")
       else if reached > 0 then
         Stdlib.printLine (
           Colors.success
@@ -400,12 +435,13 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
   | [ "fetch"; peer ] ->
     match Darklang.Sync.pull peer with
-    | Ok n ->
-      if n == 0 then
-        Stdlib.printLine (Colors.success "Already up to date")
+    | Ok result ->
+      if Stdlib.List.length result.changes > 0 then
+        Stdlib.printLine (Colors.success $"Pulled: {changeSummary result.changes}")
+      else if result.applied > 0 then
+        Stdlib.printLine (Colors.success "Synced — no new names")
       else
-        Stdlib.printLine (
-          Colors.success $"Pulled {plural n "change"} from {peer}")
+        Stdlib.printLine (Colors.success "Already up to date")
     | Error e -> Stdlib.printLine (Colors.error e)
 
     let _ = conflictNudge ()

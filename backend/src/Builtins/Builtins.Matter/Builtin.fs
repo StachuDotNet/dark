@@ -12,14 +12,17 @@ let fnRenames : Builtin.FnRenames = []
 
 let builtins (pm : PT.PackageManager) : Builtins =
   Builtin.combine
-    [ Libs.DB.builtins ()
+    [ // DB (UserDB, plus the raw general-purpose SQLite floor)
+      Libs.DB.builtins ()
       Libs.Sqlite.builtins ()
 
+      // Sync (the op-log wire, the blob channel, the conflict review log)
       Libs.Sync.Store.builtins ()
       Libs.Sync.OpLog.builtins ()
       Libs.Sync.Blobs.builtins ()
       Libs.Conflicts.builtins ()
 
+      // PM (package manager — packages, branches, ops, merge, …)
       Libs.PM.Packages.builtins pm
       Libs.PM.PackageOps.builtins pm
       Libs.PM.Branches.builtins ()
@@ -30,6 +33,9 @@ let builtins (pm : PT.PackageManager) : Builtins =
       Libs.PM.Seed.builtins
       Libs.PM.Caps.builtins
 
+      // Traces (reader surface)
       Libs.Traces.builtins ()
+
+      // Accounts
       Libs.Account.builtins () ]
     fnRenames

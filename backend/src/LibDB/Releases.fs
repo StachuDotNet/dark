@@ -21,9 +21,11 @@ open Prelude
 open Fumble
 open LibDB.Sqlite
 
+
 /// THE version coordinate (see the module doc). A store is stamped with this Release; older code refuses
 /// to open a store stamped NEWER, and cross-instance sync uses this same integer as its wire-format version.
 let currentRelease : int = 4
+
 
 /// One forward step that ARRIVES at Release `n` (apply it to move a store from `n-1` to `n`).
 type Release =
@@ -67,6 +69,7 @@ let releases : Release list =
 
 // ── The pure planning half (unit-tested; takes the registry explicitly so tests inject their own) ──
 
+
 /// The steps to move a store from `storeN` up to `codeN`: the entries with `storeN < n <= codeN`, in
 /// ascending order. Pure.
 let pendingReleases
@@ -77,6 +80,7 @@ let pendingReleases
   registry
   |> List.filter (fun r -> r.n > storeN && r.n <= codeN)
   |> List.sortBy (fun r -> r.n)
+
 
 /// Is the registry well-formed: strictly ascending, **contiguous** (no gaps), no duplicates, and none
 /// above `codeRelease`? A gap would silently skip a migration; a dup would double-apply; an entry above
@@ -91,7 +95,9 @@ let registryIsWellFormed (registry : Release list) (codeRelease : int) : bool =
 
 // ── The store's Release stamp (a tiny local table, separate from the schema-hash stamp) ──
 
+
 let private releaseTable = "release_state_v0"
+
 
 /// The Release this store was last stamped at, or `None` if it predates Release tracking (or is fresh).
 let storedRelease () : int option =
@@ -110,6 +116,7 @@ let storedRelease () : int option =
     | Ok [ r ] -> Some(int r)
     | _ -> None
 
+
 /// Stamp the store at Release `n`.
 let writeRelease (n : int) : unit =
   Sql.query
@@ -122,6 +129,7 @@ let writeRelease (n : int) : unit =
 
 
 // ── Applying a step ──
+
 
 /// Re-serialize the WHOLE op log once through `remap` (old `op_blob` → new), in a single transaction.
 /// The op id is content-addressed over the op's MEANING (a normalized canonical form), not its raw
@@ -142,6 +150,7 @@ let reserializeLog (remap : byte[] -> byte[]) : unit =
            "branch_id", Sql.string branchId ] ]))
   Sql.executeTransactionSync updates |> ignore<List<int>>
 
+
 /// The package dataset cleared by a `clearForRebuild` boundary: the PT op log + blobs, the branch
 /// structure, the regenerable projections, and the RT-derived caches (traces). Reload-from-source (dev)
 /// repopulates it. We KEEP accounts and user data — only the package world is reset. (`rt_dval` lives in
@@ -151,12 +160,14 @@ let private rebuildClearTables : List<string> =
   @ LibDB.Seed.projectionTables
   @ [ "traces"; "trace_fn_calls" ]
 
+
 /// Clear the package dataset for a clean-break Release (FK off; the rows go, the tables stay so the
 /// next reload/sync refills them).
 let clearForRebuildData () : unit =
   Sql.query "PRAGMA foreign_keys = OFF" |> Sql.executeStatementSync
   for t in rebuildClearTables do
     Sql.query (sprintf "DELETE FROM \"%s\"" t) |> Sql.executeStatementSync
+
 
 /// Apply one Release step. A CLEAN-BREAK (`clearForRebuild`) clears the package dataset so it rebuilds
 /// from source/peer (disposable pre-Release data). Otherwise it's the durable path: the canonical
@@ -178,6 +189,7 @@ let applyRelease (r : Release) : unit =
 
 // ── The boot guard + forward migrator ──
 
+
 /// What `applyPending` decides to do, factored out of the DB-mutating path so the guard is a **pure,
 /// unit-testable** function of (storedRelease, codeRelease).
 type ReleaseAction =
@@ -189,6 +201,7 @@ type ReleaseAction =
   | RefuseNewer of storeN : int
   /// store < code → apply these steps in order, then stamp `code`
   | Migrate of Release list
+
 
 /// Pure: reconcile the store's Release with this binary's. See `ReleaseAction`. Total over the four cases;
 /// no DB access — `applyPending` reads/writes the store around it.
@@ -215,6 +228,7 @@ type CliUpgrade =
   | MigrateInPlace // every pending step is durable — migrate forward, keeping the data
   | Reseed // a pending clean-break step, or a pre-tracking store of unknown format — discard + re-seed
 
+
 /// Pure: the CLI's upgrade decision. Reuses `planRelease`, then splits a `Migrate` on whether ANY pending
 /// step is a clean-break (`clearForRebuild`): a clean break invalidates the on-disk content (e.g. a hashing
 /// change), so it can't migrate in place — the CLI re-seeds; an all-durable run migrates forward in place.
@@ -234,6 +248,7 @@ let planCliUpgrade
       CliUpgrade.Reseed
     else
       CliUpgrade.MigrateInPlace
+
 
 /// Reconcile the store's Release with this binary's (`codeRelease = currentRelease`) and execute the
 /// decision. The *decision* is `planRelease` (pure, tested); this wraps it with the DB read/write.

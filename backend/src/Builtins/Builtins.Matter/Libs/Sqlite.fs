@@ -25,7 +25,9 @@ module PackageRefs = LibExecution.PackageRefs
 module NR = LibExecution.RuntimeTypes.NameResolution
 module Blob = LibExecution.Blob
 
+
 let private connStr (path : string) : string = $"Data Source={path}"
+
 
 /// Marshal a SQLite cell (the ADO reader's `obj`) into a typed `Stdlib.Sqlite.Value` DEnum, so
 /// ints/reals/blobs keep their types across the round-trip (esp. Bytes for BLOB columns). Mirrors the
@@ -47,11 +49,13 @@ module Value =
       | other -> "Text", [ DString(string other) ]
     DEnum(typeName, typeName, [], caseName, fields)
 
+
 /// Bind a positional param list to @p0..@pN — parameterized statements, so values can't be SQL-injected.
 let private bindParams (cmd : SqliteCommand) (parameters : List<string>) : unit =
   parameters
   |> List.iteri (fun i p ->
     cmd.Parameters.AddWithValue($"@p{i}", box p) |> ignore<SqliteParameter>)
+
 
 let private paramStrings (dvals : List<Dval>) : List<string> =
   dvals
@@ -119,6 +123,7 @@ let private queryImpl
       return Dval.resultError rowsKT KTString (DString e.Message)
   }
 
+
 let fns () : List<BuiltInFn> =
   [ { name = fn "sqliteExec" 0
       typeParams = []
@@ -131,10 +136,13 @@ let fns () : List<BuiltInFn> =
           Param.make
             "params"
             (TList TString)
-            "values bound to @p0..@pN placeholders, in order (injection-safe); [] for none" ]
+            ("values bound to @p0..@pN placeholders, in order (injection-safe); "
+             + "[] for none") ]
       returnType = TypeReference.result TInt TString
       description =
-        "Opens the SQLite file at <param path> and runs <param sql>, binding <param params> to @p0..@pN placeholders (injection-safe; pass [] for none). Ok = rows affected; Error = the SQLite message. Never throws."
+        "Opens the SQLite file at <param path> and runs <param sql>, binding "
+        + "<param params> to @p0..@pN placeholders (injection-safe; pass [] for "
+        + "none). Ok = rows affected; Error = the SQLite message. Never throws."
       fn =
         (function
         | _, _, _, [ DString path; DString sql; DList(_, ps) ] ->
@@ -153,10 +161,14 @@ let fns () : List<BuiltInFn> =
           Param.make
             "params"
             (TList TString)
-            "values bound to @p0..@pN placeholders, in order (injection-safe); [] for none" ]
+            ("values bound to @p0..@pN placeholders, in order (injection-safe); "
+             + "[] for none") ]
       returnType = TypeReference.result (TList(TDict Value.typeRef)) TString
       description =
-        "Opens the SQLite file at <param path> and runs the SELECT <param sql>, binding <param params> to @p0..@pN placeholders (injection-safe; pass [] for none). Ok = each row as a dict of column-name to its typed value; Error = the SQLite message. Never throws."
+        "Opens the SQLite file at <param path> and runs the SELECT <param sql>, "
+        + "binding <param params> to @p0..@pN placeholders (injection-safe; pass "
+        + "[] for none). Ok = each row as a dict of column-name to its typed "
+        + "value; Error = the SQLite message. Never throws."
       fn =
         (function
         | _, _, _, [ DString path; DString sql; DList(_, ps) ] ->
@@ -166,5 +178,6 @@ let fns () : List<BuiltInFn> =
       previewable = Impure
       capabilities = LibExecution.Capabilities.Needs.fileReadWrite
       deprecated = NotDeprecated } ]
+
 
 let builtins () = LibExecution.Builtin.make [] (fns ())

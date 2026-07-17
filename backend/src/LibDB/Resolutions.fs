@@ -35,6 +35,7 @@ type Resolution =
     resolvedBy : string
     at : string }
 
+
 /// Mint a resolution for a "keep this candidate" decision. `at` is the resolver time (the same stamp format
 /// op origin_ts / locations use), which becomes the LWW stamp the binding competes on.
 let mk
@@ -50,6 +51,7 @@ let mk
     choice = choice
     resolvedBy = resolvedBy
     at = at }
+
 
 /// Persist a resolution (idempotent on `id` — a re-pulled resolution from a peer doesn't duplicate). The
 /// Reference is flattened to the (chosen_hash, item_kind) columns the wire + `applySetName` speak in.
@@ -70,6 +72,7 @@ let record (r : Resolution) : Task<unit> =
       "by", Sql.string r.resolvedBy
       "at", Sql.string r.at ]
   |> Sql.executeStatementAsync
+
 
 /// Apply a resolution to the `locations` projection — the OVERLAY step. Re-binds the location to the choice
 /// content, gated by the SAME timestamp-LWW `applySetName` uses: a resolution whose `at` is older than the
@@ -145,6 +148,7 @@ let applyToLocations (r : Resolution) : Task<unit> =
         |> Sql.executeStatementAsync
   }
 
+
 /// Record + immediately apply (the local-authoring path: a human / keep-local decision takes effect now).
 let recordAndApply (r : Resolution) : Task<unit> =
   task {
@@ -158,6 +162,7 @@ let recordAndApply (r : Resolution) : Task<unit> =
         (Conflicts.locationString r.location)
         (r.choice.kind.toString ())
   }
+
 
 /// Replay EVERY stored resolution (ordered by `at`) onto the `locations` projection — the overlay half of
 /// "effective binding = fold(package_ops) → then apply resolutions". A projection rebuild re-folds only the op
@@ -195,6 +200,7 @@ let reapplyAll () : Task<unit> =
 
 // ── the resolutions log as a synced EventLog (the third named log) ──
 
+
 /// Resolutions authored after <param cursor> (rowid), as their field tuple + the new cursor. The sync read
 /// for the `resolutions` EventLog — a peer serves these so an override converges everywhere.
 let resolutionsSince
@@ -229,6 +235,7 @@ let resolutionsSince
 
     return (events, newCursor)
   }
+
 
 /// Apply resolutions RECEIVED from a peer: record (idempotent by id) + apply to locations (the LWW-gated
 /// overlay). Order-independent — each is gated by its own `at` stamp. Returns the count processed.

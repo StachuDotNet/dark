@@ -10,6 +10,7 @@ open LibExecution.Builtin.Shortcuts
 
 module Dval = LibExecution.Dval
 
+
 let fns () : List<BuiltInFn> =
   [
     // Sender: the blob MANIFEST — every content hash this instance holds, newline-joined (GET /sync/blobs).
@@ -18,7 +19,8 @@ let fns () : List<BuiltInFn> =
       parameters = [ Param.make "unit" TUnit "" ]
       returnType = TString
       description =
-        "The blob manifest (the GET /sync/blobs body): every content hash this instance holds, newline-joined."
+        "The blob manifest (the GET /sync/blobs body): every content hash this "
+        + "instance holds, newline-joined."
       fn =
         (function
         | _, _, _, [ DUnit ] ->
@@ -38,7 +40,8 @@ let fns () : List<BuiltInFn> =
       parameters = [ Param.make "hash" TString "The content hash to fetch" ]
       returnType = TString
       description =
-        "The bytes for one content hash, base64-encoded (the GET /sync/blob?hash= body), or empty if this instance lacks it."
+        "The bytes for one content hash, base64-encoded (the GET /sync/blob?hash= "
+        + "body), or empty if this instance lacks it."
       fn =
         (function
         | _, _, _, [ DString hash ] ->
@@ -63,7 +66,8 @@ let fns () : List<BuiltInFn> =
             "A peer's offered content hashes (its manifest)" ]
       returnType = TList TString
       description =
-        "Of the peer's offered content hashes, which this instance lacks — a pure content-addressed set-difference (no cursor)."
+        "Of the peer's offered content hashes, which this instance lacks — a pure "
+        + "content-addressed set-difference (no cursor)."
       fn =
         (function
         | _, _, _, [ DList(_, hashDvals) ] ->
@@ -94,7 +98,9 @@ let fns () : List<BuiltInFn> =
             "The blob's bytes, base64-encoded (empty = skip)" ]
       returnType = TBool
       description =
-        "Store a fetched blob: base64-decode + insert under its content hash. Idempotent. Returns true if non-empty bytes were inserted, false if the peer's body was empty."
+        "Store a fetched blob: base64-decode + insert under its content hash. "
+        + "Idempotent. Returns true if non-empty bytes were inserted, false if the "
+        + "peer's body was empty."
       fn =
         (function
         | _, _, _, [ DString hash; DString b64 ] ->
@@ -125,5 +131,6 @@ let fns () : List<BuiltInFn> =
       previewable = Impure
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated } ]
+
 
 let builtins () = LibExecution.Builtin.make [] (fns ())

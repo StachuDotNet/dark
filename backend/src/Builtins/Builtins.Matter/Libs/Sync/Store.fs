@@ -10,6 +10,7 @@ open LibExecution.Builtin.Shortcuts
 
 module Dval = LibExecution.Dval
 
+
 let fns () : List<BuiltInFn> =
   [
     // This instance's OWN package store path (data.db). The op-log builtins write ops here; the sync config
@@ -44,5 +45,6 @@ let fns () : List<BuiltInFn> =
       previewable = Impure
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated } ]
+
 
 let builtins () = LibExecution.Builtin.make [] (fns ())

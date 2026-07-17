@@ -14,8 +14,10 @@ module Dval = LibExecution.Dval
 module PackageRefs = LibExecution.PackageRefs
 module NR = LibExecution.RuntimeTypes.NameResolution
 
+
 let private conflictType () =
   FQTypeName.fqPackage (PackageRefs.Type.Sync.Conflicts.conflict ())
+
 
 let private toRecord (c : LibDB.Conflicts.Conflict) : Dval =
   let t = conflictType ()
@@ -34,13 +36,15 @@ let private toRecord (c : LibDB.Conflicts.Conflict) : Dval =
         "status", DString c.status ]
   )
 
+
 let fns () : List<BuiltInFn> =
   [ { name = fn "conflictsList" 0
       typeParams = []
       parameters = [ Param.make "unit" TUnit "" ]
       returnType = TList(TCustomType(NR.ok (conflictType ()), []))
       description =
-        "This instance's recorded sync conflicts, each as a `Darklang.Sync.Conflicts.Conflict`. Local-only review log."
+        "This instance's recorded sync conflicts, each as a "
+        + "`Darklang.Sync.Conflicts.Conflict`. Local-only review log."
       fn =
         (function
         | _, _, _, [ DUnit ] ->
@@ -65,10 +69,13 @@ let fns () : List<BuiltInFn> =
           Param.make
             "itemKind"
             TString
-            "the item kind (fn | type | value) — a location can hold more than one" ]
+            ("the item kind (fn | type | value) — a location can hold more "
+             + "than one") ]
       returnType = TBool
       description =
-        "Acknowledge the auto-resolved conflict at <param location> of <param itemKind> — the auto (last-writer-wins) choice stands. Returns whether one was found."
+        "Acknowledge the auto-resolved conflict at <param location> of <param "
+        + "itemKind> — the auto (last-writer-wins) choice stands. Returns whether "
+        + "one was found."
       fn =
         (function
         | _, _, _, [ DString location; DString itemKind ] ->
@@ -110,7 +117,10 @@ let fns () : List<BuiltInFn> =
             "the candidate content hash to keep (local or incoming)" ]
       returnType = TBool
       description =
-        "Override the auto-resolution at <param location> of <param itemKind>: bind it to <param chosenHash> by minting a SYNCED Resolution (applied locally now; converges on peers). Marks that conflict overridden. Returns whether one was found."
+        "Override the auto-resolution at <param location> of <param itemKind>: bind "
+        + "it to <param chosenHash> by minting a SYNCED Resolution (applied "
+        + "locally now; converges on peers). Marks that conflict overridden. "
+        + "Returns whether one was found."
       fn =
         (function
         | _, _, _, [ DString location; DString itemKind; DString chosenHash ] ->
@@ -147,5 +157,6 @@ let fns () : List<BuiltInFn> =
       previewable = Impure
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated } ]
+
 
 let builtins () = LibExecution.Builtin.make [] (fns ())

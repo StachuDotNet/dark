@@ -9,6 +9,7 @@
 /// Stamps are `yyyy-MM-ddTHH:mm:ss.fffZ` strings, so lexical `<` is already chronological — no parsing.
 module LibDB.Lww
 
+
 /// True iff binding (newTs, newHash) loses to the live binding (curTs, curHash) under timestamp-LWW.
 let isStale
   (newTs : string)

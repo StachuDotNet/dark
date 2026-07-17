@@ -6,7 +6,7 @@ module Darklang.Cli.Conflicts
 // your pick.
 
 let conflicts () : List<Darklang.Sync.Conflicts.Conflict> =
-  Builtin.conflictsList ()
+  Darklang.Sync.Conflicts.list ()
 
 let short (h: String) : String =
   Stdlib.String.slice h 0 8
@@ -27,10 +27,6 @@ let findOpen
 
 let noneMsg (location: String) : String =
   $"No open conflict at {location}. See: dark conflicts"
-
-// Override at <location> of <kind> with <hash> — mints a synced Resolution + marks THAT conflict overridden.
-let keep (location: String) (kind: String) (hash: String) : Bool =
-  Builtin.conflictKeep location kind hash
 
 // All unreviewed conflicts at a location (a name can hold a fn AND a value → more than one at one location).
 let openAt (location: String) : List<Darklang.Sync.Conflicts.Conflict> =
@@ -248,14 +244,14 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
   | "ok" :: rest ->
     resolveCmd state rest "ok" (fun c ->
-      Builtin.conflictAcknowledge c.location c.itemKind) (fun c ->
+      Darklang.Sync.Conflicts.acknowledge c.location c.itemKind) (fun c ->
       let active =
         renderInline state.currentBranchId c.location c.itemKind c.chosenHash
 
       $"OK — {c.location} stays {active}   (reviewed here only; the auto pick stands)")
 
   | "keep-mine" :: rest ->
-    resolveCmd state rest "keep-mine" (fun c -> keep c.location c.itemKind c.localHash) (fun c ->
+    resolveCmd state rest "keep-mine" (fun c -> Darklang.Sync.Conflicts.keep c.location c.itemKind c.localHash) (fun c ->
       let mine = renderInline state.currentBranchId c.location c.itemKind c.localHash
 
       let theirs =
@@ -264,7 +260,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
       $"OK — {c.location} will be {mine}, not {theirs}   (syncs to your peers)")
 
   | "keep-theirs" :: rest ->
-    resolveCmd state rest "keep-theirs" (fun c -> keep c.location c.itemKind c.incomingHash) (fun c ->
+    resolveCmd state rest "keep-theirs" (fun c -> Darklang.Sync.Conflicts.keep c.location c.itemKind c.incomingHash) (fun c ->
       let mine = renderInline state.currentBranchId c.location c.itemKind c.localHash
 
       let theirs =

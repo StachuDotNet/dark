@@ -3,16 +3,33 @@
 
 // ── receive robustness: a malformed wire op is SKIPPED, never a crash ──────────────────────────────────
 // The append path parses each event and drops any it can't (bad hex op / bad uuid); a batch of only
-// garbage applies nothing and returns 0 rather than throwing.
+// garbage applies nothing and reports nothing, rather than throwing.
 module AppendSkipsMalformedOp =
-  (Darklang.Sync.EventLog.append
-    []
-    [ Darklang.Sync.EventLog.Event
-        { id = "00000000-0000-0000-0000-000000000001"
-          op = "zznothexatall"
-          branchId = "89282547-e4e6-4986-bcb6-db74bc6a8c0f"
-          commitHash = "deadbeef"
-          originTs = "2026-07-08T00:00:00.000Z" } ]) = 0
+  (let r =
+    Darklang.Sync.EventLog.append
+      []
+      [ Darklang.Sync.EventLog.Event
+          { id = "00000000-0000-0000-0000-000000000001"
+            op = "zznothexatall"
+            branchId = "89282547-e4e6-4986-bcb6-db74bc6a8c0f"
+            commitHash = "deadbeef"
+            originTs = "2026-07-08T00:00:00.000Z" } ]
+
+   r.applied) = 0
+
+// A batch that applies nothing also MEANS nothing: no phantom "new"/"updated" to report to the human.
+module AppendSkipsMalformedOpReportsNoChanges =
+  (let r =
+    Darklang.Sync.EventLog.append
+      []
+      [ Darklang.Sync.EventLog.Event
+          { id = "00000000-0000-0000-0000-000000000001"
+            op = "zznothexatall"
+            branchId = "89282547-e4e6-4986-bcb6-db74bc6a8c0f"
+            commitHash = "deadbeef"
+            originTs = "2026-07-08T00:00:00.000Z" } ]
+
+   Stdlib.List.length r.changes) = 0
 
 // ── blob channel (fetch-on-miss over the sync builtins; content-addressed, real SHA-256 hashes) ────────
 // Hashes are the SHA-256 of the decoded bytes: "aGVsbG8=" = "hello", "d29ybGQ=" = "world". syncBlobInsert
