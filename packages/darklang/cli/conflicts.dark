@@ -75,23 +75,24 @@ let renderContent
       { branchId = branchId
         currentModule = Stdlib.Option.Option.None
         currentFunction = Stdlib.Option.Option.None }
+  // Resolve the hash across kinds rather than by the conflict's stored `itemKind`. A hash is
+  // content-addressed and kind-agnostic, and a CROSS-KIND conflict (one side bound the name to a value, the
+  // other to a fn — reachable since a name holds ONE item regardless of kind, post one-name-one-item) stores
+  // only the INCOMING side's kind. Rendering the local ("yours") hash by that kind looked up the wrong table
+  // and fell to "content unavailable", even though the item is right there. Exactly one pmGet* matches a given
+  // hash, so trying all three (the itemKind param is now just a legacy hint) shows both sides every time.
   let rendered =
-    match itemKind with
-    | "value" ->
-      match Builtin.pmGetValue hash with
-      | Some e ->
-        Stdlib.Option.Option.Some(PrettyPrinter.ProgramTypes.packageValue ctx e)
-      | None -> Stdlib.Option.Option.None
-    | "fn" ->
+    match Builtin.pmGetValue hash with
+    | Some e ->
+      Stdlib.Option.Option.Some(PrettyPrinter.ProgramTypes.packageValue ctx e)
+    | None ->
       match Builtin.pmGetFn hash with
       | Some e -> Stdlib.Option.Option.Some(PrettyPrinter.ProgramTypes.packageFn ctx e)
-      | None -> Stdlib.Option.Option.None
-    | "type" ->
-      match Builtin.pmGetType hash with
-      | Some e ->
-        Stdlib.Option.Option.Some(PrettyPrinter.ProgramTypes.packageType ctx e)
-      | None -> Stdlib.Option.Option.None
-    | _ -> Stdlib.Option.Option.None
+      | None ->
+        match Builtin.pmGetType hash with
+        | Some e ->
+          Stdlib.Option.Option.Some(PrettyPrinter.ProgramTypes.packageType ctx e)
+        | None -> Stdlib.Option.Option.None
   match rendered with
   | Some src ->
     // A name isn't part of an item's content-addressed hash — the pretty-printer
