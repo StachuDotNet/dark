@@ -143,8 +143,8 @@ let help (state: AppState) : AppState =
   Stdlib.printLine "  dark conflicts [list]            unreviewed conflicts"
   Stdlib.printLine "  dark conflicts show <loc>        the two candidate contents"
   Stdlib.printLine "  dark conflicts ok <loc>          acknowledge (the auto choice stands)"
-  Stdlib.printLine "  dark conflicts keep-mine <loc>   override → keep your version (syncs)"
-  Stdlib.printLine "  dark conflicts keep-theirs <loc> override → keep their version (syncs)"
+  Stdlib.printLine "  dark conflicts keep-mine <loc>   override: keep your version (syncs)"
+  Stdlib.printLine "  dark conflicts keep-theirs <loc> override: keep their version (syncs)"
   state
 
 let execute (state: AppState) (args: List<String>) : AppState =
@@ -167,15 +167,24 @@ let execute (state: AppState) (args: List<String>) : AppState =
         let activeSide =
           if c.chosenHash == c.incomingHash then "theirs" else "yours"
 
+        // A few conflicts, read closely, so give each one room: a header line, then the two sides stacked so
+        // you compare them down a column instead of across a `·`, then which one is live. Blank line between,
+        // because these ARE separate things to decide.
+        Stdlib.printLine ""
         Stdlib.printLine $"  {c.location} ({c.itemKind})"
-
+        Stdlib.printLine (Colors.hint $"    yours:  {yoursV}")
+        Stdlib.printLine (Colors.hint $"    theirs: {theirsV}")
         Stdlib.printLine
-          (Colors.hint
-            $"    yours {yoursV}  ·  theirs {theirsV}   → {activeSide} active ({c.resolvedBy})"))
+          (Colors.hint $"    active: {activeSide} ({c.resolvedBy})"))
 
-      Stdlib.printLine (
-        Colors.hint
-          "  dark conflicts show <loc> · keep-mine <loc> · keep-theirs <loc> · ok <loc>")
+      // These are COMMANDS you type, not a menu — label them so the line doesn't read like a row of
+      // keyboard shortcuts. One per line, since they're the things you'd actually reach for next.
+      Stdlib.printLine ""
+      Stdlib.printLine (Colors.hint "  What you can do:")
+      Stdlib.printLine (Colors.hint "    dark conflicts show <loc>        see both versions in full")
+      Stdlib.printLine (Colors.hint "    dark conflicts keep-mine <loc>   keep yours (syncs to peers)")
+      Stdlib.printLine (Colors.hint "    dark conflicts keep-theirs <loc> keep theirs (syncs to peers)")
+      Stdlib.printLine (Colors.hint "    dark conflicts ok <loc>          accept the auto pick, review done")
 
       state
 
@@ -198,8 +207,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
       Stdlib.printLine ""
 
       Stdlib.printLine (
-        Colors.hint
-          $"  keep yours: dark conflicts keep-mine {location} · keep theirs: dark conflicts keep-theirs {location}")
+        Colors.hint $"  keep yours:   dark conflicts keep-mine {location}")
+
+      Stdlib.printLine (
+        Colors.hint $"  keep theirs:  dark conflicts keep-theirs {location}")
 
       state
     | None ->
