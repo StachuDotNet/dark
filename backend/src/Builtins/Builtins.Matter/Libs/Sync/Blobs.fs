@@ -121,26 +121,10 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [ DString hash; DString b64 ] ->
           uply {
-            if b64 = "" then
-              return DBool false
-            else
-              // Total against a hostile/garbled peer body (bad base64 must not throw), and — the integrity
-              // core of a content-addressed store — only store bytes that ACTUALLY hash to the claimed hash.
-              // Without this a peer could serve arbitrary bytes for a legitimate hash and poison the store
-              // (a value silently becomes different code) for every branch that references it.
-              match
-                (try
-                  Some(System.Convert.FromBase64String b64)
-                 with _ ->
-                   None)
-              with
-              | None -> return DBool false
-              | Some bytes ->
-                if LibExecution.Blob.sha256Hex bytes = hash then
-                  do! LibDB.RuntimeTypes.Blob.insert hash bytes
-                  return DBool true
-                else
-                  return DBool false
+            // The integrity check (bytes must hash to the claimed hash) lives with the store in
+            // LibDB.Blob.insertVerified — the builtin just bridges Dval -> call -> Dval.
+            let! stored = LibDB.RuntimeTypes.Blob.insertVerified hash b64
+            return DBool stored
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
