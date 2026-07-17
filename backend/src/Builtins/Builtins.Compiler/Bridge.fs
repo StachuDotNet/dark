@@ -707,6 +707,97 @@ let rec isMarshalableType (t : AST.Type) : bool =
 /// Recursively decode a wire response (an AST String expr) into a native value of
 /// compiler type `t`. Compound children were escaped by the daemon (escWire), so
 /// each is unescaped before decoding. `d` keeps the let-bound temp unique per depth.
+/// The MIRROR of unmarshalTyped: build an expression that serializes a native value
+/// of type `t` into the daemon's wire format (see Compiler.dvalToWire, which is the
+/// spec). This is what makes equivalence PROVABLE: the compiled program emits the
+/// exact same canonical encoding the interpreter's Dval does, so the two can be
+/// compared as strings — instead of comparing stdout, where the compiler prints
+/// records/nested containers as empty and most fns simply can't be checked.
+///
+/// Must stay byte-identical to dvalToWire: elements/fields escaped and joined by
+/// "\n", enums as `Case` or `Case\n<escaped payload>`, Unit as "unit".
+let rec marshalTyped (d : int) (t : AST.Type) (v : AST.Expr) : Result<AST.Expr, string> =
+  let call n args = AST.Call(n, AST.NonEmptyList.fromList args)
+  let esc e = call "Stdlib.hostRpcEscape" [ e ]
+  let join xs sep = call "Stdlib.String.join" [ xs; AST.StringLiteral sep ]
+  let cat a b = AST.BinOp(AST.StringConcat, a, b)
+  match t with
+  | AST.TString -> Ok v
+  | AST.TChar -> Ok v // a Char is already its own text
+  | AST.TInt64 -> Ok(call "Stdlib.Int64.toString" [ v ])
+  | AST.TInt8 -> Ok(call "Stdlib.Int8.toString" [ v ])
+  | AST.TInt16 -> Ok(call "Stdlib.Int16.toString" [ v ])
+  | AST.TInt32 -> Ok(call "Stdlib.Int32.toString" [ v ])
+  | AST.TUInt8 -> Ok(call "Stdlib.UInt8.toString" [ v ])
+  | AST.TUInt16 -> Ok(call "Stdlib.UInt16.toString" [ v ])
+  | AST.TUInt32 -> Ok(call "Stdlib.UInt32.toString" [ v ])
+  | AST.TUInt64 -> Ok(call "Stdlib.UInt64.toString" [ v ])
+  | AST.TBool -> Ok(call "Stdlib.Bool.toString" [ v ])
+  | AST.TFloat64 -> Ok(call "Stdlib.Float.toString" [ v ])
+  // `unit` regardless of the value, but keep v evaluated so effects/typing hold.
+  | AST.TUnit -> Ok(AST.Let("__mu" + string d, v, AST.StringLiteral "unit"))
+  | AST.TList inner ->
+    let ev = "__me" + string d
+    marshalTyped (d + 1) inner (AST.Var ev)
+    |> Result.map (fun body ->
+      let lam = AST.Lambda(AST.NonEmptyList.fromList [ (ev, inner) ], esc body)
+      join (AST.TypeApp("Stdlib.List.map", [ inner; AST.TString ], AST.NonEmptyList.fromList [ v; lam ])) "\n")
+  | AST.TTuple ts ->
+    // Tuples have no generic map; index each slot and concat with "\n".
+    ts
+    |> List.mapi (fun i el -> marshalTyped (d + 1) el (AST.TupleAccess(v, i)) |> Result.map esc)
+    |> allOk
+    |> Result.map (fun parts ->
+      match parts with
+      | [] -> AST.StringLiteral ""
+      | first :: rest -> rest |> List.fold (fun acc p -> cat (cat acc (AST.StringLiteral "\n")) p) first)
+  | AST.TSum("Stdlib.Option.Option", [ inner ]) ->
+    let xv = "__mo" + string d
+    marshalTyped (d + 1) inner (AST.Var xv)
+    |> Result.map (fun body ->
+      AST.Match(
+        v,
+        [ { Patterns = AST.NonEmptyList.singleton (AST.PConstructor("None", None))
+            Guard = None
+            Body = AST.StringLiteral "None" }
+          { Patterns =
+              AST.NonEmptyList.singleton (AST.PConstructor("Some", Some(AST.PVar xv)))
+            Guard = None
+            Body = cat (AST.StringLiteral "Some\n") (esc body) } ]
+      ))
+  | AST.TSum("Stdlib.Result.Result", [ okT; errT ]) ->
+    let ov = "__mrk" + string d
+    let evv = "__mre" + string d
+    match marshalTyped (d + 1) okT (AST.Var ov), marshalTyped (d + 1) errT (AST.Var evv) with
+    | Ok okBody, Ok errBody ->
+      Ok(
+        AST.Match(
+          v,
+          [ { Patterns = AST.NonEmptyList.singleton (AST.PConstructor("Ok", Some(AST.PVar ov)))
+              Guard = None
+              Body = cat (AST.StringLiteral "Ok\n") (esc okBody) }
+            { Patterns =
+                AST.NonEmptyList.singleton (AST.PConstructor("Error", Some(AST.PVar evv)))
+              Guard = None
+              Body = cat (AST.StringLiteral "Error\n") (esc errBody) } ]
+        )
+      )
+    | Error e, _ -> Error e
+    | _, Error e -> Error e
+  | other -> Error $"marshal: {other}"
+
+/// Can marshalTyped encode this type? (Mirrors what the comparison can prove.)
+let rec isSerializableType (t : AST.Type) : bool =
+  match t with
+  | AST.TString | AST.TChar | AST.TBool | AST.TUnit | AST.TFloat64
+  | AST.TInt8 | AST.TInt16 | AST.TInt32 | AST.TInt64
+  | AST.TUInt8 | AST.TUInt16 | AST.TUInt32 | AST.TUInt64 -> true
+  | AST.TList inner -> isSerializableType inner
+  | AST.TTuple ts -> List.forall isSerializableType ts
+  | AST.TSum("Stdlib.Option.Option", [ inner ]) -> isSerializableType inner
+  | AST.TSum("Stdlib.Result.Result", [ a; b ]) -> isSerializableType a && isSerializableType b
+  | _ -> false
+
 let rec unmarshalTyped (d : int) (t : AST.Type) (src : AST.Expr) : AST.Expr =
   let rv = "__rpc_" + string d
   let r = AST.Var rv

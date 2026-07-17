@@ -870,6 +870,129 @@ let private startDaemon
 /// effectful builtins are serviced) with a timeout, and classify the outcome:
 /// "cf|<blocker>" compile-fail, "hang" (timed out — e.g. multi-element list),
 /// "crash|<code>", or "ran|<stdout>". This is the runnable-vs-compilable measure.
+/// Bind a generic fn's type params by matching its DECLARED param types against the
+/// types of the actual arguments. `List.head` declares `List<'a> -> Option<'a>`, so
+/// without this its return type still mentions 'a and can't be serialized (nor can a
+/// concrete entry point be emitted). Structural, first-binding-wins — the args are
+/// real values, so there's nothing to solve.
+let rec private unifyType
+  (declared : AST.Type)
+  (actual : AST.Type)
+  (acc : Map<string, AST.Type>)
+  : Map<string, AST.Type> =
+  let both xs ys m =
+    if List.length xs = List.length ys then List.fold2 (fun m x y -> unifyType x y m) m xs ys
+    else m
+  match declared, actual with
+  | AST.TVar v, _ -> if Map.containsKey v acc then acc else Map.add v actual acc
+  | AST.TList a, AST.TList b -> unifyType a b acc
+  | AST.TTuple xs, AST.TTuple ys -> both xs ys acc
+  | AST.TSum(_, xs), AST.TSum(_, ys) -> both xs ys acc
+  | AST.TRecord(_, xs), AST.TRecord(_, ys) -> both xs ys acc
+  | AST.TDict(k1, v1), AST.TDict(k2, v2) -> unifyType v1 v2 (unifyType k1 k2 acc)
+  | AST.TFunction(pa, ra), AST.TFunction(pb, rb) -> unifyType ra rb (both pa pb acc)
+  | _ -> acc
+
+/// PROVE that a compiled fn agrees with the interpreter, for real arguments.
+///
+/// The old differential compared STDOUT, which the compiler renders as empty for
+/// records/nested containers — so most fns ran but could never be checked (434 of
+/// them). Instead, make both sides emit the same canonical wire encoding and compare
+/// THAT: the interpreter's Dval through dvalToWire, the compiled program through
+/// Bridge.marshalTyped (its mirror). Same bytes on both sides or it's a real diff.
+///
+/// Returns "match", "DIFF|c=…|i=…", or a reason it couldn't be proven either way.
+let private equivOne
+  (exeState : ExecutionState)
+  (vm : VMState)
+  (effectful : Map<string, Bridge.WireArg list * Bridge.WireRet>)
+  (timeoutMs : int)
+  (hash : string)
+  (args : List<Dval>)
+  : Ply<string> =
+  uply {
+    try
+      let! pieces = buildPieces effectful hash
+      match pieces with
+      | Error e -> return "cf|" + e
+      | Ok(typeDefs, fds, rootName) ->
+        match fds |> List.tryFind (fun fd -> fd.Name = rootName) with
+        | None -> return "cf|root fn not bridged"
+        | Some rootFd ->
+          // The args come in as real Dvals, so reuse the value-literal machinery to
+          // hand the compiled side EXACTLY the same inputs the interpreter gets.
+          let argLits = args |> List.map dvalToAst
+          match argLits |> List.tryPick (function Error e -> Some e | Ok _ -> None) with
+          | Some e -> return "skip|arg-literal: " + e
+          | None ->
+            let argExprs = argLits |> List.map (function Ok x -> x | Error _ -> AST.UnitLiteral)
+            // Instantiate the root's type params from the ACTUAL argument types, so a
+            // generic fn gets a concrete entry point AND a serializable return type
+            // (mainCall's default is to guess Int64, which is wrong for real args).
+            let mutable c = 0
+            let fresh () =
+              c <- c + 1
+              $"at{c}"
+            let actualTypes =
+              args |> List.map (fun a -> valueTypeToAst fresh (Dval.toValueType a))
+            let declaredTypes = rootFd.Params |> AST.NonEmptyList.toList |> List.map snd
+            let binding =
+              (Map.empty, List.zip declaredTypes (actualTypes |> List.map (Result.defaultValue (AST.TVar "?"))))
+              ||> List.fold (fun m (d, a) -> unifyType d a m)
+            let retType = substTVars binding rootFd.ReturnType
+            let entry =
+              if List.isEmpty rootFd.TypeParams then
+                AST.Call(rootFd.Name, AST.NonEmptyList.fromList argExprs)
+              else
+                let tas =
+                  rootFd.TypeParams
+                  |> List.map (fun tp -> Map.tryFind tp binding |> Option.defaultValue AST.TInt64)
+                AST.TypeApp(rootFd.Name, tas, AST.NonEmptyList.fromList argExprs)
+            if not (Bridge.isSerializableType retType) then
+              // Be explicit: this fn is NOT proven, rather than silently "ran".
+              return $"unprovable|return type not serializable: {retType}"
+            else
+              match Bridge.marshalTyped 0 retType entry with
+              | Error e -> return "unprovable|" + e
+              | Ok marshalled ->
+                match compileClosure typeDefs fds marshalled with
+                | Error e -> return "cf|compile: " + e
+                | Ok binary ->
+                  let (daemon, shutdown) = startDaemon exeState vm
+                  let out = CompilerLibrary.execute 0 timeoutMs binary
+                  shutdown ()
+                  let _ = (try daemon.Wait() with _ -> ())
+                  if out.ExitCode <> 0 then
+                    return $"crash|{out.ExitCode}"
+                  else
+                    let compiled = out.Stdout.TrimEnd('\n')
+                    let interp =
+                      try
+                        let argsNE =
+                          match args with
+                          | [] -> NEList.singleton DUnit
+                          | _ -> NEList.ofList args.Head args.Tail
+                        match
+                          (LibExecution.Execution.executeFunction
+                            exeState
+                            (FQFnName.fqPackage hash)
+                            []
+                            argsNE)
+                            .Result
+                        with
+                        | Ok v -> Ok(dvalToWire v)
+                        | Error(_, e) -> Error(string e)
+                      with e -> Error("exn: " + e.Message)
+                    match interp with
+                    | Error e -> return "ierr|" + e
+                    | Ok i ->
+                      if compiled = i then return "match"
+                      else
+                        let esc (s : string) = s.Replace("\n", "\\n")
+                        return $"DIFF|c={esc compiled}|i={esc i}"
+    with e -> return "harness-exn|" + e.Message
+  }
+
 let private runOne
   (exeState : ExecutionState)
   (vm : VMState)
@@ -1534,6 +1657,32 @@ let fns () : List<BuiltInFn> =
               let! report = perfBench exeState h n
               return DString ("\n" + report + "\n")
             | _ -> return DString "perfCompareEval: not a package fn"
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "compilerEquivCheck" 0
+      typeParams = []
+      parameters =
+        [ Param.make "hash" TString "package fn content hash"
+          Param.make "args" (TVariable "a") "the fn's arguments: a tuple for 2+, the bare value for 1, () for none" ]
+      returnType = TString
+      description =
+        "PROVES a compiled fn agrees with the interpreter on real arguments. Both sides emit the same canonical wire encoding (the interpreter's Dval via dvalToWire; the compiled program via the mirror, Bridge.marshalTyped) and the bytes are compared — unlike the stdout comparison, which can't see records/nested containers and left most fns unprovable. Args are passed as a tuple (2+), a bare value (1), or () for none, since a Dark list can't hold mixed types. Returns match / DIFF|c=..|i=.. / unprovable|<why> / cf|<blocker> / ierr|<err> / crash|<code>."
+      fn =
+        (function
+        | exeState, vm, _, [ DString hash; argsDval ] ->
+          uply {
+            let args =
+              match argsDval with
+              | DUnit -> [] // nullary
+              | DTuple(a, b, rest) -> a :: b :: rest // 2+ args
+              | single -> [ single ] // exactly 1
+            let! r = equivOne exeState vm (buildEffectfulMap exeState) 10000 hash args
+            return DString r
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
