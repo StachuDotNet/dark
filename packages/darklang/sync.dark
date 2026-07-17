@@ -82,6 +82,44 @@ let syncDb () : String =
 let peers () : List<String> =
   Stdlib.Sqlite.column (syncDb ()) "SELECT url FROM sync_peers_v0 ORDER BY url" "url"
 
+/// A readable name for a peer, derived from its URL, so you deal in `feriel` instead of
+/// `http://feriel.tailnet:9000`. The first host label ("feriel"), unless the host is an IP — a numeric first
+/// label has no nice short form, so show the whole host. (Custom names you pick yourself — `--as framey` —
+/// are a follow-up; this derives one so raw URLs stop being the only handle.)
+let instanceName (url: String) : String =
+  let noScheme =
+    if Stdlib.String.startsWith url "https://" then
+      Stdlib.String.dropFirst url 8
+    else if Stdlib.String.startsWith url "http://" then
+      Stdlib.String.dropFirst url 7
+    else
+      url
+
+  let authority =
+    match Stdlib.String.split noScheme "/" with
+    | first :: _ -> first
+    | [] -> noScheme
+
+  let host =
+    match Stdlib.String.split authority ":" with
+    | h :: _ -> h
+    | [] -> authority
+
+  match Stdlib.String.split host "." with
+  | label :: _ ->
+    match Stdlib.Int64.parse label with
+    | Ok _ -> host // numeric first label => IP, no nice short name
+    | Error _ -> label
+  | [] -> host
+
+/// Resolve a peer reference — a full `http(s)://` URL, or the derived name of one you've connected — to its
+/// URL. `None` if it's a name you're not syncing with. Lets `dark sync --from feriel` / `fetch feriel` work.
+let resolvePeer (nameOrUrl: String) : Stdlib.Option.Option<String> =
+  if Stdlib.String.startsWith nameOrUrl "http" then
+    Stdlib.Option.Option.Some nameOrUrl
+  else
+    Stdlib.List.findFirst (peers ()) (fun u -> (instanceName u) == nameOrUrl)
+
 // The one message for "that's not a peer" — a peer is always an http(s) URL (a running instance), never a
 // file. Shared by connect + pull so both reject a `.db`/path identically.
 let peerMustBeUrl : String =

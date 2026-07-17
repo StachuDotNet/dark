@@ -308,7 +308,8 @@ let help (state: AppState) : AppState =
     "  dark sync disconnect <url>   forget an instance, and stop syncing with it"
     "  dark sync serve              let peers pull from you (add --port N; default 9000)"
     "  dark sync status             who you're syncing with, and how current each is"
-    "  dark sync fetch <url>        sync once from a single instance"
+    "  dark sync fetch <name|url>   sync once from one instance (by its name or URL)"
+    "  dark sync --from <name>      same, by the name shown in `dark sync status`"
     ""
     "`connect` only records an instance on this machine — it sends nothing and changes nothing on theirs."
     "After that, `dark sync` reads from every instance you've recorded; `fetch` reads from just the one."
@@ -405,26 +406,30 @@ let execute (state: AppState) (args: List<String>) : AppState =
       let header =
         $"Syncing with {plural (Stdlib.List.length sts) "instance"} (run `dark sync` to pull the latest):"
 
-      // Pad each peer to the longest so the state column lines up.
+      // Width across the derived NAMES (what leads each row), not the URLs — so columns align on the handle
+      // you actually use.
       let width =
         Stdlib.List.fold sts 0 (fun acc pc ->
-          let len = Stdlib.String.length (Stdlib.Tuple2.first pc)
+          let len =
+            Stdlib.String.length (Darklang.Sync.instanceName (Stdlib.Tuple2.first pc))
+
           if len > acc then len else acc)
 
       let lines =
         Stdlib.List.map sts (fun pc ->
           let peer = Stdlib.Tuple2.first pc
           let cursor = Stdlib.Tuple2.second pc
+          let name = Darklang.Sync.instanceName peer
 
           let padded =
-            match Stdlib.String.padEnd peer " " width with
+            match Stdlib.String.padEnd name " " width with
             | Ok s -> s
-            | Error _ -> peer
+            | Error _ -> name
 
-          // Cursor is the PEER's rowid — meaningless to show. What's honest is whether we've pulled it yet;
-          // "current" is always as-of the last pull (we can't know if the peer moved without pulling).
-          let mark = if cursor == 0L then "(not pulled yet)" else "(pulled)"
-          $"  {padded}   {mark}")
+          // Name leads (you sync with `feriel`, not a URL); the URL trails, dimmed, for when you need it.
+          // Cursor is the PEER's rowid — meaningless to show; what's honest is whether we've pulled it yet.
+          let mark = if cursor == 0L then "not pulled yet" else "pulled"
+          $"  {padded}   {Colors.dim}{peer}{Colors.reset}   ({mark})")
 
       // Every branch syncs wholesale — the same branches exist on every instance you connect.
       let branchNames =
@@ -462,25 +467,44 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
     state
 
-  | [ "fetch"; peer ] ->
-    match Darklang.Sync.pull peer with
-    | Ok result ->
-      if Stdlib.List.length result.changes > 0 then
-        Stdlib.printLine (Colors.success $"Pulled: {changeSummary result.changes}")
-      else if result.applied > 0 then
-        Stdlib.printLine (Colors.success "Synced — no new names")
-      else
-        Stdlib.printLine (Colors.success "Already up to date")
-    | Error e -> Stdlib.printLine (Colors.error e)
+  | [ "fetch"; peerRef ]
+  | [ "--from"; peerRef ] ->
+    // A name (feriel) or a full URL. A bare name you're not syncing with is the common typo, so say so
+    // rather than trying to pull from a non-URL.
+    match Darklang.Sync.resolvePeer peerRef with
+    | None ->
+      Stdlib.printLine (
+        Colors.error
+          $"Not syncing with an instance named '{peerRef}'. Use its URL, or `dark sync status` to see the names you have.")
 
-    let _ = conflictNudge ()
-    state
+      state
+    | Some peer ->
+      let _ =
+        match Darklang.Sync.pull peer with
+        | Ok result ->
+          let who = Darklang.Sync.instanceName peer
+          if Stdlib.List.length result.changes > 0 then
+            Stdlib.printLine (Colors.success $"Pulled from {who}: {changeSummary result.changes}")
+          else if result.applied > 0 then
+            Stdlib.printLine (Colors.success $"Synced with {who} — no new names")
+          else
+            Stdlib.printLine (Colors.success $"Already up to date with {who}")
+        | Error e -> Stdlib.printLine (Colors.error e)
 
-  | [ "disconnect"; peer ] ->
+      let _ = conflictNudge ()
+      state
+
+  | [ "disconnect"; peerRef ] ->
+    // Disconnect by the name you see in `status`, or by URL. Resolve first so `disconnect feriel` works.
+    let peer =
+      match Darklang.Sync.resolvePeer peerRef with
+      | Some u -> u
+      | None -> peerRef
+
     if Darklang.Sync.disconnect peer then
-      Stdlib.printLine (Colors.success $"Stopped syncing with {peer}")
+      Stdlib.printLine (Colors.success $"Stopped syncing with {Darklang.Sync.instanceName peer}")
     else
-      Stdlib.printLine (Colors.hint $"You weren't syncing with {peer}")
+      Stdlib.printLine (Colors.hint $"You weren't syncing with {peerRef}")
 
     state
 

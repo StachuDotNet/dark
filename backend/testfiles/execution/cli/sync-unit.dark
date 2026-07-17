@@ -103,6 +103,22 @@ module LooksLikePackageNameRelativeScript =
 module LooksLikePackageNameBareWord =
   (Darklang.Cli.Run.looksLikePackageName "thing") = false
 
+// ── instance names derived from a peer URL (A2) — so you deal in `feriel`, not a URL ────────────────────
+// The first host label, unless the host is an IP (a numeric first label has no short form -> keep the host).
+
+module InstanceNameTailnetHost =
+  (Darklang.Sync.instanceName "http://feriel.tailnet:9000") = "feriel"
+
+module InstanceNameHttps =
+  (Darklang.Sync.instanceName "https://desktop.local:9000") = "desktop"
+
+// an IP: the first octet ("100") would be a lie, so show the whole host
+module InstanceNameIp =
+  (Darklang.Sync.instanceName "http://100.81.238.64:9000") = "100.81.238.64"
+
+module InstanceNameNoPortNoPath =
+  (Darklang.Sync.instanceName "http://box") = "box"
+
 // ── daemon config validation (S8): a bad value is REJECTED (None), not stored as junk that reverts ─────────
 module ConfigRejectsBadPort =
   (Darklang.Cli.Sync.daemonConfigValue "port" "abc") = Stdlib.Option.Option.None
