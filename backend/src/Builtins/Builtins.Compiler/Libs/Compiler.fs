@@ -350,9 +350,30 @@ let rec private dvalToAst (d : Dval) : Result<AST.Expr, string> =
     |> Result.bind (fun h ->
       fields
       |> Map.toList
-      |> List.map (fun (n, v) -> dvalToAst v |> Result.map (fun v' -> (n, v')))
+      |> List.mapi (fun i (n, v) -> dvalToAst v |> Result.map (fun v' -> (n, $"__dr{i}_", v')))
       |> allOk
-      |> Result.map (fun fs -> AST.RecordLiteral(Bridge.nameForType h, fs)))
+      |> Result.map (fun fs ->
+        // Bind fields to Lets ONLY for the shape that miscompiles: a record holding BOTH
+        // a non-empty List and a >=2-byte Blob SIGSEGVs when both are built inline in the
+        // record literal (task #26 — proven minimal; hoisting is what diagnosed it).
+        //
+        // Gated, because hoisting costs TYPE PROPAGATION: the record-field position pushes
+        // the field's declared type in, a Let doesn't, so a hoisted field infers on its own
+        // and its fresh tvar stops unifying. Measured: an ungated hoist here regressed
+        // Cli.Packages.Deprecate.parseArgs ("expected (String, List<t>), got (String,
+        // List<String>)"). Same tvar trap the bridge's ERecord hit.
+        let hasList = fields |> Map.exists (fun _ v -> match v with DList _ -> true | _ -> false)
+        let hasBlob =
+          fields
+          |> Map.exists (fun _ v ->
+            match v with
+            | DBlob(Ephemeral e) -> e.bytes.Length >= 2
+            | _ -> false)
+        if hasList && hasBlob then
+          let rec2 = AST.RecordLiteral(Bridge.nameForType h, fs |> List.map (fun (n, vn, _) -> (n, AST.Var vn)))
+          fs |> List.rev |> List.fold (fun acc (_, vn, e) -> AST.Let(vn, e, acc)) rec2
+        else
+          AST.RecordLiteral(Bridge.nameForType h, fs |> List.map (fun (n, _, e) -> (n, e)))))
   | DEnum(_, rtName, _, caseName, fields) ->
     typeNameHash rtName
     |> Result.bind (fun h ->

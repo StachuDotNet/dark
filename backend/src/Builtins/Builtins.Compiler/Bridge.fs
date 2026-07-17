@@ -1585,10 +1585,68 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
   | PT.ERecord(_, nr, _, fields) ->
     typeHash nr
     |> Result.bind (fun h ->
+      // Hoisting costs TYPE PROPAGATION: a record-field position pushes the field's
+      // declared type into the expression, a Let does not, so a hoisted field infers
+      // independently and its fresh tvar no longer unifies. Measured, not guessed —
+      // hoisting every field regressed Stachu.Parser.many ("expected
+      // T.830ffbde<List<a>>, got T.830ffbde<List<t>>"), and hoisting every CALL field
+      // still regressed Cli.Packages.Deprecate.parseArgs ("expected (String, List<t>),
+      // got (String, List<String>)"). Same tvar-vs-unification trap this branch keeps
+      // hitting.
+      //
+      // So apply the workaround ONLY to the shape that actually miscompiles: a record
+      // whose def has BOTH a List field and a Bytes field (task #26 — such a record
+      // SIGSEGVs when the list is non-empty and the blob is >=2 bytes). Every other
+      // record is left exactly as it was, which is why this costs 0 regressions.
+      let needsHoist =
+        match Map.tryFind (nameForType h) ctx.TypeDefs with
+        | Some(AST.RecordDef(_, _, defFields)) ->
+          let isL = defFields |> List.exists (fun (_, t) -> match t with AST.TList _ -> true | _ -> false)
+          let isB = defFields |> List.exists (fun (_, t) -> match t with AST.TBytes -> true | _ -> false)
+          isL && isB
+        | _ -> false
       fields
-      |> List.map (fun (fname, fexpr) -> recurse fexpr |> Result.map (fun be -> (fname, be)))
+      |> List.mapi (fun i (fname, fexpr) ->
+        recurse fexpr
+        |> Result.map (fun be ->
+          // Only a CALL can clobber (it allocates and burns registers); literals are
+          // harmless inline and keep the type context they need.
+          match be with
+          | (AST.Call _ | AST.TypeApp _ | AST.Apply _) when needsHoist -> (fname, Some $"__rf{i}_", be)
+          | _ -> (fname, None, be)))
       |> allOk
-      |> Result.map (fun fs -> AST.RecordLiteral(nameForType h, fs)))
+      |> Result.map (fun fs ->
+        // Bind call-shaped fields to a Let, then build the record from vars, rather than
+        // inlining them.
+        //
+        // A RecordLiteral holding a CALL field next to a LIST field MISCOMPILES to a
+        // SIGSEGV. Proven minimal (task #26): Http.Request { headers: List<String*String>;
+        // body: Blob } -> headers=[] is fine at any blob size, a 1-byte blob is fine with
+        // headers, but a NON-EMPTY list + a >=2-BYTE blob segfaults. It's size, not
+        // content: "xy" crashes, "x" doesn't. Two heap objects built inline in one record
+        // literal, and one clobbers the other; hoisting each into a Let fixes it, which is
+        // what proved the diagnosis.
+        //
+        // This is a WORKAROUND, not the fix — the codegen bug is still there for anyone
+        // else emitting a RecordLiteral. But it's the same discipline the decoders needed
+        // (keep calls out of inline positions), it costs nothing, and it makes real Dark
+        // code that builds such a record stop crashing.
+        let rec2 =
+          AST.RecordLiteral(
+            nameForType h,
+            fs
+            |> List.map (fun (n, vn, e) ->
+              match vn with
+              | Some v -> (n, AST.Var v)
+              | None -> (n, e)))
+        fs
+        |> List.rev
+        |> List.fold
+          (fun acc (_, vn, e) ->
+            match vn with
+            | Some v -> AST.Let(v, e, acc)
+            | None -> acc)
+          rec2))
   | PT.ERecordFieldAccess(_, record, fieldName) ->
     recurse record |> Result.map (fun r -> AST.RecordAccess(r, fieldName))
   | PT.ERecordUpdate(_, record, updates) ->
