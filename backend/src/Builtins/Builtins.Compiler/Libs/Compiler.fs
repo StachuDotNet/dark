@@ -1470,49 +1470,40 @@ let private equivOne
                     let raw = out.Stdout
                     let compiled =
                       if raw.EndsWith "\n" then raw.Substring(0, raw.Length - 1) else raw
-                    let interp =
+                    // Run the interpreter with the SAME bound the compiled binary got.
+                    // Previously this was a bare `.Result` — UNBOUNDED — so the per-fn
+                    // timeout only ever fenced the compiled side. An exponential fn
+                    // (fib 35 interpreted) ran for minutes here, TWICE (the nondet
+                    // check), defeating the whole per-fn budget: this was the "79
+                    // interpreter timeouts" that stalled the proof sweeps. Task.Wait(ms)
+                    // gives a real deadline; a miss is reported as `itimeout`, distinct
+                    // from a genuine interpreter error (`ierr`), so it's an honest
+                    // "couldn't prove in time", not a false DIFF and not a crash.
+                    let runInterp () : Result<string, string> =
                       try
                         let argsNE =
                           match args with
                           | [] -> NEList.singleton DUnit
                           | _ -> NEList.ofList args.Head args.Tail
-                        match
-                          (LibExecution.Execution.executeFunction
-                            exeState
-                            (FQFnName.fqPackage hash)
-                            []
-                            argsNE)
-                            .Result
-                        with
-                        // Materialize PERSISTENT blobs before wiring: dvalToWire is pure
-                        // and can only encode Ephemeral, so a result holding a package
-                        // blob emitted "?unmarshalable:DBlob" and reported a false DIFF
-                        // (c=\n\n403 vs i=?unmarshalable:DBlob\n\n403) — the compiled
-                        // side was right, the harness just couldn't say so.
-                        | Ok v -> Ok(dvalToWire (Ply.toTask (materializeBlobs v)).Result)
-                        | Error(_, e) -> Error(string e)
+                        let task =
+                          LibExecution.Execution.executeFunction
+                            exeState (FQFnName.fqPackage hash) [] argsNE
+                        if task.Wait(timeoutMs) then
+                          match task.Result with
+                          // Materialize PERSISTENT blobs before wiring: dvalToWire is
+                          // pure and only encodes Ephemeral, so a package blob in the
+                          // result printed "?unmarshalable:DBlob" and read as a false
+                          // DIFF (the compiled side was right).
+                          | Ok v -> Ok(dvalToWire (Ply.toTask (materializeBlobs v)).Result)
+                          | Error(_, e) -> Error(string e)
+                        else Error("__timeout__")
                       with e -> Error("exn: " + e.Message)
-                    // Run the interpreter a SECOND time: a fn that disagrees with
-                    // itself (uuidGenerate, random, clock) can't be compared to
-                    // anything, and would otherwise be reported as a false DIFF.
-                    let interp2 =
-                      try
-                        let argsNE =
-                          match args with
-                          | [] -> NEList.singleton DUnit
-                          | _ -> NEList.ofList args.Head args.Tail
-                        match
-                          (LibExecution.Execution.executeFunction
-                            exeState
-                            (FQFnName.fqPackage hash)
-                            []
-                            argsNE)
-                            .Result
-                        with
-                        | Ok v -> Ok(dvalToWire (Ply.toTask (materializeBlobs v)).Result)
-                        | Error(_, e) -> Error(string e)
-                      with e -> Error("exn: " + e.Message)
+                    let interp = runInterp ()
+                    // A SECOND run: a fn that disagrees with itself (uuidGenerate, random,
+                    // clock) can't be compared and would otherwise be a false DIFF.
+                    let interp2 = runInterp ()
                     match interp, interp2 with
+                    | Error "__timeout__", _ | _, Error "__timeout__" -> return "itimeout"
                     | Error e, _ -> return "ierr|" + e
                     | Ok i, Ok i2 when i <> i2 -> return "nondet"
                     | Ok i, _ ->
