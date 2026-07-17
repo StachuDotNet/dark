@@ -707,6 +707,28 @@ let rec isMarshalableType (t : AST.Type) : bool =
 /// Recursively decode a wire response (an AST String expr) into a native value of
 /// compiler type `t`. Compound children were escaped by the daemon (escWire), so
 /// each is unescaped before decoding. `d` keeps the let-bound temp unique per depth.
+/// Instantiate a type def's params with the args from a USE site: a def stores
+/// `Only of 'a`, but the value at hand is `Scope<String>`. Without this, walking a
+/// generic type's def hits a bare TVar and looks unserializable.
+let rec substTVarsB (m : Map<string, AST.Type>) (t : AST.Type) : AST.Type =
+  let s = substTVarsB m
+  match t with
+  | AST.TVar v -> Map.tryFind v m |> Option.defaultValue t
+  | AST.TRecord(n, args) -> AST.TRecord(n, List.map s args)
+  | AST.TSum(n, args) -> AST.TSum(n, List.map s args)
+  | AST.TList inner -> AST.TList(s inner)
+  | AST.TTuple ts -> AST.TTuple(List.map s ts)
+  | AST.TDict(k, v) -> AST.TDict(s k, s v)
+  | AST.TFunction(args, ret) -> AST.TFunction(List.map s args, s ret)
+  | other -> other
+
+/// Zip a def's type params against a use site's type args (tolerating arity drift).
+let defSubstB (tps : string list) (args : AST.Type list) : Map<string, AST.Type> =
+  tps
+  |> List.mapi (fun i tp -> (tp, List.tryItem i args))
+  |> List.choose (fun (tp, a) -> a |> Option.map (fun a -> (tp, a)))
+  |> Map.ofList
+
 /// The MIRROR of unmarshalTyped: build an expression that serializes a native value
 /// of type `t` into the daemon's wire format (see Compiler.dvalToWire, which is the
 /// spec). This is what makes equivalence PROVABLE: the compiled program emits the
@@ -793,13 +815,14 @@ let rec marshalTyped
   // A record: emit its fields in NAME order, escaped, joined by "\n" — exactly what
   // dvalToWire does (its DvalMap iterates sorted). 104 of the unprovable fns returned
   // a record.
-  | AST.TRecord(name, _) ->
+  | AST.TRecord(name, targs) ->
     match Map.tryFind name defs with
-    | Some(AST.RecordDef(_, _, fields)) ->
+    | Some(AST.RecordDef(_, tps, fields)) ->
+      let sub = defSubstB tps targs
       fields
       |> List.sortBy fst
       |> List.map (fun (fname, ft) ->
-        marshalTyped (d + 1) ft (AST.RecordAccess(v, fname)) |> Result.map esc)
+        marshalTyped (d + 1) (substTVarsB sub ft) (AST.RecordAccess(v, fname)) |> Result.map esc)
       |> allOk
       |> Result.map (fun parts ->
         match parts with
@@ -810,9 +833,10 @@ let rec marshalTyped
   // A user enum: match every variant and emit `Case` / `Case\n<escaped fields>`.
   // dvalToWire escapes each FIELD separately, so a multi-field variant (which the
   // bridge packs into a tuple payload) must be destructured, not encoded as a tuple.
-  | AST.TSum(name, _) ->
+  | AST.TSum(name, targs) ->
     match Map.tryFind name defs with
-    | Some(AST.SumTypeDef(_, _, variants)) ->
+    | Some(AST.SumTypeDef(_, tps, variants)) ->
+      let sub = defSubstB tps targs
       variants
       |> List.map (fun (variant : AST.Variant) ->
         match variant.Payload with
@@ -821,8 +845,9 @@ let rec marshalTyped
             { AST.Patterns = AST.NonEmptyList.singleton (AST.PConstructor(variant.Name, None))
               AST.Guard = None
               AST.Body = AST.StringLiteral variant.Name }
-        | Some(AST.TTuple elemTs) ->
+        | Some(AST.TTuple elemTs0) ->
           // multi-field variant: bind each slot, escape each, join
+          let elemTs = elemTs0 |> List.map (substTVarsB sub)
           let names = elemTs |> List.mapi (fun i _ -> $"__mv{d}_{i}")
           List.zip names elemTs
           |> List.map (fun (n, et) -> marshalTyped (d + 1) et (AST.Var n) |> Result.map esc)
@@ -839,7 +864,8 @@ let rec marshalTyped
                 )
               AST.Guard = None
               AST.Body = body })
-        | Some pt ->
+        | Some pt0 ->
+          let pt = substTVarsB sub pt0
           let n = $"__mv{d}"
           marshalTyped (d + 1) pt (AST.Var n)
           |> Result.map (fun body ->
@@ -852,31 +878,50 @@ let rec marshalTyped
     | _ -> Error $"marshal: no sum def {name}"
   | other -> Error $"marshal: {other}"
 
-/// Can marshalTyped encode this type? (Mirrors what the comparison can prove.)
-let rec isSerializableType (defs : Map<string, AST.TypeDef>) (t : AST.Type) : bool =
-  let isSerializableType = isSerializableType defs
+/// Can marshalTyped encode this type — and if NOT, WHY? Returning a reason rather
+/// than a bool matters: "unprovable: TRecord(T.a6fa…)" tells you nothing, and a vague
+/// bucket is exactly what hid the last two big blockers. Name the culprit instead.
+let rec serializableReason (defs : Map<string, AST.TypeDef>) (t : AST.Type) : Result<unit, string> =
+  let all xs = xs |> List.map (serializableReason defs) |> allOk |> Result.map (fun _ -> ())
   match t with
   | AST.TString | AST.TChar | AST.TBool | AST.TUnit | AST.TFloat64
   | AST.TInt8 | AST.TInt16 | AST.TInt32 | AST.TInt64
-  | AST.TUInt8 | AST.TUInt16 | AST.TUInt32 | AST.TUInt64 -> true
-  | AST.TList inner -> isSerializableType inner
-  | AST.TTuple ts -> List.forall isSerializableType ts
-  | AST.TSum("Stdlib.Option.Option", [ inner ]) -> isSerializableType inner
-  | AST.TSum("Stdlib.Result.Result", [ a; b ]) -> isSerializableType a && isSerializableType b
-  | AST.TRecord(name, _) ->
+  | AST.TUInt8 | AST.TUInt16 | AST.TUInt32 | AST.TUInt64 -> Ok()
+  | AST.TList inner -> serializableReason defs inner
+  | AST.TTuple ts -> all ts
+  | AST.TSum("Stdlib.Option.Option", [ inner ]) -> serializableReason defs inner
+  | AST.TSum("Stdlib.Result.Result", [ a; b ]) -> all [ a; b ]
+  | AST.TRecord(name, targs) ->
     match Map.tryFind name defs with
-    | Some(AST.RecordDef(_, _, fields)) -> fields |> List.forall (snd >> isSerializableType)
-    | _ -> false
-  | AST.TSum(name, _) ->
+    | Some(AST.RecordDef(_, tps, fields)) ->
+      let sub = defSubstB tps targs
+      fields
+      |> List.map (fun (fname, ft) ->
+        serializableReason defs (substTVarsB sub ft)
+        |> Result.mapError (fun e -> $"{name}.{fname}: {e}"))
+      |> allOk
+      |> Result.map (fun _ -> ())
+    | _ -> Error $"no def for record {name}"
+  | AST.TSum(name, targs) ->
     match Map.tryFind name defs with
-    | Some(AST.SumTypeDef(_, _, variants)) ->
+    | Some(AST.SumTypeDef(_, tps, variants)) ->
+      let sub = defSubstB tps targs
       variants
-      |> List.forall (fun (v : AST.Variant) ->
+      |> List.map (fun (v : AST.Variant) ->
         match v.Payload with
-        | None -> true
-        | Some p -> isSerializableType p)
-    | _ -> false
-  | _ -> false
+        | None -> Ok()
+        | Some p ->
+          serializableReason defs (substTVarsB sub p)
+          |> Result.mapError (fun e -> $"{name}.{v.Name}: {e}"))
+      |> allOk
+      |> Result.map (fun _ -> ())
+    | _ -> Error $"no def for sum {name}"
+  | other -> Error $"{other}"
+
+let isSerializableType (defs : Map<string, AST.TypeDef>) (t : AST.Type) : bool =
+  match serializableReason defs t with
+  | Ok() -> true
+  | Error _ -> false
 
 let rec unmarshalTyped (d : int) (t : AST.Type) (src : AST.Expr) : AST.Expr =
   let rv = "__rpc_" + string d

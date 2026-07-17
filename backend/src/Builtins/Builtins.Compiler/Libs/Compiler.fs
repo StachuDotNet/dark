@@ -1101,10 +1101,11 @@ let private equivOne
                 | AST.SumTypeDef(n, _, _) -> Some(n, td)
                 | AST.TypeAlias(n, _, _) -> Some(n, td))
               |> Map.ofList
-            if not (Bridge.isSerializableType defsByName retType) then
-              // Be explicit: this fn is NOT proven, rather than silently "ran".
-              return $"unprovable|return type not serializable: {retType}"
-            else
+            match Bridge.serializableReason defsByName retType with
+            // Be explicit: this fn is NOT proven, rather than silently "ran" — and say
+            // WHICH part of the type we can't encode, not just the whole type.
+            | Error why -> return $"unprovable|{why}"
+            | Ok() ->
               match Bridge.marshalTyped defsByName 0 retType entry with
               | Error e -> return "unprovable|" + e
               | Ok marshalled ->
