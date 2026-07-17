@@ -288,6 +288,12 @@ let rec private valueTypeToAst (fresh : unit -> string) (vt : ValueType) : Resul
     | KTFloat -> Ok AST.TFloat64
     | KTChar -> Ok AST.TChar
     | KTString -> Ok AST.TString
+    // Match the conventions bridgeType already set for the same types, so a package
+    // VALUE of these types bridges the same way a param/return of them does. Their
+    // absence here was the 2nd and 3rd biggest slices of the `unsupported-value` bucket
+    // (KTBlob 25, KTUuid 14) — nothing deep, just cases nobody had needed yet.
+    | KTBlob -> Ok AST.TBytes // bridgeType: PT.TBlob -> AST.TBytes
+    | KTUuid -> Ok AST.TString // bridgeType: PT.TUuid -> AST.TString (canonical string)
     | KTList inner -> valueTypeToAst inner |> Result.map AST.TList
     | KTDict v -> valueTypeToAst v |> Result.map (fun v' -> AST.TDict(AST.TString, v'))
     | KTTuple(a, b, rest) ->
@@ -319,6 +325,9 @@ let rec private dvalToAst (d : Dval) : Result<AST.Expr, string> =
         "Stdlib.Bytes.fromList",
         AST.NonEmptyList.singleton (
           AST.ListLiteral(eph.bytes |> Array.toList |> List.map (int64 >> AST.Int64Literal)))))
+  // A Uuid travels as its canonical string, exactly as bridgeType (PT.TUuid -> TString)
+  // and dvalToWire (DUuid g -> string g) already treat it. Keep the three in step.
+  | DUuid g -> Ok(AST.StringLiteral(string g))
   | DInt8 n -> Ok(AST.Int8Literal n)
   | DUInt8 n -> Ok(AST.UInt8Literal n)
   | DInt16 n -> Ok(AST.Int16Literal n)
@@ -388,9 +397,61 @@ let rec private dvalToAst (d : Dval) : Result<AST.Expr, string> =
 /// `def __val.<hash>(__unit: Unit) : T = <literal>`. A Unit param is how the
 /// compiler spells a nullary fn (normalizeNullaryCallArgs drops it at the call
 /// site), since FunctionDef.Params is a NonEmptyList.
+/// Resolve every PERSISTENT blob in a Dval into an Ephemeral one, fetching its bytes.
+///
+/// A package value lives in the DB, so its blobs are Persistent — a content hash into
+/// package_blobs — while dvalToAst can only lower Ephemeral (it's pure; resolving a hash
+/// is IO). That mismatch was the whole `value-dval: DBlob` bucket: the TYPE bridged fine
+/// (KTBlob -> TBytes) and then the VALUE couldn't. Materialize here, where we're already
+/// in Ply and can do the lookup, and dvalToAst stays pure.
+let rec private materializeBlobs (d : Dval) : Ply<Dval> =
+  uply {
+    match d with
+    | DBlob(Persistent(h, _)) ->
+      let! bytes = LibDB.RuntimeTypes.Blob.get h
+      match bytes with
+      | Some bs -> return LibExecution.Blob.newEphemeral bs
+      | None -> return d // missing row: leave it, dvalToAst reports it honestly
+    | DList(vt, xs) ->
+      let mutable acc = []
+      for x in xs do
+        let! x' = materializeBlobs x
+        acc <- acc @ [ x' ]
+      return DList(vt, acc)
+    | DTuple(a, b, rest) ->
+      let! a' = materializeBlobs a
+      let! b' = materializeBlobs b
+      let mutable acc = []
+      for r in rest do
+        let! r' = materializeBlobs r
+        acc <- acc @ [ r' ]
+      return DTuple(a', b', acc)
+    | DRecord(o, t, targs, fields) ->
+      let mutable acc = []
+      for (k, v) in Map.toList fields do
+        let! v' = materializeBlobs v
+        acc <- acc @ [ (k, v') ]
+      return DRecord(o, t, targs, Map.ofList acc)
+    | DEnum(o, t, targs, c, fields) ->
+      let mutable acc = []
+      for v in fields do
+        let! v' = materializeBlobs v
+        acc <- acc @ [ v' ]
+      return DEnum(o, t, targs, c, acc)
+    | other -> return other
+  }
+
 let private valueFnDef (hash : string) : Ply<Result<AST.FunctionDef, string>> =
   uply {
-    let! v = LibDB.PackageManager.rt.getValue (FQValueName.package hash)
+    let! v0 = LibDB.PackageManager.rt.getValue (FQValueName.package hash)
+    let! v =
+      match v0 with
+      | None -> Ply None
+      | Some pv ->
+        uply {
+          let! body = materializeBlobs pv.body
+          return Some { pv with body = body }
+        }
     match v with
     | None -> return Error "package value has no evaluated rt_dval"
     | Some pv ->
@@ -1411,7 +1472,12 @@ let private equivOne
                             argsNE)
                             .Result
                         with
-                        | Ok v -> Ok(dvalToWire v)
+                        // Materialize PERSISTENT blobs before wiring: dvalToWire is pure
+                        // and can only encode Ephemeral, so a result holding a package
+                        // blob emitted "?unmarshalable:DBlob" and reported a false DIFF
+                        // (c=\n\n403 vs i=?unmarshalable:DBlob\n\n403) — the compiled
+                        // side was right, the harness just couldn't say so.
+                        | Ok v -> Ok(dvalToWire (Ply.toTask (materializeBlobs v)).Result)
                         | Error(_, e) -> Error(string e)
                       with e -> Error("exn: " + e.Message)
                     // Run the interpreter a SECOND time: a fn that disagrees with
@@ -1431,7 +1497,7 @@ let private equivOne
                             argsNE)
                             .Result
                         with
-                        | Ok v -> Ok(dvalToWire v)
+                        | Ok v -> Ok(dvalToWire (Ply.toTask (materializeBlobs v)).Result)
                         | Error(_, e) -> Error(string e)
                       with e -> Error("exn: " + e.Message)
                     match interp, interp2 with
