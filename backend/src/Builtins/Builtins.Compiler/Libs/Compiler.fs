@@ -159,7 +159,17 @@ let rec private rtToMarshalable (t : TypeReference) : AST.Type option =
           | Some ab, Some bb -> Some(AST.TSum("Stdlib.Result.Result", [ ab; bb ]))
           | _ -> None
         | _ -> None
-      else None
+      else
+        // ANY other custom type: name it by hash and let marshalTyped/wireToDvalTyped
+        // dispatch on its DEFINITION (this map is built from the runtime and has no
+        // type env, so it can't tell record from sum — the def can). This is what
+        // lets a Json enum, a PosixError, etc. cross the seam.
+        args
+        |> List.map rtToMarshalable
+        |> fun bs ->
+             if List.forall Option.isSome bs then
+               Some(AST.TSum(Bridge.nameForType h, bs |> List.map Option.get))
+             else None
     | _ -> None
   | _ -> None
 
@@ -189,7 +199,11 @@ let private buildEffectfulMap
         // Uuid round-trips cleanly (Guid parse); DateTime args are omitted until
         // wire->DateTime ISO parsing is in (return-only for now).
         | TUuid -> Some Bridge.WAString
-        | _ -> None)
+        // Containers and custom types: marshalled with the same encoding the daemon
+        // decodes (wireToDvalTyped). Previously ANY non-scalar arg made a builtin
+        // unroutable, which is why altJsonFormat (arg: a Json enum) and ~300 others
+        // never compiled.
+        | other -> rtToMarshalable other |> Option.map Bridge.WATyped)
     let wireRet =
       match bfn.returnType with
       | TUnit -> Some Bridge.WRUnit
@@ -200,12 +214,19 @@ let private buildEffectfulMap
       | TUuid -> Some Bridge.WRString
       | TDateTime -> Some Bridge.WRString
       | other ->
-        // General container returns (Option/Result/List of marshalable types);
-        // the recursive unmarshaller decodes them. Custom-enum payloads (needing
-        // the type-def env) return None here and stay unrouted.
+        // General container returns (Option/Result/List of marshalable types); the
+        // recursive unmarshaller decodes them.
+        //
+        // GATED on isMarshalableType, which is what unmarshalTyped can actually
+        // DECODE — a narrower set than rtToMarshalable can now express. Since
+        // rtToMarshalable started naming custom types (so they can be marshalled as
+        // ARGS), an ungated return would hand unmarshalTyped a record/enum, hit its
+        // `| _ -> src` fallthrough, and silently yield the raw wire string AS the
+        // value. The arg direction and the return direction have different
+        // capabilities; don't let one imply the other.
         match rtToMarshalable other with
-        | Some bt -> Some(Bridge.WRTyped bt)
-        | None -> None
+        | Some bt when Bridge.isMarshalableType bt -> Some(Bridge.WRTyped bt)
+        | _ -> None
     match wireRet with
     | Some ret when not (List.exists Option.isNone argWires) ->
       Some(name.name, (argWires |> List.map Option.get, ret))
@@ -430,9 +451,23 @@ let private buildPieces
           | Error e -> valueErrs <- valueErrs @ [ (h, e) ]
         let valuesMap = valueOk
         let valueErrors = Map.ofList valueErrs
+        // The emitted type defs, so a record/enum ARG can be marshalled into the
+        // wire format (marshalTyped dispatches on the def).
+        let emittedDefs =
+          match typeDefs with
+          | Ok tds ->
+            tds
+            |> List.choose (fun td ->
+              match td with
+              | AST.RecordDef(n, _, _) -> Some(n, td)
+              | AST.SumTypeDef(n, _, _) -> Some(n, td)
+              | AST.TypeAlias(n, _, _) -> Some(n, td))
+            |> Map.ofList
+          | Error _ -> Map.empty
         let fnDefs =
           fns
-          |> List.map (fun (h, fn) -> Bridge.bridgeFn typeEnv valuesMap valueErrors effectful (Bridge.nameFor h) fn)
+          |> List.map (fun (h, fn) ->
+            Bridge.bridgeFn typeEnv emittedDefs valuesMap valueErrors effectful (Bridge.nameFor h) fn)
           |> allOk
         match typeDefs, fnDefs with
         | Error e, _ -> return Error e
@@ -673,6 +708,27 @@ let private getHandle (id : int64) : Dval option =
 let private escWire (s : string) : string =
   s.Replace("\\", "\\\\").Replace("\n", "\\n")
 
+/// Inverse of escWire. The daemon never needed this before: it only ever ESCAPED
+/// (encoding a return), because every arg was a scalar. Custom-type args arrive
+/// encoded, so they have to be decoded — left-to-right, so "\\\\n" is a literal
+/// backslash followed by n, not a newline.
+let private unescWire (s : string) : string =
+  let sb = System.Text.StringBuilder()
+  let mutable i = 0
+  while i < s.Length do
+    if s[i] = '\\' && i + 1 < s.Length then
+      let appended =
+        match s[i + 1] with
+        | 'n' -> sb.Append('\n')
+        | '\\' -> sb.Append('\\')
+        | c -> sb.Append(c)
+      appended |> ignore<System.Text.StringBuilder>
+      i <- i + 2
+    else
+      sb.Append(s[i]) |> ignore<System.Text.StringBuilder>
+      i <- i + 1
+  sb.ToString()
+
 /// Dval -> wire string. Scalars are literal; enums (Option/Result) recurse; a
 /// list becomes an opaque handle id (see handleTable) since the compiler can't
 /// build a native multi-element list on x64.
@@ -758,6 +814,103 @@ let private wireToDval (t : TypeReference) (s : string) : Dval =
     | _ -> DString s
   | _ -> DString s
 
+/// wire string -> Dval for ANY marshalable type, including records and enums — the
+/// daemon-side mirror of Bridge.marshalTyped, and the inverse of dvalToWire.
+///
+/// This is what lets compiled code pass a CUSTOM TYPE into a builtin. Until now the
+/// seam only carried scalars in the arg direction, which is why `altJsonFormat`
+/// (whose arg is a Json enum), cliExecute, fileRead and ~300 others couldn't route at
+/// all. Async because it fetches type definitions.
+///
+/// The encoding must match dvalToWire exactly: fields/elements escaped and joined by
+/// "\n", records in NAME order, enums as `Case` or `Case\n<escaped fields>`.
+let rec private wireToDvalTyped (t : TypeReference) (s : string) : Ply<Dval> =
+  uply {
+    let split (str : string) = if str = "" then [] else str.Split('\n') |> Array.toList
+    match t with
+    | TList inner ->
+      let mutable acc = []
+      for part in split s do
+        let! v = wireToDvalTyped inner (unescWire part)
+        acc <- acc @ [ v ]
+      let vt = acc |> List.tryHead |> Option.map Dval.toValueType |> Option.defaultValue ValueType.Unknown
+      return DList(vt, acc)
+    | TTuple(a, b, rest) ->
+      let parts = split s
+      let ts = a :: b :: rest
+      let mutable acc = []
+      for (ty, part) in List.zip (ts |> List.truncate (List.length parts)) (parts |> List.truncate (List.length ts)) do
+        let! v = wireToDvalTyped ty (unescWire part)
+        acc <- acc @ [ v ]
+      match acc with
+      | x :: y :: r -> return DTuple(x, y, r)
+      | _ -> return DString s
+    | TCustomType(nr, targs) ->
+      match nr.resolved with
+      | Error _ -> return DString s
+      | Ok(FQTypeName.Package(Hash h)) ->
+        // Option/Result are the compiler's native sums; they encode by case name.
+        if h = Bridge.optionTypeHash then
+          match targs with
+          | [ inner ] ->
+            if s = "None" then
+              return DEnum(FQTypeName.Package(Hash h), FQTypeName.Package(Hash h), [], "None", [])
+            else
+              let payload = if s.StartsWith "Some\n" then s.Substring 5 else ""
+              let! v = wireToDvalTyped inner (unescWire payload)
+              return DEnum(FQTypeName.Package(Hash h), FQTypeName.Package(Hash h), [], "Some", [ v ])
+          | _ -> return DString s
+        elif h = Bridge.resultTypeHash then
+          match targs with
+          | [ okT; errT ] ->
+            let isOk = s.StartsWith "Ok\n"
+            let payload = if isOk then s.Substring 3 else (if s.StartsWith "Error\n" then s.Substring 6 else "")
+            let! v = wireToDvalTyped (if isOk then okT else errT) (unescWire payload)
+            return
+              DEnum(
+                FQTypeName.Package(Hash h),
+                FQTypeName.Package(Hash h),
+                [],
+                (if isOk then "Ok" else "Error"),
+                [ v ]
+              )
+          | _ -> return DString s
+        else
+          let! tOpt = LibDB.PackageManager.rt.getType (FQTypeName.package h)
+          match tOpt with
+          | None -> return DString s
+          | Some pt ->
+            let name = FQTypeName.Package(Hash h)
+            match pt.declaration.definition with
+            | TypeDeclaration.Alias inner -> return! wireToDvalTyped inner s
+            | TypeDeclaration.Record fields ->
+              // NAME order — dvalToWire emits a DvalMap, which iterates sorted.
+              let fs = NEList.toList fields |> List.sortBy (fun f -> f.name)
+              let parts = split s
+              let mutable acc = []
+              for (f, part) in List.zip (fs |> List.truncate (List.length parts)) (parts |> List.truncate (List.length fs)) do
+                let! v = wireToDvalTyped f.typ (unescWire part)
+                acc <- acc @ [ (f.name, v) ]
+              return DRecord(name, name, [], Map.ofList acc)
+            | TypeDeclaration.Enum cases ->
+              let lines = split s
+              match lines with
+              | [] -> return DString s
+              | caseName :: fieldParts ->
+                match NEList.toList cases |> List.tryFind (fun c -> c.name = caseName) with
+                | None -> return DString s
+                | Some c ->
+                  let mutable acc = []
+                  for (ft, part) in
+                    List.zip
+                      (c.fields |> List.truncate (List.length fieldParts))
+                      (fieldParts |> List.truncate (List.length c.fields)) do
+                    let! v = wireToDvalTyped ft (unescWire part)
+                    acc <- acc @ [ v ]
+                  return DEnum(name, name, [], caseName, acc)
+    | scalar -> return wireToDval scalar s
+  }
+
 /// Dispatch one request ("name\narg1\narg2…") to the real builtin, return the
 /// wire response.
 let private dispatchBuiltin
@@ -825,11 +978,15 @@ let private dispatchBuiltin
     | None -> return $"ERR:no-builtin:{name}"
     | Some bfn ->
       let n = min bfn.parameters.Length wireArgs.Length
-      let dvalArgs =
-        List.map2
-          (fun (p : BuiltInParam) (a : string) -> wireToDval p.typ a)
-          (List.truncate n bfn.parameters)
-          (List.truncate n wireArgs)
+      // wireToDvalTyped, not wireToDval: an arg can now be a container or a custom
+      // type (see WATyped), which needs the recursive decoder + type defs. The old
+      // scalar-only path silently produced `DString s` for anything else — that is
+      // exactly how every TInt arg became a string and intRandom returned garbage.
+      let mutable dvalArgs = []
+      for (p : BuiltInParam, a : string) in
+        List.zip (List.truncate n bfn.parameters) (List.truncate n wireArgs) do
+        let! v = wireToDvalTyped p.typ a
+        dvalArgs <- dvalArgs @ [ v ]
       // A builtin that raises (e.g. a capability check, a bad arg) must still
       // produce a response, or the compiled program polls the response file
       // forever. Return an error marker instead of letting it propagate.
@@ -1557,7 +1714,7 @@ let fns () : List<BuiltInFn> =
                   [ { name = "b"; typ = PT.TInt64; description = "" } ]
               returnType = PT.TInt64
               description = "" }
-          match Bridge.bridgeFn Map.empty Set.empty Map.empty Map.empty "bridgedFn" ptFn with
+          match Bridge.bridgeFn Map.empty Map.empty Set.empty Map.empty Map.empty "bridgedFn" ptFn with
           | Error e -> outcome false $"bridge: {e}" |> Ply
           | Ok fd ->
             let program : AST.Program =

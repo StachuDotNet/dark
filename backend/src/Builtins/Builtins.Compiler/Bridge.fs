@@ -39,6 +39,11 @@ type WireArg =
   | WABool
   | WAFloat
   | WAUnit // a Unit param carries no data; sent as the literal "unit"
+  /// A container/custom-type arg, marshalled with marshalTyped into the same wire
+  /// format the daemon decodes with wireToDvalTyped. Until this existed the seam
+  /// carried only scalars in the ARG direction, which is why altJsonFormat (arg: a
+  /// Json enum), cliExecute, fileRead and ~300 others couldn't route at all.
+  | WATyped of AST.Type
 
 /// How a builtin's wire response is unmarshaled back into a native value.
 type WireRet =
@@ -65,7 +70,10 @@ type BridgeCtx =
     ValueErrors : Map<string, string>
     /// Effectful builtins routable through the host RPC seam: name -> (per-arg
     /// wire types, return wire type). Built from the live runtime.
-    Effectful : Map<string, WireArg list * WireRet> }
+    Effectful : Map<string, WireArg list * WireRet>
+    /// Emitted type definitions, needed to marshal a record/enum ARG into the wire
+    /// format (marshalTyped dispatches on the def).
+    TypeDefs : Map<string, AST.TypeDef> }
 
 let private err (category : string) (detail : string) : Result<'a, string> =
   Error $"unsupported-{category}: {detail}"
@@ -738,13 +746,22 @@ let defSubstB (tps : string list) (args : AST.Type list) : Map<string, AST.Type>
 ///
 /// Must stay byte-identical to dvalToWire: elements/fields escaped and joined by
 /// "\n", enums as `Case` or `Case\n<escaped payload>`, Unit as "unit".
-let rec marshalTyped
+let rec marshalTypedSeen
+  (seen : Set<string>)
   (defs : Map<string, AST.TypeDef>)
   (d : int)
   (t : AST.Type)
   (v : AST.Expr)
   : Result<AST.Expr, string> =
-  let marshalTyped = marshalTyped defs
+  // RECURSION GUARD. marshalTyped INLINES the serializer, so a recursive type
+  // (Stdlib.AltJson.Json = ... | Array of List<Json>) generates AST forever and blows
+  // the stack — it core-dumped the CLI. A recursive type genuinely cannot be encoded
+  // by a finite inlined expression; it needs a recursive serializer FUNCTION emitted
+  // per type. Until that exists, refuse cleanly.
+  let recursionGuard (name : string) =
+    if Set.contains name seen then Some(Error $"recursive type {name} (needs a recursive serializer fn)")
+    else None
+  let marshalTyped d t v = marshalTypedSeen seen defs d t v
   let call n args = AST.Call(n, AST.NonEmptyList.fromList args)
   let esc e = call "Stdlib.hostRpcEscape" [ e ]
   let join xs sep = call "Stdlib.String.join" [ xs; AST.StringLiteral sep ]
@@ -812,17 +829,25 @@ let rec marshalTyped
       )
     | Error e, _ -> Error e
     | _, Error e -> Error e
-  // A record: emit its fields in NAME order, escaped, joined by "\n" — exactly what
-  // dvalToWire does (its DvalMap iterates sorted). 104 of the unprovable fns returned
-  // a record.
-  | AST.TRecord(name, targs) ->
+  // Records and user enums dispatch on the DEFINITION, not on whether the type says
+  // TRecord or TSum. Callers that know a type only by hash (rtToMarshalable, which is
+  // built from the runtime and has no type env) can't tell record from sum — but the
+  // def can, so accept either tag and let the def decide.
+  | AST.TRecord(name, targs) | AST.TSum(name, targs) when
+    (match Map.tryFind name defs with
+     | Some(AST.RecordDef _) -> true
+     | _ -> false) ->
+    match recursionGuard name with
+    | Some e -> e
+    | None ->
     match Map.tryFind name defs with
     | Some(AST.RecordDef(_, tps, fields)) ->
       let sub = defSubstB tps targs
+      let inner d t v = marshalTypedSeen (Set.add name seen) defs d t v
       fields
       |> List.sortBy fst
       |> List.map (fun (fname, ft) ->
-        marshalTyped (d + 1) (substTVarsB sub ft) (AST.RecordAccess(v, fname)) |> Result.map esc)
+        inner (d + 1) (substTVarsB sub ft) (AST.RecordAccess(v, fname)) |> Result.map esc)
       |> allOk
       |> Result.map (fun parts ->
         match parts with
@@ -833,10 +858,14 @@ let rec marshalTyped
   // A user enum: match every variant and emit `Case` / `Case\n<escaped fields>`.
   // dvalToWire escapes each FIELD separately, so a multi-field variant (which the
   // bridge packs into a tuple payload) must be destructured, not encoded as a tuple.
-  | AST.TSum(name, targs) ->
+  | AST.TSum(name, targs) | AST.TRecord(name, targs) ->
+    match recursionGuard name with
+    | Some e -> e
+    | None ->
     match Map.tryFind name defs with
     | Some(AST.SumTypeDef(_, tps, variants)) ->
       let sub = defSubstB tps targs
+      let marshalTyped d t v = marshalTypedSeen (Set.add name seen) defs d t v
       variants
       |> List.map (fun (variant : AST.Variant) ->
         match variant.Payload with
@@ -878,10 +907,18 @@ let rec marshalTyped
     | _ -> Error $"marshal: no sum def {name}"
   | other -> Error $"marshal: {other}"
 
+let marshalTyped (defs : Map<string, AST.TypeDef>) (d : int) (t : AST.Type) (v : AST.Expr) =
+  marshalTypedSeen Set.empty defs d t v
+
 /// Can marshalTyped encode this type — and if NOT, WHY? Returning a reason rather
 /// than a bool matters: "unprovable: TRecord(T.a6fa…)" tells you nothing, and a vague
 /// bucket is exactly what hid the last two big blockers. Name the culprit instead.
-let rec serializableReason (defs : Map<string, AST.TypeDef>) (t : AST.Type) : Result<unit, string> =
+let rec serializableReasonSeen
+  (seen : Set<string>)
+  (defs : Map<string, AST.TypeDef>)
+  (t : AST.Type)
+  : Result<unit, string> =
+  let serializableReason defs t = serializableReasonSeen seen defs t
   let all xs = xs |> List.map (serializableReason defs) |> allOk |> Result.map (fun _ -> ())
   match t with
   | AST.TString | AST.TChar | AST.TBool | AST.TUnit | AST.TFloat64
@@ -891,18 +928,23 @@ let rec serializableReason (defs : Map<string, AST.TypeDef>) (t : AST.Type) : Re
   | AST.TTuple ts -> all ts
   | AST.TSum("Stdlib.Option.Option", [ inner ]) -> serializableReason defs inner
   | AST.TSum("Stdlib.Result.Result", [ a; b ]) -> all [ a; b ]
-  | AST.TRecord(name, targs) ->
+  | AST.TRecord(name, targs) | AST.TSum(name, targs) when
+    (match Map.tryFind name defs with
+     | Some(AST.RecordDef _) -> true
+     | _ -> false) ->
+    if Set.contains name seen then Error $"recursive type {name}" else
     match Map.tryFind name defs with
     | Some(AST.RecordDef(_, tps, fields)) ->
       let sub = defSubstB tps targs
       fields
       |> List.map (fun (fname, ft) ->
-        serializableReason defs (substTVarsB sub ft)
+        serializableReasonSeen (Set.add name seen) defs (substTVarsB sub ft)
         |> Result.mapError (fun e -> $"{name}.{fname}: {e}"))
       |> allOk
       |> Result.map (fun _ -> ())
     | _ -> Error $"no def for record {name}"
-  | AST.TSum(name, targs) ->
+  | AST.TSum(name, targs) | AST.TRecord(name, targs) ->
+    if Set.contains name seen then Error $"recursive type {name}" else
     match Map.tryFind name defs with
     | Some(AST.SumTypeDef(_, tps, variants)) ->
       let sub = defSubstB tps targs
@@ -911,12 +953,15 @@ let rec serializableReason (defs : Map<string, AST.TypeDef>) (t : AST.Type) : Re
         match v.Payload with
         | None -> Ok()
         | Some p ->
-          serializableReason defs (substTVarsB sub p)
+          serializableReasonSeen (Set.add name seen) defs (substTVarsB sub p)
           |> Result.mapError (fun e -> $"{name}.{v.Name}: {e}"))
       |> allOk
       |> Result.map (fun _ -> ())
     | _ -> Error $"no def for sum {name}"
   | other -> Error $"{other}"
+
+let serializableReason (defs : Map<string, AST.TypeDef>) (t : AST.Type) : Result<unit, string> =
+  serializableReasonSeen Set.empty defs t
 
 let isSerializableType (defs : Map<string, AST.TypeDef>) (t : AST.Type) : bool =
   match serializableReason defs t with
@@ -1091,17 +1136,27 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
                 err "builtin" $"{b.name}: arg count mismatch"
               else
                 // stringify each arg per its wire type
-                let marshaled =
+                let marshaledR =
                   List.map2
                     (fun w a ->
                       match w with
-                      | WAString -> a
-                      | WAInt -> AST.Call("Stdlib.Int64.toString", AST.NonEmptyList.singleton a)
-                      | WABool -> AST.Call("Stdlib.Bool.toString", AST.NonEmptyList.singleton a)
-                      | WAFloat -> AST.Call("Stdlib.Float.toString", AST.NonEmptyList.singleton a)
-                      | WAUnit -> AST.Let("__rpc_unit", a, AST.StringLiteral "unit"))
+                      | WAString -> Ok a
+                      | WAInt -> Ok(AST.Call("Stdlib.Int64.toString", AST.NonEmptyList.singleton a))
+                      | WABool -> Ok(AST.Call("Stdlib.Bool.toString", AST.NonEmptyList.singleton a))
+                      | WAFloat -> Ok(AST.Call("Stdlib.Float.toString", AST.NonEmptyList.singleton a))
+                      | WAUnit -> Ok(AST.Let("__rpc_unit", a, AST.StringLiteral "unit"))
+                      // A container/custom type: encode it exactly as the daemon's
+                      // wireToDvalTyped decodes. If it CAN'T be encoded (a recursive
+                      // type like Json needs a recursive serializer fn, which doesn't
+                      // exist yet), hard-fail the call. Falling back to the raw value
+                      // silently emits wrong code — it sent a Json where the seam
+                      // expects a String.
+                      | WATyped t -> marshalTyped ctx.TypeDefs 0 t a)
                     argWires
                     bas
+                match allOk marshaledR with
+                | Error e -> err "builtin" $"{b.name}: arg {e}"
+                | Ok marshaled ->
                 let request =
                   (AST.StringLiteral b.name, marshaled)
                   ||> List.fold (fun acc arg ->
@@ -1402,6 +1457,7 @@ let rec freeTVars (t : AST.Type) : Set<string> =
 /// any by-name refs both resolve). Generics are not yet supported.
 let bridgeFn
   (types : Map<string, TypeEntry>)
+  (typeDefs : Map<string, AST.TypeDef>)
   (values : Set<string>)
   (valueErrors : Map<string, string>)
   (effectful : Map<string, WireArg list * WireRet>)
@@ -1415,7 +1471,8 @@ let bridgeFn
       Self = compiledName
       Values = values
       ValueErrors = valueErrors
-      Effectful = effectful }
+      Effectful = effectful
+      TypeDefs = typeDefs }
   let bridgedParams =
     paramList
     |> List.map (fun p -> bridgeType types p.typ |> Result.map (fun t -> (p.name, t)))
