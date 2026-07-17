@@ -1,6 +1,8 @@
 /// Store-metadata builtins: this instance's own package-store path + the Release coordinate it speaks.
-/// Internal machinery under `Darklang.Sync.*` (NOT stdlib).
-module Builtins.Matter.Libs.Sync.Store
+/// These are facts about the local package STORE, used across the CLI (`dark version`, `dark ops`, config)
+/// and by sync — not sync's own machinery, so they live with the package manager, not under Sync/. (The
+/// wrappers stay in the `Darklang.Sync.*` namespace on the Dark side; only the F# home moves.)
+module Builtins.Matter.Libs.PM.Store
 
 open FSharp.Control.Tasks
 

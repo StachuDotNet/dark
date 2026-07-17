@@ -17,7 +17,6 @@ let builtins (pm : PT.PackageManager) : Builtins =
       Libs.Sqlite.builtins ()
 
       // Sync (the op-log wire, the blob channel, the conflict review log)
-      Libs.Sync.Store.builtins ()
       Libs.Sync.OpLog.builtins ()
       Libs.Sync.Blobs.builtins ()
       Libs.Conflicts.builtins ()
@@ -32,6 +31,7 @@ let builtins (pm : PT.PackageManager) : Builtins =
       Libs.PM.Dependencies.builtins ()
       Libs.PM.Seed.builtins
       Libs.PM.Caps.builtins
+      Libs.PM.Store.builtins ()
 
       // Traces (reader surface)
       Libs.Traces.builtins ()
