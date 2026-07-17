@@ -996,10 +996,20 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
     | Error _ -> err "fnref" "unresolved fn name"
     | Ok resolved ->
       match resolved.name with
-      | PT.FQFnName.Package(PT.Hash h) -> Ok(AST.Closure(nameFor h, []))
+      // FuncRef, not a captureless Closure: the typechecker treats a Closure's FIRST
+      // param as the captured environment and drops it (`TFunction(restParams, ret)`),
+      // which is wrong for a plain top-level fn — it produced "Type mismatch in
+      // closure fn.<hash>". FuncRef types as the fn's full signature.
+      // A stdlib fn we route natively has no bridged def to point at, so its function
+      // VALUE must name the native fn too (referencedPackageFns skips routed fns, so
+      // a ref to fn.<hash> here would dangle).
+      | PT.FQFnName.Package(PT.Hash h) ->
+        match routeResolved resolved with
+        | Some nativeName -> Ok(AST.FuncRef nativeName)
+        | None -> Ok(AST.FuncRef(nameFor h))
       | PT.FQFnName.Builtin b ->
         match Map.tryFind b.name builtinToStdlib with
-        | Some stdlibFn -> Ok(AST.Closure(stdlibFn, []))
+        | Some stdlibFn -> Ok(AST.FuncRef stdlibFn)
         | None -> err "fnref" $"effectful builtin as value: {b.name}"
   | _ -> err "expr" (e.GetType().Name)
 
@@ -1221,6 +1231,20 @@ let rec referencedPackageFns (e : PT.Expr) : List<string> =
         | PT.FQFnName.Builtin _ -> []
       | Error _ -> []
     here @ (args |> NEList.toList |> List.collect r)
+  // A fn used as a VALUE (passed to a higher-order fn, not called here) still needs
+  // its definition compiled in: the bridge lowers it to a captureless Closure over
+  // the bridged name. Only the CALL-position case above existed, so a bare fn-ref fell
+  // through to `| _ -> []`, its def was never fetched, and the Closure dangled —
+  // "Undefined variable: fn.<hash>" (45 fns). Unlike package VALUES, fns are emitted
+  // once as FunctionDefs and shared by name, so pulling these in costs nothing.
+  | PT.EFnName(_, nr) ->
+    match nr.resolved with
+    | Ok resolved when Option.isSome (routeResolved resolved) -> []
+    | Ok resolved ->
+      match resolved.name with
+      | PT.FQFnName.Package(PT.Hash h) -> [ h ]
+      | PT.FQFnName.Builtin _ -> []
+    | Error _ -> []
   | PT.EString(_, segs) ->
     segs |> List.collect (fun s -> match s with PT.StringInterpolation e -> r e | PT.StringText _ -> [])
   | PT.ERecordUpdate(_, record, ups) ->

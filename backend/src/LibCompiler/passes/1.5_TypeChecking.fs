@@ -4091,7 +4091,12 @@ let rec checkExprWithParamNames
         match Map.tryFind funcName env with
         | Some funcType ->
             match expectedType with
-            | Some expected when expected <> funcType ->
+            // typesCompatibleWithAliases, not (<>): passing a fn as a value to a
+            // higher-order fn gives an expected type full of type variables (e.g.
+            // `(a) -> b`), which is never structurally EQUAL to the concrete fn's
+            // signature. Unify instead — matchTypes still rejects real mismatches.
+            // Same trap as the Apply/arg check.
+            | Some expected when not (typesCompatibleWithAliases aliasReg expected funcType) ->
                 Error (TypeMismatch (expected, funcType, $"function reference {funcName}"))
             | _ -> Ok (funcType, expr)
         | None ->
