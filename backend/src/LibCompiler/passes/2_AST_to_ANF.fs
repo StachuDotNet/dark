@@ -1998,7 +1998,17 @@ let rec simpleInferType
             let types = caseTypes |> List.choose id
             match types with
             | first :: rest when rest |> List.forall (fun t -> t = first) -> Some first
-            | _ -> None
+            | _ ->
+                // Same rationale as the If case above: this pass runs AFTER
+                // typechecking, so every arm already has the same type. Arms that are
+                // still unresolved type variables (a lambda param's placeholder tvar)
+                // carry no information; if the CONCRETE arms agree, that's the type.
+                // Without this, `fun op -> match op with ...` — a lambda whose body is
+                // a match, which is everywhere — fails to lift.
+                match types |> List.filter (containsTypeVar >> not) with
+                | concrete :: restConcrete when restConcrete |> List.forall (fun t -> t = concrete) ->
+                    Some concrete
+                | _ -> None
         else
             None
     | AST.Lambda (parameters, body) ->
