@@ -60,7 +60,8 @@ let eventsHandler : Stdlib.HttpServer.Handler =
 
 // The HTTP blob channel — a value's large `package_blobs` content rides its own transfer, not the op stream.
 // Wholesale, like the op wire: every content hash this instance holds is offered (content-addressed + shared
-// across branches). // CLEANUP(per-branch-sync): scope this alongside the ops when per-branch controls return.
+// across branches). // CLEANUP(per-branch-sync): scope this alongside the ops when per-branch controls return
+// (the factors are mapped in the Sync/Blobs.fs header).
 
 // GET /sync/blobs — the manifest: every content hash this instance holds, newline-joined.
 let blobsFn (req: Stdlib.Http.Request) : Stdlib.Http.Response =

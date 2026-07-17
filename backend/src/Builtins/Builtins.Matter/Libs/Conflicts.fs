@@ -19,12 +19,11 @@ let private conflictType () =
   FQTypeName.fqPackage (PackageRefs.Type.Sync.Conflicts.conflict ())
 
 
-let private toRecord (c : LibDB.Conflicts.Conflict) : Dval =
-  let t = conflictType ()
-  DRecord(
-    t,
-    t,
-    [],
+/// A `LibDB.Conflicts.Conflict` as its `Darklang.Sync.Conflicts.Conflict` Dval — the shape `dark conflicts`
+/// reads. All fields are strings (the row is flat text), so there's no option/int marshalling to do.
+let private toDval (c : LibDB.Conflicts.Conflict) : Dval =
+  let typeName = conflictType ()
+  let fields =
     Map
       [ "id", DString c.id
         "location", DString c.location
@@ -34,7 +33,7 @@ let private toRecord (c : LibDB.Conflicts.Conflict) : Dval =
         "chosenHash", DString c.chosenHash
         "resolvedBy", DString c.resolvedBy
         "status", DString c.status ]
-  )
+  DRecord(typeName, typeName, [], fields)
 
 
 let fns () : List<BuiltInFn> =
@@ -51,7 +50,7 @@ let fns () : List<BuiltInFn> =
           uply {
             let! conflicts = LibDB.Conflicts.list ()
             let kt = KTCustomType(conflictType (), [])
-            return conflicts |> List.map toRecord |> Dval.list kt
+            return conflicts |> List.map toDval |> Dval.list kt
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

@@ -1,5 +1,21 @@
 /// The content-addressed blob channel: `package_blobs` (a value's large content) don't ride the op stream,
 /// so after applying a peer's ops the puller fetches the blobs it lacks. Internal machinery under `Darklang.Sync.*`.
+///
+/// PER-BRANCH SYNC — the factors, for whoever scopes this later (B5). Today everything is wholesale: the op
+/// wire sends every branch's ops and the manifest offers every hash. Scoping content to a subset of branches
+/// is not one filter; these all move together:
+///   1. The blob manifest is the hard one, and the reason wholesale is the honest default. A blob is
+///      CONTENT-ADDRESSED, so "which branch does this hash belong to" is NOT a property of the blob — the same
+///      bytes are the same hash on every branch that references them. To scope blobs you have to compute the
+///      set transitively: the ops on the wanted branches -> the value hashes they bind -> the blobs those
+///      values reference. Offer the whole manifest and a "private" branch's large values leak by hash (this is
+///      exactly why #5684's `private` control was pulled).
+///   2. The op wire (`wireSince`) filters `package_ops`/`resolutions` by branch_id — a request parameter for
+///      "which branches", and the server trusting or checking it.
+///   3. Branch structure (`branch_ops`) still syncs WHOLESALE even when content is scoped: a puller that takes
+///      branch X's ops must be able to resolve the branch_ids those ops reference, or the FK aborts the fold.
+///   4. Cursors become per-(peer, branch, log) instead of per-(peer, log), or paging changes shape.
+/// The `CLEANUP(per-branch-sync)` markers in sync.dark + server.dark point back here.
 module Builtins.Matter.Libs.Sync.Blobs
 
 open FSharp.Control.Tasks
