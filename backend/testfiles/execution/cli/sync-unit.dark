@@ -86,6 +86,23 @@ module ReachedPhrasePartial =
 module ReachedPhrasePartialOfThree =
   (Darklang.Cli.Sync.reachedPhrase 2 3) = "2 of 3 instances"
 
+// ── `dark run <package fn>` points at eval instead of just saying no (C7) ──────────────────────────────
+// `run` takes a script FILE, so a package location lands on "Script not found" — true, and useless: the fn
+// exists, you named it to the wrong command. This is the guess that decides whether to say so.
+
+module LooksLikePackageNameDotted =
+  (Darklang.Cli.Run.looksLikePackageName "Demo.Sync.double") = true
+
+// a real script is a path and/or ends .dark — not a package name
+module LooksLikePackageNameScript =
+  (Darklang.Cli.Run.looksLikePackageName "script.dark") = false
+
+module LooksLikePackageNameRelativeScript =
+  (Darklang.Cli.Run.looksLikePackageName "./scripts/thing.dark") = false
+
+module LooksLikePackageNameBareWord =
+  (Darklang.Cli.Run.looksLikePackageName "thing") = false
+
 // ── daemon config validation (S8): a bad value is REJECTED (None), not stored as junk that reverts ─────────
 module ConfigRejectsBadPort =
   (Darklang.Cli.Sync.daemonConfigValue "port" "abc") = Stdlib.Option.Option.None
