@@ -25,10 +25,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
     | _ -> "?"
 
   if exeRel == storeRel then
-    Stdlib.printLine $"Release {exeRel} · your data is up to date"
+    Stdlib.printLine $"Release {exeRel} — your data is up to date"
   else
     Stdlib.printLine
-      $"Dark Release {exeRel} · your data is Release {storeRel} (run `dark update`)"
+      $"Dark Release {exeRel} — your data is Release {storeRel} (run `dark update`)"
 
   state
 

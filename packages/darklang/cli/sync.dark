@@ -113,7 +113,7 @@ let onBoot () : Bool =
 let settingsLine () : String =
   let boot = if onBoot () then "on boot" else "not on boot"
 
-  $"mode: {daemonMode ()} · every {Stdlib.Int.toString (intervalSec ())}s · port {Stdlib.Int.toString (servePort ())} · {boot}"
+  $"mode: {daemonMode ()}, every {Stdlib.Int.toString (intervalSec ())}s, port {Stdlib.Int.toString (servePort ())}, {boot}"
 
 let setConfig (key: String) (value: String) : Unit =
   let updated =
@@ -129,13 +129,13 @@ let firstRunDialog () : Unit =
 
   Stdlib.printLine (
     Colors.hint
-      $"  · pull from peers + serve to them, every {Stdlib.Int.toString (intervalSec ())}s")
+      $"  - pull from peers + serve to them, every {Stdlib.Int.toString (intervalSec ())}s")
 
   Stdlib.printLine (
     Colors.hint
-      $"  · serve on port {Stdlib.Int.toString (servePort ())} — all branches, open to anyone who can reach you")
+      $"  - serve on port {Stdlib.Int.toString (servePort ())} — all branches, open to anyone who can reach you")
 
-  Stdlib.printLine (Colors.hint "  · start automatically on boot")
+  Stdlib.printLine (Colors.hint "  - start automatically on boot")
 
   let _ =
     if Stdlib.Cli.UI.Prompt.confirm "Adjust these settings?" then
@@ -207,7 +207,7 @@ let daemonStop (state: AppState) : AppState =
 
   Stdlib.printLine (
     Colors.hint
-      "Automatic sync off. One-off: dark sync (pull) · dark sync serve (be reachable).")
+      "Automatic sync off. One-off: dark sync (pull), or dark sync serve (be reachable).")
 
   state
 
@@ -215,7 +215,7 @@ let daemonStatusCmd (state: AppState) : AppState =
   Stdlib.printLine "Automatic sync:"
   Stdlib.printLine $"  pull    {Stdlib.Cli.Daemon.statusLine "sync"}"
   Stdlib.printLine $"  serve   {Stdlib.Cli.Daemon.statusLine "sync-server"}"
-  Stdlib.printLine (Colors.hint $"  {settingsLine ()} · settings: dark sync daemon config")
+  Stdlib.printLine (Colors.hint $"  {settingsLine ()}    (change: dark sync daemon config)")
   state
 
 let daemonConfigShow (state: AppState) : AppState =
@@ -318,7 +318,7 @@ let help (state: AppState) : AppState =
     "Automatic (background, and across reboots):"
     "  dark sync daemon start       pull from + serve to your peers on an interval"
     "  dark sync daemon status      whether it's running, and with what settings"
-    "  dark sync daemon config      view/adjust interval · port · mode · on-boot"
+    "  dark sync daemon config      view/adjust interval, port, mode, on-boot"
     "  dark sync daemon stop        turn automatic sync off"
     ""
     "When two instances edit the same name, sync auto-resolves (latest wins) but records it:"
@@ -452,7 +452,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
         Stdlib.printLine (
           Colors.success $"Now syncing with {peer} — reachable ({Stdlib.Int64.toString n} ops)")
         Stdlib.printLine (
-          Colors.hint "  dark sync   sync now  ·  dark sync daemon start   keep current on boot")
+          Colors.hint "  dark sync — sync now.  dark sync daemon start — keep current on boot.")
       | Error _ ->
         Stdlib.printLine (Colors.success $"Added {peer}")
         Stdlib.printLine (
