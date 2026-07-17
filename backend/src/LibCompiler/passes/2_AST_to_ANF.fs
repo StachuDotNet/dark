@@ -5819,7 +5819,20 @@ let rec toANF (expr: AST.Expr) (varGen: ANF.VarGen) (env: VarEnv) (typeReg: Type
                         let cmpExpr = ANF.Prim (ANF.Eq, scrutAtom, ANF.FloatLiteral f)
                         Ok (Some (ANF.Var cmpVar, [(cmpVar, cmpExpr)], vg1))
                 | AST.PConstructor (variantName, payloadPattern) ->
-                    match Map.tryFind variantName variantLookup with
+                    // Resolve the variant SCOPED by the scrutinee's type. A bare
+                    // `Map.tryFind variantName variantLookup` picks whichever type won the
+                    // collision when two enums share a variant name — and it returns that
+                    // type's TAG INDEX, so the emitted `tag == N` check compares against the
+                    // wrong constant and the match takes the wrong arm. Confirmed miscompile
+                    // (task #28): SemanticTokensOptionsRange.toJson given `Bool true` took the
+                    // EmptyObject arm because "Bool" resolved to Json.Bool's tag. The earlier
+                    // scoped-key fix (02ba43ab9) covered other readers but not this
+                    // tag-comparison site.
+                    let scrutTypeName =
+                        match scrutType with
+                        | AST.TSum(n, _) | AST.TRecord(n, _) -> Some n
+                        | _ -> None
+                    match TypeChecking.tryFindVariant variantLookup scrutTypeName variantName with
                     | Some (_, _, tag, variantPayloadType) ->
                         let arityMismatch =
                             match payloadPattern, variantPayloadType with
@@ -8147,8 +8160,16 @@ and toAtom (expr: AST.Expr) (varGen: ANF.VarGen) (env: VarEnv) (typeReg: TypeReg
             | _ ->
                 Error $"Cannot access field '{fieldName}' on non-record type")
 
-    | AST.Constructor (_, variantName, payload) ->
-        match Map.tryFind variantName variantLookup with
+    | AST.Constructor (astTypeName, variantName, payload) ->
+        // Resolve SCOPED by the constructor's own type name. This discarded the AST type
+        // name (`_`) and did a bare `Map.tryFind variantName variantLookup`, which returns
+        // whichever type won the collision when two enums share a variant name — and with
+        // it, THAT type's TAG. So constructing SemanticTokensOptionsRange.Bool stored
+        // Json.Bool's tag, and a (correct) later match took the wrong arm. The construction
+        // half of task #28's miscompile; the match-side tag comparison had the same bare-
+        // lookup bug (fixed separately above).
+        let scopedTypeName = if astTypeName = "" then None else Some astTypeName
+        match TypeChecking.tryFindVariant variantLookup scopedTypeName variantName with
         | None ->
             Error $"Unknown constructor: {variantName}"
         | Some (typeName, _, tag, _) ->
