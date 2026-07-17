@@ -477,7 +477,10 @@ let private buildPieces
         | Ok tds, Ok fds ->
           // One marshaller fn per non-generic type, so a record/enum ARG (and a
           // RECURSIVE type like Json) can cross the seam: recursion becomes a call.
-          let marshallers = Bridge.marshalFnDefs emittedDefs
+          // Only the marshallers actually referenced by the bridged fns (+ whatever
+          // those transitively call). Emitting one per type polluted every program.
+          let seed = fds |> List.map (fun f -> Bridge.marshalCallsInExpr f.Body) |> Set.unionMany
+          let marshallers = Bridge.marshalFnDefs emittedDefs seed
           return Ok(tds, marshallers @ valueDefs @ fds, Bridge.nameFor rootHash)
   }
 

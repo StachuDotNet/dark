@@ -179,7 +179,17 @@ let builtinToStdlib : Map<string, string> =
       // (same shape as a routed stdlib call) is exactly what the compiler wants.
       "unwrap", "Builtin.unwrap"
       // String
-      "stringLength", "Stdlib.String.length"
+      // NOT ROUTED — verified NOT equivalent, each a silent wrong answer on non-ASCII
+      // (found by the equivalence harness with a non-ASCII input; ASCII hides all three):
+      //   stringLength      -> compiler's String.length counts UTF-8 BYTES (it reads the
+      //                        length prefix; __string_hash loops it with getByteAt),
+      //                        Dark counts CHARACTERS. "héllo日本" -> 12 vs 7.
+      //   stringToUppercase -> compiler's toUpperCase is ASCII-only: "héllo" -> "HéLLO",
+      //                        Dark gives "HÉLLO".
+      //   stringToLowercase -> same, ASCII-only: "HÉLLO" -> "hÉllo" vs "héllo".
+      // Routing these made compiled code return wrong answers rather than fail. Leave
+      // them unrouted (those fns just don't compile) until the compiler's String stdlib
+      // is unicode-aware.
       "stringIsEmpty", "Stdlib.String.isEmpty"
       "stringContains", "Stdlib.String.contains"
       "stringJoin", "Stdlib.String.join"
@@ -189,8 +199,6 @@ let builtinToStdlib : Map<string, string> =
       "stringTrimStart", "Stdlib.String.trimStart"
       "stringTrimEnd", "Stdlib.String.trimEnd"
       "stringReverse", "Stdlib.String.reverse"
-      "stringToLowercase", "Stdlib.String.toLowerCase"
-      "stringToUppercase", "Stdlib.String.toUpperCase"
       "stringStartsWith", "Stdlib.String.startsWith"
       "stringEndsWith", "Stdlib.String.endsWith"
       "stringPrepend", "Stdlib.String.prepend"
@@ -925,15 +933,49 @@ let rec marshalTypedSeen
 let marshalTyped (defs : Map<string, AST.TypeDef>) (d : int) (t : AST.Type) (v : AST.Expr) =
   marshalTypedSeen false Set.empty defs d t v
 
+/// Which marshallers does this expression actually call? Emitting a marshaller for
+/// EVERY type put a `__marshal.T` fn into every program — and one that fails to
+/// typecheck breaks programs that never marshal anything (it cost 11 of 60 sampled
+/// fns). Emit only what's reachable.
+let rec marshalCallsInExpr (e : AST.Expr) : Set<string> =
+  let r = marshalCallsInExpr
+  let many xs = xs |> List.map r |> Set.unionMany
+  match e with
+  | AST.Call(n, args) ->
+    let here =
+      if n.StartsWith "__marshal." then Set.singleton (n.Substring 10) else Set.empty
+    Set.union here (many (AST.NonEmptyList.toList args))
+  | AST.TypeApp(_, _, args) -> many (AST.NonEmptyList.toList args)
+  | AST.Apply(f, args) -> Set.union (r f) (many (AST.NonEmptyList.toList args))
+  | AST.Let(_, v, b) -> Set.union (r v) (r b)
+  | AST.If(c, t, e2) -> Set.unionMany [ r c; r t; r e2 ]
+  | AST.BinOp(_, a, b) -> Set.union (r a) (r b)
+  | AST.UnaryOp(_, a) -> r a
+  | AST.Lambda(_, b) -> r b
+  | AST.Match(s2, cases) ->
+    Set.union (r s2) (cases |> List.map (fun (c : AST.MatchCase) -> r c.Body) |> Set.unionMany)
+  | AST.RecordLiteral(_, fs) -> many (List.map snd fs)
+  | AST.RecordAccess(rec_, _) -> r rec_
+  | AST.RecordUpdate(rec_, ups) -> Set.union (r rec_) (many (List.map snd ups))
+  | AST.Constructor(_, _, p) -> p |> Option.map r |> Option.defaultValue Set.empty
+  | AST.TupleLiteral xs -> many xs
+  | AST.TupleAccess(t, _) -> r t
+  | AST.ListLiteral xs -> many xs
+  | AST.ListCons(hs, t) -> Set.union (many hs) (r t)
+  | AST.Closure(_, caps) -> many caps
+  | AST.InterpolatedString _ -> Set.empty // interpolations can't contain a marshaller call
+  | _ -> Set.empty
+
 /// One marshaller FunctionDef per non-generic type def: `__marshal.T(v: T) : String`.
 /// Its body expands T inline (inFnBody=true) while every nested custom type becomes a
 /// call — so a recursive type emits a finite, self-referential function.
 /// Generic types are skipped: their marshaller would need a marshalling fn per type
 /// param (higher-order), which isn't built yet — they stay inline, which is fine as
 /// long as they aren't recursive.
-let marshalFnDefs (defs : Map<string, AST.TypeDef>) : List<AST.FunctionDef> =
+let marshalFnDefsFor (defs : Map<string, AST.TypeDef>) (needed : Set<string>) : List<AST.FunctionDef> =
   defs
   |> Map.toList
+  |> List.filter (fun (name, _) -> Set.contains name needed)
   |> List.choose (fun (name, def) ->
     let tps =
       match def with
@@ -957,6 +999,18 @@ let marshalFnDefs (defs : Map<string, AST.TypeDef>) : List<AST.FunctionDef> =
         )
       | Error _ -> None
     | _ -> None)
+
+/// Transitively close the set: a marshaller's body may call other marshallers.
+let marshalFnDefs (defs : Map<string, AST.TypeDef>) (seed : Set<string>) : List<AST.FunctionDef> =
+  let mutable needed = seed
+  let mutable changed = true
+  while changed do
+    let fns = marshalFnDefsFor defs needed
+    let more =
+      fns |> List.map (fun f -> marshalCallsInExpr f.Body) |> Set.unionMany |> Set.union needed
+    changed <- more <> needed
+    needed <- more
+  marshalFnDefsFor defs needed
 
 /// Can marshalTyped encode this type — and if NOT, WHY? Returning a reason rather
 /// than a bool matters: "unprovable: TRecord(T.a6fa…)" tells you nothing, and a vague
