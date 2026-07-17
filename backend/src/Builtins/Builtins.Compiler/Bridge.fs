@@ -1216,6 +1216,23 @@ let rec unmarshalTypedSeen
           AST.BinOp(AST.Eq, r, AST.StringLiteral ""),
           AST.ListLiteral [],
           AST.TypeApp("Stdlib.List.map", [ AST.TString; inner ], AST.NonEmptyList.fromList [ split; lam ]))))
+  // The inverse of marshalTypedSeen's TFloat64 case: the wire is "hi:lo", the two 32-bit
+  // halves of the IEEE-754 bit pattern. Recombine (hi << 32 + lo) and reinterpret.
+  // Addition, not BitOr, and Int64 throughout: the halves are disjoint so `+` and `|`
+  // agree, and this stays clear of both codegen bugs (unsigned compare, and the
+  // sign-extending AND imm32).
+  | AST.TFloat64 ->
+    let fv = "__uf" + string d
+    let hiE = parseInt (nth (AST.Var fv) 0)
+    let loE = parseInt (nth (AST.Var fv) 1)
+    Ok(
+      AST.Let(
+        fv,
+        AST.Call("Stdlib.String.split", AST.NonEmptyList.fromList [ src; AST.StringLiteral ":" ]),
+        AST.Call(
+          "Stdlib.Float.fromBits",
+          AST.NonEmptyList.singleton (
+            AST.BinOp(AST.Add, AST.BinOp(AST.Shl, hiE, AST.Int64Literal 32L), loE)))))
   // The inverse of marshalTypedSeen's TTuple case: each slot escaped, joined by "\n".
   // Without this, ANY type containing a tuple failed to decode -- and since a failed
   // decoder is silently dropped by unmarshalFnDefsFor while the CALL to it is still
@@ -1224,9 +1241,13 @@ let rec unmarshalTypedSeen
   | AST.TTuple elemTs ->
     let tv = "__ut" + string d
     elemTs
-    |> List.mapi (fun i et -> unmarshalTypedR (d + 1) et (unesc (nth (AST.Var tv) i)))
+    |> List.mapi (fun i et ->
+      unmarshalTypedR (d + 1) et (unesc (nth (AST.Var tv) i)) |> Result.map (fun b -> ($"__utp{d}_{i}", b)))
     |> allOk
-    |> Result.map (fun parts -> AST.Let(tv, split src, AST.TupleLiteral parts))
+    |> Result.map (fun parts ->
+      let tup = AST.TupleLiteral(parts |> List.map (fst >> AST.Var))
+      let bound = parts |> List.rev |> List.fold (fun acc (n, b) -> AST.Let(n, b, acc)) tup
+      AST.Let(tv, split src, bound))
   // The exact inverse of marshalTypedSeen's TBytes case: the wire is the byte values
   // one per line, so reuse the TList decoder (which already maps "" -> []) and rebuild
   // with the native Bytes.fromList; the empty wire lands on Bytes.create(0).
@@ -1278,10 +1299,18 @@ let rec unmarshalTypedSeen
       |> List.sortBy fst
       |> List.mapi (fun i (fname, ft) ->
         inner (d + 1) (substTVarsB sub ft) (unesc (nth (AST.Var pv) i))
-        |> Result.map (fun body -> (fname, body)))
+        |> Result.map (fun body -> (fname, $"__uf{d}_{i}", body)))
       |> allOk
       |> Result.map (fun decodedFields ->
-        AST.Let(pv, split src, AST.RecordLiteral(name, decodedFields)))
+        // bind every field, then build the record from vars -- record fields are atom
+        // positions too, and a field decoder can be an If (see the variant case).
+        let rec2 =
+          AST.RecordLiteral(name, decodedFields |> List.map (fun (fn2, vn, _) -> (fn2, AST.Var vn)))
+        let bound =
+          decodedFields
+          |> List.rev
+          |> List.fold (fun acc (_, vn, b) -> AST.Let(vn, b, acc)) rec2
+        AST.Let(pv, split src, bound))
     | _ -> Error $"unmarshal: no record def {name}"
   // A user enum: the wire is `Case` or `Case\n<escaped fields>`. Split off the first
   // line as the case name, then dispatch. The final `else` is the last variant: the wire
@@ -1296,6 +1325,7 @@ let rec unmarshalTypedSeen
       let sv = "__us" + string d
       let iv = "__ui" + string d
       let cv = "__uc" + string d
+      let lv = "__ul" + string d
       let rv2 = "__ur" + string d
       let sVar = AST.Var sv
       let iVar = AST.Var iv
@@ -1308,13 +1338,27 @@ let rec unmarshalTypedSeen
           let elemTs = elemTs0 |> List.map (substTVarsB sub)
           let rpv = "__urp" + string d
           elemTs
-          |> List.mapi (fun i et -> inner (d + 1) et (unesc (nth (AST.Var rpv) i)))
+          |> List.mapi (fun i et ->
+            inner (d + 1) et (unesc (nth (AST.Var rpv) i)) |> Result.map (fun b -> ($"__uvt{d}_{i}", b)))
           |> allOk
           |> Result.map (fun parts ->
-            AST.Let(rpv, split restVar, AST.Constructor(name, variant.Name, Some(AST.TupleLiteral parts))))
+            // bind each slot, then build the tuple from vars (atom positions)
+            let tup = AST.TupleLiteral(parts |> List.map (fst >> AST.Var))
+            let bound =
+              parts
+              |> List.rev
+              |> List.fold (fun acc (n, b) -> AST.Let(n, b, acc)) (AST.Constructor(name, variant.Name, Some tup))
+            AST.Let(rpv, split restVar, bound))
         | Some pt0 ->
+          // Hoist the decoded payload into a Let so the Constructor ARG is a plain var.
+          // A decoder body can be an If (the TList case is `if wire == "" then [] else
+          // map …`), and an If in ATOM position — which a constructor arg is — needs both
+          // branches eagerly safe. Let-value position is lowered lazily, so binding first
+          // sidesteps it. Same reason the record/tuple cases below bind every part.
+          let pv = "__uv" + string d
           inner (d + 1) (substTVarsB sub pt0) (unesc restVar)
-          |> Result.map (fun body -> AST.Constructor(name, variant.Name, Some body))
+          |> Result.map (fun body ->
+            AST.Let(pv, body, AST.Constructor(name, variant.Name, Some(AST.Var pv))))
       variants
       |> List.map (fun v -> decodeVariant v |> Result.map (fun e -> (v.Name, e)))
       |> allOk
@@ -1322,42 +1366,54 @@ let rec unmarshalTypedSeen
         match List.rev decoded with
         | [] -> Error $"unmarshal: no variants for {name}"
         | (_, lastBody) :: revRest ->
-          let chain =
-            revRest
-            |> List.fold
-              (fun acc (vname, body) ->
-                AST.If(AST.BinOp(AST.Eq, AST.Var cv, AST.StringLiteral vname), body, acc))
-              lastBody
+          // MATCH on the case name, not an if-chain. An `If` in atom position is lowered
+          // to IfValue only when BOTH branches are safe to evaluate eagerly, and these
+          // branches call __unmarshal — so the ANF pass rightly refused ("If expression
+          // requires lazy branch lowering"). Eagerly decoding every variant would be
+          // wrong anyway, and would never terminate for a recursive type. Match arms are
+          // lazy, which is also why the marshal side uses Match. The wildcard arm is the
+          // last variant: the wire is well-formed by construction (dvalToWire wrote it),
+          // and every arm must produce a value of the type.
+          let arms =
+            (revRest
+             |> List.rev
+             |> List.map (fun (vname, body) ->
+               { AST.Patterns = AST.NonEmptyList.singleton (AST.PString vname)
+                 AST.Guard = None
+                 AST.Body = body }))
+            @ [ { AST.Patterns = AST.NonEmptyList.singleton AST.PWildcard
+                  AST.Guard = None
+                  AST.Body = lastBody } ]
+          let chain = AST.Match(AST.Var cv, arms)
+          // No `If` anywhere: an If in atom position needs both branches eagerly safe,
+          // and every branch here would hold a `slice` Call. Default indexOf to LENGTH
+          // instead of -1 and the branches vanish -- slice clamps, so with no newline
+          // slice(s,0,len) is the whole string and slice(s,len+1,len) is "".
           Ok(
             AST.Let(
               sv,
               src,
               AST.Let(
-                iv,
-                AST.TypeApp(
-                  "Stdlib.Option.withDefault",
-                  [ AST.TInt64 ],
-                  AST.NonEmptyList.fromList
-                    [ AST.Call("Stdlib.String.indexOf", AST.NonEmptyList.fromList [ sVar; AST.StringLiteral "\n" ])
-                      AST.Int64Literal -1L ]),
+                lv,
+                AST.Call("Stdlib.String.length", AST.NonEmptyList.singleton sVar),
                 AST.Let(
-                  cv,
-                  AST.If(
-                    AST.BinOp(AST.Lt, iVar, AST.Int64Literal 0L),
-                    sVar,
-                    AST.Call("Stdlib.String.slice", AST.NonEmptyList.fromList [ sVar; AST.Int64Literal 0L; iVar ])),
+                  iv,
+                  AST.TypeApp(
+                    "Stdlib.Option.withDefault",
+                    [ AST.TInt64 ],
+                    AST.NonEmptyList.fromList
+                      [ AST.Call("Stdlib.String.indexOf", AST.NonEmptyList.fromList [ sVar; AST.StringLiteral "\n" ])
+                        AST.Var lv ]),
                   AST.Let(
-                    rv2,
-                    AST.If(
-                      AST.BinOp(AST.Lt, iVar, AST.Int64Literal 0L),
-                      AST.StringLiteral "",
+                    cv,
+                    AST.Call("Stdlib.String.slice", AST.NonEmptyList.fromList [ sVar; AST.Int64Literal 0L; iVar ]),
+                    AST.Let(
+                      rv2,
                       AST.Call(
                         "Stdlib.String.slice",
                         AST.NonEmptyList.fromList
-                          [ sVar
-                            AST.BinOp(AST.Add, iVar, AST.Int64Literal 1L)
-                            AST.Call("Stdlib.String.length", AST.NonEmptyList.singleton sVar) ])),
-                    chain))))))
+                          [ sVar; AST.BinOp(AST.Add, iVar, AST.Int64Literal 1L); AST.Var lv ]),
+                      chain)))))))
     | _ -> Error $"unmarshal: no sum def {name}"
   | other -> Error $"unmarshalable-return: {other}"
 

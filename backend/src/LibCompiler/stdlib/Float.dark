@@ -9,6 +9,22 @@ def Stdlib.Float.multiply(a: Float, b: Float) : Float = a * b
 // Get IEEE 754 bit representation of Float as UInt64 (intrinsic)
 def Stdlib.Float.toBits(f: Float) : UInt64 = 0UL
 
+// The inverse of toBits: reinterpret a 64-bit pattern as a Float.
+//
+// No new intrinsic needed -- store the bits, load them back at Float type.
+// `__raw_get<Float>` already lowers to RawGet + GpToFp (a movq into an xmm), which is
+// precisely the reinterpret; see passes/4_MIR_to_LIR.fs. toBits had no inverse at all,
+// so a Float could not be RECONSTRUCTED in compiled code, which blocked decoding any
+// type containing one (Json's `Number of Float` -> altJsonParse).
+//
+// Takes Int64, not UInt64, on purpose: this is a BIT PATTERN, and the signed/unsigned
+// label is irrelevant to the 64 bits stored. It also keeps us away from the compiler's
+// signed-comparison bug on unsigned values (see PROGRESSION-LOG).
+def Stdlib.Float.fromBits(bits: Int64) : Float =
+    let ptr = __raw_alloc(8) in
+    let _ = __raw_set<Int64>(ptr, 0, bits) in
+    __raw_get<Float>(ptr, 0)
+
 // IEEE 754 double precision format:
 // Sign: bit 63 (1 bit)
 // Exponent: bits 52-62 (11 bits, biased by 1023)
