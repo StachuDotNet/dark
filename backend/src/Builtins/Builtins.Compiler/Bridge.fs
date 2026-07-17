@@ -716,7 +716,13 @@ let rec isMarshalableType (t : AST.Type) : bool =
 ///
 /// Must stay byte-identical to dvalToWire: elements/fields escaped and joined by
 /// "\n", enums as `Case` or `Case\n<escaped payload>`, Unit as "unit".
-let rec marshalTyped (d : int) (t : AST.Type) (v : AST.Expr) : Result<AST.Expr, string> =
+let rec marshalTyped
+  (defs : Map<string, AST.TypeDef>)
+  (d : int)
+  (t : AST.Type)
+  (v : AST.Expr)
+  : Result<AST.Expr, string> =
+  let marshalTyped = marshalTyped defs
   let call n args = AST.Call(n, AST.NonEmptyList.fromList args)
   let esc e = call "Stdlib.hostRpcEscape" [ e ]
   let join xs sep = call "Stdlib.String.join" [ xs; AST.StringLiteral sep ]
@@ -784,10 +790,71 @@ let rec marshalTyped (d : int) (t : AST.Type) (v : AST.Expr) : Result<AST.Expr, 
       )
     | Error e, _ -> Error e
     | _, Error e -> Error e
+  // A record: emit its fields in NAME order, escaped, joined by "\n" — exactly what
+  // dvalToWire does (its DvalMap iterates sorted). 104 of the unprovable fns returned
+  // a record.
+  | AST.TRecord(name, _) ->
+    match Map.tryFind name defs with
+    | Some(AST.RecordDef(_, _, fields)) ->
+      fields
+      |> List.sortBy fst
+      |> List.map (fun (fname, ft) ->
+        marshalTyped (d + 1) ft (AST.RecordAccess(v, fname)) |> Result.map esc)
+      |> allOk
+      |> Result.map (fun parts ->
+        match parts with
+        | [] -> AST.StringLiteral ""
+        | first :: rest ->
+          rest |> List.fold (fun acc p -> cat (cat acc (AST.StringLiteral "\n")) p) first)
+    | _ -> Error $"marshal: no record def {name}"
+  // A user enum: match every variant and emit `Case` / `Case\n<escaped fields>`.
+  // dvalToWire escapes each FIELD separately, so a multi-field variant (which the
+  // bridge packs into a tuple payload) must be destructured, not encoded as a tuple.
+  | AST.TSum(name, _) ->
+    match Map.tryFind name defs with
+    | Some(AST.SumTypeDef(_, _, variants)) ->
+      variants
+      |> List.map (fun (variant : AST.Variant) ->
+        match variant.Payload with
+        | None ->
+          Ok
+            { AST.Patterns = AST.NonEmptyList.singleton (AST.PConstructor(variant.Name, None))
+              AST.Guard = None
+              AST.Body = AST.StringLiteral variant.Name }
+        | Some(AST.TTuple elemTs) ->
+          // multi-field variant: bind each slot, escape each, join
+          let names = elemTs |> List.mapi (fun i _ -> $"__mv{d}_{i}")
+          List.zip names elemTs
+          |> List.map (fun (n, et) -> marshalTyped (d + 1) et (AST.Var n) |> Result.map esc)
+          |> allOk
+          |> Result.map (fun parts ->
+            let body =
+              parts
+              |> List.fold
+                (fun acc p -> cat (cat acc (AST.StringLiteral "\n")) p)
+                (AST.StringLiteral variant.Name)
+            { AST.Patterns =
+                AST.NonEmptyList.singleton (
+                  AST.PConstructor(variant.Name, Some(AST.PTuple(names |> List.map AST.PVar)))
+                )
+              AST.Guard = None
+              AST.Body = body })
+        | Some pt ->
+          let n = $"__mv{d}"
+          marshalTyped (d + 1) pt (AST.Var n)
+          |> Result.map (fun body ->
+            { AST.Patterns =
+                AST.NonEmptyList.singleton (AST.PConstructor(variant.Name, Some(AST.PVar n)))
+              AST.Guard = None
+              AST.Body = cat (cat (AST.StringLiteral variant.Name) (AST.StringLiteral "\n")) (esc body) }))
+      |> allOk
+      |> Result.map (fun cases -> AST.Match(v, cases))
+    | _ -> Error $"marshal: no sum def {name}"
   | other -> Error $"marshal: {other}"
 
 /// Can marshalTyped encode this type? (Mirrors what the comparison can prove.)
-let rec isSerializableType (t : AST.Type) : bool =
+let rec isSerializableType (defs : Map<string, AST.TypeDef>) (t : AST.Type) : bool =
+  let isSerializableType = isSerializableType defs
   match t with
   | AST.TString | AST.TChar | AST.TBool | AST.TUnit | AST.TFloat64
   | AST.TInt8 | AST.TInt16 | AST.TInt32 | AST.TInt64
@@ -796,6 +863,19 @@ let rec isSerializableType (t : AST.Type) : bool =
   | AST.TTuple ts -> List.forall isSerializableType ts
   | AST.TSum("Stdlib.Option.Option", [ inner ]) -> isSerializableType inner
   | AST.TSum("Stdlib.Result.Result", [ a; b ]) -> isSerializableType a && isSerializableType b
+  | AST.TRecord(name, _) ->
+    match Map.tryFind name defs with
+    | Some(AST.RecordDef(_, _, fields)) -> fields |> List.forall (snd >> isSerializableType)
+    | _ -> false
+  | AST.TSum(name, _) ->
+    match Map.tryFind name defs with
+    | Some(AST.SumTypeDef(_, _, variants)) ->
+      variants
+      |> List.forall (fun (v : AST.Variant) ->
+        match v.Payload with
+        | None -> true
+        | Some p -> isSerializableType p)
+    | _ -> false
   | _ -> false
 
 let rec unmarshalTyped (d : int) (t : AST.Type) (src : AST.Expr) : AST.Expr =

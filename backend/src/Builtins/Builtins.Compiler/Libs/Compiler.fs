@@ -694,6 +694,12 @@ let rec private dvalToWire (d : Dval) : string =
   | DList(_, xs) -> xs |> List.map (dvalToWire >> escWire) |> String.concat "\n"
   | DTuple(a, b, rest) ->
     (a :: b :: rest) |> List.map (dvalToWire >> escWire) |> String.concat "\n"
+  // Records had NO case here and fell through to "?unmarshalable:DRecord", so any
+  // record-returning fn was unprovable. Fields go in NAME order (Map.toList is
+  // sorted) -- Bridge.marshalTyped sorts to match, and the two encodings must stay
+  // byte-identical or every record comparison is a false DIFF.
+  | DRecord(_, _, _, fields) ->
+    fields |> Map.toList |> List.map (snd >> dvalToWire >> escWire) |> String.concat "\n"
   | DString s -> s
   | DInt n -> string (DarkInt.toBigInt n)
   | DInt8 n -> string n
@@ -886,6 +892,117 @@ let private startDaemon
 /// effectful builtins are serviced) with a timeout, and classify the outcome:
 /// "cf|<blocker>" compile-fail, "hang" (timed out — e.g. multi-element list),
 /// "crash|<code>", or "ran|<stdout>". This is the runnable-vs-compilable measure.
+/// sampleArg, extended to CUSTOM TYPES by reading their definitions. 191 of the 222
+/// fns the harness couldn't check took a record or enum, so this is the difference
+/// between proving a fifth of the tree and proving most of it. Records get every
+/// field sampled; enums take their first non-recursive case (like zeroValue, so a
+/// recursive type terminates via its base case). `seen` guards recursion.
+let rec private sampleArg (t : PT.TypeReference) : Option<Dval> =
+  match t with
+  | PT.TUnit -> Some DUnit
+  | PT.TBool -> Some(DBool true)
+  // Small on purpose: a sample arg must be cheap as well as realistic. 42 hung the
+  // whole sweep on the first exponential fn it met (fib(42) interpreted is ~2000x
+  // fib(27), which already takes 21s), and every chunk timed out with zero output.
+  | PT.TInt64 -> Some(DInt64 5L)
+  | PT.TInt8 -> Some(DInt8 7y)
+  | PT.TInt16 -> Some(DInt16 7s)
+  | PT.TInt32 -> Some(DInt32 7l)
+  | PT.TUInt8 -> Some(DUInt8 7uy)
+  | PT.TUInt16 -> Some(DUInt16 7us)
+  | PT.TUInt32 -> Some(DUInt32 7ul)
+  | PT.TUInt64 -> Some(DUInt64 7UL)
+  | PT.TInt -> Some(DInt(DarkInt.ofBigInt (bigint 5)))
+  | PT.TFloat -> Some(DFloat 2.5)
+  | PT.TChar -> Some(DChar "a")
+  | PT.TString -> Some(DString "hello")
+  | PT.TVariable _ -> Some(DInt64 5L) // monomorphize a type param at Int64
+  | PT.TList inner ->
+    sampleArg inner
+    |> Option.map (fun v -> DList(Dval.toValueType v, [ v; v; v ]))
+  | PT.TTuple(a, b, rest) ->
+    match sampleArg a, sampleArg b, rest |> List.map sampleArg |> List.fold (fun acc o -> match acc, o with Some xs, Some x -> Some(xs @ [ x ]) | _ -> None) (Some []) with
+    | Some a', Some b', Some rest' -> Some(DTuple(a', b', rest'))
+    | _ -> None
+  | _ -> None
+
+/// PROVE that a compiled fn agrees with the interpreter, for real arguments.
+///
+/// The old differential compared STDOUT, which the compiler renders as empty for
+/// records/nested containers — so most fns ran but could never be checked (434 of
+/// them). Instead, make both sides emit the same canonical wire encoding and compare
+/// THAT: the interpreter's Dval through dvalToWire, the compiled program through
+/// Bridge.marshalTyped (its mirror). Same bytes on both sides or it's a real diff.
+///
+/// Returns "match", "DIFF|c=…|i=…", or a reason it couldn't be proven either way.
+let rec private sampleArgDeep
+  (seen : Set<string>)
+  (t : PT.TypeReference)
+  : Ply<Option<Dval>> =
+  uply {
+    match t with
+    | PT.TList inner ->
+      let! v = sampleArgDeep seen inner
+      return v |> Option.map (fun v -> DList(Dval.toValueType v, [ v; v; v ]))
+    | PT.TTuple(a, b, rest) ->
+      let! a' = sampleArgDeep seen a
+      let! b' = sampleArgDeep seen b
+      let mutable restVs = []
+      let mutable ok = true
+      for r in rest do
+        let! rv = sampleArgDeep seen r
+        match rv with
+        | Some v -> restVs <- restVs @ [ v ]
+        | None -> ok <- false
+      match a', b', ok with
+      | Some a'', Some b'', true -> return Some(DTuple(a'', b'', restVs))
+      | _ -> return None
+    | PT.TCustomType(nr, _targs) ->
+      match nr.resolved with
+      | Error _ -> return None
+      | Ok resolved ->
+        match resolved.name with
+        | PT.FQTypeName.Package(PT.Hash h) ->
+          if Set.contains h seen then
+            return None // recursive: let the caller fall back
+          else
+            let! tOpt = LibDB.PackageManager.pt.getType (PT.FQTypeName.package h)
+            match tOpt with
+            | None -> return None
+            | Some pt ->
+              let seen' = Set.add h seen
+              let rtName = FQTypeName.Package(Hash h)
+              match pt.declaration.definition with
+              | PT.TypeDeclaration.Alias inner -> return! sampleArgDeep seen' inner
+              | PT.TypeDeclaration.Record fields ->
+                let fs = NEList.toList fields
+                let mutable acc = []
+                let mutable ok = true
+                for (f : PT.TypeDeclaration.RecordField) in fs do
+                  let! v = sampleArgDeep seen' f.typ
+                  match v with
+                  | Some v' -> acc <- acc @ [ (f.name, v') ]
+                  | None -> ok <- false
+                if ok then return Some(DRecord(rtName, rtName, [], Map.ofList acc))
+                else return None
+              | PT.TypeDeclaration.Enum cases ->
+                // First case whose payload we can sample — a recursive enum
+                // terminates through its non-recursive base case.
+                let mutable result = None
+                for (c : PT.TypeDeclaration.EnumCase) in NEList.toList cases do
+                  if Option.isNone result then
+                    let mutable acc = []
+                    let mutable ok = true
+                    for (f : PT.TypeDeclaration.EnumField) in c.fields do
+                      let! v = sampleArgDeep seen' f.typ
+                      match v with
+                      | Some v' -> acc <- acc @ [ v' ]
+                      | None -> ok <- false
+                    if ok then result <- Some(DEnum(rtName, rtName, [], c.name, acc))
+                return result
+    | scalar -> return sampleArg scalar
+  }
+
 /// Bind a generic fn's type params by matching its DECLARED param types against the
 /// types of the actual arguments. `List.head` declares `List<'a> -> Option<'a>`, so
 /// without this its return type still mentions 'a and can't be serialized (nor can a
@@ -916,41 +1033,6 @@ let rec private unifyType
 /// nothing. A type var monomorphizes at Int64. Returns None for types we can't
 /// sensibly sample (custom types, Dict, fns), so the caller reports "no sample args"
 /// instead of pretending.
-let rec private sampleArg (t : PT.TypeReference) : Option<Dval> =
-  match t with
-  | PT.TUnit -> Some DUnit
-  | PT.TBool -> Some(DBool true)
-  | PT.TInt64 -> Some(DInt64 42L)
-  | PT.TInt8 -> Some(DInt8 7y)
-  | PT.TInt16 -> Some(DInt16 7s)
-  | PT.TInt32 -> Some(DInt32 7l)
-  | PT.TUInt8 -> Some(DUInt8 7uy)
-  | PT.TUInt16 -> Some(DUInt16 7us)
-  | PT.TUInt32 -> Some(DUInt32 7ul)
-  | PT.TUInt64 -> Some(DUInt64 7UL)
-  | PT.TInt -> Some(DInt(DarkInt.ofBigInt (bigint 42)))
-  | PT.TFloat -> Some(DFloat 2.5)
-  | PT.TChar -> Some(DChar "a")
-  | PT.TString -> Some(DString "hello")
-  | PT.TVariable _ -> Some(DInt64 42L) // monomorphize a type param at Int64
-  | PT.TList inner ->
-    sampleArg inner
-    |> Option.map (fun v -> DList(Dval.toValueType v, [ v; v; v ]))
-  | PT.TTuple(a, b, rest) ->
-    match sampleArg a, sampleArg b, rest |> List.map sampleArg |> List.fold (fun acc o -> match acc, o with Some xs, Some x -> Some(xs @ [ x ]) | _ -> None) (Some []) with
-    | Some a', Some b', Some rest' -> Some(DTuple(a', b', rest'))
-    | _ -> None
-  | _ -> None
-
-/// PROVE that a compiled fn agrees with the interpreter, for real arguments.
-///
-/// The old differential compared STDOUT, which the compiler renders as empty for
-/// records/nested containers — so most fns ran but could never be checked (434 of
-/// them). Instead, make both sides emit the same canonical wire encoding and compare
-/// THAT: the interpreter's Dval through dvalToWire, the compiled program through
-/// Bridge.marshalTyped (its mirror). Same bytes on both sides or it's a real diff.
-///
-/// Returns "match", "DIFF|c=…|i=…", or a reason it couldn't be proven either way.
 let private equivOne
   (exeState : ExecutionState)
   (vm : VMState)
@@ -997,19 +1079,33 @@ let private equivOne
                   |> List.map (Result.defaultValue (AST.TVar "?"))))
               ||> List.fold (fun m (d, a) -> unifyType d a m)
             let retType = substTVars binding rootFd.ReturnType
+            // A nullary call is spelled with a Unit arg (normalizeNullaryCallArgs
+            // drops it); NonEmptyList.fromList [] would just throw.
+            let callArgs =
+              match argExprs with
+              | [] -> [ AST.UnitLiteral ]
+              | xs -> xs
             let entry =
               if List.isEmpty rootFd.TypeParams then
-                AST.Call(rootFd.Name, AST.NonEmptyList.fromList argExprs)
+                AST.Call(rootFd.Name, AST.NonEmptyList.fromList callArgs)
               else
                 let tas =
                   rootFd.TypeParams
                   |> List.map (fun tp -> Map.tryFind tp binding |> Option.defaultValue AST.TInt64)
-                AST.TypeApp(rootFd.Name, tas, AST.NonEmptyList.fromList argExprs)
-            if not (Bridge.isSerializableType retType) then
+                AST.TypeApp(rootFd.Name, tas, AST.NonEmptyList.fromList callArgs)
+            let defsByName =
+              typeDefs
+              |> List.choose (fun td ->
+                match td with
+                | AST.RecordDef(n, _, _) -> Some(n, td)
+                | AST.SumTypeDef(n, _, _) -> Some(n, td)
+                | AST.TypeAlias(n, _, _) -> Some(n, td))
+              |> Map.ofList
+            if not (Bridge.isSerializableType defsByName retType) then
               // Be explicit: this fn is NOT proven, rather than silently "ran".
               return $"unprovable|return type not serializable: {retType}"
             else
-              match Bridge.marshalTyped 0 retType entry with
+              match Bridge.marshalTyped defsByName 0 retType entry with
               | Error e -> return "unprovable|" + e
               | Ok marshalled ->
                 match compileClosure typeDefs fds marshalled with
@@ -1022,7 +1118,13 @@ let private equivOne
                   if out.ExitCode <> 0 then
                     return $"crash|{out.ExitCode}"
                   else
-                    let compiled = out.Stdout.TrimEnd('\n')
+                    // Strip exactly ONE trailing newline -- the one Print appends --
+                    // not all of them. TrimEnd('\n') ate newlines belonging to the
+                    // VALUE and reported two false DIFFs (`/// hello` vs
+                    // `/// hello\n`) on strings that legitimately end in one.
+                    let raw = out.Stdout
+                    let compiled =
+                      if raw.EndsWith "\n" then raw.Substring(0, raw.Length - 1) else raw
                     let interp =
                       try
                         let argsNE =
@@ -1040,9 +1142,30 @@ let private equivOne
                         | Ok v -> Ok(dvalToWire v)
                         | Error(_, e) -> Error(string e)
                       with e -> Error("exn: " + e.Message)
-                    match interp with
-                    | Error e -> return "ierr|" + e
-                    | Ok i ->
+                    // Run the interpreter a SECOND time: a fn that disagrees with
+                    // itself (uuidGenerate, random, clock) can't be compared to
+                    // anything, and would otherwise be reported as a false DIFF.
+                    let interp2 =
+                      try
+                        let argsNE =
+                          match args with
+                          | [] -> NEList.singleton DUnit
+                          | _ -> NEList.ofList args.Head args.Tail
+                        match
+                          (LibExecution.Execution.executeFunction
+                            exeState
+                            (FQFnName.fqPackage hash)
+                            []
+                            argsNE)
+                            .Result
+                        with
+                        | Ok v -> Ok(dvalToWire v)
+                        | Error(_, e) -> Error(string e)
+                      with e -> Error("exn: " + e.Message)
+                    match interp, interp2 with
+                    | Error e, _ -> return "ierr|" + e
+                    | Ok i, Ok i2 when i <> i2 -> return "nondet"
+                    | Ok i, _ ->
                       if compiled = i then return "match"
                       else
                         let esc (s : string) = s.Replace("\n", "\\n")
@@ -1768,15 +1891,20 @@ let fns () : List<BuiltInFn> =
                 | Some f ->
                   let ps = NEList.toList f.parameters
                   // A single Unit param is Dark's nullary; call with no args.
-                  let sampled =
-                    match ps with
-                    | [ p ] when p.typ = PT.TUnit -> Some []
-                    | _ ->
-                      (Some [], ps)
-                      ||> List.fold (fun acc p ->
-                        match acc, sampleArg p.typ with
-                        | Some xs, Some v -> Some(xs @ [ v ])
-                        | _ -> None)
+                  let! sampled =
+                    uply {
+                      match ps with
+                      | [ p ] when p.typ = PT.TUnit -> return Some []
+                      | _ ->
+                        let mutable acc = []
+                        let mutable ok = true
+                        for (p : PT.PackageFn.Parameter) in ps do
+                          let! v = sampleArgDeep Set.empty p.typ
+                          match v with
+                          | Some v' -> acc <- acc @ [ v' ]
+                          | None -> ok <- false
+                        return (if ok then Some acc else None)
+                    }
                   match sampled with
                   | None ->
                     let ts = ps |> List.map (fun p -> string p.typ) |> String.concat ", "
