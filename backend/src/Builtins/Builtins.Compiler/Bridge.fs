@@ -1179,29 +1179,46 @@ let rec unmarshalTypedSeen
   | AST.TBool -> Ok(AST.BinOp(AST.Eq, src, AST.StringLiteral "true"))
   | AST.TUnit -> Ok(AST.Let(rv, src, AST.UnitLiteral))
   | AST.TSum("Stdlib.Option.Option", [ inner ]) ->
+    // Match, not If, and the payload bound to a var first -- for the same two reasons as
+    // the custom-type decoders. (a) An If in atom position needs BOTH branches eagerly
+    // safe, and `body` can be an If itself (the TList decoder is `if wire == "" then []
+    // else map …`), which is illegal as a constructor ARG. (b) An If would also decode
+    // the payload on the None path, where there is no payload. Match arms are lazy.
+    let sv = "__uo" + string d
     unmarshalTypedR (d + 1) inner (unesc (slice r (AST.Int64Literal 5L) (len r)))
     |> Result.map (fun body ->
       AST.Let(
         rv,
         src,
-        AST.If(
+        AST.Match(
           starts r "Some\n",
-          AST.Constructor(optT, "Some", Some body),
-          AST.Constructor(optT, "None", None))))
+          [ { AST.Patterns = AST.NonEmptyList.singleton (AST.PBool true)
+              AST.Guard = None
+              AST.Body = AST.Let(sv, body, AST.Constructor(optT, "Some", Some(AST.Var sv))) }
+            { AST.Patterns = AST.NonEmptyList.singleton AST.PWildcard
+              AST.Guard = None
+              AST.Body = AST.Constructor(optT, "None", None) } ])))
   | AST.TSum("Stdlib.Result.Result", [ okT; errT ]) ->
     match
       unmarshalTypedR (d + 1) errT (unesc (slice r (AST.Int64Literal 6L) (len r))),
       unmarshalTypedR (d + 1) okT (unesc (slice r (AST.Int64Literal 3L) (len r)))
       with
     | Ok errBody, Ok okBody ->
+      // Match + bound payloads, same reasoning as the Option case above.
+      let ev2 = "__ure" + string d
+      let ov2 = "__uro" + string d
       Ok(
         AST.Let(
           rv,
           src,
-          AST.If(
+          AST.Match(
             starts r "Error\n",
-            AST.Constructor(resT, "Error", Some errBody),
-            AST.Constructor(resT, "Ok", Some okBody))))
+            [ { AST.Patterns = AST.NonEmptyList.singleton (AST.PBool true)
+                AST.Guard = None
+                AST.Body = AST.Let(ev2, errBody, AST.Constructor(resT, "Error", Some(AST.Var ev2))) }
+              { AST.Patterns = AST.NonEmptyList.singleton AST.PWildcard
+                AST.Guard = None
+                AST.Body = AST.Let(ov2, okBody, AST.Constructor(resT, "Ok", Some(AST.Var ov2))) } ])))
     | Error e, _ | _, Error e -> Error e
   | AST.TList inner ->
     let ev = "__rpce_" + string d
