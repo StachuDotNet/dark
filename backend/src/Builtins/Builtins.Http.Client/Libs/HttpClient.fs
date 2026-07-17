@@ -831,7 +831,9 @@ let fns (config : Configuration) : List<BuiltInFn> =
             "URL to GET with SSRF guards OFF (loopback/RFC-1918/tailnet reachable)" ]
       returnType = TypeReference.result TBlob TString
       description =
-        "GET <param uri> with NO SSRF guards, returning the raw response body as Bytes (Ok) or an error message (Error). For pulling a peer's store over the tailnet."
+        "GET <param uri> with NO SSRF guards, returning the raw response body as "
+        + "Bytes (Ok) or an error message (Error). For pulling a peer's store over "
+        + "the tailnet."
       fn =
         let syncClient = BaseClient.create syncConfig
 

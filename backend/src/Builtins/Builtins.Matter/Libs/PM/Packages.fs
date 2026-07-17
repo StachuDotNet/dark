@@ -331,7 +331,10 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
           (TFn(NEList.singleton (TVariable "a"), TVariable "b"))
           TString
       description =
-        "Resolves a package function by its dotted <param name> to a callable value, as a Result — Error (a plain-English message) if there's no such function. Lets a caller (e.g. `dark serve`) report a bad name cleanly instead of crashing."
+        "Resolves a package function by its dotted <param name> to a callable value, "
+        + "as a Result — Error (a plain-English message) if there's no such function. "
+        + "Lets a caller (e.g. `dark serve`) report a bad name cleanly instead of "
+        + "crashing."
       fn =
         (function
         | _, _, _, [ DUuid branchId; DString name ] ->

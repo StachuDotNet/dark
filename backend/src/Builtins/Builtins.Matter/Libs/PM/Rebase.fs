@@ -50,7 +50,9 @@ let fns () : List<BuiltInFn> =
       parameters = [ Param.make "branchId" TUuid "Branch to check" ]
       returnType = TBool
       description =
-        "Whether the branch is behind its parent — i.e. a rebase would move it. Distinct from having conflicts: a branch can need a (clean) rebase with no conflicts."
+        "Whether the branch is behind its parent — i.e. a rebase would move it. "
+        + "Distinct from having conflicts: a branch can need a (clean) rebase with "
+        + "no conflicts."
       fn =
         function
         | _, _, _, [ DUuid branchId ] ->
