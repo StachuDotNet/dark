@@ -1080,31 +1080,55 @@ module PackageOp =
 
       let signature = PackageFn.signature ctx fn
 
-      $"AddFn {name}: {signature}"
+      $"AddFn {name}: {signature}  [{LanguageTools.ProgramTypes.hashToShort fn.hash}]"
 
-    | AddValue _value ->
-      let name = FQValueName.Package.atDefinition ctx _value.hash
+    | AddValue value ->
+      let name = FQValueName.Package.atDefinition ctx value.hash
+      // Show what the value IS. A fn's line carries its signature, so you can tell one from another; a value
+      // had only its name, which is the least interesting thing about it in a list of a thousand.
+      // One line: a commit listing is for scanning, and `show` on the item is where you read it properly.
+      let source =
+        expr ctx value.body
+        |> Stdlib.String.split "\n"
+        |> Stdlib.List.map (fun l -> Stdlib.String.trim l)
+        |> Stdlib.List.filter (fun l -> l != "")
+        |> Stdlib.String.join " "
 
-      $"AddValue {name}"
+      let source =
+        if Stdlib.String.length source > 48 then
+          (Stdlib.String.slice source 0 48) ++ "..."
+        else
+          source
 
-    | SetName (loc, target) ->
+      // The hash is what a SetName below points AT, so showing it lets you read a commit as the pairs it
+      // actually is — content added here, name bound to it there — rather than a list of unrelated lines.
+      $"AddValue {name} = {source}  [{LanguageTools.ProgramTypes.hashToShort value.hash}]"
+
+    | SetName(loc, target) ->
       let path = PackageLocation.packageLocation loc
       let kind =
         match target with
         | PackageType _ -> "Type"
         | PackageValue _ -> "Value"
         | PackageFn _ -> "Fn"
-      $"SetName {kind} → {path}"
+      // Name the hash it binds. "SetName Fn -> Some.Path" said which name changed but not what it now means,
+      // so an Add and the SetName that named it were two lines with nothing tying them together.
+      let hash = LanguageTools.ProgramTypes.Reference.hash target
+      $"SetName {path} to {kind} of [{LanguageTools.ProgramTypes.hashToShort hash}]"
 
-    | Deprecate (target, kind, message) ->
+    | Deprecate(target, kind, _message) ->
       let kindStr =
         match kind with
         | SupersededBy _ -> "superseded-by"
         | Harmful -> "harmful"
         | Obsolete -> "obsolete"
-      $"Deprecate ({kindStr})"
+      // Was just "Deprecate (obsolete)" — the kind, and no hint WHAT got deprecated.
+      let hash = LanguageTools.ProgramTypes.Reference.hash target
+      $"Deprecate [{LanguageTools.ProgramTypes.hashToShort hash}] ({kindStr})"
 
-    | Undeprecate _target -> "Undeprecate"
+    | Undeprecate target ->
+      let hash = LanguageTools.ProgramTypes.Reference.hash target
+      $"Undeprecate [{LanguageTools.ProgramTypes.hashToShort hash}]"
 
     | PropagateUpdate (_propId, _sloc, _fromRefs, _toRef, repoints) ->
       let count = (Stdlib.List.length repoints) |> Stdlib.Int.toString
