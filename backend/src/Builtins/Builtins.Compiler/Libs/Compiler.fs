@@ -153,6 +153,18 @@ let rec private rtToMarshalable (t : TypeReference) : AST.Type option =
   // exactly the input the "WithReplacement" in its name is about.
   | TBlob -> Some AST.TBytes
   | TList inner -> rtToMarshalable inner |> Option.map AST.TList
+  // Tuples: every other layer already handled them — marshalTypedSeen encodes them,
+  // wireToDvalTyped decodes them daemon-side, unmarshalTypedSeen decodes them in compiled
+  // code. Only this function, which decides whether a builtin is routable AT ALL, had no
+  // case, so any builtin with a tuple anywhere in its params was silently unroutable.
+  // That's what blocked httpClientRequest (headersType = List<(String, String)>), the
+  // single biggest category in the current histogram at 164 fns.
+  | TTuple(a, b, rest) ->
+    (a :: b :: rest)
+    |> List.map rtToMarshalable
+    |> fun bs ->
+         if List.forall Option.isSome bs then Some(AST.TTuple(bs |> List.map Option.get))
+         else None
   | TCustomType(nr, args) ->
     match nr.resolved with
     | Ok(FQTypeName.Package(Hash h)) ->
