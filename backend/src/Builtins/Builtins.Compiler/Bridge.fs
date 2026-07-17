@@ -1349,13 +1349,25 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
                 match allOk marshaledR with
                 | Error e -> err "builtin" $"{b.name}: arg {e}"
                 | Ok marshaled ->
+                // Each arg is ESCAPED before being joined with "\n". The daemon splits the
+                // request on "\n" to recover args, so an arg that CONTAINS a newline used
+                // to become several args -- and dispatchBuiltin truncates to the param
+                // count, so the extra lines were dropped on the floor. Every multi-line
+                // arg was therefore silently mutilated:
+                //   AltJson.format(Json.Bool true) -> wire "Bool\ntrue" -> the daemon saw
+                //   just "Bool" -> "ERR:exn:Invalid Json". Only nullary cases (one line)
+                //   worked.
+                // It fails loudly for enums only by luck; a List arg ("a\nb\nc") truncates
+                // to "a" and decodes as a VALID one-element list -- silently wrong, which
+                // is the Directory.list bug over again in the arg direction. A String arg
+                // containing a newline had the same flaw.
                 let request =
                   (AST.StringLiteral b.name, marshaled)
                   ||> List.fold (fun acc arg ->
                     AST.BinOp(
                       AST.StringConcat,
                       AST.BinOp(AST.StringConcat, acc, AST.StringLiteral "\n"),
-                      arg))
+                      AST.Call("Stdlib.hostRpcEscape", AST.NonEmptyList.singleton arg)))
                 let call = AST.Call("Stdlib.hostRpc", AST.NonEmptyList.singleton request)
                 Ok(unmarshalReturn wireRet call))
           | None -> err "builtin" $"{b.name}_v{b.version}"

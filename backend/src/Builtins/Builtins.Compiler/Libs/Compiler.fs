@@ -954,7 +954,11 @@ let private dispatchBuiltin
   uply {
     let parts = request.Split('\n')
     let name = parts[0]
-    let wireArgs = parts[1..] |> Array.toList
+    // Args arrive ESCAPED (see Bridge's request construction) so that an arg containing
+    // a newline survives this split instead of masquerading as extra args. Unescape is
+    // a no-op for anything without a backslash or newline, which is why the hand-built
+    // self-test requests still round-trip unchanged.
+    let wireArgs = parts[1..] |> Array.toList |> List.map unescWire
     // Handle-based list primitives: build/walk a real Dval list held in the daemon,
     // so compiled code can work with multi-element lists (which the native x64
     // finger-tree can't) without ever constructing one. Element payloads are
