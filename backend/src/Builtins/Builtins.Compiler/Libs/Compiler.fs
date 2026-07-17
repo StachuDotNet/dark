@@ -1733,7 +1733,11 @@ let fns () : List<BuiltInFn> =
               AST.Call(
                 "Stdlib.hostRpc",
                 AST.NonEmptyList.singleton (AST.StringLiteral "environmentGet\nHOME"))
-            let decoded = Bridge.unmarshalTyped 0 optStrTy rpcCall
+            match Bridge.unmarshalTypedR 0 optStrTy rpcCall with
+            | Error e ->
+              daemon.Wait()
+              return DString $"decode-error: {e}"
+            | Ok decoded ->
             let program : AST.Program =
               AST.Program
                 [ AST.Expression(
@@ -1986,7 +1990,9 @@ let fns () : List<BuiltInFn> =
         | _, _, _, [ DUnit ] ->
           uply {
             // Decode a wire list "alpha\\nbeta\\ngamma" via unmarshalTyped(List<String>), no daemon -> length 3
-            let decoded = Bridge.unmarshalTyped 0 (AST.TList AST.TString) (AST.StringLiteral "alpha\nbeta\ngamma")
+            match Bridge.unmarshalTypedR 0 (AST.TList AST.TString) (AST.StringLiteral "alpha\nbeta\ngamma") with
+            | Error e -> return DString ("decode: " + e)
+            | Ok decoded ->
             let len = AST.TypeApp("Stdlib.List.length", [ AST.TString ], AST.NonEmptyList.singleton decoded)
             let program = AST.Program [ AST.Expression(AST.Call("Stdlib.Int64.toString", AST.NonEmptyList.singleton len)) ]
             match compileAst program with

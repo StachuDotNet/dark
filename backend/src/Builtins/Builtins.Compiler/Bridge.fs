@@ -1128,7 +1128,13 @@ let isSerializableType (defs : Map<string, AST.TypeDef>) (t : AST.Type) : bool =
   | Ok() -> true
   | Error _ -> false
 
-let rec unmarshalTyped (d : int) (t : AST.Type) (src : AST.Expr) : AST.Expr =
+/// Decode a wire response (an AST String expr) into a native value of compiler type `t`.
+/// TOTAL: an undecodable type is an Error, never a guess. It used to end in `| _ -> src`,
+/// which hands compiled code the raw wire String typed as whatever `t` claimed -- sound
+/// only while every isMarshalableType case had a decoder here, an invariant a comment
+/// cannot enforce (widening the gate for TBytes made that "unreachable" line reachable).
+/// Now the two can't drift silently: a missing decoder is a hard-fail with a named type.
+let rec unmarshalTypedR (d : int) (t : AST.Type) (src : AST.Expr) : Result<AST.Expr, string> =
   let rv = "__rpc_" + string d
   let r = AST.Var rv
   let len e = AST.Call("Stdlib.String.length", AST.NonEmptyList.singleton e)
@@ -1139,64 +1145,66 @@ let rec unmarshalTyped (d : int) (t : AST.Type) (src : AST.Expr) : AST.Expr =
   let optT = "Stdlib.Option.Option"
   let resT = "Stdlib.Result.Result"
   match t with
-  | AST.TString -> src
-  | AST.TInt64 -> parseInt src
-  | AST.TBool -> AST.BinOp(AST.Eq, src, AST.StringLiteral "true")
-  | AST.TUnit -> AST.Let(rv, src, AST.UnitLiteral)
+  | AST.TString -> Ok src
+  | AST.TInt64 -> Ok(parseInt src)
+  | AST.TBool -> Ok(AST.BinOp(AST.Eq, src, AST.StringLiteral "true"))
+  | AST.TUnit -> Ok(AST.Let(rv, src, AST.UnitLiteral))
   | AST.TSum("Stdlib.Option.Option", [ inner ]) ->
-    AST.Let(
-      rv,
-      src,
-      AST.If(
-        starts r "Some\n",
-        AST.Constructor(optT, "Some", Some(unmarshalTyped (d + 1) inner (unesc (slice r (AST.Int64Literal 5L) (len r))))),
-        AST.Constructor(optT, "None", None)))
+    unmarshalTypedR (d + 1) inner (unesc (slice r (AST.Int64Literal 5L) (len r)))
+    |> Result.map (fun body ->
+      AST.Let(
+        rv,
+        src,
+        AST.If(
+          starts r "Some\n",
+          AST.Constructor(optT, "Some", Some body),
+          AST.Constructor(optT, "None", None))))
   | AST.TSum("Stdlib.Result.Result", [ okT; errT ]) ->
-    AST.Let(
-      rv,
-      src,
-      AST.If(
-        starts r "Error\n",
-        AST.Constructor(resT, "Error", Some(unmarshalTyped (d + 1) errT (unesc (slice r (AST.Int64Literal 6L) (len r))))),
-        AST.Constructor(resT, "Ok", Some(unmarshalTyped (d + 1) okT (unesc (slice r (AST.Int64Literal 3L) (len r)))))))
+    match
+      unmarshalTypedR (d + 1) errT (unesc (slice r (AST.Int64Literal 6L) (len r))),
+      unmarshalTypedR (d + 1) okT (unesc (slice r (AST.Int64Literal 3L) (len r)))
+      with
+    | Ok errBody, Ok okBody ->
+      Ok(
+        AST.Let(
+          rv,
+          src,
+          AST.If(
+            starts r "Error\n",
+            AST.Constructor(resT, "Error", Some errBody),
+            AST.Constructor(resT, "Ok", Some okBody))))
+    | Error e, _ | _, Error e -> Error e
   | AST.TList inner ->
     let ev = "__rpce_" + string d
-    let lam =
-      AST.Lambda(
-        AST.NonEmptyList.fromList [ (ev, AST.TString) ],
-        unmarshalTyped (d + 1) inner (unesc (AST.Var ev)))
-    let split = AST.Call("Stdlib.String.split", AST.NonEmptyList.fromList [ r; AST.StringLiteral "\n" ])
-    AST.Let(
-      rv,
-      src,
-      AST.If(
-        AST.BinOp(AST.Eq, r, AST.StringLiteral ""),
-        AST.ListLiteral [],
-        AST.TypeApp("Stdlib.List.map", [ AST.TString; inner ], AST.NonEmptyList.fromList [ split; lam ])))
+    unmarshalTypedR (d + 1) inner (unesc (AST.Var ev))
+    |> Result.map (fun body ->
+      let lam = AST.Lambda(AST.NonEmptyList.fromList [ (ev, AST.TString) ], body)
+      let split = AST.Call("Stdlib.String.split", AST.NonEmptyList.fromList [ r; AST.StringLiteral "\n" ])
+      AST.Let(
+        rv,
+        src,
+        AST.If(
+          AST.BinOp(AST.Eq, r, AST.StringLiteral ""),
+          AST.ListLiteral [],
+          AST.TypeApp("Stdlib.List.map", [ AST.TString; inner ], AST.NonEmptyList.fromList [ split; lam ]))))
   // The exact inverse of marshalTypedSeen's TBytes case: the wire is the byte values
   // one per line, so reuse the TList decoder (which already maps "" -> []) and rebuild
   // with the native Bytes.fromList; the empty wire lands on Bytes.create(0).
   | AST.TBytes ->
-    AST.Call(
-      "Stdlib.Bytes.fromList",
-      AST.NonEmptyList.fromList [ unmarshalTyped d (AST.TList AST.TInt64) src ])
-  // Anything else is a BUG, not a value: `src` is the raw wire String, so returning it
-  // here hands compiled code a String bit-pattern typed as something else. This stays
-  // sound only while every isMarshalableType case above has a decoder -- adding a type
-  // to isMarshalableType without adding it here silently reintroduces that. (TBytes was
-  // exactly that: widening the gate made this "unreachable" line reachable.)
-  | _ -> src
+    unmarshalTypedR d (AST.TList AST.TInt64) src
+    |> Result.map (fun l -> AST.Call("Stdlib.Bytes.fromList", AST.NonEmptyList.singleton l))
+  | other -> Error $"unmarshalable-return: {other}"
 
 /// Unmarshal a host-RPC wire response into a native value per its return wire
 /// type. Scalars are decoded inline; every container routes through the recursive
-/// unmarshalTyped over the bridged return type.
-let private unmarshalReturn (ret : WireRet) (call : AST.Expr) : AST.Expr =
+/// unmarshalTypedR over the bridged return type, which hard-fails rather than guess.
+let private unmarshalReturn (ret : WireRet) (call : AST.Expr) : Result<AST.Expr, string> =
   match ret with
-  | WRString -> call
-  | WRInt -> AST.Call("Stdlib.hostRpcParseInt", AST.NonEmptyList.singleton call)
-  | WRBool -> AST.BinOp(AST.Eq, call, AST.StringLiteral "true")
-  | WRUnit -> AST.Let("__rpc_ignore", call, AST.UnitLiteral)
-  | WRTyped t -> unmarshalTyped 0 t call
+  | WRString -> Ok call
+  | WRInt -> Ok(AST.Call("Stdlib.hostRpcParseInt", AST.NonEmptyList.singleton call))
+  | WRBool -> Ok(AST.BinOp(AST.Eq, call, AST.StringLiteral "true"))
+  | WRUnit -> Ok(AST.Let("__rpc_ignore", call, AST.UnitLiteral))
+  | WRTyped t -> unmarshalTypedR 0 t call
 
 let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
   let recurse = bridgeExpr ctx
@@ -1369,7 +1377,12 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
                       AST.BinOp(AST.StringConcat, acc, AST.StringLiteral "\n"),
                       AST.Call("Stdlib.hostRpcEscape", AST.NonEmptyList.singleton arg)))
                 let call = AST.Call("Stdlib.hostRpc", AST.NonEmptyList.singleton request)
-                Ok(unmarshalReturn wireRet call))
+                // A return type the decoder can't handle is a BLOCKER, reported like any
+                // other, not a silently-wrong value. This is what lets buildEffectfulMap
+                // stop pre-gating returns on isMarshalableType: that map is built from the
+                // runtime and has no type env, whereas the failure is precise here.
+                unmarshalReturn wireRet call
+                |> Result.mapError (fun e -> $"unsupported-builtin: {b.name}: {e}"))
           | None -> err "builtin" $"{b.name}_v{b.version}"
       | PT.FQFnName.Package(PT.Hash h) ->
         let bridgedArgs = args |> NEList.toList |> List.map recurse |> allOk
