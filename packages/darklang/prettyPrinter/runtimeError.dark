@@ -266,7 +266,7 @@ module RuntimeError =
       [ ES.String "Type "
         ES.TypeName name
         ES.String " couldn't be found" ]
-    | ValNotFound name ->
+    | ValueNotFound name ->
       [ ES.String "Value "
         ES.ValueName name
         ES.String " couldn't be found" ]

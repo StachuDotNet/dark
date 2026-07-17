@@ -159,7 +159,7 @@ type Error =
 
   | TypeNotFound of name: FQTypeName.FQTypeName
   | FnNotFound of name: FQFnName.FQFnName
-  | ValNotFound of name: FQValueName.FQValueName
+  | ValueNotFound of name: FQValueName.FQValueName
 
   /// Invoked a package fn whose content hash is marked `Harmful` via a
   /// Deprecate op. Override with --allow-harmful on run/eval.
