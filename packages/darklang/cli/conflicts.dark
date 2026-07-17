@@ -5,43 +5,43 @@ module Darklang.Cli.Conflicts
 // auto choice, or override it — an override mints a SYNCED Resolution that propagates so peers converge on
 // your pick.
 
-let private conflicts () : List<Darklang.Sync.Conflicts.Conflict> =
+let conflicts () : List<Darklang.Sync.Conflicts.Conflict> =
   Builtin.conflictsList ()
 
-let private short (h: String) : String =
+let short (h: String) : String =
   Stdlib.String.slice h 0 8
 
 // The leaf name of a location ("Stachu.Lib.greet" -> "greet").
-let private leafName (location: String) : String =
+let leafName (location: String) : String =
   match Stdlib.List.last (Stdlib.String.split location ".") with
   | Some n -> n
   | None -> location
 
-let private unreviewed () : List<Darklang.Sync.Conflicts.Conflict> =
+let unreviewed () : List<Darklang.Sync.Conflicts.Conflict> =
   Stdlib.List.filter (conflicts ()) (fun c -> c.status == "auto-resolved")
 
-let private findOpen
+let findOpen
   (location: String)
   : Stdlib.Option.Option<Darklang.Sync.Conflicts.Conflict> =
   Stdlib.List.findFirst (unreviewed ()) (fun c -> c.location == location)
 
-let private noneMsg (location: String) : String =
+let noneMsg (location: String) : String =
   $"No open conflict at {location}. See: dark conflicts"
 
 // Override at <location> of <kind> with <hash> — mints a synced Resolution + marks THAT conflict overridden.
-let private keep (location: String) (kind: String) (hash: String) : Bool =
+let keep (location: String) (kind: String) (hash: String) : Bool =
   Builtin.conflictKeep location kind hash
 
 // All unreviewed conflicts at a location (a name can hold a fn AND a value → more than one at one location).
-let private openAt (location: String) : List<Darklang.Sync.Conflicts.Conflict> =
+let openAt (location: String) : List<Darklang.Sync.Conflicts.Conflict> =
   Stdlib.List.filter (unreviewed ()) (fun c -> c.location == location)
 
 // "fn, value" — the kinds still conflicting at a location, for the ambiguity message.
-let private kindsAt (cs: List<Darklang.Sync.Conflicts.Conflict>) : String =
+let kindsAt (cs: List<Darklang.Sync.Conflicts.Conflict>) : String =
   cs |> Stdlib.List.map (fun c -> c.itemKind) |> Stdlib.String.join ", "
 
 // Parse `<location>` or `<location> --kind <k>` from a resolution command's args.
-let private locKind
+let locKind
   (rest: List<String>)
   : Stdlib.Option.Option<(String * Stdlib.Option.Option<String>)> =
   match rest with
@@ -51,7 +51,7 @@ let private locKind
 
 // Pick the single conflict to resolve: honor an explicit --kind; else resolve the one if unambiguous, else
 // refuse and list the kinds (so resolving a fn conflict can't silently also clear a value conflict at the name).
-let private pickConflict
+let pickConflict
   (location: String)
   (kindOpt: Stdlib.Option.Option<String>)
   : Stdlib.Result.Result<Darklang.Sync.Conflicts.Conflict, String> =
@@ -74,7 +74,7 @@ let private pickConflict
 
 
 // Shared resolution flow for keep-mine/keep-theirs/ok: pick the conflict (kind-aware), run <act> on it, report.
-let private resolveCmd
+let resolveCmd
   (state: AppState)
   (rest: List<String>)
   (verb: String)
@@ -103,7 +103,7 @@ let private resolveCmd
 // versions by WHAT THEY ARE — not just opaque hashes. pmGet* return the always-present PT definition (pt_def,
 // never NULL), so both sides always render even when one isn't the active pick; falls back to the short hash
 // if a version somehow can't be loaded.
-let private renderContent
+let renderContent
   (branchId: Uuid)
   (location: String)
   (itemKind: String)
@@ -153,7 +153,7 @@ let private renderContent
 // that's the expression ("111"), for a fn the body ("(\"Hello, \") ++ name"), for a type the shape
 // ("{ x: Int; y: Int }"). The name/signature is dropped — it's the same on both sides (and shown in the list
 // header), so the body is the only thing that actually differs. Collapsed to one line and truncated to fit.
-let private renderInline
+let renderInline
   (branchId: Uuid)
   (location: String)
   (itemKind: String)

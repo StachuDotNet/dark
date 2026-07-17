@@ -5,7 +5,7 @@ module Darklang.Cli.Sync
 // Peers are URLs (running instances), never files — sync exchanges ops, not databases.
 
 // "1 instance" / "2 instances" — count + correctly-pluralized noun, so no message reads "1 instance(s)".
-let private plural (n: Int) (noun: String) : String =
+let plural (n: Int) (noun: String) : String =
   if n == 1 then
     $"{Stdlib.Int.toString n} {noun}"
   else
@@ -13,7 +13,7 @@ let private plural (n: Int) (noun: String) : String =
 
 // After a pull, nudge about any unreviewed divergences — so last-writer-wins is never SILENT: you always see
 // that a name was contested and can review the winner (`dark conflicts`).
-let private conflictNudge () : Unit =
+let conflictNudge () : Unit =
   let unreviewed =
     Builtin.conflictsList ()
     |> Stdlib.List.filter (fun c -> c.status == "auto-resolved")
@@ -28,7 +28,7 @@ let private conflictNudge () : Unit =
 // Serve the sync endpoint so peers can pull from you. Blocks until Ctrl+C (foreground); for boot, use
 // `dark sync daemon start`. Same router `dark serve Darklang.Sync.Server.router` would run — just less
 // to type, and it prints the address peers actually need.
-let private serveOn (port: Int) (state: AppState) : AppState =
+let serveOn (port: Int) (state: AppState) : AppState =
   let portStr = Stdlib.Int.toString port
 
   [ Colors.success $"Serving sync on http://localhost:{portStr} — peers can pull from you here."
@@ -47,34 +47,34 @@ let private serveOn (port: Int) (state: AppState) : AppState =
 // daemon (`sync-server`). Settings live in cli-config (mode / interval / port / on-boot), adjustable via
 // `dark sync daemon config`. Replaces `dark apps enable sync` as the blessed surface.
 
-let private daemonMode () : String =
+let daemonMode () : String =
   match Darklang.Cli.Config.get "sync.daemon.mode" with
   | Some m -> m
   | None -> "pull+serve"
 
-let private daemonSlugs (mode: String) : List<String> =
+let daemonSlugs (mode: String) : List<String> =
   match mode with
   | "pull-only" -> [ "sync" ]
   | "serve-only" -> [ "sync-server" ]
   | _ -> [ "sync"; "sync-server" ]
 
-let private intervalSec () : Int =
+let intervalSec () : Int =
   (Darklang.Cli.Config.getInt "apps.sync.intervalMs" 30000) / 1000
 
-let private servePort () : Int =
+let servePort () : Int =
   Darklang.Cli.Config.getInt "apps.sync-server.port" 9000
 
-let private onBoot () : Bool =
+let onBoot () : Bool =
   match Darklang.Cli.Config.get "sync.daemon.onBoot" with
   | Some "no" -> false
   | _ -> true
 
-let private settingsLine () : String =
+let settingsLine () : String =
   let boot = if onBoot () then "on boot" else "not on boot"
 
   $"mode: {daemonMode ()} · every {Stdlib.Int.toString (intervalSec ())}s · port {Stdlib.Int.toString (servePort ())} · {boot}"
 
-let private setConfig (key: String) (value: String) : Unit =
+let setConfig (key: String) (value: String) : Unit =
   let updated =
     Stdlib.Dict.setOverridingDuplicates (Darklang.Cli.Config.readConfig ()) key value
 
@@ -83,7 +83,7 @@ let private setConfig (key: String) (value: String) : Unit =
 
 // The first-run dialog: explain the defaults, offer to adjust them inline. In a non-interactive context
 // (piped/no TTY) the "Adjust?" prompt reads EOF → No, so it falls through to defaults without blocking.
-let private firstRunDialog () : Unit =
+let firstRunDialog () : Unit =
   Stdlib.printLine "Setting up automatic sync. Defaults:"
 
   Stdlib.printLine (
@@ -130,7 +130,7 @@ let private firstRunDialog () : Unit =
 
   setConfig "sync.daemon.configured" "yes"
 
-let private daemonStart (state: AppState) : AppState =
+let daemonStart (state: AppState) : AppState =
   let firstRun =
     match Darklang.Cli.Config.get "sync.daemon.configured" with
     | Some "yes" -> false
@@ -146,7 +146,7 @@ let private daemonStart (state: AppState) : AppState =
   Stdlib.List.fold (daemonSlugs (daemonMode ())) state (fun s slug ->
     Darklang.Cli.Apps.Command.startDaemon s slug)
 
-let private daemonStop (state: AppState) : AppState =
+let daemonStop (state: AppState) : AppState =
   let _ =
     Stdlib.List.map [ "sync"; "sync-server" ] (fun slug ->
       match Stdlib.Cli.Daemon.stop slug with
@@ -159,14 +159,14 @@ let private daemonStop (state: AppState) : AppState =
 
   state
 
-let private daemonStatusCmd (state: AppState) : AppState =
+let daemonStatusCmd (state: AppState) : AppState =
   Stdlib.printLine "Automatic sync:"
   Stdlib.printLine $"  pull    {Stdlib.Cli.Daemon.statusLine "sync"}"
   Stdlib.printLine $"  serve   {Stdlib.Cli.Daemon.statusLine "sync-server"}"
   Stdlib.printLine (Colors.hint $"  {settingsLine ()} · settings: dark sync daemon config")
   state
 
-let private daemonConfigShow (state: AppState) : AppState =
+let daemonConfigShow (state: AppState) : AppState =
   Stdlib.printLine "Automatic sync settings:"
   Stdlib.printLine $"  mode      {daemonMode ()}   (pull+serve | pull-only | serve-only)"
   Stdlib.printLine $"  interval  {Stdlib.Int.toString (intervalSec ())}s"
@@ -219,7 +219,7 @@ let daemonConfigValue
     | Error _ -> Stdlib.Option.Option.None
   | _ -> Stdlib.Option.Option.None
 
-let private daemonConfigSet
+let daemonConfigSet
   (state: AppState)
   (key: String)
   (value: String)

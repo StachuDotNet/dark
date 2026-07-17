@@ -72,7 +72,7 @@ let localDbPath () : String =
 let currentRelease () : Int =
   Builtin.currentRelease ()
 
-let private syncDb () : String =
+let syncDb () : String =
   let db = localDbPath ()
 
   let _ =
@@ -92,7 +92,7 @@ let peers () : List<String> =
 
 // The one message for "that's not a peer" — a peer is always an http(s) URL (a running instance), never a
 // file. Shared by connect + pull so both reject a `.db`/path identically.
-let private peerMustBeUrl : String =
+let peerMustBeUrl : String =
   "A peer is a URL like http://feriel.tailnet:9000 — sync exchanges ops with a running instance over HTTP, not a .db file."
 
 /// Connect a peer by its URL. Sync talks to running instances over HTTP — a `.db` file is not a peer.
@@ -121,7 +121,7 @@ let disconnect (url: String) : Bool =
 
   wasConnected
 
-let private cursorFor (peer: String) (kind: String) : Int64 =
+let cursorFor (peer: String) (kind: String) : Int64 =
   (Stdlib.Sqlite.scalarIntP
     (syncDb ())
     "SELECT cursor FROM sync_cursors_v1 WHERE peer = @p0 AND kind = @p1"
@@ -129,7 +129,7 @@ let private cursorFor (peer: String) (kind: String) : Int64 =
     "cursor")
   |> Stdlib.Option.withDefault 0L
 
-let private setCursor (peer: String) (kind: String) (cursor: Int64) : Unit =
+let setCursor (peer: String) (kind: String) (cursor: Int64) : Unit =
   let _ =
     Stdlib.Sqlite.execP
       (syncDb ())
@@ -143,7 +143,7 @@ let private setCursor (peer: String) (kind: String) (cursor: Int64) : Unit =
 
 // The ONE reference to the SSRF-unguarded fetch builtin. Every sync GET (events, blobs) goes through here, so
 // the raw builtin has a single reviewable call site (the security surface) even as more channels are added.
-let private syncHttpGet (url: String) : Stdlib.Result.Result<Blob, String> =
+let syncHttpGet (url: String) : Stdlib.Result.Result<Blob, String> =
   Builtin.httpGetUnsafeBytes url
 
 /// Quick liveness probe of a peer: GET /sync/health. Ok n = reachable, with the peer's committed op count;
@@ -170,7 +170,7 @@ let reachable (url: String) : Stdlib.Result.Result<Int64, String> =
 // One pull batch: GET the peer's next bounded batch of ops after our cursor, apply them, advance the cursor, and recurse
 // until a batch comes back empty (caught up). Advancing the cursor per batch means an interrupted pull resumes
 // where it left off. <param applied> accumulates the total across batches.
-let rec pullLoop
+let pullLoop
   (peer: String)
   (applied: Int)
   (budget: Int)
@@ -266,7 +266,7 @@ let rec pullLoop
 /// rides its OWN channel, not the op stream — so the ops can reference a blob we don't have yet. GET the peer's
 /// manifest, keep the hashes we're missing, GET + insert each. Best-effort: a failed GET or empty body is
 /// skipped — content-addressed, so it retries + dedups on the next pull. Returns the count inserted.
-let private fetchMissingBlobs (peer: String) : Int =
+let fetchMissingBlobs (peer: String) : Int =
   let manifestUrl = $"{peer}/sync/blobs"
 
   match syncHttpGet manifestUrl with
@@ -325,10 +325,10 @@ let status () : List<(String * Int64)> =
 // changes the daemon snaps to a responsive floor and backs off (doubling) up to this while idle, so a real
 // commit propagates within ~the floor without hammering a quiet tailnet. Overridable via `dark sync daemon
 // config interval N` (stored as `apps.<name>.intervalMs`), read on start.
-let private defaultPollIntervalMs : Int = 30000
+let defaultPollIntervalMs : Int = 30000
 
 // The responsive floor — the gap right after a pull that saw changes.
-let private pollFloorMs : Int = 2000
+let pollFloorMs : Int = 2000
 
 // Adaptive interval (pure): snap to the floor after changes, else back off (double) up to the ceiling. This
 // is what lets a converged tailnet quiet down instead of polling at the floor forever.
@@ -339,7 +339,7 @@ let nextPollMs (sawChanges: Bool) (currentMs: Int) (ceilingMs: Int) : Int =
     let doubled = currentMs * 2
     if doubled > ceilingMs then ceilingMs else doubled
 
-let rec syncLoop (intervalMs: Int) (ceilingMs: Int) (remaining: Int) : Int =
+let syncLoop (intervalMs: Int) (ceilingMs: Int) (remaining: Int) : Int =
   if remaining <= 0 then
     0
   else

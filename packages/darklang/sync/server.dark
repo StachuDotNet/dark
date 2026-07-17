@@ -35,7 +35,7 @@ let healthHandler : Stdlib.HttpServer.Handler =
 
 // GET /sync/events?package=<rowid>&branch=<rowid>&resolution=<rowid> — one bounded batch from each log after the given cursors,
 // as the JSON wire. Missing/garbage cursor defaults to 0 (from the start).
-let private parseCursor (url: String) (param: String) : Int64 =
+let parseCursor (url: String) (param: String) : Int64 =
   match Stdlib.Dict.get (Stdlib.Http.parseQueryString url) param with
   | Some s ->
     match Stdlib.Int64.parse s with
@@ -71,7 +71,7 @@ let blobsHandler : Stdlib.HttpServer.Handler =
     { route = "/sync/blobs"; method = "GET"; handler = blobsFn }
 
 // GET /sync/blob?hash=<hash> — the base64 bytes for one content hash (empty body if this instance lacks it).
-let private parseHash (url: String) : String =
+let parseHash (url: String) : String =
   match Stdlib.Dict.get (Stdlib.Http.parseQueryString url) "hash" with
   | Some h -> h
   | None -> ""
