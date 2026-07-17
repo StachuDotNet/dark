@@ -1456,57 +1456,64 @@ let private equivOne
                 match compileClosure typeDefs (fds @ extraMarshallers) marshalled with
                 | Error e -> return "cf|compile: " + e
                 | Ok binary ->
-                  let (daemon, shutdown) = startDaemon exeState vm
-                  let out = CompilerLibrary.execute 0 timeoutMs binary
-                  shutdown ()
-                  let _ = (try daemon.Wait() with _ -> ())
-                  if out.ExitCode <> 0 then
-                    return $"crash|{out.ExitCode}"
-                  else
-                    // Strip exactly ONE trailing newline -- the one Print appends --
-                    // not all of them. TrimEnd('\n') ate newlines belonging to the
-                    // VALUE and reported two false DIFFs (`/// hello` vs
-                    // `/// hello\n`) on strings that legitimately end in one.
-                    let raw = out.Stdout
-                    let compiled =
-                      if raw.EndsWith "\n" then raw.Substring(0, raw.Length - 1) else raw
-                    // Run the interpreter with the SAME bound the compiled binary got.
-                    // Previously this was a bare `.Result` — UNBOUNDED — so the per-fn
-                    // timeout only ever fenced the compiled side. An exponential fn
-                    // (fib 35 interpreted) ran for minutes here, TWICE (the nondet
-                    // check), defeating the whole per-fn budget: this was the "79
-                    // interpreter timeouts" that stalled the proof sweeps. Task.Wait(ms)
-                    // gives a real deadline; a miss is reported as `itimeout`, distinct
-                    // from a genuine interpreter error (`ierr`), so it's an honest
-                    // "couldn't prove in time", not a false DIFF and not a crash.
-                    let runInterp () : Result<string, string> =
-                      try
-                        let argsNE =
-                          match args with
-                          | [] -> NEList.singleton DUnit
-                          | _ -> NEList.ofList args.Head args.Tail
-                        let task =
-                          LibExecution.Execution.executeFunction
-                            exeState (FQFnName.fqPackage hash) [] argsNE
-                        if task.Wait(timeoutMs) then
-                          match task.Result with
-                          // Materialize PERSISTENT blobs before wiring: dvalToWire is
-                          // pure and only encodes Ephemeral, so a package blob in the
-                          // result printed "?unmarshalable:DBlob" and read as a false
-                          // DIFF (the compiled side was right).
-                          | Ok v -> Ok(dvalToWire (Ply.toTask (materializeBlobs v)).Result)
-                          | Error(_, e) -> Error(string e)
-                        else Error("__timeout__")
-                      with e -> Error("exn: " + e.Message)
-                    let interp = runInterp ()
-                    // A SECOND run: a fn that disagrees with itself (uuidGenerate, random,
-                    // clock) can't be compared and would otherwise be a false DIFF.
-                    let interp2 = runInterp ()
-                    match interp, interp2 with
-                    | Error "__timeout__", _ | _, Error "__timeout__" -> return "itimeout"
-                    | Error e, _ -> return "ierr|" + e
-                    | Ok i, Ok i2 when i <> i2 -> return "nondet"
-                    | Ok i, _ ->
+                  // Run the interpreter with the SAME bound the compiled binary got.
+                  // Previously this was a bare `.Result` — UNBOUNDED — so the per-fn
+                  // timeout only ever fenced the compiled side. An exponential fn
+                  // (fib 35 interpreted) ran for minutes here, TWICE (the nondet
+                  // check), defeating the whole per-fn budget: this was the "79
+                  // interpreter timeouts" that stalled the proof sweeps. Task.Wait(ms)
+                  // gives a real deadline; a miss is reported as `itimeout`, distinct
+                  // from a genuine interpreter error (`ierr`), so it's an honest
+                  // "couldn't prove in time", not a false DIFF and not a crash.
+                  let runInterp () : Result<string, string> =
+                    try
+                      let argsNE =
+                        match args with
+                        | [] -> NEList.singleton DUnit
+                        | _ -> NEList.ofList args.Head args.Tail
+                      let task =
+                        LibExecution.Execution.executeFunction
+                          exeState (FQFnName.fqPackage hash) [] argsNE
+                      if task.Wait(timeoutMs) then
+                        match task.Result with
+                        // Materialize PERSISTENT blobs before wiring: dvalToWire is
+                        // pure and only encodes Ephemeral, so a package blob in the
+                        // result printed "?unmarshalable:DBlob" and read as a false
+                        // DIFF (the compiled side was right).
+                        | Ok v -> Ok(dvalToWire (Ply.toTask (materializeBlobs v)).Result)
+                        | Error(_, e) -> Error(string e)
+                      else Error("__timeout__")
+                    with e -> Error("exn: " + e.Message)
+                  // Run the interpreter TWICE **before** executing the compiled binary.
+                  // For a STATE-MUTATING fn the order is load-bearing: Posix.symlink run
+                  // by the binary FIRST creates the link, then both interpreter runs see
+                  // the post-state (EEXIST) and AGREE, so the nondet check misses it and
+                  // it's reported as a false DIFF (c=Ok vs i=Error 17). Running the two
+                  // interpreter passes first, symlink gives Ok then EEXIST — they DISAGREE
+                  // -> `nondet` -> honestly skipped, and the binary never runs to muddy the
+                  // filesystem. (A pure fn's two runs still agree, so nothing changes for
+                  // the provable set.)
+                  let interp = runInterp ()
+                  let interp2 = runInterp ()
+                  match interp, interp2 with
+                  | Error "__timeout__", _ | _, Error "__timeout__" -> return "itimeout"
+                  | Error e, _ -> return "ierr|" + e
+                  | Ok i, Ok i2 when i <> i2 -> return "nondet"
+                  | Ok i, _ ->
+                    let (daemon, shutdown) = startDaemon exeState vm
+                    let out = CompilerLibrary.execute 0 timeoutMs binary
+                    shutdown ()
+                    let _ = (try daemon.Wait() with _ -> ())
+                    if out.ExitCode <> 0 then
+                      return $"crash|{out.ExitCode}"
+                    else
+                      // Strip exactly ONE trailing newline -- the one Print appends --
+                      // not all of them. TrimEnd('\n') ate newlines belonging to the
+                      // VALUE and reported two false DIFFs (`/// hello` vs `/// hello\n`)
+                      // on strings that legitimately end in one.
+                      let raw = out.Stdout
+                      let compiled =
+                        if raw.EndsWith "\n" then raw.Substring(0, raw.Length - 1) else raw
                       if compiled = i then return "match"
                       else
                         let esc (s : string) = s.Replace("\n", "\\n")
