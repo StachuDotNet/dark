@@ -54,7 +54,10 @@ type WireRet =
 type BridgeCtx =
   { Params : string[]
     Self : string
-    Values : Map<string, AST.Expr>
+    /// Package values available as shared nullary fns (see Compiler.valueFnDef).
+    /// Only membership matters — an EValue lowers to a CALL of that fn, so the
+    /// body itself never travels through here (that inlining is what exploded).
+    Values : Set<string>
     /// Why a referenced package value ISN'T in `Values`. A value whose own body
     /// fails to bridge is dropped, and every fn referencing it then failed with a
     /// useless "package value not resolved" that hid the actual blocker. Carry the
@@ -95,6 +98,13 @@ let nameFor (hash : string) : string = "fn." + hash
 // are already dotted (Stdlib.Option.Option) and contain no underscore, so they
 // round-trip as a single token.
 let nameForType (hash : string) : string = "T." + hash
+
+/// A package value is emitted ONCE as a shared nullary fn (see Compiler.valueFnDef)
+/// and every reference calls it. Previously each EValue spliced the value's whole
+/// bridged body in, and since a value's body contains its dependencies' bodies,
+/// chains compounded multiplicatively — 55GB on a 50-fn batch. Dotted for the same
+/// reason as nameFor/nameForType: the compiler mangles names and splits them on '_'.
+let valueFnName (hash : string) : string = "__val." + hash
 
 // Pure Darklang stdlib fns for which the compiler ships a REALLY-equivalent native
 // implementation. A call to one is emitted as a call to the compiler's native fn,
@@ -603,6 +613,12 @@ let private bridgeInfix (op : PT.Infix) : Result<AST.BinOp, string> =
 
 /// Multi-field enum payloads / record constructions become a single tuple
 /// payload on the compiler side (its Constructor takes one optional payload).
+let tuplePayloadPublic (xs : List<AST.Expr>) : AST.Expr option =
+  match xs with
+  | [] -> None
+  | [ x ] -> Some x
+  | many -> Some(AST.TupleLiteral many)
+
 let private tuplePayload (xs : List<AST.Expr>) : AST.Expr option =
   match xs with
   | [] -> None
@@ -912,9 +928,11 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
       match resolved.name with
       | PT.FQValueName.Builtin b -> err "value-builtin" b.name
       | PT.FQValueName.Package(PT.Hash h) ->
-        match Map.tryFind h ctx.Values with
-        | Some e -> Ok e
-        | None ->
+        if Set.contains h ctx.Values then
+          // Call the shared nullary fn rather than splicing the value's body in here.
+          // The Unit arg is how the compiler spells a nullary call.
+          Ok(AST.Call(valueFnName h, AST.NonEmptyList.singleton AST.UnitLiteral))
+        else
           // Report why the value itself couldn't be bridged, not just that it's absent.
           match Map.tryFind h ctx.ValueErrors with
           | Some inner -> err "value" $"package value did not bridge: {inner}"
@@ -1168,7 +1186,7 @@ let rec freeTVars (t : AST.Type) : Set<string> =
 /// any by-name refs both resolve). Generics are not yet supported.
 let bridgeFn
   (types : Map<string, TypeEntry>)
-  (values : Map<string, AST.Expr>)
+  (values : Set<string>)
   (valueErrors : Map<string, string>)
   (effectful : Map<string, WireArg list * WireRet>)
   (compiledName : string)
@@ -1360,26 +1378,22 @@ let typeRefsInTypeDef (pt : PT.PackageType.PackageType) : List<string> =
 let rec valueRefsInExpr (e : PT.Expr) : List<string> =
   let r = valueRefsInExpr
   match e with
-  // NB: EPipe is deliberately NOT walked here, even though referencedPackageFns walks
-  // it and its absence IS a real bug: a package value used inside a pipe is never
-  // seeded, never fetched, and every fn touching it fails "unsupported-value: package
-  // value not resolved" (~307 fns — the #1 blocker). The fix is 12 lines and correct.
-  // It still can't land, because bridgeExpr INLINES a value's whole body at every
-  // EValue and valuesMap[A] already contains B's body inlined, so value chains
-  // compound multiplicatively. All three combinations were measured:
-  //   inlined + pipes             -> 55GB on a 50-fn batch (nearly OOM'd the box)
-  //   let-shared per fn + pipes   -> 23GB on a 25-fn batch (chains gone, but the
-  //                                  remaining N-fns x M-values duplication is fatal)
-  //   let-shared per fn, no pipes -> WRONG: EValue emits `Var __val_h` while the Let
-  //                                  is only emitted for refs THIS walker sees, so a
-  //                                  pipe-referenced value becomes an unbound var (-2)
-  // So per-fn sharing is coupled to this walker, and isn't sufficient regardless: a
-  // value must be emitted ONCE PER PROGRAM. That needs a nullary FunctionDef, which
-  // needs a ReturnType, which PT.PackageValue ({ hash; description; body }) lacks.
-  // Route worth trying: a package value is a CONSTANT — evaluate it in the runtime to
-  // a Dval, take the type from the Dval, emit one shared nullary fn (or a literal),
-  // and only THEN add EPipe here and re-measure. Per-fn testing will not catch the
-  // blowup (a single fn compiles in ~5s); watch RSS across a batch.
+  // Values are SHARED nullary fns now (see valueFnName), not inlined, so walking
+  // pipes here is finally safe. It is also required: referencedPackageFns walks
+  // pipes and this must agree, or a package value used inside a pipe is never
+  // seeded, never fetched, and every fn touching it fails "package value not
+  // resolved" (~307 fns — the #1 blocker). While values were inlined, adding this
+  // compounded value chains and hit 55GB on a 50-fn batch.
+  | PT.EPipe(_, lhs, parts) ->
+    r lhs
+    @ (parts
+       |> List.collect (fun p ->
+         match p with
+         | PT.EPipeFnCall(_, _, _, args) -> args |> List.collect r
+         | PT.EPipeInfix(_, _, e) -> r e
+         | PT.EPipeEnum(_, _, _, fields) -> fields |> List.collect r
+         | PT.EPipeVariable(_, _, args) -> args |> List.collect r
+         | PT.EPipeLambda(_, _, body) -> r body))
   | PT.EValue(_, nr) ->
     match nr.resolved with
     | Ok resolved ->

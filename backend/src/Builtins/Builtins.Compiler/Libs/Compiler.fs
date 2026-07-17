@@ -212,6 +212,145 @@ let private buildEffectfulMap
     | _ -> None)
   |> Map.ofList
 
+// ---------------------------------------------------------------------------
+// Package values as SHARED nullary fns.
+//
+// A package value is a CONSTANT, and the runtime already evaluates and caches it
+// (package_values.rt_dval — all 417 are populated), so we can ask the RT package
+// manager for its Dval and emit the value ONCE as `def __val.<hash>() : T = <lit>`,
+// referenced by a call. That replaces inlining the value's bridged body at every
+// EValue, which compounded multiplicatively down value chains (a value's body
+// contains its dependencies' bodies) and hit 55GB on a 50-fn batch.
+//
+// Taking the type from the Dval is the point: PT.PackageValue carries no declared
+// type, which is what blocked emitting a nullary FunctionDef (ReturnType is required).
+// ---------------------------------------------------------------------------
+
+let private typeNameHash (t : FQTypeName.FQTypeName) : Result<string, string> =
+  match t with
+  | FQTypeName.Package(Hash h) -> Ok h
+
+/// A runtime ValueType -> the compiler type it denotes. `fresh` supplies a type-var
+/// name for an Unknown: an EMPTY container (`let empty = []`) genuinely has no
+/// element type, and guessing one would mis-type every use site. Emitting a TVar
+/// instead makes the value fn GENERIC (`def __val.<h><a>() : List<a> = []`) so each
+/// call site infers it — which is exactly what an empty literal should do.
+let rec private valueTypeToAst (fresh : unit -> string) (vt : ValueType) : Result<AST.Type, string> =
+  let valueTypeToAst = valueTypeToAst fresh
+  match vt with
+  | ValueType.Unknown -> Ok(AST.TVar(fresh ()))
+  | ValueType.Known kt ->
+    match kt with
+    | KTUnit -> Ok AST.TUnit
+    | KTBool -> Ok AST.TBool
+    | KTInt8 -> Ok AST.TInt8
+    | KTUInt8 -> Ok AST.TUInt8
+    | KTInt16 -> Ok AST.TInt16
+    | KTUInt16 -> Ok AST.TUInt16
+    | KTInt32 -> Ok AST.TInt32
+    | KTUInt32 -> Ok AST.TUInt32
+    | KTInt64 -> Ok AST.TInt64
+    | KTUInt64 -> Ok AST.TUInt64
+    | KTInt128 -> Ok AST.TInt128
+    | KTUInt128 -> Ok AST.TUInt128
+    | KTInt -> Ok AST.TInt64 // Dark's Int bridges to Int64, same as PT.TInt
+    | KTFloat -> Ok AST.TFloat64
+    | KTChar -> Ok AST.TChar
+    | KTString -> Ok AST.TString
+    | KTList inner -> valueTypeToAst inner |> Result.map AST.TList
+    | KTDict v -> valueTypeToAst v |> Result.map (fun v' -> AST.TDict(AST.TString, v'))
+    | KTTuple(a, b, rest) ->
+      (a :: b :: rest) |> List.map valueTypeToAst |> allOk |> Result.map AST.TTuple
+    | KTCustomType(name, targs) ->
+      typeNameHash name
+      |> Result.bind (fun h ->
+        targs
+        |> List.map valueTypeToAst
+        |> allOk
+        |> Result.map (fun args ->
+          // Enums are TSum, records TRecord; Option/Result map to the native names.
+          if Bridge.isNativeType h then AST.TSum(Bridge.compilerTypeName h, args)
+          else AST.TRecord(Bridge.nameForType h, args)))
+    | other -> Error $"value-type: {other}"
+
+/// A package value's evaluated Dval -> a compiler literal.
+let rec private dvalToAst (d : Dval) : Result<AST.Expr, string> =
+  match d with
+  | DUnit -> Ok AST.UnitLiteral
+  | DBool b -> Ok(AST.BoolLiteral b)
+  | DInt8 n -> Ok(AST.Int8Literal n)
+  | DUInt8 n -> Ok(AST.UInt8Literal n)
+  | DInt16 n -> Ok(AST.Int16Literal n)
+  | DUInt16 n -> Ok(AST.UInt16Literal n)
+  | DInt32 n -> Ok(AST.Int32Literal n)
+  | DUInt32 n -> Ok(AST.UInt32Literal n)
+  | DInt64 n -> Ok(AST.Int64Literal n)
+  | DUInt64 n -> Ok(AST.UInt64Literal n)
+  | DInt128 n -> Ok(AST.Int128Literal n)
+  | DUInt128 n -> Ok(AST.UInt128Literal n)
+  | DInt n -> Ok(AST.Int64Literal(int64 (DarkInt.toBigInt n)))
+  | DFloat f -> Ok(AST.FloatLiteral f)
+  | DChar c -> Ok(AST.CharLiteral c)
+  | DString s -> Ok(AST.StringLiteral s)
+  | DList(_, xs) -> xs |> List.map dvalToAst |> allOk |> Result.map AST.ListLiteral
+  | DTuple(a, b, rest) ->
+    (a :: b :: rest) |> List.map dvalToAst |> allOk |> Result.map AST.TupleLiteral
+  | DDict(_, entries) ->
+    // No dict literal in the compiler AST; Dict.fromList over (key, value) tuples.
+    entries
+    |> Map.toList
+    |> List.map (fun (k, v) ->
+      dvalToAst v |> Result.map (fun v' -> AST.TupleLiteral [ AST.StringLiteral k; v' ]))
+    |> allOk
+    |> Result.map (fun es ->
+      AST.Call("Stdlib.Dict.fromList", AST.NonEmptyList.singleton (AST.ListLiteral es)))
+  | DRecord(_, rtName, _, fields) ->
+    typeNameHash rtName
+    |> Result.bind (fun h ->
+      fields
+      |> Map.toList
+      |> List.map (fun (n, v) -> dvalToAst v |> Result.map (fun v' -> (n, v')))
+      |> allOk
+      |> Result.map (fun fs -> AST.RecordLiteral(Bridge.nameForType h, fs)))
+  | DEnum(_, rtName, _, caseName, fields) ->
+    typeNameHash rtName
+    |> Result.bind (fun h ->
+      fields
+      |> List.map dvalToAst
+      |> allOk
+      |> Result.map (fun fs ->
+        AST.Constructor(Bridge.compilerTypeName h, caseName, Bridge.tuplePayloadPublic fs)))
+  | other -> Error $"value-dval: {other.GetType().Name}"
+
+/// Fetch a package value's evaluated Dval and lower it to a shared nullary fn:
+/// `def __val.<hash>(__unit: Unit) : T = <literal>`. A Unit param is how the
+/// compiler spells a nullary fn (normalizeNullaryCallArgs drops it at the call
+/// site), since FunctionDef.Params is a NonEmptyList.
+let private valueFnDef (hash : string) : Ply<Result<AST.FunctionDef, string>> =
+  uply {
+    let! v = LibDB.PackageManager.rt.getValue (FQValueName.package hash)
+    match v with
+    | None -> return Error "package value has no evaluated rt_dval"
+    | Some pv ->
+      let mutable counter = 0
+      let fresh () =
+        counter <- counter + 1
+        $"vt{counter}"
+      match valueTypeToAst fresh (Dval.toValueType pv.body), dvalToAst pv.body with
+      | Error e, _ -> return Error e
+      | _, Error e -> return Error e
+      | Ok t, Ok body ->
+        return
+          Ok(
+            { Name = Bridge.valueFnName hash
+              // Any tvar we introduced for an empty container must be declared.
+              TypeParams = Bridge.freeTVars t |> Set.toList
+              Params = AST.NonEmptyList.singleton ("__unit", AST.TUnit)
+              ReturnType = t
+              Body = body } : AST.FunctionDef
+          )
+  }
+
 let private buildPieces
   (effectful : Map<string, Bridge.WireArg list * Bridge.WireRet>)
   (rootHash : string)
@@ -274,41 +413,23 @@ let private buildPieces
         // dependency order, so iterate to a fixpoint — each pass bridges any value
         // whose referenced values are now in the map — rather than dropping a
         // forward reference on a single ordered pass.
-        let bridgeValuesOnce (m : Map<string, AST.Expr>) : Map<string, AST.Expr> =
-          (m, values)
-          ||> List.fold (fun m (h, pv) ->
-            if Map.containsKey h m then m
-            else
-              let ctx : Bridge.BridgeCtx =
-                { Params = [||]
-                  Self = ""
-                  Values = m
-                  ValueErrors = Map.empty
-                  Effectful = Map.empty }
-              match Bridge.bridgeExpr ctx pv.body with
-              | Ok e -> Map.add h e m
-              | Error _ -> m)
-        let rec fixpoint (m : Map<string, AST.Expr>) : Map<string, AST.Expr> =
-          let m' = bridgeValuesOnce m
-          if Map.count m' = Map.count m then m' else fixpoint m'
-        let valuesMap = fixpoint Map.empty
-        // Whatever never reached the fixpoint failed for a REASON; re-bridge those
-        // once against the final map to capture it, so a fn referencing one reports
-        // the root cause rather than a bare "package value not resolved".
-        let valueErrors : Map<string, string> =
-          values
-          |> List.filter (fun (h, _) -> not (Map.containsKey h valuesMap))
-          |> List.choose (fun (h, pv) ->
-            let ctx : Bridge.BridgeCtx =
-              { Params = [||]
-                Self = ""
-                Values = valuesMap
-                ValueErrors = Map.empty
-                Effectful = Map.empty }
-            match Bridge.bridgeExpr ctx pv.body with
-            | Error e -> Some(h, e)
-            | Ok _ -> None)
-          |> Map.ofList
+        // Each package value becomes ONE shared nullary fn, typed and literal-ised
+        // from its evaluated Dval (rt_dval). No fixpoint is needed any more: a value
+        // that references other values does so through their Dvals, which are already
+        // evaluated, so there's nothing to order. And no inlining, so value chains
+        // can't compound.
+        let mutable valueDefs : List<AST.FunctionDef> = []
+        let mutable valueOk : Set<string> = Set.empty
+        let mutable valueErrs : List<string * string> = []
+        for (h, _) in values do
+          let! r = valueFnDef h
+          match r with
+          | Ok fd ->
+            valueDefs <- valueDefs @ [ fd ]
+            valueOk <- Set.add h valueOk
+          | Error e -> valueErrs <- valueErrs @ [ (h, e) ]
+        let valuesMap = valueOk
+        let valueErrors = Map.ofList valueErrs
         let fnDefs =
           fns
           |> List.map (fun (h, fn) -> Bridge.bridgeFn typeEnv valuesMap valueErrors effectful (Bridge.nameFor h) fn)
@@ -316,7 +437,9 @@ let private buildPieces
         match typeDefs, fnDefs with
         | Error e, _ -> return Error e
         | _, Error e -> return Error e
-        | Ok tds, Ok fds -> return Ok(tds, fds, Bridge.nameFor rootHash)
+        // The value fns go in alongside the bridged fns — one definition each,
+        // shared by every reference.
+        | Ok tds, Ok fds -> return Ok(tds, valueDefs @ fds, Bridge.nameFor rootHash)
   }
 
 /// Substitute type variables (used to instantiate a generic root fn's type
@@ -1130,7 +1253,7 @@ let fns () : List<BuiltInFn> =
                   [ { name = "b"; typ = PT.TInt64; description = "" } ]
               returnType = PT.TInt64
               description = "" }
-          match Bridge.bridgeFn Map.empty Map.empty Map.empty Map.empty "bridgedFn" ptFn with
+          match Bridge.bridgeFn Map.empty Set.empty Map.empty Map.empty "bridgedFn" ptFn with
           | Error e -> outcome false $"bridge: {e}" |> Ply
           | Ok fd ->
             let program : AST.Program =
