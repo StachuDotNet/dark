@@ -96,6 +96,33 @@ let parseKind
       $"Unknown kind '{other}'. Expected: superseded-by, harmful, obsolete"
 
 
+/// Every live name on this branch bound to this exact content (item_hash + kind). Deprecation keys on CONTENT,
+/// not name, so deprecating one deprecates ALL of these — for a trivial value (0/1/true/"") that can be many
+/// unrelated names, including stdlib constants (deprecating a `= 1` retires `Errno.eperm`). We surface the
+/// full set before the confirm so the collateral is never a surprise. A normal fn/type has a near-unique
+/// hash, so this is a single name and no heads-up fires. (The real per-name fix is a canonical op change and
+/// is Stachu's call; this is only the guard.)
+let namesAtContent
+  (branchId: Uuid)
+  (hashStr: String)
+  (itemType: String)
+  : List<String> =
+  let db = Darklang.Sync.localDbPath ()
+  let sql =
+    "SELECT owner, modules, name FROM locations "
+    ++ "WHERE item_hash = @p0 AND item_type = @p1 AND branch_id = @p2 AND unlisted_at IS NULL"
+  match Stdlib.Sqlite.queryP db sql [ hashStr; itemType; Stdlib.Uuid.toString branchId ] with
+  | Ok rows ->
+    rows
+    |> Stdlib.List.map (fun row ->
+      let owner = Stdlib.Sqlite.textField row "owner" |> Stdlib.Option.withDefault ""
+      let modules = Stdlib.Sqlite.textField row "modules" |> Stdlib.Option.withDefault ""
+      let name = Stdlib.Sqlite.textField row "name" |> Stdlib.Option.withDefault ""
+      $"{owner}.{modules}.{name}")
+    |> Stdlib.List.unique
+  | Error _ -> []
+
+
 let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   let parsed = parseArgs args
   let branchId = state.currentBranchId
@@ -173,6 +200,26 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
             | Some r -> Stdlib.printLine $"    replacement: {r}"
             | None -> ()
           | None -> ()
+
+          // Heads-up when this content is shared by more than one name: deprecation is content-keyed, so all of
+          // them get deprecated together. `affected` always includes the target itself, so exactly one = no
+          // collateral (silent); two or more = list them all so the confirm is informed.
+          let affected =
+            namesAtContent
+              branchId
+              (LanguageTools.ProgramTypes.hashToString
+                (LanguageTools.ProgramTypes.Reference.hash targetRef))
+              itemTypeStr
+          match affected with
+          | [] -> ()
+          | [ _ ] -> ()
+          | _ ->
+            Stdlib.printLine
+              (Colors.warning
+                $"  Heads up: this {itemTypeStr}'s content is bound to multiple names — deprecation keys on content, so ALL of these are deprecated together:")
+            affected
+            |> Stdlib.List.map (fun a -> $"    - {a}")
+            |> Stdlib.printLines
 
           if parsed.dryRun then
             Stdlib.printLine "(dry-run, no op emitted)"
