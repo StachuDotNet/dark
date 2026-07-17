@@ -779,6 +779,16 @@ let rec private dvalToWire (d : Dval) : string =
   | DUnit -> "unit"
   | DFloat f -> string f
   | DChar c -> c
+  // A Blob marshals as its byte VALUES, one per line -- the same shape as a
+  // List<Int64>, which is exactly what the compiled side emits via
+  // Stdlib.Bytes.toList. Empty blob -> "" -> [], matching the DList encoding.
+  //
+  // Only Ephemeral is encodable here: a Persistent blob is a content hash that
+  // resolves through state.blobs, which is IO, and dvalToWire is pure. Persistent
+  // therefore falls through to the ?unmarshalable marker below and is reported as
+  // `unprovable` rather than guessed at.
+  | DBlob(Ephemeral eph) ->
+    eph.bytes |> Array.toList |> List.map (string >> escWire) |> String.concat "\n"
   // Host-opaque types -> canonical string (see Bridge.bridgeType for soundness).
   | DUuid g -> string g
   | DDateTime dt -> LibExecution.DarkDateTime.toIsoString dt

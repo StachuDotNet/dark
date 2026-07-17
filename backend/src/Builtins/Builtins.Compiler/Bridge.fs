@@ -358,6 +358,14 @@ let builtinToStdlib : Map<string, string> =
       "intToFloat", "Stdlib.Int64.toFloat"
       "int64ToFloat", "Stdlib.Int64.toFloat"
       "floatSqrt", "Stdlib.Float.sqrt"
+      // Bytes. stringToBlob is a UTF-8 encode; the compiler stores a String as UTF-8
+      // bytes already, so Stdlib.String.toBytes (added for this) is a byte copy and
+      // matches Encoding.UTF8.GetBytes exactly. Verified on non-ASCII.
+      //
+      // blobToBytes is deliberately NOT routed: it returns List<UInt8>, while the
+      // native Stdlib.Bytes.toList returns List<Int64>. Same bytes, different element
+      // type -> not equivalent, and the difference would be invisible until it wasn't.
+      "stringToBlob", "Stdlib.String.toBytes"
       // Int64 (full)
       "int64LessThan", "Stdlib.Int64.lessThan"
       "int64GreaterThan", "Stdlib.Int64.greaterThan"
@@ -714,7 +722,7 @@ let rec private bindPattern
 /// Whether a bridged return type can be recursively unmarshaled from the wire.
 let rec isMarshalableType (t : AST.Type) : bool =
   match t with
-  | AST.TString | AST.TInt64 | AST.TBool | AST.TUnit -> true
+  | AST.TString | AST.TInt64 | AST.TBool | AST.TUnit | AST.TBytes -> true
   | AST.TSum("Stdlib.Option.Option", [ inner ]) -> isMarshalableType inner
   | AST.TSum("Stdlib.Result.Result", [ a; b ]) -> isMarshalableType a && isMarshalableType b
   | AST.TList inner -> isMarshalableType inner
@@ -804,6 +812,13 @@ let rec marshalTypedSeen
     |> Result.map (fun body ->
       let lam = AST.Lambda(AST.NonEmptyList.fromList [ (ev, inner) ], esc body)
       join (AST.TypeApp("Stdlib.List.map", [ inner; AST.TString ], AST.NonEmptyList.fromList [ v; lam ])) "\n")
+  // Bytes marshal exactly like List<Int64>: the daemon's dvalToWire emits a Blob's
+  // byte values one per line, so decompose with the native Stdlib.Bytes.toList and
+  // reuse the TList encoder above rather than writing a second encoding to keep in
+  // sync. Note Bytes.toList yields Int64, not UInt8 -- that mismatch is exactly why
+  // the blobToBytes builtin is NOT routed; here it's internal to the wire format and
+  // both sides agree on the digits, so it's sound.
+  | AST.TBytes -> marshalTyped d (AST.TList AST.TInt64) (call "Stdlib.Bytes.toList" [ v ])
   | AST.TTuple ts ->
     // Tuples have no generic map; index each slot and concat with "\n".
     ts
@@ -1025,7 +1040,12 @@ let rec serializableReasonSeen
   match t with
   | AST.TString | AST.TChar | AST.TBool | AST.TUnit | AST.TFloat64
   | AST.TInt8 | AST.TInt16 | AST.TInt32 | AST.TInt64
-  | AST.TUInt8 | AST.TUInt16 | AST.TUInt32 | AST.TUInt64 -> Ok()
+  | AST.TUInt8 | AST.TUInt16 | AST.TUInt32 | AST.TUInt64
+  // Bytes is serializable unconditionally: marshalTypedSeen encodes it as its byte
+  // values via Stdlib.Bytes.toList, mirroring dvalToWire's DBlob case. Kept in step
+  // with isMarshalableType and marshalTypedSeen -- all three must agree on TBytes or
+  // a fn is either falsely unprovable (here) or falsely gated (there).
+  | AST.TBytes -> Ok()
   | AST.TList inner -> serializableReason defs inner
   | AST.TTuple ts -> all ts
   | AST.TSum("Stdlib.Option.Option", [ inner ]) -> serializableReason defs inner
@@ -1118,7 +1138,19 @@ let rec unmarshalTyped (d : int) (t : AST.Type) (src : AST.Expr) : AST.Expr =
         AST.BinOp(AST.Eq, r, AST.StringLiteral ""),
         AST.ListLiteral [],
         AST.TypeApp("Stdlib.List.map", [ AST.TString; inner ], AST.NonEmptyList.fromList [ split; lam ])))
-  | _ -> src // unreachable: buildEffectfulMap only routes isMarshalableType returns
+  // The exact inverse of marshalTypedSeen's TBytes case: the wire is the byte values
+  // one per line, so reuse the TList decoder (which already maps "" -> []) and rebuild
+  // with the native Bytes.fromList; the empty wire lands on Bytes.create(0).
+  | AST.TBytes ->
+    AST.Call(
+      "Stdlib.Bytes.fromList",
+      AST.NonEmptyList.fromList [ unmarshalTyped d (AST.TList AST.TInt64) src ])
+  // Anything else is a BUG, not a value: `src` is the raw wire String, so returning it
+  // here hands compiled code a String bit-pattern typed as something else. This stays
+  // sound only while every isMarshalableType case above has a decoder -- adding a type
+  // to isMarshalableType without adding it here silently reintroduces that. (TBytes was
+  // exactly that: widening the gate made this "unreachable" line reachable.)
+  | _ -> src
 
 /// Unmarshal a host-RPC wire response into a native value per its return wire
 /// type. Scalars are decoded inline; every container routes through the recursive

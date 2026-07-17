@@ -540,3 +540,19 @@ def Stdlib.String.padEnd(s: String, targetLen: Int64, padChar: String) : String 
 
 
 // =============================================================================
+
+// UTF-8 encode a string into Bytes.
+//
+// This is a byte copy, not a conversion: a String is already stored as UTF-8 bytes
+// behind an 8-byte length prefix, which is exactly what String.length (the prefix)
+// and String.getByteAt (raw byte at index) read — see __string_hash, which FNV-1a's
+// over the same range. So this matches Dark's Builtin.stringToBlob
+// (System.Text.Encoding.UTF8.GetBytes) byte for byte.
+def Stdlib.String.toBytes(s: String) : Bytes =
+    Stdlib.Bytes.fromList(Stdlib.String.__toBytesHelper(s, 0, []))
+
+def Stdlib.String.__toBytesHelper(s: String, idx: Int64, acc: List<Int64>) : List<Int64> =
+    if idx >= Stdlib.String.length(s) then
+        Stdlib.List.reverse<Int64>(acc)
+    else
+        Stdlib.String.__toBytesHelper(s, idx + 1, [Stdlib.String.getByteAt(s, idx), ...acc])
