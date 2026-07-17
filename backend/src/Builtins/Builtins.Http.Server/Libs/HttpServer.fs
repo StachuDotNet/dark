@@ -250,8 +250,41 @@ let private handleRequest
 // slow-loris timeouts, per-connection caps, malformed-input handling) — all
 // of which the swap PR has to re-implement before going public-facing.
 // See `notes/merge-readiness-report.md` for the dotnet-trace numbers.
+
+
+/// Bind a listener to <param port>, or say why not in one human sentence.
+///
+/// Separate from `runListener` so the bind is the CALLER's to report: inside the serve task, a failure comes
+/// back out of `listenerTask.Wait()` wrapped in an AggregateException — a stack trace where a sentence
+/// belongs — and only after the caller has already announced "Listening on {port}", which by then is a lie.
+let bindListener (port : int64) : Result<HttpListener, string> =
+  let listener = new HttpListener()
+  listener.Prefixes.Add($"http://*:{port}/")
+  try
+    listener.Start()
+    Ok listener
+  with :? HttpListenerException as e ->
+    // "Port's taken" has a different number on every platform — 98 EADDRINUSE on Linux, 48 on BSD/macOS,
+    // 183 ERROR_ALREADY_EXISTS / 32 ERROR_SHARING_VIOLATION on Windows — and .NET surfaces the native errno
+    // here. Match the message too: the codes are what the platform calls it, the message is what it means,
+    // and getting this wrong just means falling back to the raw text (which is what shipped before).
+    let inUse =
+      List.contains e.ErrorCode [ 98; 48; 183; 32 ]
+      || e.Message.Contains("Address already in use")
+      || e.Message.Contains("address already in use")
+    if inUse then
+      Error(
+        $"port {port} is already in use — something else is listening there. "
+        + "Stop it, or serve on another port."
+      )
+    else
+      Error $"couldn't listen on port {port}: {e.Message}"
+
+
+/// Serve requests off an ALREADY-BOUND listener (see `bindListener`), until cancelled.
 let runListener
   (exeState : ExecutionState)
+  (listener : HttpListener)
   (port : int64)
   (handler : Applicable)
   (maxBodyBytes : int64)
@@ -261,10 +294,6 @@ let runListener
   (cancellationToken : CancellationToken)
   : Task<unit> =
   task {
-    let listener = new HttpListener()
-    listener.Prefixes.Add($"http://*:{port}/")
-    listener.Start()
-
     Telemetry.event
       "httpserver.listening"
       [ "port", string port
@@ -379,6 +408,12 @@ let fns () : List<BuiltInFn> =
             use _serveSpan =
               Telemetry.span "httpserver.serve" [ "port", string port ]
 
+            // Bind BEFORE announcing, so "Listening on {port}" is only ever printed once it's true.
+            let listener =
+              match bindListener port with
+              | Ok l -> l
+              | Error msg -> RuntimeError.UncaughtException(msg, []) |> raiseUntargetedRTE
+
             print $"[HttpServer] Listening on port {port}"
 
             // SIGINT → cancel; in-flight requests drain by virtue of being
@@ -393,6 +428,7 @@ let fns () : List<BuiltInFn> =
             let listenerTask =
               runListener
                 exeState
+                listener
                 port
                 handler
                 maxBodyBytes

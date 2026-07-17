@@ -414,9 +414,15 @@ let private runFixture (test : Test) : Task<unit> =
     let port = allocateFreePort ()
     let cts = new CancellationTokenSource()
 
+    let listener =
+      match HttpServer.bindListener (int64 port) with
+      | Ok l -> l
+      | Error msg -> Exception.raiseInternal msg [ "port", port ]
+
     let listenerTask =
       HttpServer.runListener
         exeState
+        listener
         (int64 port)
         handler
         HttpServer.defaultMaxBodyBytes
@@ -467,9 +473,15 @@ let private concurrentEphemeralBlobRequests =
     let port = allocateFreePort ()
     let cts = new CancellationTokenSource()
 
+    let listener =
+      match HttpServer.bindListener (int64 port) with
+      | Ok l -> l
+      | Error msg -> Exception.raiseInternal msg [ "port", port ]
+
     let listenerTask =
       HttpServer.runListener
         exeState
+        listener
         (int64 port)
         handler
         HttpServer.defaultMaxBodyBytes
