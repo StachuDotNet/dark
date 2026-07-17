@@ -110,16 +110,20 @@ let getConflicts (branchId : PT.BranchId) : Task<List<RebaseConflict>> =
         let! branchLocs = branchLocations
         let! parentLocs = parentLocations
 
-        // Candidate = same (owner, modules, name, itemType) modified on both sides.
+        // Candidate = same NAME modified on both sides. Keyed by (owner, modules, name), NOT item_type: one
+        // name holds one item, so if the branch made X a fn while the parent made X a value, that's the same
+        // slot contested — a real conflict. Keying on item_type too would miss it (fn != value, so the match
+        // fails) and the rebase would silently pick one. Each side has at most one binding per name post-fold,
+        // so this can't double-count.
         let branchSet =
           branchLocs
-          |> List.map (fun l -> (l.owner, l.modules, l.name, l.itemType))
+          |> List.map (fun l -> (l.owner, l.modules, l.name))
           |> Set.ofList
 
         let candidates =
           parentLocs
           |> List.filter (fun l ->
-            Set.contains (l.owner, l.modules, l.name, l.itemType) branchSet)
+            Set.contains (l.owner, l.modules, l.name) branchSet)
 
         // Keep only candidates whose branch and parent bindings genuinely differ.
         let mutable conflicts = []

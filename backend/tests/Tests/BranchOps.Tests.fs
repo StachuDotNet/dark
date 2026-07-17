@@ -30,6 +30,12 @@ let private loc (name : string) : PT.PackageLocation =
 let private makeFn (body : PT.Expr) : PT.PackageFn.PackageFn =
   testPackageFn [] (NEList.singleton "x") PT.TInt64 body
 
+let private makeValue (body : PT.Expr) : PT.PackageValue.PackageValue =
+  let uniqueHash =
+    System.Guid.NewGuid().ToString("N") + System.Guid.NewGuid().ToString("N")
+    |> PT.Hash
+  { hash = uniqueHash; body = body; description = "" }
+
 let private countRows (table : string) : Task<int64> =
   Sql.query $"SELECT COUNT(*) as cnt FROM {table}"
   |> Sql.executeRowAsync (fun read -> read.int64 "cnt")
@@ -462,6 +468,66 @@ let testRebaseConflictsAreContentAware =
   }
 
 
+let testRebaseConflictCrossKind =
+  testTask
+    "rebase conflicts: branch makes a name a fn while parent makes it a value is a conflict" {
+    // A1 made a location's identity (owner, modules, name) — item_type is a hint, not part of it. So if the
+    // branch binds X to a fn while the parent binds X to a value (both since base), that's the SAME slot
+    // contested — a real conflict. getConflicts used to key the candidate match on item_type too, so fn-vs-
+    // value never matched and the conflict was silently missed; this pins that it's caught.
+    let! (parent : PT.Branch) = Branches.create "rebase-xk-parent" PT.mainBranchId
+
+    // Base: X is a value.
+    let seedVal = makeValue (eInt64 0L)
+    let! (_ : int64) =
+      Inserts.insertAndApplyOpsAsWip
+        parent.id
+        [ PT.PackageOp.AddValue seedVal
+          PT.PackageOp.SetName(loc "xkSlot", PT.PackageValue seedVal.hash) ]
+    let! (seedResult : Result<PT.Hash, string>) =
+      Inserts.commitWipOps LibCloud.Account.IDs.darklang parent.id "seed value"
+
+    let seedHash =
+      match seedResult with
+      | Ok(PT.Hash h) -> h
+      | Error _ -> ""
+    do!
+      Sql.query
+        "UPDATE commits SET created_at = '2020-01-01 00:00:00' WHERE hash = @h"
+      |> Sql.parameters [ "h", Sql.string seedHash ]
+      |> Sql.executeStatementAsync
+
+    let! (child : PT.Branch) = Branches.create "rebase-xk-child" parent.id
+
+    // Child rebinds X to a FN.
+    let childFn = makeFn (eInt64 1L)
+    let! (_ : int64) =
+      Inserts.insertAndApplyOpsAsWip
+        child.id
+        [ PT.PackageOp.AddFn childFn
+          PT.PackageOp.SetName(loc "xkSlot", PT.PackageFn childFn.hash) ]
+    let! (_ : Result<PT.Hash, string>) =
+      Inserts.commitWipOps LibCloud.Account.IDs.darklang child.id "child: X is a fn"
+
+    // Parent rebinds X to a DIFFERENT value.
+    let parentVal = makeValue (eInt64 2L)
+    let! (_ : int64) =
+      Inserts.insertAndApplyOpsAsWip
+        parent.id
+        [ PT.PackageOp.AddValue parentVal
+          PT.PackageOp.SetName(loc "xkSlot", PT.PackageValue parentVal.hash) ]
+    let! (_ : Result<PT.Hash, string>) =
+      Inserts.commitWipOps LibCloud.Account.IDs.darklang parent.id "parent: X is a value"
+
+    let! conflicts = Rebase.getConflicts child.id
+    let names =
+      conflicts |> List.map (fun (c : Rebase.RebaseConflict) -> c.name) |> Set.ofList
+    Expect.isTrue
+      (Set.contains "xkSlot" names)
+      "fn-on-branch vs value-on-parent at one name is a conflict (was missed when the match keyed on kind)"
+  }
+
+
 let tests =
   testList
     "BranchOps"
@@ -472,4 +538,5 @@ let tests =
       testPartialCommit
       testPartialCommitSameFqn
       testPartialCommitDeprecationState
-      testRebaseConflictsAreContentAware ]
+      testRebaseConflictsAreContentAware
+      testRebaseConflictCrossKind ]
