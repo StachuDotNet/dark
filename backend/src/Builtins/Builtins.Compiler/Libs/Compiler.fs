@@ -777,7 +777,17 @@ let rec private dvalToWire (d : Dval) : string =
   | DUInt128 n -> string n
   | DBool b -> if b then "true" else "false"
   | DUnit -> "unit"
-  | DFloat f -> string f
+  // A Float travels as its IEEE-754 bit pattern in two 32-bit halves, "hi:lo" -- the
+  // mirror of Bridge's TFloat64 / WAFloat encoders (see there for why halves).
+  //
+  // `string f` rendered 5.0 as "5" against the compiler's "5.0" and reported
+  // Stdlib.Int.toFloat as a DIFF when both engines held the same value. Dark's own
+  // floatToString isn't the answer either: it is G12-lossy (so distinct floats render
+  // ALIKE and a real diff could hide behind the rendering), and it appends ".0" to
+  // exponent form, emitting the malformed "1e+13.0". Bits are exact and total.
+  | DFloat f ->
+    let b = System.BitConverter.DoubleToUInt64Bits f
+    string (b >>> 32) + ":" + string (b &&& 0xFFFFFFFFUL)
   | DChar c -> c
   // A Blob marshals as its byte VALUES, one per line -- the same shape as a
   // List<Int64>, which is exactly what the compiled side emits via
@@ -817,7 +827,13 @@ let private wireToDval (t : TypeReference) (s : string) : Dval =
   | TUInt128 -> DUInt128(System.UInt128.Parse s)
   | TBool -> DBool(s = "true")
   | TUnit -> DUnit
-  | TFloat -> DFloat(float s)
+  // "hi:lo" bit halves -- the inverse of Bridge's WAFloat encoder.
+  | TFloat ->
+    match s.Split(':') with
+    | [| hi; lo |] ->
+      let b = (System.UInt64.Parse hi <<< 32) ||| System.UInt64.Parse lo
+      DFloat(System.BitConverter.UInt64BitsToDouble b)
+    | _ -> DFloat(float s) // pre-bits wire; shouldn't happen, but don't invent a value
   | TChar -> DChar s
   | TUuid -> DUuid(System.Guid.Parse s)
   // A list/dict arg arrives as an opaque handle id -> resolve to the real Dval.

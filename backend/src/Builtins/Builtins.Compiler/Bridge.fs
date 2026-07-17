@@ -803,7 +803,42 @@ let rec marshalTypedSeen
   | AST.TUInt32 -> Ok(call "Stdlib.UInt32.toString" [ v ])
   | AST.TUInt64 -> Ok(call "Stdlib.UInt64.toString" [ v ])
   | AST.TBool -> Ok(call "Stdlib.Bool.toString" [ v ])
-  | AST.TFloat64 -> Ok(call "Stdlib.Float.toString" [ v ])
+  // A Float travels as its IEEE-754 BIT PATTERN, not as text. The wire is a comparison
+  // medium, not Dark semantics: its only job is `same value <-> same bytes`, and a
+  // rendering cannot do that. Stdlib.Float.toString here is 12-significant-digit lossy,
+  // so 123456789012345.0 and 123456789012346.0 render IDENTICALLY -- a rendering wire
+  // can't see a miscompile it can't print. Bits are exact, and make NaN/Inf/-0.0 fall
+  // out for free. Mirrored by dvalToWire's DFloat and wireToDval's TFloat.
+  | AST.TFloat64 ->
+    // Sent as two 32-bit HALVES, "hi:lo", not one UInt64.
+    //
+    // The compiler's unsigned comparisons are SIGNED: MIR.Lt lowers to LIR.LT (setl)
+    // with no operand-type awareness. So Stdlib.UInt64.toString -- `if n < 10UL then
+    // digit else recurse(n/10)` -- takes the `n < 10UL` branch for any n >= 2^63 (which
+    // reads as negative) and returns __digitToString's `| _ -> "?"` fallthrough. Every
+    // NEGATIVE float sets the sign bit, so its bits exceed 2^63 and stringified as a
+    // bare "?". Proven: 5.0 (0x4014…, < 2^63) renders fine, -5.0 (0xC014…) gives "?".
+    //
+    // Both halves are < 2^32, hence < 2^63, so they stringify correctly under signed
+    // comparison. `>>` is a logical shift here (Float.__isNegative relies on that for
+    // `bits >> 63UL == 1UL`). Fixing the codegen properly is the real answer -- see
+    // notes/compiler-merge/PROGRESSION-LOG.md.
+    let bv = "__fb" + string d
+    let b = AST.Var bv
+    let hi = AST.BinOp(AST.Shr, b, AST.UInt64Literal 32UL)
+    // lo = b - (hi << 32), NOT `b &&& 0xFFFFFFFFUL`: x64's `AND r/m64, imm32`
+    // sign-extends the immediate, so masking with 0xFFFFFFFF ANDs against all-ones and
+    // is a no-op -- the compiled side returned the whole 64-bit value as `lo` while the
+    // interpreter returned the true low half. Sub + a shift-by-32 use only small
+    // immediates and are exact.
+    let lo = AST.BinOp(AST.Sub, b, AST.BinOp(AST.Shl, hi, AST.UInt64Literal 32UL))
+    Ok(
+      AST.Let(
+        bv,
+        call "Stdlib.Float.toBits" [ v ],
+        cat
+          (cat (call "Stdlib.UInt64.toString" [ hi ]) (AST.StringLiteral ":"))
+          (call "Stdlib.UInt64.toString" [ lo ])))
   // `unit` regardless of the value, but keep v evaluated so effects/typing hold.
   | AST.TUnit -> Ok(AST.Let("__mu" + string d, v, AST.StringLiteral "unit"))
   | AST.TList inner ->
@@ -1280,7 +1315,27 @@ let rec bridgeExpr (ctx : BridgeCtx) (e : PT.Expr) : Result<AST.Expr, string> =
                       | WAString -> Ok a
                       | WAInt -> Ok(AST.Call("Stdlib.Int64.toString", AST.NonEmptyList.singleton a))
                       | WABool -> Ok(AST.Call("Stdlib.Bool.toString", AST.NonEmptyList.singleton a))
-                      | WAFloat -> Ok(AST.Call("Stdlib.Float.toString", AST.NonEmptyList.singleton a))
+                      // "hi:lo" bit halves, same encoding and same reasons as
+                      // marshalTypedSeen's TFloat64 (exactness, and dodging the signed
+                      // UInt64.toString bug). This is the ARG direction, where the old
+                      // lossy rendering meant a Float param handed to a real builtin
+                      // through the seam arrived rounded to 12 significant digits (and,
+                      // for magnitudes past Float.toInt's range, as garbage).
+                      | WAFloat ->
+                        let bits = AST.Call("Stdlib.Float.toBits", AST.NonEmptyList.singleton a)
+                        let u64 e = AST.Call("Stdlib.UInt64.toString", AST.NonEmptyList.singleton e)
+                        let b = AST.Var "__rpc_fb"
+                        let hi = AST.BinOp(AST.Shr, b, AST.UInt64Literal 32UL)
+                        // lo by subtraction, not a 0xFFFFFFFF mask -- see marshalTypedSeen.
+                        let lo = AST.BinOp(AST.Sub, b, AST.BinOp(AST.Shl, hi, AST.UInt64Literal 32UL))
+                        Ok(
+                          AST.Let(
+                            "__rpc_fb",
+                            bits,
+                            AST.BinOp(
+                              AST.StringConcat,
+                              AST.BinOp(AST.StringConcat, u64 hi, AST.StringLiteral ":"),
+                              u64 lo)))
                       | WAUnit -> Ok(AST.Let("__rpc_unit", a, AST.StringLiteral "unit"))
                       // A container/custom type: encode it exactly as the daemon's
                       // wireToDvalTyped decodes. If it CAN'T be encoded (a recursive
