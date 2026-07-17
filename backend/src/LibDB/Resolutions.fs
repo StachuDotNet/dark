@@ -24,9 +24,10 @@ module PT = LibExecution.ProgramTypes
 // genuinely generic "override projection cell X → Y" one that isn't hardwired to package bindings?
 /// One resolution: bind `location` to `choice` (a Reference — hash + kind together, NOT two loose strings),
 /// decided by `resolvedBy` ("human" or a policy name) at `at`. `id` is the wire-carried idempotency key.
-/// `branchId` is load-bearing, not premature generality: bindings are per-branch (a name can even hold a fn
-/// AND a type live at once), so `applySetName` keys a binding by (owner, modules, name, item_type, branch_id)
-/// — a resolution has to name the same slot, and a synced one must tell a peer WHICH branch to override.
+/// `branchId` is load-bearing, not premature generality: bindings are per-branch, so `applySetName` keys a
+/// binding by (owner, modules, name, branch_id) — a resolution has to name the same slot, and a synced one
+/// must tell a peer WHICH branch to override. The kind isn't part of that key: one name holds one item, and
+/// `choice` carries the kind only as the hint for finding the content.
 type Resolution =
   { id : string
     branchId : System.Guid
@@ -89,7 +90,7 @@ let applyToLocations (r : Resolution) : Task<unit> =
       Sql.query
         """
         SELECT item_hash, origin_ts FROM locations
-        WHERE owner = @owner AND modules = @modules AND name = @name AND item_type = @itemType
+        WHERE owner = @owner AND modules = @modules AND name = @name
           AND branch_id = @branchID AND unlisted_at IS NULL
         LIMIT 1
         """
@@ -97,7 +98,6 @@ let applyToLocations (r : Resolution) : Task<unit> =
         [ "owner", Sql.string loc.owner
           "modules", Sql.string modulesStr
           "name", Sql.string loc.name
-          "itemType", Sql.string itemTypeStr
           "branchID", Sql.string (string r.branchId) ]
       |> Sql.executeRowOptionAsync (fun read ->
         (read.string "item_hash", read.stringOrNone "origin_ts"))
@@ -118,14 +118,13 @@ let applyToLocations (r : Resolution) : Task<unit> =
         Sql.query
           """
           UPDATE locations SET unlisted_at = datetime('now')
-          WHERE owner = @owner AND modules = @modules AND name = @name AND item_type = @itemType
+          WHERE owner = @owner AND modules = @modules AND name = @name
             AND branch_id = @branchID AND unlisted_at IS NULL
           """
         |> Sql.parameters
           [ "owner", Sql.string loc.owner
             "modules", Sql.string modulesStr
             "name", Sql.string loc.name
-            "itemType", Sql.string itemTypeStr
             "branchID", Sql.string (string r.branchId) ]
         |> Sql.executeStatementAsync
 
@@ -157,10 +156,9 @@ let recordAndApply (r : Resolution) : Task<unit> =
     // The override settled this location — clear any conflict recorded here (on THIS instance, and on a peer
     // that received the resolution), so it stops showing as an unreviewed conflict after it's been resolved.
     do!
-      Conflicts.markOverriddenByLocationAndKind
+      Conflicts.markOverriddenByLocation
         r.branchId
         (Conflicts.locationString r.location)
-        (r.choice.kind.toString ())
   }
 
 
@@ -191,10 +189,9 @@ let reapplyAll () : Task<unit> =
       // the live path; a re-fold that goes through reapplyAll must do it too, or the resolved conflict pops back
       // up as unreviewed in `dark conflicts` after a grow.)
       do!
-        Conflicts.markOverriddenByLocationAndKind
+        Conflicts.markOverriddenByLocation
           r.branchId
           (Conflicts.locationString r.location)
-          (r.choice.kind.toString ())
   }
 
 

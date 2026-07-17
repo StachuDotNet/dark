@@ -64,7 +64,8 @@ let private getLocationPathsModifiedSince
   }
 
 
-/// The branch's current live binding hash for a location, if any.
+/// The branch's current live binding hash for a location, if any. Keyed by name alone: one name holds one
+/// item, so `itemType` on the conflict is what's bound there, not part of which slot it is.
 let private currentHash
   (branchId : PT.BranchId)
   (c : RebaseConflict)
@@ -72,7 +73,7 @@ let private currentHash
   Sql.query
     """
     SELECT item_hash FROM locations
-    WHERE owner = @owner AND modules = @modules AND name = @name AND item_type = @item_type
+    WHERE owner = @owner AND modules = @modules AND name = @name
       AND branch_id = @branch_id AND unlisted_at IS NULL
     LIMIT 1
     """
@@ -80,7 +81,6 @@ let private currentHash
     [ "owner", Sql.string c.owner
       "modules", Sql.string c.modules
       "name", Sql.string c.name
-      "item_type", Sql.string c.itemType
       "branch_id", Sql.uuid branchId ]
   |> Sql.executeRowOptionAsync (fun read -> read.string "item_hash")
 

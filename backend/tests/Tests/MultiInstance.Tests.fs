@@ -617,15 +617,66 @@ let resolutionSurvivesDiscardAfterRebuild =
   }
 
 
-let conflictIdDistinguishesItemKind =
-  testTask
-    "conflicts at one location with the same hashes but different item kinds stay distinct" {
-    // conflictId hashes item_kind, so a fn-kind and a type-kind divergence at the same name with the same
-    // candidate hashes are two records — not one collapsed by INSERT OR IGNORE. (A name can hold a fn AND a
-    // type at once, so both are real.)
-    let! a = seededInstance "conflictkind"
+let oneItemPerName =
+  testTask "binding a name to a new kind REPLACES what was there — one item per name" {
+    // A location's identity is (owner, modules, name); `item_type` is only a lookup hint (item_hash + kind
+    // -> find the thing). So a name holds exactly one live item: binding a value over a name that held a fn
+    // unlists the fn rather than leaving both live. The fold used to key supersession on item_type, so both
+    // survived and one name could answer to two items at once.
+    let! a = seededInstance "oneitem"
     activate a
-    let locStr = "Test.KindConflict.dup"
+
+    let loc : PT.PackageLocation =
+      { owner = "Test"; modules = [ "OnePerName" ]; name = "thing" }
+    let! (fnHash, otherHash) = twoFunctionHashes ()
+    let! commitHash = existingCommit ()
+
+    do!
+      Seed.receiveOps
+        []
+        [ setNameEventOfKind
+            loc
+            fnHash
+            PT.ItemKind.Fn
+            commitHash
+            "2026-07-08T00:00:00.000Z" ]
+      |> Task.map ignore<int64>
+
+    let! afterFn = liveBindings loc
+    Expect.equal (List.length afterFn) 1 "the fn is bound at the name"
+
+    // A LATER op binds the same name as a `value`. Different kind, same name.
+    do!
+      Seed.receiveOps
+        []
+        [ setNameEventOfKind
+            loc
+            otherHash
+            PT.ItemKind.Value
+            commitHash
+            "2026-07-08T00:00:01.000Z" ]
+      |> Task.map ignore<int64>
+
+    let! afterValue = liveBindings loc
+    Expect.equal
+      (List.length afterValue)
+      1
+      "still exactly ONE live item at the name — the value replaced the fn, they don't coexist"
+    Expect.equal afterValue [ (otherHash, "value") ] "and it's the value that's live"
+
+    teardown [ a ]
+  }
+
+
+let oneConflictPerName =
+  testTask
+    "one name yields one conflict — kind is not part of a divergence's identity" {
+    // conflictId keys (branch, location, localHash, incomingHash). The kind is NOT in it: one name holds one
+    // item, so two divergences at one name with the same candidate hashes ARE the same divergence.
+    let! a = seededInstance "oneconflict"
+    activate a
+
+    let locStr = "Test.OneConflict.dup"
     do!
       LibDB.Conflicts.record
         PT.mainBranchId
@@ -639,62 +690,19 @@ let conflictIdDistinguishesItemKind =
       LibDB.Conflicts.record
         PT.mainBranchId
         locStr
-        "type"
+        "value"
         "hashLocal"
         "hashIncoming"
         "hashIncoming"
         "auto:test"
+
     let! all = LibDB.Conflicts.list ()
     let atLoc =
       all |> List.filter (fun (c : LibDB.Conflicts.Conflict) -> c.location = locStr)
     Expect.equal
       (List.length atLoc)
-      2
-      "both the fn-kind and type-kind conflicts are recorded (not collapsed to one id)"
-    teardown [ a ]
-  }
-
-
-let kindAwareResolutionKeepsOtherKind =
-  testTask
-    "resolving a conflict at one location+kind leaves the other kind's conflict untouched" {
-    // B1: a name can hold a fn AND a value at once (two distinct conflicts at one location).
-    // markOverriddenByLocationAndKind must clear ONLY the named kind — not both. (Was: the location-only
-    // override cleared every kind, so resolving the fn silently cleared the value's conflict too.)
-    let! a = seededInstance "kindaware"
-    activate a
-    let branch = PT.mainBranchId
-    let loc = "Test.KindResolve.dup"
-    do!
-      LibDB.Conflicts.record
-        branch
-        loc
-        "fn"
-        "fnLocal"
-        "fnIncoming"
-        "fnIncoming"
-        "auto:test"
-    do!
-      LibDB.Conflicts.record
-        branch
-        loc
-        "value"
-        "valLocal"
-        "valIncoming"
-        "valIncoming"
-        "auto:test"
-    do! LibDB.Conflicts.markOverriddenByLocationAndKind branch loc "fn"
-    let! all = LibDB.Conflicts.list ()
-    let statusOf (k : string) =
-      all
-      |> List.filter (fun (c : LibDB.Conflicts.Conflict) -> c.location = loc)
-      |> List.tryFind (fun c -> c.itemKind = k)
-      |> Option.map (fun c -> c.status)
-    Expect.equal (statusOf "fn") (Some "overridden") "the fn conflict was overridden"
-    Expect.equal
-      (statusOf "value")
-      (Some "auto-resolved")
-      "the value conflict is UNTOUCHED — still unreviewed"
+      1
+      "one divergence at the name, not one per kind (INSERT OR IGNORE dedupes on the natural id)"
     teardown [ a ]
   }
 
@@ -1022,8 +1030,8 @@ let tests =
       resolutionSurvivesDiscard
       identicalContentAuthoringConverges
       resolutionSurvivesDiscardAfterRebuild
-      conflictIdDistinguishesItemKind
-      kindAwareResolutionKeepsOtherKind
+      oneItemPerName
+      oneConflictPerName
       durableReleaseMigratesInPlace
       branchMergeSyncs
       concurrentRebasesConverge

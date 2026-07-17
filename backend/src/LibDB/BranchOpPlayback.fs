@@ -98,13 +98,15 @@ let applyOp (op : PT.BranchOp) (originTs : string) : Task<unit> =
       let mergeStatements =
         let parentParams =
           [ "parent_id", Sql.uuid intoBranchId; "branch_id", Sql.uuid branchId ]
-        [ ("""
+        [ // Keyed by name, not (name, kind): one name holds one item, so a child binding supersedes the
+          // parent's binding at that name whatever kind either holds.
+          ("""
            UPDATE locations
            SET unlisted_at = datetime('now')
            WHERE branch_id = @parent_id
              AND unlisted_at IS NULL
-             AND (owner, modules, name, item_type) IN (
-               SELECT owner, modules, name, item_type
+             AND (owner, modules, name) IN (
+               SELECT owner, modules, name
                FROM locations
                WHERE branch_id = @branch_id AND unlisted_at IS NULL
              )

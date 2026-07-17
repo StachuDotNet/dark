@@ -658,10 +658,14 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 []
               )
 
-            // Determine the hash to restore: explicit target or find committed
-            let! restoredHashResult =
+            // Determine what to restore: an explicit target hash (whose kind is the source's — the caller
+            // named it), or whatever is committed at the name. In the latter case use the kind actually
+            // FOUND there, not the source's: one name holds one item, so the name may have been rebound to
+            // a different kind since, and labelling the restored hash with the wrong kind builds a
+            // Reference that points at nothing.
+            let! restoredResult =
               match C2DT.Option.fromDT PT2DT.Hash.fromDT targetHashDval with
-              | Some targetHash -> uply { return Ok targetHash }
+              | Some targetHash -> uply { return Ok(targetHash, sourceItemKind) }
               | None ->
                 uply {
                   let! result =
@@ -670,18 +674,20 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                       sourceLocation.owner
                       modulesStr
                       sourceLocation.name
-                      (sourceItemKind.toString ())
-                  return result |> Result.map fst
+                  return
+                    result
+                    |> Result.map (fun ((hash, itemType), _) ->
+                      (hash, PT.ItemKind.fromString itemType))
                 }
 
-            match restoredHashResult with
+            match restoredResult with
             | Error errMsg ->
               return Dval.resultError tupleKT KTString (DString errMsg)
-            | Ok restoredHash ->
+            | Ok(restoredHash, restoredKind) ->
               let revertId = System.Guid.NewGuid()
 
               let restoredSourceRef =
-                PT.Reference.fromHashAndKind (restoredHash, sourceItemKind)
+                PT.Reference.fromHashAndKind (restoredHash, restoredKind)
 
               let revertOp =
                 PT.PackageOp.RevertPropagation(

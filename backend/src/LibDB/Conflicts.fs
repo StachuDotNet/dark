@@ -52,25 +52,17 @@ let parseLocation (s : string) : PT.PackageLocation =
       name = parts[n - 1] }
 
 
-/// A content-addressed id for a divergence — same branch+location+candidates always maps to one row, so a
-/// re-detected divergence (e.g. re-pull) doesn't duplicate.
+/// The id of a divergence: which branch, which name, and the two contents that raced. Same divergence
+/// re-detected (a re-pull) always maps to the same id, so INSERT OR IGNORE dedupes it. Not hashed — the
+/// natural key is short and readable, and a conflict row you can identify by eye beats an opaque digest.
+/// The kind is NOT in it: one name holds one item, so the name already identifies the slot.
 let private conflictId
   (branchId : System.Guid)
   (location : string)
-  (itemKind : string)
   (localHash : string)
   (incomingHash : string)
   : string =
-  // item_kind is part of the identity: a name can hold a fn AND a type at once, so a fn-kind and a
-  // type-kind divergence at the same location are DISTINCT conflicts. Omitting it would collapse them to
-  // one id and INSERT OR IGNORE would drop the second.
-  let raw = $"{branchId}|{location}|{itemKind}|{localHash}|{incomingHash}"
-
-  System.Security.Cryptography.SHA256.HashData(
-    System.Text.Encoding.UTF8.GetBytes raw
-  )
-  |> System.Convert.ToHexString
-  |> fun s -> s.ToLowerInvariant()
+  $"{branchId}|{location}|{localHash}|{incomingHash}"
 
 
 /// Record an auto-resolved divergence (idempotent — INSERT OR IGNORE on the content-addressed id).
@@ -91,7 +83,7 @@ let record
       (@id, @branch_id, @location, @item_kind, @local_hash, @incoming_hash, @chosen_hash, @resolved_by, 'auto-resolved')
     """
   |> Sql.parameters
-    [ "id", Sql.string (conflictId branchId location itemKind localHash incomingHash)
+    [ "id", Sql.string (conflictId branchId location localHash incomingHash)
       "branch_id", Sql.string (string branchId)
       "location", Sql.string location
       "item_kind", Sql.string itemKind
@@ -137,22 +129,18 @@ let markOverridden (id : string) : Task<unit> =
   |> Sql.executeStatementAsync
 
 
-/// Mark the auto-resolved conflict at this location AND item kind overridden. Used when a Resolution is applied
-/// (local OR synced-in from a peer): the override converges the effective value, so the divergence is settled —
-/// a peer that independently recorded the same conflict must stop listing it as unreviewed. Keyed by
-/// `item_kind` too: a name can hold a fn AND a value at once (two distinct conflicts at one location), so
-/// resolving the fn must NOT also clear the value's conflict.
-let markOverriddenByLocationAndKind
+/// Mark the auto-resolved conflict at this location overridden. Used when a Resolution is applied (local OR
+/// synced-in from a peer): the override converges the effective value, so the divergence is settled — a peer
+/// that independently recorded the same conflict must stop listing it as unreviewed. Keyed by location alone:
+/// one name holds one item, so there is one divergence to settle there.
+let markOverriddenByLocation
   (branchId : System.Guid)
   (location : string)
-  (itemKind : string)
   : Task<unit> =
   Sql.query
-    "UPDATE sync_conflicts SET status = 'overridden' WHERE branch_id = @branch_id AND location = @location AND item_kind = @item_kind AND status = 'auto-resolved'"
+    "UPDATE sync_conflicts SET status = 'overridden' WHERE branch_id = @branch_id AND location = @location AND status = 'auto-resolved'"
   |> Sql.parameters
-    [ "branch_id", Sql.string (string branchId)
-      "location", Sql.string location
-      "item_kind", Sql.string itemKind ]
+    [ "branch_id", Sql.string (string branchId); "location", Sql.string location ]
   |> Sql.executeStatementAsync
 
 
@@ -160,12 +148,11 @@ let markOverriddenByLocationAndKind
 let private currentBinding
   (branchId : System.Guid)
   (loc : PT.PackageLocation)
-  (itemKind : PT.ItemKind)
   : Task<Option<string * Option<string>>> =
   Sql.query
     """
     SELECT item_hash, origin_ts FROM locations
-    WHERE owner = @owner AND modules = @modules AND name = @name AND item_type = @item_type
+    WHERE owner = @owner AND modules = @modules AND name = @name
       AND branch_id = @branch_id AND unlisted_at IS NULL
     LIMIT 1
     """
@@ -173,7 +160,6 @@ let private currentBinding
     [ "owner", Sql.string loc.owner
       "modules", Sql.string (String.concat "." loc.modules)
       "name", Sql.string loc.name
-      "item_type", Sql.string (itemKind.toString ())
       "branch_id", Sql.string (string branchId) ]
   |> Sql.executeRowOptionAsync (fun read ->
     (read.string "item_hash", read.stringOrNone "origin_ts"))
@@ -204,7 +190,7 @@ let detectDivergences
       match op, applied with
       | PT.PackageOp.SetName(loc, target), Some 0L ->
         let (PT.Hash incomingHash) = target.hash
-        let! cur = currentBinding branchId loc target.kind
+        let! cur = currentBinding branchId loc
 
         match cur with
         | Some(curHash, curTs) when curHash <> incomingHash ->

@@ -23,16 +23,16 @@ module BS = LibSerialization.Binary.Serialization
 type Change = { action : string; itemKind : string; location : string }
 
 
-/// The live binding's hash at a location+kind on a branch, if any.
+/// The live binding's hash at a location on a branch, if any. Keyed by name alone — one name holds one
+/// item, so "what is bound here" has a single answer regardless of kind.
 let private boundHash
   (branchId : System.Guid)
   (loc : PT.PackageLocation)
-  (itemKind : string)
   : Task<Option<string>> =
   Sql.query
     """
     SELECT item_hash FROM locations
-    WHERE owner = @owner AND modules = @modules AND name = @name AND item_type = @item_type
+    WHERE owner = @owner AND modules = @modules AND name = @name
       AND branch_id = @branch_id AND unlisted_at IS NULL
     LIMIT 1
     """
@@ -40,7 +40,6 @@ let private boundHash
     [ "owner", Sql.string loc.owner
       "modules", Sql.string (String.concat "." loc.modules)
       "name", Sql.string loc.name
-      "item_type", Sql.string itemKind
       "branch_id", Sql.string (string branchId) ]
   |> Sql.executeRowOptionAsync (fun read -> read.string "item_hash")
 
@@ -88,7 +87,7 @@ let ofIncoming
       | Some(PT.PackageOp.SetName(loc, target)) ->
         let (PT.Hash incomingHash) = target.hash
         let itemKind = target.kind.toString ()
-        let! current = boundHash branchId loc itemKind
+        let! current = boundHash branchId loc
 
         match current with
         | Some h when h = incomingHash -> () // already bound to this — not a change

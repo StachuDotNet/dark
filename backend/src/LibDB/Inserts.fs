@@ -493,29 +493,28 @@ and commitWipOpsByIds
   }
 
 
-/// Find the committed Hash at a location, checking the current branch first,
-/// then falling back to ancestor branches.
-/// Returns Ok(hash, locationIdOpt) where locationIdOpt is Some for same-branch
-/// committed locations (that need un-deprecating) or None for ancestor locations
-/// (which are already active on the parent).
+/// Find the committed item at a location, checking the current branch first, then falling back to ancestor
+/// branches. Keyed by NAME, not (name, kind): one name holds one item, so what's committed there is whatever
+/// it is — and the caller needs the kind it FOUND (the name may since have been rebound to another kind),
+/// hence returning it rather than taking it as a filter.
+/// Returns Ok((hash, kind), locationIdOpt) where locationIdOpt is Some for same-branch committed locations
+/// (that need un-deprecating) or None for ancestor locations (which are already active on the parent).
 let findCommittedHash
   (branchId : PT.BranchId)
   (owner : string)
   (modules : string)
   (name : string)
-  (itemType : string)
-  : Task<Result<Hash * Option<uuid>, string>> =
+  : Task<Result<(Hash * string) * Option<uuid>, string>> =
   task {
     // First: look for deprecated committed location on current branch
     let! committedLocations =
       Sql.query
         """
-        SELECT location_id, item_hash
+        SELECT location_id, item_hash, item_type
         FROM locations
         WHERE owner = @owner
           AND modules = @modules
           AND name = @name
-          AND item_type = @item_type
           AND branch_id = @branch_id
           AND commit_hash IS NOT NULL
           AND unlisted_at IS NOT NULL
@@ -526,13 +525,15 @@ let findCommittedHash
         [ "owner", Sql.string owner
           "modules", Sql.string modules
           "name", Sql.string name
-          "item_type", Sql.string itemType
           "branch_id", Sql.uuid branchId ]
       |> Sql.executeAsync (fun read ->
-        (read.uuid "location_id", Hash(read.string "item_hash")))
+        (read.uuid "location_id",
+         Hash(read.string "item_hash"),
+         read.string "item_type"))
 
     match committedLocations with
-    | (locationId, itemHash) :: _ -> return Ok(itemHash, Some locationId)
+    | (locationId, itemHash, itemType) :: _ ->
+      return Ok((itemHash, itemType), Some locationId)
     | [] ->
       // Fall back to ancestor branches for an active committed location.
       // The parent's location was never deprecated by applySetName
@@ -552,12 +553,11 @@ let findCommittedHash
         let! ancestorLocations =
           Sql.query
             $"""
-            SELECT item_hash
+            SELECT item_hash, item_type
             FROM locations
             WHERE owner = @owner
               AND modules = @modules
               AND name = @name
-              AND item_type = @item_type
               AND branch_id IN ({branchInClause})
               AND unlisted_at IS NULL
             LIMIT 1
@@ -565,14 +565,14 @@ let findCommittedHash
           |> Sql.parameters (
             [ "owner", Sql.string owner
               "modules", Sql.string modules
-              "name", Sql.string name
-              "item_type", Sql.string itemType ]
+              "name", Sql.string name ]
             @ branchParams
           )
-          |> Sql.executeAsync (fun read -> Hash(read.string "item_hash"))
+          |> Sql.executeAsync (fun read ->
+            (Hash(read.string "item_hash"), read.string "item_type"))
 
         match ancestorLocations with
-        | itemHash :: _ -> return Ok(itemHash, None)
+        | (itemHash, itemType) :: _ -> return Ok((itemHash, itemType), None)
         | [] -> return Error "No committed version found to restore"
   }
 
@@ -619,7 +619,6 @@ let discardWipOps (branchId : PT.BranchId) : Task<Result<int64, string>> =
                  ON committed_loc.owner = wip_loc.owner
                  AND committed_loc.modules = wip_loc.modules
                  AND committed_loc.name = wip_loc.name
-                 AND committed_loc.item_type = wip_loc.item_type
                  AND committed_loc.branch_id = wip_loc.branch_id
                  AND committed_loc.commit_hash IS NOT NULL
                  AND committed_loc.unlisted_at IS NOT NULL
@@ -631,7 +630,6 @@ let discardWipOps (branchId : PT.BranchId) : Task<Result<int64, string>> =
                    WHERE active.owner = wip_loc.owner
                      AND active.modules = wip_loc.modules
                      AND active.name = wip_loc.name
-                     AND active.item_type = wip_loc.item_type
                      AND active.branch_id = wip_loc.branch_id
                      AND active.commit_hash IS NOT NULL
                      AND active.unlisted_at IS NULL
@@ -642,7 +640,6 @@ let discardWipOps (branchId : PT.BranchId) : Task<Result<int64, string>> =
                    WHERE c2.owner = wip_loc.owner
                      AND c2.modules = wip_loc.modules
                      AND c2.name = wip_loc.name
-                     AND c2.item_type = wip_loc.item_type
                      AND c2.branch_id = wip_loc.branch_id
                      AND c2.commit_hash IS NOT NULL
                      AND c2.unlisted_at IS NOT NULL

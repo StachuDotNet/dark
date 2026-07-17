@@ -113,6 +113,32 @@ let setNameEvent
   let opId = Inserts.computeOpHash op
   (opId, BS.PT.PackageOp.serialize opId op, PT.mainBranchId, commitHash, ts)
 
+/// A SetName event binding a location to `hash` AS `kind` — for testing that a name holds ONE item
+/// regardless of kind (binding a value over a fn replaces it). `setNameEvent` is the fn-kind case.
+let setNameEventOfKind
+  (loc : PT.PackageLocation)
+  (hash : string)
+  (kind : PT.ItemKind)
+  (commitHash : string)
+  (ts : string)
+  : System.Guid * byte[] * System.Guid * string * string =
+  let op =
+    PT.PackageOp.SetName(loc, PT.Reference.fromHashAndKind (PT.Hash hash, kind))
+  let opId = Inserts.computeOpHash op
+  (opId, BS.PT.PackageOp.serialize opId op, PT.mainBranchId, commitHash, ts)
+
+/// The live (hash, kind) bindings at a location — keyed by name only, so it sees every kind bound there.
+/// One item per name means this returns at most one row.
+let liveBindings (loc : PT.PackageLocation) : Task<List<string * string>> =
+  Sql.query
+    "SELECT item_hash, item_type FROM locations WHERE owner = @o AND modules = @m AND name = @n AND unlisted_at IS NULL"
+  |> Sql.parameters
+    [ "o", Sql.string loc.owner
+      "m", Sql.string (String.concat "." loc.modules)
+      "n", Sql.string loc.name ]
+  |> Sql.executeAsync (fun read ->
+    (read.string "item_hash", read.string "item_type"))
+
 /// A Deprecate package-op event marking a real seeded fn Obsolete — as it crosses the wire / arrives at
 /// `receiveOps`. Folds into the `deprecations` projection (a non-SetName op kind).
 let deprecateEvent

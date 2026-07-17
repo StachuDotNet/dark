@@ -17,12 +17,12 @@ type Conflict =
 let list () : List<Conflict> =
   Builtin.conflictsList ()
 
-/// Accept the auto pick at <param location> of <param itemKind>: marks it reviewed HERE and nothing more —
-/// mints no Resolution, tells no peer. The last writer still won.
-let acknowledge (location: String) (itemKind: String) : Bool =
-  Builtin.conflictAcknowledge location itemKind
+/// Accept the auto pick at <param location>: marks it reviewed HERE and nothing more — mints no Resolution,
+/// tells no peer. The last writer still won.
+let acknowledge (location: String) : Bool =
+  Builtin.conflictAcknowledge location
 
-/// Override the auto pick at <param location> of <param itemKind> with <param hash>: marks that conflict
-/// overridden AND mints a SYNCED Resolution, so peers converge on this pick instead of the last writer's.
-let keep (location: String) (itemKind: String) (hash: String) : Bool =
-  Builtin.conflictKeep location itemKind hash
+/// Override the auto pick at <param location> with <param hash>: marks that conflict overridden AND mints a
+/// SYNCED Resolution, so peers converge on this pick instead of the last writer's.
+let keep (location: String) (hash: String) : Bool =
+  Builtin.conflictKeep location hash

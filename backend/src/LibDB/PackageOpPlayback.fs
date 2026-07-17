@@ -316,17 +316,18 @@ let private applySetName
     let! curBinding =
       task {
         use cmd = ctx.conn.CreateCommand()
+        // Keyed by NAME, not (name, kind): a location's identity is (owner, modules, name) — `item_type` is
+        // only a lookup hint (item_hash + kind -> find the thing), never part of what a name IS. So the
+        // binding this op supersedes is whatever is live at the name, whatever kind it holds.
         cmd.CommandText <-
           "SELECT item_hash, origin_ts FROM locations "
           + "WHERE owner = $owner AND modules = $modules AND name = $name "
-          + "AND item_type = $item_type AND branch_id = $branch_id AND unlisted_at IS NULL LIMIT 1"
+          + "AND branch_id = $branch_id AND unlisted_at IS NULL LIMIT 1"
         cmd.Parameters.AddWithValue("$owner", location.owner)
         |> ignore<SqliteParameter>
         cmd.Parameters.AddWithValue("$modules", modulesStr)
         |> ignore<SqliteParameter>
         cmd.Parameters.AddWithValue("$name", location.name)
-        |> ignore<SqliteParameter>
-        cmd.Parameters.AddWithValue("$item_type", itemTypeStr)
         |> ignore<SqliteParameter>
         cmd.Parameters.AddWithValue("$branch_id", string branchId)
         |> ignore<SqliteParameter>
@@ -361,7 +362,9 @@ let private applySetName
     if isStale then
       return ()
     else
-      // 1. Deprecate any existing location at the target path (handles updates)
+      // 1. Unlist whatever is live at the target name (handles updates). One name holds ONE item: this
+      //    does NOT filter on item_type, so binding a fn over a name that held a value replaces it rather
+      //    than leaving both live.
       do!
         exec ctx """
           UPDATE locations
@@ -369,14 +372,12 @@ let private applySetName
           WHERE owner = $owner
             AND modules = $modules
             AND name = $name
-            AND item_type = $item_type
             AND unlisted_at IS NULL
             AND branch_id = $branch_id
           """ (fun cmd ->
           p cmd "$owner" location.owner
           p cmd "$modules" modulesStr
           p cmd "$name" location.name
-          p cmd "$item_type" itemTypeStr
           pUuid cmd "$branch_id" branchId)
 
       // 2. If this is a rename (standalone SetName, not paired with Add*), also deprecate old locations
