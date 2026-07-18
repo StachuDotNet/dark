@@ -128,7 +128,12 @@ module Blob =
       if b64 = "" then
         return false
       else
-        match (try Some(System.Convert.FromBase64String b64) with _ -> None) with
+        match
+          (try
+            Some(System.Convert.FromBase64String b64)
+           with _ ->
+             None)
+        with
         | None -> return false
         | Some bytes ->
           if LibExecution.Blob.sha256Hex bytes = hash then

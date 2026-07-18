@@ -517,7 +517,10 @@ let testRebaseConflictCrossKind =
         [ PT.PackageOp.AddValue parentVal
           PT.PackageOp.SetName(loc "xkSlot", PT.PackageValue parentVal.hash) ]
     let! (_ : Result<PT.Hash, string>) =
-      Inserts.commitWipOps LibCloud.Account.IDs.darklang parent.id "parent: X is a value"
+      Inserts.commitWipOps
+        LibCloud.Account.IDs.darklang
+        parent.id
+        "parent: X is a value"
 
     let! conflicts = Rebase.getConflicts child.id
     let names =
