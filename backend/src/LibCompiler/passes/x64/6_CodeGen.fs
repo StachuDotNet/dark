@@ -1667,17 +1667,36 @@ let private translateInstr (ctx: FuncCtx) (instr: LIR.Instr) : Result<X86_64.Ins
                 let storeRC =
                     let rcOff = 8 + ((len + 7) &&& (~~~7))
                     loadImm64 X86_64.RCX 1L @ [X86_64.MOV_store (scratch, int32 rcOff, X86_64.RCX)]
-                if addrReg = scratch || addrReg = X86_64.RCX then
-                    // String alloc clobbers R11 (scratch) and init clobbers RCX.
-                    // Push addr before alloc, pop into RCX after string is built.
-                    Ok ([X86_64.PUSH addrReg]
+                // The string build clobbers scratch (R11 — holds the new pointer) AND
+                // uses RCX as its length/byte/refcount temp. RCX = X3 is an ALLOCATABLE
+                // register (callerSaved), so it may hold a live value (e.g. a sibling
+                // heap pointer being stored into an adjacent field). It MUST be preserved,
+                // or that live pointer is corrupted and later dereferenced -> SIGSEGV.
+                // (This was bug #26: `("a", Some 1)` stored the string at offset 0 first,
+                // clobbering RCX, then stored the Some-pointer at offset 8 from the now-garbage RCX.)
+                if addrReg = X86_64.RCX then
+                    // Address lives in RCX; its live value IS the target address.
+                    // Save it, rebuild (clobbering RCX), restore it as the address, store.
+                    Ok ([X86_64.PUSH X86_64.RCX]
                         @ alloc @ storeLen @ copyBytes @ storeRC
                         @ [X86_64.POP X86_64.RCX
                            X86_64.MOV_store (X86_64.RCX, int32 offset, scratch)])
+                elif addrReg = scratch then
+                    // Address lives in R11, clobbered by alloc. Save the (possibly live) RCX
+                    // AND the address; rebuild; borrow RCX to hold the address for the store;
+                    // then restore RCX's live value.
+                    Ok ([X86_64.PUSH X86_64.RCX; X86_64.PUSH scratch]
+                        @ alloc @ storeLen @ copyBytes @ storeRC
+                        @ [X86_64.POP X86_64.RCX
+                           X86_64.MOV_store (X86_64.RCX, int32 offset, scratch)
+                           X86_64.POP X86_64.RCX])
                 else
-                    // Store the string pointer into the record field
-                    Ok (alloc @ storeLen @ copyBytes @ storeRC
-                        @ [X86_64.MOV_store (addrReg, int32 offset, scratch)])
+                    // Address is in some other register (untouched by the build).
+                    // Preserve RCX around the string construction.
+                    Ok ([X86_64.PUSH X86_64.RCX]
+                        @ alloc @ storeLen @ copyBytes @ storeRC
+                        @ [X86_64.MOV_store (addrReg, int32 offset, scratch)
+                           X86_64.POP X86_64.RCX])
             | LIR.StackSlot stackOffset ->
                 let adjOff = adjustStackOffset ctx stackOffset
                 if addrReg = scratch then
