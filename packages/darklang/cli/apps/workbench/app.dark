@@ -114,6 +114,20 @@ let commitOpsText (branchId: Uuid) (selected: Int) : String =
         ""
     c.message ++ "  (" ++ (Stdlib.Int.toString opCount) ++ " ops)\n\n" ++ opLines ++ more
 
+/// A cheap commit summary for the History preview — hash, message, op count — WITHOUT fetching every op (the
+/// seed commit has 10k+; fetching them per keystroke would make the list crawl). Full ops are behind Enter.
+let commitSummary (branchId: Uuid) (selected: Int) : String =
+  let commits = SCM.PackageOps.getCommitsWithAncestors branchId 30
+  match Stdlib.List.getAt commits selected with
+  | None -> "(no commit selected)"
+  | Some c ->
+    (LanguageTools.ProgramTypes.hashToString c.hash)
+    ++ "\n\n"
+    ++ c.message
+    ++ "\n\n"
+    ++ (Stdlib.Int.toString c.opCount)
+    ++ " ops  ·  press ⏎ to view them"
+
 /// The current source of the selected WIP item (for the Changes reader).
 let changesSourceText (branchId: Uuid) (selected: Int) : String =
   let items = SCM.PackageOps.getWipItems branchId
@@ -273,8 +287,37 @@ let detailLines (state: State) : List<String> =
           | [] -> "(not found)"
       Stdlib.String.split src "\n"
 
-let renderDetail (state: State) (region: UI.Layout.Region) : Unit =
-  let lines = detailLines state
+/// The Docs topic content for the selected row.
+let docContent (selected: Int) : String =
+  match Stdlib.List.getAt (Docs.Command.Topics.allTopics ()) selected with
+  | Some t -> t.content ()
+  | None -> "(no topic selected)"
+
+/// A recorded divergence's detail, for the Resolve preview.
+let conflictDetail (selected: Int) : String =
+  match Stdlib.List.getAt (Darklang.Sync.Conflicts.list ()) selected with
+  | Some c ->
+    "location:    " ++ c.location ++ "\n"
+    ++ "kind:        " ++ c.itemKind ++ "\n"
+    ++ "status:      " ++ c.status ++ "\n\n"
+    ++ "local:       " ++ c.localHash ++ "\n"
+    ++ "incoming:    " ++ c.incomingHash ++ "\n"
+    ++ "chosen:      " ++ c.chosenHash ++ "\n"
+    ++ "resolved by: " ++ c.resolvedBy
+  | None -> "(no conflict selected)"
+
+/// The preview content for the selected item in the current view: source for Tree, WIP source for Changes,
+/// ops for a commit in History, the topic for Docs, the divergence detail for Resolve. One function so the
+/// preview pane, its scroll bounds, and the full-screen reader all agree.
+let previewLines (state: State) : List<String> =
+  if state.activeView == 4 then Stdlib.String.split (changesSourceText state.branchId state.selected) "\n"
+  else if state.activeView == 5 then Stdlib.String.split (commitSummary state.branchId state.selected) "\n"
+  else if state.activeView == 6 then Stdlib.String.split (conflictDetail state.selected) "\n"
+  else if state.activeView == 12 then Stdlib.String.split (docContent state.selected) "\n"
+  else detailLines state
+
+let renderPreview (state: State) (region: UI.Layout.Region) : Unit =
+  let lines = previewLines state
   let len = Stdlib.List.length lines
   let off = Stdlib.Int.min state.detailScroll (Stdlib.Int.max 0 (len - 1))
   lines
@@ -283,7 +326,7 @@ let renderDetail (state: State) (region: UI.Layout.Region) : Unit =
   |> Stdlib.List.take region.rows
   |> Stdlib.List.iter (fun pair ->
     let (i, l) = pair
-    UI.Layout.printAt region (i - off) 0 l)
+    UI.Layout.printAt region (i - off) 1 l)
 
 /// "1 commit" / "2 commits" — count + correctly-pluralized noun.
 let plural (n: Int) (noun: String) : String =
@@ -388,6 +431,30 @@ let boxedLines
       let (i, l) = pair
       if i < inner.rows then UI.Layout.printAt inner (i + 1) 1 l))
 
+/// A list+preview view (the IDE three-panel shape): the list on the dominant left pane, a scrollable preview of
+/// the selected item on the right. Tab toggles focus; the preview scrolls when focused. Falls back to a single
+/// empty box (naming the fill action) when the list is empty.
+let splitListPreview
+  (state: State)
+  (region: UI.Layout.Region)
+  (leftTitle: String)
+  (previewTitle: String)
+  (emptyMsg: String)
+  : Unit =
+  if Stdlib.List.isEmpty state.items then
+    UI.Box.panel region leftTitle true (fun inner -> UI.Layout.printAt inner 1 1 emptyMsg)
+  else
+    let titled = leftTitle ++ "  ·  " ++ (Stdlib.Int.toString (Stdlib.List.length state.items))
+    UI.SplitPane.render
+      region
+      UI.SplitPane.Orientation.Horizontal
+      55
+      state.focus
+      titled
+      (fun r -> renderTreeList state r)
+      previewTitle
+      (fun r -> renderPreview state r)
+
 let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
   if state.activeView == 0 then
     renderHome state region
@@ -400,7 +467,7 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
       "Tree"
       (fun r -> renderTreeList state r)
       "Inspect"
-      (fun r -> renderDetail state r)
+      (fun r -> renderPreview state r)
   else if state.activeView == 10 then
     boxedList state region "Services" (Colors.dimText "no apps registered — install one with the apps command")
   else if state.activeView == 9 then
@@ -408,13 +475,13 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
   else if state.activeView == 7 then
     boxedList state region "Mesh" (Colors.dimText "tailnet unavailable — tailscale not running or not installed")
   else if state.activeView == 4 then
-    boxedList state region "Changes" (Colors.colorize Colors.green "✓ working tree clean — nothing to commit")
+    splitListPreview state region "Changes" "Source" (Colors.colorize Colors.green "✓ working tree clean — nothing to commit")
   else if state.activeView == 5 then
-    boxedList state region "History" (Colors.dimText "no commits yet")
+    splitListPreview state region "History" "Commit" (Colors.dimText "no commits yet")
   else if state.activeView == 6 then
-    boxedList state region "Resolve" (Colors.colorize Colors.green "✓ nothing to resolve — in sync")
+    splitListPreview state region "Resolve" "Divergence" (Colors.colorize Colors.green "✓ nothing to resolve — in sync")
   else if state.activeView == 12 then
-    boxedList state region "Docs" (Colors.dimText "(no topics)")
+    splitListPreview state region "Docs" "Topic" (Colors.dimText "(no topics)")
   else if state.activeView == 3 then
     boxedLines
       region
@@ -484,13 +551,13 @@ let hintsForView (view: Int) : String =
     else if view == 0 then
       [ ("↑↓", "move") ]
     else if view == 4 then
-      [ ("↑↓", "move"); ("⏎", "source"); ("c", "commit"); ("x", "discard") ]
+      [ ("↑↓", "move"); ("tab", "preview"); ("⏎", "full"); ("c", "commit"); ("x", "discard") ]
     else if view == 5 then
-      [ ("↑↓", "move"); ("⏎", "ops"); ("b", "branch"); ("s", "switch") ]
+      [ ("↑↓", "move"); ("tab", "preview"); ("⏎", "full"); ("b", "branch"); ("s", "switch") ]
     else if view == 6 then
-      [ ("↑↓", "move"); ("⏎", "detail") ]
+      [ ("↑↓", "move"); ("tab", "preview") ]
     else if view == 12 then
-      [ ("↑↓", "move"); ("⏎", "read") ]
+      [ ("↑↓", "move"); ("tab", "preview"); ("⏎", "full") ]
     else
       [ ("↑↓", "move") ]
   Frame.formatHints (Stdlib.List.append ctx global)
@@ -600,7 +667,7 @@ let navUp (state: State) : Step =
 let navDown (state: State) : Step =
   match state.focus with
   | Second ->
-    let maxScroll = Stdlib.Int.max 0 ((Stdlib.List.length (detailLines state)) - 1)
+    let maxScroll = Stdlib.Int.max 0 ((Stdlib.List.length (previewLines state)) - 1)
     Step.Continue { state with detailScroll = Stdlib.Int.min maxScroll (state.detailScroll + 1) }
   | First ->
     let maxIdx = (Stdlib.List.length state.items) - 1
@@ -613,6 +680,17 @@ let navTop (state: State) : Step =
 let navBottom (state: State) : Step =
   let maxIdx = Stdlib.Int.max 0 ((Stdlib.List.length state.items) - 1)
   Step.Continue { state with selected = maxIdx; detailScroll = 0 }
+
+/// Switch to view `nv`: reload its items and reset selection/scroll/focus (so you never land in a single-pane
+/// view still "focused" on a preview pane that isn't there).
+let switchView (state: State) (nv: Int) : Step =
+  Step.Continue
+    { state with
+        activeView = nv
+        items = itemsForView nv state.branchId state.location
+        selected = 0
+        detailScroll = 0
+        focus = UI.SplitPane.Focus.First }
 
 /// Run the action for a completed single-line input (Enter). Commit is the only one for now.
 let performInputAction (state: State) (inp: InputState) : Step =
@@ -943,15 +1021,7 @@ let handleKey
   | Tab -> Step.Continue { state with focus = UI.SplitPane.toggle state.focus }
   | Escape ->
     // Back out one level, never quit-by-surprise: from any view -> Home; on Home -> no-op (q quits).
-    if state.activeView == 0 then
-      Step.Continue state
-    else
-      Step.Continue
-        { state with
-            activeView = 0
-            items = itemsForView 0 state.branchId state.location
-            selected = 0
-            detailScroll = 0 }
+    if state.activeView == 0 then Step.Continue state else switchView state 0
   | _ ->
     match keyChar with
     | Some "q" -> Step.Exit state
@@ -972,21 +1042,9 @@ let handleKey
               Stdlib.Option.Option.Some
                 (InputState { prompt = "run "; text = ""; action = "eval" }) }
     | Some "]" ->
-      let nv = Stdlib.Int.min ((Stdlib.List.length Frame.viewNames) - 1) (state.activeView + 1)
-      Step.Continue
-        { state with
-            activeView = nv
-            items = itemsForView nv state.branchId state.location
-            selected = 0
-            detailScroll = 0 }
+      switchView state (Stdlib.Int.min ((Stdlib.List.length Frame.viewNames) - 1) (state.activeView + 1))
     | Some "[" ->
-      let nv = Stdlib.Int.max 0 (state.activeView - 1)
-      Step.Continue
-        { state with
-            activeView = nv
-            items = itemsForView nv state.branchId state.location
-            selected = 0
-            detailScroll = 0 }
+      switchView state (Stdlib.Int.max 0 (state.activeView - 1))
     | Some "e" ->
       // Tree: edit the selected fn in place (prefill the editor from its source).
       if state.activeView == 1 then
@@ -1047,16 +1105,8 @@ let handleKey
     | Some s ->
       match Stdlib.Int.parse s with
       | Ok n ->
-        if n >= 1 && n <= (Stdlib.List.length Frame.viewNames) then
-          let nv = n - 1
-          Step.Continue
-            { state with
-                activeView = nv
-                items = itemsForView nv state.branchId state.location
-                selected = 0
-                detailScroll = 0 }
-        else
-          Step.Continue state
+        if n >= 1 && n <= (Stdlib.List.length Frame.viewNames) then switchView state (n - 1)
+        else Step.Continue state
       | Error _ -> Step.Continue state
     | None -> Step.Continue state
 
