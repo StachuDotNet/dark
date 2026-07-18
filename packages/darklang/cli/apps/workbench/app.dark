@@ -1,0 +1,202 @@
+/// The `workbench` SubApp — the framed home the CLI-UX redesign is built around. v1: the Frame chrome
+/// (tab bar + breadcrumb + key hints) around a live, navigable package-tree body. Mirrors the SubApp shape
+/// of SCM.Review.App. Later: split body into Tree|Inspect (SplitPane), wire the other views, make `dark`
+/// no-args open this. See design main/notes/cli-ux/{03A,10,11,12}.
+module Darklang.Cli.Apps.Workbench.App
+
+type BodyItem =
+  { name: String
+    kind: String
+    isModule: Bool }
+
+type State =
+  { activeView: Int
+    location: Packages.PackageLocation
+    items: List<BodyItem>
+    selected: Int
+    branchId: Uuid }
+
+type Step =
+  | Continue of State
+  | Exit of State
+
+
+// ── Package listing (the Tree body) ──
+
+let modulePathOf (location: Packages.PackageLocation) : List<String> =
+  match location with
+  | Module path -> path
+  | Type t -> Stdlib.List.append [ t.owner ] t.modules
+  | Value v -> Stdlib.List.append [ v.owner ] v.modules
+  | Function f -> Stdlib.List.append [ f.owner ] f.modules
+
+let loadItems (branchId: Uuid) (location: Packages.PackageLocation) : List<BodyItem> =
+  let modulePath = modulePathOf location
+  let results = Packages.Query.allDirectDescendants branchId modulePath
+  let subs = Packages.Query.getDirectSubmodules results (Stdlib.List.length modulePath)
+  let moduleItems =
+    subs |> Stdlib.List.map (fun n -> BodyItem { name = n; kind = "module"; isModule = true })
+  let typeItems =
+    results.types
+    |> Stdlib.List.map (fun t -> BodyItem { name = t.location.name; kind = "type"; isModule = false })
+  let valItems =
+    results.values
+    |> Stdlib.List.map (fun v -> BodyItem { name = v.location.name; kind = "val"; isModule = false })
+  let fnItems =
+    results.fns
+    |> Stdlib.List.map (fun f -> BodyItem { name = f.location.name; kind = "fn"; isModule = false })
+  Stdlib.List.flatten [ moduleItems; typeItems; valItems; fnItems ]
+
+
+// ── Rendering ──
+
+let iconFor (item: BodyItem) : String =
+  if item.isModule then "🗂"
+  else
+    match item.kind with
+    | "fn" -> "⚡"
+    | "type" -> "#"
+    | _ -> "•"
+
+let renderBody (state: State) (region: UI.Layout.Region) : Unit =
+  if state.activeView <= 1 then
+    // Home(0) / Tree(1): the package listing.
+    if Stdlib.List.isEmpty state.items then
+      UI.Layout.printAt region 1 2 (Colors.dimText "(empty)")
+    else
+      state.items
+      |> Stdlib.List.indexedMap (fun i item -> (i, item))
+      |> Stdlib.List.iter (fun pair ->
+        let (i, item) = pair
+        if i < region.rows then
+          let cursor = if i == state.selected then "> " else "  "
+          let display = if item.isModule then item.name ++ "/" else item.name
+          let line = cursor ++ (iconFor item) ++ " " ++ display
+          let styled = if i == state.selected then Colors.colorize Colors.cyan line else line
+          UI.Layout.printAt region i 0 styled)
+  else
+    UI.Layout.printAt region 1 2 (Colors.dimText ((Frame.viewName state.activeView) ++ " — coming soon"))
+
+let render (state: State) : Unit =
+  let h = Terminal.getHeight ()
+  let w = Terminal.getWidth ()
+  Stdlib.print "\u001b[?25l\u001b[2J\u001b[H"
+  let screen = UI.Layout.Region { top = 1; left = 1; rows = h - 1; cols = w }
+  let path = Packages.formatLocation state.location
+  let branch =
+    match SCM.Branch.get state.branchId with
+    | Some b -> b.name
+    | None -> "main"
+  let tabbar = UI.Layout.fixedSize 1 (fun r -> Frame.renderTabBar r state.activeView)
+  let crumb = UI.Layout.fixedSize 1 (fun r -> Frame.renderBreadcrumb r path branch)
+  let body = UI.Layout.greedy (fun r -> renderBody state r)
+  let hints =
+    UI.Layout.fixedSize
+      1
+      (fun r -> Frame.renderKeyHints r "↑↓ move · → into · ← up · 1-9 switch view · esc exit")
+  UI.Layout.vstack screen [ tabbar; crumb; body; hints ]
+  Stdlib.print "\u001b[?25h"
+
+
+// ── Key handling ──
+
+let descend (state: State) : Step =
+  match Stdlib.List.getAt state.items state.selected with
+  | Some item ->
+    if item.isModule then
+      let newPath = Stdlib.List.append (modulePathOf state.location) [ item.name ]
+      let newLoc = Packages.PackageLocation.Module newPath
+      Step.Continue
+        { state with
+            location = newLoc
+            items = loadItems state.branchId newLoc
+            selected = 0 }
+    else
+      Step.Continue state
+  | None -> Step.Continue state
+
+let ascend (state: State) : Step =
+  let path = modulePathOf state.location
+  match Stdlib.List.reverse path with
+  | [] -> Step.Continue state
+  | _ :: revParent ->
+    let newPath = Stdlib.List.reverse revParent
+    let newLoc = Packages.PackageLocation.Module newPath
+    Step.Continue
+      { state with
+          location = newLoc
+          items = loadItems state.branchId newLoc
+          selected = 0 }
+
+let handleKey
+  (state: State)
+  (key: Stdlib.Cli.Stdin.Key.Key)
+  (_modifiers: Stdlib.Cli.Stdin.Modifiers.Modifiers)
+  (keyChar: Stdlib.Option.Option<String>)
+  : Step =
+  match key with
+  | UpArrow -> Step.Continue { state with selected = Stdlib.Int.max 0 (state.selected - 1) }
+  | DownArrow ->
+    let maxIdx = (Stdlib.List.length state.items) - 1
+    Step.Continue { state with selected = Stdlib.Int.min maxIdx (state.selected + 1) }
+  | RightArrow -> descend state
+  | Enter -> descend state
+  | LeftArrow -> ascend state
+  | Escape -> Step.Exit state
+  | _ ->
+    match keyChar with
+    | Some "q" -> Step.Exit state
+    | Some s ->
+      match Stdlib.Int.parse s with
+      | Ok n ->
+        if n >= 1 && n <= (Stdlib.List.length Frame.viewNames) then
+          Step.Continue { state with activeView = n - 1 }
+        else
+          Step.Continue state
+      | Error _ -> Step.Continue state
+    | None -> Step.Continue state
+
+
+// ── SubApp wrapper ──
+
+let makeSubApp (state: State) : Darklang.Cli.SubApp =
+  Darklang.Cli.SubApp
+    { onKey =
+        fun key modifiers keyChar ->
+          match handleKey state key modifiers keyChar with
+          | Continue s -> (Darklang.Cli.SubAppAction.Continue, makeSubApp s)
+          | Exit s -> (Darklang.Cli.SubAppAction.Exit, makeSubApp s)
+      onDisplay = fun () -> render state
+      onSave = fun () -> () }
+
+
+// ── CLI command entry ──
+
+let execute (cliState: Darklang.Cli.AppState) (_args: List<String>) : Darklang.Cli.AppState =
+  Stdlib.print "\u001b[?1049h"
+  let branchId = cliState.currentBranchId
+  let rootLoc = Packages.PackageLocation.Module []
+  let state =
+    State
+      { activeView = 1
+        location = rootLoc
+        items = loadItems branchId rootLoc
+        selected = 0
+        branchId = branchId }
+  { cliState with
+      currentPage = Darklang.Cli.Page.SubApp (makeSubApp state)
+      needsFullRedraw = true }
+
+let help (_state: Darklang.Cli.AppState) : Darklang.Cli.AppState =
+  [ "Usage: workbench"
+    "Open the workbench — a framed, navigable view of your package tree."
+    ""
+    "  Up/Down   move    Right/Enter into    Left up    1-9 switch view    Esc/q exit" ]
+  |> Stdlib.printLines
+  _state
+
+let complete
+  (_state: Darklang.Cli.AppState)
+  (_args: List<String>)
+  : List<Darklang.Cli.Completion.CompletionItem> =
+  []
