@@ -66,16 +66,19 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
    b. DONE ✓ SERVICES (view=10): Apps.Registry.available → daemon/app list. Verified.
    c. THINGS (view=11): `find-values`/ValueSearch by type — lower priority (needs a type arg); skip for now.
 6. DONE ✓ Home dashboard + DONE ✓ default landing = Home + DONE ✓ view-aware breadcrumb.
-7. NEXT: wire RUNS (view=9, digit 10 unreachable → cycle): find the traces-list helper — `grep -rn 'let ' 
-   packages/darklang/cli/tracing.dark | grep -iE 'list|recent|summ'` and `grep -rn 'TraceSummary|scmGetTraces|
-   Builtin.*[Tt]race' packages/`. If there's a `Tracing.list`/`Builtin.getTraces` returning summaries, map to
-   BodyItems (id + fn + status/ms). Empty → "no runs yet". If no clean list API, SKIP Runs, leave coming-soon.
-   Then MESH (view=7): follow devices.dark's `Tailscale.status` call to the real module; only wire if it's a
-   pure/offline-safe read (it shells out to `tailscale` — may fail w/o tailnet; wrap so failure → a dim
-   "tailnet unavailable" line, never a crash). If risky, SKIP.
-8. Polish: per-view KEYHINTS (the hint bar is generic "↑↓ move…"; make it view-specific — Changes: "c commit
-   x discard", History: "→ ops", Docs: "↵ read", etc. — a `hintsForView activeView` helper). Then Enter
-   actions where cheap. See main/notes/cli-ux/{11,12,15,16}. AGENTS/EDIT stay deferred (mock render / big editor).
+7. DONE ✓ Runs (Builtin.tracesList; empty "no runs yet"). DONE ✓ per-view keyhints (hintsForView).
+8. NEXT — 9/13 views live (Home,Tree,Inspect,Changes,History,Resolve,Runs,Services,Docs). Options, pick highest
+   value each fire:
+   a. MESH (view=7): follow devices.dark → `Darklang.Tailscale.status ()`. It shells out to `tailscale`; may
+      fail w/o tailnet. Wire ONLY behind a safe wrap: try it, on Error render a dim "tailnet unavailable" line,
+      never crash. If the API isn't cleanly catchable (raises), SKIP — leave coming-soon.
+   b. THINGS (view=11): needs a type to findByType; NO generic "all values" list → SKIP for now (coming-soon).
+   c. POLISH (good value, low risk): (i) a scroll position indicator on lists (e.g. "34/68" in the breadcrumb
+      or a ▐ scrollbar col); (ii) make Home the count-accurate landing; (iii) Docs `Enter` → read a topic
+      (topic.content ()) into a full-screen scroll (or a right detail pane) — reuses detail scroll pattern.
+   d. Enter actions on Tree leaves currently do nothing (only modules descend) — fine; a leaf Enter could
+      later open Edit. DEFER.
+AGENTS/EDIT stay deferred (ai-chats render is mock / Edit needs the big MultilineEditor).
 Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)/Things(11)/Docs(12).
 
 ## Status: P1 COMPLETE ✓ — `dark` opens the framed Tree|Inspect workbench (verified on screen; classic prompt
@@ -91,6 +94,9 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 05:48 — P2.8: wired Runs (Builtin.tracesList, empty "no runs yet") + honest per-view keyhints
+  (hintsForView). Verified. 9/13 views live. Commit e1ede1a32. Next: Mesh (offline-safe wrap) or polish
+  (scroll indicator / Docs Enter-to-read). Agents/Edit/Things deferred.
 - 2026-07-18 05:40 — P2.7: default landing = Home (execute activeView 1→0); view-aware breadcrumb (Home /
   package path / "ViewName — N items"). Verified (opens on Home; History crumb = "History — 1 items"). Commit
   14f96237c. Next: wire Runs (traces) if clean API, else Mesh/skip; then per-view keyhints.
