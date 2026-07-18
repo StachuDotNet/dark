@@ -87,7 +87,19 @@ Kill the bottom-bar name prompt for new items. Instead:
 - Conflicts on Home + badge (df9bb17) · UI.Box, framed views (7d3ca05) · footer + `:` run (adabd18) ·
   chooser (703f2bc) · A: spacious authoring (29393e1) · B: vim motion + safe Esc-to-Home (99a5d27).
 
-## NEXT ACTION (updated 15:23)
+## NEXT ACTION (updated 15:36)
+Done: A B C D H + reader-highlight + login + too-small-guard + toast-row + shallow-authoring-fix + `d` deps +
+`m`/`r` merge/rebase (confirm + typed toasts: green ✓ success / pink ✗ fail/guidance; error paths verified,
+success needs a branch with changes). NEXT (item F, reusable components — user explicitly asked):
+- UI.ListView: extract the selectable, scrolling, scrollbar list from renderTreeList into a reusable component
+  (region + items + selectedIndex + a row-renderer). Have the workbench's list use it. Low user-visible risk;
+  verify the Tree/Changes/etc lists still scroll + select + show the scrollbar after.
+- UI.Layout.truncateVisible (ANSI-aware): truncate by VISIBLE width, skipping ANSI escape runs — lets
+  renderPreview/renderReading highlight even lines that don't fit (drop the fit-or-plain fallback). Test with a
+  long highlighted line.
+Time check each fire. FINALIZE at ~16:50: report Phase 5 section + shortstat + print-md + push + chat + STOP.
+
+## Prior NEXT (15:23)
 Done: A B C D H + reader-highlight + login + too-small-guard + toast-row (State `message`, green ✓ in footer,
 cleared next keypress; set on commit/discard/save/branch). Also FIXED shallow-depth authoring: `let` needs a
 BARE name (qualified = parse error) so location needs owner+module -> authoring requires depth>=2; n/t/v now
