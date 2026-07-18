@@ -14,6 +14,7 @@ type State =
     location: Packages.PackageLocation
     items: List<BodyItem>
     selected: Int
+    focus: UI.SplitPane.Focus
     branchId: Uuid }
 
 type Step =
@@ -58,22 +59,70 @@ let iconFor (item: BodyItem) : String =
     | "type" -> "#"
     | _ -> "•"
 
+let renderTreeList (state: State) (region: UI.Layout.Region) : Unit =
+  if Stdlib.List.isEmpty state.items then
+    UI.Layout.printAt region 1 2 (Colors.dimText "(empty)")
+  else
+    state.items
+    |> Stdlib.List.indexedMap (fun i item -> (i, item))
+    |> Stdlib.List.iter (fun pair ->
+      let (i, item) = pair
+      if i < region.rows then
+        let cursor = if i == state.selected then "> " else "  "
+        let display = if item.isModule then item.name ++ "/" else item.name
+        let line = cursor ++ (iconFor item) ++ " " ++ display
+        let styled = if i == state.selected then Colors.colorize Colors.cyan line else line
+        UI.Layout.printAt region i 0 styled)
+
+/// The source/detail of the currently-selected item, as lines for the Inspect pane.
+let detailLines (state: State) : List<String> =
+  match Stdlib.List.getAt state.items state.selected with
+  | None -> [ "(nothing selected)" ]
+  | Some item ->
+    if item.isModule then
+      [ (iconFor item) ++ " " ++ item.name; ""; "module — → to enter" ]
+    else
+      let modulePath = modulePathOf state.location
+      let results = Packages.Query.searchExactMatch state.branchId modulePath item.name
+      let ctx =
+        PrettyPrinter.ProgramTypes.Context
+          { branchId = state.branchId
+            currentModule = Stdlib.Option.Option.None
+            currentFunction = Stdlib.Option.Option.None }
+      let src =
+        match item.kind with
+        | "fn" ->
+          match results.fns with
+          | i :: _ -> PrettyPrinter.ProgramTypes.packageFn ctx i.entity
+          | [] -> "(not found)"
+        | "type" ->
+          match results.types with
+          | i :: _ -> PrettyPrinter.ProgramTypes.packageType ctx i.entity
+          | [] -> "(not found)"
+        | _ ->
+          match results.values with
+          | i :: _ -> PrettyPrinter.ProgramTypes.packageValue ctx i.entity
+          | [] -> "(not found)"
+      Stdlib.String.split src "\n"
+
+let renderDetail (state: State) (region: UI.Layout.Region) : Unit =
+  detailLines state
+  |> Stdlib.List.indexedMap (fun i l -> (i, l))
+  |> Stdlib.List.iter (fun pair ->
+    let (i, l) = pair
+    if i < region.rows then UI.Layout.printAt region i 0 l)
+
 let renderBody (state: State) (region: UI.Layout.Region) : Unit =
   if state.activeView <= 1 then
-    // Home(0) / Tree(1): the package listing.
-    if Stdlib.List.isEmpty state.items then
-      UI.Layout.printAt region 1 2 (Colors.dimText "(empty)")
-    else
-      state.items
-      |> Stdlib.List.indexedMap (fun i item -> (i, item))
-      |> Stdlib.List.iter (fun pair ->
-        let (i, item) = pair
-        if i < region.rows then
-          let cursor = if i == state.selected then "> " else "  "
-          let display = if item.isModule then item.name ++ "/" else item.name
-          let line = cursor ++ (iconFor item) ++ " " ++ display
-          let styled = if i == state.selected then Colors.colorize Colors.cyan line else line
-          UI.Layout.printAt region i 0 styled)
+    UI.SplitPane.render
+      region
+      UI.SplitPane.Orientation.Horizontal
+      45
+      state.focus
+      "Tree"
+      (fun r -> renderTreeList state r)
+      "Inspect"
+      (fun r -> renderDetail state r)
   else
     UI.Layout.printAt region 1 2 (Colors.dimText ((Frame.viewName state.activeView) ++ " — coming soon"))
 
@@ -93,7 +142,7 @@ let render (state: State) : Unit =
   let hints =
     UI.Layout.fixedSize
       1
-      (fun r -> Frame.renderKeyHints r "↑↓ move · → into · ← up · 1-9 switch view · esc exit")
+      (fun r -> Frame.renderKeyHints r "↑↓ move · → into · ← up · tab focus · 1-9 view · esc exit")
   UI.Layout.vstack screen [ tabbar; crumb; body; hints ]
   Stdlib.print "\u001b[?25h"
 
@@ -142,6 +191,7 @@ let handleKey
   | RightArrow -> descend state
   | Enter -> descend state
   | LeftArrow -> ascend state
+  | Tab -> Step.Continue { state with focus = UI.SplitPane.toggle state.focus }
   | Escape -> Step.Exit state
   | _ ->
     match keyChar with
@@ -182,6 +232,7 @@ let execute (cliState: Darklang.Cli.AppState) (_args: List<String>) : Darklang.C
         location = rootLoc
         items = loadItems branchId rootLoc
         selected = 0
+        focus = UI.SplitPane.Focus.First
         branchId = branchId }
   { cliState with
       currentPage = Darklang.Cli.Page.SubApp (makeSubApp state)
