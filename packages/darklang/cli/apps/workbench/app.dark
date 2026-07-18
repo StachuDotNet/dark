@@ -27,6 +27,9 @@ type State =
     editing: Stdlib.Option.Option<EditingState>
     accountId: Stdlib.Option.Option<Uuid>
     accountName: String
+    /// A transient status message (e.g. "committed", "saved foo") shown in the footer after a write action,
+    /// then cleared on the next keypress. "" = nothing to show.
+    message: String
     branchId: Uuid }
 
 /// A single-line text entry. `action` tags what Enter does (e.g. "commit").
@@ -675,6 +678,9 @@ let renderFull (state: State) : Unit =
       1
       (fun r ->
         let h =
+          if state.message != "" then
+            Colors.colorize Colors.green ("✓ " ++ state.message)
+          else
           match state.editing with
           | Some _ ->
             Frame.formatHints
@@ -802,7 +808,8 @@ let performInputAction (state: State) (inp: InputState) : Step =
           { state with
               input = Stdlib.Option.Option.None
               items = itemsForView state.activeView state.branchId state.location
-              selected = 0 }
+              selected = 0
+              message = "committed" }
       | Error e ->
         Step.Continue
           { state with
@@ -821,7 +828,8 @@ let performInputAction (state: State) (inp: InputState) : Step =
         { state with
             input = Stdlib.Option.Option.None
             items = itemsForView state.activeView state.branchId state.location
-            selected = 0 }
+            selected = 0
+            message = "discarded all changes" }
     else
       Step.Continue { state with input = Stdlib.Option.Option.None }
   else if inp.action == "search" then
@@ -852,7 +860,8 @@ let performInputAction (state: State) (inp: InputState) : Step =
           input = Stdlib.Option.Option.None
           branchId = b.id
           items = itemsForView state.activeView b.id state.location
-          selected = 0 }
+          selected = 0
+          message = "on branch " ++ inp.text }
   else if inp.action == "branch-switch" then
     match Darklang.SCM.Branch.getByName inp.text with
     | Some b ->
@@ -861,7 +870,8 @@ let performInputAction (state: State) (inp: InputState) : Step =
             input = Stdlib.Option.Option.None
             branchId = b.id
             items = itemsForView state.activeView b.id state.location
-            selected = 0 }
+            selected = 0
+            message = "switched to " ++ inp.text }
     | None ->
       Step.Continue
         { state with
@@ -951,7 +961,8 @@ let saveEditing (state: State) (es: EditingState) : Step =
               { state with
                   editing = Stdlib.Option.Option.None
                   items = itemsForView state.activeView state.branchId state.location
-                  selected = 0 }
+                  selected = 0
+                  message = "saved " ++ leaf }
           | Error m -> keepErr ("save failed: " ++ m)
         | Error m -> keepErr m
       | None -> keepErr "could not parse"
@@ -971,22 +982,23 @@ let stripDocComments (src: String) : String =
 let startNew (state: State) (kind: String) : Step =
   let modPath = modulePathOf state.location
   let depth = Stdlib.List.length modPath
-  // Prepend placeholder segments so `parseRelativeTo location name` yields owner.Module.name (3+ parts).
-  let qualify (leaf: String) : String =
-    if depth >= 2 then leaf
-    else if depth == 1 then "Module." ++ leaf
-    else "Owner.Module." ++ leaf
-  let where = if depth >= 1 then "  ·  in " ++ (Stdlib.String.join modPath ".") else ""
-  let (titleBase, template, nameCol) =
-    if kind == "type" then ("New type", "type " ++ (qualify "NewType") ++ " =\n  { field: Int }", 5)
-    else if kind == "value" then ("New value", "val " ++ (qualify "newValue") ++ " = 1", 4)
-    else ("New function", "let " ++ (qualify "newFunction") ++ " (x: Int): Int =\n  x", 4)
-  let buf = UI.Editor.fromText template
-  Step.Continue
-    { state with
-        editing =
-          Stdlib.Option.Option.Some
-            (EditingState { kind = kind; nameStr = titleBase ++ where; buf = { buf with col = nameCol }; err = "" }) }
+  // The declaration uses a BARE name (a qualified `let Owner.Mod.name` is a parse error); its location comes
+  // from `parseRelativeTo currentModule bareName`, which needs owner + module already present. So authoring
+  // only works at depth >= 2 — otherwise guide the user to descend, via a toast, rather than open a doomed box.
+  if depth < 2 then
+    Step.Continue { state with message = "descend into a module (owner.Module …) to author here" }
+  else
+    let (titleBase, template, nameCol) =
+      if kind == "type" then ("New type", "type NewType =\n  { field: Int }", 5)
+      else if kind == "value" then ("New value", "val newValue = 1", 4)
+      else ("New function", "let newFunction (x: Int): Int =\n  x", 4)
+    let where = "  ·  in " ++ (Stdlib.String.join modPath ".")
+    let buf = UI.Editor.fromText template
+    Step.Continue
+      { state with
+          editing =
+            Stdlib.Option.Option.Some
+              (EditingState { kind = kind; nameStr = titleBase ++ where; buf = { buf with col = nameCol }; err = "" }) }
 
 /// Open the editor on an existing fn, prefilled with its full current declaration (doc comments dropped).
 let openEditExisting (state: State) (item: BodyItem) : Step =
@@ -1014,6 +1026,8 @@ let handleKey
   (modifiers: Stdlib.Cli.Stdin.Modifiers.Modifiers)
   (keyChar: Stdlib.Option.Option<String>)
   : Step =
+  // A transient toast lives for exactly one keypress: clear it here, so any key dismisses the last message.
+  let state = if state.message == "" then state else { state with message = "" }
   match state.editing with
   | Some es ->
     // Editor mode. Ctrl+S saves; other Ctrl combos are ignored (so they don't insert control chars).
@@ -1248,6 +1262,7 @@ let execute (cliState: Darklang.Cli.AppState) (_args: List<String>) : Darklang.C
         editing = Stdlib.Option.Option.None
         accountId = cliState.accountID
         accountName = cliState.accountName
+        message = ""
         branchId = branchId }
   { cliState with
       currentPage = Darklang.Cli.Page.SubApp (makeSubApp state)
