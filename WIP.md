@@ -102,17 +102,18 @@ push after notable milestones too. Don't push to `upstream` (darklang/dark).
 author (n/editor/^s) ✓ · commit (Changes c) ✓ · discard (x/y) ✓ · branch (History b/s) ✓ · readers (History
 ops → AddFn/SetName, Docs topic, scroll, esc) ✓ · paste ✓ (fixed) · resize ✓ (fixed). Workbench is robust.
 
-### NEXT ACTION (Phase 4) — polish / edge cases (backlog getting thin; idle toward 14:00 finalize if exhausted)
-1. Breadcrumb resize artifact: at 100x30 the crumb showed "/ (root)cs" once (residue). Repro: resize 200→100,
-   check the breadcrumb line. Likely the right-side "branch: … synced" is positioned by absolute col and old
-   chars aren't overwritten when width shrinks. The [2J clears each frame so it may not recur; if it does, have
-   renderBreadcrumb clear its row (print spaces to width) or right-pad. Low priority.
-2. Multi-line paste into the EDITOR: pasting text with "\n" inserts a literal newline into one line (insertChar
-   appends the whole string incl \n) rather than splitting lines. Minor; a real paste of a body would be one
-   long line. Optional: in the editor's keyChar handler, if ch contains "\n", split + apply newline per line.
-3. Any other rough edges found while poking around in tmux.
-Fix what's clearly worth it; else this is DONE — idle (reschedule ~1200s) until ~13:55, then FINALIZE.
-Note: left a Dark-SCM branch "tmux-br" + test commit in the local DB — ephemeral (auto-clean on reload).
+### NEXT ACTION (Phase 4) — BACKLOG EXHAUSTED. IDLE until ~13:55, then FINALIZE.
+Polish backlog cleared this fire:
+1. Breadcrumb resize artifact — NOT REAL. Settled frame at 100x30 is clean (tab bar collapses, no residue);
+   the one-time "/ (root)cs" was a transient mid-resize capture. Full-screen clear each frame handles it. No fix.
+2. Multi-line editor paste — DONE (insertText). See POLISH block above.
+3. Stale "^s save — soon" hint — DONE.
+Nothing else clearly valuable remains. Core verified + robust; all flows pass in a real terminal. Do NOT invent
+busywork — idle (reschedule ~1200s), check `date` each fire. When ~13:55–14:00: FINALIZE per HORIZON block:
+refresh `git diff --shortstat github/main..HEAD`, add "Phase 4: real-terminal testing" + "Test it yourself"
+sections to main/notes/cli-ux-workbench-report.md, `~/bin/print-md` it, `git push github cli-ux-redux`, leave a
+clear chat message, STOP the loop (ScheduleWakeup stop:true).
+Note: local Dark-SCM test artifacts (branch "tmux-br", a test commit) are ephemeral — auto-clean on reload.
 1. First, KEEP TESTING to complete the bug list (use tmux + slow keys, ~0.2s between): commit flow (Changes c),
    discard (x y), branch (History b/s), Docs reader (Enter/scroll/esc), editor SAVE (^s → Changes), the reader
    from Tree/History, and RESIZE (`tmux resize-window`/smaller `-x`). Log each result here.
