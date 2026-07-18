@@ -56,14 +56,19 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
 3. DONE ✓ Changes view (activeView=4): view-aware `items` (digit-switch reloads via `itemsForView`); WIP list
    from `SCM.PackageOps.getWipItems`; "✓ working tree clean" empty state. Verified both (created a WIP fn →
    showed "WbTest demo"; discarded → clean). v1 = list only; diff/source detail is a follow-up.
-4. Wire HISTORY (activeView=5): itemsForView view==5 → recent commits as BodyItems (from SCM.PackageOps or
-   SCM.Log — find the getCommits helper: returns commits with hash/message/opCount/date). renderBody view==5:
-   the commit list (single pane; each row: shortHash + message + "N ops"). Empty → "no commits yet". Detail
-   pane (later): the commit's ops. See main/notes/cli-ux/16. Verify with dev-drive (press 6).
-5. HOME (activeView=0): give it its OWN body (tree card + WIP + running) instead of sharing the tree — but
-   LOWER priority; the tree-as-Home is fine for now. Do History (4) first, then maybe polish.
-6. Also good soon: `Enter` on a Changes/Tree leaf, and making the coming-soon views (Mesh/Agents via
-   devices/ai-chats, Docs via docs) show real read-only data. Reuse existing commands' data.
+4. DONE ✓ History (view=5, digit 6): getCommitsWithAncestors → commit rows (shortHash + msg + N ops). Verified
+   (shows the Init commit). Also DONE ✓ `[`/`]` cycle all 13 views (digits only reached 1-9).
+5. Wire more read-only views (breadth — each small, itemsForView + renderBody branch + empty state; reuse
+   existing command data). Priority order:
+   a. RESOLVE (view=6): `Sync.Conflicts.list ()` (from conflicts.dark) → rows "loc — status"; empty →
+      "✓ nothing to resolve". (main/notes/cli-ux/17)
+   b. MESH (view=7): tailnet devices. `Darklang.Tailscale.status ()` returns a raw string — v1: split it into
+      lines as body items (or just render the string). (main/notes/cli-ux/18)
+   c. DOCS (view=12): doc topics from `Docs.Command`/allTopics() → topic names; (main/notes/cli-ux/23).
+   d. SERVICES (view=10): `Apps.Command` daemon/app list (reuse its listing data).
+6. THEN Home dashboard (view=0, its own body: WIP count + commit count + tree) and per-view breadcrumb/keyhints.
+7. THEN Enter actions (commit→ops, changes item→source) + polish.
+Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)/Things(11)/Docs(12).
 
 ## Status: P1 COMPLETE ✓ — `dark` opens the framed Tree|Inspect workbench (verified on screen; classic prompt
    behind DARK_CLASSIC=1; with-args commands unaffected). Commits 5053e91f4…4a82936cf. Now on P2.
@@ -78,6 +83,9 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 05:16 — P2.4: History view wired (getCommitsWithAncestors; commit rows). + `[`/`]` view cycling
+  so all 13 views are reachable (digits only hit 1-9). Verified both. Commits 7207468ac, f98e60386. Next: wire
+  read-only Resolve/Mesh/Docs/Services (breadth), then Home dashboard.
 - 2026-07-18 05:06 — P2.3: Changes view wired (view-aware items via itemsForView; digit-switch reloads body;
   getWipItems; clean-state message). Verified populated + empty (WbTest.demo shown, then discarded). Commit
   aaf33ee41. Note: `discard` needs `printf 'y\n' | …` non-interactively. Next: History view (press 6).
