@@ -198,6 +198,44 @@ let searchText (branchId: Uuid) (queryText: String) : String =
     ++ " matches)\n\n"
     ++ (Stdlib.String.join all "\n")
 
+/// Dependencies of the selected Tree leaf (what it uses), formatted for the reader. `d` shows this.
+let depsText (state: State) : String =
+  match Stdlib.List.getAt state.items state.selected with
+  | None -> "(nothing selected)"
+  | Some item ->
+    if item.isModule then
+      "Modules have no dependencies — select a fn, type, or value."
+    else
+      let modulePath = modulePathOf state.location
+      let results = Packages.Query.searchExactMatch state.branchId modulePath item.name
+      let hashOpt =
+        if item.kind == "fn" then
+          results.fns |> Stdlib.List.head |> Stdlib.Option.map (fun i -> i.entity.hash)
+        else if item.kind == "type" then
+          results.types |> Stdlib.List.head |> Stdlib.Option.map (fun i -> i.entity.hash)
+        else
+          results.values |> Stdlib.List.head |> Stdlib.Option.map (fun i -> i.entity.hash)
+      match hashOpt with
+      | None -> "(not found)"
+      | Some hash ->
+        let deps = Builtin.depsGetDependencies state.branchId hash
+        if Stdlib.List.isEmpty deps then
+          item.name ++ " has no dependencies."
+        else
+          let hashes = deps |> Stdlib.List.map (fun pair -> let (h, _) = pair in h)
+          let namesDict = Darklang.Cli.Deps.resolveNames state.branchId hashes
+          let lines =
+            deps
+            |> Stdlib.List.map (fun pair ->
+              let (th, _rt) = pair
+              "  " ++ (Darklang.Cli.Deps.getName namesDict th))
+          "Dependencies of "
+          ++ item.name
+          ++ "   ("
+          ++ (Stdlib.Int.toString (Stdlib.List.length deps))
+          ++ ")\n\n"
+          ++ (Stdlib.String.join lines "\n")
+
 /// Recorded sync divergences (for the Resolve view).
 let loadConflictBodyItems () : List<BodyItem> =
   Darklang.Sync.Conflicts.list ()
@@ -623,7 +661,7 @@ let hintsForView (view: Int) : String =
   let global = [ ("/", "search"); (":", "run"); ("1-9", "view"); ("?", "help"); ("q", "quit") ]
   let ctx =
     if view == 1 then
-      [ ("↑↓", "move"); ("→", "in"); ("⏎", "open"); ("n/t/v", "new"); ("e", "edit"); ("tab", "focus") ]
+      [ ("↑↓", "move"); ("→", "in"); ("⏎", "open"); ("n/t/v", "new"); ("e", "edit"); ("d", "deps"); ("tab", "focus") ]
     else if view == 0 then
       [ ("↑↓", "move") ]
     else if view == 4 then
@@ -1163,6 +1201,10 @@ let handleKey
       switchView state (Stdlib.Int.min ((Stdlib.List.length Frame.viewNames) - 1) (state.activeView + 1))
     | Some "[" ->
       switchView state (Stdlib.Int.max 0 (state.activeView - 1))
+    | Some "d" ->
+      // Tree: show the selected leaf's dependencies (what it uses) in the reader.
+      if state.activeView == 1 then openReader state (depsText state) false
+      else Step.Continue state
     | Some "e" ->
       // Tree: edit the selected fn in place (prefill the editor from its source).
       if state.activeView == 1 then
