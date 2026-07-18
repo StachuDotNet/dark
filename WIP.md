@@ -133,18 +133,24 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
    DONE ✓ a. BRANCH ops from History: `b` create+switch, `s` switch-by-name (Darklang.SCM.Branch.create/getByName;
       full paths to dodge the runtime-resolution trap). Verified incl. the "no branch" error path.
    Write actions now: commit (c, Changes), discard (x, Changes), branch create/switch (b/s, History).
-   NEXT — EDIT-LITE (the big remaining design piece; attempt a functional-but-crude version):
-   - Goal: create/edit a fn body from the workbench. Add an "editing" mode (State.editing: Option<{name,sig,
-     buffer}>). Simplest buffer = end-of-buffer editing: printable→append, Backspace→drop last, Enter→append
-     "\n", a SAVE key (^s via modifiers.ctrl+S, or a plain key like F2 / or "save on Esc-then-y") → parse+create
-     via the `fn` path (Packages.Fn / cliEvaluate? find how `fn` command creates: grep 'let execute' packages/
-     darklang/cli/packages/fn.dark). NO cursor movement (crude) — good enough to type a body.
-   - Wire Tree `n` (new): input full name → then open the editor with the sig line + empty buffer.
-   - Render the editing buffer full-body (like the reader) with a cursor "_" at the end.
-   - VERIFY: create a fn via the workbench, eval it, discard. Watch out: `fn` create is SLOW; the save may lag.
-   - If multiline editing proves too fiddly/janky, STOP and instead: consolidate/polish, or just document Edit as
-     the one remaining deferred piece and idle. Don't ship a broken editor.
-   Also nice-to-have (smaller): Tree `n` could create an EMPTY-body stub is not useful; skip. Rename still deferred.
+   DONE ✓ Edit placeholder (informative, points at fn/type/val) + PR summary updated (write actions; Edit
+   deferred honestly). createFnInline PRINTS to stdout + wants full AppState → can't call it in the TUI.
+   NEXT — build EDIT properly (multi-fire; verify each step; if 2D editing gets janky, fall back to append-only
+   or STOP — don't ship broken):
+   1. A MULTILINE BUFFER in app.dark: `type EditBuf = { lines: List<String>; row: Int; col: Int }` + pure fns
+      insertChar / backspace / newline / moveLeft/Right/Up/Down. Keep it in app.dark (or a new ui/editor.dark).
+      Verify the pure ops via eval (e.g. insert a few chars, render to string).
+   2. State.editing: Option<{ nameStr: String; buf: EditBuf }>. Render it full-body like the reader but with a
+      visible cursor at (row,col) — draw each line, put a reverse-video block at the cursor. Reuse renderReading-
+      style windowing for scroll.
+   3. handleKey editing branch (outermost, before input/reading): printable→insertChar, Backspace, Enter→newline,
+      arrows→move, Ctrl+S (modifiers.ctrl && key==S)→SAVE, Esc→cancel (confirm if non-empty? optional).
+   4. SAVE locally (don't call createFnInline): fullSource = "let {name} {bufText}"; Builtin.parserParseToWritten
+      Types → build AddFn+SetName ops (copy the 6 lines from fn.dark createFnInline) → SCM.PackageOps.add branchId
+      ops. On parse error, show it in the buffer footer, DON'T save. On ok → back to Tree, reload.
+   5. Wire Tree `n`: input "new fn name (owner.Mod.name): " → on enter, open editing with buf = one line
+      "(x: Int): Int =" placeholder or empty. VERIFY: author a fn in the workbench, see it in Changes, commit.
+   Step 1 (the buffer + pure ops, eval-verified) is the safe first increment. Do that, commit, then step 2.
    1. State: add `input: Stdlib.Option.Option<InputState>` where InputState = { prompt: String; text: String;
       action: String } (action tag e.g. "commit"). Init None in execute. (double reload — type change.)
    2. handleKey: guard at TOP like `reading` — if `input` is Some: printable char → append to text (keyChar);
@@ -189,6 +195,10 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 07:45 — P3.4: made the Edit tab an informative placeholder (points at fn/type/val + classic prompt)
+  and updated the PR SUMMARY to reflect the 3 write actions + honest Edit-deferred state. Decided createFnInline
+  can't be called in-TUI (prints + needs full AppState). Commit 54ffb2deb. Next: build Edit properly, starting
+  with an eval-verified multiline buffer (step 1). If 2D editing gets janky, fall back / stop — don't ship broken.
 - 2026-07-18 07:37 — P3.3: branch ops from History — `b` create+switch, `s` switch-by-name (input mode;
   Darklang.SCM.Branch.create/getByName full-path). Verified: created+switched to "wbbr", switched by name,
   "no branch 'zzz'" error path. Commit d2ebc36b8. 3 write actions now (commit/discard/branch). Next: Edit-lite
