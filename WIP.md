@@ -52,6 +52,34 @@ in place to grow the rest onto.
 
 ---
 
+## PHASE 4 — real-terminal (tmux) testing + polish  (user: "test it all with tmux send-keys, iterate hours, improve")
+Testing via a live tmux session (NOT just dev-drive's PTY): `tmux new-session -d -s wb -x 200 -y 50; tmux
+send-keys -t wb 'cd /home/stachu/code/dark/loop-fun && ./scripts/run-cli' Enter; tmux capture-pane -t wb -p`.
+Session `wb` is kept alive between fires. Send keys with SMALL sleeps (rapid keys coalesce — see below).
+
+### Findings so far
+- ✓ Renders correctly in a real terminal: Home dashboard, Tree|Inspect split (aligned borders), navigation,
+  authoring (n → name → editor → header) all work at HUMAN speed.
+- ⚠ TOP ISSUE — rapid/held keys COALESCE: `readKeyOrPaste` (backend Builtins.Cli/Libs/Stdin.fs) intentionally
+  collapses control keys piled up during a slow render into the LAST one ("scroll renders once vs flicker"),
+  and fast printable bursts go through the paste path (a fast tmux-typed name came out blank). ROOT CAUSE is
+  that the workbench render is SLOW: full `[2J` clear + hundreds of tiny `printAt`/`print` writes per
+  frame (each printAt = 2 prints; SplitPane borders draw per-row). Keys pile up → coalesce. FIX = batch the
+  frame into one write (make render functions build a String, print once) so it's fast + flicker-free; then
+  hold-to-scroll and fast typing work. This is the #1 improvement (also kills flicker). Do NOT change the
+  shared readKey (deliberate); fix render speed instead.
+
+### NEXT ACTION (Phase 4)
+1. First, KEEP TESTING to complete the bug list (use tmux + slow keys, ~0.2s between): commit flow (Changes c),
+   discard (x y), branch (History b/s), Docs reader (Enter/scroll/esc), editor SAVE (^s → Changes), the reader
+   from Tree/History, and RESIZE (`tmux resize-window`/smaller `-x`). Log each result here.
+2. Then BATCH THE RENDER (top fix). Approach: add a string-returning render path. Smallest first step: make
+   `Layout.printAt` do ONE `Stdlib.print` (moveCursorTo ++ text) instead of two — cheap, measurable. Then the
+   bigger refactor: render builds one big buffer. Verify via tmux that rapid Downs now move N (not 1).
+3. Fix any other bugs found. Keep committing small + verifying in tmux. Update this Log each fire.
+Loop cadence back to ~300s. tmux session `wb` persists. Discard any test artifacts (fns/branches) — they also
+auto-clean on reload.
+
 ## Loop horizon
 Run until ~2026-07-19 04:00 (24h). Each fire: `date` — if past that, do a final commit + write a summary at
 the top of the Log + stop the loop (ScheduleWakeup stop:true). Otherwise keep going, reschedule ~300s.
