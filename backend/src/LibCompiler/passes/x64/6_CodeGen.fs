@@ -1570,17 +1570,30 @@ let private translateInstr (ctx: FuncCtx) (instr: LIR.Instr) : Result<X86_64.Ins
         |> Result.map (fun destReg -> [X86_64.LEA_rip (destReg, funcName)])
 
     | LIR.FArgMoves moves ->
-        // Move float arguments into XMM registers
-        let instrs =
-            moves |> List.collect (fun (destPhys, srcFreg) ->
-                let destXmm = lirFRegToX86 destPhys
+        // Move float arguments into XMM registers. These are PARALLEL moves: a naive
+        // sequential lowering corrupts cyclic shuffles — e.g. swapping the two args of a
+        // 2-arg float call, FArgMoves(D0<-D1, D1<-D0), as `movsd D0,D1; movsd D1,D0`
+        // leaves BOTH = the old D1 (was bug #30: multiply(x, sqrt 4) computed x*x).
+        // Resolve the moves and break cycles through the reserved XMM15 scratch.
+        let resolved =
+            moves |> List.map (fun (destPhys, srcFreg) ->
                 match srcFreg with
-                | LIR.FPhysical srcPhys ->
-                    let srcXmm = lirFRegToX86 srcPhys
-                    if destXmm = srcXmm then []
-                    else [X86_64.MOVSD_reg (destXmm, srcXmm)]
-                | LIR.FVirtual id -> Crash.crash $"Unresolved virtual float register f{id} in FArgMoves")
-        Ok instrs
+                | LIR.FPhysical srcPhys -> Ok (lirFRegToX86 destPhys, lirFRegToX86 srcPhys)
+                | LIR.FVirtual id -> Error $"Unresolved virtual float register f{id} in FArgMoves")
+            |> List.fold (fun acc r ->
+                match acc, r with
+                | Ok xs, Ok x -> Ok (x :: xs)
+                | Error e, _ -> Error e
+                | _, Error e -> Error e) (Ok [])
+            |> Result.map List.rev
+        resolved
+        |> Result.map (fun xmmMoves ->
+            let actions = ParallelMoves.resolve xmmMoves (fun (src: X86_64.FReg) -> Some src)
+            actions |> List.collect (fun action ->
+                match action with
+                | ParallelMoves.SaveToTemp src -> [X86_64.MOVSD_reg (X86_64.XMM15, src)]
+                | ParallelMoves.Move (dest, src) -> if dest = src then [] else [X86_64.MOVSD_reg (dest, src)]
+                | ParallelMoves.MoveFromTemp dest -> [X86_64.MOVSD_reg (dest, X86_64.XMM15)]))
 
     | LIR.Phi (dest, _, _) ->
         // Phi nodes should be eliminated before codegen (SSA destruction)

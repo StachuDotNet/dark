@@ -1855,9 +1855,14 @@ let floatCallerSavedRegs : LIR.PhysFPReg list = [
     LIR.D0; LIR.D1; LIR.D2; LIR.D3; LIR.D4; LIR.D5; LIR.D6; LIR.D7
 ]
 
-/// Float callee-saved registers (D8-D15)
+/// Float callee-saved registers (D8-D14). D15 (XMM15) is RESERVED as the float
+/// scratch for breaking cycles in x64 FArgMoves parallel moves (analogous to the
+/// integer R11 scratch, and to ARM64's D16). It must not be allocatable, or a cyclic
+/// float-arg shuffle (e.g. swapping the two args of a 2-arg float call) corrupts a
+/// live value. Keeping it out of this list removes it from allocatableFloatRegs and
+/// from the callee-saved save/restore set.
 let floatCalleeSavedRegs : LIR.PhysFPReg list = [
-    LIR.D8; LIR.D9; LIR.D10; LIR.D11; LIR.D12; LIR.D13; LIR.D14; LIR.D15
+    LIR.D8; LIR.D9; LIR.D10; LIR.D11; LIR.D12; LIR.D13; LIR.D14
 ]
 
 /// All allocatable float registers - caller-saved first, then callee-saved
