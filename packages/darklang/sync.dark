@@ -225,7 +225,7 @@ let pullLoop
       | Ok(w) ->
         if w.release != currentRelease() then
           Stdlib.Result.Result.Error
-            $"{peer} is on Dark release {Stdlib.Int.toString w.release}; you're on {Stdlib.Int.toString (currentRelease())} — upgrade to the same release to sync"
+            $"{peer} speaks store format v{Stdlib.Int.toString w.release}; you're on v{Stdlib.Int.toString (currentRelease())} — you both need the same Dark build to sync"
         else
           // Apply branch STRUCTURE before content, so package ops' branch_ids resolve on this side. Each append
           // returns the count applied, or -1 on a DB error (distinct from 0 = idempotent/nothing new). We

@@ -5,8 +5,9 @@ let execute (state: AppState) (args: List<String>) : AppState =
   let versionInfo = Helpers.getVersionInfo ()
   Stdlib.printLine versionInfo
 
-  // Release coordinate — the store format/version this Dark speaks vs what your local data is stamped at.
-  // (This is what the boot-time migrator + sync's wire-version key off; see `dark update`.)
+  // Store-format coordinate — the on-disk data shape this Dark speaks vs what your local data is stamped at.
+  // (This is what the boot-time migrator + sync's wire-version key off; see `dark update`.) It is NOT a product
+  // version — Dark is alpha; this is just internal data-format bookkeeping, shown as "store format vN".
   let exeRel = Stdlib.Int.toString (Darklang.Sync.currentRelease ())
 
   let storeRel =
@@ -25,10 +26,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
     | _ -> "?"
 
   if exeRel == storeRel then
-    Stdlib.printLine $"Release {exeRel} — your data is up to date"
+    Stdlib.printLine $"alpha — store format v{exeRel}, your data is up to date"
   else
     Stdlib.printLine
-      $"Dark Release {exeRel} — your data is Release {storeRel} (run `dark update`)"
+      $"alpha — store format v{exeRel}, your data is v{storeRel} (run `dark update`)"
 
   state
 

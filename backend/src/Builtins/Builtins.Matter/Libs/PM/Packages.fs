@@ -318,6 +318,9 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     // Resolve a package fn's dotted name to a callable value (Applicable), so a name that only exists as a
     // STRING (a CLI arg) can be passed as a function without eval'ing a source string. This is what lets
     // `dark serve` hand a router to `Stdlib.HttpServer.serve` directly (no `cliEvaluateExpression`).
+    // CLEANUP(applicableByName): `dark eval` already resolves a dotted name to a runnable value, so this builtin
+    // can eventually fold into eval and be deleted (one fewer builtin — the fewer-builtins rule). ~1hr; the one
+    // wrinkle is keeping an expression that produces nothing printing nothing. Left for a tidy pass.
     { name = fn "applicableByName" 0
       typeParams = []
       parameters =

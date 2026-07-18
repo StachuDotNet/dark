@@ -214,8 +214,14 @@ module Config =
         canonicalizeFromForwardedProto = true
         logRequests = true }
 
-/// Start an HTTP server: bind `handler` per `config` and serve until SIGTERM (blocks).
-let serve (config: Config.Config) (handler: Http.Request -> Http.Response) : Unit =
+/// Start an HTTP server: bind `handler` per `config`, run `onListening` once the port is bound (announce
+/// there, so a banner is never a lie), and serve until SIGTERM (blocks). Returns Error with a plain message
+/// if the port can't be bound.
+let serve
+  (config: Config.Config)
+  (handler: Http.Request -> Http.Response)
+  (onListening: Unit -> Unit)
+  : Stdlib.Result.Result<Unit, String> =
   Builtin.httpServerServe
     config.port
     handler
@@ -223,3 +229,4 @@ let serve (config: Config.Config) (handler: Http.Request -> Http.Response) : Uni
     config.injectStandardHeaders
     config.canonicalizeFromForwardedProto
     config.logRequests
+    onListening

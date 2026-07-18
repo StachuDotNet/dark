@@ -46,8 +46,11 @@ let changeSummary (changes: List<Darklang.Sync.EventLog.Change>) : String =
     |> Stdlib.List.flatten
     |> Stdlib.String.join ", "
 
-// After a pull, nudge about any unreviewed divergences — so last-writer-wins is never SILENT: you always see
-// that a name was contested and can review the winner (`dark conflicts`).
+// After a pull, mention any name where an incoming change overwrote a different local one — so last-writer-wins
+// is never SILENT, without crying "conflict". Most of the time this is just a peer that was ahead of you (a
+// plain catch-up, nothing to resolve); occasionally it's a genuine two-sided edit. Either way LWW already
+// picked, so this is a quiet FYI you can review, not an alarm. (Telling the two apart needs op lineage we don't
+// track yet — see the known-issue note; until then we don't call a catch-up a conflict.)
 let conflictNudge () : Unit =
   let unreviewed =
     Darklang.Sync.Conflicts.list ()
@@ -56,7 +59,8 @@ let conflictNudge () : Unit =
 
   if unreviewed > 0 then
     Stdlib.printLine (
-      Colors.warning $"  {plural unreviewed "conflict"} to review — run `dark conflicts`")
+      Colors.dim
+        $"  {plural unreviewed "name"} updated by a peer (last-writer-wins) — `dark conflicts` to review")
   else
     ()
 
@@ -66,16 +70,22 @@ let conflictNudge () : Unit =
 let serveOn (port: Int) (state: AppState) : AppState =
   let portStr = Stdlib.Int.toString port
 
-  [ Colors.success $"Serving sync on http://localhost:{portStr} — peers can pull from you here."
-    Colors.hint $"  Remote peers use your tailnet address, e.g. http://you.tailnet:{portStr}"
-    Colors.hint "  Each peer's request prints here as it arrives."
-    Colors.hint "  Keep it running (serve on boot):  dark sync daemon start"
-    "  Press Ctrl+C to stop." ]
-  |> Stdlib.printLines
+  let announce () : Unit =
+    [ Colors.success $"Serving sync on http://localhost:{portStr} — peers can pull from you here."
+      Colors.hint $"  Remote peers use your tailnet address, e.g. http://you.tailnet:{portStr}"
+      Colors.hint "  Each peer's request prints here as it arrives."
+      Colors.hint "  Keep it running (serve on boot):  dark sync daemon start"
+      "  Press Ctrl+C to stop." ]
+    |> Stdlib.printLines
 
-  Stdlib.HttpServer.serve
-    (Stdlib.HttpServer.Config.defaults port)
-    Darklang.Sync.Server.router
+  match
+    Stdlib.HttpServer.serve
+      (Stdlib.HttpServer.Config.defaults port)
+      Darklang.Sync.Server.router
+      announce
+  with
+  | Ok _ -> ()
+  | Error msg -> Stdlib.printLine (Colors.error msg)
 
   state
 
