@@ -80,6 +80,21 @@ Session `wb` is kept alive between fires. Send keys with SMALL sleeps (rapid key
 Loop cadence back to ~300s. tmux session `wb` persists. Discard any test artifacts (fns/branches) — they also
 auto-clean on reload.
 
+### PHASE 4 HORIZON + FINALIZATION (user returns ~14:00 / 2pm)
+Keep testing + fixing (tmux-driven) every fire until ~14:00 (check `date` each fire). Priorities: render batching
+(fixes coalescing + flicker) first, then any other bugs the sweep finds. When it's ~13:55-14:00 (or the backlog
+is genuinely exhausted), FINALIZE — the user asked for two things at 2pm:
+1. A ONE-COMMAND self-test they can run: the workbench is interactive, so the command is
+   `cd /home/stachu/code/dark/loop-fun && ./scripts/run-cli`  (opens the workbench; DARK_CLASSIC=1 for the old
+   prompt). Put a "Test it yourself" section IN the printed report with this command + a short guided tour
+   (the keys to try: 1-9/[ ] switch views, ↑↓/→/← navigate, Enter open source/ops/topic, Tree n/t/v author +
+   e edit + ^s save, Changes c commit / x discard, History b/s branch, ? help, esc/q out).
+2. Print an UPDATED report (`~/bin/print-md`): update /home/stachu/code/dark/main/notes/cli-ux-workbench-report.md
+   — refresh the LOC/commit numbers (`git diff --shortstat github/main..HEAD`), add a "Phase 4: real-terminal
+   testing" section (what tmux testing found + fixed, esp. the render/coalescing work), and the "Test it yourself"
+   section. Then `~/bin/print-md` it. Leave a clear chat message with the command + what changed.
+After finalizing at 14:00: STOP the loop (ScheduleWakeup stop:true) — the user will be driving from there.
+
 ## Loop horizon
 Run until ~2026-07-19 04:00 (24h). Each fire: `date` — if past that, do a final commit + write a summary at
 the top of the Log + stop the loop (ScheduleWakeup stop:true). Otherwise keep going, reschedule ~300s.
