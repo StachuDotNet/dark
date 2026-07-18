@@ -137,10 +137,10 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
    deferred honestly). createFnInline PRINTS to stdout + wants full AppState → can't call it in the TUI.
    NEXT — build EDIT properly (multi-fire; verify each step; if 2D editing gets janky, fall back to append-only
    or STOP — don't ship broken):
-   1. A MULTILINE BUFFER in app.dark: `type EditBuf = { lines: List<String>; row: Int; col: Int }` + pure fns
-      insertChar / backspace / newline / moveLeft/Right/Up/Down. Keep it in app.dark (or a new ui/editor.dark).
-      Verify the pure ops via eval (e.g. insert a few chars, render to string).
-   2. State.editing: Option<{ nameStr: String; buf: EditBuf }>. Render it full-body like the reader but with a
+   1. DONE ✓ MULTILINE BUFFER: ui/editor.dark (module Darklang.Cli.UI.Editor) — Buf {lines,row,col} + insertChar/
+      newline/backspace(+join)/moveLeft/Right/Up/Down/fromText/toText/currentLine. Eval-verified (insert, newline
+      split, backspace join). Ref from workbench as `UI.Editor.*` (like UI.SplitPane).
+   2. NEXT: State.editing: Option<{ nameStr: String; buf: UI.Editor.Buf }>. Render it full-body like the reader but with a
       visible cursor at (row,col) — draw each line, put a reverse-video block at the cursor. Reuse renderReading-
       style windowing for scroll.
    3. handleKey editing branch (outermost, before input/reading): printable→insertChar, Backspace, Enter→newline,
@@ -191,10 +191,17 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   `PrettyPrinter.ProgramTypes.PackageOp.packageOp`. Check indentation to find the real module path.
 - `packageOp branchId op` does per-op branch lookups — CAP how many you render (20) or big commits (10k-op
   seed) are slow.
+- NO `let private` — Dark has no `private` modifier ("Module value declarations must use 'val'"). Just `let`.
+- A failed reload can leave the DB in a TRANSIENT bad state (applyOps/insert error on the NEXT reload). RETRY
+  `reload-packages` once before assuming corruption — it often clears on the 2nd pass. (True corruption →
+  `migrations run` / restore seed.db.)
 - A non-loading .dark aborts the whole reload → always `./dev-ux-check` after each edit; read the real error
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 07:53 — P3.5 (Edit step 1): built ui/editor.dark — a pure multiline text buffer (Buf{lines,row,col}
+  + insert/newline/backspace+join/motion). Eval-verified all. Hit `let private` (invalid) + a transient reload
+  DB error (cleared on retry — recorded both gotchas). Commit c3ebbdab3. Next: State.editing + cursor render (step 2).
 - 2026-07-18 07:45 — P3.4: made the Edit tab an informative placeholder (points at fn/type/val + classic prompt)
   and updated the PR SUMMARY to reflect the 3 write actions + honest Edit-deferred state. Decided createFnInline
   can't be called in-TUI (prints + needs full AppState). Commit 54ffb2deb. Next: build Edit properly, starting
