@@ -397,17 +397,14 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
     // Docs: in-CLI documentation topics.
     renderTreeList state region
   else if state.activeView == 3 then
-    // Edit: authoring needs a multiline editor — not in the workbench yet, so point at the real path.
+    // Edit: authoring new fns works from the Tree view (n → name → multiline editor → ^s).
     let _ =
-      UI.Layout.printAt region 1 2 (Colors.boldText "Edit — authoring in the workbench is coming soon.")
+      UI.Layout.printAt region 1 2 (Colors.boldText "Edit — author a new fn from the Tree view.")
     let _ =
-      UI.Layout.printAt
-        region
-        3
-        2
-        (Colors.dimText "For now, create/edit with the fn / type / val commands:")
-    let _ = UI.Layout.printAt region 4 4 (Colors.dimText "DARK_CLASSIC=1 dark   (the classic prompt), or   dark fn <name> - < body")
-    UI.Layout.printAt region 6 2 (Colors.dimText "then review + commit the result here in Changes.")
+      UI.Layout.printAt region 3 2 (Colors.dimText "Press 2 (Tree), pick a location, then n to name + edit a new fn.")
+    let _ =
+      UI.Layout.printAt region 4 2 (Colors.dimText "In the editor: type the body, ^s saves it as WIP, esc cancels.")
+    UI.Layout.printAt region 6 2 (Colors.dimText "Editing existing fns + type/val authoring: still via the fn/type/val commands.")
   else
     UI.Layout.printAt region 1 2 (Colors.dimText ((Frame.viewName state.activeView) ++ " — coming soon"))
 
