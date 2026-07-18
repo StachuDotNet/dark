@@ -140,17 +140,22 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
    1. DONE ✓ MULTILINE BUFFER: ui/editor.dark (module Darklang.Cli.UI.Editor) — Buf {lines,row,col} + insertChar/
       newline/backspace(+join)/moveLeft/Right/Up/Down/fromText/toText/currentLine. Eval-verified (insert, newline
       split, backspace join). Ref from workbench as `UI.Editor.*` (like UI.SplitPane).
-   2. NEXT: State.editing: Option<{ nameStr: String; buf: UI.Editor.Buf }>. Render it full-body like the reader but with a
-      visible cursor at (row,col) — draw each line, put a reverse-video block at the cursor. Reuse renderReading-
-      style windowing for scroll.
-   3. handleKey editing branch (outermost, before input/reading): printable→insertChar, Backspace, Enter→newline,
-      arrows→move, Ctrl+S (modifiers.ctrl && key==S)→SAVE, Esc→cancel (confirm if non-empty? optional).
-   4. SAVE locally (don't call createFnInline): fullSource = "let {name} {bufText}"; Builtin.parserParseToWritten
-      Types → build AddFn+SetName ops (copy the 6 lines from fn.dark createFnInline) → SCM.PackageOps.add branchId
-      ops. On parse error, show it in the buffer footer, DON'T save. On ok → back to Tree, reload.
-   5. Wire Tree `n`: input "new fn name (owner.Mod.name): " → on enter, open editing with buf = one line
-      "(x: Int): Int =" placeholder or empty. VERIFY: author a fn in the workbench, see it in Changes, commit.
-   Step 1 (the buffer + pure ops, eval-verified) is the safe first increment. Do that, commit, then step 2.
+   DONE ✓ 2+3(partial): editing mode. State.editing: Option<EditingState{nameStr, buf}>; renderEditing (header +
+      buffer + reverse-video cursor + windowed scroll); handleKey editing branch (typing/Enter=newline/Backspace/
+      arrows/Tab=2sp/Esc=cancel; Ctrl ignored for now). Tree `n` → name input → `new-fn` action → editor opens
+      with starter "(x: Int): Int =\n  x". VERIFIED via dev-drive (opened, typed "zzz" → "zzz(x: Int…").
+   4. NEXT — SAVE (Ctrl+S). In the editing handleKey branch, before the `if modifiers.ctrl then Continue`, handle
+      save: `if modifiers.ctrl && key == Stdlib.Cli.Stdin.Key.Key.S then <save>`. Save LOCALLY (createFnInline
+      prints + needs AppState — don't call it). Replicate the core of createFnInline (fn.dark ~L56-120):
+        - parse loc: `Packages.Location.parseRelativeTo currentLoc es.nameStr` (or LanguageTools parse) → location
+        - fullSource = $"let {location.name} {UI.Editor.toText es.buf}"
+        - Builtin.parserParseToWrittenTypes fullSource → SourceFile; check parserParseDiagnostics for errors
+        - extract the packageFn, build [AddFn packageFn; SetName(location, Reference.PackageFn packageFn.hash)]
+        - SCM.PackageOps.add state.branchId ops
+      READ fn.dark L56-140 carefully and copy the exact extraction (WT→PT, hashing). On parse error → keep editing,
+      show error in the hint/footer (add an `err` field to EditingState or reuse a line). On ok → editing=None,
+      reload items. VERIFY: author a fn, Ctrl+S, see it in Changes, commit it. This is the fiddly part — if the
+      WT→PT extraction is too gnarly, consider a smaller win (save via writing a tmp + `run`? no) or STOP + document.
    1. State: add `input: Stdlib.Option.Option<InputState>` where InputState = { prompt: String; text: String;
       action: String } (action tag e.g. "commit"). Init None in execute. (double reload — type change.)
    2. handleKey: guard at TOP like `reading` — if `input` is Some: printable char → append to text (keyChar);
@@ -199,6 +204,9 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 08:02 — P3.6 (Edit step 2): interactive multiline editor in the workbench — State.editing +
+  renderEditing (cursor) + editing key branch (typing/motion/tab/esc); Tree `n` → name → editor. VERIFIED
+  (typed "zzz" into a new fn's body). Commit b72f08c0d. Next: Ctrl+S SAVE (local parse→AddFn/SetName→SCM.add).
 - 2026-07-18 07:53 — P3.5 (Edit step 1): built ui/editor.dark — a pure multiline text buffer (Buf{lines,row,col}
   + insert/newline/backspace+join/motion). Eval-verified all. Hit `let private` (invalid) + a transient reload
   DB error (cleared on retry — recorded both gotchas). Commit c3ebbdab3. Next: State.editing + cursor render (step 2).
