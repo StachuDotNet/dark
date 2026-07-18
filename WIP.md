@@ -47,15 +47,39 @@ instead of a bare prompt.
 x=destroy, d=diff/detail, r=rename-or-rerun; Ctrl+Tab=views/Tab=panes; ?=HelpOverlay; badge set frozen (91 §4).
 
 ## NEXT ACTION
-P1 step 2: build `SplitPane` (see design 03A §6). Add to `ui/` a module `Darklang.Cli.UI.SplitPane` (new
-file `ui/splitpane.dark`): a two-child horizontal/vertical split by ratio, with a focused child (bright vs
-dim border) and a narrow-collapse fallback. Start with the RENDER + focus (master-detail wiring can be a
-follow-up). Use the new `hstack`/`fixedWidth`/`greedyWidth`. Reload, eval/verify a 2-pane render. Then start
-TreeWidget (extract from navInteractive+tree; see 03B) — the big one; do it in small loading steps.
+P1 step 3b — the `workbench` SubApp (frame.dark DONE ✓). Build `apps/workbench/app.dark`.
+1. DONE ✓ `apps/workbench/frame.dark` — renderTabBar / renderBreadcrumb / renderKeyHints, verified loads.
+2. New `apps/workbench/app.dark` (module `Darklang.Cli.Apps.Workbench.App`): a SubApp (see SCM.Review.App
+   for the exact shape — makeSubApp/handleKey/render/execute). State = { activeView; a nav/tree state for the
+   body }. render = vstack [ fixedSize 1 tabbar; fixedSize 1 breadcrumb; greedy body; fixedSize 1 keyhint ]
+   inside the frame; the status bar is the CLI's existing bottom bar. Body v1 = the package tree listing
+   (reuse Packages.NavInteractive display logic, or a simple Query.allDirectDescendants listing rendered in
+   the region). onKey: ↑↓ move, → into, ← up, digits switch activeView (stub other views to a "coming soon"
+   body for now), Esc/q exit.
+3. Register `("workbench", …, Apps.Workbench.App.execute/help/complete)` in core.dark Registry.allCommands.
+   Reload TWICE if types changed. Test: `./scripts/run-cli workbench` (interactive — may need expect; at
+   minimum confirm it loads + non-interactive `workbench` prints something sane).
+4. Commit. THEN next: flip `dark` no-args to open workbench (small core.dark change), and split the body
+   into Tree|Inspect via SplitPane.
+Design refs: main/notes/cli-ux/03A (frame), 10-home, 11-tree, 12-inspect. Keymap: 91 (x=destroy/d=diff).
 
-## Status: P1 in progress. DONE: hstack/distributeCols (verified: distributeCols 100 → [40,60]).
+## Status: P1 in progress. DONE: hstack/distributeCols (verified [40,60]); SplitPane (verified toggle; commit d957c2471).
+
+## Gotchas learned (append as you hit them)
+- Typed lambda params are NOT supported: `fun s -> …` only, never `fun (s: String) -> …` (PARSE-UNCLOSED).
+- Module-level VALUES use `val name = …` (NO type annotation). `let` is only for functions + local bindings.
+  (e.g. `val viewNames = [ … ]`, not `let viewNames : List<String> = …`.)
+- Name resolution from `Darklang.Cli.Apps.Workbench.*`: use `UI.Layout.…` (not bare `Layout`) — the ancestor
+  chain hits `Darklang.Cli`, from which `UI.Layout` resolves but `Layout` doesn't. `Colors` resolves bare.
+- A non-loading .dark aborts the whole reload → always `./dev-ux-check` after each edit; read the real error
+  via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 04:00 — P1: frame.dark done (tab bar + breadcrumb + keyhint render helpers). Learned 2 gotchas
+  (val for module values; UI.Layout not Layout from Apps.Workbench). Verified, committing. Next: app.dark SubApp.
+- 2026-07-18 03:53 — P1: SplitPane done (ui/splitpane.dark: drawBox focus-aware border, render both
+  orientations, narrow-collapse, toggle). Hit + recorded the typed-lambda-param gotcha. Verified, commit
+  d957c2471. Re-strategized: ship a `workbench` SubApp (reuse nav) before touching core.dark. Next: the Frame.
 - 2026-07-18 03:5x — P1: added hstack/distributeCols/fixedWidth/flexWidth/greedyWidth to ui/layout.dark;
   verified [40,60] split; committed 5053e91f4. Inner loop (./dev-ux-check) green. Next: SplitPane.
 - 2026-07-18 03:5x — setup: branched cli-ux-workbench off github/main; loop-fun is the active build dir;

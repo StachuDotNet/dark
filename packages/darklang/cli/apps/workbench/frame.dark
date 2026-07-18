@@ -1,0 +1,43 @@
+/// Frame — the always-on workbench chrome (tab bar + breadcrumb). Render helpers used by the workbench
+/// SubApp; the bottom status bar is the CLI's existing one. See design main/notes/cli-ux/03A.
+module Darklang.Cli.Apps.Workbench.Frame
+
+/// The views, in tab-bar order. Index into this is the "active view".
+val viewNames =
+  [ "Home"; "Tree"; "Inspect"; "Edit"; "Changes"; "History"
+    "Resolve"; "Mesh"; "Agents"; "Runs"; "Services"; "Things"; "Docs" ]
+
+let viewName (i: Int) : String =
+  Stdlib.List.getAt viewNames i |> Stdlib.Option.withDefault "Home"
+
+/// Render the tab bar into `region` (one row). `active` is the index of the active view; it renders bright
+/// with a ◆ marker, the rest dim. Printed directly (color codes would confuse printAt's width math).
+let renderTabBar (region: UI.Layout.Region) (active: Int) : Unit =
+  let segs =
+    viewNames
+    |> Stdlib.List.indexedMap (fun i name ->
+      if i == active then
+        Colors.colorize (Colors.bold ++ Colors.cyan) ("◆ " ++ name)
+      else
+        Colors.colorize Colors.dim name)
+  let bar = "  " ++ (Stdlib.String.join segs "   ")
+  Stdlib.print ((Colors.moveCursorTo region.top region.left) ++ bar)
+
+/// Render the breadcrumb row: the current package path on the left, branch + sync on the right.
+let renderBreadcrumb
+  (region: UI.Layout.Region)
+  (path: String)
+  (branch: String)
+  : Unit =
+  let left = "  " ++ (Colors.boldText path)
+  let right =
+    (Colors.dimText ("branch: " ++ branch ++ "  "))
+    ++ (Colors.colorize Colors.green "✓ synced")
+  Stdlib.print ((Colors.moveCursorTo region.top region.left) ++ left)
+  let rightCol = Stdlib.Int.max region.left (region.left + region.cols - 22)
+  Stdlib.print ((Colors.moveCursorTo region.top rightCol) ++ right)
+
+/// Render a one-row key-hint bar (dim), bottom of the body.
+let renderKeyHints (region: UI.Layout.Region) (hints: String) : Unit =
+  Stdlib.print
+    ((Colors.moveCursorTo region.top region.left) ++ (Colors.dimText ("  " ++ hints)))
