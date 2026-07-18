@@ -935,12 +935,29 @@ let executeCliCommand (args: List<String>) : Int =
     // Initialize status bar (sets up scroll region to reserve bottom line)
     StatusBar.init ()
 
-    // `dark` with no args opens the workbench (the CLI-UX home). The classic command prompt is still
-    // reachable with DARK_CLASSIC=1 (and every command still works with args / from inside the workbench).
+    // `dark` with no args: a quick one-key chooser picks the experience (new workbench vs classic prompt).
+    // DARK_CLASSIC=1 still forces classic (for scripts / muscle memory), skipping the chooser; a
+    // non-interactive stdin (piped) defaults to the workbench. Every command still works with args and from
+    // inside the workbench regardless.
     let classic =
       match Builtin.environmentGet "DARK_CLASSIC" with
       | Some "1" -> true
-      | _ -> false
+      | _ ->
+        if Builtin.stdinIsInteractive () then
+          Stdlib.printLine ""
+          Stdlib.printLine ("  " ++ (Colors.boldText "Dark") ++ (Colors.dimText " — choose your experience"))
+          Stdlib.printLine
+            ("    "
+             ++ (Colors.colorize Colors.cyan "enter")
+             ++ (Colors.dimText " workbench (new)")
+             ++ "      "
+             ++ (Colors.colorize Colors.cyan "c")
+             ++ (Colors.dimText " classic prompt"))
+          Stdlib.print ("  " ++ (Colors.colorize Colors.cyan "› "))
+          let k = Stdlib.Cli.Stdin.readKey ()
+          k.keyChar == "c"
+        else
+          false
 
     if classic then
       Stdlib.printLine (View.formatWelcome ())
