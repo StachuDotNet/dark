@@ -388,6 +388,18 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
   else if state.activeView == 12 then
     // Docs: in-CLI documentation topics.
     renderTreeList state region
+  else if state.activeView == 3 then
+    // Edit: authoring needs a multiline editor — not in the workbench yet, so point at the real path.
+    let _ =
+      UI.Layout.printAt region 1 2 (Colors.boldText "Edit — authoring in the workbench is coming soon.")
+    let _ =
+      UI.Layout.printAt
+        region
+        3
+        2
+        (Colors.dimText "For now, create/edit with the fn / type / val commands:")
+    let _ = UI.Layout.printAt region 4 4 (Colors.dimText "DARK_CLASSIC=1 dark   (the classic prompt), or   dark fn <name> - < body")
+    UI.Layout.printAt region 6 2 (Colors.dimText "then review + commit the result here in Changes.")
   else
     UI.Layout.printAt region 1 2 (Colors.dimText ((Frame.viewName state.activeView) ++ " — coming soon"))
 

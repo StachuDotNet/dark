@@ -28,17 +28,23 @@ Interactions: `↑↓` move / scroll (focus-aware), `→`/`Enter` descend or ope
 `1`-`9` + `[`/`]` switch views, a reusable full-screen **reader** (`Enter` opens a Tree leaf's source, a
 History commit's ops, a Changes item's source, a Docs topic; `?` shows the keymap; `↑↓` scroll, `esc`
 close), a viewport scrollbar, and graceful empty/error states throughout.
+**Write actions** (single-line input mode, `esc` cancels): Changes `c` commit-all (message → `SCM.commit`),
+Changes `x` discard-all (y-confirm), History `b` new-branch (create + switch) / `s` switch-branch-by-name.
+All verified end-to-end through the UI.
 
 **New/changed files:** `cli/apps/workbench/{frame,app}.dark` (the view), `cli/ui/splitpane.dark` (focus-aware
 two-pane split), `cli/ui/layout.dark` (+`hstack`/`distributeCols`/width combinators), `cli/core.dark` (the
 no-args → workbench flip + `workbench` command). Dev helpers (not product): `dev-ux-check` (reload+error),
 `dev-drive` (PTY visual-verify).
 
-**Honest state / not done:** the three deferred views above. Views are read-only projections — no write
-actions yet (no in-workbench commit/edit/rename; use the commands / classic prompt). Mesh/Runs show
-"unavailable/empty" here (no tailscale, no traces). The op-render for a commit is capped at 20 (the seed
-"Init" commit has 10k+ ops). This is a solid, reviewable foundation, not the full design — the frame +
-component seams (SplitPane, reader, view dispatch) are in place to grow the rest onto.
+**Honest state / not done:** Read + basic write. Committing / discarding / branching work from the UI;
+**Edit (authoring) is deferred** — it needs a real multiline editor + a TUI-friendly save path (the `fn`
+create fn prints to stdout and wants the full CLI AppState), so the Edit tab shows a placeholder pointing at
+the `fn`/`type`/`val` commands. Also deferred: Agents (its data source is a mock render), Things (needs a
+type arg / no generic value list), and item rename (no clean API — only branch rename exists). Mesh/Runs
+show "unavailable/empty" here (no tailscale, no traces). Commit op-render capped at 20 (seed "Init" commit
+has 10k+ ops). This is a solid, reviewable foundation with the frame + component seams (SplitPane, reader,
+input mode, view dispatch) in place to grow Edit and the rest onto.
 
 ---
 
