@@ -114,7 +114,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
             if depCount > 0 && Stdlib.Bool.not parsed.ignoreDependents then
               Stdlib.printLine
                 (Colors.error
-                  $"{Stdlib.Int.toString depCount} live dependent(s) still reference this item.")
+                  $"{Cli.Text.plural depCount "live dependent"} still reference this item.")
               Stdlib.printLine
                 "Use `deprecate` to give them time to migrate, or pass `--ignore-dependents` / `--force`."
               state
