@@ -30,9 +30,10 @@ History commit's ops, a Changes item's source, a Docs topic; `?` shows the keyma
 close), a viewport scrollbar, and graceful empty/error states throughout.
 **Write actions** (single-line input mode, `esc` cancels): Changes `c` commit-all (message → `SCM.commit`),
 Changes `x` discard-all (y-confirm), History `b` new-branch (create + switch) / `s` switch-branch-by-name.
-**Authoring:** Tree `n` → name → a real multiline **editor** (`ui/editor.dark`: cursor, insert/newline/
-backspace/motion/tab) → `^s` parses the body (WrittenTypes→PT), creates the fn as a WIP op, and drops you
-back to Tree; parse/unresolved errors keep the editor open with an inline message. All verified end-to-end.
+**Authoring:** Tree `n`/`t`/`v` → name → a real multiline **editor** (`ui/editor.dark`: cursor, insert/
+newline/backspace/motion/tab) → `^s` parses the body (WrittenTypes→PT), creates the fn/type/value as a WIP
+op, and drops you back to Tree; parse/unresolved errors keep the editor open with an inline message. Tree
+`e` edits an existing fn in place (prefilled from source). All verified end-to-end (fn, type, value).
 
 **New/changed files:** `cli/apps/workbench/{frame,app}.dark` (the view), `cli/ui/splitpane.dark` (focus-aware
 two-pane split), `cli/ui/layout.dark` (+`hstack`/`distributeCols`/width combinators), `cli/core.dark` (the
@@ -150,7 +151,16 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
    DONE ✓ 5. edit-in-place: Tree `e` → openEditExisting (prefill from source via defFromSource). Verified.
    DONE ✓ CONSOLIDATE: reload clean, workbench opens on Home fine, no regressions. Test artifacts (wbbr branch,
    test fns) AUTO-CLEAN on reload-packages (DB rebuilt from disk) — nothing to clean.
-   NEXT — the LAST core increment: TYPE/VAL authoring (mirror fn). Then the workbench is design-complete → idle.
+   DONE ✓ TYPE/VAL authoring (Tree t/v → kind-aware saveEditing → AddType/AddValue). Both verified end-to-end.
+   === WORKBENCH IS DESIGN-COMPLETE for the core: all views (read) + drill-in reading + authoring (fn/type/val
+   create, fn edit-in-place) + write actions (commit/discard/branch). ===
+   TINY remaining backlog (do if clearly worth it, else IDLE — don't invent busywork):
+   - type/val EDIT-in-place (only fn edit-in-place wired; new works for all 3). openEditExisting + defFromSource
+     would need per-kind prefixes ("type Name = " / "val name = "). Small but low-value (new works; edit rare).
+   - Agents (mock data), Things (type arg), item rename (no API) — deferred, blocked.
+   RECOMMENDATION: the goal is achieved. Next fire: if nothing clearly valuable, do a final quick verify + SLOW
+   the loop (reschedule ~1800s) so it idles gracefully rather than grinding. The branch is review-ready.
+   (superseded:) NEXT — the LAST core increment: TYPE/VAL authoring (mirror fn). Then the workbench is design-complete → idle.
    Plan: saveEditing currently only handles fn. Generalize authoring to type + value:
    - The editor's starter + save need to know the kind. Simplest: infer the declaration kind from the parsed
      buffer — after parserParseToWrittenTypes, look at the FIRST declaration: Function | Type | Value. Build the
@@ -228,6 +238,10 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 08:41 — P3.9: TYPE/VAL authoring (Tree t/v; kind-aware saveEditing → AddType/AddValue+SetName).
+  VERIFIED end-to-end (authored a type "{ x: Int }" → 1 type WIP; a value "1" → 1 value WIP; discarded both).
+  Commit 82ece43f1. === WORKBENCH DESIGN-COMPLETE for the core. === Backlog now tiny (type/val edit-in-place;
+  deferred Agents/Things/rename). Next: final verify, then SLOW the loop (~1800s) — goal achieved, avoid busywork.
 - 2026-07-18 08:35 — Consolidation: verified reload clean + workbench opens on Home (no regressions). Confirmed
   test artifacts auto-clean on reload (wbbr branch already gone). Workbench is feature-complete for the design's
   core (all views + full fn author→commit loop). Next: type/val authoring (last increment), then idle. No new commit
