@@ -1,0 +1,102 @@
+/// SplitPane — split a region into two focus-aware bordered panes. The layout primitive every multi-pane
+/// view (Inspect, Changes, History, Mesh, …) mounts into. Render helpers, called during a render pass:
+/// the child callbacks run immediately and are never stored in state (so the lambda-persistence rule is
+/// safe here).
+module Darklang.Cli.UI.SplitPane
+
+type Orientation =
+  | Horizontal
+  | Vertical
+
+type Focus =
+  | First
+  | Second
+
+/// Draw a focus-aware box (bright cyan border+title when focused, dim otherwise) around `region`, and
+/// return the inner region available for content. Prints directly (via moveCursorTo) rather than through
+/// `Layout.printAt`, so ANSI color codes don't throw off width math.
+let drawBox
+  (region: Layout.Region)
+  (title: String)
+  (focused: Bool)
+  : Layout.Region =
+  let color = if focused then Colors.cyan else Colors.brightBlack
+  let paint = fun s -> Colors.colorize color s
+
+  let inner = Stdlib.Int.max 0 (region.cols - 2)
+  let titlePart = if title == "" then "" else "─ " ++ title ++ " "
+  let fillLen = Stdlib.Int.max 0 (inner - (Stdlib.String.length titlePart))
+  let top = "┌" ++ titlePart ++ (Stdlib.String.repeat "─" fillLen) ++ "┐"
+  let bottom = "└" ++ (Stdlib.String.repeat "─" inner) ++ "┘"
+
+  Stdlib.print ((Colors.moveCursorTo region.top region.left) ++ (paint top))
+  (Stdlib.List.range 1 (region.rows - 2))
+  |> Stdlib.List.iter (fun row ->
+    let r = region.top + row
+    Stdlib.print ((Colors.moveCursorTo r region.left) ++ (paint "│"))
+    Stdlib.print ((Colors.moveCursorTo r (region.left + region.cols - 1)) ++ (paint "│")))
+  Stdlib.print
+    ((Colors.moveCursorTo (region.top + region.rows - 1) region.left) ++ (paint bottom))
+
+  Layout.Region
+    { top = region.top + 1
+      left = region.left + 1
+      rows = Stdlib.Int.max 0 (region.rows - 2)
+      cols = inner }
+
+
+/// Split `region` into two bordered panes by `firstPct` (0-100), render each child into its inner region.
+/// `focused` marks which pane gets the bright border. Below `minTotal`, collapses to the focused child only
+/// (with a "‹1/2›" hint), per the narrow-terminal rule.
+let render
+  (region: Layout.Region)
+  (orientation: Orientation)
+  (firstPct: Int)
+  (focused: Focus)
+  (titleFirst: String)
+  (renderFirst: Layout.Region -> Unit)
+  (titleSecond: String)
+  (renderSecond: Layout.Region -> Unit)
+  : Unit =
+  let firstFocused = focused == Focus.First
+  let minTotal = 46
+
+  let tooNarrow =
+    match orientation with
+    | Horizontal -> region.cols < minTotal
+    | Vertical -> region.rows < 8
+
+  if tooNarrow then
+    // Collapse: show only the focused pane, full region, with a which-of-two hint in the title.
+    let (title, renderFn) =
+      if firstFocused then (titleFirst ++ " ‹1/2›", renderFirst)
+      else (titleSecond ++ " ‹2/2›", renderSecond)
+    let innerRegion = drawBox region title true
+    renderFn innerRegion
+  else
+    match orientation with
+    | Horizontal ->
+      let firstCols = Stdlib.Int.divide (region.cols * firstPct) 100
+      let secondCols = region.cols - firstCols
+      let firstRegion =
+        Layout.Region { top = region.top; left = region.left; rows = region.rows; cols = firstCols }
+      let secondRegion =
+        Layout.Region { top = region.top; left = region.left + firstCols; rows = region.rows; cols = secondCols }
+      renderFirst (drawBox firstRegion titleFirst firstFocused)
+      renderSecond (drawBox secondRegion titleSecond (Stdlib.Bool.not firstFocused))
+    | Vertical ->
+      let firstRows = Stdlib.Int.divide (region.rows * firstPct) 100
+      let secondRows = region.rows - firstRows
+      let firstRegion =
+        Layout.Region { top = region.top; left = region.left; rows = firstRows; cols = region.cols }
+      let secondRegion =
+        Layout.Region { top = region.top + firstRows; left = region.left; rows = secondRows; cols = region.cols }
+      renderFirst (drawBox firstRegion titleFirst firstFocused)
+      renderSecond (drawBox secondRegion titleSecond (Stdlib.Bool.not firstFocused))
+
+
+/// Toggle focus between the two panes (Tab handler helper).
+let toggle (focus: Focus) : Focus =
+  match focus with
+  | First -> Focus.Second
+  | Second -> Focus.First

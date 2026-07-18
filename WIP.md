@@ -4,6 +4,10 @@ The loop reads THIS file first, does the NEXT ACTION, updates it, reschedules. B
 working increments, keep the tree loading, commit often. Autonomous — the user is asleep; make every call,
 never wait.
 
+## Loop horizon
+Run until ~2026-07-19 04:00 (24h). Each fire: `date` — if past that, do a final commit + write a summary at
+the top of the Log + stop the loop (ScheduleWakeup stop:true). Otherwise keep going, reschedule ~300s.
+
 ## Goal
 Implement the CLI UX redesign (the "workbench") designed in `/home/stachu/code/dark/main/notes/cli-ux/`
 (read those deep docs — 01 interaction model, 03A-D component kit, 10-23 views, 90 adjustments ledger, 91
@@ -43,11 +47,16 @@ instead of a bare prompt.
 x=destroy, d=diff/detail, r=rename-or-rerun; Ctrl+Tab=views/Tab=panes; ?=HelpOverlay; badge set frozen (91 §4).
 
 ## NEXT ACTION
-Start P1 step 1: add `hstack` + `distributeCols` to `packages/darklang/cli/ui/layout.dark` (mirror of
-vstack/distributeRows). Reload, verify it loads, eval a tiny layout to confirm. Then SplitPane.
+P1 step 2: build `SplitPane` (see design 03A §6). Add to `ui/` a module `Darklang.Cli.UI.SplitPane` (new
+file `ui/splitpane.dark`): a two-child horizontal/vertical split by ratio, with a focused child (bright vs
+dim border) and a narrow-collapse fallback. Start with the RENDER + focus (master-detail wiring can be a
+follow-up). Use the new `hstack`/`fixedWidth`/`greedyWidth`. Reload, eval/verify a 2-pane render. Then start
+TreeWidget (extract from navInteractive+tree; see 03B) — the big one; do it in small loading steps.
 
-## Status: not started (setup done: branch + WIP + inner-loop helper)
+## Status: P1 in progress. DONE: hstack/distributeCols (verified: distributeCols 100 → [40,60]).
 
 ## Log (newest first)
-- 2026-07-18 03:5x — setup: branched cli-ux-workbench off github/main in loop-fun; confirmed loop-fun is the
-  active build dir; wrote WIP + dev-ux-check + the 5-min loop. Next: hstack in ui/layout.dark.
+- 2026-07-18 03:5x — P1: added hstack/distributeCols/fixedWidth/flexWidth/greedyWidth to ui/layout.dark;
+  verified [40,60] split; committed 5053e91f4. Inner loop (./dev-ux-check) green. Next: SplitPane.
+- 2026-07-18 03:5x — setup: branched cli-ux-workbench off github/main; loop-fun is the active build dir;
+  wrote WIP + dev-ux-check + 5-min loop.
