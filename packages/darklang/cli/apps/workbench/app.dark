@@ -748,7 +748,7 @@ let handleKey
       | _ ->
         match keyChar with
         | Some ch ->
-          if (Stdlib.String.length ch) == 1 then
+          if ch != "" then
             Step.Continue { state with editing = Stdlib.Option.Option.Some { es with buf = UI.Editor.insertChar es.buf ch } }
           else
             Step.Continue state
@@ -769,7 +769,7 @@ let handleKey
     | _ ->
       match keyChar with
       | Some ch ->
-        if (Stdlib.String.length ch) == 1 then
+        if ch != "" then
           Step.Continue { state with input = Stdlib.Option.Option.Some { inp with text = inp.text ++ ch } }
         else
           Step.Continue state
