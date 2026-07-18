@@ -360,6 +360,34 @@ let renderReading (content: String) (scroll: Int) (region: UI.Layout.Region) : U
     let (i, l) = pair
     UI.Layout.printAt region (i - off) 0 l)
 
+/// A single-list view, framed in a titled box like Tree — so no view renders "naked" into the raw region.
+/// `emptyMsg` (already colored) names the state + fill action when the list is empty, per the TUI empty-state
+/// rule. `count` annotates the title (e.g. "Changes · 2") when there are items.
+let boxedList
+  (state: State)
+  (region: UI.Layout.Region)
+  (title: String)
+  (emptyMsg: String)
+  : Unit =
+  let n = Stdlib.List.length state.items
+  let titled = if n == 0 then title else title ++ "  ·  " ++ (Stdlib.Int.toString n)
+  UI.Box.panel region titled true (fun inner ->
+    if n == 0 then UI.Layout.printAt inner 1 1 emptyMsg
+    else renderTreeList state inner)
+
+/// A framed box holding pre-built lines (for the static/instructional views). Lines may be pre-colored.
+let boxedLines
+  (region: UI.Layout.Region)
+  (title: String)
+  (lines: List<String>)
+  : Unit =
+  UI.Box.panel region title true (fun inner ->
+    lines
+    |> Stdlib.List.indexedMap (fun i l -> (i, l))
+    |> Stdlib.List.iter (fun pair ->
+      let (i, l) = pair
+      if i < inner.rows then UI.Layout.printAt inner (i + 1) 1 l))
+
 let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
   if state.activeView == 0 then
     renderHome state region
@@ -374,52 +402,35 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
       "Inspect"
       (fun r -> renderDetail state r)
   else if state.activeView == 10 then
-    // Services: managed daemons + foreground apps.
-    renderTreeList state region
+    boxedList state region "Services" (Colors.dimText "no apps registered — install one with the apps command")
   else if state.activeView == 9 then
-    // Runs: recent execution traces.
-    if Stdlib.List.isEmpty state.items then
-      UI.Layout.printAt region 2 4 (Colors.dimText "no runs yet — eval, run a script, or serve to record traces")
-    else
-      renderTreeList state region
+    boxedList state region "Runs" (Colors.dimText "no runs yet — eval, run a script, or serve to record traces")
   else if state.activeView == 7 then
-    // Mesh: tailnet devices (or unavailable).
-    if Stdlib.List.isEmpty state.items then
-      UI.Layout.printAt region 2 4 (Colors.dimText "tailnet unavailable — tailscale not running or not installed")
-    else
-      renderTreeList state region
+    boxedList state region "Mesh" (Colors.dimText "tailnet unavailable — tailscale not running or not installed")
   else if state.activeView == 4 then
-    // Changes: the uncommitted items (or the clean state).
-    if Stdlib.List.isEmpty state.items then
-      UI.Layout.printAt region 2 4 (Colors.colorize Colors.green "✓ working tree clean")
-    else
-      renderTreeList state region
+    boxedList state region "Changes" (Colors.colorize Colors.green "✓ working tree clean — nothing to commit")
   else if state.activeView == 5 then
-    // History: recent commits.
-    if Stdlib.List.isEmpty state.items then
-      UI.Layout.printAt region 2 4 (Colors.dimText "no commits yet")
-    else
-      renderTreeList state region
+    boxedList state region "History" (Colors.dimText "no commits yet")
   else if state.activeView == 6 then
-    // Resolve: recorded sync divergences.
-    if Stdlib.List.isEmpty state.items then
-      UI.Layout.printAt region 2 4 (Colors.colorize Colors.green "✓ nothing to resolve")
-    else
-      renderTreeList state region
+    boxedList state region "Resolve" (Colors.colorize Colors.green "✓ nothing to resolve — in sync")
   else if state.activeView == 12 then
-    // Docs: in-CLI documentation topics.
-    renderTreeList state region
+    boxedList state region "Docs" (Colors.dimText "(no topics)")
   else if state.activeView == 3 then
-    // Edit: authoring new fns works from the Tree view (n → name → multiline editor → ^s).
-    let _ =
-      UI.Layout.printAt region 1 2 (Colors.boldText "Edit — author a new fn from the Tree view.")
-    let _ =
-      UI.Layout.printAt region 3 2 (Colors.dimText "Press 2 (Tree), pick a location, then n to name + edit a new fn.")
-    let _ =
-      UI.Layout.printAt region 4 2 (Colors.dimText "In the editor: type the body, ^s saves it as WIP, esc cancels.")
-    UI.Layout.printAt region 6 2 (Colors.dimText "Editing existing fns + type/val authoring: still via the fn/type/val commands.")
+    boxedLines
+      region
+      "Edit"
+      [ Colors.boldText "Author from the Tree view."
+        ""
+        Colors.dimText "Press 2 (Tree), pick a location, then:"
+        Colors.dimText "  n  new fn      t  new type     v  new value"
+        Colors.dimText "  e  edit the selected fn in place"
+        ""
+        Colors.dimText "In the editor: type the body · ^s saves it as WIP · esc cancels." ]
   else
-    UI.Layout.printAt region 1 2 (Colors.dimText ((Frame.viewName state.activeView) ++ " — coming soon"))
+    boxedLines
+      region
+      (Frame.viewName state.activeView)
+      [ Colors.dimText ((Frame.viewName state.activeView) ++ " — coming soon") ]
 
 /// The multiline editor: the name header + the buffer with a reverse-video cursor at (row, col).
 let renderEditing (es: EditingState) (region: UI.Layout.Region) : Unit =

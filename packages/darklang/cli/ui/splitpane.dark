@@ -12,47 +12,6 @@ type Focus =
   | First
   | Second
 
-/// Draw a focus-aware box (bright cyan border+title when focused, dim otherwise) around `region`, and
-/// return the inner region available for content. Prints directly (via moveCursorTo) rather than through
-/// `Layout.printAt`, so ANSI color codes don't throw off width math.
-let drawBox
-  (region: Layout.Region)
-  (title: String)
-  (focused: Bool)
-  : Layout.Region =
-  let color = if focused then Colors.cyan else Colors.brightBlack
-  let paint = fun s -> Colors.colorize color s
-
-  let inner = Stdlib.Int.max 0 (region.cols - 2)
-  let titlePart = if title == "" then "" else "─ " ++ title ++ " "
-  let fillLen = Stdlib.Int.max 0 (inner - (Stdlib.String.length titlePart))
-  let top = "┌" ++ titlePart ++ (Stdlib.String.repeat "─" fillLen) ++ "┐"
-  let bottom = "└" ++ (Stdlib.String.repeat "─" inner) ++ "┘"
-
-  // Build the whole box as one string and write it once (was ~2 writes per row).
-  let sides =
-    (Stdlib.List.range 1 (region.rows - 2))
-    |> Stdlib.List.map (fun row ->
-      let r = region.top + row
-      (Colors.moveCursorTo r region.left)
-      ++ (paint "│")
-      ++ (Colors.moveCursorTo r (region.left + region.cols - 1))
-      ++ (paint "│"))
-    |> Stdlib.String.join ""
-  Stdlib.print
-    ((Colors.moveCursorTo region.top region.left)
-     ++ (paint top)
-     ++ sides
-     ++ (Colors.moveCursorTo (region.top + region.rows - 1) region.left)
-     ++ (paint bottom))
-
-  Layout.Region
-    { top = region.top + 1
-      left = region.left + 1
-      rows = Stdlib.Int.max 0 (region.rows - 2)
-      cols = inner }
-
-
 /// Split `region` into two bordered panes by `firstPct` (0-100), render each child into its inner region.
 /// `focused` marks which pane gets the bright border. Below `minTotal`, collapses to the focused child only
 /// (with a "‹1/2›" hint), per the narrow-terminal rule.
@@ -79,7 +38,7 @@ let render
     let (title, renderFn) =
       if firstFocused then (titleFirst ++ " ‹1/2›", renderFirst)
       else (titleSecond ++ " ‹2/2›", renderSecond)
-    let innerRegion = drawBox region title true
+    let innerRegion = Box.draw region title true
     renderFn innerRegion
   else
     match orientation with
@@ -90,8 +49,8 @@ let render
         Layout.Region { top = region.top; left = region.left; rows = region.rows; cols = firstCols }
       let secondRegion =
         Layout.Region { top = region.top; left = region.left + firstCols; rows = region.rows; cols = secondCols }
-      renderFirst (drawBox firstRegion titleFirst firstFocused)
-      renderSecond (drawBox secondRegion titleSecond (Stdlib.Bool.not firstFocused))
+      renderFirst (Box.draw firstRegion titleFirst firstFocused)
+      renderSecond (Box.draw secondRegion titleSecond (Stdlib.Bool.not firstFocused))
     | Vertical ->
       let firstRows = Stdlib.Int.divide (region.rows * firstPct) 100
       let secondRows = region.rows - firstRows
@@ -99,8 +58,8 @@ let render
         Layout.Region { top = region.top; left = region.left; rows = firstRows; cols = region.cols }
       let secondRegion =
         Layout.Region { top = region.top + firstRows; left = region.left; rows = secondRows; cols = region.cols }
-      renderFirst (drawBox firstRegion titleFirst firstFocused)
-      renderSecond (drawBox secondRegion titleSecond (Stdlib.Bool.not firstFocused))
+      renderFirst (Box.draw firstRegion titleFirst firstFocused)
+      renderSecond (Box.draw secondRegion titleSecond (Stdlib.Bool.not firstFocused))
 
 
 /// Toggle focus between the two panes (Tab handler helper).

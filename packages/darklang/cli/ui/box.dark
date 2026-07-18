@@ -1,0 +1,50 @@
+/// Box — a single focus-aware bordered, titled pane. The primitive every framed view mounts into. Render
+/// helpers only (the content callback runs immediately during the render pass, never stored — the
+/// lambda-persistence rule is safe here). SplitPane composes two of these; single-list views use one.
+module Darklang.Cli.UI.Box
+
+/// Draw a focus-aware box (bright cyan border + title when focused, dim otherwise) around `region`, and return
+/// the inner region available for content. Prints directly (via moveCursorTo) rather than through
+/// `Layout.printAt`, so ANSI color codes don't throw off the width math. The whole box is built as one string
+/// and written once (fewer syscalls per frame).
+let draw (region: Layout.Region) (title: String) (focused: Bool) : Layout.Region =
+  let color = if focused then Colors.cyan else Colors.brightBlack
+  let paint = fun s -> Colors.colorize color s
+
+  let inner = Stdlib.Int.max 0 (region.cols - 2)
+  let titlePart = if title == "" then "" else "─ " ++ title ++ " "
+  let fillLen = Stdlib.Int.max 0 (inner - (Stdlib.String.length titlePart))
+  let top = "┌" ++ titlePart ++ (Stdlib.String.repeat "─" fillLen) ++ "┐"
+  let bottom = "└" ++ (Stdlib.String.repeat "─" inner) ++ "┘"
+
+  let sides =
+    (Stdlib.List.range 1 (region.rows - 2))
+    |> Stdlib.List.map (fun row ->
+      let r = region.top + row
+      (Colors.moveCursorTo r region.left)
+      ++ (paint "│")
+      ++ (Colors.moveCursorTo r (region.left + region.cols - 1))
+      ++ (paint "│"))
+    |> Stdlib.String.join ""
+  Stdlib.print
+    ((Colors.moveCursorTo region.top region.left)
+     ++ (paint top)
+     ++ sides
+     ++ (Colors.moveCursorTo (region.top + region.rows - 1) region.left)
+     ++ (paint bottom))
+
+  Layout.Region
+    { top = region.top + 1
+      left = region.left + 1
+      rows = Stdlib.Int.max 0 (region.rows - 2)
+      cols = inner }
+
+/// Draw a box and render content into its inner region in one call. `focused` picks the bright/dim border.
+let panel
+  (region: Layout.Region)
+  (title: String)
+  (focused: Bool)
+  (renderInner: Layout.Region -> Unit)
+  : Unit =
+  let innerRegion = draw region title focused
+  renderInner innerRegion
