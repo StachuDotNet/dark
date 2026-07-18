@@ -49,6 +49,24 @@ let loadItems (branchId: Uuid) (location: Packages.PackageLocation) : List<BodyI
     |> Stdlib.List.map (fun f -> BodyItem { name = f.location.name; kind = "fn"; isModule = false })
   Stdlib.List.flatten [ moduleItems; typeItems; valItems; fnItems ]
 
+/// The uncommitted (WIP) items on this branch, as body items (for the Changes view).
+let loadWipBodyItems (branchId: Uuid) : List<BodyItem> =
+  SCM.PackageOps.getWipItems branchId
+  |> Stdlib.List.map (fun d ->
+    let name = Stdlib.Dict.get d "name" |> Stdlib.Option.withDefault "?"
+    let kind = Stdlib.Dict.get d "kind" |> Stdlib.Option.withDefault "?"
+    BodyItem { name = name; kind = kind; isModule = false })
+
+/// The body items for a given view: packages for Home/Tree, WIP for Changes, empty otherwise.
+let itemsForView
+  (view: Int)
+  (branchId: Uuid)
+  (location: Packages.PackageLocation)
+  : List<BodyItem> =
+  if view <= 1 then loadItems branchId location
+  else if view == 4 then loadWipBodyItems branchId
+  else []
+
 
 // ── Rendering ──
 
@@ -134,6 +152,12 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
       (fun r -> renderTreeList state r)
       "Inspect"
       (fun r -> renderDetail state r)
+  else if state.activeView == 4 then
+    // Changes: the uncommitted items (or the clean state).
+    if Stdlib.List.isEmpty state.items then
+      UI.Layout.printAt region 2 4 (Colors.colorize Colors.green "✓ working tree clean")
+    else
+      renderTreeList state region
   else
     UI.Layout.printAt region 1 2 (Colors.dimText ((Frame.viewName state.activeView) ++ " — coming soon"))
 
@@ -221,7 +245,13 @@ let handleKey
       match Stdlib.Int.parse s with
       | Ok n ->
         if n >= 1 && n <= (Stdlib.List.length Frame.viewNames) then
-          Step.Continue { state with activeView = n - 1 }
+          let nv = n - 1
+          Step.Continue
+            { state with
+                activeView = nv
+                items = itemsForView nv state.branchId state.location
+                selected = 0
+                detailScroll = 0 }
         else
           Step.Continue state
       | Error _ -> Step.Continue state
