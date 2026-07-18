@@ -53,17 +53,17 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
    DEV_DRIVE_ROWS/COLS + shows only the final frame.)
 2. DONE ✓ Inspect-pane scroll (detailScroll; focus-aware ↑↓; reset on selection change). Verified: Tab into
    Inspect + ↓×6 scrolls a fn's source, selection unchanged.
-3. Wire CHANGES view (activeView=4): when activeView==4, render body = WIP items list (left) | diff (right)
-   instead of the tree. Reuse SCM.Review.App helpers: `loadWipItems branchId` → items; select one → its diff
-   via the review app's diff builder (or getWip + Stdlib.Diff). SIMPLEST v1: left = list of WIP item names
-   (getWipItems / getWipSummary); right = the selected item's current source (same detailLines path by name).
-   Empty state: "✓ working tree clean". Add a per-view body dispatch: renderBody matches activeView (0/1 tree,
-   4 changes, else coming-soon). Keep it small; the diff can come next. See main/notes/cli-ux/15.
-4. Wire HISTORY (activeView=5): commits list from SCM.Log/getCommits (main/notes/cli-ux/16).
-5. HOME (activeView=0): real dashboard (main/notes/cli-ux/10).
-NOTE: the workbench State currently assumes the tree body. Wiring per-view bodies may want activeView-specific
-sub-state later; for v1 keep it simple (compute Changes/History data in render from branchId). Keep tree body
-for Home/Tree until Home gets its own.
+3. DONE ✓ Changes view (activeView=4): view-aware `items` (digit-switch reloads via `itemsForView`); WIP list
+   from `SCM.PackageOps.getWipItems`; "✓ working tree clean" empty state. Verified both (created a WIP fn →
+   showed "WbTest demo"; discarded → clean). v1 = list only; diff/source detail is a follow-up.
+4. Wire HISTORY (activeView=5): itemsForView view==5 → recent commits as BodyItems (from SCM.PackageOps or
+   SCM.Log — find the getCommits helper: returns commits with hash/message/opCount/date). renderBody view==5:
+   the commit list (single pane; each row: shortHash + message + "N ops"). Empty → "no commits yet". Detail
+   pane (later): the commit's ops. See main/notes/cli-ux/16. Verify with dev-drive (press 6).
+5. HOME (activeView=0): give it its OWN body (tree card + WIP + running) instead of sharing the tree — but
+   LOWER priority; the tree-as-Home is fine for now. Do History (4) first, then maybe polish.
+6. Also good soon: `Enter` on a Changes/Tree leaf, and making the coming-soon views (Mesh/Agents via
+   devices/ai-chats, Docs via docs) show real read-only data. Reuse existing commands' data.
 
 ## Status: P1 COMPLETE ✓ — `dark` opens the framed Tree|Inspect workbench (verified on screen; classic prompt
    behind DARK_CLASSIC=1; with-args commands unaffected). Commits 5053e91f4…4a82936cf. Now on P2.
@@ -78,6 +78,9 @@ for Home/Tree until Home gets its own.
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 05:06 — P2.3: Changes view wired (view-aware items via itemsForView; digit-switch reloads body;
+  getWipItems; clean-state message). Verified populated + empty (WbTest.demo shown, then discarded). Commit
+  aaf33ee41. Note: `discard` needs `printf 'y\n' | …` non-interactively. Next: History view (press 6).
 - 2026-07-18 04:55 — P2.2: Inspect-pane scroll done (detailScroll, focus-aware ↑↓, reset on selection change).
   Verified via dev-drive (Tab+↓×6 scrolls fn source in Stachu.Parser). Commit 0e30081be. Next: wire Changes view.
 - 2026-07-18 04:46 — P2.1: Tree viewport scroll (stateless). Improved dev-drive (final-frame-only capture +
