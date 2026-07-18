@@ -161,6 +161,36 @@ let changesSourceText (branchId: Uuid) (selected: Int) : String =
         | [] -> "(not found)"
     name ++ "  (" ++ kind ++ ", WIP)\n\n" ++ src
 
+/// Run a package search across the whole tree and format the matches for the reader (grouped by kind, each as
+/// its full owner.Module.name path). The `/` global action shows this.
+let searchText (branchId: Uuid) (queryText: String) : String =
+  let query =
+    LanguageTools.ProgramTypes.Search.SearchQuery
+      { currentModule = []
+        text = queryText
+        searchDepth = LanguageTools.ProgramTypes.Search.SearchDepth.AllDescendants
+        entityTypes = []
+        exactMatch = false }
+  let r = LanguageTools.PackageManager.Search.search branchId query
+  let fullPath (item: LanguageTools.ProgramTypes.LocatedItem<'a>) : String =
+    [ [ item.location.owner ]; item.location.modules; [ item.location.name ] ]
+    |> Stdlib.List.flatten
+    |> Stdlib.String.join "."
+  let modLines = r.submodules |> Stdlib.List.map (fun m -> "  mod   " ++ (Stdlib.String.join m "."))
+  let typeLines = r.types |> Stdlib.List.map (fun i -> "  type  " ++ (fullPath i))
+  let valLines = r.values |> Stdlib.List.map (fun i -> "  val   " ++ (fullPath i))
+  let fnLines = r.fns |> Stdlib.List.map (fun i -> "  fn    " ++ (fullPath i))
+  let all = Stdlib.List.flatten [ modLines; typeLines; valLines; fnLines ]
+  if Stdlib.List.isEmpty all then
+    "No matches for \"" ++ queryText ++ "\""
+  else
+    "Search: "
+    ++ queryText
+    ++ "   ("
+    ++ (Stdlib.Int.toString (Stdlib.List.length all))
+    ++ " matches)\n\n"
+    ++ (Stdlib.String.join all "\n")
+
 /// Recorded sync divergences (for the Resolve view).
 let loadConflictBodyItems () : List<BodyItem> =
   Darklang.Sync.Conflicts.list ()
@@ -562,7 +592,7 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
 /// Only advertises what actually works today.
 let hintsForView (view: Int) : String =
   // Global keys, always the same, anchored at the right end of the footer.
-  let global = [ (":", "run"); ("1-9", "view"); ("?", "help"); ("q", "quit") ]
+  let global = [ ("/", "search"); (":", "run"); ("1-9", "view"); ("?", "help"); ("q", "quit") ]
   let ctx =
     if view == 1 then
       [ ("↑↓", "move"); ("→", "in"); ("⏎", "open"); ("n/t/v", "new"); ("e", "edit"); ("tab", "focus") ]
@@ -743,6 +773,13 @@ let performInputAction (state: State) (inp: InputState) : Step =
             selected = 0 }
     else
       Step.Continue { state with input = Stdlib.Option.Option.None }
+  else if inp.action == "search" then
+    // Global `/` search — run it and show the matches in the reader.
+    Step.Continue
+      { state with
+          input = Stdlib.Option.Option.None
+          reading = Stdlib.Option.Option.Some (searchText state.branchId inp.text)
+          detailScroll = 0 }
   else if inp.action == "eval" then
     // The `:` run prompt — evaluate a Dark expression and show the result (or error) in the reader.
     let result =
@@ -1059,6 +1096,13 @@ let handleKey
             input =
               Stdlib.Option.Option.Some
                 (InputState { prompt = "run "; text = ""; action = "eval" }) }
+    | Some "/" ->
+      // Search prompt — find any package item across the whole tree.
+      Step.Continue
+        { state with
+            input =
+              Stdlib.Option.Option.Some
+                (InputState { prompt = "search "; text = ""; action = "search" }) }
     | Some "]" ->
       switchView state (Stdlib.Int.min ((Stdlib.List.length Frame.viewNames) - 1) (state.activeView + 1))
     | Some "[" ->
