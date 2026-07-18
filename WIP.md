@@ -65,17 +65,17 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
       lines as body items. If the API is unclear/needs network, SKIP Mesh (leave coming-soon) and move on.
    b. DONE ✓ SERVICES (view=10): Apps.Registry.available → daemon/app list. Verified.
    c. THINGS (view=11): `find-values`/ValueSearch by type — lower priority (needs a type arg); skip for now.
-6. DONE ✓ Home dashboard (view=0): getWipSummary + getCommitCount + owner count summary. Verified.
-   OPTIONAL next: default `dark` to open Home (view 0) instead of Tree (view 1) — change execute's activeView=1
-   to =0 (Home renders fine as a landing). Consider it.
-7. Remaining coming-soon views to wire (each: itemsForView + renderBody branch, reuse existing data):
-   - MESH (7): investigate `Darklang.Tailscale.status` (devices.dark uses it) — only if clean+offline-safe.
-   - AGENTS (8): `Apps.Views.AiChats` render is MOCK — could reuse its data, or skip (needs the render, not a
-     list). Lower priority.
-   - RUNS (9): `Tracing` recent traces list — find the list helper.
-   - EDIT (3): needs the MultilineEditor (big); DEFER to a later phase.
-8. Polish (after breadth): Enter actions (Tree leaf → nothing yet / commit → ops / changes item → source),
-   per-view breadcrumb + keyhints, and a scrollbar hint. See main/notes/cli-ux/{11,12,15,16}.
+6. DONE ✓ Home dashboard + DONE ✓ default landing = Home + DONE ✓ view-aware breadcrumb.
+7. NEXT: wire RUNS (view=9, digit 10 unreachable → cycle): find the traces-list helper — `grep -rn 'let ' 
+   packages/darklang/cli/tracing.dark | grep -iE 'list|recent|summ'` and `grep -rn 'TraceSummary|scmGetTraces|
+   Builtin.*[Tt]race' packages/`. If there's a `Tracing.list`/`Builtin.getTraces` returning summaries, map to
+   BodyItems (id + fn + status/ms). Empty → "no runs yet". If no clean list API, SKIP Runs, leave coming-soon.
+   Then MESH (view=7): follow devices.dark's `Tailscale.status` call to the real module; only wire if it's a
+   pure/offline-safe read (it shells out to `tailscale` — may fail w/o tailnet; wrap so failure → a dim
+   "tailnet unavailable" line, never a crash). If risky, SKIP.
+8. Polish: per-view KEYHINTS (the hint bar is generic "↑↓ move…"; make it view-specific — Changes: "c commit
+   x discard", History: "→ ops", Docs: "↵ read", etc. — a `hintsForView activeView` helper). Then Enter
+   actions where cheap. See main/notes/cli-ux/{11,12,15,16}. AGENTS/EDIT stay deferred (mock render / big editor).
 Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)/Things(11)/Docs(12).
 
 ## Status: P1 COMPLETE ✓ — `dark` opens the framed Tree|Inspect workbench (verified on screen; classic prompt
@@ -91,6 +91,9 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 05:40 — P2.7: default landing = Home (execute activeView 1→0); view-aware breadcrumb (Home /
+  package path / "ViewName — N items"). Verified (opens on Home; History crumb = "History — 1 items"). Commit
+  14f96237c. Next: wire Runs (traces) if clean API, else Mesh/skip; then per-view keyhints.
 - 2026-07-18 05:33 — P2.6: Home dashboard (WIP/commits/owners summary via getWipSummary+getCommitCount) +
   Services view (Apps.Registry.available). Both verified. 8 views live now (Home/Tree/Inspect/Changes/History/
   Resolve/Services/Docs). Commit 2e600e967. Next: optional default→Home; then Runs/Mesh; then polish (Enter, breadcrumb).
