@@ -87,7 +87,20 @@ Kill the bottom-bar name prompt for new items. Instead:
 - Conflicts on Home + badge (df9bb17) · UI.Box, framed views (7d3ca05) · footer + `:` run (adabd18) ·
   chooser (703f2bc) · A: spacious authoring (29393e1) · B: vim motion + safe Esc-to-Home (99a5d27).
 
-## NEXT ACTION (updated 15:04)
+## NEXT ACTION (updated 15:09)
+Done: A B C D H + reader-highlighting + login-on-Home + too-small-guard (render splits into renderFull + a
+render wrapper; can't trigger in tmux since getWidth reads the real terminal not the pane). NEXT:
+- Transient message/toast row: add `message: String` to State (two-build), show it dim/green in the hint row
+  when non-empty (takes priority over the view hints), set on commit/discard/save/branch success ("committed",
+  "discarded", "saved <name>", "on <branch>"), clear on next keypress. Good action feedback.
+- `d` deps on a Tree leaf: get the selected item's hash (searchExactMatch -> item.entity.hash), call
+  Builtin.depsGetDependencies branchId hash (or depsGetDependents with loc+kind), resolve names, show in the
+  reader (isCode=false).
+- History `m` merge / `r` rebase with y-confirm (SCM.Merge/Rebase are AppState cmds — port the core like commit).
+- F: extract UI.ListView from renderTreeList; ANSI-aware truncateVisible in UI.Layout.
+FINALIZE at ~16:50 (report Phase 5 section + shortstat + print-md + push + chat + STOP).
+
+## Prior NEXT (15:04)
 Done: A B C H D + reader-highlighting (full-screen reader now highlights code via readingIsCode + openReader)
 + login-state-on-Home (accountName). NEXT, in priority for remaining ~1h45:
 - G quick wins: "terminal too small" guard (render a centered hint below a min size instead of garbage);
