@@ -87,7 +87,20 @@ Kill the bottom-bar name prompt for new items. Instead:
 - Conflicts on Home + badge (df9bb17) · UI.Box, framed views (7d3ca05) · footer + `:` run (adabd18) ·
   chooser (703f2bc) · A: spacious authoring (29393e1) · B: vim motion + safe Esc-to-Home (99a5d27).
 
-## NEXT ACTION (updated 15:09)
+## NEXT ACTION (updated 15:23)
+Done: A B C D H + reader-highlight + login + too-small-guard + toast-row (State `message`, green ✓ in footer,
+cleared next keypress; set on commit/discard/save/branch). Also FIXED shallow-depth authoring: `let` needs a
+BARE name (qualified = parse error) so location needs owner+module -> authoring requires depth>=2; n/t/v now
+toast-guide you to descend instead of opening a doomed editor. NEXT:
+- `d` deps on a Tree leaf -> reader. Get hash: searchExactMatch state.branchId (modulePathOf location)
+  item.name -> results.{fns,types,values} head -> item.entity.hash. Builtin.depsGetDependencies branchId hash
+  returns (hash, _) list; resolve names (see deps.dark resolveName / namesDict) or just show hashes short.
+  openReader isCode=false. Footer: add `d` deps to Tree hints.
+- History `m` merge / `r` rebase with y-confirm (SCM.Merge/Rebase are AppState cmds — port core like commit).
+- F: extract UI.ListView from renderTreeList; ANSI-aware truncateVisible in UI.Layout (reused by preview+reader).
+FINALIZE at ~16:50.
+
+## Prior NEXT (15:09)
 Done: A B C D H + reader-highlighting + login-on-Home + too-small-guard (render splits into renderFull + a
 render wrapper; can't trigger in tmux since getWidth reads the real terminal not the pane). NEXT:
 - Transient message/toast row: add `message: String` to State (two-build), show it dim/green in the hint row
