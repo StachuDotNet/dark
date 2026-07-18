@@ -87,7 +87,21 @@ Kill the bottom-bar name prompt for new items. Instead:
 - Conflicts on Home + badge (df9bb17) · UI.Box, framed views (7d3ca05) · footer + `:` run (adabd18) ·
   chooser (703f2bc) · A: spacious authoring (29393e1) · B: vim motion + safe Esc-to-Home (99a5d27).
 
-## NEXT ACTION (updated 14:46)
+## NEXT ACTION (updated 14:50)
+Done: A B C H D (D = global `/` search -> results in reader; read-only v1, jump-to-result is a follow-up;
+`/` re-added to footer). NEXT: item E — surface more touchpoints:
+- `d` on a Tree leaf -> deps (Cli.Deps / Query) of the selected item, shown in the reader.
+- Home: login state (Auth — who you're logged in as, or "not logged in").
+- History: `m` merge / `r` rebase (SCM.Merge / SCM.Rebase) with confirm; sync-now somewhere (Mesh/Resolve).
+Also quick wins: extend syntax highlighting to the full-screen reader for CODE (Tree-leaf/Changes Enter) — needs
+a way to know the reader content is code (add a `readingIsCode: Bool` to State — two-build pass — or store a
+small tagged reading type). Then F (ANSI-aware printAt truncateVisible + UI.ListView extract), G (toast/message
+row, "terminal too small" guard, mode color block). Commit+push each; keep footer honest.
+
+FINALIZE at ~16:50: update main/notes/cli-ux-workbench-report.md (Phase 5 section), refresh shortstat, print-md,
+push, chat message, STOP loop.
+
+## Prior NEXT (14:46)
 Items A + B + C + H DONE. C: list+preview splits for Changes/History/Docs/Resolve (previewLines unifies
 pane+scroll+reader; History uses a cheap commitSummary, full ops behind Enter; switchView resets focus). H:
 renderPreview syntax-highlights code views (Inspect + Changes) via SyntaxHighlighting.highlightCode with the
