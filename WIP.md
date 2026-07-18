@@ -71,9 +71,7 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
 9. NEXT — 10/13 views live (Home,Tree,Inspect,Changes,History,Resolve,Mesh,Runs,Services,Docs). Remaining views
    Edit/Agents/Things are DEFERRED (need MultilineEditor / mock render / a type arg). So pivot to POLISH — pick
    one per fire, all low-risk:
-   a. SCROLL INDICATOR: for list views (Tree/Changes/History/etc.) show "sel+1/total" — simplest in the
-      breadcrumb count (already shows "N items" for non-Tree; add "· k/N" or make it "k of N"). Or a right-edge
-      ▐ scrollbar column in renderTreeList. Do the breadcrumb count first (smallest).
+   a. DONE ✓ SCROLL INDICATOR: right-edge ▐ scrollbar thumb in renderTreeList (direct-printed). Verified.
    b. DOCS Enter-to-read (view 12): pressing Enter on a topic loads `topic.content ()` and shows it in a
       scrollable full-body pane (reuse the detailScroll mechanic). Needs a small State bit (readingTopic:
       Option<String> or an inline mode). Nice, self-contained.
@@ -91,10 +89,18 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   (e.g. `val viewNames = [ … ]`, not `let viewNames : List<String> = …`.)
 - Name resolution from `Darklang.Cli.Apps.Workbench.*`: use `UI.Layout.…` (not bare `Layout`) — the ancestor
   chain hits `Darklang.Cli`, from which `UI.Layout` resolves but `Layout` doesn't. `Colors` resolves bare.
+- `UI.Layout.printAt` truncates by String.LENGTH, which counts ANSI escape bytes — so a *colored* string near
+  the right edge (small maxLen) gets eaten. For single-glyph colored output at an edge (scrollbar, borders),
+  print DIRECTLY via `Colors.moveCursorTo` + the colored string (like SplitPane.drawBox), not printAt.
+- Module VALUES (not fns) → `val name = …` (no type annotation). Cross-module SCM.PackageOps etc. resolve via
+  fall-through to Darklang.SCM even from Cli modules (Darklang.Cli.SCM.PackageOps doesn't exist).
 - A non-loading .dark aborts the whole reload → always `./dev-ux-check` after each edit; read the real error
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 06:03 — P2.10 polish: scrollbar thumb (▐) on overflowing lists. Hit + recorded the printAt-truncates-
+  colored-strings gotcha (print edge glyphs directly via moveCursorTo). Verified. Commit ad9348a05. Next: Docs
+  Enter-to-read (topic.content into a scrollable pane).
 - 2026-07-18 05:55 — P2.9: wired Mesh (Tailscale.status behind Ok/Error wrap; "tailnet unavailable" empty).
   Verified: safe, no crash when tailscale absent. 10/13 views live. Commit a5be68e98. Next: polish (scroll
   indicator, Docs Enter-to-read). Edit/Agents/Things deferred.
