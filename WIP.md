@@ -4,6 +4,44 @@ The loop reads THIS file first, does the NEXT ACTION, updates it, reschedules. B
 working increments, keep the tree loading, commit often. Autonomous — the user is asleep; make every call,
 never wait.
 
+---
+
+## PR SUMMARY — the CLI UX "workbench" (branch `cli-ux-workbench` off `github/main`)
+
+A new full-screen home for the `dark` CLI: `dark` (no args) now opens a framed, navigable **workbench**
+instead of a bare prompt. Implements the design in `main/notes/cli-ux/`. ~46 commits, built bottom-up and
+verified on screen at each step.
+
+**Try it:** `./scripts/run-cli` (no args) → the workbench. `DARK_CLASSIC=1 ./scripts/run-cli` → the old
+prompt (nothing lost). With args (`status`, `eval`, `tree`, …) → unchanged, non-interactive. Also `dark
+workbench` / `dark wb`.
+
+**What's there.** A shared frame (tab bar with the active view marked · view-aware breadcrumb · honest
+per-view key hints) around a body that switches per view. 11 views wired from real command data:
+- Home (dashboard: branch, WIP + recent WIP names, last commit, owner count)
+- Tree (package navigation, `→` into / `←` up) | Inspect (right pane: live source of the selection)
+- Changes (WIP items) · History (commits) · Resolve (sync conflicts) · Mesh (tailnet, offline-safe) ·
+  Runs (traces) · Services (daemons/apps) · Docs (topics).
+- Deferred, shown as "coming soon": Edit (needs a multiline editor), Agents (data source is a mock render),
+  Things (needs a type arg / no generic value list).
+Interactions: `↑↓` move / scroll (focus-aware), `→`/`Enter` descend or open, `Tab` focus Tree↔Inspect,
+`1`-`9` + `[`/`]` switch views, a reusable full-screen **reader** (`Enter` opens a Tree leaf's source, a
+History commit's ops, a Changes item's source, a Docs topic; `?` shows the keymap; `↑↓` scroll, `esc`
+close), a viewport scrollbar, and graceful empty/error states throughout.
+
+**New/changed files:** `cli/apps/workbench/{frame,app}.dark` (the view), `cli/ui/splitpane.dark` (focus-aware
+two-pane split), `cli/ui/layout.dark` (+`hstack`/`distributeCols`/width combinators), `cli/core.dark` (the
+no-args → workbench flip + `workbench` command). Dev helpers (not product): `dev-ux-check` (reload+error),
+`dev-drive` (PTY visual-verify).
+
+**Honest state / not done:** the three deferred views above. Views are read-only projections — no write
+actions yet (no in-workbench commit/edit/rename; use the commands / classic prompt). Mesh/Runs show
+"unavailable/empty" here (no tailscale, no traces). The op-render for a commit is capped at 20 (the seed
+"Init" commit has 10k+ ops). This is a solid, reviewable foundation, not the full design — the frame +
+component seams (SplitPane, reader, view dispatch) are in place to grow the rest onto.
+
+---
+
 ## Loop horizon
 Run until ~2026-07-19 04:00 (24h). Each fire: `date` — if past that, do a final commit + write a summary at
 the top of the Log + stop the loop (ScheduleWakeup stop:true). Otherwise keep going, reschedule ~300s.
