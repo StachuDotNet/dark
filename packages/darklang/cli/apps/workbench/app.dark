@@ -26,6 +26,7 @@ type State =
     /// When Some, the multiline editor is open (authoring a fn body).
     editing: Stdlib.Option.Option<EditingState>
     accountId: Stdlib.Option.Option<Uuid>
+    accountName: String
     branchId: Uuid }
 
 /// A single-line text entry. `action` tags what Enter does (e.g. "commit").
@@ -426,10 +427,17 @@ let renderHome (state: State) (region: UI.Layout.Region) : Unit =
       [ [ Colors.boldText ("Welcome back — you're on " ++ branch); ""; "  " ++ wipLine ]
         conflictLines ]
 
+  let loginLine =
+    if state.accountName == "" then
+      "  " ++ (Colors.dimText "not logged in — `login <name>` (or set DARK_ACCOUNT)")
+    else
+      "  " ++ (Colors.dimText "logged in as ") ++ (Colors.colorize Colors.cyan state.accountName)
+
   let footer =
     [ "  " ++ (Colors.dimText ((plural commits "commit") ++ " on this branch"))
       "  " ++ (Colors.dimText lastCommit)
       "  " ++ (Colors.dimText (plural (Stdlib.List.length rootItems) "top-level owner"))
+      loginLine
       ""
       Colors.dimText "  2 Tree · 5 Changes · 6 History · 7 Resolve · [ ] cycle · esc exit" ]
 
@@ -1222,6 +1230,7 @@ let execute (cliState: Darklang.Cli.AppState) (_args: List<String>) : Darklang.C
         input = Stdlib.Option.Option.None
         editing = Stdlib.Option.Option.None
         accountId = cliState.accountID
+        accountName = cliState.accountName
         branchId = branchId }
   { cliState with
       currentPage = Darklang.Cli.Page.SubApp (makeSubApp state)
