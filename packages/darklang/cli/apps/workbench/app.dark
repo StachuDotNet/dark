@@ -195,7 +195,7 @@ let render (state: State) : Unit =
   let hints =
     UI.Layout.fixedSize
       1
-      (fun r -> Frame.renderKeyHints r "↑↓ move · → into · ← up · tab focus · 1-9 view · esc exit")
+      (fun r -> Frame.renderKeyHints r "↑↓ move · → into · ← up · tab focus · 1-9/[ ] view · esc exit")
   UI.Layout.vstack screen [ tabbar; crumb; body; hints ]
   Stdlib.print "\u001b[?25h"
 
@@ -259,6 +259,22 @@ let handleKey
   | _ ->
     match keyChar with
     | Some "q" -> Step.Exit state
+    | Some "]" ->
+      let nv = Stdlib.Int.min ((Stdlib.List.length Frame.viewNames) - 1) (state.activeView + 1)
+      Step.Continue
+        { state with
+            activeView = nv
+            items = itemsForView nv state.branchId state.location
+            selected = 0
+            detailScroll = 0 }
+    | Some "[" ->
+      let nv = Stdlib.Int.max 0 (state.activeView - 1)
+      Step.Continue
+        { state with
+            activeView = nv
+            items = itemsForView nv state.branchId state.location
+            selected = 0
+            detailScroll = 0 }
     | Some s ->
       match Stdlib.Int.parse s with
       | Ok n ->
