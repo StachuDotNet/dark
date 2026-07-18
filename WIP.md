@@ -118,7 +118,19 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
       consistently across Tree/Changes/History/Docs.
    DONE ✓ g. richer Home. DONE ✓ i. final sweep (clean) + PR summary (top of WIP).
    READ-ONLY WORKBENCH COMPLETE. Now: WRITE ACTIONS (the next real frontier of the design).
-   NEXT — P3: commit from Changes. Build a single-line INPUT MODE, then wire `c`=commit.
+   DONE ✓ P3.1: commit from Changes. Single-line INPUT MODE (State.input: Option<InputState{prompt,text,action}>
+   + State.accountId threaded from cliState.accountID). `c` on Changes → "commit message:" prompt; type; Enter →
+   SCM.PackageOps.commit → reload; Esc cancels; no-account → "not logged in" line. VERIFIED END-TO-END (created
+   a WIP fn, committed "wbcommit" via the workbench, log shows it, tree clean). THE WORKBENCH CAN NOW WRITE.
+   NEXT — more write actions, each reuses input mode / adds a confirm:
+   a. Tree `r` rename: input "new name:" → SetName op (find the rename API — grep SetName / renameItem /
+      Packages.Fn or SCM). On a fn/type/val leaf. Verify + discard.
+   b. Changes `x` discard: needs a yes/no confirm (add InputState action="confirm-discard" or a small confirm).
+      Destructive → confirm. Discards all WIP (or selected). Verify carefully.
+   c. Tree `n` new fn: opens input for a name, then... needs a body → that's EDIT (multiline). Defer the body;
+      `n` could stub-create an empty fn or defer entirely. Lower priority.
+   (Old detailed plan below, now done:)
+   -- P3: commit from Changes. Build a single-line INPUT MODE, then wire `c`=commit.
    1. State: add `input: Stdlib.Option.Option<InputState>` where InputState = { prompt: String; text: String;
       action: String } (action tag e.g. "commit"). Init None in execute. (double reload — type change.)
    2. handleKey: guard at TOP like `reading` — if `input` is Some: printable char → append to text (keyChar);
@@ -163,6 +175,11 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 07:22 — P3.1 FIRST WRITE ACTION: commit from Changes. Built single-line input mode (State.input +
+  accountId) + performInputAction; `c` → commit-message prompt → SCM.PackageOps.commit. VERIFIED end-to-end
+  (committed "wbcommit" via the workbench UI; log confirms; tree clean). Commit 1333ea692. The workbench is no
+  longer read-only. Next: Tree `r` rename, Changes `x` discard (with confirm). (Test fn/commit are ephemeral —
+  reload rebuilds the DB from disk.) NOTE: `fn` create is slow (~>1min) — run it alone, not in a compound.
 - 2026-07-18 07:09 — FINAL PASS done: swept the deep interactions (Docs Enter/scroll/esc, all Enter drill-ins,
   `?`) — all clean, no regressions. Wrote the PR SUMMARY at top of WIP. Commit 66ae67a43. READ-ONLY WORKBENCH
   COMPLETE (11 views, drill-in reader, help, scrollbar, richer Home). Next frontier: WRITE ACTIONS — starting
