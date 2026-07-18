@@ -212,6 +212,10 @@ let renderDetail (state: State) (region: UI.Layout.Region) : Unit =
     let (i, l) = pair
     UI.Layout.printAt region (i - off) 0 l)
 
+/// "1 commit" / "2 commits" — count + correctly-pluralized noun.
+let plural (n: Int) (noun: String) : String =
+  (Stdlib.Int.toString n) ++ " " ++ noun ++ (if n == 1 then "" else "s")
+
 /// Home: a small dashboard — where you are + what's changed + how deep the tree is.
 let renderHome (state: State) (region: UI.Layout.Region) : Unit =
   let wip = SCM.PackageOps.getWipSummary state.branchId
@@ -224,14 +228,14 @@ let renderHome (state: State) (region: UI.Layout.Region) : Unit =
 
   let wipLine =
     if wip.total == 0 then Colors.colorize Colors.green "✓ working tree clean"
-    else Colors.colorize Colors.pink ((Stdlib.Int.toString wip.total) ++ " uncommitted changes")
+    else Colors.colorize Colors.pink ((plural wip.total "uncommitted change"))
 
   let lines =
     [ Colors.boldText ("Welcome back — you're on " ++ branch)
       ""
       "  " ++ wipLine
-      "  " ++ (Colors.dimText ((Stdlib.Int.toString commits) ++ " commits on this branch"))
-      "  " ++ (Colors.dimText ((Stdlib.Int.toString (Stdlib.List.length rootItems)) ++ " top-level owners"))
+      "  " ++ (Colors.dimText ((plural commits "commit") ++ " on this branch"))
+      "  " ++ (Colors.dimText (plural (Stdlib.List.length rootItems) "top-level owner"))
       ""
       Colors.dimText "  2 Tree · 5 Changes · 6 History · 7 Resolve · [ ] cycle · esc exit" ]
 
