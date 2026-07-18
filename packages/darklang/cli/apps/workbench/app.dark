@@ -581,6 +581,17 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
     splitListPreview state region "Resolve" "Divergence" (Colors.colorize Colors.green "✓ nothing to resolve — in sync")
   else if state.activeView == 12 then
     splitListPreview state region "Docs" "Topic" (Colors.dimText "(no topics)")
+  else if state.activeView == 8 then
+    boxedLines
+      region
+      "Agents"
+      [ Colors.boldText "Ask the agent."
+        ""
+        Colors.dimText "  a       enter a prompt — runs `agent ask` and shows the reply here"
+        Colors.dimText "  :       or run any agent subcommand:  agent ask / code / review / fix"
+        ""
+        Colors.dimText "Needs ANTHROPIC_API_KEY or OPENAI_API_KEY in the environment (or --provider local)."
+        Colors.dimText "Full chat-session management (multiple conversations, history) is still to come." ]
   else if state.activeView == 3 then
     boxedLines
       region
@@ -674,6 +685,8 @@ let hintsForView (state: State) : String =
       Stdlib.List.flatten [ [ ("↑↓", "move") ]; tabHint ]
     else if view == 12 then
       Stdlib.List.flatten [ [ ("↑↓", "move") ]; tabHint; [ ("⏎", "full") ] ]
+    else if view == 8 then
+      [ ("a", "ask") ]
     else
       [ ("↑↓", "move") ]
   Frame.formatHints (Stdlib.List.append ctx global)
@@ -985,6 +998,28 @@ let performInputAction (state: State) (inp: InputState) : Step =
     else
       Step.Continue
         { state with input = Stdlib.Option.Option.None; searchHits = hits; searchSelected = 0 }
+  else if inp.action == "agent" then
+    // Agents view: run `agent ask <prompt>`, captured, and show the reply in the reader.
+    let text = Stdlib.String.trim inp.text
+    if text == "" then
+      Step.Continue { state with input = Stdlib.Option.Option.None }
+    else
+      let words = Stdlib.String.split text " " |> Stdlib.List.filter (fun w -> w != "")
+      let appState =
+        { (Darklang.Cli.initState ()) with
+            currentBranchId = state.branchId
+            accountID = state.accountId
+            accountName = state.accountName }
+      let _ = Builtin.stdoutCaptureStart ()
+      let _ = Darklang.Cli.Registry.executeCommand "agent" appState (Stdlib.List.append [ "ask" ] words)
+      let output = Builtin.stdoutCaptureStop ()
+      let shown = if (Stdlib.String.trim output) == "" then "(no output)" else output
+      Step.Continue
+        { state with
+            input = Stdlib.Option.Option.None
+            reading = Stdlib.Option.Option.Some ((Colors.dimText ("ask: " ++ text)) ++ "\n\n" ++ shown)
+            readingIsCode = false
+            detailScroll = 0 }
   else if inp.action == "command" then
     // The `:` command bar — run any old-school CLI command inside the workbench and show its output in the
     // reader (captured via stdoutCapture, so it never touches the frame). If the first word isn't a known
@@ -1379,6 +1414,15 @@ let handleKey
     | Some "d" ->
       // Tree: show the selected leaf's dependencies (what it uses) in the reader.
       if state.activeView == 1 then openReader state (depsText state) false
+      else Step.Continue state
+    | Some "a" ->
+      // Agents: enter a prompt for `agent ask`.
+      if state.activeView == 8 then
+        Step.Continue
+          { state with
+              input =
+                Stdlib.Option.Option.Some
+                  (InputState { prompt = "ask the agent: "; text = ""; action = "agent" }) }
       else Step.Continue state
     | Some "e" ->
       // Tree: edit the selected fn in place (prefill the editor from its source).
