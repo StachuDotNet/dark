@@ -57,7 +57,18 @@ let loadWipBodyItems (branchId: Uuid) : List<BodyItem> =
     let kind = Stdlib.Dict.get d "kind" |> Stdlib.Option.withDefault "?"
     BodyItem { name = name; kind = kind; isModule = false })
 
-/// The body items for a given view: packages for Home/Tree, WIP for Changes, empty otherwise.
+/// Recent commits (this branch + ancestors) as body items (for the History view).
+let loadCommitBodyItems (branchId: Uuid) : List<BodyItem> =
+  SCM.PackageOps.getCommitsWithAncestors branchId 30
+  |> Stdlib.List.map (fun c ->
+    let short = LanguageTools.ProgramTypes.hashToShort c.hash
+    let ops = Stdlib.Int.toString c.opCount
+    BodyItem
+      { name = short ++ "  " ++ c.message ++ "  (" ++ ops ++ " ops)"
+        kind = "commit"
+        isModule = false })
+
+/// The body items for a given view: packages for Home/Tree, WIP for Changes, commits for History, else [].
 let itemsForView
   (view: Int)
   (branchId: Uuid)
@@ -65,6 +76,7 @@ let itemsForView
   : List<BodyItem> =
   if view <= 1 then loadItems branchId location
   else if view == 4 then loadWipBodyItems branchId
+  else if view == 5 then loadCommitBodyItems branchId
   else []
 
 
@@ -156,6 +168,12 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
     // Changes: the uncommitted items (or the clean state).
     if Stdlib.List.isEmpty state.items then
       UI.Layout.printAt region 2 4 (Colors.colorize Colors.green "✓ working tree clean")
+    else
+      renderTreeList state region
+  else if state.activeView == 5 then
+    // History: recent commits.
+    if Stdlib.List.isEmpty state.items then
+      UI.Layout.printAt region 2 4 (Colors.dimText "no commits yet")
     else
       renderTreeList state region
   else
