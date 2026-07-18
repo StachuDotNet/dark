@@ -78,12 +78,13 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
       searchExactMatch → PrettyPrinter.packageFn/Type/Value). Verified.
    DONE ✓ h. Tree leaf Enter → source in reader (modules still descend). Verified. Enter now opens content
       consistently across Tree/Changes/History/Docs.
-   NEXT polish (pick one/fire):
-   g. Home: richer landing — recent WIP item names (getWipItems, first ~3) + last-commit message line
-      (getCommitsWithAncestors head .message). Small, reuses existing helpers.
-   i. FINAL: fresh dev-drive sweep of deep interactions (Tree-leaf/History/Changes/Docs Enter + reader scroll +
-      `?`), fix anything, then add a short PR-SUMMARY section at the TOP of WIP (branch cli-ux-workbench off
-      github/main; ~43 commits; what's built / how to try: `dark` opens workbench, DARK_CLASSIC=1 = old prompt).
+   DONE ✓ g. richer Home (recent WIP names + last-commit line). Verified.
+   NEXT — i. FINAL PASS: (1) fresh dev-drive sweep of the deep interactions: Tree-leaf Enter→source, History
+   Enter→ops, Changes Enter→source, Docs Enter→read, reader ↑↓ scroll + esc, `?` help. Fix anything. (2) Add a
+   PR-SUMMARY section at the TOP of this WIP: what's built (workbench = default `dark`; 11 views wired incl.
+   Home; reader drill-ins; DARK_CLASSIC=1 = classic prompt), the new files (ui/splitpane.dark, apps/workbench/
+   {frame,app}.dark, layout.dark hstack), deferred (Edit/Agents/Things), and the honest state. Branch
+   cli-ux-workbench off github/main, ~44 commits. THEN keep polishing only if clearly valuable, else idle-tick.
 Keep each fire small + verified. AGENTS/EDIT/THINGS stay deferred (mock render / MultilineEditor / type arg).
 Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)/Things(11)/Docs(12).
 
@@ -111,6 +112,8 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 07:03 — P2.17: richer Home (recent WIP item names + "last commit: …" line via getCommitsWithAncestors
+  head). Verified on clean tree. Commit 11cbebd88. Next: final sweep + PR summary at top of WIP.
 - 2026-07-18 06:56 — P2.16: Tree leaf Enter → source in the reader (modules still descend). Verified. Enter is
   now consistent (opens content) across Tree/Changes/History/Docs; reader mode reused for all. Commit e894ce188.
   Next: richer Home, then FINAL sweep + PR summary.
