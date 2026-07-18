@@ -1,0 +1,11 @@
+module Darklang.Cli.Text
+
+// Small text helpers shared across CLI commands, so counters and summaries read the same everywhere.
+
+// "1 value" / "2 values" — a count with its noun pluralized by the English rule in `Stdlib.String.pluralize`,
+// so no CLI message reads "1 value(s)". The linguistic rule lives in stdlib; this just pairs it with a count.
+let plural (n: Int) (noun: String) : String =
+  if n == 1 then
+    $"{Stdlib.Int.toString n} {noun}"
+  else
+    $"{Stdlib.Int.toString n} {Stdlib.String.pluralize noun}"

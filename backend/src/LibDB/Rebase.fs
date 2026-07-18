@@ -64,7 +64,35 @@ let private getLocationPathsModifiedSince
   }
 
 
-/// Check for rebase conflicts without performing rebase
+/// The branch's current live binding hash for a location, if any. Keyed by name alone: one name holds one
+/// item, so `itemType` on the conflict is what's bound there, not part of which slot it is.
+let private currentHash
+  (branchId : PT.BranchId)
+  (c : RebaseConflict)
+  : Task<Option<string>> =
+  Sql.query
+    """
+    SELECT item_hash FROM locations
+    WHERE owner = @owner AND modules = @modules AND name = @name
+      AND branch_id = @branch_id AND unlisted_at IS NULL
+    LIMIT 1
+    """
+  |> Sql.parameters
+    [ "owner", Sql.string c.owner
+      "modules", Sql.string c.modules
+      "name", Sql.string c.name
+      "branch_id", Sql.uuid branchId ]
+  |> Sql.executeRowOptionAsync (fun read -> read.string "item_hash")
+
+
+/// Check for rebase conflicts without performing rebase.
+///
+/// CONTENT-AWARE: a conflict is a location modified on both sides since the base whose branch and parent
+/// bindings actually DIFFER. The "modified on both" gate alone is content-blind — it fires even when both
+/// sides converged to identical content, and (worse) it can NEVER be cleared by editing, since re-editing a
+/// location keeps it "modified": a permanent deadlock, with an error that told you to do the impossible.
+/// Comparing the live hashes fixes both: identical edits aren't a conflict, and reconciling a genuine one to
+/// match the parent makes the hashes equal → it clears → `rebase` proceeds.
 let getConflicts (branchId : PT.BranchId) : Task<List<RebaseConflict>> =
   task {
     let! branchOpt = Branches.get branchId
@@ -82,18 +110,61 @@ let getConflicts (branchId : PT.BranchId) : Task<List<RebaseConflict>> =
         let! branchLocs = branchLocations
         let! parentLocs = parentLocations
 
-        // Conflict = same (owner, modules, name, itemType) modified on both sides
+        // Candidate = same NAME modified on both sides. Keyed by (owner, modules, name), NOT item_type: one
+        // name holds one item, so if the branch made X a fn while the parent made X a value, that's the same
+        // slot contested — a real conflict. Keying on item_type too would miss it (fn != value, so the match
+        // fails) and the rebase would silently pick one. Each side has at most one binding per name post-fold,
+        // so this can't double-count.
         let branchSet =
           branchLocs
-          |> List.map (fun l -> (l.owner, l.modules, l.name, l.itemType))
+          |> List.map (fun l -> (l.owner, l.modules, l.name))
           |> Set.ofList
 
-        let conflicts =
+        let candidates =
           parentLocs
           |> List.filter (fun l ->
-            Set.contains (l.owner, l.modules, l.name, l.itemType) branchSet)
+            Set.contains (l.owner, l.modules, l.name) branchSet)
 
-        return conflicts
+        // Keep only candidates whose branch and parent bindings genuinely differ.
+        let mutable conflicts = []
+        for l in candidates do
+          let! branchHash = currentHash branchId l
+          let! parentHash = currentHash parentId l
+          if branchHash <> parentHash then conflicts <- l :: conflicts
+        return List.rev conflicts
+  }
+
+
+/// The parent branch's latest commit hash (None if the parent has no commits yet).
+let private parentLatestCommit (parentId : PT.BranchId) : Task<Option<Hash>> =
+  Sql.query
+    """
+    SELECT hash FROM commits
+    WHERE branch_id = @parent_id
+    -- rowid tiebreak (see Inserts.insertAndApplyOpsWithCommit): the chain tip, deterministically.
+    ORDER BY created_at DESC, rowid DESC
+    LIMIT 1
+    """
+  |> Sql.parameters [ "parent_id", Sql.uuid parentId ]
+  |> Sql.executeRowOptionAsync (fun read -> Hash(read.string "hash"))
+
+
+/// Is the branch behind its parent — would a rebase actually move its base? Read-only.
+///
+/// Distinct from `getConflicts`, which is empty BOTH when the branch is up to date AND when it's
+/// behind-but-clean (parent advanced, no overlapping edits). So `rebase --status` needs this to tell
+/// "nothing to do" apart from "a clean rebase is waiting."
+let needsRebase (branchId : PT.BranchId) : Task<bool> =
+  task {
+    let! branchOpt = Branches.get branchId
+    match branchOpt with
+    | None -> return false
+    | Some branch ->
+      match branch.parentBranchId with
+      | None -> return false // main branch: nothing to rebase onto
+      | Some parentId ->
+        let! parentLatest = parentLatestCommit parentId
+        return branch.baseCommitHash <> parentLatest
   }
 
 
@@ -112,16 +183,7 @@ let rebase (branchId : PT.BranchId) : Task<Result<string, List<RebaseConflict>>>
       | None -> return Ok "Main branch, nothing to rebase"
       | Some parentId ->
         // Get parent's latest commit
-        let! parentLatest =
-          Sql.query
-            """
-            SELECT hash FROM commits
-            WHERE branch_id = @parent_id
-            ORDER BY created_at DESC
-            LIMIT 1
-            """
-          |> Sql.parameters [ "parent_id", Sql.uuid parentId ]
-          |> Sql.executeRowOptionAsync (fun read -> Hash(read.string "hash"))
+        let! parentLatest = parentLatestCommit parentId
 
         if branch.baseCommitHash = parentLatest then
           return Ok "Already up to date"

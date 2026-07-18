@@ -414,9 +414,15 @@ let private runFixture (test : Test) : Task<unit> =
     let port = allocateFreePort ()
     let cts = new CancellationTokenSource()
 
+    let listener =
+      match HttpServer.bindListener (int64 port) with
+      | Ok l -> l
+      | Error msg -> Exception.raiseInternal msg [ "port", port ]
+
     let listenerTask =
       HttpServer.runListener
         exeState
+        listener
         (int64 port)
         handler
         HttpServer.defaultMaxBodyBytes
@@ -467,9 +473,15 @@ let private concurrentEphemeralBlobRequests =
     let port = allocateFreePort ()
     let cts = new CancellationTokenSource()
 
+    let listener =
+      match HttpServer.bindListener (int64 port) with
+      | Ok l -> l
+      | Error msg -> Exception.raiseInternal msg [ "port", port ]
+
     let listenerTask =
       HttpServer.runListener
         exeState
+        listener
         (int64 port)
         handler
         HttpServer.defaultMaxBodyBytes
@@ -555,9 +567,13 @@ let private serveRejectsOutOfRangeArgs =
 
     let handler = "(fun request -> Darklang.Stdlib.Http.notFound ())"
 
+    // onListening: a no-op — the out-of-range checks fire before it would ever run.
+    let onListening = "(fun () -> ())"
+
     // port 99999 is past the valid [0, 65535] range
     let! tooLargePort =
-      runServe $"Builtin.httpServerServe 99999 {handler} 1048576 false false false"
+      runServe
+        $"Builtin.httpServerServe 99999 {handler} 1048576 false false false {onListening}"
     match tooLargePort with
     | Error msg ->
       Expect.stringContains msg "out-of-range" "port 99999 -> Int OutOfRange"
@@ -565,7 +581,8 @@ let private serveRejectsOutOfRangeArgs =
 
     // a negative body limit would reject every request
     let! negativeBodyLimit =
-      runServe $"Builtin.httpServerServe 8000 {handler} -1 false false false"
+      runServe
+        $"Builtin.httpServerServe 8000 {handler} -1 false false false {onListening}"
     match negativeBodyLimit with
     | Error msg ->
       Expect.stringContains msg "out-of-range" "maxBodyBytes -1 -> Int OutOfRange"

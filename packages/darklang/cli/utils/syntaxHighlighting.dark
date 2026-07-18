@@ -30,9 +30,10 @@ let tokenTypeToCliColor (tokenType: LanguageTools.SemanticTokens.TokenType) : St
 let highlightLine (line: String) (lineTokens: List<LanguageTools.SemanticTokens.SemanticToken>) : String =
   let insertions =
     lineTokens
-    |> Stdlib.List.collect (fun token ->
+    |> Stdlib.List.map (fun token ->
         [ (token.range.start.column, tokenTypeToCliColor token.tokenType)
           (token.range.end_.column, Colors.reset) ])
+    |> Stdlib.List.flatten
     // stable sort keeps a token's end before the next token's start at a shared
     // column, so adjacent tokens render as `…reset<next-color>…`
     |> Stdlib.List.sortBy (fun (pos, _) -> pos)
@@ -40,14 +41,21 @@ let highlightLine (line: String) (lineTokens: List<LanguageTools.SemanticTokens.
   // Insert from right to left so earlier insertions do not shift later positions.
   let reversedInsertions = Stdlib.List.reverse insertions
 
-  reversedInsertions
-  |> Stdlib.List.fold line (fun currentLine (pos, colorCode) ->
-      if pos >= 0 && pos <= Stdlib.String.length currentLine then
-        let before = Stdlib.String.slice currentLine 0 pos
-        let after = Stdlib.String.dropFirst currentLine pos
-        before ++ colorCode ++ after
-      else
-        currentLine)
+  let highlighted =
+    reversedInsertions
+    |> Stdlib.List.fold line (fun currentLine (pos, colorCode) ->
+        if pos >= 0 && pos <= Stdlib.String.length currentLine then
+          let before = Stdlib.String.slice currentLine 0 pos
+          let after = Stdlib.String.dropFirst currentLine pos
+          before ++ colorCode ++ after
+        else
+          currentLine)
+
+  // Close every line with a reset. Overlapping tokens (a Symbol range inside a String range) can leave a
+  // color opened but not closed at line end, which then bleeds into whatever prints next. This kills the
+  // bleed; it doesn't fix the overlap itself (that needs token de-overlap) — the token colors within the
+  // line are still whatever the overlap produced, just no longer leaking past it.
+  highlighted ++ Colors.reset
 
 
 /// Splits a token that spans multiple rows into one single-line token per row it
@@ -96,7 +104,8 @@ let applyTokenColors
   // each line below sees only single-line tokens
   let sortedTokens =
     tokens
-    |> Stdlib.List.collect (splitTokenByLine lines)
+    |> Stdlib.List.map (splitTokenByLine lines)
+    |> Stdlib.List.flatten
     |> Stdlib.List.sortBy (fun token -> (token.range.start.row, token.range.start.column))
 
   lines

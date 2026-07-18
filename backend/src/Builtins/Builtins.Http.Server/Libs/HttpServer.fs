@@ -250,8 +250,41 @@ let private handleRequest
 // slow-loris timeouts, per-connection caps, malformed-input handling) — all
 // of which the swap PR has to re-implement before going public-facing.
 // See `notes/merge-readiness-report.md` for the dotnet-trace numbers.
+
+
+/// Bind a listener to <param port>, or say why not in one human sentence.
+///
+/// Separate from `runListener` so the bind is the CALLER's to report: inside the serve task, a failure comes
+/// back out of `listenerTask.Wait()` wrapped in an AggregateException — a stack trace where a sentence
+/// belongs — and only after the caller has already announced "Listening on {port}", which by then is a lie.
+let bindListener (port : int64) : Result<HttpListener, string> =
+  let listener = new HttpListener()
+  listener.Prefixes.Add($"http://*:{port}/")
+  try
+    listener.Start()
+    Ok listener
+  with :? HttpListenerException as e ->
+    // "Port's taken" has a different number on every platform — 98 EADDRINUSE on Linux, 48 on BSD/macOS,
+    // 183 ERROR_ALREADY_EXISTS / 32 ERROR_SHARING_VIOLATION on Windows — and .NET surfaces the native errno
+    // here. Match the message too: the codes are what the platform calls it, the message is what it means,
+    // and getting this wrong just means falling back to the raw text (which is what shipped before).
+    let inUse =
+      List.contains e.ErrorCode [ 98; 48; 183; 32 ]
+      || e.Message.Contains("Address already in use")
+      || e.Message.Contains("address already in use")
+    if inUse then
+      Error(
+        $"port {port} is already in use — something else is listening there. "
+        + "Stop it, or serve on another port."
+      )
+    else
+      Error $"couldn't listen on port {port}: {e.Message}"
+
+
+/// Serve requests off an ALREADY-BOUND listener (see `bindListener`), until cancelled.
 let runListener
   (exeState : ExecutionState)
+  (listener : HttpListener)
   (port : int64)
   (handler : Applicable)
   (maxBodyBytes : int64)
@@ -261,10 +294,6 @@ let runListener
   (cancellationToken : CancellationToken)
   : Task<unit> =
   task {
-    let listener = new HttpListener()
-    listener.Prefixes.Add($"http://*:{port}/")
-    listener.Start()
-
     Telemetry.event
       "httpserver.listening"
       [ "port", string port
@@ -342,10 +371,16 @@ let fns () : List<BuiltInFn> =
           Param.make
             "logRequests"
             TBool
-            "If true, emit a per-request stdout line and Telemetry.event 'httpserver.request' with method/path/status/duration_ms" ]
-      returnType = TUnit
+            "If true, emit a per-request stdout line and Telemetry.event 'httpserver.request' with method/path/status/duration_ms"
+          Param.makeWithArgs
+            "onListening"
+            (TFn(NEList.singleton TUnit, TUnit))
+            "Fired once the port is bound — announce here, so a banner is never printed before it's true"
+            [ "unit" ] ]
+      returnType = TypeReference.result TUnit TString
       description =
-        "Start an HTTP server. Calls handler for each request. Blocks until SIGINT."
+        "Start an HTTP server. Calls handler for each request. Runs onListening once the port is bound; "
+        + "returns Error with a plain message if the port can't be bound. Blocks until SIGINT."
       fn =
         (function
         | exeState,
@@ -356,7 +391,8 @@ let fns () : List<BuiltInFn> =
             DInt maxBodyBytesArg
             DBool injectStandardHeaders
             DBool canonicalizeFromForwardedProto
-            DBool logRequests ] ->
+            DBool logRequests
+            DApplicable onListening ] ->
           uply {
             // maxBodyBytes is a comparison threshold; a negative limit would
             // reject every request (treated as over-limit), so reject it. 0 is
@@ -379,33 +415,44 @@ let fns () : List<BuiltInFn> =
             use _serveSpan =
               Telemetry.span "httpserver.serve" [ "port", string port ]
 
-            print $"[HttpServer] Listening on port {port}"
+            // Bind BEFORE announcing, so the caller's onListening banner is only printed once it's actually
+            // bound. A bind failure (e.g. the port is taken) comes back as a clean Error the caller can print
+            // itself, instead of a runtime-error wrapper with a stack.
+            match bindListener port with
+            | Error msg -> return Dval.resultError KTUnit KTString (DString msg)
+            | Ok listener ->
+              let! _ =
+                Execution.executeApplicable
+                  exeState
+                  onListening
+                  (NEList.singleton DUnit)
 
-            // SIGINT → cancel; in-flight requests drain by virtue of being
-            // fire-and-forget Tasks.
-            let cts = new CancellationTokenSource()
-            let cancelHandler =
-              ConsoleCancelEventHandler(fun _ args ->
-                args.Cancel <- true
-                cts.Cancel())
-            Console.CancelKeyPress.AddHandler cancelHandler
+              // SIGINT → cancel; in-flight requests drain by virtue of being
+              // fire-and-forget Tasks.
+              let cts = new CancellationTokenSource()
+              let cancelHandler =
+                ConsoleCancelEventHandler(fun _ args ->
+                  args.Cancel <- true
+                  cts.Cancel())
+              Console.CancelKeyPress.AddHandler cancelHandler
 
-            let listenerTask =
-              runListener
-                exeState
-                port
-                handler
-                maxBodyBytes
-                injectStandardHeaders
-                canonicalizeFromForwardedProto
-                logRequests
-                cts.Token
+              let listenerTask =
+                runListener
+                  exeState
+                  listener
+                  port
+                  handler
+                  maxBodyBytes
+                  injectStandardHeaders
+                  canonicalizeFromForwardedProto
+                  logRequests
+                  cts.Token
 
-            listenerTask.Wait()
+              listenerTask.Wait()
 
-            Console.CancelKeyPress.RemoveHandler cancelHandler
+              Console.CancelKeyPress.RemoveHandler cancelHandler
 
-            return DUnit
+              return Dval.resultOk KTUnit KTString DUnit
           }
 
         | _ -> incorrectArgs ())

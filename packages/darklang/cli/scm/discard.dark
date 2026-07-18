@@ -17,13 +17,13 @@ let execute (state: AppState) (args: List<String>) : AppState =
     Stdlib.printLine header
 
     if summary.types > 0 then
-      Stdlib.printLine $"  {Stdlib.Int.toString summary.types} type(s)"
+      Stdlib.printLine $"  {Cli.Text.plural summary.types "type"}"
 
     if summary.values > 0 then
-      Stdlib.printLine $"  {Stdlib.Int.toString summary.values} value(s)"
+      Stdlib.printLine $"  {Cli.Text.plural summary.values "value"}"
 
     if summary.fns > 0 then
-      Stdlib.printLine $"  {Stdlib.Int.toString summary.fns} function(s)"
+      Stdlib.printLine $"  {Cli.Text.plural summary.fns "function"}"
 
     Stdlib.printLine ""
 

@@ -13,6 +13,7 @@ module PT = LibExecution.ProgramTypes
 module Branches = LibDB.Branches
 module Inserts = LibDB.Inserts
 module BranchOpPlayback = LibDB.BranchOpPlayback
+module Rebase = LibDB.Rebase
 
 open Fumble
 open LibDB.Sqlite
@@ -28,6 +29,12 @@ let private loc (name : string) : PT.PackageLocation =
 
 let private makeFn (body : PT.Expr) : PT.PackageFn.PackageFn =
   testPackageFn [] (NEList.singleton "x") PT.TInt64 body
+
+let private makeValue (body : PT.Expr) : PT.PackageValue.PackageValue =
+  let uniqueHash =
+    System.Guid.NewGuid().ToString("N") + System.Guid.NewGuid().ToString("N")
+    |> PT.Hash
+  { hash = uniqueHash; body = body; description = "" }
 
 let private countRows (table : string) : Task<int64> =
   Sql.query $"SELECT COUNT(*) as cnt FROM {table}"
@@ -387,6 +394,143 @@ let testPartialCommitDeprecationState =
   }
 
 
+/// Content-aware rebase conflicts: a location changed on both a branch and its parent is a conflict only
+/// when the two versions actually DIFFER. Identical edits on both sides aren't a conflict — and the
+/// path-only check that predated this could never be cleared by editing (re-editing keeps the path
+/// "modified"), a permanent deadlock behind an impossible "fix it, then rebase" instruction.
+let testRebaseConflictsAreContentAware =
+  testTask
+    "rebase conflicts: only DIVERGENT both-sides edits are conflicts, not identical ones" {
+    // Parent P (off main) with one commit, so a child branch gets a real base.
+    let! (parent : PT.Branch) = Branches.create "rebase-ca-parent" PT.mainBranchId
+    let seedFn = makeFn (eInt64 0L)
+    let! (_ : int64) =
+      Inserts.insertAndApplyOpsAsWip
+        parent.id
+        [ PT.PackageOp.AddFn seedFn
+          PT.PackageOp.SetName(loc "caSeed", PT.PackageFn seedFn.hash) ]
+    let! (seedResult : Result<PT.Hash, string>) =
+      Inserts.commitWipOps LibCloud.Account.IDs.darklang parent.id "seed"
+
+    // Backdate the base commit. `getConflicts` selects locations whose commit's created_at is strictly
+    // after the base's, and commit created_at is second-resolution (datetime('now')) — so on a fast machine
+    // the seed + both edits land in the same second and "modified since base" would wrongly be empty. Pinning
+    // the base into the past makes the ordering deterministic regardless of machine speed.
+    let seedHash =
+      match seedResult with
+      | Ok(PT.Hash h) -> h
+      | Error _ -> ""
+    do!
+      Sql.query
+        "UPDATE commits SET created_at = '2020-01-01 00:00:00' WHERE hash = @h"
+      |> Sql.parameters [ "h", Sql.string seedHash ]
+      |> Sql.executeStatementAsync
+
+    // Child B off P — base = P's seed commit.
+    let! (child : PT.Branch) = Branches.create "rebase-ca-child" parent.id
+
+    // One fn identical on both sides (same body → same content hash); two DIFFERENT fns for the divergent one.
+    let converged = makeFn (eInt64 7L)
+    let childDiverge = makeFn (eInt64 1L)
+    let parentDiverge = makeFn (eInt64 2L)
+
+    // B edits both locations (after base).
+    let! (_ : int64) =
+      Inserts.insertAndApplyOpsAsWip
+        child.id
+        [ PT.PackageOp.AddFn childDiverge
+          PT.PackageOp.SetName(loc "caDiverge", PT.PackageFn childDiverge.hash)
+          PT.PackageOp.AddFn converged
+          PT.PackageOp.SetName(loc "caConverge", PT.PackageFn converged.hash) ]
+    let! (_ : Result<PT.Hash, string>) =
+      Inserts.commitWipOps LibCloud.Account.IDs.darklang child.id "child edits"
+
+    // P edits the SAME two locations after B forked: caDiverge to a DIFFERENT fn, caConverge to the identical one.
+    let! (_ : int64) =
+      Inserts.insertAndApplyOpsAsWip
+        parent.id
+        [ PT.PackageOp.AddFn parentDiverge
+          PT.PackageOp.SetName(loc "caDiverge", PT.PackageFn parentDiverge.hash)
+          PT.PackageOp.AddFn converged
+          PT.PackageOp.SetName(loc "caConverge", PT.PackageFn converged.hash) ]
+    let! (_ : Result<PT.Hash, string>) =
+      Inserts.commitWipOps LibCloud.Account.IDs.darklang parent.id "parent edits"
+
+    let! conflicts = Rebase.getConflicts child.id
+    let names =
+      conflicts |> List.map (fun (c : Rebase.RebaseConflict) -> c.name) |> Set.ofList
+    Expect.isTrue
+      (Set.contains "caDiverge" names)
+      "a location bound to DIFFERENT content on each side is a conflict"
+    Expect.isFalse
+      (Set.contains "caConverge" names)
+      "a location bound to IDENTICAL content on each side is NOT a conflict (content-aware)"
+  }
+
+
+let testRebaseConflictCrossKind =
+  testTask
+    "rebase conflicts: branch makes a name a fn while parent makes it a value is a conflict" {
+    // A1 made a location's identity (owner, modules, name) — item_type is a hint, not part of it. So if the
+    // branch binds X to a fn while the parent binds X to a value (both since base), that's the SAME slot
+    // contested — a real conflict. getConflicts used to key the candidate match on item_type too, so fn-vs-
+    // value never matched and the conflict was silently missed; this pins that it's caught.
+    let! (parent : PT.Branch) = Branches.create "rebase-xk-parent" PT.mainBranchId
+
+    // Base: X is a value.
+    let seedVal = makeValue (eInt64 0L)
+    let! (_ : int64) =
+      Inserts.insertAndApplyOpsAsWip
+        parent.id
+        [ PT.PackageOp.AddValue seedVal
+          PT.PackageOp.SetName(loc "xkSlot", PT.PackageValue seedVal.hash) ]
+    let! (seedResult : Result<PT.Hash, string>) =
+      Inserts.commitWipOps LibCloud.Account.IDs.darklang parent.id "seed value"
+
+    let seedHash =
+      match seedResult with
+      | Ok(PT.Hash h) -> h
+      | Error _ -> ""
+    do!
+      Sql.query
+        "UPDATE commits SET created_at = '2020-01-01 00:00:00' WHERE hash = @h"
+      |> Sql.parameters [ "h", Sql.string seedHash ]
+      |> Sql.executeStatementAsync
+
+    let! (child : PT.Branch) = Branches.create "rebase-xk-child" parent.id
+
+    // Child rebinds X to a FN.
+    let childFn = makeFn (eInt64 1L)
+    let! (_ : int64) =
+      Inserts.insertAndApplyOpsAsWip
+        child.id
+        [ PT.PackageOp.AddFn childFn
+          PT.PackageOp.SetName(loc "xkSlot", PT.PackageFn childFn.hash) ]
+    let! (_ : Result<PT.Hash, string>) =
+      Inserts.commitWipOps LibCloud.Account.IDs.darklang child.id "child: X is a fn"
+
+    // Parent rebinds X to a DIFFERENT value.
+    let parentVal = makeValue (eInt64 2L)
+    let! (_ : int64) =
+      Inserts.insertAndApplyOpsAsWip
+        parent.id
+        [ PT.PackageOp.AddValue parentVal
+          PT.PackageOp.SetName(loc "xkSlot", PT.PackageValue parentVal.hash) ]
+    let! (_ : Result<PT.Hash, string>) =
+      Inserts.commitWipOps
+        LibCloud.Account.IDs.darklang
+        parent.id
+        "parent: X is a value"
+
+    let! conflicts = Rebase.getConflicts child.id
+    let names =
+      conflicts |> List.map (fun (c : Rebase.RebaseConflict) -> c.name) |> Set.ofList
+    Expect.isTrue
+      (Set.contains "xkSlot" names)
+      "fn-on-branch vs value-on-parent at one name is a conflict (was missed when the match keyed on kind)"
+  }
+
+
 let tests =
   testList
     "BranchOps"
@@ -396,4 +540,6 @@ let tests =
       testGhostFunctionCrossBranch
       testPartialCommit
       testPartialCommitSameFqn
-      testPartialCommitDeprecationState ]
+      testPartialCommitDeprecationState
+      testRebaseConflictsAreContentAware
+      testRebaseConflictCrossKind ]

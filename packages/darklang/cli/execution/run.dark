@@ -24,6 +24,15 @@ let execute (state: AppState) (args: List<String>) : AppState =
     executeScript state scriptPath scriptArgs allowHarmful sandbox
 
 
+// Does <param path> look like a package location (`Demo.Sync.double`) rather than a script file? Dotted, no
+// directory, no `.dark` — i.e. what you'd type right after `dark fn Demo.Sync.double ...` succeeded. `run`
+// takes a FILE, so that lands on "Script not found", which is true and useless: the thing exists, you just
+// named it to the wrong command. A guess is enough here — it only ever changes which hint we print.
+let looksLikePackageName (path: String) : Bool =
+  (Stdlib.String.contains path ".")
+  && (Stdlib.String.contains path "/" |> Stdlib.Bool.not)
+  && (Stdlib.String.endsWith path ".dark" |> Stdlib.Bool.not)
+
 let executeScript
   (state: AppState)
   (scriptPath: String)
@@ -34,7 +43,16 @@ let executeScript
   match Builtin.fileRead scriptPath with
   | Error e ->
     match e with
-    | NotFound -> Stdlib.printLine $"Script not found: {scriptPath}"
+    | NotFound ->
+      if looksLikePackageName scriptPath then
+        let argsStr = Stdlib.String.join args " "
+        let evalCmd = Stdlib.String.trim $"dark eval {scriptPath} {argsStr}"
+
+        [ $"{scriptPath} isn't a script file."
+          $"  `run` executes a script; that looks like a package function. Try:  {evalCmd}" ]
+        |> Stdlib.printLines
+      else
+        Stdlib.printLine $"Script not found: {scriptPath}"
     | PermissionDenied -> Stdlib.printLine $"Permission denied: {scriptPath}"
     | Other msg -> Stdlib.printLine $"Could not read script {scriptPath}: {msg}"
     state

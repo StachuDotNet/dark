@@ -92,10 +92,15 @@ module TraceDetail =
     | Off
     | On
 
+  // Default OFF: traces have no retention/GC (see TraceStorage.store) and a single row can reach ~1 GB (a
+  // `serve` request records its whole response — e.g. a sync op/blob batch — as trace args), so a long-running
+  // `serve`/daemon fills the disk unbounded. Traces are dev telemetry (stripped from the exported seed), so
+  // the shipped binary must not accumulate them; dev/CI opt in via DARK_CONFIG_TRACE_DETAIL=on. Default back
+  // to on only once retention (size cap + GC) exists.
   let private readEnv () : T =
     match System.Environment.GetEnvironmentVariable "DARK_CONFIG_TRACE_DETAIL" with
-    | "off" -> Off
-    | _ -> On
+    | "on" -> On
+    | _ -> Off
 
   let mutable current : T = readEnv ()
 
@@ -475,25 +480,34 @@ let private storeTrace
   (exeState : RT.ExecutionState)
   : Ply.Ply<unit> =
   uply {
-    let traceIdStr = string traceID
-    use _span = Telemetry.span "trace.store" [ "traceId", traceIdStr ]
-    try
-      let! preparedInput = prepareTraceForStorage exeState inputDval state
-      TraceStorage.store
-        rootTLID
-        traceID
-        handlerDesc
-        inputVarName
-        preparedInput
-        (Seq.toList state.events)
-        exeState.accountID
-    with ex ->
-      System.Console.Error.WriteLine $"[tracing] Failed to store trace: {ex.Message}"
-      Telemetry.event
-        "trace.storeFailed"
-        [ "traceId", traceIdStr
-          "exception", ex.GetType().FullName
-          "message", ex.Message ]
+    // Trace detail OFF must be a true no-op. `prepareTraceForStorage` (below) promotes captured ephemeral
+    // blobs into package_blobs before `TraceStorage.store`'s own off-check, so gating only the store still
+    // grows package_blobs on every traced request. Bail here so neither the promote nor the store runs. This
+    // is the single choke point for both the sqlite and CLI tracers (the serve uses the CLI one).
+    if TraceDetail.current = TraceDetail.Off then
+      return ()
+    else
+
+      let traceIdStr = string traceID
+      use _span = Telemetry.span "trace.store" [ "traceId", traceIdStr ]
+      try
+        let! preparedInput = prepareTraceForStorage exeState inputDval state
+        TraceStorage.store
+          rootTLID
+          traceID
+          handlerDesc
+          inputVarName
+          preparedInput
+          (Seq.toList state.events)
+          exeState.accountID
+      with ex ->
+        System.Console.Error.WriteLine
+          $"[tracing] Failed to store trace: {ex.Message}"
+        Telemetry.event
+          "trace.storeFailed"
+          [ "traceId", traceIdStr
+            "exception", ex.GetType().FullName
+            "message", ex.Message ]
   }
 
 
@@ -562,8 +576,17 @@ let createNonTracer (_traceID : AT.TraceID.T) : T =
 
 
 let create (rootTLID : tlid) (traceID : AT.TraceID.T) : T =
-  let config = TracingConfig.forHandler rootTLID traceID
-  match config with
-  | TracingConfig.DoTrace
-  | TracingConfig.TraceWithTelemetry -> createSqliteTracer rootTLID traceID
-  | TracingConfig.DontTrace -> createNonTracer traceID
+  // Trace detail OFF must mean FULLY off — not just "don't write the trace rows". The sqlite tracer captures
+  // call events during execution and, at store time, `prepareDvalForStorage` PROMOTES their ephemeral blobs into
+  // package_blobs (so a trace survives its VM) BEFORE `TraceStorage.store`'s off-check runs. So gating only the
+  // store still leaves that blob-promotion firing on every `serve` request — which, for the sync endpoints
+  // (responses = whole op/blob batches), grew package_blobs unboundedly even with trace storage "off". Returning
+  // the non-tracer here makes Off a true no-op: no capture, no promote, no store.
+  if TraceDetail.current = TraceDetail.Off then
+    createNonTracer traceID
+  else
+    let config = TracingConfig.forHandler rootTLID traceID
+    match config with
+    | TracingConfig.DoTrace
+    | TracingConfig.TraceWithTelemetry -> createSqliteTracer rootTLID traceID
+    | TracingConfig.DontTrace -> createNonTracer traceID

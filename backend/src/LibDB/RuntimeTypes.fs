@@ -29,6 +29,12 @@ module Type =
 
 
 module Value =
+  /// The evaluated runtime value at <param hash>, or None if there's no such value OR it exists but hasn't
+  /// been evaluated yet. Unlike types/functions (rt_def/rt_instrs are NOT NULL), `rt_dval` is NULL until a
+  /// value is evaluated — and a value arrives unevaluated whenever it's folded from an op (e.g. pulled from a
+  /// peer) before the next grow pass, or if its evaluation errored. The `IS NOT NULL` guard makes that read
+  /// return None instead of throwing "data is NULL at ordinal 0" on the NULL blob; the caller treats a
+  /// not-yet-evaluated value the same as an absent one (grow populates it before it's needed in the happy path).
   let get (hash : Hash) : Ply<Option<RT.PackageValue.PackageValue>> =
     uply {
       let (Hash hashStr) = hash
@@ -37,7 +43,7 @@ module Value =
           """
           SELECT rt_dval
           FROM package_values
-          WHERE hash = @hash
+          WHERE hash = @hash AND rt_dval IS NOT NULL
           """
         |> Sql.parameters [ "hash", Sql.string hashStr ]
         |> Sql.executeRowOptionAsync (fun read -> read.bytes "rt_dval")
@@ -110,6 +116,51 @@ module Blob =
             "bytes", Sql.bytes bytes ]
         |> Sql.executeNonQueryAsync
       return ()
+    }
+
+  /// Base64-decode [b64], verify the bytes actually hash to [hash], and store under it. Returns whether it
+  /// stored. False on empty input, un-decodable base64, or a hash mismatch — the last is the integrity core
+  /// of a content-addressed store: without it a peer could serve arbitrary bytes for a legitimate hash and
+  /// poison the store (a value silently becomes different code) for every branch that references it. Total:
+  /// a hostile/garbled peer body must not throw.
+  let insertVerified (hash : string) (b64 : string) : Ply<bool> =
+    uply {
+      if b64 = "" then
+        return false
+      else
+        match
+          (try
+            Some(System.Convert.FromBase64String b64)
+           with _ ->
+             None)
+        with
+        | None -> return false
+        | Some bytes ->
+          if LibExecution.Blob.sha256Hex bytes = hash then
+            do! insert hash bytes
+            return true
+          else
+            return false
+    }
+
+  /// Of some offered content hashes, which this store LACKS — sync's fetch-on-miss (blobs don't ride the
+  /// op stream). Content-addressed, so a hash we have is identical content; only genuinely-absent ones need
+  /// fetching.
+  let missing (hashes : List<string>) : Ply<List<string>> =
+    uply {
+      let! present =
+        Sql.query "SELECT hash FROM package_blobs"
+        |> Sql.executeAsync (fun read -> read.string "hash")
+      let presentSet = Set.ofList present
+      return hashes |> List.filter (fun h -> not (Set.contains h presentSet))
+    }
+
+  /// Every content hash this store holds — the sync blob MANIFEST (sender side of fetch-on-miss).
+  let allHashes () : Ply<List<string>> =
+    uply {
+      return!
+        Sql.query "SELECT hash FROM package_blobs"
+        |> Sql.executeAsync (fun read -> read.string "hash")
     }
 
 

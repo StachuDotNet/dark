@@ -24,6 +24,7 @@ open LibExecution.Builtin.Shortcuts
 module Dval = LibExecution.Dval
 module D = LibExecution.DvalDecoder
 module PT = LibExecution.ProgramTypes
+module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module PT2DT = LibExecution.ProgramTypesToDarkTypes
 module RT2DT = LibExecution.RuntimeTypesToDarkTypes
 module PackageRefs = LibExecution.PackageRefs
@@ -306,6 +307,63 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               result
               |> Option.map PT2DT.PackageFn.toDT
               |> Dval.option (KTCustomType((PT2DT.PackageFn.typeName ()), []))
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+
+    // Resolve a package fn's dotted name to a callable value (Applicable), so a name that only exists as a
+    // STRING (a CLI arg) can be passed as a function without eval'ing a source string. This is what lets
+    // `dark serve` hand a router to `Stdlib.HttpServer.serve` directly (no `cliEvaluateExpression`).
+    // CLEANUP(applicableByName): `dark eval` already resolves a dotted name to a runnable value, so this builtin
+    // can eventually fold into eval and be deleted (one fewer builtin — the fewer-builtins rule). ~1hr; the one
+    // wrinkle is keeping an expression that produces nothing printing nothing. Left for a tidy pass.
+    { name = fn "applicableByName" 0
+      typeParams = []
+      parameters =
+        [ Param.make "branchId" TUuid "the branch to resolve on"
+          Param.make
+            "name"
+            TString
+            "dotted package fn name, e.g. Darklang.Sync.Server.router" ]
+      returnType =
+        TypeReference.result
+          (TFn(NEList.singleton (TVariable "a"), TVariable "b"))
+          TString
+      description =
+        "Resolves a package function by its dotted <param name> to a callable value, "
+        + "as a Result — Error (a plain-English message) if there's no such function. "
+        + "Lets a caller (e.g. `dark serve`) report a bad name cleanly instead of "
+        + "crashing."
+      fn =
+        (function
+        | _, _, _, [ DUuid branchId; DString name ] ->
+          uply {
+            let okKT = KTFn(NEList.singleton ValueType.Unknown, ValueType.Unknown)
+            let err (msg : string) = Dval.resultError okKT KTString (DString msg)
+            // dotted name → owner.modules….fnName (native pattern-match; Prelude's List.last is Option-safe)
+            match name.Split('.') |> Array.toList |> List.rev with
+            | fnName :: revOwnerMods ->
+              match List.rev revOwnerMods with
+              | owner :: modules ->
+                let location : PT.PackageLocation =
+                  { owner = owner; modules = modules; name = fnName }
+                match! pm.findFn (branchId, location) with
+                | Some fqPkg ->
+                  let rtName = FQFnName.Package(PT2RT.FQFnName.Package.toRT fqPkg)
+                  let namedFn : ApplicableNamedFn =
+                    { name = rtName
+                      typeSymbolTable = Map.empty
+                      typeArgs = []
+                      argsSoFar = [] }
+                  return
+                    Dval.resultOk okKT KTString (DApplicable(AppNamedFn namedFn))
+                | None -> return err $"No function named {name}"
+              | [] -> return err $"Not a package function name: {name}"
+            | [] -> return err "Empty router name"
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -606,10 +664,14 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 []
               )
 
-            // Determine the hash to restore: explicit target or find committed
-            let! restoredHashResult =
+            // Determine what to restore: an explicit target hash (whose kind is the source's — the caller
+            // named it), or whatever is committed at the name. In the latter case use the kind actually
+            // FOUND there, not the source's: one name holds one item, so the name may have been rebound to
+            // a different kind since, and labelling the restored hash with the wrong kind builds a
+            // Reference that points at nothing.
+            let! restoredResult =
               match C2DT.Option.fromDT PT2DT.Hash.fromDT targetHashDval with
-              | Some targetHash -> uply { return Ok targetHash }
+              | Some targetHash -> uply { return Ok(targetHash, sourceItemKind) }
               | None ->
                 uply {
                   let! result =
@@ -618,18 +680,20 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                       sourceLocation.owner
                       modulesStr
                       sourceLocation.name
-                      (sourceItemKind.toString ())
-                  return result |> Result.map fst
+                  return
+                    result
+                    |> Result.map (fun ((hash, itemType), _) ->
+                      (hash, PT.ItemKind.fromString itemType))
                 }
 
-            match restoredHashResult with
+            match restoredResult with
             | Error errMsg ->
               return Dval.resultError tupleKT KTString (DString errMsg)
-            | Ok restoredHash ->
+            | Ok(restoredHash, restoredKind) ->
               let revertId = System.Guid.NewGuid()
 
               let restoredSourceRef =
-                PT.Reference.fromHashAndKind (restoredHash, sourceItemKind)
+                PT.Reference.fromHashAndKind (restoredHash, restoredKind)
 
               let revertOp =
                 PT.PackageOp.RevertPropagation(

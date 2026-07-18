@@ -38,8 +38,24 @@ let execute (state: AppState) (args: List<String>) : AppState =
       Stdlib.printLine "Commit not found or has no ops."
     else
       let shortId = Stdlib.String.first fullIdStr 8
-      Stdlib.printLine $"Commit {Cli.Colors.cyan}{shortId}{Cli.Colors.reset}:"
-      Stdlib.printLine ""
+
+      // The commit's own metadata for the header — who/when/why, not just the id. `dark commits` shows the
+      // committer; `show` on one commit should at least as much.
+      let meta =
+        SCM.PackageOps.getCommitsWithAncestors branchId 200
+        |> Stdlib.List.findFirst (fun c ->
+          LanguageTools.ProgramTypes.hashToString c.hash == fullIdStr)
+
+      // No blank line under the header: it separated the title from the only thing the title was introducing.
+      match meta with
+      | Some c ->
+        Stdlib.printLine
+          $"Commit {Cli.Colors.cyan}{shortId}{Cli.Colors.reset} — {c.committerName}, {Stdlib.DateTime.toString c.createdAt} — {Stdlib.Int.toString (Stdlib.List.length ops)} ops"
+
+        Stdlib.printLine $"  {c.message}"
+      | None ->
+        Stdlib.printLine
+          $"Commit {Cli.Colors.cyan}{shortId}{Cli.Colors.reset} — {Stdlib.Int.toString (Stdlib.List.length ops)} ops:"
 
       ops
       |> Stdlib.List.iter (fun op ->

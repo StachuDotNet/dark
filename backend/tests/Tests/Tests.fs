@@ -59,6 +59,11 @@ let main (args : string array) : int =
         Tests.LibExecution.tests.Force()
 
         Tests.Blob.tests
+        Tests.OpsProjections.tests
+        Tests.SyncScenarios.tests
+        Tests.MultiInstance.tests
+        Tests.SyncE2E.tests
+        Tests.Releases.tests
         Tests.Stream.tests
         Tests.Capabilities.tests ]
 

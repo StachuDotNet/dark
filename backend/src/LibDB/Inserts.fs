@@ -24,17 +24,34 @@ let computeOpHash (op : PT.PackageOp) : System.Guid =
   System.Guid(hashBytes[0..15])
 
 
-/// Insert PackageOps into the package_ops table and apply them to projection tables.
-/// branchId = branch context
-/// commitHash = None means WIP (commit_hash = NULL), Some id means committed
-/// Returns the count of ops actually inserted (duplicates are skipped via INSERT OR IGNORE)
-///
-/// Uses a two-phase approach for consistency:
-/// 1. Insert ops with applied=false
-/// 2. Apply ops to projection tables
-/// 3. Mark ops as applied=true
-///
-/// This ensures that if step 2 fails, we can identify unapplied ops and retry/rollback.
+/// A process-monotonic authoring stamp (`origin_ts`): millisecond wall clock, but returns `max(nowMs,
+/// last+1ms)` so it never repeats within a batch. Otherwise same-ms ops would tie and the LWW in
+/// `applySetName` would break it by content hash — silently reordering local sequential edits (rename v1
+/// then v2 could leave v1 winning). Strictly-increasing stamps mean the later edit always wins. Format
+/// matches the schema default `strftime('%Y-%m-%dT%H:%M:%fZ')` so it stays lexically comparable across peers.
+let private originTsLock = System.Object()
+let mutable private lastOriginTs = System.DateTime.MinValue
+
+let nextOriginTs () : string =
+  lock originTsLock (fun () ->
+    let nowMs =
+      let n = System.DateTime.UtcNow
+      System.DateTime(
+        n.Ticks - (n.Ticks % System.TimeSpan.TicksPerMillisecond),
+        System.DateTimeKind.Utc
+      )
+    let next =
+      if nowMs > lastOriginTs then nowMs else lastOriginTs.AddMilliseconds 1.0
+    lastOriginTs <- next
+    next.ToString(
+      "yyyy-MM-ddTHH:mm:ss.fffZ",
+      System.Globalization.CultureInfo.InvariantCulture
+    ))
+
+
+/// Insert PackageOps and fold them into the projections. `commitHash = None` = WIP (commit_hash NULL), `Some`
+/// = committed. Returns the count actually inserted (duplicates skipped via INSERT OR IGNORE). Insert with
+/// applied=false, fold, then mark applied=true — so a mid-fold failure leaves the ops identifiable + retryable.
 let insertAndApplyOps
   (branchId : PT.BranchId)
   (commitHash : Option<string>)
@@ -55,20 +72,22 @@ let insertAndApplyOps
           | PT.PackageOp.RevertPropagation(rid, _, _, _, _) -> Some rid
           | _ -> None)
 
+      // Each op gets a strictly-increasing authoring stamp (see `nextOriginTs`), assigned in list order so
+      // sequential edits within one wall-clock millisecond are still ordered by creation for the LWW.
       let opsWithIds =
         ops
         |> List.map (fun op ->
           let opId = computeOpHash op
           let opBlob = BS.PT.PackageOp.serialize opId op
-          (opId, op, opBlob, batchPropagationId))
+          (opId, op, opBlob, batchPropagationId, nextOriginTs ()))
 
       let insertStatements =
         opsWithIds
-        |> List.map (fun (opId, _op, opBlob, propagationId) ->
+        |> List.map (fun (opId, _op, opBlob, propagationId, originTs) ->
           let sql =
             """
-            INSERT OR IGNORE INTO package_ops (id, op_blob, branch_id, applied, commit_hash, propagation_id)
-            VALUES (@id, @op_blob, @branch_id, @applied, @commit_hash, @propagation_id)
+            INSERT OR IGNORE INTO package_ops (id, op_blob, branch_id, applied, commit_hash, propagation_id, origin_ts)
+            VALUES (@id, @op_blob, @branch_id, @applied, @commit_hash, @propagation_id, @origin_ts)
             """
 
           let commitHashParam =
@@ -85,7 +104,8 @@ let insertAndApplyOps
               "propagation_id",
               (match propagationId with
                | Some id -> Sql.uuid id
-               | None -> Sql.dbnull) ]
+               | None -> Sql.dbnull)
+              "origin_ts", Sql.string originTs ]
 
           (sql, [ parameters ]))
 
@@ -100,9 +120,9 @@ let insertAndApplyOps
         |> List.filter (fun (_, affected) -> affected > 0)
         |> List.map fst
 
-      let opsToApply = insertedOpsWithIds |> List.map (fun (_, op, _, _) -> op)
+      let opsToApply = insertedOpsWithIds |> List.map (fun (_, op, _, _, _) -> op)
       let insertedOpIds =
-        insertedOpsWithIds |> List.map (fun (opId, _, _, _) -> opId)
+        insertedOpsWithIds |> List.map (fun (opId, _, _, _, _) -> opId)
 
       do! PackageOpPlayback.applyOps branchId commitHash opsToApply
 
@@ -147,7 +167,12 @@ let insertAndApplyOpsWithCommit
         """
         SELECT hash FROM commits
         WHERE branch_id = @branch_id
-        ORDER BY created_at DESC
+        -- rowid tiebreak: on a same-second created_at tie, pick the chain TIP deterministically. A child
+        -- commit is always inserted after its parent (commits are sequential locally, branch ops apply in
+        -- order on receive), so the tip has the highest rowid on every peer — the same logical commit
+        -- everywhere, even though absolute rowids differ. Without it, two peers could base off different
+        -- commits and diverge.
+        ORDER BY created_at DESC, rowid DESC
         LIMIT 1
         """
       |> Sql.parameters [ "branch_id", Sql.uuid branchId ]
@@ -178,6 +203,78 @@ let insertAndApplyOpsAsWip
   (ops : List<PT.PackageOp>)
   : Task<int64> =
   insertAndApplyOps branchId None ops
+
+
+/// Names in `ops` whose SetName would bind a name to a DIFFERENT kind than the one live there — reported as
+/// ready-to-print messages, empty when there's no clash.
+///
+/// One name holds one item, so replacing a value with a fn at the same name is a real decision, not a typo to
+/// absorb silently. Local authoring can ask the human to be explicit (delete it first); the SYNC fold cannot —
+/// it has no one to ask and must converge, so it replaces by last-writer-wins. That asymmetry is deliberate:
+/// this guard is UX, not an invariant. Anything that reaches the fold is still handled.
+let kindClashes
+  (branchId : PT.BranchId)
+  (ops : List<PT.PackageOp>)
+  : Task<List<string>> =
+  task {
+    let setNames =
+      ops
+      |> List.choose (fun op ->
+        match op with
+        | PT.PackageOp.SetName(loc, target) -> Some(loc, target.kind)
+        | _ -> None)
+
+    let mutable clashes = []
+
+    for (loc, kind) in setNames do
+      // A DEPRECATED binding doesn't defend its name: `delete` retires the item, and the name is then free to
+      // be re-bound as another kind (which is exactly what the clash message tells you to do). Reusing the
+      // name is safe because dependents reference items by HASH, not by name — the retired item still
+      // resolves for anything pointing at it. "Currently deprecated" = the newest deprecations row for the
+      // item says so, matching how readers decide it (Queries.fs).
+      let! live =
+        Sql.query
+          """
+          SELECT l.item_type FROM locations l
+          WHERE l.owner = @owner AND l.modules = @modules AND l.name = @name
+            AND l.branch_id = @branch_id AND l.unlisted_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM deprecations d
+              WHERE d.item_hash = l.item_hash
+                AND d.item_kind = l.item_type
+                AND d.branch_id = l.branch_id
+                AND d.unlisted_at IS NULL
+                AND d.state = 'deprecated'
+                AND d.created_at = (
+                  SELECT MAX(d2.created_at) FROM deprecations d2
+                  WHERE d2.item_hash = d.item_hash
+                    AND d2.item_kind = d.item_kind
+                    AND d2.branch_id = d.branch_id
+                    AND d2.unlisted_at IS NULL
+                )
+            )
+          LIMIT 1
+          """
+        |> Sql.parameters
+          [ "owner", Sql.string loc.owner
+            "modules", Sql.string (String.concat "." loc.modules)
+            "name", Sql.string loc.name
+            "branch_id", Sql.uuid branchId ]
+        |> Sql.executeRowOptionAsync (fun read -> read.string "item_type")
+
+      let incoming = kind.toString ()
+
+      match live with
+      | Some existing when existing <> incoming ->
+        let dotted = (loc.owner :: loc.modules) @ [ loc.name ] |> String.concat "."
+        clashes <-
+          $"{dotted} is already a {existing} — a name holds one item, so it can't also be a {incoming}. "
+          + $"Retire it first (dark delete {existing} {dotted}), or pick another name."
+          :: clashes
+      | _ -> ()
+
+    return List.rev clashes
+  }
 
 
 // A commit stamps package_ops plus the projection rows it publishes.
@@ -356,16 +453,9 @@ let rec commitWipOps
   }
 
 
-/// Commit exactly the WIP ops with the given IDs.
-///
-/// The caller owns selection policy. This function validates that every
-/// requested id is still WIP, creates the commit, and stamps the selected ops
-/// plus their derived projection rows. If the requested ids cover the whole WIP
-/// set, it uses the commit-all projection path.
-///
-/// CLEANUP: if SCM becomes a shared multi-writer service, move validation,
-/// parent lookup, commit creation, and row stamping into one transaction
-/// on one connection.
+/// Commit exactly the WIP ops with the given ids (the caller owns selection policy): validate each is still
+/// WIP, create the commit, stamp the ops + their projection rows. A full-WIP set uses the commit-all path.
+/// CLEANUP: if SCM becomes multi-writer, do validation + commit creation + stamping in one transaction.
 and commitWipOpsByIds
   (accountId : AccountID)
   (branchId : PT.BranchId)
@@ -457,7 +547,20 @@ and commitWipOpsByIds
           let projStmts =
             projectionStatements commitHashStr branchId allSelected selectedOps
 
-          let statements = [ branchOpStmt; commitStmt ] @ projStmts
+          // Stamp each committed op with a monotonic COMMIT-order `committed_seq`, so sync (`eventsSince`)
+          // pages by commit order, not authoring order (rowid). Single-writer SCM, so MAX+i is race-free.
+          let! seqBase =
+            Sql.query "SELECT COALESCE(MAX(committed_seq), 0) AS m FROM package_ops"
+            |> Sql.executeRowAsync (fun read -> read.int64 "m")
+          let seqStmts =
+            selectedOps
+            |> List.mapi (fun i (opId, _) ->
+              ("UPDATE package_ops SET committed_seq = @seq WHERE id = @id AND branch_id = @branch_id",
+               [ [ "seq", Sql.int64 (seqBase + int64 (i + 1))
+                   "id", Sql.uuid opId
+                   "branch_id", Sql.uuid branchId ] ]))
+
+          let statements = [ branchOpStmt; commitStmt ] @ projStmts @ seqStmts
 
           let _ = Sql.executeTransactionSync statements
 
@@ -467,46 +570,49 @@ and commitWipOpsByIds
   }
 
 
-/// Find the committed Hash at a location, checking the current branch first,
-/// then falling back to ancestor branches.
-/// Returns Ok(hash, locationIdOpt) where locationIdOpt is Some for same-branch
-/// committed locations (that need un-deprecating) or None for ancestor locations
-/// (which are already active on the parent).
+/// Find the committed item at a location, checking the current branch first, then falling back to ancestor
+/// branches. Keyed by NAME, not (name, kind): one name holds one item, so what's committed there is whatever
+/// it is — and the caller needs the kind it FOUND (the name may since have been rebound to another kind),
+/// hence returning it rather than taking it as a filter.
+/// Returns Ok((hash, kind), locationIdOpt) where locationIdOpt is Some for same-branch committed locations
+/// (that need un-deprecating) or None for ancestor locations (which are already active on the parent).
 let findCommittedHash
   (branchId : PT.BranchId)
   (owner : string)
   (modules : string)
   (name : string)
-  (itemType : string)
-  : Task<Result<Hash * Option<uuid>, string>> =
+  : Task<Result<(Hash * string) * Option<uuid>, string>> =
   task {
     // First: look for deprecated committed location on current branch
     let! committedLocations =
       Sql.query
         """
-        SELECT location_id, item_hash
+        SELECT location_id, item_hash, item_type
         FROM locations
         WHERE owner = @owner
           AND modules = @modules
           AND name = @name
-          AND item_type = @item_type
           AND branch_id = @branch_id
           AND commit_hash IS NOT NULL
           AND unlisted_at IS NOT NULL
-        ORDER BY unlisted_at DESC
+        -- rowid tiebreak: unlisted_at is second-resolution; without it a tie restores an arbitrary row,
+        -- differing across a re-fold. Highest rowid = the truly-latest committed version.
+        ORDER BY unlisted_at DESC, rowid DESC
         LIMIT 1
         """
       |> Sql.parameters
         [ "owner", Sql.string owner
           "modules", Sql.string modules
           "name", Sql.string name
-          "item_type", Sql.string itemType
           "branch_id", Sql.uuid branchId ]
       |> Sql.executeAsync (fun read ->
-        (read.uuid "location_id", Hash(read.string "item_hash")))
+        (read.uuid "location_id",
+         Hash(read.string "item_hash"),
+         read.string "item_type"))
 
     match committedLocations with
-    | (locationId, itemHash) :: _ -> return Ok(itemHash, Some locationId)
+    | (locationId, itemHash, itemType) :: _ ->
+      return Ok((itemHash, itemType), Some locationId)
     | [] ->
       // Fall back to ancestor branches for an active committed location.
       // The parent's location was never deprecated by applySetName
@@ -526,12 +632,11 @@ let findCommittedHash
         let! ancestorLocations =
           Sql.query
             $"""
-            SELECT item_hash
+            SELECT item_hash, item_type
             FROM locations
             WHERE owner = @owner
               AND modules = @modules
               AND name = @name
-              AND item_type = @item_type
               AND branch_id IN ({branchInClause})
               AND unlisted_at IS NULL
             LIMIT 1
@@ -539,14 +644,14 @@ let findCommittedHash
           |> Sql.parameters (
             [ "owner", Sql.string owner
               "modules", Sql.string modules
-              "name", Sql.string name
-              "item_type", Sql.string itemType ]
+              "name", Sql.string name ]
             @ branchParams
           )
-          |> Sql.executeAsync (fun read -> Hash(read.string "item_hash"))
+          |> Sql.executeAsync (fun read ->
+            (Hash(read.string "item_hash"), read.string "item_type"))
 
         match ancestorLocations with
-        | itemHash :: _ -> return Ok(itemHash, None)
+        | (itemHash, itemType) :: _ -> return Ok((itemHash, itemType), None)
         | [] -> return Error "No committed version found to restore"
   }
 
@@ -593,18 +698,17 @@ let discardWipOps (branchId : PT.BranchId) : Task<Result<int64, string>> =
                  ON committed_loc.owner = wip_loc.owner
                  AND committed_loc.modules = wip_loc.modules
                  AND committed_loc.name = wip_loc.name
-                 AND committed_loc.item_type = wip_loc.item_type
                  AND committed_loc.branch_id = wip_loc.branch_id
                  AND committed_loc.commit_hash IS NOT NULL
                  AND committed_loc.unlisted_at IS NOT NULL
                WHERE wip_loc.branch_id = @branch_id
                  AND wip_loc.commit_hash IS NULL
+                 AND wip_loc.source <> 'resolution'
                  AND NOT EXISTS (
                    SELECT 1 FROM locations active
                    WHERE active.owner = wip_loc.owner
                      AND active.modules = wip_loc.modules
                      AND active.name = wip_loc.name
-                     AND active.item_type = wip_loc.item_type
                      AND active.branch_id = wip_loc.branch_id
                      AND active.commit_hash IS NOT NULL
                      AND active.unlisted_at IS NULL
@@ -615,7 +719,6 @@ let discardWipOps (branchId : PT.BranchId) : Task<Result<int64, string>> =
                    WHERE c2.owner = wip_loc.owner
                      AND c2.modules = wip_loc.modules
                      AND c2.name = wip_loc.name
-                     AND c2.item_type = wip_loc.item_type
                      AND c2.branch_id = wip_loc.branch_id
                      AND c2.commit_hash IS NOT NULL
                      AND c2.unlisted_at IS NOT NULL
@@ -624,7 +727,8 @@ let discardWipOps (branchId : PT.BranchId) : Task<Result<int64, string>> =
              """,
              branchParam)
 
-            ("DELETE FROM locations WHERE branch_id = @branch_id AND commit_hash IS NULL",
+            ("DELETE FROM locations WHERE branch_id = @branch_id AND commit_hash IS NULL \
+              AND source <> 'resolution'",
              branchParam)
 
             ("DELETE FROM deprecations WHERE branch_id = @branch_id AND commit_hash IS NULL",

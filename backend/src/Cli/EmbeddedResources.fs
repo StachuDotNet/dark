@@ -79,6 +79,143 @@ let private hasEmbeddedResource (resourceName : string) : bool =
   let assembly = Assembly.GetExecutingAssembly()
   assembly.GetManifestResourceNames() |> Array.contains resourceName
 
+
+// ── Release reconciliation on an EXISTING store ──────────────────────────────────────────────────────
+// The CLI seeds a fresh store from the embedded db, but a store left over from a PREVIOUS CLI release is
+// not otherwise migrated: the schema/op-format/hashing can differ, and the shipped CLI doesn't run the
+// LocalExec migrator. So on startup we reconcile the store's Release stamp with this binary's
+// `LibDB.Releases.currentRelease` before any LibDB connection is opened.
+
+/// Read the store's Release stamp via a throwaway, NON-POOLED read-only connection, so LibDB's own (pooled)
+/// shared connection is never opened here — a reseed moves the db file aside, and a pooled handle would keep
+/// pointing at the moved inode. `Some r` = stamped; `None` = opened fine but no stamp (treated as a stale
+/// store to re-seed). If the db can't be opened/read at all, hard-fail — a lock or corruption must not be
+/// mistaken for "stale" and trigger a data-destroying reseed.
+let private readStoredRelease (dbPath : string) : int option =
+  try
+    use conn =
+      new Microsoft.Data.Sqlite.SqliteConnection(
+        $"Data Source={dbPath};Mode=ReadOnly;Pooling=false"
+      )
+    conn.Open()
+    use tableCmd = conn.CreateCommand()
+    tableCmd.CommandText <-
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'release_state_v0'"
+    match tableCmd.ExecuteScalar() with
+    | null -> None
+    | _ ->
+      use cmd = conn.CreateCommand()
+      cmd.CommandText <- "SELECT \"release\" FROM release_state_v0 WHERE id = 0"
+      match cmd.ExecuteScalar() with
+      | null -> None
+      | v -> Some(Convert.ToInt32 v)
+  with ex ->
+    eprintfn $"Cannot open the Darklang data store at {dbPath}: {ex.Message}"
+    eprintfn
+      "Close any other Darklang processes and retry, or move that file aside to start fresh."
+    exit 1
+
+/// The peer URLs configured in a store, or [] if the table is absent / unreadable. Peers are sync CONFIG
+/// (owned by `sync_peers_v0` in packages/darklang/sync.dark), not disposable package content.
+let private readPeerUrls (path : string) : List<string> =
+  try
+    use conn =
+      new Microsoft.Data.Sqlite.SqliteConnection(
+        $"Data Source={path};Mode=ReadOnly;Pooling=false"
+      )
+    conn.Open()
+    use cmd = conn.CreateCommand()
+    cmd.CommandText <- "SELECT url FROM sync_peers_v0"
+    use reader = cmd.ExecuteReader()
+    [ while reader.Read() do
+        yield reader.GetString 0 ]
+  with _ ->
+    []
+
+/// Best-effort: carry the peer URLs from the backed-up store into the fresh one, so a clean-break upgrade
+/// doesn't make you re-add your peers. Cursors are deliberately NOT carried — a clean break means the fresh
+/// store must re-pull from scratch, so a stale cursor would skip ops. Returns how many peers were carried.
+let private carryForwardPeers (backupPath : string) (dbPath : string) : int =
+  let urls = readPeerUrls backupPath
+  if List.isEmpty urls then
+    0
+  else
+    try
+      use conn =
+        new Microsoft.Data.Sqlite.SqliteConnection(
+          $"Data Source={dbPath};Pooling=false"
+        )
+      conn.Open()
+      use create = conn.CreateCommand()
+      create.CommandText <-
+        "CREATE TABLE IF NOT EXISTS sync_peers_v0 (url TEXT PRIMARY KEY)"
+      create.ExecuteNonQuery() |> ignore
+      for url in urls do
+        use ins = conn.CreateCommand()
+        ins.CommandText <- "INSERT OR IGNORE INTO sync_peers_v0 (url) VALUES ($u)"
+        ins.Parameters.AddWithValue("$u", url) |> ignore
+        ins.ExecuteNonQuery() |> ignore
+      List.length urls
+    with _ ->
+      0
+
+/// Move the stale store (and its WAL/SHM sidecars, so a leftover WAL can't attach to the new db) aside to a
+/// timestamped backup, then re-extract the embedded current-Release seed and carry the peer list forward.
+/// Returns (backup path, number of peers carried).
+let private reseedStore (dbPath : string) (storedLabel : string) : string * int =
+  let stamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss")
+  let backup = $"{dbPath}.{storedLabel}-{stamp}.bak"
+  File.Move(dbPath, backup)
+  for suffix in [ "-wal"; "-shm" ] do
+    let side = dbPath + suffix
+    if File.Exists side then File.Move(side, backup + suffix)
+  extractGzippedResource "data.db.gz" dbPath
+  let peers = carryForwardPeers backup dbPath
+  (backup, peers)
+
+let private reseedAndReport
+  (dbPath : string)
+  (current : int)
+  (storedLabel : string)
+  : unit =
+  let (backup, peers) = reseedStore dbPath storedLabel
+  eprintfn
+    $"Upgraded this data directory to Release {current} (was {storedLabel}); previous store backed up to {backup}."
+  if peers > 0 then
+    eprintfn
+      $"Kept your {peers} peer connection(s) — run `dark sync` to re-pull and repopulate."
+  else
+    eprintfn "Re-connect and pull from your peers, or re-author, to repopulate it."
+
+/// Reconcile an existing store's Release with this binary's. Called only when data.db already exists.
+let private reconcileExistingStore (dbPath : string) : unit =
+  let current = LibDB.Releases.currentRelease
+  let stored = readStoredRelease dbPath
+  let label =
+    match stored with
+    | Some r -> $"release{r}"
+    | None -> "an untracked store"
+  match LibDB.Releases.planCliUpgrade LibDB.Releases.releases stored current with
+  | LibDB.Releases.CliUpgrade.Proceed -> () // up to date
+  | LibDB.Releases.CliUpgrade.RefuseNewer r ->
+    // A newer store must not be opened by older code (it could corrupt the newer format). Refuse.
+    eprintfn
+      $"This Darklang data directory is from a newer release (Release {r}); this binary is Release {current}."
+    eprintfn
+      $"Upgrade the CLI, or move {dbPath} aside to start fresh — refusing to open it with older code."
+    exit 1
+  | LibDB.Releases.CliUpgrade.MigrateInPlace ->
+    // Every pending step is durable — migrate the store forward in place, PRESERVING the data (schema
+    // copy-swap + op-format re-serialize + refold). No source needed, so the CLI can run it directly.
+    LibDB.Releases.applyPending current
+    eprintfn
+      $"Upgraded this data directory from {label} to Release {current} (data preserved)."
+  | LibDB.Releases.CliUpgrade.Reseed ->
+    // A clean-break Release (content hashing changed) or an untracked store of unknown format: the old
+    // package data can't be reused in place, so back it up and re-seed from the embedded current-Release
+    // store.
+    reseedAndReport dbPath current label
+
 let extract () : unit =
   // The embedded resource is `data.db.gz` (the seed db, gzip-compressed at
   // build time to save ~7 MB on binary size). On first run, decompress to
@@ -106,3 +243,5 @@ let extract () : unit =
       Directory.CreateDirectory(logsDir) |> ignore
 
       printfn "CLI data directory setup complete"
+    else
+      reconcileExistingStore dbPath

@@ -196,7 +196,7 @@ let private applyAddType
 
 /// Apply a single AddValue op to the package_values table.
 /// Note: rt_dval and value_type are stored as NULL here. They are populated
-/// in Phase 3 by Seed.evaluateAllValues after all ops are applied, so cross-
+/// by Seed.evaluateAllValues after all ops are applied, so cross-
 /// package references resolve correctly.
 let private applyAddValue
   (ctx : Ctx)
@@ -276,55 +276,140 @@ let private applySetName
     let locationId = System.Guid.NewGuid()
     let (Hash itemHashStr) = itemHash
 
-    // 1. Deprecate any existing location at the target path (handles updates)
-    do!
-      exec ctx """
-        UPDATE locations
-        SET unlisted_at = datetime('now')
-        WHERE owner = $owner
-          AND modules = $modules
-          AND name = $name
-          AND item_type = $item_type
-          AND unlisted_at IS NULL
-          AND branch_id = $branch_id
-        """ (fun cmd ->
-        p cmd "$owner" location.owner
-        p cmd "$modules" modulesStr
-        p cmd "$name" location.name
-        p cmd "$item_type" itemTypeStr
-        pUuid cmd "$branch_id" branchId)
+    // ── timestamp-LWW: order this binding by the op's CREATION time,
+    // not arrival. Read this op's `origin_ts` (the authoring stamp, already in package_ops) and the
+    // CURRENT binding's `origin_ts` (the name→authoring-time mapping in `locations`). If this op was
+    // created BEFORE the current binding's op — an old op arriving late via sync — it's stale: keep the
+    // existing, newer-by-creation binding (the op still lives in the log; it's just not the active name).
+    // Computed identically on every instance, so all converge to the SAME hash regardless of arrival
+    // order. Unknown stamps (op not in package_ops / pre-origin_ts data) → no skip = prior last-writer
+    // behavior, so non-sync playback (seed grow, local authoring) is unchanged. Reads run on ctx.conn so
+    // they see writes from earlier ops in this same applyOps transaction.
+    let thisOp =
+      PT.PackageOp.SetName(
+        location,
+        PT.Reference.fromHashAndKind (itemHash, itemKind)
+      )
+    let (Hash thisOpHashStr) = LibSerialization.Hashing.Hashing.computeOpHash thisOp
+    let thisOpId = System.Guid(System.Convert.FromHexString(thisOpHashStr)[0..15])
 
-    // 2. If this is a rename (standalone SetName, not paired with Add*),
-    //    also deprecate old locations pointing to the same hash.
-    //    We do NOT do this for Add+SetName pairs because multiple items can
-    //    legitimately share the same hash (e.g. Int8.ParseError and
-    //    Int16.ParseError have identical definitions).
-    if isRename then
+    let! thisTs =
+      task {
+        use cmd = ctx.conn.CreateCommand()
+        // Scope by (id, branch_id) — the composite PK. The same content op can exist on two branches with
+        // different origin_ts, so an `id`-only lookup could read the wrong branch's stamp and pick a different
+        // LWW winner across instances.
+        cmd.CommandText <-
+          "SELECT origin_ts FROM package_ops WHERE id = $id AND branch_id = $branch_id"
+        cmd.Parameters.AddWithValue("$id", string thisOpId)
+        |> ignore<SqliteParameter>
+        cmd.Parameters.AddWithValue("$branch_id", string branchId)
+        |> ignore<SqliteParameter>
+        use! reader = cmd.ExecuteReaderAsync()
+        let! hasRow = reader.ReadAsync()
+        if hasRow && not (reader.IsDBNull 0) then
+          return Some(reader.GetString 0)
+        else
+          return None
+      }
+
+    let! curBinding =
+      task {
+        use cmd = ctx.conn.CreateCommand()
+        // Keyed by NAME, not (name, kind): a location's identity is (owner, modules, name) — `item_type` is
+        // only a lookup hint (item_hash + kind -> find the thing), never part of what a name IS. So the
+        // binding this op supersedes is whatever is live at the name, whatever kind it holds.
+        cmd.CommandText <-
+          "SELECT item_hash, origin_ts FROM locations "
+          + "WHERE owner = $owner AND modules = $modules AND name = $name "
+          + "AND branch_id = $branch_id AND unlisted_at IS NULL LIMIT 1"
+        cmd.Parameters.AddWithValue("$owner", location.owner)
+        |> ignore<SqliteParameter>
+        cmd.Parameters.AddWithValue("$modules", modulesStr)
+        |> ignore<SqliteParameter>
+        cmd.Parameters.AddWithValue("$name", location.name)
+        |> ignore<SqliteParameter>
+        cmd.Parameters.AddWithValue("$branch_id", string branchId)
+        |> ignore<SqliteParameter>
+        use! reader = cmd.ExecuteReaderAsync()
+        let! hasRow = reader.ReadAsync()
+        if hasRow then
+          let h = reader.GetString 0
+          let ts = if reader.IsDBNull 1 then None else Some(reader.GetString 1)
+          return Some(h, ts)
+        else
+          return None
+      }
+
+    let isStale =
+      match curBinding, thisTs with
+      // On an EXACT TIE (two DIFFERENT ops for one name stamped the same millisecond — a genuine
+      // cross-instance race), break by item hash: the higher wins. That tie-break is PORTABLE (content,
+      // not arrival/rowid), so every instance converges on the same winner. Local sequential authoring
+      // never ties — `Inserts` self-stamps each op with a strictly-increasing origin_ts.
+      | Some(curHash, Some curTs), Some t when curHash <> itemHashStr ->
+        Lww.isStale t itemHashStr curTs curHash
+      // Same content re-applied (a re-pull, or two instances that independently authored identical bytes for
+      // this name): keep the EARLIEST origin_ts so the binding's stamp is identical on every instance
+      // regardless of fold/arrival order. Skip unless this op is strictly earlier (then re-bind to lower it).
+      // Without this the fold would re-stamp the binding with a LATER equal-hash op, and a different-hash op
+      // stamped between the two could then win on one instance and lose on another → divergence. (receiveOps'
+      // MIN-reconcile already keeps ops from arriving with a raised stamp; this makes the fold correct on its
+      // own, for any caller.)
+      | Some(curHash, Some curTs), Some t when curHash = itemHashStr -> t >= curTs
+      | _ -> false
+
+    if isStale then
+      return ()
+    else
+      // 1. Unlist whatever is live at the target name (handles updates). One name holds ONE item: this
+      //    does NOT filter on item_type, so binding a fn over a name that held a value replaces it rather
+      //    than leaving both live.
       do!
         exec ctx """
           UPDATE locations
           SET unlisted_at = datetime('now')
-          WHERE item_hash = $item_hash
-            AND branch_id = $branch_id
+          WHERE owner = $owner
+            AND modules = $modules
+            AND name = $name
             AND unlisted_at IS NULL
+            AND branch_id = $branch_id
           """ (fun cmd ->
-          p cmd "$item_hash" itemHashStr
+          p cmd "$owner" location.owner
+          p cmd "$modules" modulesStr
+          p cmd "$name" location.name
           pUuid cmd "$branch_id" branchId)
 
-    // 3. Insert new location entry.
-    do!
-      exec ctx """
-        INSERT INTO locations (location_id, item_hash, owner, modules, name, item_type, branch_id, commit_hash)
-        VALUES ($location_id, $item_hash, $owner, $modules, $name, $item_type, $branch_id, $commit_hash)
-        """ (fun cmd ->
-        pUuid cmd "$location_id" locationId
-        p cmd "$item_hash" itemHashStr
-        p cmd "$owner" location.owner
-        p cmd "$modules" modulesStr
-        p cmd "$name" location.name
-        p cmd "$item_type" itemTypeStr
-        pUuid cmd "$branch_id" branchId
-        pOpt cmd "$commit_hash" commitHash)
+      // 2. If this is a rename (standalone SetName, not paired with Add*), also deprecate old locations
+      //    pointing to the same hash. We do NOT do this for Add+SetName pairs because multiple items can
+      //    legitimately share the same hash (e.g. Int8.ParseError and Int16.ParseError).
+      if isRename then
+        do!
+          exec ctx """
+            UPDATE locations
+            SET unlisted_at = datetime('now')
+            WHERE item_hash = $item_hash
+              AND branch_id = $branch_id
+              AND unlisted_at IS NULL
+            """ (fun cmd ->
+            p cmd "$item_hash" itemHashStr
+            pUuid cmd "$branch_id" branchId)
+
+      // 3. Insert new location entry (with origin_ts for cross-instance timestamp-LWW).
+      do!
+        exec ctx """
+          INSERT INTO locations (location_id, item_hash, owner, modules, name, item_type, branch_id, commit_hash, origin_ts)
+          VALUES ($location_id, $item_hash, $owner, $modules, $name, $item_type, $branch_id, $commit_hash, $origin_ts)
+          """ (fun cmd ->
+          pUuid cmd "$location_id" locationId
+          p cmd "$item_hash" itemHashStr
+          p cmd "$owner" location.owner
+          p cmd "$modules" modulesStr
+          p cmd "$name" location.name
+          p cmd "$item_type" itemTypeStr
+          pUuid cmd "$branch_id" branchId
+          pOpt cmd "$commit_hash" commitHash
+          pOpt cmd "$origin_ts" thisTs)
   }
 
 
@@ -342,14 +427,9 @@ let private serializeAnnotation
   ms.ToArray()
 
 
-/// Apply a Deprecate op to the deprecations projection table.
-/// Supersedes any prior un-superseded row for (branch, item_hash, item_kind).
-///
-/// CLEANUP: deprecation identity is hash-keyed (`Reference` carries only a
-/// Hash). When two unrelated FQNs share a content hash, deprecating one
-/// deprecates both. We need to extend `Reference` (and the `deprecations`
-/// table) to carry location, then teach the query to filter by
-/// `(owner, modules, name)` like dependent lookups do.
+/// Apply a Deprecate op — supersede any prior un-superseded row for (branch, item_hash, item_kind).
+/// CLEANUP: identity is hash-keyed (`Reference` carries only a Hash), so two unrelated FQNs sharing a hash
+/// deprecate together. Fix: carry location on `Reference` + the `deprecations` table and filter by it.
 let private applyDeprecate
   (ctx : Ctx)
   (branchId : PT.BranchId)
@@ -481,7 +561,9 @@ let private applyRevertPropagation
             WHERE item_hash = $item_hash
               AND branch_id = $branch_id
               AND unlisted_at IS NOT NULL
-            ORDER BY unlisted_at DESC
+            -- rowid tiebreak: unlisted_at is second-resolution, so a tie would pick an arbitrary row and a
+            -- re-fold could restore a different version. Highest rowid = last-unlisted among ties = the true latest.
+            ORDER BY unlisted_at DESC, rowid DESC
             LIMIT 1
           )
           """ (fun cmd ->
@@ -520,7 +602,8 @@ let private applyRevertPropagation
           WHERE item_hash = $item_hash
             AND branch_id = $branch_id
             AND unlisted_at IS NOT NULL
-          ORDER BY unlisted_at DESC
+          -- rowid tiebreak (see the other restore query): deterministic 'latest' across a re-fold.
+          ORDER BY unlisted_at DESC, rowid DESC
           LIMIT 1
         )
         """ (fun cmd ->
@@ -599,9 +682,8 @@ let private collectAddedHashes (ops : List<PT.PackageOp>) : Set<Hash> =
 /// fresh prepared-statement cache (Ctx) is created and disposed per call,
 /// so the cache lifetime matches a single `applyOpsOnConnection` invocation.
 ///
-/// Dep-edge location columns are populated directly from each `Dependency`'s
-/// `location` field (the resolver stashes it onto `NameResolution<_>` at
-/// resolve time). No post-hoc backfill needed.
+/// Dep-edge location columns come straight from each `Dependency`'s `location` (stashed on `NameResolution`
+/// at resolve time) — no post-hoc backfill.
 let applyOpsOnConnection
   (conn : SqliteConnection)
   (branchId : PT.BranchId)

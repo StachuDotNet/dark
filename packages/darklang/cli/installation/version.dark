@@ -4,6 +4,33 @@ module Darklang.Cli.Installation.Version
 let execute (state: AppState) (args: List<String>) : AppState =
   let versionInfo = Helpers.getVersionInfo ()
   Stdlib.printLine versionInfo
+
+  // Store-format coordinate — the on-disk data shape this Dark speaks vs what your local data is stamped at.
+  // (This is what the boot-time migrator + sync's wire-version key off; see `dark update`.) It is NOT a product
+  // version — Dark is alpha; this is just internal data-format bookkeeping, shown as "store format vN".
+  let exeRel = Stdlib.Int.toString (Darklang.Sync.currentRelease ())
+
+  let storeRel =
+    match
+      Stdlib.Sqlite.query
+        (Darklang.Sync.localDbPath ())
+        "SELECT release FROM release_state_v0 WHERE id = 0"
+    with
+    | Ok [ row ] ->
+      match Stdlib.Dict.get row "release" with
+      | Some c ->
+        match Stdlib.Sqlite.asInt c with
+        | Some i -> Stdlib.Int64.toString i
+        | None -> "?"
+      | None -> "?"
+    | _ -> "?"
+
+  if exeRel == storeRel then
+    Stdlib.printLine $"alpha — store format v{exeRel}, your data is up to date"
+  else
+    Stdlib.printLine
+      $"alpha — store format v{exeRel}, your data is v{storeRel} (run `dark update`)"
+
   state
 
 
