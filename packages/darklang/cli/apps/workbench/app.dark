@@ -87,6 +87,12 @@ let loadServiceBodyItems () : List<BodyItem> =
     let tag = if Apps.Model.isDaemon a.target then "daemon" else "app"
     BodyItem { name = a.name ++ "  —  " ++ a.description; kind = tag; isModule = false })
 
+/// Recent execution traces (for the Runs view).
+let loadRunBodyItems () : List<BodyItem> =
+  Builtin.tracesList 30
+  |> Stdlib.List.map (fun t ->
+    BodyItem { name = t.handler ++ "  —  " ++ t.timestamp; kind = "trace"; isModule = false })
+
 /// The body items for a given view: packages for Home/Tree, WIP for Changes, commits for History,
 /// conflicts for Resolve, doc topics for Docs, else [] (unwired).
 let itemsForView
@@ -98,6 +104,7 @@ let itemsForView
   else if view == 4 then loadWipBodyItems branchId
   else if view == 5 then loadCommitBodyItems branchId
   else if view == 6 then loadConflictBodyItems ()
+  else if view == 9 then loadRunBodyItems ()
   else if view == 10 then loadServiceBodyItems ()
   else if view == 12 then loadDocBodyItems ()
   else []
@@ -221,6 +228,12 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
   else if state.activeView == 10 then
     // Services: managed daemons + foreground apps.
     renderTreeList state region
+  else if state.activeView == 9 then
+    // Runs: recent execution traces.
+    if Stdlib.List.isEmpty state.items then
+      UI.Layout.printAt region 2 4 (Colors.dimText "no runs yet — eval, run a script, or serve to record traces")
+    else
+      renderTreeList state region
   else if state.activeView == 4 then
     // Changes: the uncommitted items (or the clean state).
     if Stdlib.List.isEmpty state.items then
@@ -245,6 +258,12 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
   else
     UI.Layout.printAt region 1 2 (Colors.dimText ((Frame.viewName state.activeView) ++ " — coming soon"))
 
+/// Honest key hints per view — advertise only what actually works today.
+let hintsForView (view: Int) : String =
+  if view == 1 then "↑↓ move · → into · ← up · tab focus · 1-9/[ ] view · esc exit"
+  else if view == 0 then "1-9 jump to view · [ ] cycle · esc exit"
+  else "↑↓ move · 1-9/[ ] view · esc exit"
+
 let render (state: State) : Unit =
   let h = Terminal.getHeight ()
   let w = Terminal.getWidth ()
@@ -268,7 +287,7 @@ let render (state: State) : Unit =
   let hints =
     UI.Layout.fixedSize
       1
-      (fun r -> Frame.renderKeyHints r "↑↓ move · → into · ← up · tab focus · 1-9/[ ] view · esc exit")
+      (fun r -> Frame.renderKeyHints r (hintsForView state.activeView))
   UI.Layout.vstack screen [ tabbar; crumb; body; hints ]
   Stdlib.print "\u001b[?25h"
 
