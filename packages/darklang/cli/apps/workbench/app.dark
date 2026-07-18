@@ -31,9 +31,11 @@ type InputState =
     text: String
     action: String }
 
-/// The multiline editor's state: the fully-qualified name being authored + the text buffer + a last-error line.
+/// The multiline editor's state: the item kind ("fn"/"type"/"value"), the fully-qualified name being
+/// authored, the text buffer, and a last-error line.
 type EditingState =
-  { nameStr: String
+  { kind: String
+    nameStr: String
     buf: UI.Editor.Buf
     err: String }
 
@@ -450,7 +452,7 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
 
 /// Honest key hints per view — advertise only what actually works today.
 let hintsForView (view: Int) : String =
-  if view == 1 then "↑↓ move · → into/source · n new-fn · e edit-fn · tab focus · 1-9/[ ] view · esc"
+  if view == 1 then "↑↓ move · → in · n/t/v new fn/type/val · e edit-fn · tab · 1-9/[ ] view · esc"
   else if view == 0 then "1-9 jump to view · [ ] cycle · esc exit"
   else if view == 4 then "↑↓ move · enter source · c commit · x discard · 1-9/[ ] view · esc exit"
   else if view == 5 then "↑↓ move · enter ops · b new-branch · s switch · 1-9/[ ] view · esc exit"
@@ -587,7 +589,21 @@ let performInputAction (state: State) (inp: InputState) : Step =
           input = Stdlib.Option.Option.None
           editing =
             Stdlib.Option.Option.Some
-              (EditingState { nameStr = inp.text; buf = UI.Editor.fromText "(x: Int): Int =\n  x"; err = "" }) }
+              (EditingState { kind = "fn"; nameStr = inp.text; buf = UI.Editor.fromText "(x: Int): Int =\n  x"; err = "" }) }
+  else if inp.action == "new-type" then
+    Step.Continue
+      { state with
+          input = Stdlib.Option.Option.None
+          editing =
+            Stdlib.Option.Option.Some
+              (EditingState { kind = "type"; nameStr = inp.text; buf = UI.Editor.fromText "{ x: Int }"; err = "" }) }
+  else if inp.action == "new-value" then
+    Step.Continue
+      { state with
+          input = Stdlib.Option.Option.None
+          editing =
+            Stdlib.Option.Option.Some
+              (EditingState { kind = "value"; nameStr = inp.text; buf = UI.Editor.fromText "1"; err = "" }) }
   else
     Step.Continue { state with input = Stdlib.Option.Option.None }
 
@@ -601,47 +617,68 @@ let saveEditing (state: State) (es: EditingState) : Step =
   match Packages.Location.parseRelativeTo state.location es.nameStr with
   | Error e -> keepErr ("bad name: " ++ e)
   | Ok location ->
-    let fullSource = "let " ++ location.name ++ " " ++ (UI.Editor.toText es.buf)
+    let body = UI.Editor.toText es.buf
+    let fullSource =
+      if es.kind == "type" then "type " ++ location.name ++ " = " ++ body
+      else if es.kind == "value" then "val " ++ location.name ++ " = " ++ body
+      else "let " ++ location.name ++ " " ++ body
     let diags = Builtin.parserParseDiagnostics fullSource
     if Stdlib.Bool.not (Stdlib.List.isEmpty diags) then
-      keepErr "parse error — fix the body, then ^s"
+      keepErr "parse error — fix it, then ^s"
     else
       match Builtin.parserParseToWrittenTypes fullSource with
       | Some(SourceFile sourceFile) ->
-        let found =
-          sourceFile.declarations
-          |> Stdlib.List.findFirst (fun d ->
-            match d with
-            | Function _ -> true
-            | _ -> false)
-        match found with
-        | Some(Function writtenFn) ->
-          let pm = LanguageTools.PackageManager.pm ()
-          let ctx =
-            LanguageTools.NameResolver.NRContext
-              { onMissing = LanguageTools.NameResolver.OnMissing.Allow
-                pm = pm
-                branchId = state.branchId
-                owner = location.owner
-                currentModule = location.modules }
-          let (packageFn, unresolved) =
-            LanguageTools.WrittenTypesToProgramTypes.FunctionDeclaration.toPackageFnPT ctx writtenFn
-          if Stdlib.Bool.not (Stdlib.List.isEmpty unresolved) then
-            keepErr "unresolved names in the body"
+        let pm = LanguageTools.PackageManager.pm ()
+        let ctx =
+          LanguageTools.NameResolver.NRContext
+            { onMissing = LanguageTools.NameResolver.OnMissing.Allow
+              pm = pm
+              branchId = state.branchId
+              owner = location.owner
+              currentModule = location.modules }
+        // Per-kind: find the declaration, convert WrittenTypes → PT, build the Add*+SetName ops.
+        let opsResult =
+          if es.kind == "type" then
+            match sourceFile.declarations |> Stdlib.List.findFirst (fun d -> match d with | Type _ -> true | _ -> false) with
+            | Some(Type wt) ->
+              let (pt, unresolved) = LanguageTools.WrittenTypesToProgramTypes.TypeDeclaration.toPackageTypePT ctx wt
+              if Stdlib.Bool.not (Stdlib.List.isEmpty unresolved) then Stdlib.Result.Result.Error "unresolved names"
+              else
+                Stdlib.Result.Result.Ok
+                  [ LanguageTools.ProgramTypes.PackageOp.AddType pt
+                    LanguageTools.ProgramTypes.PackageOp.SetName (location, LanguageTools.ProgramTypes.Reference.PackageType pt.hash) ]
+            | _ -> Stdlib.Result.Result.Error "not a type definition"
+          else if es.kind == "value" then
+            match sourceFile.declarations |> Stdlib.List.findFirst (fun d -> match d with | Value _ -> true | _ -> false) with
+            | Some(Value wv) ->
+              let (pv, unresolved) = LanguageTools.WrittenTypesToProgramTypes.ValueDeclaration.toPackageValuePT ctx wv
+              if Stdlib.Bool.not (Stdlib.List.isEmpty unresolved) then Stdlib.Result.Result.Error "unresolved names"
+              else
+                Stdlib.Result.Result.Ok
+                  [ LanguageTools.ProgramTypes.PackageOp.AddValue pv
+                    LanguageTools.ProgramTypes.PackageOp.SetName (location, LanguageTools.ProgramTypes.Reference.PackageValue pv.hash) ]
+            | _ -> Stdlib.Result.Result.Error "not a value definition"
           else
-            let ops =
-              [ LanguageTools.ProgramTypes.PackageOp.AddFn packageFn
-                LanguageTools.ProgramTypes.PackageOp.SetName
-                  (location, LanguageTools.ProgramTypes.Reference.PackageFn packageFn.hash) ]
-            match SCM.PackageOps.add state.branchId ops with
-            | Ok _ ->
-              Step.Continue
-                { state with
-                    editing = Stdlib.Option.Option.None
-                    items = itemsForView state.activeView state.branchId state.location
-                    selected = 0 }
-            | Error m -> keepErr ("save failed: " ++ m)
-        | _ -> keepErr "not a function definition"
+            match sourceFile.declarations |> Stdlib.List.findFirst (fun d -> match d with | Function _ -> true | _ -> false) with
+            | Some(Function wf) ->
+              let (pf, unresolved) = LanguageTools.WrittenTypesToProgramTypes.FunctionDeclaration.toPackageFnPT ctx wf
+              if Stdlib.Bool.not (Stdlib.List.isEmpty unresolved) then Stdlib.Result.Result.Error "unresolved names"
+              else
+                Stdlib.Result.Result.Ok
+                  [ LanguageTools.ProgramTypes.PackageOp.AddFn pf
+                    LanguageTools.ProgramTypes.PackageOp.SetName (location, LanguageTools.ProgramTypes.Reference.PackageFn pf.hash) ]
+            | _ -> Stdlib.Result.Result.Error "not a function definition"
+        match opsResult with
+        | Ok ops ->
+          match SCM.PackageOps.add state.branchId ops with
+          | Ok _ ->
+            Step.Continue
+              { state with
+                  editing = Stdlib.Option.Option.None
+                  items = itemsForView state.activeView state.branchId state.location
+                  selected = 0 }
+          | Error m -> keepErr ("save failed: " ++ m)
+        | Error m -> keepErr m
       | None -> keepErr "could not parse"
 
 /// Strip a fn's pretty-printed source down to the "definition" (everything after `let <leaf>`): drop doc
@@ -675,7 +712,7 @@ let openEditExisting (state: State) (item: BodyItem) : Step =
     Step.Continue
       { state with
           editing =
-            Stdlib.Option.Option.Some (EditingState { nameStr = fullName; buf = UI.Editor.fromText def; err = "" }) }
+            Stdlib.Option.Option.Some (EditingState { kind = "fn"; nameStr = fullName; buf = UI.Editor.fromText def; err = "" }) }
   | [] -> Step.Continue state
 
 let handleKey
@@ -840,6 +877,24 @@ let handleKey
               input =
                 Stdlib.Option.Option.Some
                   (InputState { prompt = "new fn (owner.Mod.name): "; text = ""; action = "new-fn" }) }
+      else
+        Step.Continue state
+    | Some "t" ->
+      if state.activeView == 1 then
+        Step.Continue
+          { state with
+              input =
+                Stdlib.Option.Option.Some
+                  (InputState { prompt = "new type (owner.Mod.Name): "; text = ""; action = "new-type" }) }
+      else
+        Step.Continue state
+    | Some "v" ->
+      if state.activeView == 1 then
+        Step.Continue
+          { state with
+              input =
+                Stdlib.Option.Option.Some
+                  (InputState { prompt = "new value (owner.Mod.name): "; text = ""; action = "new-value" }) }
       else
         Step.Continue state
     | Some "c" ->
