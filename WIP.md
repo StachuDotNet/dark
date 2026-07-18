@@ -72,14 +72,14 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
    Edit/Agents/Things are DEFERRED (need MultilineEditor / mock render / a type arg). So pivot to POLISH — pick
    one per fire, all low-risk:
    DONE ✓ a. scrollbar  b. Docs reader  c. `?` help  d. full SWEEP (all views clean) + Home plural fix.
+   DONE ✓ e. HISTORY detail: Enter on a commit → its ops in the reader (commitOpsText via PackageOp.packageOp,
+      capped 20). Verified.
    NEXT polish (pick one/fire):
-   e. HISTORY detail: Enter on a commit → show its ops in the reader (reuse reading mode!). Find the ops
-      helper: `grep -rn 'getCommitOps\|CommitOps\|opsFor' packages/darklang/scm/*.dark`. Build a string of the
-      commit's ops (PrettyPrinter renders PackageOp, or just op kind + name) → reading = Some(that). Enter on
-      History (activeView==5) opens it, like Docs. Matches design cli-ux/16. SMALL (reuses reader).
-   f. CHANGES detail: Enter on a WIP item → its source in the reader (searchExactMatch by the item's full name;
-      but the WIP name may be a full path — parse owner/modules/name). Medium.
+   f. CHANGES detail: Enter on a WIP item → its source in the reader. The WIP `name` from getWipItems may be a
+      full path (e.g. "Stachu.WbTest.demo"); parse owner/modules/name (LanguageTools.ProgramTypes.parsePackage
+      Location or split on "."), searchExactMatch, PrettyPrinter.packageFn/Type/Value → reading. Like History.
    g. Home: recent WIP item names + last-commit message line (richer landing).
+   h. Consider a final full-doc sweep + maybe open a PR note in WIP (branch is cli-ux-workbench off github/main).
 Keep each fire small + verified. AGENTS/EDIT/THINGS stay deferred (mock render / MultilineEditor / type arg).
 Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)/Things(11)/Docs(12).
 
@@ -97,10 +97,20 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   print DIRECTLY via `Colors.moveCursorTo` + the colored string (like SplitPane.drawBox), not printAt.
 - Module VALUES (not fns) → `val name = …` (no type annotation). Cross-module SCM.PackageOps etc. resolve via
   fall-through to Darklang.SCM even from Cli modules (Darklang.Cli.SCM.PackageOps doesn't exist).
+- A CLEAN RELOAD does NOT catch unresolved package-fn refs — they error only at RUNTIME. Always EXERCISE the
+  code path (eval or dev-drive), not just reload. Ex: `PrettyPrinter.ProgramTypes.packageOp` loaded fine but
+  raised "not found" at runtime — packageOp is nested in `module PackageOp`, so the path is
+  `PrettyPrinter.ProgramTypes.PackageOp.packageOp`. Check indentation to find the real module path.
+- `packageOp branchId op` does per-op branch lookups — CAP how many you render (20) or big commits (10k-op
+  seed) are slow.
 - A non-loading .dark aborts the whole reload → always `./dev-ux-check` after each edit; read the real error
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 06:36 — P2.14: History Enter → commit ops in the reader (commitOpsText). Hit the packageOp nested-
+  module gotcha (clean reload but runtime "not found" → real path PrettyPrinter.ProgramTypes.PackageOp.packageOp)
+  + capped renders at 20 (10k-op seed commit was slow). Verified via eval + dev-drive. Commit 0fddd3032. Next:
+  Changes Enter → item source in reader.
 - 2026-07-18 06:27 — P2.13 QA: full dev-drive sweep — Home/Tree-split/coming-soon(Edit/Agents/Things)/all
   render clean, no glitches. Fixed Home "1 commits"→"1 commit" (plural helper). Commit 3af372f22. Next: History
   Enter→commit ops in the reader (reuse reading mode).
