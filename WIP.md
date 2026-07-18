@@ -88,14 +88,21 @@ push after notable milestones too. Don't push to `upstream` (darklang/dark).
   clamp (h<8→24, w<24→80) in render. Verified 100x30, 45x12, and recovery. Commit 9e5d03a08.
 - ✓ render batching (printAt 1 write, drawBox 1 string) — commit 9526d853b.
 
-### NEXT ACTION (Phase 4)
-Continue the tmux sweep of the WRITE FLOWS + READER (each: drive in tmux w/ small sleeps, capture, confirm):
-- Changes `c` commit (create a WIP fn first via Tree n → ^s, then Changes → c → type msg → Enter → clean).
-- Changes `x` discard (y-confirm). History `b`/`s` branch. Docs `Enter` reader + scroll + esc. History `Enter`
-  commit-ops reader. Tree leaf `Enter` source reader.
-Fix anything found. Minor cosmetic: at 100x30 the breadcrumb showed a "/ (root)cs" artifact once — low priority,
-note if it recurs (breadcrumb right-side may not clear on width change; the full [2J each frame should handle it).
-Discard test artifacts. Push after fixes. Then (near 14:00) FINALIZE per the horizon block.
+### SWEEP RESULT (all PASS in tmux, real terminal):
+author (n/editor/^s) ✓ · commit (Changes c) ✓ · discard (x/y) ✓ · branch (History b/s) ✓ · readers (History
+ops → AddFn/SetName, Docs topic, scroll, esc) ✓ · paste ✓ (fixed) · resize ✓ (fixed). Workbench is robust.
+
+### NEXT ACTION (Phase 4) — polish / edge cases (backlog getting thin; idle toward 14:00 finalize if exhausted)
+1. Breadcrumb resize artifact: at 100x30 the crumb showed "/ (root)cs" once (residue). Repro: resize 200→100,
+   check the breadcrumb line. Likely the right-side "branch: … synced" is positioned by absolute col and old
+   chars aren't overwritten when width shrinks. The [2J clears each frame so it may not recur; if it does, have
+   renderBreadcrumb clear its row (print spaces to width) or right-pad. Low priority.
+2. Multi-line paste into the EDITOR: pasting text with "\n" inserts a literal newline into one line (insertChar
+   appends the whole string incl \n) rather than splitting lines. Minor; a real paste of a body would be one
+   long line. Optional: in the editor's keyChar handler, if ch contains "\n", split + apply newline per line.
+3. Any other rough edges found while poking around in tmux.
+Fix what's clearly worth it; else this is DONE — idle (reschedule ~1200s) until ~13:55, then FINALIZE.
+Note: left a Dark-SCM branch "tmux-br" + test commit in the local DB — ephemeral (auto-clean on reload).
 1. First, KEEP TESTING to complete the bug list (use tmux + slow keys, ~0.2s between): commit flow (Changes c),
    discard (x y), branch (History b/s), Docs reader (Enter/scroll/esc), editor SAVE (^s → Changes), the reader
    from Tree/History, and RESIZE (`tmux resize-window`/smaller `-x`). Log each result here.
