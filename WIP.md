@@ -116,13 +116,26 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
       searchExactMatch → PrettyPrinter.packageFn/Type/Value). Verified.
    DONE ✓ h. Tree leaf Enter → source in reader (modules still descend). Verified. Enter now opens content
       consistently across Tree/Changes/History/Docs.
-   DONE ✓ g. richer Home (recent WIP names + last-commit line). Verified.
-   NEXT — i. FINAL PASS: (1) fresh dev-drive sweep of the deep interactions: Tree-leaf Enter→source, History
-   Enter→ops, Changes Enter→source, Docs Enter→read, reader ↑↓ scroll + esc, `?` help. Fix anything. (2) Add a
-   PR-SUMMARY section at the TOP of this WIP: what's built (workbench = default `dark`; 11 views wired incl.
-   Home; reader drill-ins; DARK_CLASSIC=1 = classic prompt), the new files (ui/splitpane.dark, apps/workbench/
-   {frame,app}.dark, layout.dark hstack), deferred (Edit/Agents/Things), and the honest state. Branch
-   cli-ux-workbench off github/main, ~44 commits. THEN keep polishing only if clearly valuable, else idle-tick.
+   DONE ✓ g. richer Home. DONE ✓ i. final sweep (clean) + PR summary (top of WIP).
+   READ-ONLY WORKBENCH COMPLETE. Now: WRITE ACTIONS (the next real frontier of the design).
+   NEXT — P3: commit from Changes. Build a single-line INPUT MODE, then wire `c`=commit.
+   1. State: add `input: Stdlib.Option.Option<InputState>` where InputState = { prompt: String; text: String;
+      action: String } (action tag e.g. "commit"). Init None in execute. (double reload — type change.)
+   2. handleKey: guard at TOP like `reading` — if `input` is Some: printable char → append to text (keyChar);
+      Backspace → drop last; Enter → perform the action (commit) then clear input; Esc → clear input. Nothing
+      else. (Put this branch BEFORE the reading branch, or combine.)
+   3. In the None/normal branch, Changes (activeView==4): keyChar "c" → set input = Some { prompt="commit msg: ";
+      text=""; action="commit" }.
+   4. render: when input is Some, draw the prompt+text+cursor on the key-hint row (or a line above it):
+      Frame.renderKeyHints r (input.prompt ++ input.text ++ "_"). Reader/normal hints otherwise.
+   5. commit action: needs accountId. THREAD it: add `accountId: Stdlib.Option.Option<Uuid>` to State; in
+      execute set it from cliState.accountID. On Enter with action=="commit": match accountId with Some a ->
+      SCM.PackageOps.commit a state.branchId text (check its real signature/return!) ; None -> set input=None +
+      maybe a toast/line "not logged in (DARK_CLASSIC: login)". After commit, reload items (Changes) + selected=0.
+   6. Verify: create a WIP fn, `dark wb`, 5 (Changes), c, type a msg, Enter → committed (status clean; History
+      shows it). Test the no-account path too. Discard/cleanup any test artifacts.
+   Grep first: `grep -rnA6 'let commit' packages/darklang/scm/packageOps.dark` for the exact signature/return.
+   Keep it small — input infra first (verify a dummy), then the commit wiring.
 Keep each fire small + verified. AGENTS/EDIT/THINGS stay deferred (mock render / MultilineEditor / type arg).
 Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)/Things(11)/Docs(12).
 
@@ -150,6 +163,10 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 07:09 — FINAL PASS done: swept the deep interactions (Docs Enter/scroll/esc, all Enter drill-ins,
+  `?`) — all clean, no regressions. Wrote the PR SUMMARY at top of WIP. Commit 66ae67a43. READ-ONLY WORKBENCH
+  COMPLETE (11 views, drill-in reader, help, scrollbar, richer Home). Next frontier: WRITE ACTIONS — starting
+  with commit-from-Changes (needs a single-line input mode). Plan in NEXT ACTION.
 - 2026-07-18 07:03 — P2.17: richer Home (recent WIP item names + "last commit: …" line via getCommitsWithAncestors
   head). Verified on clean tree. Commit 11cbebd88. Next: final sweep + PR summary at top of WIP.
 - 2026-07-18 06:56 — P2.16: Tree leaf Enter → source in the reader (modules still descend). Verified. Enter is
