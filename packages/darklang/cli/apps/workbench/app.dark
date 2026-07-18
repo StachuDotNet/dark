@@ -31,10 +31,11 @@ type InputState =
     text: String
     action: String }
 
-/// The multiline editor's state: the fully-qualified name being authored + the text buffer.
+/// The multiline editor's state: the fully-qualified name being authored + the text buffer + a last-error line.
 type EditingState =
   { nameStr: String
-    buf: UI.Editor.Buf }
+    buf: UI.Editor.Buf
+    err: String }
 
 type Step =
   | Continue of State
@@ -414,6 +415,9 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
 let renderEditing (es: EditingState) (region: UI.Layout.Region) : Unit =
   let _ =
     UI.Layout.printAt region 0 0 (Colors.boldText ("edit  " ++ es.nameStr))
+  let _ =
+    if es.err != "" then UI.Layout.printAt region 1 0 (Colors.error ("  " ++ es.err))
+    else ()
   let bodyTop = 2
   let visible = Stdlib.Int.max 1 (region.rows - bodyTop)
   let scroll = Stdlib.Int.max 0 (es.buf.row - visible + 1)
@@ -586,9 +590,62 @@ let performInputAction (state: State) (inp: InputState) : Step =
           input = Stdlib.Option.Option.None
           editing =
             Stdlib.Option.Option.Some
-              (EditingState { nameStr = inp.text; buf = UI.Editor.fromText "(x: Int): Int =\n  x" }) }
+              (EditingState { nameStr = inp.text; buf = UI.Editor.fromText "(x: Int): Int =\n  x"; err = "" }) }
   else
     Step.Continue { state with input = Stdlib.Option.Option.None }
+
+/// Save the editor's fn: parse the body → WrittenTypes → PT PackageFn → AddFn+SetName WIP ops. On any failure
+/// keep the editor open with an error line (never prints — this is a port of Packages.Fn.createFnInline's core
+/// without the stdout/AppState coupling).
+let saveEditing (state: State) (es: EditingState) : Step =
+  let keepErr (msg: String) : Step =
+    Step.Continue { state with editing = Stdlib.Option.Option.Some { es with err = msg } }
+
+  match Packages.Location.parseRelativeTo state.location es.nameStr with
+  | Error e -> keepErr ("bad name: " ++ e)
+  | Ok location ->
+    let fullSource = "let " ++ location.name ++ " " ++ (UI.Editor.toText es.buf)
+    let diags = Builtin.parserParseDiagnostics fullSource
+    if Stdlib.Bool.not (Stdlib.List.isEmpty diags) then
+      keepErr "parse error — fix the body, then ^s"
+    else
+      match Builtin.parserParseToWrittenTypes fullSource with
+      | Some(SourceFile sourceFile) ->
+        let found =
+          sourceFile.declarations
+          |> Stdlib.List.findFirst (fun d ->
+            match d with
+            | Function _ -> true
+            | _ -> false)
+        match found with
+        | Some(Function writtenFn) ->
+          let pm = LanguageTools.PackageManager.pm ()
+          let ctx =
+            LanguageTools.NameResolver.NRContext
+              { onMissing = LanguageTools.NameResolver.OnMissing.Allow
+                pm = pm
+                branchId = state.branchId
+                owner = location.owner
+                currentModule = location.modules }
+          let (packageFn, unresolved) =
+            LanguageTools.WrittenTypesToProgramTypes.FunctionDeclaration.toPackageFnPT ctx writtenFn
+          if Stdlib.Bool.not (Stdlib.List.isEmpty unresolved) then
+            keepErr "unresolved names in the body"
+          else
+            let ops =
+              [ LanguageTools.ProgramTypes.PackageOp.AddFn packageFn
+                LanguageTools.ProgramTypes.PackageOp.SetName
+                  (location, LanguageTools.ProgramTypes.Reference.PackageFn packageFn.hash) ]
+            match SCM.PackageOps.add state.branchId ops with
+            | Ok _ ->
+              Step.Continue
+                { state with
+                    editing = Stdlib.Option.Option.None
+                    items = itemsForView state.activeView state.branchId state.location
+                    selected = 0 }
+            | Error m -> keepErr ("save failed: " ++ m)
+        | _ -> keepErr "not a function definition"
+      | None -> keepErr "could not parse"
 
 let handleKey
   (state: State)
@@ -598,8 +655,10 @@ let handleKey
   : Step =
   match state.editing with
   | Some es ->
-    // Editor mode. (Ctrl combos reserved for save — wired next; ignore for now so they don't insert.)
-    if modifiers.ctrl then
+    // Editor mode. Ctrl+S saves; other Ctrl combos are ignored (so they don't insert control chars).
+    if modifiers.ctrl && key == Stdlib.Cli.Stdin.Key.Key.S then
+      saveEditing state es
+    else if modifiers.ctrl then
       Step.Continue state
     else
       match key with
