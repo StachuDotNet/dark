@@ -450,7 +450,7 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
 
 /// Honest key hints per view — advertise only what actually works today.
 let hintsForView (view: Int) : String =
-  if view == 1 then "↑↓ move · → into/source · ← up · n new-fn · tab focus · 1-9/[ ] view · esc"
+  if view == 1 then "↑↓ move · → into/source · n new-fn · e edit-fn · tab focus · 1-9/[ ] view · esc"
   else if view == 0 then "1-9 jump to view · [ ] cycle · esc exit"
   else if view == 4 then "↑↓ move · enter source · c commit · x discard · 1-9/[ ] view · esc exit"
   else if view == 5 then "↑↓ move · enter ops · b new-branch · s switch · 1-9/[ ] view · esc exit"
@@ -644,6 +644,40 @@ let saveEditing (state: State) (es: EditingState) : Step =
         | _ -> keepErr "not a function definition"
       | None -> keepErr "could not parse"
 
+/// Strip a fn's pretty-printed source down to the "definition" (everything after `let <leaf>`): drop doc
+/// comment lines, then the `let <leaf>` prefix — so it round-trips through saveEditing's `let {name} {def}`.
+let defFromSource (src: String) (leaf: String) : String =
+  let nonDoc =
+    src
+    |> Stdlib.String.split "\n"
+    |> Stdlib.List.filter (fun l -> Stdlib.Bool.not (Stdlib.String.startsWith (Stdlib.String.trim l) "///"))
+    |> Stdlib.String.join "\n"
+  let prefix = "let " ++ leaf
+  if Stdlib.String.startsWith nonDoc prefix then
+    Stdlib.String.dropFirst nonDoc (Stdlib.String.length prefix)
+  else
+    nonDoc
+
+/// Open the editor on an existing fn, prefilled from its current source.
+let openEditExisting (state: State) (item: BodyItem) : Step =
+  let modules = modulePathOf state.location
+  let fullName = Stdlib.String.join (Stdlib.List.append modules [ item.name ]) "."
+  let results = Packages.Query.searchExactMatch state.branchId modules item.name
+  let ctx =
+    PrettyPrinter.ProgramTypes.Context
+      { branchId = state.branchId
+        currentModule = Stdlib.Option.Option.None
+        currentFunction = Stdlib.Option.Option.None }
+  match results.fns with
+  | i :: _ ->
+    let src = PrettyPrinter.ProgramTypes.packageFn ctx i.entity
+    let def = defFromSource src item.name
+    Step.Continue
+      { state with
+          editing =
+            Stdlib.Option.Option.Some (EditingState { nameStr = fullName; buf = UI.Editor.fromText def; err = "" }) }
+  | [] -> Step.Continue state
+
 let handleKey
   (state: State)
   (key: Stdlib.Cli.Stdin.Key.Key)
@@ -789,6 +823,15 @@ let handleKey
             items = itemsForView nv state.branchId state.location
             selected = 0
             detailScroll = 0 }
+    | Some "e" ->
+      // Tree: edit the selected fn in place (prefill the editor from its source).
+      if state.activeView == 1 then
+        match Stdlib.List.getAt state.items state.selected with
+        | Some item ->
+          if item.isModule then Step.Continue state else openEditExisting state item
+        | None -> Step.Continue state
+      else
+        Step.Continue state
     | Some "n" ->
       // Tree: author a new fn — ask for the name, then open the editor.
       if state.activeView == 1 then
