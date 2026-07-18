@@ -95,6 +95,39 @@ let commitOpsText (branchId: Uuid) (selected: Int) : String =
         ""
     c.message ++ "  (" ++ (Stdlib.Int.toString opCount) ++ " ops)\n\n" ++ opLines ++ more
 
+/// The current source of the selected WIP item (for the Changes reader).
+let changesSourceText (branchId: Uuid) (selected: Int) : String =
+  let items = SCM.PackageOps.getWipItems branchId
+  match Stdlib.List.getAt items selected with
+  | None -> "(no change selected)"
+  | Some d ->
+    let name = Stdlib.Dict.get d "name" |> Stdlib.Option.withDefault "?"
+    let kind = Stdlib.Dict.get d "kind" |> Stdlib.Option.withDefault ""
+    // `name` is the full path (owner.Module.leaf) — split into the module path + leaf for the lookup.
+    let parts = Stdlib.String.split name "."
+    let leaf = Stdlib.List.last parts |> Stdlib.Option.withDefault name
+    let mods = Stdlib.List.take parts (Stdlib.Int.max 0 ((Stdlib.List.length parts) - 1))
+    let results = Packages.Query.searchExactMatch branchId mods leaf
+    let ctx =
+      PrettyPrinter.ProgramTypes.Context
+        { branchId = branchId
+          currentModule = Stdlib.Option.Option.None
+          currentFunction = Stdlib.Option.Option.None }
+    let src =
+      if kind == "Type" then
+        match results.types with
+        | i :: _ -> PrettyPrinter.ProgramTypes.packageType ctx i.entity
+        | [] -> "(not found)"
+      else if kind == "Value" then
+        match results.values with
+        | i :: _ -> PrettyPrinter.ProgramTypes.packageValue ctx i.entity
+        | [] -> "(not found)"
+      else
+        match results.fns with
+        | i :: _ -> PrettyPrinter.ProgramTypes.packageFn ctx i.entity
+        | [] -> "(not found)"
+    name ++ "  (" ++ kind ++ ", WIP)\n\n" ++ src
+
 /// Recorded sync divergences (for the Resolve view).
 let loadConflictBodyItems () : List<BodyItem> =
   Darklang.Sync.Conflicts.list ()
@@ -455,6 +488,12 @@ let handleKey
       Step.Continue
         { state with
             reading = Stdlib.Option.Option.Some (commitOpsText state.branchId state.selected)
+            detailScroll = 0 }
+    else if state.activeView == 4 then
+      // Changes: open the selected WIP item's source in the reader.
+      Step.Continue
+        { state with
+            reading = Stdlib.Option.Option.Some (changesSourceText state.branchId state.selected)
             detailScroll = 0 }
     else
       descend state
