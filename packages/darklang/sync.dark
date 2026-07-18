@@ -122,7 +122,7 @@ let resolvePeer (nameOrUrl: String) : Stdlib.Option.Option<String> =
 
 // The one message for "that's not a peer" — a peer is always an http(s) URL (a running instance), never a
 // file. Shared by connect + pull so both reject a `.db`/path identically.
-let peerMustBeUrl : String =
+val peerMustBeUrl =
   "A peer is a URL like http://feriel.tailnet:9000 — sync exchanges ops with a running instance over HTTP, not a .db file."
 
 /// Connect a peer by its URL. Sync talks to running instances over HTTP — a `.db` file is not a peer.
@@ -368,10 +368,10 @@ let status () : List<(String * Int64)> =
 // latency you felt, and waiting half a minute to see your own edit land makes sync feel broken. Both GETs
 // are no-ops against an up-to-date peer, so the cost of being wrong here is small and local.
 // Overridable via `dark sync daemon config interval N` (stored as `apps.<name>.intervalMs`), read on start.
-let defaultPollIntervalMs : Int = 5000
+val defaultPollIntervalMs = 5000
 
 // The responsive floor — the gap right after a pull that saw changes.
-let pollFloorMs : Int = 2000
+val pollFloorMs = 2000
 
 // Adaptive interval (pure): snap to the floor after changes, else back off (double) up to the ceiling. This
 // is what lets a converged tailnet quiet down instead of polling at the floor forever.

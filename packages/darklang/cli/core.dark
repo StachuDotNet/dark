@@ -79,7 +79,7 @@ let restoreSessionAccount () : (Stdlib.Option.Option<Uuid> * String) =
 /// That order is the usual one — flag beats env beats config beats default — and each rung is scoped tighter
 /// than the one below: the flag is this command, DARK_BRANCH is this shell (so concurrent runs don't stomp
 /// each other), the config is this machine.
-let private resolveBranchName (name: String) (source: String) : Uuid =
+let resolveBranchName (name: String) (source: String) : Uuid =
   match SCM.Branch.getByName name with
   | Some b -> b.id
   | None ->

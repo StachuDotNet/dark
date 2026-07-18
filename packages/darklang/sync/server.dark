@@ -33,7 +33,7 @@ module Health =
 
     Stdlib.Http.responseWithText $"ok ops={Stdlib.Int64.toString n}" 200
 
-  let handler : Stdlib.HttpServer.Handler =
+  val handler =
     Stdlib.HttpServer.Handler
       { route = "/sync/health"; method = "GET"; handler = fn }
 
@@ -59,7 +59,7 @@ module Events =
         (parseCursor req.url "resolution"))
       200
 
-  let handler : Stdlib.HttpServer.Handler =
+  val handler =
     Stdlib.HttpServer.Handler
       { route = "/sync/events"; method = "GET"; handler = fn }
 
@@ -74,7 +74,7 @@ module Blobs =
   let fn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
     Stdlib.Http.responseWithText (Darklang.SCM.Blobs.manifest ()) 200
 
-  let handler : Stdlib.HttpServer.Handler =
+  val handler =
     Stdlib.HttpServer.Handler
       { route = "/sync/blobs"; method = "GET"; handler = fn }
 
@@ -88,12 +88,12 @@ module Blob =
   let fn (req: Stdlib.Http.Request) : Stdlib.Http.Response =
     Stdlib.Http.responseWithText (Darklang.SCM.Blobs.bytes (parseHash req.url)) 200
 
-  let handler : Stdlib.HttpServer.Handler =
+  val handler =
     Stdlib.HttpServer.Handler
       { route = "/sync/blob"; method = "GET"; handler = fn }
 
 
-let handlers : List<Stdlib.HttpServer.Handler> =
+val handlers =
   [ Health.handler; Events.handler; Blobs.handler; Blob.handler ]
 
 /// The sync server router — pass to `dark serve Darklang.Sync.Server.router --port <N>`.

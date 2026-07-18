@@ -220,10 +220,7 @@ module Hashing =
     | PT.EValue _
     | PT.EFnName _
     | PT.ESelf _
-    | PT.EArg _
-    // A parse-error hole carries only an id — no bindings, no Expr children. It can't reach a hashed
-    // definition in practice (PT2RT rejects diagnostic-carrying parses), but the match must be total.
-    | PT.EError _ -> e
+    | PT.EArg _ -> e
 
   and private normStringSegment
     (c : int ref)

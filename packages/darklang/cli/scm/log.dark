@@ -7,7 +7,7 @@ module Darklang.Cli.SCM.Log
 // own indented line, then a blank) meant six commits filled the screen, and the blank lines were separating
 // things that didn't need separating. `--detailed` still gives you that when you're reading one closely.
 
-let private renderOneLine
+let renderOneLine
   (c: SCM.PackageOps.Commit)
   (isAncestor: Bool)
   : String =
@@ -21,7 +21,7 @@ let private renderOneLine
   else
     $"  {Cli.Colors.cyan}{id}{Cli.Colors.reset}  {createdAt}  {opCount} ops  {c.message}"
 
-let private renderDetailed (c: SCM.PackageOps.Commit) (isAncestor: Bool) : Unit =
+let renderDetailed (c: SCM.PackageOps.Commit) (isAncestor: Bool) : Unit =
   let id = LanguageTools.ProgramTypes.hashToShort c.hash
   let createdAt = Stdlib.DateTime.toString c.createdAt
   let opCount = Stdlib.Int.toString c.opCount
