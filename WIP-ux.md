@@ -72,11 +72,29 @@ Kill the bottom-bar name prompt for new items. Instead:
 - H. Use syntax highlighting of code in MORE places, broadly (Inspect pane, source readers, editor, Changes
      source). Find the existing highlighter (LSP/semantic — see PackageRefs WrittenTypes note) and apply it.
 
+## Findings for upcoming items
+- Syntax highlighter EXISTS: `SyntaxHighlighting.highlightCode (src: String) : String` in
+  packages/darklang/cli/utils/syntaxHighlighting.dark (used by the `view` command; also highlightLine per-line
+  with SemanticTokens). CAVEAT: it emits ANSI, and UI.Layout.printAt truncates by raw String.length (counts
+  ANSI bytes) — so highlighted text truncates wrong. Apply first in the READERS (full-width source view:
+  Tree-leaf Enter, Changes source, History) where lines rarely exceed width; for the narrow Inspect pane and
+  the editor, need ANSI-aware truncation or print-without-truncate first. Consider a `UI.Layout.printAtAnsi`
+  that truncates by visible width (skip ANSI escape runs) — a reusable component worth building for item F.
+- Shift-Tab: unverified whether F# readKey delivers it (CSI Z). For 2-pane, Tab toggles both ways already.
+  Test `\x1b[Z` in tmux before relying on it; else Tab cycles + wraps.
+
+## DONE this phase
+- Conflicts on Home + badge (df9bb17) · UI.Box, framed views (7d3ca05) · footer + `:` run (adabd18) ·
+  chooser (703f2bc) · A: spacious authoring (29393e1) · B: vim motion + safe Esc-to-Home (99a5d27).
+
 ## NEXT ACTION
-Item A DONE (authoring redesign verified: spacious boxed editor, location-aware template, name from buffer,
-saved Stachu.DarklangParser.newFunction, discarded). NEXT: item B (keymap) — Tab/Shift-Tab pane focus, vim
-motion (j/k/g/G/h/l), consistent + documented in footer + ?. Verify Tab cycles panes in Tree/Inspect and (once
-built) list+preview. Then C (list+preview splits), H (syntax highlighting), D (search), E/F/G.
+Items A + B DONE. NEXT: item C — list+preview splits (IDE 3-panel) for Changes / History / Docs / Resolve,
+reusing UI.SplitPane + the existing detail fns (changesSourceText / commitOpsText / topic content / conflict
+detail). Left pane = the list (dominant ~55%), right = preview of the selected item; Tab toggles focus; the
+preview scrolls when focused. This makes those views dense + useful, not just framed lists. Verify each in
+tmux. Then H (syntax highlighting in readers — mind the ANSI/printAt truncation), D (search `/`), E (more
+touchpoints), F (components: ANSI-aware printAt, UI.ListView), G (toast row, too-small guard, mode color).
+Commit + push after each. Keep the footer honest (only advertise working keys).
 
 ## Log
 - Rebase: already current (github/main = upstream = 17eb99eca #5685; 0 behind).
