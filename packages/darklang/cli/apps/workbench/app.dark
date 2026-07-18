@@ -303,33 +303,15 @@ let renderTreeList (state: State) (region: UI.Layout.Region) : Unit =
   if Stdlib.List.isEmpty state.items then
     UI.Layout.printAt region 1 2 (Colors.dimText "(empty)")
   else
-    // Bottom-anchored viewport: keep the selected row visible even in big modules (Stdlib.List = 68 fns).
-    let visible = region.rows
-    let scrollOffset = Stdlib.Int.max 0 (state.selected - visible + 1)
-    state.items
-    |> Stdlib.List.indexedMap (fun i item -> (i, item))
-    |> Stdlib.List.drop scrollOffset
-    |> Stdlib.List.take visible
-    |> Stdlib.List.iter (fun pair ->
-      let (i, item) = pair
-      let row = i - scrollOffset
-      let cursor = if i == state.selected then "> " else "  "
-      let display = if item.isModule then item.name ++ "/" else item.name
-      let line = cursor ++ (iconFor item) ++ " " ++ display
-      let styled = if i == state.selected then Colors.colorize Colors.cyan line else line
-      UI.Layout.printAt region row 0 styled)
-
-    // Scrollbar thumb on the right edge when the list overflows the pane. Printed directly (not via
-    // printAt, whose length-based truncation would eat the colored glyph at the last column).
-    let total = Stdlib.List.length state.items
-    if total > region.rows then
-      let thumbRow =
-        Stdlib.Int.divide (state.selected * (region.rows - 1)) (Stdlib.Int.max 1 (total - 1))
-      Stdlib.print
-        ((Colors.moveCursorTo (region.top + thumbRow) (region.left + region.cols - 1))
-         ++ (Colors.colorize Colors.cyan "▐"))
-    else
-      ()
+    // Build the styled rows (cursor + icon + name, selection in cyan); UI.ListView owns the viewport + scrollbar.
+    let lines =
+      state.items
+      |> Stdlib.List.indexedMap (fun i item ->
+        let cursor = if i == state.selected then "> " else "  "
+        let display = if item.isModule then item.name ++ "/" else item.name
+        let line = cursor ++ (iconFor item) ++ " " ++ display
+        if i == state.selected then Colors.colorize Colors.cyan line else line)
+    UI.ListView.render region lines state.selected
 
 /// The source/detail of the currently-selected item, as lines for the Inspect pane.
 let detailLines (state: State) : List<String> =
