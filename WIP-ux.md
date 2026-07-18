@@ -87,7 +87,20 @@ Kill the bottom-bar name prompt for new items. Instead:
 - Conflicts on Home + badge (df9bb17) · UI.Box, framed views (7d3ca05) · footer + `:` run (adabd18) ·
   chooser (703f2bc) · A: spacious authoring (29393e1) · B: vim motion + safe Esc-to-Home (99a5d27).
 
-## NEXT ACTION (updated 14:50)
+## NEXT ACTION (updated 15:04)
+Done: A B C H D + reader-highlighting (full-screen reader now highlights code via readingIsCode + openReader)
++ login-state-on-Home (accountName). NEXT, in priority for remaining ~1h45:
+- G quick wins: "terminal too small" guard (render a centered hint below a min size instead of garbage);
+  a transient message/toast row for action feedback ("committed", "discarded", "saved") — needs a State
+  field `message: String` (+ set/clear); optional mode color block.
+- E rest: `d` deps on a Tree leaf (Builtin.depsGetDependencies branchId item.entity.hash — get hash via
+  searchExactMatch; resolve dep hashes to names) -> reader; History `m` merge / `r` rebase (SCM.Merge/Rebase
+  are AppState cmds — adapt like commit) with confirm; sync-now.
+- F: extract UI.ListView from renderTreeList; a proper ANSI-aware truncateVisible in UI.Layout.
+Each: dev-ux-check (twice after a State change) -> tmux -> commit -> push. FINALIZE at ~16:50 (report + print +
+push + chat + stop).
+
+## Prior NEXT (14:50)
 Done: A B C H D (D = global `/` search -> results in reader; read-only v1, jump-to-result is a follow-up;
 `/` re-added to footer). NEXT: item E — surface more touchpoints:
 - `d` on a Tree leaf -> deps (Cli.Deps / Query) of the selected item, shown in the reader.
