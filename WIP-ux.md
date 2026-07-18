@@ -87,7 +87,18 @@ Kill the bottom-bar name prompt for new items. Instead:
 - Conflicts on Home + badge (df9bb17) · UI.Box, framed views (7d3ca05) · footer + `:` run (adabd18) ·
   chooser (703f2bc) · A: spacious authoring (29393e1) · B: vim motion + safe Esc-to-Home (99a5d27).
 
-## NEXT ACTION (updated 15:36)
+## NEXT ACTION (updated 15:50)
+ALL planned items done: A B C D H + reader-highlight + login + too-small-guard + toast + shallow-auth-fix +
+`d` deps + `m`/`r` merge/rebase + F (UI.Layout.truncateVisible ANSI-aware truncate wired into preview+reader;
+UI.ListView extracted from renderTreeList). Backlog essentially exhausted.
+NEXT: light polish only if clearly valuable (e.g. make `/` search results jumpable — deferred, moderate), else
+IDLE toward the 16:50 FINALIZE. Do NOT start risky new features in the last hour.
+FINALIZE at ~16:50: add "Phase 5: UX iteration" section to main/notes/cli-ux-workbench-report.md (list all the
+above), refresh `git diff --shortstat github/main..HEAD`, `~/bin/print-md` it, `git push github cli-ux-redux`,
+clear chat message (branch; run `cd /home/stachu/code/dark/loop-fun && ./scripts/run-cli`; what's new; honest
+not-done: search jump-to-result, Agents/Things views, item rename, merge/rebase success paths untested), STOP loop.
+
+## Prior NEXT (15:36)
 Done: A B C D H + reader-highlight + login + too-small-guard + toast-row + shallow-authoring-fix + `d` deps +
 `m`/`r` merge/rebase (confirm + typed toasts: green ✓ success / pink ✗ fail/guidance; error paths verified,
 success needs a branch with changes). NEXT (item F, reusable components — user explicitly asked):
