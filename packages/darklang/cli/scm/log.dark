@@ -17,9 +17,9 @@ let renderOneLine
   let suffix = if isAncestor then $"  [{c.branchName}]" else ""
 
   if isAncestor then
-    $"{Cli.Colors.dim}  {id}  {createdAt}  {opCount} ops  {c.message}{suffix}{Cli.Colors.reset}"
+    $"{Cli.Colors.dim}  {id}  {createdAt}  {c.committerName}  {opCount} ops  {c.message}{suffix}{Cli.Colors.reset}"
   else
-    $"  {Cli.Colors.cyan}{id}{Cli.Colors.reset}  {createdAt}  {opCount} ops  {c.message}"
+    $"  {Cli.Colors.cyan}{id}{Cli.Colors.reset}  {createdAt}  {Cli.Colors.dim}{c.committerName}{Cli.Colors.reset}  {opCount} ops  {c.message}"
 
 let renderDetailed (c: SCM.PackageOps.Commit) (isAncestor: Bool) : Unit =
   let id = LanguageTools.ProgramTypes.hashToShort c.hash
