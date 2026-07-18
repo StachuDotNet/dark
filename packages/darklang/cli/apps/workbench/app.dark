@@ -15,6 +15,7 @@ type State =
     items: List<BodyItem>
     selected: Int
     focus: UI.SplitPane.Focus
+    detailScroll: Int
     branchId: Uuid }
 
 type Step =
@@ -111,11 +112,16 @@ let detailLines (state: State) : List<String> =
       Stdlib.String.split src "\n"
 
 let renderDetail (state: State) (region: UI.Layout.Region) : Unit =
-  detailLines state
+  let lines = detailLines state
+  let len = Stdlib.List.length lines
+  let off = Stdlib.Int.min state.detailScroll (Stdlib.Int.max 0 (len - 1))
+  lines
   |> Stdlib.List.indexedMap (fun i l -> (i, l))
+  |> Stdlib.List.drop off
+  |> Stdlib.List.take region.rows
   |> Stdlib.List.iter (fun pair ->
     let (i, l) = pair
-    if i < region.rows then UI.Layout.printAt region i 0 l)
+    UI.Layout.printAt region (i - off) 0 l)
 
 let renderBody (state: State) (region: UI.Layout.Region) : Unit =
   if state.activeView <= 1 then
@@ -164,7 +170,8 @@ let descend (state: State) : Step =
         { state with
             location = newLoc
             items = loadItems state.branchId newLoc
-            selected = 0 }
+            selected = 0
+            detailScroll = 0 }
     else
       Step.Continue state
   | None -> Step.Continue state
@@ -189,10 +196,19 @@ let handleKey
   (keyChar: Stdlib.Option.Option<String>)
   : Step =
   match key with
-  | UpArrow -> Step.Continue { state with selected = Stdlib.Int.max 0 (state.selected - 1) }
+  | UpArrow ->
+    match state.focus with
+    | Second -> Step.Continue { state with detailScroll = Stdlib.Int.max 0 (state.detailScroll - 1) }
+    | First ->
+      Step.Continue { state with selected = Stdlib.Int.max 0 (state.selected - 1); detailScroll = 0 }
   | DownArrow ->
-    let maxIdx = (Stdlib.List.length state.items) - 1
-    Step.Continue { state with selected = Stdlib.Int.min maxIdx (state.selected + 1) }
+    match state.focus with
+    | Second ->
+      let maxScroll = Stdlib.Int.max 0 ((Stdlib.List.length (detailLines state)) - 1)
+      Step.Continue { state with detailScroll = Stdlib.Int.min maxScroll (state.detailScroll + 1) }
+    | First ->
+      let maxIdx = (Stdlib.List.length state.items) - 1
+      Step.Continue { state with selected = Stdlib.Int.min maxIdx (state.selected + 1); detailScroll = 0 }
   | RightArrow -> descend state
   | Enter -> descend state
   | LeftArrow -> ascend state
@@ -238,6 +254,7 @@ let execute (cliState: Darklang.Cli.AppState) (_args: List<String>) : Darklang.C
         items = loadItems branchId rootLoc
         selected = 0
         focus = UI.SplitPane.Focus.First
+        detailScroll = 0
         branchId = branchId }
   { cliState with
       currentPage = Darklang.Cli.Page.SubApp (makeSubApp state)
