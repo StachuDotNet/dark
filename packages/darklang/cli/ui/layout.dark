@@ -130,3 +130,76 @@ let greedy (renderFn: Region -> Unit) : Component =
     { sizeRequest = fun () ->
         SizeRequest { minRows = 1; minCols = 0; preferredRows = 999; preferredCols = 0 }
       render = renderFn }
+
+
+// --- Horizontal layout (mirror of the vertical combinators above) ---
+
+/// Distribute `totalCols` among components based on their size requests.
+/// Each gets at least min, then remaining space is split toward preferred.
+let distributeCols (totalCols: Int) (requests: List<SizeRequest>) : List<Int> =
+  let count = Stdlib.List.length requests
+  if count == 0 then
+    []
+  else
+    let mins = Stdlib.List.map requests (fun r -> r.minCols)
+    let totalMin = Stdlib.List.fold mins 0 (fun acc n -> acc + n)
+    let remaining = Stdlib.Int.max 0 (totalCols - totalMin)
+    let wants =
+      Stdlib.List.map requests (fun r ->
+        Stdlib.Int.max 0 (r.preferredCols - r.minCols))
+    let totalWant = Stdlib.List.fold wants 0 (fun acc n -> acc + n)
+    if totalWant == 0 then
+      mins
+    else
+      (Stdlib.List.map2 mins wants (fun minC want ->
+        let share =
+          if totalWant > 0 then
+            Stdlib.Int.divide (want * remaining) totalWant
+          else
+            0
+        minC + share))
+      |> Stdlib.Option.withDefault mins
+
+
+/// Place components side by side within a region.
+/// Negotiates column distribution based on size requests.
+let hstack (region: Region) (components: List<Component>) : Unit =
+  let requests = Stdlib.List.map components (fun c -> c.sizeRequest ())
+  let colAllocs = distributeCols region.cols requests
+  let pairs =
+    (Stdlib.List.map2 components colAllocs (fun c cols -> (c, cols)))
+    |> Stdlib.Option.withDefault []
+  let _finalLeft =
+    pairs
+    |> Stdlib.List.fold region.left (fun currentLeft pair ->
+      let (c, cols) = pair
+      let childRegion =
+        Region
+          { top = region.top
+            left = currentLeft
+            rows = region.rows
+            cols = cols }
+      c.render childRegion
+      currentLeft + cols)
+  ()
+
+/// A fixed-width component: always requests exactly N cols; fills the region's height.
+let fixedWidth (n: Int) (renderFn: Region -> Unit) : Component =
+  Component
+    { sizeRequest = fun () ->
+        SizeRequest { minRows = 1; minCols = n; preferredRows = 999; preferredCols = n }
+      render = renderFn }
+
+/// A flexible-width component: needs at least `min` cols, prefers `preferred`.
+let flexWidth (min: Int) (preferred: Int) (renderFn: Region -> Unit) : Component =
+  Component
+    { sizeRequest = fun () ->
+        SizeRequest { minRows = 1; minCols = min; preferredRows = 999; preferredCols = preferred }
+      render = renderFn }
+
+/// A greedy-width component: wants all available width, min 1 col.
+let greedyWidth (renderFn: Region -> Unit) : Component =
+  Component
+    { sizeRequest = fun () ->
+        SizeRequest { minRows = 1; minCols = 1; preferredRows = 999; preferredCols = 999 }
+      render = renderFn }
