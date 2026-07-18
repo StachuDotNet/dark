@@ -81,12 +81,21 @@ push after notable milestones too. Don't push to `upstream` (darklang/dark).
   paste path (`tmux send-keys -l "text"` = one burst) into the name input + the editor; if the paste's multi-char
   keyChar isn't appended, fix the input/editor handler (or how the builtin delivers pasteText). THIS is the bug.
 
+### FIXED via tmux (bugs dev-drive missed):
+- ✓ PASTE/fast-type dropped: input + editor had `if length ch == 1` which dropped multi-char pastes. Fixed →
+  `if ch != ""` (builtin already blanks control keys). Verified paste into name + editor body. Commit 4b65784a9.
+- ✓ RESIZE CRASH: mid-resize getWidth/getHeight return 0 → negative region math → crash to prompt. Fixed →
+  clamp (h<8→24, w<24→80) in render. Verified 100x30, 45x12, and recovery. Commit 9e5d03a08.
+- ✓ render batching (printAt 1 write, drawBox 1 string) — commit 9526d853b.
+
 ### NEXT ACTION (Phase 4)
-0. (done this fire: render batching + branch cli-ux-redux pushed.) INVESTIGATE the paste/fast-type bug next:
-   `tmux send-keys -t wb -l 'Stachu.Wb.pasted'` into the `n` name prompt, capture — does the input show it?
-   If blank, the multi-char paste keyChar is being dropped. Check the builtin's keyChar for the paste case
-   (Stdin.fs returns Some pasted) vs how Dark's readKey surfaces it, and my input handler `inp.text ++ ch`.
-   Fix so a paste inserts the whole string. Then resize testing + the write-flow sweep.
+Continue the tmux sweep of the WRITE FLOWS + READER (each: drive in tmux w/ small sleeps, capture, confirm):
+- Changes `c` commit (create a WIP fn first via Tree n → ^s, then Changes → c → type msg → Enter → clean).
+- Changes `x` discard (y-confirm). History `b`/`s` branch. Docs `Enter` reader + scroll + esc. History `Enter`
+  commit-ops reader. Tree leaf `Enter` source reader.
+Fix anything found. Minor cosmetic: at 100x30 the breadcrumb showed a "/ (root)cs" artifact once — low priority,
+note if it recurs (breadcrumb right-side may not clear on width change; the full [2J each frame should handle it).
+Discard test artifacts. Push after fixes. Then (near 14:00) FINALIZE per the horizon block.
 1. First, KEEP TESTING to complete the bug list (use tmux + slow keys, ~0.2s between): commit flow (Changes c),
    discard (x y), branch (History b/s), Docs reader (Enter/scroll/esc), editor SAVE (^s → Changes), the reader
    from Tree/History, and RESIZE (`tmux resize-window`/smaller `-x`). Log each result here.
