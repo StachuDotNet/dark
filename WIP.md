@@ -71,13 +71,14 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
 9. NEXT — 10/13 views live (Home,Tree,Inspect,Changes,History,Resolve,Mesh,Runs,Services,Docs). Remaining views
    Edit/Agents/Things are DEFERRED (need MultilineEditor / mock render / a type arg). So pivot to POLISH — pick
    one per fire, all low-risk:
-   a. DONE ✓ SCROLL INDICATOR: right-edge ▐ scrollbar thumb in renderTreeList (direct-printed). Verified.
-   b. DOCS Enter-to-read (view 12): pressing Enter on a topic loads `topic.content ()` and shows it in a
-      scrollable full-body pane (reuse the detailScroll mechanic). Needs a small State bit (readingTopic:
-      Option<String> or an inline mode). Nice, self-contained.
-   c. A tiny scrollbar column (▐) on the right of renderTreeList — visual polish.
-   d. Consider: `?` opens a help overlay (the full keymap). Later.
-Keep each fire small + verified. AGENTS/EDIT/THINGS stay deferred.
+   a. DONE ✓ scrollbar thumb. b. DONE ✓ Docs Enter-to-read (State.reading: Option<String>; reader mode ↑↓
+      scroll, esc/q close; reused for any full-body reader).
+   Next polish options (pick one/fire, all small + verified):
+   c. `?` help overlay: reuse reader mode — `?` sets reading = Some(full keymap string). Self-contained.
+   d. Detail pane for History/Changes (SplitPane): selected commit → its ops (getCommitOps), or Changes item
+      → its source. Bigger; optional.
+   e. Home: recent WIP items / last-commit line. f. Full end-to-end dev-drive sweep across all 10 views.
+Keep each fire small + verified. AGENTS/EDIT/THINGS stay deferred (mock render / MultilineEditor / type arg).
 Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)/Things(11)/Docs(12).
 
 ## Status: P1 COMPLETE ✓ — `dark` opens the framed Tree|Inspect workbench (verified on screen; classic prompt
@@ -98,6 +99,9 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 06:11 — P2.11 polish: Docs Enter-to-read — a reusable full-body reader (State.reading; ↑↓ scroll,
+  esc/q close). Verified (Enter on for-ai showed the doc content). Restructured renderBody→renderViewBody +
+  dispatcher to avoid a nested-match indentation trap. Commit a98524e36. Next: `?` help overlay (reuses reader).
 - 2026-07-18 06:03 — P2.10 polish: scrollbar thumb (▐) on overflowing lists. Hit + recorded the printAt-truncates-
   colored-strings gotcha (print edge glyphs directly via moveCursorTo). Verified. Commit ad9348a05. Next: Docs
   Enter-to-read (topic.content into a scrollable pane).
