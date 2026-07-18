@@ -4,13 +4,6 @@ module Darklang.Cli.Sync
 // and once you connect a peer, `dark sync daemon start` keeps things current in the background.
 // Peers are URLs (running instances), never files — sync exchanges ops, not databases.
 
-// "1 instance" / "2 instances" — count + correctly-pluralized noun, so no message reads "1 instance(s)".
-let plural (n: Int) (noun: String) : String =
-  if n == 1 then
-    $"{Stdlib.Int.toString n} {noun}"
-  else
-    $"{Stdlib.Int.toString n} {Stdlib.String.pluralize noun}"
-
 // How to describe the instances a sync actually got through to. When some peer DIDN'T answer, this says
 // "1 of 2 instances" — because the alternative reads as a contradiction: a "Couldn't reach <peer>" line
 // directly above a bare "Pulled from 1 instance" looks like one instance that both failed and worked, when
@@ -18,33 +11,44 @@ let plural (n: Int) (noun: String) : String =
 // until instances get names.
 let reachedPhrase (reached: Int) (tried: Int) : String =
   if reached == tried then
-    plural reached "instance"
+    Text.plural reached "instance"
   else
-    $"{Stdlib.Int.toString reached} of {plural tried "instance"}"
+    $"{Stdlib.Int.toString reached} of {Text.plural tried "instance"}"
 
-// Say what a pull actually DID, in human terms. A raw op count is a lie by omission: authoring one value
-// emits both the content op and the name-binding, so "5 changes" for one edit is nonsense. We describe the
-// name-bindings instead. A handful: name them, because that's what you actually want to know. Many: counts by
-// action, because a wall of names is worse than a summary.
-let changeSummary (changes: List<Darklang.Sync.EventLog.Change>) : String =
-  if Stdlib.List.length changes <= 5 then
+// Say what a pull actually DID, in human terms — ONE LINE PER NAME. A raw op count is a lie by omission:
+// authoring one value emits both a content op and its name-binding, so "5 changes" for one edit is nonsense.
+// And a conflicting pull can re-assert the same name, so the same (action, kind, name) can arrive more than
+// once — dedupe or it prints twice. A handful: one line each, because that's what you want to know. Many:
+// counts grouped by action + kind ("10 new fns"), because a wall of names is worse than a summary.
+let changeLines (changes: List<Darklang.Sync.EventLog.Change>) : List<String> =
+  let named =
     changes
     |> Stdlib.List.map (fun c -> $"{c.action} {c.itemKind} {c.location}")
-    |> Stdlib.String.join ", "
+    |> Stdlib.List.unique
+
+  if Stdlib.List.length named <= 6 then
+    named
   else
-    let countOf (action: String) : Int =
-      changes
-      |> Stdlib.List.filter (fun c -> c.action == action)
-      |> Stdlib.List.length
+    changes
+    |> Stdlib.List.uniqueBy (fun c -> $"{c.action} {c.itemKind} {c.location}")
+    |> Stdlib.List.groupByWithKey (fun c -> (c.action, c.itemKind))
+    |> Stdlib.List.map (fun group ->
+      let (key, cs) = group
+      let (action, kind) = key
+      let n = Stdlib.List.length cs
+      let kindWord = if n == 1 then kind else Stdlib.String.pluralize kind
+      $"{Stdlib.Int.toString n} {action} {kindWord}")
 
-    let part (cnt: Int) (label: String) : List<String> =
-      if cnt > 0 then [ $"{Stdlib.Int.toString cnt} {label}" ] else []
+// Print "Pulled from {who}: …" — inline for a single name (a tight one-liner), one indented line each for a
+// few, grouped counts for many. `changeLines` already deduped and chose the form.
+let printPull (who: String) (changes: List<Darklang.Sync.EventLog.Change>) : Unit =
+  match changeLines changes with
+  | [ one ] -> Stdlib.printLine (Colors.success $"Pulled from {who}: {one}")
+  | many ->
+    Stdlib.printLine (Colors.success $"Pulled from {who}:")
 
-    [ part (countOf "new") "new"
-      part (countOf "updated") "updated"
-      part (countOf "deleted") "deleted" ]
-    |> Stdlib.List.flatten
-    |> Stdlib.String.join ", "
+    many
+    |> Stdlib.List.iter (fun l -> Stdlib.printLine (Colors.success $"  {l}"))
 
 // After a pull, mention any name where an incoming change overwrote a different local one — so last-writer-wins
 // is never SILENT, without crying "conflict". Most of the time this is just a peer that was ahead of you (a
@@ -60,7 +64,7 @@ let conflictNudge () : Unit =
   if unreviewed > 0 then
     Stdlib.printLine (
       Colors.dimText
-        $"  {plural unreviewed "name"} updated by a peer (last-writer-wins) — `dark conflicts` to review")
+        $"  {Text.plural unreviewed "name"} updated by a peer (last-writer-wins) — `dark conflicts` to review")
   else
     ()
 
@@ -180,6 +184,9 @@ let firstRunDialog () : Unit =
       ()
 
   setConfig "sync.daemon.configured" "yes"
+  // Separate the dialog from the "Sync started" lines the caller prints next — otherwise a non-interactive
+  // run (prompt auto-answered "no") runs the "Adjust these settings?" line straight into "✓ Sync started".
+  Stdlib.printLine ""
 
 let daemonStart (state: AppState) : AppState =
   let firstRun =
@@ -384,9 +391,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
         |> Stdlib.printLines
 
       if Stdlib.List.length allChanges > 0 then
-        Stdlib.printLine (
-          Colors.success
-            $"Pulled from {reachedPhrase reached (Stdlib.List.length ps)}: {changeSummary allChanges}")
+        printPull (reachedPhrase reached (Stdlib.List.length ps)) allChanges
       else if pulled > 0 then
         // Ops applied, but nothing a human would call a change — branch structure, or content whose
         // name-binding came in an earlier batch. Say that honestly rather than invent a count.
@@ -413,8 +418,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
       state
     | sts ->
+      // Frame the relationship as two-way: sync is pull-based, so you pull from them AND they pull your
+      // commits from you (that's how your work reaches them — there's no push).
       let header =
-        $"Syncing with {plural (Stdlib.List.length sts) "instance"} (run `dark sync` to pull the latest):"
+        $"Syncing with {Text.plural (Stdlib.List.length sts) "instance"} (you pull with `dark sync`; they pull your commits from you):"
 
       // Width across the derived NAMES (what leads each row), not the URLs — so columns align on the handle
       // you actually use.
@@ -450,7 +457,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
         | [] -> []
         | names ->
           [ Colors.hint
-              $"  {plural (Stdlib.List.length names) "branch"} syncing: {Stdlib.String.join names ", "}" ]
+              $"  {Text.plural (Stdlib.List.length names) "branch"} syncing: {Stdlib.String.join names ", "}" ]
 
       Stdlib.printLines (
         Stdlib.List.append (Stdlib.List.append [ header ] lines) branchLine)
@@ -494,7 +501,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
         | Ok result ->
           let who = Darklang.Sync.instanceName peer
           if Stdlib.List.length result.changes > 0 then
-            Stdlib.printLine (Colors.success $"Pulled from {who}: {changeSummary result.changes}")
+            printPull who result.changes
           else if result.applied > 0 then
             Stdlib.printLine (Colors.success $"Synced with {who} — no new names")
           else

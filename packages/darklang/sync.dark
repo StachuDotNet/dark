@@ -298,7 +298,8 @@ let pullLoop
       | Error _ ->
         Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
     | Error _ -> Stdlib.Result.Result.Error $"{peer} sent a reply I couldn't read"
-  | Error _ -> Stdlib.Result.Result.Error $"Couldn't reach {peer}"
+  // Use the friendly instance name (e.g. "framey") the rest of the CLI shows, not the raw URL.
+  | Error _ -> Stdlib.Result.Result.Error $"Couldn't reach {instanceName peer}"
 
 /// After a pull's ops apply, fetch the content blobs we now lack. A value's large `package_blobs` content
 /// rides its OWN channel, not the op stream — so the ops can reference a blob we don't have yet. GET the peer's

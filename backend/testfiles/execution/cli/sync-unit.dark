@@ -86,6 +86,37 @@ module ReachedPhrasePartial =
 module ReachedPhrasePartialOfThree =
   (Darklang.Cli.Sync.reachedPhrase 2 3) = "2 of 3 instances"
 
+// ── a pull's human summary: one line per NAME, deduped ──────────────────────────────────────────────────
+// Authoring one value emits a content op AND its name-binding, and a conflicting pull re-asserts the name —
+// so the same (action, kind, name) can arrive more than once. The summary must list each name ONCE. (Without
+// the dedup this returned the name twice — the "updated value X, updated value X" bug.)
+module ChangeLinesDedupesRepeatedName =
+  (Darklang.Cli.Sync.changeLines
+    [ Darklang.Sync.EventLog.Change
+        { action = "updated"; itemKind = "value"; location = "Shared.Config.limit" }
+      Darklang.Sync.EventLog.Change
+        { action = "updated"; itemKind = "value"; location = "Shared.Config.limit" } ]) = [ "updated value Shared.Config.limit" ]
+
+// a few distinct names: one line each
+module ChangeLinesNamesAFew =
+  (Darklang.Cli.Sync.changeLines
+    [ Darklang.Sync.EventLog.Change { action = "new"; itemKind = "fn"; location = "A.b" }
+      Darklang.Sync.EventLog.Change { action = "new"; itemKind = "type"; location = "A.C" } ]) = [ "new fn A.b"
+                                                                                                    "new type A.C" ]
+
+// many (>6) collapse to counts grouped by action + kind, pluralized ("7 new fns")
+module ChangeLinesCountsMany =
+  (Darklang.Cli.Sync.changeLines
+    (Stdlib.List.map [ "a"; "b"; "c"; "d"; "e"; "f"; "g" ] (fun s ->
+      Darklang.Sync.EventLog.Change { action = "new"; itemKind = "fn"; location = $"A.{s}" }))) = [ "7 new fns" ]
+
+// count + noun helper pluralizes the noun, so nothing prints "1 value(s)"
+module PluralOneIsSingular =
+  (Darklang.Cli.Text.plural 1 "value") = "1 value"
+
+module PluralManyPluralizes =
+  (Darklang.Cli.Text.plural 2 "branch") = "2 branches"
+
 // ── `dark run <package fn>` points at eval instead of just saying no (C7) ──────────────────────────────
 // `run` takes a script FILE, so a package location lands on "Script not found" — true, and useless: the fn
 // exists, you named it to the wrong command. This is the guess that decides whether to say so.
