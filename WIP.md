@@ -63,12 +63,19 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
       packages/darklang/tailscale/. FIND the real API: `grep -rn 'Tailscale' packages/darklang/cli/devices.dark`
       shows how devices.dark calls it; follow to the module. If it returns a raw multi-line string, split to
       lines as body items. If the API is unclear/needs network, SKIP Mesh (leave coming-soon) and move on.
-   b. SERVICES (view=10): reuse `Apps.Command` daemon/app listing data (daemonState/list). (cli-ux/21)
+   b. DONE ✓ SERVICES (view=10): Apps.Registry.available → daemon/app list. Verified.
    c. THINGS (view=11): `find-values`/ValueSearch by type — lower priority (needs a type arg); skip for now.
-6. Home dashboard (view=0): give it its OWN body — a few summary lines (WIP count via getWipSummary, commit
-   count via getCommitCount, top-level module count) + maybe the tree below. Then consider defaulting `dark`
-   to Home instead of Tree. (cli-ux/10)
-7. Enter actions + per-view breadcrumb/keyhints + polish.
+6. DONE ✓ Home dashboard (view=0): getWipSummary + getCommitCount + owner count summary. Verified.
+   OPTIONAL next: default `dark` to open Home (view 0) instead of Tree (view 1) — change execute's activeView=1
+   to =0 (Home renders fine as a landing). Consider it.
+7. Remaining coming-soon views to wire (each: itemsForView + renderBody branch, reuse existing data):
+   - MESH (7): investigate `Darklang.Tailscale.status` (devices.dark uses it) — only if clean+offline-safe.
+   - AGENTS (8): `Apps.Views.AiChats` render is MOCK — could reuse its data, or skip (needs the render, not a
+     list). Lower priority.
+   - RUNS (9): `Tracing` recent traces list — find the list helper.
+   - EDIT (3): needs the MultilineEditor (big); DEFER to a later phase.
+8. Polish (after breadth): Enter actions (Tree leaf → nothing yet / commit → ops / changes item → source),
+   per-view breadcrumb + keyhints, and a scrollbar hint. See main/notes/cli-ux/{11,12,15,16}.
 Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)/Things(11)/Docs(12).
 
 ## Status: P1 COMPLETE ✓ — `dark` opens the framed Tree|Inspect workbench (verified on screen; classic prompt
@@ -84,6 +91,9 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 05:33 — P2.6: Home dashboard (WIP/commits/owners summary via getWipSummary+getCommitCount) +
+  Services view (Apps.Registry.available). Both verified. 8 views live now (Home/Tree/Inspect/Changes/History/
+  Resolve/Services/Docs). Commit 2e600e967. Next: optional default→Home; then Runs/Mesh; then polish (Enter, breadcrumb).
 - 2026-07-18 05:25 — P2.5: wired Resolve (Sync.Conflicts.list; "nothing to resolve" empty) + Docs (allTopics
   topic list). Both verified via dev-drive. 6 views live now (Tree/Inspect/Changes/History/Resolve/Docs).
   Commit 3080ec551. Next: Services (Apps list) + Home dashboard; Mesh only if the Tailscale API is clean.
