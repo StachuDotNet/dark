@@ -68,7 +68,20 @@ let loadCommitBodyItems (branchId: Uuid) : List<BodyItem> =
         kind = "commit"
         isModule = false })
 
-/// The body items for a given view: packages for Home/Tree, WIP for Changes, commits for History, else [].
+/// Recorded sync divergences (for the Resolve view).
+let loadConflictBodyItems () : List<BodyItem> =
+  Darklang.Sync.Conflicts.list ()
+  |> Stdlib.List.map (fun c ->
+    BodyItem { name = c.location ++ "  —  " ++ c.status; kind = "conflict"; isModule = false })
+
+/// In-CLI documentation topics (for the Docs view).
+let loadDocBodyItems () : List<BodyItem> =
+  Docs.Command.Topics.allTopics ()
+  |> Stdlib.List.map (fun t ->
+    BodyItem { name = t.name ++ "  —  " ++ t.description; kind = "doc"; isModule = false })
+
+/// The body items for a given view: packages for Home/Tree, WIP for Changes, commits for History,
+/// conflicts for Resolve, doc topics for Docs, else [] (unwired).
 let itemsForView
   (view: Int)
   (branchId: Uuid)
@@ -77,6 +90,8 @@ let itemsForView
   if view <= 1 then loadItems branchId location
   else if view == 4 then loadWipBodyItems branchId
   else if view == 5 then loadCommitBodyItems branchId
+  else if view == 6 then loadConflictBodyItems ()
+  else if view == 12 then loadDocBodyItems ()
   else []
 
 
@@ -176,6 +191,15 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
       UI.Layout.printAt region 2 4 (Colors.dimText "no commits yet")
     else
       renderTreeList state region
+  else if state.activeView == 6 then
+    // Resolve: recorded sync divergences.
+    if Stdlib.List.isEmpty state.items then
+      UI.Layout.printAt region 2 4 (Colors.colorize Colors.green "✓ nothing to resolve")
+    else
+      renderTreeList state region
+  else if state.activeView == 12 then
+    // Docs: in-CLI documentation topics.
+    renderTreeList state region
   else
     UI.Layout.printAt region 1 2 (Colors.dimText ((Frame.viewName state.activeView) ++ " — coming soon"))
 
