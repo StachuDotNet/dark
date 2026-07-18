@@ -148,12 +148,21 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
       arrows/Tab=2sp/Esc=cancel; Ctrl ignored for now). Tree `n` → name input → `new-fn` action → editor opens
       with starter "(x: Int): Int =\n  x". VERIFIED via dev-drive (opened, typed "zzz" → "zzz(x: Int…").
    DONE ✓ 5. edit-in-place: Tree `e` → openEditExisting (prefill from source via defFromSource). Verified.
-   NEXT — CONSOLIDATE (approaching done): (1) one full dev-drive sweep of the write flows (Tree n→^s new fn,
-   Tree e→^s edit, Changes c commit, Changes x discard, History b/s branch) — confirm each still works, clean
-   up any created artifacts. (2) Clean the stray `wbbr` test branch if easy (`branch archive wbbr`?). (3) Refresh
-   the PR SUMMARY once more if anything changed. THEN: type/val authoring is the main remaining increment (mirror
-   fn: Tree n could ask fn/type/val, or a separate key) — do it if clearly worth it; otherwise the workbench is
-   feature-complete for the design's core, so SLOW the loop (longer reschedule) or idle-tick. Don't invent busywork.
+   DONE ✓ CONSOLIDATE: reload clean, workbench opens on Home fine, no regressions. Test artifacts (wbbr branch,
+   test fns) AUTO-CLEAN on reload-packages (DB rebuilt from disk) — nothing to clean.
+   NEXT — the LAST core increment: TYPE/VAL authoring (mirror fn). Then the workbench is design-complete → idle.
+   Plan: saveEditing currently only handles fn. Generalize authoring to type + value:
+   - The editor's starter + save need to know the kind. Simplest: infer the declaration kind from the parsed
+     buffer — after parserParseToWrittenTypes, look at the FIRST declaration: Function | Type | Value. Build the
+     matching op: AddFn+SetName / AddType+SetName / AddValue+SetName (see fn.dark for fn; find the type/val
+     equivalents: `grep -rn 'AddType\|AddValue\|toPackageTypePT\|toPackageValuePT\|TypeDeclaration\|toPackage' 
+     packages/darklang/cli/packages/type.dark packages/darklang/cli/packages/value.dark`). fullSource for a type
+     is likely "type {name} {def}" not "let" — CHECK type.dark/value.dark how they build fullSource + extract.
+   - So saveEditing branches on the intended kind. Keep `n` = new fn (fullSource "let ..."), and maybe add the
+     kind to EditingState (kind: "fn"|"type"|"value") set at open time; `n` fn, and a new key or a kind prompt
+     for type/val. SIMPLEST: keep `n`=fn only for now, add Tree `t`=new type, `v`=new val (or extend). Verify each.
+   - If the type/val WT→PT extraction is as gnarly as fn's and low-value, DOCUMENT it as a known small gap and
+     STOP — fn authoring is the 90% case. Then SLOW the loop (reschedule ~1200s) / idle. Don't grind busywork.
    DONE ✓ 4. SAVE (Ctrl+S) — saveEditing: parseRelativeTo → parse body → WT→PT toPackageFnPT → AddFn+SetName →
       SCM.PackageOps.add. Errors keep the editor open with an inline `err` line. VERIFIED END-TO-END (authored
       Stachu.Wb.dbl via the workbench, saved with ^s, `view` shows `let dbl (x:Int):Int = x`, discarded). EDIT DONE.
@@ -219,6 +228,10 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 08:35 — Consolidation: verified reload clean + workbench opens on Home (no regressions). Confirmed
+  test artifacts auto-clean on reload (wbbr branch already gone). Workbench is feature-complete for the design's
+  core (all views + full fn author→commit loop). Next: type/val authoring (last increment), then idle. No new commit
+  (verification only).
 - 2026-07-18 08:26 — P3.8: edit-in-place — Tree `e` opens the selected fn in the editor, prefilled from source
   (defFromSource strips doc + `let leaf`, keeps generics; eval-verified). VERIFIED via dev-drive (e on
   Stachu.Parser.charWhere → "edit Stachu.Parser.charWhere" editor). fn authoring now round-trips (n new / e edit
