@@ -181,7 +181,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
     state
 
-  | [ "default"; name ] ->
+  | [ "set-default"; name ] ->
     match SCM.Branch.getByName name with
     | Some _ ->
       let updated =
@@ -197,6 +197,11 @@ let execute (state: AppState) (args: List<String>) : AppState =
     | None ->
       Stdlib.printLine (Colors.error $"Branch '{name}' not found.")
       state
+
+  // Setting is its own verb (`set-default`), so `default` reads as show-only and doesn't silently write.
+  | [ "default"; name ] ->
+    Stdlib.printLine (Colors.hint $"To set the default branch, use:  branch set-default {name}")
+    state
 
   | [ "rename"; oldName; newName ] ->
     match SCM.Branch.getByName oldName with
@@ -230,7 +235,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
   | _ ->
     Stdlib.printLine
-      "Usage: branch [list|create|switch|rename|archive|default] [args]"
+      "Usage: branch [list|create|switch|rename|archive|default|set-default] [args]"
 
     state
 
@@ -238,9 +243,9 @@ let execute (state: AppState) (args: List<String>) : AppState =
 let complete (_state: AppState) (args: List<String>) : List<Completion.CompletionItem> =
   match args with
   | [] ->
-    [ "list"; "create"; "switch"; "rename"; "archive"; "default" ]
+    [ "list"; "create"; "switch"; "rename"; "archive"; "default"; "set-default" ]
     |> Stdlib.List.map Completion.simple
-  | [ "switch" ] | [ "archive" ] | [ "delete" ] | [ "default" ] ->
+  | [ "switch" ] | [ "archive" ] | [ "delete" ] | [ "default" ] | [ "set-default" ] ->
     let branches = SCM.Branch.list ()
     Stdlib.List.map branches (fun b -> Completion.simple b.name)
   | _ -> []
@@ -257,7 +262,8 @@ let help (_state: AppState) : Unit =
     "  rename <old> <new>      Rename a branch"
     "  archive <name>          Archive a branch (soft delete)"
     "  delete <name>           Archive a branch (alias for archive)"
-    "  default [name]          Show, or set, the branch new CLI runs start on"
+    "  default                 Show the branch new CLI runs start on"
+    "  set-default <name>      Set the branch new CLI runs start on"
     ""
     "Which branch a command runs on: --branch beats DARK_BRANCH beats `default` beats main."
     ""
