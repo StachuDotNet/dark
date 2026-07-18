@@ -147,6 +147,13 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
       buffer + reverse-video cursor + windowed scroll); handleKey editing branch (typing/Enter=newline/Backspace/
       arrows/Tab=2sp/Esc=cancel; Ctrl ignored for now). Tree `n` → name input → `new-fn` action → editor opens
       with starter "(x: Int): Int =\n  x". VERIFIED via dev-drive (opened, typed "zzz" → "zzz(x: Int…").
+   DONE ✓ 5. edit-in-place: Tree `e` → openEditExisting (prefill from source via defFromSource). Verified.
+   NEXT — CONSOLIDATE (approaching done): (1) one full dev-drive sweep of the write flows (Tree n→^s new fn,
+   Tree e→^s edit, Changes c commit, Changes x discard, History b/s branch) — confirm each still works, clean
+   up any created artifacts. (2) Clean the stray `wbbr` test branch if easy (`branch archive wbbr`?). (3) Refresh
+   the PR SUMMARY once more if anything changed. THEN: type/val authoring is the main remaining increment (mirror
+   fn: Tree n could ask fn/type/val, or a separate key) — do it if clearly worth it; otherwise the workbench is
+   feature-complete for the design's core, so SLOW the loop (longer reschedule) or idle-tick. Don't invent busywork.
    DONE ✓ 4. SAVE (Ctrl+S) — saveEditing: parseRelativeTo → parse body → WT→PT toPackageFnPT → AddFn+SetName →
       SCM.PackageOps.add. Errors keep the editor open with an inline `err` line. VERIFIED END-TO-END (authored
       Stachu.Wb.dbl via the workbench, saved with ^s, `view` shows `let dbl (x:Int):Int = x`, discarded). EDIT DONE.
@@ -212,6 +219,12 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 08:26 — P3.8: edit-in-place — Tree `e` opens the selected fn in the editor, prefilled from source
+  (defFromSource strips doc + `let leaf`, keeps generics; eval-verified). VERIFIED via dev-drive (e on
+  Stachu.Parser.charWhere → "edit Stachu.Parser.charWhere" editor). fn authoring now round-trips (n new / e edit
+  → ^s). Commit ea257464f. Remaining gaps: type/val authoring (only fn wired), + deferred (Agents/Things/rename).
+  Approaching completion — next: a final consolidation sweep + refresh PR summary + clean test artifacts (wbbr
+  branch), then slow the loop / idle unless clear value (type authoring is the main remaining increment).
 - 2026-07-18 08:16 — P3.7 EDIT COMPLETE: Ctrl+S save (saveEditing — local parse→WT→PT→AddFn/SetName→SCM.add;
   inline err on failure). VERIFIED end-to-end: authored Stachu.Wb.dbl in the workbench, ^s saved it, view shows
   `let dbl (x:Int):Int = x`, discarded. Updated Edit tab + PR summary. Commits ca7e96b91, 68ff3a30a. The
