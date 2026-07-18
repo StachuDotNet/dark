@@ -71,13 +71,14 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
 9. NEXT — 10/13 views live (Home,Tree,Inspect,Changes,History,Resolve,Mesh,Runs,Services,Docs). Remaining views
    Edit/Agents/Things are DEFERRED (need MultilineEditor / mock render / a type arg). So pivot to POLISH — pick
    one per fire, all low-risk:
-   a. DONE ✓ scrollbar thumb. b. DONE ✓ Docs Enter-to-read (State.reading: Option<String>; reader mode ↑↓
-      scroll, esc/q close; reused for any full-body reader).
-   Next polish options (pick one/fire, all small + verified):
-   c. `?` help overlay: reuse reader mode — `?` sets reading = Some(full keymap string). Self-contained.
-   d. Detail pane for History/Changes (SplitPane): selected commit → its ops (getCommitOps), or Changes item
-      → its source. Bigger; optional.
-   e. Home: recent WIP items / last-commit line. f. Full end-to-end dev-drive sweep across all 10 views.
+   DONE ✓ a. scrollbar thumb  b. Docs Enter-to-read  c. `?` help overlay (reuses reader).
+   NEXT polish (pick one/fire):
+   d. FULL SWEEP (do this next — QA): `./dev-drive workbench --keys "<seq>"` through every view (1..9, ] to
+      Runs/Services/Things/Docs), dump each, eyeball for render glitches (misaligned columns, overflow, stale
+      breadcrumb). Fix anything found. Quick + high-value after all the additions.
+   e. History detail pane (SplitPane commits|ops): Enter/→ on a commit → its ops via SCM.PackageOps.getCommitOps
+      (find it) rendered in a right pane or the reader. Matches design cli-ux/16. Medium.
+   f. Home: show recent WIP item names + last-commit line (richer landing).
 Keep each fire small + verified. AGENTS/EDIT/THINGS stay deferred (mock render / MultilineEditor / type arg).
 Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)/Things(11)/Docs(12).
 
@@ -99,6 +100,8 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 06:21 — P2.12 polish: `?` help overlay (full keymap via reusable reader mode). Verified. Commit
+  e62cb634b. Next: full dev-drive SWEEP across all views (QA for glitches), then History detail pane / richer Home.
 - 2026-07-18 06:11 — P2.11 polish: Docs Enter-to-read — a reusable full-body reader (State.reading; ↑↓ scroll,
   esc/q close). Verified (Enter on for-ai showed the doc content). Restructured renderBody→renderViewBody +
   dispatcher to avoid a nested-match indentation trap. Commit a98524e36. Next: `?` help overlay (reuses reader).
