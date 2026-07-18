@@ -36,8 +36,8 @@ let printAt (region: Region) (row: Int) (col: Int) (text: String) : Unit =
         Stdlib.String.slice text 0 maxLen
       else
         text
-    Stdlib.print (Darklang.Cli.Colors.moveCursorTo absRow absCol)
-    Stdlib.print truncated
+    // One write, not two — fewer syscalls per frame (the workbench draws hundreds of these).
+    Stdlib.print ((Darklang.Cli.Colors.moveCursorTo absRow absCol) ++ truncated)
   else
     ()
 
