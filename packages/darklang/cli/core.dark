@@ -300,6 +300,12 @@ module Registry =
       ("logout", "Clear the active account", [], Auth.Logout.execute, Auth.Logout.help, Auth.Logout.complete)
       ("caps", "View + control this instance's capability grant (default NONE)", [ "capabilities" ], Caps.Command.execute, Caps.Command.help, Caps.Command.complete)
       ("devices", "Your tailnet devices (status / serve / ping), over the `tailscale` CLI", [], Devices.execute, Devices.help, Devices.complete)
+      // CLEANUP(instances-command): `sync` currently mixes the VERB (sync now) with instance MANAGEMENT
+      // (connect / disconnect / status / fetch). Those belong in a dedicated `instances` command with
+      // subcommands — `instances add <url>` / `remove <name|url>` / `list` / `rename <name>` (the `--as`
+      // custom-name idea) — so `dark sync` is just "pull now" and the instance list has one clear home. It
+      // would also fix the connect/disconnect help reading `<url>` while everything else deals in names
+      // (disconnect already resolves a name via `resolvePeer`; connect stays URL-only since the instance is new).
       ("sync", "Share package changes with other Darklang instances", [], Sync.execute, Sync.help, Sync.complete)
       ("ops", "Inspect this instance's op log", [], Ops.execute, Ops.help, Ops.complete)
       ("apps", "List, install, and manage apps (daemons, foreground, UI)", [], Apps.Command.execute, Apps.Command.help, Apps.Command.complete)
