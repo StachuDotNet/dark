@@ -45,7 +45,7 @@ type Step =
 
 /// Full keymap, shown by `?` in the reusable reader.
 val helpText =
-  "Workbench — keys\n\n  Navigation\n    up/down    move selection · scroll a reader\n    right/enter into a module (Tree) · open a topic (Docs)\n    left       up a level (Tree)\n    tab        toggle focus Tree <-> Inspect\n    [ ]        cycle views · 1-9 jump to a view\n    esc / q    close a reader · exit the workbench\n\n  Views\n    1 Home   2 Tree   3 Inspect   4 Edit   5 Changes   6 History\n    7 Resolve   8 Mesh   9 Agents   ([ ] reach) Runs Services Things Docs\n\n  Wired today: Home Tree Inspect Changes History Resolve Mesh Runs Services Docs.\n  Edit/Agents/Things: coming soon.\n\n  ? this help  ·  esc to close"
+  "Workbench — keys\n\n  Global (work from any view)\n    :          run — evaluate a Dark expression, result opens in the reader\n    1-9        jump to a view · [ ] cycle views\n    ?          this help · esc / q close a reader or exit\n\n  Navigation\n    up/down    move selection · scroll a reader\n    right/enter into a module (Tree) · open source/ops/a topic\n    left       up a level (Tree)\n    tab        toggle focus Tree <-> Inspect\n\n  Authoring (Tree)\n    n t v      new fn / type / value    e  edit the selected fn\n    ^s         save (in the editor) · esc cancel\n\n  Changes: c commit · x discard    History: b new-branch · s switch\n\n  Views\n    1 Home   2 Tree   3 Inspect   4 Edit   5 Changes   6 History\n    7 Resolve   8 Mesh   9 Agents   ([ ] reach) Runs Services Things Docs\n\n  Wired today: Home Tree Inspect Changes History Resolve Mesh Runs Services Docs.\n  Edit/Agents/Things: coming soon.\n\n  ? this help  ·  esc to close"
 
 
 // ── Package listing (the Tree body) ──
@@ -472,14 +472,28 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
   | Some content -> renderReading content state.detailScroll region
   | None -> renderViewBody state region
 
-/// Honest key hints per view — advertise only what actually works today.
+/// Honest, context-relevant key hints per view — the 3-6 most useful keys first, then the anchored global
+/// keys (view-switch, help, quit) so the footer's right edge is stable. Keys are emphasized by `formatHints`.
+/// Only advertises what actually works today.
 let hintsForView (view: Int) : String =
-  if view == 1 then "↑↓ move · → in · n/t/v new fn/type/val · e edit-fn · tab · 1-9/[ ] view · esc"
-  else if view == 0 then "1-9 jump to view · [ ] cycle · esc exit"
-  else if view == 4 then "↑↓ move · enter source · c commit · x discard · 1-9/[ ] view · esc exit"
-  else if view == 5 then "↑↓ move · enter ops · b new-branch · s switch · 1-9/[ ] view · esc exit"
-  else if view == 12 then "↑↓ move · enter read · 1-9/[ ] view · esc exit"
-  else "↑↓ move · 1-9/[ ] view · esc exit"
+  // Global keys, always the same, anchored at the right end of the footer.
+  let global = [ (":", "run"); ("1-9", "view"); ("?", "help"); ("q", "quit") ]
+  let ctx =
+    if view == 1 then
+      [ ("↑↓", "move"); ("→", "in"); ("⏎", "open"); ("n/t/v", "new"); ("e", "edit"); ("tab", "focus") ]
+    else if view == 0 then
+      [ ("↑↓", "move") ]
+    else if view == 4 then
+      [ ("↑↓", "move"); ("⏎", "source"); ("c", "commit"); ("x", "discard") ]
+    else if view == 5 then
+      [ ("↑↓", "move"); ("⏎", "ops"); ("b", "branch"); ("s", "switch") ]
+    else if view == 6 then
+      [ ("↑↓", "move"); ("⏎", "detail") ]
+    else if view == 12 then
+      [ ("↑↓", "move"); ("⏎", "read") ]
+    else
+      [ ("↑↓", "move") ]
+  Frame.formatHints (Stdlib.List.append ctx global)
 
 let render (state: State) : Unit =
   // Clamp to sane minimums — mid-resize the terminal reports 0/tiny sizes; without this the region math
@@ -522,13 +536,21 @@ let render (state: State) : Unit =
       (fun r ->
         let h =
           match state.editing with
-          | Some _ -> "type to edit · arrows move · tab indent · ^s save · esc cancel"
+          | Some _ ->
+            Frame.formatHints
+              [ ("type", "edit"); ("↑↓←→", "move"); ("tab", "indent"); ("^s", "save"); ("esc", "cancel") ]
           | None ->
             match state.input with
-            | Some inp -> inp.prompt ++ inp.text ++ "_"
+            | Some inp ->
+              // "You can type here" affordance: a bright prompt glyph, the label, the live text, and a
+              // reverse-video block caret so it's unmistakable the app is capturing keystrokes.
+              (Colors.colorize Colors.cyan "› ")
+              ++ (Colors.boldText inp.prompt)
+              ++ inp.text
+              ++ (Colors.colorize Colors.reverse " ")
             | None ->
               match state.reading with
-              | Some _ -> "↑↓ scroll · esc back to topics"
+              | Some _ -> Frame.formatHints [ ("↑↓", "scroll"); ("esc", "back") ]
               | None -> hintsForView state.activeView
         Frame.renderKeyHints r h)
   UI.Layout.vstack screen [ tabbar; crumb; body; hints ]
@@ -599,6 +621,18 @@ let performInputAction (state: State) (inp: InputState) : Step =
             selected = 0 }
     else
       Step.Continue { state with input = Stdlib.Option.Option.None }
+  else if inp.action == "eval" then
+    // The `:` run prompt — evaluate a Dark expression and show the result (or error) in the reader.
+    let result =
+      match Builtin.cliEvaluateExpression state.accountId state.branchId inp.text false with
+      | Ok(Some s) -> inp.text ++ "\n\n" ++ s
+      | Ok None -> inp.text ++ "\n\n(no result)"
+      | Error err -> inp.text ++ "\n\nError: " ++ (Darklang.Cli.ExecutionError.toString state.branchId err)
+    Step.Continue
+      { state with
+          input = Stdlib.Option.Option.None
+          reading = Stdlib.Option.Option.Some result
+          detailScroll = 0 }
   else if inp.action == "branch-create" then
     let b = Darklang.SCM.Branch.create inp.text state.branchId
     Step.Continue
@@ -881,6 +915,13 @@ let handleKey
     | Some "q" -> Step.Exit state
     | Some "?" ->
       Step.Continue { state with reading = Stdlib.Option.Option.Some helpText; detailScroll = 0 }
+    | Some ":" ->
+      // Run prompt — evaluate a Dark expression from anywhere in the workbench.
+      Step.Continue
+        { state with
+            input =
+              Stdlib.Option.Option.Some
+                (InputState { prompt = "run "; text = ""; action = "eval" }) }
     | Some "]" ->
       let nv = Stdlib.Int.min ((Stdlib.List.length Frame.viewNames) - 1) (state.activeView + 1)
       Step.Continue

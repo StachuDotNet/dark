@@ -45,7 +45,16 @@ let renderBreadcrumb
   let rightCol = Stdlib.Int.max region.left (region.left + region.cols - rightVisibleLen - 2)
   Stdlib.print ((Colors.moveCursorTo region.top rightCol) ++ rightColored)
 
-/// Render a one-row key-hint bar (dim), bottom of the body.
+/// Format a list of (key, label) hints into a footer string: the key bright (cyan), the label dim, pairs
+/// separated by a dim middot. Per the TUI rule "key emphasized, label muted" so shortcuts actually read.
+let formatHints (pairs: List<(String * String)>) : String =
+  pairs
+  |> Stdlib.List.map (fun pair ->
+    let (k, l) = pair
+    (Colors.colorize Colors.cyan k) ++ " " ++ (Colors.dimText l))
+  |> Stdlib.String.join (Colors.dimText "   ")
+
+/// Render a one-row, pre-colored key-hint bar at the bottom of the body. The string is already styled
+/// (see `formatHints`), so this just indents + places it.
 let renderKeyHints (region: UI.Layout.Region) (hints: String) : Unit =
-  Stdlib.print
-    ((Colors.moveCursorTo region.top region.left) ++ (Colors.dimText ("  " ++ hints)))
+  Stdlib.print ((Colors.moveCursorTo region.top region.left) ++ "  " ++ hints)
