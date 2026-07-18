@@ -20,6 +20,11 @@ type private Private() =
 
   static let mQueue : BlockingCollection = new BlockingCollection()
 
+  // When capturing (non-null), writes go to this buffer instead of the console queue. Used by the CLI to run
+  // a command and show its output in-frame (the workbench's inline command bar) rather than to stdout. Capture
+  // is driven synchronously from the interactive loop's key handler, so the single-writer assumption holds.
+  static let mutable captureBuffer : System.Text.StringBuilder = null
+
   // Use a lock so that wait() doesn't return until the thread has actually printed
   // (it would finish once it was removed from the queue)
   static let mLock : obj = obj ()
@@ -54,7 +59,18 @@ type private Private() =
       lock mLock (fun () -> shouldWait <- mQueue.Count > 0)
 
   static member Write(value : string) : unit =
-    if isWasm then System.Console.Write value else mQueue.Add(value)
+    if isWasm then
+      System.Console.Write value
+    else
+      let cb = captureBuffer
+      if not (isNull cb) then cb.Append(value) |> ignore else mQueue.Add(value)
+
+  static member StartCapture() : unit = captureBuffer <- System.Text.StringBuilder()
+
+  static member StopCapture() : string =
+    let sb = captureBuffer
+    captureBuffer <- null
+    if isNull sb then "" else sb.ToString()
 
 
 let wait () : unit = Private.wait ()
@@ -62,3 +78,9 @@ let wait () : unit = Private.wait ()
 let writeInline (value : string) : unit = Private.Write value
 
 let writeLine (value : string) : unit = Private.Write(value + "\n")
+
+/// Route subsequent `print`/`printLine` output into an in-memory buffer instead of the console.
+let startCapture () : unit = Private.StartCapture()
+
+/// Stop capturing and return everything written since `startCapture`.
+let stopCapture () : string = Private.StopCapture()

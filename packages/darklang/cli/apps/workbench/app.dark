@@ -498,11 +498,9 @@ let renderReading (content: String) (isCode: Bool) (scroll: Int) (region: UI.Lay
   |> Stdlib.List.iter (fun pair ->
     let (i, p) = pair
     let row = i - off
-    if isCode then
-      let disp = Stdlib.List.getAt highlighted i |> Stdlib.Option.withDefault p
-      Stdlib.print ((Colors.moveCursorTo (region.top + row) region.left) ++ (UI.Layout.truncateVisible disp maxFit))
-    else
-      UI.Layout.printAt region row 0 p)
+    // Truncate ANSI-aware either way — command output (non-code) carries color codes too.
+    let disp = if isCode then (Stdlib.List.getAt highlighted i |> Stdlib.Option.withDefault p) else p
+    Stdlib.print ((Colors.moveCursorTo (region.top + row) region.left) ++ (UI.Layout.truncateVisible disp maxFit)))
 
 /// A single-list view, framed in a titled box like Tree — so no view renders "naked" into the raw region.
 /// `emptyMsg` (already colored) names the state + fill action when the list is empty, per the TUI empty-state
@@ -662,7 +660,7 @@ let hintsForView (state: State) : String =
   let hasPreview = Stdlib.Bool.not (Stdlib.List.isEmpty state.items)
   let tabHint = if hasPreview then [ ("tab", "preview") ] else []
   // Global keys, always the same, anchored at the right end of the footer.
-  let global = [ ("/", "search"); (":", "run"); ("1-9", "view"); ("?", "help"); ("q", "quit") ]
+  let global = [ ("/", "search"); (":", "cmd"); ("1-9", "view"); ("?", "help"); ("q", "quit") ]
   let ctx =
     if view == 1 then
       [ ("↑↓", "move"); ("→", "in"); ("⏎", "open"); ("n/t/v", "new"); ("e", "edit"); ("d", "deps"); ("tab", "focus") ]
@@ -682,7 +680,7 @@ let hintsForView (state: State) : String =
 
 /// The keymap, grouped, for the `?` overlay — (category, keys).
 val helpGroups =
-  [ ("Global", ": run   / search   ? help   esc back   q quit")
+  [ ("Global", ": cmd   / search   ? help   esc back   q quit")
     ("Views", "1-9 jump   [ ] cycle")
     ("Move", "↑↓ or j/k   g/G top/bottom   tab focus pane")
     ("Tree", "→/l in   ←/h up   ⏎ open   n/t/v new   e edit   d deps")
@@ -987,19 +985,42 @@ let performInputAction (state: State) (inp: InputState) : Step =
     else
       Step.Continue
         { state with input = Stdlib.Option.Option.None; searchHits = hits; searchSelected = 0 }
-  else if inp.action == "eval" then
-    // The `:` run prompt — evaluate a Dark expression and show the result (or error) in the reader.
-    let result =
-      match Builtin.cliEvaluateExpression state.accountId state.branchId inp.text false with
-      | Ok(Some s) -> inp.text ++ "\n\n" ++ s
-      | Ok None -> inp.text ++ "\n\n(no result)"
-      | Error err -> inp.text ++ "\n\nError: " ++ (Darklang.Cli.ExecutionError.toString state.branchId err)
-    Step.Continue
-      { state with
-          input = Stdlib.Option.Option.None
-          reading = Stdlib.Option.Option.Some result
-          readingIsCode = false
-          detailScroll = 0 }
+  else if inp.action == "command" then
+    // The `:` command bar — run any old-school CLI command inside the workbench and show its output in the
+    // reader (captured via stdoutCapture, so it never touches the frame). If the first word isn't a known
+    // command, fall back to evaluating the whole line as a Dark expression, so `: 1 + 2` still works.
+    let text = Stdlib.String.trim inp.text
+    if text == "" then
+      Step.Continue { state with input = Stdlib.Option.Option.None }
+    else
+      let words = Stdlib.String.split text " " |> Stdlib.List.filter (fun w -> w != "")
+      // A throwaway AppState to run the command against, pinned to the workbench's branch + account.
+      let appState =
+        { (Darklang.Cli.initState ()) with
+            currentBranchId = state.branchId
+            accountID = state.accountId
+            accountName = state.accountName }
+      let allNames =
+        appState.allCommandsCache
+        |> Stdlib.List.fold [] (fun acc h ->
+          Stdlib.List.append (Stdlib.List.append acc [ h.name ]) h.aliases)
+      let (cmd, args) =
+        match words with
+        | first :: rest -> (first, rest)
+        | [] -> ("", [])
+      let isKnown = Stdlib.List.member allNames cmd
+      let _ = Builtin.stdoutCaptureStart ()
+      let _ =
+        if isKnown then Darklang.Cli.Registry.executeCommand cmd appState args
+        else Darklang.Cli.Registry.executeCommand "eval" appState words
+      let output = Builtin.stdoutCaptureStop ()
+      let shown = if (Stdlib.String.trim output) == "" then "(no output)" else output
+      Step.Continue
+        { state with
+            input = Stdlib.Option.Option.None
+            reading = Stdlib.Option.Option.Some ((Colors.dimText ("$ " ++ text)) ++ "\n\n" ++ shown)
+            readingIsCode = false
+            detailScroll = 0 }
   else if inp.action == "branch-create" then
     let b = Darklang.SCM.Branch.create inp.text state.branchId
     Step.Continue
@@ -1338,12 +1359,12 @@ let handleKey
     | Some "G" -> navBottom state
     | Some "?" -> Step.Continue { state with showHelp = true }
     | Some ":" ->
-      // Run prompt — evaluate a Dark expression from anywhere in the workbench.
+      // Command bar — run any old-school command (or eval an expression) from anywhere in the workbench.
       Step.Continue
         { state with
             input =
               Stdlib.Option.Option.Some
-                (InputState { prompt = "run "; text = ""; action = "eval" }) }
+                (InputState { prompt = ": "; text = ""; action = "command" }) }
     | Some "/" ->
       // Search prompt — find any package item across the whole tree.
       Step.Continue
