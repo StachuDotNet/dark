@@ -402,7 +402,7 @@ let hintsForView (view: Int) : String =
   if view == 1 then "↑↓ move · → into/source · ← up · tab focus · 1-9/[ ] view · esc exit"
   else if view == 0 then "1-9 jump to view · [ ] cycle · esc exit"
   else if view == 4 then "↑↓ move · enter source · c commit · x discard · 1-9/[ ] view · esc exit"
-  else if view == 5 then "↑↓ move · enter ops · 1-9/[ ] view · esc exit"
+  else if view == 5 then "↑↓ move · enter ops · b new-branch · s switch · 1-9/[ ] view · esc exit"
   else if view == 12 then "↑↓ move · enter read · 1-9/[ ] view · esc exit"
   else "↑↓ move · 1-9/[ ] view · esc exit"
 
@@ -506,6 +506,27 @@ let performInputAction (state: State) (inp: InputState) : Step =
             selected = 0 }
     else
       Step.Continue { state with input = Stdlib.Option.Option.None }
+  else if inp.action == "branch-create" then
+    let b = Darklang.SCM.Branch.create inp.text state.branchId
+    Step.Continue
+      { state with
+          input = Stdlib.Option.Option.None
+          branchId = b.id
+          items = itemsForView state.activeView b.id state.location
+          selected = 0 }
+  else if inp.action == "branch-switch" then
+    match Darklang.SCM.Branch.getByName inp.text with
+    | Some b ->
+      Step.Continue
+        { state with
+            input = Stdlib.Option.Option.None
+            branchId = b.id
+            items = itemsForView state.activeView b.id state.location
+            selected = 0 }
+    | None ->
+      Step.Continue
+        { state with
+            input = Stdlib.Option.Option.Some { inp with prompt = "no branch '" ++ inp.text ++ "' — esc"; text = "" } }
   else
     Step.Continue { state with input = Stdlib.Option.Option.None }
 
@@ -640,6 +661,26 @@ let handleKey
                 Stdlib.Option.Option.Some
                   (InputState
                     { prompt = "discard ALL uncommitted? type y then enter: "; text = ""; action = "discard" }) }
+      else
+        Step.Continue state
+    | Some "b" ->
+      // History: create a new branch from the current one, and switch to it.
+      if state.activeView == 5 then
+        Step.Continue
+          { state with
+              input =
+                Stdlib.Option.Option.Some
+                  (InputState { prompt = "new branch name: "; text = ""; action = "branch-create" }) }
+      else
+        Step.Continue state
+    | Some "s" ->
+      // History: switch to an existing branch by name.
+      if state.activeView == 5 then
+        Step.Continue
+          { state with
+              input =
+                Stdlib.Option.Option.Some
+                  (InputState { prompt = "switch to branch: "; text = ""; action = "branch-switch" }) }
       else
         Step.Continue state
     | Some s ->
