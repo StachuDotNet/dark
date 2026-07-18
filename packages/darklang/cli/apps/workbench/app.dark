@@ -938,6 +938,9 @@ let performInputAction (state: State) (inp: InputState) : Step =
             message = "discarded all changes" }
     else
       Step.Continue { state with input = Stdlib.Option.Option.None }
+  else if inp.action == "quit" then
+    if inp.text == "y" then Step.Exit state
+    else Step.Continue { state with input = Stdlib.Option.Option.None }
   else if inp.action == "merge" then
     if inp.text != "y" then
       Step.Continue { state with input = Stdlib.Option.Option.None }
@@ -1319,7 +1322,13 @@ let handleKey
     if state.activeView == 0 then Step.Continue state else switchView state 0
   | _ ->
     match keyChar with
-    | Some "q" -> Step.Exit state
+    | Some "q" ->
+      // Leaving for the classic prompt is a deliberate, explicit choice — confirm it, name where you land.
+      Step.Continue
+        { state with
+            input =
+              Stdlib.Option.Option.Some
+                (InputState { prompt = "leave the workbench for the classic prompt? y to leave, esc to stay: "; text = ""; action = "quit" }) }
     // Vim motion — the same movement as the arrows, so muscle memory works either way.
     | Some "k" -> navUp state
     | Some "j" -> navDown state
