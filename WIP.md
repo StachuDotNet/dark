@@ -76,13 +76,14 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
       capped 20). Verified.
    DONE ✓ f. CHANGES detail: Enter → WIP item's source in the reader (name is the FULL path; split → mods+leaf →
       searchExactMatch → PrettyPrinter.packageFn/Type/Value). Verified.
+   DONE ✓ h. Tree leaf Enter → source in reader (modules still descend). Verified. Enter now opens content
+      consistently across Tree/Changes/History/Docs.
    NEXT polish (pick one/fire):
-   g. Home: richer landing — list recent WIP item names (getWipItems, first few) + the last-commit message line
-      (getCommitsWithAncestors head). Small.
-   h. Tree leaf Enter currently no-ops (only modules descend). Could open the fn/type/val source in the reader
-      (reuse detailLines/changesSourceText-style). Nice consistency with Docs/History/Changes.
-   i. Final: a fresh full dev-drive sweep of the deep interactions (History/Changes/Docs Enter, `?`), then a
-      short PR-summary section at the TOP of WIP (branch cli-ux-workbench off github/main; 40+ commits).
+   g. Home: richer landing — recent WIP item names (getWipItems, first ~3) + last-commit message line
+      (getCommitsWithAncestors head .message). Small, reuses existing helpers.
+   i. FINAL: fresh dev-drive sweep of deep interactions (Tree-leaf/History/Changes/Docs Enter + reader scroll +
+      `?`), fix anything, then add a short PR-SUMMARY section at the TOP of WIP (branch cli-ux-workbench off
+      github/main; ~43 commits; what's built / how to try: `dark` opens workbench, DARK_CLASSIC=1 = old prompt).
 Keep each fire small + verified. AGENTS/EDIT/THINGS stay deferred (mock render / MultilineEditor / type arg).
 Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)/Things(11)/Docs(12).
 
@@ -110,6 +111,9 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 06:56 — P2.16: Tree leaf Enter → source in the reader (modules still descend). Verified. Enter is
+  now consistent (opens content) across Tree/Changes/History/Docs; reader mode reused for all. Commit e894ce188.
+  Next: richer Home, then FINAL sweep + PR summary.
 - 2026-07-18 06:47 — P2.15: Changes Enter → WIP item source in the reader (changesSourceText; WIP name is the
   FULL path → split to mods+leaf → searchExactMatch). Verified via eval + dev-drive (created/discarded a test
   fn). Commit 9d34fa4ea. Reminder used: reload-packages WIPES WIP items — recreate WIP AFTER any reload to test.
