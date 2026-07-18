@@ -18,6 +18,9 @@ type State =
     detailScroll: Int
     /// When Some, a full-body reader is open (e.g. a Docs topic); its text scrolls via detailScroll.
     reading: Stdlib.Option.Option<String>
+    /// Whether the open reader's content is Dark code (so it gets syntax-highlighted). False for docs/help/
+    /// search/ops which aren't code.
+    readingIsCode: Bool
     /// When Some, a single-line text prompt is open (e.g. a commit message).
     input: Stdlib.Option.Option<InputState>
     /// When Some, the multiline editor is open (authoring a fn body).
@@ -439,17 +442,31 @@ let renderHome (state: State) (region: UI.Layout.Region) : Unit =
     if i < region.rows then UI.Layout.printAt region (i + 1) 2 l)
 
 /// A full-body scrollable reader (Docs topic content, etc.).
-let renderReading (content: String) (scroll: Int) (region: UI.Layout.Region) : Unit =
-  let lines = Stdlib.String.split content "\n"
-  let len = Stdlib.List.length lines
+let renderReading (content: String) (isCode: Bool) (scroll: Int) (region: UI.Layout.Region) : Unit =
+  let plain = Stdlib.String.split content "\n"
+  // Highlight code readers (Tree-leaf / Changes source). Same fit-or-plain guard as renderPreview: print the
+  // highlighted line only when the plain line fits the width, else plain-truncated (no mid-ANSI truncation).
+  let highlighted =
+    if isCode then
+      let h = SyntaxHighlighting.highlightCode content |> Stdlib.String.split "\n"
+      if Stdlib.List.length h == Stdlib.List.length plain then h else plain
+    else
+      plain
+  let len = Stdlib.List.length plain
   let off = Stdlib.Int.min scroll (Stdlib.Int.max 0 (len - 1))
-  lines
+  let maxFit = Stdlib.Int.max 0 (region.cols - 1)
+  plain
   |> Stdlib.List.indexedMap (fun i l -> (i, l))
   |> Stdlib.List.drop off
   |> Stdlib.List.take region.rows
   |> Stdlib.List.iter (fun pair ->
-    let (i, l) = pair
-    UI.Layout.printAt region (i - off) 0 l)
+    let (i, p) = pair
+    let row = i - off
+    if isCode && (Stdlib.String.length p) <= maxFit then
+      let disp = Stdlib.List.getAt highlighted i |> Stdlib.Option.withDefault p
+      Stdlib.print ((Colors.moveCursorTo (region.top + row) region.left) ++ disp ++ Colors.reset)
+    else
+      UI.Layout.printAt region row 0 p)
 
 /// A single-list view, framed in a titled box like Tree — so no view renders "naked" into the raw region.
 /// `emptyMsg` (already colored) names the state + fill action when the list is empty, per the TUI empty-state
@@ -584,7 +601,7 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
   | Some es -> renderEditing es region
   | None ->
   match state.reading with
-  | Some content -> renderReading content state.detailScroll region
+  | Some content -> renderReading content state.readingIsCode state.detailScroll region
   | None -> renderViewBody state region
 
 /// Honest, context-relevant key hints per view — the 3-6 most useful keys first, then the anchored global
@@ -729,6 +746,15 @@ let navBottom (state: State) : Step =
   let maxIdx = Stdlib.Int.max 0 ((Stdlib.List.length state.items) - 1)
   Step.Continue { state with selected = maxIdx; detailScroll = 0 }
 
+/// Open the full-screen reader on `content`. `isCode` toggles syntax highlighting (true for source, false for
+/// docs/help/search/ops). Resets scroll.
+let openReader (state: State) (content: String) (isCode: Bool) : Step =
+  Step.Continue
+    { state with
+        reading = Stdlib.Option.Option.Some content
+        readingIsCode = isCode
+        detailScroll = 0 }
+
 /// Switch to view `nv`: reload its items and reset selection/scroll/focus (so you never land in a single-pane
 /// view still "focused" on a preview pane that isn't there).
 let switchView (state: State) (nv: Int) : Step =
@@ -779,6 +805,7 @@ let performInputAction (state: State) (inp: InputState) : Step =
       { state with
           input = Stdlib.Option.Option.None
           reading = Stdlib.Option.Option.Some (searchText state.branchId inp.text)
+          readingIsCode = false
           detailScroll = 0 }
   else if inp.action == "eval" then
     // The `:` run prompt — evaluate a Dark expression and show the result (or error) in the reader.
@@ -791,6 +818,7 @@ let performInputAction (state: State) (inp: InputState) : Step =
       { state with
           input = Stdlib.Option.Option.None
           reading = Stdlib.Option.Option.Some result
+          readingIsCode = false
           detailScroll = 0 }
   else if inp.action == "branch-create" then
     let b = Darklang.SCM.Branch.create inp.text state.branchId
@@ -1042,33 +1070,23 @@ let handleKey
   | RightArrow -> descend state
   | Enter ->
     if state.activeView == 12 then
-      // Docs: open the selected topic in the full-body reader.
+      // Docs: open the selected topic in the full-body reader (prose, not code).
       let topics = Docs.Command.Topics.allTopics ()
       match Stdlib.List.getAt topics state.selected with
-      | Some t ->
-        Step.Continue { state with reading = Stdlib.Option.Option.Some (t.content ()); detailScroll = 0 }
+      | Some t -> openReader state (t.content ()) false
       | None -> Step.Continue state
     else if state.activeView == 5 then
       // History: open the selected commit's ops in the reader.
-      Step.Continue
-        { state with
-            reading = Stdlib.Option.Option.Some (commitOpsText state.branchId state.selected)
-            detailScroll = 0 }
+      openReader state (commitOpsText state.branchId state.selected) false
     else if state.activeView == 4 then
-      // Changes: open the selected WIP item's source in the reader.
-      Step.Continue
-        { state with
-            reading = Stdlib.Option.Option.Some (changesSourceText state.branchId state.selected)
-            detailScroll = 0 }
+      // Changes: open the selected WIP item's source (code) in the reader.
+      openReader state (changesSourceText state.branchId state.selected) true
     else if state.activeView == 1 then
-      // Tree: Enter descends into a module, or opens a leaf's source full-screen in the reader.
+      // Tree: Enter descends into a module, or opens a leaf's source (code) full-screen.
       match Stdlib.List.getAt state.items state.selected with
       | Some item ->
-        if item.isModule then
-          descend state
-        else
-          let src = detailLines state |> Stdlib.String.join "\n"
-          Step.Continue { state with reading = Stdlib.Option.Option.Some src; detailScroll = 0 }
+        if item.isModule then descend state
+        else openReader state (detailLines state |> Stdlib.String.join "\n") true
       | None -> descend state
     else
       descend state
@@ -1087,8 +1105,7 @@ let handleKey
     | Some "l" -> descend state
     | Some "g" -> navTop state
     | Some "G" -> navBottom state
-    | Some "?" ->
-      Step.Continue { state with reading = Stdlib.Option.Option.Some helpText; detailScroll = 0 }
+    | Some "?" -> openReader state helpText false
     | Some ":" ->
       // Run prompt — evaluate a Dark expression from anywhere in the workbench.
       Step.Continue
@@ -1201,6 +1218,7 @@ let execute (cliState: Darklang.Cli.AppState) (_args: List<String>) : Darklang.C
         focus = UI.SplitPane.Focus.First
         detailScroll = 0
         reading = Stdlib.Option.Option.None
+        readingIsCode = false
         input = Stdlib.Option.Option.None
         editing = Stdlib.Option.Option.None
         accountId = cliState.accountID
