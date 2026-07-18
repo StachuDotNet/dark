@@ -193,3 +193,17 @@ Swept all views in tmux: Home dashboard, Tree/Inspect split, Changes/History/Res
 (list+preview where non-empty), Agents placeholder, per-view footers + tab markers all render cleanly. No
 regressions. Idling to the 16:50 finalize; not touching anything risky in the final stretch. (Minor nit noted
 + left: Resolve footer shows "tab preview" even when empty — harmless, split appears once conflicts exist.)
+
+## Phase 6 — hands-on feedback (user engaged, not AFK)
+User asks, in priority:
+1. Inline command bar: type any old command, output shows in a framed pane (stay in workbench). CHOSEN over
+   hand-off. Needs a backend capture builtin: NonBlockingConsole write routes to Console on a bg thread; add a
+   capture flag/StringBuilder (StartCapture/StopCapture) + builtins stdoutCaptureStart/Stop in
+   Builtins.Cli/Libs/Output.fs. Then a `!` input action runs Registry.executeCommand (needs an AppState — build
+   via initState or thread cliState) between start/stop, shows captured output in the reader. F# REBUILD needed.
+2. `?` -> a pretty full keymap OVERLAY (centered box over a dimmed frame), not reader text. Pure .dark.
+3. Exit to classic must be EXPLICIT (user hit it via esc/q and was surprised). Label the transition; classic
+   `wb` returns. Pure .dark.
+4. AI UX: Agents view should let you enter prompts + manage chats (wraps the `agent`/`ai` command). Investigate
+   what AI.Agent exposes.
+Do 2 + 3 first (quick, pure .dark), then 1 (F# builtin + rebuild), then 4.

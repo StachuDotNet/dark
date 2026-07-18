@@ -42,6 +42,8 @@ type State =
     /// cursor into it; Enter navigates to the hit's location.
     searchHits: List<SearchHit>
     searchSelected: Int
+    /// When true, the `?` keymap overlay is drawn centered over a dimmed frame. Any key closes it.
+    showHelp: Bool
     branchId: Uuid }
 
 /// A single-line text entry. `action` tags what Enter does (e.g. "commit").
@@ -678,6 +680,37 @@ let hintsForView (state: State) : String =
       [ ("↑↓", "move") ]
   Frame.formatHints (Stdlib.List.append ctx global)
 
+/// The keymap, grouped, for the `?` overlay — (category, keys).
+val helpGroups =
+  [ ("Global", ": run   / search   ? help   esc back   q quit")
+    ("Views", "1-9 jump   [ ] cycle")
+    ("Move", "↑↓ or j/k   g/G top/bottom   tab focus pane")
+    ("Tree", "→/l in   ←/h up   ⏎ open   n/t/v new   e edit   d deps")
+    ("Changes", "c commit   x discard")
+    ("History", "b branch   s switch   m merge   r rebase")
+    ("Search", "↑↓ move   ⏎ jump   esc close") ]
+
+/// A centered, boxed keymap overlay drawn over the frame. The interior is cleared so nothing shows through.
+let renderHelpOverlay (screen: UI.Layout.Region) : Unit =
+  let w = Stdlib.Int.min (Stdlib.Int.max 40 (screen.cols - 4)) 70
+  let rows = (Stdlib.List.length helpGroups) * 2 + 3
+  let h = Stdlib.Int.min (Stdlib.Int.max 8 rows) (screen.rows - 2)
+  let top = screen.top + (Stdlib.Int.divide (Stdlib.Int.max 0 (screen.rows - h)) 2)
+  let left = screen.left + (Stdlib.Int.divide (Stdlib.Int.max 0 (screen.cols - w)) 2)
+  let region = UI.Layout.Region { top = top; left = left; rows = h; cols = w }
+  let _ = UI.Layout.clearRegion region
+  UI.Box.panel region "Keys  ·  any key closes" true (fun inner ->
+    helpGroups
+    |> Stdlib.List.indexedMap (fun i pair -> (i, pair))
+    |> Stdlib.List.iter (fun ipair ->
+      let (i, pair) = ipair
+      let (label, keys) = pair
+      let row = inner.top + (i * 2) + 1
+      // Printed directly (moveCursorTo) so the colored label + dim keys aren't length-truncated by printAt.
+      let _ =
+        Stdlib.print ((Colors.moveCursorTo row (inner.left + 1)) ++ (Colors.colorize Colors.cyan label))
+      Stdlib.print ((Colors.moveCursorTo row (inner.left + 11)) ++ (Colors.dimText keys))))
+
 let renderFull (state: State) : Unit =
   // Clamp to sane minimums — mid-resize the terminal reports 0/tiny sizes; without this the region math
   // goes negative and the whole view crashes back to the prompt. A safe default renders one off frame; the
@@ -749,6 +782,7 @@ let renderFull (state: State) : Unit =
                 else hintsForView state
         Frame.renderKeyHints r h)
   UI.Layout.vstack screen [ tabbar; crumb; body; hints ]
+  let _ = if state.showHelp then renderHelpOverlay screen else ()
   Stdlib.print "\u001b[?25h"
 
 
@@ -1151,6 +1185,10 @@ let handleKey
   : Step =
   // A transient toast lives for exactly one keypress: clear it here, so any key dismisses the last message.
   let state = if state.message == "" then state else { state with message = "" }
+  // The `?` keymap overlay is modal: any key closes it, before anything else acts on the key.
+  if state.showHelp then
+    Step.Continue { state with showHelp = false }
+  else
   match state.editing with
   | Some es ->
     // Editor mode. Ctrl+S saves; other Ctrl combos are ignored (so they don't insert control chars).
@@ -1289,7 +1327,7 @@ let handleKey
     | Some "l" -> descend state
     | Some "g" -> navTop state
     | Some "G" -> navBottom state
-    | Some "?" -> openReader state helpText false
+    | Some "?" -> Step.Continue { state with showHelp = true }
     | Some ":" ->
       // Run prompt — evaluate a Dark expression from anywhere in the workbench.
       Step.Continue
@@ -1434,6 +1472,7 @@ let execute (cliState: Darklang.Cli.AppState) (_args: List<String>) : Darklang.C
         message = ""
         searchHits = []
         searchSelected = 0
+        showHelp = false
         branchId = branchId }
   { cliState with
       currentPage = Darklang.Cli.Page.SubApp (makeSubApp state)
