@@ -667,7 +667,7 @@ let hintsForView (view: Int) : String =
     else if view == 4 then
       [ ("↑↓", "move"); ("tab", "preview"); ("⏎", "full"); ("c", "commit"); ("x", "discard") ]
     else if view == 5 then
-      [ ("↑↓", "move"); ("tab", "preview"); ("⏎", "full"); ("b", "branch"); ("s", "switch") ]
+      [ ("↑↓", "move"); ("⏎", "full"); ("b", "branch"); ("s", "switch"); ("m", "merge"); ("r", "rebase") ]
     else if view == 6 then
       [ ("↑↓", "move"); ("tab", "preview") ]
     else if view == 12 then
@@ -717,7 +717,13 @@ let renderFull (state: State) : Unit =
       (fun r ->
         let h =
           if state.message != "" then
-            Colors.colorize Colors.green ("✓ " ++ state.message)
+            // A failure/guidance toast reads pink with ✗; a success reads green with ✓.
+            if (Stdlib.String.contains state.message "fail")
+               || (Stdlib.String.contains state.message "conflict")
+               || (Stdlib.String.contains state.message "descend") then
+              Colors.colorize Colors.pink ("✗ " ++ state.message)
+            else
+              Colors.colorize Colors.green ("✓ " ++ state.message)
           else
           match state.editing with
           | Some _ ->
@@ -870,6 +876,44 @@ let performInputAction (state: State) (inp: InputState) : Step =
             message = "discarded all changes" }
     else
       Step.Continue { state with input = Stdlib.Option.Option.None }
+  else if inp.action == "merge" then
+    if inp.text != "y" then
+      Step.Continue { state with input = Stdlib.Option.Option.None }
+    else
+      match SCM.Merge.merge state.branchId with
+      | Ok _ ->
+        // Merged into parent — follow the branch pointer to the parent, like the `merge` command does.
+        let parentId =
+          match SCM.Branch.get state.branchId with
+          | Some b -> (match b.parentBranchId with | Some p -> p | None -> state.branchId)
+          | None -> state.branchId
+        Step.Continue
+          { state with
+              input = Stdlib.Option.Option.None
+              branchId = parentId
+              items = itemsForView state.activeView parentId state.location
+              selected = 0
+              message = "merged into parent" }
+      | Error e ->
+        Step.Continue
+          { state with input = Stdlib.Option.Option.None; message = "merge failed: " ++ (SCM.Merge.mergeErrorToString e) }
+  else if inp.action == "rebase" then
+    if inp.text != "y" then
+      Step.Continue { state with input = Stdlib.Option.Option.None }
+    else
+      match SCM.Rebase.rebase state.branchId with
+      | Ok _ ->
+        Step.Continue
+          { state with
+              input = Stdlib.Option.Option.None
+              items = itemsForView state.activeView state.branchId state.location
+              selected = 0
+              message = "rebased onto parent" }
+      | Error conflicts ->
+        Step.Continue
+          { state with
+              input = Stdlib.Option.Option.None
+              message = "rebase: " ++ (Stdlib.Int.toString (Stdlib.List.length conflicts)) ++ " conflict(s) — see Resolve" }
   else if inp.action == "search" then
     // Global `/` search — run it and show the matches in the reader.
     Step.Continue
@@ -1260,6 +1304,26 @@ let handleKey
               input =
                 Stdlib.Option.Option.Some
                   (InputState { prompt = "switch to branch: "; text = ""; action = "branch-switch" }) }
+      else
+        Step.Continue state
+    | Some "m" ->
+      // History: merge this branch into its parent (confirm first).
+      if state.activeView == 5 then
+        Step.Continue
+          { state with
+              input =
+                Stdlib.Option.Option.Some
+                  (InputState { prompt = "merge into parent? type y then enter: "; text = ""; action = "merge" }) }
+      else
+        Step.Continue state
+    | Some "r" ->
+      // History: rebase this branch onto its parent (confirm first).
+      if state.activeView == 5 then
+        Step.Continue
+          { state with
+              input =
+                Stdlib.Option.Option.Some
+                  (InputState { prompt = "rebase onto parent? type y then enter: "; text = ""; action = "rebase" }) }
       else
         Step.Continue state
     | Some s ->
