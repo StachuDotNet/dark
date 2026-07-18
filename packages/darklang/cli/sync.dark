@@ -59,7 +59,7 @@ let conflictNudge () : Unit =
 
   if unreviewed > 0 then
     Stdlib.printLine (
-      Colors.dim
+      Colors.dimText
         $"  {plural unreviewed "name"} updated by a peer (last-writer-wins) — `dark conflicts` to review")
   else
     ()
