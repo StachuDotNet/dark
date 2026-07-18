@@ -1170,6 +1170,14 @@ let convertInstr (ctx: CodeGenContext) (instr: LIR.Instr) : Result<ARM64Symbolic
                 lirRegToARM64Reg right
                 |> Result.map (fun rightReg -> [ARM64Symbolic.SDIV (destReg, leftReg, rightReg)])))
 
+    | LIR.Udiv (dest, left, right) ->
+        lirRegToARM64Reg dest
+        |> Result.bind (fun destReg ->
+            lirRegToARM64Reg left
+            |> Result.bind (fun leftReg ->
+                lirRegToARM64Reg right
+                |> Result.map (fun rightReg -> [ARM64Symbolic.UDIV (destReg, leftReg, rightReg)])))
+
     | LIR.Msub (dest, mulLeft, mulRight, sub) ->
         // MSUB: dest = sub - mulLeft * mulRight
         lirRegToARM64Reg dest
@@ -1231,6 +1239,13 @@ let convertInstr (ctx: CodeGenContext) (instr: LIR.Instr) : Result<ARM64Symbolic
                 | LIR.GT -> ARM64Symbolic.GT
                 | LIR.LE -> ARM64Symbolic.LE
                 | LIR.GE -> ARM64Symbolic.GE
+                // TODO(#22): ARM64.Condition has no unsigned codes (needs LO/HI/LS/HS).
+                // ARM64 is not the compiled/tested backend; map to signed to stay building.
+                // This is knowingly wrong for UInt* on ARM64 only — x64 is correct.
+                | LIR.ULT -> ARM64Symbolic.LT
+                | LIR.UGT -> ARM64Symbolic.GT
+                | LIR.ULE -> ARM64Symbolic.LE
+                | LIR.UGE -> ARM64Symbolic.GE
             [ARM64Symbolic.CSET (destReg, arm64Cond)])
 
     | LIR.And (dest, left, right) ->
@@ -3465,6 +3480,11 @@ let convertTerminator (epilogueLabel: string) (terminator: LIR.Terminator) : Res
             | LIR.GT -> ARM64Symbolic.GT
             | LIR.LE -> ARM64Symbolic.LE
             | LIR.GE -> ARM64Symbolic.GE
+            // TODO(#22): unsigned mapped to signed on the untested ARM64 backend (needs LO/HI/LS/HS).
+            | LIR.ULT -> ARM64Symbolic.LT
+            | LIR.UGT -> ARM64Symbolic.GT
+            | LIR.ULE -> ARM64Symbolic.LE
+            | LIR.UGE -> ARM64Symbolic.GE
         Ok [
             ARM64Symbolic.B_cond_label (arm64Cond, trueLbl)  // If condition, jump to true branch
             ARM64Symbolic.B_label falseLbl                   // Otherwise jump to false branch

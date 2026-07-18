@@ -218,6 +218,7 @@ let isPureLoopInstr (instr: Instr) : bool =
     | Sub _
     | Mul _
     | Sdiv _
+    | Udiv _
     | Msub _
     | Madd _
     | Cmp _
