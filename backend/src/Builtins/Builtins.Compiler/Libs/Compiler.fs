@@ -142,6 +142,18 @@ let rec private rtToMarshalable (t : TypeReference) : AST.Type option =
   | TInt -> Some AST.TInt64
   | TBool -> Some AST.TBool
   | TUnit -> Some AST.TUnit
+  // Sized ints marshal as decimal strings on the wire: the compiled side encodes via
+  // Stdlib.<T>.toString (marshalTyped) and the daemon decodes with .NET's full-range
+  // parse (wireToDval). UInt64 is round-trip-safe this way (decimal string, not the
+  // Int64 wire that would overflow >=2^63). This gates UInt-arg builtins into the seam
+  // (intFromUInt64, uint64ToFloat, ...); UInt *returns* also need an unmarshalTyped case.
+  | TInt8 -> Some AST.TInt8
+  | TInt16 -> Some AST.TInt16
+  | TInt32 -> Some AST.TInt32
+  | TUInt8 -> Some AST.TUInt8
+  | TUInt16 -> Some AST.TUInt16
+  | TUInt32 -> Some AST.TUInt32
+  | TUInt64 -> Some AST.TUInt64
   // A Blob marshals as its byte values (marshalTypedSeen's TBytes / dvalToWire's
   // DBlob), so it can cross the seam in either direction. Without this case, any
   // Blob-taking builtin was unroutable — which is why stringFromBlobWithReplacement
