@@ -34,9 +34,9 @@ instead of a bare prompt.
   `reference_dark_component_resolution`); named fns only in AppState (no inline lambdas persist).
 
 ## Build order (from 90 §8) — each phase independently shippable; MainPrompt keeps working throughout
-- [ ] P1 FRAME: `hstack`+`distributeCols` in ui/layout.dark → `SplitPane` → the Frame (TabBar+Breadcrumb+
-      StatusBar/Signals+KeyHintBar) → mount a `TreeWidget` (extract from navInteractive+tree) → `dark` opens
-      on framed Tree. Add Inspect. (readKey timeout for live ticks can come later — P1 is static-navigable.)
+- [x] P1 FRAME — DONE. hstack/distributeCols; SplitPane; Frame (tab bar + breadcrumb + key hints); workbench
+      SubApp with Tree|Inspect split (live source pane, Tab focus); `dark` no-args opens it (DARK_CLASSIC=1 =
+      classic prompt). Verified on screen via ./dev-drive. Commits 5053e91f4…4a82936cf.
 - [ ] P2: Home dashboard + Changes (lift SCM.Review.App into SplitPane) + History (branches/commits/ops).
 - [ ] P3: `:` CommandBar (MainPrompt in an overlay) + `/` global search.
 - [ ] P4: MultilineEditor → Edit + Scratchpad.
@@ -47,23 +47,23 @@ instead of a bare prompt.
 x=destroy, d=diff/detail, r=rename-or-rerun; Ctrl+Tab=views/Tab=panes; ?=HelpOverlay; badge set frozen (91 §4).
 
 ## NEXT ACTION
-P1 step 6 — flip `dark` no-args → workbench (LAST P1 step). Tree|Inspect split DONE ✓ (verified: source path
-returns real List.map source; dev-drive shows both panes).
-- In `core.dark` `executeCliCommand`, the `[]` (no-args) branch currently prints welcome + `runInteractiveLoop
-  initialState` (the classic prompt). Change it to open the workbench SubApp: build the workbench state and set
-  currentPage = SubApp, then runInteractiveLoop (mirror how `Apps.Workbench.App.execute` sets the page, or just
-  call it: `let ws = Apps.Workbench.App.execute initialState []` then StatusBar.init + runInteractiveLoop ws).
-- KEEP the classic prompt reachable so nothing's lost: if env `DARK_CLASSIC=1` (Builtin.environmentGet), use
-  the old welcome+loop path. Also keep the `workbench`/`wb` command.
-- VERIFY: `./dev-drive` (no args) → the workbench frame appears (not the prompt). `./scripts/run-cli status`,
-  `eval`, `tree` etc. (with-args, non-interactive) still print normally — the `[]` branch only affects no-args.
-  `DARK_CLASSIC=1 ./dev-drive` → classic prompt still works. Commit.
-- THEN P2: start Home (dashboard) or wire Changes (lift SCM.Review.App diff into the Inspect pane when
-  activeView=Changes). Also polish: scroll long Tree lists + long Inspect source (viewport), Tab moves ↑↓ to
-  the focused pane, digits switch view with real bodies. See main/notes/cli-ux/{10,15,16}.
+P2 — make the workbench a real daily driver. Order (each small, verify with ./dev-drive, commit):
+1. VIEWPORT SCROLL for the Tree list (real modules overflow: Stdlib.List has 68 fns). renderTreeList currently
+   only prints items where `i < region.rows` and has no scroll, so selection past the fold is invisible + the
+   list can't page. Add `scrollOffset: Int` to State; in handleKey UP/DOWN adjust scrollOffset to keep
+   `selected` within [scrollOffset, scrollOffset+visibleRows); in renderTreeList render items
+   [scrollOffset .. scrollOffset+region.rows). Mirror the math in Packages.NavInteractive.moveUp/moveDown +
+   review's computeScrollOffset. Verify by driving into Darklang→Stdlib→List and paging down.
+2. INSPECT scroll: same for renderDetail (long source). A `detailScroll` in State, ↑↓ scroll it when
+   focus=Second (Tab'd into Inspect); else ↑↓ drive the list. Verify on a long fn.
+3. Wire CHANGES view (activeView=4): body = WIP items list | diff, reusing SCM.Review.App/getWipItems +
+   Stdlib.Diff. When activeView=4 render that instead of the tree. (See main/notes/cli-ux/15.)
+4. Wire HISTORY (activeView=5): commits list from SCM.Log/getCommits (main/notes/cli-ux/16).
+5. HOME (activeView=0): a real dashboard (tree + WIP + running) instead of sharing the tree (main/notes/cli-ux/10).
+Keep the `activeView<=1` tree body for Home/Tree until Home gets its own; digits already switch activeView.
 
-## Status: P1 nearly complete. DONE: hstack; SplitPane; Frame; workbench SubApp (renders+navigates on screen);
-   Tree|Inspect body split (live source). LAST P1 step: flip `dark` default. Commits …601183329.
+## Status: P1 COMPLETE ✓ — `dark` opens the framed Tree|Inspect workbench (verified on screen; classic prompt
+   behind DARK_CLASSIC=1; with-args commands unaffected). Commits 5053e91f4…4a82936cf. Now on P2.
 
 ## Gotchas learned (append as you hit them)
 - Typed lambda params are NOT supported: `fun s -> …` only, never `fun (s: String) -> …` (PARSE-UNCLOSED).
@@ -75,6 +75,10 @@ returns real List.map source; dev-drive shows both panes).
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 04:38 — **P1 COMPLETE**. Flipped `dark` no-args → workbench (core.dark; DARK_CLASSIC=1 = classic).
+  Verified all 3: no-args→workbench frame; `status`/with-args still print; DARK_CLASSIC=1→classic prompt.
+  Commit 4a82936cf. `dark` now opens the framed, navigable Tree|Inspect workbench. On to P2 (scroll, then wire
+  Changes/History/Home).
 - 2026-07-18 04:27 — P1: Tree|Inspect body split done (SplitPane in renderBody; renderTreeList + detailLines
   + renderDetail; State.focus; Tab toggles). Verified: split renders both panes; source-fetch path returns
   real List.map source. Commit 601183329. LAST P1 step next: flip `dark` no-args → workbench (keep DARK_CLASSIC).
