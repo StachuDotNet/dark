@@ -80,6 +80,13 @@ let loadDocBodyItems () : List<BodyItem> =
   |> Stdlib.List.map (fun t ->
     BodyItem { name = t.name ++ "  —  " ++ t.description; kind = "doc"; isModule = false })
 
+/// Managed apps — daemons + foreground apps (for the Services view).
+let loadServiceBodyItems () : List<BodyItem> =
+  Apps.Registry.available ()
+  |> Stdlib.List.map (fun a ->
+    let tag = if Apps.Model.isDaemon a.target then "daemon" else "app"
+    BodyItem { name = a.name ++ "  —  " ++ a.description; kind = tag; isModule = false })
+
 /// The body items for a given view: packages for Home/Tree, WIP for Changes, commits for History,
 /// conflicts for Resolve, doc topics for Docs, else [] (unwired).
 let itemsForView
@@ -91,6 +98,7 @@ let itemsForView
   else if view == 4 then loadWipBodyItems branchId
   else if view == 5 then loadCommitBodyItems branchId
   else if view == 6 then loadConflictBodyItems ()
+  else if view == 10 then loadServiceBodyItems ()
   else if view == 12 then loadDocBodyItems ()
   else []
 
@@ -168,8 +176,39 @@ let renderDetail (state: State) (region: UI.Layout.Region) : Unit =
     let (i, l) = pair
     UI.Layout.printAt region (i - off) 0 l)
 
+/// Home: a small dashboard — where you are + what's changed + how deep the tree is.
+let renderHome (state: State) (region: UI.Layout.Region) : Unit =
+  let wip = SCM.PackageOps.getWipSummary state.branchId
+  let commits = SCM.PackageOps.getCommitCount state.branchId
+  let rootItems = loadItems state.branchId (Packages.PackageLocation.Module [])
+  let branch =
+    match SCM.Branch.get state.branchId with
+    | Some b -> b.name
+    | None -> "main"
+
+  let wipLine =
+    if wip.total == 0 then Colors.colorize Colors.green "✓ working tree clean"
+    else Colors.colorize Colors.pink ((Stdlib.Int.toString wip.total) ++ " uncommitted changes")
+
+  let lines =
+    [ Colors.boldText ("Welcome back — you're on " ++ branch)
+      ""
+      "  " ++ wipLine
+      "  " ++ (Colors.dimText ((Stdlib.Int.toString commits) ++ " commits on this branch"))
+      "  " ++ (Colors.dimText ((Stdlib.Int.toString (Stdlib.List.length rootItems)) ++ " top-level owners"))
+      ""
+      Colors.dimText "  2 Tree · 5 Changes · 6 History · 7 Resolve · [ ] cycle · esc exit" ]
+
+  lines
+  |> Stdlib.List.indexedMap (fun i l -> (i, l))
+  |> Stdlib.List.iter (fun pair ->
+    let (i, l) = pair
+    if i < region.rows then UI.Layout.printAt region (i + 1) 2 l)
+
 let renderBody (state: State) (region: UI.Layout.Region) : Unit =
-  if state.activeView <= 1 then
+  if state.activeView == 0 then
+    renderHome state region
+  else if state.activeView == 1 then
     UI.SplitPane.render
       region
       UI.SplitPane.Orientation.Horizontal
@@ -179,6 +218,9 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
       (fun r -> renderTreeList state r)
       "Inspect"
       (fun r -> renderDetail state r)
+  else if state.activeView == 10 then
+    // Services: managed daemons + foreground apps.
+    renderTreeList state region
   else if state.activeView == 4 then
     // Changes: the uncommitted items (or the clean state).
     if Stdlib.List.isEmpty state.items then
