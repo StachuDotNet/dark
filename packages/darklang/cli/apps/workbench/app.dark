@@ -45,7 +45,7 @@ type Step =
 
 /// Full keymap, shown by `?` in the reusable reader.
 val helpText =
-  "Workbench — keys\n\n  Global (work from any view)\n    :          run — evaluate a Dark expression, result opens in the reader\n    1-9        jump to a view · [ ] cycle views\n    ?          this help · esc / q close a reader or exit\n\n  Navigation\n    up/down    move selection · scroll a reader\n    right/enter into a module (Tree) · open source/ops/a topic\n    left       up a level (Tree)\n    tab        toggle focus Tree <-> Inspect\n\n  Authoring (Tree)\n    n t v      new fn / type / value    e  edit the selected fn\n    ^s         save (in the editor) · esc cancel\n\n  Changes: c commit · x discard    History: b new-branch · s switch\n\n  Views\n    1 Home   2 Tree   3 Inspect   4 Edit   5 Changes   6 History\n    7 Resolve   8 Mesh   9 Agents   ([ ] reach) Runs Services Things Docs\n\n  Wired today: Home Tree Inspect Changes History Resolve Mesh Runs Services Docs.\n  Edit/Agents/Things: coming soon.\n\n  ? this help  ·  esc to close"
+  "Workbench — keys\n\n  Global (work from any view)\n    :          run — evaluate a Dark expression, result opens in the reader\n    1-9        jump to a view · [ ] cycle views\n    ?          this help\n    esc        back out one level — close a reader/mode, or return to Home\n    q          quit the workbench\n\n  Navigation\n    up/down    move selection · scroll a reader   (vim: j down · k up)\n    right/enter into a module (Tree) · open source/ops/a topic   (vim: l)\n    left       up a level (Tree)   (vim: h)\n    g / G      jump to top / bottom of the list\n    tab        toggle focus Tree <-> Inspect\n\n  Authoring (Tree)\n    n t v      new fn / type / value    e  edit the selected fn\n    ^s         save (in the editor) · esc cancel\n\n  Changes: c commit · x discard    History: b new-branch · s switch\n\n  Views\n    1 Home   2 Tree   3 Inspect   4 Edit   5 Changes   6 History\n    7 Resolve   8 Mesh   9 Agents   ([ ] reach) Runs Services Things Docs\n\n  Wired today: Home Tree Inspect Changes History Resolve Mesh Runs Services Docs.\n  Edit/Agents/Things: coming soon.\n\n  ? this help  ·  esc to close"
 
 
 // ── Package listing (the Tree body) ──
@@ -588,6 +588,32 @@ let ascend (state: State) : Step =
           items = loadItems state.branchId newLoc
           selected = 0 }
 
+// ── Movement (shared by arrows + vim keys, so j/k/h/l/g/G mean the same as the arrows) ──
+
+/// Up: scroll the inspector when it's focused, else move the list selection up.
+let navUp (state: State) : Step =
+  match state.focus with
+  | Second -> Step.Continue { state with detailScroll = Stdlib.Int.max 0 (state.detailScroll - 1) }
+  | First -> Step.Continue { state with selected = Stdlib.Int.max 0 (state.selected - 1); detailScroll = 0 }
+
+/// Down: scroll the inspector when it's focused, else move the list selection down.
+let navDown (state: State) : Step =
+  match state.focus with
+  | Second ->
+    let maxScroll = Stdlib.Int.max 0 ((Stdlib.List.length (detailLines state)) - 1)
+    Step.Continue { state with detailScroll = Stdlib.Int.min maxScroll (state.detailScroll + 1) }
+  | First ->
+    let maxIdx = (Stdlib.List.length state.items) - 1
+    Step.Continue { state with selected = Stdlib.Int.min maxIdx (state.selected + 1); detailScroll = 0 }
+
+/// Jump to the top / bottom of the list (vim g / G).
+let navTop (state: State) : Step =
+  Step.Continue { state with selected = 0; detailScroll = 0 }
+
+let navBottom (state: State) : Step =
+  let maxIdx = Stdlib.Int.max 0 ((Stdlib.List.length state.items) - 1)
+  Step.Continue { state with selected = maxIdx; detailScroll = 0 }
+
 /// Run the action for a completed single-line input (Enter). Commit is the only one for now.
 let performInputAction (state: State) (inp: InputState) : Step =
   if inp.action == "commit" then
@@ -857,33 +883,29 @@ let handleKey
       | None -> Step.Continue state
   | None ->
   match state.reading with
-  | Some _ ->
-    // Reader mode: ↑↓ scroll the content, Esc/q closes it. Nothing else.
+  | Some content ->
+    // Reader mode: ↑↓/j/k scroll (g/G to ends), Esc/q closes it.
+    let scrollUp = Step.Continue { state with detailScroll = Stdlib.Int.max 0 (state.detailScroll - 1) }
+    let scrollDown = Step.Continue { state with detailScroll = state.detailScroll + 1 }
+    let close = Step.Continue { state with reading = Stdlib.Option.Option.None; detailScroll = 0 }
     match key with
-    | UpArrow -> Step.Continue { state with detailScroll = Stdlib.Int.max 0 (state.detailScroll - 1) }
-    | DownArrow -> Step.Continue { state with detailScroll = state.detailScroll + 1 }
-    | Escape ->
-      Step.Continue { state with reading = Stdlib.Option.Option.None; detailScroll = 0 }
+    | UpArrow -> scrollUp
+    | DownArrow -> scrollDown
+    | Escape -> close
     | _ ->
       match keyChar with
-      | Some "q" ->
-        Step.Continue { state with reading = Stdlib.Option.Option.None; detailScroll = 0 }
+      | Some "q" -> close
+      | Some "k" -> scrollUp
+      | Some "j" -> scrollDown
+      | Some "g" -> Step.Continue { state with detailScroll = 0 }
+      | Some "G" ->
+        let maxScroll = Stdlib.Int.max 0 ((Stdlib.List.length (Stdlib.String.split content "\n")) - 1)
+        Step.Continue { state with detailScroll = maxScroll }
       | _ -> Step.Continue state
   | None ->
   match key with
-  | UpArrow ->
-    match state.focus with
-    | Second -> Step.Continue { state with detailScroll = Stdlib.Int.max 0 (state.detailScroll - 1) }
-    | First ->
-      Step.Continue { state with selected = Stdlib.Int.max 0 (state.selected - 1); detailScroll = 0 }
-  | DownArrow ->
-    match state.focus with
-    | Second ->
-      let maxScroll = Stdlib.Int.max 0 ((Stdlib.List.length (detailLines state)) - 1)
-      Step.Continue { state with detailScroll = Stdlib.Int.min maxScroll (state.detailScroll + 1) }
-    | First ->
-      let maxIdx = (Stdlib.List.length state.items) - 1
-      Step.Continue { state with selected = Stdlib.Int.min maxIdx (state.selected + 1); detailScroll = 0 }
+  | UpArrow -> navUp state
+  | DownArrow -> navDown state
   | RightArrow -> descend state
   | Enter ->
     if state.activeView == 12 then
@@ -919,10 +941,27 @@ let handleKey
       descend state
   | LeftArrow -> ascend state
   | Tab -> Step.Continue { state with focus = UI.SplitPane.toggle state.focus }
-  | Escape -> Step.Exit state
+  | Escape ->
+    // Back out one level, never quit-by-surprise: from any view -> Home; on Home -> no-op (q quits).
+    if state.activeView == 0 then
+      Step.Continue state
+    else
+      Step.Continue
+        { state with
+            activeView = 0
+            items = itemsForView 0 state.branchId state.location
+            selected = 0
+            detailScroll = 0 }
   | _ ->
     match keyChar with
     | Some "q" -> Step.Exit state
+    // Vim motion — the same movement as the arrows, so muscle memory works either way.
+    | Some "k" -> navUp state
+    | Some "j" -> navDown state
+    | Some "h" -> ascend state
+    | Some "l" -> descend state
+    | Some "g" -> navTop state
+    | Some "G" -> navBottom state
     | Some "?" ->
       Step.Continue { state with reading = Stdlib.Option.Option.Some helpText; detailScroll = 0 }
     | Some ":" ->
