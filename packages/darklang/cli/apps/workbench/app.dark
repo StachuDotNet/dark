@@ -1075,15 +1075,28 @@ let openEditExisting (state: State) (item: BodyItem) : Step =
       { branchId = state.branchId
         currentModule = Stdlib.Option.Option.None
         currentFunction = Stdlib.Option.Option.None }
-  match results.fns with
-  | i :: _ ->
-    let src = PrettyPrinter.ProgramTypes.packageFn ctx i.entity
+  // Prefill from the item's current source, per kind. `val` items save under the "value" kind (see saveEditing).
+  let kindAndSrc =
+    if item.kind == "type" then
+      match results.types with
+      | i :: _ -> Stdlib.Option.Option.Some(("type", PrettyPrinter.ProgramTypes.packageType ctx i.entity))
+      | [] -> Stdlib.Option.Option.None
+    else if item.kind == "val" then
+      match results.values with
+      | i :: _ -> Stdlib.Option.Option.Some(("value", PrettyPrinter.ProgramTypes.packageValue ctx i.entity))
+      | [] -> Stdlib.Option.Option.None
+    else
+      match results.fns with
+      | i :: _ -> Stdlib.Option.Option.Some(("fn", PrettyPrinter.ProgramTypes.packageFn ctx i.entity))
+      | [] -> Stdlib.Option.Option.None
+  match kindAndSrc with
+  | Some((kind, src)) ->
     Step.Continue
       { state with
           editing =
             Stdlib.Option.Option.Some
-              (EditingState { kind = "fn"; nameStr = "Editing " ++ fullName; buf = UI.Editor.fromText (stripDocComments src); err = "" }) }
-  | [] -> Step.Continue state
+              (EditingState { kind = kind; nameStr = "Editing " ++ fullName; buf = UI.Editor.fromText (stripDocComments src); err = "" }) }
+  | None -> Step.Continue state
 
 let handleKey
   (state: State)
