@@ -88,6 +88,16 @@ push after notable milestones too. Don't push to `upstream` (darklang/dark).
   clamp (h<8→24, w<24→80) in render. Verified 100x30, 45x12, and recovery. Commit 9e5d03a08.
 - ✓ render batching (printAt 1 write, drawBox 1 string) — commit 9526d853b.
 
+### POLISH (done, verified in tmux):
+- Multi-line editor paste: added `UI.Editor.insertText` (splits on "\n", stitches via `newline`; no-"\n"
+  string -> identical to insertChar). Editor keyChar handler routes through it (Tab-indent still insertChar).
+  Eval-proven: "let f x =\n  x + 1" -> 2 lines, cursor (1,7). Normal typing + ^s save still work in tmux.
+- Stale hint fixed: editor hint said "(^s save — soon)" though save works -> now "… · ^s save · esc cancel".
+- Confirmed in tmux this fire: author (n → name → editor → ^s) saves cleanly, parse-error keeps editor open,
+  Changes shows the WIP op, discard (x/y) -> working tree clean. ^s IS delivered under tmux (no XOFF freeze).
+- Editor opens with cursor at (0,0) atop the signature template (typed text lands before the sig). Minor
+  papercut, pre-existing, low value — left as-is.
+
 ### SWEEP RESULT (all PASS in tmux, real terminal):
 author (n/editor/^s) ✓ · commit (Changes c) ✓ · discard (x/y) ✓ · branch (History b/s) ✓ · readers (History
 ops → AddFn/SetName, Docs topic, scroll, esc) ✓ · paste ✓ (fixed) · resize ✓ (fixed). Workbench is robust.

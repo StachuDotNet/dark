@@ -43,6 +43,15 @@ let newline (buf: Buf) : Buf =
     |> Stdlib.List.flatten
   Buf { lines = newLines; row = buf.row + 1; col = 0 }
 
+/// Insert a string that may contain newlines: split on "\n" and stitch with `newline` between segments.
+/// A string with no "\n" splits to one part -> identical to `insertChar`. This is what a paste routes through.
+let insertText (buf: Buf) (text: String) : Buf =
+  Stdlib.String.split text "\n"
+  |> Stdlib.List.indexedMap (fun i s -> (i, s))
+  |> Stdlib.List.fold buf (fun b pair ->
+    let (i, s) = pair
+    if i == 0 then insertChar b s else insertChar (newline b) s)
+
 let backspace (buf: Buf) : Buf =
   if buf.col > 0 then
     let line = currentLine buf

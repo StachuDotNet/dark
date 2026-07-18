@@ -488,7 +488,7 @@ let render (state: State) : Unit =
       (fun r ->
         let h =
           match state.editing with
-          | Some _ -> "type to edit · arrows move · tab indent · esc cancel  (^s save — soon)"
+          | Some _ -> "type to edit · arrows move · tab indent · ^s save · esc cancel"
           | None ->
             match state.input with
             | Some inp -> inp.prompt ++ inp.text ++ "_"
@@ -752,7 +752,7 @@ let handleKey
         match keyChar with
         | Some ch ->
           if ch != "" then
-            Step.Continue { state with editing = Stdlib.Option.Option.Some { es with buf = UI.Editor.insertChar es.buf ch } }
+            Step.Continue { state with editing = Stdlib.Option.Option.Some { es with buf = UI.Editor.insertText es.buf ch } }
           else
             Step.Continue state
         | None -> Step.Continue state
