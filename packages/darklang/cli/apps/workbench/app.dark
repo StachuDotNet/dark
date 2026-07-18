@@ -63,16 +63,21 @@ let renderTreeList (state: State) (region: UI.Layout.Region) : Unit =
   if Stdlib.List.isEmpty state.items then
     UI.Layout.printAt region 1 2 (Colors.dimText "(empty)")
   else
+    // Bottom-anchored viewport: keep the selected row visible even in big modules (Stdlib.List = 68 fns).
+    let visible = region.rows
+    let scrollOffset = Stdlib.Int.max 0 (state.selected - visible + 1)
     state.items
     |> Stdlib.List.indexedMap (fun i item -> (i, item))
+    |> Stdlib.List.drop scrollOffset
+    |> Stdlib.List.take visible
     |> Stdlib.List.iter (fun pair ->
       let (i, item) = pair
-      if i < region.rows then
-        let cursor = if i == state.selected then "> " else "  "
-        let display = if item.isModule then item.name ++ "/" else item.name
-        let line = cursor ++ (iconFor item) ++ " " ++ display
-        let styled = if i == state.selected then Colors.colorize Colors.cyan line else line
-        UI.Layout.printAt region i 0 styled)
+      let row = i - scrollOffset
+      let cursor = if i == state.selected then "> " else "  "
+      let display = if item.isModule then item.name ++ "/" else item.name
+      let line = cursor ++ (iconFor item) ++ " " ++ display
+      let styled = if i == state.selected then Colors.colorize Colors.cyan line else line
+      UI.Layout.printAt region row 0 styled)
 
 /// The source/detail of the currently-selected item, as lines for the Inspect pane.
 let detailLines (state: State) : List<String> =
