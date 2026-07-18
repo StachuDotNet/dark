@@ -250,7 +250,14 @@ let render (state: State) : Unit =
   let w = Terminal.getWidth ()
   Stdlib.print "\u001b[?25l\u001b[2J\u001b[H"
   let screen = UI.Layout.Region { top = 1; left = 1; rows = h - 1; cols = w }
-  let path = Packages.formatLocation state.location
+  let path =
+    if state.activeView == 1 then Packages.formatLocation state.location
+    else if state.activeView == 0 then "Home"
+    else
+      (Frame.viewName state.activeView)
+      ++ "  —  "
+      ++ (Stdlib.Int.toString (Stdlib.List.length state.items))
+      ++ " items"
   let branch =
     match SCM.Branch.get state.branchId with
     | Some b -> b.name
@@ -379,7 +386,7 @@ let execute (cliState: Darklang.Cli.AppState) (_args: List<String>) : Darklang.C
   let rootLoc = Packages.PackageLocation.Module []
   let state =
     State
-      { activeView = 1
+      { activeView = 0
         location = rootLoc
         items = loadItems branchId rootLoc
         selected = 0
