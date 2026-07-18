@@ -51,15 +51,19 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
 1. DONE ✓ Tree viewport scroll (stateless bottom-anchor: scrollOffset = max 0 (selected-visible+1)). Verified
    in a 14-row window: DOWN×18 into Darklang scrolls, `> Tailscale/` stays visible. (dev-drive now honors
    DEV_DRIVE_ROWS/COLS + shows only the final frame.)
-2. INSPECT scroll: renderDetail (long source overflows). Add `detailScroll: Int` to State (→ double reload).
-   When focus=Second (Tab'd into Inspect), ↑↓ adjust detailScroll (clamp 0..len-1); else ↑↓ drive the list as
-   now. renderDetail drops detailScroll lines. Reset detailScroll=0 on selection change (in up/down list moves
-   + descend/ascend). Verify: Tab into Inspect on a long fn, ↓ scrolls source.
-3. Wire CHANGES view (activeView=4): body = WIP items list | diff, reusing SCM.Review.App/getWipItems +
-   Stdlib.Diff. When activeView=4 render that instead of the tree. (See main/notes/cli-ux/15.)
+2. DONE ✓ Inspect-pane scroll (detailScroll; focus-aware ↑↓; reset on selection change). Verified: Tab into
+   Inspect + ↓×6 scrolls a fn's source, selection unchanged.
+3. Wire CHANGES view (activeView=4): when activeView==4, render body = WIP items list (left) | diff (right)
+   instead of the tree. Reuse SCM.Review.App helpers: `loadWipItems branchId` → items; select one → its diff
+   via the review app's diff builder (or getWip + Stdlib.Diff). SIMPLEST v1: left = list of WIP item names
+   (getWipItems / getWipSummary); right = the selected item's current source (same detailLines path by name).
+   Empty state: "✓ working tree clean". Add a per-view body dispatch: renderBody matches activeView (0/1 tree,
+   4 changes, else coming-soon). Keep it small; the diff can come next. See main/notes/cli-ux/15.
 4. Wire HISTORY (activeView=5): commits list from SCM.Log/getCommits (main/notes/cli-ux/16).
-5. HOME (activeView=0): a real dashboard (tree + WIP + running) instead of sharing the tree (main/notes/cli-ux/10).
-Keep the `activeView<=1` tree body for Home/Tree until Home gets its own; digits already switch activeView.
+5. HOME (activeView=0): real dashboard (main/notes/cli-ux/10).
+NOTE: the workbench State currently assumes the tree body. Wiring per-view bodies may want activeView-specific
+sub-state later; for v1 keep it simple (compute Changes/History data in render from branchId). Keep tree body
+for Home/Tree until Home gets its own.
 
 ## Status: P1 COMPLETE ✓ — `dark` opens the framed Tree|Inspect workbench (verified on screen; classic prompt
    behind DARK_CLASSIC=1; with-args commands unaffected). Commits 5053e91f4…4a82936cf. Now on P2.
@@ -74,6 +78,8 @@ Keep the `activeView<=1` tree body for Home/Tree until Home gets its own; digits
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 04:55 — P2.2: Inspect-pane scroll done (detailScroll, focus-aware ↑↓, reset on selection change).
+  Verified via dev-drive (Tab+↓×6 scrolls fn source in Stachu.Parser). Commit 0e30081be. Next: wire Changes view.
 - 2026-07-18 04:46 — P2.1: Tree viewport scroll (stateless). Improved dev-drive (final-frame-only capture +
   DEV_DRIVE_ROWS/COLS). Verified scroll in a 14-row window (DOWN×18 → `> Tailscale/` visible, list scrolled).
   Commit 32830eb06. Next: Inspect-pane scroll (P2.2), then wire Changes/History/Home.
