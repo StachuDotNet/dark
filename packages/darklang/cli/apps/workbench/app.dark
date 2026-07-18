@@ -9,6 +9,14 @@ type BodyItem =
     kind: String
     isModule: Bool }
 
+/// A search result the user can jump to: the containing module path (owner + modules), the leaf name, its kind,
+/// and a pre-formatted display line.
+type SearchHit =
+  { modules: List<String>
+    name: String
+    kind: String
+    display: String }
+
 type State =
   { activeView: Int
     location: Packages.PackageLocation
@@ -30,6 +38,10 @@ type State =
     /// A transient status message (e.g. "committed", "saved foo") shown in the footer after a write action,
     /// then cleared on the next keypress. "" = nothing to show.
     message: String
+    /// When non-empty, the search-results mode is open: a jumpable list of matches. `searchSelected` is the
+    /// cursor into it; Enter navigates to the hit's location.
+    searchHits: List<SearchHit>
+    searchSelected: Int
     branchId: Uuid }
 
 /// A single-line text entry. `action` tags what Enter does (e.g. "commit").
@@ -168,9 +180,9 @@ let changesSourceText (branchId: Uuid) (selected: Int) : String =
         | [] -> "(not found)"
     name ++ "  (" ++ kind ++ ", WIP)\n\n" ++ src
 
-/// Run a package search across the whole tree and format the matches for the reader (grouped by kind, each as
-/// its full owner.Module.name path). The `/` global action shows this.
-let searchText (branchId: Uuid) (queryText: String) : String =
+/// Run a package search across the whole tree and return jumpable hits (each carries its module path + leaf so
+/// Enter can navigate there). The `/` global action opens these in the search-results mode.
+let runSearch (branchId: Uuid) (queryText: String) : List<SearchHit> =
   let query =
     LanguageTools.ProgramTypes.Search.SearchQuery
       { currentModule = []
@@ -179,24 +191,14 @@ let searchText (branchId: Uuid) (queryText: String) : String =
         entityTypes = []
         exactMatch = false }
   let r = LanguageTools.PackageManager.Search.search branchId query
-  let fullPath (item: LanguageTools.ProgramTypes.LocatedItem<'a>) : String =
-    [ [ item.location.owner ]; item.location.modules; [ item.location.name ] ]
-    |> Stdlib.List.flatten
-    |> Stdlib.String.join "."
-  let modLines = r.submodules |> Stdlib.List.map (fun m -> "  mod   " ++ (Stdlib.String.join m "."))
-  let typeLines = r.types |> Stdlib.List.map (fun i -> "  type  " ++ (fullPath i))
-  let valLines = r.values |> Stdlib.List.map (fun i -> "  val   " ++ (fullPath i))
-  let fnLines = r.fns |> Stdlib.List.map (fun i -> "  fn    " ++ (fullPath i))
-  let all = Stdlib.List.flatten [ modLines; typeLines; valLines; fnLines ]
-  if Stdlib.List.isEmpty all then
-    "No matches for \"" ++ queryText ++ "\""
-  else
-    "Search: "
-    ++ queryText
-    ++ "   ("
-    ++ (Stdlib.Int.toString (Stdlib.List.length all))
-    ++ " matches)\n\n"
-    ++ (Stdlib.String.join all "\n")
+  let hit (tag: String) (item: LanguageTools.ProgramTypes.LocatedItem<'a>) : SearchHit =
+    let modules = Stdlib.List.append [ item.location.owner ] item.location.modules
+    let full = Stdlib.String.join (Stdlib.List.append modules [ item.location.name ]) "."
+    SearchHit { modules = modules; name = item.location.name; kind = tag; display = "  " ++ tag ++ "  " ++ full }
+  Stdlib.List.flatten
+    [ r.types |> Stdlib.List.map (fun i -> hit "type" i)
+      r.values |> Stdlib.List.map (fun i -> hit "val " i)
+      r.fns |> Stdlib.List.map (fun i -> hit "fn  " i) ]
 
 /// Dependencies of the selected Tree leaf (what it uses), formatted for the reader. `d` shows this.
 let depsText (state: State) : String =
@@ -627,14 +629,27 @@ let renderEditing (es: EditingState) (region: UI.Layout.Region) : Unit =
       else
         UI.Layout.printAt inner screenRow 1 l))
 
-/// Dispatch the body: the editor, then a reader, else the active view's body.
+/// The jumpable search-results list, framed in a box. Selection in cyan; ⏎ navigates to the hit.
+let renderSearchResults (state: State) (region: UI.Layout.Region) : Unit =
+  let title = "Search  ·  " ++ (Stdlib.Int.toString (Stdlib.List.length state.searchHits)) ++ " results"
+  UI.Box.panel region title true (fun inner ->
+    let lines =
+      state.searchHits
+      |> Stdlib.List.indexedMap (fun i h ->
+        if i == state.searchSelected then Colors.colorize Colors.cyan ("> " ++ h.display)
+        else "  " ++ h.display)
+    UI.ListView.render inner lines state.searchSelected)
+
+/// Dispatch the body: the editor, then a reader, then search results, else the active view's body.
 let renderBody (state: State) (region: UI.Layout.Region) : Unit =
   match state.editing with
   | Some es -> renderEditing es region
   | None ->
   match state.reading with
   | Some content -> renderReading content state.readingIsCode state.detailScroll region
-  | None -> renderViewBody state region
+  | None ->
+    if Stdlib.Bool.not (Stdlib.List.isEmpty state.searchHits) then renderSearchResults state region
+    else renderViewBody state region
 
 /// Honest, context-relevant key hints per view — the 3-6 most useful keys first, then the anchored global
 /// keys (view-switch, help, quit) so the footer's right edge is stable. Keys are emphasized by `formatHints`.
@@ -728,7 +743,10 @@ let renderFull (state: State) : Unit =
             | None ->
               match state.reading with
               | Some _ -> Frame.formatHints [ ("↑↓", "scroll"); ("esc", "back") ]
-              | None -> hintsForView state
+              | None ->
+                if Stdlib.Bool.not (Stdlib.List.isEmpty state.searchHits) then
+                  Frame.formatHints [ ("↑↓", "move"); ("⏎", "jump"); ("esc", "close"); ("q", "quit") ]
+                else hintsForView state
         Frame.renderKeyHints r h)
   UI.Layout.vstack screen [ tabbar; crumb; body; hints ]
   Stdlib.print "\u001b[?25h"
@@ -828,6 +846,29 @@ let switchView (state: State) (nv: Int) : Step =
         detailScroll = 0
         focus = UI.SplitPane.Focus.First }
 
+/// Jump from a search result to its home in the Tree: open the containing module, select the leaf, close the
+/// results mode.
+let jumpToHit (state: State) (hit: SearchHit) : Step =
+  let newLoc = Packages.PackageLocation.Module hit.modules
+  let items = loadItems state.branchId newLoc
+  let idx =
+    items
+    |> Stdlib.List.indexedMap (fun i it -> (i, it))
+    |> Stdlib.List.findFirst (fun pair -> let (_i, it) = pair in it.name == hit.name)
+    |> Stdlib.Option.map (fun pair -> let (i, _it) = pair in i)
+    |> Stdlib.Option.withDefault 0
+  Step.Continue
+    { state with
+        activeView = 1
+        location = newLoc
+        items = items
+        selected = idx
+        detailScroll = 0
+        focus = UI.SplitPane.Focus.First
+        searchHits = []
+        searchSelected = 0
+        message = "jumped to " ++ hit.name }
+
 /// Run the action for a completed single-line input (Enter). Commit is the only one for now.
 let performInputAction (state: State) (inp: InputState) : Step =
   if inp.action == "commit" then
@@ -902,13 +943,13 @@ let performInputAction (state: State) (inp: InputState) : Step =
               input = Stdlib.Option.Option.None
               message = "rebase: " ++ (Stdlib.Int.toString (Stdlib.List.length conflicts)) ++ " conflict(s) — see Resolve" }
   else if inp.action == "search" then
-    // Global `/` search — run it and show the matches in the reader.
-    Step.Continue
-      { state with
-          input = Stdlib.Option.Option.None
-          reading = Stdlib.Option.Option.Some (searchText state.branchId inp.text)
-          readingIsCode = false
-          detailScroll = 0 }
+    // Global `/` search — open the matches in the jumpable search-results mode (empty -> a toast, no mode).
+    let hits = runSearch state.branchId inp.text
+    if Stdlib.List.isEmpty hits then
+      Step.Continue { state with input = Stdlib.Option.Option.None; message = "no matches for \"" ++ inp.text ++ "\"" }
+    else
+      Step.Continue
+        { state with input = Stdlib.Option.Option.None; searchHits = hits; searchSelected = 0 }
   else if inp.action == "eval" then
     // The `:` run prompt — evaluate a Dark expression and show the result (or error) in the reader.
     let result =
@@ -1185,6 +1226,28 @@ let handleKey
         Step.Continue { state with detailScroll = maxScroll }
       | _ -> Step.Continue state
   | None ->
+  if Stdlib.Bool.not (Stdlib.List.isEmpty state.searchHits) then
+    // Search-results mode: ↑↓/j/k move, ⏎ jumps to the hit, Esc closes.
+    let n = Stdlib.List.length state.searchHits
+    let moveTo (i: Int) = Step.Continue { state with searchSelected = Stdlib.Int.max 0 (Stdlib.Int.min (n - 1) i) }
+    let closeSearch = Step.Continue { state with searchHits = []; searchSelected = 0 }
+    match key with
+    | UpArrow -> moveTo (state.searchSelected - 1)
+    | DownArrow -> moveTo (state.searchSelected + 1)
+    | Escape -> closeSearch
+    | Enter ->
+      match Stdlib.List.getAt state.searchHits state.searchSelected with
+      | Some hit -> jumpToHit state hit
+      | None -> closeSearch
+    | _ ->
+      match keyChar with
+      | Some "k" -> moveTo (state.searchSelected - 1)
+      | Some "j" -> moveTo (state.searchSelected + 1)
+      | Some "g" -> moveTo 0
+      | Some "G" -> moveTo (n - 1)
+      | Some "q" -> closeSearch
+      | _ -> Step.Continue state
+  else
   match key with
   | UpArrow -> navUp state
   | DownArrow -> navDown state
@@ -1369,6 +1432,8 @@ let execute (cliState: Darklang.Cli.AppState) (_args: List<String>) : Darklang.C
         accountId = cliState.accountID
         accountName = cliState.accountName
         message = ""
+        searchHits = []
+        searchSelected = 0
         branchId = branchId }
   { cliState with
       currentPage = Darklang.Cli.Page.SubApp (makeSubApp state)
