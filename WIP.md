@@ -47,23 +47,23 @@ instead of a bare prompt.
 x=destroy, d=diff/detail, r=rename-or-rerun; Ctrl+Tab=views/Tab=panes; ?=HelpOverlay; badge set frozen (91 §4).
 
 ## NEXT ACTION
-P1 step 3b — the `workbench` SubApp (frame.dark DONE ✓). Build `apps/workbench/app.dark`.
-1. DONE ✓ `apps/workbench/frame.dark` — renderTabBar / renderBreadcrumb / renderKeyHints, verified loads.
-2. New `apps/workbench/app.dark` (module `Darklang.Cli.Apps.Workbench.App`): a SubApp (see SCM.Review.App
-   for the exact shape — makeSubApp/handleKey/render/execute). State = { activeView; a nav/tree state for the
-   body }. render = vstack [ fixedSize 1 tabbar; fixedSize 1 breadcrumb; greedy body; fixedSize 1 keyhint ]
-   inside the frame; the status bar is the CLI's existing bottom bar. Body v1 = the package tree listing
-   (reuse Packages.NavInteractive display logic, or a simple Query.allDirectDescendants listing rendered in
-   the region). onKey: ↑↓ move, → into, ← up, digits switch activeView (stub other views to a "coming soon"
-   body for now), Esc/q exit.
-3. Register `("workbench", …, Apps.Workbench.App.execute/help/complete)` in core.dark Registry.allCommands.
-   Reload TWICE if types changed. Test: `./scripts/run-cli workbench` (interactive — may need expect; at
-   minimum confirm it loads + non-interactive `workbench` prints something sane).
-4. Commit. THEN next: flip `dark` no-args to open workbench (small core.dark change), and split the body
-   into Tree|Inspect via SplitPane.
-Design refs: main/notes/cli-ux/03A (frame), 10-home, 11-tree, 12-inspect. Keymap: 91 (x=destroy/d=diff).
+P1 step 4 — SEE it, then split the body. The `workbench` SubApp is built + wired + data-verified (frame.dark,
+app.dark, registered; loadItems root → [Darklang,Feriel,Stachu] ✓). Not yet visually verified (needs a TTY).
+1. Interactive verify via expect (see `docs interactive-testing`): drive `./scripts/run-cli` → type `workbench`
+   → capture the framed render (tab bar highlighted, breadcrumb, tree body, key hints). Confirm ↑↓/→/← work.
+   Harness: `./scripts/run-in-docker expect scripts/testing/test-interactive.expect` — adapt or write a small
+   .expect that spawns run-cli, sends "workbench\n", arrow keys, and dumps the screen. If expect is fiddly,
+   at least run it under `script`/PTY to eyeball one frame. Fix any render bugs (line wrapping, offsets).
+2. Split the body: when activeView==Tree, render body as SplitPane Tree(left)|Inspect(right). Inspect pane
+   shows the selected item's source (reuse PrettyPrinter via the `view` path / Packages.View.viewEntity as a
+   region renderer). Tab toggles focus. (Master-detail: moving selection updates the Inspect pane.)
+3. THEN flip `dark` no-args → open workbench: in core.dark executeCliCommand, the `[]` branch currently prints
+   welcome + runs the prompt loop; instead open the workbench SubApp (keep MainPrompt reachable via `:` later /
+   a flag). Small, careful change; keep the old path behind `dark prompt` or an env flag so nothing's lost.
+Design refs: main/notes/cli-ux/{03A,10,11,12}. Keymap authority: 91 (x=destroy/d=diff/r=rename-or-rerun).
 
-## Status: P1 in progress. DONE: hstack/distributeCols (verified [40,60]); SplitPane (verified toggle; commit d957c2471).
+## Status: P1 in progress. DONE: hstack/distributeCols; SplitPane; Frame chrome; workbench SubApp built+wired
+   +data-verified (commits d957c2471, 7322c6ef1, e1cb56823). PENDING: visual/interactive verification.
 
 ## Gotchas learned (append as you hit them)
 - Typed lambda params are NOT supported: `fun s -> …` only, never `fun (s: String) -> …` (PARSE-UNCLOSED).
@@ -75,6 +75,9 @@ Design refs: main/notes/cli-ux/03A (frame), 10-home, 11-tree, 12-inspect. Keymap
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 04:09 — P1: workbench SubApp done (app.dark: State/render/handleKey/makeSubApp/execute) + registered
+  `workbench`/`wb`. Gotcha: Write dropped ESC bytes in control strings → normalized to  via python. Verified
+  help + loadItems root → [Darklang,Feriel,Stachu]. Loads clean. Commit e1cb56823. NOT yet visually verified (TTY).
 - 2026-07-18 04:00 — P1: frame.dark done (tab bar + breadcrumb + keyhint render helpers). Learned 2 gotchas
   (val for module values; UI.Layout not Layout from Apps.Workbench). Verified, committing. Next: app.dark SubApp.
 - 2026-07-18 03:53 — P1: SplitPane done (ui/splitpane.dark: drawBox focus-aware border, render both
