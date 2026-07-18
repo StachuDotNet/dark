@@ -48,14 +48,13 @@ x=destroy, d=diff/detail, r=rename-or-rerun; Ctrl+Tab=views/Tab=panes; ?=HelpOve
 
 ## NEXT ACTION
 P2 — make the workbench a real daily driver. Order (each small, verify with ./dev-drive, commit):
-1. VIEWPORT SCROLL for the Tree list (real modules overflow: Stdlib.List has 68 fns). renderTreeList currently
-   only prints items where `i < region.rows` and has no scroll, so selection past the fold is invisible + the
-   list can't page. Add `scrollOffset: Int` to State; in handleKey UP/DOWN adjust scrollOffset to keep
-   `selected` within [scrollOffset, scrollOffset+visibleRows); in renderTreeList render items
-   [scrollOffset .. scrollOffset+region.rows). Mirror the math in Packages.NavInteractive.moveUp/moveDown +
-   review's computeScrollOffset. Verify by driving into Darklang→Stdlib→List and paging down.
-2. INSPECT scroll: same for renderDetail (long source). A `detailScroll` in State, ↑↓ scroll it when
-   focus=Second (Tab'd into Inspect); else ↑↓ drive the list. Verify on a long fn.
+1. DONE ✓ Tree viewport scroll (stateless bottom-anchor: scrollOffset = max 0 (selected-visible+1)). Verified
+   in a 14-row window: DOWN×18 into Darklang scrolls, `> Tailscale/` stays visible. (dev-drive now honors
+   DEV_DRIVE_ROWS/COLS + shows only the final frame.)
+2. INSPECT scroll: renderDetail (long source overflows). Add `detailScroll: Int` to State (→ double reload).
+   When focus=Second (Tab'd into Inspect), ↑↓ adjust detailScroll (clamp 0..len-1); else ↑↓ drive the list as
+   now. renderDetail drops detailScroll lines. Reset detailScroll=0 on selection change (in up/down list moves
+   + descend/ascend). Verify: Tab into Inspect on a long fn, ↓ scrolls source.
 3. Wire CHANGES view (activeView=4): body = WIP items list | diff, reusing SCM.Review.App/getWipItems +
    Stdlib.Diff. When activeView=4 render that instead of the tree. (See main/notes/cli-ux/15.)
 4. Wire HISTORY (activeView=5): commits list from SCM.Log/getCommits (main/notes/cli-ux/16).
@@ -75,6 +74,9 @@ Keep the `activeView<=1` tree body for Home/Tree until Home gets its own; digits
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 04:46 — P2.1: Tree viewport scroll (stateless). Improved dev-drive (final-frame-only capture +
+  DEV_DRIVE_ROWS/COLS). Verified scroll in a 14-row window (DOWN×18 → `> Tailscale/` visible, list scrolled).
+  Commit 32830eb06. Next: Inspect-pane scroll (P2.2), then wire Changes/History/Home.
 - 2026-07-18 04:38 — **P1 COMPLETE**. Flipped `dark` no-args → workbench (core.dark; DARK_CLASSIC=1 = classic).
   Verified all 3: no-args→workbench frame; `status`/with-args still print; DARK_CLASSIC=1→classic prompt.
   Commit 4a82936cf. `dark` now opens the framed, navigable Tree|Inspect workbench. On to P2 (scroll, then wire
