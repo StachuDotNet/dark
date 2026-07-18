@@ -22,29 +22,32 @@ per-view key hints) around a body that switches per view. 11 views wired from re
 - Tree (package navigation, `→` into / `←` up) | Inspect (right pane: live source of the selection)
 - Changes (WIP items) · History (commits) · Resolve (sync conflicts) · Mesh (tailnet, offline-safe) ·
   Runs (traces) · Services (daemons/apps) · Docs (topics).
-- Deferred, shown as "coming soon": Edit (needs a multiline editor), Agents (data source is a mock render),
-  Things (needs a type arg / no generic value list).
+- Deferred, shown as "coming soon": Agents (data source is a mock render), Things (needs a type arg / no
+  generic value list). (Edit is now DONE — author new fns via Tree `n`.)
 Interactions: `↑↓` move / scroll (focus-aware), `→`/`Enter` descend or open, `Tab` focus Tree↔Inspect,
 `1`-`9` + `[`/`]` switch views, a reusable full-screen **reader** (`Enter` opens a Tree leaf's source, a
 History commit's ops, a Changes item's source, a Docs topic; `?` shows the keymap; `↑↓` scroll, `esc`
 close), a viewport scrollbar, and graceful empty/error states throughout.
 **Write actions** (single-line input mode, `esc` cancels): Changes `c` commit-all (message → `SCM.commit`),
 Changes `x` discard-all (y-confirm), History `b` new-branch (create + switch) / `s` switch-branch-by-name.
-All verified end-to-end through the UI.
+**Authoring:** Tree `n` → name → a real multiline **editor** (`ui/editor.dark`: cursor, insert/newline/
+backspace/motion/tab) → `^s` parses the body (WrittenTypes→PT), creates the fn as a WIP op, and drops you
+back to Tree; parse/unresolved errors keep the editor open with an inline message. All verified end-to-end.
 
 **New/changed files:** `cli/apps/workbench/{frame,app}.dark` (the view), `cli/ui/splitpane.dark` (focus-aware
 two-pane split), `cli/ui/layout.dark` (+`hstack`/`distributeCols`/width combinators), `cli/core.dark` (the
 no-args → workbench flip + `workbench` command). Dev helpers (not product): `dev-ux-check` (reload+error),
 `dev-drive` (PTY visual-verify).
 
-**Honest state / not done:** Read + basic write. Committing / discarding / branching work from the UI;
-**Edit (authoring) is deferred** — it needs a real multiline editor + a TUI-friendly save path (the `fn`
-create fn prints to stdout and wants the full CLI AppState), so the Edit tab shows a placeholder pointing at
-the `fn`/`type`/`val` commands. Also deferred: Agents (its data source is a mock render), Things (needs a
-type arg / no generic value list), and item rename (no clean API — only branch rename exists). Mesh/Runs
-show "unavailable/empty" here (no tailscale, no traces). Commit op-render capped at 20 (seed "Init" commit
-has 10k+ ops). This is a solid, reviewable foundation with the frame + component seams (SplitPane, reader,
-input mode, view dispatch) in place to grow Edit and the rest onto.
+**Honest state / not done:** Read + write. Navigate, drill into source/ops, author a new fn (`n`), commit,
+discard, and branch — all from the UI. Still deferred: **editing an EXISTING fn** in the editor (n creates
+new; edit-in-place would prefill the buffer from the current source — small follow-up) and **type/val
+authoring** (only fn wired) — both still doable via the `fn`/`type`/`val` commands. Agents (mock data),
+Things (needs a type arg), and item rename (no clean API) remain deferred. Mesh/Runs show "unavailable/empty"
+here (no tailscale, no traces). Commit op-render capped at 20 (seed "Init" commit has 10k+ ops). No cursor-
+in-place niceties (the editor is functional, not polished). This is a solid, reviewable, genuinely-usable
+workbench with the frame + component seams (SplitPane, reader, input mode, multiline editor, view dispatch)
+in place to grow the rest onto.
 
 ---
 
@@ -144,7 +147,12 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
       buffer + reverse-video cursor + windowed scroll); handleKey editing branch (typing/Enter=newline/Backspace/
       arrows/Tab=2sp/Esc=cancel; Ctrl ignored for now). Tree `n` → name input → `new-fn` action → editor opens
       with starter "(x: Int): Int =\n  x". VERIFIED via dev-drive (opened, typed "zzz" → "zzz(x: Int…").
-   4. NEXT — SAVE (Ctrl+S). In the editing handleKey branch, before the `if modifiers.ctrl then Continue`, handle
+   DONE ✓ 4. SAVE (Ctrl+S) — saveEditing: parseRelativeTo → parse body → WT→PT toPackageFnPT → AddFn+SetName →
+      SCM.PackageOps.add. Errors keep the editor open with an inline `err` line. VERIFIED END-TO-END (authored
+      Stachu.Wb.dbl via the workbench, saved with ^s, `view` shows `let dbl (x:Int):Int = x`, discarded). EDIT DONE.
+      Ctrl+S is NOT swallowed by XOFF (CLI raw mode). dev-drive now has CTRLS + SP tokens.
+   --- EDIT VIEW COMPLETE. Author→save→review→commit all work inside the workbench. ---
+   (superseded plan:) 4. NEXT — SAVE (Ctrl+S). In the editing handleKey branch, before the `if modifiers.ctrl then Continue`, handle
       save: `if modifiers.ctrl && key == Stdlib.Cli.Stdin.Key.Key.S then <save>`. Save LOCALLY (createFnInline
       prints + needs AppState — don't call it). Replicate the core of createFnInline (fn.dark ~L56-120):
         - parse loc: `Packages.Location.parseRelativeTo currentLoc es.nameStr` (or LanguageTools parse) → location
@@ -204,6 +212,12 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 08:16 — P3.7 EDIT COMPLETE: Ctrl+S save (saveEditing — local parse→WT→PT→AddFn/SetName→SCM.add;
+  inline err on failure). VERIFIED end-to-end: authored Stachu.Wb.dbl in the workbench, ^s saved it, view shows
+  `let dbl (x:Int):Int = x`, discarded. Updated Edit tab + PR summary. Commits ca7e96b91, 68ff3a30a. The
+  workbench now does the whole loop (author→save→review→commit). NEXT (small): edit-in-place — Tree `e` on a fn
+  → prefill editor from its current source (strip "let {leaf} " → definition) → ^s updates it (saveEditing
+  already handles update/propagate implicitly via AddFn+SetName). Then type/val authoring is the only other gap.
 - 2026-07-18 08:02 — P3.6 (Edit step 2): interactive multiline editor in the workbench — State.editing +
   renderEditing (cursor) + editing key branch (typing/motion/tab/esc); Tree `n` → name → editor. VERIFIED
   (typed "zzz" into a new fn's body). Commit b72f08c0d. Next: Ctrl+S SAVE (local parse→AddFn/SetName→SCM.add).
