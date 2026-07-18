@@ -460,8 +460,11 @@ let hintsForView (view: Int) : String =
   else "↑↓ move · 1-9/[ ] view · esc exit"
 
 let render (state: State) : Unit =
-  let h = Terminal.getHeight ()
-  let w = Terminal.getWidth ()
+  // Clamp to sane minimums — mid-resize the terminal reports 0/tiny sizes; without this the region math
+  // goes negative and the whole view crashes back to the prompt. A safe default renders one off frame; the
+  // next keypress picks up the real size.
+  let h = let hh = Terminal.getHeight () in if hh < 8 then 24 else hh
+  let w = let ww = Terminal.getWidth () in if ww < 24 then 80 else ww
   Stdlib.print "\u001b[?25l\u001b[2J\u001b[H"
   let screen = UI.Layout.Region { top = 1; left = 1; rows = h - 1; cols = w }
   let path =
