@@ -1278,29 +1278,75 @@ let rec private sampleArg (t : PT.TypeReference) : Option<Dval> =
 /// Bridge.marshalTyped (its mirror). Same bytes on both sides or it's a real diff.
 ///
 /// Returns "match", "DIFF|c=…|i=…", or a reason it couldn't be proven either way.
-let rec private sampleArgDeep
+/// Substitute bound type variables. A generic custom type's field/case types are
+/// written in terms of the type's own params (`Some('a)`); to sample `Option<String>`
+/// we must replace `'a` with `String` before descending, or the sampled value has the
+/// wrong element type and the harness's call fails to type-check (the whole
+/// `Expected Option<String>, got Option<Int64>` bucket, ~20% of the known-good set).
+let rec private substituteType
+  (subst : Map<string, PT.TypeReference>)
+  (t : PT.TypeReference)
+  : PT.TypeReference =
+  if Map.isEmpty subst then t
+  else
+    match t with
+    | PT.TVariable name ->
+      match Map.tryFind name subst with
+      | Some replacement -> replacement
+      | None -> t
+    | PT.TList inner -> PT.TList(substituteType subst inner)
+    | PT.TStream inner -> PT.TStream(substituteType subst inner)
+    | PT.TDict inner -> PT.TDict(substituteType subst inner)
+    | PT.TDB inner -> PT.TDB(substituteType subst inner)
+    | PT.TTuple(a, b, rest) ->
+      PT.TTuple(substituteType subst a, substituteType subst b, List.map (substituteType subst) rest)
+    | PT.TCustomType(nr, targs) -> PT.TCustomType(nr, List.map (substituteType subst) targs)
+    | PT.TFn(args, ret) -> PT.TFn(NEList.map (substituteType subst) args, substituteType subst ret)
+    | other -> other
+
+/// Total sampled-node budget + depth cap. A record whose fields are records (fan-out N)
+/// nesting records explodes as N^depth, and the interpreter runs the arg twice per proof,
+/// so wide nested-record fns produce args that make the proof crawl. Bounds keep sampled
+/// values reasonable; genuinely slow-to-EXECUTE fns are handled by the sweep's per-fn
+/// timeout (they drop as harness-drop, they don't hang the sweep) — no interpreter
+/// cancellation needed.
+let private maxSampleDepth = 5
+let private sampleNodeBudget = 256
+
+let rec private sampleArgDeepAt
+  (budget : int ref)
+  (depth : int)
   (seen : Set<string>)
+  (subst : Map<string, PT.TypeReference>)
   (t : PT.TypeReference)
   : Ply<Option<Dval>> =
   uply {
+    // Resolve any type vars bound by an enclosing generic type before matching.
+    let t = substituteType subst t
+    if depth > maxSampleDepth || budget.Value <= 0 then return None
+    else
+    budget.Value <- budget.Value - 1
     match t with
     | PT.TList inner ->
-      let! v = sampleArgDeep seen inner
-      return v |> Option.map (fun v -> DList(Dval.toValueType v, [ v; v; v ]))
+      let! v = sampleArgDeepAt budget (depth + 1) seen subst inner
+      // 3 elements at the top to catch multi-element bugs (e.g. #26), 1 when nested
+      // so the sample size stays bounded instead of growing as N^depth.
+      let n = if depth = 0 then 3 else 1
+      return v |> Option.map (fun v -> DList(Dval.toValueType v, List.replicate n v))
     | PT.TTuple(a, b, rest) ->
-      let! a' = sampleArgDeep seen a
-      let! b' = sampleArgDeep seen b
+      let! a' = sampleArgDeepAt budget (depth + 1) seen subst a
+      let! b' = sampleArgDeepAt budget (depth + 1) seen subst b
       let mutable restVs = []
       let mutable ok = true
       for r in rest do
-        let! rv = sampleArgDeep seen r
+        let! rv = sampleArgDeepAt budget (depth + 1) seen subst r
         match rv with
         | Some v -> restVs <- restVs @ [ v ]
         | None -> ok <- false
       match a', b', ok with
       | Some a'', Some b'', true -> return Some(DTuple(a'', b'', restVs))
       | _ -> return None
-    | PT.TCustomType(nr, _targs) ->
+    | PT.TCustomType(nr, targs) ->
       match nr.resolved with
       | Error _ -> return None
       | Ok resolved ->
@@ -1315,14 +1361,22 @@ let rec private sampleArgDeep
             | Some pt ->
               let seen' = Set.add h seen
               let rtName = FQTypeName.Package(Hash h)
+              // Bind this type's params to the (already-substituted) type args. The
+              // inner definition uses its OWN param names, a fresh scope — so field/case
+              // types below are sampled under subst', not the outer subst.
+              let tps = pt.declaration.typeParams
+              let n = min (List.length tps) (List.length targs)
+              let subst' =
+                List.zip (List.truncate n tps) (List.truncate n targs) |> Map.ofList
               match pt.declaration.definition with
-              | PT.TypeDeclaration.Alias inner -> return! sampleArgDeep seen' inner
+              // Alias is transparent — don't spend a depth level on it.
+              | PT.TypeDeclaration.Alias inner -> return! sampleArgDeepAt budget depth seen' subst' inner
               | PT.TypeDeclaration.Record fields ->
                 let fs = NEList.toList fields
                 let mutable acc = []
                 let mutable ok = true
                 for (f : PT.TypeDeclaration.RecordField) in fs do
-                  let! v = sampleArgDeep seen' f.typ
+                  let! v = sampleArgDeepAt budget (depth + 1) seen' subst' f.typ
                   match v with
                   | Some v' -> acc <- acc @ [ (f.name, v') ]
                   | None -> ok <- false
@@ -1337,7 +1391,7 @@ let rec private sampleArgDeep
                     let mutable acc = []
                     let mutable ok = true
                     for (f : PT.TypeDeclaration.EnumField) in c.fields do
-                      let! v = sampleArgDeep seen' f.typ
+                      let! v = sampleArgDeepAt budget (depth + 1) seen' subst' f.typ
                       match v with
                       | Some v' -> acc <- acc @ [ v' ]
                       | None -> ok <- false
@@ -1345,6 +1399,15 @@ let rec private sampleArgDeep
                 return result
     | scalar -> return sampleArg scalar
   }
+
+/// Sample a realistic value for a type, descending into custom types and binding
+/// generic type args. Depth- and node-budget-bounded so nested/wide records don't
+/// build an arg that makes the proof crawl.
+let private sampleArgDeep
+  (seen : Set<string>)
+  (t : PT.TypeReference)
+  : Ply<Option<Dval>> =
+  sampleArgDeepAt (ref sampleNodeBudget) 0 seen Map.empty t
 
 /// Bind a generic fn's type params by matching its DECLARED param types against the
 /// types of the actual arguments. `List.head` declares `List<'a> -> Option<'a>`, so
