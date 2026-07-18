@@ -69,7 +69,24 @@ Session `wb` is kept alive between fires. Send keys with SMALL sleeps (rapid key
   hold-to-scroll and fast typing work. This is the #1 improvement (also kills flicker). Do NOT change the
   shared readKey (deliberate); fix render speed instead.
 
+### BRANCH: `cli-ux-redux` (pushed to `github` = stachudotnet/dark). Was cli-ux-workbench; user renamed.
+Future commits land here. PUSH to github at finalization (`git push github cli-ux-redux`) and it's fine to
+push after notable milestones too. Don't push to `upstream` (darklang/dark).
+
+### Findings (updates)
+- RENDER BATCHING done (printAt 1 write; drawBox 1 string) — faster/less flicker. Commit 9526d853b.
+- REFRAME on coalescing: it's mostly FINE/intended. Firing keys at 0ms (my `for` loop) always coalesces (not
+  realistic). At autorepeat ~40ms, 15 Downs → ~11 moves = smooth fast scroll, acceptable. The REAL bug to chase
+  is FAST-TYPED / PASTED input being lost (a fast tmux-typed name came out blank; slow typing works). Test the
+  paste path (`tmux send-keys -l "text"` = one burst) into the name input + the editor; if the paste's multi-char
+  keyChar isn't appended, fix the input/editor handler (or how the builtin delivers pasteText). THIS is the bug.
+
 ### NEXT ACTION (Phase 4)
+0. (done this fire: render batching + branch cli-ux-redux pushed.) INVESTIGATE the paste/fast-type bug next:
+   `tmux send-keys -t wb -l 'Stachu.Wb.pasted'` into the `n` name prompt, capture — does the input show it?
+   If blank, the multi-char paste keyChar is being dropped. Check the builtin's keyChar for the paste case
+   (Stdin.fs returns Some pasted) vs how Dark's readKey surfaces it, and my input handler `inp.text ++ ch`.
+   Fix so a paste inserts the whole string. Then resize testing + the write-flow sweep.
 1. First, KEEP TESTING to complete the bug list (use tmux + slow keys, ~0.2s between): commit flow (Changes c),
    discard (x y), branch (History b/s), Docs reader (Enter/scroll/esc), editor SAVE (^s → Changes), the reader
    from Tree/History, and RESIZE (`tmux resize-window`/smaller `-x`). Log each result here.
