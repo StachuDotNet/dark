@@ -16,15 +16,17 @@ let available () : List<Model.App> =
         description = "Demo daemon: logs a heartbeat every interval until stopped"
         target = Model.Target.Daemon "Darklang.Cli.Apps.Examples.heartbeat" }
     // Sync is two independent halves, so it's two apps: you can pull without serving (a laptop that
-    // follows a peer), serve without pulling (a box others follow), or run both (the usual setup).
+    // follows a peer), serve without pulling (a box others follow), or run both (the usual setup). The
+    // slugs name each half (pull / serve) rather than one being bare `sync` — which read as the whole
+    // feature and collided with the `dark sync` command.
     Model.App
-      { name = "Sync"
-        slug = "sync"
-        description = "Pull half: fetch your other instances' changes on an interval"
+      { name = "Sync (pull)"
+        slug = "sync-pull"
+        description = "Pull half: fetch your peers' changes on an interval"
         target = Model.Target.Daemon "Darklang.Sync.daemon" }
     Model.App
-      { name = "Sync Server"
-        slug = "sync-server"
+      { name = "Sync (serve)"
+        slug = "sync-serve"
         description = "Serve half: answer peers' pulls with your changes"
         target = Model.Target.Daemon "Darklang.Cli.Apps.Servers.syncServer" }
     Model.App

@@ -93,8 +93,8 @@ let serveOn (port: Int) (state: AppState) : AppState =
 
   state
 
-// ── `dark sync daemon` — automatic sync: ONE toggle over both the pull daemon (`sync`) and the serve
-// daemon (`sync-server`). Settings live in cli-config (mode / interval / port / on-boot), adjustable via
+// ── `dark sync daemon` — automatic sync: ONE toggle over both the pull daemon (`sync-pull`) and the serve
+// daemon (`sync-serve`). Settings live in cli-config (mode / interval / port / on-boot), adjustable via
 // `dark sync daemon config`. Replaces `dark apps enable sync` as the blessed surface.
 
 let daemonMode () : String =
@@ -104,20 +104,20 @@ let daemonMode () : String =
 
 let daemonSlugs (mode: String) : List<String> =
   match mode with
-  | "pull-only" -> [ "sync" ]
-  | "serve-only" -> [ "sync-server" ]
-  | _ -> [ "sync"; "sync-server" ]
+  | "pull-only" -> [ "sync-pull" ]
+  | "serve-only" -> [ "sync-serve" ]
+  | _ -> [ "sync-pull"; "sync-serve" ]
 
 // The default comes from the daemon itself, not a copy: this is what `dark sync status` REPORTS, and a
 // second hardcoded number here would eventually disagree with the one the daemon actually sleeps on.
 let intervalSec () : Int =
   (Darklang.Cli.Config.getInt
-    "apps.sync.intervalMs"
+    "apps.sync-pull.intervalMs"
     Darklang.Sync.defaultPollIntervalMs)
   / 1000
 
 let servePort () : Int =
-  Darklang.Cli.Config.getInt "apps.sync-server.port" 9000
+  Darklang.Cli.Config.getInt "apps.sync-serve.port" 9000
 
 let onBoot () : Bool =
   match Darklang.Cli.Config.get "sync.daemon.onBoot" with
@@ -217,7 +217,7 @@ let daemonStart (state: AppState) : AppState =
 
 let daemonStop (state: AppState) : AppState =
   let _ =
-    Stdlib.List.map [ "sync"; "sync-server" ] (fun slug ->
+    Stdlib.List.map [ "sync-pull"; "sync-serve" ] (fun slug ->
       match Stdlib.Cli.Daemon.stop slug with
       | Ok _ -> Stdlib.printLine (Colors.success $"Stopped {slug}.")
       | Error _ -> ())
@@ -230,8 +230,8 @@ let daemonStop (state: AppState) : AppState =
 
 let daemonStatusCmd (state: AppState) : AppState =
   Stdlib.printLine "Automatic sync:"
-  Stdlib.printLine $"  pull    {Stdlib.Cli.Daemon.statusLine "sync"}"
-  Stdlib.printLine $"  serve   {Stdlib.Cli.Daemon.statusLine "sync-server"}"
+  Stdlib.printLine $"  {Stdlib.Cli.Daemon.statusLine "sync-pull"}"
+  Stdlib.printLine $"  {Stdlib.Cli.Daemon.statusLine "sync-serve"}"
   Stdlib.printLine (Colors.hint $"  {settingsLine ()}    (change: dark sync daemon config)")
   state
 
@@ -266,7 +266,7 @@ let daemonConfigValue
     match Stdlib.Int.parse value with
     | Ok p ->
       if p > 0 && p <= 65535 then
-        Stdlib.Option.Option.Some(("apps.sync-server.port", value))
+        Stdlib.Option.Option.Some(("apps.sync-serve.port", value))
       else
         Stdlib.Option.Option.None
     | Error _ -> Stdlib.Option.Option.None
@@ -281,7 +281,7 @@ let daemonConfigValue
       // reject non-positive — a 0/negative interval would make the daemon busy-loop (see nextPollMs clamp).
       if secs > 0 then
         Stdlib.Option.Option.Some(
-          ("apps.sync.intervalMs", Stdlib.Int.toString (secs * 1000))
+          ("apps.sync-pull.intervalMs", Stdlib.Int.toString (secs * 1000))
         )
       else
         Stdlib.Option.Option.None

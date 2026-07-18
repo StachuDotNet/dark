@@ -159,7 +159,7 @@ module ConfigRejectsPortOutOfRange =
 
 module ConfigAcceptsPort =
   (Darklang.Cli.Sync.daemonConfigValue "port" "9000") = Stdlib.Option.Option.Some(
-    ("apps.sync-server.port", "9000")
+    ("apps.sync-serve.port", "9000")
   )
 
 module ConfigRejectsBadMode =
@@ -178,5 +178,5 @@ module ConfigRejectsZeroInterval =
 
 module ConfigAcceptsInterval =
   (Darklang.Cli.Sync.daemonConfigValue "interval" "30") = Stdlib.Option.Option.Some(
-    ("apps.sync.intervalMs", "30000")
+    ("apps.sync-pull.intervalMs", "30000")
   )
