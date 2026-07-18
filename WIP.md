@@ -47,23 +47,23 @@ instead of a bare prompt.
 x=destroy, d=diff/detail, r=rename-or-rerun; Ctrl+Tab=views/Tab=panes; ?=HelpOverlay; badge set frozen (91 §4).
 
 ## NEXT ACTION
-P1 step 4 — SEE it, then split the body. The `workbench` SubApp is built + wired + data-verified (frame.dark,
-app.dark, registered; loadItems root → [Darklang,Feriel,Stachu] ✓). Not yet visually verified (needs a TTY).
-1. Interactive verify via expect (see `docs interactive-testing`): drive `./scripts/run-cli` → type `workbench`
-   → capture the framed render (tab bar highlighted, breadcrumb, tree body, key hints). Confirm ↑↓/→/← work.
-   Harness: `./scripts/run-in-docker expect scripts/testing/test-interactive.expect` — adapt or write a small
-   .expect that spawns run-cli, sends "workbench\n", arrow keys, and dumps the screen. If expect is fiddly,
-   at least run it under `script`/PTY to eyeball one frame. Fix any render bugs (line wrapping, offsets).
-2. Split the body: when activeView==Tree, render body as SplitPane Tree(left)|Inspect(right). Inspect pane
-   shows the selected item's source (reuse PrettyPrinter via the `view` path / Packages.View.viewEntity as a
-   region renderer). Tab toggles focus. (Master-detail: moving selection updates the Inspect pane.)
-3. THEN flip `dark` no-args → open workbench: in core.dark executeCliCommand, the `[]` branch currently prints
-   welcome + runs the prompt loop; instead open the workbench SubApp (keep MainPrompt reachable via `:` later /
-   a flag). Small, careful change; keep the old path behind `dark prompt` or an env flag so nothing's lost.
-Design refs: main/notes/cli-ux/{03A,10,11,12}. Keymap authority: 91 (x=destroy/d=diff/r=rename-or-rerun).
+P1 step 5 — split the body Tree|Inspect, then flip `dark` default. Workbench renders + navigates ON SCREEN
+(verified via `./dev-drive workbench` and `./dev-drive workbench --keys 'DOWN DOWN RIGHT'` → descends into
+Stachu). Day-1 north star essentially hit.
+1. Split the body when activeView<=1: `UI.SplitPane.render bodyRegion Horizontal 45 focus "Tree" (renderTree)
+   "Inspect" (renderInspect)`. renderTree = the current list; renderInspect = the selected item's detail
+   (v1: name + kind + signature via PrettyPrinter, or reuse Packages.View.viewEntity adapted to print into
+   the region — simplest v1: show the pretty-printed source of the selected fn/type/val; for a module show
+   its child counts). Add `focus: SplitPane.Focus` to State; `Tab` toggles it; when focus=Second, ↑↓ scroll
+   the Inspect pane instead of the list (defer scroll — v1 just show it). Verify with dev-drive.
+2. Flip `dark` no-args → workbench: in core.dark `executeCliCommand` the `[]` branch prints welcome + runs
+   the prompt loop. Change it to open the workbench SubApp instead. KEEP the old prompt reachable: `dark
+   prompt` (or env DARK_CLASSIC=1) runs the classic loop. Test: `./dev-drive` (no args) shows the frame;
+   `./scripts/run-cli status` etc still work (non-interactive unaffected). Commit.
+Refs: main/notes/cli-ux/{03A,11,12}. Keymap: 91. Tools: ./dev-ux-check (reload), ./dev-drive (visual).
 
-## Status: P1 in progress. DONE: hstack/distributeCols; SplitPane; Frame chrome; workbench SubApp built+wired
-   +data-verified (commits d957c2471, 7322c6ef1, e1cb56823). PENDING: visual/interactive verification.
+## Status: P1 NEARLY DONE. workbench SubApp renders + navigates on screen (verified). Remaining P1: body
+   split Tree|Inspect + flip `dark` default. Then P2 (Home/Changes/History).
 
 ## Gotchas learned (append as you hit them)
 - Typed lambda params are NOT supported: `fun s -> …` only, never `fun (s: String) -> …` (PARSE-UNCLOSED).
@@ -75,6 +75,10 @@ Design refs: main/notes/cli-ux/{03A,10,11,12}. Keymap authority: 91 (x=destroy/d
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 04:18 — P1: VISUALLY VERIFIED the workbench. Built `./dev-drive` (PTY frame-dump helper; host
+  has no expect, run-in-docker too slow). Frame renders correctly (tab bar w/ Tree active, breadcrumb + branch
+  + ✓synced, tree body Darklang/Feriel/Stachu, key hints, status bar); ↑↓ + → descend work (→ into Stachu
+  lists its submodules). Day-1 north star essentially hit. Commits 42567910a. Next: body split + `dark` flip.
 - 2026-07-18 04:09 — P1: workbench SubApp done (app.dark: State/render/handleKey/makeSubApp/execute) + registered
   `workbench`/`wb`. Gotcha: Write dropped ESC bytes in control strings → normalized to  via python. Verified
   help + loadItems root → [Darklang,Feriel,Stachu]. Loads clean. Commit e1cb56823. NOT yet visually verified (TTY).
