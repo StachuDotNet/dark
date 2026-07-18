@@ -24,6 +24,10 @@ type Step =
   | Continue of State
   | Exit of State
 
+/// Full keymap, shown by `?` in the reusable reader.
+val helpText =
+  "Workbench — keys\n\n  Navigation\n    up/down    move selection · scroll a reader\n    right/enter into a module (Tree) · open a topic (Docs)\n    left       up a level (Tree)\n    tab        toggle focus Tree <-> Inspect\n    [ ]        cycle views · 1-9 jump to a view\n    esc / q    close a reader · exit the workbench\n\n  Views\n    1 Home   2 Tree   3 Inspect   4 Edit   5 Changes   6 History\n    7 Resolve   8 Mesh   9 Agents   ([ ] reach) Runs Services Things Docs\n\n  Wired today: Home Tree Inspect Changes History Resolve Mesh Runs Services Docs.\n  Edit/Agents/Things: coming soon.\n\n  ? this help  ·  esc to close"
+
 
 // ── Package listing (the Tree body) ──
 
@@ -429,6 +433,8 @@ let handleKey
   | _ ->
     match keyChar with
     | Some "q" -> Step.Exit state
+    | Some "?" ->
+      Step.Continue { state with reading = Stdlib.Option.Option.Some helpText; detailScroll = 0 }
     | Some "]" ->
       let nv = Stdlib.Int.min ((Stdlib.List.length Frame.viewNames) - 1) (state.activeView + 1)
       Step.Continue
