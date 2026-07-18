@@ -151,6 +151,18 @@ let renderTreeList (state: State) (region: UI.Layout.Region) : Unit =
       let styled = if i == state.selected then Colors.colorize Colors.cyan line else line
       UI.Layout.printAt region row 0 styled)
 
+    // Scrollbar thumb on the right edge when the list overflows the pane. Printed directly (not via
+    // printAt, whose length-based truncation would eat the colored glyph at the last column).
+    let total = Stdlib.List.length state.items
+    if total > region.rows then
+      let thumbRow =
+        Stdlib.Int.divide (state.selected * (region.rows - 1)) (Stdlib.Int.max 1 (total - 1))
+      Stdlib.print
+        ((Colors.moveCursorTo (region.top + thumbRow) (region.left + region.cols - 1))
+         ++ (Colors.colorize Colors.cyan "▐"))
+    else
+      ()
+
 /// The source/detail of the currently-selected item, as lines for the Inspect pane.
 let detailLines (state: State) : List<String> =
   match Stdlib.List.getAt state.items state.selected with
