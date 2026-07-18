@@ -935,8 +935,19 @@ let executeCliCommand (args: List<String>) : Int =
     // Initialize status bar (sets up scroll region to reserve bottom line)
     StatusBar.init ()
 
-    Stdlib.printLine (View.formatWelcome ())
-    runInteractiveLoop initialState
+    // `dark` with no args opens the workbench (the CLI-UX home). The classic command prompt is still
+    // reachable with DARK_CLASSIC=1 (and every command still works with args / from inside the workbench).
+    let classic =
+      match Builtin.environmentGet "DARK_CLASSIC" with
+      | Some "1" -> true
+      | _ -> false
+
+    if classic then
+      Stdlib.printLine (View.formatWelcome ())
+      runInteractiveLoop initialState
+    else
+      let workbenchState = Apps.Workbench.App.execute initialState []
+      runInteractiveLoop workbenchState
   // Otherwise, execute command directly (shell already split args correctly)
   | commandName :: commandArgs ->
     let nonInteractiveState = { initialState with nonInteractive = true }
