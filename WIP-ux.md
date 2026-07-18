@@ -187,3 +187,9 @@ Commit + push after each. Keep the footer honest (only advertise working keys).
 ## Log
 - Rebase: already current (github/main = upstream = 17eb99eca #5685; 0 behind).
 - Container misrouting fixed (peaceful_knuth restarted).
+
+## Log (16:03) — QA sweep passed
+Swept all views in tmux: Home dashboard, Tree/Inspect split, Changes/History/Resolve/Docs framed
+(list+preview where non-empty), Agents placeholder, per-view footers + tab markers all render cleanly. No
+regressions. Idling to the 16:50 finalize; not touching anything risky in the final stretch. (Minor nit noted
++ left: Resolve footer shows "tab preview" even when empty — harmless, split appears once conflicts exist.)
