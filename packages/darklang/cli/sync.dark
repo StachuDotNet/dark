@@ -9,7 +9,7 @@ let plural (n: Int) (noun: String) : String =
   if n == 1 then
     $"{Stdlib.Int.toString n} {noun}"
   else
-    $"{Stdlib.Int.toString n} {noun}s"
+    $"{Stdlib.Int.toString n} {Stdlib.String.pluralize noun}"
 
 // How to describe the instances a sync actually got through to. When some peer DIDN'T answer, this says
 // "1 of 2 instances" — because the alternative reads as a contradiction: a "Couldn't reach <peer>" line

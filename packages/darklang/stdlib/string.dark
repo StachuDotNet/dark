@@ -420,6 +420,21 @@ let endsWith (subject: String) (suffix: String) : Bool =
   == suffix
 
 
+/// Returns the plural form of <param word> by a simple English rule: words ending
+/// in -ch, -sh, -s, -x, or -z take "es" ({{branch}} -> {{branches}}); everything else
+/// takes "s" ({{instance}} -> {{instances}}). Does not handle irregulars ({{mouse}},
+/// {{child}}) or the -y -> -ies rule.
+let pluralize (word: String) : String =
+  if (String.endsWith word "ch")
+     || (String.endsWith word "sh")
+     || (String.endsWith word "s")
+     || (String.endsWith word "x")
+     || (String.endsWith word "z") then
+    $"{word}es"
+  else
+    $"{word}s"
+
+
 /// Returns {{Just index}} of the first occurrence of <param searchFor> in <param str>,
 /// measured in UTF-16 code units. Returns {{Nothing}} if <param searchFor> does not occur.
 /// The returned index is **not** suitable for arithmetic with {{first}}, {{dropFirst}},
