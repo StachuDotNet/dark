@@ -18,7 +18,16 @@ type State =
     detailScroll: Int
     /// When Some, a full-body reader is open (e.g. a Docs topic); its text scrolls via detailScroll.
     reading: Stdlib.Option.Option<String>
+    /// When Some, a single-line text prompt is open (e.g. a commit message).
+    input: Stdlib.Option.Option<InputState>
+    accountId: Stdlib.Option.Option<Uuid>
     branchId: Uuid }
+
+/// A single-line text entry. `action` tags what Enter does (e.g. "commit").
+type InputState =
+  { prompt: String
+    text: String
+    action: String }
 
 type Step =
   | Continue of State
@@ -390,8 +399,11 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
 
 /// Honest key hints per view — advertise only what actually works today.
 let hintsForView (view: Int) : String =
-  if view == 1 then "↑↓ move · → into · ← up · tab focus · 1-9/[ ] view · esc exit"
+  if view == 1 then "↑↓ move · → into/source · ← up · tab focus · 1-9/[ ] view · esc exit"
   else if view == 0 then "1-9 jump to view · [ ] cycle · esc exit"
+  else if view == 4 then "↑↓ move · enter source · c commit · 1-9/[ ] view · esc exit"
+  else if view == 5 then "↑↓ move · enter ops · 1-9/[ ] view · esc exit"
+  else if view == 12 then "↑↓ move · enter read · 1-9/[ ] view · esc exit"
   else "↑↓ move · 1-9/[ ] view · esc exit"
 
 let render (state: State) : Unit =
@@ -419,9 +431,12 @@ let render (state: State) : Unit =
       1
       (fun r ->
         let h =
-          match state.reading with
-          | Some _ -> "↑↓ scroll · esc back to topics"
-          | None -> hintsForView state.activeView
+          match state.input with
+          | Some inp -> inp.prompt ++ inp.text ++ "_"
+          | None ->
+            match state.reading with
+            | Some _ -> "↑↓ scroll · esc back to topics"
+            | None -> hintsForView state.activeView
         Frame.renderKeyHints r h)
   UI.Layout.vstack screen [ tabbar; crumb; body; hints ]
   Stdlib.print "\u001b[?25h"
@@ -458,12 +473,58 @@ let ascend (state: State) : Step =
           items = loadItems state.branchId newLoc
           selected = 0 }
 
+/// Run the action for a completed single-line input (Enter). Commit is the only one for now.
+let performInputAction (state: State) (inp: InputState) : Step =
+  if inp.action == "commit" then
+    match state.accountId with
+    | Some acct ->
+      match SCM.PackageOps.commit acct state.branchId inp.text with
+      | Ok _ ->
+        Step.Continue
+          { state with
+              input = Stdlib.Option.Option.None
+              items = itemsForView state.activeView state.branchId state.location
+              selected = 0 }
+      | Error e ->
+        Step.Continue
+          { state with
+              input = Stdlib.Option.Option.Some { inp with prompt = "commit failed: " ++ e ++ " — esc"; text = "" } }
+    | None ->
+      Step.Continue
+        { state with
+            input =
+              Stdlib.Option.Option.Some
+                { inp with prompt = "not logged in (set DARK_ACCOUNT or `login`) — esc"; text = "" } }
+  else
+    Step.Continue { state with input = Stdlib.Option.Option.None }
+
 let handleKey
   (state: State)
   (key: Stdlib.Cli.Stdin.Key.Key)
   (_modifiers: Stdlib.Cli.Stdin.Modifiers.Modifiers)
   (keyChar: Stdlib.Option.Option<String>)
   : Step =
+  match state.input with
+  | Some inp ->
+    // Input mode: type into the single-line field; Enter runs the action, Esc cancels.
+    match key with
+    | Enter -> performInputAction state inp
+    | Escape -> Step.Continue { state with input = Stdlib.Option.Option.None }
+    | Backspace ->
+      let t = inp.text
+      let nt =
+        if Stdlib.String.length t > 0 then Stdlib.String.slice t 0 ((Stdlib.String.length t) - 1)
+        else t
+      Step.Continue { state with input = Stdlib.Option.Option.Some { inp with text = nt } }
+    | _ ->
+      match keyChar with
+      | Some ch ->
+        if (Stdlib.String.length ch) == 1 then
+          Step.Continue { state with input = Stdlib.Option.Option.Some { inp with text = inp.text ++ ch } }
+        else
+          Step.Continue state
+      | None -> Step.Continue state
+  | None ->
   match state.reading with
   | Some _ ->
     // Reader mode: ↑↓ scroll the content, Esc/q closes it. Nothing else.
@@ -549,6 +610,16 @@ let handleKey
             items = itemsForView nv state.branchId state.location
             selected = 0
             detailScroll = 0 }
+    | Some "c" ->
+      // Changes: commit all WIP with a message.
+      if state.activeView == 4 then
+        Step.Continue
+          { state with
+              input =
+                Stdlib.Option.Option.Some
+                  (InputState { prompt = "commit message: "; text = ""; action = "commit" }) }
+      else
+        Step.Continue state
     | Some s ->
       match Stdlib.Int.parse s with
       | Ok n ->
@@ -594,6 +665,8 @@ let execute (cliState: Darklang.Cli.AppState) (_args: List<String>) : Darklang.C
         focus = UI.SplitPane.Focus.First
         detailScroll = 0
         reading = Stdlib.Option.Option.None
+        input = Stdlib.Option.Option.None
+        accountId = cliState.accountID
         branchId = branchId }
   { cliState with
       currentPage = Darklang.Cli.Page.SubApp (makeSubApp state)
