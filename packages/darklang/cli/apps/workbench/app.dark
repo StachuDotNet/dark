@@ -20,6 +20,8 @@ type State =
     reading: Stdlib.Option.Option<String>
     /// When Some, a single-line text prompt is open (e.g. a commit message).
     input: Stdlib.Option.Option<InputState>
+    /// When Some, the multiline editor is open (authoring a fn body).
+    editing: Stdlib.Option.Option<EditingState>
     accountId: Stdlib.Option.Option<Uuid>
     branchId: Uuid }
 
@@ -28,6 +30,11 @@ type InputState =
   { prompt: String
     text: String
     action: String }
+
+/// The multiline editor's state: the fully-qualified name being authored + the text buffer.
+type EditingState =
+  { nameStr: String
+    buf: UI.Editor.Buf }
 
 type Step =
   | Continue of State
@@ -403,15 +410,46 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
   else
     UI.Layout.printAt region 1 2 (Colors.dimText ((Frame.viewName state.activeView) ++ " — coming soon"))
 
-/// Dispatch the body: a full-body reader when one is open, else the active view's body.
+/// The multiline editor: the name header + the buffer with a reverse-video cursor at (row, col).
+let renderEditing (es: EditingState) (region: UI.Layout.Region) : Unit =
+  let _ =
+    UI.Layout.printAt region 0 0 (Colors.boldText ("edit  " ++ es.nameStr))
+  let bodyTop = 2
+  let visible = Stdlib.Int.max 1 (region.rows - bodyTop)
+  let scroll = Stdlib.Int.max 0 (es.buf.row - visible + 1)
+  es.buf.lines
+  |> Stdlib.List.indexedMap (fun i l -> (i, l))
+  |> Stdlib.List.drop scroll
+  |> Stdlib.List.take visible
+  |> Stdlib.List.iter (fun pair ->
+    let (i, l) = pair
+    let screenRow = bodyTop + (i - scroll)
+    if i == es.buf.row then
+      let llen = Stdlib.String.length l
+      let before = Stdlib.String.slice l 0 es.buf.col
+      let atCursor = if es.buf.col < llen then Stdlib.String.slice l es.buf.col (es.buf.col + 1) else " "
+      let after = if es.buf.col < llen then Stdlib.String.slice l (es.buf.col + 1) llen else ""
+      // Direct print (colored cursor would be truncated by printAt's length check).
+      Stdlib.print
+        ((Colors.moveCursorTo (region.top + screenRow) region.left)
+         ++ before
+         ++ (Colors.colorize Colors.reverse atCursor)
+         ++ after)
+    else
+      UI.Layout.printAt region screenRow 0 l)
+
+/// Dispatch the body: the editor, then a reader, else the active view's body.
 let renderBody (state: State) (region: UI.Layout.Region) : Unit =
+  match state.editing with
+  | Some es -> renderEditing es region
+  | None ->
   match state.reading with
   | Some content -> renderReading content state.detailScroll region
   | None -> renderViewBody state region
 
 /// Honest key hints per view — advertise only what actually works today.
 let hintsForView (view: Int) : String =
-  if view == 1 then "↑↓ move · → into/source · ← up · tab focus · 1-9/[ ] view · esc exit"
+  if view == 1 then "↑↓ move · → into/source · ← up · n new-fn · tab focus · 1-9/[ ] view · esc"
   else if view == 0 then "1-9 jump to view · [ ] cycle · esc exit"
   else if view == 4 then "↑↓ move · enter source · c commit · x discard · 1-9/[ ] view · esc exit"
   else if view == 5 then "↑↓ move · enter ops · b new-branch · s switch · 1-9/[ ] view · esc exit"
@@ -443,12 +481,15 @@ let render (state: State) : Unit =
       1
       (fun r ->
         let h =
-          match state.input with
-          | Some inp -> inp.prompt ++ inp.text ++ "_"
+          match state.editing with
+          | Some _ -> "type to edit · arrows move · tab indent · esc cancel  (^s save — soon)"
           | None ->
-            match state.reading with
-            | Some _ -> "↑↓ scroll · esc back to topics"
-            | None -> hintsForView state.activeView
+            match state.input with
+            | Some inp -> inp.prompt ++ inp.text ++ "_"
+            | None ->
+              match state.reading with
+              | Some _ -> "↑↓ scroll · esc back to topics"
+              | None -> hintsForView state.activeView
         Frame.renderKeyHints r h)
   UI.Layout.vstack screen [ tabbar; crumb; body; hints ]
   Stdlib.print "\u001b[?25h"
@@ -539,15 +580,53 @@ let performInputAction (state: State) (inp: InputState) : Step =
       Step.Continue
         { state with
             input = Stdlib.Option.Option.Some { inp with prompt = "no branch '" ++ inp.text ++ "' — esc"; text = "" } }
+  else if inp.action == "new-fn" then
+    Step.Continue
+      { state with
+          input = Stdlib.Option.Option.None
+          editing =
+            Stdlib.Option.Option.Some
+              (EditingState { nameStr = inp.text; buf = UI.Editor.fromText "(x: Int): Int =\n  x" }) }
   else
     Step.Continue { state with input = Stdlib.Option.Option.None }
 
 let handleKey
   (state: State)
   (key: Stdlib.Cli.Stdin.Key.Key)
-  (_modifiers: Stdlib.Cli.Stdin.Modifiers.Modifiers)
+  (modifiers: Stdlib.Cli.Stdin.Modifiers.Modifiers)
   (keyChar: Stdlib.Option.Option<String>)
   : Step =
+  match state.editing with
+  | Some es ->
+    // Editor mode. (Ctrl combos reserved for save — wired next; ignore for now so they don't insert.)
+    if modifiers.ctrl then
+      Step.Continue state
+    else
+      match key with
+      | Escape -> Step.Continue { state with editing = Stdlib.Option.Option.None }
+      | Enter ->
+        Step.Continue { state with editing = Stdlib.Option.Option.Some { es with buf = UI.Editor.newline es.buf } }
+      | Backspace ->
+        Step.Continue { state with editing = Stdlib.Option.Option.Some { es with buf = UI.Editor.backspace es.buf } }
+      | UpArrow ->
+        Step.Continue { state with editing = Stdlib.Option.Option.Some { es with buf = UI.Editor.moveUp es.buf } }
+      | DownArrow ->
+        Step.Continue { state with editing = Stdlib.Option.Option.Some { es with buf = UI.Editor.moveDown es.buf } }
+      | LeftArrow ->
+        Step.Continue { state with editing = Stdlib.Option.Option.Some { es with buf = UI.Editor.moveLeft es.buf } }
+      | RightArrow ->
+        Step.Continue { state with editing = Stdlib.Option.Option.Some { es with buf = UI.Editor.moveRight es.buf } }
+      | Tab ->
+        Step.Continue { state with editing = Stdlib.Option.Option.Some { es with buf = UI.Editor.insertChar es.buf "  " } }
+      | _ ->
+        match keyChar with
+        | Some ch ->
+          if (Stdlib.String.length ch) == 1 then
+            Step.Continue { state with editing = Stdlib.Option.Option.Some { es with buf = UI.Editor.insertChar es.buf ch } }
+          else
+            Step.Continue state
+        | None -> Step.Continue state
+  | None ->
   match state.input with
   | Some inp ->
     // Input mode: type into the single-line field; Enter runs the action, Esc cancels.
@@ -654,6 +733,16 @@ let handleKey
             items = itemsForView nv state.branchId state.location
             selected = 0
             detailScroll = 0 }
+    | Some "n" ->
+      // Tree: author a new fn — ask for the name, then open the editor.
+      if state.activeView == 1 then
+        Step.Continue
+          { state with
+              input =
+                Stdlib.Option.Option.Some
+                  (InputState { prompt = "new fn (owner.Mod.name): "; text = ""; action = "new-fn" }) }
+      else
+        Step.Continue state
     | Some "c" ->
       // Changes: commit all WIP with a message.
       if state.activeView == 4 then
@@ -741,6 +830,7 @@ let execute (cliState: Darklang.Cli.AppState) (_args: List<String>) : Darklang.C
         detailScroll = 0
         reading = Stdlib.Option.Option.None
         input = Stdlib.Option.Option.None
+        editing = Stdlib.Option.Option.None
         accountId = cliState.accountID
         branchId = branchId }
   { cliState with
