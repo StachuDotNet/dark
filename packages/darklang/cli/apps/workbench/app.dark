@@ -414,10 +414,11 @@ let renderPreview (state: State) (region: UI.Layout.Region) : Unit =
   |> Stdlib.List.iter (fun pair ->
     let (i, p) = pair
     let row = i - off
-    if doHighlight && (Stdlib.String.length p) <= maxFit then
+    if doHighlight then
+      // ANSI-aware truncate keeps highlighting even when the line overflows the pane (no plain fallback).
       let disp = Stdlib.List.getAt highlighted i |> Stdlib.Option.withDefault p
       Stdlib.print
-        ((Colors.moveCursorTo (region.top + row) (region.left + 1)) ++ disp ++ Colors.reset)
+        ((Colors.moveCursorTo (region.top + row) (region.left + 1)) ++ (UI.Layout.truncateVisible disp maxFit))
     else
       UI.Layout.printAt region row 1 p)
 
@@ -493,8 +494,8 @@ let renderHome (state: State) (region: UI.Layout.Region) : Unit =
 /// A full-body scrollable reader (Docs topic content, etc.).
 let renderReading (content: String) (isCode: Bool) (scroll: Int) (region: UI.Layout.Region) : Unit =
   let plain = Stdlib.String.split content "\n"
-  // Highlight code readers (Tree-leaf / Changes source). Same fit-or-plain guard as renderPreview: print the
-  // highlighted line only when the plain line fits the width, else plain-truncated (no mid-ANSI truncation).
+  // Highlight code readers (Tree-leaf / Changes source); ANSI-aware truncate keeps color even when a line
+  // overflows the width. Non-code content stays plain.
   let highlighted =
     if isCode then
       let h = SyntaxHighlighting.highlightCode content |> Stdlib.String.split "\n"
@@ -511,9 +512,9 @@ let renderReading (content: String) (isCode: Bool) (scroll: Int) (region: UI.Lay
   |> Stdlib.List.iter (fun pair ->
     let (i, p) = pair
     let row = i - off
-    if isCode && (Stdlib.String.length p) <= maxFit then
+    if isCode then
       let disp = Stdlib.List.getAt highlighted i |> Stdlib.Option.withDefault p
-      Stdlib.print ((Colors.moveCursorTo (region.top + row) region.left) ++ disp ++ Colors.reset)
+      Stdlib.print ((Colors.moveCursorTo (region.top + row) region.left) ++ (UI.Layout.truncateVisible disp maxFit))
     else
       UI.Layout.printAt region row 0 p)
 

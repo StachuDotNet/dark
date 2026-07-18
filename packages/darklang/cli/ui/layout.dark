@@ -25,6 +25,39 @@ type Component =
 
 // --- Rendering primitives ---
 
+/// Truncate a string to `maxVisible` *visible* columns, preserving ANSI SGR escape sequences (which have zero
+/// width) so a syntax-highlighted line can be cut to fit without slicing through a color code. Appends a reset
+/// so color never bleeds past the cut. A string with no escapes is a plain slice.
+let truncateVisible (s: String) (maxVisible: Int) : String =
+  let esc = ""
+  if Stdlib.Bool.not (Stdlib.String.contains s esc) then
+    if Stdlib.String.length s > maxVisible then Stdlib.String.slice s 0 maxVisible else s
+  else
+    // Split on ESC: part 0 is leading plain text; every later part is "[…m<text>" (an SGR code + text).
+    let folded =
+      Stdlib.String.split s esc
+      |> Stdlib.List.indexedMap (fun i p -> (i, p))
+      |> Stdlib.List.fold
+           (maxVisible, "")
+           (fun acc pair ->
+             let (rem, out) = acc
+             let (i, p) = pair
+             if i == 0 then
+               let take = if Stdlib.String.length p > rem then rem else Stdlib.String.length p
+               (rem - take, out ++ (Stdlib.String.slice p 0 take))
+             else
+               match Stdlib.String.indexOf p "m" with
+               | Some idx ->
+                 let seq = esc ++ (Stdlib.String.slice p 0 (idx + 1))
+                 let text = Stdlib.String.slice p (idx + 1) (Stdlib.String.length p)
+                 let take = if Stdlib.String.length text > rem then rem else Stdlib.String.length text
+                 (rem - take, out ++ seq ++ (Stdlib.String.slice text 0 take))
+               | None ->
+                 let take = if Stdlib.String.length p > rem then rem else Stdlib.String.length p
+                 (rem - take, out ++ (Stdlib.String.slice p 0 take)))
+    let (_rem, out) = folded
+    out ++ "[0m"
+
 /// Move cursor to a position and print a string, truncated to fit the region.
 let printAt (region: Region) (row: Int) (col: Int) (text: String) : Unit =
   if row >= 0 && row < region.rows then
