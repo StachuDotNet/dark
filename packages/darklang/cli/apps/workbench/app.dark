@@ -74,6 +74,27 @@ let loadCommitBodyItems (branchId: Uuid) : List<BodyItem> =
         kind = "commit"
         isModule = false })
 
+/// The ops of the selected commit, rendered for the reader. Capped — a seed commit can have 10k+ ops.
+let commitOpsText (branchId: Uuid) (selected: Int) : String =
+  let commits = SCM.PackageOps.getCommitsWithAncestors branchId 30
+  match Stdlib.List.getAt commits selected with
+  | None -> "(no commit selected)"
+  | Some c ->
+    let hashStr = LanguageTools.ProgramTypes.hashToString c.hash
+    let ops = SCM.PackageOps.getCommitOps hashStr
+    let opCount = Stdlib.List.length ops
+    let shown = Stdlib.List.take ops 20
+    let opLines =
+      shown
+      |> Stdlib.List.map (fun op -> "  " ++ (PrettyPrinter.ProgramTypes.PackageOp.packageOp branchId op))
+      |> Stdlib.String.join "\n"
+    let more =
+      if opCount > 20 then
+        "\n\n  … and " ++ (Stdlib.Int.toString (opCount - 20)) ++ " more ops"
+      else
+        ""
+    c.message ++ "  (" ++ (Stdlib.Int.toString opCount) ++ " ops)\n\n" ++ opLines ++ more
+
 /// Recorded sync divergences (for the Resolve view).
 let loadConflictBodyItems () : List<BodyItem> =
   Darklang.Sync.Conflicts.list ()
@@ -429,6 +450,12 @@ let handleKey
       | Some t ->
         Step.Continue { state with reading = Stdlib.Option.Option.Some (t.content ()); detailScroll = 0 }
       | None -> Step.Continue state
+    else if state.activeView == 5 then
+      // History: open the selected commit's ops in the reader.
+      Step.Continue
+        { state with
+            reading = Stdlib.Option.Option.Some (commitOpsText state.branchId state.selected)
+            detailScroll = 0 }
     else
       descend state
   | LeftArrow -> ascend state
