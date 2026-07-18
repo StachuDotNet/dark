@@ -47,23 +47,23 @@ instead of a bare prompt.
 x=destroy, d=diff/detail, r=rename-or-rerun; Ctrl+Tab=views/Tab=panes; ?=HelpOverlay; badge set frozen (91 §4).
 
 ## NEXT ACTION
-P1 step 5 — split the body Tree|Inspect, then flip `dark` default. Workbench renders + navigates ON SCREEN
-(verified via `./dev-drive workbench` and `./dev-drive workbench --keys 'DOWN DOWN RIGHT'` → descends into
-Stachu). Day-1 north star essentially hit.
-1. Split the body when activeView<=1: `UI.SplitPane.render bodyRegion Horizontal 45 focus "Tree" (renderTree)
-   "Inspect" (renderInspect)`. renderTree = the current list; renderInspect = the selected item's detail
-   (v1: name + kind + signature via PrettyPrinter, or reuse Packages.View.viewEntity adapted to print into
-   the region — simplest v1: show the pretty-printed source of the selected fn/type/val; for a module show
-   its child counts). Add `focus: SplitPane.Focus` to State; `Tab` toggles it; when focus=Second, ↑↓ scroll
-   the Inspect pane instead of the list (defer scroll — v1 just show it). Verify with dev-drive.
-2. Flip `dark` no-args → workbench: in core.dark `executeCliCommand` the `[]` branch prints welcome + runs
-   the prompt loop. Change it to open the workbench SubApp instead. KEEP the old prompt reachable: `dark
-   prompt` (or env DARK_CLASSIC=1) runs the classic loop. Test: `./dev-drive` (no args) shows the frame;
-   `./scripts/run-cli status` etc still work (non-interactive unaffected). Commit.
-Refs: main/notes/cli-ux/{03A,11,12}. Keymap: 91. Tools: ./dev-ux-check (reload), ./dev-drive (visual).
+P1 step 6 — flip `dark` no-args → workbench (LAST P1 step). Tree|Inspect split DONE ✓ (verified: source path
+returns real List.map source; dev-drive shows both panes).
+- In `core.dark` `executeCliCommand`, the `[]` (no-args) branch currently prints welcome + `runInteractiveLoop
+  initialState` (the classic prompt). Change it to open the workbench SubApp: build the workbench state and set
+  currentPage = SubApp, then runInteractiveLoop (mirror how `Apps.Workbench.App.execute` sets the page, or just
+  call it: `let ws = Apps.Workbench.App.execute initialState []` then StatusBar.init + runInteractiveLoop ws).
+- KEEP the classic prompt reachable so nothing's lost: if env `DARK_CLASSIC=1` (Builtin.environmentGet), use
+  the old welcome+loop path. Also keep the `workbench`/`wb` command.
+- VERIFY: `./dev-drive` (no args) → the workbench frame appears (not the prompt). `./scripts/run-cli status`,
+  `eval`, `tree` etc. (with-args, non-interactive) still print normally — the `[]` branch only affects no-args.
+  `DARK_CLASSIC=1 ./dev-drive` → classic prompt still works. Commit.
+- THEN P2: start Home (dashboard) or wire Changes (lift SCM.Review.App diff into the Inspect pane when
+  activeView=Changes). Also polish: scroll long Tree lists + long Inspect source (viewport), Tab moves ↑↓ to
+  the focused pane, digits switch view with real bodies. See main/notes/cli-ux/{10,15,16}.
 
-## Status: P1 NEARLY DONE. workbench SubApp renders + navigates on screen (verified). Remaining P1: body
-   split Tree|Inspect + flip `dark` default. Then P2 (Home/Changes/History).
+## Status: P1 nearly complete. DONE: hstack; SplitPane; Frame; workbench SubApp (renders+navigates on screen);
+   Tree|Inspect body split (live source). LAST P1 step: flip `dark` default. Commits …601183329.
 
 ## Gotchas learned (append as you hit them)
 - Typed lambda params are NOT supported: `fun s -> …` only, never `fun (s: String) -> …` (PARSE-UNCLOSED).
@@ -75,6 +75,9 @@ Refs: main/notes/cli-ux/{03A,11,12}. Keymap: 91. Tools: ./dev-ux-check (reload),
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 04:27 — P1: Tree|Inspect body split done (SplitPane in renderBody; renderTreeList + detailLines
+  + renderDetail; State.focus; Tab toggles). Verified: split renders both panes; source-fetch path returns
+  real List.map source. Commit 601183329. LAST P1 step next: flip `dark` no-args → workbench (keep DARK_CLASSIC).
 - 2026-07-18 04:18 — P1: VISUALLY VERIFIED the workbench. Built `./dev-drive` (PTY frame-dump helper; host
   has no expect, run-in-docker too slow). Frame renders correctly (tab bar w/ Tree active, breadcrumb + branch
   + ✓synced, tree body Darklang/Feriel/Stachu, key hints, status bar); ↑↓ + → descend work (→ into Stachu
