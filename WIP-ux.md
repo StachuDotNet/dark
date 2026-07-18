@@ -87,7 +87,19 @@ Kill the bottom-bar name prompt for new items. Instead:
 - Conflicts on Home + badge (df9bb17) · UI.Box, framed views (7d3ca05) · footer + `:` run (adabd18) ·
   chooser (703f2bc) · A: spacious authoring (29393e1) · B: vim motion + safe Esc-to-Home (99a5d27).
 
-## NEXT ACTION
+## NEXT ACTION (updated 14:46)
+Items A + B + C + H DONE. C: list+preview splits for Changes/History/Docs/Resolve (previewLines unifies
+pane+scroll+reader; History uses a cheap commitSummary, full ops behind Enter; switchView resets focus). H:
+renderPreview syntax-highlights code views (Inspect + Changes) via SyntaxHighlighting.highlightCode with the
+fit-or-plain guard (print highlighted only when the plain line fits, else plain-truncated — no ANSI truncation).
+NEXT: item D — global search `/`. An overlay/input that searches packages (Packages.Search or Query) and lets
+you jump to a result (set location + view). Re-add ("/", "search") to the global footer once it works. Then:
+extend highlighting to the full-screen reader for code (Tree-leaf/Changes Enter) — track content kind or add a
+`readingIsCode` flag; the editor too if feasible. Then E (touchpoints: deps `d` in Inspect, branch merge/
+rebase, sync-now, login state on Home), F (ANSI-aware printAt, UI.ListView extract), G (toast row, too-small
+guard, mode color block). Commit+push each; keep footer honest.
+
+## Old NEXT (done)
 Items A + B DONE. NEXT: item C — list+preview splits (IDE 3-panel) for Changes / History / Docs / Resolve,
 reusing UI.SplitPane + the existing detail fns (changesSourceText / commitOpsText / topic content / conflict
 detail). Left pane = the list (dominant ~55%), right = preview of the selected item; Tab toggles focus; the
