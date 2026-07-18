@@ -67,18 +67,19 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
    c. THINGS (view=11): `find-values`/ValueSearch by type — lower priority (needs a type arg); skip for now.
 6. DONE ✓ Home dashboard + DONE ✓ default landing = Home + DONE ✓ view-aware breadcrumb.
 7. DONE ✓ Runs (Builtin.tracesList; empty "no runs yet"). DONE ✓ per-view keyhints (hintsForView).
-8. NEXT — 9/13 views live (Home,Tree,Inspect,Changes,History,Resolve,Runs,Services,Docs). Options, pick highest
-   value each fire:
-   a. MESH (view=7): follow devices.dark → `Darklang.Tailscale.status ()`. It shells out to `tailscale`; may
-      fail w/o tailnet. Wire ONLY behind a safe wrap: try it, on Error render a dim "tailnet unavailable" line,
-      never crash. If the API isn't cleanly catchable (raises), SKIP — leave coming-soon.
-   b. THINGS (view=11): needs a type to findByType; NO generic "all values" list → SKIP for now (coming-soon).
-   c. POLISH (good value, low risk): (i) a scroll position indicator on lists (e.g. "34/68" in the breadcrumb
-      or a ▐ scrollbar col); (ii) make Home the count-accurate landing; (iii) Docs `Enter` → read a topic
-      (topic.content ()) into a full-screen scroll (or a right detail pane) — reuses detail scroll pattern.
-   d. Enter actions on Tree leaves currently do nothing (only modules descend) — fine; a leaf Enter could
-      later open Edit. DEFER.
-AGENTS/EDIT stay deferred (ai-chats render is mock / Edit needs the big MultilineEditor).
+8. DONE ✓ Mesh (Tailscale.status behind safe Ok/Error wrap; "tailnet unavailable" when no tailscale). Verified.
+9. NEXT — 10/13 views live (Home,Tree,Inspect,Changes,History,Resolve,Mesh,Runs,Services,Docs). Remaining views
+   Edit/Agents/Things are DEFERRED (need MultilineEditor / mock render / a type arg). So pivot to POLISH — pick
+   one per fire, all low-risk:
+   a. SCROLL INDICATOR: for list views (Tree/Changes/History/etc.) show "sel+1/total" — simplest in the
+      breadcrumb count (already shows "N items" for non-Tree; add "· k/N" or make it "k of N"). Or a right-edge
+      ▐ scrollbar column in renderTreeList. Do the breadcrumb count first (smallest).
+   b. DOCS Enter-to-read (view 12): pressing Enter on a topic loads `topic.content ()` and shows it in a
+      scrollable full-body pane (reuse the detailScroll mechanic). Needs a small State bit (readingTopic:
+      Option<String> or an inline mode). Nice, self-contained.
+   c. A tiny scrollbar column (▐) on the right of renderTreeList — visual polish.
+   d. Consider: `?` opens a help overlay (the full keymap). Later.
+Keep each fire small + verified. AGENTS/EDIT/THINGS stay deferred.
 Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)/Things(11)/Docs(12).
 
 ## Status: P1 COMPLETE ✓ — `dark` opens the framed Tree|Inspect workbench (verified on screen; classic prompt
@@ -94,6 +95,9 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 05:55 — P2.9: wired Mesh (Tailscale.status behind Ok/Error wrap; "tailnet unavailable" empty).
+  Verified: safe, no crash when tailscale absent. 10/13 views live. Commit a5be68e98. Next: polish (scroll
+  indicator, Docs Enter-to-read). Edit/Agents/Things deferred.
 - 2026-07-18 05:48 — P2.8: wired Runs (Builtin.tracesList, empty "no runs yet") + honest per-view keyhints
   (hintsForView). Verified. 9/13 views live. Commit e1ede1a32. Next: Mesh (offline-safe wrap) or polish
   (scroll indicator / Docs Enter-to-read). Agents/Edit/Things deferred.
