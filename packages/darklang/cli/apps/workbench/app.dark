@@ -495,6 +495,16 @@ let handleKey
         { state with
             reading = Stdlib.Option.Option.Some (changesSourceText state.branchId state.selected)
             detailScroll = 0 }
+    else if state.activeView == 1 then
+      // Tree: Enter descends into a module, or opens a leaf's source full-screen in the reader.
+      match Stdlib.List.getAt state.items state.selected with
+      | Some item ->
+        if item.isModule then
+          descend state
+        else
+          let src = detailLines state |> Stdlib.String.join "\n"
+          Step.Continue { state with reading = Stdlib.Option.Option.Some src; detailScroll = 0 }
+      | None -> descend state
     else
       descend state
   | LeftArrow -> ascend state
