@@ -93,6 +93,16 @@ let loadRunBodyItems () : List<BodyItem> =
   |> Stdlib.List.map (fun t ->
     BodyItem { name = t.handler ++ "  —  " ++ t.timestamp; kind = "trace"; isModule = false })
 
+/// Tailnet devices (for the Mesh view). `Tailscale.status` shells out and returns Result — on Error (no
+/// tailscale / not up) we return [] and the view shows an "unavailable" line, never a crash.
+let loadMeshBodyItems () : List<BodyItem> =
+  match Darklang.Tailscale.status () with
+  | Ok out ->
+    Stdlib.String.split out "\n"
+    |> Stdlib.List.filter (fun l -> (Stdlib.String.trim l) != "")
+    |> Stdlib.List.map (fun l -> BodyItem { name = l; kind = "device"; isModule = false })
+  | Error _ -> []
+
 /// The body items for a given view: packages for Home/Tree, WIP for Changes, commits for History,
 /// conflicts for Resolve, doc topics for Docs, else [] (unwired).
 let itemsForView
@@ -104,6 +114,7 @@ let itemsForView
   else if view == 4 then loadWipBodyItems branchId
   else if view == 5 then loadCommitBodyItems branchId
   else if view == 6 then loadConflictBodyItems ()
+  else if view == 7 then loadMeshBodyItems ()
   else if view == 9 then loadRunBodyItems ()
   else if view == 10 then loadServiceBodyItems ()
   else if view == 12 then loadDocBodyItems ()
@@ -232,6 +243,12 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
     // Runs: recent execution traces.
     if Stdlib.List.isEmpty state.items then
       UI.Layout.printAt region 2 4 (Colors.dimText "no runs yet — eval, run a script, or serve to record traces")
+    else
+      renderTreeList state region
+  else if state.activeView == 7 then
+    // Mesh: tailnet devices (or unavailable).
+    if Stdlib.List.isEmpty state.items then
+      UI.Layout.printAt region 2 4 (Colors.dimText "tailnet unavailable — tailscale not running or not installed")
     else
       renderTreeList state region
   else if state.activeView == 4 then
