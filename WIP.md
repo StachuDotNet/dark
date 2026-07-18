@@ -124,17 +124,21 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
    a WIP fn, committed "wbcommit" via the workbench, log shows it, tree clean). THE WORKBENCH CAN NOW WRITE.
    DONE ✓ b. Changes `x` discard (y-confirm → SCM.PackageOps.discard). Verified end-to-end.
    Write actions so far: commit (c), discard (x) — both on Changes, both verified.
-   NEXT — pick highest value:
-   a. BRANCH ops from History: `b`=create (input "new branch name:" → SCM.Branch.create), `s`=switch (switch
-      the workbench's branchId to the selected... but History rows are commits, not branches — need a branch
-      list; maybe add a branch picker or make `s` cycle branches via SCM.Branch.list). Find the create/switch
-      API: `grep -rnE 'let create|let switch|let list|mainBranchId' packages/darklang/scm/branch.dark`. Moderate.
-   b. Item RENAME (Tree `r`): NO direct item-rename API found (only SCM.Branch.rename = branches). Item rename
-      would be a low-level SetName op. DEFER unless a clean API surfaces.
-   c. EDIT view (the big deferred one): a real multiline buffer is hard in a SubApp. Options: (i) start a crude
-      end-of-buffer editor (append/backspace/newline, save via the `fn` path) — functional but limited; (ii)
-      defer until a proper MultilineEditor exists. Consider (i) as an "edit lite" for new fns.
-   Recommendation: do BRANCH ops next (clean APIs, useful), then attempt Edit-lite.
+   DONE ✓ a. BRANCH ops from History: `b` create+switch, `s` switch-by-name (Darklang.SCM.Branch.create/getByName;
+      full paths to dodge the runtime-resolution trap). Verified incl. the "no branch" error path.
+   Write actions now: commit (c, Changes), discard (x, Changes), branch create/switch (b/s, History).
+   NEXT — EDIT-LITE (the big remaining design piece; attempt a functional-but-crude version):
+   - Goal: create/edit a fn body from the workbench. Add an "editing" mode (State.editing: Option<{name,sig,
+     buffer}>). Simplest buffer = end-of-buffer editing: printable→append, Backspace→drop last, Enter→append
+     "\n", a SAVE key (^s via modifiers.ctrl+S, or a plain key like F2 / or "save on Esc-then-y") → parse+create
+     via the `fn` path (Packages.Fn / cliEvaluate? find how `fn` command creates: grep 'let execute' packages/
+     darklang/cli/packages/fn.dark). NO cursor movement (crude) — good enough to type a body.
+   - Wire Tree `n` (new): input full name → then open the editor with the sig line + empty buffer.
+   - Render the editing buffer full-body (like the reader) with a cursor "_" at the end.
+   - VERIFY: create a fn via the workbench, eval it, discard. Watch out: `fn` create is SLOW; the save may lag.
+   - If multiline editing proves too fiddly/janky, STOP and instead: consolidate/polish, or just document Edit as
+     the one remaining deferred piece and idle. Don't ship a broken editor.
+   Also nice-to-have (smaller): Tree `n` could create an EMPTY-body stub is not useful; skip. Rename still deferred.
    1. State: add `input: Stdlib.Option.Option<InputState>` where InputState = { prompt: String; text: String;
       action: String } (action tag e.g. "commit"). Init None in execute. (double reload — type change.)
    2. handleKey: guard at TOP like `reading` — if `input` is Some: printable char → append to text (keyChar);
@@ -179,6 +183,11 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 07:37 — P3.3: branch ops from History — `b` create+switch, `s` switch-by-name (input mode;
+  Darklang.SCM.Branch.create/getByName full-path). Verified: created+switched to "wbbr", switched by name,
+  "no branch 'zzz'" error path. Commit d2ebc36b8. 3 write actions now (commit/discard/branch). Next: Edit-lite
+  (crude multiline new-fn editor) — or stop at polish if it gets janky. (Left a test branch 'wbbr' in local DB;
+  harmless, not in git; reload may clear it.)
 - 2026-07-18 07:28 — P3.2: discard from Changes (`x` → "type y then enter" confirm → SCM.PackageOps.discard).
   Verified end-to-end (created WbTest.demo2, discarded via workbench, tree clean). Safe: only "y" discards, Esc
   cancels. Commit 703796ca1. Two write actions now (commit + discard). Next: branch ops from History, then Edit-lite.
