@@ -58,16 +58,17 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
    showed "WbTest demo"; discarded → clean). v1 = list only; diff/source detail is a follow-up.
 4. DONE ✓ History (view=5, digit 6): getCommitsWithAncestors → commit rows (shortHash + msg + N ops). Verified
    (shows the Init commit). Also DONE ✓ `[`/`]` cycle all 13 views (digits only reached 1-9).
-5. Wire more read-only views (breadth — each small, itemsForView + renderBody branch + empty state; reuse
-   existing command data). Priority order:
-   a. RESOLVE (view=6): `Sync.Conflicts.list ()` (from conflicts.dark) → rows "loc — status"; empty →
-      "✓ nothing to resolve". (main/notes/cli-ux/17)
-   b. MESH (view=7): tailnet devices. `Darklang.Tailscale.status ()` returns a raw string — v1: split it into
-      lines as body items (or just render the string). (main/notes/cli-ux/18)
-   c. DOCS (view=12): doc topics from `Docs.Command`/allTopics() → topic names; (main/notes/cli-ux/23).
-   d. SERVICES (view=10): `Apps.Command` daemon/app list (reuse its listing data).
-6. THEN Home dashboard (view=0, its own body: WIP count + commit count + tree) and per-view breadcrumb/keyhints.
-7. THEN Enter actions (commit→ops, changes item→source) + polish.
+5. Read-only views wired so far: DONE ✓ Resolve(6, conflicts), DONE ✓ Docs(12, topics). Still to wire:
+   a. MESH (view=7): tailnet devices. `Darklang.Tailscale.status ()` — but grep found NO `let status` in
+      packages/darklang/tailscale/. FIND the real API: `grep -rn 'Tailscale' packages/darklang/cli/devices.dark`
+      shows how devices.dark calls it; follow to the module. If it returns a raw multi-line string, split to
+      lines as body items. If the API is unclear/needs network, SKIP Mesh (leave coming-soon) and move on.
+   b. SERVICES (view=10): reuse `Apps.Command` daemon/app listing data (daemonState/list). (cli-ux/21)
+   c. THINGS (view=11): `find-values`/ValueSearch by type — lower priority (needs a type arg); skip for now.
+6. Home dashboard (view=0): give it its OWN body — a few summary lines (WIP count via getWipSummary, commit
+   count via getCommitCount, top-level module count) + maybe the tree below. Then consider defaulting `dark`
+   to Home instead of Tree. (cli-ux/10)
+7. Enter actions + per-view breadcrumb/keyhints + polish.
 Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)/Things(11)/Docs(12).
 
 ## Status: P1 COMPLETE ✓ — `dark` opens the framed Tree|Inspect workbench (verified on screen; classic prompt
@@ -83,6 +84,9 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 05:25 — P2.5: wired Resolve (Sync.Conflicts.list; "nothing to resolve" empty) + Docs (allTopics
+  topic list). Both verified via dev-drive. 6 views live now (Tree/Inspect/Changes/History/Resolve/Docs).
+  Commit 3080ec551. Next: Services (Apps list) + Home dashboard; Mesh only if the Tailscale API is clean.
 - 2026-07-18 05:16 — P2.4: History view wired (getCommitsWithAncestors; commit rows). + `[`/`]` view cycling
   so all 13 views are reachable (digits only hit 1-9). Verified both. Commits 7207468ac, f98e60386. Next: wire
   read-only Resolve/Mesh/Docs/Services (breadth), then Home dashboard.
