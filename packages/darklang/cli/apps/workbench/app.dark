@@ -303,6 +303,15 @@ let renderHome (state: State) (region: UI.Layout.Region) : Unit =
     if wip.total == 0 then Colors.colorize Colors.green "✓ working tree clean"
     else Colors.colorize Colors.pink ((plural wip.total "uncommitted change"))
 
+  // Sync divergences surfaced on the landing: attention-colored with the key that resolves them, per the
+  // TUI rule that an alert names its fill action. Silent (nothing shown) when in sync.
+  let conflictCount = Stdlib.List.length (Darklang.Sync.Conflicts.list ())
+  let conflictLines =
+    if conflictCount == 0 then []
+    else
+      [ "  " ++ (Colors.colorize Colors.pink ("⚠ " ++ (plural conflictCount "divergence") ++ " to resolve"))
+        "    " ++ (Colors.dimText "press 7 (Resolve) to review + resolve") ]
+
   // Up to 3 WIP item names, so the landing shows what you were mid-edit on.
   let wipNames =
     if wip.total == 0 then
@@ -319,7 +328,9 @@ let renderHome (state: State) (region: UI.Layout.Region) : Unit =
     | None -> "no commits yet"
 
   let header =
-    [ Colors.boldText ("Welcome back — you're on " ++ branch); ""; "  " ++ wipLine ]
+    Stdlib.List.flatten
+      [ [ Colors.boldText ("Welcome back — you're on " ++ branch); ""; "  " ++ wipLine ]
+        conflictLines ]
 
   let footer =
     [ "  " ++ (Colors.dimText ((plural commits "commit") ++ " on this branch"))
@@ -479,8 +490,20 @@ let render (state: State) : Unit =
     match SCM.Branch.get state.branchId with
     | Some b -> b.name
     | None -> "main"
-  let tabbar = UI.Layout.fixedSize 1 (fun r -> Frame.renderTabBar r state.activeView)
-  let crumb = UI.Layout.fixedSize 1 (fun r -> Frame.renderBreadcrumb r path branch)
+  // Real sync state, computed per-frame (render runs per-keypress, so it never goes stale). Drives both the
+  // Resolve tab badge and the breadcrumb's right-side status.
+  let conflictCount = Stdlib.List.length (Darklang.Sync.Conflicts.list ())
+  let branchSeg = "branch: " ++ branch ++ "  "
+  let (syncColored, syncPlain) =
+    if conflictCount > 0 then
+      let s = "⚠ " ++ (Stdlib.Int.toString conflictCount) ++ " to resolve"
+      (Colors.colorize Colors.pink s, s)
+    else
+      (Colors.colorize Colors.green "✓ synced", "✓ synced")
+  let rightColored = (Colors.dimText branchSeg) ++ syncColored
+  let rightVisibleLen = Stdlib.String.length (branchSeg ++ syncPlain)
+  let tabbar = UI.Layout.fixedSize 1 (fun r -> Frame.renderTabBar r state.activeView conflictCount)
+  let crumb = UI.Layout.fixedSize 1 (fun r -> Frame.renderBreadcrumb r path rightColored rightVisibleLen)
   let body = UI.Layout.greedy (fun r -> renderBody state r)
   let hints =
     UI.Layout.fixedSize
