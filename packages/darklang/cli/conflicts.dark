@@ -138,10 +138,85 @@ let renderInline
   else
     body
 
+// The static conflict list: header, each conflict's two sides stacked, and the commands to resolve them.
+// Shown for `dark conflicts list`, and for a bare `dark conflicts` when non-interactive (one-shot / piped).
+let printOpenList
+  (state: AppState)
+  (cs: List<Darklang.Sync.Conflicts.Conflict>)
+  : AppState =
+  let n = Stdlib.List.length cs
+  let noun = if n == 1 then "conflict" else "conflicts"
+  Stdlib.printLine $"{Stdlib.Int.toString n} unreviewed {noun}:"
+
+  let branchId = state.currentBranchId
+  Stdlib.List.iter cs (fun c ->
+    let yoursV = renderInline branchId c.location c.itemKind c.localHash
+    let theirsV = renderInline branchId c.location c.itemKind c.incomingHash
+    let activeSide = if c.chosenHash == c.incomingHash then "theirs" else "yours"
+    Stdlib.printLine ""
+    Stdlib.printLine $"  {c.location} ({c.itemKind})"
+    Stdlib.printLine (Colors.hint $"    yours:  {yoursV}")
+    Stdlib.printLine (Colors.hint $"    theirs: {theirsV}")
+    Stdlib.printLine (Colors.hint $"    active: {activeSide} ({c.resolvedBy})"))
+
+  Stdlib.printLine ""
+  Stdlib.printLine (Colors.hint "  What you can do:")
+  Stdlib.printLine (Colors.hint "    dark conflicts show <loc>        see both versions in full")
+  Stdlib.printLine (Colors.hint "    dark conflicts keep-mine <loc>   keep yours (syncs to peers)")
+  Stdlib.printLine (Colors.hint "    dark conflicts keep-theirs <loc> keep theirs (syncs to peers)")
+  Stdlib.printLine (Colors.hint "    dark conflicts ok <loc>          accept the auto pick, review done")
+  state
+
+// Step through each conflict: show both sides, pick mine / theirs / skip. Shown for a bare `dark conflicts`
+// in an interactive session — the same `nonInteractive` gate `review`/`nav` use, so a one-shot/piped run falls
+// back to `printOpenList`. Line prompts, no alternate screen — deliberately minimal; keep-mine/keep-theirs
+// still exist for scripting one at a time.
+let resolveInteractively
+  (state: AppState)
+  (cs: List<Darklang.Sync.Conflicts.Conflict>)
+  : AppState =
+  let branchId = state.currentBranchId
+  let n = Stdlib.List.length cs
+  let noun = if n == 1 then "conflict" else "conflicts"
+  Stdlib.printLine $"{Stdlib.Int.toString n} {noun} to review — pick a side for each (or skip):"
+
+  Stdlib.List.iter cs (fun c ->
+    let yoursActive = if c.chosenHash == c.localHash then "  (auto pick)" else ""
+    let theirsActive = if c.chosenHash == c.incomingHash then "  (auto pick)" else ""
+    Stdlib.printLine ""
+    Stdlib.printLine $"  {c.location} ({c.itemKind})"
+    Stdlib.printLine $"  yours   {short c.localHash}{yoursActive}"
+    Stdlib.printLine (renderContent branchId c.location c.itemKind c.localHash)
+    Stdlib.printLine $"  theirs  {short c.incomingHash}{theirsActive}"
+    Stdlib.printLine (renderContent branchId c.location c.itemKind c.incomingHash)
+
+    let choice =
+      Stdlib.Cli.UI.Prompt.select
+        $"  keep which for {leafName c.location}?"
+        [ "mine"; "theirs"; "skip (decide later)" ]
+
+    match choice with
+    | "mine" ->
+      if Darklang.Sync.Conflicts.keep c.location c.localHash then
+        Stdlib.printLine (Colors.success "    kept yours — syncs to peers")
+      else
+        Stdlib.printLine (Colors.error "    couldn't apply — still open")
+    | "theirs" ->
+      if Darklang.Sync.Conflicts.keep c.location c.incomingHash then
+        Stdlib.printLine (Colors.success "    kept theirs — syncs to peers")
+      else
+        Stdlib.printLine (Colors.error "    couldn't apply — still open")
+    | _ -> Stdlib.printLine (Colors.hint "    skipped — still open"))
+
+  Stdlib.printLine ""
+  Stdlib.printLine (Colors.hint "Run `dark sync` to share your picks with peers.")
+  state
+
 let help (state: AppState) : AppState =
   Stdlib.printLine "dark conflicts — review + resolve sync divergences"
   Stdlib.printLine ""
-  Stdlib.printLine "  dark conflicts [list]            unreviewed conflicts"
+  Stdlib.printLine "  dark conflicts                   review them one at a time (a plain list if piped)"
+  Stdlib.printLine "  dark conflicts list              just print the unreviewed conflicts"
   Stdlib.printLine "  dark conflicts show <loc>        the two candidate contents"
   Stdlib.printLine "  dark conflicts ok <loc>          acknowledge (the auto choice stands)"
   Stdlib.printLine "  dark conflicts keep-mine <loc>   override: keep your version (syncs)"
@@ -155,44 +230,21 @@ let help (state: AppState) : AppState =
 
 let execute (state: AppState) (args: List<String>) : AppState =
   match args with
-  | []
+  | [] ->
+    match unreviewed () with
+    | [] ->
+      Stdlib.printLine (Colors.success "No conflicts — everything's converged.")
+      state
+    // Bare `dark conflicts` in a session walks you through each; one-shot/piped prints the list to act on.
+    | cs ->
+      if state.nonInteractive then printOpenList state cs else resolveInteractively state cs
+
   | [ "list" ] ->
     match unreviewed () with
     | [] ->
       Stdlib.printLine (Colors.success "No conflicts — everything's converged.")
       state
-    | cs ->
-      let n = Stdlib.List.length cs
-      let noun = if n == 1 then "conflict" else "conflicts"
-      Stdlib.printLine $"{Stdlib.Int.toString n} unreviewed {noun}:"
-
-      let branchId = state.currentBranchId
-      Stdlib.List.iter cs (fun c ->
-        let yoursV = renderInline branchId c.location c.itemKind c.localHash
-        let theirsV = renderInline branchId c.location c.itemKind c.incomingHash
-        let activeSide =
-          if c.chosenHash == c.incomingHash then "theirs" else "yours"
-
-        // A few conflicts, read closely, so give each one room: a header line, then the two sides stacked so
-        // you compare them down a column instead of across a `·`, then which one is live. Blank line between,
-        // because these ARE separate things to decide.
-        Stdlib.printLine ""
-        Stdlib.printLine $"  {c.location} ({c.itemKind})"
-        Stdlib.printLine (Colors.hint $"    yours:  {yoursV}")
-        Stdlib.printLine (Colors.hint $"    theirs: {theirsV}")
-        Stdlib.printLine
-          (Colors.hint $"    active: {activeSide} ({c.resolvedBy})"))
-
-      // These are COMMANDS you type, not a menu — label them so the line doesn't read like a row of
-      // keyboard shortcuts. One per line, since they're the things you'd actually reach for next.
-      Stdlib.printLine ""
-      Stdlib.printLine (Colors.hint "  What you can do:")
-      Stdlib.printLine (Colors.hint "    dark conflicts show <loc>        see both versions in full")
-      Stdlib.printLine (Colors.hint "    dark conflicts keep-mine <loc>   keep yours (syncs to peers)")
-      Stdlib.printLine (Colors.hint "    dark conflicts keep-theirs <loc> keep theirs (syncs to peers)")
-      Stdlib.printLine (Colors.hint "    dark conflicts ok <loc>          accept the auto pick, review done")
-
-      state
+    | cs -> printOpenList state cs
 
   | [ "show"; location ] ->
     match findOpen location with
