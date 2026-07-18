@@ -284,14 +284,32 @@ let renderHome (state: State) (region: UI.Layout.Region) : Unit =
     if wip.total == 0 then Colors.colorize Colors.green "✓ working tree clean"
     else Colors.colorize Colors.pink ((plural wip.total "uncommitted change"))
 
-  let lines =
-    [ Colors.boldText ("Welcome back — you're on " ++ branch)
-      ""
-      "  " ++ wipLine
-      "  " ++ (Colors.dimText ((plural commits "commit") ++ " on this branch"))
+  // Up to 3 WIP item names, so the landing shows what you were mid-edit on.
+  let wipNames =
+    if wip.total == 0 then
+      []
+    else
+      (SCM.PackageOps.getWipItems state.branchId)
+      |> Stdlib.List.take 3
+      |> Stdlib.List.map (fun d ->
+        Colors.dimText ("    ◆ " ++ (Stdlib.Dict.get d "name" |> Stdlib.Option.withDefault "?")))
+
+  let lastCommit =
+    match Stdlib.List.head (SCM.PackageOps.getCommitsWithAncestors state.branchId 1) with
+    | Some c -> "last commit: " ++ c.message
+    | None -> "no commits yet"
+
+  let header =
+    [ Colors.boldText ("Welcome back — you're on " ++ branch); ""; "  " ++ wipLine ]
+
+  let footer =
+    [ "  " ++ (Colors.dimText ((plural commits "commit") ++ " on this branch"))
+      "  " ++ (Colors.dimText lastCommit)
       "  " ++ (Colors.dimText (plural (Stdlib.List.length rootItems) "top-level owner"))
       ""
       Colors.dimText "  2 Tree · 5 Changes · 6 History · 7 Resolve · [ ] cycle · esc exit" ]
+
+  let lines = Stdlib.List.flatten [ header; wipNames; footer ]
 
   lines
   |> Stdlib.List.indexedMap (fun i l -> (i, l))
