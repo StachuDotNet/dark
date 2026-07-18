@@ -432,36 +432,36 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
       (Frame.viewName state.activeView)
       [ Colors.dimText ((Frame.viewName state.activeView) ++ " — coming soon") ]
 
-/// The multiline editor: the name header + the buffer with a reverse-video cursor at (row, col).
+/// The multiline editor, framed in a titled box: a spacious authoring surface (not the bottom prompt bar).
+/// The error line (if any) sits just under the title; the buffer renders below with a reverse-video cursor at
+/// (row, col). One column of left padding inside the border reads as intentional.
 let renderEditing (es: EditingState) (region: UI.Layout.Region) : Unit =
-  let _ =
-    UI.Layout.printAt region 0 0 (Colors.boldText ("edit  " ++ es.nameStr))
-  let _ =
-    if es.err != "" then UI.Layout.printAt region 1 0 (Colors.error ("  " ++ es.err))
-    else ()
-  let bodyTop = 2
-  let visible = Stdlib.Int.max 1 (region.rows - bodyTop)
-  let scroll = Stdlib.Int.max 0 (es.buf.row - visible + 1)
-  es.buf.lines
-  |> Stdlib.List.indexedMap (fun i l -> (i, l))
-  |> Stdlib.List.drop scroll
-  |> Stdlib.List.take visible
-  |> Stdlib.List.iter (fun pair ->
-    let (i, l) = pair
-    let screenRow = bodyTop + (i - scroll)
-    if i == es.buf.row then
-      let llen = Stdlib.String.length l
-      let before = Stdlib.String.slice l 0 es.buf.col
-      let atCursor = if es.buf.col < llen then Stdlib.String.slice l es.buf.col (es.buf.col + 1) else " "
-      let after = if es.buf.col < llen then Stdlib.String.slice l (es.buf.col + 1) llen else ""
-      // Direct print (colored cursor would be truncated by printAt's length check).
-      Stdlib.print
-        ((Colors.moveCursorTo (region.top + screenRow) region.left)
-         ++ before
-         ++ (Colors.colorize Colors.reverse atCursor)
-         ++ after)
-    else
-      UI.Layout.printAt region screenRow 0 l)
+  UI.Box.panel region es.nameStr true (fun inner ->
+    let _ =
+      if es.err != "" then UI.Layout.printAt inner 0 1 (Colors.error es.err) else ()
+    let bodyTop = if es.err != "" then 1 else 0
+    let visible = Stdlib.Int.max 1 (inner.rows - bodyTop)
+    let scroll = Stdlib.Int.max 0 (es.buf.row - visible + 1)
+    es.buf.lines
+    |> Stdlib.List.indexedMap (fun i l -> (i, l))
+    |> Stdlib.List.drop scroll
+    |> Stdlib.List.take visible
+    |> Stdlib.List.iter (fun pair ->
+      let (i, l) = pair
+      let screenRow = bodyTop + (i - scroll)
+      if i == es.buf.row then
+        let llen = Stdlib.String.length l
+        let before = Stdlib.String.slice l 0 es.buf.col
+        let atCursor = if es.buf.col < llen then Stdlib.String.slice l es.buf.col (es.buf.col + 1) else " "
+        let after = if es.buf.col < llen then Stdlib.String.slice l (es.buf.col + 1) llen else ""
+        // Direct print (colored cursor would be truncated by printAt's length check); +1 col padding.
+        Stdlib.print
+          ((Colors.moveCursorTo (inner.top + screenRow) (inner.left + 1))
+           ++ before
+           ++ (Colors.colorize Colors.reverse atCursor)
+           ++ after)
+      else
+        UI.Layout.printAt inner screenRow 1 l))
 
 /// Dispatch the body: the editor, then a reader, else the active view's body.
 let renderBody (state: State) (region: UI.Layout.Region) : Unit =
@@ -654,45 +654,37 @@ let performInputAction (state: State) (inp: InputState) : Step =
       Step.Continue
         { state with
             input = Stdlib.Option.Option.Some { inp with prompt = "no branch '" ++ inp.text ++ "' — esc"; text = "" } }
-  else if inp.action == "new-fn" then
-    Step.Continue
-      { state with
-          input = Stdlib.Option.Option.None
-          editing =
-            Stdlib.Option.Option.Some
-              (EditingState { kind = "fn"; nameStr = inp.text; buf = UI.Editor.fromText "(x: Int): Int =\n  x"; err = "" }) }
-  else if inp.action == "new-type" then
-    Step.Continue
-      { state with
-          input = Stdlib.Option.Option.None
-          editing =
-            Stdlib.Option.Option.Some
-              (EditingState { kind = "type"; nameStr = inp.text; buf = UI.Editor.fromText "{ x: Int }"; err = "" }) }
-  else if inp.action == "new-value" then
-    Step.Continue
-      { state with
-          input = Stdlib.Option.Option.None
-          editing =
-            Stdlib.Option.Option.Some
-              (EditingState { kind = "value"; nameStr = inp.text; buf = UI.Editor.fromText "1"; err = "" }) }
   else
     Step.Continue { state with input = Stdlib.Option.Option.None }
 
-/// Save the editor's fn: parse the body → WrittenTypes → PT PackageFn → AddFn+SetName WIP ops. On any failure
-/// keep the editor open with an error line (never prints — this is a port of Packages.Fn.createFnInline's core
-/// without the stdout/AppState coupling).
+/// Pull the leaf name out of a full declaration's first line: the token right after the `let`/`type`/`val`
+/// keyword, stripped of anything from a `(` or `:` (so `let f(x: Int)` -> `f`). "" if none.
+let leafNameOf (src: String) : String =
+  let firstLine =
+    Stdlib.String.split src "\n" |> Stdlib.List.head |> Stdlib.Option.withDefault ""
+  let toks =
+    (Stdlib.String.split (Stdlib.String.trim firstLine) " ")
+    |> Stdlib.List.filter (fun t -> t != "")
+  let raw = Stdlib.List.getAt toks 1 |> Stdlib.Option.withDefault ""
+  let beforeParen = Stdlib.String.split raw "(" |> Stdlib.List.head |> Stdlib.Option.withDefault raw
+  Stdlib.String.split beforeParen ":" |> Stdlib.List.head |> Stdlib.Option.withDefault beforeParen
+
+/// Save the editor's declaration: the buffer holds a full `let`/`type`/`val` declaration. Derive the leaf name
+/// from it, resolve the target location relative to the current tree spot, then parse → WrittenTypes → PT →
+/// Add*+SetName WIP ops. On any failure keep the editor open with an error line (a port of the create-inline
+/// core without the stdout/AppState coupling).
 let saveEditing (state: State) (es: EditingState) : Step =
   let keepErr (msg: String) : Step =
     Step.Continue { state with editing = Stdlib.Option.Option.Some { es with err = msg } }
 
-  match Packages.Location.parseRelativeTo state.location es.nameStr with
+  let fullSource = UI.Editor.toText es.buf
+  let leaf = leafNameOf fullSource
+  if leaf == "" then
+    keepErr "add a name after the keyword, then ^s"
+  else
+  match Packages.Location.parseRelativeTo state.location leaf with
   | Error e -> keepErr ("bad name: " ++ e)
   | Ok location ->
-    let body = UI.Editor.toText es.buf
-    let fullSource =
-      if es.kind == "type" then "type " ++ location.name ++ " = " ++ body
-      else if es.kind == "value" then "val " ++ location.name ++ " = " ++ body
-      else "let " ++ location.name ++ " " ++ body
     let diags = Builtin.parserParseDiagnostics fullSource
     if Stdlib.Bool.not (Stdlib.List.isEmpty diags) then
       keepErr "parse error — fix it, then ^s"
@@ -752,21 +744,39 @@ let saveEditing (state: State) (es: EditingState) : Step =
         | Error m -> keepErr m
       | None -> keepErr "could not parse"
 
-/// Strip a fn's pretty-printed source down to the "definition" (everything after `let <leaf>`): drop doc
-/// comment lines, then the `let <leaf>` prefix — so it round-trips through saveEditing's `let {name} {def}`.
-let defFromSource (src: String) (leaf: String) : String =
-  let nonDoc =
-    src
-    |> Stdlib.String.split "\n"
-    |> Stdlib.List.filter (fun l -> Stdlib.Bool.not (Stdlib.String.startsWith (Stdlib.String.trim l) "///"))
-    |> Stdlib.String.join "\n"
-  let prefix = "let " ++ leaf
-  if Stdlib.String.startsWith nonDoc prefix then
-    Stdlib.String.dropFirst nonDoc (Stdlib.String.length prefix)
-  else
-    nonDoc
+/// Drop doc-comment lines (`///`) from a pretty-printed declaration, keeping the full `let`/`type`/`val` form
+/// so it round-trips through saveEditing (which derives the name from the source).
+let stripDocComments (src: String) : String =
+  src
+  |> Stdlib.String.split "\n"
+  |> Stdlib.List.filter (fun l -> Stdlib.Bool.not (Stdlib.String.startsWith (Stdlib.String.trim l) "///"))
+  |> Stdlib.String.join "\n"
 
-/// Open the editor on an existing fn, prefilled from its current source.
+/// Open the spacious editor on a new declaration: a full template (keyword + qualified placeholder name +
+/// body), cursor on the name for immediate replacement. No bottom-bar name prompt — the whole thing is
+/// authored in the box. The placeholder name is qualified to the current tree location so it always resolves
+/// to a full owner.Module.name: a bare leaf inside a module, else enough placeholder segments to be valid.
+let startNew (state: State) (kind: String) : Step =
+  let modPath = modulePathOf state.location
+  let depth = Stdlib.List.length modPath
+  // Prepend placeholder segments so `parseRelativeTo location name` yields owner.Module.name (3+ parts).
+  let qualify (leaf: String) : String =
+    if depth >= 2 then leaf
+    else if depth == 1 then "Module." ++ leaf
+    else "Owner.Module." ++ leaf
+  let where = if depth >= 1 then "  ·  in " ++ (Stdlib.String.join modPath ".") else ""
+  let (titleBase, template, nameCol) =
+    if kind == "type" then ("New type", "type " ++ (qualify "NewType") ++ " =\n  { field: Int }", 5)
+    else if kind == "value" then ("New value", "val " ++ (qualify "newValue") ++ " = 1", 4)
+    else ("New function", "let " ++ (qualify "newFunction") ++ " (x: Int): Int =\n  x", 4)
+  let buf = UI.Editor.fromText template
+  Step.Continue
+    { state with
+        editing =
+          Stdlib.Option.Option.Some
+            (EditingState { kind = kind; nameStr = titleBase ++ where; buf = { buf with col = nameCol }; err = "" }) }
+
+/// Open the editor on an existing fn, prefilled with its full current declaration (doc comments dropped).
 let openEditExisting (state: State) (item: BodyItem) : Step =
   let modules = modulePathOf state.location
   let fullName = Stdlib.String.join (Stdlib.List.append modules [ item.name ]) "."
@@ -779,11 +789,11 @@ let openEditExisting (state: State) (item: BodyItem) : Step =
   match results.fns with
   | i :: _ ->
     let src = PrettyPrinter.ProgramTypes.packageFn ctx i.entity
-    let def = defFromSource src item.name
     Step.Continue
       { state with
           editing =
-            Stdlib.Option.Option.Some (EditingState { kind = "fn"; nameStr = fullName; buf = UI.Editor.fromText def; err = "" }) }
+            Stdlib.Option.Option.Some
+              (EditingState { kind = "fn"; nameStr = "Editing " ++ fullName; buf = UI.Editor.fromText (stripDocComments src); err = "" }) }
   | [] -> Step.Continue state
 
 let handleKey
@@ -948,33 +958,12 @@ let handleKey
       else
         Step.Continue state
     | Some "n" ->
-      // Tree: author a new fn — ask for the name, then open the editor.
-      if state.activeView == 1 then
-        Step.Continue
-          { state with
-              input =
-                Stdlib.Option.Option.Some
-                  (InputState { prompt = "new fn (owner.Mod.name): "; text = ""; action = "new-fn" }) }
-      else
-        Step.Continue state
+      // Tree: author a new fn — open the spacious editor directly with a full template.
+      if state.activeView == 1 then startNew state "fn" else Step.Continue state
     | Some "t" ->
-      if state.activeView == 1 then
-        Step.Continue
-          { state with
-              input =
-                Stdlib.Option.Option.Some
-                  (InputState { prompt = "new type (owner.Mod.Name): "; text = ""; action = "new-type" }) }
-      else
-        Step.Continue state
+      if state.activeView == 1 then startNew state "type" else Step.Continue state
     | Some "v" ->
-      if state.activeView == 1 then
-        Step.Continue
-          { state with
-              input =
-                Stdlib.Option.Option.Some
-                  (InputState { prompt = "new value (owner.Mod.name): "; text = ""; action = "new-value" }) }
-      else
-        Step.Continue state
+      if state.activeView == 1 then startNew state "value" else Step.Continue state
     | Some "c" ->
       // Changes: commit all WIP with a message.
       if state.activeView == 4 then

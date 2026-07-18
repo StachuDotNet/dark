@@ -1,45 +1,83 @@
-# Workbench UX iteration — Phase 5
+# Workbench UX iteration — Phase 5 (autonomous, until ~17:00)
 
-Branch `cli-ux-redux` (loop-fun, container `peaceful_knuth`). Goal: make the workbench feel like a real TUI
-someone can live in — discoverable, consistent, full-screen, with the CLI's real touchpoints reachable.
-Also in scope (user): build reusable UI components + Stdlib to support nice TUIs in Dark.
+Branch `cli-ux-redux` (loop-fun, container `peaceful_knuth`). Make the workbench a real TUI someone can live
+in. Reference: `notes/tui-ux-principles.md` (research checklist). Also in scope: reusable UI components + Stdlib
+for building nice TUIs in Dark.
 
-Recovery note: if `run-cli` crashes with "type hash not found", loop-fun's devcontainer exited — `docker start
-peaceful_knuth` (it must be newer than zen_easley so run-in-docker's `--last 1` selector picks it).
+Recovery: `run-cli` "type hash not found" => loop-fun devcontainer exited => `docker start peaceful_knuth`.
+Inner loop: edit -> `./dev-ux-check` (add `twice` after a State/type change) -> tmux (`wb`, restart app after
+reload) -> commit -> `git push github cli-ux-redux`. NEVER reset --hard/stash/force-push.
 
-## Inner loop
-edit .dark -> `./dev-ux-check` (add `twice` after a State/type change — embedded hashes) -> tmux drive+capture
-(session `wb`, restart the app after each reload) -> commit -> `git push github cli-ux-redux`.
+## User feedback driving this phase
+1. Authoring (types/fns) felt visually cramped — done in the tiny bottom prompt bar. Wants SPACIOUS MULTI-LINE
+   editing, in a real editor pane, not the bottom bar.
+2. Keyboard shortcuts felt "unexpected". Wants a coherent, thought-through scheme — explicit, with Tab /
+   Shift-Tab for moving between panes.
+3. Conflicts visible on Home (DONE). Chooser instead of DARK_CLASSIC flag (DONE).
+4. "Think through everything." Build components/Stdlib that drive the big app.
 
-## Findings (current state)
-- Discoverability: there IS a bottom hint bar + a `?` overlay, but `?` is never advertised; Home's hint is
-  thin; Inspect/Mesh/Agents/etc. fall to a generic hint. No "how do I run a command / prompt" affordance.
-- Naked pages: Tree/Inspect use a bordered SplitPane (good). Changes/History/Resolve/Docs/Runs/Services/Mesh
-  render a bare list into the raw region — no border, no title, lots of empty space. Home is top-left text.
-- Conflicts: NOT surfaced on Home. Breadcrumb hardcodes green "✓ synced" regardless of real state.
-- Missing touchpoints vs the ~55 CLI commands: search (`/`), eval / run-a-command (command palette `:`),
-  deps (dependents/dependencies of selection), branch rebase/merge, sync-now, login state, deprecate/delete/
-  undo on a selection, caps.
+## DONE so far this phase
+- Conflicts on Home + honest sync badge + Resolve tab badge (df9bb17).
+- UI.Box component; every list view framed (no naked pages) (7d3ca05).
+- Discoverable footer (key bright/label dim, per-view + anchored globals) + `:` run prompt (eval) (adabd18).
+- One-key experience chooser on launch (703f2bc).
 
-## Plan (priority order — land + verify + commit each)
-1. [ ] Conflicts on Home + honest sync badge. State gets `conflictCount`; Home shows a warn line when >0;
-       breadcrumb shows "⚠ N to resolve" (pink) vs "✓ synced" (green) from real `Sync.Conflicts.list`.
-2. [ ] Reusable `UI.Box` (single bordered titled pane; extract from SplitPane.drawBox) + a reusable
-       `UI.ListView` (scrollable, selectable, scrollbar). Wrap every single-list view in a titled box so the
-       naked pages fill the screen consistently. This is the big consistency win + a real component.
-3. [ ] Discoverability: hint bar always ends with "· ? help"; per-view hints for all views; a global-keys
-       line. Make the input/prompt affordance obvious.
-4. [ ] Global search `/` — overlay to search packages, jump to a result (fills the biggest command gap).
-5. [ ] Command palette `:` (or Ctrl+K) — run a CLI command / eval from inside the app. The "prompt" the
-       user is missing. Feeds a component: a fuzzy command list + arg entry + output reader.
-6. [ ] More touchpoints: deps in Inspect; branch rebase/merge in History; sync-now in Mesh/Resolve; login
-       state on Home; deprecate/delete/undo on a Tree selection.
-7. [ ] Fold in the TUI-UX research (agent running) — apply its checklist; tighten color/badges/empty states.
+## KEYMAP REDESIGN (the coherent scheme — implement + document in ? and footer)
+Principle: same key means the same thing everywhere; movement is vim + arrows; Tab/Shift-Tab = pane focus;
+numbers/brackets = views; letters = context actions shown in the footer.
 
-## Log
-- (start) Rebase: already current — github/main = upstream/main = 17eb99eca (#5685), branch 0 behind.
-- Container misrouting fixed (peaceful_knuth restarted).
+- Movement (focused pane): `↑/k` up, `↓/j` down, `g`/`G` top/bottom, PageUp/Dn.
+- Structure (Tree): `→/l/Enter` descend or open; `←/h` up a level.
+- Panes: `Tab` next pane, `Shift-Tab` prev pane (fall back: Tab wraps if Shift-Tab not delivered — verify what
+  the F# readKey sends for CSI Z; test in tmux). Focused pane = bright border (already), others dim.
+- Views: `1`-`9` jump; `[`/`]` cycle; (Ctrl+arrows NOT used). Numbers >9 by typing the number (already works).
+- Global: `:` run (eval), `/` search (to build), `?` help, `Esc` back-out-one-level, `q` quit.
+- Context actions (shown in footer per view):
+  - Tree: `n` new fn · `t` new type · `v` new value · `e` edit selected · `d` deps (to build) · Enter open.
+  - Changes: `c` commit · `x` discard · Enter source.
+  - History: `b` new-branch · `s` switch · (later `m` merge · `r` rebase) · Enter ops.
+  - Resolve: Enter detail · (later `a`/`o` accept ours/theirs).
+- Esc discipline: closes editor/input/reader first; from a drilled Tree location, `←` goes up; Esc at top-level
+  exits. Never destructive.
+- Confirm scaling: discard already y-confirms; keep. Destructive stays explicit-key, never Enter-default.
+
+## AUTHORING REDESIGN (spacious, multi-line, boxed)
+Kill the bottom-bar name prompt for new items. Instead:
+- `n`/`t`/`v` opens the multi-line editor immediately, pre-filled with a FULL declaration template incl. a
+  placeholder name, e.g.
+    fn:    `let newFunction (x: Int): Int =\n  x`
+    type:  `type NewType =\n  { field: Int }`
+    value: `let newValue =\n  1`
+  Cursor positioned on the placeholder name for immediate replacement.
+- The editor renders inside a titled UI.Box ("New function" / "Editing Owner.Mod.name"), full body region,
+  with the error line inside the box — spacious, unmistakably a mode.
+- saveEditing parses the WHOLE buffer (already a full declaration): extract the leaf name from the source
+  (keyword + next identifier), build location via parseRelativeTo state.location leaf, then the existing
+  WrittenTypes->PT->ops path. Drop the `nameStr`-prepend. Edit-existing (`e`) prefills the full declaration.
+- Footer in editor: `^s save · esc cancel · ↑↓←→ move · tab indent`. Consider a status: parse-ok/parse-err live.
+
+## Remaining plan (priority)
+- [ ] A. Authoring redesign (above). HIGH — explicit feedback.
+- [ ] B. Keymap redesign (above) — Tab/Shift-Tab panes, vim motion, consistent, documented. HIGH.
+- [ ] C. List+preview splits for Changes/History/Docs/Resolve (IDE 3-panel; reuse SplitPane + existing detail
+       fns changesSourceText/commitOpsText/topic content). Makes them dense + useful, not just framed lists.
+- [ ] D. Global search `/` — overlay, search packages, jump to result. Re-add `/` to footer when built.
+- [ ] E. More touchpoints: deps in Inspect (`d`), branch merge/rebase in History, sync-now, login state on
+       Home, deprecate/delete/undo on a Tree selection.
+- [ ] F. Components/Stdlib: UI.ListView (extract renderTreeList), UI.Prompt, a status/toast row, semantic
+       color slots in Colors if missing. Whatever removes duplication + drives the app.
+- [ ] G. Apply TUI checklist: transient message/toast row; "terminal too small" guard; mode color block.
+
+## NEW feedback (fold in)
+- H. Use syntax highlighting of code in MORE places, broadly (Inspect pane, source readers, editor, Changes
+     source). Find the existing highlighter (LSP/semantic — see PackageRefs WrittenTypes note) and apply it.
 
 ## NEXT ACTION
-Item 1: conflicts on Home + honest sync badge. Add `conflictCount` to State (two-build pass), thread to
-renderHome + renderBreadcrumb. Verify in tmux. Commit + push. Then item 2.
+Item A DONE (authoring redesign verified: spacious boxed editor, location-aware template, name from buffer,
+saved Stachu.DarklangParser.newFunction, discarded). NEXT: item B (keymap) — Tab/Shift-Tab pane focus, vim
+motion (j/k/g/G/h/l), consistent + documented in footer + ?. Verify Tab cycles panes in Tree/Inspect and (once
+built) list+preview. Then C (list+preview splits), H (syntax highlighting), D (search), E/F/G.
+
+## Log
+- Rebase: already current (github/main = upstream = 17eb99eca #5685; 0 behind).
+- Container misrouting fixed (peaceful_knuth restarted).
