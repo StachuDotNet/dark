@@ -635,7 +635,7 @@ let hintsForView (view: Int) : String =
       [ ("↑↓", "move") ]
   Frame.formatHints (Stdlib.List.append ctx global)
 
-let render (state: State) : Unit =
+let renderFull (state: State) : Unit =
   // Clamp to sane minimums — mid-resize the terminal reports 0/tiny sizes; without this the region math
   // goes negative and the whole view crashes back to the prompt. A safe default renders one off frame; the
   // next keypress picks up the real size.
@@ -695,6 +695,23 @@ let render (state: State) : Unit =
         Frame.renderKeyHints r h)
   UI.Layout.vstack screen [ tabbar; crumb; body; hints ]
   Stdlib.print "\u001b[?25h"
+
+
+/// Render the workbench. Below a usable size, show an explicit "too small" hint instead of a garbled frame
+/// (per the TUI rule: degrade with a message, never render garbage). A real 0/tiny size mid-resize still falls
+/// through to renderFull's clamp, which draws one safe frame until the next keypress.
+let render (state: State) : Unit =
+  let rawW = Terminal.getWidth ()
+  let rawH = Terminal.getHeight ()
+  let tooSmall = (rawW >= 24 && rawW < 56) || (rawH >= 8 && rawH < 12)
+  if tooSmall then
+    Stdlib.print "[?25l[2J[H"
+    let msg = "terminal too small — resize to at least 56x12"
+    let row = Stdlib.Int.max 1 (Stdlib.Int.divide rawH 2)
+    let col = Stdlib.Int.max 1 (Stdlib.Int.divide (rawW - (Stdlib.String.length msg)) 2)
+    Stdlib.print ((Colors.moveCursorTo row col) ++ (Colors.dimText msg))
+  else
+    renderFull state
 
 
 // ── Key handling ──
