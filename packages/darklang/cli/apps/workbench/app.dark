@@ -401,7 +401,7 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
 let hintsForView (view: Int) : String =
   if view == 1 then "↑↓ move · → into/source · ← up · tab focus · 1-9/[ ] view · esc exit"
   else if view == 0 then "1-9 jump to view · [ ] cycle · esc exit"
-  else if view == 4 then "↑↓ move · enter source · c commit · 1-9/[ ] view · esc exit"
+  else if view == 4 then "↑↓ move · enter source · c commit · x discard · 1-9/[ ] view · esc exit"
   else if view == 5 then "↑↓ move · enter ops · 1-9/[ ] view · esc exit"
   else if view == 12 then "↑↓ move · enter read · 1-9/[ ] view · esc exit"
   else "↑↓ move · 1-9/[ ] view · esc exit"
@@ -495,6 +495,17 @@ let performInputAction (state: State) (inp: InputState) : Step =
             input =
               Stdlib.Option.Option.Some
                 { inp with prompt = "not logged in (set DARK_ACCOUNT or `login`) — esc"; text = "" } }
+  else if inp.action == "discard" then
+    // Destructive: only proceed on an explicit "y".
+    if inp.text == "y" then
+      let _ = SCM.PackageOps.discard state.branchId
+      Step.Continue
+        { state with
+            input = Stdlib.Option.Option.None
+            items = itemsForView state.activeView state.branchId state.location
+            selected = 0 }
+    else
+      Step.Continue { state with input = Stdlib.Option.Option.None }
   else
     Step.Continue { state with input = Stdlib.Option.Option.None }
 
@@ -618,6 +629,17 @@ let handleKey
               input =
                 Stdlib.Option.Option.Some
                   (InputState { prompt = "commit message: "; text = ""; action = "commit" }) }
+      else
+        Step.Continue state
+    | Some "x" ->
+      // Changes: discard all WIP (destructive → confirm).
+      if state.activeView == 4 then
+        Step.Continue
+          { state with
+              input =
+                Stdlib.Option.Option.Some
+                  (InputState
+                    { prompt = "discard ALL uncommitted? type y then enter: "; text = ""; action = "discard" }) }
       else
         Step.Continue state
     | Some s ->
