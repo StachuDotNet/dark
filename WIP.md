@@ -122,15 +122,19 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
    + State.accountId threaded from cliState.accountID). `c` on Changes → "commit message:" prompt; type; Enter →
    SCM.PackageOps.commit → reload; Esc cancels; no-account → "not logged in" line. VERIFIED END-TO-END (created
    a WIP fn, committed "wbcommit" via the workbench, log shows it, tree clean). THE WORKBENCH CAN NOW WRITE.
-   NEXT — more write actions, each reuses input mode / adds a confirm:
-   a. Tree `r` rename: input "new name:" → SetName op (find the rename API — grep SetName / renameItem /
-      Packages.Fn or SCM). On a fn/type/val leaf. Verify + discard.
-   b. Changes `x` discard: needs a yes/no confirm (add InputState action="confirm-discard" or a small confirm).
-      Destructive → confirm. Discards all WIP (or selected). Verify carefully.
-   c. Tree `n` new fn: opens input for a name, then... needs a body → that's EDIT (multiline). Defer the body;
-      `n` could stub-create an empty fn or defer entirely. Lower priority.
-   (Old detailed plan below, now done:)
-   -- P3: commit from Changes. Build a single-line INPUT MODE, then wire `c`=commit.
+   DONE ✓ b. Changes `x` discard (y-confirm → SCM.PackageOps.discard). Verified end-to-end.
+   Write actions so far: commit (c), discard (x) — both on Changes, both verified.
+   NEXT — pick highest value:
+   a. BRANCH ops from History: `b`=create (input "new branch name:" → SCM.Branch.create), `s`=switch (switch
+      the workbench's branchId to the selected... but History rows are commits, not branches — need a branch
+      list; maybe add a branch picker or make `s` cycle branches via SCM.Branch.list). Find the create/switch
+      API: `grep -rnE 'let create|let switch|let list|mainBranchId' packages/darklang/scm/branch.dark`. Moderate.
+   b. Item RENAME (Tree `r`): NO direct item-rename API found (only SCM.Branch.rename = branches). Item rename
+      would be a low-level SetName op. DEFER unless a clean API surfaces.
+   c. EDIT view (the big deferred one): a real multiline buffer is hard in a SubApp. Options: (i) start a crude
+      end-of-buffer editor (append/backspace/newline, save via the `fn` path) — functional but limited; (ii)
+      defer until a proper MultilineEditor exists. Consider (i) as an "edit lite" for new fns.
+   Recommendation: do BRANCH ops next (clean APIs, useful), then attempt Edit-lite.
    1. State: add `input: Stdlib.Option.Option<InputState>` where InputState = { prompt: String; text: String;
       action: String } (action tag e.g. "commit"). Init None in execute. (double reload — type change.)
    2. handleKey: guard at TOP like `reading` — if `input` is Some: printable char → append to text (keyChar);
@@ -175,6 +179,9 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 07:28 — P3.2: discard from Changes (`x` → "type y then enter" confirm → SCM.PackageOps.discard).
+  Verified end-to-end (created WbTest.demo2, discarded via workbench, tree clean). Safe: only "y" discards, Esc
+  cancels. Commit 703796ca1. Two write actions now (commit + discard). Next: branch ops from History, then Edit-lite.
 - 2026-07-18 07:22 — P3.1 FIRST WRITE ACTION: commit from Changes. Built single-line input mode (State.input +
   accountId) + performInputAction; `c` → commit-message prompt → SCM.PackageOps.commit. VERIFIED end-to-end
   (committed "wbcommit" via the workbench UI; log confirms; tree clean). Commit 1333ea692. The workbench is no
