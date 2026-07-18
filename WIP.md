@@ -74,12 +74,15 @@ P2 — make the workbench a real daily driver. Order (each small, verify with ./
    DONE ✓ a. scrollbar  b. Docs reader  c. `?` help  d. full SWEEP (all views clean) + Home plural fix.
    DONE ✓ e. HISTORY detail: Enter on a commit → its ops in the reader (commitOpsText via PackageOp.packageOp,
       capped 20). Verified.
+   DONE ✓ f. CHANGES detail: Enter → WIP item's source in the reader (name is the FULL path; split → mods+leaf →
+      searchExactMatch → PrettyPrinter.packageFn/Type/Value). Verified.
    NEXT polish (pick one/fire):
-   f. CHANGES detail: Enter on a WIP item → its source in the reader. The WIP `name` from getWipItems may be a
-      full path (e.g. "Stachu.WbTest.demo"); parse owner/modules/name (LanguageTools.ProgramTypes.parsePackage
-      Location or split on "."), searchExactMatch, PrettyPrinter.packageFn/Type/Value → reading. Like History.
-   g. Home: recent WIP item names + last-commit message line (richer landing).
-   h. Consider a final full-doc sweep + maybe open a PR note in WIP (branch is cli-ux-workbench off github/main).
+   g. Home: richer landing — list recent WIP item names (getWipItems, first few) + the last-commit message line
+      (getCommitsWithAncestors head). Small.
+   h. Tree leaf Enter currently no-ops (only modules descend). Could open the fn/type/val source in the reader
+      (reuse detailLines/changesSourceText-style). Nice consistency with Docs/History/Changes.
+   i. Final: a fresh full dev-drive sweep of the deep interactions (History/Changes/Docs Enter, `?`), then a
+      short PR-summary section at the TOP of WIP (branch cli-ux-workbench off github/main; 40+ commits).
 Keep each fire small + verified. AGENTS/EDIT/THINGS stay deferred (mock render / MultilineEditor / type arg).
 Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)/Things(11)/Docs(12).
 
@@ -107,6 +110,10 @@ Digit map: "1"→Home(0) … "9"→Agents(8); `]`/`[` reach Runs(9)/Services(10)
   via `grep -niE 'error\\[|Unresolved|expected|not found|not supported' rundir/logs/packages.log | tail`.
 
 ## Log (newest first)
+- 2026-07-18 06:47 — P2.15: Changes Enter → WIP item source in the reader (changesSourceText; WIP name is the
+  FULL path → split to mods+leaf → searchExactMatch). Verified via eval + dev-drive (created/discarded a test
+  fn). Commit 9d34fa4ea. Reminder used: reload-packages WIPES WIP items — recreate WIP AFTER any reload to test.
+  Next: richer Home / Tree-leaf Enter → source / final sweep.
 - 2026-07-18 06:36 — P2.14: History Enter → commit ops in the reader (commitOpsText). Hit the packageOp nested-
   module gotcha (clean reload but runtime "not found" → real path PrettyPrinter.ProgramTypes.PackageOp.packageOp)
   + capped renders at 20 (10k-op seed commit was slow). Verified via eval + dev-drive. Commit 0fddd3032. Next:
