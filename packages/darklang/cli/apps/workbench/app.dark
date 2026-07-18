@@ -639,7 +639,11 @@ let renderBody (state: State) (region: UI.Layout.Region) : Unit =
 /// Honest, context-relevant key hints per view — the 3-6 most useful keys first, then the anchored global
 /// keys (view-switch, help, quit) so the footer's right edge is stable. Keys are emphasized by `formatHints`.
 /// Only advertises what actually works today.
-let hintsForView (view: Int) : String =
+let hintsForView (state: State) : String =
+  let view = state.activeView
+  // `tab preview` only makes sense when the split view actually has items (and thus a preview pane).
+  let hasPreview = Stdlib.Bool.not (Stdlib.List.isEmpty state.items)
+  let tabHint = if hasPreview then [ ("tab", "preview") ] else []
   // Global keys, always the same, anchored at the right end of the footer.
   let global = [ ("/", "search"); (":", "run"); ("1-9", "view"); ("?", "help"); ("q", "quit") ]
   let ctx =
@@ -648,13 +652,13 @@ let hintsForView (view: Int) : String =
     else if view == 0 then
       [ ("↑↓", "move") ]
     else if view == 4 then
-      [ ("↑↓", "move"); ("tab", "preview"); ("⏎", "full"); ("c", "commit"); ("x", "discard") ]
+      Stdlib.List.flatten [ [ ("↑↓", "move") ]; tabHint; [ ("⏎", "full"); ("c", "commit"); ("x", "discard") ] ]
     else if view == 5 then
       [ ("↑↓", "move"); ("⏎", "full"); ("b", "branch"); ("s", "switch"); ("m", "merge"); ("r", "rebase") ]
     else if view == 6 then
-      [ ("↑↓", "move"); ("tab", "preview") ]
+      Stdlib.List.flatten [ [ ("↑↓", "move") ]; tabHint ]
     else if view == 12 then
-      [ ("↑↓", "move"); ("tab", "preview"); ("⏎", "full") ]
+      Stdlib.List.flatten [ [ ("↑↓", "move") ]; tabHint; [ ("⏎", "full") ] ]
     else
       [ ("↑↓", "move") ]
   Frame.formatHints (Stdlib.List.append ctx global)
@@ -724,7 +728,7 @@ let renderFull (state: State) : Unit =
             | None ->
               match state.reading with
               | Some _ -> Frame.formatHints [ ("↑↓", "scroll"); ("esc", "back") ]
-              | None -> hintsForView state.activeView
+              | None -> hintsForView state
         Frame.renderKeyHints r h)
   UI.Layout.vstack screen [ tabbar; crumb; body; hints ]
   Stdlib.print "\u001b[?25h"
