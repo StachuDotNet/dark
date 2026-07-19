@@ -239,33 +239,37 @@ let depsText (state: State) : String =
     else
       let modulePath = modulePathOf state.location
       let results = Packages.Query.searchExactMatch state.branchId modulePath item.name
-      let hashOpt =
+      let picked =
         if item.kind == "fn" then
-          results.fns |> Stdlib.List.head |> Stdlib.Option.map (fun i -> i.entity.hash)
+          results.fns |> Stdlib.List.head |> Stdlib.Option.map (fun i -> (i.entity.hash, i.location, LanguageTools.ProgramTypes.ItemKind.Fn))
         else if item.kind == "type" then
-          results.types |> Stdlib.List.head |> Stdlib.Option.map (fun i -> i.entity.hash)
+          results.types |> Stdlib.List.head |> Stdlib.Option.map (fun i -> (i.entity.hash, i.location, LanguageTools.ProgramTypes.ItemKind.Type))
         else
-          results.values |> Stdlib.List.head |> Stdlib.Option.map (fun i -> i.entity.hash)
-      match hashOpt with
+          results.values |> Stdlib.List.head |> Stdlib.Option.map (fun i -> (i.entity.hash, i.location, LanguageTools.ProgramTypes.ItemKind.Value))
+      match picked with
       | None -> "(not found)"
-      | Some hash ->
+      | Some((hash, loc, kind)) ->
+        // Dependencies — what this item uses.
         let deps = Builtin.depsGetDependencies state.branchId hash
-        if Stdlib.List.isEmpty deps then
-          item.name ++ " has no dependencies."
-        else
-          let hashes = deps |> Stdlib.List.map (fun pair -> let (h, _) = pair in h)
-          let namesDict = Darklang.Cli.Deps.resolveNames state.branchId hashes
-          let lines =
-            deps
-            |> Stdlib.List.map (fun pair ->
-              let (th, _rt) = pair
-              "  " ++ (Darklang.Cli.Deps.getName namesDict th))
-          "Dependencies of "
-          ++ item.name
-          ++ "   ("
-          ++ (Stdlib.Int.toString (Stdlib.List.length deps))
-          ++ ")\n\n"
-          ++ (Stdlib.String.join lines "\n")
+        let depLines =
+          if Stdlib.List.isEmpty deps then [ Colors.dimText "  (none)" ]
+          else
+            let namesDict = Darklang.Cli.Deps.resolveNames state.branchId (deps |> Stdlib.List.map (fun p -> let (h, _) = p in h))
+            deps |> Stdlib.List.map (fun p -> let (th, _rt) = p in "  " ++ (Darklang.Cli.Deps.getName namesDict th))
+        // Dependents — what uses this item.
+        let dependents = Builtin.depsGetDependents state.branchId [ (loc, kind) ]
+        let dependentLines =
+          if Stdlib.List.isEmpty dependents then [ Colors.dimText "  (none)" ]
+          else dependents |> Stdlib.List.map (fun t -> let (_h, sLoc, _rt) = t in "  " ++ (PrettyPrinter.ProgramTypes.PackageLocation.packageLocation sLoc))
+        (Colors.boldText item.name)
+        ++ "\n\n"
+        ++ (Colors.dimText ("Dependencies (uses) — " ++ (Stdlib.Int.toString (Stdlib.List.length deps))))
+        ++ "\n"
+        ++ (Stdlib.String.join depLines "\n")
+        ++ "\n\n"
+        ++ (Colors.dimText ("Dependents (used by) — " ++ (Stdlib.Int.toString (Stdlib.List.length dependents))))
+        ++ "\n"
+        ++ (Stdlib.String.join dependentLines "\n")
 
 /// AI threads for the AI view (the thread board — demo data for now, via the shared Views.AiChats source).
 let loadAiThreadItems () : List<BodyItem> =
