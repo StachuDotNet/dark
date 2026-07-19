@@ -237,3 +237,8 @@ restart app after reload; `9`/number jumps; give 1s+ sleeps between `:`/keys). F
 ### Phase 7 NEXT ACTION
 Write notes/scm-matter-view-design.md (Dark Matter sync/review view design) + print-md it. Then build the SCM
 overview view. Then proceed down the order above.
+
+### Phase 7 log (22:00) — Matter view v1 done
+Matter tab (index 13): status header + change set + SCM actions. Reuses loadWipBodyItems + changesSourceText +
+getWipSummary/getCommitCount/Sync.Conflicts.list/Sync.status/Branch.get. v2: History/Conflicts/Sync as sections
++ real +/- diff via scm/review diffForItem. NEXT: Apps & Views gallery (item 2). Target: 2am finalize (print PR).
