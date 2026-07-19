@@ -4,8 +4,8 @@ module Darklang.Cli.Apps.Workbench.Frame
 
 /// The views, in tab-bar order. Index into this is the "active view".
 val viewNames =
-  [ "Home"; "Tree"; "Inspect"; "Edit"; "Changes"; "History"
-    "Resolve"; "Mesh"; "AI"; "Runs"; "Apps"; "Values"; "Docs"; "Matter" ]
+  [ "Home"; "Matter"; "Inspect"; "Edit"; "Changes"; "History"
+    "Conflicts"; "Devices"; "AI"; "Runs"; "Apps"; "Values"; "Docs"; "SCM" ]
 
 let viewName (i: Int) : String =
   Stdlib.List.getAt viewNames i |> Stdlib.Option.withDefault "Home"

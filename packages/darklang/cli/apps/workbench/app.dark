@@ -44,6 +44,10 @@ type State =
     searchSelected: Int
     /// When true, the `?` keymap overlay is drawn centered over a dimmed frame. Any key closes it.
     showHelp: Bool
+    /// When true, the ` view-picker overlay is open — a jumpable list of all views (since 1-9 only reach the
+    /// first nine). `pickerSelected` is the cursor into viewNames.
+    viewPicker: Bool
+    pickerSelected: Int
     branchId: Uuid }
 
 /// A single-line text entry. `action` tags what Enter does (e.g. "commit").
@@ -816,7 +820,7 @@ let hintsForView (state: State) : String =
   let hasPreview = Stdlib.Bool.not (Stdlib.List.isEmpty state.items)
   let tabHint = if hasPreview then [ ("tab", "preview") ] else []
   // Global keys, always the same, anchored at the right end of the footer.
-  let global = [ ("/", "search"); (":", "cmd"); ("1-9", "view"); ("?", "help"); ("q", "quit") ]
+  let global = [ ("/", "search"); (":", "cmd"); ("`", "views"); ("?", "help"); ("q", "quit") ]
   let ctx =
     if view == 1 then
       [ ("↑↓", "move"); ("→", "in"); ("⏎", "open"); ("n/t/v", "new"); ("e", "edit"); ("r", "rename"); ("d", "deps") ]
@@ -849,6 +853,30 @@ val helpGroups =
     ("Search", "↑↓ move   ⏎ jump   esc close") ]
 
 /// A centered, boxed keymap overlay drawn over the frame. The interior is cleared so nothing shows through.
+/// The view-picker overlay: a centered, boxed, jumpable list of every view (number + name), the current one
+/// marked. Reaches the views the number keys can't (10th+).
+let renderViewPicker (state: State) (screen: UI.Layout.Region) : Unit =
+  let names = Frame.viewNames
+  let n = Stdlib.List.length names
+  let w = 34
+  let h = Stdlib.Int.min (n + 2) (screen.rows - 2)
+  let top = screen.top + (Stdlib.Int.divide (Stdlib.Int.max 0 (screen.rows - h)) 2)
+  let left = screen.left + (Stdlib.Int.divide (Stdlib.Int.max 0 (screen.cols - w)) 2)
+  let region = UI.Layout.Region { top = top; left = left; rows = h; cols = w }
+  let _ = UI.Layout.clearRegion region
+  UI.Box.panel region "Go to view  ·  ⏎ jump · esc" true (fun inner ->
+    names
+    |> Stdlib.List.indexedMap (fun i nm -> (i, nm))
+    |> Stdlib.List.take (inner.rows)
+    |> Stdlib.List.iter (fun pair ->
+      let (i, nm) = pair
+      let num = Stdlib.Int.toString (i + 1)
+      let numPad = if Stdlib.String.length num < 2 then " " ++ num else num
+      let mark = if i == state.activeView then " ◆" else ""
+      let line = numPad ++ "  " ++ nm ++ mark
+      let styled = if i == state.pickerSelected then Colors.colorize Colors.cyan ("> " ++ line) else "  " ++ line
+      Stdlib.print ((Colors.moveCursorTo (inner.top + i) (inner.left + 1)) ++ styled)))
+
 let renderHelpOverlay (screen: UI.Layout.Region) : Unit =
   let w = Stdlib.Int.min (Stdlib.Int.max 40 (screen.cols - 4)) 70
   let rows = (Stdlib.List.length helpGroups) * 2 + 3
@@ -941,6 +969,7 @@ let renderFull (state: State) : Unit =
         Frame.renderKeyHints r h)
   UI.Layout.vstack screen [ tabbar; crumb; body; hints ]
   let _ = if state.showHelp then renderHelpOverlay screen else ()
+  let _ = if state.viewPicker then renderViewPicker state screen else ()
   Stdlib.print "\u001b[?25h"
 
 
@@ -1457,6 +1486,29 @@ let handleKey
   // The `?` keymap overlay is modal: any key closes it, before anything else acts on the key.
   if state.showHelp then
     Step.Continue { state with showHelp = false }
+  else if state.viewPicker then
+    // View-picker overlay: ↑↓/j/k move, ⏎ or a digit jumps, esc closes.
+    let nviews = Stdlib.List.length Frame.viewNames
+    let moveTo (i: Int) = Step.Continue { state with pickerSelected = Stdlib.Int.max 0 (Stdlib.Int.min (nviews - 1) i) }
+    let jump (i: Int) =
+      match switchView { state with viewPicker = false } i with
+      | Continue s -> Step.Continue s
+      | Exit s -> Step.Exit s
+    match key with
+    | UpArrow -> moveTo (state.pickerSelected - 1)
+    | DownArrow -> moveTo (state.pickerSelected + 1)
+    | Enter -> jump state.pickerSelected
+    | Escape -> Step.Continue { state with viewPicker = false }
+    | _ ->
+      match keyChar with
+      | Some "k" -> moveTo (state.pickerSelected - 1)
+      | Some "j" -> moveTo (state.pickerSelected + 1)
+      | Some "q" -> Step.Continue { state with viewPicker = false }
+      | Some s ->
+        match Stdlib.Int.parse s with
+        | Ok d -> if d >= 1 && d <= nviews then jump (d - 1) else Step.Continue state
+        | Error _ -> Step.Continue state
+      | None -> Step.Continue state
   else
   match state.editing with
   | Some es ->
@@ -1603,6 +1655,9 @@ let handleKey
     | Some "g" -> navTop state
     | Some "G" -> navBottom state
     | Some "?" -> Step.Continue { state with showHelp = true }
+    | Some "`" ->
+      // View picker — a jumpable list of all views (numbers only reach the first nine).
+      Step.Continue { state with viewPicker = true; pickerSelected = state.activeView }
     | Some ":" ->
       // Command bar — run any old-school command (or eval an expression) from anywhere in the workbench.
       Step.Continue
@@ -1769,6 +1824,8 @@ let execute (cliState: Darklang.Cli.AppState) (_args: List<String>) : Darklang.C
         searchHits = []
         searchSelected = 0
         showHelp = false
+        viewPicker = false
+        pickerSelected = 0
         branchId = branchId }
   { cliState with
       currentPage = Darklang.Cli.Page.SubApp (makeSubApp state)

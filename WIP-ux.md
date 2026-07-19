@@ -262,3 +262,20 @@ notes/cli-ux-redux-pr.md, morning summary, STOP.
 Review EVERY old-system command + subcommand; verify each is reasonably accessible in the new workbench (native
 view/action, or via the `:` command bar, or a genuine gap). Audit delegated to a subagent -> coverage report;
 act on real gaps (add native affordances where the `:` bar isn't enough). Fold into the morning summary.
+
+### Phase 7 log (22:20) — full test pass CLEAN
+Swept all new features in tmux, zero bugs: Matter (renders+header+diff), AI (board), Apps&Views (AI Chats
+render captured in preview), Values (list+source), ? overlay open/close, / search->Enter jumps to parsePTExpr,
+: command bar (3*14->42, commits shows history), rename/author-from-root/diff verified earlier. NEXT: tree-native
+view peek (render-fn previews in Inspect via capture-eval), then act on the command-coverage audit when it lands.
+
+### Phase 7 — more feedback (22:2x)
+- Edit flow FIX: Edit view should be a real free-form editor — write a whole thing (module + decls), ^s parses
+  the WHOLE source and applies to the tree at once, no nav. Fresh edit with no context -> prefill
+  `module Stachu.Drafts`. (This is the module-wrapped-buffer approach; saveEditing parses a source file, module
+  line gives the location context — cleaner than the target-module prompt.)
+- Inspect view: standalone it's dead ("coming soon"/nothing) — at least make it a fake/pretty view.
+- Command audit gaps to fix: (1 top) Resolve view read-only — wire keep-mine/keep-theirs/ok keys
+  (Sync.Conflicts.keep c.location c.localHash / c.incomingHash; acknowledge for ok). (2) Apps run/start key.
+  (3) Tree d shows deps not dependents. SubApp gaps (caps ui, apps browser, agent repl, serve/tail) inherent.
+- View nav: 1-9 don't cover 14 views -> building a ` view-picker overlay (in progress).
