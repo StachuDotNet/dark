@@ -279,3 +279,12 @@ view peek (render-fn previews in Inspect via capture-eval), then act on the comm
   (Sync.Conflicts.keep c.location c.localHash / c.incomingHash; acknowledge for ok). (2) Apps run/start key.
   (3) Tree d shows deps not dependents. SubApp gaps (caps ui, apps browser, agent repl, serve/tail) inherent.
 - View nav: 1-9 don't cover 14 views -> building a ` view-picker overlay (in progress).
+
+### Phase 7 log (22:40) — big batch done
+Done this fire: view-picker overlay (`), tab renames (Tree->Matter, Resolve->Conflicts, Mesh->Devices,
+myMatter->SCM), Edit flow (free-form draft, module line -> apply to tree, Stachu.Drafts default), Inspect =
+captured PackageStats overview, Conflicts resolvable (o/t/a keys). Full test pass earlier was CLEAN.
+NEXT (audit leftovers, low-priority): Tree `d` should also show DEPENDENTS (depsText only does dependencies —
+add Builtin.depsGetDependents branchId [(loc,kind)]); Apps view run/start key (launch an app). SubApp gaps
+(caps ui, apps browser, agent repl, serve/tail) are inherent — note, don't fix. Then keep testing.
+FINALIZE ~01:55: reprint notes/cli-ux-redux-pr.md, push, morning summary, STOP.
