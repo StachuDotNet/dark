@@ -845,7 +845,7 @@ let hintsForView (state: State) : String =
     else if view == 5 then
       [ ("↑↓", "move"); ("⏎", "full"); ("b", "branch"); ("s", "switch"); ("m", "merge"); ("r", "rebase") ]
     else if view == 6 then
-      Stdlib.List.flatten [ [ ("↑↓", "move") ]; tabHint ]
+      Stdlib.List.flatten [ [ ("↑↓", "move") ]; tabHint; [ ("o", "keep ours"); ("t", "keep theirs"); ("a", "ack") ] ]
     else if view == 12 then
       Stdlib.List.flatten [ [ ("↑↓", "move") ]; tabHint; [ ("⏎", "full") ] ]
     else if view == 3 then
@@ -1082,6 +1082,22 @@ let switchView (state: State) (nv: Int) : Step =
         selected = 0
         detailScroll = 0
         focus = UI.SplitPane.Focus.First }
+
+/// Resolve the selected conflict (Conflicts view): keep ours (local), theirs (incoming), or just acknowledge.
+let resolveConflict (state: State) (which: String) : Step =
+  match Stdlib.List.getAt (Darklang.Sync.Conflicts.list ()) state.selected with
+  | None -> Step.Continue { state with message = "no conflict selected" }
+  | Some c ->
+    let ok =
+      if which == "ours" then Darklang.Sync.Conflicts.keep c.location c.localHash
+      else if which == "theirs" then Darklang.Sync.Conflicts.keep c.location c.incomingHash
+      else Darklang.Sync.Conflicts.acknowledge c.location
+    let label = if which == "ok" then "acknowledged" else "kept " ++ which
+    Step.Continue
+      { state with
+          items = itemsForView state.activeView state.branchId state.location
+          selected = 0
+          message = if ok then "resolved: " ++ label else "resolve failed" }
 
 /// Jump from a search result to its home in the Tree: open the containing module, select the leaf, close the
 /// results mode.
@@ -1729,8 +1745,10 @@ let handleKey
       if state.activeView == 1 then openReader state (depsText state) false
       else Step.Continue state
     | Some "a" ->
-      // Agents: enter a prompt for `agent ask`.
-      if state.activeView == 8 then
+      // Conflicts: acknowledge the selected divergence.
+      if state.activeView == 6 then resolveConflict state "ok"
+      // AI: enter a prompt for `agent ask`.
+      else if state.activeView == 8 then
         Step.Continue
           { state with
               input =
@@ -1752,7 +1770,11 @@ let handleKey
       else if state.activeView == 3 then startDraft state
       else Step.Continue state
     | Some "t" ->
-      if state.activeView == 1 then startNew state "type" else Step.Continue state
+      if state.activeView == 1 then startNew state "type"
+      else if state.activeView == 6 then resolveConflict state "theirs"
+      else Step.Continue state
+    | Some "o" ->
+      if state.activeView == 6 then resolveConflict state "ours" else Step.Continue state
     | Some "v" ->
       if state.activeView == 1 then startNew state "value" else Step.Continue state
     | Some "c" ->
