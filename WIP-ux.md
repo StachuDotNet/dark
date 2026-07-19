@@ -257,3 +257,8 @@ ALL new features (Matter, Apps&Views view-capture, AI ask, Values, rename r, aut
 bar, `/` search-jump, `?` overlay, diff pane) — fix any bug found; (2) Matter v2: History/Conflicts/Sync as
 switchable sections; (3) tree-native view peek (Inspect renders a render-fn via capture). At ~01:55: reprint
 notes/cli-ux-redux-pr.md, morning summary, STOP.
+
+### Phase 7 — added task: command coverage audit
+Review EVERY old-system command + subcommand; verify each is reasonably accessible in the new workbench (native
+view/action, or via the `:` command bar, or a genuine gap). Audit delegated to a subagent -> coverage report;
+act on real gaps (add native affordances where the `:` bar isn't enough). Fold into the morning summary.
