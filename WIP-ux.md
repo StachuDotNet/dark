@@ -207,3 +207,33 @@ User asks, in priority:
 4. AI UX: Agents view should let you enter prompts + manage chats (wraps the `agent`/`ai` command). Investigate
    what AI.Agent exposes.
 Do 2 + 3 first (quick, pure .dark), then 1 (F# builtin + rebuild), then 4.
+
+## Phase 7 — overnight autonomous (user asleep, no questions; make sensible calls)
+Decisions locked (don't dither):
+- Apps & Views: build a Views gallery in the workbench reusing Apps.Views.allViews() (AiChats/PackageStats/
+  UIComponents) — list + captured-render preview (stdoutCapture around each view's render). Also try tree-native
+  peek: Inspect renders a nullary render-style fn via capture when selected (best-effort; if type introspection
+  is too hard, ship the gallery + note tree-native next). Framing "Apps & Views".
+- SCM view: WRITE the design .md (Dark Matter / sync framing) + print-md it; then BUILD a first "SCM" overview
+  view composing branch state + WIP(changes) + commits(history) + conflicts + sync + a diff/source preview
+  (reuse existing loaders + changesSourceText/commitOpsText/conflictDetail; SCM.Review.App has a real diff
+  engine to borrow). Keep existing Changes/History/Resolve tabs. Frame as "the view over Dark Matter, which syncs".
+- Dark Matter = the synced package space (packages + other synced data), mostly referenced in the Matter tree.
+  Use this framing in the doc + SCM view. See notes/location-reference-design.md (printed) for the target model.
+- Doc rewrite (notes/cli-ux-redux-pr.md): title "Replace UX with much better TUI app/IDE"; para1 "instead of a
+  bare prompt + results, this evolves the default CLI UX into an IDE over Dark Matter (the synced package
+  space)"; para2 "the old UX was super bare-bones (describe + a minified before); this expands into separate
+  views + a richer UX"; cut para3; replace "Changes Made" with a "Views / Panes" section embedding MINIFIED
+  renders of each screen (capture from tmux, trim); move Reusable UI later and for each component + main view
+  show input-data type + a minified sample render in ```bash blocks; CUT "Worth special review" + "Try it".
+  Then print-md it.
+- layout.dark -> resizeable.dark rename (user leaned yes). Update module name + all refs; reload; verify.
+
+Order: SCM design .md + print -> SCM view build -> Apps & Views -> layout rename -> doc rewrite (needs views
+built for the render captures) -> final reprint of PR doc -> summary. Commit+push each. tmux verify (stty -ixon;
+restart app after reload; `9`/number jumps; give 1s+ sleeps between `:`/keys). F# changes (unlikely needed) use
+`./scripts/run-in-docker scripts/build/compile <files>`. NEVER reset/stash/force-push.
+
+### Phase 7 NEXT ACTION
+Write notes/scm-matter-view-design.md (Dark Matter sync/review view design) + print-md it. Then build the SCM
+overview view. Then proceed down the order above.
