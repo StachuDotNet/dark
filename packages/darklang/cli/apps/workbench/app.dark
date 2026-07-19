@@ -262,6 +262,40 @@ let aiThreadDetail (selected: Int) : String =
     ++ "(demo data · press a to ask the agent a new prompt)"
   | None -> "(no thread selected)"
 
+/// All package values across the tree (for the Things view) — a flat, searchable browser of the data/consts.
+let loadThingItems (branchId: Uuid) : List<BodyItem> =
+  let q =
+    LanguageTools.ProgramTypes.Search.SearchQuery
+      { currentModule = []
+        text = ""
+        searchDepth = LanguageTools.ProgramTypes.Search.SearchDepth.AllDescendants
+        entityTypes = [ LanguageTools.ProgramTypes.Search.EntityType.Value ]
+        exactMatch = false }
+  (LanguageTools.PackageManager.Search.search branchId q).values
+  |> Stdlib.List.map (fun i ->
+    let full =
+      Stdlib.String.join (Stdlib.List.flatten [ [ i.location.owner ]; i.location.modules; [ i.location.name ] ]) "."
+    BodyItem { name = full; kind = "val"; isModule = false })
+
+/// The source of the selected Thing (value), for the preview — looked up by its full path.
+let thingDetail (state: State) : String =
+  match Stdlib.List.getAt state.items state.selected with
+  | None -> "(nothing selected)"
+  | Some item ->
+    let parts = Stdlib.String.split item.name "."
+    let leaf = Stdlib.List.last parts |> Stdlib.Option.withDefault item.name
+    let mods = Stdlib.List.take parts (Stdlib.Int.max 0 ((Stdlib.List.length parts) - 1))
+    let results = Packages.Query.searchExactMatch state.branchId mods leaf
+    match results.values with
+    | i :: _ ->
+      let ctx =
+        PrettyPrinter.ProgramTypes.Context
+          { branchId = state.branchId
+            currentModule = Stdlib.Option.Option.None
+            currentFunction = Stdlib.Option.Option.None }
+      PrettyPrinter.ProgramTypes.packageValue ctx i.entity
+    | [] -> "(not found)"
+
 /// Recorded sync divergences (for the Resolve view).
 let loadConflictBodyItems () : List<BodyItem> =
   Darklang.Sync.Conflicts.list ()
@@ -312,6 +346,7 @@ let itemsForView
   else if view == 8 then loadAiThreadItems ()
   else if view == 9 then loadRunBodyItems ()
   else if view == 10 then loadServiceBodyItems ()
+  else if view == 11 then loadThingItems branchId
   else if view == 12 then loadDocBodyItems ()
   else []
 
@@ -398,6 +433,7 @@ let previewLines (state: State) : List<String> =
   else if state.activeView == 5 then Stdlib.String.split (commitSummary state.branchId state.selected) "\n"
   else if state.activeView == 6 then Stdlib.String.split (conflictDetail state.selected) "\n"
   else if state.activeView == 8 then Stdlib.String.split (aiThreadDetail state.selected) "\n"
+  else if state.activeView == 11 then Stdlib.String.split (thingDetail state) "\n"
   else if state.activeView == 12 then Stdlib.String.split (docContent state.selected) "\n"
   else detailLines state
 
@@ -406,7 +442,7 @@ let renderPreview (state: State) (region: UI.Layout.Region) : Unit =
   // Syntax-highlight the code previews (Inspect source, Changes WIP source). Docs/History-summary/Resolve
   // aren't code, so they stay plain. Highlighting emits ANSI; printAt truncates by raw length, so we only
   // print the highlighted line when the PLAIN line fits the pane width, else fall back to plain-truncated.
-  let doHighlight = (state.activeView <= 1) || (state.activeView == 4)
+  let doHighlight = (state.activeView <= 1) || (state.activeView == 4) || (state.activeView == 11)
   let highlighted =
     if doHighlight then
       let h =
@@ -607,6 +643,8 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
     splitListPreview state region "Docs" "Topic" (Colors.dimText "(no topics)")
   else if state.activeView == 8 then
     splitListPreview state region "AI" "Thread" (Colors.dimText "no threads — press a to ask the agent")
+  else if state.activeView == 11 then
+    splitListPreview state region "Values" "Source" (Colors.dimText "no values found")
   else if state.activeView == 3 then
     boxedLines
       region
