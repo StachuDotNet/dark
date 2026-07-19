@@ -850,7 +850,7 @@ let hintsForView (state: State) : String =
   let hasPreview = Stdlib.Bool.not (Stdlib.List.isEmpty state.items)
   let tabHint = if hasPreview then [ ("tab", "preview") ] else []
   // Global keys, always the same, anchored at the right end of the footer.
-  let global = [ ("/", "search"); (":", "cmd"); ("`", "views"); ("?", "help"); ("q", "quit") ]
+  let global = [ ("/", "search"); (":", "cmd"); ("`", "views"); ("?", "help"); ("esc/q", "quit") ]
   let ctx =
     if view == 1 then
       [ ("↑↓", "move"); ("→", "in"); ("⏎", "open"); ("n/t/v", "new"); ("e", "edit"); ("r", "rename"); ("d", "deps") ]
@@ -1214,9 +1214,6 @@ let performInputAction (state: State) (inp: InputState) : Step =
                     selected = 0
                     message = "renamed to " ++ inp.text }
             | Error m -> Step.Continue { state with input = Stdlib.Option.Option.None; message = "rename failed: " ++ m }
-  else if inp.action == "quit" then
-    if inp.text == "y" then Step.Exit state
-    else Step.Continue { state with input = Stdlib.Option.Option.None }
   else if inp.action == "merge" then
     if inp.text != "y" then
       Step.Continue { state with input = Stdlib.Option.Option.None }
@@ -1716,17 +1713,12 @@ let handleKey
   | LeftArrow -> ascend state
   | Tab -> Step.Continue { state with focus = UI.SplitPane.toggle state.focus }
   | Escape ->
-    // Back out one level, never quit-by-surprise: from any view -> Home; on Home -> no-op (q quits).
-    if state.activeView == 0 then Step.Continue state else switchView state 0
+    // Escape just leaves. This is the whole experience; there's no classic prompt to fall back to,
+    // so leaving the workbench leaves the CLI. Old commands live on the `:` bar, not behind an exit.
+    Step.Exit state
   | _ ->
     match keyChar with
-    | Some "q" ->
-      // Leaving for the classic prompt is a deliberate, explicit choice — confirm it, name where you land.
-      Step.Continue
-        { state with
-            input =
-              Stdlib.Option.Option.Some
-                (InputState { prompt = "leave the workbench for the classic prompt? y to leave, esc to stay: "; text = ""; action = "quit" }) }
+    | Some "q" -> Step.Exit state
     // Vim motion — the same movement as the arrows, so muscle memory works either way.
     | Some "k" -> navUp state
     | Some "j" -> navDown state

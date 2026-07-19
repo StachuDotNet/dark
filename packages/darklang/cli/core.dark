@@ -700,13 +700,9 @@ let handleKeyInput (state: AppState) (key: Stdlib.Cli.Stdin.Key.Key) (modifiers:
     | Exit ->
       newApp.onSave ()
       Stdlib.print "\u001b[?1049l"
-      // Launched one-shot (`dark apps`)? Exit to the shell. Inside the REPL? Back to the prompt.
-      if state.nonInteractive then
-        { state with isExiting = true }
-      else
-        { state with
-            currentPage = Page.MainPrompt
-            needsFullRedraw = true }
+      // The workbench is the experience — leaving it leaves the CLI, no classic-prompt fallback.
+      // (The classic prompt is only reachable via DARK_CLASSIC=1 at launch.)
+      { state with isExiting = true }
     | LaunchCommand cmd ->
       // Replace this page by running `cmd` (which sets up its own page, e.g. a foreground app's SubApp).
       let launched = Registry.executeCommand cmd state []
