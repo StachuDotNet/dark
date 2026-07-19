@@ -436,6 +436,16 @@ let detailLines (state: State) : List<String> =
   | Some item ->
     if item.isModule then
       [ (iconFor item) ++ " " ++ item.name; ""; "module — → to enter" ]
+    else if item.kind == "fn" && item.name == "render" then
+      // Tree-native view peek: a `render` fn lights up its output right here — evaluate it (captured) and show
+      // the rendered frame instead of source. Any view value in the Matter tree previews just by cursoring onto it.
+      let modulePath = modulePathOf state.location
+      let fullpath = Stdlib.String.join (Stdlib.List.append modulePath [ item.name ]) "."
+      let _ = Builtin.stdoutCaptureStart ()
+      let _ = Builtin.cliEvaluateExpression state.accountId state.branchId (fullpath ++ " ()") false
+      let out = Builtin.stdoutCaptureStop ()
+      if (Stdlib.String.trim out) == "" then [ Colors.dimText "(view produced no output)" ]
+      else Stdlib.String.split out "\n"
     else
       let modulePath = modulePathOf state.location
       let results = Packages.Query.searchExactMatch state.branchId modulePath item.name
@@ -499,7 +509,9 @@ let renderPreview (state: State) (region: UI.Layout.Region) : Unit =
   // aren't code, so they stay plain. Highlighting emits ANSI; printAt truncates by raw length, so we only
   // print the highlighted line when the PLAIN line fits the pane width, else fall back to plain-truncated.
   // Changes (4) + Matter (13) show a pre-colored +/- diff, not highlighted source, so they're not re-highlighted.
-  let doHighlight = (state.activeView <= 1) || (state.activeView == 11)
+  // Also skip highlighting anything already ANSI-colored (e.g. a tree-native render peek) — it's not plain source.
+  let alreadyColored = Stdlib.String.contains (Stdlib.String.join plain "\n") ""
+  let doHighlight = ((state.activeView <= 1) || (state.activeView == 11)) && (Stdlib.Bool.not alreadyColored)
   let highlighted =
     if doHighlight then
       let h =

@@ -299,3 +299,9 @@ Swept all 14 views: 0 errors. Audit gaps addressed (conflicts resolvable, deps+d
 rationale). Tree-native view peek SKIPPED (would double-highlight the pre-colored render; Apps&Views gallery
 already covers "peek at views"). Matter v2 sections SKIPPED (risk near finalize; noted as fast-follow). Feature
 set is complete + stable. WIND DOWN: light re-testing only, then at ~01:55 reprint PR doc + morning summary + STOP.
+
+### Phase 7 — feedback (23:0x)
+- Escape should JUST LEAVE (exit the process), no fallback to old UX/classic prompt. Commit fully to new UX;
+  classic things via the `:` bottom prompt. Make workbench exit quit the process (LaunchCommand "quit" or set
+  isExiting), not go to MainPrompt. Drop the q confirm too (just leave).
+- Tree-native view peek: a `render` fn previews live in Inspect (capture-eval); skip re-highlighting ANSI content.
