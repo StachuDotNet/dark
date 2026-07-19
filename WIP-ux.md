@@ -248,3 +248,12 @@ Apps&Views: Services tab -> "Apps & Views", lists apps + registered views, view 
 layout.dark->resizeable.dark: SKIPPED as a sensible call — Layout is the accurate name (region model + combinators
 + truncateVisible; broader than "resizeable"), and it's a deep risky rename near the 2am deadline. Flag for
 Stachu's review. NEXT: doc rewrite (item 4) with minified render captures, then print + finalize at 2am.
+
+### Phase 7 log (22:13) — doc rewrite + real diff pane done
+Done tonight: Matter view v1, Apps&Views (captured view previews), doc rewrite (printed), real +/- diff in
+Changes+Matter (SCM.Review.App.diffForItem). Gotcha: diffForItem etc are in SCM.Review.App not SCM.Review.
+Target: user wakes ~2am, wants everything tested + PR printed. NEXT (until 2am): (1) THOROUGH tmux test pass of
+ALL new features (Matter, Apps&Views view-capture, AI ask, Values, rename r, author-from-anywhere, `:` command
+bar, `/` search-jump, `?` overlay, diff pane) — fix any bug found; (2) Matter v2: History/Conflicts/Sync as
+switchable sections; (3) tree-native view peek (Inspect renders a render-fn via capture). At ~01:55: reprint
+notes/cli-ux-redux-pr.md, morning summary, STOP.
