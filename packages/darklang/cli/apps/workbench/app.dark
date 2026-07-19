@@ -351,6 +351,7 @@ let itemsForView
   else if view == 10 then loadServiceBodyItems ()
   else if view == 11 then loadThingItems branchId
   else if view == 12 then loadDocBodyItems ()
+  else if view == 13 then loadWipBodyItems branchId
   else []
 
 
@@ -437,6 +438,7 @@ let previewLines (state: State) : List<String> =
   else if state.activeView == 6 then Stdlib.String.split (conflictDetail state.selected) "\n"
   else if state.activeView == 8 then Stdlib.String.split (aiThreadDetail state.selected) "\n"
   else if state.activeView == 11 then Stdlib.String.split (thingDetail state) "\n"
+  else if state.activeView == 13 then Stdlib.String.split (changesSourceText state.branchId state.selected) "\n"
   else if state.activeView == 12 then Stdlib.String.split (docContent state.selected) "\n"
   else detailLines state
 
@@ -445,7 +447,7 @@ let renderPreview (state: State) (region: UI.Layout.Region) : Unit =
   // Syntax-highlight the code previews (Inspect source, Changes WIP source). Docs/History-summary/Resolve
   // aren't code, so they stay plain. Highlighting emits ANSI; printAt truncates by raw length, so we only
   // print the highlighted line when the PLAIN line fits the pane width, else fall back to plain-truncated.
-  let doHighlight = (state.activeView <= 1) || (state.activeView == 4) || (state.activeView == 11)
+  let doHighlight = (state.activeView <= 1) || (state.activeView == 4) || (state.activeView == 11) || (state.activeView == 13)
   let highlighted =
     if doHighlight then
       let h =
@@ -617,6 +619,50 @@ let splitListPreview
       previewTitle
       (fun r -> renderPreview state r)
 
+/// The Matter status header — the always-true summary of Dark Matter's state on this branch.
+let renderMatterHeader (state: State) (region: UI.Layout.Region) : Unit =
+  let branchOpt = SCM.Branch.get state.branchId
+  let branch = match branchOpt with | Some b -> b.name | None -> "main"
+  let parent =
+    match branchOpt with
+    | Some b ->
+      match b.parentBranchId with
+      | Some pid -> (match SCM.Branch.get pid with | Some p -> p.name | None -> "?")
+      | None -> "(root)"
+    | None -> "(root)"
+  let wip = (SCM.PackageOps.getWipSummary state.branchId).total
+  let commits = SCM.PackageOps.getCommitCount state.branchId
+  let conflicts = Stdlib.List.length (Darklang.Sync.Conflicts.list ())
+  let peers = Stdlib.List.length (Darklang.Sync.status ())
+  let line1 =
+    "  " ++ (Colors.boldText ("branch: " ++ branch)) ++ (Colors.dimText ("   →   " ++ parent))
+  let wipPart =
+    if wip == 0 then Colors.colorize Colors.green "✓ clean"
+    else Colors.colorize Colors.pink ("● " ++ (plural wip "change"))
+  let confPart =
+    if conflicts == 0 then Colors.dimText "no conflicts"
+    else Colors.colorize Colors.pink ("⚠ " ++ (plural conflicts "conflict"))
+  let syncPart = if peers == 0 then Colors.dimText "no peers" else Colors.dimText ((Stdlib.Int.toString peers) ++ " peers")
+  let sep = Colors.dimText "     "
+  let line2 =
+    "  " ++ wipPart ++ sep ++ (Colors.dimText (plural commits "commit")) ++ sep ++ confPart ++ sep ++ syncPart
+  let _ = Stdlib.print ((Colors.moveCursorTo region.top region.left) ++ line1)
+  Stdlib.print ((Colors.moveCursorTo (region.top + 1) region.left) ++ line2)
+
+/// The Matter view: the status header over the change set (WIP list + source), with the SCM actions in the
+/// footer. One home for "what's different in Dark Matter, and what will travel."
+let renderMatter (state: State) (region: UI.Layout.Region) : Unit =
+  let headerRows = 3
+  let headerRegion = UI.Layout.Region { top = region.top; left = region.left; rows = headerRows; cols = region.cols }
+  let bodyRegion =
+    UI.Layout.Region
+      { top = region.top + headerRows
+        left = region.left
+        rows = Stdlib.Int.max 1 (region.rows - headerRows)
+        cols = region.cols }
+  let _ = renderMatterHeader state headerRegion
+  splitListPreview state bodyRegion "Changes" "Source" (Colors.colorize Colors.green "✓ working tree clean — nothing to commit")
+
 let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
   if state.activeView == 0 then
     renderHome state region
@@ -648,6 +694,8 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
     splitListPreview state region "AI" "Thread" (Colors.dimText "no threads — press a to ask the agent")
   else if state.activeView == 11 then
     splitListPreview state region "Values" "Source" (Colors.dimText "no values found")
+  else if state.activeView == 13 then
+    renderMatter state region
   else if state.activeView == 3 then
     boxedLines
       region
@@ -743,6 +791,8 @@ let hintsForView (state: State) : String =
       Stdlib.List.flatten [ [ ("↑↓", "move") ]; tabHint; [ ("⏎", "full") ] ]
     else if view == 8 then
       Stdlib.List.flatten [ [ ("↑↓", "move") ]; tabHint; [ ("a", "ask") ] ]
+    else if view == 13 then
+      [ ("↑↓", "move"); ("c", "commit"); ("x", "discard"); ("b", "branch"); ("s", "switch"); ("m", "merge"); ("r", "rebase") ]
     else
       [ ("↑↓", "move") ]
   Frame.formatHints (Stdlib.List.append ctx global)
@@ -1561,7 +1611,7 @@ let handleKey
       if state.activeView == 1 then startNew state "value" else Step.Continue state
     | Some "c" ->
       // Changes: commit all WIP with a message.
-      if state.activeView == 4 then
+      if state.activeView == 4 || state.activeView == 13 then
         Step.Continue
           { state with
               input =
@@ -1571,7 +1621,7 @@ let handleKey
         Step.Continue state
     | Some "x" ->
       // Changes: discard all WIP (destructive → confirm).
-      if state.activeView == 4 then
+      if state.activeView == 4 || state.activeView == 13 then
         Step.Continue
           { state with
               input =
@@ -1582,7 +1632,7 @@ let handleKey
         Step.Continue state
     | Some "b" ->
       // History: create a new branch from the current one, and switch to it.
-      if state.activeView == 5 then
+      if state.activeView == 5 || state.activeView == 13 then
         Step.Continue
           { state with
               input =
@@ -1592,7 +1642,7 @@ let handleKey
         Step.Continue state
     | Some "s" ->
       // History: switch to an existing branch by name.
-      if state.activeView == 5 then
+      if state.activeView == 5 || state.activeView == 13 then
         Step.Continue
           { state with
               input =
@@ -1602,7 +1652,7 @@ let handleKey
         Step.Continue state
     | Some "m" ->
       // History: merge this branch into its parent (confirm first).
-      if state.activeView == 5 then
+      if state.activeView == 5 || state.activeView == 13 then
         Step.Continue
           { state with
               input =
@@ -1611,7 +1661,7 @@ let handleKey
       else
         Step.Continue state
     | Some "r" ->
-      if state.activeView == 5 then
+      if state.activeView == 5 || state.activeView == 13 then
         // History: rebase this branch onto its parent (confirm first).
         Step.Continue
           { state with
