@@ -153,6 +153,26 @@ let commitSummary (branchId: Uuid) (selected: Int) : String =
     ++ " ops  ·  press ⏎ to view them"
 
 /// The current source of the selected WIP item (for the Changes reader).
+/// A real +/- diff of the selected WIP item (old-vs-new), reusing the review app's diff engine. Matched by
+/// name so it lines up with the workbench's own WIP list regardless of ordering.
+let wipDiffText (state: State) : String =
+  match Stdlib.List.getAt state.items state.selected with
+  | None -> "(no change selected)"
+  | Some item ->
+    let pkgs = SCM.Review.App.loadWipItems state.branchId
+    match Stdlib.List.findFirst pkgs (fun p -> p.name == item.name) with
+    | None -> "(not found)"
+    | Some pkg ->
+      let ops = SCM.PackageOps.getWip state.branchId
+      let parentId = SCM.Review.App.getParentBranchId state.branchId
+      SCM.Review.App.diffForItem ops state.branchId parentId pkg
+      |> Stdlib.List.map (fun dl ->
+        match dl with
+        | Same s -> Colors.dimText ("  " ++ s)
+        | Added s -> Colors.colorize Colors.green ("+ " ++ s)
+        | Removed s -> Colors.colorize Colors.red ("- " ++ s))
+      |> Stdlib.String.join "\n"
+
 let changesSourceText (branchId: Uuid) (selected: Int) : String =
   let items = SCM.PackageOps.getWipItems branchId
   match Stdlib.List.getAt items selected with
@@ -455,13 +475,13 @@ let conflictDetail (selected: Int) : String =
 /// ops for a commit in History, the topic for Docs, the divergence detail for Resolve. One function so the
 /// preview pane, its scroll bounds, and the full-screen reader all agree.
 let previewLines (state: State) : List<String> =
-  if state.activeView == 4 then Stdlib.String.split (changesSourceText state.branchId state.selected) "\n"
+  if state.activeView == 4 then Stdlib.String.split (wipDiffText state) "\n"
   else if state.activeView == 5 then Stdlib.String.split (commitSummary state.branchId state.selected) "\n"
   else if state.activeView == 6 then Stdlib.String.split (conflictDetail state.selected) "\n"
   else if state.activeView == 8 then Stdlib.String.split (aiThreadDetail state.selected) "\n"
   else if state.activeView == 10 then Stdlib.String.split (serviceDetail state) "\n"
   else if state.activeView == 11 then Stdlib.String.split (thingDetail state) "\n"
-  else if state.activeView == 13 then Stdlib.String.split (changesSourceText state.branchId state.selected) "\n"
+  else if state.activeView == 13 then Stdlib.String.split (wipDiffText state) "\n"
   else if state.activeView == 12 then Stdlib.String.split (docContent state.selected) "\n"
   else detailLines state
 
@@ -470,7 +490,8 @@ let renderPreview (state: State) (region: UI.Layout.Region) : Unit =
   // Syntax-highlight the code previews (Inspect source, Changes WIP source). Docs/History-summary/Resolve
   // aren't code, so they stay plain. Highlighting emits ANSI; printAt truncates by raw length, so we only
   // print the highlighted line when the PLAIN line fits the pane width, else fall back to plain-truncated.
-  let doHighlight = (state.activeView <= 1) || (state.activeView == 4) || (state.activeView == 11) || (state.activeView == 13)
+  // Changes (4) + Matter (13) show a pre-colored +/- diff, not highlighted source, so they're not re-highlighted.
+  let doHighlight = (state.activeView <= 1) || (state.activeView == 11)
   let highlighted =
     if doHighlight then
       let h =
@@ -488,13 +509,10 @@ let renderPreview (state: State) (region: UI.Layout.Region) : Unit =
   |> Stdlib.List.iter (fun pair ->
     let (i, p) = pair
     let row = i - off
-    if doHighlight then
-      // ANSI-aware truncate keeps highlighting even when the line overflows the pane (no plain fallback).
-      let disp = Stdlib.List.getAt highlighted i |> Stdlib.Option.withDefault p
-      Stdlib.print
-        ((Colors.moveCursorTo (region.top + row) (region.left + 1)) ++ (UI.Layout.truncateVisible disp maxFit))
-    else
-      UI.Layout.printAt region row 1 p)
+    // ANSI-aware truncate either way — highlighted code or pre-colored content (a diff) both carry codes.
+    let disp = if doHighlight then (Stdlib.List.getAt highlighted i |> Stdlib.Option.withDefault p) else p
+    Stdlib.print
+      ((Colors.moveCursorTo (region.top + row) (region.left + 1)) ++ (UI.Layout.truncateVisible disp maxFit)))
 
 /// "1 commit" / "2 commits" — count + correctly-pluralized noun.
 let plural (n: Int) (noun: String) : String =
