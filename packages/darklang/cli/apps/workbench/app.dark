@@ -71,10 +71,6 @@ type Step =
   | Continue of State
   | Exit of State
 
-/// Full keymap, shown by `?` in the reusable reader.
-val helpText =
-  "Workbench — keys\n\n  Global (work from any view)\n    :          run — evaluate a Dark expression, result opens in the reader\n    1-9        jump to a view · [ ] cycle views\n    ?          this help\n    esc        back out one level — close a reader/mode, or return to Home\n    q          quit the workbench\n\n  Navigation\n    up/down    move selection · scroll a reader   (vim: j down · k up)\n    right/enter into a module (Tree) · open source/ops/a topic   (vim: l)\n    left       up a level (Tree)   (vim: h)\n    g / G      jump to top / bottom of the list\n    tab        toggle focus Tree <-> Inspect\n\n  Authoring (Tree)\n    n t v      new fn / type / value    e  edit the selected fn\n    ^s         save (in the editor) · esc cancel\n\n  Changes: c commit · x discard    History: b new-branch · s switch\n\n  Views\n    1 Home   2 Tree   3 Inspect   4 Edit   5 Changes   6 History\n    7 Resolve   8 Mesh   9 Agents   ([ ] reach) Runs Services Things Docs\n\n  Wired today: Home Tree Inspect Changes History Resolve Mesh Runs Services Docs.\n  Edit/Agents/Things: coming soon.\n\n  ? this help  ·  esc to close"
-
 
 // ── Package listing (the Tree body) ──
 
@@ -876,12 +872,13 @@ let hintsForView (state: State) : String =
 
 /// The keymap, grouped, for the `?` overlay — (category, keys).
 val helpGroups =
-  [ ("Global", ": cmd   / search   ? help   esc back   q quit")
+  [ ("Global", ": cmd   / search   ` views   ? help   esc/q quit")
     ("Views", "1-9 jump   [ ] cycle")
     ("Move", "↑↓ or j/k   g/G top/bottom   tab focus pane")
-    ("Tree", "→/l in   ←/h up   ⏎ open   n/t/v new   e edit   d deps")
+    ("Tree", "→/l in   ←/h up   ⏎ open   n/t/v new   e edit   r rename   d deps")
     ("Changes", "c commit   x discard")
-    ("History", "b branch   s switch   m merge   r rebase")
+    ("Conflicts", "o keep ours   t keep theirs   a ack")
+    ("SCM", "c commit   x discard   b branch   s switch   m merge   r rebase")
     ("Search", "↑↓ move   ⏎ jump   esc close") ]
 
 /// A centered, boxed keymap overlay drawn over the frame. The interior is cleared so nothing shows through.
