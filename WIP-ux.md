@@ -288,3 +288,8 @@ NEXT (audit leftovers, low-priority): Tree `d` should also show DEPENDENTS (deps
 add Builtin.depsGetDependents branchId [(loc,kind)]); Apps view run/start key (launch an app). SubApp gaps
 (caps ui, apps browser, agent repl, serve/tail) are inherent — note, don't fix. Then keep testing.
 FINALIZE ~01:55: reprint notes/cli-ux-redux-pr.md, push, morning summary, STOP.
+
+### Phase 7 log (22:48) — deps-dependents done; apps-run SKIPPED
+d now shows dependencies + dependents. Apps-run key SKIPPED (sensible call): running an app is a blocking daemon
+or a SubApp -> would freeze the frame; `: apps start/run/stop <slug>` covers it safely via the command bar.
+NEXT: full all-views crash sweep + re-test actions, then idle to 01:55 finalize.
