@@ -745,13 +745,15 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
     boxedLines
       region
       "Edit"
-      [ Colors.boldText "Author from the Tree view."
+      [ Colors.boldText "Edit anything, apply at once."
         ""
-        Colors.dimText "Press 2 (Tree), pick a location, then:"
-        Colors.dimText "  n  new fn      t  new type     v  new value"
-        Colors.dimText "  e  edit the selected fn in place"
+        Colors.dimText "  n / ⏎   start a draft — a full editor prefilled with:"
+        Colors.dimText "              module <you>.Drafts"
+        Colors.dimText "              let example (x: Int): Int = x"
+        Colors.dimText "          write the module + declaration, ^s parses it and applies to the tree."
         ""
-        Colors.dimText "In the editor: type the body · ^s saves it as WIP · esc cancels." ]
+        Colors.dimText "Or from Matter (the tree): n/t/v new · e edit in place · r rename. Change the module"
+        Colors.dimText "line to save anywhere; no navigation needed." ]
   else
     boxedLines
       region
@@ -834,6 +836,8 @@ let hintsForView (state: State) : String =
       Stdlib.List.flatten [ [ ("↑↓", "move") ]; tabHint ]
     else if view == 12 then
       Stdlib.List.flatten [ [ ("↑↓", "move") ]; tabHint; [ ("⏎", "full") ] ]
+    else if view == 3 then
+      [ ("n/⏎", "draft") ]
     else if view == 8 then
       Stdlib.List.flatten [ [ ("↑↓", "move") ]; tabHint; [ ("a", "ask") ] ]
     else if view == 13 then
@@ -1328,14 +1332,27 @@ let saveEditing (state: State) (es: EditingState) : Step =
   let keepErr (msg: String) : Step =
     Step.Continue { state with editing = Stdlib.Option.Option.Some { es with err = msg } }
 
-  let fullSource = UI.Editor.toText es.buf
+  let rawSource = UI.Editor.toText es.buf
+  // A `module Owner.Mod` first line (the free-form Edit/draft flow) sets where everything lands — parse it off
+  // and treat the rest as the declaration. Otherwise use the editor's target module (the n/t/v flow).
+  let srcLines = Stdlib.String.split rawSource "\n"
+  let (targetMod, fullSource) =
+    match srcLines with
+    | first :: rest ->
+      let firstT = Stdlib.String.trim first
+      if Stdlib.String.startsWith firstT "module " then
+        let modStr = Stdlib.String.trim (Stdlib.String.dropFirst firstT (Stdlib.String.length "module "))
+        let modParts = Stdlib.String.split modStr "." |> Stdlib.List.filter (fun p -> p != "")
+        (modParts, Stdlib.String.trim (Stdlib.String.join rest "\n"))
+      else
+        (es.targetModule, rawSource)
+    | [] -> (es.targetModule, rawSource)
   let leaf = leafNameOf fullSource
   if leaf == "" then
     keepErr "add a name after the keyword, then ^s"
   else
-  // Resolve the name against the editor's target module (set when the editor opened), not the current tree
-  // location — so authoring works from anywhere and doesn't move if you navigate away mid-edit.
-  match Packages.Location.parseRelativeTo (Packages.PackageLocation.Module es.targetModule) leaf with
+  // Resolve the name against the target module (a `module …` line, or the editor's target from where it opened).
+  match Packages.Location.parseRelativeTo (Packages.PackageLocation.Module targetMod) leaf with
   | Error e -> keepErr ("bad name: " ++ e)
   | Ok location ->
     let diags = Builtin.parserParseDiagnostics fullSource
@@ -1428,6 +1445,22 @@ let openNewEditor (state: State) (kind: String) (targetModule: List<String>) : S
 /// Author a new item. The declaration is a BARE name (a qualified `let Owner.Mod.name` is a parse error), so the
 /// target module has to come from somewhere: use the current tree location if it's deep enough (owner.Module),
 /// otherwise ask for it — so you can author from anywhere, not only inside a module.
+/// The free-form Edit/draft flow: open the editor on a full `module … + declaration` source you can write
+/// wholesale and apply at once (the `module` line sets where it lands), defaulting to <owner>.Drafts.
+let startDraft (state: State) : Step =
+  let owner = if state.accountName == "" then "Stachu" else state.accountName
+  let template = "module " ++ owner ++ ".Drafts\n\nlet example (x: Int): Int =\n  x"
+  Step.Continue
+    { state with
+        editing =
+          Stdlib.Option.Option.Some
+            (EditingState
+              { kind = "fn"
+                nameStr = "Draft — write module + declaration, ^s applies"
+                targetModule = [ owner; "Drafts" ]
+                buf = UI.Editor.fromText template
+                err = "" }) }
+
 let startNew (state: State) (kind: String) : Step =
   let modPath = modulePathOf state.location
   if Stdlib.List.length modPath >= 2 then
@@ -1631,6 +1664,9 @@ let handleKey
         if item.isModule then descend state
         else openReader state (detailLines state |> Stdlib.String.join "\n") true
       | None -> descend state
+    else if state.activeView == 3 then
+      // Edit view: Enter starts a free-form draft.
+      startDraft state
     else
       descend state
   | LeftArrow -> ascend state
@@ -1699,8 +1735,10 @@ let handleKey
       else
         Step.Continue state
     | Some "n" ->
-      // Tree: author a new fn — open the spacious editor directly with a full template.
-      if state.activeView == 1 then startNew state "fn" else Step.Continue state
+      // Tree: new fn. Edit view: start a free-form draft.
+      if state.activeView == 1 then startNew state "fn"
+      else if state.activeView == 3 then startDraft state
+      else Step.Continue state
     | Some "t" ->
       if state.activeView == 1 then startNew state "type" else Step.Continue state
     | Some "v" ->
