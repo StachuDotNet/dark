@@ -313,10 +313,32 @@ let loadDocBodyItems () : List<BodyItem> =
 
 /// Managed apps — daemons + foreground apps (for the Services view).
 let loadServiceBodyItems () : List<BodyItem> =
-  Apps.Registry.available ()
-  |> Stdlib.List.map (fun a ->
-    let tag = if Apps.Model.isDaemon a.target then "daemon" else "app"
-    BodyItem { name = a.name ++ "  —  " ++ a.description; kind = tag; isModule = false })
+  let apps =
+    Apps.Registry.available ()
+    |> Stdlib.List.map (fun a ->
+      let tag = if Apps.Model.isDaemon a.target then "daemon" else "app"
+      BodyItem { name = a.name ++ "  —  " ++ a.description; kind = tag; isModule = false })
+  // Registered views — renderable panels you can peek at in place (their render is captured into the preview).
+  let views =
+    Darklang.Cli.Apps.Views.allViews ()
+    |> Stdlib.List.map (fun v -> BodyItem { name = v.name; kind = "view"; isModule = false })
+  Stdlib.List.append apps views
+
+/// The preview for an Apps-view selection: for a view, capture its render() and show the frame; for an app,
+/// its name/description line.
+let serviceDetail (state: State) : String =
+  match Stdlib.List.getAt state.items state.selected with
+  | None -> "(nothing selected)"
+  | Some item ->
+    if item.kind == "view" then
+      match Stdlib.List.findFirst (Darklang.Cli.Apps.Views.allViews ()) (fun v -> v.name == item.name) with
+      | Some v ->
+        let _ = Builtin.stdoutCaptureStart ()
+        let _ = v.render ()
+        Builtin.stdoutCaptureStop ()
+      | None -> "(view not found)"
+    else
+      item.name ++ "\n\n(app — run it from the classic `apps` command for now)"
 
 /// Recent execution traces (for the Runs view).
 let loadRunBodyItems () : List<BodyItem> =
@@ -437,6 +459,7 @@ let previewLines (state: State) : List<String> =
   else if state.activeView == 5 then Stdlib.String.split (commitSummary state.branchId state.selected) "\n"
   else if state.activeView == 6 then Stdlib.String.split (conflictDetail state.selected) "\n"
   else if state.activeView == 8 then Stdlib.String.split (aiThreadDetail state.selected) "\n"
+  else if state.activeView == 10 then Stdlib.String.split (serviceDetail state) "\n"
   else if state.activeView == 11 then Stdlib.String.split (thingDetail state) "\n"
   else if state.activeView == 13 then Stdlib.String.split (changesSourceText state.branchId state.selected) "\n"
   else if state.activeView == 12 then Stdlib.String.split (docContent state.selected) "\n"
@@ -677,7 +700,7 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
       "Inspect"
       (fun r -> renderPreview state r)
   else if state.activeView == 10 then
-    boxedList state region "Services" (Colors.dimText "no apps registered — install one with the apps command")
+    splitListPreview state region "Apps & Views" "Preview" (Colors.dimText "no apps or views registered")
   else if state.activeView == 9 then
     boxedList state region "Runs" (Colors.dimText "no runs yet — eval, run a script, or serve to record traces")
   else if state.activeView == 7 then
