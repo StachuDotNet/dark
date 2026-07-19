@@ -741,6 +741,18 @@ let renderViewBody (state: State) (region: UI.Layout.Region) : Unit =
     splitListPreview state region "Values" "Source" (Colors.dimText "no values found")
   else if state.activeView == 13 then
     renderMatter state region
+  else if state.activeView == 2 then
+    // Inspect (standalone): an at-a-glance overview of Dark Matter — the package-stats view, captured here.
+    let _ = Builtin.stdoutCaptureStart ()
+    let _ = Darklang.Cli.Apps.Views.PackageStats.render ()
+    let output = Builtin.stdoutCaptureStop ()
+    UI.Box.panel region "Overview" true (fun inner ->
+      Stdlib.String.split output "\n"
+      |> Stdlib.List.indexedMap (fun i l -> (i, l))
+      |> Stdlib.List.take inner.rows
+      |> Stdlib.List.iter (fun pair ->
+        let (i, l) = pair
+        Stdlib.print ((Colors.moveCursorTo (inner.top + i) (inner.left + 1)) ++ (UI.Layout.truncateVisible l (Stdlib.Int.max 0 (inner.cols - 1))))))
   else if state.activeView == 3 then
     boxedLines
       region
