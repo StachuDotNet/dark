@@ -674,7 +674,7 @@ let hintsForView (state: State) : String =
   let global = [ ("/", "search"); (":", "cmd"); ("1-9", "view"); ("?", "help"); ("q", "quit") ]
   let ctx =
     if view == 1 then
-      [ ("↑↓", "move"); ("→", "in"); ("⏎", "open"); ("n/t/v", "new"); ("e", "edit"); ("d", "deps"); ("tab", "focus") ]
+      [ ("↑↓", "move"); ("→", "in"); ("⏎", "open"); ("n/t/v", "new"); ("e", "edit"); ("r", "rename"); ("d", "deps") ]
     else if view == 0 then
       [ ("↑↓", "move") ]
     else if view == 4 then
@@ -949,6 +949,47 @@ let performInputAction (state: State) (inp: InputState) : Step =
             message = "discarded all changes" }
     else
       Step.Continue { state with input = Stdlib.Option.Option.None }
+  else if inp.action == "rename" then
+    // A real rename: emit a lone SetName against the item's existing hash. The backend treats a SetName whose
+    // target wasn't Add'd in this batch as a rename — it unlists the old name and binds the new (hash-pinned,
+    // so dependents are unaffected).
+    match Stdlib.List.getAt state.items state.selected with
+    | None -> Step.Continue { state with input = Stdlib.Option.Option.None }
+    | Some item ->
+      if item.isModule then
+        Step.Continue { state with input = Stdlib.Option.Option.None; message = "rename failed: can't rename a module" }
+      else
+        let modules = modulePathOf state.location
+        let results = Packages.Query.searchExactMatch state.branchId modules item.name
+        let refOpt =
+          if item.kind == "type" then
+            match results.types with
+            | i :: _ -> Stdlib.Option.Option.Some(LanguageTools.ProgramTypes.Reference.PackageType i.entity.hash)
+            | [] -> Stdlib.Option.Option.None
+          else if item.kind == "val" then
+            match results.values with
+            | i :: _ -> Stdlib.Option.Option.Some(LanguageTools.ProgramTypes.Reference.PackageValue i.entity.hash)
+            | [] -> Stdlib.Option.Option.None
+          else
+            match results.fns with
+            | i :: _ -> Stdlib.Option.Option.Some(LanguageTools.ProgramTypes.Reference.PackageFn i.entity.hash)
+            | [] -> Stdlib.Option.Option.None
+        match refOpt with
+        | None -> Step.Continue { state with input = Stdlib.Option.Option.None; message = "rename failed: item not found" }
+        | Some reference ->
+          match Packages.Location.parseRelativeTo state.location inp.text with
+          | Error e -> Step.Continue { state with input = Stdlib.Option.Option.None; message = "rename failed: " ++ e }
+          | Ok newLoc ->
+            let op = LanguageTools.ProgramTypes.PackageOp.SetName((newLoc, reference))
+            match SCM.PackageOps.add state.branchId [ op ] with
+            | Ok _ ->
+              Step.Continue
+                { state with
+                    input = Stdlib.Option.Option.None
+                    items = itemsForView state.activeView state.branchId state.location
+                    selected = 0
+                    message = "renamed to " ++ inp.text }
+            | Error m -> Step.Continue { state with input = Stdlib.Option.Option.None; message = "rename failed: " ++ m }
   else if inp.action == "quit" then
     if inp.text == "y" then Step.Exit state
     else Step.Continue { state with input = Stdlib.Option.Option.None }
@@ -1492,13 +1533,25 @@ let handleKey
       else
         Step.Continue state
     | Some "r" ->
-      // History: rebase this branch onto its parent (confirm first).
       if state.activeView == 5 then
+        // History: rebase this branch onto its parent (confirm first).
         Step.Continue
           { state with
               input =
                 Stdlib.Option.Option.Some
                   (InputState { prompt = "rebase onto parent? type y then enter: "; text = ""; action = "rebase" }) }
+      else if state.activeView == 1 then
+        // Tree: rename the selected leaf (prefilled with its current name).
+        match Stdlib.List.getAt state.items state.selected with
+        | Some item ->
+          if item.isModule then Step.Continue state
+          else
+            Step.Continue
+              { state with
+                  input =
+                    Stdlib.Option.Option.Some
+                      (InputState { prompt = "rename to: "; text = item.name; action = "rename" }) }
+        | None -> Step.Continue state
       else
         Step.Continue state
     | Some s ->
