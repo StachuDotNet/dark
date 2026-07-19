@@ -242,3 +242,9 @@ overview view. Then proceed down the order above.
 Matter tab (index 13): status header + change set + SCM actions. Reuses loadWipBodyItems + changesSourceText +
 getWipSummary/getCommitCount/Sync.Conflicts.list/Sync.status/Branch.get. v2: History/Conflicts/Sync as sections
 + real +/- diff via scm/review diffForItem. NEXT: Apps & Views gallery (item 2). Target: 2am finalize (print PR).
+
+### Phase 7 log (22:02) — Apps&Views done; layout rename SKIPPED
+Apps&Views: Services tab -> "Apps & Views", lists apps + registered views, view render() captured into preview.
+layout.dark->resizeable.dark: SKIPPED as a sensible call — Layout is the accurate name (region model + combinators
++ truncateVisible; broader than "resizeable"), and it's a deep risky rename near the 2am deadline. Flag for
+Stachu's review. NEXT: doc rewrite (item 4) with minified render captures, then print + finalize at 2am.
