@@ -2,8 +2,33 @@
 
 set -euo pipefail
 
-echo 127.0.0.1 dlio.localhost | sudo tee -a /etc/hosts
-echo 127.0.0.1 test.dlio.localhost | sudo tee -a /etc/hosts
-echo 127.0.0.1 dark-editor.dlio.localhost | sudo tee -a /etc/hosts
-echo 127.0.0.1 dark-repl.dlio.localhost | sudo tee -a /etc/hosts
-echo 127.0.0.1 dark-packages.dlio.localhost | sudo tee -a /etc/hosts
+# Names the container resolves for itself. Appended once: this runs on every container
+# start and used to add a duplicate line each time.
+
+add_host() {
+  local ip="$1" name="$2"
+  grep -qE "^${ip}[[:space:]]+${name}\$" /etc/hosts && return 0
+  echo "${ip} ${name}" | sudo tee -a /etc/hosts > /dev/null
+}
+
+add_host 127.0.0.1 dlio.localhost
+add_host 127.0.0.1 test.dlio.localhost
+add_host 127.0.0.1 dark-editor.dlio.localhost
+add_host 127.0.0.1 dark-repl.dlio.localhost
+add_host 127.0.0.1 dark-packages.dlio.localhost
+
+# For the SSRF tests in backend/testfiles/execution/stdlib/httpclient.dark.
+#
+# The HTTP client blocks a literal private IP when it validates the URL, and
+# separately blocks a *public hostname that resolves to* a private IP, in the connect
+# callback. Only the second is a real SSRF defence, and testing it needs a name that
+# resolves somewhere banned.
+#
+# That used to mean borrowing third-party domains: localtest.me for 127.0.0.1 and
+# c.cx for 0.0.0.0. c.cx stopped resolving to 0.0.0.0 and became a real host, so the
+# test broke, and until it did, every test run made an HTTP request to a stranger's
+# server. These names are ours, and .test is reserved by RFC 6761 so it can never
+# become someone's real domain.
+add_host 0.0.0.0 banned-zero.dark.test
+add_host 127.0.0.1 banned-loopback.dark.test
+add_host 10.0.0.1 banned-private.dark.test

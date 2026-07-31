@@ -110,10 +110,6 @@ outlived it.
 
 A full run takes a few minutes. It logs to `rundir/logs/fsharp-tests.log`.
 
-Known failure, not yours: `testfiles/execution/stdlib/httpclient` line 114 asserts that
-`http://c.cx` is a network error because it used to resolve to 0.0.0.0. It resolves to
-a real host now, so the test errors. The suite is otherwise green.
-
 The dev tooling has its own tests, which need nothing built and take a second:
 
     ./scripts/testing/run-script-tests
