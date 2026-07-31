@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-. ./scripts/devcontainer/_assert-in-container "$0" "$@"
-
 # Is the tree built, and how far behind is it?
 #
 #   scripts/dev/status
@@ -8,6 +6,13 @@
 #
 # "tree: up to date" means running the CLI reflects what's on disk. Anything else
 # says what to do about it.
+
+# shellcheck source=scripts/dev/_help
+source "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/_help"
+help_if_asked "$@"
+reject_unknown_flags "--json --help" "$@"
+
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
 
 set -euo pipefail
 

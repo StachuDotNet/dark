@@ -12,6 +12,10 @@
 #
 #   DARK_DEV_WATCH=true scripts/dev/start
 
+# shellcheck source=scripts/dev/_help
+source "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/_help"
+help_if_asked "$@"
+reject_unknown_flags "--recreate --help" "$@"
 set -euo pipefail
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/../.. && pwd )"

@@ -221,12 +221,33 @@ COMMANDS = {
 }
 
 
+# Second line of defence: the scripts/dev wrappers reject unknown flags before the
+# container hop, but this is callable directly, and silently treating `--hepl` as
+# "build everything" is the failure mode worth ruling out twice.
+KNOWN_FLAGS = {
+  "build": {"--test", "--force", "--optimize"},
+  "plan": {"--test"},
+  "status": {"--json"},
+  "check": set(),
+  "stale": set(),
+}
+
+
 def main():
   args = sys.argv[1:]
   if not args or args[0] not in COMMANDS:
     print(f"usage: {sys.argv[0]} {{{'|'.join(COMMANDS)}}} [args]", file=sys.stderr)
     sys.exit(1)
-  sys.exit(COMMANDS[args[0]](args[1:]))
+
+  command, rest = args[0], args[1:]
+  unknown = [a for a in rest if a.startswith("-") and a not in KNOWN_FLAGS[command]]
+  if unknown:
+    print(f"Unknown flag(s) for {command}: {' '.join(unknown)}", file=sys.stderr)
+    known = KNOWN_FLAGS[command]
+    print(f"Known: {' '.join(sorted(known)) if known else '(none)'}", file=sys.stderr)
+    sys.exit(1)
+
+  sys.exit(COMMANDS[command](rest))
 
 
 if __name__ == "__main__":

@@ -12,6 +12,10 @@
 # Runs from the host, because half of what it looks at is the container itself.
 # Exits nonzero if anything is wrong, so it can gate a script.
 
+# shellcheck source=scripts/dev/_help
+source "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/_help"
+help_if_asked "$@"
+reject_unknown_flags "--help" "$@"
 set -uo pipefail
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/../.. && pwd )"

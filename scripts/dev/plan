@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-. ./scripts/devcontainer/_assert-in-container "$0" "$@"
-
 # What `scripts/dev/build` would do, without doing it.
 #
 #   scripts/dev/plan                      for everything changed since the last build
@@ -8,6 +6,13 @@
 #
 # The file-to-action mapping lives in scripts/build/_buildplan.py and nowhere else,
 # so asking beats reading a description of it that may have drifted.
+
+# shellcheck source=scripts/dev/_help
+source "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/_help"
+help_if_asked "$@"
+reject_unknown_flags "--test --help" "$@"
+
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
 
 set -euo pipefail
 

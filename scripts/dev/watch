@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-. ./scripts/devcontainer/_assert-in-container "$0" "$@"
-
 # Rebuild on save. Opt-in: the container no longer starts this for you.
 #
 #   scripts/dev/watch                in the foreground; Ctrl+C stops it
@@ -10,6 +8,13 @@
 #
 # A pid file is written either way, so scripts/dev/build can refuse to run a second
 # build into the same output directory.
+
+# shellcheck source=scripts/dev/_help
+source "$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/_help"
+help_if_asked "$@"
+reject_unknown_flags "--background --stop --status --help" "$@"
+
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
 
 set -euo pipefail
 
