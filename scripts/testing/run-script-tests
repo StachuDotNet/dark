@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
+
+set -euo pipefail
+
+# Tests for the dev tooling itself: the build's planning and readiness logic, and
+# whether the docs still name files that exist.
+#
+# Seconds, no compilation, no database. Separate from run-backend-tests because none
+# of this needs a built tree, and it's most useful exactly when the tree is broken.
+
+fail=0
+
+for t in scripts/testing/test-dev-build.py scripts/testing/test-docs-drift.py; do
+  echo "== $t"
+  if ! python3.12 "$t"; then
+    fail=1
+  fi
+done
+
+exit "$fail"

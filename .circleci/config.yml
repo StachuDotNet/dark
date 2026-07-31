@@ -83,6 +83,9 @@ jobs:
       # There are currently no yaml files
       # - run: scripts/linting/yamllinter
       - run: scripts/formatting/format check
+      # The dev tooling's own tests: build planning/readiness, and whether the docs
+      # still name files that exist. Seconds, and needs nothing built.
+      - run: scripts/testing/run-script-tests
 
   # Build server binaries and run tests
   # Cleanup: consider splitting into (1) build debug (2) prepare .db (3) build release
