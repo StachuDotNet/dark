@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
+
+# Is the tree built, and how far behind is it?
+#
+#   scripts/dev/status
+#   scripts/dev/status --json    the raw rundir/build-state.json
+#
+# "tree: up to date" means running the CLI reflects what's on disk. Anything else
+# says what to do about it.
+
+set -euo pipefail
+
+exec python3.12 scripts/build/_dev.py status "$@"

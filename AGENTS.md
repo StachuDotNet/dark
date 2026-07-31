@@ -42,11 +42,32 @@ On the host, each clone gets its own block: the first clone up gets 9090-9099, t
 
 ## Builds
 
-Auto-rebuilds on save; don't manually rebuild. A `.dark` change takes about 30 seconds
-(the whole package set reloads, not just your file). A `.fs` change is about 80. Watch:
+Builds are explicit. Edit as many files as you like, then:
 
+    scripts/dev/build            # what's changed since the last good build
+    scripts/dev/build <paths>    # just these
+    scripts/dev/plan             # what that would do, without doing it
+    scripts/dev/status           # did it work, and is the tree ahead of it?
+
+`build` blocks, prints the steps it chose, and exits nonzero if any fails. A `.dark`
+change takes about 30 seconds (the whole package set reloads, not just your file); a
+`.fs` change is about 80.
+
+The container builds once when it starts. Rebuild-on-save is available but off by
+default, because a five-file change under a watcher pays for five rebuilds, four of them
+on half-finished states that produce real-looking failures:
+
+    scripts/dev/watch            # foreground, Ctrl+C to stop
+    scripts/dev/watch --stop
+
+Don't infer build state from logs. `rundir/build-state.json` records what ran, what
+failed and when, and `scripts/dev/status` reads it. Everything that used to grep
+`packages.log` for "Exception" now asks that file instead, which is why `run-cli` can
+tell you the tree has moved on rather than silently running a stale binary.
+
+    rundir/logs/build.log           # the last explicit build
     rundir/logs/packages.log        # .dark reload
-    rundir/logs/build-server.log    # F# build
+    rundir/logs/watch.log           # a detached watcher
 
 ## Tests
 
@@ -91,8 +112,13 @@ A full run takes a few minutes. It logs to `rundir/logs/fsharp-tests.log`; poll 
     cli.log              # CLI runtime issues
     lsp.log              # LSP input/output
     packages.log         # .dark loading from disk
-    build-server.log     # F# build issues
+    build.log            # the last scripts/dev/build
+    watch.log            # a detached scripts/dev/watch
+    post-start.log       # what the container did on startup
     migrations.log       # migrations, if recently changed
+
+Logs are for reading when something went wrong. For "did it work", use
+`scripts/dev/status`.
 
 ## Adding a builtin (F#)
 

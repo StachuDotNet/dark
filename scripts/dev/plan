@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
+
+# What `scripts/dev/build` would do, without doing it.
+#
+#   scripts/dev/plan                      for everything changed since the last build
+#   scripts/dev/plan packages/x.dark      for these paths
+#
+# The file-to-action mapping lives in scripts/build/_buildplan.py and nowhere else,
+# so asking beats reading a description of it that may have drifted.
+
+set -euo pipefail
+
+exec python3.12 scripts/build/_dev.py plan "$@"
