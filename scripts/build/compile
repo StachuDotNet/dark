@@ -107,7 +107,19 @@ def fsharp_tool_restore():
 
 def fsharp_paket_install():
   start = time.time()
-  build = "./scripts/build/_dotnet-wrapper paket install"
+  # Both caches have to go, and the restore after has to be forced.
+  #
+  # `paket install` rewrites paket.lock but leaves its own restore caches keyed on
+  # the previous graph, and NuGet then treats project.assets.json as current. So
+  # changing a pin gave a rewritten lock and a binary built against the old
+  # versions, with nothing anywhere saying so. Found by bumping
+  # SQLitePCLRaw.bundle_e_sqlite3 and watching the advisory for the version I'd
+  # just removed survive two builds.
+  clear = ("rm -f backend/paket-files/paket.restore.cached"
+           " && find backend -name '*.paket.references.cached' -delete")
+  build = (f"{clear}"
+           " && ./scripts/build/_dotnet-wrapper paket install"
+           " && ./scripts/build/_dotnet-wrapper restore --force fsdark.sln")
   return run_backend(start, build)
 
 
