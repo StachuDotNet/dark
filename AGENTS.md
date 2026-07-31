@@ -49,9 +49,18 @@ Builds are explicit. Edit as many files as you like, then:
     scripts/dev/plan             # what that would do, without doing it
     scripts/dev/status           # did it work, and is the tree ahead of it?
 
-`build` blocks, prints the steps it chose, and exits nonzero if any fails. A `.dark`
-change takes about 30 seconds (the whole package set reloads, not just your file); a
-`.fs` change is about 80.
+`build` blocks, prints the steps it chose, and exits nonzero if any fails. Measured on
+an idle machine:
+
+    .dark change    ~34s   the whole package set reloads, not just your file
+    .fs change      ~74s   39s compiling, then that same ~34s reload
+    nothing changed  0.2s  compared by content, so a `touch` or a branch switch is free
+
+Note what the second line means: half the cost of any F# change is reloading packages
+that usually didn't need reloading. It's unconditional because a `.fs` change *can*
+alter the serialized package format, and there's no cheap way to ask whether this one
+did. Narrowing it is the biggest remaining win in the loop, and it's entangled with
+`package-ref-hashes.txt`, so coordinate before starting.
 
 The container builds once when it starts. Rebuild-on-save is available but off by
 default, because a five-file change under a watcher pays for five rebuilds, four of them
