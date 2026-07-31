@@ -77,9 +77,8 @@ class TestMark(unittest.TestCase):
     self.assertTrue(self.actions("backend/src/LibDB/LibDB.fsproj").backend_full_build)
 
   def test_dark_package_reloads_packages(self):
-    should = self.actions("packages/darklang/stdlib/list.dark")
-    self.assertTrue(should.reload_all_packages)
-    self.assertTrue(should.reload_backend_server)
+    self.assertTrue(self.actions("packages/darklang/stdlib/list.dark")
+                    .reload_all_packages)
 
   def test_migration_runs_migrations(self):
     self.assertTrue(self.actions("backend/migrations/001-init.sql").run_migrations)
@@ -101,8 +100,7 @@ class TestExpand(unittest.TestCase):
   def test_fsharp_change_reaches_the_package_reload(self):
     self.assertEqual(
       self.expand("backend/src/LibDB/Queries.fs"),
-      ["backend_quick_build", "reload_backend_server", "run_migrations",
-       "reload_all_packages"])
+      ["backend_quick_build", "run_migrations", "reload_all_packages"])
 
   def test_full_build_replaces_the_quick_one(self):
     actions = self.expand("backend/src/LibDB/LibDB.fsproj")

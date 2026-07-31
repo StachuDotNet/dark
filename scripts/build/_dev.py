@@ -22,8 +22,7 @@ WATCH_PID = "rundir/build-watch.pid"
 # just building everything, which is what the plan would come to anyway.
 FULL_BUILD_THRESHOLD = 200
 
-# What compile-project passes for "all". Routes to fsharp_tool_restore, which
-# cascades to a full build of everything.
+# Routes to fsharp_tool_restore, which cascades to a full build of everything.
 FULL_BUILD_FILES = ["backend/global.json"]
 
 

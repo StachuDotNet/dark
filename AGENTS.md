@@ -104,8 +104,11 @@ A full run takes a few minutes. It logs to `rundir/logs/fsharp-tests.log`; poll 
       cli/                # CLI code
       scm/                # SCM library (branch, rebase, merge, packageOps)
       stdlib/             # standard library
+    backend/migrations/   # schema.sql, plus incremental/ for additive migrations
     rundir/logs/          # log files
-    scripts/              # build and dev scripts
+    scripts/dev/          # start, build, plan, status, watch, host-port
+    scripts/build/        # the build itself; `_` ones are called by other scripts
+    scripts/              # everything else
 
 ## Logs (rundir/logs/)
 

@@ -2,15 +2,15 @@
 """rundir/build-state.json: whether the tree is built, and how far behind it is.
 
 Everything downstream used to guess. run-cli grepped packages.log for "Exception",
-run-backend-server spun a sleep loop, the docs said to poll a log for "errored in".
+the migrations step spun a sleep loop, the docs said to poll a log for "errored in".
 dark-multi died outright when the log line its readiness check grepped for was
 deleted: nothing was wrong with its code, the evidence just moved.
 
 A file recording what happened survives refactors a log grep cannot, so this is
 the one place build state is written and the one place it is read.
 
-Written by every build path, watcher included. Read by run-cli, run-backend-server
-and scripts/dev/status. Paths in it are repo-relative, because it is read both from
+Written by every build path, watcher included. Read by run-cli and
+scripts/dev/status. Paths in it are repo-relative, because it is read both from
 inside the container and from the host, where the repo root differs.
 """
 
@@ -40,7 +40,6 @@ BUILD_ACTIONS = {
   "fsharp_paket_install",
   "backend_full_build",
   "backend_quick_build",
-  "reload_backend_server",
   "run_migrations",
   "reload_all_packages",
 }

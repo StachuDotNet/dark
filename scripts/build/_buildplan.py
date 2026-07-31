@@ -10,7 +10,6 @@ Pure: nothing here runs a build or touches the filesystem, apart from reading
 
 import os
 import subprocess
-from pathlib import Path
 
 import pathspec
 
@@ -31,7 +30,6 @@ class Should:
     "fsharp_paket_install",
     "backend_full_build",
     "backend_quick_build",
-    "reload_backend_server",
     "run_migrations",
     "reload_all_packages",
     "backend_test",
@@ -50,7 +48,6 @@ class Should:
     self.reload_all_packages = False
     self.circleci_validate = False
     self.run_migrations = False
-    self.reload_backend_server = False
     self.shellcheck = []
     self.yamllint = []
     # Files that route to no action at all: docs, test fixtures, anything mark()
@@ -102,17 +99,13 @@ def mark(should, f):
       should.unrouted.append(f)  # packages come from the seed DB, not from disk
     else:
       should.reload_all_packages = True
-      should.reload_backend_server = True
-
-  elif f.startswith("canvases/") and f.endswith(".dark"):
-    should.reload_all_packages = True
 
   elif f.startswith("backend/migrations/"):
     should.run_migrations = True
 
-  elif f == "scripts/run-backend-server":
+  elif f == "scripts/build/run-migrations":
     should.shellcheck += [f]
-    should.reload_backend_server = True
+    should.run_migrations = True
 
   elif f == ".circleci/config.yml":
     should.circleci_validate = True
@@ -176,13 +169,9 @@ def expand(should, run_tests=False):
   if s.backend_full_build or s.backend_quick_build:
     if s.backend_full_build:
       s.backend_quick_build = False  # execute() does the same; no need for both
-    s.reload_backend_server = True
     s.run_migrations = True
     if run_tests:
       s.backend_test = True
-
-  if s.reload_backend_server:
-    s.run_migrations = True
 
   if s.run_migrations and not packages_from_seed():
     s.reload_all_packages = True

@@ -3,19 +3,18 @@
 
 set -euo pipefail
 
-# This script used to run migrations and start BwdServer. BwdServer is
-# gone (replaced by the in-Dark `darklang serve <fn>` flow). The migrations
-# half is still useful for the dev-loop watcher in scripts/build/compile,
-# which calls this whenever a migration file changes.
+# Bring the dev database up to date. A build step, called from
+# scripts/build/compile; you rarely want it by hand.
 #
-# `--restart=no` is accepted for compatibility with run-backend-tests's
-# legacy two-call shape but is now a no-op (nothing to restart).
+# It was scripts/run-backend-server until BwdServer was replaced by the in-Dark
+# `darklang serve <fn>` flow, after which the name described a server it no longer
+# started. Its `--restart=no` flag went at the same time: nothing passed it, and
+# there was nothing left to restart.
 
 PUBLISHED=false
 for i in "$@"; do
   case "${i}" in
     --published) PUBLISHED=true; shift ;;
-    --restart=no) shift ;;
   esac
 done
 

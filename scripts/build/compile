@@ -192,23 +192,11 @@ def backend_full_build():
 
 def run_migrations():
   start = time.time()
-
   if optimize:
     configuration = " --published"
   else:
     configuration = ""
-  return run_backend(start, f"scripts/run-local-exec {configuration} migrations run")
-
-
-
-def reload_backend_server():
-  start = time.time()
-  if optimize:
-    configuration = " --published"
-  else:
-    configuration = ""
-  runserver = f"scripts/run-backend-server {configuration}"
-  return run_backend(start, runserver)
+  return run_backend(start, f"scripts/build/run-migrations {configuration}")
 
 
 def reload_all_packages():
@@ -283,19 +271,13 @@ def execute(should, outcome):
   if should.backend_full_build:
     should.backend_quick_build = False  # no need to do both
     if step("backend_full_build", backend_full_build):
-      should.reload_backend_server = True
       should.run_migrations = True
       should.backend_test |= run_tests
 
   if should.backend_quick_build:
     if step("backend_quick_build", backend_quick_build):
-      should.reload_backend_server = True
       should.run_migrations = True
       should.backend_test |= run_tests
-
-  if should.reload_backend_server:
-    if step("reload_backend_server", reload_backend_server):
-      should.run_migrations = True
 
   if should.run_migrations:
     if step("run_migrations", run_migrations):
