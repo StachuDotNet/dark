@@ -14,7 +14,7 @@ type TraceData = Darklang.Tracing.TraceData
 ///
 /// "No traces found" reads as "nothing ran", and when recording is off that's the
 /// wrong conclusion: every query returns empty no matter what ran. There was no way
-/// to tell the two apart from in here until `Builtin.tracesEnabled`, so this asks
+/// to tell the two apart from in here until the tracesEnabled builtin, so this asks
 /// rather than guessing.
 let emptyStateHint () : String =
   if Builtin.tracesEnabled () then

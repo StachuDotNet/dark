@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+
+# Is this clone's environment healthy?
+#
+#   scripts/dev/doctor
+#
+# Checks the things that have cost real time here and are invisible until they've
+# cost it: a dev database that grew to 16 GB, a container holding 57 leaked CLI
+# processes, a build that failed hours ago, a lock left behind by a killed test run.
+# None of those announce themselves.
+#
+# Runs from the host, because half of what it looks at is the container itself.
+# Exits nonzero if anything is wrong, so it can gate a script.
+
+set -uo pipefail
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/../.. && pwd )"
+
+# shellcheck source=scripts/devcontainer/_container-for-clone
+source "$DIR/scripts/devcontainer/_container-for-clone"
+
+problems=0
+warnings=0
+
+ok()   { printf '  ok    %s\n' "$1"; }
+warn() { printf '  warn  %s\n' "$1"; warnings=$(( warnings + 1 )); }
+bad()  { printf '  BAD   %s\n' "$1"; problems=$(( problems + 1 )); }
+
+echo "Checking $DIR"
+echo
+
+# --- the container ---------------------------------------------------------
+id=$(container_for_clone "$DIR")
+if [[ -z "$id" ]]; then
+  bad "No dev container for this clone. Start it: scripts/dev/start"
+  echo
+  echo "Other dark containers running:"
+  describe_dark_containers
+  exit 1
+fi
+
+name=$(docker inspect -f '{{.Name}}' "$id" | tr -d '/')
+lo=$(docker port "$id" 9090 2>/dev/null | head -n1 | sed 's/.*://')
+hi=$(docker port "$id" 9099 2>/dev/null | head -n1 | sed 's/.*://')
+if [[ -n "$lo" ]]; then
+  ok "container $name, host ports $lo-$hi"
+else
+  warn "container $name is up but publishes no ports; scripts/dev/start --recreate"
+fi
+
+# One command into the container for everything else: each docker exec is ~100ms,
+# and a health check that's slow enough to skip doesn't get run.
+readarray -t facts < <(docker exec "$id" bash -c '
+  cd /home/dark/app || exit
+  echo "cli_procs=$(ps -eo comm | grep -c "^Cli$")"
+  echo "tests_procs=$(ps -eo comm | grep -c "^Tests$")"
+  db=rundir/${DARK_CONFIG_DB_NAME:-data.db}
+  echo "db_bytes=$(stat -c%s "$db" 2>/dev/null || echo 0)"
+  echo "disk_avail_kb=$(df -Pk /home/dark/app | awk "NR==2 {print \$4}")"
+  echo "build_avail_kb=$(df -Pk /home/dark/app/backend/Build | awk "NR==2 {print \$4}")"
+  if [[ -f rundir/test.lock ]]; then
+    pid=$(cat rundir/test.lock 2>/dev/null)
+    if kill -0 "$pid" 2>/dev/null; then echo "test_lock=live:$pid"; else echo "test_lock=stale:$pid"; fi
+  else
+    echo "test_lock=none"
+  fi
+' 2>/dev/null)
+
+for f in "${facts[@]}"; do declare "$f"; done
+
+# --- the build -------------------------------------------------------------
+if state=$("$DIR/scripts/dev/status" 2>/dev/null); then
+  status_line=$(echo "$state" | awk '/^status:/ {print $2}')
+  tree_line=$(echo "$state" | awk -F': +' '/^tree:/ {print $2}')
+  case "$status_line" in
+    ok)     ok "last build succeeded" ;;
+    failed) bad "last build failed. scripts/dev/status, then scripts/dev/build" ;;
+    *)      warn "build state: ${status_line:-unknown}. scripts/dev/build" ;;
+  esac
+  if [[ "$tree_line" == "up to date" ]]; then
+    ok "tree matches the build"
+  else
+    warn "tree has moved on: $tree_line. scripts/dev/build"
+  fi
+else
+  warn "no build recorded. scripts/dev/build"
+fi
+
+# --- leaked processes ------------------------------------------------------
+# run-cli exec's the binary now, so a terminated run takes its CLI with it. A pile
+# here means something is still starting them the old way.
+if [[ "${cli_procs:-0}" -gt 5 ]]; then
+  bad "${cli_procs} CLI processes are running. Likely leaked; they hold DB handles."
+elif [[ "${cli_procs:-0}" -gt 0 ]]; then
+  ok "${cli_procs} CLI process(es) running"
+else
+  ok "no stray CLI processes"
+fi
+
+# --- the database ----------------------------------------------------------
+db_mb=$(( ${db_bytes:-0} / 1024 / 1024 ))
+if [[ "$db_mb" -gt 5000 ]]; then
+  bad "dev database is ${db_mb} MB. Traces have no retention: scripts/run-cli traces clear"
+elif [[ "$db_mb" -gt 1000 ]]; then
+  warn "dev database is ${db_mb} MB, worth watching. scripts/run-cli traces clear"
+else
+  ok "dev database is ${db_mb} MB"
+fi
+
+# --- disk ------------------------------------------------------------------
+for pair in "workspace:${disk_avail_kb:-0}" "backend/Build:${build_avail_kb:-0}"; do
+  where=${pair%%:*}; kb=${pair##*:}; gb=$(( kb / 1024 / 1024 ))
+  if [[ "$gb" -lt 5 ]]; then
+    bad "${where} has ${gb} GB free"
+  else
+    ok "${where} has ${gb} GB free"
+  fi
+done
+
+# --- leftovers -------------------------------------------------------------
+case "${test_lock:-none}" in
+  none)   ok "no test run in progress" ;;
+  live:*) ok "tests running (pid ${test_lock#live:})" ;;
+  stale:*) warn "stale test lock from pid ${test_lock#stale:}; the next run clears it" ;;
+esac
+
+echo
+if [[ "$problems" -gt 0 ]]; then
+  echo "$problems problem(s), $warnings warning(s)."
+  exit 1
+fi
+if [[ "$warnings" -gt 0 ]]; then
+  echo "$warnings warning(s), nothing broken."
+  exit 0
+fi
+echo "All good."

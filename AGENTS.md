@@ -48,6 +48,7 @@ Builds are explicit. Edit as many files as you like, then:
     scripts/dev/build <paths>    # just these
     scripts/dev/plan             # what that would do, without doing it
     scripts/dev/status           # did it work, and is the tree ahead of it?
+    scripts/dev/doctor           # is anything wrong with this clone's environment?
 
 `build` blocks, prints the steps it chose, and exits nonzero if any fails. Measured on
 an idle machine:
