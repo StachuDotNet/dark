@@ -31,7 +31,9 @@ unless you ask for it with `scripts/dev/watch`.
 
 ## Run tests
 
-- `scripts/run-backend-tests`
+- `scripts/run-backend-tests` runs all of them
+- `scripts/run-backend-tests --groups` shows the tree, so you can run part of it
+- `scripts/run-backend-tests --find <substring>` finds a test and prints how to run it
 - [Running unit tests](docs/unittests.md)
 - [Dark unit tests](backend/testfiles/README.md)
 

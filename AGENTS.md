@@ -73,23 +73,42 @@ tell you the tree has moved on rather than silently running a stale binary.
 
     ./scripts/run-backend-tests
 
-Filtering is Expecto's, and the three flags do different things:
+Start by finding what you want, not by guessing at a filter:
 
-    --filter <path>            slash-separated, matched from the ROOT
-    --filter-test-list <sub>   substring, matches test *lists*
-    --filter-test-case <sub>   substring, matches test *cases*
-    --list-tests               print every test name
+    ./scripts/run-backend-tests --groups              the tree, with counts
+    ./scripts/run-backend-tests --groups Interpreter  just that part of it
+    ./scripts/run-backend-tests --find mergeFavoring  which tests match, and how to run
 
-`--filter` is the one that surprises people. It matches from the root of the tree, and
-everything lives under `testList "tests"`, so `--filter LibExecution` matches nothing while
-`--filter tests/LibExecution` works. The other two are substring matches, which is why they
-feel more forgiving. When in doubt, `--list-tests` and grep.
+Both are cheap: no database, no package reload. They print the exact command to run
+what they found. The listing is cached until the next build.
 
-Never run two `run-backend-tests` at once, even in different clones: they share
-`test-data.db`, a fixed port, and a `killall -9 Tests`.
+Then filter. Three flags, three different things:
 
-A full run takes a few minutes. It logs to `rundir/logs/fsharp-tests.log`; poll that for
-"errored in" to catch failures without waiting for the end.
+    --filter <path>            a prefix of the slash-separated path, from the root
+    --filter-test-list <sub>   substring, matches test *lists*, case-sensitive
+    --filter-test-case <sub>   substring, matches test *cases*, case-sensitive
+
+Everything lives under `testList "tests"`, so paths start with `tests/`:
+`--filter tests/Interpreter` runs 90, `--filter Interpreter` runs none.
+
+A filter that matches nothing now fails. Expecto calls it "0 tests run - Success!" and
+exits 0, which reads exactly like a suite that passed.
+
+Don't reach for `--list-tests`. It ignores every filter, prints ten thousand lines and
+takes minutes; `--groups` and `--find` are built on it and cache the result.
+
+Two runs in the *same* clone destroy each other: same `test-data.db`, same httpclient
+port, and a `killall -9 Tests`. `run-backend-tests` now takes a lock and refuses rather
+than letting that happen.
+
+Two runs in *different* clones are fine. Each clone has its own container, so its own
+PID namespace, its own bridge network and its own bind-mounted `rundir`; none of the
+three contended things is shared. This used to be forbidden, and the prohibition was
+right at the time: every clone's scripts re-execed into whichever container was newest,
+so four clones' test runs really did land in one container. That's fixed, and the rule
+outlived it.
+
+A full run takes a few minutes. It logs to `rundir/logs/fsharp-tests.log`.
 
 ## Directories
 
