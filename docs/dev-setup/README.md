@@ -68,6 +68,12 @@ Starting the container also builds once, so it's usable when it comes up.
 
 ### Your first fifteen minutes
 
+It shouldn't take fifteen. Measured on a fresh clone with a fresh container and no
+build cache, these four came to **144 seconds**, of which 92 was the container coming
+up and building and 51 was the test run. That was with the Docker image already
+built; the very first time you'll also pay for that, which is the "few minutes" the
+start script warns you about.
+
 Four commands, ending in one that proves the environment works:
 
 ```
