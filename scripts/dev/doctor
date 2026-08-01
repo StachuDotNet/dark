@@ -60,11 +60,15 @@ readarray -t facts < <(docker exec "$id" bash -c '
   echo "tests_procs=$(ps -eo comm | grep -c "^Tests$")"
   db=rundir/${DARK_CONFIG_DB_NAME:-data.db}
   echo "db_bytes=$(stat -c%s "$db" 2>/dev/null || echo 0)"
-  echo "disk_avail_kb=$(df -Pk /home/dark/app | awk "NR==2 {print \$4}")"
-  echo "build_avail_kb=$(df -Pk /home/dark/app/backend/Build | awk "NR==2 {print \$4}")"
+  avail() { df -Pk "$1" | awk "NR==2 {print \$4}"; }
+  echo "disk_avail_kb=$(avail /home/dark/app)"
+  echo "build_avail_kb=$(avail /home/dark/app/backend/Build)"
   if [[ -f rundir/test.lock ]]; then
     pid=$(cat rundir/test.lock 2>/dev/null)
-    if kill -0 "$pid" 2>/dev/null; then echo "test_lock=live:$pid"; else echo "test_lock=stale:$pid"; fi
+    if kill -0 "$pid" 2>/dev/null
+      then echo "test_lock=live:$pid"
+      else echo "test_lock=stale:$pid"
+    fi
   else
     echo "test_lock=none"
   fi
@@ -102,11 +106,13 @@ else
 fi
 
 # --- the database ----------------------------------------------------------
+# Traces have no automatic retention, and one soak took a dev database to 16 GB.
+prune="scripts/run-cli traces delete --keep 50"
 db_mb=$(( ${db_bytes:-0} / 1024 / 1024 ))
 if [[ "$db_mb" -gt 5000 ]]; then
-  bad "dev database is ${db_mb} MB. Traces have no retention: scripts/run-cli traces clear"
+  bad "dev database is ${db_mb} MB. Prune it: ${prune}"
 elif [[ "$db_mb" -gt 1000 ]]; then
-  warn "dev database is ${db_mb} MB, worth watching. scripts/run-cli traces clear"
+  warn "dev database is ${db_mb} MB, worth watching. Prune it: ${prune}"
 else
   ok "dev database is ${db_mb} MB"
 fi
@@ -125,7 +131,7 @@ done
 case "${test_lock:-none}" in
   none)   ok "no test run in progress" ;;
   live:*) ok "tests running (pid ${test_lock#live:})" ;;
-  stale:*) warn "stale test lock from pid ${test_lock#stale:}; the next run clears it" ;;
+  stale:*) warn "stale test lock (pid ${test_lock#stale:}); next run clears it" ;;
 esac
 
 echo

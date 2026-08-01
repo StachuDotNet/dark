@@ -135,7 +135,14 @@ module Disallowed =
   (get "http://google.com" [ (" x-Google-metaData-Request", " True ") ]) = errInvalidRequest
 
 module BadSSL =
-  (get "http://thenonexistingurlforsure.com" []) = errNetworkError
+  // `.test` is reserved by RFC 6761 and can never be registered, so this can't stop
+  // failing to resolve the way thenonexistingurlforsure.com could have.
+  (get "http://no-such-host.dark.test" []) = errNetworkError
+
+  // Third-party and intermittently flaky: seen erroring in one full run out of
+  // several while the rest of the suite was stable. Testing a self-signed cert
+  // properly needs a local TLS endpoint, which the httpclient test server doesn't
+  // serve yet.
   (get "https://self-signed.badssl.com" []) = errNetworkError
 
 
