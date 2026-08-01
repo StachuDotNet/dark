@@ -129,6 +129,22 @@ def merge(previous, snapshot, covered):
   return out
 
 
+def record_covered(paths):
+  """Mark these paths as accounted for, leaving every other entry alone.
+
+  For files that map to no build action: a changed test fixture needs nothing done
+  to it, but if nothing ever records that, it stays in the changed set and leaves
+  the tree looking permanently behind.
+  """
+  paths = set(paths)
+  if not paths:
+    return
+  previous = load()
+  if previous is None:
+    return  # no baseline to amend; the next full build makes one
+  save(merge(previous, snapshot(previous), lambda rel: rel in paths))
+
+
 def save(files):
   """Commit a snapshot as the new baseline. Written atomically."""
   os.makedirs(rundir(), exist_ok=True)

@@ -17,6 +17,7 @@ import _buildstate
 
 BUILD_LOG = "rundir/logs/build.log"
 WATCH_PID = "rundir/build-watch.pid"
+TEST_LOCK = "rundir/test.lock"
 
 # Past this many changed files, working out what each one implies costs more than
 # just building everything, which is what the plan would come to anyway.
@@ -26,10 +27,10 @@ FULL_BUILD_THRESHOLD = 200
 FULL_BUILD_FILES = ["backend/global.json"]
 
 
-def watcher_pid():
-  """The running watcher's pid, or None."""
+def _live_pid(pidfile):
+  """The pid in `pidfile` if that process is still alive, else None."""
   try:
-    with open(WATCH_PID) as f:
+    with open(pidfile) as f:
       pid = int(f.read().strip())
   except (FileNotFoundError, ValueError):
     return None
@@ -38,6 +39,14 @@ def watcher_pid():
   except OSError:
     return None
   return pid
+
+
+def watcher_pid():
+  return _live_pid(WATCH_PID)
+
+
+def testrun_pid():
+  return _live_pid(TEST_LOCK)
 
 
 def choose_files(paths):
@@ -120,32 +129,31 @@ def cmd_plan(args):
   return 0
 
 
-def record_unrouted(plan):
-  """A file that maps to no action is, trivially, already accounted for.
-
-  Without this, a changed test fixture would be offered by every subsequent build
-  and would leave the tree looking permanently behind, because nothing would ever
-  run that could mark it done.
-  """
-  previous = _buildindex.load()
-  if previous is None:
-    return
-  covered = set(plan.unrouted)
-  snapshot = _buildindex.snapshot(previous)
-  _buildindex.save(_buildindex.merge(previous, snapshot, lambda rel: rel in covered))
-
-
 def cmd_build(args):
   paths = [a for a in args if not a.startswith("-")]
   run_tests = "--test" in args
   force = "--force" in args
 
+  # Anything else writing backend/Build while we do corrupts both. The watcher is the
+  # obvious one; a test run is the one that bites, because it's executing the very
+  # binaries we'd overwrite. _dotnet-wrapper's `killall Tests` exists to unstick that
+  # collision, which is to say the build's answer to it was to destroy the test run.
   pid = watcher_pid()
   if pid and not force:
     for line in [
       f"The file watcher is running (pid {pid}), and two builds writing the",
       "same output directory corrupt each other. Stop it with",
       "scripts/dev/watch --stop, or pass --force if you're sure it's idle.",
+    ]:
+      print(line, file=sys.stderr)
+    return 1
+
+  pid = testrun_pid()
+  if pid and not force:
+    for line in [
+      f"Tests are running in this clone (pid {pid}). Building now would overwrite",
+      "the binaries they're executing, and the build would kill them to get the",
+      "file lock. Wait for them, or pass --force.",
     ]:
       print(line, file=sys.stderr)
     return 1
@@ -158,7 +166,7 @@ def cmd_build(args):
   plan = make_plan(files, why, run_tests)
   if not plan.actions:
     print(f"Nothing to build: {why}, but none of it changes what gets built.")
-    record_unrouted(plan)
+    _buildindex.record_covered(plan.unrouted)
     return 0
 
   print_plan(plan)

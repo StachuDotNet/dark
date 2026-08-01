@@ -181,6 +181,38 @@ class TestIndex(unittest.TestCase):
       self.assertEqual(_buildindex.changed(roots=["backend"]), [])
       self.assertEqual(_buildindex.changed(), ["scripts/thing.sh"])
 
+  def test_a_file_needing_no_action_stops_being_offered(self):
+    # A changed test fixture routes to nothing. If nothing records that, it stays in
+    # the changed set forever and the tree reads as permanently behind.
+    with TempTree() as t:
+      t.write("backend/testfiles/execution/x.dark", "1")
+      _buildindex.save(_buildindex.snapshot())
+      t.write("backend/testfiles/execution/x.dark", "2")
+      self.assertEqual(_buildindex.changed(),
+                       ["backend/testfiles/execution/x.dark"])
+
+      _buildindex.record_covered(["backend/testfiles/execution/x.dark"])
+      self.assertEqual(_buildindex.changed(), [])
+
+  def test_recording_one_file_does_not_claim_the_others(self):
+    with TempTree() as t:
+      t.write("backend/testfiles/execution/x.dark", "1")
+      t.write("backend/src/A.fs", "let a = 1\n")
+      _buildindex.save(_buildindex.snapshot())
+      t.write("backend/testfiles/execution/x.dark", "2")
+      t.write("backend/src/A.fs", "let a = 2\n")
+
+      _buildindex.record_covered(["backend/testfiles/execution/x.dark"])
+      self.assertEqual(_buildindex.changed(), ["backend/src/A.fs"])
+
+  def test_recording_with_no_baseline_is_a_no_op(self):
+    with TempTree() as t:
+      t.write("backend/src/A.fs", "let a = 1\n")
+      _buildindex.record_covered(["backend/src/A.fs"])
+      # Still no index, so the next build is still a full one rather than one that
+      # thinks a single recorded file means the tree is accounted for.
+      self.assertIsNone(_buildindex.changed())
+
   def test_merge_leaves_uncovered_files_looking_changed(self):
     # A build of one .dark file mustn't claim to have built a changed .fs.
     with TempTree() as t:

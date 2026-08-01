@@ -353,8 +353,11 @@ def main():
 
   # A change that maps to nothing (a doc, a file mark() doesn't route) is not a
   # build, and must not be recorded as one: doing so would move the last-success
-  # mark forward and declare a stale tree fresh.
+  # mark forward and declare a stale tree fresh. It does still need noting as
+  # accounted for, or it stays in the changed set forever and the tree reads as
+  # permanently behind.
   if should.is_empty():
+    _buildindex.record_covered(should.unrouted)
     sys.exit(1)
 
   planned = _buildplan.expand(should, run_tests=run_tests).chosen()
