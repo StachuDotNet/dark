@@ -37,9 +37,13 @@ else
   log "Build FAILED. See rundir/logs/build.log"
 fi
 
-# Opt back into rebuild-on-save permanently, for anyone who prefers that loop:
-# set DARK_DEV_WATCH=true in config/local. Off by default because an explicit build
-# is the better default for scripted use, not because watching is wrong.
+# Opt back into rebuild-on-save, for anyone who prefers that loop:
+#
+#   DARK_DEV_WATCH=true scripts/dev/start
+#
+# devcontainer.json passes the variable through, so it lasts the life of the
+# container without a diff to a tracked file. Off by default because an explicit
+# build is the better default for scripted use, not because watching is wrong.
 if [[ "${DARK_DEV_WATCH:-}" == "true" ]]; then
   log "DARK_DEV_WATCH=true: starting the file watcher."
   scripts/dev/watch --background >> "$LOG_FILE" 2>&1

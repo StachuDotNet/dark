@@ -147,6 +147,23 @@ def finish(ok, actions, failed_action=None, exit_code=None, skipped=None):
   return _write(state)
 
 
+# The binaries a build is supposed to leave behind. Checked because the index tracks
+# sources, not outputs: wipe backend/Build and every source still matches, so the
+# build would say "nothing has changed" while run-cli says "no binary, run the build".
+# A dead end you can reach with `clear-dotnet-build`, `docker volume rm`, or a fresh
+# container on an old rundir.
+EXPECTED_OUTPUTS = [
+  "backend/Build/out/Cli/Debug/net10.0/Cli",
+  "backend/Build/out/LocalExec/Debug/net10.0/LocalExec",
+]
+
+
+def missing_outputs(root="."):
+  """Expected build outputs that aren't on disk."""
+  return [p for p in EXPECTED_OUTPUTS
+          if not os.path.exists(os.path.join(root, p))]
+
+
 def last_success(state=None):
   """When the last successful build started, in epoch seconds, or None."""
   state = state if state is not None else read()
@@ -215,6 +232,13 @@ def check(root="."):
       lines.append(f"Log: {state['log']}")
     lines.append("Run: scripts/dev/build")
     return (False, True, lines)
+
+  gone = missing_outputs(root)
+  if gone:
+    return (False, True, [
+      f"The build output is missing ({gone[0]}).",
+      "Something removed backend/Build. Run: scripts/dev/build",
+    ])
 
   changed = stale(state, root=root)
   if changed:

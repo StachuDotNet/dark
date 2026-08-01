@@ -60,6 +60,11 @@ def choose_files(paths):
   if paths:
     return paths, f"{len(paths)} path(s) given"
 
+  gone = _buildstate.missing_outputs()
+  if gone:
+    return FULL_BUILD_FILES, (
+      f"{gone[0]} is missing, so whatever the index says, this tree isn't built")
+
   changed = _buildindex.changed()
   if changed is None:
     return FULL_BUILD_FILES, "no successful build on record, so building everything"

@@ -58,6 +58,12 @@ class TempTree:
       f.write(contents)
     return full
 
+  def with_build_outputs(self):
+    """Pretend a build already produced its binaries. check() looks for them."""
+    for out in _buildstate.EXPECTED_OUTPUTS:
+      self.write(out, "binary")
+    return self
+
 
 ALL = lambda _: True  # noqa: E731 - every file was covered
 
@@ -235,6 +241,7 @@ class TestState(unittest.TestCase):
 
   def test_a_finished_build_is_ok_and_the_tree_is_clean(self):
     with TempTree() as t:
+      t.with_build_outputs()
       t.write("backend/src/A.fs", "let a = 1\n")
       _buildstate.begin(["backend_quick_build"], ["backend/src/A.fs"], "build")
       _buildstate.finish(True, ["backend_quick_build"])
@@ -257,6 +264,7 @@ class TestState(unittest.TestCase):
   def test_an_edit_after_a_build_warns_but_is_not_fatal(self):
     # Editing and then running is normal, so this must not block the CLI.
     with TempTree() as t:
+      t.with_build_outputs()
       t.write("backend/src/A.fs", "let a = 1\n")
       _buildstate.begin(["backend_quick_build"], [], "build")
       _buildstate.finish(True, ["backend_quick_build"])
@@ -267,6 +275,28 @@ class TestState(unittest.TestCase):
       self.assertFalse(ready)
       self.assertFalse(fatal)
       self.assertIn("behind the tree", " ".join(lines))
+
+  def test_a_wiped_build_directory_beats_a_clean_index(self):
+    # The index tracks sources, so wiping backend/Build leaves every source
+    # matching. Without this the build says "nothing has changed" while run-cli
+    # says "no binary, run the build", and there's no way out of that loop.
+    with TempTree() as t:
+      t.with_build_outputs()
+      t.write("backend/src/A.fs", "let a = 1\n")
+      _buildstate.begin(["backend_quick_build"], [], "build")
+      _buildstate.finish(True, ["backend_quick_build"])
+      _buildindex.save(_buildindex.snapshot())
+
+      self.assertEqual(_buildstate.missing_outputs(), [])
+      ready, fatal, _ = _buildstate.check()
+      self.assertTrue(ready)
+
+      os.remove(_buildstate.EXPECTED_OUTPUTS[0])
+      self.assertEqual(_buildindex.changed(), [])  # sources really are unchanged
+      ready, fatal, lines = _buildstate.check()
+      self.assertFalse(ready)
+      self.assertTrue(fatal)
+      self.assertIn("build output is missing", " ".join(lines))
 
   def test_a_lint_only_build_does_not_claim_the_tree_is_built(self):
     # shellcheck passing doesn't make the binaries any newer. If it moved the mark,
