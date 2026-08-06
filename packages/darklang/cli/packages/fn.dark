@@ -65,11 +65,10 @@ let createFnInline
         $"let {location.name} {definition}"
 
     // Parse the function definition
-    match LanguageTools.Parser.Parse.toWrittenTypes fullSource with
+    match Builtin.parserParseToWrittenTypes fullSource with
     | Some(SourceFile sourceFile) ->
       // The parser may recover a tree after errors; do not save it.
-      let hasParseError =
-        Errors.reportParseErrors (LanguageTools.Parser.Parse.diagnostics fullSource)
+      let hasParseError = Errors.reportParseErrors (Builtin.parserParseDiagnostics fullSource)
       let parsedFunction =
         if hasParseError then
           Stdlib.Option.Option.None
@@ -119,7 +118,7 @@ let createFnInline
           // Create ops: AddFn and SetName
           let ops =
             [ LanguageTools.ProgramTypes.PackageOp.AddFn packageFn
-              LanguageTools.ProgramTypes.PackageOp.SetName (location, LanguageTools.ProgramTypes.Reference.PackageFn packageFn.hash) ]
+              LanguageTools.ProgramTypes.PackageOp.SetName (location, LanguageTools.ProgramTypes.Reference.PackageFn packageFn.hash, Stdlib.Option.Option.None) ]
 
           match SCM.PackageOps.addAuthored state.currentBranchId ops with
           | Ok report ->
@@ -132,9 +131,10 @@ let createFnInline
             Stdlib.printLine ""
             Stdlib.printLine (Stdlib.Cli.UI.Colors.success $"✓ {action} function: {fullPath}")
 
-            // Auto-propagate if this is an update
+            // Repoint dependents NOW, into the draft, so you can run them against this change before
+            // deciding whether to commit. Nothing is committed; `dark commit` is still the blessing.
             if isUpdate then
-              Propagate.autoPropagateAfterUpdate state.currentBranchId location packageFn.hash LanguageTools.ProgramTypes.ItemKind.Fn
+              Propagate.repointNow state.currentBranchId location previousHashes packageFn.hash LanguageTools.ProgramTypes.ItemKind.Fn
 
             Stdlib.printLine ""
             state
@@ -199,7 +199,7 @@ let help (_state: Cli.AppState) : String =
     "  # Boolean function:"
     "  fn isPositive (x: Int): Bool = x > 0"
     ""
-    "  # Multi-line body via stdin (run from shell, not the REPL — '-' reads stdin):"
+    "  # Multi-line body via stdin (run from shell, not the REPL -- '-' reads stdin):"
     "  ./scripts/run-cli fn fib - <<'EOF'"
     "  let fib (n: Int): Int ="
     "    if n < 2 then n"

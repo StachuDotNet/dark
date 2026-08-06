@@ -77,6 +77,65 @@ let private readRequestBodyWithLimit
     }
 
 
+/// Bodies below this are left alone: gzip's own framing plus the header costs more than it saves,
+/// and it makes every small response allocate a stream for nothing.
+let private compressionFloor = 1024
+
+
+/// Compress a response body IF the client asked for it, returning the body to send and the
+/// `Content-Encoding` to declare.
+///
+/// **Brotli when offered, gzip otherwise.** Both were measured on a real sync page rather than chosen by
+/// reputation, and the reason brotli wins here is specific: gzip's window is 32KB and a page is ~2.9MB,
+/// so gzip cannot see that the same hashes and names recur throughout it. A large-window coder can.
+///
+///     raw          2,883,465
+///     gzip         499,655   5.8x   14ms
+///     brotli       280,064  10.3x   19ms
+///
+/// Counting transfer at the ~10MB/s these pages actually move at, that is 64ms per page against 47ms.
+/// This is the same repetition a per-bundle hash dictionary was meant to remove, obtained without a
+/// format change and, more importantly, without the relay having to transcode every op on every page --
+/// which would have undone the native page renderer that took a page from 2.8s to 0.47s.
+let private maybeCompress
+  (req : HttpListenerRequest)
+  (body : byte[])
+  : byte[] * Option<string> =
+  let accepts =
+    match req.Headers["Accept-Encoding"] with
+    | null -> ""
+    | value -> value.ToLowerInvariant()
+
+  let compressWith (makeStream : System.IO.Stream -> System.IO.Stream) : byte[] =
+    use out = new System.IO.MemoryStream()
+
+    (use coder = makeStream out
+     coder.Write(body, 0, body.Length))
+
+    out.ToArray()
+
+  if body.Length < compressionFloor then
+    body, None
+  elif accepts.Contains "br" then
+    let encode (out : System.IO.Stream) : System.IO.Stream =
+      new System.IO.Compression.BrotliStream(
+        out,
+        System.IO.Compression.CompressionLevel.Optimal
+      )
+
+    compressWith encode, Some "br"
+  elif accepts.Contains "gzip" then
+    let encode (out : System.IO.Stream) : System.IO.Stream =
+      new System.IO.Compression.GZipStream(
+        out,
+        System.IO.Compression.CompressionLevel.Fastest
+      )
+
+    compressWith encode, Some "gzip"
+  else
+    body, None
+
+
 /// Flatten HttpListener's NameValueCollection into the (key, value) list
 /// shape that `Http.Request` expects. Multi-value keys become multiple
 /// entries. The final `x-http-method` entry is a CLEANUP — Dark handlers
@@ -235,13 +294,22 @@ let private handleRequest
           ctx.Response.StatusCode <- response.statusCode
           for (key, value) in respHeaders do
             ctx.Response.Headers.Add(key, value)
-          ctx.Response.ContentLength64 <- int64 response.body.Length
-          do!
-            ctx.Response.OutputStream.WriteAsync(
-              response.body,
-              0,
-              response.body.Length
-            )
+
+          // Compress when the client asked for it. A sync page is JSON full of hex, which is 16
+          // symbols, so it compresses about 5x; on a first sync that is the difference between
+          // shipping hundreds of megabytes and shipping tens. Only when asked, so nothing that
+          // does not send Accept-Encoding sees any change.
+          //
+          // The floor exists because compressing a small body costs more than it saves once the
+          // header is counted, and every route here answers small bodies except the sync pages.
+          let body, encoding = maybeCompress ctx.Request response.body
+
+          match encoding with
+          | Some enc -> ctx.Response.Headers.Add("Content-Encoding", enc)
+          | None -> ()
+
+          ctx.Response.ContentLength64 <- int64 body.Length
+          do! ctx.Response.OutputStream.WriteAsync(body, 0, body.Length)
       with _ex ->
         // Don't leak ex.Message — can carry stack hints / sensitive
         // strings. Detail goes to `logRequest` (which sees the 500

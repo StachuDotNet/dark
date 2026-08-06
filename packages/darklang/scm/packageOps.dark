@@ -1,21 +1,18 @@
 module Darklang.SCM.PackageOps
 
-
-/// A commit on a branch
-type Commit =
-  { hash: LanguageTools.ProgramTypes.Hash
-    message: String
-    createdAt: DateTime
-    opCount: Int
-    branchId: Uuid
-    branchName: String
-    committerId: Uuid
-    committerName: String }
+// Authoring is live-on-write: `add` appends ops that take effect the moment they fold. `add` and
+// `getRecent` are the substrate everything else here is built on.
+//
+// This file is one of five that make up this module. It was a single 2,000-line file, which is
+// too big to review and too big to find anything in; the others are `packageOpsBranch.dark`,
+// `packageOpsSync.dark`, `packageOpsDraft.dark` and `packageOpsCommits.dark`. Dark lets several
+// files contribute to one module and see each other's definitions unqualified, so this is a
+// physical split with no call-site churn and no new silo: `package_ops` still has exactly one
+// owner, spread over five files.
 
 
-/// Store raw WIP ops without type checking. Authored declarations use
-/// `addAuthored`; sync, rename, and deprecation use this path. Returns the number
-/// inserted, excluding duplicates.
+/// Add a list of package ops to the database (immediately live on the given branch).
+/// Returns the number of inserted ops on success (duplicates are skipped), or an error message on failure.
 let add
   (branchId: Uuid)
   (ops: List<LanguageTools.ProgramTypes.PackageOp>)
@@ -23,19 +20,27 @@ let add
   Builtin.scmAddOps branchId ops
 
 
-/// Stabilize and store authored declarations as one WIP graph, then return their
-/// type-check report. Type errors do not block saving; duplicate names and storage
-/// failures do. `commit` is the type-error gate.
+/// THE authoring boundary: stabilize a batch and store it, refusing what stabilization would corrupt.
+///
+/// Ordered deliberately. Duplicate names are checked FIRST, because `stabilizeHashes` keys by name: a
+/// batch declaring one name twice would store one body under the other's hash, and whichever landed
+/// second would silently become the first. Then the at-rest check runs over what was actually stored,
+/// so its report describes the store rather than the request.
+///
+/// From main (2026-08-28). Every authoring surface goes through here rather than calling `add`: the CLI's
+/// fn/type/value/module commands, the workbench, and the LSP's file provider.
 let addAuthored
   (branchId: Uuid)
   (ops: List<LanguageTools.ProgramTypes.PackageOp>)
   : Stdlib.Result.Result<LanguageTools.AtRestTypeChecker.Report, String> =
   let duplicates = LanguageTools.PackageManager.duplicateDeclarations ops
+
   if Stdlib.Bool.not (Stdlib.List.isEmpty duplicates) then
     Stdlib.Result.Result.Error(
       "Declared more than once: " ++ (Stdlib.String.join duplicates ", "))
   else
     let stabilizedOps = LanguageTools.PackageManager.stabilizeHashes ops
+
     match add branchId stabilizedOps with
     | Ok _ ->
       Stdlib.Result.Result.Ok(
@@ -43,215 +48,1019 @@ let addAuthored
     | Error message -> Stdlib.Result.Result.Error message
 
 
-/// Get recent package ops from the database
-let getRecent (limit: Int) : List<LanguageTools.ProgramTypes.PackageOp> =
-  Builtin.scmGetRecentOps limit
+// the op-log DATA-ACCESS SILO
+// This module OWNS every SQL query against `package_ops`. Callers (the `dark ops` CLI, doctor, sync) go
+// through the typed functions below and never hand-roll SQL. There should be no op-log SQL outside here.
 
 
-/// Get all WIP (uncommitted) ops on a branch
-let getWip (branchId: Uuid) : List<LanguageTools.ProgramTypes.PackageOp> =
-  branchId |> getWipWithIds |> Stdlib.List.map (fun e -> e.op)
+let localDb () : String = Builtin.localDbPath ()
+
+// Identity here is a NAME, not an authentication. There is no crypto and no proof: it is a string you
+// reuse across machines so a relay can attribute ops to you, trusted by convention, stored in per-install
+// config. Anything that needs to be un-forgeable needs something this is not.
 
 
-/// A WIP package op with its DB row id and optional propagation batch id.
-type WipOpEntry =
-  { id: Uuid
-    op: LanguageTools.ProgramTypes.PackageOp
-    propagationId: Stdlib.Option.Option<Uuid> }
+/// This instance's sync identity, minted on first use.
+///
+/// An instance is a STORE, not a person or a machine: two clones of a store are two instances. Copying a
+/// database copies its config, so the id is stamped with where it was minted and re-minted when that no
+/// longer matches -- two peers sharing an id cannot sync or record a conflict against each other.
+///
+/// Gap: a store copied to the same PATH on another machine keeps its id. Closing that needs a hostname
+/// builtin that doesn't exist.
+let identity () : String =
+  let here = Builtin.localDbPath ()
+  let stored = Builtin.configGet "sync.identity"
+  let mintedAt = Builtin.configGet "sync.identity.origin"
 
+  // Only an AUTO-MINTED id is ever replaced: a name someone chose deliberately (`dark identity alice`) is
+  // theirs and survives being copied.
+  let autoMinted = Stdlib.String.startsWith stored "inst-"
 
-/// Get all WIP ops on a branch as `WipOpEntry` records (op + DB id + batch).
-let getWipWithIds (branchId: Uuid) : List<WipOpEntry> =
-  branchId
-  |> Builtin.scmGetWipOpsWithIds
-  |> Stdlib.List.map (fun tuple ->
-    let (id, op, propId) = tuple
-    WipOpEntry { id = id; op = op; propagationId = propId })
-
-
-/// Render a PackageLocation as its dotted FQN string. Mirrors
-/// `LibDB.PackageLocation.toFQN` on the F# side so CLI-side name matching
-/// agrees with what `getWipItems` returns.
-let locationToFqn (loc: LanguageTools.ProgramTypes.PackageLocation) : String =
-  if Stdlib.List.isEmpty loc.modules then
-    $"{loc.owner}.{loc.name}"
+  if (stored != "") && ((mintedAt == here) || (autoMinted |> Stdlib.Bool.not)) then
+    stored
   else
-    let modStr = Stdlib.String.join loc.modules "."
-    $"{loc.owner}.{modStr}.{loc.name}"
+    let generated = $"inst-{Stdlib.Uuid.toString (Stdlib.Uuid.generate ())}"
+    Builtin.configSet "sync.identity" generated
+    Builtin.configSet "sync.identity.origin" here
+    generated
 
 
-/// Summary of WIP (uncommitted) changes on a branch
-type WipSummary =
-  { types: Int
-    values: Int
-    fns: Int
-    renames: Int
-    deprecations: Int
-    total: Int }
-
-/// Get a count from a Dict, defaulting to 0
-let getCount (d: Dict<Int>) (key: String) : Int =
-  match Stdlib.Dict.get d key with
-  | Some v -> v
-  | None -> 0
-
-/// Get summary of WIP ops on a branch (counts by type)
-let getWipSummary (branchId: Uuid) : WipSummary =
-  let d = Builtin.scmGetWipSummary branchId
-
-  WipSummary
-    { types = getCount d "types"
-      values = getCount d "values"
-      fns = getCount d "fns"
-      renames = getCount d "renames"
-      deprecations = getCount d "deprecations"
-      total = getCount d "total" }
-
-/// Fast count of WIP ops on a branch (no deserialization)
-let getWipOpCount (branchId: Uuid) : Int =
-  Builtin.scmGetWipOpCount branchId
-
-/// Fast count of commits on a branch (no deserialization)
-let getCommitCount (branchId: Uuid) : Int =
-  Builtin.scmGetCommitCount branchId
-
-/// Get WIP items on a branch (excludes auto-propagated ops)
-let getWipItems (branchId: Uuid) : List<Dict<String>> =
-  Builtin.scmGetWipItems branchId
+/// Set (or change) this instance's sync identity.
+let setIdentity (name: String) : Unit =
+  let _ = Builtin.configSet "sync.identity" name
+  ()
 
 
-type CommitError =
-  /// Declarations in the commit have definite type errors. Nothing was committed.
-  /// Fix them (or `undo`/`discard`), or commit with `allowTypeErrors` to take
-  /// them anyway.
-  | TypeCheckFailed of LanguageTools.AtRestTypeChecker.Report
-  /// Storage refused the commit.
-  | CommitFailed of String
-
-/// One line for a `CommitError`, for callers with nowhere to show a full report.
-let commitErrorMessage (error: CommitError) : String =
-  match error with
-  | TypeCheckFailed report ->
-    let count = Stdlib.List.length report.diagnostics
-    $"at-rest type check failed ({Stdlib.Int.toString count} type errors); "
-    ++ "fix them or commit with --allow-type-errors"
-  | CommitFailed message -> message
+/// The remembered default relay URL, or "" if none (so `dark sync` needs no url).
+let relay () : String = Builtin.configGet "sync.relay"
 
 
-/// Commit all WIP ops, refusing definite type errors unless
-/// <param allowTypeErrors> is set.
-let commit
-  (accountId: Uuid)
-  (branchId: Uuid)
-  (message: String)
-  (allowTypeErrors: Bool)
-  : Stdlib.Result.Result<String, CommitError> =
-  // Full commit means committing every WIP op id.
-  let opIds =
-    branchId |> getWipWithIds |> Stdlib.List.map (fun e -> e.id)
-
-  if Stdlib.List.isEmpty opIds then
-    Stdlib.Result.Result.Error(CommitError.CommitFailed "Nothing to commit")
-  else
-    commitOpIds accountId branchId message opIds allowTypeErrors
+let setRelay (url: String) : Unit =
+  let _ = Builtin.configSet "sync.relay" url
+  ()
 
 
-/// Include declaration bodies published by selected `SetName` ops, preventing a
-/// partial commit from checking only location rows.
-let opsForCommitTypeCheck
-  (allWipOps: List<LanguageTools.ProgramTypes.PackageOp>)
-  (selectedOps: List<LanguageTools.ProgramTypes.PackageOp>)
+/// The ONE Dark call into the op-blob decoder, and it answers None when this build cannot read the
+/// blob. The binary op format isn't Dark-decodable, so this single primitive is all F# has to hand
+/// over for reading ops; the queries and folding are Dark on top of it.
+///
+/// What an unreadable op MEANS belongs to `SCM.StoreHealth`, which counts them. Not to whichever
+/// reader touches one first.
+let tryDecodeOp
+  (id: Uuid)
+  (blob: Blob)
+  : Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageOp> =
+  Builtin.packageOpFromBlobOption id blob
+
+
+/// Whether an op binds a NAME, read from its tag without decoding it.
+///
+/// Worth having only because of what it saves: an import decodes every arriving op to learn which names
+/// moved, and content ops (the `Add*` family, which are whole ASTs and so the expensive ones) move none.
+/// Asking first turns most of that decoding into a byte comparison.
+let opBindsAName (blob: Blob) : Bool = Builtin.packageOpBindsAName blob
+
+
+/// Decode op-log rows (id, op_blob) into fully-decoded PackageOps. The QUERY is Dark; only the per-row
+/// blob decode is a builtin, so there's no read builtin at all.
+let decodeOpRows
+  (rows: List<Dict<Stdlib.Sqlite.Value>>)
   : List<LanguageTools.ProgramTypes.PackageOp> =
-  let selectedTargets =
-    selectedOps
-    |> Stdlib.List.filterMap (fun op ->
-      match op with
-      | SetName (_, target) -> Stdlib.Option.Option.Some target
+  rows
+  |> Stdlib.List.filterMap (fun row ->
+    match
+      (Stdlib.Sqlite.textField row "id", Stdlib.Sqlite.bytesField row "op_blob")
+    with
+    | (Some idStr, Some blob) ->
+      match Stdlib.Uuid.parse idStr with
+      | Ok id -> tryDecodeOp id blob
+      | Error _ -> Stdlib.Option.Option.None
+    | _ -> Stdlib.Option.Option.None)
+
+
+// reading an INCOMING side (op blobs -> the names they bind)
+
+
+/// A decoded op + its stamp -> the name it BINDS, keyed for the latest-wins fold.
+///
+/// TWO ops bind a name: `SetName` and `Resolve`. Everything else is content, which is content-addressed
+/// and so can never contend.
+///
+/// `Resolve` must be included. The F# fold (`applySetNameFrom`) and the in-memory overlay
+/// (`createInMemory`) both treat a resolution as a binding; omitting it here makes Dark report the last
+/// SetName while execution runs the resolution.
+let bindingFromOp
+  (op: LanguageTools.ProgramTypes.PackageOp)
+  (ts: String)
+  : Stdlib.Option.Option<(String * Conflicts.Binding)> =
+  // Split because only a SetName carries a predecessor. A Resolve is a human overriding a binding, and
+  // "what it replaced" is the version the fold picked, which is not lineage in the sense this asks about.
+  let previous =
+    match op with
+    | SetName(_, _, Some h) ->
+      Stdlib.Option.Option.Some(LanguageTools.ProgramTypes.hashToString h)
+    | _ -> Stdlib.Option.Option.None
+
+  match op with
+  | Decision(_, location, _, Override target)
+  | SetName(location, target, _) ->
+    let modules = Stdlib.String.join location.modules "."
+
+    let itemType =
+      match LanguageTools.ProgramTypes.Reference.kind target with
+      | Fn -> "fn"
+      | Type -> "type"
+      | Value -> "value"
+
+    let hash =
+      LanguageTools.ProgramTypes.hashToString
+        (LanguageTools.ProgramTypes.Reference.hash target)
+
+    let binding =
+      Conflicts.Binding
+        { owner = location.owner
+          modules = modules
+          name = location.name
+          itemType = itemType
+          hash = hash
+          originTs = ts
+          // Filled in by the wire path when the sender told us; a local fold has nobody to name.
+          author = ""
+          previous = previous }
+
+    Stdlib.Option.Option.Some((Conflicts.bindingKey location.owner modules location.name, binding))
+  | _ -> Stdlib.Option.Option.None
+
+
+/// Fold a run of (op, origin_ts) into "what does this op set BIND", latest-stamp-wins per name. The rows must
+/// arrive oldest-first; the later SetName then overwrites the earlier, which is the binding the fold lands on.
+let bindingsFromOpRows (rows: List<Dict<Stdlib.Sqlite.Value>>) : List<Conflicts.Binding> =
+  let entries =
+    rows
+    |> Stdlib.List.filterMap (fun row ->
+      match
+        (Stdlib.Sqlite.textField row "id", Stdlib.Sqlite.bytesField row "op_blob")
+      with
+      | (Some idStr, Some blob) ->
+        match Stdlib.Uuid.parse idStr with
+        | Ok id ->
+          let ts = Stdlib.Sqlite.textField row "ts" |> Stdlib.Option.withDefault ""
+
+          match tryDecodeOp id blob with
+          | Some op -> bindingFromOp op ts
+          | None -> Stdlib.Option.Option.None
+        | Error _ -> Stdlib.Option.Option.None
       | _ -> Stdlib.Option.Option.None)
 
-  let referencedAdds =
-    allWipOps
-    |> Stdlib.List.filter (fun op ->
-      let target =
-        match op with
-        | AddType typ ->
-          Stdlib.Option.Option.Some(
-            LanguageTools.ProgramTypes.Reference.PackageType typ.hash)
-        | AddValue value ->
-          Stdlib.Option.Option.Some(
-            LanguageTools.ProgramTypes.Reference.PackageValue value.hash)
-        | AddFn fn ->
-          Stdlib.Option.Option.Some(
-            LanguageTools.ProgramTypes.Reference.PackageFn fn.hash)
-        | _ -> Stdlib.Option.Option.None
-
-      match target with
-      | Some target -> Stdlib.List.member selectedTargets target
-      | None -> false)
-
-  Stdlib.List.append selectedOps referencedAdds
+  Stdlib.Dict.values (Stdlib.Dict.fromListOverwritingDuplicates entries)
 
 
-/// Commit selected WIP ops after rechecking them as one batch. Selected names pull
-/// in their WIP bodies so a location cannot publish unchecked content.
-let commitOpIds
-  (accountId: Uuid)
+/// What a branch CHAIN binds (the branch, then its ancestors up to main), for a non-main parent -- which is
+/// never materialized in `locations`, only ever an overlay. Mirrors `Branches.chainOverlayOps`.
+let chainBindings (branchId: Uuid) : List<Conflicts.Binding> =
+  match
+    Stdlib.Sqlite.queryP
+      (localDb ())
+      // `@p1` is main's id, not the literal "main". `SCM.Ids` exists to enforce exactly that, and its
+      // own comment records the rule drifting twice already -- once when main's id was "" and once when
+      // it was "main". SQL is where it drifts unnoticed, because no type checker reads a string.
+      // Against a current store this comparison was simply dead: `parent_id` holds main's UUID, so
+      // `!= 'main'` was true for every row and the recursion walked past main instead of stopping at it.
+      "WITH RECURSIVE chain(bid) AS (
+         SELECT @p0
+         UNION
+         SELECT b.parent_id FROM branches b JOIN chain c ON b.id = c.bid
+         WHERE b.parent_id != @p1
+       )
+       SELECT p.id, p.op_blob, p.origin_ts AS ts
+       FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id
+       WHERE ob.branch_id IN (SELECT bid FROM chain)
+       ORDER BY p.origin_ts, p.rowid"
+      [ Stdlib.Uuid.toString branchId
+        Stdlib.Uuid.toString SCM.Ids.mainBranchId ]
+  with
+  | Ok rows -> bindingsFromOpRows rows
+  | Error _ -> []
+
+
+/// One name a branch changes vs its parent.
+type BranchDiffEntry =
+  { /// Dotted, as a person reads it.
+    name: String
+    itemType: String
+    /// "new" when the parent does not have this name at all, "changed" when it has a different version.
+    change: String
+    /// What the parent binds. "" when the name is new there.
+    parentHash: String
+    /// What the branch binds.
+    hash: String }
+
+
+/// What a sync-import from <param sourceId> will reconcile. `conflicts` are detected but NOT yet recorded,
+/// and `names` are the names the import touches (they become the new bases once the fold lands).
+/// `bulk` means the import was ADOPTED WHOLESALE without per-name detection; `detected` says whether the
+/// detector actually ran, so a caller never reports "no conflicts" when it really means "didn't look".
+type SyncPlan =
+  { conflicts: List<Conflicts.Conflict>
+    bulk: Bool
+    detected: Bool }
+
+
+/// A lightweight op-log row for display (no op_blob decode): what `dark ops` shows.
+type OpSummary =
+  { id: String
+    sizeBytes: Int64
+    ts: String
+    /// The op itself, so a listing can say what the op DOES rather than how many bytes it
+    /// is. `None` for an op this build's deserializer cannot read, which a synced store
+    /// holds on purpose; the row still lists, it just cannot describe itself.
+    op: Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageOp> }
+
+
+/// What a branch REF resolved to. A DU rather than an Option because "no such branch" and "that could be
+/// several branches" want different words from the caller, and an Option would flatten them into one.
+type BranchRefResult =
+  | Found of Uuid
+  | NotFound
+  /// The prefix matched more than one branch.
+  | Ambiguous
+
+
+/// Commit the whole current draft into <param commitHash>. Returns how many ops it committed.
+let stampDraftFor (branchId: Uuid) (commitHash: String) : Int64 =
+  let n = draftOpCountFor branchId
+
+  // @p0 is the commit; the branch form's own @p0 shifts to @p1, so build its params in that order.
+  let where =
+    if SCM.Ids.isMain branchId then
+      "p.commit_hash IS NULL AND p.effective = 1
+       AND p.id NOT IN (SELECT op_id FROM op_branches)"
+    else
+      "p.commit_hash IS NULL
+       AND p.id IN (SELECT op_id FROM op_branches WHERE branch_id = @p1)"
+
+  // `Stdlib.Uuid.toString`, not the Uuid: this is a `List<String>` of SQL parameters, and a raw Uuid in it
+  // is a runtime type error rather than a bad query. It threw on the branch form only -- main's arm has no
+  // id to pass -- so `dark commit` worked on main and died on every branch.
+  let params =
+    if SCM.Ids.isMain branchId then
+      [ commitHash ]
+    else
+      [ commitHash; Stdlib.Uuid.toString branchId ]
+
+  let _ =
+    Stdlib.Sqlite.execP
+      (localDb ())
+      ("UPDATE package_ops SET commit_hash = @p0 WHERE id IN
+          (SELECT p.id FROM package_ops p WHERE " ++ where ++ ")")
+      params
+
+  n
+
+
+let stampDraft (commitHash: String) : Int64 =
+  stampDraftFor (currentBranch ()) commitHash
+
+
+/// A draft op, with the two things a selection needs that a decoded op alone doesn't carry: which row it is,
+/// and when it was authored.
+type DraftEntry =
+  { id: String
+    ts: String
+    op: LanguageTools.ProgramTypes.PackageOp }
+
+
+/// Commit ONLY these ops into <param commitHash>. Returns how many rows it actually stamped.
+///
+/// The whole-draft UPDATE narrowed to an explicit id set, for `dark commit --include=`. It re-applies the
+/// draft predicate as well as the id list, so a stale id -- already committed, or belonging to a branch --
+/// cannot be swept in by a caller whose selection is a moment old. Counts MATCHED rows, not the caller's
+/// list length.
+let stampDraftOpsFor
+  (branchId: Uuid)
+  (commitHash: String)
+  (opIds: List<String>)
+  : Int64 =
+  if Stdlib.List.isEmpty opIds then
+    0L
+  else
+    let quoted =
+      opIds
+      |> Stdlib.List.map (fun id -> $"'{id}'")
+      |> Stdlib.String.join ", "
+
+    let scoped = $"({draftWhere branchId}) AND p.id IN ({quoted})"
+
+    let before =
+      match
+        Stdlib.Sqlite.queryOneP
+          (localDb ())
+          $"SELECT count(*) AS n FROM package_ops p WHERE {scoped}"
+          (draftParams branchId)
+      with
+      | Some row -> Stdlib.Sqlite.intField row "n" |> Stdlib.Option.withDefault 0L
+      | None -> 0L
+
+    let _ =
+      Stdlib.Sqlite.execP
+        (localDb ())
+        ("UPDATE package_ops SET commit_hash = @p0 WHERE id IN
+            (SELECT p.id FROM package_ops p WHERE " ++ scoped ++ ")")
+        (draftParams branchId |> Stdlib.List.push commitHash)
+
+    before
+
+
+let stampDraftOps (commitHash: String) (opIds: List<String>) : Int64 =
+  stampDraftOpsFor (currentBranch ()) commitHash opIds
+
+
+/// Collapse the draft's superseded NAMINGS, keeping the last binding per name. Returns how many ops went.
+///
+/// Main only. A branch's ops are branch-pending rather than draft, and they're collapsed when they merge.
+let collapseDraft () : Stdlib.Result.Result<Int, String> =
+  match currentBranch () with
+  | id when SCM.Ids.isMain id -> Builtin.scmCollapseDraft ()
+  | _ -> Stdlib.Result.Result.Ok 0
+
+
+/// Drop a BRANCH's uncommitted ops. Returns how many went.
+///
+/// Nothing is re-folded: a branch's ops are effective=0 and never fold into main's projections, so
+/// deleting the rows and reloading the overlay IS the removal. Main's draft goes through `discardMainDraft`.
+///
+/// The op rows go FIRST -- untagging before deleting leaves an op looking like a main op, and a main op
+/// is one that folds.
+let discardBranchDraft (branchId: Uuid) : Int64 =
+  let n = draftOpCountFor branchId
+
+  let _ =
+    Stdlib.Sqlite.execP
+      (localDb ())
+      // Only ops no OTHER branch holds -- see the same guard in `Branches.archive`.
+      "DELETE FROM package_ops WHERE commit_hash IS NULL
+        AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @p0)
+        AND id NOT IN (SELECT op_id FROM op_branches WHERE branch_id <> @p0)"
+      [ Stdlib.Uuid.toString branchId ]
+
+  let _ =
+    Stdlib.Sqlite.execP
+      (localDb ())
+      "DELETE FROM op_branches WHERE branch_id = @p0
+        AND op_id NOT IN (SELECT id FROM package_ops)"
+      [ Stdlib.Uuid.toString branchId ]
+
+  // Once the branch holds nothing, its per-name fork points describe ops that no longer exist. They stay
+  // while any op survives, because those ops are still based on them.
+  let remaining =
+    Stdlib.Sqlite.scalarIntP
+      (localDb ())
+      "SELECT count(*) AS n FROM op_branches WHERE branch_id = @p0"
+      [ Stdlib.Uuid.toString branchId ]
+      "n"
+    |> Stdlib.Option.withDefault 0L
+
+  let _ =
+    if remaining == 0L then
+      Stdlib.Sqlite.execP
+        (localDb ())
+        "DELETE FROM branch_name_bases WHERE branch_id = @p0"
+        [ Stdlib.Uuid.toString branchId ]
+    else
+      Stdlib.Result.Result.Ok 0
+
+  // Reload the overlay so this process stops resolving names through the ops just deleted.
+  let _ = selectBranch branchId
+  n
+
+
+/// Drop MAIN's uncommitted ops, re-folding the store from the committed ones. Returns how many went.
+let discardMainDraft () : Stdlib.Result.Result<Int, String> =
+  Builtin.scmDiscardDraft ()
+
+
+/// Drop ONE name's uncommitted bindings from MAIN's draft, leaving the rest alone.
+let discardMainDraftName
+  (owner: String)
+  (modules: List<String>)
+  (name: String)
+  : Stdlib.Result.Result<Int, String> =
+  Builtin.scmDiscardDraftName owner modules name
+
+
+/// Drop one name's uncommitted bindings from the current scope's draft.
+///
+/// The operation `discard` (all-or-nothing) and `undo` (step back a version) between them could not
+/// express: a newly-authored item has no previous version, so `undo` refuses, and one typo in a
+/// reference blocked `commit` until the entire draft went.
+///
+/// Only the NAME's bindings go. That reverts the name to its last committed binding, or to not
+/// existing at all if it never had one.
+let discardDraftName
+  (owner: String)
+  (modules: List<String>)
+  (name: String)
+  : Stdlib.Result.Result<Int, String> =
+  match currentBranch () with
+  | id when SCM.Ids.isMain id -> discardMainDraftName owner modules name
+  | branchId ->
+    // A branch's ops are effective=0 and never fold into main, so deleting the tagged rows for this
+    // name IS the removal, exactly as `discardBranchDraft` does for all of them.
+    let mods = Stdlib.String.join modules "."
+
+    let deleted =
+      Stdlib.Sqlite.execP
+        (localDb ())
+        "DELETE FROM package_ops WHERE commit_hash IS NULL
+          AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @p0)
+          AND id NOT IN (SELECT op_id FROM op_branches WHERE branch_id <> @p0)
+          AND id IN (SELECT op_id FROM locations
+                     WHERE owner = @p1 AND modules = @p2 AND name = @p3)"
+        [ Stdlib.Uuid.toString branchId; owner; mods; name ]
+
+    let _ =
+      Stdlib.Sqlite.execP
+        (localDb ())
+        "DELETE FROM op_branches WHERE branch_id = @p0
+          AND op_id NOT IN (SELECT id FROM package_ops)"
+        [ Stdlib.Uuid.toString branchId ]
+
+    let _ = selectBranch branchId
+
+    match deleted with
+    | Ok n -> Stdlib.Result.Result.Ok(Stdlib.Int64.toInt n |> Stdlib.Option.withDefault 0)
+    | Error e -> Stdlib.Result.Result.Error e
+
+
+/// Drop the current scope's draft, whichever it is.
+let discardDraft () : Stdlib.Result.Result<Int, String> =
+  match currentBranch () with
+  | id when SCM.Ids.isMain id -> discardMainDraft ()
+  | branchId ->
+    Stdlib.Result.Result.Ok(
+      Stdlib.Int.fromInt64 (discardBranchDraft branchId)
+    )
+
+
+/// The names that would REPOINT if the draft were committed now: everything that still references an OLD hash
+/// of a changed name, plus everything that references those, transitively.
+///
+/// The recursion is the cascade: if X repoints it gets a new hash, so anything referencing X repoints too.
+/// One recursive query rather than a Dark loop, so `dark status` is cheap enough to run on every prompt.
+let staleHashesFor (b: Conflicts.Binding) : List<String> =
+  match
+    Stdlib.Sqlite.queryP
+      (localDb ())
+      "WITH RECURSIVE stale(hash) AS (
+         SELECT d.item_hash FROM package_dependencies d
+          WHERE d.depends_on_owner = @p0
+            AND d.depends_on_modules = @p1
+            AND d.depends_on_name = @p2
+            AND d.depends_on_hash <> @p3
+         UNION
+         SELECT d2.item_hash FROM package_dependencies d2 JOIN stale s ON d2.depends_on_hash = s.hash
+       )
+       SELECT DISTINCT hash FROM stale"
+      [ b.owner; b.modules; b.name; b.hash ]
+  with
+  | Ok rows ->
+    rows
+    |> Stdlib.List.filterMap (fun row -> Stdlib.Sqlite.textField row "hash")
+  | Error _ -> []
+
+
+/// Every name bound to <param hash>, as <param branchId> sees it: main's, plus the branch's own frontier.
+///
+/// Deprecation is keyed on CONTENT, so it applies to every name holding that hash, which for a trivial
+/// value can be many unrelated ones. `locations` answers for MAIN only, so reading it alone under-reports
+/// the collateral on a branch -- precisely where a caller is about to warn someone about it.
+let namesAtContent (branchId: Uuid) (hash: String) (itemType: String) : List<String> =
+  let mainNames =
+    match
+      Stdlib.Sqlite.queryP
+        (localDb ())
+        "SELECT owner, modules, name FROM locations
+         WHERE item_hash = @p0 AND item_type = @p1 AND unlisted_at IS NULL"
+        [ hash; itemType ]
+    with
+    | Ok rows ->
+      rows
+      |> Stdlib.List.filterMap (fun row ->
+        match
+          (Stdlib.Sqlite.textField row "owner",
+           Stdlib.Sqlite.textField row "modules",
+           Stdlib.Sqlite.textField row "name")
+        with
+        | (Some o, Some m, Some n) -> Stdlib.Option.Option.Some(Conflicts.fqn o m n)
+        | _ -> Stdlib.Option.Option.None)
+    | Error _ -> []
+
+  let branchNames =
+    if SCM.Ids.isMain branchId then
+      []
+    else
+      branchBindings branchId
+      |> Stdlib.List.filterMap (fun b ->
+        if b.hash == hash && b.itemType == itemType then
+          Stdlib.Option.Option.Some(Conflicts.fqn b.owner b.modules b.name)
+        else
+          Stdlib.Option.Option.None)
+
+  Stdlib.List.unique (Stdlib.List.append mainNames branchNames)
+
+
+/// Where MAIN says each of <param hashes> lives. LIST-valued per hash on purpose: identical content is the
+/// same item, so one hash is routinely live at several names, and picking one would drop the others from
+/// the preview -- the same mistake that would drop them from the cascade itself.
+let mainNamesForHashes (hashes: List<String>) : List<(String * String)> =
+  match hashes with
+  | [] -> []
+  | _ ->
+    // Chunked for the same reason as `Conflicts.localBindingsFor`: a wide cascade can produce more stale
+    // hashes than SQLite will bind in one statement, and the over-cap failure reads as an empty repoint list.
+    Stdlib.List.unique hashes
+    |> Conflicts.inChunks
+    |> Stdlib.List.map (fun chunk ->
+      let sql =
+        "SELECT item_hash, owner, modules, name FROM locations
+         WHERE unlisted_at IS NULL AND item_hash IN ("
+        ++ (Conflicts.inPlaceholders chunk)
+        ++ ")"
+
+      match Stdlib.Sqlite.queryP (localDb ()) sql chunk with
+      | Ok rows ->
+        rows
+        |> Stdlib.List.filterMap (fun row ->
+          match
+            (Stdlib.Sqlite.textField row "item_hash",
+             Stdlib.Sqlite.textField row "owner",
+             Stdlib.Sqlite.textField row "modules",
+             Stdlib.Sqlite.textField row "name")
+          with
+          | (Some h, Some o, Some m, Some n) ->
+            Stdlib.Option.Option.Some((h, Conflicts.fqn o m n))
+          | _ -> Stdlib.Option.Option.None)
+      | Error _ -> [])
+    |> Stdlib.List.flatten
+
+
+/// The NAMES `staleHashesFor` finds for <param b>, resolved through the BRANCH overlay first, then main. A
+/// branch's items have no `locations` row, so resolving only against main undercounts the preview -- fewer
+/// repoints than the commit will perform, which is the wrong direction for a number whose job is to warn you.
+let repointsFor (b: Conflicts.Binding) : List<String> =
+  let hashes = staleHashesFor b
+
+  let overlay =
+    match currentBranch () with
+    | id when SCM.Ids.isMain id -> []
+    | branch ->
+      chainBindings branch
+      |> Stdlib.List.map (fun bind ->
+        (bind.hash, Conflicts.fqn bind.owner bind.modules bind.name))
+
+  let overlayHashes = overlay |> Stdlib.List.map (fun pair -> Stdlib.Tuple2.first pair)
+
+  let fromOverlay =
+    overlay
+    |> Stdlib.List.filter (fun pair ->
+      Stdlib.List.member hashes (Stdlib.Tuple2.first pair))
+
+  // Main answers only for hashes the branch doesn't already place.
+  let unresolved =
+    hashes |> Stdlib.List.filter (fun h -> Stdlib.Bool.not (Stdlib.List.member overlayHashes h))
+
+  (Stdlib.List.append fromOverlay (mainNamesForHashes unresolved))
+  |> Stdlib.List.map (fun pair -> Stdlib.Tuple2.second pair)
+  |> Stdlib.List.unique
+
+
+/// The location a fully-qualified name refers to, as `Conflicts.fqn` writes them: the first segment is the
+/// owner, the last is the name, everything between is the module path. None when there aren't enough
+/// segments to be an item.
+let locationOfFqn
+  (fqn: String)
+  : Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageLocation> =
+  match Stdlib.String.split fqn "." with
+  | owner :: rest ->
+    match Stdlib.List.last rest with
+    | Some name ->
+      let mods = Stdlib.List.take rest ((Stdlib.List.length rest) - 1)
+
+      (LanguageTools.ProgramTypes.PackageLocation
+        { owner = owner; modules = mods; name = name })
+      |> Stdlib.Option.Option.Some
+    | None -> Stdlib.Option.Option.None
+  | [] -> Stdlib.Option.Option.None
+
+
+/// One knock-on repoint: <param name> moves because <param uses> did. Carrying the CAUSE is what lets the
+/// commit view read as an outcome ("Home.render -> uses User.format") instead of a bare list of names.
+type Repoint =
+  { name: String
+    uses: String }
+
+
+/// Every name the draft would touch as a knock-on, before any policy is applied: it references an old
+/// version of something the draft changed. Never a name the draft itself changed, which is listed as a
+/// change rather than an effect. Split by `draftRepoints` (will follow) and `draftLeftBehind` (pinned).
+let draftRepointCandidates
+  (changed: List<Conflicts.Binding>)
+  : List<Repoint> =
+  let changedNames =
+    changed |> Stdlib.List.map (fun b -> Conflicts.fqn b.owner b.modules b.name)
+
+  changed
+  |> Stdlib.List.map (fun b ->
+    let cause = Conflicts.fqn b.owner b.modules b.name
+
+    repointsFor b
+    |> Stdlib.List.map (fun n -> Repoint { name = n; uses = cause }))
+  |> Stdlib.List.flatten
+  |> Stdlib.List.filter (fun r ->
+    Stdlib.Bool.not (Stdlib.List.member changedNames r.name))
+  |> Stdlib.List.uniqueBy (fun r -> r.name)
+  |> Stdlib.List.sortBy (fun r -> r.name)
+
+
+/// Every name the draft would repoint, deduped: the candidates policy says will follow.
+let draftRepoints (changed: List<Conflicts.Binding>) : List<Repoint> =
+  draftRepointCandidates changed
+  |> (fun rs ->
+    let choices = Propagation.allChoices ()
+
+    rs
+    |> Stdlib.List.filter (fun r ->
+      match locationOfFqn r.name with
+      | Some loc -> Propagation.shouldFollowIn choices loc
+      | None -> true))
+
+
+/// Every name that WOULD have repointed and won't, because a pin says so.
+///
+/// The complement of `draftRepoints`, and a first-class outcome rather than a warning: leaving a reference
+/// on an older version is what a pin IS. Shown at commit so you can see the decision next to the changes
+/// that triggered it.
+let draftLeftBehind (changed: List<Conflicts.Binding>) : List<Repoint> =
+  draftRepointCandidates changed
+  |> (fun rs ->
+    let choices = Propagation.allChoices ()
+
+    rs
+    |> Stdlib.List.filter (fun r ->
+      match locationOfFqn r.name with
+      | Some loc -> Stdlib.Bool.not (Propagation.shouldFollowIn choices loc)
+      | None -> false))
+
+
+/// Authors a `Resolve` op, which is why that op exists. Ops are content-addressed, so re-authoring the
+/// losing SetName reproduces the op already in the log: it INSERT-OR-IGNOREs and folds nothing, and there
+/// is no way to say "the same binding, but now I mean it" as a plain op. Carrying the conflict id makes it
+/// distinct and makes re-resolving idempotent.
+///
+/// Being an op is what makes the choice TRAVEL: a peer folding it lands on the same binding rather than
+/// re-deriving its own auto-pick.
+let applyResolution
+  (branchId: Uuid)
+  (c: Conflicts.Conflict)
+  (hash: String)
+  : Stdlib.Result.Result<Int, String> =
+  let modules =
+    if c.modules == "" then [] else Stdlib.String.split c.modules "."
+
+  let location =
+    LanguageTools.ProgramTypes.PackageLocation
+      { owner = c.owner; modules = modules; name = c.name }
+
+  let h = LanguageTools.ProgramTypes.Hash.Hash hash
+
+  let reference =
+    match c.itemType with
+    | "type" -> LanguageTools.ProgramTypes.Reference.PackageType h
+    | "value" -> LanguageTools.ProgramTypes.Reference.PackageValue h
+    | _ -> LanguageTools.ProgramTypes.Reference.PackageFn h
+
+  add
+    branchId
+    [ LanguageTools.ProgramTypes.PackageOp.Decision(
+        c.id,
+        location,
+        "",
+        LanguageTools.ProgramTypes.DecisionKind.Override reference
+      ) ]
+
+
+/// Settle a conflict on <param hash>: author the resolution AND close the record, together.
+///
+/// One function because they are one act. Split across callers, they drift into a conflict left open with
+/// its resolution authored, or closed with nothing behind it.
+///
+/// Refuses an empty hash rather than binding a name to nothing: `Hash ""` corrupts the binding in a way no
+/// later fold undoes.
+let settleConflict
+  (branchId: Uuid)
+  (c: Conflicts.Conflict)
+  (hash: String)
+  : Stdlib.Result.Result<Unit, String> =
+  if hash == "" then
+    Stdlib.Result.Result.Error
+      "no version to keep: that side of the conflict has no recorded hash"
+  else
+    match applyResolution branchId c hash with
+    | Ok _ ->
+      let _ = Conflicts.setStatus c.id "overridden" hash
+      Stdlib.Result.Result.Ok()
+    | Error e -> Stdlib.Result.Result.Error e
+
+
+/// Commit the draft on <param branchId> under <param message>. Returns the new commit's hash.
+///
+/// Refuses when something in the draft references a name that does not resolve. The gate is on the
+/// OPERATION, not on one command: there is more than one way to commit, and a draft must not be
+/// committable from one surface and refused from another.
+///
+/// The commit row is created first and deleted again if nothing is stamped, since a commit naming no ops
+/// shows up in `log` claiming work that isn't there.
+/// The workbench's commit. The CLI has its own path (`Cli.Commit`), which additionally offers
+/// `--allow-type-errors`; there is no way to type a flag at the workbench's commit prompt, so this
+/// refuses definite type errors outright rather than offering an override it cannot take.
+let commitDraft
+  (author: String)
   (branchId: Uuid)
   (message: String)
-  (opIds: List<Uuid>)
-  (allowTypeErrors: Bool)
-  : Stdlib.Result.Result<String, CommitError> =
-  let store () : Stdlib.Result.Result<String, CommitError> =
-    match Builtin.scmCommitWipOpsByIds accountId branchId message opIds with
-    | Ok commitHash -> Stdlib.Result.Result.Ok commitHash
-    | Error message -> Stdlib.Result.Result.Error(CommitError.CommitFailed message)
+  : Stdlib.Result.Result<String, String> =
+  let typeReport = typeCheckDraft branchId
 
-  if allowTypeErrors then
-    store ()
+  match typeReport.verdict with
+  | Failed ->
+    let count =
+      Stdlib.List.length
+        (Stdlib.List.append typeReport.diagnostics typeReport.blockers)
+
+    Stdlib.Result.Result.Error(
+      $"the at-rest type check found {Stdlib.Int.toString count} definite error(s); "
+      ++ "`dark constraints` and `dark typecheck` show them")
+  | Checked
+  | Incomplete ->
+
+  match unresolvedInDraft branchId with
+  | [] ->
+    match draftOpCountFor branchId with
+    | 0L -> Stdlib.Result.Result.Error "nothing to commit"
+    | _ ->
+      // The ids and the parent are read BEFORE the stamp, because stamping is what takes them out of the
+      // draft: ask afterwards and the answer is empty.
+      let opIds = draftOpIdsFor branchId
+      let parent = parentCommitFor branchId
+      let hash = Commits.create message author opIds parent
+      let committed = stampDraftFor branchId hash
+
+      if committed == 0L then
+        let _ = Commits.delete hash
+        Stdlib.Result.Result.Error "nothing was committed"
+      else
+        Stdlib.Result.Result.Ok hash
+  | broken ->
+    let names =
+      broken
+      |> Stdlib.List.map (fun (label, _) -> label)
+      |> Stdlib.String.join ", "
+
+    Stdlib.Result.Result.Error
+      $"unresolved references in {names} -- author what's missing, or commit with --allow-unresolved"
+
+
+/// Drop the draft for <param branchId>, whichever kind of draft that is. Returns how many ops went.
+let discardDraftFor (branchId: Uuid) : Int =
+  if SCM.Ids.isMain branchId then
+    match discardMainDraft () with
+    | Ok n -> n
+    | Error _ -> 0
   else
-    let allWip = getWipWithIds branchId
-    let selectedOps =
-      allWip
-      |> Stdlib.List.filter (fun e -> Stdlib.List.member opIds e.id)
-      |> Stdlib.List.map (fun e -> e.op)
-    let allWipOps = allWip |> Stdlib.List.map (fun e -> e.op)
-    let checkOps = opsForCommitTypeCheck allWipOps selectedOps
-    let report = LanguageTools.AtRestTypeChecker.checkPackageOps checkOps
-    match report.verdict with
-    | Failed -> Stdlib.Result.Result.Error(CommitError.TypeCheckFailed report)
-    | Checked
-    | Incomplete -> store ()
+    Stdlib.Int.fromInt64 (discardBranchDraft branchId)
 
 
-/// Discard all WIP ops on a branch
-/// Returns the count of discarded ops on success, or an error message on failure
-let discard (branchId: Uuid) : Stdlib.Result.Result<Int, String> =
-  Builtin.scmDiscard branchId
+/// What a merge did: how many ops moved, and what it auto-resolved on the way.
+type MergeOutcome =
+  { merged: Int
+    conflicts: List<Conflicts.Conflict> }
 
 
-/// Get commit log for a branch ordered by date descending
-let getCommits (branchId: Uuid) (limit: Int) : List<Commit> =
-  Builtin.scmGetCommits branchId limit
-
-
-/// Get commit log across the entire branch chain (current + ancestors),
-/// ordered by date descending.
-let getCommitsWithAncestors (branchId: Uuid) (limit: Int) : List<Commit> =
-  Builtin.scmGetCommitsForBranchChain branchId limit
-
-
-/// Get ops for a specific commit
-let getCommitOps (commitHash: String) : List<LanguageTools.ProgramTypes.PackageOp> =
-  Builtin.scmGetCommitOps commitHash
-
-
-/// The ops in a commit that name or deprecate something, capped at <param limit>, with the total
-/// count of them alongside.
+/// Merge a branch into its parent. Decides whether it MAY (`Branches.canMerge`), then has the builtin do
+/// it: flip the frontier effective, fold into main, evaluate merged values, clear the frontier, mark
+/// merged. The gate is here and the mechanism is there, which is the line this module draws everywhere.
 ///
-/// <fn getCommitOps> turns every op in the commit into a Dark value, and the init commit holds tens
-/// of thousands of them. Rendering a twelve-line summary that way took over a second.
-let getCommitNamedOps
-  (commitHash: String)
-  (limit: Int)
-  : (List<LanguageTools.ProgramTypes.PackageOp> * Int) =
-  Builtin.scmGetCommitNamedOps commitHash limit
+/// Conflicts do not BLOCK the merge. They are detected first (the fold is about to move the local side,
+/// after which the comparison is meaningless), auto-resolved by origin_ts LWW, and recorded once the merge
+/// succeeds, so the loser is reviewable rather than silently gone.
+let mergeBranch (branchId: Uuid) : Stdlib.Result.Result<MergeOutcome, String> =
+  match Branches.canMerge branchId with
+  | Error e -> Stdlib.Result.Result.Error e
+  | Ok _ ->
+
+  let conflicts = branchPreview branchId
+
+  match Builtin.scmMergeBranch branchId with
+  | Ok n ->
+    // Filed against the PARENT, not against `branchId`: the merge folded into the parent's projection and
+    // the branch it came from is finished. `parent_id` and a branch id spell main the same way, so the id
+    // goes through as-is; translating it here is what made main's conflict list never see them.
+    let parent = branchParentOf branchId
+    let _ = Conflicts.record parent conflicts
+
+    (MergeOutcome { merged = n; conflicts = conflicts })
+    |> Stdlib.Result.Result.Ok
+  | Error e -> Stdlib.Result.Result.Error e
+
+
+/// What a rebase did: the parent's message, and what the rebase reconciled.
+type RebaseOutcome =
+  { message: String
+    conflicts: List<Conflicts.Conflict> }
+
+
+/// Rebase a branch: accept the parent's current state as the new base; reports the names the parent changed
+/// since the fork, so the branch's own ops layer on top (LWW). Records what it reconciled, same as merge.
+let rebaseBranch (branchId: Uuid) : Stdlib.Result.Result<RebaseOutcome, String> =
+  if SCM.Ids.isMain branchId then
+    // Main has no parent to rebase onto, so this is not a thing you can do rather than a thing that found
+    // nothing to do. The rewrite loops over `branch_name_bases`, and main has no rows there.
+    Stdlib.Result.Result.Error
+      "you're on main -- rebase moves a BRANCH onto its parent, and main has none."
+  else
+
+  let conflicts = branchPreview branchId
+
+  match Builtin.scmRebaseBranch branchId with
+  | Ok msg ->
+    // The mirror of merge: a rebase folds the PARENT's work into the branch, so the conflict is the
+    // branch's to answer and stays with it.
+    let _ = Conflicts.record branchId conflicts
+
+    (RebaseOutcome { message = msg; conflicts = conflicts })
+    |> Stdlib.Result.Result.Ok
+  | Error e -> Stdlib.Result.Result.Error e
+
+
+/// A display of all active branches (one line each: name (id) <- parent [status]).
+let branchList (includeMerged: Bool) : String =
+  let hidden = if includeMerged then 0L else Branches.mergedCount ()
+
+  let footer =
+    if hidden == 0L then
+      ""
+    else
+      $"\n\n{Stdlib.Int64.toString hidden} merged -- `dark branches --all` shows them."
+
+  match Branches.listLines includeMerged with
+  | [] ->
+    if hidden == 0L then
+      "no branches -- `dark switch <name>` starts one."
+    else
+      $"no live branches.{footer}"
+  | lines -> (Stdlib.String.join lines "\n") ++ footer
+
+
+/// Present everything a branch changes vs its parent (+ new, ~ changed) -- the review-before-merge diff.
+let branchDiff (branchId: Uuid) : String =
+  match branchDiffLines branchId with
+  | [] -> $"\"{branchName branchId}\" changes nothing vs its parent."
+  | lines ->
+    let n = Stdlib.Int.toString (Stdlib.List.length lines)
+    let body = Stdlib.String.join lines "\n"
+    $"\"{branchName branchId}\" changes {n} name(s) vs its parent:\n\n{body}"
+
+
+/// Resolve a conflicted name on a branch: choice = "mine" (keep the branch's) or "theirs" (take parent's).
+let resolveConflict
+  (branchId: Uuid)
+  (name: String)
+  (choice: String)
+  : Stdlib.Result.Result<String, String> =
+  Builtin.scmResolveConflict branchId name choice
+
+
+/// Archive (soft-delete) a branch, discarding its unmerged ops.
+let archiveBranch (branchId: Uuid) : Stdlib.Result.Result<String, String> =
+  Branches.archive branchId
+  // ...and say so in the log, so the machine your colleague is on stops showing it as live work. The
+  // local projection is already updated by the line above; this is only how the OTHER machine learns.
+  Builtin.scmRecordBranchArchived branchId
+  Stdlib.Result.Result.Ok $"archived branch \"{branchName branchId}\"."
+
+
+/// The id of the branch NAMED <param name>, starting it off <param parentId> if no live branch has that
+/// name. `switch` uses this, so a branch started while on another branch is parented to it (branches off
+/// branches). Returns (id, wasCreated).
+let ensureBranch (name: String) (parentId: Uuid) : (Uuid * Bool) =
+  resolveBranch name parentId
+
+// branch transfer (a branch as a portable unit)
+// A branch bundle = its registry (id/name/parent) + its frontier ops. Name-bases are re-derived
+// against the DESTINATION's main on import (the fork point that matters is the receiver's).
+
+
+/// An op inside a branch bundle: no author, deliberately. A branch bundle is a file you hand someone, and
+/// the conflict detector does not read authorship off it, so reusing `Wire.SyncOp` would attach a field nothing
+/// here reads. Branch authorship, if wanted later, gets its own field and its own version bump.
+type BranchBundleOp =
+  { id: String
+    blobHex: String
+    ts: String }
+
+
+type BranchBundle =
+  { branchId: Uuid
+    name: String
+    parent: String
+    ops: List<BranchBundleOp> }
+
+
+/// One column from the branches row for a branch (or a default).
+let branchField (branchId: Uuid) (col: String) (dflt: String) : String =
+  match
+    Stdlib.Sqlite.queryP
+      (localDb ())
+      ("SELECT " ++ col ++ " AS v FROM branches WHERE id = @p0")
+      [ Stdlib.Uuid.toString branchId ]
+  with
+  | Ok rows ->
+    (match rows with
+     | [ row ] -> Stdlib.Sqlite.textField row "v" |> Stdlib.Option.withDefault dflt
+     | _ -> dflt)
+  | Error _ -> dflt
+
+
+/// Export a single branch as a portable bundle (registry + frontier ops).
+let exportBranch (branchId: Uuid) : String =
+  let ops =
+    match
+      Stdlib.Sqlite.queryP
+        (localDb ())
+        "SELECT p.id, p.op_blob, p.origin_ts AS ts FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id WHERE ob.branch_id = @p0 ORDER BY p.rowid ASC"
+        [ Stdlib.Uuid.toString branchId ]
+    with
+    | Ok rows -> Wire.rowsToSyncOps rows
+    | Error _ -> []
+
+  // Drop authorship on the way out: see `BranchBundleOp`.
+  let bundleOps =
+    ops
+    |> Stdlib.List.map (fun o -> BranchBundleOp { id = o.id; blobHex = o.blobHex; ts = o.ts })
+
+  Stdlib.Json.serialize<BranchBundle> (
+    BranchBundle
+      { branchId = branchId
+        name = branchField branchId "name" ""
+        // The bundle is JSON, so the parent travels as text like every other field in it.
+        parent = branchField branchId "parent_id" (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
+        ops = bundleOps })
+
+
+// relay branch storage (silo wrappers over the F# store; used by the matter relay)
+let relayStoreBranch (owner: String) (branchId: Uuid) (bundle: String) : Unit =
+  Branches.relayStoreBundle owner branchId bundle
+
+
+let relayGetBranch (owner: String) (branchId: Uuid) : String =
+  Branches.relayGetBundle owner branchId
+
+
+let relayListBranches (owner: String) : String =
+  Stdlib.String.join (Branches.relayListBranches owner) "\n"
+
+
+/// Import a branch bundle: register + store its ops effective=0 + tag + re-base against local main.
+let importBranch (json: String) : Stdlib.Result.Result<String, String> =
+  match Stdlib.Json.parse<BranchBundle> json with
+  | Ok b ->
+    let records = b.ops |> Stdlib.List.map (fun op -> (op.id, op.blobHex, op.ts))
+
+    // A name is an alias; the id is the identity. Two people can each start a `fix-auth` and both survive,
+    // but `branches` has a UNIQUE index on live names. A colliding import therefore keeps its own name plus
+    // a short id: unambiguous and switchable, which beats a constraint error or silently merging two
+    // different branches into one name.
+    let taken =
+      SCM.Branches.list ()
+      |> Stdlib.List.any (fun r -> r.name == b.name && r.id != b.branchId)
+
+    let importName =
+      if b.name != "" && taken then
+        $"{b.name}~{Stdlib.String.first (Stdlib.Uuid.toString b.branchId) 8}"
+      else
+        b.name
+
+    match Builtin.scmImportBranchOps b.branchId importName b.parent records with
+    | Ok n ->
+      // Falls back to the ID when the bundle carries no name. A branch CAN have an empty name -- one first
+      // registered by authoring rather than by `switch` gets `""` -- and the hint below has to be typeable.
+      let handle =
+        if importName == "" then
+          Stdlib.Uuid.toString b.branchId
+        else
+          importName
+
+      Stdlib.Result.Result.Ok
+        $"imported branch \"{handle}\" ({Stdlib.Int.toString n} op(s)). `dark switch {handle}` to use it."
+    | Error e -> Stdlib.Result.Result.Error e
+  | Error _ -> Stdlib.Result.Result.Error "unparseable branch bundle"
