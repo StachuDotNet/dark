@@ -36,11 +36,15 @@ let private allocateFreePort () : int =
   port
 
 
-/// Serve until cancelled: every path answers 200 with a body.
+/// Serve until cancelled: `/ok` and `/sync/health` answer 200 with a body, anything
+/// else answers 400 with a reason.
+///
+/// Bound with the `*` prefix rather than `127.0.0.1`, because half of what this tests
+/// is that the client reaches the server by the address a person would actually type.
 let private runServer (port : int) (token : CancellationToken) : Task<unit> =
   task {
     let listener = new HttpListener()
-    listener.Prefixes.Add($"http://127.0.0.1:{port}/")
+    listener.Prefixes.Add($"http://*:{port}/")
     listener.Start()
 
     use _ = token.Register(fun () -> listener.Stop())
@@ -48,8 +52,16 @@ let private runServer (port : int) (token : CancellationToken) : Task<unit> =
     try
       while not token.IsCancellationRequested do
         let! ctx = listener.GetContextAsync()
-        let bytes = System.Text.Encoding.UTF8.GetBytes "pong"
-        ctx.Response.StatusCode <- 200
+        let path = ctx.Request.Url.AbsolutePath
+
+        let (status, body) =
+          if path = "/ok" || path = "/sync/health" then
+            (200, "pong")
+          else
+            (400, "no such thing here")
+
+        ctx.Response.StatusCode <- status
+        let bytes = System.Text.Encoding.UTF8.GetBytes body
         ctx.Response.ContentLength64 <- int64 bytes.Length
         do! ctx.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length)
         ctx.Response.Close()
@@ -102,7 +114,8 @@ let private withServer (f : int -> Task<unit>) : Task<unit> =
     // lie.
     do! Task.Delay 250
 
-    UnguardedOrigins.setFromArgv [ $"http://127.0.0.1:{port}" ]
+    UnguardedOrigins.setFromArgv
+      [ $"http://127.0.0.1:{port}"; $"http://localhost:{port}" ]
 
     try
       do! f port
@@ -158,7 +171,7 @@ let unnamedOriginIsRefused =
               "the refusal names the origin asked for"
             Expect.stringContains
               msg
-              "not a peer you sync with"
+              "cannot be fetched with the network protections off"
               "and says why it was refused"
             Expect.isFalse
               (msg.Contains "pong")
@@ -194,8 +207,8 @@ let unparseableUrlIsRefused =
         // asked for "not Ok" would pass with the check gone.
         Expect.stringContains
           (errorMessage refused)
-          "not a peer you sync with"
-          $"`{url}` is refused for not being a peer, not for some later reason"
+          "cannot be fetched with the network protections off"
+          $"`{url}` is refused by the origin check, not for some later reason"
     finally
       UnguardedOrigins.setFromArgv []
   }
@@ -246,11 +259,62 @@ let storedOriginsAreReadPerRequest =
   }
 
 
+let nonSuccessIsAnError =
+  testTask "a non-2xx reaches the caller as an Error, with the status and the body" {
+    do!
+      withServer (fun port ->
+        task {
+          // Both unguarded builtins returned `Ok body` for ANY completed exchange, so
+          // a server answering 400 arrived as a successful fetch whose payload
+          // happened to be an error page. Callers here only ever want the body of a
+          // request that worked.
+          let! bad =
+            eval $"Builtin.httpGetUnsafeBytes \"http://127.0.0.1:{port}/nope\""
+          Expect.isFalse (isOk bad) "a 400 is an Error"
+
+          let msg = errorMessage bad
+          Expect.stringContains msg "400" "the status is in the message"
+          Expect.stringContains
+            msg
+            "no such thing here"
+            "and so is what the server said"
+
+          let! posted =
+            eval
+              $"Builtin.httpPostUnsafeBytes \"http://127.0.0.1:{port}/nope\" (Stdlib.String.toBlob \"x\")"
+
+          Expect.isFalse (isOk posted) "and POST agrees with GET"
+        })
+  }
+
+let localhostIsReachable =
+  testTask "`localhost` reaches a server bound to IPv4" {
+    do!
+      withServer (fun port ->
+        task {
+          // `localhost` resolves to BOTH `::1` and `127.0.0.1`, and the connection
+          // filter dials every resolved address rather than only the first it got
+          // back. Every server this repo starts binds IPv4, so dialling only the
+          // first made the most natural address anyone types the one that could not
+          // work -- and it failed as a flat "network error", which sends you looking
+          // at the server.
+          //
+          // Nothing else covers this: it needs a real socket, so no unit test would
+          // catch it.
+          let! ok =
+            eval $"Builtin.httpGetUnsafeBytes \"http://localhost:{port}/ok\""
+          Expect.isTrue (isOk ok) "localhost connects"
+        })
+  }
+
+
 let tests =
   testSequencedGroup "UnguardedOrigins"
   <| testList
     "UnguardedOrigins"
     [ namedOriginIsReachable
+      nonSuccessIsAnError
+      localhostIsReachable
       unnamedOriginIsRefused
       unparseableUrlIsRefused
       defaultPortIsExplicit

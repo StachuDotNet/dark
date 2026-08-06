@@ -107,16 +107,72 @@ let private infixDispatched : Set<string> =
 /// comment saying why a wrapper is the wrong answer for that one.
 let private multiUseAllowlist : Set<string> =
   Set.ofList
-    [ // The unwrap idiom, in 60-odd places across packages/. A generic Dark
-      // wrapper does work -- `let unwrap (value: 'optOrRes) : 'a` typechecks
-      // for both Option and Result -- but it costs a package call at every
-      // unwrap and puts itself at the bottom of every unwrap failure's call
-      // stack, one frame below the code that actually had the None.
-      "unwrap" ]
+    [ // The unwrap idiom, in 60-odd places across packages/. A generic Dark wrapper does
+      // work -- `let unwrap (value: 'optOrRes) : 'a` typechecks for both Option and Result
+      // -- but it costs a package call at every unwrap and puts itself at the bottom of
+      // every unwrap failure's call stack, one frame below the code that had the None.
+      "unwrap"
 
+      // Local per-instance primitives: the store path and the key-value config beside it.
+      // Reached directly by the commands that are ABOUT this instance (config, doctor,
+      // branch switch), where a wrapper would name the thing it already is.
+      "configGet"
+      "configSet"
+      "localDbPath"
 
-/// Find the repo root by walking up from CWD until we hit one with
-/// packages/darklang/.
+      // This binary's version. Shown by `version` and stamped into the wire bundle, so it
+      // is read from both the CLI and the sync layer.
+      "getBuildHash"
+
+      // Stage ops on a branch. Used by branch-bundle import and by review-import, and both
+      // legitimately land ops on a branch for later merge.
+      "scmImportBranchOps"
+
+      // The environment, read by the few commands that care where they are running.
+      "environmentGet"
+
+      // Parser entry points, called by CLI package creation, syntax highlighting,
+      // CLI-script parsing and the LSP. Each is an entry point rather than a wrapper
+      // someone forgot to route through.
+      "parserParseDiagnostics"
+      "parserParseToWrittenTypes"
+
+      // Package-manager browsing, reached from the CLI, the LSP and agent code.
+      "getAllBuiltinFns"
+      "pmFindFn"
+      "pmFindType"
+      "pmFindValue"
+      "pmGetLocationsByFn"
+      "pmGetLocationsByType"
+      "pmGetLocationsByValue"
+
+      // Script evaluation, reached from the CLI's runners, the workbench REPL and agent
+      // tools.
+      "cliParseAndExecuteScript"
+
+      // Streams, used directly by the CLI, agent and scripts.
+      "streamClose"
+      "streamFilter"
+      "streamMap"
+      "streamToBlob"
+      "streamToList"
+      "streamUnfold"
+
+      // The trace surface, read by the `dark traces` commands and the workbench's traces
+      // view.
+      "tracesClear"
+      "tracesClearBefore"
+      "tracesDelete"
+      "tracesEnabled"
+      "tracesFind"
+      "tracesGetInput"
+      "tracesHotspots"
+      "tracesList"
+      "tracesListByFn"
+      "tracesPruneKeep"
+      "tracesResolveID"
+      "tracesStatsByHandler"
+      "tracesView" ]
 let private findRepoRoot () : string =
   let rec walk (dir : string) : string option =
     if System.String.IsNullOrEmpty dir then
@@ -166,6 +222,7 @@ let private packagesText : Lazy<string> =
 /// `packagesText`: it also covers test files, perf workloads and sample
 /// scripts, which is the difference between "shipped once" and "dead".
 let private repoDarkText : Lazy<string> = lazy (darkTextUnder (findRepoRoot ()))
+
 
 
 /// Count textual references to `Builtin.<name>` (or `Builtin.<name>_v<n>`)
@@ -290,7 +347,6 @@ let descriptionsAreJoined =
             "integer overflow wraps around"
             "the line break should have become a single space"
       } ]
-
 
 /// `Builtin.<name>` spellings that are NOT a builtin call. Dark has its own `Builtin`
 /// modules and cases; the lookbehind below drops the qualified ones, and these bare

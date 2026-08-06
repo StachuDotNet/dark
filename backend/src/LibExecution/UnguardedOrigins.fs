@@ -14,13 +14,13 @@
 ///
 /// What counts as pointed at:
 ///
-///   - the peers stored locally, which is what `dark sync connect` writes, and
+///   - the relay stored in local config, which `dark sync setup` writes, and
 ///   - a URL typed on the command line of the running process.
 ///
 /// Neither is something fetched code can influence: it cannot rewrite argv, and
-/// storing a peer is a local act. The stored side is read through a hook rather than
+/// storing a relay is a local act. The stored side is read through a hook rather than
 /// a snapshot, so an origin added DURING this process counts immediately -- which is
-/// what `dark sync connect <url>` does before it probes that url.
+/// what `dark sync setup` does before its first push.
 module LibExecution.UnguardedOrigins
 
 /// scheme://host:port, lowercased, with the default port made explicit so `http://h`
@@ -60,6 +60,32 @@ let isAllowed (url : string) : bool =
 /// two prefixes read like two failures.
 let refusalMessage (url : string) : string =
   let where = originOf url |> Option.defaultValue url
-  $"{where} is not a peer you sync with, so it cannot be fetched with the network "
-  + "protections off. Add it with `dark sync connect`, or pass its URL on the "
-  + "command line."
+  $"{where} is not the relay you sync with, so it cannot be fetched with the "
+  + "network protections off. Point this instance at it with `dark sync setup`, or "
+  + "pass its URL on the command line."
+
+
+/// The write secret for the relay, by origin. A hook for the same reason the stored
+/// lookup is one: this module sits below `LibDB`.
+///
+/// The transport looks the credential up itself rather than being handed one, because
+/// the secret must not reach Dark: `configGet` has no capability, so any Dark the CLI
+/// runs could read it, including a package pulled from a peer. Dark still decides WHEN
+/// to push.
+let mutable private secretLookup : string -> string option = fun _ -> None
+
+let setSecretLookup (lookup : string -> string option) : unit = secretLookup <- lookup
+
+/// The `Authorization` header for <param url>, when a secret is stored for this
+/// instance's relay and the url is actually one of its origins. Empty otherwise, so an
+/// ordinary request carries nothing.
+///
+/// A header rather than a query parameter: a query string ends up in access logs and
+/// proxy traces, a poor place for the one string that grants write access.
+let authHeadersFor (url : string) : List<string * string> =
+  match originOf url with
+  | None -> []
+  | Some origin ->
+    match secretLookup origin with
+    | Some secret when secret <> "" -> [ "Authorization", $"Bearer {secret}" ]
+    | _ -> []

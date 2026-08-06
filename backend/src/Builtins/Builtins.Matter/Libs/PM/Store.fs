@@ -31,17 +31,125 @@ let fns () : List<BuiltInFn> =
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
 
-    // The Release (store format/version coordinate: language + op-format + schema + hashing) this Dark
-    // binary speaks. Compared against the store's stamped Release for the upgrade/`dark version` surface.
-    { name = fn "currentRelease" 0
+    // Whether a write secret is stored for a relay, WITHOUT handing it over.
+    //
+    // `dark sync setup` needs to know if one is already there, so that pressing Enter keeps it rather
+    // than wiping it. That is the only thing Dark ever needed the value for outside the transport.
+    { name = fn "relaySecretIsSet" 0
       typeParams = []
-      parameters = [ Param.make "unit" TUnit "" ]
-      returnType = TInt
-      description = "The Release (store format/version) this Dark binary speaks."
+      parameters = [ Param.make "url" TString "relay url" ]
+      returnType = TBool
+      description =
+        "Whether a write secret is stored for <param url>. Never returns the secret."
       fn =
         (function
-        | _, _, _, [| DUnit |] ->
-          uply { return Dval.int (bigint LibDB.Releases.currentRelease) }
+        | _, _, _, [| DString url |] ->
+          uply {
+            let! v = LibDB.Config.get (LibDB.Config.secretPrefix + url)
+
+            return
+              DBool(
+                match v with
+                | Some s -> s <> ""
+                | None -> false
+              )
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+
+    // The ops in a bundle whose bytes contain this relay's write secret, as short ids.
+    //
+    // THE LAST GATE before a secret becomes public: an op carrying it becomes a page anyone can read,
+    // and nothing else would notice, because the op is valid and folds and syncs like any other. The
+    // scan is native now for the same reason the secret is: Dark cannot be handed the needle.
+    { name = fn "relaySecretLeakingOps" 0
+      typeParams = []
+      parameters =
+        [ Param.make "url" TString "relay url"
+          Param.make "opsHex" (TList TString) "hex blobs, in order"
+          Param.make "opIds" (TList TString) "the ids of those blobs, same order" ]
+      returnType = TList TString
+      description =
+        "The ids (first 8 chars) of ops whose bytes contain the write secret stored for "
+        + "<param url>. Empty when none do, which is the normal case."
+      fn =
+        (function
+        | _, _, _, [| DString url; DList(_, opsHex); DList(_, opIds) |] ->
+          uply {
+            let! stored = LibDB.Config.get (LibDB.Config.secretPrefix + url)
+
+            match stored with
+            | None -> return Dval.list KTString []
+            | Some "" -> return Dval.list KTString []
+            | Some secret ->
+              let needle =
+                System.Convert
+                  .ToHexString(System.Text.Encoding.UTF8.GetBytes secret)
+                  .ToLowerInvariant()
+
+              let ids =
+                List.zip opsHex opIds
+                |> List.choose (fun (hex, id) ->
+                  match hex, id with
+                  | DString h, DString i when h.ToLowerInvariant().Contains needle ->
+                    Some(DString(if i.Length > 8 then i.Substring(0, 8) else i))
+                  | _ -> None)
+
+              return Dval.list KTString ids
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+
+    { name = fn "configGet" 0
+      typeParams = []
+      parameters = [ Param.make "key" TString "" ]
+      returnType = TString
+      description =
+        "Get a local config value (config_v0), or \"\" if unset. Credential keys are refused; "
+        + "see `LibDB.Config.secretPrefix`."
+      fn =
+        (function
+        | _, _, _, [| DString key |] ->
+          uply {
+            // Refused rather than returned empty: a silent "" would look like "no secret configured" and
+            // send an unauthenticated push, which fails in a way nobody would trace back to here.
+            if LibDB.Config.isSecretKey key then
+              return
+                RuntimeError.UncaughtException(
+                  $"`{key}` holds a credential and cannot be read from Dark. The transport attaches it.",
+                  []
+                )
+                |> raiseUntargetedRTE
+            else
+              let! v = LibDB.Config.get key
+              return DString(Option.defaultValue "" v)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "configSet" 0
+      typeParams = []
+      parameters = [ Param.make "key" TString ""; Param.make "value" TString "" ]
+      returnType = TUnit
+      description = "Set a local config value (config_v0). Local + unsynced."
+      fn =
+        (function
+        | _, _, _, [| DString key; DString value |] ->
+          uply {
+            do! LibDB.Config.set key value
+            return DUnit
+          }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

@@ -77,6 +77,9 @@ let typeNameWith
       Darklang.LanguageTools.PackageManager.pickLocation
         (LanguageTools.PackageManager.PickContext
           { currentModule = opts.currentModule
+            // Nothing was asked for here: this is a type named inside a runtime
+            // error, not something a caller requested, so context scoring is the
+            // right and only answer.
             preferredLocation = Stdlib.Option.Option.None })
         locations
     with
