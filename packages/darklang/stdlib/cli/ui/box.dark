@@ -13,15 +13,15 @@ let inner (region: Layout.Region) : Layout.Region =
 
 /// Draw a focus-aware box (bright cyan border + title when focused, dim otherwise) around `region`.
 ///
-/// Returns spans. Colour codes carry no width now that clipping goes through `Tui.Text`, so the border no
+/// Returns spans. Colour codes carry no width now that clipping goes through `Stdlib.Cli.Tui.Text`, so the border no
 /// longer has to dodge the layout helpers to avoid being mis-measured.
 let draw (region: Layout.Region) (title: String) (focused: Bool) : List<Layout.Span> =
-  let color = if focused then Colors.cyan else Colors.brightBlack
-  let paint = fun s -> Colors.colorize color s
+  let color = if focused then Stdlib.Cli.UI.Colors.cyan else Stdlib.Cli.UI.Colors.brightBlack
+  let paint = fun s -> Stdlib.Cli.UI.Colors.colorize color s
 
   let innerCols = Stdlib.Int.max 0 (region.cols - 2)
   let titlePart = if title == "" then "" else "─ " ++ title ++ " "
-  let fillLen = Stdlib.Int.max 0 (innerCols - (Tui.Text.displayWidth titlePart))
+  let fillLen = Stdlib.Int.max 0 (innerCols - (Stdlib.Cli.Tui.Text.displayWidth titlePart))
   let top = "┌" ++ titlePart ++ (Stdlib.String.repeat "─" fillLen) ++ "┐"
   let bottom = "└" ++ (Stdlib.String.repeat "─" innerCols) ++ "┘"
 

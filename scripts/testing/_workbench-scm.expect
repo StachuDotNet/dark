@@ -1,0 +1,65 @@
+#!/usr/bin/expect -f
+# Driven by test-workbench-scm, which builds the store. See that file for why.
+set timeout 45
+log_user 0
+
+proc fail {msg} { puts "FAIL: $msg"; exit 1 }
+# Returns what was received up to and including the match. `expect_out` is set in the scope the `expect`
+# ran in, so a caller that wants to look at the text has to be handed it from in here.
+proc want {pattern what} {
+  expect {
+    -re $pattern { puts "  ok: $what"; return $expect_out(buffer) }
+    timeout { fail "timed out waiting for $what" }
+    eof { fail "process exited while waiting for $what" }
+  }
+}
+
+# Give each key a moment to land. A key pressed while a frame is still painting is dropped, and the
+# symptom is not "the key did nothing" but "the NEXT assertion times out" -- so it reads as a broken view
+# rather than a lost keystroke. It surfaced when the first frame stopped being repainted a moment later:
+# the text these wait for started arriving mid-paint instead of after it.
+proc press {key} { sleep 1; send $key }
+
+set exe [lindex $argv 0]
+set env(DARK_CONFIG_RUNDIR) [lindex $argv 1]
+spawn $exe
+
+# This store has a commit and a draft, so the workbench must greet a RETURNING user. It used to flash
+# "Welcome to Darklang" on the first frame and correct itself on the next one: the SCM counts load after
+# the first paint, and an unloaded count of 0 commits reads exactly like a fresh instance.
+#
+# Match on either greeting, then decide with Tcl. Writing it as the obvious two-branch `-re` block --
+# one branch per greeting, failing in the wrong one -- timed out here instead of matching, twice, on a
+# buffer the combined `(?i)(a|b)` pattern matches. So this uses the pattern form the gates have used all
+# along and does the deciding in Tcl, where `regexp` behaves.
+set greeting [want "(?i)(welcome back|welcome to darklang)" "the workbench on startup"]
+if {[regexp -nocase {welcome to darklang} $greeting]} {
+  fail "greeted a store with a commit and a draft as a first run"
+}
+
+# 4 is the SCM view. It opens on Changes, which must show the uncommitted draft rather than "clean".
+press "4"
+want "WbScm.T.draft" "the draft item in Changes"
+
+# Tab cycles Changes -> History -> Conflicts -> Branches. Each must show its own content, not its
+# empty-state line.
+press "\t"
+want "workbench scm fixture" "the commit in History"
+
+press "\t"
+want "WbScm.T.base" "the recorded conflict in Conflicts"
+
+press "\t"
+want "wb-scm" "the branch in Branches"
+
+# Sync is an ACTION here, not just a readout: `u` pushes, `d` pulls, through the same registered commands
+# the CLI runs. This store has no relay, so the answer is the one that says so rather than a failed push
+# against an empty url. Watching for it also proves the key is wired at all, which is the part that rots.
+press "u"
+want "(?i)no relay" "u offers to sync and says why it cannot"
+
+press "\033"
+expect {
+  eof { puts "workbench SCM view: all four sections show real work, and sync is actionable." }
+  timeout { fail "escape did not exit the workbench" }
+}

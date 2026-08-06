@@ -149,8 +149,7 @@ let private testDeclarationsAreNameableAfterLowering =
     match m.types with
     | [ celsius ] ->
       let! locations =
-        LibDB.PackageManager.pt.getTypeLocations PT.mainBranchId celsius.hash
-        |> Ply.toTask
+        LibDB.PackageManager.pt.getTypeLocations celsius.hash |> Ply.toTask
       let names = locations |> List.map (fun (l : PT.PackageLocation) -> l.name)
       Expect.contains names "Celsius" "the script's type is reachable by hash"
     | _ -> failtest "expected exactly one script type"
@@ -171,8 +170,7 @@ let private testRegistryDoesNotDisplaceStoredNames =
     match m.types with
     | [ myErr ] ->
       let! locations =
-        LibDB.PackageManager.pt.getTypeLocations PT.mainBranchId myErr.hash
-        |> Ply.toTask
+        LibDB.PackageManager.pt.getTypeLocations myErr.hash |> Ply.toTask
       let names = locations |> List.map (fun (l : PT.PackageLocation) -> l.name)
       // Same shape as the stdlib `ParseError`s, so the store names this hash.
       Expect.contains names "ParseError" "the stored name is still there"

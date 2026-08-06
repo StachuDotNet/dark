@@ -16,7 +16,7 @@ module Darklang.Cli.Workbench
 let wrapRow (maxFit: Int) (line: String) : List<String> =
   let room = Stdlib.Int.max 1 (maxFit - 2)
 
-  match Tui.Text.wrapStyled line room with
+  match Stdlib.Cli.Tui.Text.wrapStyled line room with
   | [] -> [ "" ]
   | first :: rest -> Stdlib.List.push (rest |> Stdlib.List.map (fun r -> "  " ++ r)) first
 
@@ -60,7 +60,9 @@ let renderScrollableLines
     let (i, l) = pair
     let row = i - off
     // Belt and braces: a single grapheme wider than the pane can't be wrapped, only cut.
-    Stdlib.Cli.UI.Layout.at region row colOffset (Stdlib.Cli.Tui.Text.clipToWidth l maxFit))
+    // `rows` already carries the DISPLAY text (the `display` lookup happens when they are built and
+    // wrapped), so there is nothing to look up again here -- and `i` indexes wrapped rows, not lines.
+    Stdlib.Cli.UI.Layout.at region row colOffset (Stdlib.Cli.Tui.Text.clipMarked l maxFit))
   |> Stdlib.List.flatten
 
 
@@ -138,27 +140,42 @@ let plural (n: Int) (noun: String) : String =
 /// tell which of them do anything, so the bottom panel names each one, says what it's for, and marks the ones
 /// still running on sample data. It replaced a list of commands you had to already know to look for.
 let renderHome (state: State) (region: Stdlib.Cli.UI.Layout.Region) : List<Stdlib.Cli.UI.Layout.Span> =
-  let wip = wipItemCount state.branchId
-  let commits = SCM.PackageOps.getCommitCount state.branchId
+  // Five separate DB reads once lived here, and the renderer runs on every keypress. They're one cached
+  // read now (`state.scmStatus`), which is also what the tree's badges and the SCM view use, so the
+  // dashboard and the thing it's summarising can no longer disagree.
+  let scm = state.scmStatus
+  let wip = scm.changed
+  let commits = scm.commits
   let rootItems = loadItems state.branchId (Packages.PackageLocation.Module [])
-  let branch =
-    match SCM.Branch.get state.branchId with
-    | Some b -> b.name
-    | None -> "main"
-  let conflictCount = Stdlib.List.length (Darklang.Sync.Conflicts.list ())
-  let lastCommit =
-    match Stdlib.List.head (SCM.PackageOps.getCommitsWithAncestors state.branchId 1) with
-    | Some c -> c.message
-    | None -> "no commits yet"
+  let branch = scm.branchName
+  let conflictCount = Stdlib.List.length scm.conflicts
+  let lastCommit = if scm.lastCommit == "" then "no commits yet" else scm.lastCommit
   let owner = if state.accountName == "" then "there" else state.accountName
+
+  // A machine that has synced nothing, committed nothing and changed nothing has just been installed. It
+  // gets a different landing screen: the normal one is a dashboard OF your work, and with no work it is a
+  // wall of zeroes and ten tabs, which reads as "you are behind" rather than "welcome".
+  let isFresh = (commits == 0) && (wip == 0) && (SCM.PackageOps.relay () == "")
 
   let renderHeader (r: Stdlib.Cli.UI.Layout.Region) : List<Stdlib.Cli.UI.Layout.Span> =
     // The third row is the escape hatch, and it's on the landing screen deliberately. Every classic command
     // still runs from the `:` bar and `:commands` gives you the old prompt outright, but neither is guessable
     // from an empty full-screen UI - and this replaced the panel that used to say so.
     Stdlib.List.flatten
-      [ Stdlib.Cli.UI.Layout.at r 0 2 (Stdlib.Cli.UI.Colors.boldText ($"Welcome back, {owner}"))
-        Stdlib.Cli.UI.Layout.at r 1 2 (Stdlib.Cli.UI.Colors.dimText ($"on {branch}  ·  a workbench over Dark Matter"))
+      [ Stdlib.Cli.UI.Layout.at
+          r
+          0
+          2
+          (Stdlib.Cli.UI.Colors.boldText (if isFresh then "Welcome to Darklang" else $"Welcome back, {owner}"))
+        Stdlib.Cli.UI.Layout.at
+          r
+          1
+          2
+          (Stdlib.Cli.UI.Colors.dimText (
+            if isFresh then
+              "a workbench over Dark Matter  ·  the packages here are yours to read and edit"
+            else
+              $"on {branch}  ·  a workbench over Dark Matter"))
         // Short enough to survive an 80-column terminal; `?` carries the detail that `quit` comes back.
         Stdlib.Cli.UI.Layout.at
           r
@@ -173,9 +190,16 @@ let renderHome (state: State) (region: Stdlib.Cli.UI.Layout.Region) : List<Stdli
     let wipLine =
       if wip == 0 then Stdlib.Cli.UI.Colors.colorize Stdlib.Cli.UI.Colors.green "✓ working tree clean"
       else Stdlib.Cli.UI.Colors.colorize Stdlib.Cli.UI.Colors.pink (plural wip "uncommitted change")
+    // "in sync" is a claim about a relay, so it can only be made when there IS one. With none configured
+    // this used to report the conflict count as sync health, and a machine that had never synced in its
+    // life said "✓ in sync" -- true about conflicts, and the opposite of the truth about sync.
     let syncLine =
-      if conflictCount == 0 then Stdlib.Cli.UI.Colors.dimText "✓ in sync"
-      else Stdlib.Cli.UI.Colors.colorize Stdlib.Cli.UI.Colors.pink ("⚠ " ++ (plural conflictCount "divergence") ++ "  ·  5 › Conflicts")
+      if conflictCount > 0 then
+        Stdlib.Cli.UI.Colors.colorize Stdlib.Cli.UI.Colors.pink ("⚠ " ++ (plural conflictCount "divergence") ++ "  ·  5 › Conflicts")
+      else if SCM.PackageOps.relay () == "" then
+        Stdlib.Cli.UI.Colors.dimText "not syncing  ·  `:connect <url>` to set it up"
+      else
+        Stdlib.Cli.UI.Colors.dimText "✓ in sync"
     Stdlib.List.flatten
       [ Stdlib.Cli.UI.Layout.at inner 0 1 wipLine
         Stdlib.Cli.UI.Layout.at inner 1 1 (Stdlib.Cli.UI.Colors.dimText (plural commits "commit" ++ " on this branch"))
@@ -186,10 +210,9 @@ let renderHome (state: State) (region: Stdlib.Cli.UI.Layout.Region) : List<Stdli
     if wip == 0 then
       Stdlib.Cli.UI.Layout.at inner 0 1 (Stdlib.Cli.UI.Colors.dimText "nothing in progress - the tree is yours to edit")
     else
-      SCM.PackageOps.getWipItems state.branchId
+      scm.wipNames
       |> Stdlib.List.take (Stdlib.Int.max 1 inner.rows)
-      |> Stdlib.List.indexedMap (fun i d ->
-        let name = Stdlib.Dict.get d "name" |> Stdlib.Option.withDefault "?"
+      |> Stdlib.List.indexedMap (fun i name ->
         // Pink ● is the "uncommitted work" marker everywhere (matches the tree WIP badge); keep it consistent.
         Stdlib.Cli.UI.Layout.at inner i 1 (Stdlib.Cli.UI.Colors.colorize Stdlib.Cli.UI.Colors.pink ("● " ++ name)))
       |> Stdlib.List.flatten
@@ -232,11 +255,30 @@ let renderHome (state: State) (region: Stdlib.Cli.UI.Layout.Region) : List<Stdli
       Stdlib.Cli.UI.Layout.at inner row 1 line)
     |> Stdlib.List.flatten
 
+  // On a fresh machine the WIP panel can only say "nothing in progress", which is a whole box spent telling
+  // someone they have done nothing. Spend it on what to do instead, keyed by the actual keystroke.
+  let renderStart (inner: Stdlib.Cli.UI.Layout.Region) : List<Stdlib.Cli.UI.Layout.Span> =
+    let step (key: String) (what: String) : String =
+      let padded =
+        key ++ (Stdlib.String.repeat " " (Stdlib.Int.max 1 (15 - (Stdlib.String.length key))))
+
+      (Stdlib.Cli.UI.Colors.colorize Stdlib.Cli.UI.Colors.cyan padded) ++ (Stdlib.Cli.UI.Colors.dimText what)
+
+    Stdlib.List.flatten
+      [ Stdlib.Cli.UI.Layout.at inner 0 1 (step "3" "evaluate something; `let` binds")
+        Stdlib.Cli.UI.Layout.at inner 1 1 (step "2" "browse the packages you already have")
+        Stdlib.Cli.UI.Layout.at inner 2 1 (step ":connect <url>" "sync this machine with a relay")
+        Stdlib.Cli.UI.Layout.at inner 3 1 (step "?" "the keys, and the plain prompt") ]
+
   let leftCol (r: Stdlib.Cli.UI.Layout.Region) : List<Stdlib.Cli.UI.Layout.Span> =
     Stdlib.Cli.UI.Layout.vstack
       r
       [ Stdlib.Cli.UI.Layout.fixedSize 6 (fun rr -> Stdlib.Cli.UI.Box.panel rr "Status" false renderStatus)
-        Stdlib.Cli.UI.Layout.greedy (fun rr -> Stdlib.Cli.UI.Box.panel rr "Pick up where you left off" false renderWip) ]
+        Stdlib.Cli.UI.Layout.greedy (fun rr ->
+          if isFresh then
+            Stdlib.Cli.UI.Box.panel rr "Start here" false renderStart
+          else
+            Stdlib.Cli.UI.Box.panel rr "Pick up where you left off" false renderWip) ]
 
   // Home fills the body region, same as every other view. The right column scales with the width rather than
   // sitting at a fixed 40, so it grows with the terminal instead of staying a sliver beside Status. Status
@@ -248,7 +290,11 @@ let renderHome (state: State) (region: Stdlib.Cli.UI.Layout.Region) : List<Stdli
 
   // What each band needs at minimum: the middle is as tall as its taller column (Status (6) over the WIP
   // list, against the owners list), the tabs want a row per tab plus a border.
-  let minMid = Stdlib.Int.max (6 + (Stdlib.Int.max 1 wip) + 2) ((Stdlib.List.length rootItems) + 3)
+  // The lower-left panel is the WIP list normally and the four-step "Start here" when fresh, so ask for
+  // whichever it will actually draw. Sizing it off `wip` alone gave the fresh panel one row and silently
+  // cropped three of its four steps.
+  let lowerLeftRows = if isFresh then 4 else Stdlib.Int.max 1 wip
+  let minMid = Stdlib.Int.max (6 + lowerLeftRows + 2) ((Stdlib.List.length rootItems) + 3)
   let minTabs = (Stdlib.List.length (visibleViews state)) + 1
 
   // Floors first: the bands don't shrink on their own, and on a 24-row terminal the total used to run off the

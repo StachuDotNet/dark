@@ -58,15 +58,15 @@ let view (state: State) (region: Layout.Region) : List<Layout.Span> =
     Stdlib.Int.max
       32
       (4 + (Stdlib.Int.max
-              (Tui.Text.displayWidth state.question)
-              (Tui.Text.displayWidth state.detail)))
+              (Stdlib.Cli.Tui.Text.displayWidth state.question)
+              (Stdlib.Cli.Tui.Text.displayWidth state.detail)))
 
   let box = centred region (if hasDetail then 7 else 6) width
   let title = if state.danger then "confirm" else "question"
 
   Box.panel box title true (fun inner ->
     let detail =
-      if hasDetail then Layout.at inner 2 1 (Colors.dimText state.detail) else []
+      if hasDetail then Layout.at inner 2 1 (Stdlib.Cli.UI.Colors.dimText state.detail) else []
 
     Stdlib.List.flatten
       [ Layout.clearRegion inner
@@ -76,5 +76,5 @@ let view (state: State) (region: Layout.Region) : List<Layout.Span> =
           inner
           (inner.rows - 1)
           1
-          (Colors.dimText "y: yes    n / Esc: no") ])
+          (Stdlib.Cli.UI.Colors.dimText "y: yes    n / Esc: no") ])
 

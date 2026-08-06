@@ -32,7 +32,9 @@ module Darklang.Cli.Workbench
 /// The renderer has to be a pure function of state for frame diffing to be sound, so the badge and peek
 /// caches are refreshed here rather than read while drawing.
 let refresh (previous: State) (next: State) : State =
-  refreshPeek (refreshBadges previous next)
+  // SCM status FIRST: the tree's wip badges read it rather than doing their own draft query, so
+  // refreshing them against last frame's status would draw a dot one keypress behind the truth.
+  refreshPeek (refreshBadges previous (refreshScmStatus previous next))
 
 let onKey
   (state: State)
@@ -95,6 +97,7 @@ let initialState
         filter = ""
         wipNames = []
         deprecatedNames = []
+        scmStatus = emptyScmStatus ()
         renderPeek = ""
         branchId = branchId }
 
@@ -136,6 +139,11 @@ let execute (cliState: Darklang.Cli.AppState) (_args: List<String>) : Darklang.C
   // seeding - the first frame is Home, which has no `render` fn to peek at.
   let (wip, deprecated) = readBadges state
   let state = { state with wipNames = wip; deprecatedNames = deprecated }
+  // Seed the SCM status too, for the same reason and for one more: Home decides between "Welcome to
+  // Darklang" and "Welcome back" on `commits == 0 && wip == 0 && no relay`, and an unseeded status reads
+  // as all three. So a returning user's FIRST frame greeted them as a new one, and the next frame
+  // corrected it -- a flash on the one screen that is meant to say "you are where you left off".
+  let state = refreshScmStatus state state
   // Launching is what enters the alternate screen and paints the first frame; from here on the renderer
   // diffs, so a keystroke rewrites the rows that changed rather than clearing and repainting.
   Darklang.Cli.Component.launchOrExit cliState component state
