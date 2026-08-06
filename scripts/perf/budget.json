@@ -1,8 +1,8 @@
 {
   "tolerance": 0.03,
   "steady": {
-    "debug": 7796576,
-    "published": 7641184,
-    "note": "scripts/perf/workloads/steady.dark, trace detail off. Lower these whenever a change earns it."
+    "debug": 7763560,
+    "published": 7797328,
+    "note": "scripts/perf/workloads/steady.dark, trace detail off. Lower these whenever a change earns it. History worth keeping: published was raised +4.0% (to 7,944,168) for kernel-substrate after the rebase onto main's records/enums work, deliberately, because the branch buys op-log SCM, sync and the relay. The rebase onto the hash-after-resolution work handed most of that back, so both numbers came DOWN to what is here now: debug 7,763,560 (below main's earned 7,796,576) and published 7,797,328, which is ~2% over main's earned 7,641,184 rather than the 4% it was. The published-only gap is the same long-standing asymmetry noted in the PR's open items; suspect is the Release-only embedded-seed path, still unproven."
   }
 }

@@ -27,6 +27,7 @@ done
 
 if [[ "$PUBLISHED" == "true" ]]; then
   EXE=$(release_exe)
+  [[ -x "$EXE" ]] && { assert_release_exe_fresh "$EXE" perf/gate || exit 2; }
 else
   EXE="backend/Build/out/Cli/Debug/net10.0/Cli"
 fi

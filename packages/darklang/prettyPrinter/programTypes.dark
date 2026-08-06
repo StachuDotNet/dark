@@ -63,7 +63,7 @@ module Context =
         currentFunction = Stdlib.Option.Option.None
         width = 80 }
 
-  val forMain = forBranch SCM.Branch.mainBranchId
+  val forMain = forBranch Darklang.SCM.Ids.mainBranchId
 
   /// A context anchored at `path` (owner-first, e.g. `["Darklang"; "Stdlib"; "Option"]`).
   ///
@@ -1478,7 +1478,7 @@ module PackageOp =
       // actually is — content added here, name bound to it there — rather than a list of unrelated lines.
       $"AddValue {name} = {source}  [{LanguageTools.ProgramTypes.hashToShort value.hash}]"
 
-    | SetName(loc, target) ->
+    | SetName(loc, target, _) ->
       let path = PackageLocation.packageLocation loc
       let kind =
         match target with
@@ -1504,10 +1504,30 @@ module PackageOp =
       let hash = LanguageTools.ProgramTypes.Reference.hash target
       $"Undeprecate [{LanguageTools.ProgramTypes.hashToShort hash}]"
 
-    | PropagateUpdate (_propId, _sloc, _fromRefs, _toRef, repoints) ->
-      let count = (Stdlib.List.length repoints) |> Stdlib.Int.toString
-      $"PropagateUpdate ({count} repoint(s))"
+    | Resolve(decisionId, location, target) ->
+      let hash = LanguageTools.ProgramTypes.Reference.hash target
+      let name = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation location
 
-    | RevertPropagation (_revertId, _propIds, _sloc, _restoredRef, repoints) ->
-      let count = (Stdlib.List.length repoints) |> Stdlib.Int.toString
-      $"RevertPropagation ({count} repoint(s))"
+      $"Resolve #{decisionId} {name} -> [{LanguageTools.ProgramTypes.hashToShort hash}]"
+    | Decide(kind, location, value, reason, _) ->
+      let name = PackageLocation.packageLocation location
+      let why = if reason == "" then "" else $" ({reason})"
+      $"Decide {kind} {name} -> {value}{why}"
+
+    // A commit that lands a branch carries this op, so leaving it out crashed `dark show` and
+    // `dark commits` on exactly the commits a person most wants to read.
+    | BranchEvent(eventBranchId, event, _at) ->
+      let what =
+        match event with
+        | Merged -> "merged into its parent"
+        | Archived -> "archived"
+
+      // The op stores the id as text. Show the NAME, same as everywhere else a branch is user-facing;
+      // an id that does not parse, or names a branch this store never saw, falls back to itself.
+      let who =
+        match Stdlib.Uuid.parse eventBranchId with
+        | Ok id -> Darklang.SCM.PackageOps.branchName id
+        | Error _ -> eventBranchId
+
+      $"BranchEvent {who} {what}"
+

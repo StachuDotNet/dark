@@ -216,14 +216,47 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
                   update.location
                   update.hash
                   update.kind)
-              let count = Stdlib.List.length declarations
+              // Count what LANDED, not what parsed. A declaration the lowering refuses produces no
+              // `SetName`, and reporting the source's count called that a success: you paste three
+              // functions, it says "Defined 3", and one of them silently isn't there.
+              let definedNames =
+                ops
+                |> Stdlib.List.filterMap (fun op ->
+                  match op with
+                  // Three fields, and a two-field pattern silently matches nothing rather than
+                  // failing to compile.
+                  | SetName(location, _, _) -> Stdlib.Option.Option.Some location.name
+                  | _ -> Stdlib.Option.Option.None)
+
+              let count = Stdlib.List.length definedNames
+
               Stdlib.printLine
                 (Stdlib.Cli.UI.Colors.success
                   $"✓ Defined {Stdlib.Int.toString count} declarations in {modulePath}")
+
+              // Name what did not, so a rejected declaration is something you find out now rather than
+              // the next time you call it.
+              let missing =
+                declarations
+                |> Stdlib.List.map (fun d -> declarationName (Stdlib.Tuple2.second d))
+                |> Stdlib.List.filter (fun n ->
+                  Stdlib.Bool.not (Stdlib.List.member definedNames n))
+
+              if Stdlib.List.isEmpty missing then
+                ()
+              else
+                Stdlib.printLine
+                  (Stdlib.Cli.UI.Colors.error
+                    $"""not defined: {Stdlib.String.join missing ", "}""")
+
+                Stdlib.printLine
+                  (Stdlib.Cli.UI.Colors.hint
+                    "  the rest of the module was defined; fix these and run it again.")
+
               state
 
 
-let help (state: Cli.AppState) : Cli.AppState =
+let help (_state: Cli.AppState) : String =
   [ "Define a module from multiple package declarations atomically"
     ""
     "Usage: module <module> <source-file|->"
@@ -237,8 +270,7 @@ let help (state: Cli.AppState) : Cli.AppState =
     "  let double (n: Int) : Int = n * 2"
     "  let quadruple (n: Int) : Int = double (double n)"
     "  EOF"
-  ] |> Stdlib.printLines
-  state
+  ] |> Stdlib.String.join "\n"
 
 
 let complete
