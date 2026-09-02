@@ -256,12 +256,24 @@ let createInMemory (ops : List<PT.PackageOp>) : PT.PackageManager =
           | [], PT.Search.SearchDepth.OnlyDirectDescendants -> List.length fm = 1
           | _, PT.Search.SearchDepth.OnlyDirectDescendants -> fm = cm
           | _, PT.Search.SearchDepth.AllDescendants -> fm = cm || isPrefix cm fm
-        let nameMatches (name : string) =
-          if text = "" then true
-          elif query.exactMatch then name = text
-          else name.ToLowerInvariant().Contains(text.ToLowerInvariant())
+        // Match the QUALIFIED path as well as the bare name. Main's SQL tests the query against
+        // `owner`, `modules` and `owner || '.' || modules`, so `search Probe.Ctx` finds what lives
+        // under it. Matching only the bare name here meant the overlay answered that query with
+        // nothing while main answered it with main's items, so a branch's own work was invisible to
+        // exactly the search someone types to find it.
+        let qualified (loc : PT.PackageLocation) =
+          String.concat "." (fullModule loc @ [ loc.name ])
+        let nameMatches (loc : PT.PackageLocation) =
+          if text = "" then
+            true
+          elif query.exactMatch then
+            loc.name = text
+          else
+            let t = text.ToLowerInvariant()
+            loc.name.ToLowerInvariant().Contains t
+            || (qualified loc).ToLowerInvariant().Contains t
         let itemMatches (loc : PT.PackageLocation) =
-          moduleMatches loc && nameMatches loc.name
+          moduleMatches loc && nameMatches loc
         let typesWithLocs =
           typeMap
           |> Map.toList
