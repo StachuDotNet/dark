@@ -67,7 +67,7 @@ let relayListBranches (owner: String) : List<String> =
 let canMerge (branchId: Uuid) : Stdlib.Result.Result<Unit, String> =
   if SCM.Ids.isMain branchId then
     Stdlib.Result.Result.Error
-      "you're on main -- merge moves a BRANCH into its parent. `dark merge <branch>`, or switch to one."
+      "main is the trunk -- merge moves a BRANCH into its parent. `dark branches` lists them."
   else
 
   let changes =

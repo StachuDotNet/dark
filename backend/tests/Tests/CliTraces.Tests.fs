@@ -1153,18 +1153,21 @@ let private workbenchBranchActionsWork =
         let! merged = runCli state [ "eval"; act "merge" "y" ]
         Expect.stringContains
           merged
-          "on main"
+          "main is the trunk"
           "and merge reports the gate rather than throwing"
       })
 
 /// Neither merge nor rebase means anything on main, and both must say so.
+///
+/// The message names MAIN rather than where you are standing: the same gate answers `dark rebase main`
+/// typed from a branch, and "you're on main" was a plain lie there.
 ///
 /// A rebase on main rewrites nothing -- it loops over a branch's `branch_name_bases` rows and main
 /// has none -- so a success message would be a no-op you believe, and "the branch has no changes"
 /// counts the changes of a branch you are not on.
 let private mergeAndRebaseRefuseOnMain =
   cliTest
-    "merge and rebase say you're on main, rather than claiming to have run"
+    "merge and rebase refuse on main, rather than claiming to have run"
     (fun state ->
       task {
         let act (action : string) : string =
@@ -1177,14 +1180,17 @@ let private mergeAndRebaseRefuseOnMain =
         let! rebased = runCli state [ "eval"; act "rebase" ]
         Expect.stringContains
           rebased
-          "on main"
+          "main is the trunk"
           "rebase names the reason rather than reporting a rebase that did not happen"
         Expect.isFalse
           (rebased.Contains "rebased onto parent")
           "and does not claim success"
 
         let! merged = runCli state [ "eval"; act "merge" ]
-        Expect.stringContains merged "on main" "merge names the same reason"
+        Expect.stringContains
+          merged
+          "main is the trunk"
+          "merge names the same reason"
       })
 
 /// Displaying a commit's ops must not fetch all of them.
