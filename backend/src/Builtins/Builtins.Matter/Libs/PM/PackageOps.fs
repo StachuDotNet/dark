@@ -287,82 +287,15 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
 
     // The name to SHOW for a branch id. Falls back to the id, which is all an imported branch that
     // arrived as tagged ops with no registry row of its own has to show.
-    { name = fn "scmBranchName" 0
-      typeParams = []
-      parameters =
-        [ Param.make "branchId" TUuid "a branch id; main's is well-known" ]
-      returnType = TString
-      description = "The display name of <param branchId>."
-      fn =
-        (function
-        | _, _, _, [| DUuid branchIdGuid |] ->
-          uply {
-            // `nameForId` answers for main itself, so there is nothing to special-case here.
-            let! name = LibDB.Branches.nameForId (PT.BranchId.Id branchIdGuid)
-            return DString name
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
     // The id a person means when they type <name> at a branch verb: the most recent branch still listed
     // under it, merged or not. Never creates -- unlike `scmResolveBranch`, this backs the paths that
     // should refuse rather than quietly start something.
     //
     // Merged branches are INCLUDED on purpose. `dark branches` lists them, so `dark diff <that name>` has
     // to find them; refusing a name you just read off the listing is the worst of both answers.
-    { name = fn "scmBranchIdForName" 0
-      typeParams = []
-      parameters = [ Param.make "name" TString "" ]
-      returnType = TypeReference.option TUuid
-      description =
-        "The id of the most recent listed branch named <param name>, if any. Merged "
-        + "branches count; archived ones don't, since archiving discards the ops "
-        + "there'd be anything to say about."
-      fn =
-        (function
-        | _, _, _, [| DString name |] ->
-          uply {
-            let! idOpt = LibDB.Branches.idForName name
-            return
-              match idOpt with
-              | Some id -> Dval.optionSome KTUuid (DUuid id.Guid)
-              | None -> Dval.optionNone KTUuid
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
     // Whether a branch's work is already in its parent. `merge` asks before doing anything, because
     // merging an already-merged branch flips nothing and reports "Merged 0 op(s)", which reads like a
     // failure of the merge rather than an answer to a question you already had.
-    { name = fn "scmBranchIsMerged" 0
-      typeParams = []
-      parameters = [ Param.make "branchId" TUuid "" ]
-      returnType = TBool
-      description =
-        "True when <param branchId> has already been merged into its parent."
-      fn =
-        (function
-        | _, _, _, [| DUuid branchIdGuid |] ->
-          uply {
-            let branchId = PT.BranchId.Id branchIdGuid
-            let! merged = LibDB.Branches.isMerged branchId
-            return DBool merged
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
     // Change which branch THIS process is on, without restarting it.
     //
     // Boot (`--branch`, or `current_branch`) covers the one-shot case, but it can't be the only way in:

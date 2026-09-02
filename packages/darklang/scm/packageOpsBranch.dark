@@ -183,7 +183,24 @@ let currentBranch () : Uuid = Branches.current ()
 
 /// The NAME to show for a branch id. Ids are what everything refers to; names are what
 /// people read, so anything user-facing goes through here rather than printing the id.
-let branchName (branchId: Uuid) : String = Builtin.scmBranchName branchId
+let branchName (branchId: Uuid) : String =
+  // Main has no `branches` row, so a lookup would fall through to showing its raw id.
+  if SCM.Ids.isMain branchId then
+    SCM.Ids.mainBranchName
+  else
+    let fallback = Stdlib.Uuid.toString branchId
+
+    match
+      Stdlib.Sqlite.queryP
+        (localDb ())
+        "SELECT name FROM branches WHERE id = @p0 LIMIT 1"
+        [ Stdlib.Uuid.toString branchId ]
+    with
+    | Ok(row :: _) ->
+      match Stdlib.Sqlite.textField row "name" with
+      | Some name -> if name == "" then fallback else name
+      | None -> fallback
+    | _ -> fallback
 
 
 /// Text a person or an editor supplied, as a branch id. THE boundary: a ref may be a name, a full id, or
@@ -233,11 +250,34 @@ let resolveBranchRef (branchRef: String) : BranchRefResult =
 /// Never creates. Merged branches count, because `dark branches` lists them and a name you can read off
 /// the listing has to be a name you can type.
 let branchIdForName (name: String) : Stdlib.Option.Option<Uuid> =
-  Builtin.scmBranchIdForName name
+  match
+    Stdlib.Sqlite.queryP
+      (localDb ())
+      "SELECT id FROM branches
+       WHERE name = @p0 AND archived_at IS NULL
+       ORDER BY created_at DESC, rowid DESC LIMIT 1"
+      [ name ]
+  with
+  | Ok(row :: _) ->
+    match Stdlib.Sqlite.textField row "id" with
+    | Some id ->
+      match Stdlib.Uuid.parse id with
+      | Ok parsed -> Stdlib.Option.Option.Some parsed
+      | Error _ -> Stdlib.Option.Option.None
+    | None -> Stdlib.Option.Option.None
+  | _ -> Stdlib.Option.Option.None
 
 
 /// Is this branch's work already in its parent?
-let branchIsMerged (branchId: Uuid) : Bool = Builtin.scmBranchIsMerged branchId
+let branchIsMerged (branchId: Uuid) : Bool =
+  match
+    Stdlib.Sqlite.queryP
+      (localDb ())
+      "SELECT 1 AS n FROM branches WHERE id = @p0 AND merged_at IS NOT NULL"
+      [ Stdlib.Uuid.toString branchId ]
+  with
+  | Ok(_ :: _) -> true
+  | _ -> false
 
 
 /// Turn a branch NAME into its id, starting the branch if that name has none. Returns (id, wasCreated);

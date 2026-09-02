@@ -142,9 +142,44 @@ let isolationBetweenBranches =
     Expect.equal dvB (RT.DInt64 99L) "branch B -> 99"
   }
 
-/// Wipe every trace of a test branch: its ops, its frontier tags, its per-name bases, its registry
-/// row. Called defensively before AND after, since the store is shared. The ONE place in this file
-/// allowed to spell these tables out, so a new branch table is handled here once for every test.
+/// Resolve a branch id by its name alias (first match), if any. Unfiltered: a lookup of a
+/// specific past branch still wants to find it.
+/// Resolve a branch id by its name alias (first match), if any. Unfiltered: a lookup of a
+/// specific past branch still wants to find it.
+let private branchIdForName (name : string) : Task<Option<PT.BranchId>> =
+  Sql.query "SELECT id FROM branches WHERE name = @name LIMIT 1"
+  |> Sql.parameters [ "name", Sql.string name ]
+  |> Sql.executeRowOptionAsync (fun read ->
+    PT.BranchId.ParseUnsafe(read.string "id"))
+
+/// REBASE: accept the parent's current state as this branch's new base. Returns the names the
+/// parent had changed since the fork; after this the branch's own ops layer on top (LWW by
+/// origin_ts) and merge is unblocked.
+/// Branch-registry lookups the assertions here need.
+///
+/// These used to live in `LibDB.Branches`, where nothing but this file and one builtin called them; the
+/// production copies now live in Dark (`SCM.PackageOps`). Kept here as plain SQL rather than reaching
+/// back through Dark, so an assertion about the store reads the store.
+let private idForName (name : string) : Task<Option<PT.BranchId>> =
+  Sql.query
+    "SELECT id FROM branches
+     WHERE name = @name AND archived_at IS NULL
+     ORDER BY created_at DESC, rowid DESC LIMIT 1"
+  |> Sql.parameters [ "name", Sql.string name ]
+  |> Sql.executeRowOptionAsync (fun read ->
+    PT.BranchId.ParseUnsafe(read.string "id"))
+
+let private isMerged (branchId : PT.BranchId) : Task<bool> =
+  task {
+    let! found =
+      Sql.query
+        "SELECT 1 AS n FROM branches WHERE id = @id AND merged_at IS NOT NULL"
+      |> Sql.parameters [ "id", Sql.string (string branchId) ]
+      |> Sql.executeRowOptionAsync (fun read -> read.int64 "n")
+    return Option.isSome found
+  }
+
+
 let private cleanupBranch (branchId : PT.BranchId) : Task<unit> =
   task {
     let del (sql : string) =
@@ -176,7 +211,7 @@ let storeThenOverlay =
     do! cleanupBranch branchId
 
     do! Branches.createBranch branchId "store-proof" PT.BranchId.Main
-    let! byName = Branches.branchIdForName "store-proof"
+    let! byName = branchIdForName "store-proof"
     Expect.equal byName (Some branchId) "branch resolves by its name alias"
 
     let! ops = opsFor (branchSource 42)
@@ -234,7 +269,7 @@ let markMergedFlipsEffective =
 let concurrentCreateYieldsOneBranch =
   testTask "racing to create one branch name produces one branch" {
     let name = "race-one-name"
-    let! existing = Branches.idForName name
+    let! existing = idForName name
     match existing with
     | Some id -> do! cleanupBranch id
     | None -> ()
@@ -282,7 +317,7 @@ let mergedBranchStaysAddressable =
       |> Sql.parameters [ "b", Sql.string (string (testBranch "mergedName")) ]
       |> Sql.executeStatementAsync
 
-    let! readSide = Branches.idForName "reuse-me"
+    let! readSide = idForName "reuse-me"
     Expect.equal
       readSide
       (Some(testBranch "mergedName"))
@@ -293,14 +328,14 @@ let mergedBranchStaysAddressable =
       writeSide
       "but is NOT what `switch <name>` lands on -- its work is already merged"
 
-    let! merged = Branches.isMerged (testBranch "mergedName")
+    let! merged = isMerged (testBranch "mergedName")
     Expect.isTrue
       merged
       "and reports itself merged, so `merge` can say so instead of flipping nothing"
 
     // Reusing the name starts a separate branch, and reads then mean the NEW one.
     do! Branches.createBranch (testBranch "mergedName2") "reuse-me" PT.BranchId.Main
-    let! afterReuse = Branches.idForName "reuse-me"
+    let! afterReuse = idForName "reuse-me"
     Expect.equal
       afterReuse
       (Some(testBranch "mergedName2"))
@@ -311,7 +346,7 @@ let mergedBranchStaysAddressable =
       Sql.query "UPDATE branches SET archived_at = datetime('now') WHERE id = @b"
       |> Sql.parameters [ "b", Sql.string (string (testBranch "mergedName2")) ]
       |> Sql.executeStatementAsync
-    let! afterArchive = Branches.idForName "reuse-me"
+    let! afterArchive = idForName "reuse-me"
     Expect.equal
       afterArchive
       (Some(testBranch "mergedName"))
@@ -543,11 +578,11 @@ let sameNameMergesConvergeToLater =
       |> Sql.executeStatementAsync
   }
 
-/// Locks the reload-stable rebase model: nameConflicts flags a name whose main hash diverged from
+/// Locks the reload-stable rebase model: Branches.nameConflicts flags a name whose main hash diverged from
 /// the branch's recorded base; rebase accepts main's state and clears it. Manipulates the base row
 /// directly (no fold into main) so the test never pollutes the shared main projection.
 let rebaseDetectsAndClearsConflicts =
-  testTask "nameConflicts flags a diverged name; rebase clears it" {
+  testTask "Branches.nameConflicts flags a diverged name; rebase clears it" {
     let bid = testBranch "test-rebase-gate"
     do! cleanupBranch bid
 
@@ -880,7 +915,7 @@ let branchExists =
     // it has to count, or a fresh branch reads as a typo.
     do! Branches.createBranch (testBranch "beX") "" PT.BranchId.Main
     let! registeredOnly = Branches.exists (testBranch "beX")
-    Expect.isTrue registeredOnly "registered with no ops still exists"
+    Expect.isTrue registeredOnly "registered with no ops still Branches.exists"
 
     // Tagged ops with no registry row: this is what a branch bundle from another machine looks like
     // before anything registers it locally. Also has to count.
@@ -892,7 +927,7 @@ let branchExists =
       |> Sql.parameters [ "b", Sql.string (string (testBranch "beY")) ]
       |> Sql.executeStatementAsync
     let! taggedOnly = Branches.exists (testBranch "beY")
-    Expect.isTrue taggedOnly "ops tagged with no registry row still exists"
+    Expect.isTrue taggedOnly "ops tagged with no registry row still Branches.exists"
 
     let! typo = Branches.exists (testBranch "beYY")
     Expect.isFalse typo "a prefix of a real branch is not that branch"
@@ -1141,20 +1176,20 @@ let branchEventMarksMerged =
     do! cleanupBranch branchId
     do! Branches.createBranch branchId "event-proof" PT.BranchId.Main
 
-    let! before = Branches.isMerged branchId
+    let! before = isMerged branchId
     Expect.isFalse before "not merged before the event"
 
     let op =
       PT.PackageOp.BranchEvent(branchId, PT.Merged, "2026-01-01T00:00:00.000Z")
     let! _ = LibDB.Inserts.insertAndApplyOps [ op ]
 
-    let! after = Branches.isMerged branchId
+    let! after = isMerged branchId
     Expect.isTrue after "the event folded, so the branch reads as merged"
 
     // Monotonic: this is what lets the event travel with no stamp on `branches` to arbitrate with, and
     // what makes re-receiving it on a third machine harmless.
     let! _ = LibDB.Inserts.insertAndApplyOps [ op ]
-    let! twice = Branches.isMerged branchId
+    let! twice = isMerged branchId
     Expect.isTrue twice "applying it again lands in the same place"
 
     do! cleanupBranch branchId
@@ -1324,7 +1359,7 @@ let noMainLiteralInDarkSql =
 ///
 /// Textual, and a tripwire rather than a proof: it knows the spellings we actually use for a branch id,
 /// and only in the two forms that reach a person (`Error` and `Dval.string`). Resolve the name with
-/// `LibDB.Branches.nameForId`, which falls back to the id for a branch this store has no row for.
+/// `SCM.PackageOps.branchName`, which falls back to the id for a branch this store has no row for.
 let branchIdsNeverReachAPerson =
   testTask "no user-facing F# string interpolates a branch id" {
     // `..` is the REPO ROOT here, the same as the `locations` test above uses for `packages/`.
@@ -1365,8 +1400,8 @@ let branchIdsNeverReachAPerson =
     Expect.isEmpty
       offenders
       "These strings put a branch ID in front of a person:\n\
-       Resolve it with `LibDB.Branches.nameForId` first. A person typed a name; showing them a uuid \
-       back is the boundary this branch exists to draw."
+       Resolve it with `SCM.PackageOps.branchName` first. A person typed a name; showing them a uuid \
+       back is the boundary this branch Branches.exists to draw."
   }
 
 

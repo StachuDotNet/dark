@@ -44,6 +44,22 @@ let asBytes (v: Value) : Stdlib.Option.Option<Blob> =
 let execP (dbPath: String) (sql: String) (params: List<String>) : Stdlib.Result.Result<Int, String> =
   Builtin.sqliteExec dbPath sql params
 
+/// Run several statements against <param dbPath> in ONE transaction: either all of it lands or none
+/// does.
+///
+/// Each entry is a statement and the parameter rows to run it for, so one statement can be run many
+/// times (the bulk-insert shape). A statement with no rows runs once with no parameters.
+///
+/// Returns rows affected per PARAMETER ROW, in order, flattened across statements. Not a total: a
+/// caller has to be able to tell a real insert from an `INSERT OR IGNORE` that deduped, and a sum
+/// cannot express that.
+let execBatch
+  (dbPath: String)
+  (statements: List<(String * List<List<String>>)>)
+  : Stdlib.Result.Result<List<Int>, String> =
+  Builtin.sqliteExecBatch dbPath statements
+
+
 let exec (dbPath: String) (sql: String) : Stdlib.Result.Result<Int, String> =
   execP dbPath sql []
 
