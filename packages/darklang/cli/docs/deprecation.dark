@@ -20,7 +20,7 @@ a replacement is.
 
   deprecate <fn|type|value> <name-or-hash> --kind <k> [options]
   delete    <fn|type|value> <name-or-hash> [options]
-  undo      <fn|type|value> <name>           # reverses a WIP deprecate
+  undeprecate <name>                         # puts it back on the shelf
 
 `delete` is sugar for `deprecate --kind obsolete`, but it requires
 --ignore-dependents when the target has live dependents. Prefer
@@ -61,8 +61,8 @@ Tests, sandboxes, and security research can opt out:
   # Take off the shelf (catch-all)
   delete fn Darklang.Legacy.oldThing -m "no longer maintained" --yes
 
-  # Revert a WIP deprecate
-  undo fn Darklang.Stdlib.List.oldMap --yes
+  # Put it back
+  undeprecate Darklang.Stdlib.List.oldMap
 
 ## Visibility in package tree
 

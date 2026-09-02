@@ -290,7 +290,7 @@ let help (_state: Cli.AppState) : String =
     ""
     "Related:"
     "  delete — sugar for `deprecate --kind obsolete` with dependents gate"
-    "  undo   — reverse a WIP deprecate on the current branch" ]
+    "  undeprecate — put a deprecated item back on the shelf" ]
   |> Stdlib.String.join "\n"
 
 
@@ -301,3 +301,80 @@ let complete
   match args with
   | [] -> ["fn"; "type"; "value"] |> Stdlib.List.map Cli.Completion.simple
   | _ -> []
+
+
+/// `dark undeprecate <name>` -- put something back on the shelf.
+///
+/// `Undeprecate` has been an op case with a fold behind it the whole time, and nothing could author
+/// one. So `deprecate` and `delete` were ONE-WAY: a `delete` typed at the wrong name could only be
+/// recovered by re-authoring the item.
+///
+/// The kind is inferred rather than asked for. You know the name; making you also name its kind to
+/// un-do something is the kind of question a tool asks because it is easy to implement.
+let executeUndeprecate (state: Cli.AppState) (args: List<String>) : Cli.AppState =
+  let branchId = state.currentBranchId
+
+  let positional =
+    args |> Stdlib.List.filter (fun a -> Stdlib.String.startsWith a "--" |> Stdlib.Bool.not)
+
+  match positional with
+  | []
+  | [ "help" ] ->
+    Stdlib.printLine (Stdlib.Cli.UI.Colors.error "usage: dark undeprecate <name>")
+    Stdlib.printLine
+      (Stdlib.Cli.UI.Colors.hint
+        "  puts a deprecated fn, type or value back. `dark ls --include-deprecated` finds them.")
+    state
+  | [ target ] ->
+    let currentLoc = state.packageData.currentLocation
+
+    // Try each kind rather than making the caller say which. A name holds ONE item, so at most one
+    // of these resolves.
+    let resolved =
+      [ LanguageTools.ProgramTypes.ItemKind.Fn
+        LanguageTools.ProgramTypes.ItemKind.Type
+        LanguageTools.ProgramTypes.ItemKind.Value ]
+      |> Stdlib.List.filterMap (fun k -> resolveTarget branchId currentLoc k target)
+
+    match resolved with
+    | [] ->
+      Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"Could not resolve {target}")
+      Stdlib.printLine
+        (Stdlib.Cli.UI.Colors.hint
+          "  deprecated items are hidden; `dark ls --include-deprecated` shows them.")
+
+      state
+    | targetRef :: _ ->
+      let op = LanguageTools.ProgramTypes.PackageOp.Undeprecate targetRef
+
+      match SCM.PackageOps.add branchId [ op ] with
+      | Ok _ ->
+        Stdlib.printLine (Stdlib.Cli.UI.Colors.success $"Undeprecated {target}")
+        state
+      | Error e ->
+        Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"Undeprecate failed: {e}")
+        state
+  | _ ->
+    Stdlib.printLine (Stdlib.Cli.UI.Colors.error "usage: dark undeprecate <name>")
+    state
+
+
+let helpUndeprecate (_state: Cli.AppState) : String =
+  [ "Put a deprecated function, type, or value back on the shelf."
+    ""
+    "Usage: undeprecate <name>"
+    ""
+    "The kind is worked out from the name, so you don't have to say fn/type/value."
+    "Deprecated items are hidden by default; `ls --include-deprecated` shows them."
+    ""
+    "Examples:"
+    "  undeprecate Darklang.Stdlib.List.oldMap"
+    "  undeprecate oldMap" ]
+  |> Stdlib.String.join "\n"
+
+
+let completeUndeprecate
+  (_state: Cli.AppState)
+  (_args: List<String>)
+  : List<Cli.Completion.CompletionItem> =
+  []

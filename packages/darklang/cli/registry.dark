@@ -59,6 +59,7 @@ module Registry =
       ("docs", "Browse in-CLI documentation", [ "doc"; "man" ], Docs.Command.execute, Docs.Command.help, Docs.Command.complete)
       ("undo", "Undo WIP changes to a fn/type/value", [], Packages.Undo.execute, Packages.Undo.help, Packages.Undo.complete)
       ("deprecate", "Mark a fn/type/value as deprecated", [], Packages.Deprecate.execute, Packages.Deprecate.help, Packages.Deprecate.complete)
+      ("undeprecate", "Put a deprecated fn/type/value back on the shelf", [ "restore" ], Packages.Deprecate.executeUndeprecate, Packages.Deprecate.helpUndeprecate, Packages.Deprecate.completeUndeprecate)
       ("delete", "Take a fn/type/value off the shelf (sugar for deprecate --kind obsolete)", [], Packages.Delete.execute, Packages.Delete.help, Packages.Delete.complete)
       ("db", "Manage databases", [], Packages.DB.execute, Packages.DB.help, Packages.DB.complete)
       ("outliner", "Interactive tree outliner", [ "tree-exp" ], Outliner.App.execute, Outliner.App.help, Outliner.App.complete)
@@ -160,7 +161,7 @@ module Registry =
 
   // Command groups organized by category (shared between compact and detailed views)
   let commandGroups () : List<(String * List<String>)> =
-    [ ("Packages", [ "nav"; "ls"; "view"; "tree"; "back"; "search"; "typecheck"; "deps"; "val"; "let"; "fn"; "type"; "module"; "hash"; "db"; "deprecate"; "delete" ])
+    [ ("Packages", [ "nav"; "ls"; "view"; "tree"; "back"; "search"; "typecheck"; "deps"; "val"; "let"; "fn"; "type"; "module"; "hash"; "db"; "deprecate"; "delete"; "undeprecate" ])
       ("SCM",
        [ "status"; "commits"; "commit"; "discard"; "show"; "ops"; "branch"; "rebase"; "merge"; "review" ])
       ("Execution", [ "run"; "eval"; "scripts" ])
