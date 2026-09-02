@@ -65,17 +65,6 @@ let exists (branchId : PT.BranchId) : Task<bool> =
     return Option.isSome found
   }
 
-/// Resolve a branch id by its name alias (first match), if any. Unfiltered: a lookup of a
-/// specific past branch still wants to find it.
-let branchIdForName (name : string) : Task<Option<PT.BranchId>> =
-  Sql.query "SELECT id FROM branches WHERE name = @name LIMIT 1"
-  |> Sql.parameters [ "name", Sql.string name ]
-  |> Sql.executeRowOptionAsync (fun read ->
-    PT.BranchId.ParseUnsafe(read.string "id"))
-
-/// The LIVE branch called `name`, if any: not archived, not merged. Most recent wins, `rowid`
-/// breaking the tie because `created_at` is second-resolution and concurrent agents starting one
-/// name inside a second is ordinary here. A name freed by archiving starts a NEW branch.
 let liveIdForName (name : string) : Task<Option<PT.BranchId>> =
   Sql.query
     "SELECT id FROM branches
@@ -85,22 +74,6 @@ let liveIdForName (name : string) : Task<Option<PT.BranchId>> =
   |> Sql.executeRowOptionAsync (fun read ->
     PT.BranchId.ParseUnsafe(read.string "id"))
 
-/// The branch a READ verb means by `name`: the most recent one still listed, merged or not, so
-/// `dark diff feat` still finds a just-merged `feat` while `dark switch feat` (which uses
-/// `liveIdForName`) won't land on it. Archived is excluded from both, since archiving deletes the
-/// branch's unmerged ops.
-let idForName (name : string) : Task<Option<PT.BranchId>> =
-  Sql.query
-    "SELECT id FROM branches
-     WHERE name = @name AND archived_at IS NULL
-     ORDER BY created_at DESC, rowid DESC LIMIT 1"
-  |> Sql.parameters [ "name", Sql.string name ]
-  |> Sql.executeRowOptionAsync (fun read ->
-    PT.BranchId.ParseUnsafe(read.string "id"))
-
-/// Is this branch still somewhere you can stand: registered, not archived, not merged? The id
-/// counterpart to `liveIdForName`, and the check to use wherever a stored id becomes a place to
-/// author: a merged branch is finished, and an edit landing on one can never reach anywhere.
 let isLive (branchId : PT.BranchId) : Task<bool> =
   task {
     let! found =
@@ -112,19 +85,6 @@ let isLive (branchId : PT.BranchId) : Task<bool> =
     return Option.isSome found
   }
 
-/// Is this branch's work already in its parent?
-let isMerged (branchId : PT.BranchId) : Task<bool> =
-  task {
-    let! found =
-      Sql.query
-        "SELECT 1 AS n FROM branches WHERE id = @id AND merged_at IS NOT NULL"
-      |> Sql.parameters [ "id", Sql.string (string branchId) ]
-      |> Sql.executeRowOptionAsync (fun read -> read.int64 "n")
-    return Option.isSome found
-  }
-
-/// The name a branch goes by, for display. Falls back to the id, which is what an
-/// imported branch that arrived as tagged ops with no registry row has to show.
 let nameForId (branchId : PT.BranchId) : Task<string> =
   task {
     // Main has no `branches` row, so the fallback below would show its raw id.
