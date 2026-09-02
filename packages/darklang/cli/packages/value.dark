@@ -59,11 +59,10 @@ let createValueInline
     let fullSource = $"val {location.name} = {expression}"
 
     // Parse the value definition with the unified (ranged) parser
-    match LanguageTools.Parser.Parse.toWrittenTypes fullSource with
+    match Builtin.parserParseToWrittenTypes fullSource with
     | Some(SourceFile sourceFile) ->
       // The parser may recover a tree after errors; do not save it.
-      let hasParseError =
-        Errors.reportParseErrors (LanguageTools.Parser.Parse.diagnostics fullSource)
+      let hasParseError = Errors.reportParseErrors (Builtin.parserParseDiagnostics fullSource)
       let found =
         if hasParseError then
           Stdlib.Option.Option.None
@@ -104,7 +103,7 @@ let createValueInline
           // Create ops: AddValue and SetName
           let ops =
             [ LanguageTools.ProgramTypes.PackageOp.AddValue packageValue
-              LanguageTools.ProgramTypes.PackageOp.SetName (location, LanguageTools.ProgramTypes.Reference.PackageValue packageValue.hash) ]
+              LanguageTools.ProgramTypes.PackageOp.SetName (location, LanguageTools.ProgramTypes.Reference.PackageValue packageValue.hash, Stdlib.Option.Option.None) ]
 
           match SCM.PackageOps.addAuthored state.currentBranchId ops with
           | Ok report ->
@@ -117,9 +116,10 @@ let createValueInline
             Stdlib.printLine ""
             Stdlib.printLine (Stdlib.Cli.UI.Colors.success $"✓ {action} value: {fullPath}")
 
-            // Auto-propagate if this is an update
+            // Repoint dependents NOW, into the draft, so you can run them against this change before
+            // deciding whether to commit. Nothing is committed; `dark commit` is still the blessing.
             if isUpdate then
-              Propagate.autoPropagateAfterUpdate state.currentBranchId location packageValue.hash LanguageTools.ProgramTypes.ItemKind.Value
+              Propagate.repointNow state.currentBranchId location previousHashes packageValue.hash LanguageTools.ProgramTypes.ItemKind.Value
 
             Stdlib.printLine ""
             state
@@ -183,7 +183,7 @@ let help (_state: Cli.AppState) : String =
     "  # Type alias:"
     "  val userId = Uuid.parse \"123e4567-e89b-12d3-a456-426614174000\""
     ""
-    "  # Multi-line expression via stdin (run from shell, not the REPL — '-' reads stdin):"
+    "  # Multi-line expression via stdin (run from shell, not the REPL -- '-' reads stdin):"
     "  ./scripts/run-cli val primes - <<'EOF'"
     "  ["
     "    2"

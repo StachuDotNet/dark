@@ -1,0 +1,318 @@
+module Darklang.SCM.PackageOps
+
+/// `package_ops` read through a BRANCH: what a branch binds, what it changes against its parent, and
+/// which branch this process is standing on.
+///
+/// Same module as `packageOps.dark`, deliberately: this is a physical split of one silo, not a new
+/// one. Callers say `SCM.PackageOps.x` wherever the definition lives, so the file boundary can move
+/// without a single call site changing.
+///
+/// Everything here goes through the overlay rather than reading `locations`, which has no `branch_id`
+/// and so answers about MAIN while you are standing on a branch.
+
+
+/// What a BRANCH binds, from its OWN frontier (not the parent chain) -- exactly the ops a merge would flip
+/// effective and fold, so this is the incoming side of a merge.
+let branchBindings (branchId: Uuid) : List<Conflicts.Binding> =
+  match
+    Stdlib.Sqlite.queryP
+      (localDb ())
+      "SELECT p.id, p.op_blob, p.origin_ts AS ts
+       FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id
+       WHERE ob.branch_id = @p0
+       ORDER BY p.origin_ts, p.rowid"
+      [ Stdlib.Uuid.toString branchId ]
+  with
+  | Ok rows -> bindingsFromOpRows rows
+  | Error _ -> []
+
+
+/// Does this branch exist at all? Checks BOTH the registry row and the op tags, because either can exist
+/// without the other: switching registers a branch before it has ops, and an imported branch arrives as
+/// tagged ops before anything registers it. Otherwise "unknown" reads as "empty".
+let branchExists (branchId: Uuid) : Bool =
+  let registered =
+    Stdlib.Sqlite.queryOneP
+      (localDb ())
+      "SELECT 1 AS n FROM branches WHERE id = @p0"
+      [ Stdlib.Uuid.toString branchId ]
+
+  match registered with
+  | Some _ -> true
+  | None ->
+    match
+      Stdlib.Sqlite.queryOneP
+        (localDb ())
+        "SELECT 1 AS n FROM op_branches WHERE branch_id = @p0 LIMIT 1"
+        [ Stdlib.Uuid.toString branchId ]
+    with
+    | Some _ -> true
+    | None -> false
+
+
+/// A branch's registered parent, or MAIN's id when the branch has no registered parent.
+///
+/// Main's ID, not the string "main". The distinction is the one `SCM.Ids` exists to hold: the id is a
+/// Uuid and the name is text, and this column carries the id.
+let branchParentOf (branchId: Uuid) : Uuid =
+  match
+    Stdlib.Sqlite.queryOneP
+      (localDb ())
+      "SELECT parent_id FROM branches WHERE id = @p0"
+      [ Stdlib.Uuid.toString branchId ]
+  with
+  | Some row ->
+    SCM.Ids.fromTextField (Stdlib.Sqlite.textField row "parent_id")
+  | None -> SCM.Ids.mainBranchId
+
+
+/// What the PARENT binds for <param names> -- the LOCAL side a branch merges into. parent=main is just
+/// `locations`; a non-main parent is main overlaid by that chain's own rebinds.
+let parentBindings (parentId: Uuid) (names: List<String>) : List<Conflicts.Binding> =
+  let fromMain = Conflicts.localBindingsFor names
+
+  if SCM.Ids.isMain parentId then
+    fromMain
+  else
+    let overlay = chainBindings parentId
+
+    let overlayKeys =
+      overlay |> Stdlib.List.map (fun b -> Conflicts.bindingKey b.owner b.modules b.name)
+
+    // Dict, not `List.member`: `fromMain` is EVERY live binding, so a linear membership test per element is
+    // O(main x overlay) on a path every branch-aware read goes through. See `unknownRecords`.
+    let overlayKeySet =
+      overlayKeys
+      |> Stdlib.List.map (fun k -> (k, true))
+      |> Stdlib.Dict.fromListOverwritingDuplicates
+
+    let untouched =
+      fromMain
+      |> Stdlib.List.filter (fun b ->
+        match
+          Stdlib.Dict.get overlayKeySet (Conflicts.bindingKey b.owner b.modules b.name)
+        with
+        | Some _ -> false
+        | None -> true)
+
+    Stdlib.List.append untouched overlay
+
+
+// the branch PREVIEW (what a merge would hit, before anything is recorded)
+
+
+/// Conflicts a merge of <param branchId> into its parent WOULD raise: the branch's own frontier bindings vs
+/// the parent's current bindings, tested against the bases the branch recorded at its fork. Nothing is
+/// recorded by looking -- a conflict is only written once a reconciliation actually happens.
+let branchPreview (branchId: Uuid) : List<Conflicts.Conflict> =
+  let incoming = branchBindings branchId
+  let names = incoming |> Stdlib.List.map (fun b -> b.name)
+  let parent = branchParentOf branchId
+  let local = parentBindings parent names
+  // NAMES, not ids: the label is stored on the candidate and handed to `--json`, where a reader needs to
+  // know which side is which. `detect` takes Strings for exactly that reason -- the sync caller labels
+  // with an instance identity. This is the boundary where a branch id becomes the name a person reads.
+  Conflicts.detect (branchName parent) (branchName branchId) local incoming (Conflicts.branchBases branchId)
+
+
+/// Everything a branch CHANGES vs its parent. Broader than the conflict preview, which shows only
+/// collisions; names re-bound to the parent's current version are no-ops and omitted.
+///
+/// Compares the same two sides as `branchPreview`, so the diff and the conflict list cannot disagree.
+/// Returns a record rather than rendered lines: both renderers below read it, so the human and the JSON
+/// caller cannot be told different things.
+let branchDiffEntries (branchId: Uuid) : List<BranchDiffEntry> =
+  let branchBinds = branchBindings branchId
+  let names = Branches.touchedNames branchId
+  let parent = branchParentOf branchId
+  let parentBinds = parentBindings parent names
+
+  let parentByKey =
+    parentBinds
+    |> Stdlib.List.map (fun b -> (Conflicts.bindingKey b.owner b.modules b.name, b.hash))
+    |> Stdlib.Dict.fromListOverwritingDuplicates
+
+  branchBinds
+  |> Stdlib.List.filterMap (fun b ->
+    let parentHash =
+      Stdlib.Dict.get parentByKey (Conflicts.bindingKey b.owner b.modules b.name)
+      |> Stdlib.Option.withDefault ""
+
+    if b.hash == parentHash then
+      Stdlib.Option.Option.None // the branch re-bound to what the parent already has
+    else
+      let change = if parentHash == "" then "new" else "changed"
+
+      (BranchDiffEntry
+        { name = Conflicts.fqn b.owner b.modules b.name
+          itemType = b.itemType
+          change = change
+          parentHash = parentHash
+          hash = b.hash })
+      |> Stdlib.Option.Option.Some)
+  // new first, then changed, each alphabetical
+  |> Stdlib.List.sortBy (fun e ->
+    let rank = if e.change == "new" then 0 else 1
+    (rank, e.name))
+
+
+let shortHashOr (h: String) : String =
+  if h == "" then "(none)" else Stdlib.String.first h 8
+
+
+let branchDiffLines (branchId: Uuid) : List<String> =
+  branchDiffEntries branchId
+  |> Stdlib.List.map (fun e ->
+    if e.change == "new" then
+      $"  + {e.name}  (new: {shortHashOr e.hash})"
+    else
+      $"  ~ {e.name}  ({shortHashOr e.parentHash} -> {shortHashOr e.hash})")
+
+
+// RECONCILIATION: the only places a conflict is RECORDED.
+//
+// It does not block. It auto-resolves by the fold's LWW, records what it resolved, and continues -- review
+// after, not block before. The one thing it must never do is drop the loser silently, which is what the
+// recorded row prevents.
+
+
+/// The branch this process is on. This is an ID. Defined in `SCM.Branches`; this is the
+/// spelling most callers use.
+let currentBranch () : Uuid = Branches.current ()
+
+
+/// The NAME to show for a branch id. Ids are what everything refers to; names are what
+/// people read, so anything user-facing goes through here rather than printing the id.
+let branchName (branchId: Uuid) : String = Builtin.scmBranchName branchId
+
+
+/// Text a person or an editor supplied, as a branch id. THE boundary: a ref may be a name, a full id, or
+/// the start of one, and this is the single place that knows all three.
+///
+/// It lives here rather than in the CLI because the LSP needs the same answer, and when it had its own
+/// version the two drifted: the LSP's could not resolve `main` at all, because main has no `branches`
+/// row and only the special case below finds it.
+let resolveBranchRef (branchRef: String) : BranchRefResult =
+  let asId =
+    match Stdlib.Uuid.parse branchRef with
+    | Ok id -> Stdlib.Option.Option.Some id
+    | Error _ -> Stdlib.Option.Option.None
+
+  // Main is resolvable by name and by id like any other branch, and has to be: it has no `branches`
+  // row, so neither the name lookup nor the id-prefix search below can find it.
+  if (branchRef == SCM.Ids.mainBranchName)
+     || (asId == Stdlib.Option.Option.Some SCM.Ids.mainBranchId) then
+    BranchRefResult.Found SCM.Ids.mainBranchId
+  else
+    match branchIdForName branchRef with
+    | Some id -> BranchRefResult.Found id
+    | None ->
+      match asId with
+      | Some id ->
+        if branchExists id then
+          BranchRefResult.Found id
+        else
+          BranchRefResult.NotFound
+      | None ->
+        // Long enough not to be silly: a 1-2 character prefix would match half the store and "ambiguous"
+        // is a worse answer than making you type more.
+        if Stdlib.String.length branchRef < 4 then
+          BranchRefResult.NotFound
+        else
+          match
+            Branches.list ()
+            |> Stdlib.List.filter (fun b ->
+              Stdlib.String.startsWith (Stdlib.Uuid.toString b.id) branchRef)
+          with
+          | [ only ] -> BranchRefResult.Found only.id
+          | [] -> BranchRefResult.NotFound
+          | _ -> BranchRefResult.Ambiguous
+
+
+/// The id a person means by <param name> at a branch verb: the most recent branch still listed under it.
+/// Never creates. Merged branches count, because `dark branches` lists them and a name you can read off
+/// the listing has to be a name you can type.
+let branchIdForName (name: String) : Stdlib.Option.Option<Uuid> =
+  Builtin.scmBranchIdForName name
+
+
+/// Is this branch's work already in its parent?
+let branchIsMerged (branchId: Uuid) : Bool = Builtin.scmBranchIsMerged branchId
+
+
+/// Turn a branch NAME into its id, starting the branch if that name has none. Returns (id, wasCreated);
+/// callers announce a creation, because silently running on a branch you didn't mean to start reads
+/// exactly like running on the one you did.
+let resolveBranch (name: String) (parentId: Uuid) : (Uuid * Bool) =
+  Builtin.scmResolveBranch name parentId
+
+
+/// Move THIS process onto <param branchId>, loading that branch's delta ops as the overlay name resolution
+/// and execution read. Returns the branch now active -- the one call that changes what every later name in
+/// the process resolves to.
+///
+/// Persisting the choice is separate and deliberately not done here: `--branch` is a one-off and must not
+/// move `current_branch`, while `ops switch` sets both.
+let selectBranch (branchId: Uuid) : Uuid = Builtin.scmSelectBranch branchId
+
+
+/// Every hash the branch CHAIN has ever bound to a name, oldest first.
+///
+/// Propagation needs the versions a dependent might still point at. On main that history is the `locations`
+/// rows; a branch-only name has none, its whole history being its ops.
+let branchHashHistoryFor
+  (branchId: Uuid)
+  (owner: String)
+  (modules: String)
+  (name: String)
+  : List<String> =
+  match
+    Stdlib.Sqlite.queryP
+      (localDb ())
+      // `@p1` is main's id, not the literal "main". `SCM.Ids` exists to enforce exactly that, and its
+      // own comment records the rule drifting twice already -- once when main's id was "" and once when
+      // it was "main". SQL is where it drifts unnoticed, because no type checker reads a string.
+      // Against a current store this comparison was simply dead: `parent_id` holds main's UUID, so
+      // `!= 'main'` was true for every row and the recursion walked past main instead of stopping at it.
+      "WITH RECURSIVE chain(bid) AS (
+         SELECT @p0
+         UNION
+         SELECT b.parent_id FROM branches b JOIN chain c ON b.id = c.bid
+         WHERE b.parent_id != @p1
+       )
+       SELECT p.id, p.op_blob, p.origin_ts AS ts
+       FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id
+       WHERE ob.branch_id IN (SELECT bid FROM chain)
+       ORDER BY p.origin_ts, p.rowid"
+      [ Stdlib.Uuid.toString branchId
+        Stdlib.Uuid.toString SCM.Ids.mainBranchId ]
+  with
+  | Ok rows ->
+    rows
+    |> Stdlib.List.filterMap (fun row ->
+      match
+        (Stdlib.Sqlite.textField row "id", Stdlib.Sqlite.bytesField row "op_blob")
+      with
+      | (Some idStr, Some blob) ->
+        (match Stdlib.Uuid.parse idStr with
+         | Ok id ->
+           (match tryDecodeOp id blob with
+            | Some(SetName(location, target, _)) ->
+              if
+                (location.owner == owner)
+                && ((Stdlib.String.join location.modules ".") == modules)
+                && (location.name == name)
+              then
+                Stdlib.Option.Option.Some(
+                  LanguageTools.ProgramTypes.hashToString
+                    (LanguageTools.ProgramTypes.Reference.hash target)
+                )
+              else
+                Stdlib.Option.Option.None
+            | _ -> Stdlib.Option.Option.None)
+         | Error _ -> Stdlib.Option.Option.None)
+      | _ -> Stdlib.Option.Option.None)
+    // `dedup`, not `unique`/`uniqueBy`: both of those SORT, which would replace the authoring order this
+    // function exists to return with lexicographic HASH order.
+    |> Stdlib.List.dedup
+  | Error _ -> []

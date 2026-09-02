@@ -15,9 +15,9 @@ let resolveReplacementName
     | PackageValue h -> h
   let locs =
     match ref with
-    | PackageFn h -> LanguageTools.PackageManager.Function.locations branchId h
-    | PackageType h -> LanguageTools.PackageManager.Type.locations branchId h
-    | PackageValue h -> LanguageTools.PackageManager.Value.locations branchId h
+    | PackageFn h -> Builtin.pmGetLocationsByFn branchId h
+    | PackageType h -> Builtin.pmGetLocationsByType branchId h
+    | PackageValue h -> Builtin.pmGetLocationsByValue branchId h
   match Darklang.LanguageTools.PackageManager.pickLocation
           (PrettyPrinter.ProgramTypes.Context.toPickContext ctx)
           locs with
@@ -81,7 +81,7 @@ let deprecationHeaderRowsFor
   (hash: LanguageTools.ProgramTypes.Hash)
   (itemKind: LanguageTools.ProgramTypes.ItemKind)
   : List<String> =
-  match Builtin.pmGetCurrentDeprecation branchId hash itemKind with
+  match Builtin.pmGetCurrentDeprecation hash itemKind with
   | None -> []
   | Some tuple ->
     let (kind, message) = tuple
@@ -92,7 +92,7 @@ let deprecationHeaderRowsFor
         ( "DEPRECATED (superseded)"
         , Stdlib.Option.Option.Some $"   → use {replName} instead" )
       | Harmful ->
-        ( "DEPRECATED (HARMFUL — runtime will halt)"
+        ( "DEPRECATED (HARMFUL -- runtime will halt)"
         , Stdlib.Option.Option.None )
       | Obsolete ->
         ( "DEPRECATED (obsolete)"

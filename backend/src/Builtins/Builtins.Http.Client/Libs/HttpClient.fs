@@ -141,7 +141,8 @@ module RequestError =
 type RequestResult = Result<Response, RequestError.RequestError>
 
 type Configuration =
-  { timeoutInMs : int
+  {
+    timeoutInMs : int
     allowedIP : System.Net.IPAddress -> bool
     allowedHost : string -> bool
     allowedScheme : string -> bool
@@ -149,7 +150,16 @@ type Configuration =
     // telemetryInitialize allows us wrap the code with a span
     telemetryInitialize : (unit -> Task<RequestResult>) -> Task<RequestResult>
     telemetryAddTag : string -> obj -> unit
-    telemetryAddException : Metadata -> System.Exception -> unit }
+    telemetryAddException : Metadata -> System.Exception -> unit
+
+    /// What this client will ask a server to compress with, and unwrap transparently.
+    ///
+    /// Per-configuration rather than global on purpose. Turning it on for the shared client makes every
+    /// Dark HTTP call send `Accept-Encoding`, which is a visible change to programs that did not ask for
+    /// it (37 HttpClient tests assert on the exact headers a request carries, and they were right to).
+    /// Sync is the only path that wants it, and it is already its own configuration.
+    automaticDecompression : System.Net.DecompressionMethods
+  }
 
 module BaseClient =
   // There are a number of different configuration options we want to enable:
@@ -179,10 +189,11 @@ module BaseClient =
     // As of .NET 6 it seems we no longer need to worry about either socket
     // exhaustion or DNS issues. It appears that we can use either multiple HTTP
     // clients or just one, we use just one for efficiency.
-    // See https://docs.microsoft.com/en-us/aspnet/core/fundamentals/http-requests?view=aspnetcore-7.0#alternatives-to-ihttpclientfactory
+    // See
+    // https://docs.microsoft.com/en-us/aspnet/core/fundamentals/http-requests?view=aspnetcore-7.0#alternatives-to-ihttpclientfactory
     //
-    // Note that the number of sockets was verified manually, with:
-    // `sudo netstat -apn | grep _WAIT`
+    // Note that the number of sockets was verified manually, with: `sudo netstat
+    // -apn | grep _WAIT`
     let handler (config : Configuration) : HttpMessageHandler =
       let connectionFilter
         (context : SocketsHttpConnectionContext)
@@ -268,15 +279,12 @@ module BaseClient =
         // Users share the HttpClient, don't let them share cookies!
         UseCookies = false,
 
-        // HttpClientTODO avail functions to compress/decompress with common
-        // compression algorithms (gzip, brottli, deflate)
-        //
-        // HttpClientTODO consider: is there any reason to think that ASP.NET
-        // does something fancy such that automatic .net httpclient -level
-        // decompression would be notably more efficient than doing so 'manually'
-        // via some function? There will certainly be more bytes passed around -
-        // probably not a big deal?
-        AutomaticDecompression = System.Net.DecompressionMethods.None,
+        // Ask for compression and unwrap it transparently. A server only compresses when asked, so
+        // this is what makes the relay's gzip reachable at all; the sync pages are JSON full of hex
+        // and go about 5x smaller. Dark sees the decompressed bytes either way, so the only visible
+        // difference is a `Content-Encoding` header on responses that took it up.
+        // Off for everything but sync; see `Configuration.automaticDecompression`.
+        AutomaticDecompression = config.automaticDecompression,
 
         // Don't add a RequestId header for opentelemetry
         ActivityHeadersPropagator = null,
@@ -288,7 +296,8 @@ module BaseClient =
   module WasmHandler =
     let handler (_config : Configuration) : HttpMessageHandler =
       new HttpClientHandler(
-        // These settings are also enabled in SocketBasedHandler - see comments above for discussion
+        // These settings are also enabled in SocketBasedHandler - see comments above
+        // for discussion
         AllowAutoRedirect = false
       // These can't be set in WASM, even though they exist (PlatformNotSupportedException)
       // UseCookies = false,
@@ -324,7 +333,8 @@ let looseConfig =
     allowedHeaders = fun _ -> true
     telemetryInitialize = fun f -> f ()
     telemetryAddTag = fun _ _ -> ()
-    telemetryAddException = fun _ _ -> () }
+    telemetryAddException = fun _ _ -> ()
+    automaticDecompression = System.Net.DecompressionMethods.None }
 
 
 /// SSRF guard: predicates that block access to internal IP ranges,
@@ -380,10 +390,11 @@ module LocalAccess =
     else
       true // not ipv4 or ipv6, so banned
 
-  /// The subset of banned ranges that stay banned even for a trusted tailnet SYNC pull: 169.254.0.0/16
-  /// (link-local + cloud-metadata), GCP private endpoints, and 0.0.0.0. Loopback, RFC-1918, and the
-  /// Tailscale CGN range (100.64/10) are deliberately ALLOWED here — reaching a tailnet/LAN peer is the
-  /// whole point — but the cloud-metadata SSRF target is never reachable, even by an unsafe pull.
+  /// The subset of banned ranges that stay banned even for a trusted tailnet SYNC
+  /// pull: 169.254.0.0/16 (link-local + cloud-metadata), GCP private endpoints, and
+  /// 0.0.0.0. Loopback, RFC-1918, and the Tailscale CGN range (100.64/10) are
+  /// deliberately ALLOWED here -- reaching a tailnet/LAN peer is the whole point --
+  /// but the cloud-metadata SSRF target is never reachable, even by an unsafe pull.
   let private metadataOrLinkLocalV4 (ip : System.Net.IPAddress) : bool =
     oneSixNine.Contains ip
     || oneNineNineFour.Contains ip
@@ -439,16 +450,23 @@ let defaultConfig : Configuration =
       allowedHeaders =
         fun headers -> not (LocalAccess.hasInstanceMetadataHeader headers) }
 
-/// Config for trusted tailnet SYNC pulls (`httpGetUnsafeBytes`). Unlike `defaultConfig` it reaches
-/// loopback / RFC-1918 / the Tailscale range so a peer's server is reachable — but unlike `looseConfig` it
-/// still blocks cloud-metadata + link-local, so even a sync pull can't be aimed at 169.254.169.254. Also
-/// drops the metadata request-header (defence-in-depth; sync sends no headers anyway).
+/// Config for trusted tailnet SYNC pulls (`httpGetUnsafeBytes`). Unlike
+/// `defaultConfig` it reaches loopback / RFC-1918 / the Tailscale range so a peer's
+/// server is reachable -- but unlike `looseConfig` it still blocks cloud-metadata +
+/// link-local, so even a sync pull can't be aimed at 169.254.169.254. Also drops the
+/// metadata request-header (defence-in-depth; sync sends no headers anyway).
 let syncConfig : Configuration =
   { looseConfig with
       allowedIP = fun ip -> not (LocalAccess.metadataOrLinkLocal ip)
       allowedScheme = fun scheme -> scheme = "https" || scheme = "http"
       allowedHeaders =
-        fun headers -> not (LocalAccess.hasInstanceMetadataHeader headers) }
+        fun headers -> not (LocalAccess.hasInstanceMetadataHeader headers)
+      // A sync page is JSON full of hex and goes about 3x smaller on the wire. Only the relay is asked,
+      // and only the relay answers, so nothing a Dark program does is affected.
+      automaticDecompression =
+        System.Net.DecompressionMethods.GZip
+        ||| System.Net.DecompressionMethods.Deflate
+        ||| System.Net.DecompressionMethods.Brotli }
 
 
 /// Compatibility alias for callers (TestUtils, etc.) that referenced
@@ -504,8 +522,8 @@ let private buildHttpRequestMessage
     Content = new ByteArrayContent(body),
     // Support both Http 2.0 and 3.0
     // https://learn.microsoft.com/en-us/dotnet/api/system.net.http.httpversionpolicy?view=net-7.0
-    // TODO: test this (against requestbin or something that allows us
-    // to control the HTTP protocol version)
+    // TODO: test this (against requestbin or something that allows us to control the
+    // HTTP protocol version)
     Version = System.Net.HttpVersion.Version30,
     VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
   )
@@ -708,6 +726,45 @@ let openStreamingRequest
   }
 
 
+/// Fetches begun by `httpGetUnsafeBytesStart` and not yet collected.
+///
+/// Keyed by a handle rather than by url: a pull can have the same url in flight twice, and a dictionary
+/// keyed by url would hand the second caller the first one's response.
+/// Turn a completed exchange into a Result. A non-2xx is a FAILURE, not a body: these once returned
+/// Ok for anything that completed, so a relay answering 400 reached the caller as a successful fetch
+/// whose payload happened to be an error page, and `dark branch push` printed "pushed branch ..." for
+/// a 400 it never noticed.
+let private fetchResult (verb : string) (response : RequestResult) : Dval =
+  match response with
+  | Ok r when r.statusCode >= 200 && r.statusCode < 300 ->
+    Dval.resultOk KTBlob KTString (Blob.newEphemeral r.body)
+  | Ok r ->
+    let snippet =
+      try
+        let t = System.Text.Encoding.UTF8.GetString(r.body)
+        if t.Length > 200 then t.Substring(0, 200) + "..." else t
+      with _ ->
+        ""
+    Dval.resultError KTBlob KTString (DString $"HTTP {r.statusCode}: {snippet}")
+  | Error err ->
+    let reason =
+      match err with
+      | RequestError.BadUrl _ -> "bad url"
+      | RequestError.Timeout -> "timeout"
+      | RequestError.BadHeader _ -> "bad header"
+      | RequestError.NetworkError -> "network error"
+      | RequestError.BadMethod -> "bad method"
+    Dval.resultError KTBlob KTString (DString $"{verb} failed: {reason}")
+
+let private pendingFetches =
+  System.Collections.Concurrent.ConcurrentDictionary<System.Guid, Task<RequestResult>>()
+
+
+/// Its own client, so a prefetch in flight cannot consume the connection budget of the request the
+/// caller is actually waiting on.
+let private prefetchClient = BaseClient.create syncConfig
+
+
 let streamResponseType () =
   FQTypeName.fqPackage (PackageRefs.Type.Stdlib.HttpClient.streamResponse ())
 
@@ -740,7 +797,8 @@ let fns (config : Configuration) : List<BuiltInFn> =
           _,
           [| DString method; DString uri; DList(_, reqHeaders); DBlob bodyRef |] ->
           uply {
-            // precise check: this exact method+URL must be covered (the gate only checked http presence).
+            // precise check: this exact method+URL must be covered (the gate only
+            // checked http presence).
             LibExecution.CapabilityCheck.requireHttp state.grantedCaps method uri
             let! reqBodyBytes = Blob.readBytes state bodyRef
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
@@ -892,37 +950,215 @@ let fns (config : Configuration) : List<BuiltInFn> =
 
               let! response = makeRequest syncConfig syncClient request
 
-              match response with
-              // A non-2xx is a FAILURE, not a body. Returning Ok for any completed
-              // exchange means a server answering 400 or 404 reaches the caller as a
-              // successful fetch whose payload happens to be an error page.
-              | Ok r when r.statusCode >= 200 && r.statusCode < 300 ->
-                return Dval.resultOk KTBlob KTString (Blob.newEphemeral r.body)
-              | Ok r ->
-                let snippet =
-                  try
-                    let t = System.Text.Encoding.UTF8.GetString(r.body)
-                    if t.Length > 200 then t.Substring(0, 200) + "..." else t
-                  with _ ->
-                    ""
-                return
-                  Dval.resultError
-                    KTBlob
-                    KTString
-                    (DString $"HTTP {r.statusCode}: {snippet}")
-              | Error err ->
-                let reason =
-                  match err with
-                  | RequestError.BadUrl _ -> "bad url"
-                  | RequestError.Timeout -> "timeout"
-                  | RequestError.BadHeader _ -> "bad header"
-                  | RequestError.NetworkError -> "network error"
-                  | RequestError.BadMethod -> "bad method"
-                return
-                  Dval.resultError
-                    KTBlob
-                    KTString
-                    (DString $"fetch failed: {reason}")
+              return fetchResult "fetch" response
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.Needs.http
+      deprecated = NotDeprecated }
+
+    // Start a sync GET WITHOUT waiting for it, and collect it later.
+    //
+    // A pull is a chain of pages, and it was strictly sequential: fetch a page, import it, fetch the
+    // next. Network and CPU are each about 40% of a pull and neither was ever overlapped, so the total
+    // was their sum. With these two the client starts the next page's fetch as soon as it knows the
+    // cursor, imports the page in hand while that flies, and pays `max` instead.
+    //
+    // The guard is checked HERE, at start, so a refusal is immediate and loud rather than surfacing
+    // later out of an await that no longer names the caller.
+    { name = fn "httpGetUnsafeBytesStart" 0
+      typeParams = []
+      parameters =
+        [ Param.make "uri" TString "URL to begin GETting with SSRF guards OFF" ]
+      returnType = TypeReference.result TUuid TString
+      description =
+        "Begin a GET of <param uri> with NO SSRF guards and return a handle to collect "
+        + "it with `httpAwaitBytes`. The request is already in flight when this returns."
+      fn =
+        (function
+        | _, _, _, [| DString uri |] ->
+          uply {
+            if not (LibExecution.UnguardedOrigins.isAllowed uri) then
+              return
+                Dval.resultError
+                  KTUuid
+                  KTString
+                  (DString(LibExecution.UnguardedOrigins.refusalMessage uri))
+            else
+              let request : Request =
+                { url = uri; method = HttpMethod "GET"; headers = []; body = [||] }
+
+              // Started, not awaited: `makeRequest` returns a Ply, and forcing it to a Task is what
+              // actually puts the request on the wire before this builtin returns.
+              let started = makeRequest syncConfig prefetchClient request
+
+              let handle = System.Guid.NewGuid()
+              pendingFetches[handle] <- started
+              return Dval.resultOk KTUuid KTString (DUuid handle)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.Needs.http
+      deprecated = NotDeprecated }
+
+
+    // Collect a fetch begun by `httpGetUnsafeBytesStart`. Same result shape as `httpGetUnsafeBytes`,
+    // including treating a non-2xx as a failure rather than a body.
+    { name = fn "httpAwaitBytes" 0
+      typeParams = []
+      parameters =
+        [ Param.make "handle" TUuid "a handle from `httpGetUnsafeBytesStart`" ]
+      returnType = TypeReference.result TBlob TString
+      description =
+        "Wait for the fetch named by <param handle> and return its body (Ok) or an "
+        + "error message (Error). A handle may only be collected once."
+      fn =
+        (function
+        | _, _, _, [| DUuid handle |] ->
+          uply {
+            match pendingFetches.TryRemove handle with
+            | false, _ ->
+              return
+                Dval.resultError
+                  KTBlob
+                  KTString
+                  (DString
+                    "that fetch handle is unknown, or has already been collected")
+            | true, pending ->
+              let! response = pending
+
+              return fetchResult "fetch" response
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.Needs.http
+      deprecated = NotDeprecated }
+
+
+    // The read twin of `httpPostUnsafeBytes`. Separate from `httpGetUnsafeBytes` because that one's arity
+    // is part of its contract. Exists so a read can carry an Authorization header: a relay's branch
+    // endpoints hand back unmerged work, and a secret belongs in a header, not a logged query string.
+    { name = fn "httpGetUnsafeBytesWithHeaders" 0
+      typeParams = []
+      parameters =
+        [ Param.make "uri" TString "URL to GET with SSRF guards OFF"
+          Param.make
+            "headers"
+            (TList(TTuple(TString, TString, [])))
+            "request headers" ]
+      returnType = TypeReference.result TBlob TString
+      description =
+        "GET <param uri> with NO SSRF guards and the given <param headers>, returning the raw "
+        + "response body as Bytes (Ok) or an error message (Error)."
+      fn =
+        let syncClient = BaseClient.create syncConfig
+
+        (function
+        | _, _, _, [| DString uri; DList(_, headerList) |] ->
+          uply {
+            let headers =
+              headerList
+              |> List.collect (fun h ->
+                match h with
+                | DTuple(DString k, DString v, []) -> [ (k, v) ]
+                | _ -> [])
+
+            // Before the request is built, so a refused origin is never dialled.
+            if not (LibExecution.UnguardedOrigins.isAllowed uri) then
+              return
+                Dval.resultError
+                  KTBlob
+                  KTString
+                  (DString(LibExecution.UnguardedOrigins.refusalMessage uri))
+            else
+
+              // The credential is attached HERE, not passed in: the write secret must not reach Dark,
+              // where `configGet` has no capability and a pulled package could read it.
+              let request : Request =
+                { url = uri
+                  method = HttpMethod "GET"
+                  headers =
+                    headers @ LibExecution.UnguardedOrigins.authHeadersFor uri
+                  body = [||] }
+
+              let! response = makeRequest syncConfig syncClient request
+
+              return fetchResult "fetch" response
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.Needs.http
+      deprecated = NotDeprecated }
+
+    // POST with SSRF guards OFF (syncConfig), returning raw BYTES -- the push half of the sync
+    // transport, mirror of httpGetUnsafeBytes. A relay/peer sits behind
+    // loopback/RFC-1918/tailnet, which the safe client bans; syncConfig reaches
+    // those but still blocks cloud-metadata. Body is sent as application/json (the
+    // wire codec). Registered in the general set like the GET twin, and gated the same way: the guards are
+    // only off towards origins `LibExecution.UnguardedOrigins` knows about (the stored relay, or a URL typed on
+    // the command line), so pulled code cannot point it at anything of yours.
+    { name = fn "httpPostUnsafeBytes" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "uri"
+            TString
+            "URL to POST with SSRF guards OFF (loopback/RFC-1918/tailnet reachable)"
+          Param.make "body" TBlob "request body, sent as application/json"
+          Param.make
+            "headers"
+            (TList(TTuple(TString, TString, [])))
+            "extra request headers, e.g. an Authorization for a relay that requires one" ]
+      returnType = TypeReference.result TBlob TString
+      description =
+        "POST <param body> to <param uri> with NO SSRF guards, returning the raw "
+        + "response body as Bytes (Ok) or an error message (Error). For pushing to a "
+        + "peer's store over the tailnet."
+      fn =
+        let syncClient = BaseClient.create syncConfig
+
+        (function
+        | exeState, _, _, [| DString uri; DBlob bodyRef; DList(_, headers) |] ->
+          uply {
+            let! body = Blob.readBytes exeState bodyRef
+
+            // Caller headers go AFTER the content type so a caller cannot
+            // accidentally unset it, and are taken as-is otherwise. A relay write
+            // secret arrives this way rather than in the query string, which would
+            // put it in every access log and proxy trace between here and there.
+            let extra =
+              headers
+              |> List.choose (fun h ->
+                match h with
+                | DTuple(DString k, DString v, []) -> Some(k, v)
+                | _ -> None)
+
+            // Before the request is built, so a refused origin is never dialled.
+            if not (LibExecution.UnguardedOrigins.isAllowed uri) then
+              return
+                Dval.resultError
+                  KTBlob
+                  KTString
+                  (DString(LibExecution.UnguardedOrigins.refusalMessage uri))
+            else
+
+              // The credential is attached HERE, not passed in: the write secret must not reach Dark,
+              // where `configGet` has no capability and a pulled package could read it.
+              let auth = LibExecution.UnguardedOrigins.authHeadersFor uri
+
+              let request : Request =
+                { url = uri
+                  method = HttpMethod "POST"
+                  headers = ("Content-Type", "application/json") :: (extra @ auth)
+                  body = body }
+
+              let! response = makeRequest syncConfig syncClient request
+
+              return fetchResult "push" response
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -955,7 +1191,8 @@ let fns (config : Configuration) : List<BuiltInFn> =
         (function
         | state, vm, _, [| DString method; DString uri; DList(_, reqHeaders) |] ->
           uply {
-            // precise check: this exact method+URL must be covered (the gate only checked http presence).
+            // precise check: this exact method+URL must be covered (the gate only
+            // checked http presence).
             LibExecution.CapabilityCheck.requireHttp state.grantedCaps method uri
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
               reqHeaders

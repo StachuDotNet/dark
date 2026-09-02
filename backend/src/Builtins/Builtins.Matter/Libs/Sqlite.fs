@@ -1,6 +1,5 @@
-/// Raw, general-purpose SQLite access from Darklang — the `Stdlib.Sqlite` floor primitive that lets policy
-/// live in Dark over an ordinary database. (The internal sync machinery — op-log read/append, blob channel,
-/// store path + Release coordinate — lives in `Libs/Sync.fs`, not here.)
+/// Raw, general-purpose SQLite access from Darklang: the `Stdlib.Sqlite` floor primitive that lets policy
+/// live in Dark over an ordinary database.
 ///
 /// `sqliteExec` (DDL/DML → rows affected) and `sqliteQuery` (SELECT → each row as a typed `Dict<Value>`)
 /// are the two primitives; the `.dark` wrappers add the with/without-params convenience so there's one

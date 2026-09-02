@@ -82,6 +82,12 @@ let intField (row: Dict<Value>) (col: String) : Stdlib.Option.Option<Int64> =
   | Some v -> asInt v
   | None -> Stdlib.Option.Option.None
 
+/// The Blob value of column <param col> in <param row>, or None if missing/non-blob.
+let bytesField (row: Dict<Value>) (col: String) : Stdlib.Option.Option<Blob> =
+  match Stdlib.Dict.get row col with
+  | Some v -> asBytes v
+  | None -> Stdlib.Option.Option.None
+
 /// The first row of <param sql> (or None if it returned no rows / errored).
 let queryOne (dbPath: String) (sql: String) : Stdlib.Option.Option<Dict<Value>> =
   match query dbPath sql with

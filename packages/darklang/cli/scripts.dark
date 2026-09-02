@@ -10,7 +10,7 @@ type Script = {
 // The `scripts_v0` store. Plain CRUD over one table, so the SQL lives here and the
 // command below only formats. The LSP's script filesystem provider calls these too.
 
-let scriptsDb () : String = Darklang.Sync.localDbPath ()
+let scriptsDb () : String = Builtin.localDbPath ()
 
 let scriptFromRow (row: Dict<Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Script> =
   match
@@ -22,7 +22,6 @@ let scriptFromRow (row: Dict<Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Script
     (Script { id = id; name = name; text = text }) |> Stdlib.Option.Option.Some
   | _ -> Stdlib.Option.Option.None
 
-/// Every stored script.
 let list () : List<Script> =
   match
     Stdlib.Sqlite.query
@@ -32,7 +31,6 @@ let list () : List<Script> =
   | Ok rows -> rows |> Stdlib.List.filterMap scriptFromRow
   | Error _ -> []
 
-/// The stored script named <param name>, if there is one.
 let get (name: String) : Stdlib.Option.Option<Script> =
   match
     Stdlib.Sqlite.queryOneP
@@ -76,7 +74,6 @@ let update (name: String) (text: String) : Stdlib.Result.Result<Unit, String> =
   | Ok _ -> Stdlib.Result.Result.Ok()
   | Error e -> Stdlib.Result.Result.Error $"Failed to update script: {e}"
 
-/// Delete a stored script. Errors if there's no such script.
 let delete (name: String) : Stdlib.Result.Result<Unit, String> =
   match
     Stdlib.Sqlite.execP (scriptsDb ()) "DELETE FROM scripts_v0 WHERE name = @p0" [ name ]
@@ -147,9 +144,11 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | "add" :: name :: textParts when Stdlib.Bool.not (Stdlib.List.isEmpty textParts) ->
     let text = Stdlib.String.join textParts " "
     match add name text with
-    | Ok script ->
-      let message = $"Script '{script.name}' added successfully"
-      Stdlib.printLine message
+    // `Ok ()`, not `Ok script`. The builtin this replaced returned the stored Script, so the old caller read
+    // `script.name` off it; the Dark version returns Unit, and the mismatch made `scripts add` die with
+    // "field access of a Unit" instead of adding anything. The name is already in scope here.
+    | Ok () ->
+      Stdlib.printLine $"Script '{name}' added successfully"
       state
     | Error err ->
       Stdlib.printLine $"Error: {err}"
@@ -193,15 +192,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | ["run"; name] ->
     match get name with
     | Some script ->
-      let result =
-        Run.parseAndExecute
-          state.accountID
-          state.currentBranchId
-          $"script:{name}"
-          script.text
-          []
-          false
-          false
+      let result = Builtin.cliParseAndExecuteScript state.accountID state.currentBranchId $"script:{name}" script.text [] false false
       match result with
       | Ok 0 -> state
       | Ok exitCode ->
