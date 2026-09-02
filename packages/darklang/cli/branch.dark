@@ -307,7 +307,9 @@ let executeRebaseDryRun (state: AppState) (branchRef: String) : AppState =
   match resolveRef branchRef with
   | None -> state
   | Some branchId when SCM.Ids.isMain branchId ->
-    printErr "you're on main -- rebase moves a BRANCH onto its parent, and main has none."
+    // Reachable only when main is NAMED: the bare form goes through `bareTargetBranch`, which has its
+    // own message for standing on main. So this describes the ARGUMENT, not where you are.
+    printErr "main is the trunk -- rebase moves a BRANCH onto its parent, and main has none."
     state
   | Some branchId ->
     let (_, parentName) = parentOf branchId
