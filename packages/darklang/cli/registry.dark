@@ -63,6 +63,7 @@ module Registry =
       ("db", "Manage databases", [], Packages.DB.execute, Packages.DB.help, Packages.DB.complete)
       ("outliner", "Interactive tree outliner", [ "tree-exp" ], Outliner.App.execute, Outliner.App.help, Outliner.App.complete)
       ("export-seed", "Export minimal seed.db from current database", [], ExportSeed.execute, ExportSeed.help, ExportSeed.complete)
+      ("backups", "Copies of the store: what exists, take one, prune", [], Cli.Backups.execute, Cli.Backups.help, Cli.Backups.complete)
       ("traces", "List and view execution traces", [ "trace" ], Tracing.execute, Tracing.help, Tracing.complete)
       ("review", "Review branch changesets", [], SCM.Review.App.execute, SCM.Review.App.help, SCM.Review.App.complete)
       ("conflicts", "Review + resolve sync divergences", [], Conflicts.execute, Conflicts.help, Conflicts.complete)
@@ -157,7 +158,7 @@ module Registry =
       ("Security", [ "caps" ])
       ("Network", [ "devices"; "sync"; "conflicts" ])
       ("Apps", [ "apps" ])
-      ("Utilities", [ "clear"; "help"; "docs"; "quit"; "builtins"; "export-seed"; "views" ]) ]
+      ("Utilities", [ "clear"; "help"; "docs"; "quit"; "builtins"; "export-seed"; "backups"; "views" ]) ]
 
   // Helper function to format a group of commands with details
   let formatCommandGroup (groupName: String) (commandNames: List<String>) (commands: List<CommandHandler>) : String =
