@@ -886,7 +886,7 @@ let rebaseBranch (branchId: Uuid) : Stdlib.Result.Result<RebaseOutcome, String> 
     // Main has no parent to rebase onto, so this is not a thing you can do rather than a thing that found
     // nothing to do. The rewrite loops over `branch_name_bases`, and main has no rows there.
     Stdlib.Result.Result.Error
-      "you're on main -- rebase moves a BRANCH onto its parent, and main has none."
+      "main is the trunk -- rebase moves a BRANCH onto its parent, and main has none."
   else
 
   let conflicts = branchPreview branchId
