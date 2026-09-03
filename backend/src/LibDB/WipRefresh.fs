@@ -1,6 +1,13 @@
-/// Refreshes MAIN's WIP items by re-resolving unresolved NameResolution nodes and recomputing
-/// content-addressed hashes. Branch ops are branch-pending rather than main WIP, so `Queries.getWipOps`
-/// excludes anything tagged in `op_branches` and this never sees them.
+/// Refreshes MAIN's DRAFT by re-resolving unresolved NameResolution nodes and recomputing
+/// content-addressed hashes. Branch ops are branch-pending rather than main WIP, and committed ops
+/// are history; `Queries.getDraftOps` excludes both and this never sees them.
+///
+/// The draft and only the draft, for a reason that cost real data: `compactWipOps` and
+/// `HashStabilization.computeRealHashes` both keep ONE version per name. That is right for a
+/// draft, whose newest edit is the one that counts, and destroys history the moment committed ops
+/// are fed through it. They were, once -- an ordinary authoring session (a forward reference, then
+/// the thing it referred to) deleted every earlier committed version of every name from the
+/// canonical log. `Draft.rebuild` is the path that handles the whole log, and it does not stabilize.
 ///
 /// When items are added incrementally, earlier items may have unresolved
 /// references to items added later. This module walks all WIP items,
@@ -135,8 +142,8 @@ let private reResolveAllItems
 /// 6. Return count of changed items
 let refresh (pm : PT.PackageManager) : Task<int64> =
   task {
-    // 1. Get WIP ops
-    let! wipOps = Queries.getWipOps ()
+    // 1. Get the draft. Not `getWipOps`, which returns committed ops too; see the module doc.
+    let! wipOps = Queries.getDraftOps ()
 
     if List.isEmpty wipOps then
       return 0L
@@ -175,13 +182,13 @@ let refresh (pm : PT.PackageManager) : Task<int64> =
           // Count changed items (items that got a new hash)
           let changedCount = Set.difference newHashes oldHashes |> Set.count |> int64
 
-          // 6. Discard old WIP and re-insert updated ops. Capture the existing origin_ts
-          //    and commit_hash FIRST: the whole main log is deleted and re-inserted here,
-          //    so an op whose hash didn't change has to come back with its own stamp and
-          //    its own commit rather than a fresh one. See `Queries.getWipOpOriginTs`.
+          // 6. Discard the old draft and re-insert the updated one. Capture the existing
+          //    origin_ts FIRST, so an op whose hash didn't change comes back with its own stamp
+          //    rather than a fresh one. No commit map: nothing here is committed, by
+          //    construction.
           let! preserveTs = Queries.getWipOpOriginTs ()
-          let! preserveCommit = Queries.getWipOpCommits ()
-          let! discardResult = Inserts.discardWipOps ()
+          let preserveCommit : Map<System.Guid, string> = Map.empty
+          let! discardResult = Inserts.discardDraftOps ()
 
           match discardResult with
           | Error msg ->

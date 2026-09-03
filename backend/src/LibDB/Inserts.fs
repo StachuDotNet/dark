@@ -346,6 +346,51 @@ let commitAllAsBaseline (message : string) : Task<string> =
 /// Delete every main op and its projections. Not a user-facing operation on its own: the caller is
 /// expected to re-insert whatever should survive, which is how both the authoring refresh and
 /// `discardDraftOps` rewrite main. Returns the count deleted.
+/// Delete main's DRAFT ops -- uncommitted, untagged -- and the `locations` rows they wrote, so
+/// the draft can be re-inserted re-resolved. Committed ops and their rows are not touched.
+///
+/// This is `WipRefresh`'s delete. It is separate from `discardWipOps`, which takes the WHOLE main
+/// log and exists for `Draft.rebuild`; feeding a refresh through that one deleted committed
+/// history, because the stabilization a refresh runs keeps one version per name.
+///
+/// Rows are matched by `op_id`, not by name: a name's committed row and its draft row coexist in
+/// `locations` (the older one unlisted), and only the draft's may go.
+let discardDraftOps () : Task<Result<int64, string>> =
+  task {
+    try
+      let! draftIds =
+        Sql.query
+          """
+          SELECT id FROM package_ops
+          WHERE commit_hash IS NULL
+            AND id NOT IN (SELECT op_id FROM op_branches)
+          """
+        |> Sql.executeAsync (fun read -> read.uuid "id")
+
+      if List.isEmpty draftIds then
+        return Ok 0L
+      else
+        let noParams = [ [] ]
+
+        let statements =
+          [ ("DELETE FROM locations WHERE source <> 'resolution'
+              AND op_id IN (SELECT id FROM package_ops
+                            WHERE commit_hash IS NULL
+                              AND id NOT IN (SELECT op_id FROM op_branches))",
+             noParams)
+            ("DELETE FROM package_ops
+              WHERE commit_hash IS NULL
+                AND id NOT IN (SELECT op_id FROM op_branches)",
+             noParams) ]
+
+        let _ = Sql.executeTransactionSync statements
+        Caching.invalidateAll ()
+        return Ok(int64 (List.length draftIds))
+    with ex ->
+      return Error ex.Message
+  }
+
+
 let discardWipOps () : Task<Result<int64, string>> =
   task {
     try

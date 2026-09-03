@@ -340,6 +340,29 @@ let getDependentHashesByTargets
   }
 
 
+/// Main's DRAFT: the ops not yet committed and not tagged to a branch. This is what
+/// `WipRefresh` re-resolves and rewrites. It deliberately excludes committed ops: the
+/// hash-stabilization it feeds keys items by name and keeps one version per name, which is
+/// right for a draft (the newest edit is the draft) and destroys history if committed ops go
+/// through it. They did, once: an ordinary authoring session deleted every earlier committed
+/// version of every name from the canonical log.
+let getDraftOps () : Task<List<PT.PackageOp>> =
+  task {
+    let! rows =
+      Sql.query
+        """
+        SELECT id, op_blob
+        FROM package_ops
+        WHERE commit_hash IS NULL
+          AND id NOT IN (SELECT op_id FROM op_branches)
+        ORDER BY created_at ASC, rowid ASC
+        """
+      |> Sql.executeAsync (fun read ->
+        BS.PT.PackageOp.tryDeserialize (read.uuid "id") (read.bytes "op_blob"))
+    return rows |> List.choose (fun o -> o)
+  }
+
+
 /// Every op NOT tagged to a branch, committed or not. Branch ops are branch-pending rather
 /// than main WIP.
 ///
