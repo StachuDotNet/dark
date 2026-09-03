@@ -333,3 +333,37 @@ let unstageRepoint
           else
             true
         | _ -> true))
+
+
+/// Collapse the draft's superseded NAMINGS: for each name keep the last binding, drop the earlier ones.
+///
+/// Five edits to one function otherwise leave five namings in the log, four of them naming a version that
+/// stopped being what the name means before anyone saw it.
+///
+/// Deliberately does NOT drop the `Add` carrying each intermediate version's content: that needs a
+/// reachability check (a pinned dependent may be the only thing still referring to one), and getting it
+/// wrong means a re-fold produces a different store. Keeping them re-folds identically.
+///
+/// Run at commit. Before that every version in the draft is reachable by `undo`.
+let collapse () : Stdlib.Result.Result<Int, String> =
+  rewriteBy (fun draft ->
+    let nameKey (loc: LanguageTools.ProgramTypes.PackageLocation) : String =
+      loc.owner ++ "|" ++ (Stdlib.String.join loc.modules ".") ++ "|" ++ loc.name
+
+    // The id of the LAST naming for each name, in authoring order.
+    let step =
+      (fun acc d ->
+        match d.op with
+        | SetName(loc, _, _) ->
+          Stdlib.Dict.setOverridingDuplicates acc (nameKey loc) d.id
+        | _ -> acc)
+
+    let lastForName = draft |> Stdlib.List.fold Stdlib.Dict.empty step
+
+    draft
+    |> Stdlib.List.filter (fun d ->
+      match d.op with
+      | SetName(loc, _, _) ->
+        (Stdlib.Dict.get lastForName (nameKey loc))
+        == (Stdlib.Option.Option.Some d.id)
+      | _ -> true))

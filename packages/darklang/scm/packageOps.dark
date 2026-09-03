@@ -381,7 +381,7 @@ let stampDraftOps (commitHash: String) (opIds: List<String>) : Int64 =
 /// Main only. A branch's ops are branch-pending rather than draft, and they're collapsed when they merge.
 let collapseDraft () : Stdlib.Result.Result<Int, String> =
   match currentBranch () with
-  | id when SCM.Ids.isMain id -> Builtin.scmCollapseDraft ()
+  | id when SCM.Ids.isMain id -> SCM.Draft.collapse ()
   | _ -> Stdlib.Result.Result.Ok 0
 
 
