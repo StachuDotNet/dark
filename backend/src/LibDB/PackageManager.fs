@@ -274,32 +274,35 @@ let createInMemory (ops : List<PT.PackageOp>) : PT.PackageManager =
             || (qualified loc).ToLowerInvariant().Contains t
         let itemMatches (loc : PT.PackageLocation) =
           moduleMatches loc && nameMatches loc
-        let typesWithLocs =
-          typeMap
-          |> Map.toList
-          |> List.choose (fun (hash, t) ->
-            match Map.tryFind hash typeIdToLocs |> Option.defaultValue [] with
-            | loc :: _ ->
-              Option.Some({ entity = t; location = loc } : PT.LocatedItem<_>)
-            | [] -> Option.None)
+        // One entry per LOCATION, bound to what that location currently binds -- never one per hash.
+        //
+        // Enumerating the hash map instead returned every version a branch had ever bound, in HASH
+        // order, and callers take the head: `dark view` on a branch showed whichever version happened
+        // to have the lowest hash. Two versions in, that was right by luck; three versions in, it
+        // showed the second-newest while `eval`, `diff` and `log` all ran the newest. Reading one
+        // thing and running another is the worst shape that bug could take.
+        //
+        // Going through the location maps is also what makes search agree with `findFn` BY
+        // CONSTRUCTION rather than by two pieces of code happening to fold the same ops the same way,
+        // and it matches main, whose SQL search reads `locations` and so only ever sees live bindings.
+        let liveAt
+          (locations : ResizeArray<PT.PackageLocation * Hash>)
+          (locMap : Map<PT.PackageLocation, Hash>)
+          (items : Map<Hash, 'item>)
+          : List<PT.LocatedItem<'item>> =
+          locations
+          |> Seq.map fst
+          |> Seq.distinct
+          |> Seq.toList
+          |> List.choose (fun loc ->
+            Map.tryFind loc locMap
+            |> Option.bind (fun hash -> Map.tryFind hash items)
+            |> Option.map (fun item ->
+              ({ entity = item; location = loc } : PT.LocatedItem<_>)))
 
-        let valuesWithLocs =
-          valueMap
-          |> Map.toList
-          |> List.choose (fun (hash, v) ->
-            match Map.tryFind hash valueIdToLocs |> Option.defaultValue [] with
-            | loc :: _ ->
-              Option.Some({ entity = v; location = loc } : PT.LocatedItem<_>)
-            | [] -> Option.None)
-
-        let fnsWithLocs =
-          fnMap
-          |> Map.toList
-          |> List.choose (fun (hash, f) ->
-            match Map.tryFind hash fnIdToLocs |> Option.defaultValue [] with
-            | loc :: _ ->
-              Option.Some({ entity = f; location = loc } : PT.LocatedItem<_>)
-            | [] -> Option.None)
+        let typesWithLocs = liveAt typeLocations typeLocMap typeMap
+        let valuesWithLocs = liveAt valueLocations valueLocMap valueMap
+        let fnsWithLocs = liveAt fnLocations fnLocMap fnMap
 
         // Submodules = the direct child module (cm ++ next segment) of any overlay item strictly
         // below cm. Only surfaced when browsing (empty text): a text search returns items, not

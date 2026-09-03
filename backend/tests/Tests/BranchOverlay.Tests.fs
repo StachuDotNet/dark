@@ -459,6 +459,61 @@ let undecodableBranchOpIsSkippedNotFatal =
       |> Sql.executeStatementAsync
   }
 
+/// The overlay's SEARCH and its `findFn` must name the same version.
+///
+/// They are two foldings of the same ops, and they disagreed: `findFn` went through the location map
+/// (last binding wins) while search enumerated the hash map, which is ordered BY HASH. Callers take the
+/// head, so `dark view` on a branch showed whichever version happened to have the lowest hash. With two
+/// versions that was right by luck; with three it showed the second-newest while `eval`, `diff` and
+/// `log` all ran the newest -- reading one thing and running another.
+///
+/// Three versions, because two cannot tell a hash-ordered answer from a correct one.
+let overlaySearchAgreesWithFindFn =
+  testTask "the overlay's search names the version its location map binds" {
+    let bid = testBranch "search-agrees"
+    do! cleanupBranch bid
+    do! Branches.createBranch bid "search-agrees" PT.BranchId.Main
+
+    for answer in [ 1; 2; 3 ] do
+      let! ops = opsFor (namedSource "SearchAgrees" answer)
+      let! _ = Branches.storeDeltaOps bid ops
+      ()
+
+    let! loaded = Branches.loadDeltaOps bid
+    let overlay = PM.withExtraOps pmPT loaded
+    let loc = fooLocIn "SearchAgrees"
+
+    let! bound = overlay.findFn loc |> Ply.toTask
+    Expect.isSome bound "the branch binds the name"
+
+    let query : PT.Search.SearchQuery =
+      { currentModule = [ "Darklang"; "SearchAgrees" ]
+        text = "foo"
+        searchDepth = PT.Search.SearchDepth.OnlyDirectDescendants
+        entityTypes = []
+        exactMatch = true }
+
+    let! (results : PT.Search.SearchResults) =
+      overlay.search query |> Ply.toTask
+
+    let found =
+      results.fns
+      |> List.filter (fun (f : PT.LocatedItem<PT.PackageFn.PackageFn>) ->
+        f.location = loc)
+
+    Expect.equal
+      (List.length found)
+      1
+      "one hit per location, not one per version the branch has ever bound"
+
+    Expect.equal
+      (found |> List.map (fun f -> f.entity.hash))
+      [ Option.get bound ]
+      "and it is the version the location map binds"
+
+    do! cleanupBranch bid
+  }
+
 let storeThenOverlay =
   testTask
     "a branch's ops round-trip through the store (effective=0) and overlay to resolve foo" {
@@ -1739,6 +1794,7 @@ let tests =
       isolationBetweenBranches
       parentHashesAgreeAcrossLanguages
       undecodableBranchOpIsSkippedNotFatal
+      overlaySearchAgreesWithFindFn
       storeThenOverlay
       mergedBranchStaysAddressable
       concurrentCreateYieldsOneBranch
