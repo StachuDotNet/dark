@@ -1622,6 +1622,58 @@ let private discardOnABranchLeavesMainsDraftAlone =
         ()
       })
 
+/// Committing on a branch does not collapse main's draft.
+///
+/// Commit collapses the draft's superseded namings, keeping the last binding per name -- and "the draft"
+/// means MAIN's, the uncommitted ops not tagged to a branch. A branch's ops are branch-pending and are
+/// collapsed when they merge. Nothing in the types says which one `collapse` is about; it is a guard on
+/// the current branch, and if that guard went, committing anything anywhere would quietly rewrite work
+/// sitting on main.
+let private committingOnABranchLeavesMainsDraftUncollapsed =
+  cliTest "committing on a branch does not collapse main's draft" (fun state ->
+    task {
+      // Two versions of one name: four draft ops that a collapse would reduce.
+      let! _ = runCli state [ "fn"; "Tests.CollapseIso.item"; "() : Int64 = 1L" ]
+      let! _ = runCli state [ "fn"; "Tests.CollapseIso.item"; "() : Int64 = 2L" ]
+
+      let! beforeJson = runCli state [ "status"; "--json" ]
+      let draftOps (json : string) =
+        let marker = "\"draftOps\":"
+        let i = json.IndexOf marker
+        if i < 0 then
+          Tests.failtestf "no draftOps in status --json: %s" json
+        else
+          let rest = json.Substring(i + marker.Length)
+          let upToComma = rest.Split(',') |> Array.head
+          let digits = upToComma.Split('}') |> Array.head
+          digits.Trim()
+
+      let before = draftOps beforeJson
+
+      let! switched = runCli state [ "switch"; "cli-collapse-branch" ]
+      Expect.stringContains
+        switched
+        "cli-collapse-branch"
+        "the test is on the branch"
+
+      let! _ =
+        runCli state [ "fn"; "Tests.CollapseIso.onBranch"; "() : Int64 = 9L" ]
+      let! _ = runCli state [ "commit"; "branch commit"; "-y" ]
+
+      let! back = runCli state [ "switch"; "main" ]
+      Expect.stringContains back "main" "and it put the run back on main"
+
+      let! afterJson = runCli state [ "status"; "--json" ]
+
+      Expect.equal
+        (draftOps afterJson)
+        before
+        "the branch's commit left main's draft exactly as it was"
+
+      let! _ = runCli state [ "discard"; "--all"; "--yes" ]
+      ()
+    })
+
 /// An empty grant is not a grant, and must not report that it is.
 let private capsRefusesAnEmptyGrant =
   cliTest
@@ -3049,6 +3101,7 @@ let private slowCliTests =
       everyCommandSurvivesABranch
       editingOnABranchRepointsItsCallers
       discardOnABranchLeavesMainsDraftAlone
+      committingOnABranchLeavesMainsDraftUncollapsed
       everyCommandAnswersWhenBare
       reviewQueueRoundTrips
       partialCommitTakesOnlyWhatYouNamed
