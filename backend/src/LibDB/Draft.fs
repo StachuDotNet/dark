@@ -198,7 +198,7 @@ let private surgicalDrop (dropped : List<DraftOp>) : Task<unit> =
 
 /// Delete every main op and re-insert the ones that survive. The fallback when the surgical path
 /// can't identify what a dropped op wrote.
-let private rebuild (keptIds : Set<System.Guid>) : Task<unit> =
+let rebuild (keptIds : Set<System.Guid>) : Task<unit> =
   task {
     let! ops = Queries.getWipOps ()
     let! preserveTs = Queries.getWipOpOriginTs ()
