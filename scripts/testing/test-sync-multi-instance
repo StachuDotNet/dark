@@ -13,7 +13,8 @@
 #
 # What it covers, in order: a round trip; two instances authoring at once; idempotence; the write secret
 # never reaching an op; a divergent edit recorded as a conflict on both sides with the same resolution;
-# a branch pushed from one instance, pulled by another, merged, and reaching a third; a review queue
+# a branch pushed from one instance, pulled by another, merged, and reaching a third; a branch EDITED
+# several times and read back on both sides; a review queue
 # staging work inert until approved; and four agents on four branches merged into one main.
 
 set -uo pipefail
@@ -164,6 +165,28 @@ echo "     [A ops=$(sqlite3 "$ROOT/A/data.db" 'SELECT count(*) FROM package_ops;
 allok=true
 for n in 1 2 3 4; do [[ "$(x C eval "SM.Agents.a$n ()" | tail -1)" == "${n}0" ]] || allok=false; done
 if $allok; then ok "and another instance received all four"; else bad "another instance received all four" "see above"; fi
+
+echo "== a branch EDITED several times, and what the other instance sees"
+# One version per name is the easy case, and it was the only one covered. Three is where a branch
+# overlay can disagree with itself: the name is bound three times, and anything that folds those ops by
+# hash rather than by what the name currently binds picks an arbitrary one. `view` did exactly that and
+# showed a different version than `eval` ran.
+x A branch create edited > /dev/null
+for v in 1 2 3; do
+  x A --branch edited fn /SM.T.edited "() : Int64 = ${v}0L" > /dev/null
+done
+x A --branch edited commit "three versions" -y > /dev/null
+
+want "A runs the newest" "^30$" "$(x A --branch edited eval 'SM.T.edited ()' | tail -1)"
+want "and A SHOWS the newest" "30L" "$(x A --branch edited view SM.T.edited)"
+
+want "A pushes the branch" "pushed|stored" "$(x A branch push edited)"
+want "B pulls it" "branch|imported|pulled" "$(x B branch pull --from "$AID")"
+want "B runs the newest" "^30$" "$(x B --branch edited eval 'SM.T.edited ()' | tail -1)"
+want "and B SHOWS the newest" "30L" "$(x B --branch edited view SM.T.edited)"
+
+x B --branch edited merge edited > /dev/null
+want "merged into main, still the newest" "^30$" "$(x B eval 'SM.T.edited ()' | tail -1)"
 
 echo
 echo "passed: $pass   failed: $fail"
