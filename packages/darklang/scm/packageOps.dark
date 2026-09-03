@@ -924,7 +924,7 @@ let rebaseBranch (branchId: Uuid) : Stdlib.Result.Result<RebaseOutcome, String> 
 
   let conflicts = branchPreview branchId
 
-  match Builtin.scmRebaseOntoParent branchId with
+  match Branches.rebase branchId with
   | Ok changed ->
     let msg = rebaseMessage (branchParentOf branchId) changed
     // The mirror of merge: a rebase folds the PARENT's work into the branch, so the conflict is the
@@ -974,11 +974,11 @@ let resolveConflict
   let resolved =
     match choice with
     | "mine" ->
-      Builtin.scmResolveKeepMine branchId name
+      Branches.resolveKeepMine branchId name
       |> Stdlib.Result.map (fun _ ->
         $"kept the branch's {name} (it now wins on merge)")
     | "theirs" ->
-      Builtin.scmResolveTakeTheirs branchId name
+      Branches.resolveTakeTheirs branchId name
       |> Stdlib.Result.map (fun _ ->
         $"took the parent's {name} (dropped the branch's binding)")
     | other ->

@@ -45,6 +45,79 @@ module BS = LibSerialization.Binary.Serialization
 
 open TestUtils.TestUtils
 
+
+/// The names the parent has moved since a branch forked, asked of the DARK implementation.
+///
+/// `SCM.Branches.nameConflicts` is the merge gate the CLI actually consults; a test that called an F#
+/// copy would be asserting about a second implementation rather than the one that runs. Same for
+/// `darkRebase` below.
+let private darkStringList (code : string) : Task<List<string>> =
+  task {
+    let! ptExpr = parsePTExpr code
+    let! state = executionStateFor PM.pt false Map.empty
+    let rtExpr = PT2RT.Expr.toRT Map.empty 0 None ptExpr
+
+    match! Exe.executeExpr state rtExpr with
+    | Ok(RT.DList(_, items)) ->
+      return
+        items
+        |> List.map (fun d ->
+          match d with
+          | RT.DString s -> s
+          | other -> $"{other}")
+    | Ok(RT.DEnum(_, _, _, "Ok", [ RT.DList(_, items) ])) ->
+      return
+        items
+        |> List.map (fun d ->
+          match d with
+          | RT.DString s -> s
+          | other -> $"{other}")
+    | Ok(RT.DEnum(_, _, _, "Error", [ RT.DString e ])) ->
+      return failtest $"the Dark call failed: {e}"
+    | Ok other -> return failtest $"unexpected result shape: {other}"
+    | Error(rte, _) -> return failtest $"the Dark call raised: {rte}"
+  }
+
+let private darkBranch (branchId : PT.BranchId) : string =
+  $"(Stdlib.Uuid.parse \"{branchId}\" |> Builtin.unwrap)"
+
+let private nameConflicts (branchId : PT.BranchId) : Task<List<string>> =
+  darkStringList $"Darklang.SCM.Branches.nameConflicts {darkBranch branchId}"
+
+let private rebase (branchId : PT.BranchId) : Task<List<string>> =
+  darkStringList $"Darklang.SCM.Branches.rebase {darkBranch branchId}"
+
+
+/// Run a Dark call answering `Result<Unit, String>`, as the F# result these assertions expect.
+let private darkUnitResult (code : string) : Task<Result<unit, string>> =
+  task {
+    let! ptExpr = parsePTExpr code
+    let! state = executionStateFor PM.pt false Map.empty
+    let rtExpr = PT2RT.Expr.toRT Map.empty 0 None ptExpr
+
+    match! Exe.executeExpr state rtExpr with
+    | Ok(RT.DEnum(_, _, _, "Ok", _)) -> return Ok()
+    | Ok(RT.DEnum(_, _, _, "Error", [ RT.DString e ])) -> return Error e
+    | Ok other -> return failtest $"unexpected result shape: {other}"
+    | Error(rte, _) -> return failtest $"the Dark call raised: {rte}"
+  }
+
+let private resolveTakeTheirs
+  (branchId : PT.BranchId)
+  (fqn : string)
+  : Task<Result<unit, string>> =
+  darkUnitResult
+    $"Darklang.SCM.Branches.resolveTakeTheirs {darkBranch branchId} \"{fqn}\""
+
+let private resolveKeepMine
+  (branchId : PT.BranchId)
+  (fqn : string)
+  : Task<Result<unit, string>> =
+  darkUnitResult
+    $"Darklang.SCM.Branches.resolveKeepMine {darkBranch branchId} \"{fqn}\""
+
+open TestUtils.TestUtils
+
 // A branch's source: one fn `foo` returning `answer`, computed via a CORE call
 // (Stdlib.Int64.add), so executing its body ALSO proves the overlay resolves core names.
 let private branchSource (answer : int) : string =
@@ -578,11 +651,11 @@ let sameNameMergesConvergeToLater =
       |> Sql.executeStatementAsync
   }
 
-/// Locks the reload-stable rebase model: Branches.nameConflicts flags a name whose main hash diverged from
+/// Locks the reload-stable rebase model: nameConflicts flags a name whose main hash diverged from
 /// the branch's recorded base; rebase accepts main's state and clears it. Manipulates the base row
 /// directly (no fold into main) so the test never pollutes the shared main projection.
 let rebaseDetectsAndClearsConflicts =
-  testTask "Branches.nameConflicts flags a diverged name; rebase clears it" {
+  testTask "nameConflicts flags a diverged name; rebase clears it" {
     let bid = testBranch "test-rebase-gate"
     do! cleanupBranch bid
 
@@ -592,17 +665,17 @@ let rebaseDetectsAndClearsConflicts =
     do! Branches.recordNameBases bid PT.BranchId.Main ops
 
     // clean before divergence: the name isn't in main, so base "" == main's current "".
-    let! c0 = Branches.nameConflicts bid
+    let! c0 = nameConflicts bid
     Expect.isEmpty c0 "clean before any divergence"
 
     // simulate main having changed that name since the fork: stale the recorded base.
     do! staleNameBases bid
-    let! c1 = Branches.nameConflicts bid
+    let! c1 = nameConflicts bid
     Expect.isNonEmpty c1 "conflict detected (main's current hash != the stale base)"
 
     // rebase accepts main -> base := main's current -> no conflict, merge unblocked.
-    let! _ = Branches.rebase bid
-    let! c2 = Branches.nameConflicts bid
+    let! _ = rebase bid
+    let! c2 = nameConflicts bid
     Expect.isEmpty c2 "rebase cleared the conflict"
 
     do! cleanupBranch bid
@@ -714,7 +787,7 @@ let resolveKeepMineDoesNotRestampSharedOps =
 
     let! before = stamps ()
 
-    match! Branches.resolveKeepMine b fqn with
+    match! resolveKeepMine b fqn with
     | Error e -> failtest $"keep-mine failed: {e}"
     | Ok() -> ()
 
@@ -759,12 +832,12 @@ let perNameResolutionMineTheirs =
       }
 
     do! setupConflict bT
-    let! c0 = Branches.nameConflicts bT
+    let! c0 = nameConflicts bT
     Expect.isNonEmpty c0 "conflict present before take-theirs"
-    match! Branches.resolveTakeTheirs bT fqn with
+    match! resolveTakeTheirs bT fqn with
     | Error e -> failtest $"take-theirs failed: {e}"
     | Ok() -> ()
-    let! c1 = Branches.nameConflicts bT
+    let! c1 = nameConflicts bT
     Expect.isEmpty c1 "take-theirs cleared the conflict"
     let! loadedT = Branches.loadDeltaOps bT
     let overlayT = PM.withExtraOps pmPT loadedT
@@ -774,10 +847,10 @@ let perNameResolutionMineTheirs =
       "take-theirs: branch no longer binds foo (falls back to the parent)"
 
     do! setupConflict bM
-    match! Branches.resolveKeepMine bM fqn with
+    match! resolveKeepMine bM fqn with
     | Error e -> failtest $"keep-mine failed: {e}"
     | Ok() -> ()
-    let! c2 = Branches.nameConflicts bM
+    let! c2 = nameConflicts bM
     Expect.isEmpty c2 "keep-mine cleared the conflict"
     let! loadedM = Branches.loadDeltaOps bM
     let overlayM = PM.withExtraOps pmPT loadedM
