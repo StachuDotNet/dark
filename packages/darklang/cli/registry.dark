@@ -50,7 +50,7 @@ module Registry =
       ("show", "Show what a commit contains, or what one op does", [], Cli.Commits.executeShow, Cli.Commits.helpShow, Cli.Commits.complete)
       ("branch", "Work on an isolated line of work (create / switch / inspect)", [ "br" ], Cli.Branch.execute, Cli.Branch.help, Cli.Branch.complete)
       ("rebase", "Accept the parent's changes into a branch", [], Cli.Branch.executeRebaseCmd, Cli.Branch.help, Cli.Branch.complete)
-      ("merge", "Merge a branch into its parent", [], Cli.Branch.executeMergeCmd, Cli.Branch.help, Cli.Branch.complete)
+      ("merge", "Merge a branch into its parent", [], Cli.Branch.executeMergeCmd, Cli.Branch.mergeHelp, Cli.Branch.complete)
       ("branches", "List your branches", [], Cli.Branch.executeBranchesCmd, Cli.Branch.help, Cli.Branch.complete)
       ("switch", "Move onto a branch (`switch main` returns)", [ "checkout" ], Cli.Branch.executeSwitchCmd, Cli.Branch.help, Cli.Branch.complete)
       ("diff", "What a branch changes vs its parent", [], Cli.Branch.executeDiffCmd, Cli.Branch.help, Cli.Branch.complete)

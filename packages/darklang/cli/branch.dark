@@ -217,7 +217,11 @@ let executeRename (state: AppState) (branchRef: String) (newName: String) : AppS
 /// Merge a branch's work into its parent (gated by canMerge: has-changes / no-active-children /
 /// rebased). On success its ops become part of the parent.
 /// `dark merge <branch> --dry-run`: everything a merge would do, and nothing recorded.
-let executeMergeDryRun (state: AppState) (branchRef: String) : AppState =
+let executeMergePreview
+  (state: AppState)
+  (branchRef: String)
+  (standalone: Bool)
+  : AppState =
   match resolveRef branchRef with
   | None -> state
   | Some branchId when SCM.PackageOps.branchIsMerged branchId ->
@@ -252,8 +256,17 @@ let executeMergeDryRun (state: AppState) (branchRef: String) : AppState =
         let n = Stdlib.Int.toString (Stdlib.List.length cs)
         printHint $"  {n} conflict(s) would be auto-resolved by recency, and recorded for review."
 
-      printHint $"  `dark merge {branchRef}` to do it."
+      // Only when this IS the whole command. In the confirm flow the next line is the question, and
+      // telling someone to run the thing they are being asked to approve reads as a non-sequitur.
+      if standalone then
+        printHint $"  `dark merge {branchRef}` to do it."
+
       state
+
+
+/// `dark merge <branch> --dry-run`: show what would land and change nothing.
+let executeMergeDryRun (state: AppState) (branchRef: String) : AppState =
+  executeMergePreview state branchRef true
 
 
 let executeMerge (state: AppState) (branchRef: String) : AppState =
@@ -590,6 +603,27 @@ let executePull (state: AppState) (url: String) : AppState =
   executePullFrom state url (SCM.PackageOps.identity ())
 
 
+/// `dark merge` answers for itself. It used to borrow `dark branch`'s help, which never mentions merging,
+/// so the one question a person had -- what does this take, and what will it do -- was the one the page did
+/// not answer.
+let mergeHelp (_state: AppState) : String =
+  [ "dark merge - move a branch's work into its parent."
+    ""
+    "  dark merge                 merge the branch you're on, after showing what would land"
+    "  dark merge -y              the same, without the confirmation"
+    "  dark merge <branch>        merge that one"
+    "  dark merge --dry-run       show what would land, change nothing"
+    "  dark merge <branch> --dry-run"
+    ""
+    "  Conflicts do not block a merge. Both sides are folded, the later edit wins by"
+    "  recency, and the version that lost is recorded rather than dropped --"
+    "  `dark conflicts` steps through them afterwards."
+    ""
+    "  A merged branch stays addressable: `dark branches --all` lists it, and its"
+    "  commits keep their place in the log." ]
+  |> Stdlib.String.join "\n"
+
+
 let help (_state: AppState) : String =
   [ "dark branch - isolated lines of work; author and eval without\n  touching main."
     ""
@@ -766,12 +800,36 @@ let bareTargetBranch
     Stdlib.Result.Result.Error()
   | id -> Stdlib.Result.Result.Ok(SCM.PackageOps.branchName id)
 
+/// `dark merge` with no branch named merges whatever you are standing on, which is the one form where
+/// nobody typed the thing being changed. So it shows the same preview `--dry-run` would and asks, the way
+/// `dark discard` does. Naming a branch is already a deliberate act and goes straight through.
+///
+/// An explicit yes, not a default-yes: a stray Return or a piped stdin must not move work into main.
+let executeMergeBare (state: AppState) (autoConfirm: Bool) : AppState =
+  match bareTargetBranch "merge" with
+  | Error _ -> state
+  | Ok name ->
+    let previewed = executeMergePreview state name false
+
+    if
+      Stdlib.Bool.not (
+        Cli.Prompt.confirmExplicit
+          autoConfirm
+          (Stdlib.Cli.UI.Colors.warning "\n  Merge it? [y/N]: ")
+      )
+    then
+      printOk
+        "  not merged. (`dark merge -y` if you mean it -- a piped stdin can't answer this.)"
+
+      previewed
+    else
+      executeMerge previewed name
+
+
 let executeMergeCmd (state: AppState) (args: List<String>) : AppState =
   match args with
-  | [] ->
-    match bareTargetBranch "merge" with
-    | Ok name -> executeMerge state name
-    | Error _ -> state
+  | [] -> executeMergeBare state false
+  | [ "-y" ] | [ "--yes" ] -> executeMergeBare state true
   | [ "--dry-run" ] ->
     match bareTargetBranch "merge" with
     | Ok name -> executeMergeDryRun state name
