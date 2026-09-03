@@ -22,15 +22,40 @@ let itemKindFromString (s: String) : Stdlib.Option.Option<LanguageTools.ProgramT
   | "value" -> Stdlib.Option.Option.Some LanguageTools.ProgramTypes.ItemKind.Value
   | _ -> Stdlib.Option.Option.None
 
-/// Get ALL hashes that have ever been at a location (across the branch chain).
-/// Returns empty list if no entries exist (i.e., this is a brand new item).
-/// Callers should filter out the current hash to get only previous versions.
+/// Every hash that has ever been at a location, NEWEST FIRST. Empty means the name is new here.
+/// Callers filter out the current hash to get only previous versions.
+///
+/// Main's rows come from `locations`, which has no `branch_id` -- so on a branch that is the history you
+/// FORKED FROM, and the branch's own edits have to be appended or they are not history at all. This
+/// signature has always taken a `branchId` and used to ignore it, which is the trap `AGENTS.md` names:
+/// it answered about main, plausibly. What that cost: re-authoring a branch-only item said "Created"
+/// rather than "Updated", `dark module` did not see it as a redefinition, and -- the one that matters --
+/// `autoPropagateAfterUpdate` never repointed dependents off a version authored on the branch, because
+/// as far as it could see there was no earlier version to repoint from.
 let getAllPreviousHashes
   (branchId: Uuid)
   (location: LanguageTools.ProgramTypes.PackageLocation)
   (itemKind: LanguageTools.ProgramTypes.ItemKind)
   : List<LanguageTools.ProgramTypes.Hash> =
-  Builtin.pmGetAllPreviousHashes location itemKind
+  let fromMain = Builtin.pmGetAllPreviousHashes location itemKind
+
+  if SCM.Ids.isMain branchId then
+    fromMain
+  else
+    // `branchHashHistoryFor` is oldest-first and this is newest-first, so it is reversed and goes in
+    // FRONT: a branch's edits happened after the history it forked from.
+    let fromBranch =
+      SCM.PackageOps.branchHashHistoryFor
+        branchId
+        location.owner
+        (Stdlib.String.join location.modules ".")
+        location.name
+      |> Stdlib.List.reverse
+      |> Stdlib.List.map (fun h -> LanguageTools.ProgramTypes.Hash.Hash h)
+      |> Stdlib.List.filter (fun h ->
+        Stdlib.Bool.not (Stdlib.List.``member`` fromMain h))
+
+    Stdlib.List.append fromBranch fromMain
 
 
 /// Resolve a type hash to its location name for comparison purposes.

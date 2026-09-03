@@ -359,10 +359,7 @@ let getWipOps () : Task<List<PT.PackageOp>> =
         // unapplied on purpose so a later build can read them, so every reader of the main log
         // meets them. `Inserts.discardWipOps` excludes the same ops from its DELETE, so skipping
         // one for reading never becomes deleting it for writing.
-        try
-          Some(BS.PT.PackageOp.deserialize opId opBlob)
-        with _ ->
-          None)
+        BS.PT.PackageOp.tryDeserialize opId opBlob)
 
     return rows |> List.choose (fun o -> o)
   }
@@ -410,10 +407,13 @@ let getWipOpOriginTs () : Task<Map<System.Guid, string>> =
 ///
 /// Ordered by `origin_ts` then rowid rather than `created_at`: `created_at` is local insert time, so a
 /// synced commit's ops would come back in arrival order rather than the order they were authored in.
+/// The ops in a commit, oldest-first. Skips what this build cannot decode, like every other reader of
+/// the log: a commit can hold a peer's op on a newer format, and a listing is the last thing that should
+/// die because one of them is in the way.
 let getCommitOps (commitHash : Hash) : Task<List<PT.PackageOp>> =
   task {
     let (Hash commitHashStr) = commitHash
-    return!
+    let! decoded =
       Sql.query
         """
         SELECT id, op_blob
@@ -423,9 +423,8 @@ let getCommitOps (commitHash : Hash) : Task<List<PT.PackageOp>> =
         """
       |> Sql.parameters [ "commit_hash", Sql.string commitHashStr ]
       |> Sql.executeAsync (fun read ->
-        let opId = read.uuid "id"
-        let opBlob = read.bytes "op_blob"
-        BS.PT.PackageOp.deserialize opId opBlob)
+        BS.PT.PackageOp.tryDeserialize (read.uuid "id") (read.bytes "op_blob"))
+    return decoded |> List.choose (fun o -> o)
   }
 
 

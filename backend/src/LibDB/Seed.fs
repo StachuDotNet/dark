@@ -191,9 +191,9 @@ let private applyUnappliedOpsPass () : Task<int64> =
       let unappliedOps =
         rawOps
         |> List.choose (fun (opId, opBlob) ->
-          try
-            Some(opId, BS.PT.PackageOp.deserialize opId opBlob)
-          with _ ->
+          match BS.PT.PackageOp.tryDeserialize opId opBlob with
+          | Some op -> Some(opId, op)
+          | None ->
             skipped <- opId :: skipped
             None)
 

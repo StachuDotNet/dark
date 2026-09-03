@@ -143,6 +143,24 @@ module PT =
     let serialize id value = makeSerializer PT.PackageOp.write id value
     let deserialize id data = makeDeserializer PT.PackageOp.read id data
 
+    /// The op, or None when THIS BUILD cannot read it.
+    ///
+    /// Nearly every reader wants this one rather than `deserialize`. A synced store's own log holds ops
+    /// a peer authored on a newer format: they are stored and left unapplied on purpose, so a later
+    /// build can apply them, which means they sit in the local log where every local reader meets them.
+    /// "The wire may be garbage but the LOCAL log is ours, so raise" is false, and believing it cost two
+    /// bugs -- `dark propagate pin` dying on a raw `BinaryFormatException` and staying dead, and a draft
+    /// rewrite that would have deleted the ops it could not read.
+    ///
+    /// The rule is ONE decoder returning an Option, every reader tolerating, and no writer deleting what
+    /// it could not decode. Skipping an op for READING must never become dropping it for WRITING, which
+    /// is why `Inserts.discardWipOps` excludes them BY ID rather than by whether they parse.
+    let tryDeserialize (id : System.Guid) (data : byte[]) : Option<PT.PackageOp> =
+      try
+        Some(deserialize id data)
+      with _ ->
+        None
+
     /// Does this op BIND A NAME, judged from its tag alone and without decoding it?
     ///
     /// The point is what it avoids. A sync import decodes every incoming op to work out which names
@@ -162,7 +180,8 @@ module PT =
         // Tags from `PT.PackageOp.write`: 3 = SetName, 11 = Decision. Both are also the cheap ops to
         // decode, so nothing is gained by narrowing further.
         match reader.ReadByte() with
-        | 3uy | 11uy -> true
+        | 3uy
+        | 11uy -> true
         | _ -> false
       with _ ->
         false
