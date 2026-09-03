@@ -188,6 +188,25 @@ want "and B SHOWS the newest" "30L" "$(x B --branch edited view SM.T.edited)"
 x B --branch edited merge edited > /dev/null
 want "merged into main, still the newest" "^30$" "$(x B eval 'SM.T.edited ()' | tail -1)"
 
+echo "== a deprecation travels"
+# Deprecation keys on CONTENT, not on a name, so it should apply on the other instance to the same hash
+# under whatever that instance calls it. Nothing covered that it crosses the wire at all.
+# The scenario above leaves A on a branch, and this one is about main.
+x A switch main > /dev/null
+x A fn /SM.T.old '() : Int64 = 5L' > /dev/null
+x A commit "something to deprecate" -y > /dev/null
+x A push > /dev/null; x B pull > /dev/null
+want "B has it before" "^5$" "$(x B eval 'SM.T.old ()' | tail -1)"
+wantnot "and B does not call it deprecated" "DEPRECATED" "$(x B view SM.T.old)"
+
+x A deprecate fn SM.T.old --kind obsolete -m "moved on" --yes > /dev/null
+x A commit "deprecate it" -y > /dev/null
+want "A shows it deprecated" "DEPRECATED" "$(x A view SM.T.old)"
+want "A pushes the deprecation" "Pushed" "$(x A push)"
+want "B pulls it" "Pulled" "$(x B pull)"
+want "and B shows it deprecated too" "DEPRECATED" "$(x B view SM.T.old)"
+want "with the reason" "moved on" "$(x B view SM.T.old)"
+
 echo
 echo "passed: $pass   failed: $fail"
 [[ "$fail" -eq 0 ]]
