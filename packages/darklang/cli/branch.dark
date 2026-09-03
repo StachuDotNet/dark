@@ -466,10 +466,47 @@ let executeResolve
     state
 
 /// Archive (soft-delete) a branch, discarding its unmerged work.
-let executeArchive (state: AppState) (branchRef: String) : AppState =
+/// Archiving DISCARDS the branch's unmerged ops and then the branch leaves every listing, `--all`
+/// included. So it is asked for the same way `discard` and `merge` are: say what would go, then take an
+/// explicit yes, which a piped stdin cannot give.
+///
+/// A branch with nothing unmerged has nothing to lose, so that case goes straight through -- the whole
+/// point of the question is the work, and there is none.
+let executeArchive
+  (state: AppState)
+  (branchRef: String)
+  (autoConfirm: Bool)
+  : AppState =
   match resolveRef branchRef with
   | None -> state
   | Some branchId ->
+    let entries = SCM.PackageOps.branchDiffEntries branchId
+
+    let confirmed =
+      if (entries == []) || autoConfirm then
+        true
+      else
+        printOk
+          $"  ARCHIVING \"{branchRef}\" discards {Stdlib.Int.toString (Stdlib.List.length entries)} unmerged name(s):"
+
+        entries
+        |> Stdlib.List.iter (fun e ->
+          Stdlib.printLine
+            (Stdlib.Cli.UI.Colors.dimText $"    - {e.name}  [{e.itemType}]"))
+
+        printHint "  `dark merge` first if you meant to keep them."
+
+        Cli.Prompt.confirmExplicit
+          autoConfirm
+          (Stdlib.Cli.UI.Colors.warning "\n  Archive it? [y/N]: ")
+
+    if Stdlib.Bool.not confirmed then
+      printOk
+        "  kept. (`dark branch archive <name> -y` if you mean it -- a piped stdin can't answer this.)"
+
+      state
+    else
+
     match SCM.PackageOps.archiveBranch branchId with
     | Ok _ -> printOk $"archived branch \"{branchRef}\"."
     | Error e -> printErr $"Archive failed: {e}"
@@ -675,7 +712,9 @@ let execute (state: AppState) (args: List<String>) : AppState =
   // `create` is what the older CLI called this, and what scripts still type. Same thing: a branch is
   // created by switching to a name nothing holds.
   | [ "create", id ] -> executeSwitch state id
-  | [ "archive", id ] -> executeArchive state id
+  | [ "archive", id ] -> executeArchive state id false
+  | [ "archive", id, "-y" ] | [ "archive", id, "--yes" ] ->
+    executeArchive state id true
   | [ "rename", id, newName ] -> executeRename state id newName
   | [ "diff", id ] -> executeDiff state id false
   | [ "diff", id, "--source" ] -> executeDiff state id true
