@@ -386,7 +386,7 @@ let openHomeRow (state: State) : Step =
       | Some b ->
         if b.id == state.branchId then Step.Continue { state with message = "already on " ++ b.name }
         else
-          let switched = { state with branchId = b.id }
+          let switched = onBranch state b.id
           Step.Continue
             { switched with
                 items = itemsForView vHome b.id state.location state.scm.section state.ai.section state.matter.lens

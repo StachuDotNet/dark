@@ -113,10 +113,11 @@ let performInputAction (state: State) (inp: InputState) : Step =
             match SCM.Branch.get target with
             | Some b -> (match b.parentBranchId with | Some p -> p | None -> state.branchId)
             | None -> state.branchId
+        let moved = onBranch state parentId
+
         Step.Continue
-          { state with
+          { moved with
               input = Stdlib.Option.Option.None
-              branchId = parentId
               items = itemsForView state.activeView parentId state.location state.scm.section state.ai.section state.matter.lens
               selected = 0
               filter = ""
@@ -322,10 +323,11 @@ let performInputAction (state: State) (inp: InputState) : Step =
         Stdlib.String.contains it.name inp.field.text)
       |> Stdlib.Option.map (fun pair -> let (i, _it) = pair in i)
       |> Stdlib.Option.withDefault 0
+    let moved = onBranch state b.id
+
     Step.Continue
-      { state with
+      { moved with
           input = Stdlib.Option.Option.None
-          branchId = b.id
           items = newItems
           selected = landed
           filter = ""
@@ -363,7 +365,7 @@ let performInputAction (state: State) (inp: InputState) : Step =
           let msg =
             if b.id == state.branchId then "deleted " ++ b.name ++ " - switched to main"
             else "deleted " ++ b.name
-          let moved = { state with branchId = landedOn }
+          let moved = onBranch state landedOn
           Step.Continue
             { moved with
                 input = Stdlib.Option.Option.None
@@ -374,10 +376,11 @@ let performInputAction (state: State) (inp: InputState) : Step =
   else if inp.action == "branch-switch" then
     match Darklang.SCM.Branch.getByName inp.field.text with
     | Some b ->
+      let moved = onBranch state b.id
+
       Step.Continue
-        { state with
+        { moved with
             input = Stdlib.Option.Option.None
-            branchId = b.id
             items = itemsForView state.activeView b.id state.location state.scm.section state.ai.section state.matter.lens
             selected = 0
             filter = ""

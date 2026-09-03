@@ -80,9 +80,10 @@ let handleViewKey
       else if state.scm.section == ScmSection.Branches then
         match selectedBranch state with
         | Some b ->
+          let moved = onBranch state b.id
+
           Step.Continue
-            { state with
-                branchId = b.id
+            { moved with
                 items = itemsForView vSCM b.id state.location state.scm.section state.ai.section state.matter.lens
                 filter = ""
                 message = "switched to " ++ b.name }
