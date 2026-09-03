@@ -207,6 +207,26 @@ want "B pulls it" "Pulled" "$(x B pull)"
 want "and B shows it deprecated too" "DEPRECATED" "$(x B view SM.T.old)"
 want "with the reason" "moved on" "$(x B view SM.T.old)"
 
+echo "== finishing a branch travels, so the other machine stops showing it as live work"
+# Merging and archiving each author an op for exactly this reason: the projections are already updated
+# locally, and the op is how the OTHER instance learns. Without it a colleague's branch list keeps
+# offering work that is already in main, or a branch someone threw away.
+x A switch main > /dev/null
+x A branch create finished > /dev/null
+x A --branch finished fn /SM.T.finished '() : Int64 = 3L' > /dev/null
+x A --branch finished commit "work to finish" -y > /dev/null
+x A branch push finished > /dev/null
+x B branch pull --from "$AID" > /dev/null
+want "B sees the branch as live" "finished" "$(x B branches)"
+
+x A --branch finished merge finished > /dev/null
+x A switch main > /dev/null
+x A push > /dev/null
+x B pull > /dev/null
+want "B has the work on main now" "^3$" "$(x B eval 'SM.T.finished ()' | tail -1)"
+wantnot "and B no longer lists the branch as live" "finished" "$(x B branches)"
+want "though it is still there when asked for all" "finished" "$(x B branches --all)"
+
 echo
 echo "passed: $pass   failed: $fail"
 [[ "$fail" -eq 0 ]]
