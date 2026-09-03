@@ -1491,43 +1491,90 @@ let private everyCommandSurvivesABogusArgument =
 /// this file quietly asserting about a branch. Nothing here throws before the switch back: the sweep
 /// collects failures rather than raising, and the report comes after.
 let private everyCommandSurvivesABranch =
-  cliTest "no registered command crashes or goes silent while on a branch" (fun state ->
+  cliTest
+    "no registered command crashes or goes silent while on a branch"
+    (fun state ->
+      task {
+        let! commands = registeredCommands state
+        Expect.isGreaterThan (List.length commands) 20 "the registry was read"
+
+        let! switched = runCli state [ "switch"; "cli-sweep-branch" ]
+        Expect.stringContains
+          switched
+          "cli-sweep-branch"
+          "the sweep is on the branch"
+
+        let mutable failures : List<string * string> = []
+
+        let sweep (label : string) (extra : List<string>) =
+          task {
+            for cmd in commands do
+              if not (Set.contains cmd (Set.add "agent" notSweepable)) then
+                match! runCliCatching state (cmd :: extra) with
+                | Error e ->
+                  failures <- ($"{cmd} {label}", $"crashed: {e}") :: failures
+                | Ok output ->
+                  if output.Trim() = "" then
+                    failures <- ($"{cmd} {label}", "said nothing") :: failures
+          }
+
+        do! sweep "" []
+        do! sweep "zzz-no-such-thing-zzz" [ "zzz-no-such-thing-zzz" ]
+
+        let! back = runCli state [ "switch"; "main" ]
+        Expect.stringContains back "main" "and it put the run back on main"
+
+        if not (List.isEmpty failures) then
+          let detail =
+            failures
+            |> List.rev
+            |> List.map (fun (c, why) -> $"  dark {c} (on a branch) -> {why}")
+            |> String.concat "\n"
+
+          Tests.failtestf "commands that misbehave while on a branch:\n%s" detail
+      })
+
+
+/// Editing something on a BRANCH repoints what calls it, there and then.
+///
+/// Propagation runs off "what versions has this name had", and that lookup read `locations` -- main's
+/// projection, which a branch never writes to. So on a branch it found no earlier version, concluded
+/// nothing needed repointing, and left every caller on the version you had just edited past. The caller
+/// went on returning the old answer while the callee plainly said otherwise.
+///
+/// Asserted by RUNNING the caller rather than by reading the draft: what a repoint is for is that the
+/// thing above you gets the new answer.
+let private editingOnABranchRepointsItsCallers =
+  cliTest "editing an item on a branch repoints what calls it" (fun state ->
     task {
-      let! commands = registeredCommands state
-      Expect.isGreaterThan (List.length commands) 20 "the registry was read"
+      let! switched = runCli state [ "switch"; "cli-propagate-branch" ]
+      Expect.stringContains
+        switched
+        "cli-propagate-branch"
+        "the test is on the branch"
 
-      let! switched = runCli state [ "switch"; "cli-sweep-branch" ]
-      Expect.stringContains switched "cli-sweep-branch" "the sweep is on the branch"
+      let! _ = runCli state [ "fn"; "Tests.BranchProp.base"; "() : Int64 = 1L" ]
+      let! _ =
+        runCli
+          state
+          [ "fn"
+            "Tests.BranchProp.caller"
+            "() : Int64 = Stdlib.Int64.multiply (Tests.BranchProp.base ()) 7L" ]
 
-      let mutable failures : List<string * string> = []
+      let! before = runCli state [ "eval"; "Tests.BranchProp.caller ()" ]
+      Expect.stringContains before "7" "the caller runs against the first version"
 
-      let sweep (label : string) (extra : List<string>) =
-        task {
-          for cmd in commands do
-            if not (Set.contains cmd (Set.add "agent" notSweepable)) then
-              match! runCliCatching state (cmd :: extra) with
-              | Error e -> failures <- ($"{cmd} {label}", $"crashed: {e}") :: failures
-              | Ok output ->
-                if output.Trim() = "" then
-                  failures <- ($"{cmd} {label}", "said nothing") :: failures
-        }
-
-      do! sweep "" []
-      do! sweep "zzz-no-such-thing-zzz" [ "zzz-no-such-thing-zzz" ]
+      let! _ = runCli state [ "fn"; "Tests.BranchProp.base"; "() : Int64 = 2L" ]
+      let! after = runCli state [ "eval"; "Tests.BranchProp.caller ()" ]
 
       let! back = runCli state [ "switch"; "main" ]
       Expect.stringContains back "main" "and it put the run back on main"
 
-      if not (List.isEmpty failures) then
-        let detail =
-          failures
-          |> List.rev
-          |> List.map (fun (c, why) -> $"  dark {c} (on a branch) -> {why}")
-          |> String.concat "\n"
-
-        Tests.failtestf "commands that misbehave while on a branch:\n%s" detail
+      Expect.stringContains
+        after
+        "14"
+        "the caller was repointed onto the edit, on the branch"
     })
-
 
 /// An empty grant is not a grant, and must not report that it is.
 let private capsRefusesAnEmptyGrant =
@@ -2954,6 +3001,7 @@ let private slowCliTests =
   else
     [ everyCommandSurvivesABogusArgument
       everyCommandSurvivesABranch
+      editingOnABranchRepointsItsCallers
       everyCommandAnswersWhenBare
       reviewQueueRoundTrips
       partialCommitTakesOnlyWhatYouNamed
