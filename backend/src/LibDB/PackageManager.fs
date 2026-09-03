@@ -543,6 +543,34 @@ let branchLocationsFor
   |> Map.toList
   |> List.choose (fun (_, (loc, h)) -> if h = hash then Some loc else None)
 
+/// Every location this branch has EVER bound <param hash> to, live or since superseded.
+///
+/// `branchLocationsFor` folds last-wins per location, so it answers "what does this hash hold NOW",
+/// which is what naming a live item wants. It cannot answer for a version that has been edited past,
+/// and on a branch nothing else can either: main's `getLocationsEverNamed` reads `locations`, which a
+/// branch never writes to. Without this, `dark log` on a branch renders every superseded version as
+/// `<hash:...>` while the newest shows its name -- one listing, two spellings, and the hash says
+/// nothing about what you are looking at.
+///
+/// Strictly a FALLBACK, for when the live lookup found nothing. Offering these alongside live names
+/// would let a version the branch has moved off keep answering to the name that moved on.
+let branchLocationsEverNamed
+  (branchId : PT.BranchId)
+  (kind : PT.ItemKind)
+  (hash : Hash)
+  : List<PT.PackageLocation> =
+  opsForBranch branchId
+  |> List.choose (fun op ->
+    match op with
+    | PT.PackageOp.SetName(loc, target, _)
+    | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override target) when
+      target.kind = kind && target.hash = hash
+      ->
+      Some loc
+    | _ -> None)
+  |> List.distinct
+
+
 /// Locations for <param hash>: main's, then any the branch adds.
 ///
 /// Main FIRST, deliberately: callers render a label and take the head, and identical content is

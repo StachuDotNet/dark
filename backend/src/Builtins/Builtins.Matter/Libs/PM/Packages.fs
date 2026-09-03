@@ -650,7 +650,18 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             // has moved on to the newer one -- `<hash:d6f972b3>` says nothing about what you're looking at.
             let! result =
               if List.isEmpty named then
-                PMPT.Type.getLocationsEverNamed hash
+                uply {
+                  // Main's record of what this hash was ever called, then the BRANCH's. A branch never
+                  // writes `locations`, so main cannot answer for a version authored on one.
+                  match! PMPT.Type.getLocationsEverNamed hash with
+                  | [] ->
+                    return
+                      LibDB.PackageManager.branchLocationsEverNamed
+                        (branchOfParam branchIdGuid)
+                        PT.ItemKind.Type
+                        hash
+                  | everNamed -> return everNamed
+                }
               else
                 Ply named
             return
@@ -693,7 +704,18 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             // has moved on to the newer one -- `<hash:d6f972b3>` says nothing about what you're looking at.
             let! result =
               if List.isEmpty named then
-                PMPT.Value.getLocationsEverNamed hash
+                uply {
+                  // Main's record of what this hash was ever called, then the BRANCH's. A branch never
+                  // writes `locations`, so main cannot answer for a version authored on one.
+                  match! PMPT.Value.getLocationsEverNamed hash with
+                  | [] ->
+                    return
+                      LibDB.PackageManager.branchLocationsEverNamed
+                        (branchOfParam branchIdGuid)
+                        PT.ItemKind.Value
+                        hash
+                  | everNamed -> return everNamed
+                }
               else
                 Ply named
             return
@@ -736,7 +758,18 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             // has moved on to the newer one -- `<hash:d6f972b3>` says nothing about what you're looking at.
             let! result =
               if List.isEmpty named then
-                PMPT.Fn.getLocationsEverNamed hash
+                uply {
+                  // Main's record of what this hash was ever called, then the BRANCH's. A branch never
+                  // writes `locations`, so main cannot answer for a version authored on one.
+                  match! PMPT.Fn.getLocationsEverNamed hash with
+                  | [] ->
+                    return
+                      LibDB.PackageManager.branchLocationsEverNamed
+                        (branchOfParam branchIdGuid)
+                        PT.ItemKind.Fn
+                        hash
+                  | everNamed -> return everNamed
+                }
               else
                 Ply named
             return
