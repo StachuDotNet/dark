@@ -83,20 +83,26 @@ let canMerge (branchId: Uuid) : Stdlib.Result.Result<Unit, String> =
   else
     // "Active" must mean the same here as in the message below, which tells you to merge OR ARCHIVE the
     // children -- counting archived ones as active makes that advice a dead end.
-    let activeChildren =
+    // `None` is a FAILED query, not an answer: `count(*)` always returns a row. Defaulting it to 0 would
+    // read as "no active children" and wave the merge through the guard, which is the one direction a
+    // guard must not fail in.
+    match
       Stdlib.Sqlite.scalarIntP
         (localDb ())
         "SELECT count(*) AS n FROM branches
          WHERE parent_id = @p0 AND merged_at IS NULL AND archived_at IS NULL"
         [ Stdlib.Uuid.toString branchId ]
         "n"
-      |> Stdlib.Option.withDefault 0L
-
-    if activeChildren > 0L then
+    with
+    | None ->
       Stdlib.Result.Result.Error
-        "branch has active children -- merge or archive them first"
-    else
-      Stdlib.Result.Result.Ok()
+        "couldn't check whether this branch has children, so it isn't safe to merge it. Try again."
+    | Some activeChildren ->
+      if activeChildren > 0L then
+        Stdlib.Result.Result.Error
+          "branch has active children -- merge or archive them first"
+      else
+        Stdlib.Result.Result.Ok()
 
 
 //  branch lifecycle
@@ -131,38 +137,34 @@ let setName (branchId: Uuid) (name: String) : Unit =
 /// Only effective=0 ops are deleted: anything that made it into main is main's now, and deleting it here
 /// would tear a hole in the shared log rather than discard a branch.
 let archive (branchId: Uuid) : Unit =
-  let db = localDb ()
+  let b = Stdlib.Uuid.toString branchId
 
-  let _ =
-    Stdlib.Sqlite.execP
-      db
-      // Only ops NO OTHER branch holds. `op_branches` is many-to-many and op ids are content hashes, so two
-      // review queues importing overlapping bundles genuinely share rows.
-      "DELETE FROM package_ops
-       WHERE effective = 0
-         AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @p0)
-         AND id NOT IN (SELECT op_id FROM op_branches WHERE branch_id <> @p0)"
-      [ Stdlib.Uuid.toString branchId ]
+  // ONE transaction. This is the only place that deletes from `package_ops`, the canonical log, and it
+  // needs three more statements to stay consistent with that delete. Run separately, a crash between any
+  // two leaves a branch that is half-archived: ops gone with tags still pointing at them, or tags gone
+  // with the bases still there. `finishMerge` and `retagFrontierToParent` are batched for exactly this
+  // reason and this was the odd one out.
+  let result =
+    Stdlib.Sqlite.execBatch
+      (localDb ())
+      [ // Only ops NO OTHER branch holds. `op_branches` is many-to-many and op ids are content hashes, so
+        // two review queues importing overlapping bundles genuinely share rows.
+        ("DELETE FROM package_ops
+          WHERE effective = 0
+            AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @p0)
+            AND id NOT IN (SELECT op_id FROM op_branches WHERE branch_id <> @p0)",
+         [ [ b ] ])
+        ("DELETE FROM op_branches WHERE branch_id = @p0", [ [ b ] ])
+        ("DELETE FROM branch_name_bases WHERE branch_id = @p0", [ [ b ] ])
+        ("UPDATE branches SET archived_at = datetime('now') WHERE id = @p0", [ [ b ] ]) ]
 
-  let _ =
-    Stdlib.Sqlite.execP
-      db
-      "DELETE FROM op_branches WHERE branch_id = @p0"
-      [ Stdlib.Uuid.toString branchId ]
-
-  let _ =
-    Stdlib.Sqlite.execP
-      db
-      "DELETE FROM branch_name_bases WHERE branch_id = @p0"
-      [ Stdlib.Uuid.toString branchId ]
-
-  let _ =
-    Stdlib.Sqlite.execP
-      db
-      "UPDATE branches SET archived_at = datetime('now') WHERE id = @p0"
-      [ Stdlib.Uuid.toString branchId ]
-
-  ()
+  match result with
+  | Ok _ -> ()
+  | Error e ->
+    // Said, not swallowed. The caller reports "archived" on the strength of this returning, and a silent
+    // failure there is a branch the person believes is gone.
+    Stdlib.printLine
+      (Stdlib.Cli.UI.Colors.error $"  archive failed, nothing was changed: {e}")
 
 /// Untag a review branch's already-APPLIED ops. A whole-log review import tags every re-imported op to the
 /// queue, including ones already in main (the op row dedups, but the tag is new), which inflates the queue's
