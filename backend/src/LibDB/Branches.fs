@@ -323,44 +323,10 @@ let refoldBranchDecides () : Task<unit> =
 let storeDeltaOps (branchId : PT.BranchId) (ops : List<PT.PackageOp>) : Task<int64> =
   storeDeltaOpsStamped branchId (ops |> List.map (fun op -> (op, OriginTs.next ())))
 
-/// MERGE up, half 1: flip a branch's frontier ops from effective=0 (branch-pending) to
-/// effective=1 (part of main). Half 2 is the FOLD (`Seed.applyUnappliedOps`), kept separate
-/// because it lives in Seed.fs, which compiles after this file. Returns how many ops flipped.
-/// Deterministic replay + origin_ts LWW handle same-name collisions; this is NOT a CRDT merge.
-let markMergedEffective (branchId : PT.BranchId) : Task<int64> =
-  task {
-    // Count what is ABOUT to flip, not what is tagged: a branch can carry tags on ops main
-    // already has (a whole-log import does), and counting those reports work the merge didn't do.
-    let! toFlip =
-      Sql.query
-        "SELECT count(*) AS n FROM package_ops p
-         JOIN op_branches b ON b.op_id = p.id
-         WHERE b.branch_id = @b AND p.effective = 0"
-      |> Sql.parameters [ "b", Sql.string (string branchId) ]
-      |> Sql.executeRowAsync (fun read -> read.int64 "n")
-    let! _ =
-      Sql.query
-        "UPDATE package_ops SET effective = 1
-         WHERE effective = 0
-           AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @b)"
-      |> Sql.parameters [ "b", Sql.string (string branchId) ]
-      |> Sql.executeStatementAsync
-    return toFlip
-  }
-
-/// Finish a merge: mark it merged AND drop the now-redundant frontier, in ONE transaction.
-///
-/// The gap between them is the only unrecoverable interruption point in a merge: clearing the
-/// frontier first leaves a branch with no ops and no merged flag, which the gate refuses as
-/// "nothing to merge" while its changes are already in main, and it lists as live forever. Every
-/// other point is recoverable by running the merge again, since the frontier is still tagged.
-let finishMerge (branchId : PT.BranchId) : unit =
-  Sql.executeTransactionSync
-    [ ("UPDATE branches SET merged_at = datetime('now') WHERE id = @b",
-       [ [ "b", Sql.string (string branchId) ] ])
-      ("DELETE FROM op_branches WHERE branch_id = @b",
-       [ [ "b", Sql.string (string branchId) ] ]) ]
-  |> ignore<List<int>>
+// Flipping a branch's frontier effective, and closing the branch afterwards, are in Dark
+// (`SCM.Branches.markMergedEffective` / `.finishMerge`): both are SQL, and the second is one
+// transaction because the gap inside it is a merge's only unrecoverable interruption point. What
+// runs between them is the fold, which is `scmApplyMergedOps`.
 
 // Per-name BASE model: a reload-stable fork marker.
 //
@@ -518,21 +484,10 @@ let recordNameBases
         |> Sql.executeStatementAsync
   }
 
-/// This branch's recorded per-name bases: the parent's hash for each name at the branch's first
-/// touch. The one place that reads the table, so callers don't each hand-roll the same SELECT.
-let nameBasesFor (branchId : PT.BranchId) : Task<List<NameKey * string>> =
-  Sql.query
-    "SELECT owner, modules, name, base_hash FROM branch_name_bases WHERE branch_id = @b"
-  |> Sql.parameters [ "b", Sql.string (string branchId) ]
-  |> Sql.executeAsync (fun read ->
-    (read.string "owner", read.string "modules", read.string "name"),
-    read.string "base_hash")
-
-// The merge GATE and the REBASE itself are in Dark (`SCM.Branches.nameConflicts` and `.rebase`): both
-// are a comparison of recorded bases against the parent's current hashes, plus, for the rebase, one
-// batched UPDATE. Conflict PRESENTATION is Dark's too (`SCM.Conflicts`), over the same bases. What is
-// left here is what those need and cannot do: the base rows themselves, and the parent's hashes when
-// the parent is an overlay rather than a projection.
+// READING the bases, comparing them against the parent (the merge GATE), and moving them (REBASE) are
+// all in Dark: `SCM.Branches.nameBases`, `.nameConflicts`, `.rebase`. Conflict PRESENTATION is Dark's
+// too (`SCM.Conflicts`), over the same rows. What is left here is WRITING them, which happens mid-author
+// inside `scmAddOps` and so cannot cross back into Dark, and `parentNameHashes`, which that write needs.
 
 // Per-name RESOLUTION -- keep-mine and take-theirs -- is in Dark (`SCM.Branches`), along with the fqn
 // parsing it needs. Both are op-log surgery plus a base update, and take-theirs never leaves Dark at
@@ -545,33 +500,3 @@ let nameBasesFor (branchId : PT.BranchId) : Task<List<NameKey * string>> =
 /// also means B off A off main sees A's frontier AND its own.
 let loadDeltaOps (branchId : PT.BranchId) : Task<List<PT.PackageOp>> =
   chainOverlayOps branchId
-
-/// MERGE into a NON-MAIN parent: the parent is an overlay, never materialized in main's
-/// projections, so we do NOT flip effective / fold (that would leak the child into main). Instead
-/// RETAG the child's frontier ops onto the parent, whose overlay folds them when a process runs
-/// `--branch <parent>`. INSERT-OR-IGNORE + DELETE handles the (rare) shared-op case.
-///
-/// Retag and mark-merged go in ONE transaction, as in `finishMerge`: the child stops owning its
-/// ops the instant the DELETE lands, so an interruption before the merged flag is set leaves a
-/// branch the gate refuses to merge.
-let retagFrontierToParent
-  (branchId : PT.BranchId)
-  (parentId : PT.BranchId)
-  : Task<int64> =
-  task {
-    let! n =
-      Sql.query "SELECT count(*) AS n FROM op_branches WHERE branch_id = @b"
-      |> Sql.parameters [ "b", Sql.string (string branchId) ]
-      |> Sql.executeRowAsync (fun read -> read.int64 "n")
-    Sql.executeTransactionSync
-      [ ("INSERT OR IGNORE INTO op_branches (op_id, branch_id)
-          SELECT op_id, @parent FROM op_branches WHERE branch_id = @b",
-         [ [ "parent", Sql.string (string parentId)
-             "b", Sql.string (string branchId) ] ])
-        ("DELETE FROM op_branches WHERE branch_id = @b",
-         [ [ "b", Sql.string (string branchId) ] ])
-        ("UPDATE branches SET merged_at = datetime('now') WHERE id = @b",
-         [ [ "b", Sql.string (string branchId) ] ]) ]
-    |> ignore<List<int>>
-    return n
-  }

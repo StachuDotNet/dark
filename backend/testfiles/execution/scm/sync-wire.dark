@@ -108,15 +108,26 @@ module HeadCodec =
 module BothWritersAgree =
   val pastTheEnd = 999999999L
 
+  /// Both writers stamp `owner` from `PackageOps.identity ()`, which reads a config store this harness
+  /// does not keep, so each call here mints a fresh id. That is a property of running under the testfile
+  /// runner, not of either writer -- under a real CLI the two calls agree -- and it is not what this is
+  /// comparing, so it is blanked on both sides rather than asserted.
+  let sameShape
+    (r: Stdlib.Result.Result<Darklang.SCM.Wire.SyncBundle, String>)
+    : Stdlib.Result.Result<Darklang.SCM.Wire.SyncBundle, String> =
+    r |> Stdlib.Result.map (fun b -> { b with owner = "" })
+
   let native () : Stdlib.Result.Result<Darklang.SCM.Wire.SyncBundle, String> =
-    let (json, _cursor) = Darklang.SCM.Wire.exportPageJsonSince pastTheEnd
+    let (json, _cursor) = Darklang.SCM.Wire.exportPageJsonSince BothWritersAgree.pastTheEnd
     Darklang.SCM.Wire.wireDecode (Stdlib.String.toBlob json)
 
   let inDark () : Stdlib.Result.Result<Darklang.SCM.Wire.SyncBundle, String> =
     Darklang.SCM.Wire.wireDecode
-      (Stdlib.String.toBlob (Darklang.SCM.Wire.wireEncodeAt pastTheEnd []))
+      (Stdlib.String.toBlob
+        (Darklang.SCM.Wire.wireEncodeAt BothWritersAgree.pastTheEnd []))
 
-  (BothWritersAgree.native ()) = (BothWritersAgree.inDark ())
+  (BothWritersAgree.sameShape (BothWritersAgree.native ())) =
+    (BothWritersAgree.sameShape (BothWritersAgree.inDark ()))
 
   // And the native writer's page really is readable, rather than both sides failing to decode in the
   // same way -- which the equality above would happily accept.

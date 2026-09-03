@@ -507,6 +507,37 @@ Three things make the next one findable, all in place:
                                      still uploads rundir, and `timeout 20m` on the test
                                      step so it dies somewhere known
 
+## Testing code that moved from F# to Dark
+
+When a function moves into `packages/`, its F# test has to move with it, or it goes on asserting about a
+copy nobody runs. Drive the real one from the test instead: parse a Dark expression, build an execution
+state, execute it, and destructure the `Dval`.
+
+    let! ptExpr = parsePTExpr code
+    let! state = executionStateFor PM.pt false Map.empty
+    let rtExpr = PT2RT.Expr.toRT Map.empty 0 None ptExpr
+    match! Exe.executeExpr state rtExpr with
+    | Ok(RT.DEnum(_, _, _, "Ok", [ RT.DInt n ])) -> ...
+
+`Draft.Tests.fs` and `BranchOverlay.Tests.fs` both have a small set of these, one per result shape
+(`Result<Int,_>`, `Result<Unit,_>`, `List<String>`), plus a helper that spells a `BranchId` as Dark
+source. Copy those rather than writing a fourth variant.
+
+Three things that will cost you a build cycle each:
+
+- **Say what went wrong.** `Exception.raiseInternal "the Dark call raised" [ "rte", rte ]` prints the
+  message and swallows the tag, so every failure looks identical. Put the error IN the message:
+  `failtest $"the Dark call raised: {rte}"`. Two rounds were spent guessing at what turned out to be a
+  name resolution error naming the exact missing module.
+- **The test file is parsed with owner `Tests`**, so the Dark you embed needs `Darklang.` in full. A
+  find-and-replace over the F# call sites will also rewrite the module path inside those strings, and
+  the result is a `ParseTimeNameResolution` at run time rather than a compile error.
+- **A `let` needs the newline after it.** Building Dark source by string concatenation loses that
+  silently and you get `VariableNotFound`. Write the expression without a `let`.
+
+The point of all this is that a green F# build says nothing about Dark, which resolves names lazily. Four
+suite tests and a CLI sweep caught things the compiler could not, all in one session.
+
 ## Debugging
 
     Builtin.debug "label" value   # prints DEBUG: label: <repr> to stdout

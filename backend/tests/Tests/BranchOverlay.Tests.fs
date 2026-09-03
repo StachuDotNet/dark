@@ -116,6 +116,72 @@ let private resolveKeepMine
   darkUnitResult
     $"Darklang.SCM.Branches.resolveKeepMine {darkBranch branchId} \"{fqn}\""
 
+
+/// Run a Dark call answering `Result<Int, String>`, as the count these assertions expect.
+let private darkIntResult (code : string) : Task<int64> =
+  task {
+    let! ptExpr = parsePTExpr code
+    let! state = executionStateFor PM.pt false Map.empty
+    let rtExpr = PT2RT.Expr.toRT Map.empty 0 None ptExpr
+
+    match! Exe.executeExpr state rtExpr with
+    | Ok(RT.DEnum(_, _, _, "Ok", [ RT.DInt n ])) ->
+      return int64 (RT.DarkInt.toBigInt n)
+    | Ok(RT.DEnum(_, _, _, "Error", [ RT.DString e ])) ->
+      return failtest $"the Dark call failed: {e}"
+    | Ok other -> return failtest $"unexpected result shape: {other}"
+    | Error(rte, _) -> return failtest $"the Dark call raised: {rte}"
+  }
+
+let private retagFrontierToParent
+  (branchId : PT.BranchId)
+  (parentId : PT.BranchId)
+  : Task<int64> =
+  darkIntResult (
+    "Darklang.SCM.Branches.retagFrontierToParent "
+    + darkBranch branchId
+    + " "
+    + darkBranch parentId
+  )
+
+let private markMergedEffective (branchId : PT.BranchId) : Task<int64> =
+  darkIntResult $"Darklang.SCM.Branches.markMergedEffective {darkBranch branchId}"
+
+/// The NAMES a branch has recorded a fork base for.
+let private baseNames (branchId : PT.BranchId) : Task<List<string>> =
+  darkStringList (
+    "Darklang.SCM.Branches.nameBases "
+    + darkBranch branchId
+    + " |> Stdlib.List.map (fun (_o, _m, n, _h) -> n)"
+  )
+
+/// "owner\nmodules\nname=hash" per recorded base, as DARK computes the parent's current hash. Spelled
+/// the same as the F# side in `parentHashesAgreeAcrossLanguages`, so the two lists compare directly.
+let private parentHashLinesFromDark
+  (parentId : PT.BranchId)
+  (branchId : PT.BranchId)
+  : Task<List<string>> =
+  let key = "(Darklang.SCM.Branches.nameKey o m n)"
+
+  let hashes =
+    "(Darklang.SCM.Branches.parentHashesForBases "
+    + darkBranch parentId
+    + " "
+    + darkBranch branchId
+    + ")"
+
+  darkStringList (
+    "((Darklang.SCM.Branches.nameBases "
+    + darkBranch branchId
+    + " |> Stdlib.List.map (fun (o, m, n, _h) -> "
+    + key
+    + " ++ \"=\" ++ ((Stdlib.Dict.get "
+    + hashes
+    + " "
+    + key
+    + ") |> Stdlib.Option.withDefault \"\"))) |> Stdlib.List.sort)"
+  )
+
 open TestUtils.TestUtils
 
 // A branch's source: one fn `foo` returning `answer`, computed via a CORE call
@@ -277,6 +343,62 @@ let private staleNameBases (branchId : PT.BranchId) : Task<unit> =
   |> Sql.parameters [ "b", Sql.string (string branchId) ]
   |> Sql.executeStatementAsync
 
+/// The parent's CURRENT hash per name is computed in both languages, and has to come out the same.
+///
+/// The two exist because the halves of the fork-base model run in different places: RECORDING a base
+/// happens mid-author inside `scmAddOps`, which is F#, while DECIDING whether the parent has since
+/// moved that name is `SCM.Branches.nameConflicts`, which is Dark. They read the same thing -- main's
+/// `locations`, overridden by the parent chain's own rebinds when the parent is not main -- and if they
+/// stop agreeing, a branch is either permanently conflicted or never conflicted, with nothing to say
+/// which.
+///
+/// Exercised against a NON-MAIN parent, because that is the case with logic in it: for a main parent
+/// both sides are one table read.
+let parentHashesAgreeAcrossLanguages =
+  testTask "F# and Dark compute the same parent hashes for a branch's bases" {
+    let parent = testBranch "ph-parent"
+    let child = testBranch "ph-child"
+    do! cleanupBranch child
+    do! cleanupBranch parent
+
+    do! Branches.createBranch parent "ph-parent" PT.BranchId.Main
+    let! parentOps = opsFor (namedSource "PhTest" 1)
+    let! _ = Branches.storeDeltaOps parent parentOps
+    do! Branches.recordNameBases parent PT.BranchId.Main parentOps
+
+    do! Branches.createBranch child "ph-child" parent
+    let! childOps = opsFor (namedSource "PhTest" 2)
+    let! _ = Branches.storeDeltaOps child childOps
+    do! Branches.recordNameBases child parent childOps
+
+    let! bases =
+      Sql.query
+        "SELECT owner, modules, name FROM branch_name_bases WHERE branch_id = @b"
+      |> Sql.parameters [ "b", Sql.string (string child) ]
+      |> Sql.executeAsync (fun read ->
+        read.string "owner", read.string "modules", read.string "name")
+    Expect.isNonEmpty bases "the child recorded a base to compare"
+
+    let! parentHashes = Branches.parentNameHashes parent
+
+    let fromFSharp =
+      bases
+      |> List.map (fun (o, m, n) ->
+        let hash = parentHashes |> Map.tryFind (o, m, n) |> Option.defaultValue ""
+        $"{o}\n{m}\n{n}={hash}")
+      |> List.sort
+
+    let! fromDark = parentHashLinesFromDark parent child
+
+    Expect.equal
+      fromDark
+      fromFSharp
+      "Dark and F# agree on the parent's hash for every name the child based on"
+
+    do! cleanupBranch child
+    do! cleanupBranch parent
+  }
+
 let storeThenOverlay =
   testTask
     "a branch's ops round-trip through the store (effective=0) and overlay to resolve foo" {
@@ -325,7 +447,7 @@ let markMergedFlipsEffective =
     let! pending = countEffective branchId 0
     Expect.isGreaterThan pending 0L "stored ops start effective=0 (branch-pending)"
 
-    let! flipped = Branches.markMergedEffective branchId
+    let! flipped = markMergedEffective branchId
     Expect.equal flipped pending "all pending ops flip to effective=1"
     let! stillPending = countEffective branchId 0
     Expect.equal stillPending 0L "none left effective=0"
@@ -485,7 +607,7 @@ let branchesOffBranches =
     // main is still untouched (a non-main merge never flips effective / folds into main).
     let! parentOfB = Branches.parentOf (testBranch "boB")
     Expect.equal parentOfB (testBranch "boA") "B's parent is A"
-    let! merged = Branches.retagFrontierToParent (testBranch "boB") parentOfB
+    let! merged = retagFrontierToParent (testBranch "boB") parentOfB
     Expect.isGreaterThan merged 0L "B had frontier ops to merge"
 
     let! aOps2 = Branches.loadDeltaOps (testBranch "boA")
@@ -574,7 +696,7 @@ let mergeDoesNotConsumeSiblingPendingOps =
     Expect.isGreaterThan sBefore 0L "sibling S starts with pending (applied=0) ops"
 
     // Merge M into main: flip its frontier effective=1, then fold (which runs the sweep).
-    let! _ = Branches.markMergedEffective bM
+    let! _ = markMergedEffective bM
     let! _ = Seed.applyUnappliedOps ()
 
     let! sAfter = pendingCount bS
@@ -606,7 +728,7 @@ let sameNameMergesConvergeToLater =
       |> Sql.executeRowOptionAsync (fun read -> read.string "item_hash")
     let mergeFold (b : PT.BranchId) : Task<unit> =
       task {
-        let! _ = Branches.markMergedEffective b
+        let! _ = markMergedEffective b
         let! _ = Seed.applyUnappliedOps ()
         return ()
       }
@@ -704,7 +826,7 @@ let branchTransferImportReDerivesBases =
     Expect.isNone onCore "and it did NOT leak into core"
 
     // per-name bases were re-derived (against local main), so merge/rebase work on this instance.
-    let! bases = Branches.nameBasesFor dst
+    let! bases = baseNames dst
     Expect.isNonEmpty bases "per-name bases re-derived on import"
 
     do! cleanupBranch dst
@@ -746,8 +868,7 @@ let resolveAloneRecordsANameBase =
             PT.DecisionKind.Override target
           ) ]
 
-    let! bases = Branches.nameBasesFor b
-    let recorded = bases |> List.map (fun ((_, _, n), _) -> n)
+    let! recorded = baseNames b
     Expect.equal
       recorded
       [ loc.name ]
@@ -1020,12 +1141,12 @@ let mergeCountsWhatItFlipped =
     let! pending = countEffective (testBranch "mcX") 0
     Expect.isGreaterThan pending 0L "stored branch ops start effective=0"
 
-    let! first = Branches.markMergedEffective (testBranch "mcX")
+    let! first = markMergedEffective (testBranch "mcX")
     Expect.equal first pending "the first merge reports exactly what it flipped"
 
     // Merging again flips NOTHING -- every tagged op is already effective -- so reporting the tag
     // count would be `MergeOutcome.merged` claiming work it did not do.
-    let! second = Branches.markMergedEffective (testBranch "mcX")
+    let! second = markMergedEffective (testBranch "mcX")
     Expect.equal second 0L "a re-merge reports 0, not the number of tagged ops"
 
     do! cleanupBranch (testBranch "mcX")
@@ -1556,6 +1677,7 @@ let tests =
       branchPMIsPerBranch
       branchNamesResolveButDontShadowMain
       isolationBetweenBranches
+      parentHashesAgreeAcrossLanguages
       storeThenOverlay
       mergedBranchStaysAddressable
       concurrentCreateYieldsOneBranch
