@@ -1576,6 +1576,52 @@ let private editingOnABranchRepointsItsCallers =
         "the caller was repointed onto the edit, on the branch"
     })
 
+/// `discard` on a branch drops the BRANCH's work and leaves main's draft alone.
+///
+/// Worth asserting because the command is destructive and the two drafts are kept apart by a `WHERE`
+/// clause rather than by anything the type system checks: main's draft is the uncommitted ops NOT tagged
+/// to a branch, so a query that forgot the tag would take both, and the way you would find out is that
+/// work you never mentioned had gone.
+let private discardOnABranchLeavesMainsDraftAlone =
+  cliTest
+    "discard on a branch drops the branch's work, not main's draft"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "fn"; "Tests.DiscardIso.onMain"; "() : Int64 = 1L" ]
+
+        let! switched = runCli state [ "switch"; "cli-discard-branch" ]
+        Expect.stringContains
+          switched
+          "cli-discard-branch"
+          "the test is on the branch"
+
+        let! _ =
+          runCli state [ "fn"; "Tests.DiscardIso.onBranch"; "() : Int64 = 2L" ]
+        let! discarded = runCli state [ "discard"; "--all"; "--yes" ]
+        Expect.stringContains discarded "onBranch" "it discarded the branch's item"
+        Expect.isFalse
+          (discarded.Contains "onMain")
+          "and did not touch the one on main"
+
+        let! goneOnBranch = runCli state [ "eval"; "Tests.DiscardIso.onBranch ()" ]
+        Expect.stringContains
+          goneOnBranch
+          "not found"
+          "the branch's item really went"
+
+        let! back = runCli state [ "switch"; "main" ]
+        Expect.stringContains back "main" "and it put the run back on main"
+
+        let! stillOnMain = runCli state [ "eval"; "Tests.DiscardIso.onMain ()" ]
+        Expect.stringContains
+          stillOnMain
+          "1"
+          "main's draft survived the branch's discard"
+
+        let! _ = runCli state [ "discard"; "--all"; "--yes" ]
+        ()
+      })
+
 /// An empty grant is not a grant, and must not report that it is.
 let private capsRefusesAnEmptyGrant =
   cliTest
@@ -3002,6 +3048,7 @@ let private slowCliTests =
     [ everyCommandSurvivesABogusArgument
       everyCommandSurvivesABranch
       editingOnABranchRepointsItsCallers
+      discardOnABranchLeavesMainsDraftAlone
       everyCommandAnswersWhenBare
       reviewQueueRoundTrips
       partialCommitTakesOnlyWhatYouNamed
