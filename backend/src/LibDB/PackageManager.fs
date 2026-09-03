@@ -543,6 +543,24 @@ let branchLocationsFor
   |> Map.toList
   |> List.choose (fun (_, (loc, h)) -> if h = hash then Some loc else None)
 
+/// Has this branch bound anything under <param owner>?
+///
+/// Main's answer comes from an index seek on `locations`, which a branch never writes to, so the first
+/// item someone authors on a branch does not count as having any -- and the workbench goes on offering
+/// them the "you have nothing yet" panel while their work sits on the branch.
+///
+/// A list scan rather than a query, deliberately: the caller runs it per frame, the branch's ops are
+/// already in memory, and a branch holds few of them. It is only ever asked after main has said no.
+let branchOwnerHasItems (branchId : PT.BranchId) (owner : string) : bool =
+  opsForBranch branchId
+  |> List.exists (fun op ->
+    match op with
+    | PT.PackageOp.SetName(loc, _, _)
+    | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override _) ->
+      loc.owner = owner
+    | _ -> false)
+
+
 /// Every location this branch has EVER bound <param hash> to, live or since superseded.
 ///
 /// `branchLocationsFor` folds last-wins per location, so it answers "what does this hash hold NOW",

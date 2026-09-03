@@ -431,12 +431,21 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         + "equality seek on the owner index."
       fn =
         function
-        | _, _, _, [| DUuid _branchId; DString owner |] ->
+        | _, _, _, [| DUuid branchIdGuid; DString owner |] ->
           uply {
-            // `locations` has no branch column here (a branch is an overlay), so this answers
-            // about main, which is the right scope for "has this owner ever had anything".
+            // `locations` has no branch column (a branch is an overlay), so the seek answers about
+            // MAIN. Ask the branch too when it says no, or the first item someone authors on a branch
+            // does not count as having any.
             let! found = PMPT.ownerHasItems owner
-            return DBool found
+            if found then
+              return DBool true
+            else
+              return
+                DBool(
+                  LibDB.PackageManager.branchOwnerHasItems
+                    (branchOfParam branchIdGuid)
+                    owner
+                )
           }
         | _ -> incorrectArgs ()
       sqlSpec = NotQueryable
