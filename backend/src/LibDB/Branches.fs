@@ -781,19 +781,6 @@ let resolveKeepMine
 let loadDeltaOps (branchId : PT.BranchId) : Task<List<PT.PackageOp>> =
   chainOverlayOps branchId
 
-/// The branch's OWN frontier ops (deserialized), oldest-first -- its authoring history, for
-/// `dark log <branch>` (the SEQUENCE, complementary to `diff`'s net effect). Just this branch's
-/// tag, NOT the parent chain.
-let frontierOps (branchId : PT.BranchId) : Task<List<PT.PackageOp>> =
-  Sql.query
-    "SELECT p.id, p.op_blob FROM package_ops p
-     JOIN op_branches ob ON ob.op_id = p.id
-     WHERE ob.branch_id = @b
-     ORDER BY p.origin_ts, p.rowid"
-  |> Sql.parameters [ "b", Sql.string (string branchId) ]
-  |> Sql.executeAsync (fun read ->
-    BS.PT.PackageOp.deserialize (read.uuid "id") (read.bytes "op_blob"))
-
 /// MERGE into a NON-MAIN parent: the parent is an overlay, never materialized in main's
 /// projections, so we do NOT flip effective / fold (that would leak the child into main). Instead
 /// RETAG the child's frontier ops onto the parent, whose overlay folds them when a process runs

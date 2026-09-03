@@ -61,6 +61,7 @@
     <Compile Include="UnguardedOrigins.Tests.fs" />
     <Compile Include="OpsProjections.Tests.fs" />
     <Compile Include="Lww.Tests.fs" />
+    <Compile Include="PropagationPolicy.Tests.fs" />
     <Compile Include="AtRestTypeChecker.Tests.fs" />
     <Compile Include="MultiInstance.Tests.fs" />
     <Compile Include="Stream.Tests.fs" />

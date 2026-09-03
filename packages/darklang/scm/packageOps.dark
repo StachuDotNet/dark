@@ -17,7 +17,7 @@ let add
   (branchId: Uuid)
   (ops: List<LanguageTools.ProgramTypes.PackageOp>)
   : Stdlib.Result.Result<Int, String> =
-  Builtin.scmAddOps branchId ops
+  Builtin.scmAddOps branchId (Lineage.recordPrevious ops)
 
 
 /// THE authoring boundary: stabilize a batch and store it, refusing what stabilization would corrupt.
@@ -862,12 +862,26 @@ let mergeBranch (branchId: Uuid) : Stdlib.Result.Result<MergeOutcome, String> =
 
   let conflicts = branchPreview branchId
 
-  match Builtin.scmMergeBranch branchId with
+  let parent = branchParentOf branchId
+
+  // Which arm: into MAIN the frontier flips effective and folds; into a branch-off-a-branch it only
+  // retags onto the parent, whose own overlay folds it later. Folding there would leak the child's work
+  // into main, which nobody asked to merge.
+  let merged =
+    if SCM.Ids.isMain parent then
+      Builtin.scmMergeIntoMain branchId
+    else
+      Builtin.scmRetagOntoParent branchId parent
+
+  match merged with
   | Ok n ->
+    // Say so in the log too, so the machine your colleague is on learns the branch is finished. The
+    // local projections are already updated by the arm above; this is only how the OTHER machine learns.
+    let _ = Builtin.scmRecordBranchMerged branchId
+
     // Filed against the PARENT, not against `branchId`: the merge folded into the parent's projection and
     // the branch it came from is finished. `parent_id` and a branch id spell main the same way, so the id
     // goes through as-is; translating it here is what made main's conflict list never see them.
-    let parent = branchParentOf branchId
     let _ = Conflicts.record parent conflicts
 
     (MergeOutcome { merged = n; conflicts = conflicts })
@@ -879,6 +893,23 @@ let mergeBranch (branchId: Uuid) : Stdlib.Result.Result<MergeOutcome, String> =
 type RebaseOutcome =
   { message: String
     conflicts: List<Conflicts.Conflict> }
+
+
+/// What a rebase reconciled, said to the person who ran it.
+///
+/// Names the parent by NAME, never by id: a bare uuid where a branch name belongs is exactly what the
+/// boundary rule exists to prevent, and main's id renders as one.
+let rebaseMessage (parentId: Uuid) (changed: List<String>) : String =
+  let parentName = branchName parentId
+
+  match changed with
+  | [] ->
+    $"already current with \"{parentName}\" -- nothing to reconcile; merge is ready"
+  | names ->
+    let n = Stdlib.Int.toString (Stdlib.List.length names)
+    let listed = Stdlib.String.join names "\n  "
+
+    $"rebased onto \"{parentName}\". it had changed {n} name(s) you also touched:\n  {listed}\nyour branch's versions win by recency on merge -- re-author any you want to take the parent's version of."
 
 
 /// Rebase a branch: accept the parent's current state as the new base; reports the names the parent changed
@@ -893,8 +924,9 @@ let rebaseBranch (branchId: Uuid) : Stdlib.Result.Result<RebaseOutcome, String> 
 
   let conflicts = branchPreview branchId
 
-  match Builtin.scmRebaseBranch branchId with
-  | Ok msg ->
+  match Builtin.scmRebaseOntoParent branchId with
+  | Ok changed ->
+    let msg = rebaseMessage (branchParentOf branchId) changed
     // The mirror of merge: a rebase folds the PARENT's work into the branch, so the conflict is the
     // branch's to answer and stays with it.
     let _ = Conflicts.record branchId conflicts
@@ -939,7 +971,26 @@ let resolveConflict
   (name: String)
   (choice: String)
   : Stdlib.Result.Result<String, String> =
-  Builtin.scmResolveConflict branchId name choice
+  let resolved =
+    match choice with
+    | "mine" ->
+      Builtin.scmResolveKeepMine branchId name
+      |> Stdlib.Result.map (fun _ ->
+        $"kept the branch's {name} (it now wins on merge)")
+    | "theirs" ->
+      Builtin.scmResolveTakeTheirs branchId name
+      |> Stdlib.Result.map (fun _ ->
+        $"took the parent's {name} (dropped the branch's binding)")
+    | other ->
+      Stdlib.Result.Result.Error
+        $"unknown choice \"{other}\" -- use \"mine\" or \"theirs\""
+
+  match resolved with
+  | Ok kept ->
+    // The branch by NAME: this line is read by a person, and the id is a uuid.
+    Stdlib.Result.Result.Ok
+      $"resolved {name} on \"{branchName branchId}\": {kept}."
+  | Error e -> Stdlib.Result.Result.Error e
 
 
 /// Archive (soft-delete) a branch, discarding its unmerged ops.

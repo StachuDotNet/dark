@@ -34,6 +34,11 @@ module Helpers =
     Darklang.SCM.Propagation.shouldFollowIn choices (Helpers.loc modules name)
 
 
+// The KEY ORDER is the half that crosses the language boundary: the cascade resolves it in F#
+// (`LibDB.Propagation.candidateKeys`) while it rewrites ASTs, and `dark propagate policy` resolves it here
+// to tell a person what is in force. Disagree and the report names a policy the cascade did not apply --
+// a pin you can see and cannot rely on. The rows below are the SAME rows as
+// `backend/tests/Tests/PropagationPolicy.Tests.fs`. Change one, change both.
 module CandidateOrder =
   // The item itself first, then the module chain from innermost outward, then owner-wide ("", "").
   // Getting this order wrong doesn't error, it just quietly applies the wrong person's decision.
@@ -45,6 +50,13 @@ module CandidateOrder =
 
   // A top-level item still gets the owner-wide fallback, and nothing else.
   (Darklang.SCM.Propagation.candidateKeys (Helpers.loc [] "f")) = [ ("", "f"); ("", "") ]
+
+  // A MODULE target (name = "") asks the same question with an empty name, so its first candidate is its
+  // own module row rather than an item row that cannot exist. The repeat is not a bug: the item key and
+  // the innermost module key coincide, and de-duplicating them would cost a pass over the list to change
+  // nothing, since the first hit wins either way.
+  (Darklang.SCM.Propagation.candidateKeys (Helpers.loc [ "A"; "B" ] "")) =
+    [ ("A.B", ""); ("A.B", ""); ("A", ""); ("", "") ]
 
 
 module Defaults =

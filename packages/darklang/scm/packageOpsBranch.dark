@@ -356,3 +356,33 @@ let branchHashHistoryFor
     // function exists to return with lexicographic HASH order.
     |> Stdlib.List.dedup
   | Error _ -> []
+
+
+/// A branch's OWN frontier ops, oldest-first: its authoring history, for `dark log <branch>` (the
+/// SEQUENCE, complementary to `diff`'s net effect). Just this branch's tag, NOT the parent chain.
+///
+/// Skips an op this build cannot decode rather than raising on it. A synced store's log holds a peer's
+/// ops on a format this binary does not know, stored and left unapplied on purpose, and a history
+/// listing is the last thing that should die because one of them is in the way.
+let branchOps (branchId: Uuid) : List<LanguageTools.ProgramTypes.PackageOp> =
+  match
+    Stdlib.Sqlite.queryP
+      (localDb ())
+      "SELECT p.id, p.op_blob FROM package_ops p
+       JOIN op_branches ob ON ob.op_id = p.id
+       WHERE ob.branch_id = @p0
+       ORDER BY p.origin_ts, p.rowid"
+      [ Stdlib.Uuid.toString branchId ]
+  with
+  | Ok rows ->
+    rows
+    |> Stdlib.List.filterMap (fun row ->
+      match
+        (Stdlib.Sqlite.textField row "id", Stdlib.Sqlite.bytesField row "op_blob")
+      with
+      | (Some idStr, Some blob) ->
+        match Stdlib.Uuid.parse idStr with
+        | Ok id -> tryDecodeOp id blob
+        | Error _ -> Stdlib.Option.Option.None
+      | _ -> Stdlib.Option.Option.None)
+  | Error _ -> []
