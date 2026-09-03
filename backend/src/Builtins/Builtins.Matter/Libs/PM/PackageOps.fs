@@ -480,33 +480,6 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       previewable = Impure
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
-    // COLLAPSE the draft's superseded namings, at commit. Five edits to one function leave five namings of
-    // it, four of which describe a version that stopped being what the name meant before anyone else saw
-    // it. Returns how many ops went.
-    { name = fn "scmCollapseDraft" 0
-      typeParams = []
-      parameters = [ Param.make "unit" TUnit "" ]
-      returnType = TypeReference.result TInt TString
-      description =
-        "Collapse the draft's superseded namings, keeping the last binding per "
-        + "name. Returns how many ops were dropped."
-      fn =
-        let resultOk = Dval.resultOk KTInt KTString
-        let resultError = Dval.resultError KTInt KTString
-        (function
-        | _, _, _, [| DUnit |] ->
-          uply {
-            match! LibDB.Draft.collapse () with
-            | Ok n -> return resultOk (Dval.int (bigint (int n)))
-            | Error e -> return resultError (Dval.string e)
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
     // One page of the sync wire format, rendered straight from the database.
     { name = fn "scmExportPageJson" 0
       typeParams = []
@@ -591,48 +564,6 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       previewable = Impure
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
-
-
-    // UN-STAGE the repoint the draft holds for one name: what a PIN does before commit.
-    //
-    // A pin is retroactive -- by the time you decide something shouldn't have followed, it already has.
-    // Before commit, saying so by dropping the staged repoint is better than saying so by authoring a
-    // rebinding op: the second records a decision you're still in the middle of making, permanently.
-    //
-    // 0 means there was nothing staged (the binding is committed, or you authored it yourself), and the
-    // caller then takes the post-commit path.
-    { name = fn "scmUnstageRepoint" 0
-      typeParams = []
-      parameters =
-        [ Param.make "owner" TString ""
-          Param.make "modules" TString "dot-separated, \"\" for none"
-          Param.make "name" TString "" ]
-      returnType = TypeReference.result TInt TString
-      description =
-        "Drop the draft's propagated binding for one name. Returns how many ops "
-        + "were dropped; 0 when nothing was staged for it."
-      fn =
-        let resultOk = Dval.resultOk KTInt KTString
-        let resultError = Dval.resultError KTInt KTString
-        (function
-        | _, _, _, [| DString owner; DString modules; DString name |] ->
-          uply {
-            let loc : PT.PackageLocation =
-              { owner = owner
-                modules = if modules = "" then [] else String.split "." modules
-                name = name }
-
-            match! LibDB.Draft.unstageRepoint loc with
-            | Ok n -> return resultOk (Dval.int (bigint (int n)))
-            | Error e -> return resultError (Dval.string e)
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
     // ARCHIVING a branch travels, for the same reason merging does: on the other machine the branch is
     // still sitting there looking like live work. The archive itself is Dark's -- `SCM.Branches.archive`
     // owns that column and has already written it -- so all this does is author the op that says so.

@@ -344,7 +344,7 @@ let previousHash
 let unstageRepoint
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   : Stdlib.Result.Result<Int, String> =
-  Builtin.scmUnstageRepoint loc.owner (modulesOf loc) loc.name
+  SCM.Draft.unstageRepoint loc
 
 
 /// Point <param loc> back at <param hash>, as an ordinary SetName op.
