@@ -83,7 +83,14 @@ let allChoices () : List<Choice> =
         [ Stdlib.Uuid.toString branchId ]
     with
     | Ok rs -> rs |> Stdlib.List.filterMap choiceFromRow
-    | Error _ -> []
+    // RAISE, not `[]`. Every reader of this list treats "no row" as FOLLOW, so a failed read would turn
+    // every pin in the store into a follow and propagation would repoint the things someone explicitly
+    // told it to leave alone -- silently, with the pin still showing in `dark propagate`. A pin that
+    // cannot be read is not a pin that is absent, and the only honest answer is to stop.
+    | Error e ->
+      Builtin.unwrap
+        (Stdlib.Result.Result.Error
+          $"couldn't read propagation policy, so no pin can be trusted: {e}")
 
   if SCM.Ids.isMain branch then
     rows SCM.Ids.mainBranchId

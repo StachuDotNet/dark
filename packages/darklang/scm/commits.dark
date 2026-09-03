@@ -70,7 +70,7 @@ let create
   let hash = mintHash message author stamp opIds parent
 
   let _ =
-    Stdlib.Sqlite.execP
+    Stdlib.Sqlite.mustExec
       (localDb ())
       "INSERT OR REPLACE INTO commits (hash, message, author, origin_ts, parent)
        VALUES (@p0, @p1, @p2, @p3, @p4)"
@@ -111,7 +111,7 @@ let recent (limit: Int64) : List<Commit> =
 /// this owns the table.
 let delete (hash: String) : Unit =
   let _ =
-    Stdlib.Sqlite.execP (localDb ()) "DELETE FROM commits WHERE hash = @p0" [ hash ]
+    Stdlib.Sqlite.mustExec (localDb ()) "DELETE FROM commits WHERE hash = @p0" [ hash ]
 
   ()
 

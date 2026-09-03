@@ -310,7 +310,7 @@ let stampDraftFor (branchId: Uuid) (commitHash: String) : Int64 =
       [ commitHash, Stdlib.Uuid.toString branchId ]
 
   let _ =
-    Stdlib.Sqlite.execP
+    Stdlib.Sqlite.mustExec
       (localDb ())
       ("UPDATE package_ops SET commit_hash = @p0 WHERE id IN
           (SELECT p.id FROM package_ops p WHERE " ++ where ++ ")")
@@ -345,31 +345,35 @@ let stampDraftOpsFor
   if Stdlib.List.isEmpty opIds then
     0L
   else
-    let quoted =
+    // One UPDATE per id, every value BOUND, all in one transaction. This used to splice the ids into an
+    // `IN (...)` by string, which was safe only because the ids came out of this store's own `id` column;
+    // nothing about the code said so, and everything else here binds. Bound is the shape a reader can
+    // trust without tracing where the values came from.
+    //
+    // The statement is scoped by `draftWhere` as well as by id, so an id that is not in the draft (already
+    // committed, or another branch's) updates nothing. Each row's affected-count reports that, which is
+    // also where the return value comes from: no separate pre-count, so nothing to disagree with.
+    let params = draftParams branchId
+    let positional = Stdlib.List.length params
+
+    // `draftWhere` binds @p0 when there is a branch. The commit hash and the id follow it.
+    let where = draftWhere branchId
+    let hashSlot = $"@p{Stdlib.Int.toString positional}"
+    let idSlot = $"@p{Stdlib.Int.toString (positional + 1)}"
+
+    let rows =
       opIds
-      |> Stdlib.List.map (fun id -> $"'{id}'")
-      |> Stdlib.String.join ", "
+      |> Stdlib.List.map (fun id -> Stdlib.List.append params [ commitHash, id ])
 
-    let scoped = $"({draftWhere branchId}) AND p.id IN ({quoted})"
-
-    let before =
-      match
-        Stdlib.Sqlite.queryOneP
-          (localDb ())
-          $"SELECT count(*) AS n FROM package_ops p WHERE {scoped}"
-          (draftParams branchId)
-      with
-      | Some row -> Stdlib.Sqlite.intField row "n" |> Stdlib.Option.withDefault 0L
-      | None -> 0L
-
-    let _ =
-      Stdlib.Sqlite.execP
-        (localDb ())
-        ("UPDATE package_ops SET commit_hash = @p0 WHERE id IN
-            (SELECT p.id FROM package_ops p WHERE " ++ scoped ++ ")")
-        (draftParams branchId |> Stdlib.List.push commitHash)
-
-    before
+    Stdlib.Sqlite.mustExecBatch
+      (localDb ())
+      [ ("UPDATE package_ops SET commit_hash = " ++ hashSlot ++ " WHERE id = " ++ idSlot
+         ++ " AND id IN (SELECT p.id FROM package_ops p WHERE " ++ where ++ ")",
+         rows) ]
+    // Per-row counts are `Int`; this reports `Int64`. `toInt64` is an Option because an Int is
+    // unbounded, which an affected-row count is not, so `0L` stands in for the impossible case.
+    |> Stdlib.List.fold 0L (fun acc n ->
+      acc + (Stdlib.Int.toInt64 n |> Stdlib.Option.withDefault 0L))
 
 
 let stampDraftOps (commitHash: String) (opIds: List<String>) : Int64 =
@@ -396,7 +400,7 @@ let discardBranchDraft (branchId: Uuid) : Int64 =
   let n = draftOpCountFor branchId
 
   let _ =
-    Stdlib.Sqlite.execP
+    Stdlib.Sqlite.mustExec
       (localDb ())
       // Only ops no OTHER branch holds -- see the same guard in `Branches.archive`.
       "DELETE FROM package_ops WHERE commit_hash IS NULL
@@ -405,7 +409,7 @@ let discardBranchDraft (branchId: Uuid) : Int64 =
       [ Stdlib.Uuid.toString branchId ]
 
   let _ =
-    Stdlib.Sqlite.execP
+    Stdlib.Sqlite.mustExec
       (localDb ())
       "DELETE FROM op_branches WHERE branch_id = @p0
         AND op_id NOT IN (SELECT id FROM package_ops)"
@@ -482,7 +486,7 @@ let discardDraftName
         [ Stdlib.Uuid.toString branchId, owner, mods, name ]
 
     let _ =
-      Stdlib.Sqlite.execP
+      Stdlib.Sqlite.mustExec
         (localDb ())
         "DELETE FROM op_branches WHERE branch_id = @p0
           AND op_id NOT IN (SELECT id FROM package_ops)"

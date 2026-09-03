@@ -104,7 +104,9 @@ let writeAllowed (req: HttpRequest) : Stdlib.Result.Result<Unit, String> =
             trimmed
       | None -> ""
 
-    if presented == expected then
+    // Constant time: `==` stops at the first wrong character, and how long the relay took to say no
+    // would then say how many leading characters were right.
+    if Stdlib.Crypto.constantTimeEquals presented expected then
       Stdlib.Result.Result.Ok()
     else if presented == "" then
       Stdlib.Result.Result.Error

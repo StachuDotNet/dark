@@ -63,6 +63,26 @@ let execBatch
 let exec (dbPath: String) (sql: String) : Stdlib.Result.Result<Int, String> =
   execP dbPath sql []
 
+/// <fn execP> for a write the caller has no way to recover from: a failure RAISES, carrying SQLite's
+/// message, rather than coming back as a Result to be dropped on the floor.
+///
+/// This exists because `let _ = Stdlib.Sqlite.execP ...` had spread across the SCM code, and every one
+/// of those was a write whose failure went nowhere: the caller printed "archived" or "recorded" on the
+/// strength of the call returning at all. A write that fails and says nothing is worse than one that
+/// crashes, because the crash at least tells you the store and your belief about it have parted ways.
+///
+/// Use <fn execP> when a failure is a case the caller handles. Use this when it is not.
+let mustExec (dbPath: String) (sql: String) (params: List<String>) : Int =
+  Builtin.unwrap (execP dbPath sql params)
+
+
+/// <fn execBatch>, raising on failure. Same reasoning as <fn mustExec>.
+let mustExecBatch
+  (dbPath: String)
+  (statements: List<(String * List<List<String>>)>)
+  : List<Int> =
+  Builtin.unwrap (execBatch dbPath statements)
+
 /// Like <fn query> but binds <param params> to @p0..@pN placeholders (injection-safe). The single caller of
 /// the query builtin — <fn query> delegates here.
 let queryP

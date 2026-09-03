@@ -404,7 +404,7 @@ let hasSyncBases (sourceId: String) : Bool =
 /// decoding every op blob in Dark just to narrow the list would cost far more than it buys.
 let recordAllSyncBases (sourceId: String) : Unit =
   let _ =
-    Stdlib.Sqlite.execP
+    Stdlib.Sqlite.mustExec
       (localDb ())
       "INSERT INTO sync_bases (source_id, owner, modules, name, base_hash)
        SELECT @p0, owner, modules, name, item_hash FROM locations WHERE unlisted_at IS NULL
@@ -539,7 +539,7 @@ let getByIdPrefix (rawPrefix: String) : Stdlib.Option.Option<Conflict> =
 /// Close a conflict: 'acked' (the auto-pick stands) or 'overridden' (a resolution op took over).
 let setStatus (id: String) (status: String) (resolvedBy: String) : Unit =
   let _ =
-    Stdlib.Sqlite.execP
+    Stdlib.Sqlite.mustExec
       (localDb ())
       "UPDATE conflicts SET status = @p1, resolved_by = @p2 WHERE id = @p0"
       [ id, status, resolvedBy ]
