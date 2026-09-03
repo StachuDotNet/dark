@@ -335,15 +335,16 @@ let executeApprove (state: AppState) (queue: String) : AppState =
   state
 
 /// REJECT a review queue: discard its staged (unapproved) ops.
-let executeReject (state: AppState) (queue: String) : AppState =
-  match Cli.Branch.resolveRef queue with
-  | None -> state
-  | Some queueId ->
-    match SCM.PackageOps.archiveBranch queueId with
-    | Ok _ -> printOk $"Rejected \"{queue}\" -- its staged ops were discarded."
-    | Error e -> printErr $"Reject failed: {e}"
-
-    state
+/// Rejecting a review queue discards what is staged on it. That is `branch archive` under another
+/// name, and it asks the same way: what would go, then an explicit yes a pipe cannot give. Worth
+/// the question here especially, because `resolveRef` matches ANY branch by name -- `dark review
+/// reject my-feature` would have thrown away a feature branch's unmerged work without a word.
+let executeReject
+  (state: AppState)
+  (queue: String)
+  (autoConfirm: Bool)
+  : AppState =
+  Cli.Branch.executeArchive state queue autoConfirm
 
 /// Push this instance's op log to a relay UNDER YOUR IDENTITY, so you can pull it back from
 /// any machine. The relay stores + forwards; it never runs the ops. Content-addressed re-push
@@ -960,12 +961,15 @@ let executeReviewCmd (state: AppState) (args: List<String>) : AppState =
   | [ "import", path ] -> executeReviewImport state path "review"
   | [ "import", path, queue ] -> executeReviewImport state path queue
   | [ "approve", queue ] -> executeApprove state queue
-  | [ "reject", queue ] -> executeReject state queue
+  | [ "reject", queue ] -> executeReject state queue false
+  | [ "reject", queue, "-y" ] | [ "reject", queue, "--yes" ] ->
+    executeReject state queue true
   // The queue defaults to "review" everywhere else here, and the help says so. Without these arms a bare
   // `dark review approve` fell through to the single-word arm below, which reads the word as a QUEUE NAME
   // and answered `no branch "approve"` -- an error about a queue nobody asked for.
   | [ "approve" ] -> executeApprove state "review"
-  | [ "reject" ] -> executeReject state "review"
+  | [ "reject" ] -> executeReject state "review" false
+  | [ "reject", "-y" ] | [ "reject", "--yes" ] -> executeReject state "review" true
   // `import` has no default to fall back on: it takes a file, and the same fall-through turned a missing
   // one into `no branch "import"`.
   | [ "import" ] ->
