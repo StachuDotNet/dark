@@ -411,7 +411,8 @@ let parentHashesAgreeAcrossLanguages =
 /// The other half of the rule is that skipping one for READING never becomes dropping it for WRITING:
 /// the junk op is still in the table at the end of this.
 let undecodableBranchOpIsSkippedNotFatal =
-  testTask "an op the build can't decode is skipped by the overlay, and survives in the log" {
+  testTask
+    "an op the build can't decode is skipped by the overlay, and survives in the log" {
     let bid = testBranch "undecodable-overlay"
     do! cleanupBranch bid
 
@@ -430,8 +431,7 @@ let undecodableBranchOpIsSkippedNotFatal =
           "blob", Sql.bytes [| 0xFFuy; 0xFEuy; 0xFDuy; 0xFCuy |] ]
       |> Sql.executeStatementAsync
     do!
-      Sql.query
-        "INSERT INTO op_branches (op_id, branch_id) VALUES (@id, @b)"
+      Sql.query "INSERT INTO op_branches (op_id, branch_id) VALUES (@id, @b)"
       |> Sql.parameters
         [ "id", Sql.string (string junkId); "b", Sql.string (string bid) ]
       |> Sql.executeStatementAsync
@@ -493,8 +493,7 @@ let overlaySearchAgreesWithFindFn =
         entityTypes = []
         exactMatch = true }
 
-    let! (results : PT.Search.SearchResults) =
-      overlay.search query |> Ply.toTask
+    let! (results : PT.Search.SearchResults) = overlay.search query |> Ply.toTask
 
     let found =
       results.fns
@@ -510,6 +509,56 @@ let overlaySearchAgreesWithFindFn =
       (found |> List.map (fun f -> f.entity.hash))
       [ Option.get bound ]
       "and it is the version the location map binds"
+
+    do! cleanupBranch bid
+  }
+
+/// A version a branch has edited PAST still has a name.
+///
+/// The live lookup folds last-wins per location, so it answers about the newest and nothing else, and
+/// main's `getLocationsEverNamed` reads `locations`, which a branch never writes. Between them a
+/// superseded branch version had no name at all, and `dark log` rendered it `<hash:...>` while the
+/// newest in the same listing showed its name.
+///
+/// A fallback, not an alternative: the live name still wins while there is one.
+let supersededBranchVersionsKeepTheirName =
+  testTask
+    "a version the branch has edited past is still named, not rendered as a hash" {
+    let bid = testBranch "ever-named"
+    do! cleanupBranch bid
+    do! Branches.createBranch bid "ever-named" PT.BranchId.Main
+
+    let! firstOps = opsFor (namedSource "EverNamed" 1)
+    let! _ = Branches.storeDeltaOps bid firstOps
+    let! secondOps = opsFor (namedSource "EverNamed" 2)
+    let! _ = Branches.storeDeltaOps bid secondOps
+
+    let hashOf (ops : List<PT.PackageOp>) =
+      ops
+      |> List.tryPick (fun op ->
+        match op with
+        | PT.PackageOp.SetName(_, PT.PackageFn h, _) -> Some h
+        | _ -> None)
+
+    let superseded = (hashOf firstOps).Value
+    let live = (hashOf secondOps).Value
+    Expect.notEqual
+      superseded
+      live
+      "the two authorings really are different versions"
+
+    let liveNames =
+      PM.branchLocationsFor bid PT.ItemKind.Fn live |> List.map (fun l -> l.name)
+    Expect.equal liveNames [ "foo" ] "the live version is named by the live lookup"
+
+    Expect.isEmpty
+      (PM.branchLocationsFor bid PT.ItemKind.Fn superseded)
+      "and the superseded one is not -- that is what the fallback is for"
+
+    let everNames =
+      PM.branchLocationsEverNamed bid PT.ItemKind.Fn superseded
+      |> List.map (fun l -> l.name)
+    Expect.equal everNames [ "foo" ] "the fallback recovers the name it had"
 
     do! cleanupBranch bid
   }
@@ -1795,6 +1844,7 @@ let tests =
       parentHashesAgreeAcrossLanguages
       undecodableBranchOpIsSkippedNotFatal
       overlaySearchAgreesWithFindFn
+      supersededBranchVersionsKeepTheirName
       storeThenOverlay
       mergedBranchStaysAddressable
       concurrentCreateYieldsOneBranch
