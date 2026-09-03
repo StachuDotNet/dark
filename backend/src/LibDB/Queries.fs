@@ -428,40 +428,6 @@ let getCommitOps (commitHash : Hash) : Task<List<PT.PackageOp>> =
   }
 
 
-// ===========================================
-// Propagation Queries
-// ===========================================
-
-/// Gets all Hashes that have ever been at a location.
-/// Returns all distinct item_hashs (active or deprecated) at this location.
-/// Callers should filter out the "current" hash to get only previous versions.
-let getAllPreviousHashes
-  (owner : string)
-  (modules : string)
-  (name : string)
-  (itemType : string)
-  : Task<List<Hash>> =
-  task {
-    return!
-      Sql.query
-        """
-        SELECT item_hash
-        FROM locations
-        WHERE owner = @owner
-          AND modules = @modules
-          AND name = @name
-          AND item_type = @item_type
-        GROUP BY item_hash
-        ORDER BY MAX(CASE WHEN unlisted_at IS NULL THEN '9999-12-31' ELSE unlisted_at END) DESC
-        """
-      |> Sql.parameters
-        [ "owner", Sql.string owner
-          "modules", Sql.string modules
-          "name", Sql.string name
-          "item_type", Sql.string itemType ]
-      |> Sql.executeAsync (fun read -> Hash(read.string "item_hash"))
-  }
-
 
 /// Current deprecation state for a single item.
 /// None -> not deprecated.

@@ -37,7 +37,7 @@ let getAllPreviousHashes
   (location: LanguageTools.ProgramTypes.PackageLocation)
   (itemKind: LanguageTools.ProgramTypes.ItemKind)
   : List<LanguageTools.ProgramTypes.Hash> =
-  let fromMain = Builtin.pmGetAllPreviousHashes location itemKind
+  let fromMain = SCM.Propagation.everBoundHashes location itemKind
 
   if SCM.Ids.isMain branchId then
     fromMain
