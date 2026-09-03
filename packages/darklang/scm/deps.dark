@@ -109,7 +109,7 @@ let dependentsOf
              AND pd.depends_on_modules = @p2
              AND pd.depends_on_name = @p3
            ORDER BY l.item_hash"
-          [ kindString kind; loc.owner; modules; loc.name ]
+          [ kindString kind, loc.owner, modules, loc.name ]
       with
       | Ok rows ->
         rows
@@ -148,7 +148,7 @@ let dependentsOf
                AND pd.depends_on_modules = @p2
                AND pd.depends_on_name = @p3
              ORDER BY pd.item_hash"
-            [ kindString kind; loc.owner; modules; loc.name ]
+            [ kindString kind, loc.owner, modules, loc.name ]
         with
         | Ok rows ->
           rows

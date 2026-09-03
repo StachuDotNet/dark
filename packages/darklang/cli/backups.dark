@@ -118,7 +118,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | [] -> executeList state
   | [ "list" ] -> executeList state
   | [ "now" ] -> executeNow state
-  | [ "prune"; keep ] -> executePrune state keep
+  | [ "prune", keep ] -> executePrune state keep
   | [ "prune" ] ->
     printErr "prune needs how many to keep: `dark backups prune 3`."
     state
@@ -146,5 +146,5 @@ let complete
   (args: List<String>)
   : List<Completion.CompletionItem> =
   match args with
-  | [] -> [ "list"; "now"; "prune" ] |> Stdlib.List.map Completion.simple
+  | [] -> [ "list", "now", "prune" ] |> Stdlib.List.map Completion.simple
   | _ -> []

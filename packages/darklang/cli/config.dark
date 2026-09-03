@@ -108,7 +108,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     Stdlib.printLine line
     state
 
-  | ["set-entry"; fnName] ->
+  | ["set-entry", fnName] ->
     let _ = Builtin.configSet "entry_point" fnName
     let msg =
       if Stdlib.String.isEmpty fnName then

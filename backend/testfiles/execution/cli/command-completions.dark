@@ -23,11 +23,11 @@ CompletionSweep.sweep [ "" ] = true
 CompletionSweep.sweep [ "fea" ] = true
 
 // a subcommand, then Tab for its argument -- the arm that reads the store
-CompletionSweep.sweep [ "show"; "" ] = true
-CompletionSweep.sweep [ "push"; "fea" ] = true
+CompletionSweep.sweep [ "show", "" ] = true
+CompletionSweep.sweep [ "push", "fea" ] = true
 
 // more arguments than any command takes; nothing should throw reaching for a word that isn't there
-CompletionSweep.sweep [ "a"; "b"; "c"; "d" ] = true
+CompletionSweep.sweep [ "a", "b", "c", "d" ] = true
 
 
 // --- the SCM commands specifically offer branch names, since those are the ones typed daily ---
@@ -41,10 +41,10 @@ module BranchCompletion =
 
 // a name that exists in no store: the filter runs and matches nothing, rather than the whole list coming back
 BranchCompletion.values [ "zzz-no-such-branch" ] = []
-BranchCompletion.values [ "switch"; "zzz-no-such-branch" ] = []
+BranchCompletion.values [ "switch", "zzz-no-such-branch" ] = []
 
 // `main` is always a legitimate target for the branch-taking subcommands
-(BranchCompletion.values [ "switch"; "mai" ]) |> Stdlib.List.member "main" = true
+(BranchCompletion.values [ "switch", "mai" ]) |> Stdlib.List.member "main" = true
 
 // a subcommand that takes no branch gets no branch names
-BranchCompletion.values [ "list"; "" ] = []
+BranchCompletion.values [ "list", "" ] = []

@@ -99,7 +99,7 @@ let intField (row: Dict<String, Value>) (col: String) : Stdlib.Option.Option<Int
   | None -> Stdlib.Option.Option.None
 
 /// The Blob value of column <param col> in <param row>, or None if missing/non-blob.
-let bytesField (row: Dict<Value>) (col: String) : Stdlib.Option.Option<Blob> =
+let bytesField (row: Dict<String, Value>) (col: String) : Stdlib.Option.Option<Blob> =
   match Stdlib.Dict.get row col with
   | Some v -> asBytes v
   | None -> Stdlib.Option.Option.None

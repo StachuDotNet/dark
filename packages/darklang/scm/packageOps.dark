@@ -125,7 +125,7 @@ let opBindsAName (blob: Blob) : Bool = Builtin.packageOpBindsAName blob
 /// Decode op-log rows (id, op_blob) into fully-decoded PackageOps. The QUERY is Dark; only the per-row
 /// blob decode is a builtin, so there's no read builtin at all.
 let decodeOpRows
-  (rows: List<Dict<Stdlib.Sqlite.Value>>)
+  (rows: List<Dict<String, Stdlib.Sqlite.Value>>)
   : List<LanguageTools.ProgramTypes.PackageOp> =
   rows
   |> Stdlib.List.filterMap (fun row ->
@@ -195,7 +195,7 @@ let bindingFromOp
 
 /// Fold a run of (op, origin_ts) into "what does this op set BIND", latest-stamp-wins per name. The rows must
 /// arrive oldest-first; the later SetName then overwrites the earlier, which is the binding the fold lands on.
-let bindingsFromOpRows (rows: List<Dict<Stdlib.Sqlite.Value>>) : List<Conflicts.Binding> =
+let bindingsFromOpRows (rows: List<Dict<String, Stdlib.Sqlite.Value>>) : List<Conflicts.Binding> =
   let entries =
     rows
     |> Stdlib.List.filterMap (fun row ->
@@ -307,7 +307,7 @@ let stampDraftFor (branchId: Uuid) (commitHash: String) : Int64 =
     if SCM.Ids.isMain branchId then
       [ commitHash ]
     else
-      [ commitHash; Stdlib.Uuid.toString branchId ]
+      [ commitHash, Stdlib.Uuid.toString branchId ]
 
   let _ =
     Stdlib.Sqlite.execP
@@ -479,7 +479,7 @@ let discardDraftName
           AND id NOT IN (SELECT op_id FROM op_branches WHERE branch_id <> @p0)
           AND id IN (SELECT op_id FROM locations
                      WHERE owner = @p1 AND modules = @p2 AND name = @p3)"
-        [ Stdlib.Uuid.toString branchId; owner; mods; name ]
+        [ Stdlib.Uuid.toString branchId, owner, mods, name ]
 
     let _ =
       Stdlib.Sqlite.execP
@@ -524,7 +524,7 @@ let staleHashesFor (b: Conflicts.Binding) : List<String> =
          SELECT d2.item_hash FROM package_dependencies d2 JOIN stale s ON d2.depends_on_hash = s.hash
        )
        SELECT DISTINCT hash FROM stale"
-      [ b.owner; b.modules; b.name; b.hash ]
+      [ b.owner, b.modules, b.name, b.hash ]
   with
   | Ok rows ->
     rows
@@ -544,7 +544,7 @@ let namesAtContent (branchId: Uuid) (hash: String) (itemType: String) : List<Str
         (localDb ())
         "SELECT owner, modules, name FROM locations
          WHERE item_hash = @p0 AND item_type = @p1 AND unlisted_at IS NULL"
-        [ hash; itemType ]
+        [ hash, itemType ]
     with
     | Ok rows ->
       rows

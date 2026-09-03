@@ -45,7 +45,7 @@ type SyncBundle =
     ops: List<SyncOp> }
 
 /// Turn op-log rows (id, op_blob, ts) into wire records. Shared by the export variants.
-let rowsToSyncOps (rows: List<Dict<Stdlib.Sqlite.Value>>) : List<SyncOp> =
+let rowsToSyncOps (rows: List<Dict<String, Stdlib.Sqlite.Value>>) : List<SyncOp> =
   rows
   |> Stdlib.List.filterMap (fun row ->
     match
@@ -147,7 +147,7 @@ let exportOwnedSince
     Stdlib.Sqlite.queryP
       (PackageOps.localDb ())
       sql
-      [ owner; Stdlib.Int64.toString sinceSeq; Stdlib.Int64.toString relayPageSize ]
+      [ owner, Stdlib.Int64.toString sinceSeq, Stdlib.Int64.toString relayPageSize ]
   with
   | Ok rows ->
     let maxSeq =

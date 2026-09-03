@@ -596,10 +596,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
     state
   | [ "list" ] ->
     if wantsJson then executeJson state else executeList state
-  | [ "show"; name ] ->
+  | [ "show", name ] ->
     // `show` is what an agent polls, so it most needs to answer in JSON.
     if wantsJson then executeJsonFor state name else executeShow state name
-  | [ "unset"; name ] -> executeUnset state name
+  | [ "unset", name ] -> executeUnset state name
   | "pin" :: rest -> executeMany state "pin" rest
   | "follow" :: rest -> executeMany state "follow" rest
   | _ ->

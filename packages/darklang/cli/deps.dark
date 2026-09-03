@@ -19,7 +19,7 @@ type HashedItem =
 let resolveNames
   (branchId: Uuid)
   (itemHashes: List<LanguageTools.ProgramTypes.Hash>)
-  : Dict<String> =
+  : Dict<String, String> =
   Deps.resolveNamesIn branchId [] itemHashes
 
 
@@ -32,7 +32,7 @@ let resolveNamesIn
   (branchId: Uuid)
   (currentModule: List<String>)
   (itemHashes: List<LanguageTools.ProgramTypes.Hash>)
-  : Dict<String> =
+  : Dict<String, String> =
   // The resolver is Dark now (`SCM.Deps`), so the branch is the process's rather than a parameter --
   // same source authoring uses, which is what stops the two disagreeing about where they are.
   (SCM.Deps.resolveLocations itemHashes)
@@ -44,7 +44,7 @@ let resolveNamesIn
 
 /// A displayable name for an item, from a dict `resolveNames` built, falling back to the hash.
 let getName
-  (namesDict: Dict<String>)
+  (namesDict: Dict<String, String>)
   (hash: LanguageTools.ProgramTypes.Hash)
   : String =
   let h = Darklang.LanguageTools.ProgramTypes.hashToString hash
@@ -335,7 +335,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
     |> Stdlib.printLines
     state
 
-  | ["uses"; pathArg] ->
+  | ["uses", pathArg] ->
     match resolvePath branchId state.packageData.currentLocation pathArg with
     | Error errMsg ->
       // Name what you ASKED for, not just where the path stopped resolving: "Not found: Zzz" is true and
@@ -353,7 +353,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
       showDependencies branchId hash name cap
       state
 
-  | ["usedby"; pathArg] ->
+  | ["usedby", pathArg] ->
     match resolvePath branchId state.packageData.currentLocation pathArg with
     | Error errMsg ->
       // Name what you ASKED for as well as where it stopped resolving; see the `uses` arm.
@@ -407,18 +407,18 @@ let complete (state: AppState) (args: List<String>) : List<Completion.Completion
   let branchId = state.currentBranchId
   match args with
   | [] ->
-    [Completion.CompletionItem { display = "uses"; value = "uses" }; Completion.CompletionItem { display = "usedby"; value = "usedby" }]
+    [Completion.CompletionItem { display = "uses"; value = "uses" }, Completion.CompletionItem { display = "usedby"; value = "usedby" }]
   | ["uses"] ->
     Packages.Traversal.completePartialPath branchId state.packageData.currentLocation ""
   | ["usedby"] ->
     Packages.Traversal.completePartialPath branchId state.packageData.currentLocation ""
-  | ["uses"; partialPath] ->
+  | ["uses", partialPath] ->
     Packages.Traversal.completePartialPath branchId state.packageData.currentLocation partialPath
-  | ["usedby"; partialPath] ->
+  | ["usedby", partialPath] ->
     Packages.Traversal.completePartialPath branchId state.packageData.currentLocation partialPath
   | [partialPath] ->
     let subcommands =
-      ["uses"; "usedby"]
+      ["uses", "usedby"]
       |> Stdlib.List.filter (fun cmd -> Stdlib.String.startsWith cmd partialPath)
       |> Stdlib.List.map (fun cmd -> Completion.CompletionItem { display = cmd; value = cmd })
     let paths = Packages.Traversal.completePartialPath branchId state.packageData.currentLocation partialPath

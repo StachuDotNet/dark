@@ -310,7 +310,7 @@ let itemsIn (modulePath: String) : List<(String * String * String)> =
         "SELECT name, item_type, item_hash FROM locations
          WHERE owner = @p0 AND modules = @p1 AND unlisted_at IS NULL
          ORDER BY item_type, name"
-        [ owner; mods ]
+        [ owner, mods ]
     with
     | Ok rows ->
       rows
@@ -527,7 +527,7 @@ let searchItems (q: String) : List<(String * String * String)> =
          LENGTH(l.owner || l.modules || l.name), o, m, n
        LIMIT "
        ++ Stdlib.Int64.toString searchFetchLimit)
-      [ $"%{q}%"; q ]
+      [ $"%{q}%", q ]
   with
   | Ok rows ->
     rows
@@ -988,7 +988,7 @@ let itemHandlerFn (req: HttpRequest) : HttpResponse =
       ((crumbs modulePath)
        ++ (Stdlib.Html.h1
              []
-             [ Stdlib.Html.text leaf; Stdlib.Html.stringNode depBadge ]
+             [ Stdlib.Html.text leaf, Stdlib.Html.stringNode depBadge ]
            |> Stdlib.Html.nodeToString)
        // `&middot;` is markup, not text, so it goes in as a string node; escaping it would print the
        // entity rather than the dot.
@@ -1067,7 +1067,7 @@ let searchHandlerFn (req: HttpRequest) : HttpResponse =
         ($"<h1>{num total} matches</h1>"
          ++ (Stdlib.Html.p
                [ Stdlib.Html.classes [ "lede" ] ]
-               [ Stdlib.Html.text "for "; Stdlib.Html.code [] [ Stdlib.Html.text q ] ]
+               [ Stdlib.Html.text "for ", Stdlib.Html.code [] [ Stdlib.Html.text q ] ]
              |> Stdlib.Html.nodeToString)
          ++ capped
          ++ $"<div class=\"rows\">{rows}</div>")

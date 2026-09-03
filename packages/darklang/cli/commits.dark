@@ -30,7 +30,7 @@ let authorLabel (author: String) : String =
 /// One display row: [short hash; ops committed; author; message].
 let commitRow (c: SCM.Commits.Commit) : List<String> =
   let ops = Stdlib.Int64.toString (SCM.PackageOps.opCountIn c.hash)
-  [ short c.hash; ops; authorLabel c.author; c.message ]
+  [ short c.hash, ops, authorLabel c.author, c.message ]
 
 let executeList (state: AppState) (limit: Int64) : AppState =
   // This branch's commits, not the store's. `dark commits` on a branch used to list main's too, which
@@ -57,7 +57,7 @@ let executeList (state: AppState) (limit: Int64) : AppState =
     printOk header
 
     Stdlib.Cli.UI.Table.print
-      [ "commit"; "ops"; "author"; "message" ]
+      [ "commit", "ops", "author", "message" ]
       (commits |> Stdlib.List.map commitRow)
 
     state

@@ -365,7 +365,7 @@ let rendersMatterItemPage (path: List<String>) : Bool =
 
 let testWorkbenchItemPageRenders (): TestResult =
   // A module of fns, and one of types + values, because the item page branches on what the leaf IS.
-  let paths = [ [ "Darklang"; "Stdlib"; "List" ]; [ "Darklang"; "Stdlib"; "Option" ] ]
+  let paths = [ [ "Darklang", "Stdlib", "List" ], [ "Darklang", "Stdlib", "Option" ] ]
 
   let broken =
     paths |> Stdlib.List.filter (fun p -> Stdlib.Bool.not (rendersMatterItemPage p))

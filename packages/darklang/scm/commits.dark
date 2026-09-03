@@ -74,11 +74,11 @@ let create
       (localDb ())
       "INSERT OR REPLACE INTO commits (hash, message, author, origin_ts, parent)
        VALUES (@p0, @p1, @p2, @p3, @p4)"
-      [ hash; message; author; stamp; parent ]
+      [ hash, message, author, stamp, parent ]
 
   hash
 
-let commitFromRow (row: Dict<Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Commit> =
+let commitFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Commit> =
   let text (col: String) : String =
     Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
 

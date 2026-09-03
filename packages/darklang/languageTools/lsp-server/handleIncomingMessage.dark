@@ -327,7 +327,7 @@ let handleIncomingMessage
         // to whoever picks this up than a timeout: see `Branches.respondUnsupported`.
         | ("dark/renameBranch",
           Some requestId,
-          Some(Object [ ("branchId", String b); ("name", String newName) ])) ->
+          Some(Object [ ("branchId", String b), ("name", String newName) ])) ->
           Branches.handleRenameBranchRequest state requestId b newName
 
         | ("dark/renameBranch", Some requestId, _) ->

@@ -53,8 +53,9 @@ let rec private inTypeRef (t : PT.TypeReference) : List<string> =
 
   | PT.TStream inner
   | PT.TList inner
-  | PT.TDict inner
   | PT.TDB inner -> inTypeRef inner
+
+  | PT.TDict(key, value) -> inTypeRef key @ inTypeRef value
 
   | PT.TTuple(first, second, rest) ->
     inTypeRef first @ inTypeRef second @ List.collect inTypeRef rest

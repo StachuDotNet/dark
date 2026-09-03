@@ -27,7 +27,7 @@ let relayStoreBundle (owner: String) (branchId: Uuid) (bundle: String) : Unit =
     Stdlib.Sqlite.execP
       (localDb ())
       "INSERT OR REPLACE INTO relay_branches (owner, branch_id, bundle) VALUES (@p0, @p1, @p2)"
-      [ owner; Stdlib.Uuid.toString branchId; bundle ]
+      [ owner, Stdlib.Uuid.toString branchId, bundle ]
 
   ()
 
@@ -37,7 +37,7 @@ let relayGetBundle (owner: String) (branchId: Uuid) : String =
     Stdlib.Sqlite.queryOneP
       (localDb ())
       "SELECT bundle FROM relay_branches WHERE owner = @p0 AND branch_id = @p1"
-      [ owner; Stdlib.Uuid.toString branchId ]
+      [ owner, Stdlib.Uuid.toString branchId ]
   with
   | Some row -> Stdlib.Sqlite.textField row "bundle" |> Stdlib.Option.withDefault ""
   | None -> ""
@@ -110,7 +110,7 @@ let ensure (branchId: Uuid) (parentId: Uuid) : Unit =
       (localDb ())
       "INSERT INTO branches (id, name, parent_id) VALUES (@p0, '', @p1)
        ON CONFLICT(id) DO UPDATE SET archived_at = NULL, merged_at = NULL"
-      [ Stdlib.Uuid.toString branchId; Stdlib.Uuid.toString parentId ]
+      [ Stdlib.Uuid.toString branchId, Stdlib.Uuid.toString parentId ]
 
   ()
 
@@ -120,7 +120,7 @@ let setName (branchId: Uuid) (name: String) : Unit =
     Stdlib.Sqlite.execP
       (localDb ())
       "UPDATE branches SET name = @p1 WHERE id = @p0"
-      [ Stdlib.Uuid.toString branchId; name ]
+      [ Stdlib.Uuid.toString branchId, name ]
 
   ()
 
@@ -316,7 +316,7 @@ let nameBases (branchId: Uuid) : List<(String * String * String * String)> =
 /// parent = main means `locations` answers directly. A non-main parent lives only as an OVERLAY, so main's
 /// answer is then overridden by that chain's own rebinds -- the same fold `SCM.PackageOps.chainBindings`
 /// already does, latest stamp per name.
-let parentHashesForBases (parentId: Uuid) (branchId: Uuid) : Dict<String> =
+let parentHashesForBases (parentId: Uuid) (branchId: Uuid) : Dict<String, String> =
   let fromMain =
     match
       Stdlib.Sqlite.queryP
@@ -361,7 +361,7 @@ let parentHashesForBases (parentId: Uuid) (branchId: Uuid) : Dict<String> =
 /// branch forked from is not there any more.
 let divergedIn
   (bases: List<(String * String * String * String)>)
-  (parentHashes: Dict<String>)
+  (parentHashes: Dict<String, String>)
   : List<String> =
   bases
   |> Stdlib.List.filterMap (fun row ->
@@ -411,7 +411,7 @@ let rebase (branchId: Uuid) : Stdlib.Result.Result<List<String>, String> =
         |> Stdlib.Dict.get (nameKey o m n)
         |> Stdlib.Option.withDefault ""
 
-      [ current; Stdlib.Uuid.toString branchId; o; m; n ])
+      [ current, Stdlib.Uuid.toString branchId, o, m, n ])
 
   match updates with
   | [] -> Stdlib.Result.Result.Ok changed
@@ -521,7 +521,7 @@ let setBaseToParent (branchId: Uuid) (key: (String * String * String)) : Unit =
       (localDb ())
       "UPDATE branch_name_bases SET base_hash = @p0
        WHERE branch_id = @p1 AND owner = @p2 AND modules = @p3 AND name = @p4"
-      [ current; Stdlib.Uuid.toString branchId; owner; modules; name ]
+      [ current, Stdlib.Uuid.toString branchId, owner, modules, name ]
 
   ()
 
@@ -545,7 +545,7 @@ let resolveTakeTheirs
           match opBindsKey op key with
           | Some _ ->
             Stdlib.Option.Option.Some
-              [ Stdlib.Uuid.toString id; Stdlib.Uuid.toString branchId ]
+              [ Stdlib.Uuid.toString id, Stdlib.Uuid.toString branchId ]
           | None -> Stdlib.Option.Option.None
         | _ -> Stdlib.Option.Option.None)
 
@@ -670,7 +670,7 @@ let retagFrontierToParent
       (localDb ())
       [ ("INSERT OR IGNORE INTO op_branches (op_id, branch_id)
           SELECT op_id, @p0 FROM op_branches WHERE branch_id = @p1",
-         [ [ Stdlib.Uuid.toString parentId; b ] ])
+         [ [ Stdlib.Uuid.toString parentId, b ] ])
         ("DELETE FROM op_branches WHERE branch_id = @p0", [ [ b ] ])
         ("UPDATE branches SET merged_at = datetime('now') WHERE id = @p0", [ [ b ] ]) ]
   with

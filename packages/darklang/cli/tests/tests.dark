@@ -67,25 +67,25 @@ let testConflictWalkthrough (): TestResult =
   let child = "cli-walk-child-" ++ suffix
   let fnName = "Tests.CliWalk.f" ++ suffix
 
-  let _ = runWithCommand [ "branch"; "create"; parent ]
+  let _ = runWithCommand [ "branch", "create", parent ]
   // A shared base for the name: both sides have to move it from something.
-  let _ = runWithCommand [ "--branch"; parent; "fn"; "/" ++ fnName; "() : Int64 = 1L" ]
-  let _ = runWithCommand [ "--branch"; parent; "branch"; "create"; child ]
-  let _ = runWithCommand [ "--branch"; child; "fn"; "/" ++ fnName; "() : Int64 = 222L" ]
-  let _ = runWithCommand [ "--branch"; parent; "fn"; "/" ++ fnName; "() : Int64 = 111L" ]
+  let _ = runWithCommand [ "--branch", parent, "fn", "/" ++ fnName, "() : Int64 = 1L" ]
+  let _ = runWithCommand [ "--branch", parent, "branch", "create", child ]
+  let _ = runWithCommand [ "--branch", child, "fn", "/" ++ fnName, "() : Int64 = 222L" ]
+  let _ = runWithCommand [ "--branch", parent, "fn", "/" ++ fnName, "() : Int64 = 111L" ]
 
-  let merged = runWithCommand [ "--branch"; child; "merge"; child ]
-  let beforeJson = runWithCommand [ "--branch"; parent; "conflicts"; "--json" ]
+  let merged = runWithCommand [ "--branch", child, "merge", child ]
+  let beforeJson = runWithCommand [ "--branch", parent, "conflicts", "--json" ]
   // `b` takes the other side, which is the answer that has to WRITE something.
-  let walked = runWithStdinAndCommand "b\n" [ "--branch"; parent; "conflicts"; "walk" ]
-  let afterJson = runWithCommand [ "--branch"; parent; "conflicts"; "--json" ]
-  let onMain = runWithCommand [ "--branch"; "main"; "eval"; fnName ++ " ()" ]
+  let walked = runWithStdinAndCommand "b\n" [ "--branch", parent, "conflicts", "walk" ]
+  let afterJson = runWithCommand [ "--branch", parent, "conflicts", "--json" ]
+  let onMain = runWithCommand [ "--branch", "main", "eval", fnName ++ " ()" ]
 
   // Archive before asserting, not after: every arm below returns, so a cleanup at the end runs only
   // when the test passes. These branches are otherwise permanent -- a dev store had 79 of them, all
   // empty, all from tests, which is most of what `dark branches` had to say.
-  let _ = runWithCommand [ "branch"; "archive"; child ]
-  let _ = runWithCommand [ "branch"; "archive"; parent ]
+  let _ = runWithCommand [ "branch", "archive", child ]
+  let _ = runWithCommand [ "branch", "archive", parent ]
 
   if Stdlib.Bool.not (Stdlib.String.contains merged "conflict") then
     TestResult.Fail $"Expected the merge to record a conflict; got: {merged}"
@@ -340,22 +340,22 @@ let testMergeRoundTrip (): TestResult =
   let child = "cli-merge-child-" ++ suffix
   let fnName = "Tests.CliMerge.landed" ++ suffix
 
-  let _ = runWithCommand [ "branch"; "create"; parent ]
-  let _ = runWithCommand [ "--branch"; parent; "branch"; "create"; child ]
+  let _ = runWithCommand [ "branch", "create", parent ]
+  let _ = runWithCommand [ "--branch", parent, "branch", "create", child ]
   let _ =
     runWithCommand
-      [ "--branch"; child; "fn"; "/" ++ fnName; "() : Int64 = 7L" ]
+      [ "--branch", child, "fn", "/" ++ fnName, "() : Int64 = 7L" ]
 
   // --dry-run records nothing, so it has to answer the same question the merge does without doing it.
-  let dryRun = runWithCommand [ "--branch"; child; "merge"; child; "--dry-run" ]
-  let merged = runWithCommand [ "--branch"; child; "merge"; child ]
-  let onParent = runWithCommand [ "--branch"; parent; "eval"; fnName ++ " ()" ]
-  let onMain = runWithCommand [ "--branch"; "main"; "eval"; fnName ++ " ()" ]
+  let dryRun = runWithCommand [ "--branch", child, "merge", child, "--dry-run" ]
+  let merged = runWithCommand [ "--branch", child, "merge", child ]
+  let onParent = runWithCommand [ "--branch", parent, "eval", fnName ++ " ()" ]
+  let onMain = runWithCommand [ "--branch", "main", "eval", fnName ++ " ()" ]
 
   // Archived before the assertions, because each arm returns and a trailing cleanup would only run
   // on the passing path.
-  let _ = runWithCommand [ "branch"; "archive"; child ]
-  let _ = runWithCommand [ "branch"; "archive"; parent ]
+  let _ = runWithCommand [ "branch", "archive", child ]
+  let _ = runWithCommand [ "branch", "archive", parent ]
 
   if Stdlib.String.contains dryRun "ERROR:" then
     TestResult.Fail $"`merge --dry-run` failed: {dryRun}"
@@ -477,14 +477,14 @@ let testHarmfulGate (): TestResult =
   let suffix = Stdlib.Int.toString (Stdlib.Int.random 100000 999999)
   let fnName = $"Tests.HarmGate.g{suffix}"
 
-  let _ = runWithCommand [ "fn"; fnName; "(x: Int64) : Int64 = Stdlib.Int64.add x 31L" ]
+  let _ = runWithCommand [ "fn", fnName, "(x: Int64) : Int64 = Stdlib.Int64.add x 31L" ]
 
   let _ =
     runWithCommand
-      [ "deprecate"; "fn"; fnName; "--kind"; "harmful"; "-m"; "test"; "--yes" ]
+      [ "deprecate", "fn", fnName, "--kind", "harmful", "-m", "test", "--yes" ]
 
-  let halted = runWithCommand [ "eval"; $"{fnName} 0L" ]
-  let allowed = runWithCommand [ "eval"; $"{fnName} 0L"; "--allow-harmful" ]
+  let halted = runWithCommand [ "eval", $"{fnName} 0L" ]
+  let allowed = runWithCommand [ "eval", $"{fnName} 0L", "--allow-harmful" ]
 
   if Stdlib.Bool.not (Stdlib.String.contains halted "Harmful") then
     TestResult.Fail

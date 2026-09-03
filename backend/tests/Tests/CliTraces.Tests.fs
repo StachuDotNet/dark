@@ -1017,7 +1017,7 @@ let private workbenchViewsRender =
           state
           [ "eval"
             renderExpr
-              "let n = fun v -> Stdlib.List.length (frame v 120 40) in [ n 0; n 1; n 3; n 4; n 6; n 7; n 8; n 9 ]" ]
+              "let n = fun v -> Stdlib.List.length (frame v 120 40) in [ n 0, n 1, n 3, n 4, n 6, n 7, n 8, n 9 ]" ]
 
       Expect.stringContains
         output
@@ -1235,9 +1235,9 @@ let private everyScmSectionRenders =
             + "  let s = { s1 with items = Darklang.Cli.Workbench.itemsForView 4 s1.branchId s1.location n s1.ai.section s1.matter.lens } in "
             + "  Stdlib.List.length (Darklang.Cli.Workbench.viewAtSize s (Darklang.Stdlib.Cli.Tui.Size { width = 120; height = 40 })).rows in "
             + "[ sect Darklang.Cli.Workbench.ScmSection.Changes"
-            + "; sect Darklang.Cli.Workbench.ScmSection.History"
-            + "; sect Darklang.Cli.Workbench.ScmSection.Conflicts"
-            + "; sect Darklang.Cli.Workbench.ScmSection.Branches ]" ]
+            + ", sect Darklang.Cli.Workbench.ScmSection.History"
+            + ", sect Darklang.Cli.Workbench.ScmSection.Conflicts"
+            + ", sect Darklang.Cli.Workbench.ScmSection.Branches ]" ]
 
       Expect.stringContains
         output
@@ -1291,7 +1291,7 @@ let private noWorkbenchRowOverflowsItsFrame =
             + "|> Stdlib.List.map (fun r -> Darklang.Stdlib.Cli.Tui.Text.styledWidth r) "
             + $"|> Stdlib.List.filter (fun n -> n > {width}) "
             + "|> Stdlib.List.length in "
-            + "[ over 0; over 1; over 3; over 4; over 6; over 7; over 8; over 9 ]"
+            + "[ over 0, over 1, over 3, over 4, over 6, over 7, over 8, over 9 ]"
           )
 
         for width in [ 56; 80; 120 ] do
@@ -1315,7 +1315,7 @@ let private workbenchContextRowSaysWhereYouAre =
           state
           [ "eval"
             renderExpr
-              "let has = fun v -> Stdlib.String.contains (Stdlib.String.join (frame v 120 40) \"|\") \"branch:\" in [ has 0; has 1; has 4 ]" ]
+              "let has = fun v -> Stdlib.String.contains (Stdlib.String.join (frame v 120 40) \"|\") \"branch:\" in [ has 0, has 1, has 4 ]" ]
 
       Expect.stringContains
         output

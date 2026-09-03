@@ -207,6 +207,6 @@ let recordOpAuthors (records: List<Wire.SyncOp>) : Unit =
         Stdlib.Sqlite.execP
           (localDb ())
           "INSERT OR IGNORE INTO op_owners (op_id, owner) VALUES (@p0, @p1)"
-          [ r.id; r.author ])
+          [ r.id, r.author ])
 
     ()

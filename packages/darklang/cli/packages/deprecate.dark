@@ -20,9 +20,9 @@ type ParsedArgs =
 
 val argSpec =
   FlagParser.Spec
-    { flags = [ ("--yes", [ "-y" ]); ("--dry-run", []) ]
+    { flags = [ ("--yes", [ "-y" ]), ("--dry-run", []) ]
       valueFlags =
-        [ ("--kind", []); ("--replacement", []); ("--message", [ "-m" ]) ] }
+        [ ("--kind", []), ("--replacement", []), ("--message", [ "-m" ]) ] }
 
 
 /// Parse `--key value` / `--flag` style args into a ParsedArgs.
@@ -364,5 +364,5 @@ let complete
   (args: List<String>)
   : List<Cli.Completion.CompletionItem> =
   match args with
-  | [] -> ["fn"; "type"; "value"] |> Stdlib.List.map Cli.Completion.simple
+  | [] -> ["fn", "type", "value"] |> Stdlib.List.map Cli.Completion.simple
   | _ -> []

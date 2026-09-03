@@ -858,9 +858,9 @@ let execute (state: AppState) (args: List<String>) : AppState =
   match args with
   | [] -> executeSync state (SCM.PackageOps.relay ())
   | [ "status" ] -> executeStatus state (SCM.PackageOps.relay ())
-  | [ "status"; url ] -> executeStatus state url
-  | [ "export"; path ] -> executeExport state path
-  | [ "import"; path ] -> executeImport state path
+  | [ "status", url ] -> executeStatus state url
+  | [ "export", path ] -> executeExport state path
+  | [ "import", path ] -> executeImport state path
   | [ "help" ] ->
     Stdlib.printLine (help state)
     state
@@ -892,7 +892,7 @@ let executeConnectCmd (state: AppState) (args: List<String>) : AppState =
   match args with
   | [ url ] -> executeConnect state url
   // Stored per relay in local config; see `relaySecret`. Typing it here does put it in shell history.
-  | [ url; "--secret"; secret ] ->
+  | [ url, "--secret", secret ] ->
     // A short secret DEFEATS the leak guard rather than triggering it: `opsLeaking` searches op bytes for
     // it, and a few characters of hex turn up by chance in a store of any size, so every push is refused.
     // 12 is not a security threshold, it is the length at which a chance match stops happening.
@@ -948,19 +948,19 @@ let executeReviewCmd (state: AppState) (args: List<String>) : AppState =
     state
   // The `--from` forms come FIRST: match arms are ordered, and `[ "pull"; url; queue ]` has the same
   // shape as `[ "pull"; "--from"; who ]`, so a general arm above it binds url="--from".
-  | [ "pull"; "--from"; who ] ->
+  | [ "pull", "--from", who ] ->
     executeReviewPullFrom state (SCM.PackageOps.relay ()) "review" who
-  | [ "pull"; queue; "--from"; who ] ->
+  | [ "pull", queue, "--from", who ] ->
     executeReviewPullFrom state (SCM.PackageOps.relay ()) queue who
-  | [ "pull"; url; queue; "--from"; who ] ->
+  | [ "pull", url, queue, "--from", who ] ->
     executeReviewPullFrom state url queue who
   | [ "pull" ] -> executeReviewPull state (SCM.PackageOps.relay ()) "review"
-  | [ "pull"; url ] -> executeReviewPull state url "review"
-  | [ "pull"; url; queue ] -> executeReviewPull state url queue
-  | [ "import"; path ] -> executeReviewImport state path "review"
-  | [ "import"; path; queue ] -> executeReviewImport state path queue
-  | [ "approve"; queue ] -> executeApprove state queue
-  | [ "reject"; queue ] -> executeReject state queue
+  | [ "pull", url ] -> executeReviewPull state url "review"
+  | [ "pull", url, queue ] -> executeReviewPull state url queue
+  | [ "import", path ] -> executeReviewImport state path "review"
+  | [ "import", path, queue ] -> executeReviewImport state path queue
+  | [ "approve", queue ] -> executeApprove state queue
+  | [ "reject", queue ] -> executeReject state queue
   // The queue defaults to "review" everywhere else here, and the help says so. Without these arms a bare
   // `dark review approve` fell through to the single-word arm below, which reads the word as a QUEUE NAME
   // and answered `no branch "approve"` -- an error about a queue nobody asked for.

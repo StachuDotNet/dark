@@ -113,7 +113,7 @@ let loadHomeItems (branchId: Uuid) : List<BodyItem> =
             desc = "`dark branches` lists them all" } ]
 
   let shownBranches =
-    Stdlib.List.flatten [ Stdlib.List.take open_ branchCap; moreRow; merged ]
+    Stdlib.List.flatten [ Stdlib.List.take open_ branchCap, moreRow, merged ]
   Stdlib.List.flatten
     [ section ("needs you · " ++ (Stdlib.Int.toString (Stdlib.List.length conflicts))) conflicts
       section ("uncommitted · " ++ (Stdlib.Int.toString (Stdlib.List.length wip))) wip

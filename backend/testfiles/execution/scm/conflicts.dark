@@ -112,7 +112,7 @@ module Detect =
       Helpers.binding "g" "ccc" "2026-01-02T00:00:00.000Z" ]
     [ Helpers.binding "f" "bbb" "2026-01-03T00:00:00.000Z"
       Helpers.binding "g" "ddd" "2026-01-03T00:00:00.000Z" ]
-    [ Helpers.base' "f" "ooo"; Helpers.base' "g" "ooo" ]) = 2
+    [ Helpers.base' "f" "ooo", Helpers.base' "g" "ooo" ]) = 2
 
 
 module BothMovedTheSameParent =
@@ -243,15 +243,15 @@ module IncomingWins =
 module ConflictId =
   // SORTED before hashing, so the id doesn't depend on which side happened to be local. Without this,
   // the same divergence gets two ids on two machines and neither can ack the other's.
-  (Darklang.SCM.Conflicts.conflictId "Zz" "W" "f" [ "aaa"; "bbb" ]) =
-    (Darklang.SCM.Conflicts.conflictId "Zz" "W" "f" [ "bbb"; "aaa" ])
+  (Darklang.SCM.Conflicts.conflictId "Zz" "W" "f" [ "aaa", "bbb" ]) =
+    (Darklang.SCM.Conflicts.conflictId "Zz" "W" "f" [ "bbb", "aaa" ])
 
   // Different location, different id.
-  ((Darklang.SCM.Conflicts.conflictId "Zz" "W" "f" [ "aaa"; "bbb" ]) ==
-   (Darklang.SCM.Conflicts.conflictId "Zz" "W" "g" [ "aaa"; "bbb" ])) = false
+  ((Darklang.SCM.Conflicts.conflictId "Zz" "W" "f" [ "aaa", "bbb" ]) ==
+   (Darklang.SCM.Conflicts.conflictId "Zz" "W" "g" [ "aaa", "bbb" ])) = false
 
   // Short enough to type, long enough to not collide in practice.
-  (Stdlib.String.length (Darklang.SCM.Conflicts.conflictId "Zz" "W" "f" [ "aaa"; "bbb" ])) = 8
+  (Stdlib.String.length (Darklang.SCM.Conflicts.conflictId "Zz" "W" "f" [ "aaa", "bbb" ])) = 8
 
 
 module StringOrdering =
@@ -266,7 +266,7 @@ module Chunking =
   // Nothing on the detection path may build an unbounded IN-list: an over-cap statement ERRORS, and
   // every caller turns an error into [], which reads downstream as "no conflict".
   (Stdlib.List.length (Darklang.SCM.Conflicts.inChunks [])) = 0
-  (Stdlib.List.length (Darklang.SCM.Conflicts.inChunks [ "a"; "b"; "c" ])) = 1
+  (Stdlib.List.length (Darklang.SCM.Conflicts.inChunks [ "a", "b", "c" ])) = 1
 
   // A list longer than the chunk size splits, and splits losslessly.
   (Stdlib.List.length
@@ -282,7 +282,7 @@ module Chunking =
 module Placeholders =
   Darklang.SCM.Conflicts.inPlaceholders [] = ""
   Darklang.SCM.Conflicts.inPlaceholders [ "x" ] = "@p0"
-  Darklang.SCM.Conflicts.inPlaceholders [ "x"; "y"; "z" ] = "@p0, @p1, @p2"
+  Darklang.SCM.Conflicts.inPlaceholders [ "x", "y", "z" ] = "@p0, @p1, @p2"
 
 
 module Fqn =
@@ -300,12 +300,12 @@ module OrderPreservingDedup =
   //
   // Pinning the stdlib behaviour, so the day either of these starts preserving order the call sites that
   // worked around it get revisited rather than silently double-correcting.
-  (Stdlib.List.unique [ "c"; "a"; "b" ]) = [ "a"; "b"; "c" ]
-  (Stdlib.List.uniqueBy [ "c"; "a"; "b" ] (fun x -> x)) = [ "a"; "b"; "c" ]
+  (Stdlib.List.unique [ "c", "a", "b" ]) = [ "a", "b", "c" ]
+  (Stdlib.List.uniqueBy [ "c", "a", "b" ] (fun x -> x)) = [ "a", "b", "c" ]
 
   // The order-preserving shape, which is what an authoring sequence needs.
   (Stdlib.List.fold
-    [ "c"; "a"; "b"; "a" ]
+    [ "c", "a", "b", "a" ]
     []
     (fun acc h -> if Stdlib.List.member acc h then acc else Stdlib.List.pushBack acc h)) =
-    [ "c"; "a"; "b" ]
+    [ "c", "a", "b" ]

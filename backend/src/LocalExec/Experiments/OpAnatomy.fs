@@ -221,8 +221,10 @@ let rec private walkTypeRef (t : Tally) (tr : PT.TypeReference) : unit =
   | PT.TBlob -> ()
   | PT.TStream inner
   | PT.TList inner
-  | PT.TDict inner
   | PT.TDB inner -> walkTypeRef t inner
+  | PT.TDict(key, value) ->
+    walkTypeRef t key
+    walkTypeRef t value
   | PT.TTuple(a, b, rest) ->
     walkTypeRef t a
     walkTypeRef t b
@@ -344,9 +346,10 @@ let rec private walkExpr (t : Tally) (e : PT.Expr) : unit =
 
   | PT.EList(_, exprs) -> List.iter (walkExpr t) exprs
   | PT.EDict(_, pairs) ->
+    // Keys are expressions now, not names, so they are walked like any other subexpression.
     pairs
     |> List.iter (fun (k, v) ->
-      countName t k
+      walkExpr t k
       walkExpr t v)
   | PT.ETuple(_, a, b, rest) ->
     walkExpr t a

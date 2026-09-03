@@ -42,21 +42,21 @@ module Helpers =
 module CandidateOrder =
   // The item itself first, then the module chain from innermost outward, then owner-wide ("", "").
   // Getting this order wrong doesn't error, it just quietly applies the wrong person's decision.
-  (Darklang.SCM.Propagation.candidateKeys (Helpers.loc [ "A"; "B"; "C" ] "f")) =
-    [ ("A.B.C", "f"); ("A.B.C", ""); ("A.B", ""); ("A", ""); ("", "") ]
+  (Darklang.SCM.Propagation.candidateKeys (Helpers.loc [ "A", "B", "C" ] "f")) =
+    [ ("A.B.C", "f"), ("A.B.C", ""), ("A.B", ""), ("A", ""), ("", "") ]
 
   (Darklang.SCM.Propagation.candidateKeys (Helpers.loc [ "A" ] "f")) =
-    [ ("A", "f"); ("A", ""); ("", "") ]
+    [ ("A", "f"), ("A", ""), ("", "") ]
 
   // A top-level item still gets the owner-wide fallback, and nothing else.
-  (Darklang.SCM.Propagation.candidateKeys (Helpers.loc [] "f")) = [ ("", "f"); ("", "") ]
+  (Darklang.SCM.Propagation.candidateKeys (Helpers.loc [] "f")) = [ ("", "f"), ("", "") ]
 
   // A MODULE target (name = "") asks the same question with an empty name, so its first candidate is its
   // own module row rather than an item row that cannot exist. The repeat is not a bug: the item key and
   // the innermost module key coincide, and de-duplicating them would cost a pass over the list to change
   // nothing, since the first hit wins either way.
-  (Darklang.SCM.Propagation.candidateKeys (Helpers.loc [ "A"; "B" ] "")) =
-    [ ("A.B", ""); ("A.B", ""); ("A", ""); ("", "") ]
+  (Darklang.SCM.Propagation.candidateKeys (Helpers.loc [ "A", "B" ] "")) =
+    [ ("A.B", ""), ("A.B", ""), ("A", ""), ("", "") ]
 
 
 module Defaults =
@@ -88,19 +88,19 @@ module MostSpecificWins =
   (Helpers.follows
     [ Helpers.choice "A.B" "" Darklang.SCM.Propagation.Policy.Pin
       Helpers.choice "A" "" Darklang.SCM.Propagation.Policy.Follow ]
-    [ "A"; "B" ]
+    [ "A", "B" ]
     "f") = false
 
   // An owner-wide choice covers anything with no closer rule.
   (Helpers.follows
     [ Helpers.choice "" "" Darklang.SCM.Propagation.Policy.Pin ]
-    [ "A"; "B" ]
+    [ "A", "B" ]
     "f") = false
 
   // A module-level pin covers items BENEATH it, not just at it.
   (Helpers.follows
     [ Helpers.choice "A" "" Darklang.SCM.Propagation.Policy.Pin ]
-    [ "A"; "B" ]
+    [ "A", "B" ]
     "f") = false
 
 

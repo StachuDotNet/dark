@@ -48,7 +48,7 @@ let modulesOf (loc: LanguageTools.ProgramTypes.PackageLocation) : String =
   Stdlib.String.join loc.modules "."
 
 
-let choiceFromRow (row: Dict<Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Choice> =
+let choiceFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Choice> =
   let txt (col: String) : String =
     Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
 
@@ -214,13 +214,13 @@ let targetExists (owner: String) (modules: String) (name: String) : Bool =
         (SCM.PackageOps.localDb ())
         "SELECT 1 AS n FROM locations
          WHERE owner = @p0 AND (modules = @p1 OR modules LIKE @p2) AND unlisted_at IS NULL LIMIT 1"
-        [ owner; modules; $"{modules}.%" ]
+        [ owner, modules, $"{modules}.%" ]
     else
       Stdlib.Sqlite.queryOneP
         (SCM.PackageOps.localDb ())
         "SELECT 1 AS n FROM locations
          WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND unlisted_at IS NULL LIMIT 1"
-        [ owner; modules; name ]
+        [ owner, modules, name ]
 
   match row with
   | Some _ -> true
@@ -324,7 +324,7 @@ let previousHash
             LIMIT 1), '')
        ORDER BY rowid DESC
        LIMIT 1"
-      [ loc.owner; modulesOf loc; loc.name ]
+      [ loc.owner, modulesOf loc, loc.name ]
   with
   | Some row ->
     match Stdlib.Sqlite.textField row "item_hash" with
@@ -370,7 +370,7 @@ let kindAt
         "SELECT item_type FROM locations
          WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND unlisted_at IS NULL
          LIMIT 1"
-        [ loc.owner; modulesOf loc; loc.name ]
+        [ loc.owner, modulesOf loc, loc.name ]
     with
     | Some row ->
       (match Stdlib.Sqlite.textField row "item_type" with
@@ -392,7 +392,7 @@ let currentHash
         "SELECT item_hash FROM locations
          WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND unlisted_at IS NULL
          LIMIT 1"
-        [ loc.owner; modulesOf loc; loc.name ]
+        [ loc.owner, modulesOf loc, loc.name ]
     with
     | Some row ->
       (match Stdlib.Sqlite.textField row "item_hash" with
@@ -502,7 +502,7 @@ let bindingSource (loc: LanguageTools.ProgramTypes.PackageLocation) : String =
       "SELECT source FROM locations
        WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND unlisted_at IS NULL
        LIMIT 1"
-      [ loc.owner; modulesOf loc; loc.name ]
+      [ loc.owner, modulesOf loc, loc.name ]
   with
   | Some row -> Stdlib.Sqlite.textField row "source" |> Stdlib.Option.withDefault "op"
   | None -> "op"
@@ -526,7 +526,7 @@ let authoringOrder
         "SELECT item_hash FROM locations
          WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND source = 'op'
          ORDER BY rowid"
-        [ loc.owner; modulesOf loc; loc.name ]
+        [ loc.owner, modulesOf loc, loc.name ]
     with
     | Ok rows ->
       rows |> Stdlib.List.filterMap (fun r -> Stdlib.Sqlite.textField r "item_hash")
@@ -597,7 +597,7 @@ let everBoundHashes
        WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND item_type = @p3
        GROUP BY item_hash
        ORDER BY MAX(CASE WHEN unlisted_at IS NULL THEN '9999-12-31' ELSE unlisted_at END) DESC"
-      [ loc.owner; modulesOf loc; loc.name; itemType ]
+      [ loc.owner, modulesOf loc, loc.name, itemType ]
   with
   | Ok rows ->
     rows

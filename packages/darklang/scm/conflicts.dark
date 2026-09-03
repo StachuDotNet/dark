@@ -93,8 +93,8 @@ let stringGt (a: String) (b: String) : Bool =
   if a == b then
     false
   else
-    match Stdlib.List.sort [ a; b ] with
-    | [ lower; _ ] -> lower == b
+    match Stdlib.List.sort [ a, b ] with
+    | [ lower, _ ] -> lower == b
     | _ -> false
 
 
@@ -206,7 +206,7 @@ let detect
       let winner = if incomingWins inc loc then inc.hash else loc.hash
 
       (Conflict
-        { id = conflictId inc.owner inc.modules inc.name [ loc.hash; inc.hash ]
+        { id = conflictId inc.owner inc.modules inc.name [ loc.hash, inc.hash ]
           owner = inc.owner
           modules = inc.modules
           name = inc.name
@@ -246,7 +246,7 @@ let detect
         let winner = if incomingWins inc loc then inc.hash else loc.hash
 
         (Conflict
-          { id = conflictId inc.owner inc.modules inc.name [ loc.hash; inc.hash ]
+          { id = conflictId inc.owner inc.modules inc.name [ loc.hash, inc.hash ]
             owner = inc.owner
             modules = inc.modules
             name = inc.name
@@ -283,7 +283,7 @@ let inPlaceholders (values: List<String>) : String =
 
   Stdlib.String.join ps ", "
 
-let bindingFromRow (row: Dict<Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Binding> =
+let bindingFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Binding> =
   match
     (Stdlib.Sqlite.textField row "owner",
      Stdlib.Sqlite.textField row "modules",
@@ -349,7 +349,7 @@ let localBindingsFor (names: List<String>) : List<Binding> =
 
 // reading the BASES (the two sources, one shape)
 
-let baseFromRow (row: Dict<Stdlib.Sqlite.Value>) : Stdlib.Option.Option<NameBase> =
+let baseFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Option<NameBase> =
   match
     (Stdlib.Sqlite.textField row "owner",
      Stdlib.Sqlite.textField row "modules",
@@ -417,7 +417,7 @@ let recordAllSyncBases (sourceId: String) : Unit =
 
 // the `conflicts` table (record / read / resolve)
 
-let conflictFromRow (row: Dict<Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Conflict> =
+let conflictFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Conflict> =
   let text (col: String) : String =
     Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
 
@@ -531,7 +531,7 @@ let getByIdPrefix (rawPrefix: String) : Stdlib.Option.Option<Conflict> =
               OR name = @p0)
          AND branch_id = @p1
        ORDER BY created_at LIMIT 1"
-      [ idPrefix; Stdlib.Uuid.toString (onBranch ()) ]
+      [ idPrefix, Stdlib.Uuid.toString (onBranch ()) ]
   with
   | Ok [ row ] -> conflictFromRow row
   | _ -> Stdlib.Option.Option.None
@@ -542,7 +542,7 @@ let setStatus (id: String) (status: String) (resolvedBy: String) : Unit =
     Stdlib.Sqlite.execP
       (localDb ())
       "UPDATE conflicts SET status = @p1, resolved_by = @p2 WHERE id = @p0"
-      [ id; status; resolvedBy ]
+      [ id, status, resolvedBy ]
 
   ()
 

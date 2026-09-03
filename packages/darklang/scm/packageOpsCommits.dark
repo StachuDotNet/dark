@@ -42,7 +42,7 @@ let opsInCommitLimited
       (localDb ())
       "SELECT id, op_blob FROM package_ops WHERE commit_hash = @p0
        ORDER BY origin_ts, rowid LIMIT @p1"
-      [ commitHash; Stdlib.Int64.toString limit ]
+      [ commitHash, Stdlib.Int64.toString limit ]
   with
   | Ok rows -> decodeOpRows rows
   | Error _ -> []

@@ -59,10 +59,10 @@ let renderItem
 
   let attempts =
     match itemType with
-    | "fn" -> [ ("fn", asFn ()); ("type", asType ()); ("value", asValue ()) ]
-    | "type" -> [ ("type", asType ()); ("fn", asFn ()); ("value", asValue ()) ]
-    | "value" -> [ ("value", asValue ()); ("fn", asFn ()); ("type", asType ()) ]
-    | _ -> [ ("fn", asFn ()); ("type", asType ()); ("value", asValue ()) ]
+    | "fn" -> [ ("fn", asFn ()), ("type", asType ()), ("value", asValue ()) ]
+    | "type" -> [ ("type", asType ()), ("fn", asFn ()), ("value", asValue ()) ]
+    | "value" -> [ ("value", asValue ()), ("fn", asFn ()), ("type", asType ()) ]
+    | _ -> [ ("fn", asFn ()), ("type", asType ()), ("value", asValue ()) ]
 
   let found =
     attempts
@@ -358,7 +358,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
 
     state
 
-  | [ "branch"; branchRef ] ->
+  | [ "branch", branchRef ] ->
     // Same name-to-id crossing the human-readable arm does; a name is what every command prints.
     match Cli.Branch.resolveRef branchRef with
     | None -> state
@@ -375,7 +375,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
 
       state
 
-  | [ "show"; id ] ->
+  | [ "show", id ] ->
     match SCM.Conflicts.getByIdPrefix id with
     | Some c ->
       Stdlib.printLine (ScmJson.conflictJson c)
@@ -394,7 +394,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
 
       state
 
-  | [ "ack"; id ] when Stdlib.Bool.not (SCM.Ids.isMain (SCM.PackageOps.currentBranch ())) ->
+  | [ "ack", id ] when Stdlib.Bool.not (SCM.Ids.isMain (SCM.PackageOps.currentBranch ())) ->
     Stdlib.printLine (
       ScmJson.conflictActionJson (
         ScmJson.ConflictActionJson
@@ -408,7 +408,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
 
     state
 
-  | [ "ack"; id ] ->
+  | [ "ack", id ] ->
     match SCM.Conflicts.getByIdPrefix id with
     | Some c ->
       SCM.Conflicts.setStatus c.id "acked" ""
@@ -439,7 +439,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
 
       state
 
-  | [ "override"; id; _choice ] when Stdlib.Bool.not (SCM.Ids.isMain (SCM.PackageOps.currentBranch ())) ->
+  | [ "override", id, _choice ] when Stdlib.Bool.not (SCM.Ids.isMain (SCM.PackageOps.currentBranch ())) ->
     Stdlib.printLine (
       ScmJson.conflictActionJson (
         ScmJson.ConflictActionJson
@@ -453,7 +453,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
 
     state
 
-  | [ "override"; id; choice ] ->
+  | [ "override", id, choice ] ->
     match SCM.Conflicts.getByIdPrefix id with
     | None ->
       jsonFailure id "no conflict matching that id"
@@ -606,10 +606,10 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
       executeList state
   | [ "list" ] -> executeList state
   | [ "walk" ] -> executeWalk state
-  | [ "show"; id ] -> executeShow state id
-  | [ "ack"; id ] -> executeAck state id
-  | [ "override"; id; choice ] -> executeOverride state id choice
-  | [ "branch"; branchId ] -> executeBranchPreview state branchId
+  | [ "show", id ] -> executeShow state id
+  | [ "ack", id ] -> executeAck state id
+  | [ "override", id, choice ] -> executeOverride state id choice
+  | [ "branch", branchId ] -> executeBranchPreview state branchId
 
   // A verb typed without its argument is a slip, not a request for the manual: the one line that would
   // fix it should not be buried in `help`.
@@ -621,7 +621,7 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
     printErr "ack needs a conflict id."
     printHintLine "  `dark conflicts` lists them, ids first."
     state
-  | [ "override"; _id ] ->
+  | [ "override", _id ] ->
     printErr "override needs a side: A, B, or a hash prefix."
     printHintLine "  `dark conflicts show <id>` prints both versions with their hashes."
     state
@@ -656,7 +656,7 @@ let complete
   (_state: AppState)
   (args: List<String>)
   : List<Completion.CompletionItem> =
-  let subcommands = [ "list"; "show"; "ack"; "override"; "branch" ]
+  let subcommands = [ "list", "show", "ack", "override", "branch" ]
 
   let matching
     (options: List<String>)
@@ -669,7 +669,7 @@ let complete
   match args with
   | [] -> matching subcommands ""
   | [ partial ] -> matching subcommands partial
-  | [ sub; partial ] ->
+  | [ sub, partial ] ->
     if sub == "show" || sub == "ack" || sub == "override" then
       SCM.Conflicts.pending ()
       |> Stdlib.List.map (fun c ->
@@ -688,5 +688,5 @@ let complete
       |> Stdlib.List.map Completion.simple
     else
       []
-  | [ "override"; _id; partial ] -> matching [ "A"; "B" ] partial
+  | [ "override", _id, partial ] -> matching [ "A", "B" ] partial
   | _ -> []

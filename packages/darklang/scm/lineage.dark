@@ -40,7 +40,7 @@ let currentlyBound
        WHERE owner = @p0 AND modules = @p1 AND name = @p2
          AND item_type = @p3 AND unlisted_at IS NULL
        LIMIT 1"
-      [ location.owner; modules; location.name; itemKindColumn kind ]
+      [ location.owner, modules, location.name, itemKindColumn kind ]
 
   match found with
   | Some row ->

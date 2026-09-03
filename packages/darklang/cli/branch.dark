@@ -634,35 +634,35 @@ let execute (state: AppState) (args: List<String>) : AppState =
   match args with
   | [] -> executeCurrent state
   | [ "list" ] -> executeList state false
-  | [ "list"; "--all" ] -> executeList state true
+  | [ "list", "--all" ] -> executeList state true
   | [ "current" ] -> executeCurrent state
-  | [ "switch"; id ] -> executeSwitch state id
-  | [ "new"; id ] -> executeSwitch state id
+  | [ "switch", id ] -> executeSwitch state id
+  | [ "new", id ] -> executeSwitch state id
   // `create` is what the older CLI called this, and what scripts still type. Same thing: a branch is
   // created by switching to a name nothing holds.
-  | [ "create"; id ] -> executeSwitch state id
-  | [ "archive"; id ] -> executeArchive state id
-  | [ "rename"; id; newName ] -> executeRename state id newName
-  | [ "diff"; id ] -> executeDiff state id false
-  | [ "diff"; id; "--source" ] -> executeDiff state id true
-  | [ "log"; id ] -> executeLog state id
-  | [ "merge"; id ] -> executeMerge state id
-  | [ "merge"; id; "--dry-run" ] -> executeMergeDryRun state id
-  | [ "rebase"; id ] -> executeRebase state id
-  | [ "resolve"; id; name; choice ] -> executeResolve state id name choice
-  | [ "export"; id; path ] -> executeExport state id path
-  | [ "import"; path ] -> executeImport state path
-  | [ "push"; id ] -> executePush state id (SCM.PackageOps.relay ())
-  | [ "push"; id; url ] -> executePush state id url
+  | [ "create", id ] -> executeSwitch state id
+  | [ "archive", id ] -> executeArchive state id
+  | [ "rename", id, newName ] -> executeRename state id newName
+  | [ "diff", id ] -> executeDiff state id false
+  | [ "diff", id, "--source" ] -> executeDiff state id true
+  | [ "log", id ] -> executeLog state id
+  | [ "merge", id ] -> executeMerge state id
+  | [ "merge", id, "--dry-run" ] -> executeMergeDryRun state id
+  | [ "rebase", id ] -> executeRebase state id
+  | [ "resolve", id, name, choice ] -> executeResolve state id name choice
+  | [ "export", id, path ] -> executeExport state id path
+  | [ "import", path ] -> executeImport state path
+  | [ "push", id ] -> executePush state id (SCM.PackageOps.relay ())
+  | [ "push", id, url ] -> executePush state id url
   | [ "pull" ] -> executePull state (SCM.PackageOps.relay ())
-  | [ "pull"; "--from"; owner ] ->
+  | [ "pull", "--from", owner ] ->
     executePullFrom state (SCM.PackageOps.relay ()) owner
   // Both orders: the url reads naturally on either side of the flag.
-  | [ "pull"; url; "--from"; owner ] when looksLikeRelayUrl url ->
+  | [ "pull", url, "--from", owner ] when looksLikeRelayUrl url ->
     executePullFrom state url owner
-  | [ "pull"; "--from"; owner; url ] when looksLikeRelayUrl url ->
+  | [ "pull", "--from", owner, url ] when looksLikeRelayUrl url ->
     executePullFrom state url owner
-  | [ "pull"; arg ] ->
+  | [ "pull", arg ] ->
     if looksLikeRelayUrl arg then
       executePull state arg
     else
@@ -777,8 +777,8 @@ let executeMergeCmd (state: AppState) (args: List<String>) : AppState =
     | Ok name -> executeMergeDryRun state name
     | Error _ -> state
   | [ id ] -> executeMerge state id
-  | [ id; "--dry-run" ] -> executeMergeDryRun state id
-  | [ "--dry-run"; id ] -> executeMergeDryRun state id
+  | [ id, "--dry-run" ] -> executeMergeDryRun state id
+  | [ "--dry-run", id ] -> executeMergeDryRun state id
   | _ ->
     printErr "usage: dark merge <branch>"
     printHint "  `dark branches` lists them."
@@ -796,8 +796,8 @@ let executeRebaseCmd (state: AppState) (args: List<String>) : AppState =
     | Ok name -> executeRebaseDryRun state name
     | Error _ -> state
   | [ id ] -> executeRebase state id
-  | [ id; "--dry-run" ] -> executeRebaseDryRun state id
-  | [ "--dry-run"; id ] -> executeRebaseDryRun state id
+  | [ id, "--dry-run" ] -> executeRebaseDryRun state id
+  | [ "--dry-run", id ] -> executeRebaseDryRun state id
   | _ ->
     printErr "usage: dark rebase <branch>"
     printHint "  `dark branches` lists them."
@@ -905,7 +905,7 @@ let executeLogCmd (state: AppState) (args: List<String>) : AppState =
 /// `dark resolve <id> <name> mine|theirs`
 let executeResolveCmd (state: AppState) (args: List<String>) : AppState =
   match args with
-  | [ id; name; choice ] -> executeResolve state id name choice
+  | [ id, name, choice ] -> executeResolve state id name choice
   | _ ->
     printErr "usage: dark resolve <branch> <name> mine|theirs"
     printHint "  `dark conflicts branch <branch>` shows what's conflicted."
@@ -932,7 +932,7 @@ let complete
   let subcommands =
     Stdlib.List.append
       branchTakingSubcommands
-      [ "list"; "current"; "new"; "pull"; "import" ]
+      [ "list", "current", "new", "pull", "import" ]
 
   let branchNames =
     SCM.Branches.list ()
@@ -950,7 +950,7 @@ let complete
   match args with
   | [] -> matching (Stdlib.List.append branchNames subcommands) ""
   | [ partial ] -> matching (Stdlib.List.append branchNames subcommands) partial
-  | [ sub; partial ] ->
+  | [ sub, partial ] ->
     if Stdlib.List.member branchTakingSubcommands sub then
       matching (Stdlib.List.append branchNames [ SCM.Ids.mainBranchName ]) partial
     else

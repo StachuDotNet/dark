@@ -68,7 +68,7 @@ let respondUnsupported
 /// Tell the editor the branch moved, and that anything SCM-shaped on screen is stale.
 let notifyBranchChanged (branchId: Uuid) (name: String) : Unit =
   let payload =
-    Json.Object [ ("id", idJson branchId); ("name", Json.String name) ]
+    Json.Object [ ("id", idJson branchId), ("name", Json.String name) ]
 
   (JsonRPC.Request.makeNotificationString
     "dark/branchChanged"
@@ -241,7 +241,7 @@ let handleDeleteBranchRequest
 
       respondOk
         requestID
-        (Json.Object [ ("success", Json.Bool true); ("message", Json.String msg) ])
+        (Json.Object [ ("success", Json.Bool true), ("message", Json.String msg) ])
 
       { state with currentBranchId = landedOn }
     | Error e ->
