@@ -435,9 +435,11 @@ let discardBranchDraft (branchId: Uuid) : Int64 =
   n
 
 
-/// Drop MAIN's uncommitted ops, re-folding the store from the committed ones. Returns how many went.
-let discardMainDraft () : Stdlib.Result.Result<Int, String> =
-  Builtin.scmDiscardDraft ()
+/// Drop MAIN's uncommitted ops. Returns how many went.
+///
+/// Dark decides what survives and does the surgical drop; only the whole-log rebuild fallback is still
+/// F#, because it re-mints ids and re-folds. See `SCM.Draft.rewriteBy`.
+let discardMainDraft () : Stdlib.Result.Result<Int, String> = SCM.Draft.discardAll ()
 
 
 /// Drop ONE name's uncommitted bindings from MAIN's draft, leaving the rest alone.
@@ -446,7 +448,7 @@ let discardMainDraftName
   (modules: List<String>)
   (name: String)
   : Stdlib.Result.Result<Int, String> =
-  Builtin.scmDiscardDraftName owner modules name
+  SCM.Draft.discardName owner modules name
 
 
 /// Drop one name's uncommitted bindings from the current scope's draft.

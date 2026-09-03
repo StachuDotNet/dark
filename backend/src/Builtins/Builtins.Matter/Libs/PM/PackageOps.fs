@@ -480,73 +480,6 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       previewable = Impure
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
-
-
-    // DISCARD main's draft: drop every uncommitted op and re-fold the store from the committed ones.
-    //
-    // In F# because it is a REWRITE of main, not a query: the projections record the result of the whole
-    // op sequence, so removing a folded op means rebuilding from the ops that survive. The re-fold is the
-    // same delete-and-reinsert the authoring refresh uses, so there is one such path, not two.
-    { name = fn "scmDiscardDraft" 0
-      typeParams = []
-      parameters = [ Param.make "unit" TUnit "" ]
-      returnType = TypeReference.result TInt TString
-      description =
-        "Drop main's uncommitted (draft) ops and re-fold from the committed ones. Returns how many were dropped."
-      fn =
-        let resultOk = Dval.resultOk KTInt KTString
-        let resultError = Dval.resultError KTInt KTString
-        (function
-        | _, _, _, [| DUnit |] ->
-          uply {
-            match! LibDB.Draft.discard () with
-            | Ok n -> return resultOk (Dval.int (bigint (int n)))
-            | Error e -> return resultError (Dval.string e)
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
-    // Drop ONE name's uncommitted bindings. `scmDiscardDraft` is all-or-nothing and `undo` steps back a
-    // version, so a NEWLY-authored item could not be removed at all: it has no previous version to step
-    // back to, and one typo in a reference blocked `commit` until the whole draft went.
-    { name = fn "scmDiscardDraftName" 0
-      typeParams = []
-      parameters =
-        [ Param.make "owner" TString ""
-          Param.make "modules" (TList TString) ""
-          Param.make "name" TString "" ]
-      returnType = TypeReference.result TInt TString
-      description =
-        "Drop one name's uncommitted bindings from the draft, leaving the rest of it "
-        + "alone. Returns how many ops were dropped."
-      fn =
-        let resultOk = Dval.resultOk KTInt KTString
-        let resultError = Dval.resultError KTInt KTString
-        (function
-        | _, _, _, [| DString owner; DList(_, modules); DString name |] ->
-          uply {
-            let mods =
-              modules
-              |> List.choose (fun m ->
-                match m with
-                | DString s -> Some s
-                | _ -> None)
-
-            match! LibDB.Draft.discardName owner mods name with
-            | Ok n -> return resultOk (Dval.int (bigint (int n)))
-            | Error e -> return resultError (Dval.string e)
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
     // COLLAPSE the draft's superseded namings, at commit. Five edits to one function leave five namings of
     // it, four of which describe a version that stopped being what the name meant before anyone else saw
     // it. Returns how many ops went.
@@ -709,6 +642,69 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     // Separate from the merge path rather than one builtin taking an event, because these are the only
     // two events there are, and a `BranchEventKind` crossing the boundary as data would need the DU
     // marshalled for one caller each.
+    // Dark edits `locations` directly on the surgical discard path, which is the one place outside the
+    // fold that does. The in-memory caches key on what that table says, so whoever changes it has to say
+    // so; F# does this inline (`Caching.invalidateAll`), and Dark needs the same reach.
+    // The REBUILD half of a draft rewrite, and the reason it is not in Dark: it re-mints every surviving
+    // op's id (hashing) and re-inserts with the original stamps, then re-folds. The delete it performs
+    // spares ops this build cannot decode, BY ID, which is the invariant that stops authoring eating a
+    // peer's synced work. Dark decides what survives; this executes it.
+    { name = fn "scmRebuildDraftKeeping" 0
+      typeParams = []
+      parameters =
+        [ Param.make "keptIds" (TList TString) "op ids that survive the rewrite" ]
+      returnType = TypeReference.result TUnit TString
+      description =
+        "Delete main's uncommitted ops and re-insert the ones named by <param "
+        + "keptIds>, preserving their stamps, then re-fold. Ops this build cannot "
+        + "decode are never deleted. Ok on success; Error with the message otherwise."
+      fn =
+        (function
+        | _, _, _, [| DList(_, ids) |] ->
+          uply {
+            try
+              let kept =
+                ids
+                |> List.choose (fun d ->
+                  match d with
+                  | DString s ->
+                    match System.Guid.TryParse s with
+                    | true, g -> Some g
+                    | _ -> None
+                  | _ -> None)
+                |> Set.ofList
+
+              do! LibDB.Draft.rebuild kept
+              return Dval.resultOk KTUnit KTString DUnit
+            with e ->
+              return Dval.resultError KTUnit KTString (DString e.Message)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+    { name = fn "scmInvalidateCaches" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TUnit
+      description =
+        "Drop the in-memory package caches, after a write that changed `locations` "
+        + "without going through the fold."
+      fn =
+        (function
+        | _, _, _, [| DUnit |] ->
+          uply {
+            LibDB.Caching.invalidateAll ()
+            return DUnit
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
     { name = fn "scmRecordBranchArchived" 0
       typeParams = []
       parameters = [ Param.make "branchId" TUuid "the branch that was archived" ]
