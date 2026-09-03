@@ -794,45 +794,6 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
 
 
     // Get ALL previous (deprecated) hashes at a location - used for propagation
-    { name = fn "pmGetAllPreviousHashes" 0
-      typeParams = []
-      parameters =
-        [ Param.make
-            "location"
-            (TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
-            ""
-          Param.make
-            "itemKind"
-            (TCustomType(NR.ok (PT2DT.ItemKind.typeName ()), []))
-            "fn, type, or value" ]
-      returnType = TList(TCustomType(NR.ok (PT2DT.Hash.typeName ()), []))
-      description =
-        "Returns all hashes that have ever been at a location across the branch chain"
-      fn =
-        (function
-        | _, _, _, [| location; itemKindDval |] ->
-          uply {
-            let location = PT2DT.PackageLocation.fromDT location
-            let itemKind = PT2DT.ItemKind.fromDT itemKindDval
-            let modulesStr = location.modules |> String.concat "."
-            let! result =
-              LibDB.Queries.getAllPreviousHashes
-                location.owner
-                modulesStr
-                location.name
-                (itemKind.toString ())
-            return
-              result
-              |> List.map PT2DT.Hash.toDT
-              |> Dval.list (PT2DT.Hash.knownType ())
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
     // Bind a name back to content that ALREADY exists in the store.
     //
     // This is the primitive under the propagation toggle. Propagation runs on every edit, so pinning
