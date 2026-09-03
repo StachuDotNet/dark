@@ -96,3 +96,30 @@ module HeadCodec =
   // a transfer.
   (Darklang.SCM.Wire.headStamp (Darklang.SCM.Wire.SyncHead { count = 7L; maxTs = "2026-01-02T00:00:00.000Z" })) =
     "7@2026-01-02T00:00:00.000Z"
+
+
+// The relay answers `/ops` from TWO writers -- native for a whole-log page, Dark for an owner-filtered
+// one -- and a client meets both on the same endpoint. So their ENVELOPES have to be the same shape with
+// the same values, and nothing in either language says so; drift shows up as a peer that can suddenly
+// only half-sync.
+//
+// Asked past the end of the log on purpose. An empty page still carries a full envelope, so this compares
+// the thing that can drift without decoding two thousand ops to do it.
+module BothWritersAgree =
+  val pastTheEnd = 999999999L
+
+  let native () : Stdlib.Result.Result<Darklang.SCM.Wire.SyncBundle, String> =
+    let (json, _cursor) = Darklang.SCM.Wire.exportPageJsonSince pastTheEnd
+    Darklang.SCM.Wire.wireDecode (Stdlib.String.toBlob json)
+
+  let inDark () : Stdlib.Result.Result<Darklang.SCM.Wire.SyncBundle, String> =
+    Darklang.SCM.Wire.wireDecode
+      (Stdlib.String.toBlob (Darklang.SCM.Wire.wireEncodeAt pastTheEnd []))
+
+  (BothWritersAgree.native ()) = (BothWritersAgree.inDark ())
+
+  // And the native writer's page really is readable, rather than both sides failing to decode in the
+  // same way -- which the equality above would happily accept.
+  (match BothWritersAgree.native () with
+   | Ok _ -> true
+   | Error _ -> false) = true

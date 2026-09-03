@@ -24,6 +24,15 @@ module BS = LibSerialization.Binary.Serialization
 ///
 /// Returns the JSON and the cursor to hand back, which is the largest rowid on the page (or `sinceSeq`
 /// when the page is empty, so a client at the end does not rewind).
+/// One page of the sync wire format, rendered straight from the rows.
+///
+/// This is the SECOND writer of that shape; `SCM.Wire.wireEncodeAt` is the first, and the relay picks
+/// between them per request, so a client meets both on the same endpoint. They have to agree field for
+/// field. `backend/testfiles/execution/scm/sync-wire.dark` compares the two envelopes; change one shape
+/// and change the other.
+///
+/// It exists at all because building a page in Dark meant hex-encoding 2,000 blobs and serialising 2,000
+/// records per request. What to send is still decided in Dark; only the encoding is here.
 let exportPageJson
   (sinceSeq : int64)
   (limit : int64)

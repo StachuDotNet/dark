@@ -393,10 +393,14 @@ let exportPageJsonSince (sinceSeq: Int64) : (String * Int64) =
     (PackageOps.identity ())
 
 
-/// The wire is a JSON SyncBundle: a versioned envelope plus ops. This and `wireDecode` are the ONLY
-/// place that shape is spelled out, so the relay, the CLI client and any future transport agree by
-/// construction. Encode stamps the format version and this build; decode refuses a version it does
-/// not understand.
+/// The wire is a JSON SyncBundle: a versioned envelope plus ops. Encode stamps the format version and
+/// this build; decode refuses a version it does not understand.
+///
+/// There are TWO writers, not one. `exportPageJsonSince` above renders the same envelope natively, and
+/// the relay picks between them per request -- native for a whole-log page, this for an owner-filtered
+/// one -- so a client reading `/ops` meets both. They have to agree field for field, and nothing in the
+/// type system says so, which is why `backend/testfiles/execution/scm/sync-wire.dark` compares the two
+/// envelopes directly. Change this shape and change the native renderer in `LibDB/Queries.fs` with it.
 let wireEncodeAt (cursor: Int64) (ops: List<SyncOp>) : String =
   let bundle =
     SyncBundle

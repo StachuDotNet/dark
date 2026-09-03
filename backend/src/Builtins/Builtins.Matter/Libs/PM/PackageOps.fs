@@ -747,91 +747,41 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // REBASE a branch: accept the parent's current state as the branch's new base (reload-stable
-    // per-name model). Returns the NAMES the parent changed since the fork, unformatted -- what that
-    // means to a person is Dark's to say. After this the branch's own ops layer on top by origin_ts LWW
-    // and merge is unblocked.
-    { name = fn "scmRebaseOntoParent" 0
+    // Store ONE op on a branch under a stamp the caller chose, effective=0 and tagged like any other
+    // branch op. Serializing and hashing is the whole of what F# is here for; WHICH op, and what stamp
+    // it deserves, are decided in Dark (`SCM.Branches.resolveKeepMine`).
+    //
+    // The stamp is a parameter rather than "now" because these ops lose or win by it. `storeDeltaOps`
+    // stamps for you and is right for authoring; this is for an op whose stamp is the point.
+    { name = fn "scmStoreBranchOpStamped" 0
       typeParams = []
       parameters =
-        [ Param.make "branchId" TUuid "the branch to rebase onto its parent" ]
-      returnType = TypeReference.result (TList TString) TString
+        [ Param.make "branchId" TUuid "the branch the op lands on"
+          Param.make
+            "op"
+            (TCustomType(NR.ok (packageOpTypeName ()), []))
+            "the op to store"
+          Param.make "stamp" TString "its origin_ts, which is what LWW compares" ]
+      returnType = TypeReference.result TInt TString
       description =
-        "Rebase a branch onto its parent. Returns the names the parent changed since the fork."
+        "Store one op on a branch under the given stamp. Returns the number stored."
       fn =
-        let retKT = KTList(ValueType.Known KTString)
+        let resultOk = Dval.resultOk KTInt KTString
+        let resultError = Dval.resultError KTInt KTString
         (function
-        | _, _, _, [| DUuid branchIdGuid |] ->
+        | _, _, _, [| DUuid branchIdGuid; opDval; DString stamp |] ->
           uply {
-            let branchId = PT.BranchId.Id branchIdGuid
             try
-              let! changed = LibDB.Branches.rebase branchId
-              return
-                Dval.resultOk
-                  retKT
-                  KTString
-                  (Dval.list KTString (changed |> List.map Dval.string))
+              match PT2DT.PackageOp.fromDT opDval with
+              | None -> return resultError (Dval.string "not a package op")
+              | Some op ->
+                let! n =
+                  LibDB.Branches.storeDeltaOpsStamped
+                    (PT.BranchId.Id branchIdGuid)
+                    [ (op, stamp) ]
+                return resultOk (Dval.int (bigint (int n)))
             with ex ->
-              return Dval.resultError retKT KTString (DString ex.Message)
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
-    // RESOLVE one conflicted name (scm-spec 7). The two sides are two builtins rather than one taking
-    // a choice string, because a string is not a choice: an unrecognised one has to be answered
-    // somewhere, and the only sensible answer is a message to a person, which is Dark's to write.
-    // Clearing the conflict is part of resolving it, so it happens here rather than in a second call a
-    // caller could forget.
-    { name = fn "scmResolveKeepMine" 0
-      typeParams = []
-      parameters =
-        [ Param.make "branchId" TUuid "the branch"
-          Param.make "name" TString "the conflicted name (owner.Module.name)" ]
-      returnType = TypeReference.result TUnit TString
-      description =
-        "Resolve a conflicted name by keeping the branch's version, re-stamped to win LWW."
-      fn =
-        (function
-        | _, _, _, [| DUuid branchIdGuid; DString name |] ->
-          uply {
-            let branchId = PT.BranchId.Id branchIdGuid
-            try
-              match! LibDB.Branches.resolveKeepMine branchId name with
-              | Ok() -> return Dval.resultOk KTUnit KTString DUnit
-              | Error e -> return Dval.resultError KTUnit KTString (DString e)
-            with ex ->
-              return Dval.resultError KTUnit KTString (DString ex.Message)
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
-    { name = fn "scmResolveTakeTheirs" 0
-      typeParams = []
-      parameters =
-        [ Param.make "branchId" TUuid "the branch"
-          Param.make "name" TString "the conflicted name (owner.Module.name)" ]
-      returnType = TypeReference.result TUnit TString
-      description =
-        "Resolve a conflicted name by taking the parent's version, dropping the branch's binding."
-      fn =
-        (function
-        | _, _, _, [| DUuid branchIdGuid; DString name |] ->
-          uply {
-            let branchId = PT.BranchId.Id branchIdGuid
-            try
-              match! LibDB.Branches.resolveTakeTheirs branchId name with
-              | Ok() -> return Dval.resultOk KTUnit KTString DUnit
-              | Error e -> return Dval.resultError KTUnit KTString (DString e)
-            with ex ->
-              return Dval.resultError KTUnit KTString (DString ex.Message)
+              return resultError (Dval.string ex.Message)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
