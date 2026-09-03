@@ -23,9 +23,29 @@ module HS = LibDB.HashStabilization
 type PropagationResult = { repoints : List<PT.PropagateRepoint> }
 
 
-/// Does an explicit `pin` cover this location? Resolved most-specific-first: the
-/// item, then its module, then each parent module, then owner-wide. Mirrors
-/// `Darklang.SCM.Propagation.explicitPolicyFor`.
+/// The explicit choices that could cover <param loc>: the item itself, its module, then each parent
+/// module, then owner-wide. MOST SPECIFIC FIRST, so a caller just takes the first hit -- the same
+/// resolution shape names already have.
+///
+/// Mirrors `Darklang.SCM.Propagation.candidateKeys`, and is pinned case for case by matching tables in
+/// `backend/tests/Tests/PropagationPolicy.Tests.fs` and
+/// `backend/testfiles/execution/scm/propagationPolicy.dark`. **Change one, change both, and both
+/// tables.** The two copies exist because two different things ask: the cascade asks per dependent
+/// while rewriting ASTs (here), and `dark propagate policy` asks to tell a person what is in force
+/// (Dark). If they disagree, the report names a policy the cascade did not apply, silently.
+let candidateKeys (loc : PT.PackageLocation) : List<string * string> =
+  let modulesOf (ms : List<string>) = String.concat "." ms
+
+  // innermost module outward: "A.B.C", "A.B", "A", ""
+  let moduleChain =
+    [ for i in List.length loc.modules .. -1 .. 0 ->
+        modulesOf (List.truncate i loc.modules) ]
+
+  (modulesOf loc.modules, loc.name)
+  :: (moduleChain |> List.map (fun m -> (m, "")))
+
+
+/// Does an explicit `pin` cover this location?
 ///
 /// Only explicit rows are consulted and the FIRST hit wins whatever it says, so an
 /// item marked `follow` inside a module marked `pin` still follows. No row anywhere
@@ -36,18 +56,7 @@ let private isPinned
   (follows : Set<string * string * string>)
   (loc : PT.PackageLocation)
   : bool =
-  let modulesOf (ms : List<string>) = String.concat "." ms
-
-  // innermost module outward: "A.B.C", "A.B", "A", ""
-  let moduleChain =
-    [ for i in List.length loc.modules .. -1 .. 0 ->
-        modulesOf (List.truncate i loc.modules) ]
-
-  let candidates =
-    (modulesOf loc.modules, loc.name)
-    :: (moduleChain |> List.map (fun m -> (m, "")))
-
-  candidates
+  candidateKeys loc
   |> List.tryPick (fun (m, n) ->
     let k = (loc.owner, m, n)
     if Set.contains k pins then Some true

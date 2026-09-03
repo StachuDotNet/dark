@@ -420,7 +420,7 @@ let executeLog (state: AppState) (branchRef: String) : AppState =
   match resolveRef branchRef with
   | None -> state
   | Some branchId ->
-    let ops = SCM.Wire.branchOps branchId
+    let ops = SCM.PackageOps.branchOps branchId
 
     if Stdlib.List.isEmpty ops then
       printOk $"branch \"{branchRef}\" has no ops (empty, merged, or unknown)."
@@ -858,7 +858,7 @@ let branchOpsAsJson (branchRef: String) : Unit =
   | None -> ()
   | Some branchId ->
     let rendered =
-      SCM.Wire.branchOps branchId
+      SCM.PackageOps.branchOps branchId
       |> Stdlib.List.indexedMap (fun i op ->
         ScmJson.BranchOpJson
           { seq = i

@@ -19,6 +19,9 @@ open LibDB.Sqlite
 
 module PT = LibExecution.ProgramTypes
 module PM = LibDB.PackageManager
+module RT = LibExecution.RuntimeTypes
+module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
+module Exe = LibExecution.Execution
 module HS = LibDB.HashStabilization
 module Package = LibParser.Package
 module NR = LibParser.NameResolver
@@ -30,6 +33,32 @@ module Propagation = LibDB.Propagation
 open TestUtils.TestUtils
 
 let private pmPT = PM.pt
+
+
+/// Run a Dark expression that answers `Result<Int, String>`, as the F# result these assertions expect.
+///
+/// The draft's write paths live in Dark now (`SCM.Draft`), so a test that called `LibDB.Draft.discard`
+/// would be asserting about a second copy of the logic rather than the one the CLI runs. This drives
+/// the real one.
+let private runDarkResult (code : string) : Task<Result<int64, string>> =
+  task {
+    let! ptExpr = parsePTExpr code
+    let! state = executionStateFor pmPT false Map.empty
+    let rtExpr = PT2RT.Expr.toRT Map.empty 0 None ptExpr
+
+    match! Exe.executeExpr state rtExpr with
+    | Ok(RT.DEnum(_, _, _, "Ok", [ RT.DInt n ])) ->
+      return Ok(int64 (RT.DarkInt.toBigInt n))
+    | Ok(RT.DEnum(_, _, _, "Error", [ RT.DString e ])) -> return Error e
+    | Ok other -> return Error $"unexpected result shape: {other}"
+    | Error(rte, _) -> return Error $"{rte}"
+  }
+
+/// A `PackageLocation` literal, as Dark source.
+let private darkLoc (m : string) (name : string) : string =
+  "(Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"Darklang\"; "
+  + $"modules = [\"{m}\"]; name = \"{name}\" }})"
+
 
 /// Author source into MAIN the way the CLI does: parse, stabilize SCC-aware hashes, insert + fold.
 let private author (source : string) : Task<List<PT.PackageOp>> =
@@ -106,7 +135,7 @@ let discardsOnlyTheDraft =
     let! draftBefore = draftOpCount ()
     Expect.isGreaterThan draftBefore 0L "the second author left a draft"
 
-    let! result = Draft.discard ()
+    let! result = runDarkResult "Darklang.SCM.Draft.discardAll ()"
     let n = unwrap result
     Expect.equal n draftBefore "discard reports every draft op it dropped"
 
@@ -143,7 +172,7 @@ let restoresASupersededBinding =
     let! editedHash = liveHash m "v"
     Expect.notEqual editedHash committedHash "the edit moved the name"
 
-    let! result = Draft.discard ()
+    let! result = runDarkResult "Darklang.SCM.Draft.discardAll ()"
     let _ = unwrap result
 
     let! afterHash = liveHash m "v"
@@ -162,7 +191,7 @@ let emptyDraftIsANoOp =
     let! committedBefore = opCountIn ()
     let! before = liveHash m "e"
 
-    let! result = Draft.discard ()
+    let! result = runDarkResult "Darklang.SCM.Draft.discardAll ()"
     Expect.equal (unwrap result) 0L "nothing to drop"
 
     // The no-op path must not take the delete-and-reinsert route: a rebuild that runs when there is
@@ -187,7 +216,7 @@ let dropsOnlyWhatTheDraftWrote =
 
     let! _ = author $"module Darklang.{m}\n\nlet d () : Int64 = 7002L"
 
-    let! result = Draft.discard ()
+    let! result = runDarkResult "Darklang.SCM.Draft.discardAll ()"
     Expect.isGreaterThan (unwrap result) 0L "something was dropped"
 
     // The point of the whole exercise. Rebuilding main to remove a draft op means every other reader sees
@@ -265,7 +294,8 @@ let src (x: Int64) : Int64 = Stdlib.Int64.add x 8002L"""
 
     // A pin before commit says the repoint never happened, rather than authoring a second op to put it
     // back. The staged binding goes and the committed one underneath it comes back.
-    let! dropped = Draft.unstageRepoint (loc m "follower")
+    let! dropped =
+      runDarkResult ("Darklang.SCM.Draft.unstageRepoint " + darkLoc m "follower")
     Expect.isGreaterThan (unwrap dropped) 0L "the staged repoint was dropped"
 
     let! afterFollower = liveHash m "follower"
@@ -276,7 +306,8 @@ let src (x: Int64) : Int64 = Stdlib.Int64.add x 8002L"""
 
     // The item YOU edited is not a repoint, and un-staging must refuse it -- otherwise a pin would throw
     // away someone's work while reporting that it undid a consequence.
-    let! refused = Draft.unstageRepoint (loc m "src")
+    let! refused =
+      runDarkResult ("Darklang.SCM.Draft.unstageRepoint " + darkLoc m "src")
     Expect.equal (unwrap refused) 0L "an authored edit is not something to un-stage"
 
     let! srcAfter = liveHash m "src"
@@ -308,7 +339,7 @@ let collapseKeepsTheLastNamingOnly =
     let! before = liveHash m "c"
     let! draftBefore = draftOpCount ()
 
-    let! result = Draft.collapse ()
+    let! result = runDarkResult "Darklang.SCM.Draft.collapse ()"
     Expect.isGreaterThan (unwrap result) 0L "superseded namings were dropped"
 
     // What the name means is the whole point: collapsing removes namings of versions that stopped being
@@ -379,7 +410,7 @@ let keepsAnOpItCannotRead =
       Inserts.insertAndApplyOpsAsWip
         [ PT.PackageOp.Deprecate(target, PT.DeprecationKind.Harmful, "draft test") ]
 
-    let! result = Draft.discard ()
+    let! result = runDarkResult "Darklang.SCM.Draft.discardAll ()"
     let _ = unwrap result
 
     let! afterHash = liveHash m "u"
@@ -416,7 +447,10 @@ let discardNameDropsOneAndKeepsTheRest =
     let! keepBefore = liveHash m "keepMe"
     Expect.isSome keepBefore "keepMe resolves before the discard"
 
-    let! result = Draft.discardName "Darklang" [ m ] "dropMe"
+    let! result =
+      runDarkResult (
+        "Darklang.SCM.Draft.discardName \"Darklang\" [\"" + m + "\"] \"dropMe\""
+      )
     let n = unwrap result
     Expect.isGreaterThan n 0L "it reports what it dropped"
 
@@ -453,7 +487,10 @@ let discardNameKeepsContentSomethingElseNeeds =
     let! basisHash = liveHash m "basis"
     Expect.isSome basisHash "basis resolves before the discard"
 
-    let! result = Draft.discardName "Darklang" [ m ] "basis"
+    let! result =
+      runDarkResult (
+        "Darklang.SCM.Draft.discardName \"Darklang\" [\"" + m + "\"] \"basis\""
+      )
     let n = unwrap result
 
     Expect.equal

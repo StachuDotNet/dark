@@ -155,7 +155,6 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 do! LibDB.Branches.createBranch branchId "" PT.BranchId.Main
 
                 let stabilized = LibDB.HashStabilization.computeRealHashes ops
-                let! stabilized = LibDB.Lineage.recordPrevious stabilized
                 let! n = LibDB.Branches.storeDeltaOps branchId stabilized
                 // The parent's current hash per name touched, so a later merge can tell whether the
                 // parent moved the same name.
@@ -193,8 +192,6 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 // Stabilize before inserting. Insert raw ops and their SetName targets are provisional,
                 // so `WipRefresh.refresh` assigns real hashes by rewriting the ENTIRE log on every author.
                 let stabilizedOps = LibDB.HashStabilization.computeRealHashes ops
-                // What each binding REPLACES, asked while the store still holds the old answer.
-                let! stabilizedOps = LibDB.Lineage.recordPrevious stabilizedOps
 
                 // All ops are added as WIP - use scmCommitWipOpsByIds to commit them
                 let! insertedCount =
@@ -564,18 +561,6 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       previewable = Impure
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
-    // ARCHIVING a branch travels, for the same reason merging does: on the other machine the branch is
-    // still sitting there looking like live work. The archive itself is Dark's -- `SCM.Branches.archive`
-    // owns that column and has already written it -- so all this does is author the op that says so.
-    // Idempotent on arrival (the fold sets `archived_at` only while it is NULL), which is what makes it
-    // safe for the authoring machine to fold its own event too.
-    //
-    // Separate from the merge path rather than one builtin taking an event, because these are the only
-    // two events there are, and a `BranchEventKind` crossing the boundary as data would need the DU
-    // marshalled for one caller each.
-    // Dark edits `locations` directly on the surgical discard path, which is the one place outside the
-    // fold that does. The in-memory caches key on what that table says, so whoever changes it has to say
-    // so; F# does this inline (`Caching.invalidateAll`), and Dark needs the same reach.
     // The REBUILD half of a draft rewrite, and the reason it is not in Dark: it re-mints every surviving
     // op's id (hashing) and re-inserts with the original stamps, then re-folds. The delete it performs
     // spares ops this build cannot decode, BY ID, which is the invariant that stops authoring eating a
@@ -616,6 +601,9 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
 
+    // Dark edits `locations` directly on the surgical discard path, which is the one place outside the
+    // fold that does. The in-memory caches key on what that table says, so whoever changes it has to say
+    // so; F# does this inline (`Caching.invalidateAll`), and Dark needs the same reach.
     { name = fn "scmInvalidateCaches" 0
       typeParams = []
       parameters = [ Param.make "unit" TUnit "" ]
@@ -636,6 +624,15 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       capabilities = LibExecution.Capabilities.noCaps
       deprecated = NotDeprecated }
 
+    // ARCHIVING a branch travels, for the same reason merging does: on the other machine the branch is
+    // still sitting there looking like live work. The archive itself is Dark's -- `SCM.Branches.archive`
+    // owns that column and has already written it -- so all this does is author the op that says so.
+    // Idempotent on arrival (the fold sets `archived_at` only while it is NULL), which is what makes it
+    // safe for the authoring machine to fold its own event too.
+    //
+    // Separate from the merge path rather than one builtin taking an event, because these are the only
+    // two events there are, and a `BranchEventKind` crossing the boundary as data would need the DU
+    // marshalled for one caller each.
     { name = fn "scmRecordBranchArchived" 0
       typeParams = []
       parameters = [ Param.make "branchId" TUuid "the branch that was archived" ]
@@ -657,20 +654,19 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // MERGE a branch into its parent: the MECHANISM only. Whether a merge is allowed is decided in Dark,
-    // by `SCM.Branches.canMerge`, which is where a decision belongs and where the tables it counts are
-    // owned. Calling this directly skips that gate, and there is one caller.
+    // MERGE into MAIN, the MECHANISM only. Whether a merge is allowed, and which arm it takes, are
+    // decided in Dark (`SCM.Branches.canMerge`, `SCM.PackageOps.mergeBranch`) -- calling this directly
+    // skips that gate, and there is one caller.
     //
-    // What happens here is transactional and stays: flip the frontier effective=1, fold into main's
-    // projections, evaluate merged values (so a merged value's rt_dval is populated), clear the frontier,
-    // mark merged. Only parent=main is exercised now. Deterministic replay + origin_ts LWW, not a CRDT.
-    { name = fn "scmMergeBranch" 0
+    // What it does is transactional and stays here: flip the frontier effective=1, fold into main's
+    // projections, evaluate merged values (so a merged value's rt_dval is populated), clear the
+    // frontier, mark merged. Deterministic replay + origin_ts LWW, not a CRDT.
+    { name = fn "scmMergeIntoMain" 0
       typeParams = []
-      parameters =
-        [ Param.make "branchId" TUuid "the branch to merge into its parent" ]
+      parameters = [ Param.make "branchId" TUuid "the branch to merge into main" ]
       returnType = TypeReference.result TInt TString
       description =
-        "Merge a branch into its parent. The gate is in Dark; this does the work. Returns count merged."
+        "Merge a branch into MAIN: flip its frontier effective, fold, evaluate, mark merged."
       fn =
         let resultOk = Dval.resultOk KTInt KTString
         let resultError = Dval.resultError KTInt KTString
@@ -679,28 +675,15 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
           uply {
             let branchId = PT.BranchId.Id branchIdGuid
             try
-              let! parentId = LibDB.Branches.parentOf branchId
-              if parentId.IsMain then
-                // Into main: flip the frontier effective=1, fold into main's projections, evaluate
-                // merged values (rt_dval), clear the frontier + mark merged.
-                let! n = LibDB.Branches.markMergedEffective branchId
-                let! _ = LibDB.Seed.applyUnappliedOps ()
-                let builtins : Builtins =
-                  { values = exeState.values.builtIn; fns = exeState.fns.builtIn }
-                let! _ =
-                  LibDB.Seed.evaluateAllValues builtins LibDB.PackageManager.rt
-                // One transaction, because the gap between these two was the only interruption
-                // point in a merge that could not be undone by running it again.
-                LibDB.Branches.finishMerge branchId
-                do! recordBranchEvent branchId PT.Merged
-                return resultOk (Dval.int (bigint (int n)))
-              else
-                // Into a non-main parent (branches off branches): retag the frontier onto the parent
-                // (its overlay folds it later). No effective-flip / fold -- that would leak into main.
-                // retagFrontierToParent marks it merged in the same transaction as the retag.
-                let! n = LibDB.Branches.retagFrontierToParent branchId parentId
-                do! recordBranchEvent branchId PT.Merged
-                return resultOk (Dval.int (bigint (int n)))
+              let! n = LibDB.Branches.markMergedEffective branchId
+              let! _ = LibDB.Seed.applyUnappliedOps ()
+              let builtins : Builtins =
+                { values = exeState.values.builtIn; fns = exeState.fns.builtIn }
+              let! _ = LibDB.Seed.evaluateAllValues builtins LibDB.PackageManager.rt
+              // One transaction, because the gap between these two was the only interruption
+              // point in a merge that could not be undone by running it again.
+              LibDB.Branches.finishMerge branchId
+              return resultOk (Dval.int (bigint (int n)))
             with ex ->
               return resultError (Dval.string ex.Message)
           }
@@ -711,45 +694,85 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // REBASE a branch: accept main's current state as the branch's new base (reload-stable per-name
-    // model). Returns the names main changed since the fork (so you see what moved); after this the
-    // branch's own ops layer on top by origin_ts LWW and merge is unblocked.
-    { name = fn "scmRebaseBranch" 0
+    // MERGE into a NON-MAIN parent (branches off branches): retag the frontier onto the parent, whose
+    // overlay folds it later. No effective-flip and no fold -- that would leak the child's work into
+    // main. Marks the child merged in the same transaction as the retag.
+    { name = fn "scmRetagOntoParent" 0
+      typeParams = []
+      parameters =
+        [ Param.make "branchId" TUuid "the branch being merged"
+          Param.make "parentId" TUuid "its parent, which is not main" ]
+      returnType = TypeReference.result TInt TString
+      description =
+        "Merge a branch into a non-main parent by retagging its frontier onto that parent."
+      fn =
+        let resultOk = Dval.resultOk KTInt KTString
+        let resultError = Dval.resultError KTInt KTString
+        (function
+        | _, _, _, [| DUuid branchIdGuid; DUuid parentIdGuid |] ->
+          uply {
+            try
+              let! n =
+                LibDB.Branches.retagFrontierToParent
+                  (PT.BranchId.Id branchIdGuid)
+                  (PT.BranchId.Id parentIdGuid)
+              return resultOk (Dval.int (bigint (int n)))
+            with ex ->
+              return resultError (Dval.string ex.Message)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+
+    { name = fn "scmRecordBranchMerged" 0
+      typeParams = []
+      parameters = [ Param.make "branchId" TUuid "the branch that was merged" ]
+      returnType = TUnit
+      description =
+        "Author the op that says this branch was merged, so other machines learn it."
+      fn =
+        (function
+        | _, _, _, [| DUuid branchIdGuid |] ->
+          uply {
+            do! recordBranchEvent (PT.BranchId.Id branchIdGuid) PT.Merged
+            return DUnit
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+
+    // REBASE a branch: accept the parent's current state as the branch's new base (reload-stable
+    // per-name model). Returns the NAMES the parent changed since the fork, unformatted -- what that
+    // means to a person is Dark's to say. After this the branch's own ops layer on top by origin_ts LWW
+    // and merge is unblocked.
+    { name = fn "scmRebaseOntoParent" 0
       typeParams = []
       parameters =
         [ Param.make "branchId" TUuid "the branch to rebase onto its parent" ]
-      returnType = TypeReference.result TString TString
+      returnType = TypeReference.result (TList TString) TString
       description =
-        "Rebase a branch: accept main's current state; reports the names main changed since the fork."
+        "Rebase a branch onto its parent. Returns the names the parent changed since the fork."
       fn =
-        let resultOk = Dval.resultOk KTString KTString
-        let resultError = Dval.resultError KTString KTString
+        let retKT = KTList(ValueType.Known KTString)
         (function
         | _, _, _, [| DUuid branchIdGuid |] ->
           uply {
             let branchId = PT.BranchId.Id branchIdGuid
             try
-              let! parentId = LibDB.Branches.parentOf branchId
-              // The NAME, not the id: this string is printed straight to a person, and main's id
-              // rendered as a bare uuid is exactly what the boundary rule exists to prevent.
-              let! parentName = LibDB.Branches.nameForId parentId
               let! changed = LibDB.Branches.rebase branchId
-              match changed with
-              | [] ->
-                return
-                  resultOk (
-                    Dval.string
-                      $"already current with \"{parentName}\" -- nothing to reconcile; merge is ready"
-                  )
-              | names ->
-                let listed = names |> String.concat "\n  "
-                return
-                  resultOk (
-                    Dval.string
-                      $"rebased onto \"{parentName}\". it had changed {List.length names} name(s) you also touched:\n  {listed}\nyour branch's versions win by recency on merge -- re-author any you want to take the parent's version of."
-                  )
+              return
+                Dval.resultOk
+                  retKT
+                  KTString
+                  (Dval.list KTString (changed |> List.map Dval.string))
             with ex ->
-              return resultError (Dval.string ex.Message)
+              return Dval.resultError retKT KTString (DString ex.Message)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -758,76 +781,57 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // A branch's OWN frontier ops (oldest-first) as PackageOps, so `dark log <id>` can pretty-print
-    // the branch's authoring history with the existing op pretty-printer (audit/review the sequence).
-    { name = fn "scmBranchOps" 0
-      typeParams = []
-      parameters =
-        [ Param.make "branchId" TUuid "the branch whose frontier ops to return" ]
-      returnType = TList(TCustomType(NR.ok (packageOpTypeName ()), []))
-      description = "The branch's own frontier ops (oldest-first), for `dark log`."
-      fn =
-        (function
-        | _, _, _, [| DUuid branchIdGuid |] ->
-          uply {
-            let branchId = PT.BranchId.Id branchIdGuid
-            let! ops = LibDB.Branches.frontierOps branchId
-            return Dval.list (packageOpKT ()) (ops |> List.map PT2DT.PackageOp.toDT)
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
-    // RESOLVE one conflicted name (scm-spec 7): choice = "mine" (keep the branch's version, re-stamped
-    // to win LWW) or "theirs" (take the parent's, dropping the branch's binding). Both clear the conflict.
-    { name = fn "scmResolveConflict" 0
+    // RESOLVE one conflicted name (scm-spec 7). The two sides are two builtins rather than one taking
+    // a choice string, because a string is not a choice: an unrecognised one has to be answered
+    // somewhere, and the only sensible answer is a message to a person, which is Dark's to write.
+    // Clearing the conflict is part of resolving it, so it happens here rather than in a second call a
+    // caller could forget.
+    { name = fn "scmResolveKeepMine" 0
       typeParams = []
       parameters =
         [ Param.make "branchId" TUuid "the branch"
-          Param.make "name" TString "the conflicted name (owner.Module.name)"
-          Param.make "choice" TString "\"mine\" or \"theirs\"" ]
-      returnType = TypeReference.result TString TString
+          Param.make "name" TString "the conflicted name (owner.Module.name)" ]
+      returnType = TypeReference.result TUnit TString
       description =
-        "Resolve a conflicted name on a branch: keep-mine or take-theirs."
+        "Resolve a conflicted name by keeping the branch's version, re-stamped to win LWW."
       fn =
-        let resultOk = Dval.resultOk KTString KTString
-        let resultError = Dval.resultError KTString KTString
         (function
-        | _, _, _, [| DUuid branchIdGuid; DString name; DString choice |] ->
+        | _, _, _, [| DUuid branchIdGuid; DString name |] ->
           uply {
             let branchId = PT.BranchId.Id branchIdGuid
             try
-              match choice with
-              | "mine"
-              | "theirs" ->
-                let! result =
-                  if choice = "mine" then
-                    LibDB.Branches.resolveKeepMine branchId name
-                  else
-                    LibDB.Branches.resolveTakeTheirs branchId name
-                match result with
-                | Ok() ->
-                  let kept =
-                    if choice = "mine" then
-                      $"kept the branch's {name} (it now wins on merge)"
-                    else
-                      $"took the parent's {name} (dropped the branch's binding)"
-                  // The branch by NAME: this line is read by a person, and the id is a uuid.
-                  let! label = LibDB.Branches.nameForId branchId
-                  return
-                    resultOk (Dval.string $"resolved {name} on \"{label}\": {kept}.")
-                | Error e -> return resultError (Dval.string e)
-              | other ->
-                return
-                  resultError (
-                    Dval.string
-                      $"unknown choice \"{other}\" -- use \"mine\" or \"theirs\""
-                  )
+              match! LibDB.Branches.resolveKeepMine branchId name with
+              | Ok() -> return Dval.resultOk KTUnit KTString DUnit
+              | Error e -> return Dval.resultError KTUnit KTString (DString e)
             with ex ->
-              return resultError (Dval.string ex.Message)
+              return Dval.resultError KTUnit KTString (DString ex.Message)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+
+    { name = fn "scmResolveTakeTheirs" 0
+      typeParams = []
+      parameters =
+        [ Param.make "branchId" TUuid "the branch"
+          Param.make "name" TString "the conflicted name (owner.Module.name)" ]
+      returnType = TypeReference.result TUnit TString
+      description =
+        "Resolve a conflicted name by taking the parent's version, dropping the branch's binding."
+      fn =
+        (function
+        | _, _, _, [| DUuid branchIdGuid; DString name |] ->
+          uply {
+            let branchId = PT.BranchId.Id branchIdGuid
+            try
+              match! LibDB.Branches.resolveTakeTheirs branchId name with
+              | Ok() -> return Dval.resultOk KTUnit KTString DUnit
+              | Error e -> return Dval.resultError KTUnit KTString (DString e)
+            with ex ->
+              return Dval.resultError KTUnit KTString (DString ex.Message)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

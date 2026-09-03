@@ -29,7 +29,6 @@
     <Compile Include="Branches.fs" />
     <Compile Include="AstTransformer.fs" />
     <Compile Include="HashStabilization.fs" />
-    <Compile Include="Lineage.fs" />
     <Compile Include="NameLookup.fs" />
     <Compile Include="DeferredResolver.fs" />
     <Compile Include="UnresolvedCheck.fs" />

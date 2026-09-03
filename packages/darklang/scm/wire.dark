@@ -333,12 +333,6 @@ let importFrom
     |> Stdlib.Result.Result.Ok
   | Error e -> Stdlib.Result.Result.Error e
 
-/// A branch's own frontier ops (oldest-first) -- its authoring history for `dark log`.
-let branchOps
-  (branchId: Uuid)
-  : List<LanguageTools.ProgramTypes.PackageOp> =
-  Builtin.scmBranchOps branchId
-
 /// IMPORT peer/incoming ops for REVIEW: land them on a review branch (effective=0, inert, isolated from
 /// main) instead of auto-applying. Then `dark diff/log/conflicts <branch>` to inspect, and `merge <branch>`
 /// to APPROVE or `archive <branch>` to reject. The branch is caller-chosen (default "review") so multiple
@@ -371,7 +365,7 @@ let reviewImportTo
     // Report the size of THAT delta, not how many op rows the import happened to write. The two disagree
     // whenever the sender's bundle overlaps what we already have, which for a whole-log bundle is nearly
     // all of it.
-    (Stdlib.List.length (branchOps queueId)) |> Stdlib.Result.Result.Ok
+    (Stdlib.List.length (SCM.PackageOps.branchOps queueId)) |> Stdlib.Result.Result.Ok
   | Error e -> Stdlib.Result.Result.Error e
 
 
