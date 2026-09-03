@@ -869,9 +869,15 @@ let mergeBranch (branchId: Uuid) : Stdlib.Result.Result<MergeOutcome, String> =
   // into main, which nobody asked to merge.
   let merged =
     if SCM.Ids.isMain parent then
-      Builtin.scmMergeIntoMain branchId
+      // Flip the frontier effective, fold it into main, then close the branch. The fold is the F# half;
+      // the order, and stopping if any step fails, is the decision.
+      Branches.markMergedEffective branchId
+      |> Stdlib.Result.andThen (fun n ->
+        Builtin.scmApplyMergedOps ()
+        |> Stdlib.Result.andThen (fun _ ->
+          Branches.finishMerge branchId |> Stdlib.Result.map (fun _ -> n)))
     else
-      Builtin.scmRetagOntoParent branchId parent
+      Branches.retagFrontierToParent branchId parent
 
   match merged with
   | Ok n ->

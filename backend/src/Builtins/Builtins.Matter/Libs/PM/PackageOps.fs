@@ -654,71 +654,30 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // MERGE into MAIN, the MECHANISM only. Whether a merge is allowed, and which arm it takes, are
-    // decided in Dark (`SCM.Branches.canMerge`, `SCM.PackageOps.mergeBranch`) -- calling this directly
-    // skips that gate, and there is one caller.
+    // Fold the ops a merge just made effective, and evaluate any values among them.
     //
-    // What it does is transactional and stays here: flip the frontier effective=1, fold into main's
-    // projections, evaluate merged values (so a merged value's rt_dval is populated), clear the
-    // frontier, mark merged. Deterministic replay + origin_ts LWW, not a CRDT.
-    { name = fn "scmMergeIntoMain" 0
+    // This is all that is left of merge in F#, and it is the part that has to be: replaying the op log
+    // into main's projections, and evaluating a merged value so it has an `rt_dval` to run. Everything
+    // around it -- whether a merge is allowed, which arm it takes, flipping the frontier effective,
+    // marking it merged -- is decided and done in Dark (`SCM.PackageOps.mergeBranch`).
+    { name = fn "scmApplyMergedOps" 0
       typeParams = []
-      parameters = [ Param.make "branchId" TUuid "the branch to merge into main" ]
-      returnType = TypeReference.result TInt TString
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TypeReference.result TUnit TString
       description =
-        "Merge a branch into MAIN: flip its frontier effective, fold, evaluate, mark merged."
+        "Fold the newly-effective ops into main's projections and evaluate merged values."
       fn =
-        let resultOk = Dval.resultOk KTInt KTString
-        let resultError = Dval.resultError KTInt KTString
         (function
-        | exeState, _, _, [| DUuid branchIdGuid |] ->
+        | exeState, _, _, [| DUnit |] ->
           uply {
-            let branchId = PT.BranchId.Id branchIdGuid
             try
-              let! n = LibDB.Branches.markMergedEffective branchId
               let! _ = LibDB.Seed.applyUnappliedOps ()
               let builtins : Builtins =
                 { values = exeState.values.builtIn; fns = exeState.fns.builtIn }
               let! _ = LibDB.Seed.evaluateAllValues builtins LibDB.PackageManager.rt
-              // One transaction, because the gap between these two was the only interruption
-              // point in a merge that could not be undone by running it again.
-              LibDB.Branches.finishMerge branchId
-              return resultOk (Dval.int (bigint (int n)))
+              return Dval.resultOk KTUnit KTString DUnit
             with ex ->
-              return resultError (Dval.string ex.Message)
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
-    // MERGE into a NON-MAIN parent (branches off branches): retag the frontier onto the parent, whose
-    // overlay folds it later. No effective-flip and no fold -- that would leak the child's work into
-    // main. Marks the child merged in the same transaction as the retag.
-    { name = fn "scmRetagOntoParent" 0
-      typeParams = []
-      parameters =
-        [ Param.make "branchId" TUuid "the branch being merged"
-          Param.make "parentId" TUuid "its parent, which is not main" ]
-      returnType = TypeReference.result TInt TString
-      description =
-        "Merge a branch into a non-main parent by retagging its frontier onto that parent."
-      fn =
-        let resultOk = Dval.resultOk KTInt KTString
-        let resultError = Dval.resultError KTInt KTString
-        (function
-        | _, _, _, [| DUuid branchIdGuid; DUuid parentIdGuid |] ->
-          uply {
-            try
-              let! n =
-                LibDB.Branches.retagFrontierToParent
-                  (PT.BranchId.Id branchIdGuid)
-                  (PT.BranchId.Id parentIdGuid)
-              return resultOk (Dval.int (bigint (int n)))
-            with ex ->
-              return resultError (Dval.string ex.Message)
+              return Dval.resultError KTUnit KTString (DString ex.Message)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
