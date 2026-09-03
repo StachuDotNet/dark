@@ -402,8 +402,11 @@ let discardBranchDraft (branchId: Uuid) : Int64 =
   let _ =
     Stdlib.Sqlite.mustExec
       (localDb ())
-      // Only ops no OTHER branch holds -- see the same guard in `Branches.archive`.
-      "DELETE FROM package_ops WHERE commit_hash IS NULL
+      // Only ops no OTHER branch holds -- see the same guard in `Branches.archive`. And only
+      // `effective = 0`: op ids are content hashes, so a branch op can share its id with one main
+      // already holds live (author the same value on both), and the tag then points at MAIN's op.
+      // Without this guard a branch discard deleted it from the canonical log.
+      "DELETE FROM package_ops WHERE commit_hash IS NULL AND effective = 0
         AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @p0)
         AND id NOT IN (SELECT op_id FROM op_branches WHERE branch_id <> @p0)"
       [ Stdlib.Uuid.toString branchId ]
@@ -473,30 +476,47 @@ let discardDraftName
   | branchId ->
     // A branch's ops are effective=0 and never fold into main, so deleting the tagged rows for this
     // name IS the removal, exactly as `discardBranchDraft` does for all of them.
-    let mods = Stdlib.String.join modules "."
+    //
+    // Which rows: the branch's own ops that BIND this name, found by reading the ops. Not via
+    // `locations` -- that is main's projection, a branch's SetName never folds into it, so a join
+    // through it matched nothing and this deleted zero rows while reporting the name dropped.
+    let key = (owner, Stdlib.String.join modules ".", name)
 
-    let deleted =
-      Stdlib.Sqlite.execP
-        (localDb ())
-        "DELETE FROM package_ops WHERE commit_hash IS NULL
-          AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @p0)
-          AND id NOT IN (SELECT op_id FROM op_branches WHERE branch_id <> @p0)
-          AND id IN (SELECT op_id FROM locations
-                     WHERE owner = @p1 AND modules = @p2 AND name = @p3)"
-        [ Stdlib.Uuid.toString branchId, owner, mods, name ]
+    let bindingIds =
+      SCM.Branches.ownFrontierOps branchId
+      |> Stdlib.List.filter (fun entry ->
+        let (_, op) = entry
+        Stdlib.Option.isSome (SCM.Branches.opBindsKey op key))
+      |> Stdlib.List.map (fun entry ->
+        let (id, _) = entry
+        Stdlib.Uuid.toString id)
 
-    let _ =
-      Stdlib.Sqlite.mustExec
-        (localDb ())
-        "DELETE FROM op_branches WHERE branch_id = @p0
-          AND op_id NOT IN (SELECT id FROM package_ops)"
-        [ Stdlib.Uuid.toString branchId ]
+    match bindingIds with
+    | [] -> Stdlib.Result.Result.Ok 0
+    | ids ->
+      let b = Stdlib.Uuid.toString branchId
+      let rows = ids |> Stdlib.List.map (fun id -> [ id, b, b ])
 
-    let _ = selectBranch branchId
+      match
+        Stdlib.Sqlite.execBatch
+          (localDb ())
+          [ ("DELETE FROM package_ops WHERE commit_hash IS NULL AND effective = 0 AND id = @p0
+              AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @p1)
+              AND id NOT IN (SELECT op_id FROM op_branches WHERE branch_id <> @p2)",
+             rows)
+            ("DELETE FROM op_branches WHERE branch_id = @p0
+              AND op_id NOT IN (SELECT id FROM package_ops)",
+             [ [ b ] ]) ]
+      with
+      | Ok counts ->
+        let deleted =
+          counts
+          |> Stdlib.List.take (Stdlib.List.length ids)
+          |> Stdlib.List.fold 0 (fun acc n -> acc + n)
 
-    match deleted with
-    | Ok n -> Stdlib.Result.Result.Ok(Stdlib.Int64.toInt n |> Stdlib.Option.withDefault 0)
-    | Error e -> Stdlib.Result.Result.Error e
+        let _ = selectBranch branchId
+        Stdlib.Result.Result.Ok deleted
+      | Error e -> Stdlib.Result.Result.Error e
 
 
 /// Drop the current scope's draft, whichever it is.

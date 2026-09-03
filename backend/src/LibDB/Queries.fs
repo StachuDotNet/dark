@@ -26,6 +26,12 @@ module BS = LibSerialization.Binary.Serialization
 /// when the page is empty, so a client at the end does not rewind).
 /// One page of the sync wire format, rendered straight from the rows.
 ///
+/// Serves ops NOT TAGGED TO A BRANCH, which is the line between two populations that both sit at
+/// `effective = 0` and cannot be told apart by that column: ops a client PUSHED, which a relay stores
+/// inert on purpose and must serve back, and this store's OWN unmerged branch work, which must not
+/// leave through an unauthenticated route. `/sync/pull` needs no secret; reading a branch does. A
+/// self-hosted relay is also somebody's authoring instance, so the second population is real there.
+///
 /// This is the SECOND writer of that shape; `SCM.Wire.wireEncodeAt` is the first, and the relay picks
 /// between them per request, so a client meets both on the same endpoint. They have to agree field for
 /// field. `backend/testfiles/execution/scm/sync-wire.dark` compares the two envelopes; change one shape
@@ -48,7 +54,9 @@ let exportPageJson
         SELECT p.id, p.op_blob, p.origin_ts AS ts, p.rowid AS seq,
                (SELECT o.owner FROM op_owners o WHERE o.op_id = p.id LIMIT 1) AS author
         FROM package_ops p
-        WHERE p.rowid > @sinceSeq ORDER BY p.rowid ASC LIMIT @limit
+        WHERE p.rowid > @sinceSeq
+          AND p.id NOT IN (SELECT op_id FROM op_branches)
+        ORDER BY p.rowid ASC LIMIT @limit
         """
       |> Sql.parameters [ "sinceSeq", Sql.int64 sinceSeq; "limit", Sql.int64 limit ]
       |> Sql.executeAsync (fun read ->
