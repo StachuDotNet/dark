@@ -382,11 +382,8 @@ let discardWipOps () : Task<Result<int64, string>> =
             let opId = read.uuid "id"
 
             let readable =
-              try
-                let _ = BS.PT.PackageOp.deserialize opId (read.bytes "op_blob")
-                true
-              with _ ->
-                false
+              (BS.PT.PackageOp.tryDeserialize opId (read.bytes "op_blob"))
+              |> Option.isSome
 
             (opId, readable))
 

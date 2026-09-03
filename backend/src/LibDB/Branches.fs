@@ -307,12 +307,7 @@ let refoldBranchDecides () : Task<unit> =
     for (id, blob, ts, branchId) in rows do
       // A blob this build can't read is somebody else's newer op format; skip it rather than fail
       // the whole rebuild over one row we were never going to fold anyway.
-      let op =
-        try
-          Some(BS.PT.PackageOp.deserialize id blob)
-        with _ ->
-          None
-      match op with
+      match BS.PT.PackageOp.tryDeserialize id blob with
       | Some(PT.PackageOp.Decision(_, loc, reason, PT.DecisionKind.Propagation policy)) ->
         do! foldBranchDecide branchId loc policy reason ts
       | _ -> ()
@@ -339,22 +334,29 @@ let storeDeltaOps (branchId : PT.BranchId) (ops : List<PT.PackageOp>) : Task<int
 /// A branch's delta ops (deserialized), walking the parent chain (branch -> parent -> ... until
 /// 'main'), ordered by origin_ts so same-name rebinds across the chain resolve LWW. Shared by
 /// `loadDeltaOps` (the process overlay) and `parentNameHashes` (the fork/merge base).
+/// Skips what this build cannot decode, like every other reader of the log. This one matters most: it
+/// is the overlay a process RESOLVES through, loaded at boot for whatever branch you are standing on, so
+/// raising here does not fail one command, it fails the CLI.
 let chainOverlayOps (branchId : PT.BranchId) : Task<List<PT.PackageOp>> =
-  Sql.query
-    "WITH RECURSIVE chain(bid) AS (
-       SELECT @start
-       UNION
-       SELECT b.parent_id FROM branches b JOIN chain c ON b.id = c.bid
-       WHERE b.parent_id != 'main'
-     )
-     SELECT p.id, p.op_blob
-     FROM package_ops p
-     JOIN op_branches ob ON ob.op_id = p.id
-     WHERE ob.branch_id IN (SELECT bid FROM chain)
-     ORDER BY p.origin_ts, p.rowid"
-  |> Sql.parameters [ "start", Sql.string (string branchId) ]
-  |> Sql.executeAsync (fun read ->
-    BS.PT.PackageOp.deserialize (read.uuid "id") (read.bytes "op_blob"))
+  task {
+    let! decoded =
+      Sql.query
+        "WITH RECURSIVE chain(bid) AS (
+           SELECT @start
+           UNION
+           SELECT b.parent_id FROM branches b JOIN chain c ON b.id = c.bid
+           WHERE b.parent_id != 'main'
+         )
+         SELECT p.id, p.op_blob
+         FROM package_ops p
+         JOIN op_branches ob ON ob.op_id = p.id
+         WHERE ob.branch_id IN (SELECT bid FROM chain)
+         ORDER BY p.origin_ts, p.rowid"
+      |> Sql.parameters [ "start", Sql.string (string branchId) ]
+      |> Sql.executeAsync (fun read ->
+        BS.PT.PackageOp.tryDeserialize (read.uuid "id") (read.bytes "op_blob"))
+    return decoded |> List.choose (fun o -> o)
+  }
 
 /// A branch's registered parent id ('main' if none recorded / unknown).
 let parentOf (branchId : PT.BranchId) : Task<PT.BranchId> =

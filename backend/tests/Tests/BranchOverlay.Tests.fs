@@ -399,6 +399,66 @@ let parentHashesAgreeAcrossLanguages =
     do! cleanupBranch parent
   }
 
+/// An op this build cannot decode must be SKIPPED by the branch overlay, never raised on.
+///
+/// A synced store's own log holds ops a peer authored on a newer format. They are stored and left
+/// unapplied on purpose, so a later build can apply them, which means they sit in the local log where
+/// every local reader meets them -- including `chainOverlayOps`, which is what a process RESOLVES
+/// through and loads at boot for whatever branch you are standing on. Raising there does not fail one
+/// command, it fails the CLI, and that is exactly how `dark propagate pin` once died on a store holding
+/// seven such ops and stayed dead.
+///
+/// The other half of the rule is that skipping one for READING never becomes dropping it for WRITING:
+/// the junk op is still in the table at the end of this.
+let undecodableBranchOpIsSkippedNotFatal =
+  testTask "an op the build can't decode is skipped by the overlay, and survives in the log" {
+    let bid = testBranch "undecodable-overlay"
+    do! cleanupBranch bid
+
+    do! Branches.createBranch bid "undecodable" PT.BranchId.Main
+    let! ops = opsFor (namedSource "UndecodableTest" 3)
+    let! _ = Branches.storeDeltaOps bid ops
+
+    // A blob no build can read, tagged to the branch the way a peer's newer-format op arrives.
+    let junkId = System.Guid.NewGuid()
+    do!
+      Sql.query
+        "INSERT INTO package_ops (id, op_blob, effective, origin_ts)
+         VALUES (@id, @blob, 0, '2099-01-01T00:00:00.000Z')"
+      |> Sql.parameters
+        [ "id", Sql.string (string junkId)
+          "blob", Sql.bytes [| 0xFFuy; 0xFEuy; 0xFDuy; 0xFCuy |] ]
+      |> Sql.executeStatementAsync
+    do!
+      Sql.query
+        "INSERT INTO op_branches (op_id, branch_id) VALUES (@id, @b)"
+      |> Sql.parameters
+        [ "id", Sql.string (string junkId); "b", Sql.string (string bid) ]
+      |> Sql.executeStatementAsync
+
+    let! loaded = Branches.loadDeltaOps bid
+    Expect.equal
+      (List.length loaded)
+      (List.length ops)
+      "the readable ops load, and the unreadable one is not among them"
+
+    let overlay = PM.withExtraOps pmPT loaded
+    let! resolved = overlay.findFn (fooLocIn "UndecodableTest") |> Ply.toTask
+    Expect.isSome resolved "and the branch still resolves its own fn"
+
+    let! stillThere =
+      Sql.query "SELECT count(*) AS n FROM package_ops WHERE id = @id"
+      |> Sql.parameters [ "id", Sql.string (string junkId) ]
+      |> Sql.executeRowAsync (fun read -> read.int64 "n")
+    Expect.equal stillThere 1L "reading past it did not delete it"
+
+    do! cleanupBranch bid
+    do!
+      Sql.query "DELETE FROM package_ops WHERE id = @id"
+      |> Sql.parameters [ "id", Sql.string (string junkId) ]
+      |> Sql.executeStatementAsync
+  }
+
 let storeThenOverlay =
   testTask
     "a branch's ops round-trip through the store (effective=0) and overlay to resolve foo" {
@@ -1678,6 +1738,7 @@ let tests =
       branchNamesResolveButDontShadowMain
       isolationBetweenBranches
       parentHashesAgreeAcrossLanguages
+      undecodableBranchOpIsSkippedNotFatal
       storeThenOverlay
       mergedBranchStaysAddressable
       concurrentCreateYieldsOneBranch

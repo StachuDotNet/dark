@@ -1479,6 +1479,56 @@ let private everyCommandSurvivesABogusArgument =
             detail
       })
 
+/// The same two sweeps again, standing on a BRANCH.
+///
+/// Worth its own run because of the trap `AGENTS.md` names: `locations` has no `branch_id`, so a read
+/// that goes straight to it answers about MAIN while you are on a branch -- and it answers plausibly,
+/// which is why three call sites had already drifted that way before anyone noticed. A command that
+/// only misbehaves on a branch is invisible to the sweeps above, all of which run on main.
+///
+/// Both ends of the setup are asserted, not assumed. A sweep that silently failed to switch would pass
+/// forever while testing main twice, and one that failed to switch BACK would leave every later test in
+/// this file quietly asserting about a branch. Nothing here throws before the switch back: the sweep
+/// collects failures rather than raising, and the report comes after.
+let private everyCommandSurvivesABranch =
+  cliTest "no registered command crashes or goes silent while on a branch" (fun state ->
+    task {
+      let! commands = registeredCommands state
+      Expect.isGreaterThan (List.length commands) 20 "the registry was read"
+
+      let! switched = runCli state [ "switch"; "cli-sweep-branch" ]
+      Expect.stringContains switched "cli-sweep-branch" "the sweep is on the branch"
+
+      let mutable failures : List<string * string> = []
+
+      let sweep (label : string) (extra : List<string>) =
+        task {
+          for cmd in commands do
+            if not (Set.contains cmd (Set.add "agent" notSweepable)) then
+              match! runCliCatching state (cmd :: extra) with
+              | Error e -> failures <- ($"{cmd} {label}", $"crashed: {e}") :: failures
+              | Ok output ->
+                if output.Trim() = "" then
+                  failures <- ($"{cmd} {label}", "said nothing") :: failures
+        }
+
+      do! sweep "" []
+      do! sweep "zzz-no-such-thing-zzz" [ "zzz-no-such-thing-zzz" ]
+
+      let! back = runCli state [ "switch"; "main" ]
+      Expect.stringContains back "main" "and it put the run back on main"
+
+      if not (List.isEmpty failures) then
+        let detail =
+          failures
+          |> List.rev
+          |> List.map (fun (c, why) -> $"  dark {c} (on a branch) -> {why}")
+          |> String.concat "\n"
+
+        Tests.failtestf "commands that misbehave while on a branch:\n%s" detail
+    })
+
+
 /// An empty grant is not a grant, and must not report that it is.
 let private capsRefusesAnEmptyGrant =
   cliTest
@@ -2903,6 +2953,7 @@ let private slowCliTests =
     []
   else
     [ everyCommandSurvivesABogusArgument
+      everyCommandSurvivesABranch
       everyCommandAnswersWhenBare
       reviewQueueRoundTrips
       partialCommitTakesOnlyWhatYouNamed
