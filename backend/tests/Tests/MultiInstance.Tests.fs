@@ -215,16 +215,17 @@ let convergenceIsOrderIndependent =
       Expect.equal onB onA "both instances agree"
       Expect.isSome onA "and they agree on something, not on nothing"
 
-      // And they agree on the LATER one specifically, which is the rule rather than an accident.
-      activate a
-      let! expected = boundHash "beta"
+      // And they agree on the LATER one specifically, which is the rule rather than an accident. Asserted
+      // against the later edit's hash, not against A's own answer read a second time.
+      let winner = hashOf "from-b" |> fun (PT.Hash h) -> h
       let (winnerId, _, _) = later
       let! winnerRow =
         Sql.query "SELECT 1 AS n FROM package_ops WHERE id = @id"
         |> Sql.parameters [ "id", Sql.string winnerId ]
         |> Sql.executeRowOptionAsync (fun read -> read.int64 "n")
       Expect.isSome winnerRow "the later op is in the log"
-      Expect.equal expected onB "and it is what the name resolves to"
+      Expect.equal onA (Some winner) "A resolves the name to the later edit"
+      Expect.equal onB (Some winner) "and so does B"
     finally
       teardown [ a; b ]
   }

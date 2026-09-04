@@ -134,3 +134,74 @@ module BothWritersAgree =
   (match BothWritersAgree.native () with
    | Ok _ -> true
    | Error _ -> false) = true
+
+
+// The OP encoders, not only the envelope. Three ops go in through the relay's store path under an owner
+// nobody else uses; the native page and the Dark owner-filtered page must then describe each op
+// identically, field for field. The envelope test above compares empty pages, so a writer that mangled
+// `blobHex` or dropped `author` passed it.
+module BothWritersAgreeOnOps =
+  let op (n: Int64) : Darklang.SCM.Wire.SyncOp =
+    Darklang.SCM.Wire.SyncOp
+      { id = Stdlib.Uuid.toString (Stdlib.Uuid.generate ())
+        blobHex = Stdlib.Blob.toHex (Stdlib.String.toBlob $"wire-op-{Stdlib.Int64.toString n}")
+        ts = $"2026-01-0{Stdlib.Int64.toString n}T00:00:00.000Z"
+        author = "" }
+
+  let fields (o: Darklang.SCM.Wire.SyncOp) : (String * String * String * String) =
+    (o.id, o.blobHex, o.ts, o.author)
+
+  let compare () : String =
+    let owner = $"wire-test-{Stdlib.Uuid.toString (Stdlib.Uuid.generate ())}"
+    let ops = [ BothWritersAgreeOnOps.op 1L, BothWritersAgreeOnOps.op 2L, BothWritersAgreeOnOps.op 3L ]
+    let ids = ops |> Stdlib.List.map (fun o -> o.id)
+    let before = Darklang.SCM.Wire.localMaxRowid ()
+
+    match Darklang.SCM.Wire.storeWithOwner owner ops with
+    | Error e -> $"store failed: {e}"
+    | Ok stored ->
+      // The runner runs files in parallel, so the native page is filtered to these ids rather than assumed
+      // to hold only them.
+      let (json, _) = Darklang.SCM.Wire.exportPageJsonSince before
+      let native =
+        match Darklang.SCM.Wire.wireDecode (Stdlib.String.toBlob json) with
+        | Ok b -> b.ops |> Stdlib.List.filter (fun o -> Stdlib.List.``member`` ids o.id)
+        | Error _ -> []
+
+      let (owned, cursor) = Darklang.SCM.Wire.exportOwnedSince owner before
+      let viaDark =
+        match
+          Darklang.SCM.Wire.wireDecode
+            (Stdlib.String.toBlob (Darklang.SCM.Wire.wireEncodeAt cursor owned))
+        with
+        | Ok b -> b.ops
+        | Error _ -> []
+
+      // Clean up before judging, so a failing assertion does not leave the rows for the next run.
+      let db = Darklang.SCM.PackageOps.localDb ()
+      let _ =
+        ids
+        |> Stdlib.List.map (fun id ->
+          Stdlib.Sqlite.execP db "DELETE FROM package_ops WHERE id = @p0" [ id ])
+      let _ = Stdlib.Sqlite.execP db "DELETE FROM op_owners WHERE owner = @p0" [ owner ]
+
+      let n = Stdlib.List.map native BothWritersAgreeOnOps.fields
+      let d = Stdlib.List.map viaDark BothWritersAgreeOnOps.fields
+
+      if stored != 3 then
+        $"stored {Stdlib.Int.toString stored}, not 3"
+      else if (Stdlib.List.length n) != 3 then
+        $"native served {Stdlib.Int.toString (Stdlib.List.length n)} of ours"
+      else if (Stdlib.List.length d) != 3 then
+        $"dark served {Stdlib.Int.toString (Stdlib.List.length d)} of ours"
+      else if n != d then
+        let show (t: (String * String * String * String)) : String =
+          let (i, b, ts, a) = t
+          $"{Stdlib.String.first i 8}/{Stdlib.String.first b 12}/{ts}/{a}"
+        $"the two writers disagree: native={Stdlib.String.join (Stdlib.List.map n show) ","} dark={Stdlib.String.join (Stdlib.List.map d show) ","}"
+      else if (d |> Stdlib.List.all (fun (_, _, _, a) -> a == owner)) |> Stdlib.Bool.not then
+        "author is not the owner"
+      else
+        "3 ops, every field agrees, author is the owner"
+
+  (BothWritersAgreeOnOps.compare ()) = "3 ops, every field agrees, author is the owner"

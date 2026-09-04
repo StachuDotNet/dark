@@ -59,7 +59,13 @@ let rowsToSyncOps (rows: List<Dict<String, Stdlib.Sqlite.Value>>) : List<SyncOp>
       let author =
         Stdlib.Sqlite.textField row "author" |> Stdlib.Option.withDefault ""
 
-      (SyncOp { id = id; blobHex = Stdlib.Blob.toHex blob; ts = ts; author = author })
+      // Lowercase, as the native page writer (`Queries.exportPageJson`) spells it: both writers serve
+      // the same endpoint, and `sync-wire.dark` holds them to the same bytes, field for field.
+      (SyncOp
+        { id = id
+          blobHex = Stdlib.String.toLowercase (Stdlib.Blob.toHex blob)
+          ts = ts
+          author = author })
       |> Stdlib.Option.Option.Some
     | _ -> Stdlib.Option.Option.None)
 

@@ -2,7 +2,8 @@
 ///
 /// Distributed instances editing the same name must pick the SAME winner without coordinating. A candidate
 /// is stale (loses) when its authoring stamp is older, or -- on an exact tie -- when its content hash is the
-/// lower of the two (a portable, instance-independent tiebreak). Two places apply it: the op-fold
+/// lower of the two (a portable, instance-independent tiebreak). An identical binding already live is
+/// stale too: there is nothing to win, and the fold keeps what it has with its earliest stamp. Two places apply it: the op-fold
 /// (`PackageOpPlayback.applySetNameFrom`) and divergence detection (`SCM.Conflicts.incomingWins`, in
 /// Dark). Keeping the rule here means the F# copy cannot drift; `Tests.Lww` holds the Dark one to it.
 ///
@@ -17,7 +18,7 @@ let isStale
   (curTs : string)
   (curHash : string)
   : bool =
-  newTs < curTs || (newTs = curTs && newHash < curHash)
+  newTs < curTs || (newTs = curTs && newHash <= curHash)
 
 
 /// The same rule from the other side: does the INCOMING binding beat the live one?

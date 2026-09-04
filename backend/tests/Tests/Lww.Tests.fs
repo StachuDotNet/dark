@@ -33,7 +33,16 @@ let private cases : List<string * string * string * string * bool> =
     // Stamps are `yyyy-MM-ddTHH:mm:ss.fffZ`, so lexical comparison is already chronological: no parsing,
     // and the millisecond field is what separates two edits in the same second.
     ("2026-01-01T00:00:00.002Z", "aaaa", "2026-01-01T00:00:00.001Z", "ffff", true)
-    ("2026-01-01T00:00:59.999Z", "aaaa", "2026-01-01T00:01:00.000Z", "aaaa", false) ]
+    ("2026-01-01T00:00:59.999Z", "aaaa", "2026-01-01T00:01:00.000Z", "aaaa", false)
+
+    // An INCOMING binding with no stamp loses to anything that has one: the one asymmetry, and the row
+    // `conflicts.dark` documents that neither declared table had.
+    ("", "ffff", "2026-01-01T00:00:00.000Z", "aaaa", false)
+
+    // The same binding again, stamped the same: nothing to win. The fold keeps what it has and its
+    // earliest stamp; recording never sees this (equal hashes are not a conflict). F# said `true` here
+    // and Dark said `false`, and the fold's own equal-hash arm agrees with Dark.
+    ("2026-01-01T00:00:00.000Z", "aaaa", "2026-01-01T00:00:00.000Z", "aaaa", false) ]
 
 
 let private agreesWithTheTable =
@@ -47,19 +56,18 @@ let private agreesWithTheTable =
   }
 
 
-/// `isStale` and `incomingWins` are the same question asked from opposite sides, so outside the
-/// no-stamp case they must never agree. Stated as a test because the fold calls one and conflict
-/// recording calls the other, and an inverted sign in either is invisible until two machines diverge.
-let private theTwoDirectionsAreOpposites =
-  test
-    "isStale and incomingWins are exact opposites when the live binding has a stamp" {
+/// `isStale` is what the fold calls; the table is written from the recording side. Pinning both to the
+/// same rows is what stops one drifting while the other keeps the table green. (This used to assert
+/// `isStale <> not isStale`, which is true of any body at all.)
+let private isStaleAgreesWithTheTable =
+  test "isStale answers the table's rows from the fold's side" {
     cases
-    |> List.iter (fun (newTs, newHash, curTs, curHash, _) ->
+    |> List.iter (fun (newTs, newHash, curTs, curHash, incomingWins) ->
       if curTs <> "" then
-        Expect.notEqual
+        Expect.equal
           (Lww.isStale newTs newHash curTs curHash)
-          (Lww.incomingWins newTs newHash curTs curHash)
-          $"({newTs}, {newHash}) vs ({curTs}, {curHash})")
+          (not incomingWins)
+          $"fold side of ({newTs}, {newHash}) vs ({curTs}, {curHash})")
   }
 
 
@@ -67,8 +75,11 @@ let private theTwoDirectionsAreOpposites =
 /// B beats C, C beats A, and a three-way sync never settles. Checked over every pair in the table.
 let private theRuleIsAntisymmetric =
   test "no two distinct bindings both win against each other" {
+    // Both columns, so a binding that only ever sits on the live side (`("", "ffff")`) enters the pairs.
     let stamped =
-      cases |> List.map (fun (ts, h, _, _, _) -> (ts, h)) |> List.distinct
+      cases
+      |> List.collect (fun (nt, nh, ct, ch, _) -> [ (nt, nh); (ct, ch) ])
+      |> List.distinct
 
     for (tsA, hA) in stamped do
       for (tsB, hB) in stamped do
@@ -85,4 +96,4 @@ let private theRuleIsAntisymmetric =
 let tests =
   testList
     "Lww"
-    [ agreesWithTheTable; theTwoDirectionsAreOpposites; theRuleIsAntisymmetric ]
+    [ agreesWithTheTable; isStaleAgreesWithTheTable; theRuleIsAntisymmetric ]

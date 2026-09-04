@@ -239,6 +239,22 @@ module IncomingWins =
     (Helpers.binding "f" "zzz" "")
     (Helpers.binding "f" "aaa" "2026-01-02T00:00:00.000Z") = false
 
+  // The same binding again, stamped the same: nothing to win. `detect` never asks (equal hashes are not a
+  // conflict); the row pins the answer the fold's own equal-hash arm gives, so the three tables are one.
+  Darklang.SCM.Conflicts.incomingWins
+    (Helpers.binding "f" "aaa" "2026-01-02T00:00:00.000Z")
+    (Helpers.binding "f" "aaa" "2026-01-02T00:00:00.000Z") = false
+
+  // Stamps are `yyyy-MM-ddTHH:mm:ss.fffZ`, so lexical comparison is already chronological, down to the
+  // millisecond, and across a minute boundary.
+  Darklang.SCM.Conflicts.incomingWins
+    (Helpers.binding "f" "aaa" "2026-01-02T00:00:00.002Z")
+    (Helpers.binding "f" "bbb" "2026-01-02T00:00:00.001Z") = true
+
+  Darklang.SCM.Conflicts.incomingWins
+    (Helpers.binding "f" "aaa" "2026-01-02T00:00:59.999Z")
+    (Helpers.binding "f" "aaa" "2026-01-02T00:01:00.000Z") = false
+
 
 module ConflictId =
   // SORTED before hashing, so the id doesn't depend on which side happened to be local. Without this,
