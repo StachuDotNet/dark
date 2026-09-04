@@ -665,8 +665,12 @@ let private applyBranchEvent
       // flip effective and the fold takes them; into another branch they are retagged onto it, with the
       // child's name bases, as the local merge does, and nothing folds into main that nobody merged
       // there. The ids are bound once as a JSON array, so this stays one prepared statement per step.
+      // Built by hand: the reflection-based serializer is disabled in the published (AOT) binary, and
+      // a guid needs no escaping.
       let ids =
-        System.Text.Json.JsonSerializer.Serialize(mergedOps |> List.map string)
+        "["
+        + (mergedOps |> List.map (fun g -> "\"" + string g + "\"") |> String.concat ",")
+        + "]"
       let b = string branchId
       let bindB (cmd : SqliteCommand) =
         cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>
