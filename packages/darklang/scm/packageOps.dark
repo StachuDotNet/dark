@@ -990,7 +990,36 @@ let mergeBranch (branchId: Uuid) : Stdlib.Result.Result<MergeOutcome, String> =
   | Ok n ->
     // Say so in the log too, so the machine your colleague is on learns the branch is finished. The
     // local projections are already updated by the arm above; this is only how the OTHER machine learns.
-    let _ = Builtin.scmRecordBranchMerged branchId moved
+    let eventId = Builtin.scmRecordBranchMerged branchId moved
+
+    // A merge into main COMMITS what it landed: the branch's ops that were not committed here (a pulled
+    // branch's ops arrive uncommitted, since a bundle carries no commits) and the event itself. Left in
+    // main's draft, they read as "1 item changed" that nobody edited, and the next unrelated commit
+    // swept them up under its message. A merge into a branch retags; the parent's own merge commits.
+    let _ =
+      if SCM.Ids.isMain parent then
+        let landed =
+          Stdlib.List.append
+            (moved |> Stdlib.List.map (fun id -> Stdlib.Uuid.toString id))
+            [ Stdlib.Uuid.toString eventId ]
+
+        let message = $"merged branch \"{branchName branchId}\""
+        let author =
+          match identity () with
+          | "" -> "merge"
+          | id -> id
+        let uncommitted = draftOpIdsFor SCM.Ids.mainBranchId
+        let toStamp = landed |> Stdlib.List.filter (fun id -> Stdlib.List.``member`` uncommitted id)
+
+        if Stdlib.List.isEmpty toStamp then
+          ()
+        else
+          let hash =
+            Commits.create message author (Stdlib.List.sort toStamp) (parentCommitFor SCM.Ids.mainBranchId)
+          let _ = stampDraftOpsFor SCM.Ids.mainBranchId hash toStamp
+          ()
+      else
+        ()
 
     // Filed against the PARENT, not against `branchId`: the merge folded into the parent's projection and
     // the branch it came from is finished. `parent_id` and a branch id spell main the same way, so the id
@@ -1132,14 +1161,29 @@ let ensureBranch (name: String) (parentId: Uuid) : (Uuid * Bool) =
 type BranchBundleOp =
   { id: String
     blobHex: String
-    ts: String }
+    ts: String
+    /// The commit the op belongs to on the sender, or "" for an uncommitted one. Without it a pulled
+    /// branch arrived wholly uncommitted, and the puller's next `commit` swept the author's finished work
+    /// into its own commit: the same op under a different commit on each machine.
+    commit: String }
+
+
+/// A commit row, as it travels with a branch bundle. Same fields as `Commits.Commit` minus the local
+/// `createdAt`; the hash is the sender's and is kept, since it is derived from what the commit holds.
+type BranchBundleCommit =
+  { hash: String
+    message: String
+    author: String
+    originTs: String
+    parent: String }
 
 
 type BranchBundle =
   { branchId: Uuid
     name: String
     parent: String
-    ops: List<BranchBundleOp> }
+    ops: List<BranchBundleOp>
+    commits: List<BranchBundleCommit> }
 
 
 /// One column from the branches row for a branch (or a default).
@@ -1176,9 +1220,10 @@ let exportBranch (branchId: Uuid) : String =
     match
       Stdlib.Sqlite.queryP
         (localDb ())
-        "SELECT p.id, p.op_blob, p.origin_ts AS ts FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id WHERE ob.branch_id = @p0 ORDER BY p.rowid ASC"
+        "SELECT p.id, p.op_blob, p.origin_ts AS ts, COALESCE(p.commit_hash, '') AS author FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id WHERE ob.branch_id = @p0 ORDER BY p.rowid ASC"
         [ Stdlib.Uuid.toString branchId ]
     with
+    // `author` is borrowed to carry the commit hash through `rowsToSyncOps`; it is moved to `commit` below.
     | Ok rows -> Wire.rowsToSyncOps rows
     | Error _ -> []
 
@@ -1217,13 +1262,48 @@ let exportBranch (branchId: Uuid) : String =
       | Ok rows -> Wire.rowsToSyncOps rows
       | Error _ -> []
 
-  // Content first, so a receiver folding in order has the body before the name.
-  let ops = Stdlib.List.append content frontier
-
-  // Drop authorship on the way out: see `BranchBundleOp`.
+  // Content first, so a receiver folding in order has the body before the name. Borrowed content is
+  // main's and travels uncommitted here; the receiver's main decides its commit, as for any content.
   let bundleOps =
-    ops
-    |> Stdlib.List.map (fun o -> BranchBundleOp { id = o.id; blobHex = o.blobHex; ts = o.ts })
+    Stdlib.List.append
+      (content
+       |> Stdlib.List.map (fun o ->
+         BranchBundleOp { id = o.id; blobHex = o.blobHex; ts = o.ts; commit = "" }))
+      (frontier
+       |> Stdlib.List.map (fun o ->
+         BranchBundleOp { id = o.id; blobHex = o.blobHex; ts = o.ts; commit = o.author }))
+
+  let commitHashes =
+    frontier
+    |> Stdlib.List.filterMap (fun o -> if o.author == "" then Stdlib.Option.Option.None else Stdlib.Option.Option.Some o.author)
+    |> Stdlib.List.unique
+
+  let commits =
+    if Stdlib.List.isEmpty commitHashes then
+      []
+    else
+      match
+        Stdlib.Sqlite.queryP
+          (localDb ())
+          "SELECT hash, message, author, origin_ts, COALESCE(parent, '') AS parent FROM commits
+           WHERE hash IN (SELECT value FROM json_each(@p0))"
+          [ Stdlib.Json.serialize<List<String>> commitHashes ]
+      with
+      | Ok rows ->
+        rows
+        |> Stdlib.List.filterMap (fun row ->
+          let txt (col: String) : String = Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
+          match Stdlib.Sqlite.textField row "hash" with
+          | Some h ->
+            Stdlib.Option.Option.Some(
+              BranchBundleCommit
+                { hash = h
+                  message = txt "message"
+                  author = txt "author"
+                  originTs = txt "origin_ts"
+                  parent = txt "parent" })
+          | None -> Stdlib.Option.Option.None)
+      | Error _ -> []
 
   Stdlib.Json.serialize<BranchBundle> (
     BranchBundle
@@ -1231,7 +1311,8 @@ let exportBranch (branchId: Uuid) : String =
         name = branchField branchId "name" ""
         // The bundle is JSON, so the parent travels as text like every other field in it.
         parent = branchField branchId "parent_id" (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
-        ops = bundleOps })
+        ops = bundleOps
+        commits = commits })
 
 
 // relay branch storage (silo wrappers over the F# store; used by the matter relay)
@@ -1289,6 +1370,26 @@ let importBranch (json: String) : Stdlib.Result.Result<String, String> =
 
     match Builtin.scmImportBranchOps b.branchId importName b.parent records with
     | Ok n ->
+      // The sender's commits come with the ops, so a pulled branch shows the author's commits under the
+      // author's messages, and the puller's next `commit` takes only the puller's own work. The rows
+      // first, then the stamps; an op this store already had committed keeps its commit.
+      let _ =
+        if Stdlib.List.isEmpty b.commits then
+          ()
+        else
+          let _ =
+            Stdlib.Sqlite.mustExecBatch
+              (localDb ())
+              [ ("INSERT OR IGNORE INTO commits (hash, message, author, origin_ts, parent)
+                  VALUES (@p0, @p1, @p2, @p3, @p4)",
+                 b.commits
+                 |> Stdlib.List.map (fun c -> [ c.hash, c.message, c.author, c.originTs, c.parent ]))
+                ("UPDATE package_ops SET commit_hash = @p0 WHERE id = @p1 AND commit_hash IS NULL",
+                 b.ops
+                 |> Stdlib.List.filter (fun op -> op.commit != "")
+                 |> Stdlib.List.map (fun op -> [ op.commit, op.id ])) ]
+          ()
+
       // Falls back to the ID when the bundle carries no name. A branch CAN have an empty name -- one first
       // registered by authoring rather than by `switch` gets `""` -- and the hint below has to be typeable.
       let handle =

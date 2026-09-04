@@ -35,7 +35,7 @@ let commitRow (c: SCM.Commits.Commit) : List<String> =
 let executeList (state: AppState) (limit: Int64) : AppState =
   // This branch's commits, not the store's. `dark commits` on a branch used to list main's too, which
   // reads as "these are mine" and is not, and disagreed with what the workbench showed for the same branch.
-  let branchId = SCM.PackageOps.currentBranch ()
+  let branchId = state.currentBranchId
   let total = Stdlib.List.length (SCM.PackageOps.commitsOnBranch branchId 100000L)
   let commits = SCM.PackageOps.commitsOnBranch branchId limit
 
@@ -68,7 +68,7 @@ let executeList (state: AppState) (limit: Int64) : AppState =
 /// `dark show` once per row. Same op printer `show` uses, and the same per-commit cap, because the
 /// seed commit alone holds ~17k ops.
 let executeDetailed (state: AppState) (limit: Int64) : AppState =
-  let commits = SCM.PackageOps.commitsOnBranch (SCM.PackageOps.currentBranch ()) limit
+  let commits = SCM.PackageOps.commitsOnBranch state.currentBranchId limit
 
   if Stdlib.List.isEmpty commits then
     printOk "no commits yet -- `dark commit` makes one from your draft."

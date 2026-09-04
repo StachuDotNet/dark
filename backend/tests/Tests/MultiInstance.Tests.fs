@@ -633,6 +633,35 @@ let aMergeEventHonoursTheParent =
       teardown [ b ]
   }
 
+
+/// What an arriving merge event lands is committed the way the event was. A pull commits the event on the
+/// way in; the ops it flips came by a branch bundle, uncommitted, and used to sit in main's draft as "1
+/// item changed" nobody here made.
+let aMergeEventCommitsWhatItFlips =
+  testTask "a peer's merge event stamps the ops it flips with its own commit" {
+    let b = instance "b"
+    let x = PT.BranchId.Id(System.Guid.NewGuid())
+
+    try
+      activate b
+      do! Branches.createBranch x "stamped-x" PT.BranchId.Main
+      let op = setName "stamped-name" "s1"
+      let! _ = Branches.storeDeltaOps x [ op ]
+      let event =
+        PT.PackageOp.BranchEvent(x, PT.Merged [ Inserts.computeOpHash op ], "2026-01-02T00:00:00.000Z")
+      // The way a pull delivers it: committed on arrival, then folded.
+      let! _ = Inserts.importOpsBulk "sync-commit-1" [ wireOp event "2026-01-02T00:00:00.000Z" ]
+      let! _ = Seed.applyUnappliedOps ()
+
+      let! commit =
+        Sql.query "SELECT COALESCE(commit_hash, '') AS c FROM package_ops WHERE id = @id"
+        |> Sql.parameters [ "id", Sql.string (string (Inserts.computeOpHash op)) ]
+        |> Sql.executeRowAsync (fun read -> read.string "c")
+      Expect.equal commit "sync-commit-1" "the flipped op carries the event's commit"
+    finally
+      teardown [ b ]
+  }
+
 let tests =
   testSequenced
   <| testList
@@ -648,4 +677,5 @@ let tests =
       localEditsBeatAFastPeer
       aWriteBetweenReadAndMarkIsNotLost
       aMergeEventLeavesUnpushedWorkOnTheBranch
-      aMergeEventHonoursTheParent ]
+      aMergeEventHonoursTheParent
+      aMergeEventCommitsWhatItFlips ]

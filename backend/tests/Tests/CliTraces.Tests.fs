@@ -1745,6 +1745,68 @@ let private aBundleCarriesTheContentItsNamesPointAt =
     })
 
 
+/// A merge into main commits what it landed. The branch's ops arrived here uncommitted (a pulled branch,
+/// or one authored and never committed) and the merge event is authored uncommitted; both used to sit in
+/// main's draft afterwards, reading as "1 item changed" that nobody edited, until the next unrelated
+/// commit swept them up under its message.
+let private aMergeCommitsWhatItLands =
+  cliTestOnMain "merging a branch leaves main's draft as it was, under a merge commit" (fun state ->
+    task {
+      let! _ = runCli state [ "discard"; "-y" ]
+      let! _ = runCli state [ "switch"; "mergecommit" ]
+      let! _ = runCli state [ "fn"; "Tests.MergeCommit.f"; "() : Int64 = 6006L" ]
+      // Uncommitted on the branch on purpose: the shape a pulled branch arrives in.
+      let! merged = runCli state [ "merge"; "mergecommit" ]
+      Expect.stringContains merged "Merged" $"the merge went through: {merged}"
+
+      let! status = runCli state [ "status" ]
+      Expect.stringContains status "clean" $"main's draft holds nothing the merge landed: {status}"
+      let! commits = runCli state [ "commits"; "3" ]
+      Expect.stringContains commits "merged branch \"mergecommit\"" $"and a merge commit names it: {commits}"
+      let! evaluated = runCli state [ "eval"; "Tests.MergeCommit.f ()" ]
+      Expect.stringContains evaluated "6006" "and the work is live on main"
+    })
+
+
+/// A bundle carries the sender's commits. It did not, so a pulled branch arrived wholly uncommitted, and
+/// the puller's next `commit` swept the author's finished work under the puller's message: the same op
+/// under a different commit on each machine.
+let private aBundleCarriesItsCommits =
+  cliTestOnMain "a branch bundle arrives with the author's commits, not as a draft" (fun state ->
+    task {
+      let! _ = runCli state [ "switch"; "committedbr" ]
+      let! shown = runCli state [ "eval"; "Builtin.scmCurrentBranch ()" ]
+      let sourceId = System.Text.RegularExpressions.Regex.Match(shown, @"[0-9a-f-]{36}").Value
+      let! _ = runCli state [ "fn"; "Tests.Carry.done"; "() : Int64 = 7007L" ]
+      let! _ = runCli state [ "commit"; "the author's own message"; "-y" ]
+      let! _ = runCli state [ "switch"; "main" ]
+
+      let exported = $"{LibConfig.Config.runDir}/bundle-commits.json"
+      let! _ = runCli state [ "branch"; "export"; "committedbr"; exported ]
+      let json = System.IO.File.ReadAllText exported
+      Expect.stringContains json "the author's own message" "the bundle carries the commit"
+      let freshId = "1e51f3a2-9c4d-4b7a-8f61-2d3e4c5b6a71"
+      let retargeted = json.Replace(sourceId, freshId).Replace("committedbr", "arrivedbr")
+      let path = $"{LibConfig.Config.runDir}/bundle-commits-arrived.json"
+      System.IO.File.WriteAllText(path, retargeted)
+
+      let! imported = runCli state [ "branch"; "import"; path ]
+      Expect.stringContains imported "imported branch" $"it imports: {imported}"
+      // `switch`, not `--branch`: the harness runs the Dark entry only, and `--branch` moves the
+      // process in the F# entry, so a draft read here would be main's.
+      let! _ = runCli state [ "switch"; "arrivedbr" ]
+      let! status = runCli state [ "status" ]
+      Expect.stringContains status "clean" $"nothing on the arrived branch is a draft: {status}"
+      let! commits = runCli state [ "commits"; "3" ]
+      Expect.stringContains commits "the author's own message" $"and the author's commit is there: {commits}"
+
+      let! _ = runCli state [ "switch"; "main" ]
+      let! _ = runCli state [ "branch"; "archive"; "arrivedbr"; "-y" ]
+      let! _ = runCli state [ "branch"; "archive"; "committedbr"; "-y" ]
+      ()
+    })
+
+
 /// `discard` on a branch drops the BRANCH's work and leaves main's draft alone.
 ///
 /// Worth asserting because the command is destructive and the two drafts are kept apart by a `WHERE`
@@ -2933,7 +2995,7 @@ let private branchBundleKeepsWhatItCannotRead =
       // Valid hex, not a valid op: the deserializer rejects it. Appended rather than substituted, so
       // every real op in the bundle stays valid: the partial case.
       let bad =
-        """,{"blobHex":"ff3907","id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","ts":"2026-01-01T00:00:00.000Z"}"""
+        """,{"blobHex":"ff3907","commit":"","id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","ts":"2026-01-01T00:00:00.000Z"}"""
       // The serializer emits fields alphabetically, so `parent` follows `ops` and the
       // ops array does not end the document. Splice at the array's own close.
       let marker = """],"parent":"""
@@ -3484,6 +3546,8 @@ let tests =
        aBranchKnowsWhatFollowed
        switchRefusesAForeignId
        aBundleCarriesTheContentItsNamesPointAt
+       aMergeCommitsWhatItLands
+       aBundleCarriesItsCommits
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses

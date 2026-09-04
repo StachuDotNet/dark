@@ -647,6 +647,7 @@ let private applyDecision
 /// shared are none of this store's business.
 let private applyBranchEvent
   (ctx : Ctx)
+  (eventOpId : System.Guid)
   (branchId : PT.BranchId)
   (event : PT.BranchEventKind)
   (at : string)
@@ -696,6 +697,21 @@ let private applyBranchEvent
                AND id IN (SELECT value FROM json_each($ids))
                AND id IN (SELECT op_id FROM op_branches WHERE branch_id = $b)"
             bindB
+        // What the event landed is committed the way the event itself was: a merge event arrives
+        // through a sync import, which commits it on the way in, and the ops it flips came by a branch
+        // bundle, which carries no commits. Left uncommitted, they sat in main's draft as "1 item
+        // changed" that nobody here edited. (On the merger's own store the event is uncommitted at
+        // this point, and the Dark merge commits both together right after.)
+        do!
+          exec
+            ctx
+            "UPDATE package_ops SET commit_hash = (SELECT commit_hash FROM package_ops WHERE id = $e)
+             WHERE commit_hash IS NULL
+               AND id IN (SELECT value FROM json_each($ids))
+               AND (SELECT commit_hash FROM package_ops WHERE id = $e) IS NOT NULL"
+            (fun cmd ->
+              bindB cmd
+              cmd.Parameters.AddWithValue("$e", string eventOpId) |> ignore<SqliteParameter>)
       else
         let p = Option.defaultValue "" parent
         let bindP (cmd : SqliteCommand) =
@@ -794,7 +810,7 @@ let private applyOp (ctx : Ctx) (source : string) (op : PT.PackageOp) : Task<uni
     | PT.PackageOp.BranchEvent(branchId, event, at) ->
       // An event for a branch this store has never heard of folds to nothing. That is not a failure:
       // branch ids travel with a bundle, so the ones you share match.
-      do! applyBranchEvent ctx branchId event at
+      do! applyBranchEvent ctx (LibSerialization.Hashing.Hashing.computeOpRowId op) branchId event at
   }
 
 

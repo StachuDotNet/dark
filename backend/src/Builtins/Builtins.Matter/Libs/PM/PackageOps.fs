@@ -26,15 +26,16 @@ let packageOpKT () = KTCustomType(packageOpTypeName (), [])
 /// The projections are already updated by the caller's own SQL; this is not how the local store learns
 /// what happened. It is how the OTHER machine learns. The fold is idempotent for these events (each sets a
 /// column only when it is still NULL), so the op landing here as well changes nothing locally.
+/// Returns the event op's id, so the caller can commit it with what it describes.
 let private recordBranchEvent
   (branchId : PT.BranchId)
   (event : PT.BranchEventKind)
-  : Ply<unit> =
+  : Ply<System.Guid> =
   uply {
     let at = System.DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
     let op = PT.PackageOp.BranchEvent(branchId, event, at)
     let! _ = LibDB.Inserts.insertAndApplyOps [ op ]
-    return ()
+    return LibDB.Inserts.computeOpHash op
   }
 
 
@@ -657,7 +658,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [| DUuid branchIdGuid |] ->
           uply {
             let branchId = PT.BranchId.Id branchIdGuid
-            do! recordBranchEvent branchId PT.Archived
+            let! _ = recordBranchEvent branchId PT.Archived
             return DUnit
           }
         | _ -> incorrectArgs ())
@@ -732,9 +733,9 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       parameters =
         [ Param.make "branchId" TUuid "the branch that was merged"
           Param.make "ops" (TList TUuid) "the ids of the ops the merge moved" ]
-      returnType = TUnit
+      returnType = TUuid
       description =
-        "Author the op that says this branch was merged, naming what it moved, so other machines learn it."
+        "Author the op that says this branch was merged, naming what it moved, so other machines learn it. Returns the event op's id."
       fn =
         (function
         | _, _, _, [| DUuid branchIdGuid; DList(_, ops) |] ->
@@ -745,8 +746,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 match d with
                 | DUuid g -> Some g
                 | _ -> None)
-            do! recordBranchEvent (PT.BranchId.Id branchIdGuid) (PT.Merged ids)
-            return DUnit
+            let! eventId = recordBranchEvent (PT.BranchId.Id branchIdGuid) (PT.Merged ids)
+            return DUuid eventId
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
