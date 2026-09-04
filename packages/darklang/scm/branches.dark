@@ -3,7 +3,7 @@ module Darklang.SCM.Branches
 //  the BRANCH-TABLES data-access silo
 //
 // Owns the SQL for `branches`, `op_branches`, `branch_name_bases` and `relay_branches`. None of it needs the
-// compiler, the binary codec, SCC hashing or the fold, which is the line SPEC section 9 draws.
+// compiler, the binary codec, SCC hashing or the fold, which is where the F#/Dark line is drawn.
 //
 // What stays F#: `createBranch` and `recordNameBases`, called mid-transaction from `scmAddOps`, and
 // `storeDeltaOps` / `markMergedEffective`, which are the fold's business.
@@ -136,7 +136,7 @@ let setName (branchId: Uuid) (name: String) : Unit =
 ///
 /// Only effective=0 ops are deleted: anything that made it into main is main's now, and deleting it here
 /// would tear a hole in the shared log rather than discard a branch.
-let archive (branchId: Uuid) : Unit =
+let archive (branchId: Uuid) : Stdlib.Result.Result<Unit, String> =
   let b = Stdlib.Uuid.toString branchId
 
   // ONE transaction. This is the only place that deletes from `package_ops`, the canonical log, and it
@@ -158,13 +158,13 @@ let archive (branchId: Uuid) : Unit =
         ("DELETE FROM branch_name_bases WHERE branch_id = @p0", [ [ b ] ])
         ("UPDATE branches SET archived_at = datetime('now') WHERE id = @p0", [ [ b ] ]) ]
 
+  // Returned, not printed. The caller reports "archived" and records an Archived op on the strength of
+  // this, so a failure it cannot see becomes a branch archived on every OTHER machine and live here. And
+  // library code under `scm/` must not write to stdout: in the LSP server that is the JSON-RPC channel.
   match result with
-  | Ok _ -> ()
+  | Ok _ -> Stdlib.Result.Result.Ok()
   | Error e ->
-    // Said, not swallowed. The caller reports "archived" on the strength of this returning, and a silent
-    // failure there is a branch the person believes is gone.
-    Stdlib.printLine
-      (Stdlib.Cli.UI.Colors.error $"  archive failed, nothing was changed: {e}")
+    Stdlib.Result.Result.Error $"archive failed, nothing was changed: {e}"
 
 /// Untag a review branch's already-APPLIED ops. A whole-log review import tags every re-imported op to the
 /// queue, including ones already in main (the op row dedups, but the tag is new), which inflates the queue's
@@ -206,6 +206,9 @@ let list () : List<BranchRow> =
     rows
     |> Stdlib.List.filterMap (fun row ->
       match Stdlib.Sqlite.textField row "id" |> Stdlib.Option.map Stdlib.Uuid.parse with
+      // A row whose id will not parse is skipped, not fatal: this feeds every listing and the LSP
+      // tree, and one bad row taking all of them down is worse than one branch missing from the list.
+      | Some(Error _) -> Stdlib.Option.Option.None
       | Some(Ok id) ->
         Stdlib.Option.Option.Some(
           BranchRow

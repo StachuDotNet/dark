@@ -291,7 +291,10 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
   // reference, or a definite type error, that a person at the pretty prompt would have been refused.
   // They print their refusal; the JSON below then says `committed = false`.
   let (didCommit, hash, ops, moved) =
-    if (Stdlib.List.isEmpty r.changed) && (Stdlib.List.isEmpty r.removed) then
+    // Ask the DRAFT, not the changed-bindings list, for the same reason `executePretty` does: a
+    // `Deprecate` binds no name, so `dark delete X` then `dark commit --json -y` reported
+    // "committed: false" and left the deprecation uncommitted forever.
+    if SCM.PackageOps.draftOpCount () == 0L then
       (false, "", 0L, 0)
     else if parsed.autoConfirm && (refuseUnresolved parsed || refuseTypeErrors parsed) then
       (false, "", 0L, 0)

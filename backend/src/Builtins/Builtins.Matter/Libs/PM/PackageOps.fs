@@ -594,16 +594,34 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [| DList(_, ids) |] ->
           uply {
             try
-              let kept =
+              // Every id must parse. This list is what SURVIVES a delete of main's whole draft, so
+              // dropping an unreadable one silently WIDENS the delete: the tolerant `List.choose` this
+              // replaces turned one malformed id into one op deleted for good. Refuse the call instead.
+              let parsed =
                 ids
-                |> List.choose (fun d ->
+                |> List.map (fun d ->
                   match d with
                   | DString s ->
                     match System.Guid.TryParse s with
-                    | true, g -> Some g
-                    | _ -> None
-                  | _ -> None)
-                |> Set.ofList
+                    | true, g -> Ok g
+                    | _ -> Error s
+                  | other -> Error(string other))
+
+              match parsed |> List.tryPick (function
+                                            | Error s -> Some s
+                                            | Ok _ -> None) with
+              | Some bad ->
+                return
+                  Dval.resultError
+                    KTUnit
+                    KTString
+                    (DString $"not an op id: {bad}; nothing was changed")
+              | None ->
+
+              let kept =
+                parsed |> List.choose (function
+                                       | Ok g -> Some g
+                                       | Error _ -> None) |> Set.ofList
 
               do! LibDB.Draft.rebuild kept
               return Dval.resultOk KTUnit KTString DUnit

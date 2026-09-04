@@ -1788,12 +1788,10 @@ let private anUnbindRemovesANameThroughTheCli =
             "Darklang.SCM.PackageOps.add (Builtin.scmCurrentBranch ()) [ Darklang.LanguageTools.ProgramTypes.PackageOp.Unbind(Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"Tests\"; modules = [\"Gone\"]; name = \"f\" }, Stdlib.Option.Option.None) ]" ]
       Expect.stringContains added "Ok" $"the unbind was authored on the branch: {added}"
 
-      let! onBranch = runCliCatching state [ "eval"; "Tests.Gone.f ()" ]
-      Expect.isTrue
-        (match onBranch with
-         | Ok out -> out.Contains "not found"
-         | Error _ -> true)
-        $"the name is gone on the branch: {onBranch}"
+      // `Ok` with "not found", not `| Error _ -> true`: a runtime crash would otherwise read as
+      // "the name is gone", which is the assertion passing for the one reason it must not.
+      let! onBranch = runCli state [ "eval"; "Tests.Gone.f ()" ]
+      Expect.stringContains onBranch "not found" $"the name is gone on the branch: {onBranch}"
       let! status = runCli state [ "status" ]
       Expect.stringContains status "1 item removed" $"status names the removal: {status}"
       let! review = runCli state [ "commit"; "remove f"; "-y" ]
@@ -1805,14 +1803,41 @@ let private anUnbindRemovesANameThroughTheCli =
       Expect.stringContains onMain "1" "main still has it before the merge"
       let! merged = runCli state [ "merge"; "gonebr" ]
       Expect.stringContains merged "Merged" $"the branch merges: {merged}"
-      let! afterMerge = runCliCatching state [ "eval"; "Tests.Gone.f ()" ]
-      Expect.isTrue
-        (match afterMerge with
-         | Ok out -> out.Contains "not found"
-         | Error _ -> true)
+      let! afterMerge = runCli state [ "eval"; "Tests.Gone.f ()" ]
+      Expect.stringContains
+        afterMerge
+        "not found"
         $"and main no longer has the name: {afterMerge}"
       let! shown = runCli state [ "commits"; "3" ]
       Expect.stringContains shown "remove f" $"the removal's commit travelled with the merge: {shown}"
+    })
+
+
+/// A draft holding a deprecation can be committed by both paths. Two separate bugs met here: `--include=`
+/// read the `Reference` a `Deprecate` carries as a `Hash` and died at runtime, and `commit --json` decided
+/// "nothing to commit" from the changed-NAMES list, which a deprecation is never in, so an agent could not
+/// commit one at all and it shipped in the seed as somebody's mystery op.
+let private aDeprecationCommitsByEitherPath =
+  cliTestOnMain "a deprecation-only draft commits, by --include= and by --json" (fun state ->
+    task {
+      let! _ = runCli state [ "discard"; "-y" ]
+      let! _ = runCli state [ "fn"; "Tests.DepCommit.a"; "() : Int64 = 41L" ]
+      let! _ = runCli state [ "fn"; "Tests.DepCommit.b"; "() : Int64 = 42L" ]
+      let! _ = runCli state [ "commit"; "two fns"; "-y" ]
+
+      let! _ = runCli state [ "delete"; "fn"; "Tests.DepCommit.a"; "-y" ]
+      let! selected =
+        runCli state [ "commit"; "just a"; "--include=Tests.DepCommit.a"; "-y" ]
+      Expect.isFalse
+        (Option.isSome (looksLikeARuntimeFailure selected))
+        $"--include= over a draft holding a Deprecate does not crash: {selected}"
+
+      let! _ = runCli state [ "delete"; "fn"; "Tests.DepCommit.b"; "-y" ]
+      let! json = runCli state [ "commit"; "just b"; "--json"; "-y" ]
+      Expect.stringContains json "\"committed\":true" $"and --json commits it: {json}"
+
+      let! after = runCli state [ "status" ]
+      Expect.stringContains after "clean" $"leaving nothing behind: {after}"
     })
 
 
@@ -2140,7 +2165,8 @@ let private commitRefusesDefiniteTypeErrors =
 
         let! taken =
           runCli state [ "commit"; "taking it"; "-y"; "--allow-type-errors" ]
-        Expect.stringContains taken "commit " "the typed override takes it"
+        // `op(s)`: "nothing to commit -- your draft is empty" also contains "commit ".
+        Expect.stringContains taken "op(s)" $"the typed override takes it: {taken}"
       })
 
 
@@ -2504,20 +2530,24 @@ let private reviewQueueRoundTrips =
         let path = $"{LibConfig.Config.runDir}/rq-test-bundle.json"
         let! _ = runCli state [ "sync"; "export"; path ]
 
+        // Asserted POSITIVELY. These three were `isFalse (contains "no review queue")`, which any other
+        // failure text passed, including a runtime error, and this is the only end-to-end cover of
+        // `dark review`.
         let! staged = runCli state [ "review"; "import"; path; "rqueue" ]
+        Expect.stringContains staged "rqueue" $"the queue is created by name: {staged}"
         Expect.isFalse
-          (staged.Contains "no review queue")
-          "the queue is created by name"
+          (Option.isSome (looksLikeARuntimeFailure staged))
+          $"and importing it did not fail: {staged}"
 
         let! shown = runCli state [ "review"; "rqueue" ]
         Expect.isFalse
-          (shown.Contains "no review queue")
-          "and is inspectable by that name"
+          (Option.isSome (looksLikeARuntimeFailure shown))
+          $"and is inspectable by that name: {shown}"
 
         let! approved = runCli state [ "review"; "approve"; "rqueue" ]
         Expect.isFalse
-          (approved.Contains "no review queue")
-          "and approvable by it, which is the whole workflow"
+          (Option.isSome (looksLikeARuntimeFailure approved))
+          $"and approvable by it, which is the whole workflow: {approved}"
       })
 
 
@@ -2549,7 +2579,7 @@ let private otherBranchAnswersStayCurrent =
       let! second = runCli state [ "diff"; "cachebr" ]
       Expect.stringContains second "two" "and so does what was added since"
 
-      let! _ = runCli state [ "branch"; "archive"; "cachebr" ]
+      let! _ = runCli state [ "branch"; "archive"; "cachebr"; "-y" ]
       ()
     })
 
@@ -2835,8 +2865,8 @@ let private branchChainSeesItsAncestry =
         let! oneOnMain = runCli state [ "eval"; "Tests.Chain.one ()" ]
         Expect.stringContains oneOnMain "not found" "main sees no branch work"
 
-        let! _ = runCli state [ "branch"; "archive"; "chainTwo" ]
-        let! _ = runCli state [ "branch"; "archive"; "chainOne" ]
+        let! _ = runCli state [ "branch"; "archive"; "chainTwo"; "-y" ]
+        let! _ = runCli state [ "branch"; "archive"; "chainOne"; "-y" ]
         ()
       })
 
@@ -2931,7 +2961,7 @@ let private bareMergeAndRebaseMeanThisBranch =
       Expect.stringContains named "no branch" "a named branch is still looked up"
 
       let! _ = runCli state [ "switch"; "main" ]
-      let! _ = runCli state [ "branch"; "archive"; "barebr" ]
+      let! _ = runCli state [ "branch"; "archive"; "barebr"; "-y" ]
       ()
     })
 
@@ -2995,7 +3025,7 @@ let private dependentsSeeTheBranchYouAreOn =
           (onMain.Contains "branchCaller")
           "and does NOT see one that only exists on a branch"
 
-        let! _ = runCli state [ "branch"; "archive"; "depbr" ]
+        let! _ = runCli state [ "branch"; "archive"; "depbr"; "-y" ]
         ()
       })
 
@@ -3059,8 +3089,12 @@ let private branchBundleKeepsWhatItCannotRead =
 
       let! listed = runCli state [ "branches" ]
       Expect.isTrue (listed.Contains "importedbr") $"and the branch exists: {listed}"
-      let! onIt = runCli state [ "--branch"; "importedbr"; "eval"; "Tests.Bundle.only 1L" ]
+      // `switch`, not `--branch`: the flag is resolved and consumed in `Cli.fs` before Dark runs, so
+      // through this harness (which calls the Dark entry point directly) it moves nothing.
+      let! _ = runCli state [ "switch"; "importedbr" ]
+      let! onIt = runCli state [ "eval"; "Tests.Bundle.only 1L" ]
       Expect.stringContains onIt "2" "and its readable work runs"
+      let! _ = runCli state [ "switch"; "main" ]
 
       // The unreadable op is here, inert, on the branch: kept for a build that can read it.
       let! kept =
@@ -3109,14 +3143,14 @@ let private mergeGatesAreDecidedInDark =
           "active children"
           "a parent cannot merge out from under its children"
 
-        let! _ = runCli state [ "branch"; "archive"; "gatechild" ]
+        let! _ = runCli state [ "branch"; "archive"; "gatechild"; "-y" ]
         let! merged = runCli state [ "merge"; "gateparent" ]
         Expect.stringContains
           merged
           "Merged"
           "and archiving the child clears the gate, rather than repeating the advice"
 
-        let! _ = runCli state [ "branch"; "archive"; "gateempty" ]
+        let! _ = runCli state [ "branch"; "archive"; "gateempty"; "-y" ]
         ()
       })
 
@@ -3159,7 +3193,7 @@ let private diffAndLogAnswerInJson =
       let! flagFirst = runCli state [ "diff"; "--json"; "jsonsurface" ]
       Expect.equal (flagFirst.Trim()) (diffJson.Trim()) "the flag is not positional"
 
-      let! _ = runCli state [ "branch"; "archive"; "jsonsurface" ]
+      let! _ = runCli state [ "branch"; "archive"; "jsonsurface"; "-y" ]
       ()
     })
 
@@ -3192,7 +3226,10 @@ let private commitRefusesUnresolvedReferences =
         // it has to be typed: `-y` alone must not wave it through.
         let! allowed =
           runCli state [ "commit"; "unresolved"; "--allow-unresolved"; "-y" ]
-        Expect.stringContains allowed "commit" "--allow-unresolved records it as-is"
+        // `op(s)`, not `commit`: the refusal this flag exists to get past is
+        // "cannot commit: these reference names that don't resolve", which contains "commit",
+        // so the obvious assertion passed whether the flag worked or not.
+        Expect.stringContains allowed "op(s)" $"--allow-unresolved records it as-is: {allowed}"
 
         // A forward reference inside one draft: the caller is authored first and cannot
         // resolve yet, and re-resolution fixes it before commit ever looks.
@@ -3291,7 +3328,7 @@ let private discardOnABranchLeavesMainAlone =
           (before.Trim())
           "main's uncommitted ops all survived the branch's discard"
 
-        let! _ = runCli state [ "branch"; "archive"; "discardbr" ]
+        let! _ = runCli state [ "branch"; "archive"; "discardbr"; "-y" ]
         ()
       })
 
@@ -3329,7 +3366,7 @@ let private committingOnABranchCommitsItsOps =
       Expect.equal (draft.Trim()) "0" "the branch's draft is empty once committed"
 
       let! _ = runCli state [ "switch"; "main" ]
-      let! _ = runCli state [ "branch"; "archive"; "commitbr" ]
+      let! _ = runCli state [ "branch"; "archive"; "commitbr"; "-y" ]
       ()
     })
 
@@ -3393,7 +3430,7 @@ let private conflictsBelongToTheBranchTheyHappenedOn =
 
       // Answered, so this test leaves no pending row behind for whatever reads the store next.
       let! _ = runCli state [ "conflicts"; "ack"; "cnfmain0001" ]
-      let! _ = runCli state [ "branch"; "archive"; "confbr" ]
+      let! _ = runCli state [ "branch"; "archive"; "confbr"; "-y" ]
       ()
     })
 
@@ -3425,7 +3462,7 @@ let private branchItemsArePolicyTargets =
         (onMain.Contains "Tests.Pol.only")
         "and stays branch-local, like every other branch decision"
 
-      let! _ = runCli state [ "branch"; "archive"; "polbr" ]
+      let! _ = runCli state [ "branch"; "archive"; "polbr"; "-y" ]
       ()
     })
 
@@ -3594,6 +3631,7 @@ let tests =
        aMergeCommitsWhatItLands
        aBundleCarriesItsCommits
        anUnbindRemovesANameThroughTheCli
+       aDeprecationCommitsByEitherPath
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses

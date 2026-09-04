@@ -69,7 +69,7 @@ let headHandlerFn (req: HttpRequest) : HttpResponse =
 /// load a page -- including this file, which is itself a package.
 ///
 /// Write-AUTHORISATION, not authorship: everyone holding the secret can write as anyone, the accepted
-/// trade for a relay shared between people who have met. See notes/fresh-arch/AUTHORSHIP.md.
+/// trade for a relay shared between people who have met.
 let writeAllowed (req: HttpRequest) : Stdlib.Result.Result<Unit, String> =
   match Builtin.environmentGet "DARK_MATTER_WRITE_SECRET" with
   | None ->
@@ -127,6 +127,13 @@ let pushHandlerFn (req: HttpRequest) : HttpResponse =
 
   let owner =
     Stdlib.Http.Request.queryParam req "owner" |> Stdlib.Option.withDefault ""
+
+  // Refused, the way `/branch/push` refuses the same shape. Ops stored under owner "" are invisible to
+  // every `?owner=` pull, forever, and nothing anywhere says so: a client that forgot the parameter got
+  // a 200 and a relay that had quietly dropped its work on the floor.
+  if owner == "" then
+    Stdlib.Http.badRequest "push needs ?owner="
+  else
 
   match SCM.Wire.wireDecode req.body with
   | Ok bundle ->
