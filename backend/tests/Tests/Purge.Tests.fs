@@ -164,6 +164,22 @@ let foldProjectionsArePurged =
   }
 
 
+/// The seed is a fresh install's starting store, and these tables are one install's RELATIONSHIPS:
+/// with a relay (`sync_pushed`, `sync_bases`) and with itself (`config_v0`, which holds the relay url and
+/// its write secret). A seed built from a developer's store would otherwise ship that developer's
+/// relationships to everyone. `sync_pushed` was missed when it was added; this reads the export's SQL so
+/// the next such table is not.
+let seedExportStripsPerInstallState =
+  test "Seed.export strips every per-install table" {
+    let source =
+      System.IO.File.ReadAllText(System.IO.Path.Combine("..", "backend", "src", "LibDB", "Seed.fs"))
+    for t in [ "sync_pushed"; "sync_bases"; "config_v0"; "conflicts"; "op_owners" ] do
+      Expect.isTrue
+        (source.Contains $"DELETE FROM {t};")
+        $"`Seed.export` must strip `{t}`: it is one install's state, not the tree's"
+  }
+
+
 let tests =
   testList
     "Purge"
@@ -171,4 +187,5 @@ let tests =
       purgeTablesAllExist
       hashCoupledTablesAreClassified
       logStateProjectionsArePurged
-      foldProjectionsArePurged ]
+      foldProjectionsArePurged
+      seedExportStripsPerInstallState ]

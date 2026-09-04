@@ -132,6 +132,10 @@ let export (outputPath : string) : Task<unit> =
       -- builder's would make it believe it had already agreed with machines it has never met.
       DELETE FROM sync_bases;
 
+      -- Same reasoning: what a relay HOLDS of the builder's ops is the builder's relationship with that
+      -- relay. Shipped, every fresh install would believe that relay already had its ops and never push.
+      DELETE FROM sync_pushed;
+
       UPDATE package_ops SET applied = 0;
       """
     cleanCmd.ExecuteNonQuery() |> ignore<int>
