@@ -5,7 +5,7 @@
 /// the surgical path itself. This is what Dark cannot do: it re-mints every surviving op's id, which
 /// is hashing, and re-inserts through the fold.
 ///
-/// The invariant it exists to hold: `Inserts.discardWipOps` spares ops this build cannot decode, BY
+/// The invariant it exists to hold: `Inserts.wholeMainDeletes` spares ops this build cannot decode, BY
 /// ID. A synced store's draft holds a peer's ops on a newer format, stored and left unapplied on
 /// purpose, and they are invisible to the Dark reader for exactly that reason. If the delete ever
 /// stopped sparing them, authoring would silently eat a colleague's work with nothing to say so.
@@ -38,10 +38,20 @@ let rebuild (keptIds : Set<System.Guid>) : Task<unit> =
         let id = Inserts.computeOpHash op
         Map.containsKey id preserveCommit || Set.contains id keptIds)
 
-    match! Inserts.discardWipOps () with
-    | Error msg -> Exception.raiseInternal "draft rebuild failed" [ "msg", msg ]
-    | Ok _ ->
-      let! _ =
-        Inserts.insertAndApplyOpsPreservingTs preserveTs preserveCommit surviving
-      ()
+    // One transaction for the delete and the re-insert; see `Inserts.rewriteOpsAtomically`. The ops
+    // this build cannot decode are read by id first and kept, since `getWipOps` cannot re-insert them.
+    let! unreadable = Inserts.unreadableMainOpIds ()
+    let! _ =
+      Inserts.rewriteOpsAtomically
+        (Inserts.wholeMainDeletes unreadable)
+        (fun opId ->
+          match Map.tryFind opId preserveTs with
+          | Some ts -> ts
+          | None -> Inserts.nextOriginTs ())
+        (fun opId -> Map.tryFind opId preserveCommit)
+        // A whole-main rewrite re-folds bindings that were authored, propagated or resolved alike,
+        // and the op alone does not say which. 'op' is the honest default.
+        "op"
+        surviving
+    ()
   }

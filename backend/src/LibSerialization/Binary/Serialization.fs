@@ -154,7 +154,7 @@ module PT =
     ///
     /// The rule is ONE decoder returning an Option, every reader tolerating, and no writer deleting what
     /// it could not decode. Skipping an op for READING must never become dropping it for WRITING, which
-    /// is why `Inserts.discardWipOps` excludes them BY ID rather than by whether they parse.
+    /// is why `Inserts.wholeMainDeletes` excludes them BY ID rather than by whether they parse.
     let tryDeserialize (id : System.Guid) (data : byte[]) : Option<PT.PackageOp> =
       try
         Some(deserialize id data)

@@ -33,7 +33,7 @@ let private cleanup () : Task<unit> =
       |> Sql.executeStatementAsync
   }
 
-/// Shield a test op from a CONCURRENT test's authoring: `WipRefresh` can trigger `discardWipOps`, which
+/// Shield a test op from a CONCURRENT test's authoring: `WipRefresh` rewrites the draft (`Inserts.rewriteOpsAtomically`), which
 /// deletes every main op not tagged to a branch, and the shared test DB means that lands on our rows too.
 /// Tagging the op to a branch takes it out of that sweep without changing what the fold does with it
 /// (`effective` is untouched, so `applyUnappliedOps` still picks it up).

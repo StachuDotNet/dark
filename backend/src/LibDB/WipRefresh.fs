@@ -182,23 +182,21 @@ let refresh (pm : PT.PackageManager) : Task<int64> =
           // Count changed items (items that got a new hash)
           let changedCount = Set.difference newHashes oldHashes |> Set.count |> int64
 
-          // 6. Discard the old draft and re-insert the updated one. Capture the existing
-          //    origin_ts FIRST, so an op whose hash didn't change comes back with its own stamp
-          //    rather than a fresh one. No commit map: nothing here is committed, by
-          //    construction.
+          // 6. Discard the old draft and re-insert the updated one, as ONE transaction: a crash
+          //    between the two used to delete the draft for good. Capture the existing origin_ts
+          //    FIRST, so an op whose hash didn't change comes back with its own stamp rather than a
+          //    fresh one. No commit: nothing here is committed, by construction. A failure raises
+          //    into the author's `try/with`, rather than being printed and reported as 0 changed.
           let! preserveTs = Queries.getWipOpOriginTs ()
-          let preserveCommit : Map<System.Guid, string> = Map.empty
-          let! discardResult = Inserts.discardDraftOps ()
-
-          match discardResult with
-          | Error msg ->
-            System.Console.Error.WriteLine($"WipRefresh: discard failed: {msg}")
-            return 0L
-          | Ok _ ->
-            let! _ =
-              Inserts.insertAndApplyOpsPreservingTs
-                preserveTs
-                preserveCommit
-                stabilizedOps
-            return changedCount
+          let! _ =
+            Inserts.rewriteOpsAtomically
+              Inserts.draftDeletes
+              (fun opId ->
+                match Map.tryFind opId preserveTs with
+                | Some ts -> ts
+                | None -> Inserts.nextOriginTs ())
+              (fun _ -> None)
+              "op"
+              stabilizedOps
+          return changedCount
   }

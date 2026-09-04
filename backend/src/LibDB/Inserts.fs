@@ -175,6 +175,118 @@ let insertAndApplyOpsPreservingTs
     ops
 
 
+/// The draft's rows: main's uncommitted ops and the bindings they wrote. The `resolution` overlay is
+/// kept; `discard` must not silently revert a synced resolution into a divergence.
+let draftDeletes : List<string> =
+  [ "DELETE FROM locations WHERE source <> 'resolution'
+     AND op_id IN (SELECT id FROM package_ops
+                   WHERE commit_hash IS NULL
+                     AND id NOT IN (SELECT op_id FROM op_branches))"
+    "DELETE FROM package_ops
+     WHERE commit_hash IS NULL
+       AND id NOT IN (SELECT op_id FROM op_branches)" ]
+
+/// Every main op and what it wrote, EXCEPT the ids in `keep`: the ops this build cannot decode, which
+/// the caller has read by id. Deleting those would delete a peer's committed op for good because this
+/// binary is the wrong version to parse it; left in place they change no projection, and the next build
+/// that can read them applies them. Branch-tagged ops are never main's and are left alone too.
+let wholeMainDeletes (keep : Set<System.Guid>) : List<string> =
+  let keepUnreadable =
+    if Set.isEmpty keep then
+      ""
+    else
+      let quoted =
+        keep
+        |> Set.toList
+        |> List.map (fun (g : System.Guid) -> $"'{g.ToString()}'")
+        |> String.concat ","
+      $" AND id NOT IN ({quoted})"
+  [ "DELETE FROM locations WHERE source <> 'resolution'"
+    "DELETE FROM deprecations"
+    $"DELETE FROM package_ops WHERE id NOT IN (SELECT op_id FROM op_branches){keepUnreadable}" ]
+
+/// Main's op ids this build cannot decode. What `wholeMainDeletes` keeps.
+let unreadableMainOpIds () : Task<Set<System.Guid>> =
+  task {
+    let! rows =
+      Sql.query
+        """
+        SELECT id, op_blob
+        FROM package_ops
+        WHERE id NOT IN (SELECT op_id FROM op_branches)
+        """
+      |> Sql.executeAsync (fun read ->
+        let opId = read.uuid "id"
+        let readable =
+          (BS.PT.PackageOp.tryDeserialize opId (read.bytes "op_blob")) |> Option.isSome
+        (opId, readable))
+    return rows |> List.filter (snd >> not) |> List.map fst |> Set.ofList
+  }
+
+/// Delete, re-insert and re-fold as ONE transaction. `deletes` run first, in order; then every op is
+/// inserted (or, if its row survived the deletes at `effective = 0`, flipped effective and untagged, as
+/// `insertAndApplyOpsWith` does) and the ones that landed are folded on the same connection; then the
+/// commit. The rewrite used to be four transactions across two connections (delete; insert; fold; mark
+/// applied), and a crash after the first one deleted main's draft, or all of main, for good.
+///
+/// `applied = 1` at insert is right because insert, fold and commit are one unit: a throw anywhere rolls
+/// all of it back and the store is exactly as it was. The fold opens nothing of its own on a connection
+/// it is handed, which is what lets it run inside this transaction; a Fumble call in here would open a
+/// second connection and wait on the lock this one holds.
+let rewriteOpsAtomically
+  (deletes : List<string>)
+  (tsFor : System.Guid -> string)
+  (commitFor : System.Guid -> string option)
+  (source : string)
+  (ops : List<PT.PackageOp>)
+  : Task<int64> =
+  task {
+    use conn = new Microsoft.Data.Sqlite.SqliteConnection(LibDB.Sqlite.connString)
+    do! conn.OpenAsync()
+    // Outside the transaction, where a pragma takes effect.
+    do
+      use pragma = conn.CreateCommand()
+      pragma.CommandText <- "PRAGMA busy_timeout=5000;"
+      pragma.ExecuteNonQuery() |> ignore<int>
+    use tx = conn.BeginTransaction()
+    // After BeginTransaction: a command created on the connection now carries the transaction.
+    let ctx = PreparedBatch.newCtx conn
+    try
+      for d in deletes do
+        do! PreparedBatch.exec ctx d (fun _ -> ())
+
+      let inserted = ResizeArray<PT.PackageOp>()
+      for op in ops do
+        let opId = computeOpHash op
+        let blob = BS.PT.PackageOp.serialize opId op
+        let! n =
+          PreparedBatch.execRows
+            ctx
+            "INSERT INTO package_ops (id, op_blob, applied, origin_ts, commit_hash)
+             VALUES ($id, $blob, 1, $ts, $commit)
+             ON CONFLICT(id) DO UPDATE
+               SET effective = 1, applied = 1,
+                   origin_ts = excluded.origin_ts, commit_hash = excluded.commit_hash
+               WHERE package_ops.effective = 0"
+            (fun cmd ->
+              PreparedBatch.pUuid cmd "$id" opId
+              PreparedBatch.p cmd "$blob" blob
+              PreparedBatch.p cmd "$ts" (tsFor opId)
+              PreparedBatch.pOpt cmd "$commit" (commitFor opId))
+        do!
+          PreparedBatch.exec ctx "DELETE FROM op_branches WHERE op_id = $id" (fun cmd ->
+            PreparedBatch.pUuid cmd "$id" opId)
+        if n > 0 then inserted.Add op
+
+      do! PackageOpPlayback.applyOpsOnConnectionFrom conn source (List.ofSeq inserted)
+      tx.Commit()
+      Caching.invalidateAll ()
+      return int64 inserted.Count
+    finally
+      PreparedBatch.disposeCtx ctx
+  }
+
+
 /// Bulk-import synced ops (id, op_blob-as-hex, origin_ts) in ONE transaction, committed into
 /// <param commitHash> ("" = leave uncommitted). Arriving ops are somebody else's finished work,
 /// not YOUR draft, so an import commits them on the way in; otherwise the first `dark status` after
@@ -364,124 +476,3 @@ let commitAllAsBaseline (message : string) : Task<string> =
   }
 
 
-/// Delete every main op and its projections. Not a user-facing operation on its own: the caller is
-/// expected to re-insert whatever should survive, which is how both the authoring refresh and
-/// `discardDraftOps` rewrite main. Returns the count deleted.
-/// Delete main's DRAFT ops -- uncommitted, untagged -- and the `locations` rows they wrote, so
-/// the draft can be re-inserted re-resolved. Committed ops and their rows are not touched.
-///
-/// This is `WipRefresh`'s delete. It is separate from `discardWipOps`, which takes the WHOLE main
-/// log and exists for `Draft.rebuild`; feeding a refresh through that one deleted committed
-/// history, because the stabilization a refresh runs keeps one version per name.
-///
-/// Rows are matched by `op_id`, not by name: a name's committed row and its draft row coexist in
-/// `locations` (the older one unlisted), and only the draft's may go.
-let discardDraftOps () : Task<Result<int64, string>> =
-  task {
-    try
-      let! draftIds =
-        Sql.query
-          """
-          SELECT id FROM package_ops
-          WHERE commit_hash IS NULL
-            AND id NOT IN (SELECT op_id FROM op_branches)
-          """
-        |> Sql.executeAsync (fun read -> read.uuid "id")
-
-      if List.isEmpty draftIds then
-        return Ok 0L
-      else
-        let noParams = [ [] ]
-
-        let statements =
-          [ ("DELETE FROM locations WHERE source <> 'resolution'
-              AND op_id IN (SELECT id FROM package_ops
-                            WHERE commit_hash IS NULL
-                              AND id NOT IN (SELECT op_id FROM op_branches))",
-             noParams)
-            ("DELETE FROM package_ops
-              WHERE commit_hash IS NULL
-                AND id NOT IN (SELECT op_id FROM op_branches)",
-             noParams) ]
-
-        let _ = Sql.executeTransactionSync statements
-        Caching.invalidateAll ()
-        return Ok(int64 (List.length draftIds))
-    with ex ->
-      return Error ex.Message
-  }
-
-
-let discardWipOps () : Task<Result<int64, string>> =
-  task {
-    try
-      let! wipOps =
-        Sql.query
-          """
-          SELECT id FROM package_ops
-          WHERE id NOT IN (SELECT op_id FROM op_branches)
-          """
-        |> Sql.executeAsync (fun read -> read.uuid "id")
-
-      let count = int64 (List.length wipOps)
-
-      if count = 0L then
-        return Ok 0L
-      else
-        // Deletes the authored rows in one txn: locations that aren't the 'resolution' overlay,
-        // deprecations, and the ops themselves. The op log is the source of truth, so re-inserting
-        // re-folds. Branch (op_branches-tagged) ops are EXCLUDED: they're branch-pending, not main.
-        //
-        // So are ops this build cannot DECODE. The re-insert is fed by `Queries.getWipOps`, which
-        // skips those, so deleting them here would delete them for good -- a peer's committed op
-        // destroyed because this binary is the wrong version to parse it. They are unapplied, so
-        // leaving them in place changes no projection; the next build that can read them applies
-        // them normally.
-        let! unreadable =
-          Sql.query
-            """
-            SELECT id, op_blob
-            FROM package_ops
-            WHERE id NOT IN (SELECT op_id FROM op_branches)
-            """
-          |> Sql.executeAsync (fun read ->
-            let opId = read.uuid "id"
-
-            let readable =
-              (BS.PT.PackageOp.tryDeserialize opId (read.bytes "op_blob"))
-              |> Option.isSome
-
-            (opId, readable))
-
-        let unreadable =
-          unreadable |> List.filter (snd >> not) |> List.map fst |> Set.ofList
-
-        let keepUnreadable =
-          if Set.isEmpty unreadable then
-            ""
-          else
-            let quoted =
-              unreadable
-              |> Set.toList
-              |> List.map (fun (g : System.Guid) -> $"'{g.ToString()}'")
-              |> String.concat ","
-
-            $" AND id NOT IN ({quoted})"
-
-        let noParams = [ [] ]
-        let discardStatements =
-          [ ("DELETE FROM locations WHERE source <> 'resolution'", noParams)
-            ("DELETE FROM deprecations", noParams)
-            ($"DELETE FROM package_ops WHERE id NOT IN (SELECT op_id FROM op_branches){keepUnreadable}",
-             noParams) ]
-
-        let _ = Sql.executeTransactionSync discardStatements
-        ()
-
-        // package_types/values/functions are left alone: they're content-addressed and may still
-        // be referenced by committed ops. GC cleans them up if truly orphaned.
-
-        return Ok count
-    with ex ->
-      return Error ex.Message
-  }

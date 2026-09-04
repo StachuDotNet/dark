@@ -506,6 +506,54 @@ let discardNameKeepsContentSomethingElseNeeds =
   }
 
 
+
+/// The rewrite is delete-then-reinsert. It used to be two commits apart, and a crash between them
+/// deleted the draft for good. Now it is one transaction: a failure after the delete leaves the draft
+/// exactly where it was. The crash is injected as a statement that cannot run, placed after the delete.
+let aFailedRewriteLeavesTheDraftIntact =
+  testTask "a rewrite that fails after its delete rolls the delete back" {
+    let m = "DraftTestAtomic"
+    do! cleanup m
+
+    let! ops = author $"module Darklang.{m}\n\nlet a () : Int64 = 7101L"
+    let! before = liveHash m "a"
+    Expect.isSome before "the draft binding is live"
+    let! draftBefore = draftOpCount ()
+
+    let poisoned = Inserts.draftDeletes @ [ "DELETE FROM no_such_table_draft_test" ]
+    let! outcome =
+      task {
+        try
+          let! _ =
+            Inserts.rewriteOpsAtomically
+              poisoned
+              (fun _ -> Inserts.nextOriginTs ())
+              (fun _ -> None)
+              "op"
+              ops
+          return Ok()
+        with e ->
+          return Error e.Message
+      }
+    Expect.isError outcome "the poisoned rewrite raised"
+
+    let! after = liveHash m "a"
+    Expect.equal after before "the binding the delete would have dropped is still there"
+    let! draftAfter = draftOpCount ()
+    Expect.equal draftAfter draftBefore "and so is every draft op"
+
+    // And the same rewrite without the poison does its job, so the test is not passing on a no-op.
+    let! _ =
+      Inserts.rewriteOpsAtomically
+        Inserts.draftDeletes
+        (fun _ -> Inserts.nextOriginTs ())
+        (fun _ -> None)
+        "op"
+        ops
+    let! again = liveHash m "a"
+    Expect.equal again before "a clean rewrite lands the same binding"
+  }
+
 let tests =
   // `testSequenced`, not a sequenced GROUP. Not because of the rewrite any more -- that is scoped to the
   // draft now -- but because the draft is SHARED: `discard` drops every uncommitted op on main, which includes
@@ -521,4 +569,5 @@ let tests =
       collapseKeepsTheLastNamingOnly
       keepsAnOpItCannotRead
       discardNameDropsOneAndKeepsTheRest
-      discardNameKeepsContentSomethingElseNeeds ]
+      discardNameKeepsContentSomethingElseNeeds
+      aFailedRewriteLeavesTheDraftIntact ]

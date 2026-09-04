@@ -388,7 +388,7 @@ let getWipOps () : Task<List<PT.PackageOp>> =
 
         // Skips what this build cannot decode. A synced store holds ops it did not write, kept
         // unapplied on purpose so a later build can read them, so every reader of the main log
-        // meets them. `Inserts.discardWipOps` excludes the same ops from its DELETE, so skipping
+        // meets them. `Inserts.wholeMainDeletes` excludes the same ops from its DELETE, so skipping
         // one for reading never becomes deleting it for writing.
         BS.PT.PackageOp.tryDeserialize opId opBlob)
 

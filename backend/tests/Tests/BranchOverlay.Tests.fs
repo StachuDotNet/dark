@@ -824,7 +824,7 @@ let branchesOffBranches =
   }
 
 /// Main authoring's WipRefresh must NOT see a branch's ops: `getWipOps` excludes every
-/// `op_branches`-tagged op. Let them back into WIP and `discardWipOps` + re-insert folds them
+/// `op_branches`-tagged op. Let them back into WIP and the draft rewrite folds them
 /// into main.
 let getWipOpsExcludesBranch =
   testTask
