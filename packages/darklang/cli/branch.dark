@@ -508,10 +508,26 @@ let executeArchive
     else
 
     match SCM.PackageOps.archiveBranch branchId with
-    | Ok _ -> printOk $"archived branch \"{branchRef}\"."
-    | Error e -> printErr $"Archive failed: {e}"
-
-    state
+    | Ok _ ->
+      printOk $"archived branch \"{branchRef}\"."
+      // Same as merge: standing on the branch you just archived is standing on finished work, and the
+      // next edit would land there and revive it. Move to the parent, in this process and in the
+      // config the next one reads, and say so.
+      if SCM.PackageOps.currentBranch () == branchId then
+        let (parentId, parentName) = parentOf branchId
+        let _ = Builtin.configSet "current_branch" (Stdlib.Uuid.toString parentId)
+        let _ =
+          Builtin.configSet
+            "current_branch_name"
+            (if SCM.Ids.isMain parentId then "" else parentName)
+        let _ = SCM.PackageOps.selectBranch parentId
+        printOk $"now on \"{parentName}\" -- that's where the next edit lands."
+        { state with currentBranchId = parentId }
+      else
+        state
+    | Error e ->
+      printErr $"Archive failed: {e}"
+      state
 
 /// Export a branch as a portable bundle file (registry + frontier ops) -- move it to another machine.
 let executeExport (state: AppState) (branchRef: String) (path: String) : AppState =

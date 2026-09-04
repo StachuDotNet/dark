@@ -306,12 +306,11 @@ let homeBranchDetail (state: State) : List<String> =
         Stdlib.List.flatten
           [ [ "", Stdlib.Cli.UI.Colors.dimText "its commits" ]
             own |> Stdlib.List.map (fun c ->
-              "  " ++ c.message ++ (Stdlib.Cli.UI.Colors.dimText ("   " ++ c.committerName ++ " · " ++ (ago c.createdAt) ++ " · " ++ (plural c.opCount "op")))) ]
+              "  " ++ c.message ++ (Stdlib.Cli.UI.Colors.dimText ("   " ++ c.author ++ " · " ++ (agoText c.originTs)))) ]
     Stdlib.List.flatten
       [ [ (Stdlib.Cli.UI.Colors.boldText b.name) ++ (if isCurrent then Stdlib.Cli.UI.Colors.dimText "  ·  you're here" else "")
           ""
           field "from" parent
-          field "created" (ago b.createdAt)
           field "standing" standing
           field "wip" (if wipHere == 0 then Stdlib.Cli.UI.Colors.dimText "nothing uncommitted" else Stdlib.Cli.UI.Colors.colorize Stdlib.Cli.UI.Colors.pink ("● " ++ (plural wipHere "uncommitted item"))) ]
         commitLines ]

@@ -75,8 +75,8 @@ let branchLine (state: AppState) : Unit =
     // "On branch " with nothing after it is worse than an id you can act on.
     let handle =
       match SCM.Branch.get id with
-      | Some b -> if b.name == "" then id else b.name
-      | None -> id
+      | Some b -> if b.name == "" then Stdlib.Uuid.toString id else b.name
+      | None -> Stdlib.Uuid.toString id
 
     Stdlib.printLine (Stdlib.Cli.UI.Colors.hint $"On branch {handle}")
 

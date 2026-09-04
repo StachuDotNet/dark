@@ -218,7 +218,7 @@ let captureValue (branchId: Uuid) (v: 'a) : String =
 /// source correct for expressions that refer to earlier bindings.
 let captureExpr (bindings: List<Binding>) (branchId: Uuid) (name: String) (rhs: String) : String =
   let chain = withBindings bindings $"let {name} = {rhs}"
-  $"{chain}\nDarklang.Cli.Repl.captureValue \"{branchId}\" {name}"
+  $"{chain}\nDarklang.Cli.Repl.captureValue \"{Stdlib.Uuid.toString branchId}\" {name}"
 
 /// Read `captureValue`'s output back. `Some source` when the value round-tripped, `None` when it has no
 /// literal form (the caller then falls back to holding the expression).

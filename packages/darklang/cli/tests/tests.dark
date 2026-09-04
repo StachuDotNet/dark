@@ -84,8 +84,8 @@ let testConflictWalkthrough (): TestResult =
   // Archive before asserting, not after: every arm below returns, so a cleanup at the end runs only
   // when the test passes. These branches are otherwise permanent -- a dev store had 79 of them, all
   // empty, all from tests, which is most of what `dark branches` had to say.
-  let _ = runWithCommand [ "branch", "archive", child ]
-  let _ = runWithCommand [ "branch", "archive", parent ]
+  let _ = runWithCommand [ "branch", "archive", child, "-y" ]
+  let _ = runWithCommand [ "branch", "archive", parent, "-y" ]
 
   if Stdlib.Bool.not (Stdlib.String.contains merged "conflict") then
     TestResult.Fail $"Expected the merge to record a conflict; got: {merged}"
@@ -262,7 +262,7 @@ let testModuleCommand (): TestResult =
   let afterInvalidEval =
     runWithCommand
       [ "--branch", branchName, "eval", moduleName ++ ".quadruple 3" ]
-  let _ = runWithCommand ["branch", "archive", branchName]
+  let _ = runWithCommand ["branch", "archive", branchName, "-y"]
   let _ = Stdlib.Cli.File.delete initialPath
   let _ = Stdlib.Cli.File.delete updatedPath
   let _ = Stdlib.Cli.File.delete invalidPath
@@ -315,7 +315,7 @@ let testModuleRejectsDuplicateNames (): TestResult =
         moduleName ++ ".duplicate"
         "--exact"
         "--fn" ]
-  let _ = runWithCommand ["branch", "archive", branchName]
+  let _ = runWithCommand ["branch", "archive", branchName, "-y"]
   let _ = Stdlib.Cli.File.delete sourcePath
 
   if
@@ -354,8 +354,8 @@ let testMergeRoundTrip (): TestResult =
 
   // Archived before the assertions, because each arm returns and a trailing cleanup would only run
   // on the passing path.
-  let _ = runWithCommand [ "branch", "archive", child ]
-  let _ = runWithCommand [ "branch", "archive", parent ]
+  let _ = runWithCommand [ "branch", "archive", child, "-y" ]
+  let _ = runWithCommand [ "branch", "archive", parent, "-y" ]
 
   if Stdlib.String.contains dryRun "ERROR:" then
     TestResult.Fail $"`merge --dry-run` failed: {dryRun}"
@@ -427,7 +427,7 @@ let testFnAcceptsCompleteDeclaration (): TestResult =
         "fn"
         "/" ++ moduleName ++ ".extra"
         multipleSource ]
-  let _ = runWithCommand [ "branch", "archive", branchName ]
+  let _ = runWithCommand [ "branch", "archive", branchName, "-y" ]
 
   if
     Stdlib.String.contains fnOutput "Created function"
@@ -570,7 +570,9 @@ let testUnresolvedNameGuidance (): TestResult =
         "fn"
         "/" ++ moduleName ++ ".map"
         internalSource ]
-  let _ = runWithCommand ["branch", "archive", branchName]
+  // `-y`: the branch holds unmerged names, so a bare archive is refused and every later test would run
+  // on this branch. Archiving the branch you stand on moves the process (and the config) back to main.
+  let _ = runWithCommand ["branch", "archive", branchName, "-y"]
 
   if
     Stdlib.String.contains stdlibOutput "Did you mean `Stdlib.Bool.not`?"
@@ -864,6 +866,7 @@ let testEditRoundTripsThroughRaw (): TestResult =
   let _ = runWithCommand [ "--branch", branchName, "edit", name, changedPath ]
   let evaluated = runWithCommand [ "--branch", branchName, "eval", name ++ " 2L" ]
 
+  let _ = runWithCommand [ "branch", "archive", branchName, "-y" ]
   if
     before == after && hashBefore == hashAfter
       && Stdlib.String.contains evaluated "60"
@@ -908,6 +911,7 @@ let testViewHeadsWithTheNameYouAskedFor (): TestResult =
   let shownAlpha = runWithCommand [ "--branch", branchName, "view", alpha ]
   let shownBeta = runWithCommand [ "--branch", branchName, "view", beta ]
 
+  let _ = runWithCommand [ "branch", "archive", branchName, "-y" ]
   if
     Stdlib.String.contains rawAlpha "let alpha"
       && Stdlib.Bool.not (Stdlib.String.contains rawAlpha "let beta")
@@ -978,6 +982,7 @@ let testEditRoundTripsTypesAndValues (): TestResult =
 
   let valueHashAfter = runWithCommand [ "--branch", branchName, "hash", valueName ]
 
+  let _ = runWithCommand [ "branch", "archive", branchName, "-y" ]
   if
     typeBefore == typeAfter && typeHashBefore == typeHashAfter
       && valueBefore == valueAfter && valueHashBefore == valueHashAfter
@@ -1026,6 +1031,7 @@ let testEditLeavesTheItemAloneOnABadFile (): TestResult =
 
   let hashAfterMissing = runWithCommand [ "--branch", branchName, "hash", name ]
 
+  let _ = runWithCommand [ "branch", "archive", branchName, "-y" ]
   if
     hashBefore == hashAfterBad && hashBefore == hashAfterMissing
       && Stdlib.String.contains refused "Parse error"
@@ -1095,6 +1101,7 @@ let testAuthoringAcceptsAQuotedSeparator (): TestResult =
   let splitHash = run [ "hash", "Tests.QuotedEq.split" ]
   let evaluated = run [ "eval", "Tests.QuotedEq.quoted 21L" ]
 
+  let _ = runWithCommand [ "branch", "archive", branch, "-y" ]
   if
     quotedHash == splitHash
       && Stdlib.String.contains evaluated "42"
@@ -1119,6 +1126,7 @@ let testAuthoringRefusesALowercaseModule (): TestResult =
   let refused = run [ "fn", "/Tests.lower.f", "() : Int64 = 1L" ]
   let listed = run [ "ls", "Tests.lower" ]
 
+  let _ = runWithCommand [ "branch", "archive", branch, "-y" ]
   if
     Stdlib.String.contains refused "must start with a capital"
       && Stdlib.Bool.not (Stdlib.String.contains refused "Created")
@@ -1189,6 +1197,7 @@ let testDiscardNeedsAnExplicitYes (): TestResult =
   let discarded = run [ "discard", "-y" ]
   let after = run [ "status" ]
 
+  let _ = runWithCommand [ "branch", "archive", branch, "-y" ]
   if
     Stdlib.String.contains refused "kept."
       && Stdlib.String.contains survived "1 item"

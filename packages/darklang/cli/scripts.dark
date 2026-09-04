@@ -144,10 +144,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | "add" :: name :: textParts when Stdlib.Bool.not (Stdlib.List.isEmpty textParts) ->
     let text = Stdlib.String.join textParts " "
     match add name text with
-    // `Ok ()`, not `Ok script`. The builtin this replaced returned the stored Script, so the old caller read
-    // `script.name` off it; the Dark version returns Unit, and the mismatch made `scripts add` die with
-    // "field access of a Unit" instead of adding anything. The name is already in scope here.
-    | Ok () ->
+    // `add` returns the stored Script; the name is already in scope here, so nothing is read off it.
+    // A pattern of the wrong shape (`Ok ()` against a record) is a runtime "No matching case", not a
+    // load error, so it waits for the first `scripts add`.
+    | Ok _ ->
       Stdlib.printLine $"Script '{name}' added successfully"
       state
     | Error err ->
