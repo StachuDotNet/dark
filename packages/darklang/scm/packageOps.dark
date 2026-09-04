@@ -1157,9 +1157,22 @@ let branchField (branchId: Uuid) (col: String) (dflt: String) : String =
   | Error _ -> dflt
 
 
-/// Export a single branch as a portable bundle (registry + frontier ops).
+/// The id of the `Add*` op that adds content <param hash> of <param kind> ("fn", "type", "value"). An
+/// Add op is identified by what it adds, so the id follows from the two alone.
+let contentOpId (kind: String) (hash: String) : Uuid = Builtin.scmContentOpId kind hash
+
+
+/// Export a single branch as a portable bundle (registry + frontier ops, plus the content its names
+/// point at).
+///
+/// A branch's frontier is its TAGGED ops, and an `Add` is tagged only when the branch was the first to
+/// hold that content. A body main already had under another name is main's op, untagged; the branch
+/// holds only the `SetName` naming it. The receiver may not hold that content (its main may be behind),
+/// and a name pointing at content it does not have is "couldn't be found". So the bundle carries the Add
+/// for every hash a frontier `SetName` binds, whether or not the branch was the one to add it; the
+/// receiver ignores what it already has.
 let exportBranch (branchId: Uuid) : String =
-  let ops =
+  let frontier =
     match
       Stdlib.Sqlite.queryP
         (localDb ())
@@ -1168,6 +1181,44 @@ let exportBranch (branchId: Uuid) : String =
     with
     | Ok rows -> Wire.rowsToSyncOps rows
     | Error _ -> []
+
+  let frontierIds = frontier |> Stdlib.List.map (fun o -> o.id)
+
+  let contentIds =
+    Branches.ownFrontierOps branchId
+    |> Stdlib.List.filterMap (fun entry ->
+      let (_, op) = entry
+
+      match op with
+      | SetName(_, target, _) ->
+        let hash = LanguageTools.ProgramTypes.hashToString (LanguageTools.ProgramTypes.Reference.hash target)
+        let kind =
+          match target with
+          | PackageFn _ -> "fn"
+          | PackageType _ -> "type"
+          | PackageValue _ -> "value"
+
+        Stdlib.Option.Option.Some(Stdlib.Uuid.toString (contentOpId kind hash))
+      | _ -> Stdlib.Option.Option.None)
+    |> Stdlib.List.filter (fun id -> Stdlib.Bool.not (Stdlib.List.``member`` frontierIds id))
+    |> Stdlib.List.unique
+
+  let content =
+    if Stdlib.List.isEmpty contentIds then
+      []
+    else
+      match
+        Stdlib.Sqlite.queryP
+          (localDb ())
+          "SELECT p.id, p.op_blob, p.origin_ts AS ts FROM package_ops p
+           WHERE p.id IN (SELECT value FROM json_each(@p0)) ORDER BY p.rowid ASC"
+          [ Stdlib.Json.serialize<List<String>> contentIds ]
+      with
+      | Ok rows -> Wire.rowsToSyncOps rows
+      | Error _ -> []
+
+  // Content first, so a receiver folding in order has the body before the name.
+  let ops = Stdlib.List.append content frontier
 
   // Drop authorship on the way out: see `BranchBundleOp`.
   let bundleOps =

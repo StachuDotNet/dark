@@ -1721,6 +1721,30 @@ let private switchRefusesAForeignId =
     })
 
 
+/// A branch that names content main already held (same body, another name) holds only the `SetName`:
+/// the `Add` is main's, since an op is identified by what it adds. The bundle must carry that Add
+/// anyway, or the receiver, whose main may not have it, gets a name pointing at nothing.
+let private aBundleCarriesTheContentItsNamesPointAt =
+  cliTestOnMain "a branch bundle carries the Add for a body the branch borrowed from main" (fun state ->
+    task {
+      let! _ = runCli state [ "fn"; "Tests.Borrow.onMain"; "() : Int64 = 5005L" ]
+      let! _ = runCli state [ "switch"; "borrowbr" ]
+      let! _ = runCli state [ "fn"; "Tests.Borrow.onBranch"; "() : Int64 = 5005L" ]
+      let! log = runCli state [ "log"; "borrowbr" ]
+      Expect.isFalse (log.Contains "AddFn") $"the branch holds only the SetName: {log}"
+
+      let exported = $"{LibConfig.Config.runDir}/bundle-borrow.json"
+      let! _ = runCli state [ "branch"; "export"; "borrowbr"; exported ]
+      let json = System.IO.File.ReadAllText exported
+      let ops = System.Text.RegularExpressions.Regex.Matches(json, "\"blobHex\"").Count
+      Expect.equal ops 2 $"the bundle carries the Add as well as the SetName: {json.Substring(0, min 200 json.Length)}"
+
+      let! _ = runCli state [ "switch"; "main" ]
+      let! _ = runCli state [ "branch"; "archive"; "borrowbr"; "-y" ]
+      ()
+    })
+
+
 /// `discard` on a branch drops the BRANCH's work and leaves main's draft alone.
 ///
 /// Worth asserting because the command is destructive and the two drafts are kept apart by a `WHERE`
@@ -3459,6 +3483,7 @@ let tests =
        branchReadsAnswerAboutTheBranch
        aBranchKnowsWhatFollowed
        switchRefusesAForeignId
+       aBundleCarriesTheContentItsNamesPointAt
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses

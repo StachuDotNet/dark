@@ -305,16 +305,19 @@ module Hashing =
   /// An item with no hash yet (pre-stabilization input) falls back to the serialization, as before:
   /// giving every unstabilized op one id would dedup them against each other. Every other op kind is
   /// identified by its serialization, which for them carries no ephemeral ids.
-  let computeOpHash (op : PT.PackageOp) : Hash =
-    let byContent (tag : byte) (Hash h : Hash) : Hash =
-      hashWithWriter (fun w ->
-        w.Write(tag)
-        w.Write(h))
+  /// The id of the `Add*` op that adds content <param hash> of kind <param tag> (0 fn, 1 type,
+  /// 2 value). Computable from the hash alone, which is what lets a branch bundle find the Add for a
+  /// name it binds without decoding every op in the log.
+  let contentOpHash (tag : byte) (Hash h : Hash) : Hash =
+    hashWithWriter (fun w ->
+      w.Write(tag)
+      w.Write(h))
 
+  let computeOpHash (op : PT.PackageOp) : Hash =
     match op with
-    | PT.PackageOp.AddFn f when f.hash <> Hash "" -> byContent 0uy f.hash
-    | PT.PackageOp.AddType t when t.hash <> Hash "" -> byContent 1uy t.hash
-    | PT.PackageOp.AddValue v when v.hash <> Hash "" -> byContent 2uy v.hash
+    | PT.PackageOp.AddFn f when f.hash <> Hash "" -> contentOpHash 0uy f.hash
+    | PT.PackageOp.AddType t when t.hash <> Hash "" -> contentOpHash 1uy t.hash
+    | PT.PackageOp.AddValue v when v.hash <> Hash "" -> contentOpHash 2uy v.hash
     | _ ->
       hashWithWriter (fun w ->
         LibSerialization.Binary.Serializers.PT.PackageOp.write w op)

@@ -112,7 +112,17 @@ let pt : PT.PackageManager =
 
 /// An in-memory PackageManager built by applying `ops` in sequence. Used for transient state
 /// during parsing, testing, and branch overlays.
-let createInMemory (ops : List<PT.PackageOp>) : PT.PackageManager =
+///
+/// <param below> is the manager this one is layered over, when it is a layer: a branch overlay's
+/// SetName can name content the branch never carried an Add for, because an op is identified by its
+/// content and main already held that body under another name. Resolving the name works (the combined
+/// manager falls through by hash); listing it in a search did not, since search built its rows from
+/// this layer's own items alone. With `below`, an item the layer names but does not hold is fetched
+/// from underneath, so `ls`, `view` and `search` agree with `eval`.
+let createInMemoryOver
+  (below : Option<PT.PackageManager>)
+  (ops : List<PT.PackageOp>)
+  : PT.PackageManager =
   let typeLocations = ResizeArray<PT.PackageLocation * Hash>()
   let valueLocations = ResizeArray<PT.PackageLocation * Hash>()
   let fnLocations = ResizeArray<PT.PackageLocation * Hash>()
@@ -308,20 +318,43 @@ let createInMemory (ops : List<PT.PackageOp>) : PT.PackageManager =
           (locations : ResizeArray<PT.PackageLocation * Hash>)
           (locMap : Map<PT.PackageLocation, Hash>)
           (items : Map<Hash, 'item>)
-          : List<PT.LocatedItem<'item>> =
-          locations
-          |> Seq.map fst
-          |> Seq.distinct
-          |> Seq.toList
-          |> List.choose (fun loc ->
-            Map.tryFind loc locMap
-            |> Option.bind (fun hash -> Map.tryFind hash items)
-            |> Option.map (fun item ->
-              ({ entity = item; location = loc } : PT.LocatedItem<_>)))
+          (fetchBelow : Hash -> Ply<Option<'item>>)
+          : Ply<List<PT.LocatedItem<'item>>> =
+          uply {
+            let locs = locations |> Seq.map fst |> Seq.distinct |> Seq.toList
+            let found = ResizeArray<PT.LocatedItem<'item>>()
+            for loc in locs do
+              match Map.tryFind loc locMap with
+              | None -> ()
+              | Some hash ->
+                let! item =
+                  match Map.tryFind hash items with
+                  | Some item -> Ply(Some item)
+                  | None -> fetchBelow hash
+                match item with
+                | Some item -> found.Add({ entity = item; location = loc } : PT.LocatedItem<_>)
+                | None -> ()
+            return List.ofSeq found
+          }
 
-        let typesWithLocs = liveAt typeLocations typeLocMap typeMap
-        let valuesWithLocs = liveAt valueLocations valueLocMap valueMap
-        let fnsWithLocs = liveAt fnLocations fnLocMap fnMap
+        let none (_ : Hash) : Ply<Option<'item>> = Ply None
+        let getTypeBelow =
+          match below with
+          | Some b -> (fun (h : Hash) -> b.getType h)
+          | None -> none
+        let getValueBelow =
+          match below with
+          | Some b -> (fun (h : Hash) -> b.getValue h)
+          | None -> none
+        let getFnBelow =
+          match below with
+          | Some b -> (fun (h : Hash) -> b.getFn h)
+          | None -> none
+
+        uply {
+        let! typesWithLocs = liveAt typeLocations typeLocMap typeMap getTypeBelow
+        let! valuesWithLocs = liveAt valueLocations valueLocMap valueMap getValueBelow
+        let! fnsWithLocs = liveAt fnLocations fnLocMap fnMap getFnBelow
 
         // Submodules = the direct child module (cm ++ next segment) of any overlay item strictly
         // below cm. Only surfaced when browsing (empty text): a text search returns items, not
@@ -343,13 +376,18 @@ let createInMemory (ops : List<PT.PackageOp>) : PT.PackageManager =
                 None)
             |> List.distinct
 
-        Ply
+        return
           { PT.Search.SearchResults.submodules = submodules
             types = typesWithLocs |> List.filter (fun i -> itemMatches i.location)
             values = valuesWithLocs |> List.filter (fun i -> itemMatches i.location)
             fns = fnsWithLocs |> List.filter (fun i -> itemMatches i.location) }
+        }
 
     init = uply { return () } }
+
+
+let createInMemory (ops : List<PT.PackageOp>) : PT.PackageManager =
+  createInMemoryOver None ops
 
 
 /// Combine two PackageManagers: check `overlay` first, then fall back to `fallback`.
@@ -464,7 +502,7 @@ let withExtraOps
   (basePM : PT.PackageManager)
   (ops : List<PT.PackageOp>)
   : PT.PackageManager =
-  let opsPM = createInMemory ops
+  let opsPM = createInMemoryOver (Some basePM) ops
   combine opsPM basePM
 
 

@@ -699,6 +699,34 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "scmContentOpId" 0
+      typeParams = []
+      parameters =
+        [ Param.make "kind" TString "'fn', 'type' or 'value'"
+          Param.make "hash" TString "the content hash" ]
+      returnType = TUuid
+      description =
+        "The id of the Add op that adds this content. An Add op is identified by what it adds, so the id follows from the kind and the hash alone; a branch bundle uses this to carry the content its names point at."
+      fn =
+        (function
+        | _, _, _, [| DString kind; DString hash |] ->
+          let tag =
+            match kind with
+            | "fn" -> 0uy
+            | "type" -> 1uy
+            | "value" -> 2uy
+            | other ->
+              Exception.raiseInternal "scmContentOpId: unknown kind" [ "kind", other ]
+          let (PT.Hash h) =
+            LibSerialization.Hashing.Hashing.contentOpHash tag (PT.Hash hash)
+          Ply(DUuid(System.Guid(System.Convert.FromHexString(h)[0..15])))
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Pure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
+
+
     { name = fn "scmRecordBranchMerged" 0
       typeParams = []
       parameters =
