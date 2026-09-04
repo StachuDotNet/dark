@@ -79,46 +79,66 @@ let exportOps () : List<SyncOp> =
   | Error _ -> []
 
 
-/// Main's effective ops from `sinceRowid` onward, with the highest rowid seen. This is what PUSH sends: a
-/// branch's ops are effective=0, and pushing them would fold them into main on another machine's pull, so
-/// branches travel as their own bundle.
+/// Main's effective ops that <param relay> is not known to hold, in log order. This is what PUSH sends:
+/// a branch's ops are effective=0, and pushing them would fold them into main on another machine's pull,
+/// so branches travel as their own bundle.
 ///
-/// The cursor the pull side uses, pointed the other way -- without it, authoring one function costs a
-/// whole-log upload the relay's dedup then discards. Rowids only increase, so an op cannot appear below a
-/// cursor already passed; ops that arrived by PULL get fresh local rowids and are sent back once.
-let exportMainOpsSince (sinceRowid: Int64) : (List<SyncOp> * Int64) =
+/// A set (`sync_pushed`), not a rowid cursor. An op becomes effective at its AUTHORING rowid, and a merge
+/// flips branch ops that can sit well below the last rowid pushed; a cursor stepped over them and the
+/// merged work never left the machine. Asking "which effective ops does this relay not hold" cannot be
+/// wrong about a flip it never heard of.
+let unpushedFor (relay: String) : List<SyncOp> =
   match
     Stdlib.Sqlite.queryP
       (PackageOps.localDb ())
-      "SELECT id, op_blob, origin_ts AS ts, rowid AS seq FROM package_ops
-       WHERE effective = 1 AND rowid > @p0 ORDER BY rowid ASC"
-      [ Stdlib.Int64.toString sinceRowid ]
+      "SELECT p.id, p.op_blob, p.origin_ts AS ts FROM package_ops p
+       WHERE p.effective = 1
+         AND NOT EXISTS (SELECT 1 FROM sync_pushed s WHERE s.relay = @p0 AND s.op_id = p.id)
+       ORDER BY p.rowid ASC"
+      [ relay ]
   with
-  | Ok rows ->
-    let maxSeq =
-      rows
-      |> Stdlib.List.fold sinceRowid (fun acc row ->
-        match Stdlib.Sqlite.intField row "seq" with
-        | Some n -> if n > acc then n else acc
-        | None -> acc)
+  | Ok rows -> rowsToSyncOps rows
+  | Error _ -> []
 
-    (rowsToSyncOps rows, maxSeq)
-  | Error _ -> ([], sinceRowid)
+/// How many effective ops <param relay> is not known to hold. The push skip and `sync status` ask this,
+/// so the two cannot disagree about whether there is anything to send.
+let unpushedCount (relay: String) : Int64 =
+  Stdlib.Sqlite.scalarIntP
+    (PackageOps.localDb ())
+    "SELECT count(*) AS n FROM package_ops p
+     WHERE p.effective = 1
+       AND NOT EXISTS (SELECT 1 FROM sync_pushed s WHERE s.relay = @p0 AND s.op_id = p.id)"
+    [ relay ]
+    "n"
+  |> Stdlib.Option.withDefault 0L
+
+/// Record that <param relay> holds these ops: after a push it confirmed, and after a pull that brought
+/// them from it. Idempotent.
+let rememberPushed (relay: String) (opIds: List<String>) : Unit =
+  if Stdlib.List.isEmpty opIds then
+    ()
+  else
+    let _ =
+      Stdlib.Sqlite.mustExecBatch
+        (PackageOps.localDb ())
+        [ ("INSERT OR IGNORE INTO sync_pushed (relay, op_id) VALUES (@p0, @p1)",
+           opIds |> Stdlib.List.map (fun id -> [ relay, id ])) ]
+    ()
+
+/// Forget what <param relay> holds, so the next push sends the whole effective log. For a relay that was
+/// wiped, or a store pointed at a fresh one under an old url.
+let forgetPushed (relay: String) : Unit =
+  let _ =
+    Stdlib.Sqlite.mustExec
+      (PackageOps.localDb ())
+      "DELETE FROM sync_pushed WHERE relay = @p0"
+      [ relay ]
+  ()
 
 /// The highest local rowid in the log right now.
 let localMaxRowid () : Int64 =
   Stdlib.Sqlite.scalarInt (PackageOps.localDb ()) "SELECT MAX(rowid) AS n FROM package_ops" "n"
   |> Stdlib.Option.withDefault 0L
-
-/// How far our pushes to <param sourceId> have got, as a local rowid.
-let lastPushedRowid (sourceId: String) : Int64 =
-  match Stdlib.Int64.parse (Builtin.configGet $"sync.pushedseq.{sourceId}") with
-  | Ok n -> n
-  | Error _ -> 0L
-
-let rememberPushedRowid (sourceId: String) (seq: Int64) : Unit =
-  let _ = Builtin.configSet $"sync.pushedseq.{sourceId}" (Stdlib.Int64.toString seq)
-  ()
 
 
 /// RELAY side of a push: store the pushed ops AND record who pushed them, so the owner can pull their
@@ -238,22 +258,6 @@ let rememberHead (sourceId: String) (head: SyncHead) : Unit =
   let _ = Builtin.configSet $"sync.head.{sourceId}" stamp
   ()
 
-/// OUR head as it was when we last pushed everything to <param sourceId> successfully.
-///
-/// Lets push skip re-sending the whole log to discover the relay already has it: ~1.1s against ~6.4s for
-/// an idle sync on a 12k-op store.
-///
-/// Recorded only after a push that fully succeeded, and compared against our OWN store rather than the
-/// relay's, which is what makes skipping safe. A partial or failed push leaves it alone, so the next
-/// attempt sends again.
-let lastPushedHead (sourceId: String) : String =
-  Builtin.configGet $"sync.pushed.{sourceId}"
-
-let rememberPushedHead (sourceId: String) (head: SyncHead) : Unit =
-  let stamp = $"{Stdlib.Int64.toString head.count}@{head.maxTs}"
-  let _ = Builtin.configSet $"sync.pushed.{sourceId}" stamp
-  ()
-
 let headStamp (head: SyncHead) : String =
   $"{Stdlib.Int64.toString head.count}@{head.maxTs}"
 
@@ -324,6 +328,8 @@ let importFrom
     // `op_owners` was empty on every client and provenance was unanswerable locally.
     PackageOps.recordOpAuthors ops
     PackageOps.finishSyncImport sourceId plan
+    // What came from the source, the source holds; the next push to it has no reason to send these back.
+    rememberPushed sourceId (ops |> Stdlib.List.map (fun op -> op.id))
 
     // A commit NAMES the ops it committed, and every op in this batch may already be here -- re-pushing is
     // routine. A commit over nothing is a row `dark commits` shows and nobody can act on.

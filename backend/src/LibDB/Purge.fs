@@ -52,6 +52,9 @@ let tables : List<string> =
     // The relay's ownership index. Dead rows here are invisible: readers join package_ops.
     "op_owners"
 
+    // Which of OUR ops each relay holds. A re-minted log gets re-pushed in full, which the relay dedups.
+    "sync_pushed"
+
     // Which ops came from a build's embedded seed; a stale entry misreports that.
     "seed_ops" ]
 

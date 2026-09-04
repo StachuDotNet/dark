@@ -77,6 +77,17 @@ CREATE TABLE IF NOT EXISTS op_owners (
 );
 CREATE INDEX IF NOT EXISTS idx_op_owners_owner ON op_owners(owner);
 
+-- What each relay is known to HOLD of this store's effective ops, so `push` sends exactly what it does
+-- not. A set, not a cursor: an op becomes effective at its AUTHORING rowid (a merge flips a branch op
+-- that can sit well below the last rowid pushed), so no position in the log can say "everything above
+-- here is new". Ops that arrive FROM a relay are recorded as held by it on import. Local state: never
+-- synced, never seeded, purged with the log it describes. Wiping a relay means clearing its rows here.
+CREATE TABLE IF NOT EXISTS sync_pushed (
+  relay TEXT NOT NULL,
+  op_id TEXT NOT NULL,
+  PRIMARY KEY (relay, op_id)
+);
+
 
 -- A branch = a stable ID + an optional name alias + a FRONTIER of ops. Refer to a branch BY ID;
 -- `name` is a mutable alias. A branch's authored ops are inserted `effective = 0` (present in the

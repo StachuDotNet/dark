@@ -358,13 +358,11 @@ let executePush (state: AppState) (url: String) : AppState =
       // MAIN-ONLY: a branch's ops are effective=0 and must NOT sync into another machine's main (that
       // would leak them out of the branch). `dark branch push` is the branch path.
       //
-      // The skip compares OUR OWN head, not the relay's: if our store has not moved since a push that
-      // fully succeeded, the relay has what we have. The relay's count includes everyone else's ops and
-      // so answers a different question.
-      let head = SCM.Wire.localHead ()
-
-      let alreadyPushed =
-        (SCM.Wire.lastPushedHead url) == (SCM.Wire.headStamp head)
+      // The skip asks our own store which effective ops this relay is not known to hold. Not a stamp of
+      // our head: a merge changes neither the op count nor the latest origin_ts, so a stamp said "nothing
+      // new" over a day's merged work. The relay's count includes everyone else's ops and answers a
+      // different question.
+      let alreadyPushed = (SCM.Wire.unpushedCount url) == 0L
 
       if alreadyPushed then
         printOk $"Already up to date with {url} -- nothing new to push."
@@ -380,16 +378,9 @@ let executePush (state: AppState) (url: String) : AppState =
            | Error _ -> false)
         | Error _ -> false
 
-      // Only what this relay has not seen from us; the cursor is a local rowid.
-      //
-      // A rowid only means anything against the store that minted it. Re-growing a store from the embedded
-      // seed restarts them, leaving the saved cursor PAST THE END, where every push silently finds nothing.
-      // A cursor beyond our own log cannot be a position in it, so treat it as no cursor at all.
-      let saved = SCM.Wire.lastPushedRowid url
-
-      let since =
-        if saved > (SCM.Wire.localMaxRowid ()) then 0L else saved
-      let (ops, newSeq) = SCM.Wire.exportMainOpsSince since
+      // Only what this relay is not known to hold; see `SCM.Wire.unpushedFor` for why that is a set and
+      // not a rowid cursor.
+      let ops = SCM.Wire.unpushedFor url
 
       // Refuse before the network, not after. Once these bytes reach a relay they are on a public web page,
       // and there is no taking them back -- the op is content-addressed and everyone who pulled it has it.
@@ -433,6 +424,8 @@ let executePush (state: AppState) (url: String) : AppState =
             | Ok reply ->
               match storedCountOf (Stdlib.String.fromBlobWithReplacement reply) with
               | Some stored ->
+                // Per chunk, so a push that dies on chunk 4 does not resend chunks 1-3.
+                SCM.Wire.rememberPushed url (chunk |> Stdlib.List.map (fun op -> op.id))
                 Stdlib.Result.Result.Ok(
                   (sentSoFar + (Stdlib.List.length chunk), newSoFar + stored)
                 )
@@ -451,11 +444,6 @@ let executePush (state: AppState) (url: String) : AppState =
             ""
           else
             $" ({Stdlib.Int.toString stored} new)"
-
-        // Only after a push that fully succeeded. A partial or failed one leaves the marker alone, so the
-        // next attempt sends again.
-        SCM.Wire.rememberPushedHead url head
-        SCM.Wire.rememberPushedRowid url newSeq
 
         // Our own push moved the relay's head, so without this the next `sync status` reports "ops to
         // receive" for the ops we just sent. Failing to read it is not a failure to push; the next pull
@@ -487,7 +475,7 @@ let executePush (state: AppState) (url: String) : AppState =
         | branchId ->
           // `current_branch_name` is kept beside the id purely for display, which is what this is.
           let named = Builtin.configGet "current_branch_name"
-          let shown = if named == "" then branchId else named
+          let shown = if named == "" then Stdlib.Uuid.toString branchId else named
 
           printHint
             $"  that was main. You're on \"{shown}\" -- `dark branch push {shown}` sends the branch."
@@ -577,11 +565,6 @@ let executePull (state: AppState) (url: String) : AppState =
       // Resume from where THIS relay last left off, in the relay's own arrival order. A cursor of our own
       // max(origin_ts) silently skips any peer op stamped before our latest local edit.
       let since = SCM.Wire.pullCursor url
-
-      // Captured BEFORE the import, so the guard below can tell "everything local was already pushed" from
-      // "there is local work still waiting to go".
-      let prePullMax = SCM.Wire.localMaxRowid ()
-      let preRowid = SCM.Wire.lastPushedRowid url
 
       // Ask what the relay HOLDS before asking for it: `/sync/head` is a count and a stamp, 138ms and no
       // transfer, against ~3.2s for a pull with nothing in it. Only skips when the relay looks EXACTLY as
@@ -707,19 +690,10 @@ let executePull (state: AppState) (url: String) : AppState =
                 printErr
                   "  a page didn't land -- not recording the relay's position, so the next pull retries."
               else
+                // Ops that arrived FROM this relay are recorded as held by it inside `importFrom`, page
+                // by page, so nothing here has to reason about where the push position was.
                 match relayHead with
-                | Some h ->
-                  SCM.Wire.rememberHead url h
-
-                  // Ops that arrived FROM this relay need not go back, so the push cursor moves past them
-                  // -- but only if it was already at the log's end BEFORE this pull, or it steps over local
-                  // work authored at a lower rowid and that work never reaches the relay. The STAMP moves
-                  // with the cursor: it is what `push` skips on and `status` reports.
-                  if preRowid == prePullMax then
-                    SCM.Wire.rememberPushedRowid url (SCM.Wire.localMaxRowid ())
-                    SCM.Wire.rememberPushedHead url (SCM.Wire.localHead ())
-                  else
-                    ()
+                | Some h -> SCM.Wire.rememberHead url h
                 | None -> ()
 
             let total = outcome.imported + (Stdlib.Int.max 0 laterPages)
@@ -764,9 +738,9 @@ let executeStatus (state: AppState) (url: String) : AppState =
         printOk $"local: {Stdlib.Int64.toString mine.count} ops"
         printOk $"relay: {Stdlib.Int64.toString theirs.count} ops"
 
-        // Ours has moved since the last push that fully succeeded.
-        let toSend =
-          (SCM.Wire.lastPushedHead url) != (SCM.Wire.headStamp mine)
+        // Effective ops this relay is not known to hold. The same question `push` decides on.
+        let unpushed = SCM.Wire.unpushedCount url
+        let toSend = unpushed != 0L
 
         // Theirs has moved since we last pulled from it. Same predicate `pull` skips on, so the two cannot
         // disagree about whether there is anything to fetch.
@@ -776,9 +750,12 @@ let executeStatus (state: AppState) (url: String) : AppState =
 
         match (toSend, toReceive) with
         | (false, false) -> printOk "in sync."
-        | (true, false) -> printOk $"ops to send -- `dark push {url}`."
+        | (true, false) ->
+          printOk $"{Stdlib.Int64.toString unpushed} op(s) to send -- `dark push {url}`."
         | (false, true) -> printOk $"ops to receive -- `dark pull {url}`."
-        | (true, true) -> printOk $"out of sync both ways -- `dark sync {url}`."
+        | (true, true) ->
+          printOk
+            $"out of sync both ways ({Stdlib.Int64.toString unpushed} op(s) to send) -- `dark sync {url}`."
       | Error _ -> printErr "Relay returned an unparseable head."
     | Error e -> printErr $"Status from {url} failed: {e}"
 

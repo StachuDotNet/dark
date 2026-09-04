@@ -110,6 +110,22 @@ want "B merges it" "merged|now on" "$(x B --branch feat merge feat)"
 x B push > /dev/null; x C pull > /dev/null
 want "C gets it on main" "^77$" "$(x C eval 'SM.T.onFeat ()' | tail -1)"
 
+echo "== merged work reaches the relay when main was pushed in between"
+# A branch op's rowid is minted when it is AUTHORED. Push main after that and any rowid cursor has
+# stepped past it; the merge then flips it effective below the cursor, and a cursor-based push
+# never sent it. The push has to ask what the relay HOLDS, not where it last stopped.
+x A switch main > /dev/null  # A is still standing on feat, and a branch created there is feat's child
+x A branch create late > /dev/null
+x A --branch late fn /SM.T.late '() : Int64 = 88L' > /dev/null
+x A --branch late commit "late work" -y > /dev/null
+x A switch main > /dev/null
+x A fn /SM.T.meanwhile '() : Int64 = 1L' > /dev/null; x A commit "meanwhile" -y > /dev/null
+want "A pushes main in between" "^Pushed [1-9]" "$(x A push)"
+want "A merges the branch" "^Merged [1-9]" "$(x A --branch late merge late)"
+want "and the merge has something to push" "^Pushed [1-9]" "$(x A push)"
+x C pull > /dev/null
+want "C gets the merged work on main" "^88$" "$(x C eval 'SM.T.late ()' | tail -1)"
+
 echo "== a review queue stages work inert until it is approved"
 # D, which has never pulled: `pull` and `review pull` share ONE cursor per relay, so an instance that has
 # already applied these ops can never stage them afterwards.
