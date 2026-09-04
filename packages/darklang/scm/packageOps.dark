@@ -273,6 +273,7 @@ let liveBindingFor
   | Some b -> Stdlib.Option.Option.Some b
   | None ->
     match
+      // main-scoped: the fallback half of THE branch-aware read, after the chain overlay above.
       Stdlib.Sqlite.queryOneP
         (localDb ())
         "SELECT owner, modules, name, item_type, item_hash, COALESCE(origin_ts,'') AS ts, previous
@@ -625,6 +626,7 @@ let staleHashesFor (b: Conflicts.Binding) : List<String> =
 let namesAtContent (branchId: Uuid) (hash: String) (itemType: String) : List<String> =
   let mainNames =
     match
+      // main-scoped: main's names for this content; the chain's names and rebinds are applied below.
       Stdlib.Sqlite.queryP
         (localDb ())
         "SELECT owner, modules, name FROM locations
@@ -678,6 +680,7 @@ let namesAtContent (branchId: Uuid) (hash: String) (itemType: String) : List<Str
 let mainNamesForHashes (hashes: List<String>) : List<(String * String)> =
   match hashes with
   | [] -> []
+  // main-scoped, on purpose: where MAIN says each hash lives, as the doc says.
   | _ ->
     // Chunked for the same reason as `Conflicts.localBindingsFor`: a wide cascade can produce more stale
     // hashes than SQLite will bind in one statement, and the over-cap failure reads as an empty repoint list.

@@ -393,85 +393,42 @@ let main (args : string[]) =
       exit 1
     | _ -> ()
 
-    // All three tiers below name a branch by NAME. This is where a name becomes the id everything
-    // underneath refers to; nothing past this point resolves a name again. A name we don't have is
-    // CREATED, not refused, and says so on stderr, because a typo would otherwise read as success.
-    let resolveName (name : string) (announceAs : string) : Option<PT.BranchId> =
-      // `main` is spelled as the absence of a branch, so accept it as the way back.
-      if name = PT.BranchId.MainName then
-        None
-      else
-        // Same three spellings `dark switch` takes: a name, a full id, or an unambiguous
-        // id PREFIX. Listings abbreviate ids to 8 characters, so the prefix is what you
-        // would actually paste.
-        // Only a name nobody has is created. A peer's uuid, or a prefix two branches share, is an
-        // error, the same as a missing value: creating a branch NAMED after it read as success.
-        match (LibDB.Branches.lookupRef name).Result with
-        | LibDB.Branches.Found id -> Some id
-        | LibDB.Branches.Ambiguous prefix ->
-          System.Console.Error.WriteLine
-            $"'{prefix}' matches more than one branch; use more of the id, or its name"
-          exit 1
-        | LibDB.Branches.UnknownId id ->
-          System.Console.Error.WriteLine
-            $"no branch with id {id} in this store; `dark branches` lists yours"
-          exit 1
-        | LibDB.Branches.NoSuchName name ->
-          let (id, created) =
-            (LibDB.Branches.resolveOrCreate name PT.BranchId.Main).Result
-          if created then
-            System.Console.Error.WriteLine $"created branch '{name}'{announceAs}"
-          Some id
+    // Which branch this process runs on: `--branch`, then `DARK_BRANCH`, then the stored
+    // `current_branch`. The order lives in `LibDB.BranchSelection`, where it has a test; this is where
+    // the outcome gets SAID. A name we don't have is created and announced, because a typo would
+    // otherwise read as success; a foreign uuid or an ambiguous prefix is refused, for the same reason.
+    let flagName =
+      match branchFlag with
+      | Some(Ok name, _, _) -> Some name
+      | _ -> None
+
+    let envName =
+      match System.Environment.GetEnvironmentVariable "DARK_BRANCH" with
+      | null
+      | "" -> None
+      | name -> Some name
 
     let branchId =
-      match branchFlag with
-      | Some(Ok name, _, _) -> resolveName name ""
-      | _ ->
-        // No --branch: DARK_BRANCH, then the persistent `current_branch`. Three tiers,
-        // each scoped tighter than the one below: the FLAG is this command, DARK_BRANCH
-        // is this SHELL, and the config is this machine. The env tier is what lets
-        // several agents work on several branches at once without fighting over one
-        // config key.
-        let fromEnv =
-          match System.Environment.GetEnvironmentVariable "DARK_BRANCH" with
-          | null -> None
-          | "" -> None
-          | name -> Some name
-
-        match fromEnv with
-        | Some name -> resolveName name " (DARK_BRANCH)"
-        | None ->
-          // The config holds the branch's ID; `current_branch_name` holds its name
-          // alongside for anyone reading the file. The id is what makes this tier safe:
-          // names are deliberately NOT unique across instances, so resolving by name
-          // could silently move you onto a peer's `fix-auth`. A NAME is still accepted,
-          // as a fallback. Either way this resolves without creating, and degrades to
-          // main rather than failing, but says so.
-          match (LibDB.Config.get "current_branch").Result with
-          | Some stored when stored <> "" ->
-            // Stored text, so it can be an id, a name, or something a previous build wrote. Anything
-            // that isn't a live branch degrades to main and says so.
-            let asId = PT.BranchId.Parse stored
-
-            match asId with
-            | Some id when id = PT.BranchId.Main -> None
-            | Some id when (LibDB.Branches.isLive id).Result -> Some id
-            | _ ->
-              match (LibDB.Branches.liveIdForName stored).Result with
-              | Some id -> Some id
-              | None ->
-                let label =
-                  match (LibDB.Config.get "current_branch_name").Result with
-                  | Some name when name <> "" -> name
-                  | _ -> stored
-                System.Console.Error.WriteLine
-                  $"current branch '{label}' is gone (archived or merged); now on main"
-                // Said once. Left in place, every command from here on would repeat it, since
-                // `archive` and `merge` on the branch you are standing on do not always move you.
-                (LibDB.Config.set "current_branch" (string PT.BranchId.Main)).Wait()
-                (LibDB.Config.set "current_branch_name" PT.BranchId.MainName).Wait()
-                None
-          | _ -> None
+      match (LibDB.BranchSelection.select flagName envName).Result with
+      | Error(LibDB.BranchSelection.AmbiguousPrefix prefix) ->
+        System.Console.Error.WriteLine
+          $"'{prefix}' matches more than one branch; use more of the id, or its name"
+        exit 1
+      | Error(LibDB.BranchSelection.UnknownId id) ->
+        System.Console.Error.WriteLine
+          $"no branch with id {id} in this store; `dark branches` lists yours"
+        exit 1
+      | Ok selection ->
+        selection.created
+        |> Option.iter (fun name ->
+          let via =
+            if selection.tier = LibDB.BranchSelection.Env then " (DARK_BRANCH)" else ""
+          System.Console.Error.WriteLine $"created branch '{name}'{via}")
+        selection.goneStored
+        |> Option.iter (fun label ->
+          System.Console.Error.WriteLine
+            $"current branch '{label}' is gone (archived or merged); now on main")
+        selection.branchId
 
     // Strip the flag (and its value, for the space form) so it never reaches the
     // entry-point fn as a positional argument.

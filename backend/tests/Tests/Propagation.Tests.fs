@@ -641,6 +641,27 @@ let valueMovesItsReaders =
   }
 
 
+/// A SetName binds its own name and no other. Naming a hash somewhere new used to unlist wherever it
+/// was, which took out a colleague's name because you renamed yours; there is no rename op, and a rename
+/// that wants to retire the old name needs an op that names the OLD location. The rename tests the
+/// migration deleted asserted the old claim, which is now the opposite of the design, so this is a
+/// rewrite rather than a port.
+let private namingElsewhereLeavesTheOldNameBound =
+  testTask "a SetName at a new name leaves the old name bound to the same hash" {
+    let m = "RenameKeep"
+    do! cleanupFor "Darklang" m
+    let! ops = authorIn m "let old (x: Int64) : Int64 = x"
+    let h = hashOfFn ops "old"
+    let! _ =
+      Inserts.insertAndApplyOpsAsWip [ PT.PackageOp.SetName(loc m "new", PT.PackageFn h, None) ]
+    let! atNew = liveHash (loc m "new")
+    let! atOld = liveHash (loc m "old")
+    Expect.equal atNew (Some(hashStr h)) "the new name binds the hash"
+    Expect.equal atOld (Some(hashStr h)) "and the old name still does"
+    do! cleanupFor "Darklang" m
+  }
+
+
 let tests =
   // These author into the shared main store and assert on `locations`, and other
   // tests re-fold that projection. A reader caught mid-rewrite sees a name that
@@ -663,4 +684,5 @@ let tests =
       repointIsMarkedAsFollowed
       secondPassIsSilent
       typeMovesItsUsers
-      valueMovesItsReaders ]
+      valueMovesItsReaders
+      namingElsewhereLeavesTheOldNameBound ]

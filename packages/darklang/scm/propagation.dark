@@ -503,6 +503,7 @@ let authoringOrder
   : List<String> =
   let fromMain =
     match
+      // main-scoped: main's half of the sequence, cut at the fork below when on a branch.
       Stdlib.Sqlite.queryP
         (localDb ())
         "SELECT item_hash FROM locations
@@ -590,6 +591,7 @@ let everBoundHashes
     | Value -> "value"
 
   match
+    // main-scoped, on purpose: every hash ever bound on MAIN is this fn's contract.
     Stdlib.Sqlite.queryP
       (localDb ())
       "SELECT item_hash FROM locations

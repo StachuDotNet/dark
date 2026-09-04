@@ -27,6 +27,7 @@ module HS = LibDB.HashStabilization
 module Package = LibParser.Package
 module NR = LibParser.NameResolver
 module Branches = LibDB.Branches
+module Sel = LibDB.BranchSelection
 module Queries = LibDB.Queries
 
 /// A branch id for a test, derived from a readable label.
@@ -1531,25 +1532,71 @@ let branchNamesResolveButDontShadowMain =
 /// The three ways a run picks its branch. Each tier is scoped tighter than the one below on purpose:
 /// the FLAG is this command, the ENV is this SHELL, the config is this machine. The env tier is what
 /// lets several agents work on several branches at once without fighting over the single config key
-/// `dark switch` writes.
+/// `dark switch` writes. Tested on the product's own `BranchSelection.select`, not on a `pick` defined
+/// inside the test, which is what this used to be and which could not notice anything done to `Cli.fs`.
 let branchResolutionOrder =
   testTask "the flag beats DARK_BRANCH beats the stored branch" {
-    let pick
-      (flag : Option<string>)
-      (env : Option<string>)
-      (stored : Option<string>)
-      =
-      match flag with
-      | Some f -> Some f
-      | None ->
-        match env with
-        | Some e -> Some e
-        | None -> stored
+    let flagB = testBranch "sel-flag"
+    let envB = testBranch "sel-env"
+    let storedB = testBranch "sel-stored"
+    do! cleanupBranch flagB
+    do! cleanupBranch envB
+    do! cleanupBranch storedB
+    do! Branches.createBranch flagB "sel-flag" PT.BranchId.Main
+    do! Branches.createBranch envB "sel-env" PT.BranchId.Main
+    do! Branches.createBranch storedB "sel-stored" PT.BranchId.Main
+    let! before = LibDB.Config.get "current_branch"
+    let! beforeName = LibDB.Config.get "current_branch_name"
 
-    Expect.equal (pick (Some "f") (Some "e") (Some "s")) (Some "f") "the flag wins"
-    Expect.equal (pick None (Some "e") (Some "s")) (Some "e") "then the env"
-    Expect.equal (pick None None (Some "s")) (Some "s") "then the stored branch"
-    Expect.equal (pick None None None) None "and main is the absence of all three"
+    let selected (r : Result<Sel.Selection, Sel.Refusal>) : Option<PT.BranchId> * Sel.Tier =
+      match r with
+      | Ok s -> (s.branchId, s.tier)
+      | Error e -> failtest $"refused: {e}"
+
+    try
+      // The id, with the name beside it, as `dark switch` writes them.
+      do! LibDB.Config.set "current_branch" (string storedB)
+      do! LibDB.Config.set "current_branch_name" "sel-stored"
+      let! s = Sel.select (Some "sel-flag") (Some "sel-env")
+      Expect.equal (selected s) (Some flagB, Sel.Flag) "the flag wins"
+      let! s = Sel.select None (Some "sel-env")
+      Expect.equal (selected s) (Some envB, Sel.Env) "then the env"
+      let! s = Sel.select None None
+      Expect.equal (selected s) (Some storedB, Sel.Stored) "then the stored branch"
+      let! s = Sel.select (Some "main") (Some "sel-env")
+      Expect.equal (selected s) (None, Sel.Flag) "the flag can name main, and that beats the env too"
+
+      // A foreign uuid or an ambiguous prefix is refused, not started as a branch of that name.
+      let! s = Sel.select (Some(string (System.Guid.NewGuid()))) None
+      Expect.isError s "a uuid this store lacks is refused"
+
+      do!
+        Sql.query "UPDATE branches SET archived_at = datetime('now') WHERE id = @b"
+        |> Sql.parameters [ "b", Sql.string (string storedB) ]
+        |> Sql.executeStatementAsync
+      let! s = Sel.select None None
+      match s with
+      | Ok(s : Sel.Selection) ->
+        Expect.equal
+          (s.branchId, s.goneStored)
+          (None, Some "sel-stored")
+          "a gone stored branch degrades to main and says which"
+      | Error e -> failtest $"refused: {e}"
+      let! s = Sel.select None None
+      match s with
+      | Ok(s : Sel.Selection) ->
+        Expect.isNone s.goneStored "and says so once: the config was reset to main"
+      | Error e -> failtest $"refused: {e}"
+
+      do! LibDB.Config.set "current_branch" ""
+      let! s = Sel.select None None
+      Expect.equal (selected s) (None, Sel.Default) "and main is the absence of all three"
+    finally
+      (LibDB.Config.set "current_branch" (Option.defaultValue "" before)).Wait()
+      (LibDB.Config.set "current_branch_name" (Option.defaultValue "" beforeName)).Wait()
+      (cleanupBranch flagB).Wait()
+      (cleanupBranch envB).Wait()
+      (cleanupBranch storedB).Wait()
   }
 
 
@@ -1967,38 +2014,66 @@ let foldDoesNotStrandOpsItMadeEffective =
 /// Checked by reading the source, because the failure is invisible at run time on a single-branch
 /// store. `matter.dark` is exempt: a relay holds no branches, so main's projection IS its answer.
 let noDirectLocationsReadsOutsideTheSilos =
-  testTask "only the SCM silos query `locations` from Dark" {
+  testTask "only the SCM silos query `locations` from Dark, and each such read says it is main-scoped" {
     let root = System.IO.Path.Combine("..", "packages", "darklang")
 
-    // Two exemptions, both deliberate. The SCM silos OWN the table, so they are the code the rule
-    // points everyone else at. `matter.dark` is the relay: it serves the public package browser and
-    // its counts, which are main's by definition -- the relay has no branch to be standing on, so a
-    // main-scoped read is the correct answer there rather than a drifted one.
-    let exempt (path : string) : bool =
-      let p = path.Replace("\\", "/")
-      p.Contains "/scm/" || p.EndsWith "matter.dark"
+    // `matter.dark` is the relay: it serves the public package browser and its counts, which are main's
+    // by definition -- the relay has no branch to be standing on, so a main-scoped read is the correct
+    // answer there rather than a drifted one.
+    let isRelay (path : string) : bool = path.Replace("\\", "/").EndsWith "matter.dark"
+    let isSilo (path : string) : bool = path.Replace("\\", "/").Contains "/scm/"
 
-    let offenders =
-      System.IO.Directory.GetFiles(
-        root,
-        "*.dark",
-        System.IO.SearchOption.AllDirectories
-      )
-      |> Array.filter (exempt >> not)
-      |> Array.filter (fun path ->
-        System.IO.File.ReadAllLines path
-        |> Array.exists (fun line ->
-          let t = line.Trim()
-          not (t.StartsWith "//")
-          && (t.Contains "FROM locations" || t.Contains "JOIN locations")))
+    let isRead (line : string) : bool =
+      let t = line.Trim()
+      not (t.StartsWith "//") && (t.Contains "FROM locations" || t.Contains "JOIN locations")
+
+    // Inside the silos the rule is per READ, not per file. Every read was classified: the ones that
+    // are correctly main-scoped say so in a comment between the enclosing top-level `let` and the read,
+    // with the token `main-scoped`. A read with no such comment is either a bug (it answers about main
+    // from a branch, the class that has cost the most) or an unclassified one, and the fix for the
+    // second is to read its callers, not to add the token.
+    let unmarkedInSilo (path : string) : List<string> =
+      let lines = System.IO.File.ReadAllLines path
+      [ for i in 0 .. lines.Length - 1 do
+          if isRead lines[i] then
+            let mutable j = i
+            let mutable marked = false
+            while j >= 0 && not (lines[j].StartsWith "let ") do
+              if lines[j].Contains "main-scoped" then marked <- true
+              j <- j - 1
+            // The doc block above the `let` counts too.
+            let mutable k = j - 1
+            while k >= 0 && lines[k].TrimStart().StartsWith "///" do
+              if lines[k].Contains "main-scoped" then marked <- true
+              k <- k - 1
+            if not marked then
+              let shown = path.Replace("\\", "/")
+              yield $"{shown}:{i + 1}" ]
+
+    let files =
+      System.IO.Directory.GetFiles(root, "*.dark", System.IO.SearchOption.AllDirectories)
+      |> Array.filter (isRelay >> not)
+
+    let outside =
+      files
+      |> Array.filter (isSilo >> not)
+      |> Array.filter (fun path -> System.IO.File.ReadAllLines path |> Array.exists isRead)
       |> Array.map (fun p -> p.Replace("\\", "/"))
       |> List.ofArray
 
     Expect.isEmpty
-      offenders
+      outside
       "no Dark file outside packages/darklang/scm may read `locations` directly -- \
        it is main-only, so it answers about main while you stand on a branch. \
-       Use the overlay helpers in SCM.PackageOps."
+       Use `SCM.PackageOps.liveBindingFor` or the overlay helpers."
+
+    let unmarked = files |> Array.filter isSilo |> Array.toList |> List.collect unmarkedInSilo
+
+    Expect.isEmpty
+      unmarked
+      "every direct `locations` read in the SCM silos must say `main-scoped` (and why) in a comment \
+       between its enclosing `let` and the read, or in that fn's doc block. Read the callers first: \
+       the token is a claim, and a read that answers about main from a branch is the bug class."
   }
 
 /// No SQL in Dark may compare a branch column against the literal `'main'`.

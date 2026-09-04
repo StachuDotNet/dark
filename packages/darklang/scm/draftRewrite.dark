@@ -160,6 +160,7 @@ let surgicalDrop (dropped: List<DraftOp>) : Stdlib.Result.Result<Unit, String> =
 
   let deleteOps = dropped |> Stdlib.List.map (fun d -> [ d.id ])
 
+  // main-scoped: this rewrites MAIN's draft; a branch's draft goes through `PackageOps.dropBranchOps`.
   let statements =
     [ ("DELETE FROM locations
         WHERE owner = @p0 AND modules = @p1 AND name = @p2
@@ -261,6 +262,7 @@ let propagationStampsFor
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   : List<String> =
   match
+    // main-scoped: main's draft. The branch's record is `op_branches.source`; see `unstageRepoint`.
     Stdlib.Sqlite.queryP
       (db ())
       "SELECT origin_ts FROM locations
@@ -281,6 +283,7 @@ let propagationStampsFor
 /// holds both, so matching on it would make `pin` take the wrong path.
 let isStagedRepoint (loc: LanguageTools.ProgramTypes.PackageLocation) : Bool =
   match
+    // main-scoped: main's staged repoints. `unstageRepoint` dispatches to the branch's own record first.
     Stdlib.Sqlite.queryP
       (db ())
       "SELECT l.source AS source

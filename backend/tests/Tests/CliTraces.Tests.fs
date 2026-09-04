@@ -2305,6 +2305,18 @@ let private partialCommitTakesOnlyWhatYouNamed =
         let! evalUser = runCli state [ "eval"; "Tests.Pc.user 0L" ]
         Expect.stringContains evalUser "2" "the committed item still evaluates"
 
+        // A name edited twice in one draft has two namings, and `--include=` takes both: leaving the
+        // earlier one behind would describe a version nobody has. (The deleted `scm-partial-commit.dark`
+        // refused this case; the model now commits both.)
+        let! _ = runCli state [ "fn"; "Tests.Pc.twice"; "() : Int64 = 3001L" ]
+        let! _ = runCli state [ "fn"; "Tests.Pc.twice"; "() : Int64 = 3002L" ]
+        let! both = runCli state [ "commit"; "twice"; "--include=Tests.Pc.twice"; "-y" ]
+        Expect.stringContains both "commit" $"the twice-edited name commits: {both}"
+        let! left = runCli state [ "status" ]
+        Expect.stringContains left "1 item" $"and only the unnamed item is still in the draft: {left}"
+        let! twice = runCli state [ "eval"; "Tests.Pc.twice ()" ]
+        Expect.stringContains twice "3002" "and the committed version is the later edit"
+
         let! _ = runCli state [ "discard"; "--yes" ]
         return ()
       })

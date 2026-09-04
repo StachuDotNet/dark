@@ -27,6 +27,7 @@
     <Compile Include="PackageItem.fs" />
     <Compile Include="DependencyExtractor.fs" />
     <Compile Include="Branches.fs" />
+    <Compile Include="BranchSelection.fs" />
     <Compile Include="AstTransformer.fs" />
     <Compile Include="HashStabilization.fs" />
     <Compile Include="NameLookup.fs" />

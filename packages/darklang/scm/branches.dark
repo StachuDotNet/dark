@@ -321,6 +321,7 @@ let nameBases (branchId: Uuid) : List<(String * String * String * String)> =
 let parentHashesForBases (parentId: Uuid) (branchId: Uuid) : Dict<String, String> =
   let fromMain =
     match
+      // main-scoped: main's hashes are the base; a non-main parent's rebinds are overlaid by the caller.
       Stdlib.Sqlite.queryP
         (localDb ())
         "SELECT l.owner, l.modules, l.name, l.item_hash

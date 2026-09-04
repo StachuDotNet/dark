@@ -99,6 +99,7 @@ let dependentsOf
     // handful and on main is none.
     let mainResolved =
       match
+        // main-scoped: main's half, by join; the overlay half below answers for the branch.
         Stdlib.Sqlite.queryP
           (localDb ())
           "SELECT DISTINCT l.item_hash, l.item_type, l.owner, l.modules, l.name
@@ -193,6 +194,7 @@ let mainLocationOf
   (h: String)
   : Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageLocation> =
   match
+    // main-scoped, on purpose: what MAIN names this hash; the overlay's names come from `branchOverlayBindings`.
     Stdlib.Sqlite.queryOneP
       (localDb ())
       "SELECT owner, modules, name FROM locations
