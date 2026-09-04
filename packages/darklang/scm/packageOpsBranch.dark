@@ -229,7 +229,7 @@ let resolveBranchRef (branchRef: String) : BranchRefResult =
         if branchExists id then
           BranchRefResult.Found id
         else
-          BranchRefResult.NotFound
+          BranchRefResult.UnknownId id
       | None ->
         // Long enough not to be silly: a 1-2 character prefix would match half the store and "ambiguous"
         // is a worse answer than making you type more.

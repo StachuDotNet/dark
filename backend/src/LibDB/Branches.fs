@@ -116,9 +116,22 @@ let isLive (branchId : PT.BranchId) : Task<bool> =
 
 /// The branch a REF refers to, without creating anything: a name, a full id, or an unambiguous id
 /// prefix. All three get printed at people, and `dark branches` abbreviates ids to 8 characters,
-/// so the prefix is the form most likely to be pasted. Ambiguity returns None rather than picking
-/// one. Mirrors `Cli.Branch.lookupRef`, which the branch verbs go through.
-let lookupRef (branchRef : string) : Task<Option<PT.BranchId>> =
+/// so the prefix is the form most likely to be pasted. Mirrors `Cli.Branch.lookupRef`, which the
+/// branch verbs go through.
+///
+/// A miss says WHY, because only one kind of miss should create a branch. `None` used to stand for
+/// four different things, and the caller created a branch named after a peer's uuid or an ambiguous
+/// prefix, silently.
+type RefLookup =
+  | Found of PT.BranchId
+  /// A full id, and no branch here has it: a peer's, or a mispaste.
+  | UnknownId of PT.BranchId
+  /// An id prefix matching more than one branch.
+  | Ambiguous of string
+  /// Not a live name, not an id, not a prefix: a name this store has never had.
+  | NoSuchName of string
+
+let lookupRef (branchRef : string) : Task<RefLookup> =
   task {
     // Main is resolvable by name and by id like any other branch, and has to be: it has no
     // `branches` row, so neither the name lookup nor the id-prefix search below can find it.
@@ -126,19 +139,19 @@ let lookupRef (branchRef : string) : Task<Option<PT.BranchId>> =
       branchRef = PT.BranchId.MainName
       || PT.BranchId.Parse branchRef = Some PT.BranchId.Main
     then
-      return Some PT.BranchId.Main
+      return Found PT.BranchId.Main
     else
       match! liveIdForName branchRef with
-      | Some id -> return Some id
+      | Some id -> return Found id
       | None ->
         match PT.BranchId.Parse branchRef with
         | Some id ->
           let! exact = exists id
-          return (if exact then Some id else None)
+          return (if exact then Found id else UnknownId id)
         | None ->
           if String.length branchRef < 4 then
             // Too short to be a prefix worth guessing from; treat it as a name we don't have.
-            return None
+            return NoSuchName branchRef
           else
             let! matches =
               Sql.query
@@ -150,8 +163,9 @@ let lookupRef (branchRef : string) : Task<Option<PT.BranchId>> =
                 PT.BranchId.ParseUnsafe(read.string "id"))
 
             match matches with
-            | [ only ] -> return Some only
-            | _ -> return None
+            | [ only ] -> return Found only
+            | [] -> return NoSuchName branchRef
+            | _ -> return Ambiguous branchRef
   }
 
 /// Mint a branch for <param name>, and report whether this call is the one that created it.

@@ -330,7 +330,12 @@ type OpSummary =
 /// several branches" want different words from the caller, and an Option would flatten them into one.
 type BranchRefResult =
   | Found of Uuid
+  /// Not a live name, not an id, not a prefix: a name this store has never had. The ONE miss a write
+  /// verb may answer by starting a branch.
   | NotFound
+  /// A full id, and no branch here has it: a peer's, or a mispaste. Never something to start a branch
+  /// named after.
+  | UnknownId of Uuid
   /// The prefix matched more than one branch.
   | Ambiguous
 

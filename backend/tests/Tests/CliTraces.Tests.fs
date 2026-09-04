@@ -1586,7 +1586,7 @@ let private aBranchKnowsWhatFollowed =
       // On main: a base, a caller, committed. Then an edit to the base on MAIN, uncommitted, so main's
       // draft holds a staged repoint of its own for the pin on the branch to leave alone.
       let! _ = runCli state [ "switch"; "main" ]
-      let! _ = runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 1L" ]
+      let! _ = runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 1001L" ]
       let! _ =
         runCli
           state
@@ -1594,15 +1594,23 @@ let private aBranchKnowsWhatFollowed =
             "Tests.BranchFollow.caller"
             "() : Int64 = Stdlib.Int64.multiply (Tests.BranchFollow.base ()) 7L" ]
       let! _ = runCli state [ "commit"; "branchfollow v1"; "-y" ]
-      let! _ = runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 3L" ]
+      // Other tests leave followers in main's draft too, so main is asserted RELATIVE to itself.
+      let followedIn (status : string) =
+        let m = System.Text.RegularExpressions.Regex.Match(status, @"(\d+) followed")
+        if m.Success then int m.Groups[1].Value else 0
+      let! mainBefore = runCli state [ "status" ]
+      let! _ = runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 1003L" ]
       let! mainStatus = runCli state [ "status" ]
-      Expect.stringContains mainStatus "1 followed" $"main's draft has its own follower: {mainStatus}"
+      Expect.equal
+        (followedIn mainStatus)
+        (followedIn mainBefore + 1)
+        $"main's draft gained its own follower: {mainStatus}"
 
       // On a branch: edit the base; the caller follows, on the branch.
       let! _ = runCli state [ "switch"; "follow-branch" ]
-      let! _ = runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 2L" ]
+      let! _ = runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 1002L" ]
       let! after = runCli state [ "eval"; "Tests.BranchFollow.caller ()" ]
-      Expect.stringContains after "14" "the caller followed the edit, on the branch"
+      Expect.stringContains after "7014" "the caller followed the edit, on the branch"
       let! branchStatus = runCli state [ "status" ]
       Expect.stringContains
         branchStatus
@@ -1616,18 +1624,37 @@ let private aBranchKnowsWhatFollowed =
       // says (an overlay over main, draft included), which is main's staged repoint, 21; the branch's
       // 14 is what must be gone.
       let! back = runCli state [ "eval"; "Tests.BranchFollow.caller ()" ]
-      Expect.isFalse (back.Contains "14") $"the branch no longer holds its repoint: {back}"
+      Expect.isFalse (back.Contains "7014") $"the branch no longer holds its repoint: {back}"
 
       // Main's draft is exactly as it was: the edit and ITS follower.
       let! _ = runCli state [ "switch"; "main" ]
       let! mainAfter = runCli state [ "status" ]
-      Expect.stringContains mainAfter "1 followed" $"main's own staged repoint is untouched: {mainAfter}"
+      Expect.equal
+        (followedIn mainAfter)
+        (followedIn mainStatus)
+        $"main's own staged repoint is untouched: {mainAfter}"
       let! mainCaller = runCli state [ "eval"; "Tests.BranchFollow.caller ()" ]
-      Expect.stringContains mainCaller "21" "and main's caller still follows main's edit"
+      Expect.stringContains mainCaller "7021" "and main's caller still follows main's edit"
 
       let! _ = runCli state [ "discard"; "-y" ]
       let! _ = runCli state [ "branch"; "archive"; "follow-branch"; "-y" ]
       ()
+    })
+
+
+/// `dark switch <a peer's uuid>` used to start a branch NAMED after the uuid and move you onto it, which
+/// read as success. A full id this store does not hold is refused; only a name nobody has starts one.
+let private switchRefusesAForeignId =
+  cliTest "switch refuses a uuid this store does not have, rather than starting a branch named after it" (fun state ->
+    task {
+      let! _ = runCli state [ "switch"; "main" ]
+      let foreign = string (System.Guid.NewGuid())
+      let! refused = runCli state [ "switch"; foreign ]
+      Expect.stringContains refused "no branch with id" $"the switch is refused, saying why: {refused}"
+      let! where = runCli state [ "branch" ]
+      Expect.stringContains where "on main" "and the process stayed where it was"
+      let! listed = runCli state [ "branches" ]
+      Expect.isFalse (listed.Contains foreign) "no branch was started under the id's name"
     })
 
 
@@ -3348,6 +3375,7 @@ let tests =
        branchChainSeesItsAncestry
        branchReadsAnswerAboutTheBranch
        aBranchKnowsWhatFollowed
+       switchRefusesAForeignId
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses

@@ -1791,6 +1791,35 @@ let retagMovesTheBasesToo =
   }
 
 
+/// `lookupRef` says WHY it missed, because only one kind of miss should start a branch. A `None` used to
+/// stand for a foreign uuid, an ambiguous prefix and an unknown name alike, and `--branch <a peer's id>`
+/// silently started a branch named after the id.
+let refLookupSaysWhyItMissed =
+  testTask "lookupRef distinguishes a foreign id, an ambiguous prefix and an unknown name" {
+    let one = PT.BranchId.Id(System.Guid "aaaaaaaa-0000-4000-8000-000000000001")
+    let two = PT.BranchId.Id(System.Guid "aaaaaaaa-0000-4000-8000-000000000002")
+    do! cleanupBranch one
+    do! cleanupBranch two
+    do! Branches.createBranch one "ref-one" PT.BranchId.Main
+    do! Branches.createBranch two "ref-two" PT.BranchId.Main
+
+    let! byName = Branches.lookupRef "ref-one"
+    Expect.equal byName (Branches.Found one) "a live name is found"
+    let! byId = Branches.lookupRef (string one)
+    Expect.equal byId (Branches.Found one) "a full id is found"
+    let! byPrefix = Branches.lookupRef "aaaaaaaa"
+    Expect.equal byPrefix (Branches.Ambiguous "aaaaaaaa") "a prefix two branches share is ambiguous"
+    let foreign = PT.BranchId.Id(System.Guid.NewGuid())
+    let! unknown = Branches.lookupRef (string foreign)
+    Expect.equal unknown (Branches.UnknownId foreign) "a full id nobody has is a foreign id, not a name"
+    let! noSuch = Branches.lookupRef "no-such-branch-here"
+    Expect.equal noSuch (Branches.NoSuchName "no-such-branch-here") "and only a name nobody has is a name"
+
+    do! cleanupBranch one
+    do! cleanupBranch two
+  }
+
+
 /// The receiving side has no obligation to know every branch its peers have. Branch ids travel with
 /// a bundle, so the branches you actually share match; the rest are none of this store's business.
 let branchEventForUnknownBranchIsIgnored =
@@ -2110,4 +2139,5 @@ let tests =
       authoringOnAFinishedBranchRefuses
       liveBindingReadsTheBranchThenMain
       aBranchNeverTagsWhatMainRuns
-      retagMovesTheBasesToo ]
+      retagMovesTheBasesToo
+      refLookupSaysWhyItMissed ]

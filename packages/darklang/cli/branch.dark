@@ -35,6 +35,10 @@ let lookupRef (branchRef: String) : Stdlib.Option.Option<Uuid> =
   match SCM.PackageOps.resolveBranchRef branchRef with
   | Found id -> Stdlib.Option.Option.Some id
   | NotFound -> Stdlib.Option.Option.None
+  | UnknownId _ ->
+    printErr $"no branch with id {branchRef} in this store."
+    printHint "  `dark branches` lists yours; a peer's branch arrives with `dark branch pull`."
+    Stdlib.Option.Option.None
   | Ambiguous ->
     printErr
       $"\"{branchRef}\" matches more than one branch -- use more of the id, or its name."
@@ -135,14 +139,28 @@ let executeSwitch (state: AppState) (branchRef: String) : AppState =
       // Resolve BEFORE creating; `lookupRef` takes a name or an id. It also resolves MERGED branches,
       // because read verbs need them -- but switching onto one must not, since its work is already in the
       // parent. A merged name is therefore free again, and typing it starts a new branch.
-      let (branchId, created) =
-        match lookupRef ref with
-        | Some existing ->
+      // Only a name nobody has starts a branch. A foreign uuid or an ambiguous prefix is refused, with
+      // the reason `lookupRef` printed; starting a branch NAMED after either read as success.
+      let resolved =
+        match SCM.PackageOps.resolveBranchRef ref with
+        | Found existing ->
           if SCM.PackageOps.branchIsMerged existing then
-            SCM.PackageOps.ensureBranch ref parentId
+            Stdlib.Option.Option.Some(SCM.PackageOps.ensureBranch ref parentId)
           else
-            (existing, false)
-        | None -> SCM.PackageOps.ensureBranch ref parentId
+            Stdlib.Option.Option.Some((existing, false))
+        | NotFound -> Stdlib.Option.Option.Some(SCM.PackageOps.ensureBranch ref parentId)
+        | UnknownId _ ->
+          let _ = lookupRef ref
+          Stdlib.Option.Option.None
+        | Ambiguous ->
+          let _ = lookupRef ref
+          Stdlib.Option.Option.None
+
+      match resolved with
+      | None -> SCM.PackageOps.currentBranch ()
+      | Some pair ->
+
+      let (branchId, created) = pair
 
       // The config holds the ID, with the name beside it for anyone reading the file. Names are
       // deliberately not unique, including across instances, so storing the name would let a sync that

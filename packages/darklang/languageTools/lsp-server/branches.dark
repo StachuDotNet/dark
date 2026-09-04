@@ -24,6 +24,7 @@ let resolveRef (ref: String) : Stdlib.Option.Option<Uuid> =
   match SCM.PackageOps.resolveBranchRef ref with
   | Found id -> Stdlib.Option.Option.Some id
   | NotFound -> Stdlib.Option.Option.None
+  | UnknownId _ -> Stdlib.Option.Option.None
   | Ambiguous -> Stdlib.Option.Option.None
 
 

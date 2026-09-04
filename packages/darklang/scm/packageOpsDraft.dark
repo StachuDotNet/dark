@@ -140,13 +140,19 @@ let propagatedNames () : List<String> =
     // The branch's own record, `op_branches.source`: the LAST op binding each name decides. Main's
     // followers are not this branch's, and were reported as such from here before the column existed.
     SCM.Branches.ownFrontierOpsWithSource branchId
-    |> Stdlib.List.fold Stdlib.Dict.empty (fun acc entry ->
+    |> Stdlib.List.filterMap (fun entry ->
       match entry with
       | (_, SetName(loc, _, _), source) ->
-        Stdlib.Dict.set acc (Conflicts.fqn loc.owner (Stdlib.String.join loc.modules ".") loc.name) source
+        Stdlib.Option.Option.Some(
+          (Conflicts.fqn loc.owner (Stdlib.String.join loc.modules ".") loc.name, source)
+        )
       | (_, Decision(_, loc, _, Override _), source) ->
-        Stdlib.Dict.set acc (Conflicts.fqn loc.owner (Stdlib.String.join loc.modules ".") loc.name) source
-      | _ -> acc)
+        Stdlib.Option.Option.Some(
+          (Conflicts.fqn loc.owner (Stdlib.String.join loc.modules ".") loc.name, source)
+        )
+      | _ -> Stdlib.Option.Option.None)
+    // Oldest first, so the later binder of a name overwrites the earlier: the LAST binder decides.
+    |> Stdlib.Dict.fromListOverwritingDuplicates
     |> Stdlib.Dict.toList
     |> Stdlib.List.filterMap (fun (name, source) ->
       if source == "propagation" then Stdlib.Option.Option.Some name else Stdlib.Option.Option.None)

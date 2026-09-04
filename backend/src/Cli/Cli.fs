@@ -404,9 +404,19 @@ let main (args : string[]) =
         // Same three spellings `dark switch` takes: a name, a full id, or an unambiguous
         // id PREFIX. Listings abbreviate ids to 8 characters, so the prefix is what you
         // would actually paste.
+        // Only a name nobody has is created. A peer's uuid, or a prefix two branches share, is an
+        // error, the same as a missing value: creating a branch NAMED after it read as success.
         match (LibDB.Branches.lookupRef name).Result with
-        | Some id -> Some id
-        | None ->
+        | LibDB.Branches.Found id -> Some id
+        | LibDB.Branches.Ambiguous prefix ->
+          System.Console.Error.WriteLine
+            $"'{prefix}' matches more than one branch; use more of the id, or its name"
+          exit 1
+        | LibDB.Branches.UnknownId id ->
+          System.Console.Error.WriteLine
+            $"no branch with id {id} in this store; `dark branches` lists yours"
+          exit 1
+        | LibDB.Branches.NoSuchName name ->
           let (id, created) =
             (LibDB.Branches.resolveOrCreate name PT.BranchId.Main).Result
           if created then
