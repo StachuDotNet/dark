@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Two reloads of one tree must agree on every op id.
+#
+# They did not: the parser mints ephemeral node ids into every expression, `Add*` ops serialized the
+# item with them, and an op's id was the hash of its serialization, so 5,466 of 12,876 ids changed on
+# every reload of an unchanged tree. Every binary upgrade then grew every store by that many ops, and
+# two machines authoring the same fn made two ops. An Add op is identified by its content now; this is
+# what keeps it that way.
+#
+# Reloads the dev store twice, which is what the build does anyway. Main's ops only: a branch's ops are
+# whatever the developer has on their branches.
+set -euo pipefail
+
+ids() {
+  sqlite3 rundir/data.db \
+    "SELECT id FROM package_ops WHERE id NOT IN (SELECT op_id FROM op_branches) ORDER BY id"
+}
+
+./scripts/build/reload-packages > /dev/null 2>&1
+first=$(ids)
+./scripts/build/reload-packages > /dev/null 2>&1
+second=$(ids)
+
+n=$(wc -l <<<"$second")
+differ=$(comm -3 <(echo "$first") <(echo "$second") | wc -l)
+if [[ "$differ" -ne 0 ]]; then
+  echo "test-reload-is-reproducible: $differ of $n op ids differ between two reloads of one tree"
+  exit 1
+fi
+echo "test-reload-is-reproducible: two reloads of one tree agree on all $n op ids."

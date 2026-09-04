@@ -51,6 +51,7 @@ GATES=(
   test-sync-hostile-relay
   test-sync-multi-instance
   test-backups-restore
+  test-reload-is-reproducible
   test-first-day
 )
 
