@@ -8,6 +8,8 @@ at once and each test names the failure it wants:
   9082 valid JSON, wrong shape    9085 500 on everything
   9083 an absurd count            9086 never answers at all
   9087 holds far more ops than the client, but serves nothing past the client's cursor
+  9088 dies mid-pull: page 1 lands, the connection drops on page 2, and it is back for the next pull
+  9089 speaks a wire format from the future (formatVersion 99): the peer that upgraded before you did
 
 The empty-body mode is the one that mattered: a relay answering 200 with nothing readable used to get a
 cheerful "Pushed N ops" out of the client, which then recorded the push as done and never sent them again.
@@ -16,6 +18,7 @@ import sys, time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 MODE = int(sys.argv[1])
+DROPPED_ONCE = [False]
 
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
@@ -53,6 +56,28 @@ class H(BaseHTTPRequestHandler):
             if "sinceSeq=0" in p:
                 return self._send(200, empty % 0)
             return self._send(200, empty % 0)
+        if MODE == 9088:
+            # A relay restarting under a pull. Page 1 carries one op (unreadable to any build, so it is
+            # stored inert and nothing folds); page 2's connection drops once, the way a restart looks
+            # from the client; every request after that answers normally. The client must not record the
+            # relay's position off a pull that lost a page, and the next pull must finish the job.
+            if p.startswith("/sync/head"):
+                return self._send(200, '{"count":1,"maxTs":"2026-01-01T00:00:00.000Z"}')
+            if "sinceSeq=0" in p:
+                return self._send(200, ('{"formatVersion":1,"darkBuild":"x","kernelHash":"x",'
+                                        '"owner":"inst-hostile-9088","cursor":1,"ops":['
+                                        '{"id":"9088aaaa-0000-4000-8000-000000000001","blobHex":"ff3907",'
+                                        '"ts":"2026-01-01T00:00:00.000Z","author":"hostile"}]}'))
+            if not DROPPED_ONCE[0]:
+                DROPPED_ONCE[0] = True
+                self.connection.close(); return
+            return self._send(200, ('{"formatVersion":1,"darkBuild":"x","kernelHash":"x",'
+                                    '"owner":"inst-hostile-9088","cursor":1,"ops":[]}'))
+        if MODE == 9089:
+            if p.startswith("/sync/head"):
+                return self._send(200, '{"count":1,"maxTs":"2026-01-01T00:00:00.000Z"}')
+            return self._send(200, ('{"formatVersion":99,"darkBuild":"future","kernelHash":"x",'
+                                    '"owner":"inst-hostile-9089","cursor":1,"ops":[]}'))
         if MODE == 9083:
             return self._send(200, '{"count":99999999999999999999,"maxTs":"","ops":[]}')
         return self._send(200, "{}")

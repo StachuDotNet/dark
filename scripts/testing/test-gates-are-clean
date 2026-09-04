@@ -50,6 +50,7 @@ GATES=(
   test-relay-routes
   test-sync-hostile-relay
   test-sync-multi-instance
+  test-backups-restore
   test-first-day
 )
 

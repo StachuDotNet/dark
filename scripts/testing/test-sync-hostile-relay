@@ -56,9 +56,12 @@ for m in "${MODES[@]}"; do
   grep -qE "Encountered a Runtime Error|No matching case found|but got [A-Za-z]+|Call stack" <<<"$out" \
     && fail "sync against relay mode $m crashed"
 
-  # 1. The data-loss case. A push may only be recorded when the relay confirmed it.
-  if grep -qE '^sync\.pushed\.' <<<"$(sqlite3 "$dir/data.db" 'SELECT key FROM config_v0;' 2>/dev/null)"; then
-    fail "relay mode $m did not confirm the push, but the client recorded one (work would be lost)"
+  # 1. The data-loss case. A push may only be recorded when the relay confirmed it. What the client
+  #    records is the set of ops the relay holds (`sync_pushed`); a row here for a relay that never
+  #    confirmed anything means the next push skips work the relay does not have.
+  recorded=$(sqlite3 "$dir/data.db" "SELECT count(*) FROM sync_pushed WHERE relay = 'http://localhost:$m';" 2>/dev/null || echo 0)
+  if [[ "$recorded" != "0" ]]; then
+    fail "relay mode $m did not confirm the push, but the client recorded $recorded op(s) as held (work would be lost)"
   fi
   echo "  ok   mode $m: no crash, and no push recorded without a confirmation"
 done
@@ -88,6 +91,34 @@ grep -q "points past ops this store doesn't have" <<<"$out" \
   || fail "a cursor past missing ops did not rewind (client would pull zero forever)"
 echo "  ok   a cursor past ops this store lost rewinds instead of pulling zero forever"
 
+
+# 5. A relay that restarts under a pull. Page 1 lands; page 2's connection drops. The client must not
+#    record the relay's position off that pull (it would skip the un-pulled ops for good), and the next
+#    pull must pick up where the last page landed.
+python3 "$FIXTURE" 9088 >/dev/null 2>&1 &
+sleep 1
+dir=$(client "crestart")
+out=$(timeout 120 env DARK_CONFIG_RUNDIR="$dir" "$PWD/$CLI" pull "http://localhost:9088" 2>&1 | clean_output || true)
+grep -q "a page didn't land" <<<"$out" \
+  || fail "a pull that lost page 2 did not say so; got: $out"
+seen=$(sqlite3 "$dir/data.db" "SELECT count(*) FROM config_v0 WHERE key = 'sync.head.http://localhost:9088';" 2>/dev/null || echo 0)
+[[ "$seen" == "0" ]] || fail "the relay's position was recorded off a pull that lost a page"
+out=$(timeout 120 env DARK_CONFIG_RUNDIR="$dir" "$PWD/$CLI" pull "http://localhost:9088" 2>&1 | clean_output || true)
+grep -qE "^Pulled|^Nothing new" <<<"$out" \
+  || fail "the pull after the relay came back did not finish; got: $out"
+echo "  ok   a relay that dies mid-pull: position not recorded, and the next pull finishes"
+
+# 6. A peer that upgraded before you did. The refusal has to name BOTH versions, the one the bundle
+#    claims and the one this build speaks, or the person cannot tell which side to upgrade.
+python3 "$FIXTURE" 9089 >/dev/null 2>&1 &
+sleep 1
+dir=$(client "cfuture")
+out=$(timeout 120 env DARK_CONFIG_RUNDIR="$dir" "$PWD/$CLI" pull "http://localhost:9089" 2>&1 | clean_output || true)
+grep -q "sync format v99 not understood by this build, which speaks v" <<<"$out" \
+  || fail "a bundle from a newer format was not refused naming both versions; got: $out"
+grep -qE "Encountered a Runtime Error|No matching case found|Call stack" <<<"$out" \
+  && fail "a bundle from a newer format crashed the client"
+echo "  ok   a peer on a newer wire format is refused, naming both versions"
 
 # 2. A relay that never answers: the client must give up rather than wedge.
 #

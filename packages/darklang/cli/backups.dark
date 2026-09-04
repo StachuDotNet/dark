@@ -58,6 +58,12 @@ let executeList (state: AppState) : AppState =
     printHint "  dark backups prune <n>    keep the newest n, delete the rest"
     state
 
+/// The store is in WAL mode, so recent writes can sit in `data.db-wal` and not in `data.db`. A copy of
+/// the file alone misses them. Fold the WAL into the file first, so the copy is the whole store.
+let checkpoint () : Unit =
+  let _ = Stdlib.Sqlite.exec (Builtin.localDbPath ()) "PRAGMA wal_checkpoint(TRUNCATE)"
+  ()
+
 /// `dark backups now`. Named for the moment rather than the day, so an on-demand copy never collides
 /// with the upgrade path's daily one.
 let executeNow (state: AppState) : AppState =
@@ -71,6 +77,7 @@ let executeNow (state: AppState) : AppState =
     let _ = Stdlib.Cli.Dir.createRecursive dir
     let stamp = Stdlib.DateTime.toStringISO8601BasicDateTime (Stdlib.DateTime.now ())
     let target = $"{dir}/data.db.manual-{stamp}"
+    let _ = checkpoint ()
 
     match Stdlib.Cli.File.copy db target with
     | Ok _ ->
@@ -80,8 +87,53 @@ let executeNow (state: AppState) : AppState =
       printErr $"couldn't write {target}"
       state
 
-/// `dark backups prune <keep>`. Deletes the oldest, keeping the newest <keep>.
-let executePrune (state: AppState) (keepArg: String) : AppState =
+/// `dark backups restore <name> [-y]`. Puts the named backup in place of the store. The store as it is
+/// now is copied aside first (`data.db.pre-restore-<stamp>`), so a restore is itself undoable; then the
+/// WAL is folded and truncated, so nothing of the old store replays over the new file on the next open.
+let executeRestore (state: AppState) (name: String) (autoConfirm: Bool) : AppState =
+  let db = Builtin.localDbPath ()
+  let source = $"{backupDir ()}/{name}"
+
+  if Stdlib.Bool.not (Stdlib.List.``member`` (list ()) name) then
+    printErr $"no backup named \"{name}\"."
+    printHint "  `dark backups` lists them."
+    state
+  else
+
+  printOk $"  RESTORING {name} replaces the store."
+  printHint "  the store as it is now is copied aside first, so this is undoable."
+
+  let confirmed =
+    Cli.Prompt.confirmExplicit autoConfirm (Stdlib.Cli.UI.Colors.warning "\n  Restore it? [y/N]: ")
+
+  if Stdlib.Bool.not confirmed then
+    printOk "  kept. (`dark backups restore <name> -y` if you mean it -- a piped stdin can't answer this.)"
+    state
+  else
+    let stamp = Stdlib.DateTime.toStringISO8601BasicDateTime (Stdlib.DateTime.now ())
+    let aside = $"{backupDir ()}/data.db.pre-restore-{stamp}"
+    let _ = checkpoint ()
+
+    match Stdlib.Cli.File.copy db aside with
+    | Error _ ->
+      printErr $"couldn't copy the current store aside to {aside}; nothing restored."
+      state
+    | Ok _ ->
+      match Stdlib.Cli.File.copy source db with
+      | Ok _ ->
+        // The old store's WAL was truncated above; the -wal/-shm files that remain describe nothing.
+        let _ = Stdlib.Cli.File.delete $"{db}-wal"
+        let _ = Stdlib.Cli.File.delete $"{db}-shm"
+        printOk $"restored {name}. The store as it was is at {aside}."
+        state
+      | Error _ ->
+        printErr $"couldn't copy {source} over the store. The store is unchanged; a copy is at {aside}."
+        state
+
+/// `dark backups prune <keep> [-y]`. Deletes the oldest, keeping the newest <keep>. Shows what would go
+/// and takes an explicit yes, like every other verb that destroys something: a backup is the thing you
+/// reach for AFTER a mistake, and the one command that must not make one.
+let executePrune (state: AppState) (keepArg: String) (autoConfirm: Bool) : AppState =
   match Stdlib.Int.parse keepArg with
   | Error _ ->
     printErr $"\"{keepArg}\" isn't a number of backups to keep."
@@ -97,6 +149,17 @@ let executePrune (state: AppState) (keepArg: String) : AppState =
       if Stdlib.List.isEmpty doomed then
         let n = Stdlib.Int.toString (Stdlib.List.length all)
         printOk $"nothing to prune: {n} backup(s), keeping {keepArg}."
+        state
+      else
+
+      printOk $"  PRUNING deletes {Stdlib.Int.toString (Stdlib.List.length doomed)} backup(s):"
+      doomed |> Stdlib.List.iter (fun name -> Stdlib.printLine (Stdlib.Cli.UI.Colors.dimText $"    - {name}"))
+
+      let confirmed =
+        Cli.Prompt.confirmExplicit autoConfirm (Stdlib.Cli.UI.Colors.warning "\n  Delete them? [y/N]: ")
+
+      if Stdlib.Bool.not confirmed then
+        printOk "  kept. (`dark backups prune <n> -y` if you mean it -- a piped stdin can't answer this.)"
         state
       else
         let deleted =
@@ -118,7 +181,16 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | [] -> executeList state
   | [ "list" ] -> executeList state
   | [ "now" ] -> executeNow state
-  | [ "prune", keep ] -> executePrune state keep
+  | [ "prune", keep ] -> executePrune state keep false
+  | [ "prune", keep, "-y" ]
+  | [ "prune", keep, "--yes" ] -> executePrune state keep true
+  | [ "restore", name ] -> executeRestore state name false
+  | [ "restore", name, "-y" ]
+  | [ "restore", name, "--yes" ] -> executeRestore state name true
+  | [ "restore" ] ->
+    printErr "restore needs a backup's name: `dark backups restore <name>`."
+    printHint "  `dark backups` lists them."
+    state
   | [ "prune" ] ->
     printErr "prune needs how many to keep: `dark backups prune 3`."
     state
@@ -132,7 +204,8 @@ let help (_state: AppState) : String =
   [ ""
     "  dark backups              what copies of the store exist"
     "  dark backups now          take one now"
-    "  dark backups prune <n>    keep the newest n, delete the rest"
+    "  dark backups prune <n> [-y]    keep the newest n, delete the rest (asks first)"
+    "  dark backups restore <name>    put a backup in place of the store"
     ""
     "  A backup is taken automatically before an upgrade folds a new seed:"
     "  one per calendar day, kept next to the store. Nothing prunes them for"
@@ -146,5 +219,5 @@ let complete
   (args: List<String>)
   : List<Completion.CompletionItem> =
   match args with
-  | [] -> [ "list", "now", "prune" ] |> Stdlib.List.map Completion.simple
+  | [] -> [ "list", "now", "prune", "restore" ] |> Stdlib.List.map Completion.simple
   | _ -> []

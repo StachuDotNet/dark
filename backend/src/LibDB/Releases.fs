@@ -113,7 +113,21 @@ let steps : List<Step> =
     // The branch twin of `locations.source`; see schema.sql. Without it a branch records no provenance.
     { name = "20260904_000001_op_branches_source"
       run =
-        fun () -> addColumnIfMissing "op_branches" "source" "TEXT NOT NULL DEFAULT 'op'" } ]
+        fun () -> addColumnIfMissing "op_branches" "source" "TEXT NOT NULL DEFAULT 'op'" }
+
+    // A store made under the previous SCM has `branch_ops`, its separate op log for branch structure.
+    // Nothing reads it now, and the branches recorded there do not carry over: say so ONCE, at the
+    // first boot that sees it, rather than let `dark branches` come up empty with no explanation. The
+    // table is left where it is; wiping is the person's call.
+    { name = "20260904_000002_previous_scm_store"
+      run =
+        fun () ->
+          if tableExists "branch_ops" then
+            System.Console.Error.WriteLine
+              "note: this store was made by a previous version of the SCM (it has a `branch_ops` table). \
+               Branches recorded there do not carry over; main's ops do. For a clean start, wipe the store \
+               (`rm ~/.darklang/data.db*`): the packages re-grow from this binary, and `dark pull` brings \
+               the rest back from your relay." } ]
 
 
 let private alreadyRun () : Set<string> =
