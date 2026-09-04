@@ -105,6 +105,16 @@ let insertAndApplyOpsWith
 
       do! PackageOpPlayback.applyOpsFrom source opsToApply
 
+      // An `Add*` the log already held is not folded again, and does not need to be, except for one
+      // thing: the names its body reached its callees through in THIS parse. Two names can hold one
+      // body, and a caller written against either is the same op; without this the second name's
+      // callers had no edge under that name.
+      let ignored =
+        List.zip opsWithIds rowsAffected
+        |> List.filter (fun (_, affected) -> affected = 0)
+        |> List.map (fun ((_, op, _, _, _), _) -> op)
+      do! PackageOpPlayback.recordDependenciesOnly ignored
+
       // Mark ops as applied (non-critical - ops are already applied)
       if not (List.isEmpty insertedOpIds) then
         try

@@ -662,6 +662,39 @@ let private namingElsewhereLeavesTheOldNameBound =
   }
 
 
+/// Two names, one body, one caller each. The callers are the same content too, so the same op, and the
+/// second is never folded; its "who calls what" rows under the second name were never written, and
+/// `deps usedby <second name>` said nobody. Edges accumulate per hash now, and an Add the log already
+/// held still records the names this parse reached its callees through.
+let private callersFoundByEitherNameOfOneBody =
+  testTask "a caller of either name of one body is found by either name" {
+    let m1 = "TwinOne"
+    let m2 = "TwinTwo"
+    do! cleanupFor "Darklang" m1
+    do! cleanupFor "Darklang" m2
+    let! _ = authorIn m1 "let twin (x: Int64) : Int64 = Stdlib.Int64.add x 4001L"
+    let! _ = authorIn m2 "let twin (x: Int64) : Int64 = Stdlib.Int64.add x 4001L"
+    let! _ =
+      authorIn m1 "let caller (x: Int64) : Int64 = Stdlib.Int64.add (Darklang.TwinOne.twin x) 10L"
+    let! _ =
+      authorIn m2 "let caller (x: Int64) : Int64 = Stdlib.Int64.add (Darklang.TwinTwo.twin x) 10L"
+
+    let edgesTo (m : string) =
+      Sql.query
+        "SELECT count(*) AS n FROM package_dependencies
+         WHERE depends_on_owner = 'Darklang' AND depends_on_modules = @m AND depends_on_name = 'twin'"
+      |> Sql.parameters [ "m", Sql.string m ]
+      |> Sql.executeRowAsync (fun read -> read.int64 "n")
+    let! one = edgesTo m1
+    let! two = edgesTo m2
+    Expect.isGreaterThan one 0L "the first name's twin has a caller edge"
+    Expect.isGreaterThan two 0L "and so does the second name's, though its caller is the same op"
+
+    do! cleanupFor "Darklang" m1
+    do! cleanupFor "Darklang" m2
+  }
+
+
 let tests =
   // These author into the shared main store and assert on `locations`, and other
   // tests re-fold that projection. A reader caught mid-rewrite sees a name that
@@ -685,4 +718,5 @@ let tests =
       secondPassIsSilent
       typeMovesItsUsers
       valueMovesItsReaders
-      namingElsewhereLeavesTheOldNameBound ]
+      namingElsewhereLeavesTheOldNameBound
+      callersFoundByEitherNameOfOneBody ]

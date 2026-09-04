@@ -33,21 +33,23 @@ open LibDB.PreparedBatch
 // Dependency table maintenance.
 // ------------------------------------------------------------------
 
-/// Update dependencies for an item atomically.
-/// Clears existing dependencies and stores new ones in a single statement
-/// (a multi-statement script — SQLite runs them in order on the same command).
-let private updateDependencies
+/// Record what an item's body calls: one row per callee, by hash AND by the name this parse resolved
+/// it through.
+///
+/// ADDS, never replaces. Content is immutable, so a hash's callees never change; what can change is
+/// the NAME a callee was reached by, because two names can hold one body and a caller written against
+/// either has the same content hash. Replacing the hash's rows on each fold meant the second name's
+/// parse deleted the first's, and `deps usedby <first name>` said nobody. Accumulating keeps every
+/// name the content was ever resolved through; readers join `locations` for what is live, and a name
+/// that no longer binds matches nothing.
+let updateDependencies
   (ctx : Ctx)
   (itemHash : string)
   (deps : List<DE.Dependency>)
   : Task<unit> =
   task {
     if List.isEmpty deps then
-      do!
-        exec
-          ctx
-          "DELETE FROM package_dependencies WHERE item_hash = $item_hash"
-          (fun cmd -> p cmd "$item_hash" itemHash)
+      ()
     else
       // Each dep contributes 6 placeholders to the VALUES list.
       let placeholders =
@@ -57,8 +59,7 @@ let private updateDependencies
         |> String.concat ", "
 
       let sql =
-        "DELETE FROM package_dependencies WHERE item_hash = $item_hash; "
-        + "INSERT OR IGNORE INTO package_dependencies "
+        "INSERT OR IGNORE INTO package_dependencies "
         + "(item_hash, depends_on_hash, depends_on_item_type, depends_on_owner, depends_on_modules, depends_on_name) "
         + "VALUES "
         + placeholders
@@ -850,3 +851,38 @@ let applyOpsFrom (source : string) (ops : List<PT.PackageOp>) : Task<unit> =
   }
 
 let applyOps (ops : List<PT.PackageOp>) : Task<unit> = applyOpsFrom "op" ops
+
+/// Record the callees of these `Add*` ops' items without folding anything else. For an op the log
+/// already holds: the content is there, but this parse may have reached its callees through names the
+/// first fold never saw (two names, one body), and `updateDependencies` adds those. Every other kind of
+/// op is skipped; there is nothing to record for it.
+let recordDependenciesOnly (ops : List<PT.PackageOp>) : Task<unit> =
+  task {
+    let adds =
+      ops
+      |> List.choose (fun op ->
+        match op with
+        | PT.PackageOp.AddFn f when f.hash <> Hash "" ->
+          let (Hash h) = f.hash
+          Some(h, DE.extractFromFn f)
+        | PT.PackageOp.AddType t when t.hash <> Hash "" ->
+          let (Hash h) = t.hash
+          Some(h, DE.extractFromType t)
+        | PT.PackageOp.AddValue v when v.hash <> Hash "" ->
+          let (Hash h) = v.hash
+          Some(h, DE.extractFromValue v)
+        | _ -> None)
+
+    if not (List.isEmpty adds) then
+      use conn = new SqliteConnection(LibDB.Sqlite.connString)
+      do! conn.OpenAsync()
+      use tx = conn.BeginTransaction()
+      let ctx = newCtx conn
+      try
+        for (hash, deps) in adds do
+          do! updateDependencies ctx hash deps
+      finally
+        disposeCtx ctx
+      tx.Commit()
+      Caching.invalidateAll ()
+  }
