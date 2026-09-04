@@ -498,6 +498,46 @@ let localEditsBeatAFastPeer =
   }
 
 
+
+/// The fold reads the pending set on one connection and marks applied inside a transaction on another.
+/// A `serve` committing an op between the two used to be marked applied by the predicate sweep, with
+/// nothing having folded it and nothing ever re-reading it. Marking by id leaves it for the next pass.
+/// Deterministic: the "concurrent" write is simply placed between the two halves.
+let aWriteBetweenReadAndMarkIsNotLost =
+  testTask "an op committed between the fold's read and its mark stays pending, then folds" {
+    let a = instance "a"
+
+    try
+      activate a
+      let first = setName "early" "v1"
+      let! _ = Inserts.importOpsBulk "" [ wireOp first "2026-01-01T00:00:00.000Z" ]
+      let! pending = Seed.readPending ()
+      Expect.equal (List.length pending) 1 "one op pending when the fold read"
+
+      // The writer that lands between the read and the mark.
+      let late = setName "late" "v1"
+      let lateId = string (Inserts.computeOpHash late)
+      let! _ = Inserts.importOpsBulk "" [ wireOp late "2026-01-01T00:00:01.000Z" ]
+
+      let! folded = Seed.foldRead pending
+      Expect.equal folded 1L "the fold took what it read"
+
+      let! lateApplied =
+        Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
+        |> Sql.parameters [ "id", Sql.string lateId ]
+        |> Sql.executeRowAsync (fun read -> read.int64 "a")
+      Expect.equal lateApplied 0L "the late op is still pending, since nothing folded it"
+      let! lateBound = boundHash "late"
+      Expect.isNone lateBound "and it is not live yet"
+
+      let! next = Seed.applyUnappliedOps ()
+      Expect.equal next 1L "the next pass takes exactly it"
+      let! lateBoundNow = boundHash "late"
+      Expect.isSome lateBoundNow "and then it is live"
+    finally
+      teardown [ a ]
+  }
+
 let tests =
   testSequenced
   <| testList
@@ -510,4 +550,5 @@ let tests =
       divergenceIsRecordedNotJustResolved
       aBatchCatchesAnInstanceUp
       decisionsCrossTheWire
-      localEditsBeatAFastPeer ]
+      localEditsBeatAFastPeer
+      aWriteBetweenReadAndMarkIsNotLost ]

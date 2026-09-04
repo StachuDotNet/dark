@@ -148,11 +148,12 @@ let export (outputPath : string) : Task<unit> =
 // Grow
 // ---------------------
 
-/// Apply all unapplied package_ops in the database.
-/// Returns the count of ops applied.
-/// One pass: fold everything currently unapplied-and-effective. `applyUnappliedOps` repeats this,
-/// because folding an op can make OTHER ops effective.
-let private applyUnappliedOpsPass () : Task<int64> =
+/// The pending set: every op that is effective and not yet folded, as raw (id, blob) rows. The
+/// fold's half is `foldRead`; `applyUnappliedOpsPass` is the two in sequence. Split so a test can put a
+/// concurrent write between them, which is the case the by-id sweep in `foldRead` exists for.
+///
+/// TEST SEAM: public for `MultiInstance.Tests`, like `useStoreForTesting`. Nothing else calls the halves.
+let readPending () : Task<List<System.Guid * byte[]>> =
   task {
     // Fast check: are there any unapplied ops? Avoids loading blobs when count is 0.
     let! count =
@@ -161,13 +162,12 @@ let private applyUnappliedOpsPass () : Task<int64> =
       |> Sql.executeRowAsync (fun read -> read.int64 "n")
 
     if count = 0L then
-      return 0L
+      return []
     else
-
       // Read the raw (id, blob) rows WITHOUT deserializing in the reader: a malformed op_blob
       // (corrupt / truncated on the wire, or a poisoned push) must not throw here and brick the
       // whole fold -- AND every fold after it, since the op stays applied=0 and gets re-read.
-      let! rawOps =
+      return!
         Sql.query
           """
         SELECT id, op_blob
@@ -181,6 +181,15 @@ let private applyUnappliedOpsPass () : Task<int64> =
         ORDER BY created_at ASC, rowid ASC
         """
         |> Sql.executeAsync (fun read -> (read.uuid "id", read.bytes "op_blob"))
+  }
+
+/// Fold the rows `readPending` returned, and mark exactly those applied. Returns the count folded.
+/// TEST SEAM, as `readPending`.
+let foldRead (rawOps : List<System.Guid * byte[]>) : Task<int64> =
+  task {
+    if List.isEmpty rawOps then
+      return 0L
+    else
 
       // Deserialize per-op; SKIP + log any that fail rather than aborting, so one bad op cannot brick a
       // store. They stay `applied = 0`, which is the truth -- nothing folded them -- and means a build
@@ -210,14 +219,6 @@ let private applyUnappliedOpsPass () : Task<int64> =
           $"note: {List.length ids} op(s) in this store were written in a format this build cannot "
           + "read, and are being skipped. They are kept, not dropped, so a later build can apply them."
         )
-
-      // Excluded from the sweep below by id. Empty in the normal case, so the sweep keeps its plain form.
-      let excludeSkipped =
-        match skipped with
-        | [] -> ""
-        | ids ->
-          let quoted = ids |> List.map (fun g -> $"'{g}'") |> String.concat ", "
-          $" AND id NOT IN ({quoted})"
 
       if List.isEmpty unappliedOps then
         // Every pending op was unparseable. Nothing folded, so nothing is marked applied and the caller's
@@ -259,17 +260,15 @@ let private applyUnappliedOpsPass () : Task<int64> =
         // Mark applied BEFORE folding, in the same transaction so a throw rolls both back and the ops
         // stay retryable.
         //
-        // The predicate is not stable across the fold. It must match the SELECT's
-        // (applied=0 AND effective=1): a bare `WHERE applied = 0` also marks other branches' pending ops
-        // applied, so a later merge never folds their SetName. And FOLDING AN OP CAN MAKE OTHERS
-        // EFFECTIVE -- a merge event from another machine flips that branch's frontier mid-fold -- so
-        // running afterwards marks ops applied that nothing folded. Running first can only mark the set
-        // just read, leaving newly-effective ops for the next pass.
-        do!
-          runRaw (
-            "UPDATE package_ops SET applied = 1 WHERE applied = 0 AND effective = 1"
-            + excludeSkipped
-          )
+        // By ID, never by predicate. The SELECT above ran on another connection, outside this
+        // transaction; a `serve` committing an op between it and here matches `applied = 0 AND
+        // effective = 1` too, and a predicate sweep marked it applied with nothing having folded it, and
+        // nothing ever re-read it. By id it stays applied = 0 and the next pass takes it. The same
+        // argument covers the fold's own side effects (a merge event flipping a frontier effective
+        // mid-fold) and the skipped, unreadable ops, which are simply not in the list.
+        for chunk in unappliedOps |> List.map fst |> List.chunkBySize 500 do
+          let quoted = chunk |> List.map (fun g -> $"'{g}'") |> String.concat ", "
+          do! runRaw $"UPDATE package_ops SET applied = 1 WHERE id IN ({quoted})"
 
         do! PackageOpPlayback.applyOpsOnConnection conn opsOnly
 
@@ -325,6 +324,14 @@ let private applyUnappliedOpsPass () : Task<int64> =
 /// Terminates because every pass marks what it read as applied (quarantined ops included), so the set
 /// strictly shrinks. The bound is a backstop against a future op kind that makes work faster than this
 /// drains it, not an expected case; it is deliberately loud rather than silent if it is ever hit.
+/// One pass: fold everything currently unapplied-and-effective. `applyUnappliedOps` repeats this,
+/// because folding an op can make OTHER ops effective.
+let private applyUnappliedOpsPass () : Task<int64> =
+  task {
+    let! pending = readPending ()
+    return! foldRead pending
+  }
+
 let applyUnappliedOps () : Task<int64> =
   task {
     let mutable total = 0L
