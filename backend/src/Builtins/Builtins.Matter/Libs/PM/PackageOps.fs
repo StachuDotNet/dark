@@ -152,41 +152,53 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               // `package_values` (keyed by AddValue) and `locations` (keyed by SetName) disagree and the
               // value cannot be found.
               if not branchId.IsMain then
-                do! LibDB.Branches.createBranch branchId "" PT.BranchId.Main
+                // Refuse, rather than write: `createBranch` here used to REVIVE a merged or archived
+                // branch, so a workbench still holding the id after a merge in another shell put its next
+                // edit on a branch nothing would ever merge again.
+                match! LibDB.Branches.isFinished branchId with
+                | true ->
+                  return
+                    resultError (
+                      Dval.string
+                        $"branch {branchId} has been merged or archived; `dark switch <name>` starts a new one"
+                    )
+                | false ->
 
-                let stabilized = LibDB.HashStabilization.computeRealHashes ops
-                let! n = LibDB.Branches.storeDeltaOps branchId stabilized
-                // The parent's current hash per name touched, so a later merge can tell whether the
-                // parent moved the same name.
-                let! parentId = LibDB.Branches.parentOf branchId
-                do! LibDB.Branches.recordNameBases branchId parentId stabilized
-                // Content (Add*, never SetName) folds into the shared content tables; the NAME layer is
-                // what a branch keeps to itself. Needed so an expression-valued branch value has an
-                // rt_dval to eval, and so propagation can see the branch item's dependency edges.
-                let contentOps =
-                  stabilized
-                  |> List.filter (fun op ->
-                    match op with
-                    | PT.PackageOp.AddValue _
-                    | PT.PackageOp.AddFn _
-                    | PT.PackageOp.AddType _ -> true
-                    | _ -> false)
-                if not (List.isEmpty contentOps) then
-                  do! LibDB.PackageOpPlayback.applyOps contentOps
-                  let builtins : Builtins =
-                    { values = exeState.values.builtIn; fns = exeState.fns.builtIn }
-                  let! _ =
-                    LibDB.Seed.evaluateAllValues builtins LibDB.PackageManager.rt
-                  ()
-                // Move the overlay only for the branch this process is on; writing to another branch
-                // must not change what this caller resolves against. Other branches are memoized, so
-                // forget them rather than leave a stale answer.
-                if LibDB.PackageManager.currentBranchId () = branchId then
-                  let! all = LibDB.Branches.loadDeltaOps branchId
-                  LibDB.PackageManager.setBranchOverlay all
-                else
-                  LibDB.PackageManager.forgetBranch branchId
-                return resultOk (Dval.int (bigint (int n)))
+                  do! LibDB.Branches.registerIfNew branchId "" PT.BranchId.Main
+
+                  let stabilized = LibDB.HashStabilization.computeRealHashes ops
+                  let! n = LibDB.Branches.storeDeltaOps branchId stabilized
+                  // The parent's current hash per name touched, so a later merge can tell whether the
+                  // parent moved the same name.
+                  let! parentId = LibDB.Branches.parentOf branchId
+                  do! LibDB.Branches.recordNameBases branchId parentId stabilized
+                  // Content (Add*, never SetName) folds into the shared content tables; the NAME layer is
+                  // what a branch keeps to itself. Needed so an expression-valued branch value has an
+                  // rt_dval to eval, and so propagation can see the branch item's dependency edges.
+                  let contentOps =
+                    stabilized
+                    |> List.filter (fun op ->
+                      match op with
+                      | PT.PackageOp.AddValue _
+                      | PT.PackageOp.AddFn _
+                      | PT.PackageOp.AddType _ -> true
+                      | _ -> false)
+                  if not (List.isEmpty contentOps) then
+                    do! LibDB.PackageOpPlayback.applyOps contentOps
+                    let builtins : Builtins =
+                      { values = exeState.values.builtIn; fns = exeState.fns.builtIn }
+                    let! _ =
+                      LibDB.Seed.evaluateAllValues builtins LibDB.PackageManager.rt
+                    ()
+                  // Move the overlay only for the branch this process is on; writing to another branch
+                  // must not change what this caller resolves against. Other branches are memoized, so
+                  // forget them rather than leave a stale answer.
+                  if LibDB.PackageManager.currentBranchId () = branchId then
+                    let! all = LibDB.Branches.loadDeltaOps branchId
+                    LibDB.PackageManager.setBranchOverlay all
+                  else
+                    LibDB.PackageManager.forgetBranch branchId
+                  return resultOk (Dval.int (bigint (int n)))
 
               else
                 // Stabilize before inserting. Insert raw ops and their SetName targets are provisional,

@@ -1631,6 +1631,32 @@ let mainRetakesABranchsOp =
   }
 
 
+/// A merged or archived branch is finished. Authoring on it used to go through `createBranch`, whose
+/// upsert clears `merged_at`, so a process still holding the id after a merge elsewhere put its next
+/// edit on a branch nothing would merge again, and listed it live. Now it refuses and says so.
+let authoringOnAFinishedBranchRefuses =
+  testTask "authoring on a merged branch is refused rather than reviving it" {
+    let branchId = testBranch "test-branch-finished-refuses"
+    do! cleanupBranch branchId
+    do! Branches.createBranch branchId "finished-proof" PT.BranchId.Main
+    do!
+      Sql.query "UPDATE branches SET merged_at = datetime('now') WHERE id = @b"
+      |> Sql.parameters [ "b", Sql.string (string branchId) ]
+      |> Sql.executeStatementAsync
+
+    // An empty op list reaches the guard before anything else, so it exercises exactly that.
+    let! outcome =
+      darkUnitResult $"Darklang.SCM.PackageOps.add {darkBranch branchId} []"
+    match outcome with
+    | Ok() -> failtest "the edit was accepted onto a merged branch"
+    | Error e -> Expect.stringContains e "merged or archived" "and the refusal says why"
+
+    let! still = isMerged branchId
+    Expect.isTrue still "the branch stays merged"
+    do! cleanupBranch branchId
+  }
+
+
 /// The receiving side has no obligation to know every branch its peers have. Branch ids travel with
 /// a bundle, so the branches you actually share match; the rest are none of this store's business.
 let branchEventForUnknownBranchIsIgnored =
@@ -1946,4 +1972,5 @@ let tests =
       noMainLiteralInDarkSql
       branchIdsNeverReachAPerson
       overrideClosesOnlyItsOwnKind
-      mainRetakesABranchsOp ]
+      mainRetakesABranchsOp
+      authoringOnAFinishedBranchRefuses ]

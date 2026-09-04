@@ -45,6 +45,35 @@ let createBranch
       "parent", Sql.string (string parentId) ]
   |> Sql.executeStatementAsync
 
+/// Register a branch if it is new, and leave an existing row alone. Never revives: that is
+/// `createBranch`'s job, for the paths that mean it (a bundle arriving says the branch is alive
+/// somewhere). Authoring goes through this one, so an edit cannot un-merge a branch by landing on it.
+let registerIfNew
+  (id : PT.BranchId)
+  (name : string)
+  (parentId : PT.BranchId)
+  : Task<unit> =
+  Sql.query
+    "INSERT OR IGNORE INTO branches (id, name, parent_id) VALUES (@id, @name, @parent)"
+  |> Sql.parameters
+    [ "id", Sql.string (string id)
+      "name", Sql.string name
+      "parent", Sql.string (string parentId) ]
+  |> Sql.executeStatementAsync
+
+/// Merged or archived: finished, and not somewhere you can author. An op tagged to a finished branch
+/// is stranded, with nothing left to merge it.
+let isFinished (branchId : PT.BranchId) : Task<bool> =
+  task {
+    let! found =
+      Sql.query
+        "SELECT 1 AS n FROM branches
+         WHERE id = @id AND (archived_at IS NOT NULL OR merged_at IS NOT NULL)"
+      |> Sql.parameters [ "id", Sql.string (string branchId) ]
+      |> Sql.executeRowOptionAsync (fun read -> read.int64 "n")
+    return Option.isSome found
+  }
+
 // Three questions, deliberately distinct: EXISTS (known here at all), LIVE (still somewhere you
 // can author), LISTED (still worth naming, merged or not). Reads and writes want different
 // answers, which is why the name lookups come as a pair rather than one lookup with a flag.
