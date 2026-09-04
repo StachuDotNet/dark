@@ -117,22 +117,39 @@ let unresolvedInDraft (branchId: Uuid) : List<(String * List<String>)> =
 /// and nothing else, so its binding is shape-identical to one you typed. Returned fully-qualified so a
 /// caller can intersect with what it is about to display rather than asking per item.
 let propagatedNames () : List<String> =
-  match
-    Stdlib.Sqlite.query
-      (localDb ())
-      "SELECT owner, modules, name FROM locations
-        WHERE source = 'propagation' AND unlisted_at IS NULL"
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
-      let txt (col: String) : String =
-        Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
+  match currentBranch () with
+  | id when SCM.Ids.isMain id ->
+    // main-scoped: the branch arm is below.
+    match
+      Stdlib.Sqlite.query
+        (localDb ())
+        "SELECT owner, modules, name FROM locations
+          WHERE source = 'propagation' AND unlisted_at IS NULL"
+    with
+    | Ok rows ->
+      rows
+      |> Stdlib.List.filterMap (fun row ->
+        let txt (col: String) : String =
+          Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
 
-      match Stdlib.Sqlite.textField row "name" with
-      | Some n -> Stdlib.Option.Option.Some(Conflicts.fqn (txt "owner") (txt "modules") n)
-      | None -> Stdlib.Option.Option.None)
-  | Error _ -> []
+        match Stdlib.Sqlite.textField row "name" with
+        | Some n -> Stdlib.Option.Option.Some(Conflicts.fqn (txt "owner") (txt "modules") n)
+        | None -> Stdlib.Option.Option.None)
+    | Error _ -> []
+  | branchId ->
+    // The branch's own record, `op_branches.source`: the LAST op binding each name decides. Main's
+    // followers are not this branch's, and were reported as such from here before the column existed.
+    SCM.Branches.ownFrontierOpsWithSource branchId
+    |> Stdlib.List.fold Stdlib.Dict.empty (fun acc entry ->
+      match entry with
+      | (_, SetName(loc, _, _), source) ->
+        Stdlib.Dict.set acc (Conflicts.fqn loc.owner (Stdlib.String.join loc.modules ".") loc.name) source
+      | (_, Decision(_, loc, _, Override _), source) ->
+        Stdlib.Dict.set acc (Conflicts.fqn loc.owner (Stdlib.String.join loc.modules ".") loc.name) source
+      | _ -> acc)
+    |> Stdlib.Dict.toList
+    |> Stdlib.List.filterMap (fun (name, source) ->
+      if source == "propagation" then Stdlib.Option.Option.Some name else Stdlib.Option.Option.None)
 
 
 /// The draft, decoded, oldest first. Same predicate as `draftWhere`, so this and the counts can't disagree

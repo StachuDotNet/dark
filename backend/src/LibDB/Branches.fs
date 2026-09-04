@@ -264,7 +264,11 @@ let private foldBranchDecide
 /// The stamp is a parameter because the two callers need different ones: a locally-authored op
 /// takes a fresh stamp, while an op arriving in a branch BUNDLE keeps the stamp it was authored
 /// with, or cross-instance LWW resolves by who imported last rather than who edited last.
-let storeDeltaOpsStamped
+/// <param source> says what put these ops on the branch: 'op', 'propagation' or 'resolution', the same
+/// vocabulary as `locations.source`. Authoring passes 'op'; the two other kinds are recorded at the one
+/// point each is known, `pmPropagate` and `pmSetName`.
+let storeDeltaOpsStampedFrom
+  (source : string)
   (branchId : PT.BranchId)
   (ops : List<PT.PackageOp * string>)
   : Task<int64> =
@@ -293,12 +297,20 @@ let storeDeltaOpsStamped
             "op_blob", Sql.bytes blob
             "origin_ts", Sql.string ts ])
 
+      // Never tag an op main already runs. The row dedups by content, so a branch author (or a bundle)
+      // can hit an id that is effective = 1; a tag on it hid main's own op from main's draft and commit,
+      // since every draft query excludes tagged ids. An effective op is never tagged, and the other
+      // side of that invariant is `Inserts.insertAndApplyOpsWith`, which untags what it makes effective.
       let insertTags =
-        "INSERT OR IGNORE INTO op_branches (op_id, branch_id) VALUES (@op_id, @branch_id)"
+        "INSERT OR IGNORE INTO op_branches (op_id, branch_id, source)
+         SELECT @op_id, @branch_id, @source
+         WHERE NOT EXISTS (SELECT 1 FROM package_ops WHERE id = @op_id AND effective = 1)"
       let tagRows =
         prepared
         |> List.map (fun (id, _, _, _) ->
-          [ "op_id", Sql.uuid id; "branch_id", Sql.string (string branchId) ])
+          [ "op_id", Sql.uuid id
+            "branch_id", Sql.string (string branchId)
+            "source", Sql.string source ])
 
       // one transaction; ops-insert counts come first, so truncate to the op rows.
       let affected =
@@ -344,8 +356,23 @@ let refoldBranchDecides () : Task<unit> =
 
 /// Store LOCALLY-AUTHORED branch ops, stamped from the process authoring clock -- the same
 /// monotonic clock main authoring uses, never `strftime('now')`. See `LibDB.OriginTs`.
+let storeDeltaOpsStamped
+  (branchId : PT.BranchId)
+  (ops : List<PT.PackageOp * string>)
+  : Task<int64> =
+  storeDeltaOpsStampedFrom "op" branchId ops
+
+/// Authored ops, fresh stamps.
 let storeDeltaOps (branchId : PT.BranchId) (ops : List<PT.PackageOp>) : Task<int64> =
   storeDeltaOpsStamped branchId (ops |> List.map (fun op -> (op, OriginTs.next ())))
+
+/// <fn storeDeltaOps> for ops with a known provenance: 'propagation' or 'resolution'.
+let storeDeltaOpsFrom
+  (source : string)
+  (branchId : PT.BranchId)
+  (ops : List<PT.PackageOp>)
+  : Task<int64> =
+  storeDeltaOpsStampedFrom source branchId (ops |> List.map (fun op -> (op, OriginTs.next ())))
 
 // Flipping a branch's frontier effective, and closing the branch afterwards, are in Dark
 // (`SCM.Branches.markMergedEffective` / `.finishMerge`): both are SQL, and the second is one

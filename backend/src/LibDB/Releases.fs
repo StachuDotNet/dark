@@ -108,7 +108,12 @@ let steps : List<Step> =
         fun () -> addColumnIfMissing "locations" "op_id" "TEXT NOT NULL DEFAULT ''" }
 
     { name = "20260828_000006_locations_previous"
-      run = fun () -> addColumnIfMissing "locations" "previous" "TEXT NULL" } ]
+      run = fun () -> addColumnIfMissing "locations" "previous" "TEXT NULL" }
+
+    // The branch twin of `locations.source`; see schema.sql. Without it a branch records no provenance.
+    { name = "20260904_000001_op_branches_source"
+      run =
+        fun () -> addColumnIfMissing "op_branches" "source" "TEXT NOT NULL DEFAULT 'op'" } ]
 
 
 let private alreadyRun () : Set<string> =

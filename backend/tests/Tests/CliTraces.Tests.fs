@@ -1576,6 +1576,61 @@ let private editingOnABranchRepointsItsCallers =
         "the caller was repointed onto the edit, on the branch"
     })
 
+/// A branch records what put each of its bindings there (`op_branches.source`), so on a branch `status`
+/// can split what you typed from what followed, and `pin` un-stages the BRANCH's repoint. Before the
+/// column, `pin` on a branch found MAIN's staged repoint and dropped it: a pin issued on a branch reverted
+/// main, and `status` on a branch reported main's followers as the branch's.
+let private aBranchKnowsWhatFollowed =
+  cliTest "status and pin on a branch act on the branch's own followers, not main's" (fun state ->
+    task {
+      // On main: a base, a caller, committed. Then an edit to the base on MAIN, uncommitted, so main's
+      // draft holds a staged repoint of its own for the pin on the branch to leave alone.
+      let! _ = runCli state [ "switch"; "main" ]
+      let! _ = runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 1L" ]
+      let! _ =
+        runCli
+          state
+          [ "fn"
+            "Tests.BranchFollow.caller"
+            "() : Int64 = Stdlib.Int64.multiply (Tests.BranchFollow.base ()) 7L" ]
+      let! _ = runCli state [ "commit"; "branchfollow v1"; "-y" ]
+      let! _ = runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 3L" ]
+      let! mainStatus = runCli state [ "status" ]
+      Expect.stringContains mainStatus "1 followed" $"main's draft has its own follower: {mainStatus}"
+
+      // On a branch: edit the base; the caller follows, on the branch.
+      let! _ = runCli state [ "switch"; "follow-branch" ]
+      let! _ = runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 2L" ]
+      let! after = runCli state [ "eval"; "Tests.BranchFollow.caller ()" ]
+      Expect.stringContains after "14" "the caller followed the edit, on the branch"
+      let! branchStatus = runCli state [ "status" ]
+      Expect.stringContains
+        branchStatus
+        "1 followed"
+        $"the branch reports its own follower, from its own record: {branchStatus}"
+
+      // pin on the branch drops the BRANCH's staged repoint: the caller is back on v1's base.
+      let! pinned = runCli state [ "propagate"; "pin"; "Tests.BranchFollow.caller" ]
+      Expect.stringContains pinned "dropped the staged repoint" $"the branch's repoint was un-staged: {pinned}"
+      // The branch's own repoint is gone. What the caller resolves to now is what main's live projection
+      // says (an overlay over main, draft included), which is main's staged repoint, 21; the branch's
+      // 14 is what must be gone.
+      let! back = runCli state [ "eval"; "Tests.BranchFollow.caller ()" ]
+      Expect.isFalse (back.Contains "14") $"the branch no longer holds its repoint: {back}"
+
+      // Main's draft is exactly as it was: the edit and ITS follower.
+      let! _ = runCli state [ "switch"; "main" ]
+      let! mainAfter = runCli state [ "status" ]
+      Expect.stringContains mainAfter "1 followed" $"main's own staged repoint is untouched: {mainAfter}"
+      let! mainCaller = runCli state [ "eval"; "Tests.BranchFollow.caller ()" ]
+      Expect.stringContains mainCaller "21" "and main's caller still follows main's edit"
+
+      let! _ = runCli state [ "discard"; "-y" ]
+      let! _ = runCli state [ "branch"; "archive"; "follow-branch"; "-y" ]
+      ()
+    })
+
+
 /// `discard` on a branch drops the BRANCH's work and leaves main's draft alone.
 ///
 /// Worth asserting because the command is destructive and the two drafts are kept apart by a `WHERE`
@@ -3292,6 +3347,7 @@ let tests =
        bareMergeAndRebaseMeanThisBranch
        branchChainSeesItsAncestry
        branchReadsAnswerAboutTheBranch
+       aBranchKnowsWhatFollowed
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses

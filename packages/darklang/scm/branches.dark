@@ -453,10 +453,19 @@ let parseFqn (fqn: String) : Stdlib.Option.Option<(String * String * String)> =
 let ownFrontierOps
   (branchId: Uuid)
   : List<(Uuid * LanguageTools.ProgramTypes.PackageOp)> =
+  ownFrontierOpsWithSource branchId
+  |> Stdlib.List.map (fun (id, op, _) -> (id, op))
+
+
+/// <fn ownFrontierOps>, with what put each op on the branch: 'op', 'propagation' or 'resolution' (see
+/// `op_branches.source`). What lets a branch tell an edit you typed from a repoint that followed one.
+let ownFrontierOpsWithSource
+  (branchId: Uuid)
+  : List<(Uuid * LanguageTools.ProgramTypes.PackageOp * String)> =
   match
     Stdlib.Sqlite.queryP
       (localDb ())
-      "SELECT p.id, p.op_blob FROM package_ops p
+      "SELECT p.id, p.op_blob, ob.source FROM package_ops p
        JOIN op_branches ob ON ob.op_id = p.id
        WHERE ob.branch_id = @p0
        ORDER BY p.origin_ts, p.rowid"
@@ -472,7 +481,9 @@ let ownFrontierOps
         match Stdlib.Uuid.parse idStr with
         | Ok id ->
           match SCM.PackageOps.tryDecodeOp id blob with
-          | Some op -> Stdlib.Option.Option.Some((id, op))
+          | Some op ->
+            let source = Stdlib.Sqlite.textField row "source" |> Stdlib.Option.withDefault "op"
+            Stdlib.Option.Option.Some((id, op, source))
           | None -> Stdlib.Option.Option.None
         | Error _ -> Stdlib.Option.Option.None
       | _ -> Stdlib.Option.Option.None)
@@ -670,10 +681,19 @@ let retagFrontierToParent
   match
     Stdlib.Sqlite.execBatch
       (localDb ())
-      [ ("INSERT OR IGNORE INTO op_branches (op_id, branch_id)
-          SELECT op_id, @p0 FROM op_branches WHERE branch_id = @p1",
+      // The tags move with their provenance. The BASES move too: the parent then carries the child's
+      // rebinds, and a name without a base can never conflict again, so the grandparent moving one of
+      // those names would be invisible at the parent's merge. The child's base is what the parent held at
+      // the child's first touch, which for a name the parent never rebound is exactly the base the parent
+      // needs; for one it did rebind, INSERT OR IGNORE keeps the parent's own first-touch row.
+      [ ("INSERT OR IGNORE INTO op_branches (op_id, branch_id, source)
+          SELECT op_id, @p0, source FROM op_branches WHERE branch_id = @p1",
          [ [ Stdlib.Uuid.toString parentId, b ] ])
         ("DELETE FROM op_branches WHERE branch_id = @p0", [ [ b ] ])
+        ("INSERT OR IGNORE INTO branch_name_bases (branch_id, owner, modules, name, base_hash)
+          SELECT @p0, owner, modules, name, base_hash FROM branch_name_bases WHERE branch_id = @p1",
+         [ [ Stdlib.Uuid.toString parentId, b ] ])
+        ("DELETE FROM branch_name_bases WHERE branch_id = @p0", [ [ b ] ])
         ("UPDATE branches SET merged_at = datetime('now') WHERE id = @p0", [ [ b ] ]) ]
   with
   | Ok _ -> Stdlib.Result.Result.Ok tagged

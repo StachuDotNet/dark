@@ -539,32 +539,40 @@ let discardDraftName
         let (id, _) = entry
         Stdlib.Uuid.toString id)
 
-    match bindingIds with
-    | [] -> Stdlib.Result.Result.Ok 0
-    | ids ->
-      let b = Stdlib.Uuid.toString branchId
-      let rows = ids |> Stdlib.List.map (fun id -> [ id, b, b ])
+    dropBranchOps branchId bindingIds
 
-      match
-        Stdlib.Sqlite.execBatch
-          (localDb ())
-          [ ("DELETE FROM package_ops WHERE commit_hash IS NULL AND effective = 0 AND id = @p0
-              AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @p1)
-              AND id NOT IN (SELECT op_id FROM op_branches WHERE branch_id <> @p2)",
-             rows)
-            ("DELETE FROM op_branches WHERE branch_id = @p0
-              AND op_id NOT IN (SELECT id FROM package_ops)",
-             [ [ b ] ]) ]
-      with
-      | Ok counts ->
-        let deleted =
-          counts
-          |> Stdlib.List.take (Stdlib.List.length ids)
-          |> Stdlib.List.fold 0 (fun acc n -> acc + n)
 
-        let _ = selectBranch branchId
-        Stdlib.Result.Result.Ok deleted
-      | Error e -> Stdlib.Result.Result.Error e
+/// Drop these ops from <param branchId>'s frontier, and reload the overlay. Returns how many went.
+///
+/// A branch's ops are effective=0 and never fold into main, so deleting the rows IS the removal. Only
+/// uncommitted, inert rows the branch holds alone: an op another branch also tags stays, untagged here.
+let dropBranchOps (branchId: Uuid) (ids: List<String>) : Stdlib.Result.Result<Int, String> =
+  match ids with
+  | [] -> Stdlib.Result.Result.Ok 0
+  | ids ->
+    let b = Stdlib.Uuid.toString branchId
+    let rows = ids |> Stdlib.List.map (fun id -> [ id, b, b ])
+
+    match
+      Stdlib.Sqlite.execBatch
+        (localDb ())
+        [ ("DELETE FROM package_ops WHERE commit_hash IS NULL AND effective = 0 AND id = @p0
+            AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @p1)
+            AND id NOT IN (SELECT op_id FROM op_branches WHERE branch_id <> @p2)",
+           rows)
+          ("DELETE FROM op_branches WHERE branch_id = @p0
+            AND op_id NOT IN (SELECT id FROM package_ops)",
+           [ [ b ] ]) ]
+    with
+    | Ok counts ->
+      let deleted =
+        counts
+        |> Stdlib.List.take (Stdlib.List.length ids)
+        |> Stdlib.List.fold 0 (fun acc n -> acc + n)
+
+      let _ = selectBranch branchId
+      Stdlib.Result.Result.Ok deleted
+    | Error e -> Stdlib.Result.Result.Error e
 
 
 /// Drop the current scope's draft, whichever it is.

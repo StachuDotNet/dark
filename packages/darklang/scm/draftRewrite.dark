@@ -313,13 +313,40 @@ let isStagedRepoint (loc: LanguageTools.ProgramTypes.PackageLocation) : Bool =
 let unstageRepoint
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   : Stdlib.Result.Result<Int, String> =
-  // MAIN's draft, only. `isStagedRepoint` and `rewriteBy` read and rewrite main's draft; from a branch
-  // this found MAIN's staged repoint and dropped it, so a `pin` issued on a branch reverted main. Until
-  // a branch records which of its bindings propagation wrote, a pin on a branch is refused here.
+  // Two records of provenance, one per scope. `isStagedRepoint` and `rewriteBy` read and rewrite MAIN's
+  // draft; from a branch they found main's staged repoint and dropped it, so a `pin` issued on a branch
+  // reverted main. The branch's own record is `op_branches.source`.
   match SCM.PackageOps.currentBranch () with
   | id when Stdlib.Bool.not (SCM.Ids.isMain id) ->
-    Stdlib.Result.Result.Error
-      "pin acts on main's draft, and you are on a branch; `dark switch main` first, or `dark discard <name>` to drop the branch's binding"
+    let key = (loc.owner, Stdlib.String.join loc.modules ".", loc.name)
+
+    // The branch's binders of this name, oldest first, with what wrote each.
+    let binders =
+      SCM.Branches.ownFrontierOpsWithSource id
+      |> Stdlib.List.filter (fun (_, op, _) -> Stdlib.Option.isSome (SCM.Branches.opBindsKey op key))
+
+    // Staged means the LAST binder was propagation's. Then every propagation-written binder goes, and an
+    // edit you typed underneath stays, as on main.
+    let lastSource =
+      match Stdlib.List.last binders with
+      | Some entry ->
+        let (_, _, source) = entry
+        source
+      | None -> ""
+
+    if lastSource == "propagation" then
+      let staged =
+        binders
+        |> Stdlib.List.filterMap (fun entry ->
+          let (opId, _, source) = entry
+          if source == "propagation" then
+            Stdlib.Option.Option.Some(Stdlib.Uuid.toString opId)
+          else
+            Stdlib.Option.Option.None)
+
+      SCM.PackageOps.dropBranchOps id staged
+    else
+      Stdlib.Result.Result.Ok 0
   | _ ->
 
   if Stdlib.Bool.not (isStagedRepoint loc) then

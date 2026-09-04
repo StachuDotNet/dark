@@ -1708,6 +1708,89 @@ let liveBindingReadsTheBranchThenMain =
   }
 
 
+/// The other half of `mainRetakesABranchsOp`: storing on a branch an op main already runs must not tag it.
+/// Every draft query excludes tagged ids, so a tag on main's own op hid it from `status` and `commit`.
+let aBranchNeverTagsWhatMainRuns =
+  testTask "storing an op main already runs on a branch leaves it untagged" {
+    let branchId = testBranch "test-branch-no-tag-on-main"
+    do! cleanupBranch branchId
+    do! Branches.createBranch branchId "no-tag-proof" PT.BranchId.Main
+
+    let! ops = opsFor (namedSource "NoTagOnMain" 42)
+    let ids = ops |> List.map (fun op -> string (LibDB.Inserts.computeOpHash op))
+    let! _ = LibDB.Inserts.insertAndApplyOps ops
+    let! _ = Branches.storeDeltaOps branchId ops
+
+    let! tagged =
+      Sql.query "SELECT count(*) AS n FROM op_branches WHERE branch_id = @b"
+      |> Sql.parameters [ "b", Sql.string (string branchId) ]
+      |> Sql.executeRowAsync (fun read -> read.int64 "n")
+    Expect.equal tagged 0L "nothing main runs was tagged"
+    let! draft = Queries.getDraftOps ()
+    let draftIds = draft |> List.map (fun op -> string (LibDB.Inserts.computeOpHash op))
+    for id in ids do
+      Expect.contains draftIds id "and main's draft still lists its own op"
+
+    // A fresh op on the same branch is tagged as before.
+    let! fresh = opsFor (namedSource "NoTagOnMainFresh" 43)
+    let! stored = Branches.storeDeltaOps branchId fresh
+    Expect.equal stored (int64 (List.length fresh)) "fresh ops are stored"
+    let! taggedNow =
+      Sql.query "SELECT count(*) AS n FROM op_branches WHERE branch_id = @b"
+      |> Sql.parameters [ "b", Sql.string (string branchId) ]
+      |> Sql.executeRowAsync (fun read -> read.int64 "n")
+    Expect.equal taggedNow (int64 (List.length fresh)) "and tagged"
+
+    do!
+      Sql.query "DELETE FROM locations WHERE op_id IN (SELECT value FROM json_each(@ids))"
+      |> Sql.parameters [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
+      |> Sql.executeStatementAsync
+    do!
+      Sql.query "DELETE FROM package_ops WHERE id IN (SELECT value FROM json_each(@ids))"
+      |> Sql.parameters [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
+      |> Sql.executeStatementAsync
+    LibDB.Caching.invalidateAll ()
+    do! cleanupBranch branchId
+  }
+
+
+/// Merging a branch into a non-main parent retags its ops onto the parent. Its name BASES have to move
+/// too: a name without a base can never conflict again, so a grandparent moving one of the child's names
+/// was invisible at the parent's merge.
+let retagMovesTheBasesToo =
+  testTask "retagging a child's frontier onto its parent carries the child's name bases" {
+    let parent = testBranch "test-branch-bases-parent"
+    let child = testBranch "test-branch-bases-child"
+    do! cleanupBranch child
+    do! cleanupBranch parent
+    do! Branches.createBranch parent "bases-parent" PT.BranchId.Main
+    do! Branches.createBranch child "bases-child" parent
+
+    let! ops = opsFor (namedSource "BasesMove" 42)
+    let! _ = Branches.storeDeltaOps child ops
+    do!
+      Sql.query
+        "INSERT OR IGNORE INTO branch_name_bases (branch_id, owner, modules, name, base_hash)
+         VALUES (@b, 'Darklang', 'BasesMove', 'foo', 'the-fork-hash')"
+      |> Sql.parameters [ "b", Sql.string (string child) ]
+      |> Sql.executeStatementAsync
+
+    let! _ = retagFrontierToParent child parent
+
+    let baseNames (b : PT.BranchId) =
+      Sql.query "SELECT name FROM branch_name_bases WHERE branch_id = @b"
+      |> Sql.parameters [ "b", Sql.string (string b) ]
+      |> Sql.executeAsync (fun read -> read.string "name")
+    let! onParent = baseNames parent
+    let! onChild = baseNames child
+    Expect.equal onParent [ "foo" ] "the parent now holds the child's base for the name"
+    Expect.isEmpty onChild "and the child, finished, holds none"
+
+    do! cleanupBranch child
+    do! cleanupBranch parent
+  }
+
+
 /// The receiving side has no obligation to know every branch its peers have. Branch ids travel with
 /// a bundle, so the branches you actually share match; the rest are none of this store's business.
 let branchEventForUnknownBranchIsIgnored =
@@ -2025,4 +2108,6 @@ let tests =
       overrideClosesOnlyItsOwnKind
       mainRetakesABranchsOp
       authoringOnAFinishedBranchRefuses
-      liveBindingReadsTheBranchThenMain ]
+      liveBindingReadsTheBranchThenMain
+      aBranchNeverTagsWhatMainRuns
+      retagMovesTheBasesToo ]

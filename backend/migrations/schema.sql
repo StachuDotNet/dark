@@ -112,6 +112,11 @@ CREATE INDEX IF NOT EXISTS idx_branches_parent ON branches(parent_id);
 CREATE TABLE IF NOT EXISTS op_branches (
   op_id TEXT NOT NULL,
   branch_id TEXT NOT NULL,
+  -- What put this op on the branch: 'op' = authored, 'propagation' = a repoint that followed an edit,
+  -- 'resolution' = a conflict override or a pin's rollback. The branch twin of `locations.source`;
+  -- without it a branch cannot tell "you typed this" from "this followed something", so `status`,
+  -- `undo` and `pin` could only answer about main. Local metadata: it does not travel in a bundle.
+  source TEXT NOT NULL DEFAULT 'op',
   PRIMARY KEY (op_id, branch_id)
 );
 CREATE INDEX IF NOT EXISTS idx_op_branches_branch ON op_branches(branch_id);

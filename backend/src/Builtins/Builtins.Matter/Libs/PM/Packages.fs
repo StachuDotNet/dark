@@ -896,7 +896,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 let! _ = LibDB.Inserts.insertAndApplyOps ops
                 ()
               else
-                let! _ = LibDB.Branches.storeDeltaOps branchId ops
+                // A rebind a person forced, on the branch's own record; see `op_branches.source`.
+                let! _ = LibDB.Branches.storeDeltaOpsFrom "resolution" branchId ops
                 let! parentId = LibDB.Branches.parentOf branchId
                 do! LibDB.Branches.recordNameBases branchId parentId ops
 
@@ -981,7 +982,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 // A repoint can create a branch-local version of a MAIN item (main's `dep` gets a branch
                 // copy pointing at the branch's `base`, main's copy untouched). Recording name bases for
                 // them is what lets a later merge tell that apart from a divergence.
-                let! _ = LibDB.Branches.storeDeltaOps branch ops
+                // Marked as PROPAGATED on the branch's own record, as main's `locations.source` would be.
+                let! _ = LibDB.Branches.storeDeltaOpsFrom "propagation" branch ops
                 let! parentId = LibDB.Branches.parentOf branch
                 do! LibDB.Branches.recordNameBases branch parentId ops
                 // Fold the CONTENT (never the SetNames) so the new versions resolve and carry their
