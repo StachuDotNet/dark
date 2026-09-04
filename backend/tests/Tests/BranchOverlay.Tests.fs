@@ -1582,6 +1582,55 @@ let branchEventMarksMerged =
   }
 
 
+/// An op is one row whatever authored it, so a branch's op and main's identical op share an id. Main
+/// authoring it is main saying it runs here: the row flips effective and folds, and the tag goes. It used
+/// to be `INSERT OR IGNORE`, so the author's op did nothing while the CLI said it had, which is how
+/// `dark deprecate` came to report "Deprecated" over a fn that kept running.
+let mainRetakesABranchsOp =
+  testTask "authoring on main an op a branch already holds makes it effective, untagged, and live" {
+    let branchId = testBranch "test-branch-main-retake"
+    do! cleanupBranch branchId
+    do! Branches.createBranch branchId "retake-proof" PT.BranchId.Main
+
+    let! ops = opsFor (namedSource "MainRetake" 42)
+    let ids = ops |> List.map (fun op -> string (LibDB.Inserts.computeOpHash op))
+    let! _ = Branches.storeDeltaOps branchId ops
+    let! onMainBefore = pmPT.findFn (fooLocIn "MainRetake") |> Ply.toTask
+    Expect.isNone onMainBefore "held by the branch only, main cannot see it"
+
+    let! inserted = LibDB.Inserts.insertAndApplyOps ops
+    Expect.equal inserted (int64 (List.length ops)) "every op counted as taken, none as a duplicate"
+
+    let! effectiveTagged =
+      Sql.query
+        "SELECT
+           sum(p.effective) AS eff,
+           (SELECT count(*) FROM op_branches WHERE branch_id = @b) AS tagged
+         FROM package_ops p WHERE p.id IN (SELECT value FROM json_each(@ids))"
+      |> Sql.parameters
+        [ "b", Sql.string (string branchId)
+          "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
+      |> Sql.executeRowAsync (fun read -> (read.int64 "eff", read.int64 "tagged"))
+    Expect.equal effectiveTagged (int64 (List.length ops), 0L) "all effective, and no tag left on any"
+
+    let! onMainAfter = pmPT.findFn (fooLocIn "MainRetake") |> Ply.toTask
+    Expect.isSome onMainAfter "and main resolves it"
+
+    // The tag is gone, so cleanupBranch would not find the rows; drop them by id.
+    do!
+      Sql.query
+        "DELETE FROM locations WHERE op_id IN (SELECT value FROM json_each(@ids))"
+      |> Sql.parameters [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
+      |> Sql.executeStatementAsync
+    do!
+      Sql.query "DELETE FROM package_ops WHERE id IN (SELECT value FROM json_each(@ids))"
+      |> Sql.parameters [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
+      |> Sql.executeStatementAsync
+    LibDB.Caching.invalidateAll ()
+    do! cleanupBranch branchId
+  }
+
+
 /// The receiving side has no obligation to know every branch its peers have. Branch ids travel with
 /// a bundle, so the branches you actually share match; the rest are none of this store's business.
 let branchEventForUnknownBranchIsIgnored =
@@ -1896,4 +1945,5 @@ let tests =
       noDirectLocationsReadsOutsideTheSilos
       noMainLiteralInDarkSql
       branchIdsNeverReachAPerson
-      overrideClosesOnlyItsOwnKind ]
+      overrideClosesOnlyItsOwnKind
+      mainRetakesABranchsOp ]

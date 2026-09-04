@@ -455,7 +455,11 @@ let main (args : string[]) =
                   | Some name when name <> "" -> name
                   | _ -> stored
                 System.Console.Error.WriteLine
-                  $"current branch '{label}' is gone (archived or merged); running on main"
+                  $"current branch '{label}' is gone (archived or merged); now on main"
+                // Said once. Left in place, every command from here on would repeat it, since
+                // `archive` and `merge` on the branch you are standing on do not always move you.
+                (LibDB.Config.set "current_branch" (string PT.BranchId.Main)).Wait()
+                (LibDB.Config.set "current_branch_name" PT.BranchId.MainName).Wait()
                 None
           | _ -> None
 

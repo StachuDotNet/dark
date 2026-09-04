@@ -46,14 +46,28 @@ let insertAndApplyOpsWith
           let opBlob = BS.PT.PackageOp.serialize opId op
           (opId, op, opBlob, tsFor opId, commitFor opId))
 
-      let insertStatements =
+      // Two statements per op, one transaction. The id is the content hash, so an identical op is one
+      // row; a re-add of something main already runs affects 0 rows and is skipped below. But the row
+      // can also exist at `effective = 0`: authored on a branch (tagged in `op_branches`), or synced
+      // in for review. Main authoring it now is main saying it runs here, so that row is flipped
+      // effective and folded like a fresh insert; `INSERT OR IGNORE` used to skip it, and the author's
+      // op silently did nothing while the CLI reported success. The tag goes in the same breath: an
+      // effective op is never tagged (see Branches.storeDeltaOpsStamped), and the branch that held it
+      // no longer differs from main on it.
+      let statements =
         opsWithIds
-        |> List.map (fun (opId, _op, opBlob, originTs, commitHash) ->
-          let sql =
+        |> List.collect (fun (opId, _op, opBlob, originTs, commitHash) ->
+          let insert =
             """
-            INSERT OR IGNORE INTO package_ops
+            INSERT INTO package_ops
               (id, op_blob, applied, origin_ts, commit_hash)
             VALUES (@id, @op_blob, @applied, @origin_ts, @commit_hash)
+            ON CONFLICT(id) DO UPDATE
+              SET effective = 1,
+                  applied = 0,
+                  origin_ts = excluded.origin_ts,
+                  commit_hash = excluded.commit_hash
+              WHERE package_ops.effective = 0
             """
 
           let parameters =
@@ -66,9 +80,16 @@ let insertAndApplyOpsWith
                | Some h -> Sql.string h
                | None -> Sql.dbnull) ]
 
-          (sql, [ parameters ]))
+          let untag = "DELETE FROM op_branches WHERE op_id = @id"
 
-      let rowsAffected = insertStatements |> Sql.executeTransactionSync
+          [ (insert, [ parameters ]); (untag, [ [ "id", Sql.uuid opId ] ]) ])
+
+      // The insert's count per op; the untag's is not interesting.
+      let rowsAffected =
+        statements
+        |> Sql.executeTransactionSync
+        |> List.chunkBySize 2
+        |> List.map (fun pair -> List.item 0 pair)
 
       // What was inserted, as opposed to skipped as a duplicate.
       let insertedCount = rowsAffected |> List.sumBy int64

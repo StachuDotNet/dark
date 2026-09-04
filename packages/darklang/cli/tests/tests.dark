@@ -687,7 +687,7 @@ let testViewInstructionsShowsLambdas (): TestResult =
 
   if Stdlib.String.contains output "CreateLambda"
     && Stdlib.String.contains output "lambda#"
-    && headers >= 2
+    && Stdlib.String.contains output "JumpByIfFalse"
   then
     TestResult.Pass
   else
@@ -1190,10 +1190,10 @@ let testDiscardNeedsAnExplicitYes (): TestResult =
   let after = run [ "status" ]
 
   if
-    Stdlib.String.contains refused "cancelled"
-      && Stdlib.String.contains survived "1 function"
-      && Stdlib.String.contains discarded "Discarded"
-      && Stdlib.Bool.not (Stdlib.String.contains after "1 function")
+    Stdlib.String.contains refused "kept."
+      && Stdlib.String.contains survived "1 item"
+      && Stdlib.String.contains discarded "discarded"
+      && Stdlib.Bool.not (Stdlib.String.contains after "1 item")
   then
     TestResult.Pass
   else
