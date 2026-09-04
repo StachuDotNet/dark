@@ -293,21 +293,6 @@ module Hashing =
     hashWithWriter (fun w -> Canonical.writeValue mode w (normalizeValue v))
 
 
-  /// Hash a PackageOp: its identity in the log.
-  ///
-  /// An `Add*` op is identified by the CONTENT it adds, not by its serialization. The serialized item
-  /// carries the parser's node ids, which are ephemeral (`gid()`, minted per parse), so hashing the
-  /// serialization gave the same fn a new op id on every parse: 5,466 of a seed's 12,876 ops were
-  /// re-minted by a reload of an unchanged tree, every binary upgrade grew every store by that many, and
-  /// two machines authoring the same fn made two ops. The content hash already skips the ids (see
-  /// `computeFnHash`), and after stabilization it is exactly what the item's `SetName` names.
-  ///
-  /// Proved on two real stores on 2026-09-04: the first upgrade after this change folded 6,234
-  /// re-identified Add ops, and the next binary with no Dark change folded none.
-  ///
-  /// An item with no hash yet (pre-stabilization input) falls back to the serialization, as before:
-  /// giving every unstabilized op one id would dedup them against each other. Every other op kind is
-  /// identified by its serialization, which for them carries no ephemeral ids.
   /// The id of the `Add*` op that adds content <param hash> of kind <param tag> (0 fn, 1 type,
   /// 2 value). Computable from the hash alone, which is what lets a branch bundle find the Add for a
   /// name it binds without decoding every op in the log.
@@ -316,6 +301,19 @@ module Hashing =
       w.Write(tag)
       w.Write(h))
 
+  /// Hash a PackageOp: its identity in the log.
+  ///
+  /// An `Add*` op is identified by the CONTENT it adds, not by its serialization. The serialized item
+  /// carries the parser's node ids, which are ephemeral (`gid()`, minted per parse), so hashing the
+  /// serialization gives the same fn a new op id on every parse: two reloads of an unchanged tree then
+  /// agree on no Add op at all, every binary upgrade grows every store by the whole tree, and two
+  /// machines authoring the same fn make two ops. The content hash already skips the ids (see
+  /// `computeFnHash`), and after stabilization it is exactly what the item's `SetName` names.
+  /// `scripts/testing/test-reload-is-reproducible` is the assertion.
+  ///
+  /// An item with no hash yet (pre-stabilization input) falls back to the serialization: giving every
+  /// unstabilized op one id would dedup them against each other. Every other op kind is identified by
+  /// its serialization, which for them carries no ephemeral ids.
   let computeOpHash (op : PT.PackageOp) : Hash =
     match op with
     | PT.PackageOp.AddFn f when f.hash <> Hash "" -> contentOpHash 0uy f.hash
@@ -332,8 +330,7 @@ module Hashing =
   /// tagging -- must compute it identically, or the same op ends up with two ids.
   ///
   /// The truncation is what makes the id fit a uuid column, and the only place a collision could be
-  /// introduced. Removing it is bigger than it looks, because the op blob embeds the id and the
-  /// deserializer verifies it; see notes/fresh-arch/OP-ID-WIDENING.md.
+  /// introduced. Widening it means widening the column and every table that references an op id.
   let computeOpRowId (op : PT.PackageOp) : System.Guid =
     let (Hash h) = computeOpHash op
     System.Guid(System.Convert.FromHexString(h)[0..15])

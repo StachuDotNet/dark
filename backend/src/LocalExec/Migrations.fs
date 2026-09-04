@@ -156,7 +156,7 @@ let private runSchemaBootstrap () : unit =
       print
         $"  Your {ops} op(s) are intact. Export them (`dark sync export <file>`), delete rundir/data.db,"
       print
-        "  then start again and import. (A data-preserving migrator is SPEC section 10, not built.)"
+        "  then start again and import. (A data-preserving migrator is designed and not built.)"
       reraise ()
     markOpsUnapplied ()
     writeHash want

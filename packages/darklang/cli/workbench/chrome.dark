@@ -130,18 +130,21 @@ let viewBlurb (idx: Int) : (String * String) =
 /// Key hints for the focused pane, followed by global shortcuts.
 ///
 /// Fitted to `width` rather than concatenated and clipped: clipping one long string loses the hints at the
-/// END, which are `?` (the keymap) and `esc/q` (the way out) -- the two a person needs most when lost. The
+/// END, which are `?` (the keymap) and `q` (the way out) -- the two a person needs most when lost. The
 /// row drops whole hints cheapest-first instead: secondary globals, then the view's own actions, and
-/// `?`/`esc/q` never.
+/// `?`/`q` never.
 let hintsForView (state: State) (width: Int) : String =
   let view = state.activeView
   // Pane movement only applies when a preview exists.
   let hasPreview = Stdlib.Bool.not (Stdlib.List.isEmpty state.items)
   let paneHint = if hasPreview then [ ("←→", "pane") ] else []
   // `p` earns a slot here: it's the way out to the prompt, and an escape hatch nobody can see isn't one.
-  // Split by what a person cannot do without: `?` opens the keymap and `esc/q` leaves; everything else on
+  // Split by what a person cannot do without: `?` opens the keymap and `q` leaves; everything else on
   // this row is discoverable THROUGH `?`, so everything else can give way on a narrow terminal.
-  let essential = [ ("?", "help"), ("esc/q", "quit") ]
+  //
+  // `q`, not `esc/q`: Escape is BACK one level everywhere and never quits (see `keys-view.dark` and the
+  // `?` overlay, which both say so). The one hint that has to survive every width said the opposite.
+  let essential = [ ("?", "help"), ("q", "quit") ]
   let secondaryGlobal = [ ("/", "search"), (":", "cmd"), ("p", "prompt"), ("`", "views") ]
   let ctx =
     if sidebarFocused state then
@@ -196,7 +199,7 @@ let hintsForView (state: State) (width: Int) : String =
         h state
       | None -> [ ("↑↓", "move") ]
   // Fitted rather than concatenated. The droppable run is ordered cheapest-last, so this view's own actions
-  // outlive the secondary global keys, and `?`/`esc/q` outlive everything.
+  // outlive the secondary global keys, and `?`/`q` outlive everything.
   Frame.formatHintsFitted (Stdlib.List.append ctx secondaryGlobal) essential width
 
 /// The keymap, grouped, for the `?` overlay - (category, keys).

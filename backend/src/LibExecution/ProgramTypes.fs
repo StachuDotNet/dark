@@ -814,10 +814,6 @@ and Reference =
     | ItemKind.Fn -> PackageFn h
 
 
-/// Why a package item has been deprecated. Author-supplied metadata on the
-/// Deprecate op; consumers (LSP, CLI, runtime) decide how loud to be.
-/// TODO: `Harmful` is the only kind SCM can't already express via rebinding;
-///   if usage confirms `SupersededBy`/`Obsolete` overlap, fold into one.
 /// What a `Decision` DID. The shared part of a decision (who, where, why) lives on the op; this is the
 /// part that varies, so that a decision which binds a name and one which only closes a finding cannot be
 /// confused for each other.
@@ -851,6 +847,10 @@ and PropagationPolicy =
     | Follow -> "follow"
     | Unset -> "unset"
 
+/// Why a package item has been deprecated. Author-supplied metadata on the Deprecate op; consumers
+/// (LSP, CLI, runtime) decide how loud to be.
+/// TODO: `Harmful` is the only kind SCM can't already express via rebinding;
+///   if usage confirms `SupersededBy`/`Obsolete` overlap, fold into one.
 and DeprecationKind =
   /// A different item (different hash) should be used instead.
   | SupersededBy of replacement : Reference

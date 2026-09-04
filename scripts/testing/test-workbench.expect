@@ -44,7 +44,7 @@ want "(?i)(needs you|uncommitted|branches)" "the Home sections"
 # Every switch below goes to a view not yet visited. Returning to a view you have already been on does
 # not reliably emit anything under a TTY, which is either the diff renderer believing a row is unchanged
 # when it is not, or an artefact of driving it this way. Unresolved either way, so this test does not
-# depend on it. See notes/fresh-arch/TONIGHT.md.
+# depend on it.
 
 # 2. switching views actually draws the view, not just a moved tab marker
 send "2"

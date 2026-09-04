@@ -726,10 +726,6 @@ let openStreamingRequest
   }
 
 
-/// Fetches begun by `httpGetUnsafeBytesStart` and not yet collected.
-///
-/// Keyed by a handle rather than by url: a pull can have the same url in flight twice, and a dictionary
-/// keyed by url would hand the second caller the first one's response.
 /// Turn a completed exchange into a Result. A non-2xx is a FAILURE, not a body: these once returned
 /// Ok for anything that completed, so a relay answering 400 reached the caller as a successful fetch
 /// whose payload happened to be an error page, and `dark branch push` printed "pushed branch ..." for
@@ -756,6 +752,10 @@ let private fetchResult (verb : string) (response : RequestResult) : Dval =
       | RequestError.BadMethod -> "bad method"
     Dval.resultError KTBlob KTString (DString $"{verb} failed: {reason}")
 
+/// Fetches begun by `httpGetUnsafeBytesStart` and not yet collected.
+///
+/// Keyed by a handle rather than by url: a pull can have the same url in flight twice, and a dictionary
+/// keyed by url would hand the second caller the first one's response.
 let private pendingFetches =
   System.Collections.Concurrent.ConcurrentDictionary<System.Guid, Task<RequestResult>>()
 

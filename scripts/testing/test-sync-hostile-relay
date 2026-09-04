@@ -6,14 +6,14 @@
 # `test-relay-routes` checks the relay when the CLIENT misbehaves. This is the mirror, and it is the half
 # that was wrong: a relay answering 200 with a body the client could not read got "Pushed N ops (0 new)",
 # after which the push was RECORDED as done. Point the client at a working relay afterwards and it says
-# "Already up to date" while your work is not there, and never asks again. Open item 45.
+# "Already up to date" while your work is not there, and never asks again.
 #
 # What is asserted, in order of how much it would cost to get wrong:
 #
 #   1. An unreadable reply must not be reported as a completed push, and must not record one. This is the
 #      data-loss case: everything else here is a message being wrong.
 #   2. Nothing crashes, hangs, or leaks an interpreter error, whatever the relay does.
-#   3. What the relay LISTS is not trusted: branch ids that are not uuids never reach a URL (item 47).
+#   3. What the relay LISTS is not trusted: branch ids that are not uuids never reach a URL.
 #
 # The relay is `fixtures/hostile-relay.py`, one failure mode per port.
 

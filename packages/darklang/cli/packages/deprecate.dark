@@ -334,7 +334,7 @@ let undeprecateHelp (_state: Cli.AppState) : String =
     "Usage: undeprecate <name>"
     ""
     "  The name of a deprecated item; `dark ls --include-deprecated` finds them. Authors an"
-    "  Undeprecate op in the current draft, so `dark commit` ships it and `dark undo` reverses it."
+    "  Undeprecate op in the current draft, so `dark commit` ships it."
     ""
     "Related:"
     "  deprecate -- mark an item superseded, harmful or obsolete" ]
@@ -369,7 +369,7 @@ let help (_state: Cli.AppState) : String =
     ""
     "Related:"
     "  delete -- sugar for `deprecate --kind obsolete` with dependents gate"
-    "  undo   -- reverse a WIP deprecate on the current branch" ]
+    "  undeprecate <name> -- put a deprecated item back on the shelf" ]
   |> Stdlib.String.join "\n"
 
 

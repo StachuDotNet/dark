@@ -130,8 +130,8 @@ want "and it is gone"          "not found"  eval 'FirstDay.Hello.scratch ()'
 
 # 8. A pin BEFORE committing un-stages the repoint rather than authoring one back.
 #
-# The one step of `two-box-sync-runbook.md` that no gate covered, and the runbook calls it the newest
-# behaviour. Single-instance, so it belongs here rather than in the multi-instance gate.
+# The one step of the two-machine walk no other gate covered, and it is single-instance
+# behaviour, so it belongs here rather than in the multi-instance gate.
 dark fn /FirstDay.Chain.p1 '(x: Int64): Int64 = x + 1L' >/dev/null 2>&1 || true
 dark fn /FirstDay.Chain.p2 '(x: Int64): Int64 = (FirstDay.Chain.p1 x) + 1L' >/dev/null 2>&1 || true
 dark commit "chain" -y >/dev/null 2>&1 || true

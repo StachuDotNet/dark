@@ -439,8 +439,8 @@ let storeDeltaOpsFrom
 // hashes come from folding the parent chain's SetName rebinds over main. Everything below routes
 // through `parentNameHashes` so both cases share one path.
 
-/// A branch's delta ops (deserialized), walking the parent chain (branch -> parent -> ... until
-/// 'main'), ordered by origin_ts so same-name rebinds across the chain resolve LWW. Shared by
+/// A branch's delta ops (deserialized), walking the parent chain (branch -> parent -> ... until main),
+/// ordered by origin_ts so same-name rebinds across the chain resolve LWW. Shared by
 /// `loadDeltaOps` (the process overlay) and `parentNameHashes` (the fork/merge base).
 /// Skips what this build cannot decode, like every other reader of the log. This one matters most: it
 /// is the overlay a process RESOLVES through, loaded at boot for whatever branch you are standing on, so
@@ -453,14 +453,19 @@ let chainOverlayOps (branchId : PT.BranchId) : Task<List<PT.PackageOp>> =
            SELECT @start
            UNION
            SELECT b.parent_id FROM branches b JOIN chain c ON b.id = c.bid
-           WHERE b.parent_id != 'main'
+           WHERE b.parent_id <> @mainId
          )
          SELECT p.id, p.op_blob
          FROM package_ops p
          JOIN op_branches ob ON ob.op_id = p.id
          WHERE ob.branch_id IN (SELECT bid FROM chain)
          ORDER BY p.origin_ts, p.rowid"
-      |> Sql.parameters [ "start", Sql.string (string branchId) ]
+      // `@mainId`, not the literal 'main': `parent_id` holds main's UUID, so the string comparison this
+      // replaces was true for every row and the walk only terminated because main has no `branches` row.
+      // The same drift `Branching.BranchId` exists to stop, in SQL, where no type checker reads it.
+      |> Sql.parameters
+        [ "start", Sql.string (string branchId)
+          "mainId", Sql.string (string PT.BranchId.Main) ]
       |> Sql.executeAsync (fun read ->
         BS.PT.PackageOp.tryDeserialize (read.uuid "id") (read.bytes "op_blob"))
     return decoded |> List.choose (fun o -> o)

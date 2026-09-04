@@ -2104,9 +2104,10 @@ let private unitTests =
       } ]
 
 
-// The end-to-end authoring/commit policy tests lived here. They drive the CLI through
-// `Tests.MultiInstanceHarness` (absent on this branch) and assert commit-time at-rest gating,
-// which this branch has not integrated. Both are tracked in kernel-substrate-open-items.
+// The end-to-end authoring/commit policy tests lived here. They drove the CLI through
+// `Tests.MultiInstanceHarness`, which is gone; commit-time at-rest gating is covered instead by
+// `CliTraces.commitRefusesDefiniteTypeErrors`, which drives the real verb. What went with them and
+// has NOT come back is the "after this update, N dependents have definite type errors" report.
 
 let private mirrorTests =
   let fsharpCases (typ : System.Type) : Set<string> =

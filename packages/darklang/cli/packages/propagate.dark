@@ -2,7 +2,7 @@ module Darklang.Cli.Packages.Propagate
 
 // Propagation helpers.
 //
-// Propagation itself runs at `dark commit`, not on edit. What lives here is the one call into it
+// Propagation itself runs on EDIT (`repointNow`), not at commit. What lives here is the one call into it
 // (`repointDependents`) plus the structural comparison helpers `dark commit` uses to say whether an
 // update changed a SIGNATURE -- which matters because propagation does a blind hash swap with no
 // type-checking, so a signature change is the one thing callers can't absorb silently.

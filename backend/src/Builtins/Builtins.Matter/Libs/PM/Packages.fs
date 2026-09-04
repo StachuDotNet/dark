@@ -42,13 +42,12 @@ let private repointListKT =
 
 
 // TODO: review/reconsider the accessibility of these fns
-/// A branch parameter as the PM layer wants it: `""` means main, anything else names a branch.
+/// A branch parameter as the PM layer wants it.
 ///
 /// The branch is a PARAMETER here rather than process state, so a caller can ask about a branch it isn't
 /// sitting on -- which is what the LSP and any daemon need, and what stops a reader assuming the ambient
-/// branch is the one they meant.
-/// Dark hands over a `Uuid`, so there is nothing to parse and nothing that can arrive here not being an
-/// id. Main needs no unwrapping: the overlay API answers empty for it.
+/// branch is the one they meant. Dark hands over a `Uuid`, so there is nothing to parse and nothing that
+/// can arrive here not being an id; main is main's own uuid, like everywhere else.
 let private branchOfParam (branchIdGuid : System.Guid) : PT.BranchId =
   PT.BranchId.Id branchIdGuid
 
@@ -945,7 +944,6 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _,
           _,
           _,
-          // the branch param is vestigial (always main's Uuid); the real branch is process state
           [| DUuid branchGuid
              sourceLocation
              sourceItemKindDval
@@ -956,8 +954,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             let sourceItemKind = PT2DT.ItemKind.fromDT sourceItemKindDval
             let fromSourceHashes = fromSourceHashDvals |> List.map PT2DT.Hash.fromDT
 
-            // The BRANCH context is the process's, not the (vestigial, always-main) Uuid parameter --
-            // same source `scmAddOps` uses, so authoring and propagation can't disagree about where they are.
+            // The branch this propagation runs on, from the caller. Every Dark call site passes
+            // `state.currentBranchId`, which is what keeps a branch's cascade off main.
             let branch = branchOfParam branchGuid
 
             let! result =

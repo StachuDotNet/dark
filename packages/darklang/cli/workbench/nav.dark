@@ -139,8 +139,12 @@ let resolveConflict (state: State) (which: String) : Step =
       | Ok _ -> "resolved: " ++ label
       | Error e -> "resolve failed: " ++ e
 
+    // Forced: an ack writes no op, so the comparison in `refreshScmStatus` would carry the old
+    // "N need you" forward over a conflict you just answered.
+    let refreshed = forceScmRefresh state
+
     Step.Continue
-      { state with items = reloadItems state; selected = 0; message = message }
+      { refreshed with items = reloadItems refreshed; selected = 0; message = message }
 
 /// The app the cursor is on, resolved by name rather than by position.
 ///
@@ -204,7 +208,9 @@ let runCommandInFrame (state: State) (command: String) (args: List<String>) : St
     else
       out
 
-  openReader (refreshScmStatus state state) shown false
+  // Forced, not compared: the command may have been a pull, which lands committed ops and other people's
+  // conflicts without moving this branch's draft count.
+  openReader (forceScmRefresh state) shown false
 
 
 /// `u`/`d` in the SCM view: push to the relay, pull from it, output in the reader.

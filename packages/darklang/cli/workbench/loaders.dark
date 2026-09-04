@@ -400,6 +400,10 @@ let refreshBadges (previous: State) (next: State) : State =
 /// without moving the branch, the location or the item list, so the badges' comparison would carry a stale
 /// answer forward. The extra input is the draft's op count, which is one indexed count and is the cheapest
 /// question the op log can answer.
+///
+/// The op count is not enough on its own: an ACK writes no op, and a pull can land nothing but committed
+/// ops, so the context row went on saying "N need you" for work you had just answered. `forceScmRefresh`
+/// is for those, and it is a separate function rather than a flag so that a caller has to mean it.
 let refreshScmStatus (previous: State) (next: State) : State =
   let unchanged =
     next.scmStatus.loaded
@@ -410,6 +414,11 @@ let refreshScmStatus (previous: State) (next: State) : State =
     next
   else
     { next with scmStatus = readScmStatus next.branchId }
+
+/// Re-read the SCM picture whatever the counts say. For the actions that change it without moving an op
+/// count: an ack, and any command run in a frame (a pull lands other people's commits).
+let forceScmRefresh (state: State) : State =
+  { state with scmStatus = readScmStatus state.branchId }
 
 /// Run the selected `render` fn and hold its output, for the tree-native view peek.
 ///

@@ -559,7 +559,7 @@ let growIfNeeded
     // PackageRefs on first access. We deliberately do NOT regenerate refs from the store on boot -- that
     // made the kernel's type identities float on whatever the local store happened to hash to, the brick
     // risk the kernel-hash pinning removes. The generator stays a DEV tool (reload-packages / LocalExec
-    // fill), where regenerating produces a reviewable git diff = a deliberate re-pin. See SPEC section 10.
+    // fill), where regenerating produces a reviewable git diff = a deliberate re-pin.
     if appliedCount > 0L || hasUnevaluatedValues then
       let! _evalResult =
         Telemetry.timeTask "seed.evaluateValues" [] (fun () ->

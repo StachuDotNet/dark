@@ -220,15 +220,20 @@ let opIdIsItsContentHash =
 
     Expect.isGreaterThan (List.length rows) 0 "there are ops to check"
 
+    // Skips what this build cannot decode, which is the rule every reader of the log follows: a store
+    // holds ops it did not write (a peer's newer format, a bundle's undecodable record kept on purpose),
+    // and a test that hard-deserializes every row fails on THEM rather than on what it is asserting.
     let mismatched =
       rows
       |> List.choose (fun (id, blob) ->
-        let op = LibDB.Queries.deserializeOp id blob
-        let (LibExecution.ProgramTypes.Hash h) =
-          LibSerialization.Hashing.Hashing.computeOpHash op
-        let bytes : byte[] = System.Convert.FromHexString(h : string)
-        let recomputed = System.Guid(bytes[0..15])
-        if recomputed = id then None else Some(id, recomputed))
+        match LibSerialization.Binary.Serialization.PT.PackageOp.tryDeserialize id blob with
+        | None -> None
+        | Some op ->
+          let (LibExecution.ProgramTypes.Hash h) =
+            LibSerialization.Hashing.Hashing.computeOpHash op
+          let bytes : byte[] = System.Convert.FromHexString(h : string)
+          let recomputed = System.Guid(bytes[0..15])
+          if recomputed = id then None else Some(id, recomputed))
 
     match mismatched with
     | [] -> ()

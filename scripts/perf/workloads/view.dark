@@ -20,7 +20,7 @@ val iterations = 400
 
 let base =
   Darklang.Cli.Workbench.initialState
-    Darklang.SCM.Branch.mainBranchId
+    Darklang.SCM.Ids.mainBranchId
     Stdlib.Option.Option.None
     "perf"
     "perf-instance"

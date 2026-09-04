@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Two REAL machines and a relay: the setup, a smoke, and the shells for the rest.
 #
-# The rest is `notes/fresh-arch/two-box-sync-runbook.md`, section 0b onward, walked BY HAND. That is
+# The rest of the two-machine walk is BY HAND, from the notes repo's runbook. That is
 # deliberate: scripting the whole walk was tried and produced more harness failures than product ones.
 # What is worth scripting is the twenty minutes of setup that used to be reconstructed from shell
 # history each time, and a smoke that proves the two boxes and the relay can talk at all.
@@ -59,7 +59,7 @@ case "$cmd" in
     A pull | tail -1
     got=$(A eval "XM.T.g$n ()" | tail -1)
     if [[ "$got" == "$((n + 1))" ]]; then echo "  ok   A evaluates B's function: $got"; else echo "  FAIL A got: $got"; exit 1; fi
-    echo "both directions work. The runbook takes it from here: notes/fresh-arch/two-box-sync-runbook.md, section 1."
+    echo "both directions work. The two-machine runbook in the notes repo takes it from here."
     ;;
   shells)
     [[ -n "$relay" ]] || { echo "shells needs the relay url" >&2; exit 2; }

@@ -3,7 +3,7 @@ module Darklang.SCM.Deps
 //  the `package_dependencies` data-access silo
 //
 // Who references whom. Three builtins' worth of plain SQL over one table joined to `locations` -- no
-// compiler, no codec, no hashing, no fold, so it belongs in the language (SPEC section 9).
+// compiler, no codec, no hashing, no fold, so it belongs in the language.
 //
 // The edges are recorded per item hash with the user-typed FQN alongside, which is what lets two distinct
 // names that happen to share a hash stay distinct here. That distinction is load-bearing: identical content
