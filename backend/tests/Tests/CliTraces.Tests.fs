@@ -2553,6 +2553,59 @@ let private branchChainSeesItsAncestry =
       })
 
 
+/// The reads that answered about main from a branch, each with its own scenario. `dark ops` on a branch
+/// off a branch omitted the intermediate branch; `undo` on a branch stepped onto a version main authored
+/// AFTER the fork; `deps` on a branch listed main's version of a caller the branch had re-authored.
+let private branchReadsAnswerAboutTheBranch =
+  cliTest "ops, undo and deps answer about the branch you stand on, chain included" (fun state ->
+    task {
+      // A name main has, at v1, then a branch forks it and edits it.
+      let! _ = runCli state [ "switch"; "main" ]
+      let! _ = runCli state [ "fn"; "Tests.BranchRead.base"; "() : Int64 = 1L" ]
+      // A caller main has too, so the branch's re-authoring of it below leaves main's version behind.
+      let! _ = runCli state [ "fn"; "Tests.BranchRead.caller"; "() : Int64 = Tests.BranchRead.base ()" ]
+      let! _ = runCli state [ "commit"; "branchread v1"; "-y" ]
+      let! _ = runCli state [ "switch"; "brOne" ]
+      let! _ = runCli state [ "fn"; "Tests.BranchRead.base"; "() : Int64 = 2L" ]
+      // The caller re-authored on the branch, and a branch off the branch with one op of its own.
+      let! _ =
+        runCli state [ "fn"; "Tests.BranchRead.caller"; "() : Int64 = Stdlib.Int64.add (Tests.BranchRead.base ()) 0L" ]
+      let! _ = runCli state [ "branch"; "new"; "brTwo" ]
+      let! _ = runCli state [ "fn"; "Tests.BranchRead.deep"; "() : Int64 = 3L" ]
+
+      // ops from the deepest branch lists the intermediate branch's op, not only its own and main's.
+      let! ops = runCli state [ "ops" ]
+      Expect.stringContains ops "Tests.BranchRead.caller" "the intermediate branch's op is listed from its child"
+      Expect.stringContains ops "Tests.BranchRead.deep" "alongside the child's own"
+
+      // Meanwhile main moves the same name on to v3, which the branch never had.
+      let! _ = runCli state [ "switch"; "main" ]
+      let! _ = runCli state [ "fn"; "Tests.BranchRead.base"; "() : Int64 = 3L" ]
+      let! _ = runCli state [ "commit"; "branchread v3"; "-y" ]
+
+      // undo on the branch steps back to the fork's version, v1, and not onto main's v3.
+      let! _ = runCli state [ "switch"; "brOne" ]
+      let! before = runCli state [ "eval"; "Tests.BranchRead.base ()" ]
+      Expect.stringContains before "2" "the branch is at its own edit"
+      let! _ = runCli state [ "undo"; "Tests.BranchRead.base" ]
+      let! after = runCli state [ "eval"; "Tests.BranchRead.base ()" ]
+      Expect.stringContains after "1" "undo steps to the version the branch forked from"
+
+      // deps on the branch: the branch re-authored `caller`, so main has no version of it to list twice.
+      let! _ = runCli state [ "fn"; "Tests.BranchRead.base"; "() : Int64 = 2L" ]
+      let! deps = runCli state [ "deps"; "usedby"; "Tests.BranchRead.base" ]
+      Expect.stringContains
+        deps
+        "Found 1 dependents"
+        $"the caller is listed once, the branch's version, not main's as well: {deps}"
+
+      let! _ = runCli state [ "switch"; "main" ]
+      let! _ = runCli state [ "branch"; "archive"; "brTwo"; "-y" ]
+      let! _ = runCli state [ "branch"; "archive"; "brOne"; "-y" ]
+      ()
+    })
+
+
 /// `dark merge` and `dark rebase` with no argument mean the branch you are standing on.
 let private bareMergeAndRebaseMeanThisBranch =
   cliTest "merge and rebase with no argument mean the branch you're on" (fun state ->
@@ -3238,6 +3291,7 @@ let tests =
        dependentsSeeTheBranchYouAreOn
        bareMergeAndRebaseMeanThisBranch
        branchChainSeesItsAncestry
+       branchReadsAnswerAboutTheBranch
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses

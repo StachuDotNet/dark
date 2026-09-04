@@ -22,17 +22,34 @@ let itemKindColumn (kind: LanguageTools.ProgramTypes.ItemKind) : String =
   | Value -> "value"
 
 
-/// The hash currently bound at `location` for `kind`, if anything is.
+/// The hash currently bound at `location` for `kind` on the PARENT of the branch being authored on, if
+/// anything is. `parentOverlay` is that parent's chain overlay (empty when the parent is main).
 ///
-/// Reads `locations` directly rather than going through the overlay, deliberately. `locations` is
-/// MAIN's name layer, so a branch author records what MAIN binds as the predecessor, which is the
-/// fact a later merge wants: this branch's binding replaced that one.
+/// A branch's binding replaced what its PARENT binds, which is the fact a later merge wants. For a
+/// first-level branch that is `locations`, main's name layer, read directly and deliberately: not the
+/// branch's own overlay, which would record the branch's previous version rather than main's. For a
+/// branch OFF a branch the parent's overlay comes first, or a name the parent rebound records main's
+/// hash and the detector reports a conflict on a name nobody moved.
 let currentlyBound
+  (parentOverlay: List<Conflicts.Binding>)
   (location: LanguageTools.ProgramTypes.PackageLocation)
   (kind: LanguageTools.ProgramTypes.ItemKind)
   : Stdlib.Option.Option<LanguageTools.ProgramTypes.Hash> =
   let modules = Stdlib.String.join location.modules "."
 
+  let onParent =
+    parentOverlay
+    |> Stdlib.List.findFirst (fun b ->
+      (b.owner == location.owner)
+      && (b.modules == modules)
+      && (b.name == location.name)
+      && (b.itemType == itemKindColumn kind))
+
+  match onParent with
+  | Some b -> Stdlib.Option.Option.Some(LanguageTools.ProgramTypes.Hash.Hash b.hash)
+  | None ->
+
+  // main-scoped: every chain ends at main, and this is main's half.
   let found =
     Stdlib.Sqlite.queryOneP
       (localDb ())
@@ -63,14 +80,28 @@ let currentlyBound
 /// Runs BEFORE hash stabilization, which is safe because the answer is keyed on the location and the
 /// item kind, and stabilization rewrites neither -- it only replaces provisional target hashes.
 let recordPrevious
+  (branchId: Uuid)
   (ops: List<LanguageTools.ProgramTypes.PackageOp>)
   : List<LanguageTools.ProgramTypes.PackageOp> =
+  // The parent's overlay, resolved ONCE for the batch: `chainBindings` decodes every op in the chain.
+  // Empty for main and for a first-level branch, whose parent's bindings are `locations`.
+  let parentOverlay =
+    if SCM.Ids.isMain branchId then
+      []
+    else
+      match SCM.PackageOps.branchParentOf branchId with
+      | parent when SCM.Ids.isMain parent -> []
+      | parent -> SCM.PackageOps.chainBindings parent
+
   ops
   |> Stdlib.List.map (fun op ->
     match op with
     | SetName(location, target, None) ->
       let previous =
-        currentlyBound location (LanguageTools.ProgramTypes.Reference.kind target)
+        currentlyBound
+          parentOverlay
+          location
+          (LanguageTools.ProgramTypes.Reference.kind target)
 
       LanguageTools.ProgramTypes.PackageOp.SetName(location, target, previous)
     | other -> other)

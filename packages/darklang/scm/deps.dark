@@ -131,6 +131,22 @@ let dependentsOf
     if Stdlib.List.isEmpty overlay then
       mainResolved
     else
+      // Main's row for a name the chain has REBOUND is main's version of that caller, not this branch's:
+      // the branch re-authored it, and whether the new version still depends on the target is what the
+      // overlay half below answers. Keyed by name, not hash: one hash at two names with only one of them
+      // rebound keeps the other.
+      let mainResolved =
+        mainResolved
+        |> Stdlib.List.filter (fun d ->
+          match d with
+          | (h, dloc, _) ->
+            let hs = LanguageTools.ProgramTypes.hashToString h
+            overlay
+            |> Stdlib.List.findFirst (fun entry ->
+              match entry with
+              | (oh, oloc, _) -> (oloc == dloc) && (oh != hs))
+            |> Stdlib.Option.isNone)
+
       let named =
         mainResolved
         |> Stdlib.List.map (fun d ->

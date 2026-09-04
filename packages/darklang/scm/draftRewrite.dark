@@ -195,7 +195,7 @@ let surgicalDrop (dropped: List<DraftOp>) : Stdlib.Result.Result<Unit, String> =
 /// Falls back to the F# rebuild when any dropped op is not surgically undoable. That path deletes main's
 /// log and re-inserts the survivors, and it stays in F# because it re-mints op ids and re-folds -- and
 /// because ops this build cannot decode are invisible here, so the only safe rule is that the delete
-/// never touches them, which `Inserts.discardWipOps` enforces by id.
+/// never touches them, which `Inserts.wholeMainDeletes` enforces by id.
 let rewriteBy
   (keep: List<DraftOp> -> List<DraftOp>)
   : Stdlib.Result.Result<Int, String> =
@@ -313,6 +313,15 @@ let isStagedRepoint (loc: LanguageTools.ProgramTypes.PackageLocation) : Bool =
 let unstageRepoint
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   : Stdlib.Result.Result<Int, String> =
+  // MAIN's draft, only. `isStagedRepoint` and `rewriteBy` read and rewrite main's draft; from a branch
+  // this found MAIN's staged repoint and dropped it, so a `pin` issued on a branch reverted main. Until
+  // a branch records which of its bindings propagation wrote, a pin on a branch is refused here.
+  match SCM.PackageOps.currentBranch () with
+  | id when Stdlib.Bool.not (SCM.Ids.isMain id) ->
+    Stdlib.Result.Result.Error
+      "pin acts on main's draft, and you are on a branch; `dark switch main` first, or `dark discard <name>` to drop the branch's binding"
+  | _ ->
+
   if Stdlib.Bool.not (isStagedRepoint loc) then
     Stdlib.Result.Result.Ok 0
   else

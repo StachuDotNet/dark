@@ -155,6 +155,9 @@ let findingId
 /// One query. The edge carries the NAME it was resolved by, so a dependency that has moved on is still
 /// findable -- resolving its old hash through `locations` would find nothing, which is precisely the case
 /// that matters here.
+///
+/// main-scoped, on purpose: this is a property of the STORE, of what main's log binds and depends on,
+/// not of the branch the process stands on.
 let detectOutdatedUsages () : List<Finding> =
   match
     Stdlib.Sqlite.query

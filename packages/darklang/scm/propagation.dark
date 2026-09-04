@@ -174,64 +174,47 @@ let shouldFollow (loc: LanguageTools.ProgramTypes.PackageLocation) : Bool =
   shouldFollowIn (allChoices ()) loc
 
 
-/// What the BRANCH binds at this name, if it binds it at all. None on main, and None for a name the
-/// branch hasn't touched, in which case the caller falls through to `locations`.
-///
-/// `locations` is main's projection and a branch's SetNames never fold into it, so a read that goes only to
-/// the table answers about MAIN while you stand on a branch.
-let branchBindingAt
-  (loc: LanguageTools.ProgramTypes.PackageLocation)
-  : Stdlib.Option.Option<SCM.Conflicts.Binding> =
-  match SCM.PackageOps.currentBranch () with
-  | id when SCM.Ids.isMain id -> Stdlib.Option.Option.None
-  | branch ->
-    SCM.PackageOps.chainBindings branch
-    |> Stdlib.List.findFirst (fun b ->
-      (b.owner == loc.owner) && (b.modules == modulesOf loc) && (b.name == loc.name))
-
-
 /// Is there anything at this location? An item name, or at least one live item under the module.
 ///
 /// The parser falls back to reading an unresolvable path as a MODULE, so `/Zz.Nope.f` arrives as owner=Zz,
 /// modules="Nope.f", name="" -- and without this check every policy verb reports acting on "everything in
 /// Zz.Nope.f". Typo in, success out.
 let targetExists (owner: String) (modules: String) (name: String) : Bool =
-  // The BRANCH first, or a policy verb on a branch-only item answers "nothing at <name>" about something
-  // plainly there. Module targets (name == "") skip it: a branch binding is per NAME, and `locations`
-  // answers the parent chain anyway.
-  let onBranch =
-    if name == "" then
-      false
-    else
-      let loc =
-        LanguageTools.ProgramTypes.PackageLocation
-          { owner = owner
-            modules = if modules == "" then [] else Stdlib.String.split modules "."
-            name = name }
+  if name != "" then
+    // An item: the one branch-aware read.
+    let loc =
+      LanguageTools.ProgramTypes.PackageLocation
+        { owner = owner
+          modules = if modules == "" then [] else Stdlib.String.split modules "."
+          name = name }
 
-      (branchBindingAt loc) |> Stdlib.Option.isSome
-
-  if onBranch then
-    true
+    (SCM.PackageOps.liveBindingAt loc) |> Stdlib.Option.isSome
   else
+    // A module: anything live under it, on the branch chain first (a module that exists only on the
+    // branch used to answer "nothing at"), then main.
+    let onBranch =
+      match SCM.PackageOps.currentBranch () with
+      | id when SCM.Ids.isMain id -> false
+      | branch ->
+        SCM.PackageOps.chainBindings branch
+        |> Stdlib.List.findFirst (fun b ->
+          (b.owner == owner)
+          && ((b.modules == modules) || (Stdlib.String.startsWith b.modules $"{modules}.")))
+        |> Stdlib.Option.isSome
 
-  let row =
-    if name == "" then
-      Stdlib.Sqlite.queryOneP
-        (SCM.PackageOps.localDb ())
-        "SELECT 1 AS n FROM locations
-         WHERE owner = @p0 AND (modules = @p1 OR modules LIKE @p2) AND unlisted_at IS NULL LIMIT 1"
-        [ owner, modules, $"{modules}.%" ]
+    if onBranch then
+      true
     else
-      Stdlib.Sqlite.queryOneP
-        (SCM.PackageOps.localDb ())
-        "SELECT 1 AS n FROM locations
-         WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND unlisted_at IS NULL LIMIT 1"
-        [ owner, modules, name ]
-
-  match row with
-  | Some _ -> true
-  | None -> false
+      // main-scoped: the chain above ends at main, and this is main's half.
+      match
+        Stdlib.Sqlite.queryOneP
+          (SCM.PackageOps.localDb ())
+          "SELECT 1 AS n FROM locations
+           WHERE owner = @p0 AND (modules = @p1 OR modules LIKE @p2) AND unlisted_at IS NULL LIMIT 1"
+          [ owner, modules, $"{modules}.%" ]
+      with
+      | Some _ -> true
+      | None -> false
 
 
 /// Record a pin or a follow as an op.
@@ -316,9 +299,10 @@ let clearPolicy
 /// EXCLUDES the currently-live hash, since a pin/follow round trip leaves the live version with an unlisted
 /// row of its own and a second pin would "roll back" to where it already is. Orders by rowid, not
 /// `unlisted_at`, which is one-second granularity and cannot separate round trips inside a second.
-let previousHash
+let mainPreviousHash
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   : Stdlib.Option.Option<LanguageTools.ProgramTypes.Hash> =
+  // main-scoped: `previousHash` dispatches here only on main.
   match
     Stdlib.Sqlite.queryOneP
       (localDb ())
@@ -339,6 +323,44 @@ let previousHash
       Stdlib.Option.Option.Some(LanguageTools.ProgramTypes.Hash.Hash h)
     | None -> Stdlib.Option.Option.None
   | None -> Stdlib.Option.Option.None
+
+
+/// The hash the branch it forked from held at this name when the branch first touched it. None on main,
+/// and None for a name the branch has never touched.
+let forkBaseOf
+  (branchId: Uuid)
+  (loc: LanguageTools.ProgramTypes.PackageLocation)
+  : Stdlib.Option.Option<String> =
+  if SCM.Ids.isMain branchId then
+    Stdlib.Option.Option.None
+  else
+    SCM.Conflicts.branchBases branchId
+    |> Stdlib.List.findFirst (fun b ->
+      (b.owner == loc.owner) && (b.modules == modulesOf loc) && (b.name == loc.name))
+    |> Stdlib.Option.map (fun b -> b.baseHash)
+
+
+/// On a branch, the version before the live one is found in the branch's OWN history, which starts at
+/// the fork base. Main's `locations` rows after the fork are main's story, not this branch's: a pin
+/// answered from them rolled a branch back to a version main authored later.
+let previousHash
+  (loc: LanguageTools.ProgramTypes.PackageLocation)
+  : Stdlib.Option.Option<LanguageTools.ProgramTypes.Hash> =
+  match SCM.PackageOps.currentBranch () with
+  | id when SCM.Ids.isMain id -> mainPreviousHash loc
+  | branch ->
+    let live =
+      currentHash loc
+      |> Stdlib.Option.map LanguageTools.ProgramTypes.hashToString
+      |> Stdlib.Option.withDefault ""
+
+    let base = forkBaseOf branch loc |> Stdlib.Option.toList
+    let own = SCM.PackageOps.branchHashHistoryFor branch loc.owner (modulesOf loc) loc.name
+
+    Stdlib.List.append base own
+    |> Stdlib.List.filter (fun h -> h != live)
+    |> Stdlib.List.last
+    |> Stdlib.Option.map (fun h -> LanguageTools.ProgramTypes.Hash.Hash h)
 
 
 /// Un-stage the repoint the DRAFT holds for <param loc>, and report how many ops that dropped.
@@ -368,45 +390,16 @@ let rebind
 let kindAt
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   : Stdlib.Option.Option<LanguageTools.ProgramTypes.ItemKind> =
-  match branchBindingAt loc with
-  | Some b -> Stdlib.Option.Option.Some(Deps.kindOf b.itemType)
-  | None ->
-    match
-      Stdlib.Sqlite.queryOneP
-        (localDb ())
-        "SELECT item_type FROM locations
-         WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND unlisted_at IS NULL
-         LIMIT 1"
-        [ loc.owner, modulesOf loc, loc.name ]
-    with
-    | Some row ->
-      (match Stdlib.Sqlite.textField row "item_type" with
-       | Some t -> Stdlib.Option.Option.Some(Deps.kindOf t)
-       | None -> Stdlib.Option.Option.None)
-    | None -> Stdlib.Option.Option.None
+  SCM.PackageOps.liveBindingAt loc
+  |> Stdlib.Option.map (fun b -> Deps.kindOf b.itemType)
 
 
 /// The hash currently live at this name, on the branch you're on.
 let currentHash
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   : Stdlib.Option.Option<LanguageTools.ProgramTypes.Hash> =
-  match branchBindingAt loc with
-  | Some b -> Stdlib.Option.Option.Some(LanguageTools.ProgramTypes.Hash.Hash b.hash)
-  | None ->
-    match
-      Stdlib.Sqlite.queryOneP
-        (localDb ())
-        "SELECT item_hash FROM locations
-         WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND unlisted_at IS NULL
-         LIMIT 1"
-        [ loc.owner, modulesOf loc, loc.name ]
-    with
-    | Some row ->
-      (match Stdlib.Sqlite.textField row "item_hash" with
-       | Some h ->
-         Stdlib.Option.Option.Some(LanguageTools.ProgramTypes.Hash.Hash h)
-       | None -> Stdlib.Option.Option.None)
-    | None -> Stdlib.Option.Option.None
+  SCM.PackageOps.liveBindingAt loc
+  |> Stdlib.Option.map (fun b -> LanguageTools.ProgramTypes.Hash.Hash b.hash)
 
 
 /// The dependencies of <param loc> that have MOVED since it last referenced them: (their location, their
@@ -497,24 +490,6 @@ let draftImpact () : List<ImpactRow> =
       ))
 
 
-/// How the live binding for this name was set: 'op' for ordinary authoring, 'resolution' for a conflict
-/// override or a pin's rollback -- anything where a human forced a binding the machine wouldn't have chosen.
-///
-/// This is what makes a single-step undo expressible: undo rebinds, which is itself a resolution, so
-/// without the distinction a second undo walks back to where it came from and oscillates.
-let bindingSource (loc: LanguageTools.ProgramTypes.PackageLocation) : String =
-  match
-    Stdlib.Sqlite.queryOneP
-      (localDb ())
-      "SELECT source FROM locations
-       WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND unlisted_at IS NULL
-       LIMIT 1"
-      [ loc.owner, modulesOf loc, loc.name ]
-  with
-  | Some row -> Stdlib.Sqlite.textField row "source" |> Stdlib.Option.withDefault "op"
-  | None -> "op"
-
-
 /// The versions of this name in AUTHORING order, oldest first.
 ///
 /// `locations` accumulates a row per binding; rebinds (undo, a pin's rollback, a conflict override) are
@@ -539,18 +514,35 @@ let authoringOrder
       rows |> Stdlib.List.filterMap (fun r -> Stdlib.Sqlite.textField r "item_hash")
     | Error _ -> []
 
-  // On a branch the sequence CONTINUES into the branch's own ops: main's rows are the history you forked
-  // from, the branch's edits are what you did after. Stopping at the fork leaves a branch-authored version
-  // with nowhere to step back to.
+  // On a branch the sequence CONTINUES into the branch's own ops: main's rows UP TO THE FORK are the
+  // history you forked from, the branch's edits are what you did after. Stopping at the fork leaves a
+  // branch-authored version with nowhere to step back to; running past it makes `undo` step onto a
+  // version main authored after you forked, which the branch never had.
   match SCM.PackageOps.currentBranch () with
   | id when SCM.Ids.isMain id -> fromMain
   | branch ->
     let fromBranch =
       SCM.PackageOps.branchHashHistoryFor branch loc.owner (modulesOf loc) loc.name
 
+    let mainUpToFork =
+      match forkBaseOf branch loc with
+      | None -> fromMain
+      | Some base ->
+        // Through the LAST occurrence of the base: a name can return to a hash it held before.
+        let lastAt =
+          fromMain
+          |> Stdlib.List.indexedMap (fun i h -> (i, h))
+          |> Stdlib.List.filter (fun (_, h) -> h == base)
+          |> Stdlib.List.last
+          |> Stdlib.Option.map (fun (i, _) -> i)
+
+        match lastAt with
+        | Some i -> Stdlib.List.take fromMain (i + 1)
+        | None -> fromMain
+
     Stdlib.List.append
-      fromMain
-      (fromBranch |> Stdlib.List.filter (fun h -> Stdlib.Bool.not (Stdlib.List.member fromMain h)))
+      mainUpToFork
+      (fromBranch |> Stdlib.List.filter (fun h -> Stdlib.Bool.not (Stdlib.List.member mainUpToFork h)))
 
 
 /// The version authored immediately before the one that's live now. None at the start of the sequence.

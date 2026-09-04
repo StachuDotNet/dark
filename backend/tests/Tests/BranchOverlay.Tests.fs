@@ -1657,6 +1657,57 @@ let authoringOnAFinishedBranchRefuses =
   }
 
 
+/// `SCM.PackageOps.liveBindingFor` is THE branch-aware read of a live binding: the chain overlay first,
+/// then main's projection. Direct reads of `locations` answered about main from a branch, plausibly, and
+/// that was the branch's recurring bug class.
+let liveBindingReadsTheBranchThenMain =
+  testTask "liveBindingFor answers the branch's binding, and main's where the branch is silent" {
+    let branchId = testBranch "test-branch-live-binding"
+    do! cleanupBranch branchId
+    do! Branches.createBranch branchId "live-binding-proof" PT.BranchId.Main
+
+    let! ops = opsFor (namedSource "LiveBind" 42)
+    let! _ = Branches.storeDeltaOps branchId ops
+    let branchHash =
+      ops
+      |> List.tryPick (fun op ->
+        match op with
+        | PT.PackageOp.AddFn f -> (let (PT.Hash h) = f.hash in Some h)
+        | _ -> None)
+      |> Option.defaultValue ""
+
+    let hashOrNone (branch : string) (owner : string) (modules : string) (name : string) =
+      $"(match Darklang.SCM.PackageOps.liveBindingFor {branch} "
+      + $"(Darklang.LanguageTools.ProgramTypes.PackageLocation {{ owner = \"{owner}\"; "
+      + $"modules = [ \"{modules}\" ]; name = \"{name}\" }}) with "
+      + "| Some b -> b.hash | None -> \"none\")"
+    let main = darkBranch PT.BranchId.Main
+
+    let! answers =
+      darkStringList (
+        "[ "
+        + hashOrNone (darkBranch branchId) "Darklang" "LiveBind" "foo"
+        + ", "
+        + hashOrNone main "Darklang" "LiveBind" "foo"
+        + ", "
+        + hashOrNone (darkBranch branchId) "Darklang" "Stdlib.List" "map"
+        + ", "
+        + hashOrNone main "Darklang" "Stdlib.List" "map"
+        + " ]"
+      )
+
+    match answers with
+    | [ onBranch; onMain; mainNameFromBranch; mainNameFromMain ] ->
+      Expect.equal onBranch branchHash "on the branch, the branch's hash"
+      Expect.equal onMain "none" "main does not have the branch's name"
+      Expect.notEqual mainNameFromMain "none" "a name main has answers from main"
+      Expect.equal mainNameFromBranch mainNameFromMain "and answers the same from the branch"
+    | other -> failtest $"expected four answers, got {other}"
+
+    do! cleanupBranch branchId
+  }
+
+
 /// The receiving side has no obligation to know every branch its peers have. Branch ids travel with
 /// a bundle, so the branches you actually share match; the rest are none of this store's business.
 let branchEventForUnknownBranchIsIgnored =
@@ -1973,4 +2024,5 @@ let tests =
       branchIdsNeverReachAPerson
       overrideClosesOnlyItsOwnKind
       mainRetakesABranchsOp
-      authoringOnAFinishedBranchRefuses ]
+      authoringOnAFinishedBranchRefuses
+      liveBindingReadsTheBranchThenMain ]

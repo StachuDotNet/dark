@@ -17,7 +17,7 @@ let add
   (branchId: Uuid)
   (ops: List<LanguageTools.ProgramTypes.PackageOp>)
   : Stdlib.Result.Result<Int, String> =
-  Builtin.scmAddOps branchId (Lineage.recordPrevious ops)
+  Builtin.scmAddOps branchId (Lineage.recordPrevious branchId ops)
 
 
 /// THE authoring boundary: stabilize a batch and store it, refusing what stabilization would corrupt.
@@ -242,6 +242,54 @@ let chainBindings (branchId: Uuid) : List<Conflicts.Binding> =
   with
   | Ok rows -> bindingsFromOpRows rows
   | Error _ -> []
+
+
+/// What <param loc> resolves to on <param branchId>: the chain overlay first, then main's projection,
+/// which is where every chain ends. THE branch-aware read of a live binding.
+///
+/// `locations` is main's projection and a branch's SetName never folds into it, so a read that goes
+/// straight to the table answers about MAIN while you stand on a branch, and answers plausibly. Every
+/// "what is live at this name" question goes through here; a direct read of `locations` is for a
+/// question that is genuinely about main, and says so.
+///
+/// Its own three-key query rather than `Conflicts.localBindingsFor`, which matches on bare name across
+/// owners. A caller asking about N names builds `chainBindings` once and looks up, the way
+/// `Deps.branchOverlayBindings` does; this is the one-name form.
+let liveBindingFor
+  (branchId: Uuid)
+  (loc: LanguageTools.ProgramTypes.PackageLocation)
+  : Stdlib.Option.Option<Conflicts.Binding> =
+  let modules = Stdlib.String.join loc.modules "."
+
+  let onBranch =
+    if SCM.Ids.isMain branchId then
+      Stdlib.Option.Option.None
+    else
+      chainBindings branchId
+      |> Stdlib.List.findFirst (fun b ->
+        (b.owner == loc.owner) && (b.modules == modules) && (b.name == loc.name))
+
+  match onBranch with
+  | Some b -> Stdlib.Option.Option.Some b
+  | None ->
+    match
+      Stdlib.Sqlite.queryOneP
+        (localDb ())
+        "SELECT owner, modules, name, item_type, item_hash, COALESCE(origin_ts,'') AS ts, previous
+         FROM locations
+         WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND unlisted_at IS NULL
+         LIMIT 1"
+        [ loc.owner, modules, loc.name ]
+    with
+    | Some row -> Conflicts.bindingFromRow row
+    | None -> Stdlib.Option.Option.None
+
+
+/// <fn liveBindingFor> on the branch this process stands on.
+let liveBindingAt
+  (loc: LanguageTools.ProgramTypes.PackageLocation)
+  : Stdlib.Option.Option<Conflicts.Binding> =
+  liveBindingFor (currentBranch ()) loc
 
 
 /// One name a branch changes vs its parent.
@@ -582,18 +630,33 @@ let namesAtContent (branchId: Uuid) (hash: String) (itemType: String) : List<Str
         | _ -> Stdlib.Option.Option.None)
     | Error _ -> []
 
-  let branchNames =
-    if SCM.Ids.isMain branchId then
-      []
-    else
-      branchBindings branchId
+  if SCM.Ids.isMain branchId then
+    mainNames
+  else
+    // The whole CHAIN, not the branch's own frontier: a parent branch's name for this content is
+    // collateral too. And main's name is not, when the chain has rebound it away from this content.
+    let chain = chainBindings branchId
+
+    let branchNames =
+      chain
       |> Stdlib.List.filterMap (fun b ->
         if b.hash == hash && b.itemType == itemType then
           Stdlib.Option.Option.Some(Conflicts.fqn b.owner b.modules b.name)
         else
           Stdlib.Option.Option.None)
 
-  Stdlib.List.unique (Stdlib.List.append mainNames branchNames)
+    let reboundAway =
+      chain
+      |> Stdlib.List.filterMap (fun b ->
+        if b.hash != hash then
+          Stdlib.Option.Option.Some(Conflicts.fqn b.owner b.modules b.name)
+        else
+          Stdlib.Option.Option.None)
+
+    let mainStill =
+      mainNames |> Stdlib.List.filter (fun n -> Stdlib.Bool.not (Stdlib.List.member reboundAway n))
+
+    Stdlib.List.unique (Stdlib.List.append mainStill branchNames)
 
 
 /// Where MAIN says each of <param hashes> lives. LIST-valued per hash on purpose: identical content is the

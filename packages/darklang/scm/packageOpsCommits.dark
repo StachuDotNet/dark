@@ -108,12 +108,23 @@ let visibleWhere (branchId: Uuid) : String =
   if SCM.Ids.isMain branchId then
     "id NOT IN (SELECT op_id FROM op_branches)"
   else
+    // The CHAIN, not the branch alone: a branch off a branch sees its parent's ops too, the same walk
+    // `chainBindings` does. `@p1` is main's id, where the walk stops.
     "(id NOT IN (SELECT op_id FROM op_branches)
-      OR id IN (SELECT op_id FROM op_branches WHERE branch_id = @p0))"
+      OR id IN (SELECT op_id FROM op_branches WHERE branch_id IN (
+           WITH RECURSIVE chain(bid) AS (
+             SELECT @p0
+             UNION
+             SELECT b.parent_id FROM branches b JOIN chain c ON b.id = c.bid
+             WHERE b.parent_id != @p1)
+           SELECT bid FROM chain)))"
 
 
 let visibleParams (branchId: Uuid) : List<String> =
-  if SCM.Ids.isMain branchId then [] else [ Stdlib.Uuid.toString branchId ]
+  if SCM.Ids.isMain branchId then
+    []
+  else
+    [ Stdlib.Uuid.toString branchId, Stdlib.Uuid.toString SCM.Ids.mainBranchId ]
 
 
 /// Which ops a branch OWNS, which is a different question from what it can see. A branch owns the ops
@@ -233,8 +244,15 @@ let parentCommitFor (branchId: Uuid) : String =
       "p.commit_hash IS NOT NULL AND p.effective = 1
        AND p.id NOT IN (SELECT op_id FROM op_branches)"
     else
+      // The chain, as `visibleWhere`: a branch off a branch follows its parent's commits too.
       "p.commit_hash IS NOT NULL
-       AND (p.id IN (SELECT op_id FROM op_branches WHERE branch_id = @p0)
+       AND (p.id IN (SELECT op_id FROM op_branches WHERE branch_id IN (
+              WITH RECURSIVE chain(bid) AS (
+                SELECT @p0
+                UNION
+                SELECT b.parent_id FROM branches b JOIN chain c ON b.id = c.bid
+                WHERE b.parent_id != @p1)
+              SELECT bid FROM chain))
             OR (p.effective = 1 AND p.id NOT IN (SELECT op_id FROM op_branches)))"
 
   match
@@ -242,7 +260,7 @@ let parentCommitFor (branchId: Uuid) : String =
       (localDb ())
       ("SELECT p.commit_hash AS h FROM package_ops p WHERE " ++ where
        ++ " ORDER BY p.rowid DESC LIMIT 1")
-      (draftParams branchId)
+      (visibleParams branchId)
   with
   | Some row -> Stdlib.Sqlite.textField row "h" |> Stdlib.Option.withDefault ""
   | None -> ""

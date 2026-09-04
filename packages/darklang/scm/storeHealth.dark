@@ -37,6 +37,8 @@ let countedProblem (n: Int64) (refoldable: Bool) (what: String) : List<Problem> 
     []
 
 /// Everything wrong with the store right now. Empty when it's healthy.
+///
+/// main-scoped, on purpose: health is a property of the store's log and main's projections of it.
 let problems () : List<Problem> =
   let orphanTags =
     scalar

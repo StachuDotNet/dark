@@ -326,6 +326,10 @@ let inChunks (values: List<String>) : List<List<String>> =
 /// narrowing; the detector matches on the full (owner, modules, name) key anyway.
 ///
 /// Chunked: a sync bundle can touch thousands of names. See `inChunkSize`.
+///
+/// main-scoped, on purpose: a sync import folds into MAIN, so main's bindings are the local side of that
+/// reconciliation whatever branch the process stands on. A branch merge reads the parent's side through
+/// `PackageOps.parentBindings`, which starts from this and overlays the chain.
 let localBindingsFor (names: List<String>) : List<Binding> =
   match names with
   | [] -> []
@@ -402,6 +406,9 @@ let hasSyncBases (sourceId: String) : Bool =
 /// Record agreement with <param sourceId> for EVERY name this instance currently binds, in one statement.
 /// The bulk-import path: adopting a whole log wholesale is exactly "we now agree on everything I hold", and
 /// decoding every op blob in Dark just to narrow the list would cost far more than it buys.
+///
+/// main-scoped, on purpose: what was adopted folded into main, and the bases say what main and the
+/// source now agree on.
 let recordAllSyncBases (sourceId: String) : Unit =
   let _ =
     Stdlib.Sqlite.mustExec
