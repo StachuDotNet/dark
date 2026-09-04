@@ -20,7 +20,7 @@ module Darklang.SCM.PartialCommit
 // What this deliberately does NOT do is let you commit an item while excluding something it depends on. That is
 // expressible, and it is always wrong, so the closure is automatic and reported rather than optional.
 
-let localDb () : String = Builtin.localDbPath ()
+let localDb () : String = Stdlib.LocalStore.path ()
 
 /// One draft naming, with the row that wrote it.
 type Selected =

@@ -210,12 +210,12 @@ val relayPageSize = 2000L
 /// Where this instance last got to with <param sourceId>. Per-source, because two relays have unrelated
 /// arrival orders and one cursor for both would skip ops from whichever is behind.
 let pullCursor (sourceId: String) : Int64 =
-  match Stdlib.Int64.parse (Builtin.configGet $"sync.cursor.{sourceId}") with
+  match Stdlib.Int64.parse (Stdlib.LocalStore.configGet $"sync.cursor.{sourceId}") with
   | Ok n -> n
   | Error _ -> 0L
 
 let setPullCursor (sourceId: String) (cursor: Int64) : Unit =
-  let _ = Builtin.configSet $"sync.cursor.{sourceId}" (Stdlib.Int64.toString cursor)
+  let _ = Stdlib.LocalStore.configSet $"sync.cursor.{sourceId}" (Stdlib.Int64.toString cursor)
   ()
 
 
@@ -228,10 +228,10 @@ let setPullCursor (sourceId: String) (cursor: Int64) : Unit =
 /// A relay names itself in every bundle (`owner` is its instance id), so a swap is caught on the first
 /// response and the cursor rewinds to 0. Re-pulling is free: content-addressed ops dedup.
 let lastRelayInstance (sourceId: String) : String =
-  Builtin.configGet $"sync.relay-instance.{sourceId}"
+  Stdlib.LocalStore.configGet $"sync.relay-instance.{sourceId}"
 
 let rememberRelayInstance (sourceId: String) (relayInstance: String) : Unit =
-  let _ = Builtin.configSet $"sync.relay-instance.{sourceId}" relayInstance
+  let _ = Stdlib.LocalStore.configSet $"sync.relay-instance.{sourceId}" relayInstance
   ()
 
 /// The max origin_ts in the local log -- the puller's own cursor ("" if the log is empty).
@@ -262,11 +262,11 @@ let headEncode (h: SyncHead) : String = Stdlib.Json.serialize<SyncHead> h
 /// What the relay looked like the last time we pulled from it, so a later pull can tell "nothing moved"
 /// without transferring anything.
 let lastSeenHead (sourceId: String) : String =
-  Builtin.configGet $"sync.head.{sourceId}"
+  Stdlib.LocalStore.configGet $"sync.head.{sourceId}"
 
 let rememberHead (sourceId: String) (head: SyncHead) : Unit =
   let stamp = $"{Stdlib.Int64.toString head.count}@{head.maxTs}"
-  let _ = Builtin.configSet $"sync.head.{sourceId}" stamp
+  let _ = Stdlib.LocalStore.configSet $"sync.head.{sourceId}" stamp
   ()
 
 let headStamp (head: SyncHead) : String =
@@ -376,7 +376,7 @@ let reviewImportTo
   // may be anything, so the builtin parses it and treats a non-id as main. A review queue's parent is
   // main by construction, so this is the one place the id has to be spelled out rather than passed.
   match
-    Builtin.scmImportBranchOps
+    PackageOps.stageOpsOnBranch
       queueId
       reviewBranch
       (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
@@ -413,7 +413,7 @@ let exportPageJsonSince (sinceSeq: Int64) : (String * Int64) =
     sinceSeq
     relayPageSize
     currentWireVersion
-    (Builtin.getBuildHash ())
+    (Darklang.Cli.Installation.Helpers.buildHash ())
     (kernelHash ())
     (PackageOps.identity ())
 
@@ -430,7 +430,7 @@ let wireEncodeAt (cursor: Int64) (ops: List<SyncOp>) : String =
   let bundle =
     SyncBundle
       { formatVersion = currentWireVersion
-        darkBuild = Builtin.getBuildHash ()
+        darkBuild = Darklang.Cli.Installation.Helpers.buildHash ()
         kernelHash = kernelHash ()
         owner = PackageOps.identity ()
         cursor = cursor

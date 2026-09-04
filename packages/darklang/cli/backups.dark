@@ -13,7 +13,7 @@ let printHint (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint
 
 /// Where the upgrade path puts them: a `backups` directory beside the store.
 let backupDir () : String =
-  let db = Builtin.localDbPath ()
+  let db = Stdlib.LocalStore.path ()
 
   match Stdlib.List.dropLast (Stdlib.String.split db "/") with
   | [] -> "backups"
@@ -61,13 +61,13 @@ let executeList (state: AppState) : AppState =
 /// The store is in WAL mode, so recent writes can sit in `data.db-wal` and not in `data.db`. A copy of
 /// the file alone misses them. Fold the WAL into the file first, so the copy is the whole store.
 let checkpoint () : Unit =
-  let _ = Stdlib.Sqlite.exec (Builtin.localDbPath ()) "PRAGMA wal_checkpoint(TRUNCATE)"
+  let _ = Stdlib.Sqlite.exec (Stdlib.LocalStore.path ()) "PRAGMA wal_checkpoint(TRUNCATE)"
   ()
 
 /// `dark backups now`. Named for the moment rather than the day, so an on-demand copy never collides
 /// with the upgrade path's daily one.
 let executeNow (state: AppState) : AppState =
-  let db = Builtin.localDbPath ()
+  let db = Stdlib.LocalStore.path ()
 
   if Stdlib.Bool.not (Stdlib.Cli.File.exists db) then
     printErr "there's no store to back up yet."
@@ -91,7 +91,7 @@ let executeNow (state: AppState) : AppState =
 /// now is copied aside first (`data.db.pre-restore-<stamp>`), so a restore is itself undoable; then the
 /// WAL is folded and truncated, so nothing of the old store replays over the new file on the next open.
 let executeRestore (state: AppState) (name: String) (autoConfirm: Bool) : AppState =
-  let db = Builtin.localDbPath ()
+  let db = Stdlib.LocalStore.path ()
   let source = $"{backupDir ()}/{name}"
 
   if Stdlib.Bool.not (Stdlib.List.``member`` (list ()) name) then

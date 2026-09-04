@@ -53,7 +53,7 @@ let addAuthored
 // through the typed functions below and never hand-roll SQL. There should be no op-log SQL outside here.
 
 
-let localDb () : String = Builtin.localDbPath ()
+let localDb () : String = Stdlib.LocalStore.path ()
 
 // Identity here is a NAME, not an authentication. There is no crypto and no proof: it is a string you
 // reuse across machines so a relay can attribute ops to you, trusted by convention, stored in per-install
@@ -69,9 +69,9 @@ let localDb () : String = Builtin.localDbPath ()
 /// Gap: a store copied to the same PATH on another machine keeps its id. Closing that needs a hostname
 /// builtin that doesn't exist.
 let identity () : String =
-  let here = Builtin.localDbPath ()
-  let stored = Builtin.configGet "sync.identity"
-  let mintedAt = Builtin.configGet "sync.identity.origin"
+  let here = Stdlib.LocalStore.path ()
+  let stored = Stdlib.LocalStore.configGet "sync.identity"
+  let mintedAt = Stdlib.LocalStore.configGet "sync.identity.origin"
 
   // Only an AUTO-MINTED id is ever replaced: a name someone chose deliberately (`dark identity alice`) is
   // theirs and survives being copied.
@@ -81,23 +81,23 @@ let identity () : String =
     stored
   else
     let generated = $"inst-{Stdlib.Uuid.toString (Stdlib.Uuid.generate ())}"
-    Builtin.configSet "sync.identity" generated
-    Builtin.configSet "sync.identity.origin" here
+    Stdlib.LocalStore.configSet "sync.identity" generated
+    Stdlib.LocalStore.configSet "sync.identity.origin" here
     generated
 
 
 /// Set (or change) this instance's sync identity.
 let setIdentity (name: String) : Unit =
-  let _ = Builtin.configSet "sync.identity" name
+  let _ = Stdlib.LocalStore.configSet "sync.identity" name
   ()
 
 
 /// The remembered default relay URL, or "" if none (so `dark sync` needs no url).
-let relay () : String = Builtin.configGet "sync.relay"
+let relay () : String = Stdlib.LocalStore.configGet "sync.relay"
 
 
 let setRelay (url: String) : Unit =
-  let _ = Builtin.configSet "sync.relay" url
+  let _ = Stdlib.LocalStore.configSet "sync.relay" url
   ()
 
 
@@ -1208,6 +1208,25 @@ let archiveBranch (branchId: Uuid) : Stdlib.Result.Result<String, String> =
 let ensureBranch (name: String) (parentId: Uuid) : (Uuid * Bool) =
   resolveBranch name parentId
 
+/// Store <param records> as ops on <param branchId>, registering the branch if this store has never
+/// heard of it. Returns how many op rows were new.
+///
+/// The two callers are the two ways a branch's ops arrive from somebody else: a branch bundle
+/// (`importBranch`) and a review queue (`Wire.reviewImportTo`). Both land ops inert and tagged, for
+/// later merge or approval; neither folds anything.
+///
+/// <param parent> is TEXT rather than a Uuid on purpose. On the bundle path it arrives inside a peer's
+/// JSON and may be anything at all, so the builtin parses it and treats what it cannot read as main.
+/// A review queue's parent is main by construction and spells it out.
+let stageOpsOnBranch
+  (branchId: Uuid)
+  (name: String)
+  (parent: String)
+  (records: List<(String * String * String)>)
+  : Stdlib.Result.Result<Int, String> =
+  Builtin.scmImportBranchOps branchId name parent records
+
+
 // branch transfer (a branch as a portable unit)
 // A branch bundle = its registry (id/name/parent) + its frontier ops. Name-bases are re-derived
 // against the DESTINATION's main on import (the fork point that matters is the receiver's).
@@ -1426,7 +1445,7 @@ let importBranch (json: String) : Stdlib.Result.Result<String, String> =
         $"branch \"{handle}\" is already merged here, and the bundle carries nothing new; left as merged."
     else
 
-    match Builtin.scmImportBranchOps b.branchId importName b.parent records with
+    match stageOpsOnBranch b.branchId importName b.parent records with
     | Ok n ->
       // The sender's commits come with the ops, so a pulled branch shows the author's commits under the
       // author's messages, and the puller's next `commit` takes only the puller's own work. The rows

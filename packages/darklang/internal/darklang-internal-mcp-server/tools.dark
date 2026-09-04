@@ -59,7 +59,7 @@ let typecheck () : ModelContextProtocol.ServerBuilder.Tool =
     name = "typecheck"
     description = "Check Darklang code for syntax errors without executing it"
     handler = fun code ->
-      match Builtin.parserParseDiagnostics code with
+      match LanguageTools.Parser.Parse.diagnostics code with
       | [] -> "Parse check passed: no syntax errors found"
       | diagnostics ->
           let errorList =

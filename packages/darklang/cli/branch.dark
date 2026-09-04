@@ -122,8 +122,8 @@ let executeSwitch (state: AppState) (branchRef: String) : AppState =
       let _ = printHint "  `dark switch <branch>`, and `dark branches` lists them."
       SCM.PackageOps.currentBranch ()
     | ref when (ref == "") || (ref == SCM.Ids.mainBranchName) ->
-      let _ = Builtin.configSet "current_branch" (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
-      let _ = Builtin.configSet "current_branch_name" SCM.Ids.mainBranchName
+      let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
+      let _ = Stdlib.LocalStore.configSet "current_branch_name" SCM.Ids.mainBranchName
       let _ = SCM.PackageOps.selectBranch SCM.Ids.mainBranchId
       let _ = printOk $"switched to {SCM.Ids.mainBranchName}."
       SCM.Ids.mainBranchId
@@ -170,8 +170,8 @@ let executeSwitch (state: AppState) (branchRef: String) : AppState =
         | "" -> Stdlib.Uuid.toString branchId
         | named -> named
 
-      let _ = Builtin.configSet "current_branch" (Stdlib.Uuid.toString branchId)
-      let _ = Builtin.configSet "current_branch_name" handle
+      let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString branchId)
+      let _ = Stdlib.LocalStore.configSet "current_branch_name" handle
       let _ = SCM.PackageOps.selectBranch branchId
 
       let parentNote =
@@ -221,7 +221,7 @@ let executeRename (state: AppState) (branchRef: String) (newName: String) : AppS
         // The config keeps the name beside the id for anyone reading the file, so it goes stale on a
         // rename of the branch you are standing on.
         if SCM.PackageOps.currentBranch () == branchId then
-          Builtin.configSet "current_branch_name" b.name
+          Stdlib.LocalStore.configSet "current_branch_name" b.name
         else
           ()
 
@@ -309,9 +309,9 @@ let executeMerge (state: AppState) (branchRef: String) : AppState =
       let landedOn =
         if SCM.PackageOps.currentBranch () == branchId then
           let (parentId, parentName) = parentOf branchId
-          let _ = Builtin.configSet "current_branch" (Stdlib.Uuid.toString parentId)
+          let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString parentId)
           let _ =
-            Builtin.configSet
+            Stdlib.LocalStore.configSet
               "current_branch_name"
               (if SCM.Ids.isMain parentId then "" else parentName)
           let _ = SCM.PackageOps.selectBranch parentId
@@ -533,9 +533,9 @@ let executeArchive
       // config the next one reads, and say so.
       if SCM.PackageOps.currentBranch () == branchId then
         let (parentId, parentName) = parentOf branchId
-        let _ = Builtin.configSet "current_branch" (Stdlib.Uuid.toString parentId)
+        let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString parentId)
         let _ =
-          Builtin.configSet
+          Stdlib.LocalStore.configSet
             "current_branch_name"
             (if SCM.Ids.isMain parentId then "" else parentName)
         let _ = SCM.PackageOps.selectBranch parentId

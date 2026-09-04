@@ -3,16 +3,22 @@ module LibSerialization.Binary.BaseFormat
 
 open System
 
+/// The op format's version. v1 is THIS format, the one the op-log substrate ships with; nothing
+/// before it is readable and nothing needs to be, because no store predating it survives (the reload
+/// rebuilt every store from source, so "an old blob" has never existed in the wild).
+///
+/// That is why this did not move when the layout changed under it during the rewrite: v1 is the first
+/// version that means anything. From here it moves on every wire-layout change, with a `readV1` kept
+/// beside the new writer, because from here there are stores that cannot be rebuilt from text.
 [<Literal>]
 let CurrentVersion = 1u
 
 /// Binary file header structure (8 bytes)
 type BinaryHeader =
   {
-    // The blob's format version. Passed to version-dispatched readers
-    // (makeDeserializerV) so a new binary can decode an OLD layout by branching on
-    // it -- the keystone of any future format migration. Bump CurrentVersion on any
-    // wire-layout change and add the matching readVN.
+    // The blob's format version. Passed to version-dispatched readers (makeDeserializerV) so a new
+    // binary can decode an OLD layout by branching on it: the keystone of any future format
+    // migration. Bump `CurrentVersion` on the next wire-layout change and add the matching readVN.
     Version : uint32 // 4 bytes - format version
     DataLength : uint32 } // 4 bytes - payload size
 

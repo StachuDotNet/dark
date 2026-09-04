@@ -10,7 +10,7 @@ type Script = {
 // The `scripts_v0` store. Plain CRUD over one table, so the SQL lives here and the
 // command below only formats. The LSP's script filesystem provider calls these too.
 
-let scriptsDb () : String = Builtin.localDbPath ()
+let scriptsDb () : String = Stdlib.LocalStore.path ()
 
 let scriptFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Script> =
   match
@@ -192,7 +192,15 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | ["run", name] ->
     match get name with
     | Some script ->
-      let result = Builtin.cliParseAndExecuteScript state.accountID state.currentBranchId $"script:{name}" script.text [] false false
+      let result =
+        Darklang.Cli.Run.parseAndExecute
+          state.accountID
+          state.currentBranchId
+          $"script:{name}"
+          script.text
+          []
+          false
+          false
       match result with
       | Ok 0 -> state
       | Ok exitCode ->

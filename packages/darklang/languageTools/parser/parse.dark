@@ -15,9 +15,11 @@ let diagnostics (code: String) : List<(Parser.Range * String)> =
 let initialParse
   (code: String)
   : Stdlib.Result.Result<WrittenTypes.ParsedFile, String> =
-  // The range-complete parser. Every consumer of this fn — canvas modules,
-  // CLI scripts, the package-test runner, parsePTExpr — parses through it.
-  match Builtin.parserParseToWrittenTypes code with
+  // The range-complete parser. Every consumer of this fn (canvas modules, CLI scripts, the
+  // package-test runner, parsePTExpr) parses through it. `toWrittenTypes` above is the same
+  // builtin as an Option; this is it as a Result, and going through that one keeps the builtin
+  // named once.
+  match toWrittenTypes code with
   | Some parsedFile -> Stdlib.Result.Result.Ok parsedFile
   | None -> Stdlib.Result.Result.Error "parse failed"
 

@@ -23,7 +23,7 @@ let post (route: String) (fn: HttpRequest -> HttpResponse) : Handler =
   Handler { route = route; method = "POST"; handler = fn }
 
 
-let db () : String = Builtin.localDbPath ()
+let db () : String = Stdlib.LocalStore.path ()
 
 
 /// The owners with packages here, biggest first.
@@ -682,7 +682,7 @@ let highlightLineHtml
 /// The parser is best-effort and recovers from malformed input, so `None` means a hard lex failure. A page
 /// that renders nothing would be worse than one without colour.
 let highlightHtml (source: String) : String =
-  match Builtin.parserParseToWrittenTypes source with
+  match LanguageTools.Parser.Parse.toWrittenTypes source with
   | None -> esc source
   | Some parsed ->
     let tokens = LanguageTools.SemanticTokens.ParsedFile.tokenize parsed

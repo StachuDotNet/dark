@@ -66,7 +66,7 @@ let resolveTypeName
   : Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageLocation> =
   Darklang.LanguageTools.PackageManager.pickLocation
     Darklang.LanguageTools.PackageManager.PickContext.empty
-    (Builtin.pmGetLocationsByType branchId hash)
+    (LanguageTools.PackageManager.Type.locations branchId hash)
 
 
 /// Compare two lists element-wise; returns false if lengths differ.

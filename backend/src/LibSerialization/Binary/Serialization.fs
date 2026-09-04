@@ -68,11 +68,15 @@ let makeSerializer<'T, 'ID>
       finalStream.ToArray())
 
 
-/// Version-dispatched deserializer: the reader receives the blob's format version, so a
-/// type whose on-disk layout has changed can branch (`match version with 1u -> readV1 r |
-/// 2u -> readV2 r`). Keep every historical readVN forever alongside one current writer;
-/// that is what lets a new binary decode an OLD blob (see notes/fresh-arch/SPEC.md section
-/// 10). CurrentVersion is 1, so today every reader ignores the version.
+/// Version-dispatched deserializer: the reader receives the blob's format version, so a type whose
+/// on-disk layout has changed can branch (`match version with 1u -> readV1 r | 2u -> readV2 r`). Keep
+/// every historical readVN alongside one current writer; that is what lets a new binary decode an OLD
+/// blob.
+///
+/// `CurrentVersion` is 1 and every reader ignores the version today. v1 is this substrate's format:
+/// the first one whose blobs outlive the binary that wrote them, since before it every store was
+/// rebuilt from `.dark` on each build. So there is nothing to branch on yet, and there will be from
+/// the next layout change on.
 let makeDeserializerV<'T, 'ID>
   (reader : uint32 -> BinaryReader -> 'T)
   : 'ID -> byte[] -> 'T =

@@ -184,7 +184,7 @@ let initState () : AppState =
       cachedFilterItems = []
       allCommandsCache = commands
       commandOptionsCache = commandOptions commands
-      telemetryEnabled = (Builtin.environmentGet "DARK_TELEMETRY") == Stdlib.Option.Option.Some "1" }
+      telemetryEnabled = (Stdlib.Env.get "DARK_TELEMETRY") == Stdlib.Option.Option.Some "1" }
 
 type Msg =
   | ProcessInput of String

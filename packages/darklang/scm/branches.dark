@@ -8,7 +8,7 @@ module Darklang.SCM.Branches
 // What stays F#: `createBranch` and `recordNameBases`, called mid-transaction from `scmAddOps`, and
 // `storeDeltaOps` / `markMergedEffective`, which are the fold's business.
 
-let localDb () : String = Builtin.localDbPath ()
+let localDb () : String = Stdlib.LocalStore.path ()
 
 /// The branch this process is on. This is an ID: `--branch <name>` and `DARK_BRANCH` are resolved to one in
 /// the CLI entry point before any Dark runs, and the persistent `current_branch` already holds one.

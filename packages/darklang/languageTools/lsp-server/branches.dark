@@ -153,8 +153,8 @@ let handleCreateBranchRequest
     let parentId = activeBranch ()
 
     let (id, _created) = SCM.PackageOps.ensureBranch name parentId
-    let _ = Builtin.configSet "current_branch" (Stdlib.Uuid.toString id)
-    let _ = Builtin.configSet "current_branch_name" name
+    let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString id)
+    let _ = Stdlib.LocalStore.configSet "current_branch_name" name
     let _ = SCM.PackageOps.selectBranch id
 
     respondOk
@@ -177,8 +177,8 @@ let handleSwitchBranchRequest
   : LspState =
   if (branchRef == SCM.Ids.mainBranchName)
      || (branchRef == Stdlib.Uuid.toString SCM.Ids.mainBranchId) then
-    let _ = Builtin.configSet "current_branch" (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
-    let _ = Builtin.configSet "current_branch_name" SCM.Ids.mainBranchName
+    let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
+    let _ = Stdlib.LocalStore.configSet "current_branch_name" SCM.Ids.mainBranchName
     let _ = SCM.PackageOps.selectBranch SCM.Ids.mainBranchId
 
     respondOk
@@ -197,8 +197,8 @@ let handleSwitchBranchRequest
       state
     | Some id ->
       let name = SCM.PackageOps.branchName id
-      let _ = Builtin.configSet "current_branch" (Stdlib.Uuid.toString id)
-      let _ = Builtin.configSet "current_branch_name" name
+      let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString id)
+      let _ = Stdlib.LocalStore.configSet "current_branch_name" name
       let _ = SCM.PackageOps.selectBranch id
 
       respondOk
@@ -231,8 +231,8 @@ let handleDeleteBranchRequest
       // Archiving the branch you're standing on leaves you nowhere; go back to main.
       let landedOn =
         if activeBranch () == branchId then
-          let _ = Builtin.configSet "current_branch" (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
-          let _ = Builtin.configSet "current_branch_name" SCM.Ids.mainBranchName
+          let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
+          let _ = Stdlib.LocalStore.configSet "current_branch_name" SCM.Ids.mainBranchName
           let _ = SCM.PackageOps.selectBranch SCM.Ids.mainBranchId
           let _ = notifyBranchChanged SCM.Ids.mainBranchId SCM.Ids.mainBranchName
           SCM.Ids.mainBranchId
@@ -447,7 +447,7 @@ let handleRenameBranchRequest
         // rename of the branch you are standing on.
         let _ =
           if SCM.PackageOps.currentBranch () == branchId then
-            Builtin.configSet "current_branch_name" b.name
+            Stdlib.LocalStore.configSet "current_branch_name" b.name
           else
             ()
 

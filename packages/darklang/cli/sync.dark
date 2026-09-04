@@ -46,7 +46,7 @@ let relayGetAuthed
 let hasRelaySecret (url: String) : Bool = Builtin.relaySecretIsSet url
 
 let setRelaySecret (url: String) (secret: String) : Unit =
-  let _ = Builtin.configSet $"sync.secret.{url}" secret
+  let _ = Stdlib.LocalStore.configSet $"sync.secret.{url}" secret
   ()
 
 /// Ops whose bytes contain <param secret>, as short hashes. Empty when none do, which is the normal case.
@@ -474,7 +474,7 @@ let executePush (state: AppState) (url: String) : AppState =
         | id when SCM.Ids.isMain id -> ()
         | branchId ->
           // `current_branch_name` is kept beside the id purely for display, which is what this is.
-          let named = Builtin.configGet "current_branch_name"
+          let named = Stdlib.LocalStore.configGet "current_branch_name"
           let shown = if named == "" then Stdlib.Uuid.toString branchId else named
 
           printHint

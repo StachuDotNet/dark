@@ -87,8 +87,9 @@ def main() -> int:
         for table, n in dirty:
             print(f"  {table}: {n} row(s)", file=sys.stderr)
         print(
-            "\nShipping this hands every install somebody's half-finished work, as untagged\n"
-            "effective=0 ops no fold ever applies. Re-export it:\n"
+            "\nShipping this hands every install this machine's own state: an uncommitted op reads as\n"
+            "\"1 item changed\" on someone else's first run, and a branch row names work they do not have.\n"
+            "`dark discard` if the draft is scratch, `dark commit` if it is not, then re-export:\n"
             "  scripts/run-local-exec export-seed rundir/seed.db",
             file=sys.stderr,
         )

@@ -79,6 +79,18 @@ let private allBuiltinNames () : List<string> =
 // Infix-dispatched builtins (`+`, `==`, etc.) are dispatched through
 // operator syntax, so they have no textual `Builtin.X` references.
 
+/// Builtins that are language IDIOM rather than library calls, so "one wrapper, everyone through it"
+/// does not apply to them. Distinct from the allowlist below, which is for builtins that could be
+/// wrapped and deliberately are not.
+let private languageIdioms : Set<string> =
+  Set.ofList
+    [ // `unwrap` reads as syntax and appears in 60-odd places. A generic Dark wrapper typechecks
+      // (`let unwrap (value: 'optOrRes) : 'a` works for both Option and Result) and buys nothing: it
+      // has no shape to type and nothing to document that the name does not say, and it puts itself
+      // at the bottom of every unwrap failure's call stack, one frame below the code that had the
+      // None. That frame is the reason, and it is a reason about error messages, not about layering.
+      "unwrap" ]
+
 /// Builtins called via infix operators rather than `Builtin.X` syntax.
 /// Source: LibExecution/ProgramTypesToRuntimeTypes.fs InfixFnName.toFnName
 /// for binary ops; LibParser/Parser.fs lowers unary `-x` to Builtin.negate.
@@ -102,77 +114,19 @@ let private infixDispatched : Set<string> =
 
 
 /// Builtins intentionally referenced from more than one place in `packages/`.
-/// Everything else routes through a single Dark wrapper; when a builtin picks
-/// up a second caller, wrap it rather than adding it here. An entry needs a
-/// comment saying why a wrapper is the wrong answer for that one.
-let private multiUseAllowlist : Set<string> =
-  Set.ofList
-    [ // The unwrap idiom, in 60-odd places across packages/. A generic Dark wrapper does
-      // work -- `let unwrap (value: 'optOrRes) : 'a` typechecks for both Option and Result
-      // -- but it costs a package call at every unwrap and puts itself at the bottom of
-      // every unwrap failure's call stack, one frame below the code that had the None.
-      "unwrap"
+///
+/// EMPTY, and worth keeping that way. It held 38 entries; every one of them turned out to be a
+/// wrapper that already existed with a caller going around it, a doc comment naming the raw builtin
+/// where it should have named the wrapper, or thirteen copies of the same one-line wrapper (one per
+/// module) where one would do. None was a case where wrapping did not work, which is why the
+/// argument each entry carried ("a wrapper would name the thing it already is") was wrong every time.
+///
+/// So: when a builtin picks up a second caller, wrap it. If you are about to add an entry here, the
+/// thing to check first is whether the wrapper already exists somewhere and the new caller simply
+/// has not been pointed at it.
+let private multiUseAllowlist : Set<string> = Set.empty
 
-      // Local per-instance primitives: the store path and the key-value config beside it.
-      // Reached directly by the commands that are ABOUT this instance (config, doctor,
-      // branch switch), where a wrapper would name the thing it already is.
-      "configGet"
-      "configSet"
-      "localDbPath"
 
-      // This binary's version. Shown by `version` and stamped into the wire bundle, so it
-      // is read from both the CLI and the sync layer.
-      "getBuildHash"
-
-      // Stage ops on a branch. Used by branch-bundle import and by review-import, and both
-      // legitimately land ops on a branch for later merge.
-      "scmImportBranchOps"
-
-      // The environment, read by the few commands that care where they are running.
-      "environmentGet"
-
-      // Parser entry points, called by CLI package creation, syntax highlighting,
-      // CLI-script parsing and the LSP. Each is an entry point rather than a wrapper
-      // someone forgot to route through.
-      "parserParseDiagnostics"
-      "parserParseToWrittenTypes"
-
-      // Package-manager browsing, reached from the CLI, the LSP and agent code.
-      "getAllBuiltinFns"
-      "pmFindFn"
-      "pmFindType"
-      "pmFindValue"
-      "pmGetLocationsByFn"
-      "pmGetLocationsByType"
-      "pmGetLocationsByValue"
-
-      // Script evaluation, reached from the CLI's runners, the workbench REPL and agent
-      // tools.
-      "cliParseAndExecuteScript"
-
-      // Streams, used directly by the CLI, agent and scripts.
-      "streamClose"
-      "streamFilter"
-      "streamMap"
-      "streamToBlob"
-      "streamToList"
-      "streamUnfold"
-
-      // The trace surface, read by the `dark traces` commands and the workbench's traces
-      // view.
-      "tracesClear"
-      "tracesClearBefore"
-      "tracesDelete"
-      "tracesEnabled"
-      "tracesFind"
-      "tracesGetInput"
-      "tracesHotspots"
-      "tracesList"
-      "tracesListByFn"
-      "tracesPruneKeep"
-      "tracesResolveID"
-      "tracesStatsByHandler"
-      "tracesView" ]
 let private findRepoRoot () : string =
   let rec walk (dir : string) : string option =
     if System.String.IsNullOrEmpty dir then
@@ -244,6 +198,8 @@ let builtinAccessInPackageMatter =
       allBuiltinNames ()
       |> Seq.choose (fun name ->
         if Set.contains name multiUseAllowlist then
+          None
+        elif Set.contains name languageIdioms then
           None
         elif Set.contains name infixDispatched then
           None

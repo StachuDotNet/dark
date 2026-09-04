@@ -143,7 +143,7 @@ val opsGetHandler =
 ///
 /// Three COUNTs; it was an F# builtin for no reason the F#/Dark line recognises.
 let packageStats () : Darklang.DarkPackages.Stats =
-  let db = Builtin.localDbPath ()
+  let db = Stdlib.LocalStore.path ()
 
   let countOf (table: String) : Int64 =
     Stdlib.Sqlite.scalarInt db $"SELECT COUNT(DISTINCT hash) AS n FROM {table}" "n"

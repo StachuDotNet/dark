@@ -59,10 +59,10 @@ let createValueInline
     let fullSource = $"val {location.name} = {expression}"
 
     // Parse the value definition with the unified (ranged) parser
-    match Builtin.parserParseToWrittenTypes fullSource with
+    match LanguageTools.Parser.Parse.toWrittenTypes fullSource with
     | Some(SourceFile sourceFile) ->
       // The parser may recover a tree after errors; do not save it.
-      let hasParseError = Errors.reportParseErrors (Builtin.parserParseDiagnostics fullSource)
+      let hasParseError = Errors.reportParseErrors (LanguageTools.Parser.Parse.diagnostics fullSource)
       let found =
         if hasParseError then
           Stdlib.Option.Option.None

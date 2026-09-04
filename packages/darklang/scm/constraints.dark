@@ -12,7 +12,7 @@ module Darklang.SCM.Constraints
 // durable, for the same reason `Resolve` is an op: an ack that lives only locally re-reports forever, and
 // differently on each machine.
 
-let localDb () : String = Builtin.localDbPath ()
+let localDb () : String = Stdlib.LocalStore.path ()
 
 /// What kind of thing a Constraint noticed.
 ///

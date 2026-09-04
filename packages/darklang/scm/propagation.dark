@@ -6,7 +6,7 @@ module Darklang.SCM.Propagation
 // dumb (follow within your own owner) because the point is not to guess well, it is that an explicit row
 // always beats the guess.
 
-let localDb () : String = Builtin.localDbPath ()
+let localDb () : String = Stdlib.LocalStore.path ()
 
 type Policy =
   | Follow

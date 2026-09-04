@@ -228,19 +228,19 @@ let resolvePath
     | Module _ ->
       Stdlib.Result.Result.Error "Cannot show dependencies for a module, only for functions, types, or values"
     | Function fnLoc ->
-      match Builtin.pmFindFn branchId fnLoc with
+      match LanguageTools.PackageManager.Function.find branchId fnLoc with
       | Some hash ->
         let name = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation fnLoc
         Stdlib.Result.Result.Ok((hash, fnLoc, name, LanguageTools.ProgramTypes.ItemKind.Fn))
       | None -> Stdlib.Result.Result.Error $"Function not found: {PrettyPrinter.ProgramTypes.PackageLocation.packageLocation fnLoc}"
     | Type typeLoc ->
-      match Builtin.pmFindType branchId typeLoc with
+      match LanguageTools.PackageManager.Type.find branchId typeLoc with
       | Some hash ->
         let name = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation typeLoc
         Stdlib.Result.Result.Ok((hash, typeLoc, name, LanguageTools.ProgramTypes.ItemKind.Type))
       | None -> Stdlib.Result.Result.Error $"Type not found: {PrettyPrinter.ProgramTypes.PackageLocation.packageLocation typeLoc}"
     | Value valueLoc ->
-      match Builtin.pmFindValue branchId valueLoc with
+      match LanguageTools.PackageManager.Value.find branchId valueLoc with
       | Some hash ->
         let name = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation valueLoc
         Stdlib.Result.Result.Ok((hash, valueLoc, name, LanguageTools.ProgramTypes.ItemKind.Value))

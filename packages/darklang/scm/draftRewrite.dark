@@ -15,7 +15,7 @@ module Darklang.SCM.Draft
 /// and left unapplied on purpose -- and those are invisible to `mainDraftOps` because they cannot be
 /// decoded. The surgical path is safe by construction, since it deletes exactly the ops it was handed.
 
-let db () : String = Builtin.localDbPath ()
+let db () : String = Stdlib.LocalStore.path ()
 
 
 /// One op in main's draft, with what is needed to undo its effect.

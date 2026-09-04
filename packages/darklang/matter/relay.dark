@@ -71,7 +71,7 @@ let headHandlerFn (req: HttpRequest) : HttpResponse =
 /// Write-AUTHORISATION, not authorship: everyone holding the secret can write as anyone, the accepted
 /// trade for a relay shared between people who have met.
 let writeAllowed (req: HttpRequest) : Stdlib.Result.Result<Unit, String> =
-  match Builtin.environmentGet "DARK_MATTER_WRITE_SECRET" with
+  match Stdlib.Env.get "DARK_MATTER_WRITE_SECRET" with
   | None ->
     Stdlib.Result.Result.Error
       "this relay has no write secret configured, so it accepts no writes. Set DARK_MATTER_WRITE_SECRET where it runs."
