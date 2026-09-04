@@ -1850,6 +1850,37 @@ let overlayPairsByHashNotAdjacency =
   }
 
 
+/// A bundle op this build cannot decode is stored raw and inert beside the ones it can, the way main
+/// sync stores such ops, rather than refusing the whole bundle. The next build that reads it applies it.
+let anUndecodableBundleOpIsKeptNotRefused =
+  testTask "a branch bundle with one unreadable op stores it inert and keeps the rest" {
+    let branchId = testBranch "test-branch-raw-op"
+    do! cleanupBranch branchId
+    do! Branches.createBranch branchId "raw-proof" PT.BranchId.Main
+
+    let! ops = opsFor (namedSource "RawOp" 42)
+    let! stored = Branches.storeDeltaOpsStamped branchId (ops |> List.map (fun op -> (op, "2026-01-01T00:00:00.000Z")))
+    let alien = System.Guid.NewGuid()
+    let! storedRaw =
+      Branches.storeDeltaBlobsStamped branchId [ (alien, [| 0xFFuy; 0x39uy; 0x07uy |], "2026-01-01T00:00:01.000Z") ]
+    Expect.equal storedRaw 1L "the raw op is stored"
+
+    let! (rows, tags) =
+      Sql.query
+        "SELECT
+           (SELECT count(*) FROM package_ops WHERE id = @a AND effective = 0) AS r,
+           (SELECT count(*) FROM op_branches WHERE op_id = @a AND branch_id = @b) AS t"
+      |> Sql.parameters [ "a", Sql.string (string alien); "b", Sql.string (string branchId) ]
+      |> Sql.executeRowAsync (fun read -> (read.int64 "r", read.int64 "t"))
+    Expect.equal (rows, tags) (1L, 1L) "inert, and on the branch"
+
+    let! loaded = Branches.loadDeltaOps branchId
+    Expect.equal (int64 (List.length loaded)) stored "the readable ops load; the raw one is skipped, not fatal"
+
+    do! cleanupBranch branchId
+  }
+
+
 /// The receiving side has no obligation to know every branch its peers have. Branch ids travel with
 /// a bundle, so the branches you actually share match; the rest are none of this store's business.
 let branchEventForUnknownBranchIsIgnored =
@@ -2173,4 +2204,5 @@ let tests =
       aBranchNeverTagsWhatMainRuns
       retagMovesTheBasesToo
       refLookupSaysWhyItMissed
-      overlayPairsByHashNotAdjacency ]
+      overlayPairsByHashNotAdjacency
+      anUndecodableBundleOpIsKeptNotRefused ]

@@ -242,6 +242,9 @@ x B pull > /dev/null
 want "B has the work on main now" "^3$" "$(x B eval 'SM.T.finished ()' | tail -1)"
 wantnot "and B no longer lists the branch as live" "finished" "$(x B branches)"
 want "though it is still there when asked for all" "finished" "$(x B branches --all)"
+# The relay still serves the bundle. Pulling it again must not revive a branch B has merged.
+want "a re-pulled bundle does not revive a merged branch" "already merged here" "$(x B branch pull --from "$AID")"
+wantnot "and it stays off the live list" "finished" "$(x B branches)"
 
 echo
 echo "passed: $pass   failed: $fail"

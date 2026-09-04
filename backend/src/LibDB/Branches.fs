@@ -376,6 +376,44 @@ let storeDeltaOpsStamped
   : Task<int64> =
   storeDeltaOpsStampedFrom "op" branchId ops
 
+/// The raw sibling of `storeDeltaOpsStamped`, for a bundle's ops this build cannot DECODE: the
+/// sender's id and blob verbatim, effective = 0, tagged, with the guard the decoded path has. No
+/// Decision folding, since nothing here can read them. Present-but-inert beats absent: a branch
+/// three ops short resolves differently than on the sender, and the next build that can read them
+/// applies them, which is what main sync already does with such ops.
+let storeDeltaBlobsStamped
+  (branchId : PT.BranchId)
+  (records : List<System.Guid * byte[] * string>)
+  : Task<int64> =
+  task {
+    if List.isEmpty records then
+      return 0L
+    else
+      records |> List.iter (fun (_, _, ts) -> OriginTs.observe ts)
+
+      let insertOps =
+        "INSERT OR IGNORE INTO package_ops (id, op_blob, applied, effective, origin_ts)
+         VALUES (@id, @op_blob, 0, 0, @origin_ts)"
+      let opRows =
+        records
+        |> List.map (fun (id, blob, ts) ->
+          [ "id", Sql.uuid id
+            "op_blob", Sql.bytes blob
+            "origin_ts", Sql.string ts ])
+      let insertTags =
+        "INSERT OR IGNORE INTO op_branches (op_id, branch_id, source)
+         SELECT @op_id, @branch_id, 'op'
+         WHERE NOT EXISTS (SELECT 1 FROM package_ops WHERE id = @op_id AND effective = 1)"
+      let tagRows =
+        records
+        |> List.map (fun (id, _, _) ->
+          [ "op_id", Sql.uuid id; "branch_id", Sql.string (string branchId) ])
+
+      let affected =
+        Sql.executeTransactionSync [ (insertOps, opRows); (insertTags, tagRows) ]
+      return affected |> List.truncate (List.length opRows) |> List.sumBy int64
+  }
+
 /// Authored ops, fresh stamps.
 let storeDeltaOps (branchId : PT.BranchId) (ops : List<PT.PackageOp>) : Task<int64> =
   storeDeltaOpsStamped branchId (ops |> List.map (fun op -> (op, OriginTs.next ())))

@@ -1213,6 +1213,26 @@ let importBranch (json: String) : Stdlib.Result.Result<String, String> =
       else
         b.name
 
+    // A bundle for a branch this store has MERGED must not revive it, unless the peer kept working on it
+    // and the bundle carries ops this store lacks. The builtin registers through `createBranch`, whose
+    // upsert clears `merged_at`; that is right for a branch that is alive somewhere and wrong for one
+    // that is finished here and merely re-sent.
+    let knownHere =
+      Stdlib.Sqlite.scalarIntP
+        (localDb ())
+        "SELECT count(*) AS n FROM package_ops WHERE id IN (SELECT value FROM json_each(@p0))"
+        [ Stdlib.Json.serialize<List<String>> (b.ops |> Stdlib.List.map (fun op -> op.id)) ]
+        "n"
+      |> Stdlib.Option.withDefault 0L
+
+    let nothingNew = (Stdlib.Int.fromInt64 knownHere) == (Stdlib.List.length b.ops)
+
+    if (branchIsMerged b.branchId) && nothingNew then
+      let handle = if importName == "" then Stdlib.Uuid.toString b.branchId else importName
+      Stdlib.Result.Result.Ok
+        $"branch \"{handle}\" is already merged here, and the bundle carries nothing new; left as merged."
+    else
+
     match Builtin.scmImportBranchOps b.branchId importName b.parent records with
     | Ok n ->
       // Falls back to the ID when the bundle carries no name. A branch CAN have an empty name -- one first

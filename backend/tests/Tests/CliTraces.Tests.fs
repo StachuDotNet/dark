@@ -2800,16 +2800,20 @@ let private recordConflictOn (branchIdExpr : string) (id : string) : string =
   $"""Darklang.SCM.Conflicts.record ({branchIdExpr}) [Darklang.SCM.Conflicts.Conflict {{ id = "{id}"; owner = "Zz"; modules = "Confl"; name = "f"; itemType = "fn"; kind = "same-name-different-hash"; candidates = []; autoResolvedTo = "bbb"; reason = "test"; status = "pending"; resolvedBy = "" }}]"""
 
 
-/// A branch bundle is a UNIT: one op it cannot decode means none of it is imported, and the branch
-/// is not registered either. Skip-and-log is right for the bulk sync path -- one op of thousands,
-/// and it comes round again -- and wrong here: a branch arriving three ops short resolves
-/// differently than on the machine that sent it, and nothing downstream can tell. Built from a REAL
-/// export plus one undecodable record, since a wholly-corrupt bundle would pass under either rule.
-let private branchBundleImportIsAllOrNothing =
-  cliTest "one undecodable op means the whole branch bundle is refused" (fun state ->
+/// A branch bundle carrying an op this build cannot decode is imported anyway: the readable ops land,
+/// the unreadable one is stored raw and inert for a later build, and a note says so. That is what main
+/// sync does with such ops. Refusing the bundle left the branch absent altogether, which a branch three
+/// ops short still beats. A bundle that is not even well-formed (a blob that is not hex) is a different
+/// thing and is still refused. Built from a REAL export plus one such record.
+let private branchBundleKeepsWhatItCannotRead =
+  cliTest "one undecodable op is stored inert and the rest of the bundle imports" (fun state ->
     task {
       let! _ = runCli state [ "switch"; "bundlebr" ]
-      let! sourceId = runCli state [ "eval"; "Builtin.scmCurrentBranch ()" ]
+      let! shown = runCli state [ "eval"; "Builtin.scmCurrentBranch ()" ]
+      // `eval` prints `<Uuid: ...>`; the id is what the bundle carries.
+      let sourceId =
+        System.Text.RegularExpressions.Regex.Match(shown, @"[0-9a-f-]{36}").Value
+      Expect.equal sourceId.Length 36 $"the branch id was read off eval's output: {shown}"
       let! _ =
         runCli
           state
@@ -2818,7 +2822,7 @@ let private branchBundleImportIsAllOrNothing =
             "(x: Int64) : Int64 = Stdlib.Int64.add x 1L" ]
       let! _ = runCli state [ "switch"; "main" ]
 
-      let exported = $"{LibConfig.Config.runDir}/bundle-allornothing.json"
+      let exported = $"{LibConfig.Config.runDir}/bundle-partial.json"
       let! _ = runCli state [ "branch"; "export"; "bundlebr"; exported ]
       let json = System.IO.File.ReadAllText exported
 
@@ -2827,10 +2831,10 @@ let private branchBundleImportIsAllOrNothing =
       let retargeted =
         json.Replace(sourceId, freshId).Replace("bundlebr", "importedbr")
 
-      // `blobHex` is decoded with FromHexString, so "zz" cannot parse. Appended rather
-      // than substituted, so every real op in the bundle stays valid: the partial case.
+      // Valid hex, not a valid op: the deserializer rejects it. Appended rather than substituted, so
+      // every real op in the bundle stays valid: the partial case.
       let bad =
-        """,{"blobHex":"zz","id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","ts":"2026-01-01T00:00:00.000Z"}"""
+        """,{"blobHex":"ff3907","id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","ts":"2026-01-01T00:00:00.000Z"}"""
       // The serializer emits fields alphabetically, so `parent` follows `ops` and the
       // ops array does not end the document. Splice at the array's own close.
       let marker = """],"parent":"""
@@ -2839,25 +2843,29 @@ let private branchBundleImportIsAllOrNothing =
         cut
         0
         "the exported bundle has an ops array followed by parent"
-      let corrupted = retargeted.Substring(0, cut) + bad + retargeted.Substring(cut)
+      let partial = retargeted.Substring(0, cut) + bad + retargeted.Substring(cut)
 
-      let corruptPath = $"{LibConfig.Config.runDir}/bundle-allornothing-bad.json"
-      System.IO.File.WriteAllText(corruptPath, corrupted)
+      let partialPath = $"{LibConfig.Config.runDir}/bundle-partial-bad.json"
+      System.IO.File.WriteAllText(partialPath, partial)
 
-      let! result = runCli state [ "branch"; "import"; corruptPath ]
-      Expect.stringContains
-        result
-        "Nothing was imported"
-        "the import is refused as a whole"
+      let! result = runCli state [ "branch"; "import"; partialPath ]
+      Expect.stringContains result "imported branch" $"the bundle imports: {result}"
 
-      // Decoding happens BEFORE the branch is registered, so a refused bundle leaves
-      // no trace to clean up or be confused by.
-      let! listed = runCli state [ "branch"; "list" ]
-      Expect.isFalse
-        (listed.Contains "importedbr")
-        "and the branch it would have created does not exist"
+      let! listed = runCli state [ "branches" ]
+      Expect.isTrue (listed.Contains "importedbr") $"and the branch exists: {listed}"
+      let! onIt = runCli state [ "--branch"; "importedbr"; "eval"; "Tests.Bundle.only 1L" ]
+      Expect.stringContains onIt "2" "and its readable work runs"
 
-      let! _ = runCli state [ "branch"; "archive"; "bundlebr" ]
+      // The unreadable op is here, inert, on the branch: kept for a build that can read it.
+      let! kept =
+        Sql.query
+          "SELECT count(*) AS n FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id
+           WHERE p.id = '7c9e6679-7425-40de-944b-e07fc1f90ae7' AND p.effective = 0"
+        |> Sql.executeRowAsync (fun read -> read.int64 "n")
+      Expect.equal kept 1L "the unreadable op is stored inert on the branch"
+
+      let! _ = runCli state [ "branch"; "archive"; "importedbr"; "-y" ]
+      let! _ = runCli state [ "branch"; "archive"; "bundlebr"; "-y" ]
       ()
     })
 
@@ -3366,7 +3374,7 @@ let tests =
        discardOnABranchLeavesMainAlone
        diffAndLogAnswerInJson
        mergeGatesAreDecidedInDark
-       branchBundleImportIsAllOrNothing
+       branchBundleKeepsWhatItCannotRead
        bareDiffShowsTheDraft
        unguardedTransportRefusesNonTargets
        bareSubcommandDoesNotBecomeABranch

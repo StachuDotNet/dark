@@ -10,6 +10,7 @@ module PackageRefs = LibExecution.PackageRefs
 module Dval = LibExecution.Dval
 module VT = LibExecution.ValueType
 module NR = LibExecution.RuntimeTypes.NameResolution
+module BS = LibSerialization.Binary.Serialization
 
 open Builtin.Shortcuts
 
@@ -802,53 +803,62 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             let parent =
               PT.BranchId.Parse parentText |> Option.defaultValue PT.BranchId.Main
             try
-              // Decode every record before storing any: a bundle is a unit. A branch three ops short
-              // resolves differently here than on the sender, and nothing downstream can tell -- the ops
-              // it does have store fine and the count comes back positive. A hard failure is a retry.
+              // An op this build cannot decode is stored RAW and inert rather than refusing the bundle,
+              // the way main sync stores such ops: present, a later build reads it. A branch three ops
+              // short does resolve differently than on the sender, but that holds for main sync too and
+              // was decided the other way there; refusing left the branch absent altogether.
               //
               // The record's `ts` is the op's ORIGIN stamp and must survive; re-stamping locally would make
               // this machine look like the author and resolve LWW by who imported last.
-              let decoded =
+              let parsed =
                 records
-                |> List.map (fun d ->
+                |> List.choose (fun d ->
                   match d with
                   | DTuple(DString id, DString hex, [ DString ts ]) ->
-                    try
-                      Ok(
-                        LibDB.Queries.deserializeOp
-                          (System.Guid.Parse id)
-                          (System.Convert.FromHexString hex),
-                        ts
-                      )
-                    with _ ->
-                      Error id
-                  | _ -> Error "(record was not an (id, blobHex, originTs) triple)")
+                    Some(System.Guid.Parse id, System.Convert.FromHexString hex, ts)
+                  | _ -> None)
 
-              let undecodable =
+              let decoded, raw =
+                parsed
+                |> List.map (fun (id, blob, ts) ->
+                  match BS.PT.PackageOp.tryDeserialize id blob with
+                  | Some op -> Choice1Of2(op, ts)
+                  | None -> Choice2Of2(id, blob, ts))
+                |> List.partition (fun c ->
+                  match c with
+                  | Choice1Of2 _ -> true
+                  | Choice2Of2 _ -> false)
+              let stamped =
                 decoded
-                |> List.choose (fun r ->
-                  match r with
-                  | Error id -> Some id
-                  | Ok _ -> None)
+                |> List.choose (fun c ->
+                  match c with
+                  | Choice1Of2 x -> Some x
+                  | Choice2Of2 _ -> None)
+              let rawRecords =
+                raw
+                |> List.choose (fun c ->
+                  match c with
+                  | Choice2Of2 x -> Some x
+                  | Choice1Of2 _ -> None)
 
-              match undecodable with
-              | bad :: _ ->
+              if not (List.isEmpty rawRecords) then
+                System.Console.Error.WriteLine(
+                  $"note: {List.length rawRecords} op(s) in this bundle were written in a format this build cannot "
+                  + "read, and are stored inert. They are kept, not dropped, so a later build can apply them."
+                )
+
+              if List.length parsed <> List.length records then
                 return
                   resultError (
-                    Dval.string
-                      $"could not decode {List.length undecodable} of {List.length records} ops (first: {bad}). Nothing was imported."
+                    Dval.string "(a record was not an (id, blobHex, originTs) triple). Nothing was imported."
                   )
-              | [] ->
-                let stamped =
-                  decoded
-                  |> List.choose (fun r ->
-                    match r with
-                    | Ok x -> Some x
-                    | Error _ -> None)
+              else
 
                 do! LibDB.Branches.createBranch branchId name parent
                 let ops = stamped |> List.map fst
-                let! n = LibDB.Branches.storeDeltaOpsStamped branchId stamped
+                let! nDecoded = LibDB.Branches.storeDeltaOpsStamped branchId stamped
+                let! nRaw = LibDB.Branches.storeDeltaBlobsStamped branchId rawRecords
+                let n = nDecoded + nRaw
                 // Re-derive bases against THIS instance's parent state (the bundle's bases don't travel).
                 do! LibDB.Branches.recordNameBases branchId parent ops
 
