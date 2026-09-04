@@ -471,6 +471,20 @@ let chainOverlayOps (branchId : PT.BranchId) : Task<List<PT.PackageOp>> =
     return decoded |> List.choose (fun o -> o)
   }
 
+/// Re-arm every DEFERRED branch event (`applied = 2`), so the next fold looks at them again.
+///
+/// A merge event that arrived before the branch it merged parked itself rather than marking itself
+/// done (see `PackageOpPlayback.applyBranchEvent`). Call this when a branch bundle lands: the event
+/// that was waiting for exactly these ops gets its chance, and one that is still waiting parks again.
+///
+/// Un-defers ALL of them rather than only the ones naming this branch, because telling them apart
+/// means decoding every event; there are a handful, and re-folding one that is still waiting costs
+/// two counts and a no-op.
+let undeferBranchEvents () : Task<unit> =
+  Sql.query "UPDATE package_ops SET applied = 0 WHERE applied = 2"
+  |> Sql.executeStatementAsync
+
+
 /// A branch's registered parent id ('main' if none recorded / unknown).
 let parentOf (branchId : PT.BranchId) : Task<PT.BranchId> =
   task {

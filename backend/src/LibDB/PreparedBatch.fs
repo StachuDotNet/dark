@@ -97,6 +97,20 @@ let bytesOption
 
 
 /// Read one optional TEXT scalar. `None` for no row or NULL.
+/// One scalar count, through the same prepared-statement cache.
+let scalarInt (ctx : Ctx) (sql : string) (setParams : SqliteCommand -> unit) : Task<int64> =
+  task {
+    let cmd = command ctx sql
+    cmd.Parameters.Clear()
+    setParams cmd
+    let! value = cmd.ExecuteScalarAsync()
+    return
+      match value with
+      | :? int64 as n -> n
+      | :? int as n -> int64 n
+      | _ -> 0L
+  }
+
 let textOption
   (ctx : Ctx)
   (sql : string)

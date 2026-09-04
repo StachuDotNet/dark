@@ -890,6 +890,85 @@ let private theDarkDetectorSeesTheStoreItIsOn =
       teardown [ a; b ]
   }
 
+/// A merge event that arrives BEFORE the branch it merged still lands when the branch shows up.
+///
+/// `dark pull` (main, which carries the event) and `dark branch pull` (the bundle) are separate
+/// commands, and that order is the natural one. Folded against a store with none of the branch's ops
+/// tagged, the event used to flip nothing, mark itself applied, and never be looked at again: the
+/// merger's main had the work, this store did not, and `dark branches` went on showing the branch as
+/// live. Nothing said so on either side.
+let private aMergeEventWaitsForItsBranch =
+  testTask "a merge event that arrives before its branch applies when the branch lands" {
+    let b = instance "b"
+    let x = PT.BranchId.Id(System.Guid.NewGuid())
+
+    try
+      activate b
+      // The branch is REGISTERED here (a peer told us it exists) but holds no ops yet.
+      do! Branches.createBranch x "early-event" PT.BranchId.Main
+      let op = setName "early" "e1"
+      let opId = Inserts.computeOpHash op
+      let event =
+        PT.PackageOp.BranchEvent(x, PT.Merged [ opId ], "2026-01-02T00:00:00.000Z")
+
+      // Main first: the event folds with nothing to flip.
+      let! _ = receive [ wireOp event "2026-01-02T00:00:00.000Z" ]
+      let! notYet = boundHash "early"
+      Expect.isNone notYet "nothing is live yet: the op it names has not arrived"
+
+      let! stillPending =
+        Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
+        |> Sql.parameters [ "id", Sql.string (string (Inserts.computeOpHash event)) ]
+        |> Sql.executeRowAsync (fun read -> read.int64 "a")
+      // 2 is DEFERRED: folded, did nothing, waiting. Not 0, which would make the fold loop chase it
+      // forever and raise "did not settle".
+      Expect.equal stillPending 2L "and the event is deferred, waiting for its branch"
+
+      // Now the bundle. Storing it, re-arming and folding is what `scmImportBranchOps` does.
+      let! _ = Branches.storeDeltaOps x [ op ]
+      do! Branches.undeferBranchEvents ()
+      let! _ = Seed.applyUnappliedOps ()
+
+      let! landed = boundHash "early"
+      let (PT.Hash e1) = hashOf "e1"
+      Expect.equal landed (Some e1) "the merge lands the moment its branch's ops do"
+
+      let! nowApplied =
+        Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
+        |> Sql.parameters [ "id", Sql.string (string (Inserts.computeOpHash event)) ]
+        |> Sql.executeRowAsync (fun read -> read.int64 "a")
+      Expect.equal nowApplied 1L "and the event is applied once it has done its work"
+    finally
+      teardown [ b ]
+  }
+
+/// The other half of the rule: an event for a branch this store has never heard of folds to nothing
+/// and STAYS applied. Waiting for ops that will never come would re-decode it at every startup.
+let private anEventForAnUnknownBranchDoesNotWait =
+  testTask "a merge event for a branch this store never had is applied and done" {
+    let b = instance "b"
+
+    try
+      activate b
+      let stranger = PT.BranchId.Id(System.Guid.NewGuid())
+      let op = setName "not-ours" "n1"
+      let event =
+        PT.PackageOp.BranchEvent(
+          stranger,
+          PT.Merged [ Inserts.computeOpHash op ],
+          "2026-01-02T00:00:00.000Z"
+        )
+      let! _ = receive [ wireOp event "2026-01-02T00:00:00.000Z" ]
+
+      let! applied =
+        Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
+        |> Sql.parameters [ "id", Sql.string (string (Inserts.computeOpHash event)) ]
+        |> Sql.executeRowAsync (fun read -> read.int64 "a")
+      Expect.equal applied 1L "a colleague's private branch is none of this store's business"
+    finally
+      teardown [ b ]
+  }
+
 let tests =
   testSequenced
   <| testList
@@ -911,4 +990,6 @@ let tests =
       unbindConvergesWhateverOrderOpsArrive
       aMergedUnbindTakesTheNameOffMain
       hostedOpsAreNotThisStoresDraft
-      theDarkDetectorSeesTheStoreItIsOn ]
+      theDarkDetectorSeesTheStoreItIsOn
+      aMergeEventWaitsForItsBranch
+      anEventForAnUnknownBranchDoesNotWait ]

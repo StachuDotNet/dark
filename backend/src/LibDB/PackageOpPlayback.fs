@@ -725,7 +725,38 @@ let private applyBranchEvent
         | None -> true
         | Some p -> PT.BranchId.Parse p = Some PT.BranchId.Main || p = ""
 
-      if parentIsMain then
+      // Does this store hold the branch at all yet? `dark pull` and `dark branch pull` are separate
+      // commands and pulling main first is the natural order, so a merge event routinely arrives
+      // BEFORE the bundle whose ops it names. Folded then, it flips nothing, marks itself applied,
+      // and nothing re-examines it when the ops do land: the merger's main has the work, this one
+      // does not, and the branch goes on reading as live. So an event whose branch has no ops here
+      // stays unapplied and the next fold takes it -- `scmImportBranchOps` runs one after a bundle,
+      // and `growIfNeeded` does at every startup.
+      //
+      // Only when the branch EXISTS here. An event for a colleague's private branch names ops this
+      // store will never see, and waiting for those forever would re-decode it on every boot; the
+      // model says such an event folds to nothing, and that is still right.
+      let! tagged =
+        scalarInt
+          ctx
+          "SELECT count(*) FROM op_branches WHERE branch_id = $b"
+          (fun cmd -> cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>)
+      let! branchKnownHere =
+        scalarInt
+          ctx
+          "SELECT count(*) FROM branches WHERE id = $b"
+          (fun cmd -> cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>)
+
+      if tagged = 0L && branchKnownHere > 0L then
+        // `applied = 2`, DEFERRED: folded, did nothing, and waiting for ops it names. A third state
+        // rather than back to 0, because `readPending` selects `applied = 0` and `applyUnappliedOps`
+        // loops until nothing is pending: an op that keeps re-appearing never settles and the loop
+        // raises. 2 is skipped by that select, and `Branches.undeferBranchEvents` puts it back to 0
+        // when a bundle lands.
+        do!
+          exec ctx "UPDATE package_ops SET applied = 2 WHERE id = $e" (fun cmd ->
+            cmd.Parameters.AddWithValue("$e", string eventOpId) |> ignore<SqliteParameter>)
+      elif parentIsMain then
         do!
           exec
             ctx
@@ -989,6 +1020,9 @@ let applyOpsFrom (source : string) (ops : List<PT.PackageOp>) : Task<unit> =
   }
 
 let applyOps (ops : List<PT.PackageOp>) : Task<unit> = applyOpsFrom "op" ops
+
+
+
 
 /// Record the callees of these `Add*` ops' items without folding anything else. For an op the log
 /// already holds: the content is there, but this parse may have reached its callees through names the
