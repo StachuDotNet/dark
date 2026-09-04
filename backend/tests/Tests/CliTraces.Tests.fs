@@ -124,6 +124,28 @@ let private withState (f : RT.ExecutionState -> Task<unit>) : Task<unit> =
 let private cliTest (name : string) (body : RT.ExecutionState -> Task<unit>) : Test =
   testTask name { do! withState body }
 
+/// For a test that must start on main and might not end there. The precondition is ASSERTED, not
+/// arranged: a test that silently switched itself back to main would hide whichever earlier test left
+/// the store on a branch, and that one is the bug. The switch back runs whether the body passed or not,
+/// so one polluter is named once rather than failing everything after it.
+let private cliTestOnMain (name : string) (body : RT.ExecutionState -> Task<unit>) : Test =
+  cliTest name (fun state ->
+    task {
+      let! where = runCli state [ "branch" ]
+      Expect.stringContains where "on main" $"{name}: an earlier test left the store on a branch"
+      // F#'s task `try/finally` takes only a synchronous finally, hence the captured exception.
+      let! outcome =
+        task {
+          try
+            do! body state
+            return None
+          with e ->
+            return Some(System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture e)
+        }
+      let! _ = runCli state [ "switch"; "main" ]
+      outcome |> Option.iter (fun e -> e.Throw())
+    })
+
 /// Adds a `traces delete --all --yes` step before the body, so tests that examine
 /// the trace store start from a known-empty state.
 let private cliTestWithFreshTraces
@@ -996,6 +1018,23 @@ let private soundsLikeMisuse (output : string) : bool =
     "unknown command" ]
   |> List.exists (fun phrase -> o.Contains phrase)
 
+/// A runtime error a command caught and PRINTED, so the run itself looked fine. Returns the offending
+/// line. `runCliCatching` already reports an error that escaped; this is for the one that did not: the
+/// Dark-side path where a command prints `ExecutionError.toString` and carries on. The four phrases are
+/// the ones AGENTS.md says to grep a sweep's output for; `Internal error:` is a host exception a command
+/// swallowed. Not `Call-stack:`: `eval` prints that on a user error, which is a refusal, not a crash.
+let private looksLikeARuntimeFailure (output : string) : Option<string> =
+  let patterns =
+    [ "Encountered a Runtime Error"
+      "No matching case found"
+      "couldn't be found"
+      "Internal error:"
+      @"expects .* but got" ]
+  output.Split('\n')
+  |> Array.tryFind (fun line ->
+    patterns
+    |> List.exists (fun p -> System.Text.RegularExpressions.Regex.IsMatch(line, p)))
+
 // The workbench renders. `initialState` builds a state without seizing the terminal, and this goes
 // through `dark eval` rather than a `.dark` testfile because building one reads the package tree,
 // and the execution testfiles are for pure functions (see `scm/propagation-policy.dark`).
@@ -1128,7 +1167,7 @@ let private contextRowKeepsTheDraftWhenNarrow =
 /// `Option<Branch>`, so reading `.id` off it throws. The render tests cannot reach any of this: it
 /// is behind a prompt, not a render.
 let private workbenchBranchActionsWork =
-  cliTest
+  cliTestOnMain
     "the workbench can start, switch and merge a branch without throwing"
     (fun state ->
       task {
@@ -1349,9 +1388,13 @@ let private everyCommandAnswersHelp =
           | Ok output ->
             if output = "" then
               failures <- (cmd, "printed nothing") :: failures
-            elif soundsLikeMisuse output then
-              let first = output.Split('\n')[0]
-              failures <- (cmd, first) :: failures
+            else
+              match looksLikeARuntimeFailure output with
+              | Some line -> failures <- (cmd, $"printed a runtime error: {line}") :: failures
+              | None ->
+                if soundsLikeMisuse output then
+                  let first = output.Split('\n')[0]
+                  failures <- (cmd, first) :: failures
 
       // Reported together: when this breaks it usually breaks for a whole group of
       // commands at once, and finding that out one re-run at a time is the slow way.
@@ -1433,6 +1476,10 @@ let private everyCommandAnswersWhenBare =
             | Ok output ->
               if output.Trim() = "" then
                 failures <- (cmd, "said nothing") :: failures
+              else
+                match looksLikeARuntimeFailure output with
+                | Some line -> failures <- (cmd, $"printed a runtime error: {line}") :: failures
+                | None -> ()
 
         if not (List.isEmpty failures) then
           let detail =
@@ -1446,7 +1493,7 @@ let private everyCommandAnswersWhenBare =
 
 
 let private everyCommandSurvivesABogusArgument =
-  cliTest
+  cliTestOnMain
     "no registered command crashes on an argument that means nothing"
     (fun state ->
       task {
@@ -1465,6 +1512,17 @@ let private everyCommandSurvivesABogusArgument =
             | Ok output ->
               if output.Trim() = "" then
                 failures <- (cmd, "said nothing") :: failures
+              else
+                match looksLikeARuntimeFailure output with
+                | Some line -> failures <- (cmd, $"printed a runtime error: {line}") :: failures
+                | None -> ()
+
+            // `branch <junk>` and `switch <junk>` START that branch and move the store onto it, so every
+            // command after them in this loop would be swept on a junk branch, as the store was found to be
+            // after the last run. Back to main, and say so if it is not.
+            if cmd = "branch" || cmd = "switch" then
+              let! _ = runCli state [ "switch"; "main" ]
+              ()
 
         if not (List.isEmpty failures) then
           let detail =
@@ -1491,7 +1549,7 @@ let private everyCommandSurvivesABogusArgument =
 /// this file quietly asserting about a branch. Nothing here throws before the switch back: the sweep
 /// collects failures rather than raising, and the report comes after.
 let private everyCommandSurvivesABranch =
-  cliTest
+  cliTestOnMain
     "no registered command crashes or goes silent while on a branch"
     (fun state ->
       task {
@@ -1516,6 +1574,11 @@ let private everyCommandSurvivesABranch =
                 | Ok output ->
                   if output.Trim() = "" then
                     failures <- ($"{cmd} {label}", "said nothing") :: failures
+                  else
+                    match looksLikeARuntimeFailure output with
+                    | Some line ->
+                      failures <- ($"{cmd} {label}", $"printed a runtime error: {line}") :: failures
+                    | None -> ()
           }
 
         do! sweep "" []
@@ -1545,7 +1608,7 @@ let private everyCommandSurvivesABranch =
 /// Asserted by RUNNING the caller rather than by reading the draft: what a repoint is for is that the
 /// thing above you gets the new answer.
 let private editingOnABranchRepointsItsCallers =
-  cliTest "editing an item on a branch repoints what calls it" (fun state ->
+  cliTestOnMain "editing an item on a branch repoints what calls it" (fun state ->
     task {
       let! switched = runCli state [ "switch"; "cli-propagate-branch" ]
       Expect.stringContains
@@ -1581,7 +1644,7 @@ let private editingOnABranchRepointsItsCallers =
 /// column, `pin` on a branch found MAIN's staged repoint and dropped it: a pin issued on a branch reverted
 /// main, and `status` on a branch reported main's followers as the branch's.
 let private aBranchKnowsWhatFollowed =
-  cliTest "status and pin on a branch act on the branch's own followers, not main's" (fun state ->
+  cliTestOnMain "status and pin on a branch act on the branch's own followers, not main's" (fun state ->
     task {
       // On main: a base, a caller, committed. Then an edit to the base on MAIN, uncommitted, so main's
       // draft holds a staged repoint of its own for the pin on the branch to leave alone.
@@ -1645,7 +1708,7 @@ let private aBranchKnowsWhatFollowed =
 /// `dark switch <a peer's uuid>` used to start a branch NAMED after the uuid and move you onto it, which
 /// read as success. A full id this store does not hold is refused; only a name nobody has starts one.
 let private switchRefusesAForeignId =
-  cliTest "switch refuses a uuid this store does not have, rather than starting a branch named after it" (fun state ->
+  cliTestOnMain "switch refuses a uuid this store does not have, rather than starting a branch named after it" (fun state ->
     task {
       let! _ = runCli state [ "switch"; "main" ]
       let foreign = string (System.Guid.NewGuid())
@@ -1665,7 +1728,7 @@ let private switchRefusesAForeignId =
 /// to a branch, so a query that forgot the tag would take both, and the way you would find out is that
 /// work you never mentioned had gone.
 let private discardOnABranchLeavesMainsDraftAlone =
-  cliTest
+  cliTestOnMain
     "discard on a branch drops the branch's work, not main's draft"
     (fun state ->
       task {
@@ -1712,7 +1775,7 @@ let private discardOnABranchLeavesMainsDraftAlone =
 /// the current branch, and if that guard went, committing anything anywhere would quietly rewrite work
 /// sitting on main.
 let private committingOnABranchLeavesMainsDraftUncollapsed =
-  cliTest "committing on a branch does not collapse main's draft" (fun state ->
+  cliTestOnMain "committing on a branch does not collapse main's draft" (fun state ->
     task {
       // Two versions of one name: four draft ops that a collapse would reduce.
       let! _ = runCli state [ "fn"; "Tests.CollapseIso.item"; "() : Int64 = 1L" ]
@@ -1808,7 +1871,7 @@ let private nonexistentTargets : List<string * List<string>> =
     "ack", [ "ack"; "zzznope" ] ]
 
 let private missingTargetsAreNamed =
-  cliTest "a command that can't find its target says which target" (fun state ->
+  cliTestOnMain "a command that can't find its target says which target" (fun state ->
     task {
       // On main, deliberately: `ack` refuses on a branch (an ack is a statement about
       // the store), and the process is a shared global another test may have moved.
@@ -2076,7 +2139,7 @@ let private resetWorkedExample () : Task<unit> =
   }
 
 let private theWorkedExampleWorks =
-  cliTest "the worked example in `docs scm` does what it says" (fun state ->
+  cliTestOnMain "the worked example in `docs scm` does what it says" (fun state ->
     task {
       do! resetWorkedExample ()
       let! _ = runCli state [ "switch"; "main" ]
@@ -2193,7 +2256,7 @@ let private deprecationTakesEffectInTheSameProcess =
 /// named item's uncommitted dependency comes WITH it (a commit referencing uncommitted content
 /// would be internally inconsistent), and a name the draft does not hold is refused.
 let private partialCommitTakesOnlyWhatYouNamed =
-  cliTest
+  cliTestOnMain
     "commit --include= takes the named items plus their dependencies"
     (fun state ->
       task {
@@ -2250,7 +2313,7 @@ let private partialCommitTakesOnlyWhatYouNamed =
 /// A branch verb takes the name you can see, not the id it resolves to: every branch has a uuid
 /// behind it, and a verb handed the name printed by `dark branches` must not treat it as an id.
 let private branchVerbsTakeTheNameYouSee =
-  cliTest "every branch verb accepts the name the listing prints" (fun state ->
+  cliTestOnMain "every branch verb accepts the name the listing prints" (fun state ->
     task {
       let! _ = runCli state [ "switch"; "verbname" ]
       let! _ =
@@ -2284,7 +2347,7 @@ let private branchVerbsTakeTheNameYouSee =
 /// A review queue is a branch you name, so the verbs have to resolve it like any other: `review
 /// import` stages under a minted id, and the typed queue name is not that id.
 let private reviewQueueRoundTrips =
-  cliTest
+  cliTestOnMain
     "a review queue can be inspected and approved by the name you gave it"
     (fun state ->
       task {
@@ -2316,7 +2379,7 @@ let private reviewQueueRoundTrips =
 
 
 let private otherBranchAnswersStayCurrent =
-  cliTest "asking about a branch you're not on gives a current answer" (fun state ->
+  cliTestOnMain "asking about a branch you're not on gives a current answer" (fun state ->
     task {
       let! _ = runCli state [ "switch"; "cachebr" ]
       let! _ =
@@ -2597,7 +2660,7 @@ let private aNameHoldsOneItemWhateverItsKind =
 /// whose recursive walk up the parent chain is the overlay logic everything else trusts, and nothing
 /// covered them.
 let private branchChainSeesItsAncestry =
-  cliTest
+  cliTestOnMain
     "a branch off a branch sees its parent's work, and main sees neither"
     (fun state ->
       task {
@@ -2639,7 +2702,7 @@ let private branchChainSeesItsAncestry =
 /// off a branch omitted the intermediate branch; `undo` on a branch stepped onto a version main authored
 /// AFTER the fork; `deps` on a branch listed main's version of a caller the branch had re-authored.
 let private branchReadsAnswerAboutTheBranch =
-  cliTest "ops, undo and deps answer about the branch you stand on, chain included" (fun state ->
+  cliTestOnMain "ops, undo and deps answer about the branch you stand on, chain included" (fun state ->
     task {
       // A name main has, at v1, then a branch forks it and edits it.
       let! _ = runCli state [ "switch"; "main" ]
@@ -2690,7 +2753,7 @@ let private branchReadsAnswerAboutTheBranch =
 
 /// `dark merge` and `dark rebase` with no argument mean the branch you are standing on.
 let private bareMergeAndRebaseMeanThisBranch =
-  cliTest "merge and rebase with no argument mean the branch you're on" (fun state ->
+  cliTestOnMain "merge and rebase with no argument mean the branch you're on" (fun state ->
     task {
       // On main there is nothing a bare form could mean, so it still refuses.
       let! onMain = runCli state [ "rebase" ]
@@ -2740,7 +2803,7 @@ let private bareMergeAndRebaseMeanThisBranch =
 /// It is the question you ask BEFORE changing something, so the wrong answer is the dangerous direction:
 /// it says nothing on your branch depends on this.
 let private dependentsSeeTheBranchYouAreOn =
-  cliTest
+  cliTestOnMain
     "who calls this counts the callers on your branch, not just main's"
     (fun state ->
       task {
@@ -2806,7 +2869,7 @@ let private recordConflictOn (branchIdExpr : string) (id : string) : string =
 /// ops short still beats. A bundle that is not even well-formed (a blob that is not hex) is a different
 /// thing and is still refused. Built from a REAL export plus one such record.
 let private branchBundleKeepsWhatItCannotRead =
-  cliTest "one undecodable op is stored inert and the rest of the bundle imports" (fun state ->
+  cliTestOnMain "one undecodable op is stored inert and the rest of the bundle imports" (fun state ->
     task {
       let! _ = runCli state [ "switch"; "bundlebr" ]
       let! shown = runCli state [ "eval"; "Builtin.scmCurrentBranch ()" ]
@@ -2877,7 +2940,7 @@ let private branchBundleKeepsWhatItCannotRead =
 /// the same in the check as in the message, which says to merge OR ARCHIVE the children --
 /// counting archived children as active makes that advice a dead end.
 let private mergeGatesAreDecidedInDark =
-  cliTest
+  cliTestOnMain
     "merge refuses an empty branch, and one with children until they are archived"
     (fun state ->
       task {
@@ -2921,7 +2984,7 @@ let private mergeGatesAreDecidedInDark =
 /// to add. The flag is filtered out before the branch reference is read, so it can go on either
 /// side: otherwise `dark diff --json foo` looks for a branch literally named "--json".
 let private diffAndLogAnswerInJson =
-  cliTest "diff and log answer in JSON, with the flag on either side" (fun state ->
+  cliTestOnMain "diff and log answer in JSON, with the flag on either side" (fun state ->
     task {
       let! _ = runCli state [ "switch"; "jsonsurface" ]
       let! _ =
@@ -2963,7 +3026,7 @@ let private diffAndLogAnswerInJson =
 /// before its callee is ordinary, and `WipRefresh` re-resolves once the callee lands -- so the
 /// forward reference has to commit cleanly.
 let private commitRefusesUnresolvedReferences =
-  cliTest
+  cliTestOnMain
     "commit refuses a reference that never resolves, but not a forward one"
     (fun state ->
       task {
@@ -3021,7 +3084,7 @@ let private commitRefusesUnresolvedReferences =
 /// resolve: a branch discard does not re-fold, so deleted main ops would leave `locations` rows
 /// outliving them and main's functions still answering. Resolution cannot see that; the op count can.
 let private discardOnABranchLeavesMainAlone =
-  cliTest
+  cliTestOnMain
     "discard on a branch drops that branch's draft and leaves main's alone"
     (fun state ->
       task {
@@ -3095,7 +3158,7 @@ let private discardOnABranchLeavesMainAlone =
 /// The commit ROW was written before the ops were stamped, so a failed branch commit also left a commit
 /// naming nothing behind.
 let private committingOnABranchCommitsItsOps =
-  cliTest "committing on a branch commits that branch's ops" (fun state ->
+  cliTestOnMain "committing on a branch commits that branch's ops" (fun state ->
     task {
       let! _ = runCli state [ "switch"; "commitbr" ]
       let! _ = runCli state [ "fn"; "Tests.CommitBr.item"; "() : Int64 = 7L" ]
@@ -3129,7 +3192,7 @@ let private committingOnABranchCommitsItsOps =
 
 
 let private conflictsBelongToTheBranchTheyHappenedOn =
-  cliTest "a conflict is answered on the branch it happened on" (fun state ->
+  cliTestOnMain "a conflict is answered on the branch it happened on" (fun state ->
     task {
       let! _ = runCli state [ "switch"; "confbr" ]
       let! branchId = runCli state [ "eval"; "Builtin.scmCurrentBranch ()" ]
@@ -3193,7 +3256,7 @@ let private conflictsBelongToTheBranchTheyHappenedOn =
 
 
 let private branchItemsArePolicyTargets =
-  cliTest "a policy verb can name an item that only exists on a branch" (fun state ->
+  cliTestOnMain "a policy verb can name an item that only exists on a branch" (fun state ->
     task {
       let! _ = runCli state [ "switch"; "polbr" ]
       let! _ =
@@ -3259,7 +3322,7 @@ let private slowCliTests =
 /// accident; `dark identity --help` renamed the instance to "--help", and the name goes out on the next
 /// push, so everyone else sees it before you do. Both found by sweeping the real CLI on a second machine.
 let private aDashLedArgumentIsNeverAName =
-  cliTest
+  cliTestOnMain
     "a dash-led argument is refused as a name rather than taken as one"
     (fun state ->
       task {
@@ -3302,7 +3365,7 @@ let private aDashLedArgumentIsNeverAName =
 /// asked to see, and nothing in the scoring can know which name was typed, so the asked-for location is
 /// carried into the printer and wins outright when it is one of the candidates.
 let private viewHeadsWithTheNameYouAskedFor =
-  cliTest "view heads a shared body with the name that was asked for" (fun state ->
+  cliTestOnMain "view heads a shared body with the name that was asked for" (fun state ->
     task {
       let! _ = runCli state [ "switch"; "main" ]
       let! _ = runCli state [ "fn"; "Tests.SharedBody.alpha"; "() : Int64 = 4242L" ]
