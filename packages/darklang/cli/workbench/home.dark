@@ -203,8 +203,9 @@ let field (label: String) (value: String) : String =
 let commitChangeLines (c: SCM.Commits.Commit) (cap: Int) : List<String> =
   // Capped: the init commit holds tens of thousands of ops, and rendering a twelve-line
   // summary through the uncapped path took over a second. `namedCount` below is the total.
-  let (ops, namedCount) =
-    SCM.PackageOps.getCommitNamedOps (LanguageTools.ProgramTypes.hashToString c.hash) cap
+  // `c.hash` is already a String; converting it was a runtime type error, and this is the first thing
+  // the home screen renders on a store with commits and nothing needing you, so the workbench died on open.
+  let (ops, namedCount) = SCM.PackageOps.getCommitNamedOps c.hash cap
   let named =
     ops
     |> Stdlib.List.filterMap (fun op ->

@@ -53,10 +53,13 @@ let opsInCommitLimited
 ///
 /// Capped in F#: the init commit holds tens of thousands of ops, and turning them all into Dark values
 /// to render a twelve-line summary took over a second.
+///
+/// `Int` both ways, as the builtin declares: this wrapper said `Int64` and no call had ever reached it
+/// without a runtime type error, since the one caller is the workbench's commit detail.
 let getCommitNamedOps
   (commitHash: String)
-  (limit: Int64)
-  : (List<LanguageTools.ProgramTypes.PackageOp> * Int64) =
+  (limit: Int)
+  : (List<LanguageTools.ProgramTypes.PackageOp> * Int) =
   Builtin.scmGetCommitNamedOps commitHash limit
 
 

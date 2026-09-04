@@ -43,4 +43,15 @@ export DARK_CONFIG_RUNDIR="$PWD/$WORK"
 "$PWD/$CLI" switch main >/dev/null 2>&1
 "$PWD/$CLI" fn /WbScm.T.draft '() : Int64 = 9L' >/dev/null 2>&1
 
-exec expect "$PWD/scripts/testing/_workbench-scm.expect" "$PWD/$CLI" "$PWD/$WORK"
+expect "$PWD/scripts/testing/_workbench-scm.expect" "$PWD/$CLI" "$PWD/$WORK" || exit 1
+
+# And a QUIET store: commits, no conflict, no draft. Home then selects a commit on open and renders its
+# detail, which the fixture above never reaches because its conflict is selected first.
+QUIET="$WORK-quiet"
+rm -rf "$QUIET"; mkdir -p "$QUIET"
+cp rundir/data.db "$QUIET/data.db"
+sqlite3 "$QUIET/data.db" 'DELETE FROM config_v0;' 2>/dev/null || true
+export DARK_CONFIG_RUNDIR="$PWD/$QUIET"
+"$PWD/$CLI" fn /WbQuiet.T.only '() : Int64 = 1L' >/dev/null 2>&1
+"$PWD/$CLI" commit "workbench quiet fixture" -y >/dev/null 2>&1
+exec expect "$PWD/scripts/testing/_workbench-quiet.expect" "$PWD/$CLI" "$PWD/$QUIET"
