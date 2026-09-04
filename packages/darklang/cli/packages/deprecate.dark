@@ -326,6 +326,20 @@ let executeUndeprecate (state: Cli.AppState) (args: List<String>) : Cli.AppState
     state
 
 
+/// `undeprecate`'s own help. It was registered with `deprecate`'s, so `dark undeprecate --help` described
+/// the other command's flags.
+let undeprecateHelp (_state: Cli.AppState) : String =
+  [ "Put a deprecated function, type, or value back on the shelf."
+    ""
+    "Usage: undeprecate <name>"
+    ""
+    "  The name of a deprecated item; `dark ls --include-deprecated` finds them. Authors an"
+    "  Undeprecate op in the current draft, so `dark commit` ships it and `dark undo` reverses it."
+    ""
+    "Related:"
+    "  deprecate -- mark an item superseded, harmful or obsolete" ]
+  |> Stdlib.String.join "\n"
+
 let help (_state: Cli.AppState) : String =
   [ "Mark a function, type, or value as deprecated."
     ""

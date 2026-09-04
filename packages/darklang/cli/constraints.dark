@@ -290,7 +290,17 @@ let resolutionFor
 
 /// RESOLVE: apply a named resolution. `repoint` runs the same cascade an ordinary edit runs, so everything
 /// above the item moves too.
+///
+/// Gated on main like `ack`, for the same reason: detection runs over MAIN's bindings, so a resolution
+/// authored from a branch would repoint main's caller onto the branch's overlay, where main cannot see it,
+/// while the finding it answers stays open on main.
 let executeResolve (state: AppState) (args: List<String>) : AppState =
+  if onBranch () then
+    printErr "constraints are a property of the store, not of a branch -- switch to main to resolve."
+    printHint "  detection runs over main's bindings, so there's nothing branch-local here to answer."
+    state
+  else
+
   let (targets, missing) = selectTargets args
 
   missing
@@ -374,6 +384,18 @@ let executeAckCmd (state: AppState) (args: List<String>) : AppState =
     state
   | _ -> executeAck state args
 
+/// The arguments the listing understands. Anything else is refused rather than listed past: `dark
+/// constraints zzznope` answered with the whole list as though nothing had been asked.
+let listingUnderstands (args: List<String>) : Bool =
+  let understands (rest: List<String>) : Bool =
+    match rest with
+    | [] -> true
+    | "--json" :: more -> understands more
+    | "--kind" :: _ :: more -> understands more
+    | _ -> false
+
+  understands args
+
 let execute (state: AppState) (args: List<String>) : AppState =
   match args with
   | [ "help" ] ->
@@ -382,7 +404,11 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | "resolve" :: rest -> executeResolve state rest
   | "ack" :: rest -> executeAck state rest
   | _ ->
-    if Stdlib.List.member args "--json" then
+    if Stdlib.Bool.not (listingUnderstands args) then
+      printErr $"`dark constraints` doesn't take \"{Stdlib.String.join args " "}\"."
+      printHint "  dark constraints [--kind <kind>] [--json]   list; `resolve` and `ack` take ids"
+      state
+    else if Stdlib.List.member args "--json" then
       executeJson state args
     else
       executeList state args

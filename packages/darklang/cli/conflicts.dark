@@ -394,19 +394,6 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
 
       state
 
-  | [ "ack", id ] when Stdlib.Bool.not (SCM.Ids.isMain (SCM.PackageOps.currentBranch ())) ->
-    Stdlib.printLine (
-      ScmJson.conflictActionJson (
-        ScmJson.ConflictActionJson
-          { id = id
-            ok = false
-            status = ""
-            resolvedTo = ""
-            error = "a conflict belongs to the store, not a branch -- switch to main" }
-      )
-    )
-
-    state
 
   | [ "ack", id ] ->
     match SCM.Conflicts.getByIdPrefix id with
@@ -439,19 +426,6 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
 
       state
 
-  | [ "override", id, _choice ] when Stdlib.Bool.not (SCM.Ids.isMain (SCM.PackageOps.currentBranch ())) ->
-    Stdlib.printLine (
-      ScmJson.conflictActionJson (
-        ScmJson.ConflictActionJson
-          { id = id
-            ok = false
-            status = ""
-            resolvedTo = ""
-            error = "a conflict belongs to the store, not a branch -- switch to main" }
-      )
-    )
-
-    state
 
   | [ "override", id, choice ] ->
     match SCM.Conflicts.getByIdPrefix id with

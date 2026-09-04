@@ -252,6 +252,10 @@ let private reseedFromEmbedded (dbPath : string) : unit =
              SET effective = 1, applied = 0
              WHERE effective = 0
                AND id IN (SELECT id FROM seed.package_ops);
+           -- Main runs it now, so no branch may still claim it: an effective op is never tagged (see
+           -- `Branches.storeDeltaOpsStamped`). A review queue holding a peer's op that this build ships
+           -- has nothing left to review for it, and a tag left behind hid the op from main's draft.
+           DELETE FROM op_branches WHERE op_id IN (SELECT id FROM seed.package_ops);
            DETACH DATABASE seed;"
         cmd.Parameters.AddWithValue("$seed", temp) |> ignore<obj>
         cmd.ExecuteNonQuery() |> ignore<int>

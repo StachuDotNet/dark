@@ -549,19 +549,19 @@ let resolveTakeTheirs
   match parseFqn fqn with
   | None -> Stdlib.Result.Result.Error $"can't parse a name from \"{fqn}\""
   | Some key ->
+    // Every op that BINDS the name: a SetName, or the Override a `resolve mine` wrote. Matching SetName
+    // alone meant `resolve theirs` after `resolve mine` found nothing, reported success, and changed
+    // nothing; `opBindsKey` is the one definition of "binds".
     let ids =
       ownFrontierOps branchId
       |> Stdlib.List.filterMap (fun entry ->
         let (id, op) = entry
 
-        match op with
-        | SetName(_, _, _) ->
-          match opBindsKey op key with
-          | Some _ ->
-            Stdlib.Option.Option.Some
-              [ Stdlib.Uuid.toString id, Stdlib.Uuid.toString branchId ]
-          | None -> Stdlib.Option.Option.None
-        | _ -> Stdlib.Option.Option.None)
+        match opBindsKey op key with
+        | Some _ ->
+          Stdlib.Option.Option.Some
+            [ Stdlib.Uuid.toString id, Stdlib.Uuid.toString branchId ]
+        | None -> Stdlib.Option.Option.None)
 
     match ids with
     // The NAME, because this reaches a person through `dark resolve` and a name is what they typed.

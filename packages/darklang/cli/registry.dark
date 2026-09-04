@@ -59,7 +59,7 @@ module Registry =
       ("propagate", "Choose what follows what when a dependency changes", [], Cli.PropagateCmd.execute, Cli.PropagateCmd.help, Cli.PropagateCmd.complete)
       ("constraints", "Standing checks over the store (stale usages, and more to come)", [], Cli.ConstraintsCmd.execute, Cli.ConstraintsCmd.help, Cli.ConstraintsCmd.complete)
       ("ack", "Leave a constraint finding for now (`dark ack --all`)", [], Cli.ConstraintsCmd.executeAckCmd, Cli.ConstraintsCmd.help, Cli.ConstraintsCmd.complete)
-      ("undeprecate", "Put a deprecated fn/type/value back on the shelf", [ "restore" ], Packages.Deprecate.executeUndeprecate, Packages.Deprecate.help, Packages.Deprecate.complete)
+      ("undeprecate", "Put a deprecated fn/type/value back on the shelf", [ "restore" ], Packages.Deprecate.executeUndeprecate, Packages.Deprecate.undeprecateHelp, Packages.Deprecate.complete)
       ("push", "Push your ops to the relay", [], Cli.Sync.executePushCmd, Cli.Sync.help, Cli.Sync.complete)
       ("pull", "Pull ops from the relay (they take effect)", [], Cli.Sync.executePullCmd, Cli.Sync.help, Cli.Sync.complete)
       ("backups", "Copies of the store: what exists, take one, prune", [], Cli.Backups.execute, Cli.Backups.help, Cli.Backups.complete)

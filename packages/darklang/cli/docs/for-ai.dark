@@ -115,7 +115,7 @@ which is how you tell what you did from what propagation did.
     kinds: superseded-by (requires --replacement), harmful, obsolete
   delete <fn|type|value> <name> [options]     # sugar for --kind obsolete
     options: --ignore-dependents; --force = --ignore-dependents + --yes
-  undo <fn|type|value> <name>                 # reverse a WIP deprecate
+  undo <name>                                 # step the item back a version (reverses a WIP deprecate too)
   eval --allow-harmful <fn>                   # opt out of harmful halt
   (see: docs deprecation)
 
@@ -183,9 +183,9 @@ Rules:
 - NO binding modules to variables (`let c = Darklang.Cli.Colors` is invalid --
   modules are not first-class values. Use the full path each time.)
 - Pipe |> feeds the left value as the FIRST argument of the right fn; any
-  args written after the fn come after it: `[1; 2] |> Stdlib.List.map toString`,
+  args written after the fn come after it: `[1, 2] |> Stdlib.List.map toString`,
   `n |> Stdlib.Int.add 1`. Wrap a complex left side in parens: (complex expr) |> fn
-- Lists: [1; 2; 3] (semicolons)
+- Lists: [1, 2, 3] (commas; a semicolon is a parse error)
 - Char literals use single quotes: 'a', '\n', '\t', 'A' (a String uses
   double quotes; "a" is not 'a')
 - Tuples destructure inline in `let` and in lambda params:

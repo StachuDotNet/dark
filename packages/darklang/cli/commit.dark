@@ -284,8 +284,13 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
 
   // --json implies non-interactive: there is nobody to prompt. -y is still required to actually commit, so a
   // plain `dark commit --json` is a safe dry review an agent can look at before deciding.
+  // The same two gates the pretty path runs: an agent driving `--json -y` must not commit an unresolvable
+  // reference, or a definite type error, that a person at the pretty prompt would have been refused.
+  // They print their refusal; the JSON below then says `committed = false`.
   let (didCommit, hash, ops, moved) =
     if Stdlib.List.isEmpty r.changed then
+      (false, "", 0L, 0)
+    else if parsed.autoConfirm && (refuseUnresolved parsed || refuseTypeErrors parsed) then
       (false, "", 0L, 0)
     else if parsed.autoConfirm then
       match

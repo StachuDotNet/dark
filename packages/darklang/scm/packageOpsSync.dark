@@ -143,8 +143,9 @@ let finishSyncImport (sourceId: String) (plan: SyncPlan) : Unit =
     ()
   else
     // Reported, not assumed: the caller tells the user the loser was kept.
-    // Filed against the branch this process is standing on, which is where the import just folded.
-    let recorded = Conflicts.record (currentBranch ()) plan.conflicts
+    // Filed against MAIN, which is where a sync import folds whatever branch the process stands on:
+    // `scmImportOps` inserts effective and the fold projects into main's tables.
+    let recorded = Conflicts.record SCM.Ids.mainBranchId plan.conflicts
 
     let _ =
       if recorded < Stdlib.List.length plan.conflicts then

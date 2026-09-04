@@ -1129,6 +1129,38 @@ let resolveKeepMineDoesNotRestampSharedOps =
   }
 
 
+/// `resolve theirs` after `resolve mine` used to report success and change nothing: keep-mine authors an
+/// Override, and take-theirs dropped only SetNames. Both BIND the name, and `opBindsKey` is the one
+/// definition of that; take-theirs drops every binder.
+let takeTheirsAfterKeepMineDropsTheOverride =
+  testTask "resolve theirs after resolve mine drops the override too" {
+    let b = testBranch "test-theirs-after-mine"
+    let fqn = "Darklang.TheirsAfterMine.foo"
+    do! cleanupBranch b
+    do! Branches.createBranch b "theirs-after-mine" PT.BranchId.Main
+    let! ops = opsFor (namedSource "TheirsAfterMine" 7)
+    let! _ = Branches.storeDeltaOps b ops
+    do! Branches.recordNameBases b PT.BranchId.Main ops
+    do! staleNameBases b
+
+    match! resolveKeepMine b fqn with
+    | Error e -> failtest $"keep-mine failed: {e}"
+    | Ok() -> ()
+    let! afterMine = countEffective b 0
+    Expect.isGreaterThan afterMine 0L "keep-mine left the branch binding the name (an override)"
+
+    match! resolveTakeTheirs b fqn with
+    | Error e -> failtest $"take-theirs failed: {e}"
+    | Ok() -> ()
+    let! binders =
+      darkStringList
+        $"Darklang.SCM.Branches.ownFrontierOps {darkBranch b} |> Stdlib.List.filterMap (fun entry -> let (_, op) = entry in Darklang.SCM.Branches.opBindsKey op (\"Darklang\", \"TheirsAfterMine\", \"foo\") |> Stdlib.Option.map (fun _ -> \"binds\"))"
+    Expect.isEmpty binders "nothing on the branch binds the name any more: the override went with the SetName"
+
+    do! cleanupBranch b
+  }
+
+
 let perNameResolutionMineTheirs =
   testTask
     "resolve take-theirs drops the branch's binding; keep-mine keeps it; both clear the conflict" {
@@ -2280,4 +2312,5 @@ let tests =
       retagMovesTheBasesToo
       refLookupSaysWhyItMissed
       overlayPairsByHashNotAdjacency
-      anUndecodableBundleOpIsKeptNotRefused ]
+      anUndecodableBundleOpIsKeptNotRefused
+      takeTheirsAfterKeepMineDropsTheOverride ]

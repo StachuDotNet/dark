@@ -453,10 +453,14 @@ let conflictFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Opt
 /// Record conflicts against <param branchId> as `pending`. Returns how many rows it wrote.
 ///
 /// INSERT OR IGNORE on the content-derived id, so re-detecting the same divergence is a no-op and an
-/// already-acked conflict is never quietly reopened.
+/// already-acked conflict is never quietly reopened. When the id already exists on a DIFFERENT branch
+/// and is still pending, the row is re-parented rather than left where it was: a rebase records the
+/// divergence against the branch, and the merge that follows re-detects the same pair against the
+/// parent; without this the parent's list never showed it, and re-minting an id would have split one
+/// divergence into two.
 ///
-/// The branch is a PARAMETER, not read from the process: a sync import folds into wherever the process is
-/// standing, while a merge folds into the PARENT of the branch being merged.
+/// The branch is a PARAMETER, not read from the process: a sync import folds into main, while a merge
+/// folds into the PARENT of the branch being merged.
 ///
 /// Counted rather than discarded, because the CLI promises "the losing version is kept, not dropped" off
 /// the back of this.
@@ -464,22 +468,24 @@ let record (branchId: Uuid) (conflicts: List<Conflict>) : Int =
   conflicts
   |> Stdlib.List.fold 0 (fun written c ->
     match
-      Stdlib.Sqlite.execP
+      Stdlib.Sqlite.execBatch
         (localDb ())
-        "INSERT OR IGNORE INTO conflicts
-           (id, owner, modules, name, item_type, kind, candidates, auto_resolved_to, reason, status, origin_ts, branch_id)
-         VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, 'pending',
-                 strftime('%Y-%m-%dT%H:%M:%fZ','now'), @p9)"
-        [ c.id
-          c.owner
-          c.modules
-          c.name
-          c.itemType
-          c.kind
-          Stdlib.Json.serialize<List<Candidate>> c.candidates
-          c.autoResolvedTo
-          c.reason
-          Stdlib.Uuid.toString branchId ]
+        [ ("INSERT OR IGNORE INTO conflicts
+              (id, owner, modules, name, item_type, kind, candidates, auto_resolved_to, reason, status, origin_ts, branch_id)
+            VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, 'pending',
+                    strftime('%Y-%m-%dT%H:%M:%fZ','now'), @p9)",
+           [ [ c.id
+               c.owner
+               c.modules
+               c.name
+               c.itemType
+               c.kind
+               Stdlib.Json.serialize<List<Candidate>> c.candidates
+               c.autoResolvedTo
+               c.reason
+               Stdlib.Uuid.toString branchId ] ])
+          ("UPDATE conflicts SET branch_id = @p0 WHERE id = @p1 AND status = 'pending'",
+           [ [ Stdlib.Uuid.toString branchId, c.id ] ]) ]
     with
     | Ok _ -> written + 1
     | Error _ -> written)

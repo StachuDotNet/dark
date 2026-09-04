@@ -123,10 +123,22 @@ let execute (state: AppState) (args: List<String>) : AppState =
   let detailed = Stdlib.List.member args "--detailed"
   let args = args |> Stdlib.List.filter (fun a -> a != "--detailed")
 
+  // The count, parsed ONCE, for every shape. `--json` and `--detailed` used to default a junk argument
+  // to 20 and answer as though nothing had been asked; the pretty path refuses it, so they do too.
   let limit =
     match args with
-    | [ n ] -> Stdlib.Int64.parse n |> Stdlib.Result.withDefault 20L
-    | _ -> 20L
+    | [ n ] -> Stdlib.Int64.parse n |> Stdlib.Result.toOption
+    | _ -> Stdlib.Option.Option.Some 20L
+
+  match (args, limit) with
+  | ([ n ], None) ->
+    printErr $"`dark commits` takes a count, not a branch name."
+    printHint "  this branch's commits:  dark commits"
+    printHint $"  that branch's history:  dark log {n}"
+    state
+  | (_, _) ->
+
+  let limit = limit |> Stdlib.Option.withDefault 20L
 
   if wantsJson then
     Stdlib.printLine (ScmJson.commitsJson (commitRows limit))

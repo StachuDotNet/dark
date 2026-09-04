@@ -868,6 +868,8 @@ let executePullCmd (state: AppState) (args: List<String>) : AppState =
 /// `dark connect <url>`
 let executeConnectCmd (state: AppState) (args: List<String>) : AppState =
   match args with
+  // A dash-led "url" is a mistyped flag. Stored, it became the relay every later `push` tried to reach.
+  | [ url ] when Cli.refuseDashLedName "relay url" url -> state
   | [ url ] -> executeConnect state url
   // Stored per relay in local config; see `relaySecret`. Typing it here does put it in shell history.
   | [ url, "--secret", secret ] ->

@@ -151,10 +151,24 @@ let logStateProjectionsArePurged =
   }
 
 
+/// Every table the fold regenerates is purged. Derived, so it catches the NEXT one: `propagation_policy`
+/// was in `Seed.projectionTables` (nothing else writes it) and not here, and neither guard above could see
+/// it, since it carries no `op_id` and no hash column.
+let foldProjectionsArePurged =
+  testTask "every table the fold regenerates is in Purge.tables" {
+    for t in LibDB.Seed.projectionTables do
+      Expect.isTrue
+        (List.contains t Purge.tables)
+        $"`{t}` is a fold projection (Seed.projectionTables) and must be in Purge.tables: a projection \
+          that outlives the log it was folded from is a stale claim."
+  }
+
+
 let tests =
   testList
     "Purge"
     [ opIdTablesArePurged
       purgeTablesAllExist
       hashCoupledTablesAreClassified
-      logStateProjectionsArePurged ]
+      logStateProjectionsArePurged
+      foldProjectionsArePurged ]
