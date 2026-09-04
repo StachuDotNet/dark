@@ -25,6 +25,7 @@ open LibDB.Sqlite
 module Seed = LibDB.Seed
 module Inserts = LibDB.Inserts
 module Branches = LibDB.Branches
+module Queries = LibDB.Queries
 module PT = LibExecution.ProgramTypes
 module BS = LibSerialization.Binary.Serialization
 module Hashing = LibSerialization.Hashing.Hashing
@@ -756,6 +757,53 @@ let aMergedUnbindTakesTheNameOffMain =
       teardown [ b ]
   }
 
+/// A relay is also somebody's authoring instance. Ops a client pushed sit `effective = 0`, untagged and
+/// uncommitted, which is the shape of main's own draft, so every "main's ops" read has to say
+/// `effective = 1` as well as "not tagged". Without it, authoring here swept a peer's ops into main's
+/// draft and a rewrite folded them into the code this store runs, which is exactly what storing them
+/// inert is for; and `discard` deleted them outright.
+let hostedOpsAreNotThisStoresDraft =
+  testTask "ops a client pushed here are not this store's draft, and a discard does not eat them" {
+    let a = instance "a"
+
+    try
+      activate a
+      let hosted = setName "hosted-by-a-peer" "theirs"
+      let hostedId = Inserts.computeOpHash hosted
+      let! _ =
+        Inserts.storeOpsWithOwner
+          "some-peer"
+          [ wireOp hosted "2026-01-01T00:00:00.000Z" ]
+
+      let! wip = Queries.getWipOps ()
+      let wipIds = wip |> List.map Inserts.computeOpHash |> Set.ofList
+      Expect.isFalse
+        (Set.contains hostedId wipIds)
+        "a hosted op is not main's WIP, so authoring cannot re-insert it effective"
+
+      let! draft = Queries.getDraftOps ()
+      let draftIds = draft |> List.map Inserts.computeOpHash |> Set.ofList
+      Expect.isFalse (Set.contains hostedId draftIds) "nor main's draft"
+
+      // The delete `discard` runs, against the same store.
+      for sql in Inserts.draftDeletes do
+        do! Sql.query sql |> Sql.executeStatementAsync
+
+      let! stillThere =
+        Sql.query "SELECT count(*) AS n FROM package_ops WHERE id = @id"
+        |> Sql.parameters [ "id", Sql.string (string hostedId) ]
+        |> Sql.executeRowAsync (fun read -> read.int64 "n")
+      Expect.equal stillThere 1L "and a discard leaves it where it is"
+
+      let! effective =
+        Sql.query "SELECT effective AS e FROM package_ops WHERE id = @id"
+        |> Sql.parameters [ "id", Sql.string (string hostedId) ]
+        |> Sql.executeRowAsync (fun read -> read.int64 "e")
+      Expect.equal effective 0L "still inert: a relay serves what it is handed, it does not run it"
+    finally
+      teardown [ a ]
+  }
+
 let tests =
   testSequenced
   <| testList
@@ -775,4 +823,5 @@ let tests =
       aMergeEventCommitsWhatItFlips
       anUnbindRemovesTheNameAndNothingElse
       unbindConvergesWhateverOrderOpsArrive
-      aMergedUnbindTakesTheNameOffMain ]
+      aMergedUnbindTakesTheNameOffMain
+      hostedOpsAreNotThisStoresDraft ]

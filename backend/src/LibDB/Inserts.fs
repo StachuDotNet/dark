@@ -187,13 +187,19 @@ let insertAndApplyOpsPreservingTs
 
 /// The draft's rows: main's uncommitted ops and the bindings they wrote. The `resolution` overlay is
 /// kept; `discard` must not silently revert a synced resolution into a divergence.
+///
+/// `effective = 1` is the same clause `Queries.getWipOps` carries and for the same reason: ops a client
+/// pushed to this store are inert, untagged and uncommitted, so without it a discard here deletes data
+/// this store is only holding for someone else.
 let draftDeletes : List<string> =
   [ "DELETE FROM locations WHERE source <> 'resolution'
      AND op_id IN (SELECT id FROM package_ops
-                   WHERE commit_hash IS NULL
+                   WHERE effective = 1
+                     AND commit_hash IS NULL
                      AND id NOT IN (SELECT op_id FROM op_branches))"
     "DELETE FROM package_ops
-     WHERE commit_hash IS NULL
+     WHERE effective = 1
+       AND commit_hash IS NULL
        AND id NOT IN (SELECT op_id FROM op_branches)" ]
 
 /// Every main op and what it wrote, EXCEPT the ids in `keep`: the ops this build cannot decode, which
@@ -213,7 +219,9 @@ let wholeMainDeletes (keep : Set<System.Guid>) : List<string> =
       $" AND id NOT IN ({quoted})"
   [ "DELETE FROM locations WHERE source <> 'resolution'"
     "DELETE FROM deprecations"
-    $"DELETE FROM package_ops WHERE id NOT IN (SELECT op_id FROM op_branches){keepUnreadable}" ]
+    // `effective = 1`, as in `draftDeletes`: hosted ops are inert and untagged, and this store is only
+    // holding them.
+    $"DELETE FROM package_ops WHERE effective = 1 AND id NOT IN (SELECT op_id FROM op_branches){keepUnreadable}" ]
 
 /// Main's op ids this build cannot decode. What `wholeMainDeletes` keeps.
 let unreadableMainOpIds () : Task<Set<System.Guid>> =
@@ -223,7 +231,8 @@ let unreadableMainOpIds () : Task<Set<System.Guid>> =
         """
         SELECT id, op_blob
         FROM package_ops
-        WHERE id NOT IN (SELECT op_id FROM op_branches)
+        WHERE effective = 1
+          AND id NOT IN (SELECT op_id FROM op_branches)
         """
       |> Sql.executeAsync (fun read ->
         let opId = read.uuid "id"

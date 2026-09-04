@@ -881,8 +881,10 @@ let getWipOpsExcludesBranch =
     let! _ = Branches.storeDeltaOps branchId ops
 
     let! wip = Queries.getWipOps ()
+    // `effective = 1`: `getWipOps` excludes the OTHER inert population too (ops a client pushed to this
+    // store, and anything a test left inert), which carries no tag to subtract.
     let! total =
-      Sql.query "SELECT count(*) AS n FROM package_ops"
+      Sql.query "SELECT count(*) AS n FROM package_ops WHERE effective = 1"
       |> Sql.executeRowAsync (fun read -> read.int64 "n")
     let! branchCount =
       Sql.query "SELECT count(*) AS n FROM op_branches WHERE branch_id = @b"
@@ -892,7 +894,10 @@ let getWipOpsExcludesBranch =
     // subtracting only our own count assumes we're the only branch in the store, and we aren't.
     // DISTINCT because one op can be tagged to several branches.
     let! taggedCount =
-      Sql.query "SELECT count(DISTINCT op_id) AS n FROM op_branches"
+      Sql.query
+        "SELECT count(DISTINCT ob.op_id) AS n FROM op_branches ob
+         JOIN package_ops p ON p.id = ob.op_id
+         WHERE p.effective = 1"
       |> Sql.executeRowAsync (fun read -> read.int64 "n")
 
     Expect.isGreaterThan branchCount 0L "the branch actually stored ops"

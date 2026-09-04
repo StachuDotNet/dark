@@ -230,9 +230,12 @@ let private getDependentsByLocationsChunk
       let hashFallbackClause =
         match hashParams with
         | [] ->
+          // `locations`, main-scoped, which is what this whole query is. It said `visible_locations`,
+          // a CTE that went with the old SCM, so this arm was a "no such table" waiting for a caller
+          // that did not pre-filter the empty case. Every one of them does today, by luck.
           $"""
           pd.depends_on_hash IN (
-            SELECT tl.item_hash FROM visible_locations tl
+            SELECT tl.item_hash FROM locations tl
             WHERE (tl.item_type, tl.owner, tl.modules, tl.name) IN ({locTuples})
               AND tl.unlisted_at IS NULL
           )
@@ -353,7 +356,12 @@ let getDraftOps () : Task<List<PT.PackageOp>> =
         """
         SELECT id, op_blob
         FROM package_ops
-        WHERE commit_hash IS NULL
+        -- `effective = 1`: ops a client PUSHED to this store sit at effective = 0, untagged, and
+        -- uncommitted (`Inserts.storeOpsWithOwner`), which is the same shape as main's draft. They are
+        -- DATA a relay serves back, never this store's work, and reading them as a draft is how they
+        -- would get folded into the code this store runs.
+        WHERE effective = 1
+          AND commit_hash IS NULL
           AND id NOT IN (SELECT op_id FROM op_branches)
         ORDER BY created_at ASC, rowid ASC
         """
@@ -379,7 +387,12 @@ let getWipOps () : Task<List<PT.PackageOp>> =
         -- Branch (op_branches-tagged) ops are effective=0 branch-pending state, NOT main WIP.
         -- Excluding them keeps main authoring's WIP-refresh from sweeping a branch's ops into
         -- main (re-inserting them effective=1 + folding). Branch isolation.
-        WHERE id NOT IN (SELECT op_id FROM op_branches)
+        --
+        -- `effective = 1` excludes the OTHER inert population, which carries no tag to be excluded by:
+        -- ops a client pushed to this store when it is also a relay. Same argument, same consequence
+        -- if it is missed -- a peer's ops re-inserted effective and folded into what this store runs.
+        WHERE effective = 1
+          AND id NOT IN (SELECT op_id FROM op_branches)
         -- rowid breaks ties: created_at is second-resolution and a batch shares it, and the pairing
         -- downstream (HashStabilization) is by adjacency.
         ORDER BY created_at ASC, rowid ASC

@@ -183,7 +183,7 @@ Logs go to `rundir/logs/fsharp-tests.log`.
                           # Matter, Pure, Random, Time
     packages/darklang/    # .dark files
       cli/                # the CLI app: registry, loop, workbench, outliner
-      scm/                # SCM library (branch, rebase, merge, packageOps)
+      scm/                # SCM library (branches, merge, conflicts, propagation, wire, packageOps)
       stdlib/             # standard library
         cli/stdin.dark    #   reads keys
         cli/tui/          #   paints: view types, frame diffing, terminal session
@@ -228,8 +228,9 @@ caller anywhere in the repo. So give each builtin exactly one Dark wrapper -- a 
 or CLI fn that names it, types it and documents it -- and route callers through the
 wrapper. The wrapper is where the raw builtin's `List<'a>` becomes `List<TraceSummary>`.
 The allowlists in `backend/tests/Tests/Builtin.Tests.fs` are for cases that genuinely
-can't work that way; they're down to one entry each, so adding a third needs a reason
-written next to it.
+can't work that way, and `multiUseAllowlist` has grown a lot: read the reason beside a
+group before adding to it, and prefer a wrapper whenever the builtin returns a structured
+value, which is where the rule earns its keep.
 
 ## Adding a CLI command (Darklang)
 
@@ -283,7 +284,7 @@ it was written in a comment as if it were true. Two bugs came from it: `dark pro
 a raw `BinaryFormatException` on a store holding seven such ops and stayed dead, and the draft rewrite
 (which deletes main's log and re-inserts what it read) would have destroyed them. The rule now is:
 ONE decoder, it returns an Option, every reader tolerates, and no writer deletes what it could not
-decode (`Inserts.discardWipOps` excludes them by id).
+decode (`Inserts.wholeMainDeletes` excludes them by id).
 
 **A pull cursor can point past ops you do not have.** The cursor is a position in the RELAY's log, and
 nothing ties it to what you actually applied. `dark pull` then answers "Pulled 0 new op(s)" forever
@@ -298,10 +299,11 @@ If you sync with someone from a dev clone, expect to lose their ops on every bui
 **Authoring looks like the same bug and is not.** `WipRefresh.refresh` runs on EVERY author, in any
 binary, and it also deletes the whole non-branch log and re-inserts. The difference is where the
 re-insert reads from: `Queries.getWipOps` reads the DATABASE, and it carries the same
-`WHERE id NOT IN (SELECT op_id FROM op_branches)` as `Inserts.discardWipOps`. Delete and read cover the
-same set, so a peer's op goes out and comes back. That symmetry is the whole safety property. Break it
-in either direction and authoring silently eats ops that arrived over the wire, which is exactly how the
-undecodable-op bug worked before the id exclusion was added.
+`WHERE effective = 1 AND id NOT IN (SELECT op_id FROM op_branches)` as `Inserts.draftDeletes` and
+`Inserts.wholeMainDeletes`. Delete and read cover the same set, so a peer's op goes out and comes back.
+That symmetry is the whole safety property. Break it in either direction and authoring silently eats ops
+that arrived over the wire, which is exactly how the undecodable-op bug worked before the id exclusion
+was added, and how authoring on a self-hosted relay ate its hosted ops before `effective = 1` was.
 
 **This is the trap.** `locations` has NO `branch_id`. A branch has no rows there at all, so any read that
 goes straight to `locations` answers about MAIN while you are standing on a branch -- and it answers
