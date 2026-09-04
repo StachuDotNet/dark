@@ -380,7 +380,9 @@ let getWipOps () : Task<List<PT.PackageOp>> =
         -- Excluding them keeps main authoring's WIP-refresh from sweeping a branch's ops into
         -- main (re-inserting them effective=1 + folding). Branch isolation.
         WHERE id NOT IN (SELECT op_id FROM op_branches)
-        ORDER BY created_at ASC
+        -- rowid breaks ties: created_at is second-resolution and a batch shares it, and the pairing
+        -- downstream (HashStabilization) is by adjacency.
+        ORDER BY created_at ASC, rowid ASC
         """
       |> Sql.executeAsync (fun read ->
         let opId = read.uuid "id"

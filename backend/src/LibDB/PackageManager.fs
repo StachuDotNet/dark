@@ -145,52 +145,71 @@ let createInMemory (ops : List<PT.PackageOp>) : PT.PackageManager =
       | PT.PackageValue h -> valueLocations.Add(loc, h)
       | PT.PackageFn h -> fnLocations.Add(loc, h)
 
-  // Items are keyed by hash. The ops come as Add*(item) followed by Set*Name(hash, loc), so pair
-  // them up to build Hash -> item maps.
-  let typeMap =
-    let mutable map = Map.empty<Hash, PT.PackageType.PackageType>
-    let mutable pendingType : Option<PT.PackageType.PackageType> = None
+  // Items are keyed by the hash the item CARRIES, which after stabilization is the hash its SetName
+  // names. Pairing "the Add before this SetName" was wrong for an overlay: chain ops are ordered by
+  // origin_ts ACROSS authors, so after a bundle import the Add before your SetName can be somebody
+  // else's, and your name resolved to their body. Adjacency survives only as the fallback for an
+  // item with no hash yet (pre-stabilization input: the Wasm REPL's raw pass, parser tests), and only
+  // for a SetName no stamped item answers.
+  let pairItems
+    (isAdd : PT.PackageOp -> Option<'item>)
+    (hashOf : 'item -> Hash)
+    (withHash : 'item -> Hash -> 'item)
+    (isSet : PT.PackageOp -> Option<Hash>)
+    : Map<Hash, 'item> =
+    let stamped =
+      ops
+      |> List.choose (fun op ->
+        isAdd op
+        |> Option.filter (fun i -> hashOf i <> Hash "")
+        |> Option.map (fun i -> (hashOf i, i)))
+      |> Map.ofList
+    let mutable map = stamped
+    let mutable pending : Option<'item> = None
     for op in ops do
-      match op with
-      | PT.PackageOp.AddType t -> pendingType <- Some t
-      | PT.PackageOp.SetName(_, PT.PackageType hash, _) ->
-        match pendingType with
-        | Some t ->
-          map <- Map.add hash { t with hash = hash } map
-          pendingType <- None
+      match isAdd op, isSet op with
+      | Some i, _ when hashOf i = Hash "" -> pending <- Some i
+      | _, Some h when not (Map.containsKey h stamped) ->
+        match pending with
+        | Some i ->
+          map <- Map.add h (withHash i h) map
+          pending <- None
         | None -> ()
       | _ -> ()
     map
+
+  let typeMap =
+    pairItems
+      (function
+      | PT.PackageOp.AddType t -> Some t
+      | _ -> None)
+      (fun t -> t.hash)
+      (fun t h -> { t with hash = h })
+      (function
+      | PT.PackageOp.SetName(_, PT.PackageType h, _) -> Some h
+      | _ -> None)
 
   let fnMap =
-    let mutable map = Map.empty<Hash, PT.PackageFn.PackageFn>
-    let mutable pendingFn : Option<PT.PackageFn.PackageFn> = None
-    for op in ops do
-      match op with
-      | PT.PackageOp.AddFn f -> pendingFn <- Some f
-      | PT.PackageOp.SetName(_, PT.PackageFn hash, _) ->
-        match pendingFn with
-        | Some f ->
-          map <- Map.add hash { f with hash = hash } map
-          pendingFn <- None
-        | None -> ()
-      | _ -> ()
-    map
+    pairItems
+      (function
+      | PT.PackageOp.AddFn f -> Some f
+      | _ -> None)
+      (fun f -> f.hash)
+      (fun f h -> { f with hash = h })
+      (function
+      | PT.PackageOp.SetName(_, PT.PackageFn h, _) -> Some h
+      | _ -> None)
 
   let valueMap =
-    let mutable map = Map.empty<Hash, PT.PackageValue.PackageValue>
-    let mutable pendingValue : Option<PT.PackageValue.PackageValue> = None
-    for op in ops do
-      match op with
-      | PT.PackageOp.AddValue v -> pendingValue <- Some v
-      | PT.PackageOp.SetName(_, PT.PackageValue hash, _) ->
-        match pendingValue with
-        | Some v ->
-          map <- Map.add hash { v with hash = hash } map
-          pendingValue <- None
-        | None -> ()
-      | _ -> ()
-    map
+    pairItems
+      (function
+      | PT.PackageOp.AddValue v -> Some v
+      | _ -> None)
+      (fun v -> v.hash)
+      (fun v h -> { v with hash = h })
+      (function
+      | PT.PackageOp.SetName(_, PT.PackageValue h, _) -> Some h
+      | _ -> None)
 
   let typeLocMap = Map.ofSeq typeLocations
   let valueLocMap = Map.ofSeq valueLocations

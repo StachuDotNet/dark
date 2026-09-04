@@ -1820,6 +1820,36 @@ let refLookupSaysWhyItMissed =
   }
 
 
+/// The overlay pairs an item with its SetName by the hash the item carries, not by adjacency. Chain ops
+/// are ordered by origin_ts across authors, so after a bundle import two authors' ops interleave, and
+/// "the Add before this SetName" was the other author's: your name resolved to their body.
+let overlayPairsByHashNotAdjacency =
+  testTask "two authors' interleaved ops resolve each name to its own body" {
+    let! opsA = opsFor (namedSource "InterleaveA" 42)
+    let! opsB = opsFor (namedSource "InterleaveB" 99)
+    let adds ops =
+      ops |> List.filter (fun op -> match op with PT.PackageOp.AddFn _ -> true | _ -> false)
+    let sets ops =
+      ops |> List.filter (fun op -> match op with PT.PackageOp.SetName _ -> true | _ -> false)
+    // [addA; addB; setA; setB]: adjacency pairs setA with addB.
+    let interleaved = adds opsA @ adds opsB @ sets opsA @ sets opsB
+    let overlay = PM.withExtraOps pmPT interleaved
+
+    let bodyOf (m : string) =
+      task {
+        let! found = overlay.findFn (fooLocIn m) |> Ply.toTask
+        let hash = Expect.wantSome found $"{m}.foo resolves"
+        let! fn = overlay.getFn hash |> Ply.toTask
+        let fn = Expect.wantSome fn $"{m}.foo's item is in the overlay"
+        return! runFooBody overlay [ PT.PackageOp.AddFn fn ]
+      }
+    let! a = bodyOf "InterleaveA"
+    let! b = bodyOf "InterleaveB"
+    Expect.equal a (RT.DInt64 42L) "A's name runs A's body"
+    Expect.equal b (RT.DInt64 99L) "and B's runs B's"
+  }
+
+
 /// The receiving side has no obligation to know every branch its peers have. Branch ids travel with
 /// a bundle, so the branches you actually share match; the rest are none of this store's business.
 let branchEventForUnknownBranchIsIgnored =
@@ -2142,4 +2172,5 @@ let tests =
       liveBindingReadsTheBranchThenMain
       aBranchNeverTagsWhatMainRuns
       retagMovesTheBasesToo
-      refLookupSaysWhyItMissed ]
+      refLookupSaysWhyItMissed
+      overlayPairsByHashNotAdjacency ]
