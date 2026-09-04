@@ -628,12 +628,26 @@ let executePull (state: AppState) (url: String) : AppState =
           let cursorPastMissingOps =
             (since > 0L) && behindTheRelay && (Stdlib.List.isEmpty firstBundle.ops)
 
+          // A different INSTANCE at the same url is a different store: the relay was wiped or replaced.
+          // Everything this store recorded as held by that url is now false, so the next push must send
+          // it all again. Forgetting here, where the change is noticed, is what stops a wiped relay
+          // reading as "in sync" while holding six thousand fewer ops than the client.
+          let replaced = (seen != "") && (firstBundle.owner != "") && (seen != firstBundle.owner)
+
+          let _ =
+            if replaced then
+              SCM.Wire.forgetPushed url
+              printOk
+                $"{url} is a different relay instance than last time (wiped or replaced) -- everything will be pushed again."
+            else
+              ()
+
           let bundle =
-            if unattributed
-               || cursorPastMissingOps
-               || ((seen != "") && (firstBundle.owner != "") && (seen != firstBundle.owner)) then
+            if unattributed || cursorPastMissingOps || replaced then
               let _ =
-                if cursorPastMissingOps then
+                if replaced then
+                  ()
+                else if cursorPastMissingOps then
                   printOk
                     $"Cursor for {url} points past ops this store doesn't have -- re-pulling from the start."
                 else
@@ -749,7 +763,16 @@ let executeStatus (state: AppState) (url: String) : AppState =
             SCM.Wire.seenEverything (SCM.Wire.lastSeenHead url) theirs mine)
 
         match (toSend, toReceive) with
-        | (false, false) -> printOk "in sync."
+        | (false, false) ->
+          printOk "in sync."
+          // A relay holding FEWER ops than this store, with nothing waiting to send, is a relay that was
+          // wiped or replaced since the last push (main-only push never sends a branch's ops, so a small
+          // gap is normal; a large one is not). `pull` notices the new instance and re-arms the push.
+          if theirs.count + 100L < mine.count then
+            printHint
+              "  the relay holds far fewer ops than this store, yet nothing is waiting to send. If it was wiped or replaced, `dark pull` will notice and re-arm the push."
+          else
+            ()
         | (true, false) ->
           printOk $"{Stdlib.Int64.toString unpushed} op(s) to send -- `dark push {url}`."
         | (false, true) -> printOk $"ops to receive -- `dark pull {url}`."
