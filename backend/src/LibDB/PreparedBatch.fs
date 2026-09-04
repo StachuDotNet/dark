@@ -96,6 +96,29 @@ let bytesOption
   }
 
 
+/// Read one optional TEXT scalar. `None` for no row or NULL.
+let textOption
+  (ctx : Ctx)
+  (sql : string)
+  (setParams : SqliteCommand -> unit)
+  : Task<Option<string>> =
+  task {
+    let cmd = command ctx sql
+    cmd.Parameters.Clear()
+    setParams cmd
+    let! value = cmd.ExecuteScalarAsync()
+    return
+      match value with
+      | :? string as s -> Some s
+      | null -> None
+      | value when System.Convert.IsDBNull value -> None
+      | value ->
+        Exception.raiseInternal
+          "Expected TEXT from a prepared-batch scalar read"
+          [ "actualType", value.GetType().FullName ]
+  }
+
+
 /// Bind a parameter. Wraps `AddWithValue` so it always returns unit.
 let inline p (cmd : SqliteCommand) (name : string) (value : obj) =
   cmd.Parameters.AddWithValue(name, value) |> ignore<SqliteParameter>

@@ -652,39 +652,82 @@ let private applyBranchEvent
   : Task<unit> =
   task {
     match event with
-    | PT.Merged ->
-      do!
-        exec
-          ctx
-          "UPDATE branches SET merged_at = $at WHERE id = $b AND merged_at IS NULL"
-          (fun cmd ->
-            cmd.Parameters.AddWithValue("$b", string branchId)
-            |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$at", at) |> ignore<SqliteParameter>)
-
+    | PT.Merged mergedOps ->
       // Marking it merged is not enough on its own. If this store already HOLDS the branch -- which it
       // does whenever the two of you shared it -- its ops are sitting here effective=0, inert. The push
       // that carried the merge could not deliver them, because they are content-addressed and already
       // present, so the only thing that crossed was this event. Setting the flag and stopping leaves a
       // branch that reads `[merged]` next to a main that does not have its code.
       //
-      // So do here what a local merge does: flip the frontier effective and drop the tags. The fold picks
-      // them up on its next pass, and both machines land on identical hashes because the ops are the same
-      // ops.
+      // So do here what a local merge does, for EXACTLY the ops the merger moved, which the event
+      // names. This store may hold more of the branch than the merger saw (its own unpushed edits), and
+      // those stay on the branch. And the merge went where the branch's PARENT is: into main the ops
+      // flip effective and the fold takes them; into another branch they are retagged onto it, with the
+      // child's name bases, as the local merge does, and nothing folds into main that nobody merged
+      // there. The ids are bound once as a JSON array, so this stays one prepared statement per step.
+      let ids =
+        System.Text.Json.JsonSerializer.Serialize(mergedOps |> List.map string)
+      let b = string branchId
+      let bindB (cmd : SqliteCommand) =
+        cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>
+        cmd.Parameters.AddWithValue("$ids", ids) |> ignore<SqliteParameter>
+
+      let! parent =
+        textOption
+          ctx
+          "SELECT parent_id FROM branches WHERE id = $b"
+          (fun cmd -> cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>)
+      let parentIsMain =
+        match parent with
+        | None -> true
+        | Some p -> PT.BranchId.Parse p = Some PT.BranchId.Main || p = ""
+
+      if parentIsMain then
+        do!
+          exec
+            ctx
+            "UPDATE package_ops SET effective = 1
+             WHERE effective = 0
+               AND id IN (SELECT value FROM json_each($ids))
+               AND id IN (SELECT op_id FROM op_branches WHERE branch_id = $b)"
+            bindB
+      else
+        let p = Option.defaultValue "" parent
+        let bindP (cmd : SqliteCommand) =
+          bindB cmd
+          cmd.Parameters.AddWithValue("$p", p) |> ignore<SqliteParameter>
+        do!
+          exec
+            ctx
+            "INSERT OR IGNORE INTO op_branches (op_id, branch_id, source)
+             SELECT op_id, $p, source FROM op_branches
+             WHERE branch_id = $b AND op_id IN (SELECT value FROM json_each($ids))"
+            bindP
+        do!
+          exec
+            ctx
+            "INSERT OR IGNORE INTO branch_name_bases (branch_id, owner, modules, name, base_hash)
+             SELECT $p, owner, modules, name, base_hash FROM branch_name_bases WHERE branch_id = $b"
+            bindP
+
       do!
         exec
           ctx
-          "UPDATE package_ops SET effective = 1
-           WHERE effective = 0
-             AND id IN (SELECT op_id FROM op_branches WHERE branch_id = $b)"
-          (fun cmd ->
-            cmd.Parameters.AddWithValue("$b", string branchId)
-            |> ignore<SqliteParameter>)
+          "DELETE FROM op_branches
+           WHERE branch_id = $b AND op_id IN (SELECT value FROM json_each($ids))"
+          bindB
 
+      // Last, and only when nothing of the branch is left here. A branch holding ops the merger never
+      // saw stays live, holding exactly those; merging it locally later names them in a second event.
       do!
-        exec ctx "DELETE FROM op_branches WHERE branch_id = $b" (fun cmd ->
-          cmd.Parameters.AddWithValue("$b", string branchId)
-          |> ignore<SqliteParameter>)
+        exec
+          ctx
+          "UPDATE branches SET merged_at = $at
+           WHERE id = $b AND merged_at IS NULL
+             AND NOT EXISTS (SELECT 1 FROM op_branches WHERE branch_id = $b)"
+          (fun cmd ->
+            cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>
+            cmd.Parameters.AddWithValue("$at", at) |> ignore<SqliteParameter>)
     | PT.Archived ->
       do!
         exec

@@ -964,6 +964,10 @@ let mergeBranch (branchId: Uuid) : Stdlib.Result.Result<MergeOutcome, String> =
 
   let parent = branchParentOf branchId
 
+  // What the merge moves, read now: both arms drop the tags, and the event that tells the other
+  // machine has to name exactly these, so a peer holding more of the branch keeps its own.
+  let moved = Branches.frontierIds branchId
+
   // Which arm: into MAIN the frontier flips effective and folds; into a branch-off-a-branch it only
   // retags onto the parent, whose own overlay folds it later. Folding there would leak the child's work
   // into main, which nobody asked to merge.
@@ -983,7 +987,7 @@ let mergeBranch (branchId: Uuid) : Stdlib.Result.Result<MergeOutcome, String> =
   | Ok n ->
     // Say so in the log too, so the machine your colleague is on learns the branch is finished. The
     // local projections are already updated by the arm above; this is only how the OTHER machine learns.
-    let _ = Builtin.scmRecordBranchMerged branchId
+    let _ = Builtin.scmRecordBranchMerged branchId moved
 
     // Filed against the PARENT, not against `branchId`: the merge folded into the parent's projection and
     // the branch it came from is finished. `parent_id` and a branch id spell main the same way, so the id

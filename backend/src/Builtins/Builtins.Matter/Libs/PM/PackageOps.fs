@@ -700,15 +700,23 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
 
     { name = fn "scmRecordBranchMerged" 0
       typeParams = []
-      parameters = [ Param.make "branchId" TUuid "the branch that was merged" ]
+      parameters =
+        [ Param.make "branchId" TUuid "the branch that was merged"
+          Param.make "ops" (TList TUuid) "the ids of the ops the merge moved" ]
       returnType = TUnit
       description =
-        "Author the op that says this branch was merged, so other machines learn it."
+        "Author the op that says this branch was merged, naming what it moved, so other machines learn it."
       fn =
         (function
-        | _, _, _, [| DUuid branchIdGuid |] ->
+        | _, _, _, [| DUuid branchIdGuid; DList(_, ops) |] ->
           uply {
-            do! recordBranchEvent (PT.BranchId.Id branchIdGuid) PT.Merged
+            let ids =
+              ops
+              |> List.choose (fun d ->
+                match d with
+                | DUuid g -> Some g
+                | _ -> None)
+            do! recordBranchEvent (PT.BranchId.Id branchIdGuid) (PT.Merged ids)
             return DUnit
           }
         | _ -> incorrectArgs ())

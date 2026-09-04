@@ -1545,7 +1545,7 @@ module PackageOp =
     | BranchEvent(eventBranchId, event, _at) ->
       let what =
         match event with
-        | Merged -> "merged into its parent"
+        | Merged _ -> "merged into its parent"
         | Archived -> "archived"
 
       // Show the NAME, same as everywhere else a branch is user-facing.

@@ -1566,7 +1566,7 @@ let branchEventMarksMerged =
     Expect.isFalse before "not merged before the event"
 
     let op =
-      PT.PackageOp.BranchEvent(branchId, PT.Merged, "2026-01-01T00:00:00.000Z")
+      PT.PackageOp.BranchEvent(branchId, PT.Merged [], "2026-01-01T00:00:00.000Z")
     let! _ = LibDB.Inserts.insertAndApplyOps [ op ]
 
     let! after = isMerged branchId
@@ -1827,7 +1827,7 @@ let branchEventForUnknownBranchIsIgnored =
     // A real id that no `branches` row carries. Since the op field became a `BranchId`, "not an id at
     // all" is no longer representable, so unknown-but-well-formed is the only case left to cover.
     let unknown = testBranch "test-branch-that-does-not-exist"
-    let op = PT.PackageOp.BranchEvent(unknown, PT.Merged, "2026-01-01T00:00:00.000Z")
+    let op = PT.PackageOp.BranchEvent(unknown, PT.Merged [], "2026-01-01T00:00:00.000Z")
 
     let! _ = LibDB.Inserts.insertAndApplyOps [ op ]
 
@@ -1861,8 +1861,10 @@ let foldDoesNotStrandOpsItMadeEffective =
     // The event has to arrive the way a SYNC delivers it: inserted unapplied-and-effective, then
     // folded by `applyUnappliedOps`, which puts the flip and the sweep inside ONE pass. Authoring it
     // locally folds it in its own call, and a later pass picks the branch ops up regardless.
+    // The event names what the merge moved: with an empty list it would, correctly, fold nothing.
+    let mergedIds = ops |> List.map LibDB.Inserts.computeOpHash
     let event =
-      PT.PackageOp.BranchEvent(branchId, PT.Merged, "2026-01-01T00:00:00.000Z")
+      PT.PackageOp.BranchEvent(branchId, PT.Merged mergedIds, "2026-01-01T00:00:00.000Z")
     let eventId = LibDB.Inserts.computeOpHash event
     let eventBlob = BS.PT.PackageOp.serialize eventId event
     do!

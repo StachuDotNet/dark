@@ -502,7 +502,9 @@ type PropagateRepoint =
 /// applying one twice, or out of order, lands in the same place. Rename is absent because it is
 /// last-writer-wins and `branches` records no stamp to arbitrate with.
 type BranchEventKind =
-  | Merged
+  /// The ids of the ops the merge moved. A peer holding more of the branch than the merger saw (its own
+  /// unpushed edits) keeps those on the branch.
+  | Merged of ops: List<Uuid>
   | Archived
 
 /// What a `Decision` DID. The shared part of a decision (who, where, why) lives on the op; this is the

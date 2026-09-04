@@ -24,6 +24,7 @@ open LibDB.Sqlite
 
 module Seed = LibDB.Seed
 module Inserts = LibDB.Inserts
+module Branches = LibDB.Branches
 module PT = LibExecution.ProgramTypes
 module BS = LibSerialization.Binary.Serialization
 module Hashing = LibSerialization.Hashing.Hashing
@@ -538,6 +539,99 @@ let aWriteBetweenReadAndMarkIsNotLost =
       teardown [ a ]
   }
 
+
+/// A merge event names what it moved. A peer holding the branch may hold MORE of it than the merger saw
+/// (its own unpushed edits); the event must not take those into main, and the branch must stay live here
+/// holding exactly them. Before the event carried ids, it flipped everything tagged to the branch.
+let aMergeEventLeavesUnpushedWorkOnTheBranch =
+  testTask "a peer's merge event folds only what the merger moved, and the branch keeps the rest" {
+    let b = instance "b"
+    let x = PT.BranchId.Id(System.Guid.NewGuid())
+
+    try
+      activate b
+      do! Branches.createBranch x "shared-x" PT.BranchId.Main
+      let shared = [ setName "shared1" "s1"; setName "shared2" "s2" ]
+      let extra = setName "mine-only" "m1"
+      let! _ = Branches.storeDeltaOps x (shared @ [ extra ])
+
+      let sharedIds = shared |> List.map Inserts.computeOpHash
+      let event = PT.PackageOp.BranchEvent(x, PT.Merged sharedIds, "2026-01-02T00:00:00.000Z")
+      let! _ = receive [ wireOp event "2026-01-02T00:00:00.000Z" ]
+
+      let! s1 = boundHash "shared1"
+      Expect.isSome s1 "what the merger moved is live on main here"
+      let! mine = boundHash "mine-only"
+      Expect.isNone mine "the unpushed op is not"
+
+      let extraId = string (Inserts.computeOpHash extra)
+      let! (effective, tagged) =
+        Sql.query
+          "SELECT p.effective AS e,
+                  (SELECT count(*) FROM op_branches WHERE op_id = p.id AND branch_id = @b) AS t
+           FROM package_ops p WHERE p.id = @id"
+        |> Sql.parameters [ "id", Sql.string extraId; "b", Sql.string (string x) ]
+        |> Sql.executeRowAsync (fun read -> (read.int64 "e", read.int64 "t"))
+      Expect.equal (effective, tagged) (0L, 1L) "it is still inert and still on the branch"
+
+      let! merged =
+        Sql.query "SELECT merged_at IS NOT NULL AS m FROM branches WHERE id = @b"
+        |> Sql.parameters [ "b", Sql.string (string x) ]
+        |> Sql.executeRowAsync (fun read -> read.int64 "m")
+      Expect.equal merged 0L "and the branch stays live, holding exactly that"
+    finally
+      teardown [ b ]
+  }
+
+
+/// A merge into a NON-main parent, arriving from a peer, retags onto the parent as the local merge does.
+/// It used to flip into main regardless of the parent: a child branch's work merged on one machine landed
+/// in the other machine's main, which nobody had merged there.
+let aMergeEventHonoursTheParent =
+  testTask "a peer's merge of a branch off a branch retags onto the parent, not into main" {
+    let b = instance "b"
+    let pA = PT.BranchId.Id(System.Guid.NewGuid())
+    let pB = PT.BranchId.Id(System.Guid.NewGuid())
+
+    try
+      activate b
+      do! Branches.createBranch pA "chain-a" PT.BranchId.Main
+      do! Branches.createBranch pB "chain-b" pA
+      let op = setName "chain-name" "cb1"
+      let! _ = Branches.storeDeltaOps pB [ op ]
+      do!
+        Sql.query
+          "INSERT OR IGNORE INTO branch_name_bases (branch_id, owner, modules, name, base_hash)
+           VALUES (@b, 'MultiInstance', 'Converge', 'chain-name', 'the-fork-hash')"
+        |> Sql.parameters [ "b", Sql.string (string pB) ]
+        |> Sql.executeStatementAsync
+
+      let event =
+        PT.PackageOp.BranchEvent(pB, PT.Merged [ Inserts.computeOpHash op ], "2026-01-02T00:00:00.000Z")
+      let! _ = receive [ wireOp event "2026-01-02T00:00:00.000Z" ]
+
+      let! onMain = boundHash "chain-name"
+      Expect.isNone onMain "nothing reached main"
+      let opId = string (Inserts.computeOpHash op)
+      let! taggedTo =
+        Sql.query "SELECT branch_id FROM op_branches WHERE op_id = @id"
+        |> Sql.parameters [ "id", Sql.string opId ]
+        |> Sql.executeAsync (fun read -> read.string "branch_id")
+      Expect.equal taggedTo [ string pA ] "the op now belongs to the parent"
+      let! basesOnA =
+        Sql.query "SELECT name FROM branch_name_bases WHERE branch_id = @b"
+        |> Sql.parameters [ "b", Sql.string (string pA) ]
+        |> Sql.executeAsync (fun read -> read.string "name")
+      Expect.equal basesOnA [ "chain-name" ] "and so does its base"
+      let! merged =
+        Sql.query "SELECT merged_at IS NOT NULL AS m FROM branches WHERE id = @b"
+        |> Sql.parameters [ "b", Sql.string (string pB) ]
+        |> Sql.executeRowAsync (fun read -> read.int64 "m")
+      Expect.equal merged 1L "the child is merged"
+    finally
+      teardown [ b ]
+  }
+
 let tests =
   testSequenced
   <| testList
@@ -551,4 +645,6 @@ let tests =
       aBatchCatchesAnInstanceUp
       decisionsCrossTheWire
       localEditsBeatAFastPeer
-      aWriteBetweenReadAndMarkIsNotLost ]
+      aWriteBetweenReadAndMarkIsNotLost
+      aMergeEventLeavesUnpushedWorkOnTheBranch
+      aMergeEventHonoursTheParent ]

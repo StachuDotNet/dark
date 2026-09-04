@@ -1664,13 +1664,20 @@ module BranchEventKind =
   let toDT (k : PT.BranchEventKind) : Dval =
     let (caseName, fields) =
       match k with
-      | PT.Merged -> "Merged", []
+      | PT.Merged ops -> "Merged", [ Dval.list KTUuid (ops |> List.map DUuid) ]
       | PT.Archived -> "Archived", []
     DEnum(typeName (), typeName (), [], caseName, fields)
 
   let fromDT (d : Dval) : PT.BranchEventKind =
     match d with
-    | DEnum(_, _, [], "Merged", []) -> PT.Merged
+    | DEnum(_, _, [], "Merged", [ DList(_, ops) ]) ->
+      PT.Merged(
+        ops
+        |> List.map (fun d ->
+          match d with
+          | DUuid g -> g
+          | _ -> Exception.raiseInternal "Invalid Merged op id" [])
+      )
     | DEnum(_, _, [], "Archived", []) -> PT.Archived
     | _ -> Exception.raiseInternal "Invalid BranchEventKind" []
 

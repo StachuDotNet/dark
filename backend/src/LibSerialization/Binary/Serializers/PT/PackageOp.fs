@@ -57,12 +57,14 @@ module DeprecationKind =
 module BranchEventKind =
   let write (w : BinaryWriter) (k : BranchEventKind) : unit =
     match k with
-    | Merged -> w.Write(0uy)
+    | Merged ops ->
+      w.Write(0uy)
+      List.write w Guid.write ops
     | Archived -> w.Write(1uy)
 
   let read (r : BinaryReader) : BranchEventKind =
     match r.ReadByte() with
-    | 0uy -> Merged
+    | 0uy -> Merged(List.read r Guid.read)
     | 1uy -> Archived
     | b -> raiseFormatError $"Invalid BranchEventKind tag: {b}"
 

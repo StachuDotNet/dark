@@ -700,6 +700,27 @@ let retagFrontierToParent
   | Error e -> Stdlib.Result.Result.Error e
 
 
+/// Every op id tagged to <param branchId>, decodable or not. What a merge is about to move, read BEFORE
+/// either merge arm drops the tags, so the event that travels can name them.
+let frontierIds (branchId: Uuid) : List<Uuid> =
+  match
+    Stdlib.Sqlite.queryP
+      (localDb ())
+      "SELECT op_id FROM op_branches WHERE branch_id = @p0"
+      [ Stdlib.Uuid.toString branchId ]
+  with
+  | Ok rows ->
+    rows
+    |> Stdlib.List.filterMap (fun row ->
+      match Stdlib.Sqlite.textField row "op_id" with
+      | Some id ->
+        (match Stdlib.Uuid.parse id with
+         | Ok u -> Stdlib.Option.Option.Some u
+         | Error _ -> Stdlib.Option.Option.None)
+      | None -> Stdlib.Option.Option.None)
+  | Error _ -> []
+
+
 /// MERGE into MAIN, first half: flip this branch's ops to effective so the fold will take them.
 ///
 /// Returns how many ops are ABOUT to flip, not how many are tagged. A branch can carry tags on ops main

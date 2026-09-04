@@ -658,8 +658,10 @@ module PackageFn =
 /// can travel between machines with nothing to compare against. A rename would be last-writer-wins and
 /// there is no stamp on `branches` to arbitrate it, so there is no case for one.
 type BranchEventKind =
-  /// Its work is in its parent.
-  | Merged
+  /// Its work is in its parent. Carries the ids of the ops the merge moved, because a peer holding the
+  /// branch may hold MORE of it than the merger saw (its own unpushed edits), and the event must not
+  /// take those with it.
+  | Merged of ops : List<System.Guid>
   /// Put away, not deleted.
   | Archived
 
