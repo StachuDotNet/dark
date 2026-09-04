@@ -293,31 +293,10 @@ module Hashing =
     hashWithWriter (fun w -> Canonical.writeValue mode w (normalizeValue v))
 
 
-  /// Hash a PackageOp: its identity in the log.
-  ///
-  /// An `Add*` op is identified by the CONTENT it adds, not by its serialization. The serialized item
-  /// carries the parser's node ids, which are ephemeral (`gid()`, minted per parse), so hashing the
-  /// serialization gave the same fn a new op id on every parse: 5,466 of a seed's 12,876 ops were
-  /// re-minted by a reload of an unchanged tree, every binary upgrade grew every store by that many, and
-  /// two machines authoring the same fn made two ops. The content hash already skips the ids (see
-  /// `computeFnHash`), and after stabilization it is exactly what the item's `SetName` names.
-  ///
-  /// An item with no hash yet (pre-stabilization input) falls back to the serialization, as before:
-  /// giving every unstabilized op one id would dedup them against each other. Every other op kind is
-  /// identified by its serialization, which for them carries no ephemeral ids.
+  /// Hash a PackageOp (reuses PackageOp.write; ops have no metadata to skip)
   let computeOpHash (op : PT.PackageOp) : Hash =
-    let byContent (tag : byte) (Hash h : Hash) : Hash =
-      hashWithWriter (fun w ->
-        w.Write(tag)
-        w.Write(h))
-
-    match op with
-    | PT.PackageOp.AddFn f when f.hash <> Hash "" -> byContent 0uy f.hash
-    | PT.PackageOp.AddType t when t.hash <> Hash "" -> byContent 1uy t.hash
-    | PT.PackageOp.AddValue v when v.hash <> Hash "" -> byContent 2uy v.hash
-    | _ ->
-      hashWithWriter (fun w ->
-        LibSerialization.Binary.Serializers.PT.PackageOp.write w op)
+    hashWithWriter (fun w ->
+      LibSerialization.Binary.Serializers.PT.PackageOp.write w op)
 
 
   /// An op's row id in `package_ops`: its content hash, truncated to the 16 bytes a uuid column holds.
