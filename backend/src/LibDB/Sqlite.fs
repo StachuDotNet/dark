@@ -10,8 +10,21 @@ open Fumble
 
 open Prelude
 
-let private defaultConnString =
-  $"Data Source={LibConfig.Config.dbPath};Mode=ReadWriteCreate;Cache=Private;Pooling=true"
+let private connStringFor (path : string) : string =
+  $"Data Source={path};Mode=ReadWriteCreate;Cache=Private;Pooling=true"
+
+let private defaultConnString = connStringFor LibConfig.Config.dbPath
+
+/// The store this process is actually reading and writing, which is `LibConfig.Config.dbPath` except
+/// under a test that repointed it.
+///
+/// Held beside `connString` rather than parsed back out of it, and it is what `Builtin.localDbPath`
+/// answers. Before this, that builtin returned the CONFIG path while `useStoreForTesting` moved only
+/// the F# connection: so in a two-instance test every `Stdlib.Sqlite` call in Dark -- push, pull,
+/// conflict detection, resolve, every branch-aware read -- went on reading the default store while
+/// the test believed it was on instance B. The whole Dark half of sync was unreachable from the
+/// harness, and the tests that looked like they covered it were covering the F# fold alone.
+let mutable currentDbPath = LibConfig.Config.dbPath
 
 // `mutable` only so tests can repoint LibDB at a fresh store (see `Sql.useStoreForTesting`). Production never
 // rebinds it. Both the Fumble `connect` AND the raw-ADO fold path (`applyOps` opens `new SqliteConnection
@@ -54,14 +67,22 @@ module Sql =
   /// calling this. Every subsequent LibDB operation hits `path`. Call `resetStoreForTesting` to restore
   /// the default. NOT parallel-safe (it mutates process-global state): callers must be `testSequenced`
   /// and restore the default when done.
+  /// TEST-ONLY: repoint every LibDB reader and writer, and `Builtin.localDbPath` with them, at
+  /// <param path>.
+  ///
+  /// The caller must invalidate the caches after this (`LibDB.Caching.invalidateAll`), which cannot
+  /// happen here because `Caching` compiles after this module. The package manager and the branch
+  /// overlay memoize by content hash and branch id, and those are IDENTICAL across two copies of one
+  /// store, so a read after the swap otherwise answers with the other instance's rows.
   let useStoreForTesting (path : string) : unit =
-    connString <-
-      $"Data Source={path};Mode=ReadWriteCreate;Cache=Private;Pooling=true"
+    connString <- connStringFor path
+    currentDbPath <- path
     connect <- Sql.connect connString |> initializeConnection
 
   /// TEST-ONLY: restore the default store after `useStoreForTesting`.
   let resetStoreForTesting () : unit =
     connString <- defaultConnString
+    currentDbPath <- LibConfig.Config.dbPath
     connect <- Sql.connect connString |> initializeConnection
 
   /// Count and time every SQL statement this process runs.

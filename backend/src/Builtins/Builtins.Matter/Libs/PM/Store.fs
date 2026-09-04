@@ -24,7 +24,10 @@ let fns () : List<BuiltInFn> =
       description = "The file path of this instance's own package store (data.db)."
       fn =
         (function
-        | _, _, _, [| DUnit |] -> uply { return DString LibConfig.Config.dbPath }
+        // `LibDB.Sqlite.currentDbPath`, not `Config.dbPath`: the two differ under a test that
+        // repointed the store, and answering with the config path is how Dark's SQL used to read a
+        // different store from the F# it was interleaved with.
+        | _, _, _, [| DUnit |] -> uply { return DString LibDB.Sqlite.currentDbPath }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

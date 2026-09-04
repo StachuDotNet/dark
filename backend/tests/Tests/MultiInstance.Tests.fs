@@ -9,8 +9,21 @@
 /// these are real separate stores rather than two branches pretending. That swap is process-global, hence
 /// `testSequenced` and a teardown that always hands the default store back.
 ///
-/// The wire is driven directly (`importOpsBulk` + fold) rather than over HTTP. HTTP has its own tests in
-/// `UnguardedOrigins`; mixing the two would mean a convergence failure and a networking failure look alike.
+/// WHAT THIS IS, exactly: two STORES, one process, one clock, one set of caches. Not two machines. It
+/// cannot catch anything that needs process isolation (config state, boot-time growth, a real race), and
+/// stamps are passed in explicitly rather than read from a clock, so clock SKEW is simulable but a clock
+/// that has genuinely run ahead is not. Say "two stores" in a test name here, not "two machines"; the
+/// bash gates and a second laptop are what cover the rest.
+///
+/// It reaches DARK as of 2026-09-04. `Builtin.localDbPath` used to answer with the config path while the
+/// swap moved only the F# connection, so every `Stdlib.Sqlite` call in `SCM.*` -- push, pull, conflict
+/// detection and recording, resolve, every branch-aware read -- went on reading the default store while
+/// a test believed it was on instance B. That is most of what this PR moved out of F#, and none of it
+/// was reachable from here.
+///
+/// The wire is driven directly (`importOpsBulk` + fold, or the Dark fns under `SCM.*`) rather than over
+/// HTTP. HTTP has its own tests in `UnguardedOrigins`; mixing the two would mean a convergence failure
+/// and a networking failure look alike.
 module Tests.MultiInstance
 
 open Expecto
@@ -28,6 +41,9 @@ module Branches = LibDB.Branches
 module Queries = LibDB.Queries
 module PT = LibExecution.ProgramTypes
 module BS = LibSerialization.Binary.Serialization
+module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
+module Exe = LibExecution.Execution
+module RT = LibExecution.RuntimeTypes
 module Hashing = LibSerialization.Hashing.Hashing
 
 open TestUtils.TestUtils
@@ -69,10 +85,20 @@ let private instance (name : string) : Instance =
   Sql.useStoreForTesting path
   { name = name; path = path }
 
-let private activate (inst : Instance) : unit = Sql.useStoreForTesting inst.path
+/// Point this process at <param inst>'s store: F#, and Dark's `Stdlib.Sqlite` with it.
+///
+/// The cache drop is not optional. The package manager and the branch overlay memoize by content
+/// hash and by branch id, and two copies of one store share both, so without it instance B answers
+/// a name lookup with the row instance A had cached.
+let private activate (inst : Instance) : unit =
+  Sql.useStoreForTesting inst.path
+  LibDB.Caching.invalidateAll ()
 
+/// Back to the shared store, caches dropped. Every test here must end with this or the next test in
+/// the sequenced list reads an instance store that is about to be deleted.
 let private teardown (insts : List<Instance>) : unit =
   Sql.resetStoreForTesting ()
+  LibDB.Caching.invalidateAll ()
   insts |> List.iter (fun i -> deleteStore i.path)
 
 
@@ -804,6 +830,66 @@ let hostedOpsAreNotThisStoresDraft =
       teardown [ a ]
   }
 
+// ── the Dark half ────────────────────────────────────────────────────────────────────────────────
+//
+// Reachable only since `Builtin.localDbPath` started following the store swap. Everything below runs
+// Dark against whichever instance is active, which is what the F#-only tests above cannot do.
+
+/// Run <param code> against the ACTIVE instance and return it as a string.
+let private darkOn (code : string) : Task<string> =
+  task {
+    let! ptExpr = TestUtils.TestUtils.parsePTExpr code
+    let! state = TestUtils.TestUtils.executionStateFor LibDB.PackageManager.pt false Map.empty
+    let rtExpr = PT2RT.Expr.toRT Map.empty 0 None ptExpr
+    match! Exe.executeExpr state rtExpr with
+    | Ok dv -> return string dv
+    | Error(rte, _) -> return failtest $"the Dark call failed: {rte}"
+  }
+
+/// The Dark conflict detector, run on the receiving store, over two edits to one name made
+/// independently on two stores.
+///
+/// This is the test the harness could not hold before. `SCM.Conflicts` decides which side wins and
+/// whether the divergence is even a conflict, and it is Dark, so it read the DEFAULT store no matter
+/// which instance a test had activated. `divergenceIsRecordedNotJustResolved` above asserts on
+/// `package_ops` for exactly that reason: the row was all it could see.
+let private theDarkDetectorSeesTheStoreItIsOn =
+  testTask "Dark reads the instance it was pointed at, not the store the process started on" {
+    let a = instance "a"
+    let b = instance "b"
+
+    try
+      // Two stores, one name, two different bodies, B's authored later.
+      activate a
+      let! _ = receive [ wireOp (setName "seen" "from-a") "2026-01-01T00:00:00.000Z" ]
+      let! onA = darkOn "Darklang.SCM.PackageOps.identity ()"
+
+      activate b
+      let! _ = receive [ wireOp (setName "seen" "from-b") "2026-01-02T00:00:00.000Z" ]
+      let! onB = darkOn "Darklang.SCM.PackageOps.identity ()"
+
+      // The identity is minted per STORE and remembered in `config_v0`, so two instances must not
+      // share one. They did, because `identity ()` asks `localDbPath` where it is and got the same
+      // answer on both.
+      Expect.notEqual onA onB "each instance has its own identity, so Dark saw two stores"
+
+      // And a branch-aware read answers about the store it is on.
+      let liveHere =
+        "Darklang.SCM.PackageOps.liveBindingFor Darklang.SCM.Ids.mainBranchId "
+        + "(Darklang.LanguageTools.ProgramTypes.PackageLocation "
+        + "{ owner = \"MultiInstance\"; modules = [\"Converge\"]; name = \"seen\" })"
+      let! bSees = darkOn liveHere
+      let (PT.Hash fromB) = hashOf "from-b"
+      Expect.stringContains bSees fromB "B's Dark read sees B's binding"
+
+      activate a
+      let! aSees = darkOn liveHere
+      let (PT.Hash fromA) = hashOf "from-a"
+      Expect.stringContains aSees fromA "and A's sees A's, in the same process"
+    finally
+      teardown [ a; b ]
+  }
+
 let tests =
   testSequenced
   <| testList
@@ -824,4 +910,5 @@ let tests =
       anUnbindRemovesTheNameAndNothingElse
       unbindConvergesWhateverOrderOpsArrive
       aMergedUnbindTakesTheNameOffMain
-      hostedOpsAreNotThisStoresDraft ]
+      hostedOpsAreNotThisStoresDraft
+      theDarkDetectorSeesTheStoreItIsOn ]
