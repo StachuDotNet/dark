@@ -1771,6 +1771,51 @@ let private aMergeCommitsWhatItLands =
 /// A bundle carries the sender's commits. It did not, so a pulled branch arrived wholly uncommitted, and
 /// the puller's next `commit` swept the author's finished work under the puller's message: the same op
 /// under a different commit on each machine.
+/// An `Unbind` on a branch takes a main name away on that branch, shows in the draft as a removal, and
+/// takes it off main when the branch merges. Authored through `SCM.PackageOps.add`, since no verb writes
+/// one yet; the importer will, once the reload becomes a diff.
+let private anUnbindRemovesANameThroughTheCli =
+  cliTestOnMain "an unbind removes a name on the branch, then on main when the branch merges" (fun state ->
+    task {
+      let! _ = runCli state [ "discard"; "-y" ]
+      let! _ = runCli state [ "fn"; "Tests.Gone.f"; "() : Int64 = 1L" ]
+      let! _ = runCli state [ "commit"; "gone soon"; "-y" ]
+      let! _ = runCli state [ "switch"; "gonebr" ]
+      let! added =
+        runCli
+          state
+          [ "eval"
+            "Darklang.SCM.PackageOps.add (Builtin.scmCurrentBranch ()) [ Darklang.LanguageTools.ProgramTypes.PackageOp.Unbind(Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"Tests\"; modules = [\"Gone\"]; name = \"f\" }, Stdlib.Option.Option.None) ]" ]
+      Expect.stringContains added "Ok" $"the unbind was authored on the branch: {added}"
+
+      let! onBranch = runCliCatching state [ "eval"; "Tests.Gone.f ()" ]
+      Expect.isTrue
+        (match onBranch with
+         | Ok out -> out.Contains "not found"
+         | Error _ -> true)
+        $"the name is gone on the branch: {onBranch}"
+      let! status = runCli state [ "status" ]
+      Expect.stringContains status "1 item removed" $"status names the removal: {status}"
+      let! review = runCli state [ "commit"; "remove f"; "-y" ]
+      Expect.stringContains review "REMOVED (1)" $"commit's review lists it: {review}"
+      Expect.stringContains review "Tests.Gone.f" $"by name: {review}"
+
+      let! _ = runCli state [ "switch"; "main" ]
+      let! onMain = runCli state [ "eval"; "Tests.Gone.f ()" ]
+      Expect.stringContains onMain "1" "main still has it before the merge"
+      let! merged = runCli state [ "merge"; "gonebr" ]
+      Expect.stringContains merged "Merged" $"the branch merges: {merged}"
+      let! afterMerge = runCliCatching state [ "eval"; "Tests.Gone.f ()" ]
+      Expect.isTrue
+        (match afterMerge with
+         | Ok out -> out.Contains "not found"
+         | Error _ -> true)
+        $"and main no longer has the name: {afterMerge}"
+      let! shown = runCli state [ "commits"; "3" ]
+      Expect.stringContains shown "remove f" $"the removal's commit travelled with the merge: {shown}"
+    })
+
+
 let private aBundleCarriesItsCommits =
   cliTestOnMain "a branch bundle arrives with the author's commits, not as a draft" (fun state ->
     task {
@@ -3548,6 +3593,7 @@ let tests =
        aBundleCarriesTheContentItsNamesPointAt
        aMergeCommitsWhatItLands
        aBundleCarriesItsCommits
+       anUnbindRemovesANameThroughTheCli
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses

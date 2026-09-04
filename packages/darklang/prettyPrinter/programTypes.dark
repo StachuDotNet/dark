@@ -1508,6 +1508,14 @@ module PackageOp =
       let hash = LanguageTools.ProgramTypes.Reference.hash target
       $"SetName {path} to {kind} of [{LanguageTools.ProgramTypes.hashToShort hash}]"
 
+    | Unbind(loc, previous) ->
+      let path = PackageLocation.packageLocation loc
+      let was =
+        match previous with
+        | Some h -> $" (was [{LanguageTools.ProgramTypes.hashToShort h}])"
+        | None -> ""
+      $"Unbind {path}{was}"
+
     | Deprecate(target, kind, _message) ->
       let kindStr =
         match kind with

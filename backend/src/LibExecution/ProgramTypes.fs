@@ -690,6 +690,16 @@ type PackageOp =
     target : Reference *
     previous : Option<Hash>
 
+  /// A name stops existing. The fold unlists whatever is live at the location and nothing else: the
+  /// content stays reachable by hash for anything that still references it, and a caller that does is
+  /// what `constraints` is for. `previous` is the hash it unbound, for the same reason `SetName`
+  /// carries one: a merge wants to know what was replaced.
+  ///
+  /// Not a `Deprecate`: deprecation is a statement about CONTENT and keys on the hash, so it would also
+  /// mark every other name bound to the same body, and a deprecated name still resolves. A location's
+  /// identity is (owner, modules, name), so no kind: whatever kind holds the name is what goes.
+  | Unbind of location : PackageLocation * previous : Option<Hash>
+
   // Deprecation: author-initiated annotation on a specific content hash. Always explicit; implicit
   // deprecation signals raised as Constraints are a later design, not this.
   | Deprecate of target : Reference * kind : DeprecationKind * message : string

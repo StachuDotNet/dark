@@ -6,7 +6,10 @@ let content () : String =
 Author-initiated annotations that a fn/type/value shouldn't be used anymore.
 Deprecations target content hashes, not names, so a pure rename of the same
 hash is not a deprecation (name changes go through `SetName`); a rewrite with
-a replacement is.
+a replacement is. Removing a NAME is a different op again, `Unbind`: the name
+stops resolving, the content stays reachable by hash, and nothing is said
+about the content. A deprecated name still resolves; an unbound one does not.
+No verb writes an `Unbind` yet; the package importer will.
 
 ## Three kinds
 

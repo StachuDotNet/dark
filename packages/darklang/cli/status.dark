@@ -20,6 +20,8 @@ type Summary =
     /// Of `changed`, how many FOLLOWED something rather than being edited by you. `changed` counts both,
     /// since both get committed, but they are not the same fact and one number for both hides propagation.
     followed: Int
+    /// Names the draft removes. Separate from `changed`, which counts bindings.
+    removed: Int
     repoints: Int
     conflicts: Int64
     /// A COUNT, never a list. A list in status is a thing you learn to scroll past; a count is a pointer to
@@ -34,6 +36,7 @@ let summarise (unit: Unit) : Summary =
   Summary
     { changed = c.changed
       followed = c.followed
+      removed = c.removed
       repoints = c.repoints
       conflicts = c.conflicts
       constraints = c.constraints
@@ -58,6 +61,7 @@ let statusJson (state: AppState) : ScmJson.StatusJson =
         SCM.PackageOps.branchName (SCM.PackageOps.currentBranch ())
       draftOps = p.ops
       changed = items
+      removed = p.removed
       propagates = p.repoints
       leftBehind = p.leftBehind
       conflicts = p.conflicts
@@ -84,7 +88,7 @@ let executePretty (state: AppState) : AppState =
   let s = summarise ()
   branchLine state
 
-  if (s.changed == 0) && (s.conflicts == 0L) then
+  if (s.changed == 0) && (s.removed == 0) && (s.conflicts == 0L) then
     printOk "clean: nothing changed since your last commit."
 
     if s.constraints > 0 then
@@ -94,13 +98,15 @@ let executePretty (state: AppState) : AppState =
   else
     let parts =
       Stdlib.List.append
-        (if s.changed == 0 then
-           []
-         else if s.followed == 0 then
-           [ $"{plural s.changed "item"} changed" ]
-         else
-           // What you did and what followed, separately; see `Summary.followed`.
-           [ $"{plural (s.changed - s.followed) "item"} changed, {Stdlib.Int.toString s.followed} followed" ])
+        (Stdlib.List.append
+          (if s.changed == 0 then
+             []
+           else if s.followed == 0 then
+             [ $"{plural s.changed "item"} changed" ]
+           else
+             // What you did and what followed, separately; see `Summary.followed`.
+             [ $"{plural (s.changed - s.followed) "item"} changed, {Stdlib.Int.toString s.followed} followed" ])
+          (if s.removed == 0 then [] else [ $"{plural s.removed "item"} removed" ]))
         (Stdlib.List.append
           (if s.repoints == 0 then
              []
@@ -121,7 +127,7 @@ let executePretty (state: AppState) : AppState =
         (Stdlib.Cli.UI.Colors.hint
           $"""  {plural s.constraints "constraint"} outstanding -> `dark constraints`""")
 
-    if s.changed > 0 then
+    if (s.changed > 0) || (s.removed > 0) then
       Stdlib.printLine (Stdlib.Cli.UI.Colors.hint "  -> `dark commit` to review + commit")
 
   // Store health, reported here rather than behind a verb: a check you have to remember to run is a check

@@ -50,6 +50,7 @@ let private candidateItems
         (PT.Reference.PackageFn fn.hash :: items,
          { closure with functions = Map.add fn.hash fn closure.functions })
       | PT.PackageOp.SetName _
+      | PT.PackageOp.Unbind _
       | PT.PackageOp.Deprecate _
       | PT.PackageOp.Undeprecate _
       | PT.PackageOp.Decision _

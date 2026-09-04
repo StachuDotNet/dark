@@ -27,6 +27,8 @@ type StatusJson =
   { branch: String
     draftOps: Int64
     changed: List<ChangedItem>
+    /// Fully-qualified names the draft removes.
+    removed: List<String>
     propagates: List<SCM.PackageOps.Repoint>
     /// What a pin is holding on an older version. An outcome, not a warning.
     leftBehind: List<SCM.PackageOps.Repoint>
@@ -47,6 +49,8 @@ type CommitJson =
     opsCommitted: Int64
     dependentsRepointed: Int
     changed: List<ChangedItem>
+    /// Fully-qualified names the draft removes.
+    removed: List<String>
     propagates: List<SCM.PackageOps.Repoint>
     /// What a pin is holding on an older version. An outcome, not a warning.
     leftBehind: List<SCM.PackageOps.Repoint>

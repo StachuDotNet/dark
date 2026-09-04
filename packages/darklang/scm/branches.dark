@@ -345,12 +345,18 @@ let parentHashesForBases (parentId: Uuid) (branchId: Uuid) : Dict<String, String
         | _ -> Stdlib.Option.Option.None)
     | Error _ -> []
 
+  // A name the chain UNBOUND reads as "", the same spelling `divergedIn` gives a name main unlisted.
   let overlay =
     if SCM.Ids.isMain parentId then
       []
     else
-      SCM.PackageOps.chainBindings parentId
-      |> Stdlib.List.map (fun b -> (nameKey b.owner b.modules b.name, b.hash))
+      SCM.PackageOps.chainBindingEntries parentId
+      |> Stdlib.List.map (fun w ->
+        let hash =
+          match w.binding with
+          | Some b -> b.hash
+          | None -> ""
+        (nameKey w.owner w.modules w.name, hash))
 
   // Overlay last: `fromListOverwritingDuplicates` keeps the later entry, and the parent chain's own
   // rebind is what a child forked from, not main's.

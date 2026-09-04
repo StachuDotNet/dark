@@ -541,6 +541,10 @@ type PackageOp =
       location: PackageLocation *
       target: Reference *
       previous: Stdlib.Option.Option<Hash>
+  /// A name stops existing. Unlists whatever is live at the location and nothing else: the content stays
+  /// reachable by hash. `previous` is the hash it unbound. Not a Deprecate, which is about content and would
+  /// mark every other name on the same body; a deprecated name still resolves, an unbound one does not.
+  | Unbind of location: PackageLocation * previous: Stdlib.Option.Option<Hash>
   // Author-initiated deprecation annotation on a specific hash.
   | Deprecate of target: Reference * kind: DeprecationKind * message: String
   // Clear any prior deprecation on a target.

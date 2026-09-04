@@ -77,6 +77,30 @@ let draftBindings () : List<Conflicts.Binding> =
   draftBindingsFor (currentBranch ())
 
 
+/// The names the draft REMOVES, fully qualified: an `Unbind` with no later binding of the same name.
+/// Not a binding, so `draftBindingsFor` cannot carry it, and a status that counted bindings alone read
+/// "clean" over a draft whose one op deletes something.
+let draftRemovalsFor (branchId: Uuid) : List<String> =
+  match
+    Stdlib.Sqlite.queryP
+      (localDb ())
+      ("SELECT p.id, p.op_blob, p.origin_ts AS ts FROM package_ops p WHERE "
+       ++ draftWhere branchId
+       ++ " ORDER BY p.origin_ts, p.rowid")
+      (draftParams branchId)
+  with
+  | Ok rows ->
+    bindingEntriesFromOpRows rows
+    |> Stdlib.List.filterMap (fun w ->
+      match w.binding with
+      | Some _ -> Stdlib.Option.Option.None
+      | None -> Stdlib.Option.Option.Some(Conflicts.fqn w.owner w.modules w.name))
+  | Error _ -> []
+
+
+let draftRemovals () : List<String> = draftRemovalsFor (currentBranch ())
+
+
 /// Draft items that still reference a name which does not resolve, as (item, the names it cannot find).
 ///
 /// An unresolved reference is fine while you work -- you can write a caller before the callee exists, and

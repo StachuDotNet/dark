@@ -303,7 +303,9 @@ CREATE TABLE IF NOT EXISTS locations (
   origin_ts TEXT NULL,
   -- What put this binding here: 'op' = the normal op-fold (incl. WIP authoring), 'resolution' = a
   -- human/keep-local resolution OVERLAY. `discard` deletes op-fold bindings but excludes 'resolution',
-  -- so it can't silently revert a synced resolution into a divergence.
+  -- so it can't silently revert a synced resolution into a divergence. 'unbind' = an Unbind's
+  -- TOMBSTONE: unlisted from birth, stamped with the unbind's origin_ts, so a binding authored before
+  -- the unbind but arriving after it can be told to stay stale. Never live; history reads skip it.
   source TEXT NOT NULL DEFAULT 'op',
   -- The op that wrote this binding. `origin_ts` orders bindings but does not IDENTIFY one: two
   -- instances can mint the same stamp, so a lookup by stamp can land on the wrong op and misread

@@ -104,4 +104,11 @@ let recordPrevious
           (LanguageTools.ProgramTypes.Reference.kind target)
 
       LanguageTools.ProgramTypes.PackageOp.SetName(location, target, previous)
+    // Same for an unbind: what it removes is what is live at the name on this branch, whatever kind.
+    | Unbind(location, None) ->
+      let previous =
+        SCM.PackageOps.liveBindingFor branchId location
+        |> Stdlib.Option.map (fun b -> LanguageTools.ProgramTypes.Hash.Hash b.hash)
+
+      LanguageTools.ProgramTypes.PackageOp.Unbind(location, previous)
     | other -> other)

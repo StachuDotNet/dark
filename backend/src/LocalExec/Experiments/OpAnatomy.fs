@@ -487,6 +487,15 @@ let private walkOp (t : Tally) (op : PT.PackageOp) : unit =
     | Some h -> countHash t h
     | None -> ()
 
+  | PT.PackageOp.Unbind(loc, previous) ->
+    countName t loc.owner
+    List.iter (countName t) loc.modules
+    countName t loc.name
+
+    match previous with
+    | Some h -> countHash t h
+    | None -> ()
+
   | PT.PackageOp.Deprecate(target, kind, message) ->
     countHash t target.hash
 
@@ -536,6 +545,7 @@ let run () : Ply<Result<unit, string>> =
       | PT.PackageOp.AddType _ -> "AddType"
       | PT.PackageOp.AddValue _ -> "AddValue"
       | PT.PackageOp.SetName _ -> "SetName"
+      | PT.PackageOp.Unbind _ -> "Unbind"
       | PT.PackageOp.Deprecate _ -> "Deprecate"
       | PT.PackageOp.Undeprecate _ -> "Undeprecate"
       | PT.PackageOp.Decision _ -> "Decision"

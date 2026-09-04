@@ -167,6 +167,8 @@ type Review =
   { changed: List<SCM.Conflicts.Binding>
     withPrevious: List<(SCM.Conflicts.Binding * List<LanguageTools.ProgramTypes.Hash>)>
     items: List<ScmJson.ChangedItem>
+    /// Fully-qualified names the draft removes.
+    removed: List<String>
     propagates: List<SCM.PackageOps.Repoint>
     /// Names that reference an old version and WON'T follow, because they're pinned. An outcome, not a
     /// warning: leaving a reference behind is a thing you decide, and this is where you see you decided it.
@@ -189,6 +191,7 @@ let review (state: AppState) : Review =
         |> Stdlib.List.map (fun entry ->
           let (b, previous) = entry
           ScmJson.changedItem state.currentBranchId p.propagated b previous)
+      removed = p.removed
       propagates = p.repoints
       leftBehind = p.leftBehind
       conflicts = p.conflicts
@@ -288,7 +291,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
   // reference, or a definite type error, that a person at the pretty prompt would have been refused.
   // They print their refusal; the JSON below then says `committed = false`.
   let (didCommit, hash, ops, moved) =
-    if Stdlib.List.isEmpty r.changed then
+    if (Stdlib.List.isEmpty r.changed) && (Stdlib.List.isEmpty r.removed) then
       (false, "", 0L, 0)
     else if parsed.autoConfirm && (refuseUnresolved parsed || refuseTypeErrors parsed) then
       (false, "", 0L, 0)
@@ -314,6 +317,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
           opsCommitted = ops
           dependentsRepointed = moved
           changed = r.items
+          removed = r.removed
           propagates = r.propagates
           leftBehind = r.leftBehind
           conflicts = r.conflicts }
@@ -415,6 +419,14 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
 
     r.items
     |> Stdlib.List.iter (fun item -> Stdlib.printLine (changedLine nameWidth item))
+
+    // REMOVED -- names this commit takes away. Their content stays reachable by hash.
+    if Stdlib.List.isEmpty r.removed then
+      ()
+    else
+      Stdlib.printLine ""
+      printOk $"  REMOVED ({Stdlib.Int.toString (Stdlib.List.length r.removed)})"
+      r.removed |> Stdlib.List.iter (fun name -> Stdlib.printLine $"    - {name}")
 
     // PROPAGATES TO -- outcomes, not ops. This is a PREVIEW; nothing is authored until you say yes.
     let repoints = r.propagates

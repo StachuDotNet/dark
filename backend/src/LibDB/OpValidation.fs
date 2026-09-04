@@ -67,6 +67,7 @@ let hashClashes (ops : List<PT.PackageOp>) : List<string> =
     | PT.PackageOp.AddValue v ->
       Some(("value", v.hash), Hashing.computeValueHash Hashing.Normal v)
     | PT.PackageOp.SetName _
+    | PT.PackageOp.Unbind _
     | PT.PackageOp.Deprecate _
     | PT.PackageOp.Undeprecate _
     | PT.PackageOp.Decision _

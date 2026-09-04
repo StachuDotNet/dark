@@ -662,6 +662,100 @@ let aMergeEventCommitsWhatItFlips =
       teardown [ b ]
   }
 
+let private unbind (name : string) (previous : string) : PT.PackageOp =
+  PT.PackageOp.Unbind(loc name, Some(hashOf previous))
+
+/// An `Unbind` takes a name out and leaves its content alone, and a later binding brings the name back.
+let anUnbindRemovesTheNameAndNothingElse =
+  testTask "an unbind removes the name; the content stays, and a later bind revives the name" {
+    let a = instance "a"
+
+    try
+      activate a
+      let! _ = receive [ wireOp (setName "gone" "g1") "2026-01-01T00:00:00.000Z" ]
+      let! before = boundHash "gone"
+      Expect.isSome before "bound before"
+
+      let! _ = receive [ wireOp (unbind "gone" "g1") "2026-01-02T00:00:00.000Z" ]
+      let! after = boundHash "gone"
+      Expect.isNone after "the name resolves to nothing after the unbind"
+
+      // The unbound row is history, not gone: it is what `dark log` and a merge read.
+      let! rows =
+        Sql.query
+          "SELECT count(*) AS n FROM locations
+           WHERE owner = 'MultiInstance' AND modules = 'Converge' AND name = 'gone'"
+        |> Sql.executeRowAsync (fun read -> read.int64 "n")
+      Expect.equal rows 2L "the binding it unlisted and the unbind's own tombstone"
+
+      let! _ = receive [ wireOp (setName "gone" "g2") "2026-01-03T00:00:00.000Z" ]
+      let! revived = boundHash "gone"
+      let (PT.Hash g2) = hashOf "g2"
+      Expect.equal revived (Some g2) "a binding authored after the unbind takes the name again"
+    finally
+      teardown [ a ]
+  }
+
+/// The order the two ops ARRIVE in must not decide whether the name exists. Without the tombstone, a
+/// binding authored before an unbind but arriving after it found nothing live and bound the name; the
+/// peer that saw them in authoring order had no name. Two stores, one log, two answers.
+let unbindConvergesWhateverOrderOpsArrive =
+  testTask "a bind authored before an unbind loses to it whichever arrives first" {
+    let a = instance "a"
+    let b = instance "b"
+
+    try
+      let bound = wireOp (setName "order" "o1") "2026-01-01T00:00:00.000Z"
+      let removed = wireOp (unbind "order" "o1") "2026-01-02T00:00:00.000Z"
+      let rebound = wireOp (setName "order" "o2") "2026-01-03T00:00:00.000Z"
+
+      activate a
+      let! _ = receive [ bound ]
+      let! _ = receive [ removed ]
+      let! onA = boundHash "order"
+      Expect.isNone onA "in authoring order: the name is gone"
+
+      activate b
+      let! _ = receive [ removed ]
+      let! _ = receive [ bound ]
+      let! onB = boundHash "order"
+      Expect.isNone onB "unbind first, then the older bind: still gone"
+
+      // And an unbind arriving late does not take out a name bound after it.
+      let! _ = receive [ rebound ]
+      let! _ = receive [ removed ]
+      let! onB2 = boundHash "order"
+      let (PT.Hash o2) = hashOf "o2"
+      Expect.equal onB2 (Some o2) "the later bind holds against a re-received older unbind"
+    finally
+      teardown [ a; b ]
+  }
+
+/// A branch's unbind is inert on main until the branch merges, and then it is main's.
+let aMergedUnbindTakesTheNameOffMain =
+  testTask "an unbind authored on a branch removes the name from main when the branch merges" {
+    let b = instance "b"
+    let x = PT.BranchId.Id(System.Guid.NewGuid())
+
+    try
+      activate b
+      let! _ = receive [ wireOp (setName "landed" "l1") "2026-01-01T00:00:00.000Z" ]
+      do! Branches.createBranch x "unbind-x" PT.BranchId.Main
+      let op = unbind "landed" "l1"
+      let! _ = Branches.storeDeltaOps x [ op ]
+      let! still = boundHash "landed"
+      Expect.isSome still "the branch's unbind changes nothing on main while it is a branch op"
+
+      let event =
+        PT.PackageOp.BranchEvent(x, PT.Merged [ Inserts.computeOpHash op ], "2026-01-02T00:00:00.000Z")
+      let! _ = Inserts.importOpsBulk "sync-commit-2" [ wireOp event "2026-01-02T00:00:00.000Z" ]
+      let! _ = Seed.applyUnappliedOps ()
+      let! after = boundHash "landed"
+      Expect.isNone after "merged, the name is gone from main"
+    finally
+      teardown [ b ]
+  }
+
 let tests =
   testSequenced
   <| testList
@@ -678,4 +772,7 @@ let tests =
       aWriteBetweenReadAndMarkIsNotLost
       aMergeEventLeavesUnpushedWorkOnTheBranch
       aMergeEventHonoursTheParent
-      aMergeEventCommitsWhatItFlips ]
+      aMergeEventCommitsWhatItFlips
+      anUnbindRemovesTheNameAndNothingElse
+      unbindConvergesWhateverOrderOpsArrive
+      aMergedUnbindTakesTheNameOffMain ]

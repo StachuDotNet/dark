@@ -216,6 +216,8 @@ let private resolveCurrentHash
     // oldest-first, same as the overlay's own rule, and `Resolve` counts as a
     // binding for the same reason `SCM.PackageOps.bindingFromOp` says it does -- a
     // rebind is a `Resolve`, and missing it would resolve to a superseded version.
+    // `Some None` is a name the branch UNBOUND: it resolves to nothing on the branch, whatever main
+    // holds, so the fallback is the placeholder rather than main's row.
     let! fromBranch =
       if branch.IsMain then
         Task.FromResult None
@@ -229,17 +231,19 @@ let private resolveCurrentHash
               (fun acc op ->
                 match op with
                 | PT.PackageOp.SetName(l, target, _) when l = loc ->
-                  Some target.hash
+                  Some(Some target.hash)
                 | PT.PackageOp.Decision(_, l, _, PT.DecisionKind.Override target) when
                   l = loc
                   ->
-                  Some target.hash
+                  Some(Some target.hash)
+                | PT.PackageOp.Unbind(l, _) when l = loc -> Some None
                 | _ -> acc)
               None
         }
 
     match fromBranch with
-    | Some h -> return h
+    | Some(Some h) -> return h
+    | Some None -> return fallback
     | None ->
       let find =
         match kind with

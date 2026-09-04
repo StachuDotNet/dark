@@ -195,7 +195,19 @@ let bindingFromOp
 
 /// Fold a run of (op, origin_ts) into "what does this op set BIND", latest-stamp-wins per name. The rows must
 /// arrive oldest-first; the later SetName then overwrites the earlier, which is the binding the fold lands on.
-let bindingsFromOpRows (rows: List<Dict<String, Stdlib.Sqlite.Value>>) : List<Conflicts.Binding> =
+/// An `Unbind` is the name's latest word too: it takes the name out, until a later op binds it again.
+/// The chain's last word on one name: `binding` is what it is bound to, or None for a name the chain
+/// unbound, which hides whatever is underneath.
+type NameWord =
+  { owner: String
+    modules: String
+    name: String
+    binding: Stdlib.Option.Option<Conflicts.Binding> }
+
+
+let bindingEntriesFromOpRows
+  (rows: List<Dict<String, Stdlib.Sqlite.Value>>)
+  : List<NameWord> =
   let entries =
     rows
     |> Stdlib.List.filterMap (fun row ->
@@ -208,7 +220,26 @@ let bindingsFromOpRows (rows: List<Dict<String, Stdlib.Sqlite.Value>>) : List<Co
           let ts = Stdlib.Sqlite.textField row "ts" |> Stdlib.Option.withDefault ""
 
           match tryDecodeOp id blob with
-          | Some op -> bindingFromOp op ts
+          | Some(Unbind(location, _)) ->
+            let modules = Stdlib.String.join location.modules "."
+            Stdlib.Option.Option.Some(
+              (Conflicts.bindingKey location.owner modules location.name,
+               NameWord
+                 { owner = location.owner
+                   modules = modules
+                   name = location.name
+                   binding = Stdlib.Option.Option.None })
+            )
+          | Some op ->
+            bindingFromOp op ts
+            |> Stdlib.Option.map (fun pair ->
+              let (k, b) = pair
+              (k,
+               NameWord
+                 { owner = b.owner
+                   modules = b.modules
+                   name = b.name
+                   binding = Stdlib.Option.Option.Some b }))
           | None -> Stdlib.Option.Option.None
         | Error _ -> Stdlib.Option.Option.None
       | _ -> Stdlib.Option.Option.None)
@@ -216,9 +247,14 @@ let bindingsFromOpRows (rows: List<Dict<String, Stdlib.Sqlite.Value>>) : List<Co
   Stdlib.Dict.values (Stdlib.Dict.fromListOverwritingDuplicates entries)
 
 
+/// <fn bindingEntriesFromOpRows>, keeping only the names that end up bound.
+let bindingsFromOpRows (rows: List<Dict<String, Stdlib.Sqlite.Value>>) : List<Conflicts.Binding> =
+  bindingEntriesFromOpRows rows |> Stdlib.List.filterMap (fun w -> w.binding)
+
+
 /// What a branch CHAIN binds (the branch, then its ancestors up to main), for a non-main parent -- which is
 /// never materialized in `locations`, only ever an overlay. Mirrors `Branches.chainOverlayOps`.
-let chainBindings (branchId: Uuid) : List<Conflicts.Binding> =
+let chainBindingEntries (branchId: Uuid) : List<NameWord> =
   match
     Stdlib.Sqlite.queryP
       (localDb ())
@@ -240,8 +276,13 @@ let chainBindings (branchId: Uuid) : List<Conflicts.Binding> =
       [ Stdlib.Uuid.toString branchId
         Stdlib.Uuid.toString SCM.Ids.mainBranchId ]
   with
-  | Ok rows -> bindingsFromOpRows rows
+  | Ok rows -> bindingEntriesFromOpRows rows
   | Error _ -> []
+
+
+/// <fn chainBindingEntries>, keeping only the names the chain leaves bound.
+let chainBindings (branchId: Uuid) : List<Conflicts.Binding> =
+  chainBindingEntries branchId |> Stdlib.List.filterMap (fun w -> w.binding)
 
 
 /// What <param loc> resolves to on <param branchId>: the chain overlay first, then main's projection,
@@ -261,16 +302,18 @@ let liveBindingFor
   : Stdlib.Option.Option<Conflicts.Binding> =
   let modules = Stdlib.String.join loc.modules "."
 
+  // The chain's last word on the name: bound to something, unbound (an `Unbind` with no later binding,
+  // which hides whatever main holds), or nothing said.
   let onBranch =
     if SCM.Ids.isMain branchId then
       Stdlib.Option.Option.None
     else
-      chainBindings branchId
-      |> Stdlib.List.findFirst (fun b ->
-        (b.owner == loc.owner) && (b.modules == modules) && (b.name == loc.name))
+      chainBindingEntries branchId
+      |> Stdlib.List.findFirst (fun w ->
+        (w.owner == loc.owner) && (w.modules == modules) && (w.name == loc.name))
 
   match onBranch with
-  | Some b -> Stdlib.Option.Option.Some b
+  | Some w -> w.binding
   | None ->
     match
       // main-scoped: the fallback half of THE branch-aware read, after the chain overlay above.

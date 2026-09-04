@@ -123,17 +123,27 @@ let createInMemoryOver
   (below : Option<PT.PackageManager>)
   (ops : List<PT.PackageOp>)
   : PT.PackageManager =
-  let typeLocations = ResizeArray<PT.PackageLocation * Hash>()
-  let valueLocations = ResizeArray<PT.PackageLocation * Hash>()
-  let fnLocations = ResizeArray<PT.PackageLocation * Hash>()
+  // Folded in op order, latest wins per location, as the `locations` fold does for main. One name holds
+  // ONE item, so binding a fn over a name that held a value drops the value's binding, and an `Unbind`
+  // drops whatever the name held.
+  let typeLocs = System.Collections.Generic.Dictionary<PT.PackageLocation, Hash>()
+  let valueLocs = System.Collections.Generic.Dictionary<PT.PackageLocation, Hash>()
+  let fnLocs = System.Collections.Generic.Dictionary<PT.PackageLocation, Hash>()
+  let unbind loc =
+    typeLocs.Remove loc |> ignore<bool>
+    valueLocs.Remove loc |> ignore<bool>
+    fnLocs.Remove loc |> ignore<bool>
+  let bind loc target =
+    unbind loc
+    match target with
+    | PT.PackageType h -> typeLocs[loc] <- h
+    | PT.PackageValue h -> valueLocs[loc] <- h
+    | PT.PackageFn h -> fnLocs[loc] <- h
 
   for op in ops do
     match op with
-    | PT.PackageOp.SetName(loc, target, _) ->
-      match target with
-      | PT.PackageType h -> typeLocations.Add(loc, h)
-      | PT.PackageValue h -> valueLocations.Add(loc, h)
-      | PT.PackageFn h -> fnLocations.Add(loc, h)
+    | PT.PackageOp.SetName(loc, target, _) -> bind loc target
+    | PT.PackageOp.Unbind(loc, _) -> unbind loc
     | PT.PackageOp.AddType _
     | PT.PackageOp.AddValue _
     | PT.PackageOp.AddFn _ -> ()
@@ -149,11 +159,7 @@ let createInMemoryOver
     | PT.PackageOp.BranchEvent _ -> ()
 
     // An override binds a name like a SetName does; the overlay only cares about the binding.
-    | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override target) ->
-      match target with
-      | PT.PackageType h -> typeLocations.Add(loc, h)
-      | PT.PackageValue h -> valueLocations.Add(loc, h)
-      | PT.PackageFn h -> fnLocations.Add(loc, h)
+    | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override target) -> bind loc target
 
   // Items are keyed by the hash the item CARRIES, which after stabilization is the hash its SetName
   // names. Pairing "the Add before this SetName" was wrong for an overlay: chain ops are ordered by
@@ -221,32 +227,24 @@ let createInMemoryOver
       | PT.PackageOp.SetName(_, PT.PackageValue h, _) -> Some h
       | _ -> None)
 
-  let typeLocMap = Map.ofSeq typeLocations
-  let valueLocMap = Map.ofSeq valueLocations
-  let fnLocMap = Map.ofSeq fnLocations
+  let toMap (d : System.Collections.Generic.Dictionary<PT.PackageLocation, Hash>) =
+    d |> Seq.map (fun (KeyValue(k, v)) -> (k, v)) |> Map.ofSeq
+  let typeLocMap = toMap typeLocs
+  let valueLocMap = toMap valueLocs
+  let fnLocMap = toMap fnLocs
 
-  // Build reverse multi-maps (id -> all locations)
-  let typeIdToLocs =
-    typeLocations
+  // Reverse multi-maps (hash -> every location still bound to it).
+  let invert (m : Map<PT.PackageLocation, Hash>) : Map<Hash, List<PT.PackageLocation>> =
+    m
+    |> Map.toSeq
     |> Seq.fold
       (fun acc (loc, id) ->
         let existing = Map.tryFind id acc |> Option.defaultValue []
         Map.add id (loc :: existing) acc)
       Map.empty
-  let valueIdToLocs =
-    valueLocations
-    |> Seq.fold
-      (fun acc (loc, id) ->
-        let existing = Map.tryFind id acc |> Option.defaultValue []
-        Map.add id (loc :: existing) acc)
-      Map.empty
-  let fnIdToLocs =
-    fnLocations
-    |> Seq.fold
-      (fun acc (loc, id) ->
-        let existing = Map.tryFind id acc |> Option.defaultValue []
-        Map.add id (loc :: existing) acc)
-      Map.empty
+  let typeIdToLocs = invert typeLocMap
+  let valueIdToLocs = invert valueLocMap
+  let fnIdToLocs = invert fnLocMap
 
   { findType = fun loc -> Ply(Map.tryFind loc typeLocMap)
     findValue = fun loc -> Ply(Map.tryFind loc valueLocMap)
@@ -315,25 +313,20 @@ let createInMemoryOver
         // CONSTRUCTION rather than by two pieces of code happening to fold the same ops the same way,
         // and it matches main, whose SQL search reads `locations` and so only ever sees live bindings.
         let liveAt
-          (locations : ResizeArray<PT.PackageLocation * Hash>)
           (locMap : Map<PT.PackageLocation, Hash>)
           (items : Map<Hash, 'item>)
           (fetchBelow : Hash -> Ply<Option<'item>>)
           : Ply<List<PT.LocatedItem<'item>>> =
           uply {
-            let locs = locations |> Seq.map fst |> Seq.distinct |> Seq.toList
             let found = ResizeArray<PT.LocatedItem<'item>>()
-            for loc in locs do
-              match Map.tryFind loc locMap with
+            for KeyValue(loc, hash) in locMap do
+              let! item =
+                match Map.tryFind hash items with
+                | Some item -> Ply(Some item)
+                | None -> fetchBelow hash
+              match item with
+              | Some item -> found.Add({ entity = item; location = loc } : PT.LocatedItem<_>)
               | None -> ()
-              | Some hash ->
-                let! item =
-                  match Map.tryFind hash items with
-                  | Some item -> Ply(Some item)
-                  | None -> fetchBelow hash
-                match item with
-                | Some item -> found.Add({ entity = item; location = loc } : PT.LocatedItem<_>)
-                | None -> ()
             return List.ofSeq found
           }
 
@@ -352,9 +345,9 @@ let createInMemoryOver
           | None -> none
 
         uply {
-        let! typesWithLocs = liveAt typeLocations typeLocMap typeMap getTypeBelow
-        let! valuesWithLocs = liveAt valueLocations valueLocMap valueMap getValueBelow
-        let! fnsWithLocs = liveAt fnLocations fnLocMap fnMap getFnBelow
+        let! typesWithLocs = liveAt typeLocMap typeMap getTypeBelow
+        let! valuesWithLocs = liveAt valueLocMap valueMap getValueBelow
+        let! fnsWithLocs = liveAt fnLocMap fnMap getFnBelow
 
         // Submodules = the direct child module (cm ++ next segment) of any overlay item strictly
         // below cm. Only surfaced when browsing (empty text): a text search returns items, not
@@ -496,6 +489,52 @@ let combine
       } }
 
 
+/// The locations <param ops> leave UNBOUND: an `Unbind` with no later binding of the same name. An
+/// overlay of bindings can only add; this is what it takes away from whatever is underneath.
+let unboundBy (ops : List<PT.PackageOp>) : Set<PT.PackageLocation> =
+  ops
+  |> List.fold
+    (fun (hidden : Set<PT.PackageLocation>) op ->
+      match op with
+      | PT.PackageOp.Unbind(loc, _) -> Set.add loc hidden
+      | PT.PackageOp.SetName(loc, _, _)
+      | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override _) -> Set.remove loc hidden
+      | _ -> hidden)
+    Set.empty
+
+/// <param pm> with <param hidden> masked: those names resolve to nothing, list nowhere, and are not
+/// among a hash's locations. What a branch's `Unbind` does to main's projection underneath it.
+let hide (hidden : Set<PT.PackageLocation>) (pm : PT.PackageManager) : PT.PackageManager =
+  if Set.isEmpty hidden then
+    pm
+  else
+    let find (f : PT.PackageLocation -> Ply<Option<Hash>>) (loc : PT.PackageLocation) =
+      if Set.contains loc hidden then Ply None else f loc
+    let locs (f : Hash -> Ply<List<PT.PackageLocation>>) (h : Hash) =
+      uply {
+        let! all = f h
+        return all |> List.filter (fun l -> not (Set.contains l hidden))
+      }
+    let shown (items : List<PT.LocatedItem<'a>>) =
+      items |> List.filter (fun i -> not (Set.contains i.location hidden))
+    { pm with
+        findType = find pm.findType
+        findValue = find pm.findValue
+        findFn = find pm.findFn
+        getTypeLocations = locs pm.getTypeLocations
+        getValueLocations = locs pm.getValueLocations
+        getFnLocations = locs pm.getFnLocations
+        search =
+          fun query ->
+            uply {
+              let! r = pm.search query
+              return
+                { r with
+                    types = shown r.types
+                    values = shown r.values
+                    fns = shown r.fns }
+            } }
+
 /// `basePM` with `ops` overlaid on top: the branch overlay, and the parse-time PM for tests and
 /// from-disk parsing.
 let withExtraOps
@@ -503,7 +542,7 @@ let withExtraOps
   (ops : List<PT.PackageOp>)
   : PT.PackageManager =
   let opsPM = createInMemoryOver (Some basePM) ops
-  combine opsPM basePM
+  combine opsPM (hide (unboundBy ops) basePM)
 
 
 // BRANCH OVERLAYS.
@@ -595,6 +634,9 @@ let branchLocationsFor
         let modules = String.concat "." loc.modules
         let key = $"{loc.owner}/{modules}/{loc.name}"
         Map.add key (loc, target.hash) acc
+      | PT.PackageOp.Unbind(loc, _) ->
+        let modules = String.concat "." loc.modules
+        Map.remove $"{loc.owner}/{modules}/{loc.name}" acc
       | _ -> acc)
     Map.empty
   |> Map.toList

@@ -306,9 +306,10 @@ let mainPreviousHash
   match
     Stdlib.Sqlite.queryOneP
       (localDb ())
+      // `source <> 'unbind'` skips an unbind's tombstone, which is a marker for the fold and not a binding.
       "SELECT item_hash FROM locations
        WHERE owner = @p0 AND modules = @p1 AND name = @p2
-         AND unlisted_at IS NOT NULL
+         AND unlisted_at IS NOT NULL AND source <> 'unbind'
          AND item_hash <> COALESCE(
            (SELECT item_hash FROM locations
             WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND unlisted_at IS NULL
@@ -596,6 +597,7 @@ let everBoundHashes
       (localDb ())
       "SELECT item_hash FROM locations
        WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND item_type = @p3
+         AND source <> 'unbind'
        GROUP BY item_hash
        ORDER BY MAX(CASE WHEN unlisted_at IS NULL THEN '9999-12-31' ELSE unlisted_at END) DESC"
       [ loc.owner, modulesOf loc, loc.name, itemType ]

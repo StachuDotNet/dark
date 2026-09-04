@@ -130,6 +130,14 @@ let write (w : BinaryWriter) (op : PackageOp) : unit =
     | Some(Hash h) ->
       w.Write(1uy)
       String.write w h
+  | PackageOp.Unbind(location, previous) ->
+    w.Write(12uy)
+    PackageLocation.write w location
+    match previous with
+    | None -> w.Write(0uy)
+    | Some(Hash h) ->
+      w.Write(1uy)
+      String.write w h
   | PackageOp.Deprecate(target, kind, message) ->
     w.Write(4uy)
     Reference.write w target
@@ -174,6 +182,14 @@ let read (r : BinaryReader) : PackageOp =
       | 1uy -> Some(Hash(String.read r))
       | b -> raiseFormatError $"Invalid SetName previous tag: {b}"
     PackageOp.SetName(location, target, previous)
+  | 12uy ->
+    let location = PackageLocation.read r
+    let previous =
+      match r.ReadByte() with
+      | 0uy -> None
+      | 1uy -> Some(Hash(String.read r))
+      | b -> raiseFormatError $"Invalid Unbind previous tag: {b}"
+    PackageOp.Unbind(location, previous)
   | 4uy ->
     let target = Reference.read r
     let kind = DeprecationKind.read r

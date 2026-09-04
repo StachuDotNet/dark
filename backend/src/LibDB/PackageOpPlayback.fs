@@ -285,6 +285,51 @@ let private applyAddFn (ctx : Ctx) (fn : PT.PackageFn.PackageFn) : Task<unit> =
     do! updateDependencies ctx hashStr refs
   }
 
+/// The `origin_ts` the log stamped on <param opId>, or None when the log does not hold it.
+///
+/// By id alone, which is the whole key: `package_ops` holds one row per op, and a branch's claim on it
+/// lives in `op_branches`. There is no other branch's stamp to read by mistake.
+let private originTsOf (ctx : Ctx) (opId : System.Guid) : Task<Option<string>> =
+  task {
+    use cmd = ctx.conn.CreateCommand()
+    cmd.CommandText <- "SELECT origin_ts FROM package_ops WHERE id = $id"
+    cmd.Parameters.AddWithValue("$id", string opId) |> ignore<SqliteParameter>
+    use! reader = cmd.ExecuteReaderAsync()
+    let! hasRow = reader.ReadAsync()
+    if hasRow && not (reader.IsDBNull 0) then
+      return Some(reader.GetString 0)
+    else
+      return None
+  }
+
+/// The newest `Unbind` folded at a name, by the stamp of the op that made it. An `Unbind` leaves a
+/// TOMBSTONE in `locations`: a row unlisted the moment it is written, stamped with the unbind's own
+/// origin_ts, so a SetName for the name that arrives after the unbind but was authored before it can
+/// find out and stay stale. Without one, two stores converge on different answers depending on which
+/// of the two ops arrived first.
+let private latestUnbindTs
+  (ctx : Ctx)
+  (location : PT.PackageLocation)
+  : Task<Option<string>> =
+  task {
+    use cmd = ctx.conn.CreateCommand()
+    cmd.CommandText <-
+      "SELECT origin_ts FROM locations "
+      + "WHERE owner = $owner AND modules = $modules AND name = $name "
+      + "AND source = 'unbind' AND origin_ts IS NOT NULL "
+      + "ORDER BY origin_ts DESC LIMIT 1"
+    cmd.Parameters.AddWithValue("$owner", location.owner) |> ignore<SqliteParameter>
+    cmd.Parameters.AddWithValue("$modules", String.concat "." location.modules)
+    |> ignore<SqliteParameter>
+    cmd.Parameters.AddWithValue("$name", location.name) |> ignore<SqliteParameter>
+    use! reader = cmd.ExecuteReaderAsync()
+    let! hasRow = reader.ReadAsync()
+    if hasRow && not (reader.IsDBNull 0) then
+      return Some(reader.GetString 0)
+    else
+      return None
+  }
+
 /// Apply a Set*Name op to the locations table.
 /// <param source> is what put the binding there: "op" for a normal fold, "resolution" for a human's answer
 /// to a conflict. `discard` deletes op-fold bindings but skips resolutions, so the tag is what stops a
@@ -324,22 +369,7 @@ let private applySetNameFrom
     // that is not in the log, the stamp reads as unknown, and the staleness check silently degrades to
     // last-writer-wins for every binding.
     let thisOpId = LibSerialization.Hashing.Hashing.computeOpRowId opForStamp
-
-    let! thisTs =
-      task {
-        use cmd = ctx.conn.CreateCommand()
-        // By id alone, which is the whole key: `package_ops` holds one row per op, and a branch's claim on
-        // it lives in `op_branches`. There is no other branch's stamp to read by mistake.
-        cmd.CommandText <- "SELECT origin_ts FROM package_ops WHERE id = $id"
-        cmd.Parameters.AddWithValue("$id", string thisOpId)
-        |> ignore<SqliteParameter>
-        use! reader = cmd.ExecuteReaderAsync()
-        let! hasRow = reader.ReadAsync()
-        if hasRow && not (reader.IsDBNull 0) then
-          return Some(reader.GetString 0)
-        else
-          return None
-      }
+    let! thisTs = originTsOf ctx thisOpId
 
     let! curBinding =
       task {
@@ -384,7 +414,14 @@ let private applySetNameFrom
       | Some(curHash, Some curTs), Some t when curHash = itemHashStr -> t >= curTs
       | _ -> false
 
-    if isStale then
+    // Authored before the name was unbound, arriving after: the unbind is the later word.
+    let! unboundSince = latestUnbindTs ctx location
+    let unboundAfter =
+      match unboundSince, thisTs with
+      | Some u, Some t -> t < u
+      | _ -> false
+
+    if isStale || unboundAfter then
       return ()
     else
       // 1. Unlist whatever is live at the target name (handles updates). One name holds ONE item: this
@@ -761,6 +798,90 @@ let private applyBranchEvent
   }
 
 
+/// Apply an `Unbind`: the name stops existing. Unlists whatever is live at the location and writes the
+/// tombstone `latestUnbindTs` reads; content is untouched. Same LWW as a binding: an unbind stamped
+/// before the live binding is an old op arriving late, and the name it would take out was bound after
+/// it, so it stays.
+let private applyUnbind
+  (ctx : Ctx)
+  (op : PT.PackageOp)
+  (location : PT.PackageLocation)
+  (previous : Option<Hash>)
+  : Task<unit> =
+  task {
+    let modulesStr = String.concat "." location.modules
+    let thisOpId = LibSerialization.Hashing.Hashing.computeOpRowId op
+    let! thisTs = originTsOf ctx thisOpId
+
+    let! live =
+      task {
+        use cmd = ctx.conn.CreateCommand()
+        cmd.CommandText <-
+          "SELECT item_type, origin_ts FROM locations "
+          + "WHERE owner = $owner AND modules = $modules AND name = $name "
+          + "AND unlisted_at IS NULL LIMIT 1"
+        cmd.Parameters.AddWithValue("$owner", location.owner) |> ignore<SqliteParameter>
+        cmd.Parameters.AddWithValue("$modules", modulesStr) |> ignore<SqliteParameter>
+        cmd.Parameters.AddWithValue("$name", location.name) |> ignore<SqliteParameter>
+        use! reader = cmd.ExecuteReaderAsync()
+        let! hasRow = reader.ReadAsync()
+        if hasRow then
+          let kind = reader.GetString 0
+          let ts = if reader.IsDBNull 1 then None else Some(reader.GetString 1)
+          return Some(kind, ts)
+        else
+          return None
+      }
+
+    let isStale =
+      match live, thisTs with
+      | Some(_, Some curTs), Some t -> t < curTs
+      | _ -> false
+
+    if isStale then
+      return ()
+    else
+      do!
+        exec ctx """
+          UPDATE locations
+          SET unlisted_at = datetime('now')
+          WHERE owner = $owner
+            AND modules = $modules
+            AND name = $name
+            AND unlisted_at IS NULL
+          """ (fun cmd ->
+          p cmd "$owner" location.owner
+          p cmd "$modules" modulesStr
+          p cmd "$name" location.name)
+
+      // The tombstone. `item_hash` is what it unbound (or nothing, when the op named no predecessor)
+      // and `item_type` is what was live, or 'fn' when nothing was: both are lookup hints on a row no
+      // live-binding read ever sees, since it is unlisted from birth.
+      let previousHash = previous |> Option.map (fun (Hash h) -> h)
+      let kind =
+        match live with
+        | Some(k, _) -> k
+        | None -> PT.ItemKind.Fn.toString ()
+      do!
+        exec ctx """
+          INSERT INTO locations
+            (location_id, item_hash, owner, modules, name, item_type, origin_ts, source, op_id,
+             previous, unlisted_at)
+          VALUES ($location_id, $item_hash, $owner, $modules, $name, $item_type, $origin_ts, 'unbind',
+                  $op_id, $previous, datetime('now'))
+          """ (fun cmd ->
+          pUuid cmd "$location_id" (System.Guid.NewGuid())
+          p cmd "$item_hash" (previousHash |> Option.defaultValue "")
+          p cmd "$owner" location.owner
+          p cmd "$modules" modulesStr
+          p cmd "$name" location.name
+          p cmd "$item_type" kind
+          pOpt cmd "$origin_ts" thisTs
+          p cmd "$op_id" (string thisOpId)
+          pOpt cmd "$previous" previousHash)
+  }
+
+
 let private applyOp (ctx : Ctx) (source : string) (op : PT.PackageOp) : Task<unit> =
   task {
     match op with
@@ -769,6 +890,7 @@ let private applyOp (ctx : Ctx) (source : string) (op : PT.PackageOp) : Task<uni
     | PT.PackageOp.AddFn fn -> do! applyAddFn ctx fn
     | PT.PackageOp.SetName(loc, target, _) ->
       do! applySetNameFrom ctx source op target.hash loc target.kind
+    | PT.PackageOp.Unbind(loc, previous) -> do! applyUnbind ctx op loc previous
     | PT.PackageOp.Deprecate(target, kind, message) ->
       do! applyDeprecate ctx target kind message
     | PT.PackageOp.Undeprecate target -> do! applyUndeprecate ctx target

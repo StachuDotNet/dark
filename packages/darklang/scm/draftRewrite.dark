@@ -91,7 +91,8 @@ let referenceHash (r: LanguageTools.ProgramTypes.Reference) : String =
 /// hash, rows this cannot identify afterwards since `unlisted_at` is a wall-clock second. No for
 /// `Deprecate`/`Undeprecate` (`deprecations` has no `origin_ts` to trace a row back by), a non-override
 /// `Decision` (upserts `propagation_policy` without recording what it overwrote), or a `BranchEvent`
-/// (`branches` records no origin_ts).
+/// (`branches` records no origin_ts). No for `Unbind`: what it unlisted is identifiable only by
+/// `unlisted_at`, the same wall-clock second as a rename.
 let surgicallyUndoable
   (added: List<String>)
   (op: LanguageTools.ProgramTypes.PackageOp)
@@ -104,6 +105,7 @@ let surgicallyUndoable
     Stdlib.List.``member`` added (referenceHash target)
   | Decision(_, _, _, Override _) -> true
   | Decision(_, _, _, _) -> false
+  | Unbind(_, _) -> false
   | Deprecate(_, _, _) -> false
   | Undeprecate _ -> false
   | BranchEvent(_, _, _) -> false
@@ -166,6 +168,8 @@ let surgicalDrop (dropped: List<DraftOp>) : Stdlib.Result.Result<Unit, String> =
         WHERE owner = @p0 AND modules = @p1 AND name = @p2
           AND item_hash = @p3 AND origin_ts = @p4",
        deleteRows)
+      // A name whose newest surviving row is an unbind's tombstone stays unbound: the binding just
+      // dropped was the first since the name was removed.
       ("UPDATE locations SET unlisted_at = NULL
         WHERE location_id = (
           SELECT location_id FROM locations
@@ -173,6 +177,7 @@ let surgicalDrop (dropped: List<DraftOp>) : Stdlib.Result.Result<Unit, String> =
           ORDER BY origin_ts DESC, rowid DESC
           LIMIT 1
         )
+        AND source <> 'unbind'
         AND NOT EXISTS (
           SELECT 1 FROM locations
           WHERE owner = @p0 AND modules = @p1 AND name = @p2

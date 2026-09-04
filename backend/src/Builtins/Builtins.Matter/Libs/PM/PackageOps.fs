@@ -557,6 +557,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               |> List.filter (fun op ->
                 match op with
                 | PT.PackageOp.SetName _
+                | PT.PackageOp.Unbind _
                 | PT.PackageOp.Deprecate _ -> true
                 | _ -> false)
             let shown =

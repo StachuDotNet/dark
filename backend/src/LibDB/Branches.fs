@@ -510,6 +510,8 @@ let parentNameHashes (parentId : PT.BranchId) : Task<Map<NameKey, string>> =
             | PT.PackageOp.SetName(loc, target, _) ->
               let (Hash h) = target.hash
               Map.add (loc.owner, String.concat "." loc.modules, loc.name) h m
+            | PT.PackageOp.Unbind(loc, _) ->
+              Map.remove (loc.owner, String.concat "." loc.modules, loc.name) m
             | _ -> m)
           baseMap
   }
@@ -534,6 +536,7 @@ let chainBindingsByHash
           | PT.PackageOp.SetName(loc, target, _) ->
             let (Hash h) = target.hash
             Map.add loc (target.kind, h) m
+          | PT.PackageOp.Unbind(loc, _) -> Map.remove loc m
           | _ -> m)
         Map.empty
 
@@ -565,6 +568,9 @@ let private rebindKeys (ops : List<PT.PackageOp>) : List<PT.PackageLocation> =
     match op with
     | PT.PackageOp.SetName(loc, _, _) -> Some loc
     | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override _) -> Some loc
+    // Unbinding moves a name too, to nothing; the base is what tells that apart from the parent
+    // editing it meanwhile.
+    | PT.PackageOp.Unbind(loc, _) -> Some loc
     | _ -> None)
 
 /// Record the per-name BASE for a branch: for each name these ops rebind, capture the PARENT's

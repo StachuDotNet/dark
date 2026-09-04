@@ -253,6 +253,50 @@ let isolationFromCore =
     Expect.equal dv (RT.DInt64 42L) "the branch fn's code runs -> 42"
   }
 
+/// An `Unbind` on a branch hides a name main holds, on that branch only. The overlay could only ever
+/// add names before this; taking one away is what lets a branch delete something.
+let unbindHidesACoreNameOnTheBranchOnly =
+  testTask "a branch's unbind hides main's name on the branch and leaves main alone" {
+    let addLoc : PT.PackageLocation =
+      { owner = "Darklang"; modules = [ "Stdlib"; "Int64" ]; name = "add" }
+    let! onCore = pmPT.findFn addLoc |> Ply.toTask
+    Expect.isSome onCore "Stdlib.Int64.add is a main fn"
+    let hash = Option.get onCore
+
+    let branch = PM.withExtraOps pmPT [ PT.PackageOp.Unbind(addLoc, Some hash) ]
+    let! onBranch = branch.findFn addLoc |> Ply.toTask
+    Expect.isNone onBranch "unbound on the branch"
+    let! stillOnCore = pmPT.findFn addLoc |> Ply.toTask
+    Expect.equal stillOnCore onCore "and main still has it"
+
+    // The content stays reachable by hash, since callers reference it that way.
+    let! body = branch.getFn hash |> Ply.toTask
+    Expect.isSome body "the fn's content is still there on the branch"
+    let! locs = branch.getFnLocations hash |> Ply.toTask
+    Expect.isFalse (List.contains addLoc locs) "but the name is not among the hash's locations"
+
+    // A search from the branch does not list it either.
+    let query : PT.Search.SearchQuery =
+      { currentModule = [ "Darklang"; "Stdlib"; "Int64" ]
+        text = "add"
+        searchDepth = PT.Search.SearchDepth.OnlyDirectDescendants
+        entityTypes = [ PT.Search.EntityType.Fn ]
+        exactMatch = true }
+    let! (found : PT.Search.SearchResults) = branch.search query |> Ply.toTask
+    Expect.isEmpty
+      (found.fns |> List.filter (fun f -> f.location = addLoc))
+      "search on the branch does not list the unbound name"
+
+    // Rebinding after the unbind brings it back.
+    let again =
+      PM.withExtraOps
+        pmPT
+        [ PT.PackageOp.Unbind(addLoc, Some hash)
+          PT.PackageOp.SetName(addLoc, PT.Reference.PackageFn hash, None) ]
+    let! rebound = again.findFn addLoc |> Ply.toTask
+    Expect.equal rebound onCore "a later bind on the branch revives the name"
+  }
+
 let isolationBetweenBranches =
   testTask
     "two overlays over one core see only their own defs (concurrent-branch isolation)" {
@@ -2270,6 +2314,7 @@ let tests =
     "BranchOverlay"
     [ branchResolutionOrder
       isolationFromCore
+      unbindHidesACoreNameOnTheBranchOnly
       branchExists
       mergeCountsWhatItFlipped
       importedOpsKeepTheirStamps

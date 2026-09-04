@@ -1749,6 +1749,10 @@ module PackageOp =
           // single-case wrapper there, so handing it a DString typechecks nowhere and throws the first
           // time anything unwraps it.
           previous |> Option.map Hash.toDT |> Dval.option (Hash.knownType ()) ]
+      | PT.PackageOp.Unbind(loc, previous) ->
+        "Unbind",
+        [ PackageLocation.toDT loc
+          previous |> Option.map Hash.toDT |> Dval.option (Hash.knownType ()) ]
       | PT.PackageOp.Deprecate(target, kind, message) ->
         "Deprecate",
         [ Reference.toDT target; DeprecationKind.toDT kind; DString message ]
@@ -1783,6 +1787,12 @@ module PackageOp =
           previous
         )
       )
+    | DEnum(_, _, [], "Unbind", [ loc; previous ]) ->
+      let previous =
+        match previous with
+        | DEnum(_, _, _, "Some", [ h ]) -> Some(Hash.fromDT h)
+        | _ -> None
+      Some(PT.PackageOp.Unbind(PackageLocation.fromDT loc, previous))
     | DEnum(_, _, [], "Deprecate", [ target; kind; DString message ]) ->
       Some(
         PT.PackageOp.Deprecate(

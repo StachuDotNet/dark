@@ -195,6 +195,7 @@ let inOp (op : PT.PackageOp) : Option<string * List<string>> =
       let (PT.Hash hash) = t.hash
       Some(hash, inTypeDeclaration t.declaration)
     | PT.PackageOp.SetName _
+    | PT.PackageOp.Unbind _
     | PT.PackageOp.Deprecate _
     | PT.PackageOp.Undeprecate _
     | PT.PackageOp.Decision _

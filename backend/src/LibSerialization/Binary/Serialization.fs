@@ -168,6 +168,10 @@ module PT =
     /// answer "no name". They are also the expensive ones, being whole ASTs, so decoding them to
     /// discover they say nothing was most of the cost of planning an import.
     ///
+    /// `Unbind` (12) is deliberately not counted: it binds nothing, so the incoming side of the conflict
+    /// detector has no binding to compare against yours. A peer removing a name you edited is settled by
+    /// the fold's LWW rather than raised as a conflict. Open, and known.
+    ///
     /// Reads the header for its length rather than assuming one, so a header change cannot silently
     /// shift which byte is read. An unreadable or truncated blob answers `false`: the caller learns
     /// nothing from it either way, and the one decoder is where a bad blob gets reported.

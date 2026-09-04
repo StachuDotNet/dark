@@ -17,6 +17,8 @@ type Picture =
     /// Of those, the fully-qualified names whose CURRENT binding propagation wrote rather than a person.
     /// Held as the raw name list because that's the shape the membership test wants.
     propagated: List<String>
+    /// The fully-qualified names the draft removes. Not bindings, so not in `bindings`.
+    removed: List<String>
     /// What would repoint if you committed right now.
     repoints: List<SCM.PackageOps.Repoint>
     /// What a pin is holding on an older version. An outcome, not a warning.
@@ -33,6 +35,7 @@ let read (unit: Unit) : Picture =
 
   Picture
     { bindings = bindings
+      removed = SCM.PackageOps.draftRemovals ()
       propagated = SCM.PackageOps.propagatedNames ()
       repoints = SCM.PackageOps.draftRepoints bindings
       leftBehind = SCM.PackageOps.draftLeftBehind bindings
@@ -47,6 +50,7 @@ let read (unit: Unit) : Picture =
 type Counts =
   { changed: Int
     followed: Int
+    removed: Int
     repoints: Int
     conflicts: Int64
     constraints: Int
@@ -63,6 +67,7 @@ let counts (unit: Unit) : Counts =
         |> Stdlib.List.filter (fun b ->
           Stdlib.List.member propagated (SCM.Conflicts.fqn b.owner b.modules b.name))
         |> Stdlib.List.length
+      removed = Stdlib.List.length (SCM.PackageOps.draftRemovals ())
       repoints = Stdlib.List.length (SCM.PackageOps.draftRepoints bindings)
       conflicts = SCM.Conflicts.pendingCount ()
       constraints = Stdlib.List.length (SCM.Constraints.pending ())
