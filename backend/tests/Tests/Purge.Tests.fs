@@ -180,6 +180,27 @@ let seedExportStripsPerInstallState =
   }
 
 
+/// A seed is committed history. The builder's DRAFT is per-install state in the same way the tables
+/// above are, and shipping it puts whatever they were part-way through on a stranger's first run as
+/// "1 item changed" under a name nobody has heard of.
+///
+/// Asserted against the source, like its neighbour, because `export` copies a whole store and running
+/// it here would need one. The guard `check-seed-carries-refs` is the other half and refused three
+/// release builds in one evening before this was stripped at the source: the F# suite leaves its own
+/// fixtures in main's draft, so whether a build succeeded depended on what you had last run.
+let seedExportStripsTheBuildersDraft =
+  test "Seed.export strips uncommitted main ops" {
+    let source =
+      System.IO.File.ReadAllText(
+        System.IO.Path.Combine("..", "backend", "src", "LibDB", "Seed.fs")
+      )
+    Expect.isTrue
+      (source.Contains "DELETE FROM package_ops
+      WHERE commit_hash IS NULL")
+      "`Seed.export` must strip main's uncommitted ops: a seed is committed history"
+  }
+
+
 let tests =
   testList
     "Purge"
@@ -188,4 +209,5 @@ let tests =
       hashCoupledTablesAreClassified
       logStateProjectionsArePurged
       foldProjectionsArePurged
-      seedExportStripsPerInstallState ]
+      seedExportStripsPerInstallState
+      seedExportStripsTheBuildersDraft ]

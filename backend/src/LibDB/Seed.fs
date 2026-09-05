@@ -136,6 +136,18 @@ let export (outputPath : string) : Task<unit> =
       -- relay. Shipped, every fresh install would believe that relay already had its ops and never push.
       DELETE FROM sync_pushed;
 
+      -- The builder's DRAFT. A seed is committed history by definition -- `check-seed-carries-refs`
+      -- asserts exactly that -- and an uncommitted op is instance state in the same way the rows above
+      -- are: whatever the builder happened to be part-way through reads as "1 item changed" on a
+      -- stranger's first run, under a name they have never heard of.
+      --
+      -- Stripped HERE rather than left to the builder to notice. The guard caught it three times in one
+      -- evening, always after a test run, because the F# suite leaves its own fixtures in main's draft:
+      -- so a release build refused depending on what you had last run, which is not a property a build
+      -- should have. The bindings these wrote need no separate delete; every projection went above.
+      DELETE FROM package_ops
+      WHERE commit_hash IS NULL AND id NOT IN (SELECT op_id FROM op_branches);
+
       UPDATE package_ops SET applied = 0;
       """
     cleanCmd.ExecuteNonQuery() |> ignore<int>

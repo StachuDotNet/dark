@@ -493,11 +493,14 @@ let undeferBranchEvents () : Task<unit> =
 /// chain ends there.
 let branchChain (branchId : PT.BranchId) : Task<List<PT.BranchId>> =
   task {
-    if branchId.IsMain then
-      return [ PT.BranchId.Main ]
-    else
-      // Depth carried so the walk comes back nearest-first; a plain UNION loses the order.
-      let! rows =
+    // The whole body is one shape, not an `if` around two `return`s: a `let!` inside one arm of a
+    // conditional makes the task state machine dynamically compiled (FS3511), which is a warning in
+    // Debug and an error in Release.
+    let! rows =
+      if branchId.IsMain then
+        Task.FromResult []
+      else
+        // Depth carried so the walk comes back nearest-first; a plain UNION loses the order.
         Sql.query
           "WITH RECURSIVE chain(bid, depth) AS (
              SELECT @start, 0
@@ -511,8 +514,8 @@ let branchChain (branchId : PT.BranchId) : Task<List<PT.BranchId>> =
             "mainId", Sql.string (string PT.BranchId.Main) ]
         |> Sql.executeAsync (fun read -> read.string "bid")
 
-      let ids = rows |> List.choose PT.BranchId.Parse
-      return ids @ [ PT.BranchId.Main ]
+    let ids = rows |> List.choose PT.BranchId.Parse
+    return ids @ [ PT.BranchId.Main ]
   }
 
 let parentOf (branchId : PT.BranchId) : Task<PT.BranchId> =
