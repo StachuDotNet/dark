@@ -2136,6 +2136,29 @@ let private aMissingNameIsOneLineNotAStackHeader =
       })
 
 
+/// A branch pulled without its parent lists a parent this store has never registered. The bare id
+/// read as corruption on the machine that saw it; the list now says what it is and how to fix it.
+let private anUnknownParentIsNamedAsSuch =
+  cliTest
+    "a branch whose parent is not in this store says so in the list"
+    (fun state ->
+      task {
+        let! _ =
+          runCli
+            state
+            [ "eval"
+              "Darklang.SCM.Branch.create \"orphan13\" (Stdlib.Uuid.parse \"11111111-2222-3333-4444-555555555555\" |> Builtin.unwrap) |> Stdlib.Option.isSome" ]
+        let! listed = runCli state [ "branches" ]
+        Expect.stringContains listed "orphan13 (" $"the orphan is listed: {listed}"
+        Expect.stringContains
+          listed
+          "11111111 (a branch not in this store"
+          $"and its parent is explained rather than shown as an id: {listed}"
+        let! _ = runCli state [ "branch"; "archive"; "orphan13"; "-y" ]
+        ()
+      })
+
+
 let private aBundleCarriesItsCommits =
   cliTestOnMain
     "a branch bundle arrives with the author's commits, not as a draft"
@@ -4010,6 +4033,7 @@ let tests =
        fnReadsItsDefinitionFromAFile
        statusSeparatesTheDraftsConstraintsFromStandingOnes
        aMissingNameIsOneLineNotAStackHeader
+       anUnknownParentIsNamedAsSuch
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses

@@ -245,9 +245,14 @@ let listLines (includeMerged: Bool) : List<String> =
     if SCM.Ids.isMain parentId then
       SCM.Ids.mainBranchName
     else
+      // A parent this store has never registered is a colleague's branch that was not pulled
+      // with its child. The id alone reads as corruption; say what it is instead.
       match Stdlib.List.findFirst branches (fun p -> p.id == parentId) with
       | Some p when p.name != "" -> p.name
-      | _ -> Stdlib.String.slice (Stdlib.Uuid.toString parentId) 0 8
+      | Some _ -> Stdlib.String.slice (Stdlib.Uuid.toString parentId) 0 8
+      | None ->
+        let short = Stdlib.String.slice (Stdlib.Uuid.toString parentId) 0 8
+        $"{short} (a branch not in this store; `branch pull --from <who>` brings it)"
 
   branches
   |> Stdlib.List.filter (fun b -> includeMerged || (Stdlib.Bool.not b.merged))
