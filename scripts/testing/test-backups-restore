@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
 # `dark backups`: a backup taken now holds what the store holds now, a wiped store comes back from it,
 # and the two destructive verbs ask first.
 #
@@ -17,7 +18,7 @@ bad() { fail=$((fail+1)); printf '  FAIL %s\n       got: %s\n' "$1" "$(head -c 2
 want() { if grep -qE "$2" <<<"$3"; then ok "$1"; else bad "$1" "$3"; fi; }
 
 rm -rf "$ROOT"; mkdir -p "$ROOT/home"
-cp rundir/data.db "$ROOT/data.db"
+scripts/testing/_copy-store "$ROOT/data.db"
 sqlite3 "$ROOT/data.db" 'DELETE FROM config_v0;'
 x() { DARK_CONFIG_RUNDIR="$PWD/$ROOT" HOME="$PWD/$ROOT/home" "$PWD/$CLI" "$@" 2>&1 | sed 's/\x1b\[[0-9;]*m//g'; }
 

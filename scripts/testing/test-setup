@@ -24,7 +24,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
-cp rundir/data.db "$WORK/data.db"
+scripts/testing/_copy-store "$WORK/data.db"
 sqlite3 "$WORK/data.db" 'DELETE FROM config_v0;' 2>/dev/null || true
 
 # Answers all at once. Fine when none of them is secret.

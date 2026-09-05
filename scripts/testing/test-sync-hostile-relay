@@ -39,7 +39,7 @@ client() {  # client <name> -> echoes its rundir
   local name="$1"
   local dir="$PWD/$WORK/$name"
   rm -rf "$dir"; mkdir -p "$dir"
-  cp rundir/data.db "$dir/data.db"
+  scripts/testing/_copy-store "$dir/data.db"
   sqlite3 "$dir/data.db" 'DELETE FROM config_v0;' 2>/dev/null || true
   DARK_CONFIG_RUNDIR="$dir" "$PWD/$CLI" identity "$name" >/dev/null 2>&1
   echo "$dir"

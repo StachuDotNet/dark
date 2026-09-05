@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Copy the dev store to a gate's own rundir, WITHOUT writing to the dev store.
+#
+# `cp rundir/data.db` is wrong and every gate was doing it. The store is WAL mode
+# (LibDB/Sqlite.fs sets journal_mode=WAL), so the main file holds whatever the last
+# automatic checkpoint left there and the recent tail is in `data.db-wal`. Copying
+# the main file alone gives a fixture that varies by machine and by how recently
+# somebody authored -- and it silently omits the newest ops, which for a gate about
+# syncing ops is the wrong thing to omit.
+#
+# `.backup` reads through the WAL and writes one consistent file. It takes a read
+# lock on the source and writes nothing to it, which is what keeps this usable
+# against the shared dev store that `test-gates-are-clean` watches for changes.
+#
+# Usage: _copy-store <dest.db>
+set -euo pipefail
+
+DEST="${1:?usage: _copy-store <dest.db>}"
+SRC="${DARK_STORE_SRC:-rundir/data.db}"
+
+if [[ ! -f "$SRC" ]]; then
+  echo "_copy-store: no store at $SRC" >&2
+  exit 2
+fi
+
+mkdir -p "$(dirname "$DEST")"
+rm -f "$DEST" "$DEST-wal" "$DEST-shm"
+sqlite3 "$SRC" ".backup '$DEST'"

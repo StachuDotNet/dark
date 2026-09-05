@@ -669,7 +669,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     { name = fn "scmRecordBranchArchived" 0
       typeParams = []
       parameters = [ Param.make "branchId" TUuid "the branch that was archived" ]
-      returnType = TUnit
+      returnType = TUuid
       description =
         "Author the op that says this branch was archived, so other machines learn it."
       fn =
@@ -677,8 +677,11 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [| DUuid branchIdGuid |] ->
           uply {
             let branchId = PT.BranchId.Id branchIdGuid
-            let! _ = recordBranchEvent branchId PT.Archived
-            return DUnit
+            // The event's id, so the Dark caller can COMMIT it. Left uncommitted it sat in main's
+            // draft, where `status` (which counts bindings) reads clean and the next unrelated commit
+            // sweeps it up under a message about something else.
+            let! eventId = recordBranchEvent branchId PT.Archived
+            return DUuid eventId
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

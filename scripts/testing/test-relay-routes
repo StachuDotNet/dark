@@ -24,7 +24,7 @@ PORT=${PORT:-9095}
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
-cp rundir/data.db "$WORK/data.db"
+scripts/testing/_copy-store "$WORK/data.db"
 
 # The secret deliberately CONTAINS "Bearer " and a space. Both used to break authentication: the header
 # parser stripped every occurrence of "Bearer " anywhere in the value, and split the credential on space.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
 # Two reloads of one tree must agree on every op id.
 #
 # They did not: the parser mints ephemeral node ids into every expression, `Add*` ops serialized the
@@ -7,12 +8,23 @@
 # two machines authoring the same fn made two ops. An Add op is identified by its content now; this is
 # what keeps it that way.
 #
-# Reloads the dev store twice, which is what the build does anyway. Main's ops only: a branch's ops are
-# whatever the developer has on their branches.
+# Runs against its OWN rundir, not the shared dev store. It used to reload the dev store twice, which
+# is a purge-and-refill: it wipes `conflicts`, `sync_bases` and the rest, and drops whatever draft was
+# open. `test-gates-are-clean` could not see it, because two reloads leave the same op and location
+# COUNTS behind and that is what the fingerprint compares -- so the damage showed up later, attributed
+# to whichever gate happened to run while it was noticed. Main's ops only: a branch's ops are whatever
+# the developer has on their branches.
 set -euo pipefail
 
+WORK=rundir/reload-reproducible
+rm -rf "$WORK"
+mkdir -p "$WORK/logs"
+scripts/testing/_copy-store "$WORK/data.db"
+
+export DARK_CONFIG_RUNDIR="$PWD/$WORK"
+
 ids() {
-  sqlite3 rundir/data.db \
+  sqlite3 "$WORK/data.db" \
     "SELECT id FROM package_ops WHERE id NOT IN (SELECT op_id FROM op_branches) ORDER BY id"
 }
 

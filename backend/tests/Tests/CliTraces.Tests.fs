@@ -1841,6 +1841,39 @@ let private aDeprecationCommitsByEitherPath =
     })
 
 
+/// Archiving a branch commits the event it authors. A `BranchEvent` binds no name, so `status` counts
+/// nothing and reads clean while the op sits in main's draft, waiting for the next unrelated commit to
+/// sweep it up under a message about something else. It also fails the seed guard, which is what kept
+/// catching it: a release build refused twice in one evening over an archive nobody knew was pending.
+let private archivingABranchCommitsItsEvent =
+  cliTestOnMain "archiving a branch commits the event, leaving a genuinely clean tree" (fun state ->
+    task {
+      let! _ = runCli state [ "discard"; "-y" ]
+      let! _ = runCli state [ "switch"; "archcommit" ]
+      let! _ = runCli state [ "switch"; "main" ]
+      let! archived = runCli state [ "branch"; "archive"; "archcommit"; "-y" ]
+      Expect.stringContains archived "archived branch" $"the archive went through: {archived}"
+
+      let! status = runCli state [ "status" ]
+      Expect.stringContains status "clean" $"and the tree is clean: {status}"
+
+      // The real assertion: `status` said clean before this fix too. Ask the draft.
+      let! pending =
+        Sql.query
+          "SELECT count(*) AS n FROM package_ops
+           WHERE commit_hash IS NULL AND effective = 1
+             AND id NOT IN (SELECT op_id FROM op_branches)"
+        |> Sql.executeRowAsync (fun read -> read.int64 "n")
+      Expect.equal pending 0L "and the draft is empty, which is what 'clean' was claiming"
+
+      let! commits = runCli state [ "commits"; "3" ]
+      Expect.stringContains
+        commits
+        "archived branch \"archcommit\""
+        $"the archive is its own commit: {commits}"
+    })
+
+
 let private aBundleCarriesItsCommits =
   cliTestOnMain "a branch bundle arrives with the author's commits, not as a draft" (fun state ->
     task {
@@ -3632,6 +3665,7 @@ let tests =
        aBundleCarriesItsCommits
        anUnbindRemovesANameThroughTheCli
        aDeprecationCommitsByEitherPath
+       archivingABranchCommitsItsEvent
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses

@@ -1191,6 +1191,9 @@ let resolveConflict
 
 /// Archive (soft-delete) a branch, discarding its unmerged ops.
 let archiveBranch (branchId: Uuid) : Stdlib.Result.Result<String, String> =
+  // Read before the archive: afterwards the branch has no name to put in the message.
+  let handle = branchName branchId
+
   // The event is authored only if the local archive actually happened. It travels, so recording one for
   // an archive that failed here archives the branch on every other machine and nowhere on this one.
   match Branches.archive branchId with
@@ -1198,8 +1201,37 @@ let archiveBranch (branchId: Uuid) : Stdlib.Result.Result<String, String> =
   | Ok() ->
     // ...and say so in the log, so the machine your colleague is on stops showing it as live work. The
     // local projection is already updated by the line above; this is only how the OTHER machine learns.
-    Builtin.scmRecordBranchArchived branchId
-    Stdlib.Result.Result.Ok $"archived branch \"{branchName branchId}\"."
+    let eventId = Builtin.scmRecordBranchArchived branchId
+
+    // And COMMIT that event, for the same reason a merge commits what it lands. A `BranchEvent` binds
+    // no name, so `status` (which counts bindings) reads clean while `commit` (which counts ops) finds
+    // one: the archive sat in main's draft until some unrelated commit swept it up under a message
+    // about something else, and it fails the seed guard, which is what kept catching it.
+    //
+    // Exactly this event, by id. Committing "whatever is uncommitted" would sweep up a half-written fn
+    // that has nothing to do with archiving a branch.
+    let _ =
+      let id = Stdlib.Uuid.toString eventId
+
+      if Stdlib.List.``member`` (draftOpIdsFor SCM.Ids.mainBranchId) id then
+        let author =
+          match identity () with
+          | "" -> "archive"
+          | a -> a
+
+        let hash =
+          Commits.create
+            $"archived branch \"{handle}\""
+            author
+            [ id ]
+            (parentCommitFor SCM.Ids.mainBranchId)
+
+        let _ = stampDraftOpsFor SCM.Ids.mainBranchId hash [ id ]
+        ()
+      else
+        ()
+
+    Stdlib.Result.Result.Ok $"archived branch \"{handle}\"."
 
 
 /// The id of the branch NAMED <param name>, starting it off <param parentId> if no live branch has that

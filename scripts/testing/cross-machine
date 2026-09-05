@@ -37,7 +37,7 @@ case "$cmd" in
     scp "$bin" "$host:~/.darklang/bin/dark"
     ssh "$host" "chmod +x ~/.darklang/bin/dark; rm -f ~/.darklang/data.db ~/.darklang/data.db-wal ~/.darklang/data.db-shm; ~/.darklang/bin/dark eval '2L + 3L'"
     mkdir -p rundir/cross-machine-A/home
-    cp rundir/data.db rundir/cross-machine-A/data.db
+    scripts/testing/_copy-store rundir/cross-machine-A/data.db
     sqlite3 rundir/cross-machine-A/data.db 'DELETE FROM config_v0;'
     echo "B has a fresh store; A is rundir/cross-machine-A. Next: smoke $host <relay-url>"
     ;;

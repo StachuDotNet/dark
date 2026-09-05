@@ -27,9 +27,14 @@ SECRET=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
 PORT=$(( 9200 + RANDOM % 300 ))
 pass=0; fail=0
 
-pkill -9 -f "Matter.router" 2>/dev/null
-for _ in 1 2 3 4 5; do pgrep -f "[M]atter.router" > /dev/null || break; sleep 1; done
-pgrep -f "[M]atter.router" > /dev/null && { echo "a relay is still running and will not die"; exit 2; }
+# No pkill. This used to `pkill -9 -f Matter.router`, which kills every relay in the container
+# including one a developer is running by hand in tmux to poke at `/m`. The problem it was for --
+# a leftover relay answering on the port we wanted with a secret we had forgotten -- is what the
+# random port above solves, and this gate traps its own $RPID on the way out. Check the port instead.
+if command -v ss > /dev/null && ss -ltn 2>/dev/null | grep -q ":$PORT "; then
+  echo "port $PORT is already in use; re-run (the port is random per run)" >&2
+  exit 2
+fi
 
 rm -rf "$ROOT"; mkdir -p "$ROOT"
 ok()   { pass=$((pass+1)); printf '  ok   %s\n' "$1"; }
@@ -41,7 +46,7 @@ wantnot() { if grep -qE "$2" <<<"$3"; then bad "$1" "$3"; else ok "$1"; fi; }
 
 # An instance is a STORE plus a HOME: the capability grant is keyed on HOME, so sharing one would let
 # these tread on the developer's own grant.
-mk() { local n=$1; mkdir -p "$ROOT/$n/home"; cp rundir/data.db "$ROOT/$n/data.db"
+mk() { local n=$1; mkdir -p "$ROOT/$n/home"; scripts/testing/_copy-store "$ROOT/$n/data.db"
        sqlite3 "$ROOT/$n/data.db" 'DELETE FROM config_v0;'; rm -f "$ROOT/$n/cli-config.json"; }
 x()  { local n=$1; shift; DARK_CONFIG_RUNDIR="$PWD/$ROOT/$n" HOME="$PWD/$ROOT/$n/home" "$PWD/$CLI" "$@" 2>&1 | sed 's/\x1b\[[0-9;]*m//g'; }
 

@@ -24,7 +24,7 @@ mkdir -p "$WORK"
 # secret, so one sync-shaped command in here would reach the REAL relay. Note this makes the store look
 # like a first run to the SETUP check, so no wizard blocks startup. The greeting is a separate question:
 # it follows commits/changes/relay, so a store with work in it still greets "Welcome back".
-cp rundir/data.db "$WORK/data.db"
+scripts/testing/_copy-store "$WORK/data.db"
 sqlite3 "$WORK/data.db" 'DELETE FROM config_v0;' 2>/dev/null || true
 
 export DARK_CONFIG_RUNDIR="$PWD/$WORK"
@@ -49,7 +49,7 @@ expect "$PWD/scripts/testing/_workbench-scm.expect" "$PWD/$CLI" "$PWD/$WORK" || 
 # detail, which the fixture above never reaches because its conflict is selected first.
 QUIET="$WORK-quiet"
 rm -rf "$QUIET"; mkdir -p "$QUIET"
-cp rundir/data.db "$QUIET/data.db"
+scripts/testing/_copy-store "$QUIET/data.db"
 sqlite3 "$QUIET/data.db" 'DELETE FROM config_v0;' 2>/dev/null || true
 export DARK_CONFIG_RUNDIR="$PWD/$QUIET"
 "$PWD/$CLI" fn /WbQuiet.T.only '() : Int64 = 1L' >/dev/null 2>&1

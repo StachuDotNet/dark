@@ -59,7 +59,14 @@ want() {  # want <name> <pattern> <command...>
   local name="$1" pat="$2"; shift 2
   local out
   out=$(dark "$@" | clean) || true
-  if grep -qE "$pat" <<<"$out"; then
+  # A refusal must never satisfy a pattern. Patterns here are anchored for that reason -- "commit"
+  # matched "commit failed", "conflict" matched "Conflict detection did not run" -- and this is the
+  # backstop for the ones that cannot be.
+  if grep -qE "Encountered a Runtime Error|No matching case found|couldn't be found" <<<"$out"; then
+    echo "  FAIL $name: the command errored:"
+    while IFS= read -r line; do printf '         %s\n' "$line"; done <<<"$out" | head -4
+    failures=$((failures + 1))
+  elif grep -qE "$pat" <<<"$out"; then
     echo "  ok   $name"
   else
     echo "  FAIL $name: wanted /$pat/, got:"
@@ -71,21 +78,21 @@ want() {  # want <name> <pattern> <command...>
 echo "First day on $(basename "$ARTIFACT"), from an empty home:"
 
 # 1. First run at all. This is where the seed is unpacked and the package DB grown from ops.
-want "first run reports a clean tree" "clean|draft" status
+want "first run reports a clean tree" "^(clean:|draft:)" status
 
 # 2. Author something and run it. The thing the language is for.
-want "authoring a fn"    "FirstDay|added|Hello" fn /FirstDay.Hello.greet '(name: String) : String = "hi " ++ name'
+want "authoring a fn"    "Created function: FirstDay\.Hello\.greet" fn /FirstDay.Hello.greet '(name: String) : String = "hi " ++ name'
 want "and running it"    "hi world"        eval 'FirstDay.Hello.greet "world"'
-want "status sees it"    "draft|1 item"    status
+want "status sees it"    "^draft: 1 item"  status
 
 # 3. Commit it, and read the commit back.
-want "committing"        "commit"          commit "first day" -y
+want "committing"        "^ *commit [0-9a-f]{8} -- [0-9]+ op" commit "first day" -y
 want "commits lists it"  "first day"       commits
-want "tree is clean"     "clean"           status
+want "tree is clean"     "^clean:"         status
 
 # 4. A branch, isolated from main.
-want "starting a branch" "branch|switched" branch create firstday
-want "authoring on it"   "FirstDay|added|Hello" --branch firstday fn /FirstDay.Hello.only '() : Int64 = 1L'
+want "starting a branch" "^(started|switched|on) .*firstday" branch create firstday
+want "authoring on it"   "Created function: FirstDay\.Hello\.only" --branch firstday fn /FirstDay.Hello.only '() : Int64 = 1L'
 want "main cannot see it" "not found"      --branch main eval 'FirstDay.Hello.only ()'
 
 # 5. Merge it, and main can.
@@ -97,7 +104,7 @@ want "main sees it now"  "^1$"             --branch main eval 'FirstDay.Hello.on
 dark branch create clash >/dev/null 2>&1 || true
 dark --branch clash fn /FirstDay.Hello.greet '(name: String) : String = "yo " ++ name' >/dev/null 2>&1 || true
 dark --branch main fn /FirstDay.Hello.greet '(name: String) : String = "hey " ++ name' >/dev/null 2>&1 || true
-want "merge records a conflict" "conflict" --branch clash merge clash
+want "merge records a conflict" "[0-9]+ conflict" --branch clash merge clash
 want "conflicts --json lists it" '"pending":[1-9]' --branch main conflicts --json
 
 # 6b. An override you made, undone by a later ordinary edit, becomes a standing finding.
@@ -119,9 +126,9 @@ want "and it is reported"      "overrode this|decision-superseded" --branch main
 # uncommitted forever, where it then shipped inside the release seed as somebody else's mystery op.
 dark --branch main fn /FirstDay.Hello.doomed '() : Int64 = 1L' >/dev/null 2>&1 || true
 dark --branch main commit "before deleting" -y >/dev/null 2>&1 || true
-want "delete deprecates it"   "[Dd]eprecated"  --branch main delete fn FirstDay.Hello.doomed -y
-want "and it is committable"  "commit "        --branch main commit "retire it" -y
-want "leaving a clean tree"   "clean"          --branch main status
+want "delete deprecates it"   "^ *[Dd]eprecated "  --branch main delete fn FirstDay.Hello.doomed -y
+want "and it is committable"  "^ *commit [0-9a-f]{8} -- [0-9]+ op" --branch main commit "retire it" -y
+want "leaving a clean tree"   "^clean:"        --branch main status
 
 # 7. And you can walk away from a draft.
 dark fn /FirstDay.Hello.scratch '() : Int64 = 5L' >/dev/null 2>&1 || true
