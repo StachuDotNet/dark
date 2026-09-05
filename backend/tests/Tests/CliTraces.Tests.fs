@@ -2056,6 +2056,57 @@ let private aBranchLearnsThatMainMovedItsDependency =
       })
 
 
+/// `status` printed one constraint count, and on a store with standing constraints it read as "your
+/// edit broke N things" (an agent authoring on two machines said exactly that). The count now says
+/// how many touch a name this draft binds; a clean tree calls the rest what they are, standing.
+let private statusSeparatesTheDraftsConstraintsFromStandingOnes =
+  cliTestOnMain
+    "status says which constraints this draft caused and which stood already"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "discard"; "-y" ]
+        let! _ =
+          runCli state [ "fn"; "Tests.F9Kind.dep"; "(x: Int64) : Int64 = x + 1L" ]
+        let! _ =
+          runCli
+            state
+            [ "fn"; "Tests.F9Kind.use"; "(x: Int64) : Int64 = Tests.F9Kind.dep x" ]
+        let! _ = runCli state [ "commit"; "f9 base"; "-y" ]
+
+        // A kind change cannot be repointed, so the caller is left behind: a constraint THIS draft made.
+        let! _ = runCli state [ "val"; "Tests.F9Kind.dep"; "5L" ]
+        let! mine = runCli state [ "status" ]
+        Expect.stringContains
+          mine
+          "1 from this draft"
+          $"the constraint the draft caused is attributed to it: {mine}"
+
+        let! _ = runCli state [ "commit"; "f9 kind"; "-y" ]
+        let! standing = runCli state [ "status" ]
+        Expect.stringContains
+          standing
+          "standing constraint"
+          $"on a clean tree it is standing, not outstanding against you: {standing}"
+
+        let! _ = runCli state [ "fn"; "Tests.F9Kind.other"; "() : Int64 = 1L" ]
+        let! theirs = runCli state [ "status" ]
+        Expect.stringContains
+          theirs
+          "none from this draft"
+          $"an unrelated draft is not blamed for it: {theirs}"
+
+        // Back to a fn: the cascade repoints the caller and the constraint is gone, so the store is
+        // left as clean as it was found.
+        let! _ =
+          runCli state [ "fn"; "Tests.F9Kind.dep"; "(x: Int64) : Int64 = x + 3L" ]
+        let! _ = runCli state [ "commit"; "f9 restored"; "-y" ]
+        let! after = runCli state [ "status" ]
+        Expect.isFalse
+          (after.Contains "constraint")
+          $"restoring the kind clears it: {after}"
+      })
+
+
 let private aBundleCarriesItsCommits =
   cliTestOnMain
     "a branch bundle arrives with the author's commits, not as a draft"
@@ -3928,6 +3979,7 @@ let tests =
        archivingABranchCommitsItsEvent
        aBranchLearnsThatMainMovedItsDependency
        fnReadsItsDefinitionFromAFile
+       statusSeparatesTheDraftsConstraintsFromStandingOnes
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses

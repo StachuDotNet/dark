@@ -70,10 +70,11 @@ let executePretty (state: AppState) : AppState =
   if (s.changed == 0) && (s.removed == 0) && (s.conflicts == 0L) then
     printOk "clean: nothing changed since your last commit."
 
+    // Nothing in a clean tree is yours, so say the constraints stand on their own.
     if s.constraints > 0 then
       Stdlib.printLine
         (Stdlib.Cli.UI.Colors.hint
-          $"""  {plural s.constraints "constraint"} outstanding -> `dark constraints`""")
+          $"""  {plural s.constraints "standing constraint"} in the store -> `dark constraints`""")
   else
     let parts =
       Stdlib.List.append
@@ -101,10 +102,17 @@ let executePretty (state: AppState) : AppState =
     if s.conflicts > 0L then
       Stdlib.printLine (Stdlib.Cli.UI.Colors.hint "  -> `dark conflicts` to review them")
 
+    // Split what this draft caused from what was already there: on a store with standing
+    // constraints, one number reads as "your edit broke N things".
     if s.constraints > 0 then
+      let mine =
+        if s.constraintsFromDraft == 0 then
+          "none from this draft"
+        else
+          $"{Stdlib.Int.toString s.constraintsFromDraft} from this draft"
       Stdlib.printLine
         (Stdlib.Cli.UI.Colors.hint
-          $"""  {plural s.constraints "constraint"} outstanding -> `dark constraints`""")
+          $"""  {plural s.constraints "constraint"} outstanding, {mine} -> `dark constraints`""")
 
     if (s.changed > 0) || (s.removed > 0) then
       Stdlib.printLine (Stdlib.Cli.UI.Colors.hint "  -> `dark commit` to review + commit")

@@ -54,11 +54,23 @@ type Counts =
     repoints: Int
     conflicts: Int64
     constraints: Int
+    /// How many of `constraints` touch a name this draft binds, as the usage or as the
+    /// dependency. The rest stood before the draft did, and a count that lumps them together
+    /// reads as "your edit broke N things" on a store where N were broken when you arrived.
+    constraintsFromDraft: Int
     ops: Int64 }
 
 let counts (unit: Unit) : Counts =
   let bindings = SCM.PackageOps.draftBindings ()
   let propagated = SCM.PackageOps.propagatedNames ()
+  let pendingConstraints = SCM.Constraints.pending ()
+  let draftNames =
+    bindings |> Stdlib.List.map (fun b -> SCM.Conflicts.fqn b.owner b.modules b.name)
+  let fromDraft =
+    pendingConstraints
+    |> Stdlib.List.filter (fun f ->
+      (Stdlib.List.member draftNames (SCM.Constraints.fqnOf f.dependency))
+      || (Stdlib.List.member draftNames (SCM.Constraints.fqnOf f.usage)))
 
   Counts
     { changed = Stdlib.List.length bindings
@@ -70,7 +82,8 @@ let counts (unit: Unit) : Counts =
       removed = Stdlib.List.length (SCM.PackageOps.draftRemovals ())
       repoints = Stdlib.List.length (SCM.PackageOps.draftRepoints bindings)
       conflicts = SCM.Conflicts.pendingCount ()
-      constraints = Stdlib.List.length (SCM.Constraints.pending ())
+      constraints = Stdlib.List.length pendingConstraints
+      constraintsFromDraft = Stdlib.List.length fromDraft
       ops = SCM.PackageOps.draftOpCount () }
 
 /// Did PROPAGATION write this name's current binding, rather than a person?
