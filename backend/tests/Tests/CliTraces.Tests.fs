@@ -1964,34 +1964,51 @@ let private archivingABranchCommitsItsEvent =
 /// constraint said so: the branch ran main's old code silently. Seen on two machines. Now the branch
 /// reports the stale usage, and `rebase` repoints it, which is what "accept the parent's changes" means.
 let private aBranchLearnsThatMainMovedItsDependency =
-  cliTestOnMain "a branch's callers of a fn main moved are reported, and rebase repoints them" (fun state ->
-    task {
-      let! _ = runCli state [ "discard"; "-y" ]
-      let! _ = runCli state [ "fn"; "Tests.Moved.dep"; "() : Int64 = 1L" ]
-      let! _ = runCli state [ "commit"; "dep v1"; "-y" ]
-      let! _ = runCli state [ "switch"; "movedbr" ]
-      let! _ = runCli state [ "fn"; "Tests.Moved.caller"; "() : Int64 = Tests.Moved.dep ()" ]
-      let! _ = runCli state [ "commit"; "caller"; "-y" ]
-      let! _ = runCli state [ "switch"; "main" ]
-      let! _ = runCli state [ "fn"; "Tests.Moved.dep"; "() : Int64 = 2L" ]
-      let! _ = runCli state [ "commit"; "dep v2"; "-y" ]
-      let! _ = runCli state [ "switch"; "movedbr" ]
+  cliTestOnMain
+    "a branch's callers of a fn main moved are reported, and rebase repoints them"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "discard"; "-y" ]
+        let! _ = runCli state [ "fn"; "Tests.Moved.dep"; "() : Int64 = 1L" ]
+        let! _ = runCli state [ "commit"; "dep v1"; "-y" ]
+        let! _ = runCli state [ "switch"; "movedbr" ]
+        let! _ =
+          runCli
+            state
+            [ "fn"; "Tests.Moved.caller"; "() : Int64 = Tests.Moved.dep ()" ]
+        let! _ = runCli state [ "commit"; "caller"; "-y" ]
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "fn"; "Tests.Moved.dep"; "() : Int64 = 2L" ]
+        let! _ = runCli state [ "commit"; "dep v2"; "-y" ]
+        let! _ = runCli state [ "switch"; "movedbr" ]
 
-      let! before = runCli state [ "eval"; "Tests.Moved.caller ()" ]
-      Expect.stringContains before "1" $"the branch's caller still runs the old dep: {before}"
-      let! constraints = runCli state [ "constraints" ]
-      Expect.stringContains constraints "Tests.Moved.caller" $"and the branch says so: {constraints}"
+        let! before = runCli state [ "eval"; "Tests.Moved.caller ()" ]
+        Expect.stringContains
+          before
+          "1"
+          $"the branch's caller still runs the old dep: {before}"
+        let! constraints = runCli state [ "constraints" ]
+        Expect.stringContains
+          constraints
+          "Tests.Moved.caller"
+          $"and the branch says so: {constraints}"
 
-      let! rebased = runCli state [ "rebase" ]
-      Expect.stringContains rebased "Tests.Moved.caller" $"rebase names what it repointed: {rebased}"
-      let! after = runCli state [ "eval"; "Tests.Moved.caller ()" ]
-      Expect.stringContains after "2" $"and the caller follows main's dep now: {after}"
+        let! rebased = runCli state [ "rebase" ]
+        Expect.stringContains
+          rebased
+          "Tests.Moved.caller"
+          $"rebase names what it repointed: {rebased}"
+        let! after = runCli state [ "eval"; "Tests.Moved.caller ()" ]
+        Expect.stringContains
+          after
+          "2"
+          $"and the caller follows main's dep now: {after}"
 
-      let! _ = runCli state [ "discard"; "-y" ]
-      let! _ = runCli state [ "switch"; "main" ]
-      let! _ = runCli state [ "branch"; "archive"; "movedbr"; "-y" ]
-      ()
-    })
+        let! _ = runCli state [ "discard"; "-y" ]
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "branch"; "archive"; "movedbr"; "-y" ]
+        ()
+      })
 
 
 let private aBundleCarriesItsCommits =

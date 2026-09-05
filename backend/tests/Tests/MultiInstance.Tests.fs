@@ -987,7 +987,8 @@ let private aMergeEventWaitsForItsBranch =
 /// good. Seen on a real machine: two merged branches listed as live with 0 ops after a wipe and a
 /// reconnect.
 let aMergeEventForALaterBranchStillApplies =
-  testTask "a merge event that predates any knowledge of its branch applies once the bundle lands" {
+  testTask
+    "a merge event that predates any knowledge of its branch applies once the bundle lands" {
     let b = instance "b"
     let x = PT.BranchId.Id(System.Guid.NewGuid())
 
@@ -996,13 +997,20 @@ let aMergeEventForALaterBranchStillApplies =
       // No `createBranch`: this store has never heard of x when the event arrives.
       let op = setName "from-nowhere" "n1"
       let event =
-        PT.PackageOp.BranchEvent(x, PT.Merged [ Inserts.computeOpHash op ], "2026-01-02T00:00:00.000Z")
+        PT.PackageOp.BranchEvent(
+          x,
+          PT.Merged [ Inserts.computeOpHash op ],
+          "2026-01-02T00:00:00.000Z"
+        )
       let! _ = receive [ wireOp event "2026-01-02T00:00:00.000Z" ]
       let! applied =
         Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
         |> Sql.parameters [ "id", Sql.string (string (Inserts.computeOpHash event)) ]
         |> Sql.executeRowAsync (fun read -> read.int64 "a")
-      Expect.equal applied 1L "an event for an unknown branch is applied and done, not parked"
+      Expect.equal
+        applied
+        1L
+        "an event for an unknown branch is applied and done, not parked"
 
       // The bundle: the branch registers, its ops land inert, and the import re-arms the event.
       do! Branches.createBranch x "late-branch" PT.BranchId.Main
@@ -1012,7 +1020,10 @@ let aMergeEventForALaterBranchStillApplies =
 
       let! landed = boundHash "from-nowhere"
       let (PT.Hash n1) = hashOf "n1"
-      Expect.equal landed (Some n1) "the merged work is live on main once its branch arrives"
+      Expect.equal
+        landed
+        (Some n1)
+        "the merged work is live on main once its branch arrives"
     finally
       teardown [ b ]
   }
@@ -1076,38 +1087,65 @@ let anOverrideRepointsCallers =
           "Darklang.SCM.Propagation.repointDependents Darklang.SCM.Ids.mainBranchId "
           + "(Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"TwoStore\"; modules = [\"Cascade\"]; name = \"base\" }) "
           + "Darklang.LanguageTools.ProgramTypes.ItemKind.Fn "
-          + "[ Darklang.LanguageTools.ProgramTypes.Hash.Hash \"" + fromHash + "\" ] "
-          + "(Darklang.LanguageTools.ProgramTypes.Hash.Hash \"" + toHash + "\")"
+          + "[ Darklang.LanguageTools.ProgramTypes.Hash.Hash \""
+          + fromHash
+          + "\" ] "
+          + "(Darklang.LanguageTools.ProgramTypes.Hash.Hash \""
+          + toHash
+          + "\")"
         )
 
       // "Mine": this store's edit, cascaded. "Theirs": a later edit that arrives by sync and wins
       // by stamp; a real pull would also bring the sender's cascaded caller, so cascade here too.
-      let! mine = authorIntoMain "module TwoStore.Cascade\n\nlet base (x: Int64) : Int64 = x + 10L\n"
+      let! mine =
+        authorIntoMain
+          "module TwoStore.Cascade\n\nlet base (x: Int64) : Int64 = x + 10L\n"
       let (PT.Hash mineHash) = hashBoundTo mine "base"
       let! _ = repoint origHash mineHash
       // Their version has to be real content or the caller cannot be repointed at it.
-      let! theirsOps = authorIntoMain "module TwoStore.Cascade\n\nlet base (x: Int64) : Int64 = x + 100L\n"
+      let! theirsOps =
+        authorIntoMain
+          "module TwoStore.Cascade\n\nlet base (x: Int64) : Int64 = x + 100L\n"
       let (PT.Hash theirsHash) = hashBoundTo theirsOps "base"
       let! _ = repoint mineHash theirsHash
       let! before = darkOn "TwoStore.Cascade.caller 0L"
-      Expect.stringContains before "100" "before the override, the caller follows the winning version"
+      Expect.stringContains
+        before
+        "100"
+        "before the override, the caller follows the winning version"
 
       // The override, through the real resolve path, back to mine.
       let! _ =
         darkOn (
           "let c = Darklang.SCM.Conflicts.Conflict { id = \"cascade01\"; owner = \"TwoStore\"; "
           + "modules = \"Cascade\"; name = \"base\"; itemType = \"fn\"; kind = \"same-name-different-hash\"; "
-          + "candidates = [ Darklang.SCM.Conflicts.Candidate { side = \"local\"; hash = \"" + mineHash + "\"; originTs = \"\"; author = \"\" }; "
-          + "Darklang.SCM.Conflicts.Candidate { side = \"incoming\"; hash = \"" + theirsHash + "\"; originTs = \"\"; author = \"\" } ]; "
-          + "autoResolvedTo = \"" + theirsHash + "\"; reason = \"\"; status = \"pending\"; resolvedBy = \"\" }\n"
-          + "Darklang.SCM.PackageOps.settleConflict Darklang.SCM.Ids.mainBranchId c \"" + mineHash + "\""
+          + "candidates = [ Darklang.SCM.Conflicts.Candidate { side = \"local\"; hash = \""
+          + mineHash
+          + "\"; originTs = \"\"; author = \"\" }; "
+          + "Darklang.SCM.Conflicts.Candidate { side = \"incoming\"; hash = \""
+          + theirsHash
+          + "\"; originTs = \"\"; author = \"\" } ]; "
+          + "autoResolvedTo = \""
+          + theirsHash
+          + "\"; reason = \"\"; status = \"pending\"; resolvedBy = \"\" }\n"
+          + "Darklang.SCM.PackageOps.settleConflict Darklang.SCM.Ids.mainBranchId c \""
+          + mineHash
+          + "\""
         )
 
       let! baseNow = darkOn "TwoStore.Cascade.base 0L"
-      Expect.stringContains baseNow "10L" "the name binds my version after the override"
+      Expect.stringContains
+        baseNow
+        "10L"
+        "the name binds my version after the override"
       let! callerNow = darkOn "TwoStore.Cascade.caller 0L"
-      Expect.stringContains callerNow "10L" "and the caller follows it, rather than still calling the other version by hash"
-      Expect.isFalse (callerNow.Contains "100") "which means it no longer calls the loser"
+      Expect.stringContains
+        callerNow
+        "10L"
+        "and the caller follows it, rather than still calling the other version by hash"
+      Expect.isFalse
+        (callerNow.Contains "100")
+        "which means it no longer calls the loser"
     finally
       teardown [ a ]
   }

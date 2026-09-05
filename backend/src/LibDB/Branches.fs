@@ -501,7 +501,8 @@ let undeferBranchEvents (branchId : PT.BranchId) : Task<unit> =
         "SELECT id, op_blob FROM package_ops
          WHERE applied = 1 AND effective = 1 AND substr(op_blob, 9, 1) = X'0A'"
       |> Sql.executeAsync (fun read ->
-        (read.uuid "id", BS.PT.PackageOp.tryDeserialize (read.uuid "id") (read.bytes "op_blob")))
+        (read.uuid "id",
+         BS.PT.PackageOp.tryDeserialize (read.uuid "id") (read.bytes "op_blob")))
 
     let mine =
       events
