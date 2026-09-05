@@ -1959,6 +1959,37 @@ let private archivingABranchCommitsItsEvent =
 /// Without them a pulled branch arrives wholly uncommitted, and the puller's next `commit` sweeps the
 /// author's finished work under the puller's message -- the same op filed under a different commit on
 /// each machine.
+/// `module` took a file and `fn` took text, so the multi-line fn a person had in a file went through
+/// a heredoc or not at all (an agent on two machines lost a round to it). A definition is never one
+/// token, so one argument that names a file that exists is the file.
+let private fnReadsItsDefinitionFromAFile =
+  cliTest "fn takes a source file, the way module does" (fun state ->
+    task {
+      let file =
+        System.IO.Path.Combine(
+          System.IO.Path.GetTempPath(),
+          "dark-fn-from-file.dark"
+        )
+      System.IO.File.WriteAllText(
+        file,
+        "(n: Int64) : Int64 =\n  if n < 2L then n\n  else n * 2L\n"
+      )
+
+      let! saved = runCli state [ "fn"; "Tests.FnFile.twice"; file ]
+      Expect.isFalse
+        (saved.Contains "Runtime Error" || saved.Contains "Parse error")
+        $"the file is read as the definition: {saved}"
+      let! evaluated = runCli state [ "eval"; "Tests.FnFile.twice 21L" ]
+      Expect.stringContains
+        evaluated
+        "42"
+        $"and the fn it defined runs: {evaluated}"
+
+      let! _ = runCli state [ "discard"; "--yes" ]
+      ()
+    })
+
+
 /// A branch that never touched `f` still calls `f`. When main moves `f`, the branch's callers keep the
 /// old version by hash, `rebase` had nothing to reconcile (it compared names the branch TOUCHED), and no
 /// constraint said so: the branch ran main's old code silently. Seen on two machines. Now the branch
@@ -3882,6 +3913,7 @@ let tests =
        aDeprecationCommitsByEitherPath
        archivingABranchCommitsItsEvent
        aBranchLearnsThatMainMovedItsDependency
+       fnReadsItsDefinitionFromAFile
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses

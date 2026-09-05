@@ -45,7 +45,9 @@ let formatLocation (location: PackageLocation) : String =
 /// The `=` separating name from definition arrives either as its own argument or
 /// attached to the front; both come off, leading ones only, since the `=` in
 /// `(x: Int64) : Int64 = x` is the body's. A lone `-` reads stdin, so the separate
-/// argument has to go first.
+/// argument has to go first. A lone argument naming a file that exists reads the
+/// file, the way `module` does; a definition is never one token, so the two cannot
+/// be confused.
 let definitionFromArgs (args: List<String>) : String =
   let withoutSeparator =
     match args with
@@ -54,6 +56,10 @@ let definitionFromArgs (args: List<String>) : String =
 
   match withoutSeparator with
   | [ "-" ] -> Stdlib.Cli.Stdin.readAll ()
+  | [ path ] when Stdlib.Cli.File.exists path ->
+    match Stdlib.Cli.File.readText path with
+    | Ok source -> source
+    | Error _ -> path
   | parts ->
     let joined = Stdlib.String.join parts " " |> Stdlib.String.trim
 

@@ -16,8 +16,9 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       [
         (Stdlib.Cli.UI.Colors.error "Error: Function body required")
         ""
-        "Pass the body inline, or `-` to read from stdin (for multi-line):"
+        "Pass the body inline, a file that holds it, or `-` to read from stdin:"
         "  fn <location> <parameters and body>"
+        "  fn <location> <source-file>"
         "  fn <location> -    (read body from stdin)"
         ""
         "Examples:"
@@ -182,6 +183,8 @@ let help (_state: Cli.AppState) : String =
     "Create or update a function"
     ""
     "Usage: fn <location> <parameters and body>"
+    "       fn <location> <source-file>"
+    "       fn <location> -"
     ""
     "When updating an existing function, dependents are automatically updated"
     "to use the new version."
