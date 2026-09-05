@@ -486,6 +486,35 @@ let undeferBranchEvents () : Task<unit> =
 
 
 /// A branch's registered parent id ('main' if none recorded / unknown).
+/// <param branchId> and its ancestors, nearest first, ending at main.
+///
+/// The order IS the precedence: everything scoped to a branch chain resolves most-specific-first, so
+/// a caller can take the first row it finds. Main is always last and always present, since every
+/// chain ends there.
+let branchChain (branchId : PT.BranchId) : Task<List<PT.BranchId>> =
+  task {
+    if branchId.IsMain then
+      return [ PT.BranchId.Main ]
+    else
+      // Depth carried so the walk comes back nearest-first; a plain UNION loses the order.
+      let! rows =
+        Sql.query
+          "WITH RECURSIVE chain(bid, depth) AS (
+             SELECT @start, 0
+             UNION ALL
+             SELECT b.parent_id, c.depth + 1 FROM branches b JOIN chain c ON b.id = c.bid
+             WHERE b.parent_id <> @mainId AND c.depth < 64
+           )
+           SELECT bid FROM chain ORDER BY depth"
+        |> Sql.parameters
+          [ "start", Sql.string (string branchId)
+            "mainId", Sql.string (string PT.BranchId.Main) ]
+        |> Sql.executeAsync (fun read -> read.string "bid")
+
+      let ids = rows |> List.choose PT.BranchId.Parse
+      return ids @ [ PT.BranchId.Main ]
+  }
+
 let parentOf (branchId : PT.BranchId) : Task<PT.BranchId> =
   task {
     let! p =
@@ -526,7 +555,12 @@ let parentNameHashes (parentId : PT.BranchId) : Task<Map<NameKey, string>> =
         |> List.fold
           (fun (m : Map<NameKey, string>) op ->
             match op with
-            | PT.PackageOp.SetName(loc, target, _) ->
+            | PT.PackageOp.SetName(loc, target, _)
+            // An Override BINDS, the same as a SetName: it is what a `resolve mine` writes, and
+            // `rebindKeys` and the overlay both count it. Missing it here meant a child of a branch
+            // that had settled a conflict recorded the PRE-override hash as the state it forked from,
+            // so the name read as diverged the moment anyone touched it.
+            | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override target) ->
               let (Hash h) = target.hash
               Map.add (loc.owner, String.concat "." loc.modules, loc.name) h m
             | PT.PackageOp.Unbind(loc, _) ->

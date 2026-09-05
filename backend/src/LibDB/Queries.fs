@@ -632,36 +632,52 @@ let getHarmfulFnHashes () : Task<Set<Hash>> =
 /// one thing and the cascade does another.
 ///
 /// Scoping matters in BOTH directions: without the filter main's cascade would honour a pin
-/// made on an unrelated branch, and including main's rows is the inheritance half.
+/// made on an unrelated branch, and inheriting from the chain above is the other half.
+///
+/// The whole CHAIN, not just (this branch, main). A branch off a branch inherits its parent's pins
+/// the same way a first-level branch inherits main's: it forked from that state, so a pin the parent
+/// made applies until the child says otherwise. Reading only main's meant a child silently followed
+/// something its parent had deliberately pinned.
 let private getPropagationPolicy
   (branchId : PT.BranchId)
   (policy : string)
   : Task<Set<string * string * string>> =
   task {
-    // A main row is inherited ONLY where the branch has no row of its OWN for that key,
-    // whatever policy that row names. Inheriting unconditionally puts the same key in both
-    // the pin set and the follow set, and `isPinned` consults pins first, so main's `pin`
-    // would beat the branch's explicit `follow`.
+    // Nearest first, and the NEAREST branch with a row for a key decides -- whatever policy that row
+    // names. Taking every row in the chain would put one key in both the pin set and the follow set,
+    // and `isPinned` consults pins first, so an ancestor's `pin` would beat a nearer `follow`.
+    let! chain = Branches.branchChain branchId
+
     let! rows =
       Sql.query
-        "SELECT owner, modules, name FROM propagation_policy
-         WHERE policy = @policy
-           AND (branch_id = @branch
-                OR (branch_id = @mainBranch
-                    AND @branch <> @mainBranch
-                    AND NOT EXISTS (
-                      SELECT 1 FROM propagation_policy b
-                      WHERE b.branch_id = @branch
-                        AND b.owner = propagation_policy.owner
-                        AND b.modules = propagation_policy.modules
-                        AND b.name = propagation_policy.name)))"
-      |> Sql.parameters
-        [ "policy", Sql.string policy
-          "branch", Sql.string (string branchId)
-          "mainBranch", Sql.string (string PT.BranchId.Main) ]
+        "SELECT branch_id, policy, owner, modules, name FROM propagation_policy"
       |> Sql.executeAsync (fun read ->
-        (read.string "owner", read.string "modules", read.string "name"))
-    return Set.ofList rows
+        (read.string "branch_id",
+         read.string "policy",
+         read.string "owner",
+         read.string "modules",
+         read.string "name"))
+
+    let rank =
+      chain |> List.mapi (fun i b -> (string b, i)) |> Map.ofList
+
+    let nearestPerKey : List<(string * string * string) * string> =
+      rows
+      |> List.choose (fun (bid, pol, owner, modules, name) ->
+        Map.tryFind bid rank
+        |> Option.map (fun r -> ((owner, modules, name), (r, pol))))
+      // `List.groupBy` here is Prelude's, which returns a Map rather than a list of pairs.
+      |> List.groupBy fst
+      |> Map.toList
+      |> List.map (fun (key, candidates) ->
+        let (_, pol) = candidates |> List.map snd |> List.minBy fst
+        (key, pol))
+
+    return
+      nearestPerKey
+      |> List.filter (fun (_, pol) -> pol = policy)
+      |> List.map fst
+      |> Set.ofList
   }
 
 let getPropagationPins

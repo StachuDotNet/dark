@@ -1404,6 +1404,78 @@ let branchExists =
     do! cleanupBranch (testBranch "beY")
   }
 
+/// A child of a branch inherits its PARENT'S pins, not just main's.
+///
+/// `getPropagationPolicy` read (this branch, main) and nothing between, so a branch off a branch
+/// silently followed something its parent had deliberately pinned. Nested branches are first-class
+/// everywhere else in the model (the overlay chain, merge routing, name bases), and this was the one
+/// place that stopped at one level.
+let propagationPinsComeFromTheWholeChain =
+  testTask "a child branch inherits its parent's pins, not only main's" {
+    let parent = testBranch "pin-parent"
+    let child = testBranch "pin-child"
+    do! cleanupBranch child
+    do! cleanupBranch parent
+    do! Branches.createBranch parent "pin-parent" PT.BranchId.Main
+    do! Branches.createBranch child "pin-child" parent
+
+    let loc : PT.PackageLocation =
+      { owner = "Darklang"; modules = [ "ChainPin" ]; name = "target" }
+
+    // The parent pins it. Nobody else says anything.
+    do!
+      Sql.query
+        "INSERT INTO propagation_policy (branch_id, owner, modules, name, policy)
+         VALUES (@b, @o, @m, @n, 'pin')"
+      |> Sql.parameters
+        [ "b", Sql.string (string parent)
+          "o", Sql.string loc.owner
+          "m", Sql.string (String.concat "." loc.modules)
+          "n", Sql.string loc.name ]
+      |> Sql.executeStatementAsync
+
+    let! childPins = Queries.getPropagationPins child
+    Expect.isTrue
+      (Set.contains (loc.owner, String.concat "." loc.modules, loc.name) childPins)
+      "the child sees its parent's pin"
+
+    // And the child can still say otherwise: nearest in the chain wins, whatever it says.
+    do!
+      Sql.query
+        "INSERT INTO propagation_policy (branch_id, owner, modules, name, policy)
+         VALUES (@b, @o, @m, @n, 'follow')"
+      |> Sql.parameters
+        [ "b", Sql.string (string child)
+          "o", Sql.string loc.owner
+          "m", Sql.string (String.concat "." loc.modules)
+          "n", Sql.string loc.name ]
+      |> Sql.executeStatementAsync
+
+    let! overridden = Queries.getPropagationPins child
+    Expect.isFalse
+      (Set.contains (loc.owner, String.concat "." loc.modules, loc.name) overridden)
+      "and its own follow beats the parent's pin"
+
+    let! follows = Queries.getPropagationFollows child
+    Expect.isTrue
+      (Set.contains (loc.owner, String.concat "." loc.modules, loc.name) follows)
+      "which is where it went"
+
+    // An unrelated branch is unaffected: the chain is the scope, not the store.
+    let! mainPins = Queries.getPropagationPins PT.BranchId.Main
+    Expect.isFalse
+      (Set.contains (loc.owner, String.concat "." loc.modules, loc.name) mainPins)
+      "main never saw either decision"
+
+    do!
+      Sql.query "DELETE FROM propagation_policy WHERE branch_id IN (@p, @c)"
+      |> Sql.parameters
+        [ "p", Sql.string (string parent); "c", Sql.string (string child) ]
+      |> Sql.executeStatementAsync
+    do! cleanupBranch child
+    do! cleanupBranch parent
+  }
+
 let mergeCountsWhatItFlipped =
   testTask
     "markMergedEffective reports ops it flipped, not ops that were already effective" {
@@ -2320,6 +2392,7 @@ let tests =
     [ branchResolutionOrder
       isolationFromCore
       unbindHidesACoreNameOnTheBranchOnly
+      propagationPinsComeFromTheWholeChain
       branchExists
       mergeCountsWhatItFlipped
       importedOpsKeepTheirStamps
