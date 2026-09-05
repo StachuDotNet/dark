@@ -96,6 +96,22 @@ module RoundtripTests =
           PT2DT.Hash.fromDT
           None
 
+        // `fromDT` returns an option (a Dval that is not a PackageOp is not a crash, it is a `None`),
+        // so it is unwrapped here rather than given its own helper. Nothing covered these: every
+        // `Decision` kind, both `BranchEvent` kinds and a `SetName` carrying a predecessor cross this
+        // boundary whenever Dark reads the log, and the `| _ -> None` on `previous` silently accepts a
+        // mis-typed one.
+        testRoundtripList
+          "PT.PackageOp"
+          (pkg (PackageRefs.Type.LanguageTools.ProgramTypes.packageOp ()))
+          V.ProgramTypes.packageOps
+          PT2DT.PackageOp.toDT
+          (fun dv ->
+            match PT2DT.PackageOp.fromDT dv with
+            | Some op -> op
+            | None -> Exception.raiseInternal "PackageOp.fromDT rejected its own toDT" [])
+          None
+
         testRoundtripList
           "PT.PackageLocation"
           (pkg (PackageRefs.Type.LanguageTools.ProgramTypes.packageLocation ()))

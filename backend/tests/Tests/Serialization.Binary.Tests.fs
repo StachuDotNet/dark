@@ -72,6 +72,20 @@ module PT =
         |> BS.PT.PackageValue.deserialize c.hash)
       Values.ProgramTypes.packageValues
 
+  /// Every `PackageOp` case, through the writer and back.
+  ///
+  /// The op format is what two machines must agree on byte for byte, and no case had a roundtrip
+  /// test: coverage was indirect, by storing an op and reading it back through the fold, which never
+  /// reaches a `Decision` kind, a `BranchEvent`, or a `SetName` carrying a predecessor.
+  let packageOpTests =
+    Roundtripping.testRoundtripMany
+      "packageOps"
+      (fun op ->
+        op
+        |> BS.PT.PackageOp.serialize (System.Guid.NewGuid())
+        |> BS.PT.PackageOp.deserialize (System.Guid.NewGuid()))
+      Values.ProgramTypes.packageOps
+
   let toplevelTests =
     Roundtripping.testRoundtripMany
       "toplevels"
@@ -271,6 +285,7 @@ let tests =
           PT.packageValTests
           PT.packageFnTests
           PT.toplevelTests
+          PT.packageOpTests
           PT.legacyRecoveryHoleTagRejected ]
 
       testList
