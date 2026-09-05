@@ -1196,6 +1196,81 @@ let anOverrideRepointsCallers =
       teardown [ a ]
   }
 
+/// Main sync carries the author's commit, so the same work reads the same on every store.
+///
+/// A's ops arrive on B by the main channel and are filed under A's commit id and message, not under
+/// an import commit of B's; the import commit that landed them is deleted once nothing is left under
+/// it. Before, `dark commits` on B read "synced from A" for everything A ever did, under ids B minted.
+let mainSyncCarriesTheAuthorsCommit =
+  testTask
+    "ops synced on main are filed under the author's commit on the other store" {
+    let a = instance "a"
+    let b = instance "b"
+
+    try
+      activate a
+      let! _ =
+        authorIntoMain
+          "module TwoStore.Attrib\n\nlet f (x: Int64) : Int64 = x + 7L\n"
+      let! aCommit = LibDB.Inserts.commitAllAsBaseline "f, by a"
+      // What A would put on the wire for this commit: the ops, and the commit row they name. Through a
+      // file rather than a string literal, as `sync export` does; the bundle is JSON with quotes in it.
+      let path =
+        System.IO.Path.Combine(
+          System.IO.Path.GetTempPath(),
+          "dark-attrib-bundle.json"
+        )
+      let! (written : string) =
+        darkOn (
+          "let json = Darklang.SCM.Wire.exportOps () |> Stdlib.List.filter (fun o -> o.commit == \""
+          + aCommit
+          + "\") |> Darklang.SCM.Wire.wireEncode\n"
+          + "match Stdlib.Cli.File.writeText \""
+          + path
+          + "\" json with | Ok _ -> \"written\" | Error e -> e.message"
+        )
+      Expect.stringContains written "written" $"a wrote its bundle: {written}"
+
+      activate b
+      let! (imported : string) =
+        darkOn (
+          "match Darklang.SCM.Wire.wireDecode (Stdlib.String.toBlob (Builtin.unwrap (Stdlib.Cli.File.readText \""
+          + path
+          + "\"))) with\n"
+          + "| Ok bundle -> (match Darklang.SCM.Wire.importFrom \"peer:a\" bundle.ops bundle.commits with | Ok o -> Stdlib.Int.toString o.imported | Error e -> e)\n"
+          + "| Error e -> e"
+        )
+      Expect.isFalse (imported.Contains "not") $"the import went through: {imported}"
+
+      let! filedUnder =
+        Sql.query
+          "SELECT COALESCE(commit_hash, '') AS c FROM package_ops p
+           WHERE p.id IN (SELECT op_id FROM locations WHERE owner = 'TwoStore' AND modules = 'Attrib')"
+        |> Sql.executeAsync (fun read -> read.string "c")
+      Expect.isNonEmpty filedUnder "b has the ops"
+      Expect.allEqual
+        filedUnder
+        aCommit
+        "and files them under a's commit id, not its own"
+
+      let! message =
+        Sql.query "SELECT message FROM commits WHERE hash = @h"
+        |> Sql.parameters [ "h", Sql.string aCommit ]
+        |> Sql.executeRowAsync (fun read -> read.string "message")
+      Expect.equal message "f, by a" "with a's message"
+
+      let! leftover =
+        Sql.query
+          "SELECT count(*) AS n FROM commits WHERE message LIKE 'synced from%' OR message LIKE 'imported from%'"
+        |> Sql.executeRowAsync (fun read -> read.int64 "n")
+      Expect.equal
+        leftover
+        0L
+        "and the import commit, left with nothing under it, is gone"
+    finally
+      teardown [ a; b ]
+  }
+
 let tests =
   testSequenced
   <| testList
@@ -1221,4 +1296,5 @@ let tests =
       aMergeEventWaitsForItsBranch
       anEventForAnUnknownBranchDoesNotWait
       aMergeEventForALaterBranchStillApplies
+      mainSyncCarriesTheAuthorsCommit
       anOverrideRepointsCallers ]

@@ -158,7 +158,7 @@ let executeImport (state: AppState) (path: String) : AppState =
         | sender -> $"peer:{sender}"
 
       // One batch, so the bases are recorded immediately after it rather than by a page loop.
-      match SCM.Wire.importFrom source ops with
+      match SCM.Wire.importFrom source ops bundle.commits with
       | Ok outcome ->
         SCM.PackageOps.recordSyncBases source
 
@@ -525,7 +525,7 @@ let executePullPages
         let next =
           relayGetStart $"{url}/sync/pull?sinceSeq={Stdlib.Int64.toString bundle.cursor}"
 
-        match SCM.Wire.importFrom url ops with
+        match SCM.Wire.importFrom url ops bundle.commits with
         | Error e ->
           printErr $"  page import failed: {e}"
           -1
@@ -666,7 +666,7 @@ let executePull (state: AppState) (url: String) : AppState =
         let ops = bundle.ops
         // The relay url is the source identity: a pull IS a merge against the state you and that relay
         // last agreed on, so conflicts get the same treatment a branch merge gets.
-        match SCM.Wire.importFrom url ops with
+        match SCM.Wire.importFrom url ops bundle.commits with
         | Ok outcome ->
           // Only advance the cursor once the ops are actually in: a crash mid-import re-pulls them, which
           // is free. Remember WHICH relay the position belongs to (see the rewind above).

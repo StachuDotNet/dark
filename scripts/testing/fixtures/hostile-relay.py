@@ -58,7 +58,7 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, '{"count":999999999,"maxTs":"2026-01-01T00:00:00Z"}')
             # Every page, whatever the cursor: nothing past it, and a cursor of 0 to say so.
             return self._send(200, '{"formatVersion":1,"darkBuild":"x","kernelHash":"x",'
-                                   '"owner":"inst-hostile-9087","cursor":0,"ops":[]}')
+                                   '"owner":"inst-hostile-9087","cursor":0,"ops":[],"commits":[]}')
         if MODE == 9088:
             # A relay restarting under a pull. Page 1 carries one op (unreadable to any build, so it is
             # stored inert and nothing folds); page 2's connection drops once, the way a restart looks
@@ -70,17 +70,17 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200, ('{"formatVersion":1,"darkBuild":"x","kernelHash":"x",'
                                         '"owner":"inst-hostile-9088","cursor":1,"ops":['
                                         '{"id":"9088aaaa-0000-4000-8000-000000000001","blobHex":"ff3907",'
-                                        '"ts":"2026-01-01T00:00:00.000Z","author":"hostile"}]}'))
+                                        '"ts":"2026-01-01T00:00:00.000Z","author":"hostile","commit":""}],"commits":[]}'))
             if not DROPPED_ONCE[0]:
                 DROPPED_ONCE[0] = True
                 self.connection.close(); return
             return self._send(200, ('{"formatVersion":1,"darkBuild":"x","kernelHash":"x",'
-                                    '"owner":"inst-hostile-9088","cursor":1,"ops":[]}'))
+                                    '"owner":"inst-hostile-9088","cursor":1,"ops":[],"commits":[]}'))
         if MODE == 9089:
             if p.startswith("/sync/head"):
                 return self._send(200, '{"count":1,"maxTs":"2026-01-01T00:00:00.000Z"}')
             return self._send(200, ('{"formatVersion":99,"darkBuild":"future","kernelHash":"x",'
-                                    '"owner":"inst-hostile-9089","cursor":1,"ops":[]}'))
+                                    '"owner":"inst-hostile-9089","cursor":1,"ops":[],"commits":[]}'))
         return self._send(200, "{}")
 
     def do_GET(self): self.answer()

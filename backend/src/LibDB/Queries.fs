@@ -45,7 +45,8 @@ let exportPageJson
       Sql.query
         """
         SELECT p.id, p.op_blob, p.origin_ts AS ts, p.rowid AS seq,
-               (SELECT o.owner FROM op_owners o WHERE o.op_id = p.id LIMIT 1) AS author
+               (SELECT o.owner FROM op_owners o WHERE o.op_id = p.id LIMIT 1) AS author,
+               COALESCE(p.commit_hash, '') AS commit_id
         FROM package_ops p
         WHERE p.rowid > @sinceSeq
           AND p.id NOT IN (SELECT op_id FROM op_branches)
@@ -57,10 +58,37 @@ let exportPageJson
          read.bytes "op_blob",
          read.stringOrNone "ts" |> Option.defaultValue "",
          read.int64 "seq",
-         read.stringOrNone "author" |> Option.defaultValue ""))
+         read.stringOrNone "author" |> Option.defaultValue "",
+         read.string "commit_id"))
 
     let cursor =
-      rows |> List.fold (fun acc (_, _, _, seq, _) -> max acc seq) sinceSeq
+      rows |> List.fold (fun acc (_, _, _, seq, _, _) -> max acc seq) sinceSeq
+
+    // The commit rows the page's ops name, so the receiver can file each op under the author's commit.
+    // Rows, not a chain: see `SCM.Wire.SyncBundle.commits`.
+    let commitHashes =
+      rows
+      |> List.choose (fun (_, _, _, _, _, c) -> if c = "" then None else Some c)
+      |> List.distinct
+
+    let! commits =
+      if List.isEmpty commitHashes then
+        Task.FromResult []
+      else
+        Sql.query
+          """
+          SELECT hash, message, author, origin_ts, COALESCE(parent, '') AS parent
+          FROM commits WHERE hash IN (SELECT value FROM json_each(@hashes))
+          """
+        |> Sql.parameters
+          [ "hashes",
+            Sql.string (System.Text.Json.JsonSerializer.Serialize commitHashes) ]
+        |> Sql.executeAsync (fun read ->
+          (read.string "hash",
+           read.string "message",
+           read.string "author",
+           read.string "origin_ts",
+           read.string "parent"))
 
     let out = new System.IO.MemoryStream()
 
@@ -74,13 +102,26 @@ let exportPageJson
       writer.WriteNumber("cursor", cursor)
       writer.WriteStartArray("ops")
 
-      for (id, blob, ts, _, author) in rows do
+      for (id, blob, ts, _, author, commit) in rows do
         writer.WriteStartObject()
         writer.WriteString("id", id)
         // Lowercase hex, matching `Stdlib.Blob.toHex`, because clients decode it with the same rules.
         writer.WriteString("blobHex", System.Convert.ToHexStringLower blob)
         writer.WriteString("ts", ts)
         writer.WriteString("author", author)
+        writer.WriteString("commit", commit)
+        writer.WriteEndObject()
+
+      writer.WriteEndArray()
+      writer.WriteStartArray("commits")
+
+      for (hash, message, author, originTs, parent) in commits do
+        writer.WriteStartObject()
+        writer.WriteString("hash", hash)
+        writer.WriteString("message", message)
+        writer.WriteString("author", author)
+        writer.WriteString("originTs", originTs)
+        writer.WriteString("parent", parent)
         writer.WriteEndObject()
 
       writer.WriteEndArray()

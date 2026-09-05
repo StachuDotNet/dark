@@ -1348,6 +1348,91 @@ type BranchBundle =
     commits: List<BranchBundleCommit> }
 
 
+/// The commit rows behind a list of commit hashes ("" and duplicates dropped), in the shape both
+/// bundles ship. What a sender attaches so the receiver can file ops under the author's commits.
+let commitRowsFor (hashes: List<String>) : List<BranchBundleCommit> =
+  let wanted = hashes |> Stdlib.List.filter (fun h -> h != "") |> Stdlib.List.unique
+
+  if Stdlib.List.isEmpty wanted then
+    []
+  else
+    match
+      Stdlib.Sqlite.queryP
+        (localDb ())
+        "SELECT hash, message, author, origin_ts, COALESCE(parent, '') AS parent FROM commits
+         WHERE hash IN (SELECT value FROM json_each(@p0))"
+        [ Stdlib.Json.serialize<List<String>> wanted ]
+    with
+    | Ok rows ->
+      rows
+      |> Stdlib.List.filterMap (fun row ->
+        match
+          (Stdlib.Sqlite.textField row "hash",
+           Stdlib.Sqlite.textField row "message",
+           Stdlib.Sqlite.textField row "author",
+           Stdlib.Sqlite.textField row "origin_ts",
+           Stdlib.Sqlite.textField row "parent")
+        with
+        | (Some hash, Some message, Some author, Some originTs, Some parent) ->
+          Stdlib.Option.Option.Some(
+            BranchBundleCommit
+              { hash = hash
+                message = message
+                author = author
+                originTs = originTs
+                parent = parent }
+          )
+        | _ -> Stdlib.Option.Option.None)
+    | Error _ -> []
+
+
+/// Take on a sender's commits: the rows first, then each op stamped with its author's commit, but only
+/// where <param onlyReplacing> currently stands ("" for an op with no commit yet). An op already
+/// committed under something else keeps it: a branch pulled before its merge event arrives keeps the
+/// branch's commits when the event lands.
+let adoptCommitsWhere
+  (onlyReplacing: String)
+  (commits: List<BranchBundleCommit>)
+  (opCommits: List<(String * String)>)
+  : Unit =
+  let stamps =
+    opCommits
+    |> Stdlib.List.filter (fun pair ->
+      let (_, commit) = pair
+      commit != "")
+    |> Stdlib.List.map (fun pair ->
+      let (id, commit) = pair
+      [ commit, id, onlyReplacing ])
+
+  if Stdlib.List.isEmpty commits && Stdlib.List.isEmpty stamps then
+    ()
+  else
+    let _ =
+      Stdlib.Sqlite.mustExecBatch
+        (localDb ())
+        [ ("INSERT OR IGNORE INTO commits (hash, message, author, origin_ts, parent)
+            VALUES (@p0, @p1, @p2, @p3, @p4)",
+           commits
+           |> Stdlib.List.map (fun c -> [ c.hash, c.message, c.author, c.originTs, c.parent ]))
+          ("UPDATE package_ops SET commit_hash = @p0
+            WHERE id = @p1 AND COALESCE(commit_hash, '') = @p2",
+           stamps) ]
+    ()
+
+/// <fn adoptCommitsWhere> for ops that have no commit here yet: a pulled branch, a relay storing a push.
+let adoptCommits (commits: List<BranchBundleCommit>) (opCommits: List<(String * String)>) : Unit =
+  adoptCommitsWhere "" commits opCommits
+
+/// <fn adoptCommitsWhere> for ops an import just filed under <param importCommit>: they move to the
+/// author's commit, and whatever the import committed on its own stays.
+let adoptCommitsOver
+  (importCommit: String)
+  (commits: List<BranchBundleCommit>)
+  (opCommits: List<(String * String)>)
+  : Unit =
+  adoptCommitsWhere importCommit commits opCommits
+
+
 /// One column from the branches row for a branch (or a default).
 let branchField (branchId: Uuid) (col: String) (dflt: String) : String =
   match
@@ -1435,37 +1520,7 @@ let exportBranch (branchId: Uuid) : String =
        |> Stdlib.List.map (fun o ->
          BranchBundleOp { id = o.id; blobHex = o.blobHex; ts = o.ts; commit = o.author }))
 
-  let commitHashes =
-    frontier
-    |> Stdlib.List.filterMap (fun o -> if o.author == "" then Stdlib.Option.Option.None else Stdlib.Option.Option.Some o.author)
-    |> Stdlib.List.unique
-
-  let commits =
-    if Stdlib.List.isEmpty commitHashes then
-      []
-    else
-      match
-        Stdlib.Sqlite.queryP
-          (localDb ())
-          "SELECT hash, message, author, origin_ts, COALESCE(parent, '') AS parent FROM commits
-           WHERE hash IN (SELECT value FROM json_each(@p0))"
-          [ Stdlib.Json.serialize<List<String>> commitHashes ]
-      with
-      | Ok rows ->
-        rows
-        |> Stdlib.List.filterMap (fun row ->
-          let txt (col: String) : String = Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
-          match Stdlib.Sqlite.textField row "hash" with
-          | Some h ->
-            Stdlib.Option.Option.Some(
-              BranchBundleCommit
-                { hash = h
-                  message = txt "message"
-                  author = txt "author"
-                  originTs = txt "origin_ts"
-                  parent = txt "parent" })
-          | None -> Stdlib.Option.Option.None)
-      | Error _ -> []
+  let commits = commitRowsFor (frontier |> Stdlib.List.map (fun o -> o.author))
 
   Stdlib.Json.serialize<BranchBundle> (
     BranchBundle
@@ -1537,24 +1592,9 @@ let importBranch (json: String) : Stdlib.Result.Result<String, String> =
     match stageOpsOnBranch b.branchId importName b.parent records with
     | Ok n ->
       // The sender's commits come with the ops, so a pulled branch shows the author's commits under the
-      // author's messages, and the puller's next `commit` takes only the puller's own work. The rows
-      // first, then the stamps; an op this store already had committed keeps its commit.
-      let _ =
-        if Stdlib.List.isEmpty b.commits then
-          ()
-        else
-          let _ =
-            Stdlib.Sqlite.mustExecBatch
-              (localDb ())
-              [ ("INSERT OR IGNORE INTO commits (hash, message, author, origin_ts, parent)
-                  VALUES (@p0, @p1, @p2, @p3, @p4)",
-                 b.commits
-                 |> Stdlib.List.map (fun c -> [ c.hash, c.message, c.author, c.originTs, c.parent ]))
-                ("UPDATE package_ops SET commit_hash = @p0 WHERE id = @p1 AND commit_hash IS NULL",
-                 b.ops
-                 |> Stdlib.List.filter (fun op -> op.commit != "")
-                 |> Stdlib.List.map (fun op -> [ op.commit, op.id ])) ]
-          ()
+      // author's messages, and the puller's next `commit` takes only the puller's own work. An op this
+      // store already had committed keeps its commit.
+      adoptCommits b.commits (b.ops |> Stdlib.List.map (fun op -> (op.id, op.commit)))
 
       // Falls back to the ID when the bundle carries no name. A branch CAN have an empty name -- one first
       // registered by authoring rather than by `switch` gets `""` -- and the hint below has to be typeable.

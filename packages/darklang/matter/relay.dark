@@ -134,14 +134,14 @@ let pushHandlerFn (req: HttpRequest) : HttpResponse =
 
   match SCM.Wire.wireDecode req.body with
   | Ok bundle ->
-    match SCM.Wire.storeWithOwner owner bundle.ops with
+    match SCM.Wire.storeWithOwner owner bundle.ops bundle.commits with
     | Ok n ->
       Stdlib.Http.responseWithText
         $"stored {Stdlib.Int.toString n} new op(s) for \"{owner}\""
         200
     | Error e -> Stdlib.Http.serverError e
   | Error _ ->
-    Stdlib.Http.badRequest "expected a versioned SyncBundle {formatVersion, darkBuild, ops}"
+    Stdlib.Http.badRequest "expected a versioned SyncBundle {formatVersion, darkBuild, ops, commits}"
 
 
 /// A branch is somebody's unmerged work, so READING one takes the same secret as writing.

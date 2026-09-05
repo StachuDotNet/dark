@@ -66,6 +66,11 @@ x A fn /SM.T.one '() : Int64 = 41L' > /dev/null; x A commit "A's work" -y > /dev
 want "A pushes" "^Pushed [1-9][0-9]* ops" "$(x A push)"
 want "B pulls" "^Pulled [1-9][0-9]* new op" "$(x B pull)"
 want "B runs it" "^41$" "$(x B eval 'SM.T.one ()' | tail -1)"
+# The same work reads the same on both machines: A's commit id and message, not a "synced from A" of B's.
+# History that differs per machine was the first thing two people noticed about main sync.
+ACOMMIT=$(x A commits 3 | awk '/A.s work/ {print $1}')
+want "B files it under A's commit" "^$ACOMMIT +2 +[^ ]+ +A's work" "$(x B commits 3)"
+wantnot "and not under an import commit of its own" "synced from" "$(x B commits 3)"
 
 echo "== two instances authoring at the same time"
 ( x A fn /SM.T.a '() : Int64 = 1L' > /dev/null; x A commit "A" -y > /dev/null; x A push > "$ROOT/a.log" 2>&1 ) & PA=$!
@@ -128,6 +133,12 @@ want "and B's main does not" "^Error: SM\.T\.onFeat not found$" "$(x B eval 'SM.
 want "B merges it" "^Merged [1-9][0-9]* op\(s\) from branch \"feat\" into its parent\.$" "$(x B --branch feat merge feat)"
 x B push > /dev/null; x C pull > /dev/null
 want "C gets it on main" "^77$" "$(x C eval 'SM.T.onFeat ()' | tail -1)"
+# C never pulled the branch, so everything reached it by main sync: the branch's ops still read under
+# A's "feat work" and the merge under B's, whatever order they arrived in. Before, C filed all of it
+# under one "synced from" commit of its own.
+want "C shows the branch work under A's commit" "feat work" "$(x C commits 5)"
+want "and the merge under B's" "merged branch \"feat\"" "$(x C commits 5)"
+wantnot "with no import commit of C's own" "synced from" "$(x C commits 5)"
 
 echo "== merged work reaches the relay when main was pushed in between"
 # A branch op's rowid is minted when it is AUTHORED. Push main after that and any rowid cursor has
