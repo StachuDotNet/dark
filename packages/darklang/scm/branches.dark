@@ -425,8 +425,34 @@ let rebase (branchId: Uuid) : Stdlib.Result.Result<List<String>, String> =
 
       [ current, Stdlib.Uuid.toString branchId, o, m, n ])
 
+  // The other half of "accept the parent's changes": what the branch CALLS. A branch that never
+  // touched `f` has no base for it, so the bases above say nothing when the parent moves `f`; but
+  // the branch's own callers of `f` still reference the old version by hash, and the branch runs
+  // the parent's old code with nothing saying so. Repoint them, the way an edit on the parent
+  // would have if the callers had been on the parent. Each finding names the usage, the dependency
+  // and both hashes; the cascade is the same one every edit runs.
+  let repointed =
+    SCM.Constraints.detectOutdatedUsagesOn branchId
+    |> Stdlib.List.filterMap (fun f ->
+      match f.detail with
+      | Versions(using, current) ->
+        let _ =
+          SCM.Propagation.repointDependents
+            branchId
+            f.dependency
+            f.dependencyKind
+            [ using ]
+            current
+        Stdlib.Option.Option.Some(
+          Conflicts.fqn f.usage.owner (SCM.Propagation.modulesOf f.usage) f.usage.name
+        )
+      | _ -> Stdlib.Option.Option.None)
+    |> Stdlib.List.unique
+
+  let changedAll = Stdlib.List.unique (Stdlib.List.append changed repointed)
+
   match updates with
-  | [] -> Stdlib.Result.Result.Ok changed
+  | [] -> Stdlib.Result.Result.Ok changedAll
   | rows ->
     match
       Stdlib.Sqlite.execBatch
@@ -435,7 +461,7 @@ let rebase (branchId: Uuid) : Stdlib.Result.Result<List<String>, String> =
             WHERE branch_id = @p1 AND owner = @p2 AND modules = @p3 AND name = @p4",
            rows) ]
     with
-    | Ok _ -> Stdlib.Result.Result.Ok changed
+    | Ok _ -> Stdlib.Result.Result.Ok changedAll
     | Error e -> Stdlib.Result.Result.Error e
 
 

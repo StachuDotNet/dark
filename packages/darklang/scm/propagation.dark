@@ -8,6 +8,22 @@ module Darklang.SCM.Propagation
 
 let localDb () : String = Stdlib.LocalStore.path ()
 
+
+/// Repoint every caller of one of <param previousHashes> at <param currentHash>, on <param branchId>,
+/// and say which names moved. The cascade behind every edit, and the one place the builtin is named.
+///
+/// Lives here rather than in the CLI because a RESOLUTION needs it too: overriding a conflict rebinds
+/// a name, and a rebind that does not repoint its callers leaves the name saying one thing and
+/// everything that calls it doing another.
+let repointDependents
+  (branchId: Uuid)
+  (location: LanguageTools.ProgramTypes.PackageLocation)
+  (itemKind: LanguageTools.ProgramTypes.ItemKind)
+  (previousHashes: List<LanguageTools.ProgramTypes.Hash>)
+  (currentHash: LanguageTools.ProgramTypes.Hash)
+  : Stdlib.Result.Result<List<LanguageTools.ProgramTypes.PropagateRepoint>, String> =
+  Builtin.pmPropagate branchId location itemKind previousHashes currentHash
+
 type Policy =
   | Follow
   | Pin

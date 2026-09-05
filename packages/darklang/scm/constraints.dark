@@ -284,12 +284,73 @@ let detectSupersededPolicies () : List<Finding> =
         detail = FindingDetail.PolicyReplaced(mine, now, by) })
 
 
+/// The same finding, for what the BRANCH binds.
+///
+/// `detectOutdatedUsages` reads `locations`, which is main's, so an item bound on a branch is never a
+/// usage there: a branch whose caller of `f` was left behind when main moved `f` had no finding at
+/// all, and `rebase` said "already current" because the branch had not touched `f` itself. The branch
+/// went on running main's old version with nothing saying so. Seen on two machines: a colleague's
+/// branch calling the version of a fn I had replaced on main an hour earlier.
+///
+/// One query per binding the chain holds, against the branch-aware read for what each dependency
+/// means now. A branch holds few bindings; this runs from `dark status`, and the whole chain's
+/// bindings are decoded once.
+let detectOutdatedUsagesOn (branchId: Uuid) : List<Finding> =
+  if SCM.Ids.isMain branchId then
+    []
+  else
+    PackageOps.chainBindings branchId
+    |> Stdlib.List.map (fun b ->
+      match
+        Stdlib.Sqlite.queryP
+          (localDb ())
+          "SELECT depends_on_owner AS d_owner, depends_on_modules AS d_modules,
+                  depends_on_name AS d_name, depends_on_item_type AS d_type,
+                  depends_on_hash AS using_hash
+           FROM package_dependencies WHERE item_hash = @p0"
+          [ b.hash ]
+      with
+      | Error _ -> []
+      | Ok rows ->
+        rows
+        |> Stdlib.List.filterMap (fun row ->
+          let txt (col: String) : String =
+            Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
+
+          let dependency = Deps.locationOf (txt "d_owner") (txt "d_modules") (txt "d_name")
+
+          match PackageOps.liveBindingFor branchId dependency with
+          | None -> Stdlib.Option.Option.None
+          | Some cur ->
+            if cur.hash == (txt "using_hash") then
+              Stdlib.Option.Option.None
+            else
+              let usage = Deps.locationOf b.owner b.modules b.name
+              let using = LanguageTools.ProgramTypes.Hash.Hash(txt "using_hash")
+
+              Stdlib.Option.Option.Some(
+                Finding
+                  { kind =
+                      if cur.itemType == (txt "d_type") then Kind.StaleUsage else Kind.KindChanged
+                    id = findingId usage dependency (txt "using_hash")
+                    usage = usage
+                    usageKind = Deps.kindOf b.itemType
+                    dependency = dependency
+                    dependencyKind = Deps.kindOf (txt "d_type")
+                    detail =
+                      FindingDetail.Versions(using, LanguageTools.ProgramTypes.Hash.Hash cur.hash) }
+              )))
+    |> Stdlib.List.flatten
+
+
 let detectAll () : List<Finding> =
   // The ack lifecycle, the ids, the CLI and the `dark status` count are all kind-agnostic, so a kind
   // appends here and needs nothing else. The one thing that is NOT kind-agnostic is pin-suppression, in
   // `pending` below.
   Stdlib.List.append
-    (detectOutdatedUsages ())
+    (Stdlib.List.append
+      (detectOutdatedUsages ())
+      (detectOutdatedUsagesOn (PackageOps.currentBranch ())))
     (Stdlib.List.append (detectSupersededDecisions ()) (detectSupersededPolicies ()))
 
 

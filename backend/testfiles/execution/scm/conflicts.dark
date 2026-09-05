@@ -145,6 +145,17 @@ module BothMovedTheSameParent =
     [ Helpers.editOf "f" "theirs" "2026-01-03T00:00:00.000Z" "mine" ]
     [ Helpers.base' "f" "mine" ]) = 0
 
+  // THE SAME ORDINARY UPDATE, WITH A BASE OLDER THAN BOTH. This is the shape two machines actually
+  // produce: the base was recorded at the first sync, I edited since, they pulled my edit and edited
+  // on top of it. Both hashes differ from the base, so the base test alone reads it as both sides
+  // having moved; their `previous` being my current hash is what says otherwise, and it has to win.
+  // It did not: a colleague's edit on top of mine came back as three conflicts, every one resolved to
+  // the version I would have taken anyway.
+  (Helpers.detectCount
+    [ Helpers.editOf "f" "mine" "2026-01-02T00:00:00.000Z" "grandparent" ]
+    [ Helpers.editOf "f" "theirs" "2026-01-03T00:00:00.000Z" "mine" ]
+    [ Helpers.base' "f" "grandparent" ]) = 0
+
   // Same predecessor AND same hash is not a divergence, it is the same edit arriving twice.
   (Helpers.detectCount
     [ Helpers.editOf "f" "same" "2026-01-02T00:00:00.000Z" "parent" ]

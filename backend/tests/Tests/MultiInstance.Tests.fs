@@ -965,7 +965,7 @@ let private aMergeEventWaitsForItsBranch =
 
       // Now the bundle. Storing it, re-arming and folding is what `scmImportBranchOps` does.
       let! _ = Branches.storeDeltaOps x [ op ]
-      do! Branches.undeferBranchEvents ()
+      do! Branches.undeferBranchEvents x
       let! _ = Seed.applyUnappliedOps ()
 
       let! landed = boundHash "early"
@@ -977,6 +977,42 @@ let private aMergeEventWaitsForItsBranch =
         |> Sql.parameters [ "id", Sql.string (string (Inserts.computeOpHash event)) ]
         |> Sql.executeRowAsync (fun read -> read.int64 "a")
       Expect.equal nowApplied 1L "and the event is applied once it has done its work"
+    finally
+      teardown [ b ]
+  }
+
+/// A store that reconnects from nothing meets every merge event before every branch. The event for
+/// a branch it has never heard of folds to nothing and marks itself done, correctly; when the bundle
+/// then registers the branch, the event has to run again or the branch reads as live and empty for
+/// good. Seen on a real machine: two merged branches listed as live with 0 ops after a wipe and a
+/// reconnect.
+let aMergeEventForALaterBranchStillApplies =
+  testTask "a merge event that predates any knowledge of its branch applies once the bundle lands" {
+    let b = instance "b"
+    let x = PT.BranchId.Id(System.Guid.NewGuid())
+
+    try
+      activate b
+      // No `createBranch`: this store has never heard of x when the event arrives.
+      let op = setName "from-nowhere" "n1"
+      let event =
+        PT.PackageOp.BranchEvent(x, PT.Merged [ Inserts.computeOpHash op ], "2026-01-02T00:00:00.000Z")
+      let! _ = receive [ wireOp event "2026-01-02T00:00:00.000Z" ]
+      let! applied =
+        Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
+        |> Sql.parameters [ "id", Sql.string (string (Inserts.computeOpHash event)) ]
+        |> Sql.executeRowAsync (fun read -> read.int64 "a")
+      Expect.equal applied 1L "an event for an unknown branch is applied and done, not parked"
+
+      // The bundle: the branch registers, its ops land inert, and the import re-arms the event.
+      do! Branches.createBranch x "late-branch" PT.BranchId.Main
+      let! _ = Branches.storeDeltaOps x [ op ]
+      do! Branches.undeferBranchEvents x
+      let! _ = Seed.applyUnappliedOps ()
+
+      let! landed = boundHash "from-nowhere"
+      let (PT.Hash n1) = hashOf "n1"
+      Expect.equal landed (Some n1) "the merged work is live on main once its branch arrives"
     finally
       teardown [ b ]
   }
@@ -1011,6 +1047,71 @@ let private anEventForAnUnknownBranchDoesNotWait =
       teardown [ b ]
   }
 
+/// An override cascades the way an edit does.
+///
+/// Two stores edit one fn; the later stamp wins on both, and the loser overrides back to its own
+/// version. Overriding rebinds the NAME. A caller of that fn had followed the winner's version by
+/// hash when the pull landed; without a cascade it goes on calling the winner's version while the
+/// name says otherwise, on every machine the override reaches. Seen on two real machines: `render`
+/// bound the override, `summary` printed the other side's output.
+let anOverrideRepointsCallers =
+  testTask "overriding a conflict repoints the callers that had followed the loser" {
+    let a = instance "a"
+
+    try
+      activate a
+      // One fn, one caller of it. The test helper authors without the cascade the `fn` verb runs,
+      // so each step that would have cascaded in real use does so here by hand, through the same
+      // wrapper the verb uses.
+      let! shared =
+        authorIntoMain (
+          "module TwoStore.Cascade\n\n"
+          + "let base (x: Int64) : Int64 = x + 1L\n"
+          + "let caller (x: Int64) : Int64 = TwoStore.Cascade.base x\n"
+        )
+      let! _ = LibDB.Inserts.commitAllAsBaseline "shared"
+      let (PT.Hash origHash) = hashBoundTo shared "base"
+      let repoint (fromHash : string) (toHash : string) =
+        darkOn (
+          "Darklang.SCM.Propagation.repointDependents Darklang.SCM.Ids.mainBranchId "
+          + "(Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"TwoStore\"; modules = [\"Cascade\"]; name = \"base\" }) "
+          + "Darklang.LanguageTools.ProgramTypes.ItemKind.Fn "
+          + "[ Darklang.LanguageTools.ProgramTypes.Hash.Hash \"" + fromHash + "\" ] "
+          + "(Darklang.LanguageTools.ProgramTypes.Hash.Hash \"" + toHash + "\")"
+        )
+
+      // "Mine": this store's edit, cascaded. "Theirs": a later edit that arrives by sync and wins
+      // by stamp; a real pull would also bring the sender's cascaded caller, so cascade here too.
+      let! mine = authorIntoMain "module TwoStore.Cascade\n\nlet base (x: Int64) : Int64 = x + 10L\n"
+      let (PT.Hash mineHash) = hashBoundTo mine "base"
+      let! _ = repoint origHash mineHash
+      // Their version has to be real content or the caller cannot be repointed at it.
+      let! theirsOps = authorIntoMain "module TwoStore.Cascade\n\nlet base (x: Int64) : Int64 = x + 100L\n"
+      let (PT.Hash theirsHash) = hashBoundTo theirsOps "base"
+      let! _ = repoint mineHash theirsHash
+      let! before = darkOn "TwoStore.Cascade.caller 0L"
+      Expect.stringContains before "100" "before the override, the caller follows the winning version"
+
+      // The override, through the real resolve path, back to mine.
+      let! _ =
+        darkOn (
+          "let c = Darklang.SCM.Conflicts.Conflict { id = \"cascade01\"; owner = \"TwoStore\"; "
+          + "modules = \"Cascade\"; name = \"base\"; itemType = \"fn\"; kind = \"same-name-different-hash\"; "
+          + "candidates = [ Darklang.SCM.Conflicts.Candidate { side = \"local\"; hash = \"" + mineHash + "\"; originTs = \"\"; author = \"\" }; "
+          + "Darklang.SCM.Conflicts.Candidate { side = \"incoming\"; hash = \"" + theirsHash + "\"; originTs = \"\"; author = \"\" } ]; "
+          + "autoResolvedTo = \"" + theirsHash + "\"; reason = \"\"; status = \"pending\"; resolvedBy = \"\" }\n"
+          + "Darklang.SCM.PackageOps.settleConflict Darklang.SCM.Ids.mainBranchId c \"" + mineHash + "\""
+        )
+
+      let! baseNow = darkOn "TwoStore.Cascade.base 0L"
+      Expect.stringContains baseNow "10L" "the name binds my version after the override"
+      let! callerNow = darkOn "TwoStore.Cascade.caller 0L"
+      Expect.stringContains callerNow "10L" "and the caller follows it, rather than still calling the other version by hash"
+      Expect.isFalse (callerNow.Contains "100") "which means it no longer calls the loser"
+    finally
+      teardown [ a ]
+  }
+
 let tests =
   testSequenced
   <| testList
@@ -1034,4 +1135,6 @@ let tests =
       hostedOpsAreNotThisStoresDraft
       theDarkDetectorSeesTheStoreItIsOn
       aMergeEventWaitsForItsBranch
-      anEventForAnUnknownBranchDoesNotWait ]
+      anEventForAnUnknownBranchDoesNotWait
+      aMergeEventForALaterBranchStillApplies
+      anOverrideRepointsCallers ]

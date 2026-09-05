@@ -202,6 +202,16 @@ let detect
       | (Some incPrev, Some locPrev) -> (incPrev == locPrev) && (inc.hash != localBinding.hash)
       | _ -> false
 
+    // The incoming edit was made ON TOP of what this store holds: its `previous` is the local hash.
+    // That is collaboration, not divergence, whatever the recorded base says. The base arm below
+    // sees both sides having moved since the last agreement and would otherwise call it a
+    // conflict, which it did: a colleague pulling my edit and then editing the same fn produced
+    // three "conflicts" on my side, all resolved to the version I was about to take anyway.
+    let descendsFromLocal (localBinding: Binding) : Bool =
+      match inc.previous with
+      | Some incPrev -> incPrev == localBinding.hash
+      | None -> false
+
     match (Stdlib.Dict.get localByKey k, Stdlib.Dict.get baseByKey k) with
     | (Some loc, None) when
       ((bothCreatedFromNothing
@@ -242,8 +252,11 @@ let detect
       |> Stdlib.Option.Option.Some
 
     | (Some loc, Some baseHash) ->
-      // The base test first, then the parent test, so a divergence the base cannot see is still caught.
-      if
+      // Lineage first: an edit on top of mine is never a conflict. Then the base test, then the
+      // parent test, so a divergence the base cannot see is still caught.
+      if descendsFromLocal loc then
+        Stdlib.Option.Option.None
+      else if
         ((inc.hash == loc.hash) || (inc.hash == baseHash) || (loc.hash == baseHash))
         && (Stdlib.Bool.not (bothMovedTheSameParent loc))
       then

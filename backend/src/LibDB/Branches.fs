@@ -476,18 +476,46 @@ let chainOverlayOps (branchId : PT.BranchId) : Task<List<PT.PackageOp>> =
     return decoded |> List.choose (fun o -> o)
   }
 
-/// Re-arm every DEFERRED branch event (`applied = 2`), so the next fold looks at them again.
+/// Re-arm every branch event that <param branchId>'s bundle may have been waiting on, so the next
+/// fold looks at them again.
 ///
-/// A merge event that arrived before the branch it merged parked itself rather than marking itself
-/// done (see `PackageOpPlayback.applyBranchEvent`). Call this when a branch bundle lands: the event
-/// that was waiting for exactly these ops gets its chance, and one that is still waiting parks again.
+/// Two populations. A merge event that arrived before a branch this store KNEW parked itself
+/// (`applied = 2`; see `PackageOpPlayback.applyBranchEvent`). A merge event for a branch this store
+/// had never heard of folded to nothing and marked itself DONE, which is right for a colleague's
+/// private branch and wrong for one whose bundle turns up later: on a store reconnecting from
+/// nothing, every branch is one it has never heard of, and every one that was merged read as live
+/// and empty afterwards. So on a bundle landing, both are re-armed: everything parked, and every
+/// applied `BranchEvent` naming THIS branch. Re-folding one is idempotent (flips only ops still
+/// inert, stamps only ops still uncommitted), and there are a handful of events.
 ///
-/// Un-defers ALL of them rather than only the ones naming this branch, because telling them apart
-/// means decoding every event; there are a handful, and re-folding one that is still waiting costs
-/// two counts and a no-op.
-let undeferBranchEvents () : Task<unit> =
-  Sql.query "UPDATE package_ops SET applied = 0 WHERE applied = 2"
-  |> Sql.executeStatementAsync
+/// Events are found by their tag byte rather than decoded one by one: after the 8-byte header the
+/// first payload byte is the op's case tag, and `BranchEvent` is 10.
+let undeferBranchEvents (branchId : PT.BranchId) : Task<unit> =
+  task {
+    do!
+      Sql.query "UPDATE package_ops SET applied = 0 WHERE applied = 2"
+      |> Sql.executeStatementAsync
+
+    let! events =
+      Sql.query
+        "SELECT id, op_blob FROM package_ops
+         WHERE applied = 1 AND effective = 1 AND substr(op_blob, 9, 1) = X'0A'"
+      |> Sql.executeAsync (fun read ->
+        (read.uuid "id", BS.PT.PackageOp.tryDeserialize (read.uuid "id") (read.bytes "op_blob")))
+
+    let mine =
+      events
+      |> List.choose (fun (id, op) ->
+        match op with
+        | Some(PT.PackageOp.BranchEvent(b, _, _)) when b = branchId -> Some id
+        | _ -> None)
+
+    for id in mine do
+      do!
+        Sql.query "UPDATE package_ops SET applied = 0 WHERE id = @id"
+        |> Sql.parameters [ "id", Sql.string (string id) ]
+        |> Sql.executeStatementAsync
+  }
 
 
 /// <param branchId> and its ancestors, nearest first, ending at main.

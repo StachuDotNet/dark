@@ -202,7 +202,7 @@ let repointDependents
   (previousHashes: List<LanguageTools.ProgramTypes.Hash>)
   (currentHash: LanguageTools.ProgramTypes.Hash)
   : Stdlib.Result.Result<List<LanguageTools.ProgramTypes.PropagateRepoint>, String> =
-  Builtin.pmPropagate branchId location itemKind previousHashes currentHash
+  SCM.Propagation.repointDependents branchId location itemKind previousHashes currentHash
 
 
 /// Repoint everything that referenced an EARLIER version of <param location> at <param currentHash>.

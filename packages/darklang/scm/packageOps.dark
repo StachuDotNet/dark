@@ -937,6 +937,34 @@ let settleConflict
     match applyResolution branchId c hash with
     | Ok _ ->
       let _ = Conflicts.setStatus c.id "overridden" hash
+
+      // Cascade, the way an edit does. An override rebinds the NAME; without this the callers that
+      // had followed the losing version go on calling it by hash, so the name says one thing and
+      // everything that uses it does another, on every machine the override reaches.
+      let modules = if c.modules == "" then [] else Stdlib.String.split c.modules "."
+      let location =
+        LanguageTools.ProgramTypes.PackageLocation
+          { owner = c.owner; modules = modules; name = c.name }
+      let kind =
+        match c.itemType with
+        | "type" -> LanguageTools.ProgramTypes.ItemKind.Type
+        | "value" -> LanguageTools.ProgramTypes.ItemKind.Value
+        | _ -> LanguageTools.ProgramTypes.ItemKind.Fn
+      let losers =
+        c.candidates
+        |> Stdlib.List.filterMap (fun cand ->
+          if (cand.hash == hash) || (cand.hash == "") then
+            Stdlib.Option.Option.None
+          else
+            Stdlib.Option.Option.Some(LanguageTools.ProgramTypes.Hash.Hash cand.hash))
+      let _ =
+        Propagation.repointDependents
+          branchId
+          location
+          kind
+          losers
+          (LanguageTools.ProgramTypes.Hash.Hash hash)
+
       Stdlib.Result.Result.Ok()
     | Error e -> Stdlib.Result.Result.Error e
 
@@ -1487,6 +1515,10 @@ let importBranch (json: String) : Stdlib.Result.Result<String, String> =
         $"branch \"{handle}\" is already merged here, and the bundle carries nothing new; left as merged."
     else
 
+    // Known before this import? The message below tells a re-pull that found nothing apart from a
+    // first pull whose ops happened to be here already (a retargeted bundle, say).
+    let knownBranch = Stdlib.Option.isSome (SCM.Branch.get b.branchId)
+
     match stageOpsOnBranch b.branchId importName b.parent records with
     | Ok n ->
       // The sender's commits come with the ops, so a pulled branch shows the author's commits under the
@@ -1517,7 +1549,13 @@ let importBranch (json: String) : Stdlib.Result.Result<String, String> =
         else
           importName
 
-      Stdlib.Result.Result.Ok
-        $"imported branch \"{handle}\" ({Stdlib.Int.toString n} op(s)). `dark switch {handle}` to use it."
+      // Say what happened, not what was asked. A pull that finds nothing new is the common case for
+      // anything that polls (a sync loop runs this every half minute), and "imported branch X (0 ops)"
+      // thirty times an hour is a log nobody reads.
+      if n == 0 && knownBranch then
+        Stdlib.Result.Result.Ok $"branch \"{handle}\" is up to date."
+      else
+        Stdlib.Result.Result.Ok
+          $"imported branch \"{handle}\" ({Stdlib.Int.toString n} op(s)). `dark switch {handle}` to use it."
     | Error e -> Stdlib.Result.Result.Error e
   | Error _ -> Stdlib.Result.Result.Error "unparseable branch bundle"

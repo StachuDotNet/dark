@@ -934,7 +934,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 // had none of these ops (pull main, then pull the branch: the natural order). It
                 // DEFERRED itself for exactly this moment, so re-arm it and fold now rather than at
                 // the next startup, or the branch reads as live work that is already merged.
-                do! LibDB.Branches.undeferBranchEvents ()
+                do! LibDB.Branches.undeferBranchEvents branchId
                 let! _ = LibDB.Seed.applyUnappliedOps ()
 
                 // An overlay this process is already holding predates the import, so drop it rather than
