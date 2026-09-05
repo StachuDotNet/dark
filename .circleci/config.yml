@@ -229,6 +229,28 @@ jobs:
           name: Check the reference workload is within its allocation budget
           command: scripts/perf/gate --published
 
+      # Three of the gate scripts, which until now ran only when someone remembered to. They cover
+      # what the F# suite structurally cannot: the relay's HTTP surface given input a person would
+      # not send (a stack trace in a response is an information leak and a crash by another name),
+      # and the workbench, whose views are Dark and so resolve at RUNTIME -- two of its screens have
+      # shipped a type error that every test in the suite was green through.
+      #
+      # `expect` and `sqlite3` are both in the image already. Each takes its own rundir, so they do
+      # not tread on the store the steps above built; `test-gates-are-clean` is the assertion for
+      # that and runs locally.
+      #
+      # Bounded, like the suite: these drive a TUI and a server, and a wedged one should die at a
+      # known point rather than burn the job's whole budget.
+      - run:
+          name: Relay HTTP surface, given input a person would not send
+          command: timeout 5m scripts/testing/test-relay-routes
+      - run:
+          name: The workbench opens, and its SCM views render
+          command: timeout 5m scripts/testing/test-workbench-scm
+      - run:
+          name: Every workbench view draws its chrome
+          command: timeout 5m scripts/testing/test-workbench-views
+
       ## TODO: too many race conditions. Bring back later
       # Test package manager/cli integration works
       # - run: scripts/build/run-migrations --published
