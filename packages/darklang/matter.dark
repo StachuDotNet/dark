@@ -766,10 +766,16 @@ let moduleHandlerFn (req: HttpRequest) : HttpResponse =
 
   match (items, subs) with
   | ([], []) ->
+    // A relay renders only the package set it ships with; what clients push is held and served,
+    // never folded into these pages. So an empty module is usually one that exists on every
+    // client and not here, and "nothing here" would read as data loss.
     notFoundPage
       name
       ($"{crumbs name}<h1>{esc name}</h1>"
-       ++ "<p class=\"lede\">Nothing here, or no such module.</p>")
+       ++ "<p class=\"lede\">Not in the package set this server runs. If it was pushed here, it is "
+       ++ "held and served to whoever pulls it, but these pages do not render hosted code yet: "
+       ++ "browse it from any client with <code>dark view</code>. "
+       ++ "<a href=\"/stats\">Why a relay works this way.</a></p>")
   | _ ->
     let subBlock =
       if subs == [] then
