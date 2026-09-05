@@ -123,6 +123,40 @@ let unpushedCount (relay: String) : Int64 =
     "n"
   |> Stdlib.Option.withDefault 0L
 
+/// The key under which a relay's BRANCH channel is recorded in `sync_pushed`.
+///
+/// A relay holds two different things: its main log, fed by `push` and read by `/sync/pull`, and
+/// hosted branch bundles, fed by `branch push` and read by `/branch/pull`. An op a bundle carried
+/// is not in the main log, so recording a bundle under the relay's own key would make the next
+/// `push` skip that op after a merge, and a third machine would never see the merged work. The
+/// bundle channel is recorded under the endpoint it went to instead.
+let branchChannel (relay: String) : String = $"{relay}/branch"
+
+/// Live branches with ops <param relay>'s bundle channel is not known to hold, as (name, count).
+/// The main push never sends a branch's ops and `unpushedCount` never counts them, so without this
+/// `sync status` said "in sync" over a branch that existed on one machine only. A branch push and
+/// a branch pull both record what the channel holds.
+let unpushedBranches (relay: String) : List<(String * Int64)> =
+  match
+    Stdlib.Sqlite.queryP
+      (PackageOps.localDb ())
+      "SELECT b.name AS name, b.id AS id, count(*) AS n
+       FROM op_branches ob
+       JOIN branches b ON b.id = ob.branch_id
+       WHERE b.merged_at IS NULL AND b.archived_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM sync_pushed s WHERE s.relay = @p0 AND s.op_id = ob.op_id)
+       GROUP BY b.id ORDER BY b.name"
+      [ branchChannel relay ]
+  with
+  | Ok rows ->
+    rows
+    |> Stdlib.List.filterMap (fun row ->
+      match (Stdlib.Sqlite.textField row "name", Stdlib.Sqlite.textField row "id", Stdlib.Sqlite.intField row "n") with
+      | (Some name, Some id, Some n) ->
+        Stdlib.Option.Option.Some(((if name == "" then id else name), n))
+      | _ -> Stdlib.Option.Option.None)
+  | Error _ -> []
+
 /// Record that <param relay> holds these ops: after a push it confirmed, and after a pull that brought
 /// them from it. Idempotent.
 let rememberPushed (relay: String) (opIds: List<String>) : Unit =

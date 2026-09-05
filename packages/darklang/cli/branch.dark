@@ -615,6 +615,9 @@ let executePush (state: AppState) (branchRef: String) (url: String) : AppState =
         let text = Stdlib.String.trim (Stdlib.String.fromBlobWithReplacement reply)
 
         if Stdlib.String.startsWith text "stored branch" then
+          // The relay's bundle channel holds these now; `sync status` asks. Not the relay's own key:
+          // see `Wire.branchChannel`.
+          SCM.Wire.rememberPushed (SCM.Wire.branchChannel url) (SCM.PackageOps.branchOpIds branchId)
           printOk $"pushed branch \"{branchRef}\" to {url} as \"{id}\"."
         else
           printErr
@@ -677,7 +680,16 @@ let executePullFrom (state: AppState) (url: String) (owner: String) : AppState =
               SCM.PackageOps.importBranch
                 (Stdlib.String.fromBlobWithReplacement bundleBody)
             with
-            | Ok msg -> printOk msg
+            | Ok msg ->
+              // What came from the relay's bundle channel, that channel holds.
+              let _ =
+                match Stdlib.Uuid.parse bid with
+                | Ok branchId ->
+                  SCM.Wire.rememberPushed
+                    (SCM.Wire.branchChannel url)
+                    (SCM.PackageOps.branchOpIds branchId)
+                | Error _ -> ()
+              printOk msg
             | Error e -> printErr $"import {bid} failed: {e}"
           | Error e -> printErr $"pull {bid} failed: {e}")
     | Error e -> printErr $"branch list failed: {e}"

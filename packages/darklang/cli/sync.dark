@@ -762,9 +762,19 @@ let executeStatus (state: AppState) (url: String) : AppState =
           Stdlib.Bool.not (
             SCM.Wire.seenEverything (SCM.Wire.lastSeenHead url) theirs mine)
 
+        // Branch ops travel by `branch push`, not `sync`, so they are reported apart from the verdict
+        // and never make it "out of sync".
+        let branchLines () : Unit =
+          SCM.Wire.unpushedBranches url
+          |> Stdlib.List.iter (fun entry ->
+            let (name, n) = entry
+            printHint
+              $"  branch \"{name}\": {Stdlib.Int64.toString n} op(s) not on the relay -- `dark branch push {name}`.")
+
         match (toSend, toReceive) with
         | (false, false) ->
           printOk "in sync."
+          branchLines ()
           // A relay holding FEWER ops than this store, with nothing waiting to send, is a relay that was
           // wiped or replaced since the last push (main-only push never sends a branch's ops, so a small
           // gap is normal; a large one is not). `pull` notices the new instance and re-arms the push.
@@ -775,10 +785,14 @@ let executeStatus (state: AppState) (url: String) : AppState =
             ()
         | (true, false) ->
           printOk $"{Stdlib.Int64.toString unpushed} op(s) to send -- `dark push {url}`."
-        | (false, true) -> printOk $"ops to receive -- `dark pull {url}`."
+          branchLines ()
+        | (false, true) ->
+          printOk $"ops to receive -- `dark pull {url}`."
+          branchLines ()
         | (true, true) ->
           printOk
             $"out of sync both ways ({Stdlib.Int64.toString unpushed} op(s) to send) -- `dark sync {url}`."
+          branchLines ()
       | Error _ -> printErr "Relay returned an unparseable head."
     | Error e -> printErr $"Status from {url} failed: {e}"
 

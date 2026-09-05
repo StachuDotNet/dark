@@ -280,6 +280,18 @@ let branchIsMerged (branchId: Uuid) : Bool =
   | _ -> false
 
 
+/// The ids of the ops tagged to <param branchId>: what a bundle of it carries.
+let branchOpIds (branchId: Uuid) : List<String> =
+  match
+    Stdlib.Sqlite.queryP
+      (localDb ())
+      "SELECT op_id FROM op_branches WHERE branch_id = @p0"
+      [ Stdlib.Uuid.toString branchId ]
+  with
+  | Ok rows -> rows |> Stdlib.List.filterMap (fun row -> Stdlib.Sqlite.textField row "op_id")
+  | Error _ -> []
+
+
 /// The ops a merge moved off <param branchId>, read back off its merge events.
 ///
 /// A merge deletes the branch's tags (the ops are its parent's now), so after it the tag

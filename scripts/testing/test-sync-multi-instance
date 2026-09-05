@@ -113,9 +113,14 @@ echo "== a branch, pushed from one instance and merged on another"
 x A branch create feat > /dev/null
 x A --branch feat fn /SM.T.onFeat '() : Int64 = 77L' > /dev/null
 x A --branch feat commit "feat work" -y > /dev/null
+# Branch ops never travel by `sync`, so `sync status` reports them apart from its verdict rather than
+# saying "in sync" over a branch that exists on one machine only; a push clears the line.
+want "sync status names the unpushed branch" "^  branch \"feat\": [1-9][0-9]* op\(s\) not on the relay" "$(x A sync status)"
 want "A pushes the branch" "^pushed branch \"feat\" to " "$(x A branch push feat)"
+wantnot "and the line is gone" "branch \"feat\"" "$(x A sync status)"
 AID=$(x A whoami | sed 's/.*: //' | tr -d ' ')
 want "B pulls A's branches" "^imported branch \"feat\" \([1-9][0-9]* op\(s\)\)" "$(x B branch pull --from "$AID")"
+wantnot "a pulled branch is not reported as unpushed" "branch \"feat\"" "$(x B sync status)"
 want "B has it" "^feat \([0-9a-f]{8}\) <- main" "$(x B branches)"
 # The control first (the name exists and eval works), then the exact refusal on main.
 want "B runs it on the branch" "^77$" "$(x B --branch feat eval 'SM.T.onFeat ()' | tail -1)"
