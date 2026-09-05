@@ -2095,14 +2095,14 @@ let private statusSeparatesTheDraftsConstraintsFromStandingOnes =
           "none from this draft"
           $"an unrelated draft is not blamed for it: {theirs}"
 
-        // Back to a fn: the cascade repoints the caller and the constraint is gone, so the store is
-        // left as clean as it was found.
+        // Back to a fn: the cascade repoints the caller and THIS constraint is gone, so the store is
+        // left as it was found. Asked by name: the shared store carries other tests' constraints.
         let! _ =
           runCli state [ "fn"; "Tests.F9Kind.dep"; "(x: Int64) : Int64 = x + 3L" ]
         let! _ = runCli state [ "commit"; "f9 restored"; "-y" ]
-        let! after = runCli state [ "status" ]
+        let! after = runCli state [ "constraints" ]
         Expect.isFalse
-          (after.Contains "constraint")
+          (after.Contains "F9Kind")
           $"restoring the kind clears it: {after}"
       })
 
