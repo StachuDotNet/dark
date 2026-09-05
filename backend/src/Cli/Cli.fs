@@ -421,7 +421,10 @@ let main (args : string[]) =
         selection.created
         |> Option.iter (fun name ->
           let via =
-            if selection.tier = LibDB.BranchSelection.Env then " (DARK_BRANCH)" else ""
+            if selection.tier = LibDB.BranchSelection.Env then
+              " (DARK_BRANCH)"
+            else
+              ""
           System.Console.Error.WriteLine $"created branch '{name}'{via}")
         selection.goneStored
         |> Option.iter (fun label ->

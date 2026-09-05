@@ -109,7 +109,8 @@ module RoundtripTests =
           (fun dv ->
             match PT2DT.PackageOp.fromDT dv with
             | Some op -> op
-            | None -> Exception.raiseInternal "PackageOp.fromDT rejected its own toDT" [])
+            | None ->
+              Exception.raiseInternal "PackageOp.fromDT rejected its own toDT" [])
           None
 
         testRoundtripList

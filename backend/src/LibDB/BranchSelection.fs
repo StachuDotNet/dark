@@ -25,20 +25,19 @@ type Refusal =
   | UnknownId of PT.BranchId
 
 type Selection =
-  { /// None is main.
+  {
+    /// None is main.
     branchId : Option<PT.BranchId>
     tier : Tier
     /// The flag and env tiers CREATE a name they don't know; this names it when they did.
     created : Option<string>
     /// A stored branch that is archived or merged degrades to main; this names it. The config is reset
     /// to main when this is set, so it is said once.
-    goneStored : Option<string> }
+    goneStored : Option<string>
+  }
 
 let private none =
-  { branchId = None
-    tier = Default
-    created = None
-    goneStored = None }
+  { branchId = None; tier = Default; created = None; goneStored = None }
 
 /// The flag and env tiers: a name, a full id, or an unambiguous id prefix. `main` is spelled as the
 /// absence of a branch. Only a name nobody has is created.
@@ -94,16 +93,21 @@ let private fromStored () : Task<Selection> =
   }
 
 /// The one order. `flag` is `--branch`'s value, `env` is `DARK_BRANCH`; either may be absent.
-let select (flag : Option<string>) (env : Option<string>) : Task<Result<Selection, Refusal>> =
+let select
+  (flag : Option<string>)
+  (env : Option<string>)
+  : Task<Result<Selection, Refusal>> =
   task {
     match flag, env with
     | Some name, _ ->
       match! resolveName name with
-      | Ok(id, created) -> return Ok { none with branchId = id; tier = Flag; created = created }
+      | Ok(id, created) ->
+        return Ok { none with branchId = id; tier = Flag; created = created }
       | Error r -> return Error r
     | None, Some name when name <> "" ->
       match! resolveName name with
-      | Ok(id, created) -> return Ok { none with branchId = id; tier = Env; created = created }
+      | Ok(id, created) ->
+        return Ok { none with branchId = id; tier = Env; created = created }
       | Error r -> return Error r
     | _ ->
       let! s = fromStored ()

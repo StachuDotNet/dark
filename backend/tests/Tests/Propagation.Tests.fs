@@ -615,7 +615,8 @@ let private namingElsewhereLeavesTheOldNameBound =
     let! ops = authorIn m "let old (x: Int64) : Int64 = x"
     let h = hashBoundTo ops "old"
     let! _ =
-      Inserts.insertAndApplyOpsAsWip [ PT.PackageOp.SetName(loc m "new", PT.PackageFn h, None) ]
+      Inserts.insertAndApplyOpsAsWip
+        [ PT.PackageOp.SetName(loc m "new", PT.PackageFn h, None) ]
     let! atNew = liveHash (loc m "new")
     let! atOld = liveHash (loc m "old")
     Expect.equal atNew (Some(hashStr h)) "the new name binds the hash"
@@ -639,9 +640,13 @@ let private callersFoundByEitherNameOfOneBody =
     let! _ = authorIn m1 "let twin (x: Int64) : Int64 = Stdlib.Int64.add x 4001L"
     let! _ = authorIn m2 "let twin (x: Int64) : Int64 = Stdlib.Int64.add x 4001L"
     let! _ =
-      authorIn m1 "let caller (x: Int64) : Int64 = Stdlib.Int64.add (Darklang.TwinOne.twin x) 10L"
+      authorIn
+        m1
+        "let caller (x: Int64) : Int64 = Stdlib.Int64.add (Darklang.TwinOne.twin x) 10L"
     let! _ =
-      authorIn m2 "let caller (x: Int64) : Int64 = Stdlib.Int64.add (Darklang.TwinTwo.twin x) 10L"
+      authorIn
+        m2
+        "let caller (x: Int64) : Int64 = Stdlib.Int64.add (Darklang.TwinTwo.twin x) 10L"
 
     let edgesTo (m : string) =
       Sql.query
@@ -652,7 +657,10 @@ let private callersFoundByEitherNameOfOneBody =
     let! one = edgesTo m1
     let! two = edgesTo m2
     Expect.isGreaterThan one 0L "the first name's twin has a caller edge"
-    Expect.isGreaterThan two 0L "and so does the second name's, though its caller is the same op"
+    Expect.isGreaterThan
+      two
+      0L
+      "and so does the second name's, though its caller is the same op"
 
     do! cleanupFor "Darklang" m1
     do! cleanupFor "Darklang" m2

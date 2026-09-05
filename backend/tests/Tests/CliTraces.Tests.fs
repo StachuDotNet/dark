@@ -127,11 +127,17 @@ let private cliTest (name : string) (body : RT.ExecutionState -> Task<unit>) : T
 /// arranged: a test that silently switched itself back to main would hide whichever earlier test left
 /// the store on a branch, and that one is the bug. The switch back runs whether the body passed or not,
 /// so one polluter is named once rather than failing everything after it.
-let private cliTestOnMain (name : string) (body : RT.ExecutionState -> Task<unit>) : Test =
+let private cliTestOnMain
+  (name : string)
+  (body : RT.ExecutionState -> Task<unit>)
+  : Test =
   cliTest name (fun state ->
     task {
       let! where = runCli state [ "branch" ]
-      Expect.stringContains where "on main" $"{name}: an earlier test left the store on a branch"
+      Expect.stringContains
+        where
+        "on main"
+        $"{name}: an earlier test left the store on a branch"
       // F#'s task `try/finally` takes only a synchronous finally, hence the captured exception.
       let! outcome =
         task {
@@ -139,7 +145,8 @@ let private cliTestOnMain (name : string) (body : RT.ExecutionState -> Task<unit
             do! body state
             return None
           with e ->
-            return Some(System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture e)
+            return
+              Some(System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture e)
         }
       let! _ = runCli state [ "switch"; "main" ]
       outcome |> Option.iter (fun e -> e.Throw())
@@ -1389,7 +1396,8 @@ let private everyCommandAnswersHelp =
               failures <- (cmd, "printed nothing") :: failures
             else
               match looksLikeARuntimeFailure output with
-              | Some line -> failures <- (cmd, $"printed a runtime error: {line}") :: failures
+              | Some line ->
+                failures <- (cmd, $"printed a runtime error: {line}") :: failures
               | None ->
                 if soundsLikeMisuse output then
                   let first = output.Split('\n')[0]
@@ -1476,7 +1484,8 @@ let private everyCommandAnswersWhenBare =
                 failures <- (cmd, "said nothing") :: failures
               else
                 match looksLikeARuntimeFailure output with
-                | Some line -> failures <- (cmd, $"printed a runtime error: {line}") :: failures
+                | Some line ->
+                  failures <- (cmd, $"printed a runtime error: {line}") :: failures
                 | None -> ()
 
         if not (List.isEmpty failures) then
@@ -1512,7 +1521,8 @@ let private everyCommandSurvivesABogusArgument =
                 failures <- (cmd, "said nothing") :: failures
               else
                 match looksLikeARuntimeFailure output with
-                | Some line -> failures <- (cmd, $"printed a runtime error: {line}") :: failures
+                | Some line ->
+                  failures <- (cmd, $"printed a runtime error: {line}") :: failures
                 | None -> ()
 
             // `branch <junk>` and `switch <junk>` START that branch and move the store onto it, so every
@@ -1575,7 +1585,9 @@ let private everyCommandSurvivesABranch =
                   else
                     match looksLikeARuntimeFailure output with
                     | Some line ->
-                      failures <- ($"{cmd} {label}", $"printed a runtime error: {line}") :: failures
+                      failures <-
+                        ($"{cmd} {label}", $"printed a runtime error: {line}")
+                        :: failures
                     | None -> ()
           }
 
@@ -1642,105 +1654,139 @@ let private editingOnABranchRepointsItsCallers =
 /// column `pin` on a branch finds MAIN's staged repoint and drops it -- a pin issued on a branch
 /// reverting main -- and `status` on a branch reports main's followers as the branch's.
 let private aBranchKnowsWhatFollowed =
-  cliTestOnMain "status and pin on a branch act on the branch's own followers, not main's" (fun state ->
-    task {
-      // On main: a base, a caller, committed. Then an edit to the base on MAIN, uncommitted, so main's
-      // draft holds a staged repoint of its own for the pin on the branch to leave alone.
-      let! _ = runCli state [ "switch"; "main" ]
-      let! _ = runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 1001L" ]
-      let! _ =
-        runCli
-          state
-          [ "fn"
-            "Tests.BranchFollow.caller"
-            "() : Int64 = Stdlib.Int64.multiply (Tests.BranchFollow.base ()) 7L" ]
-      let! _ = runCli state [ "commit"; "branchfollow v1"; "-y" ]
-      // Other tests leave followers in main's draft too, so main is asserted RELATIVE to itself.
-      let followedIn (status : string) =
-        let m = System.Text.RegularExpressions.Regex.Match(status, @"(\d+) followed")
-        if m.Success then int m.Groups[1].Value else 0
-      let! mainBefore = runCli state [ "status" ]
-      let! _ = runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 1003L" ]
-      let! mainStatus = runCli state [ "status" ]
-      Expect.equal
-        (followedIn mainStatus)
-        (followedIn mainBefore + 1)
-        $"main's draft gained its own follower: {mainStatus}"
+  cliTestOnMain
+    "status and pin on a branch act on the branch's own followers, not main's"
+    (fun state ->
+      task {
+        // On main: a base, a caller, committed. Then an edit to the base on MAIN, uncommitted, so main's
+        // draft holds a staged repoint of its own for the pin on the branch to leave alone.
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ =
+          runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 1001L" ]
+        let! _ =
+          runCli
+            state
+            [ "fn"
+              "Tests.BranchFollow.caller"
+              "() : Int64 = Stdlib.Int64.multiply (Tests.BranchFollow.base ()) 7L" ]
+        let! _ = runCli state [ "commit"; "branchfollow v1"; "-y" ]
+        // Other tests leave followers in main's draft too, so main is asserted RELATIVE to itself.
+        let followedIn (status : string) =
+          let m =
+            System.Text.RegularExpressions.Regex.Match(status, @"(\d+) followed")
+          if m.Success then int m.Groups[1].Value else 0
+        let! mainBefore = runCli state [ "status" ]
+        let! _ =
+          runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 1003L" ]
+        let! mainStatus = runCli state [ "status" ]
+        Expect.equal
+          (followedIn mainStatus)
+          (followedIn mainBefore + 1)
+          $"main's draft gained its own follower: {mainStatus}"
 
-      // On a branch: edit the base; the caller follows, on the branch.
-      let! _ = runCli state [ "switch"; "follow-branch" ]
-      let! _ = runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 1002L" ]
-      let! after = runCli state [ "eval"; "Tests.BranchFollow.caller ()" ]
-      Expect.stringContains after "7014" "the caller followed the edit, on the branch"
-      let! branchStatus = runCli state [ "status" ]
-      Expect.stringContains
-        branchStatus
-        "1 followed"
-        $"the branch reports its own follower, from its own record: {branchStatus}"
+        // On a branch: edit the base; the caller follows, on the branch.
+        let! _ = runCli state [ "switch"; "follow-branch" ]
+        let! _ =
+          runCli state [ "fn"; "Tests.BranchFollow.base"; "() : Int64 = 1002L" ]
+        let! after = runCli state [ "eval"; "Tests.BranchFollow.caller ()" ]
+        Expect.stringContains
+          after
+          "7014"
+          "the caller followed the edit, on the branch"
+        let! branchStatus = runCli state [ "status" ]
+        Expect.stringContains
+          branchStatus
+          "1 followed"
+          $"the branch reports its own follower, from its own record: {branchStatus}"
 
-      // pin on the branch drops the BRANCH's staged repoint: the caller is back on v1's base.
-      let! pinned = runCli state [ "propagate"; "pin"; "Tests.BranchFollow.caller" ]
-      Expect.stringContains pinned "dropped the staged repoint" $"the branch's repoint was un-staged: {pinned}"
-      // The branch's own repoint is gone. What the caller resolves to now is what main's live projection
-      // says (an overlay over main, draft included), which is main's staged repoint, 21; the branch's
-      // 14 is what must be gone.
-      let! back = runCli state [ "eval"; "Tests.BranchFollow.caller ()" ]
-      Expect.isFalse (back.Contains "7014") $"the branch no longer holds its repoint: {back}"
+        // pin on the branch drops the BRANCH's staged repoint: the caller is back on v1's base.
+        let! pinned =
+          runCli state [ "propagate"; "pin"; "Tests.BranchFollow.caller" ]
+        Expect.stringContains
+          pinned
+          "dropped the staged repoint"
+          $"the branch's repoint was un-staged: {pinned}"
+        // The branch's own repoint is gone. What the caller resolves to now is what main's live projection
+        // says (an overlay over main, draft included), which is main's staged repoint, 21; the branch's
+        // 14 is what must be gone.
+        let! back = runCli state [ "eval"; "Tests.BranchFollow.caller ()" ]
+        Expect.isFalse
+          (back.Contains "7014")
+          $"the branch no longer holds its repoint: {back}"
 
-      // Main's draft is exactly as it was: the edit and ITS follower.
-      let! _ = runCli state [ "switch"; "main" ]
-      let! mainAfter = runCli state [ "status" ]
-      Expect.equal
-        (followedIn mainAfter)
-        (followedIn mainStatus)
-        $"main's own staged repoint is untouched: {mainAfter}"
-      let! mainCaller = runCli state [ "eval"; "Tests.BranchFollow.caller ()" ]
-      Expect.stringContains mainCaller "7021" "and main's caller still follows main's edit"
+        // Main's draft is exactly as it was: the edit and ITS follower.
+        let! _ = runCli state [ "switch"; "main" ]
+        let! mainAfter = runCli state [ "status" ]
+        Expect.equal
+          (followedIn mainAfter)
+          (followedIn mainStatus)
+          $"main's own staged repoint is untouched: {mainAfter}"
+        let! mainCaller = runCli state [ "eval"; "Tests.BranchFollow.caller ()" ]
+        Expect.stringContains
+          mainCaller
+          "7021"
+          "and main's caller still follows main's edit"
 
-      let! _ = runCli state [ "discard"; "-y" ]
-      let! _ = runCli state [ "branch"; "archive"; "follow-branch"; "-y" ]
-      ()
-    })
+        let! _ = runCli state [ "discard"; "-y" ]
+        let! _ = runCli state [ "branch"; "archive"; "follow-branch"; "-y" ]
+        ()
+      })
 
 
 /// A full branch id this store does not hold is REFUSED. Only a name nobody has starts a branch, so
 /// `dark switch <a peer's uuid>` cannot quietly mint one named after the uuid and read as success.
 let private switchRefusesAForeignId =
-  cliTestOnMain "switch refuses a uuid this store does not have, rather than starting a branch named after it" (fun state ->
-    task {
-      let! _ = runCli state [ "switch"; "main" ]
-      let foreign = string (System.Guid.NewGuid())
-      let! refused = runCli state [ "switch"; foreign ]
-      Expect.stringContains refused "no branch with id" $"the switch is refused, saying why: {refused}"
-      let! where = runCli state [ "branch" ]
-      Expect.stringContains where "on main" "and the process stayed where it was"
-      let! listed = runCli state [ "branches" ]
-      Expect.isFalse (listed.Contains foreign) "no branch was started under the id's name"
-    })
+  cliTestOnMain
+    "switch refuses a uuid this store does not have, rather than starting a branch named after it"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "switch"; "main" ]
+        let foreign = string (System.Guid.NewGuid())
+        let! refused = runCli state [ "switch"; foreign ]
+        Expect.stringContains
+          refused
+          "no branch with id"
+          $"the switch is refused, saying why: {refused}"
+        let! where = runCli state [ "branch" ]
+        Expect.stringContains where "on main" "and the process stayed where it was"
+        let! listed = runCli state [ "branches" ]
+        Expect.isFalse
+          (listed.Contains foreign)
+          "no branch was started under the id's name"
+      })
 
 
 /// A branch that names content main already held (same body, another name) holds only the `SetName`:
 /// the `Add` is main's, since an op is identified by what it adds. The bundle must carry that Add
 /// anyway, or the receiver, whose main may not have it, gets a name pointing at nothing.
 let private aBundleCarriesTheContentItsNamesPointAt =
-  cliTestOnMain "a branch bundle carries the Add for a body the branch borrowed from main" (fun state ->
-    task {
-      let! _ = runCli state [ "fn"; "Tests.Borrow.onMain"; "() : Int64 = 5005L" ]
-      let! _ = runCli state [ "switch"; "borrowbr" ]
-      let! _ = runCli state [ "fn"; "Tests.Borrow.onBranch"; "() : Int64 = 5005L" ]
-      let! log = runCli state [ "log"; "borrowbr" ]
-      Expect.isFalse (log.Contains "AddFn") $"the branch holds only the SetName: {log}"
+  cliTestOnMain
+    "a branch bundle carries the Add for a body the branch borrowed from main"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "fn"; "Tests.Borrow.onMain"; "() : Int64 = 5005L" ]
+        let! _ = runCli state [ "switch"; "borrowbr" ]
+        let! _ =
+          runCli state [ "fn"; "Tests.Borrow.onBranch"; "() : Int64 = 5005L" ]
+        let! log = runCli state [ "log"; "borrowbr" ]
+        Expect.isFalse
+          (log.Contains "AddFn")
+          $"the branch holds only the SetName: {log}"
 
-      let exported = $"{LibConfig.Config.runDir}/bundle-borrow.json"
-      let! _ = runCli state [ "branch"; "export"; "borrowbr"; exported ]
-      let json = System.IO.File.ReadAllText exported
-      let ops = System.Text.RegularExpressions.Regex.Matches(json, "\"blobHex\"").Count
-      Expect.equal ops 2 $"the bundle carries the Add as well as the SetName: {json.Substring(0, min 200 json.Length)}"
+        let exported = $"{LibConfig.Config.runDir}/bundle-borrow.json"
+        let! _ = runCli state [ "branch"; "export"; "borrowbr"; exported ]
+        let json = System.IO.File.ReadAllText exported
+        let ops =
+          System.Text.RegularExpressions.Regex.Matches(json, "\"blobHex\"").Count
+        Expect.equal
+          ops
+          2
+          $"the bundle carries the Add as well as the SetName: {json.Substring(0, min 200 json.Length)}"
 
-      let! _ = runCli state [ "switch"; "main" ]
-      let! _ = runCli state [ "branch"; "archive"; "borrowbr"; "-y" ]
-      ()
-    })
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "branch"; "archive"; "borrowbr"; "-y" ]
+        ()
+      })
 
 
 /// A merge into main commits what it landed. The branch's ops arrive uncommitted (a pulled branch, or
@@ -1748,64 +1794,89 @@ let private aBundleCarriesTheContentItsNamesPointAt =
 /// sit in main's draft afterwards, reading as "1 item changed" that nobody edited, until the next
 /// unrelated commit sweeps them up under its message.
 let private aMergeCommitsWhatItLands =
-  cliTestOnMain "merging a branch leaves main's draft as it was, under a merge commit" (fun state ->
-    task {
-      let! _ = runCli state [ "discard"; "-y" ]
-      let! _ = runCli state [ "switch"; "mergecommit" ]
-      let! _ = runCli state [ "fn"; "Tests.MergeCommit.f"; "() : Int64 = 6006L" ]
-      // Uncommitted on the branch on purpose: the shape a pulled branch arrives in.
-      let! merged = runCli state [ "merge"; "mergecommit" ]
-      Expect.stringContains merged "Merged" $"the merge went through: {merged}"
+  cliTestOnMain
+    "merging a branch leaves main's draft as it was, under a merge commit"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "discard"; "-y" ]
+        let! _ = runCli state [ "switch"; "mergecommit" ]
+        let! _ = runCli state [ "fn"; "Tests.MergeCommit.f"; "() : Int64 = 6006L" ]
+        // Uncommitted on the branch on purpose: the shape a pulled branch arrives in.
+        let! merged = runCli state [ "merge"; "mergecommit" ]
+        Expect.stringContains merged "Merged" $"the merge went through: {merged}"
 
-      let! status = runCli state [ "status" ]
-      Expect.stringContains status "clean" $"main's draft holds nothing the merge landed: {status}"
-      let! commits = runCli state [ "commits"; "3" ]
-      Expect.stringContains commits "merged branch \"mergecommit\"" $"and a merge commit names it: {commits}"
-      let! evaluated = runCli state [ "eval"; "Tests.MergeCommit.f ()" ]
-      Expect.stringContains evaluated "6006" "and the work is live on main"
-    })
+        let! status = runCli state [ "status" ]
+        Expect.stringContains
+          status
+          "clean"
+          $"main's draft holds nothing the merge landed: {status}"
+        let! commits = runCli state [ "commits"; "3" ]
+        Expect.stringContains
+          commits
+          "merged branch \"mergecommit\""
+          $"and a merge commit names it: {commits}"
+        let! evaluated = runCli state [ "eval"; "Tests.MergeCommit.f ()" ]
+        Expect.stringContains evaluated "6006" "and the work is live on main"
+      })
 
 
 /// An `Unbind` on a branch takes a main name away on that branch, shows in the draft as a removal, and
 /// takes it off main when the branch merges. Authored through `SCM.PackageOps.add`, since no verb writes
 /// one yet; the importer will, once the reload becomes a diff.
 let private anUnbindRemovesANameThroughTheCli =
-  cliTestOnMain "an unbind removes a name on the branch, then on main when the branch merges" (fun state ->
-    task {
-      let! _ = runCli state [ "discard"; "-y" ]
-      let! _ = runCli state [ "fn"; "Tests.Gone.f"; "() : Int64 = 1L" ]
-      let! _ = runCli state [ "commit"; "gone soon"; "-y" ]
-      let! _ = runCli state [ "switch"; "gonebr" ]
-      let! added =
-        runCli
-          state
-          [ "eval"
-            "Darklang.SCM.PackageOps.add (Builtin.scmCurrentBranch ()) [ Darklang.LanguageTools.ProgramTypes.PackageOp.Unbind(Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"Tests\"; modules = [\"Gone\"]; name = \"f\" }, Stdlib.Option.Option.None) ]" ]
-      Expect.stringContains added "Ok" $"the unbind was authored on the branch: {added}"
+  cliTestOnMain
+    "an unbind removes a name on the branch, then on main when the branch merges"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "discard"; "-y" ]
+        let! _ = runCli state [ "fn"; "Tests.Gone.f"; "() : Int64 = 1L" ]
+        let! _ = runCli state [ "commit"; "gone soon"; "-y" ]
+        let! _ = runCli state [ "switch"; "gonebr" ]
+        let! added =
+          runCli
+            state
+            [ "eval"
+              "Darklang.SCM.PackageOps.add (Builtin.scmCurrentBranch ()) [ Darklang.LanguageTools.ProgramTypes.PackageOp.Unbind(Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"Tests\"; modules = [\"Gone\"]; name = \"f\" }, Stdlib.Option.Option.None) ]" ]
+        Expect.stringContains
+          added
+          "Ok"
+          $"the unbind was authored on the branch: {added}"
 
-      // `Ok` with "not found", not `| Error _ -> true`: a runtime crash would otherwise read as
-      // "the name is gone", which is the assertion passing for the one reason it must not.
-      let! onBranch = runCli state [ "eval"; "Tests.Gone.f ()" ]
-      Expect.stringContains onBranch "not found" $"the name is gone on the branch: {onBranch}"
-      let! status = runCli state [ "status" ]
-      Expect.stringContains status "1 item removed" $"status names the removal: {status}"
-      let! review = runCli state [ "commit"; "remove f"; "-y" ]
-      Expect.stringContains review "REMOVED (1)" $"commit's review lists it: {review}"
-      Expect.stringContains review "Tests.Gone.f" $"by name: {review}"
+        // `Ok` with "not found", not `| Error _ -> true`: a runtime crash would otherwise read as
+        // "the name is gone", which is the assertion passing for the one reason it must not.
+        let! onBranch = runCli state [ "eval"; "Tests.Gone.f ()" ]
+        Expect.stringContains
+          onBranch
+          "not found"
+          $"the name is gone on the branch: {onBranch}"
+        let! status = runCli state [ "status" ]
+        Expect.stringContains
+          status
+          "1 item removed"
+          $"status names the removal: {status}"
+        let! review = runCli state [ "commit"; "remove f"; "-y" ]
+        Expect.stringContains
+          review
+          "REMOVED (1)"
+          $"commit's review lists it: {review}"
+        Expect.stringContains review "Tests.Gone.f" $"by name: {review}"
 
-      let! _ = runCli state [ "switch"; "main" ]
-      let! onMain = runCli state [ "eval"; "Tests.Gone.f ()" ]
-      Expect.stringContains onMain "1" "main still has it before the merge"
-      let! merged = runCli state [ "merge"; "gonebr" ]
-      Expect.stringContains merged "Merged" $"the branch merges: {merged}"
-      let! afterMerge = runCli state [ "eval"; "Tests.Gone.f ()" ]
-      Expect.stringContains
-        afterMerge
-        "not found"
-        $"and main no longer has the name: {afterMerge}"
-      let! shown = runCli state [ "commits"; "3" ]
-      Expect.stringContains shown "remove f" $"the removal's commit travelled with the merge: {shown}"
-    })
+        let! _ = runCli state [ "switch"; "main" ]
+        let! onMain = runCli state [ "eval"; "Tests.Gone.f ()" ]
+        Expect.stringContains onMain "1" "main still has it before the merge"
+        let! merged = runCli state [ "merge"; "gonebr" ]
+        Expect.stringContains merged "Merged" $"the branch merges: {merged}"
+        let! afterMerge = runCli state [ "eval"; "Tests.Gone.f ()" ]
+        Expect.stringContains
+          afterMerge
+          "not found"
+          $"and main no longer has the name: {afterMerge}"
+        let! shown = runCli state [ "commits"; "3" ]
+        Expect.stringContains
+          shown
+          "remove f"
+          $"the removal's commit travelled with the merge: {shown}"
+      })
 
 
 /// A draft holding a deprecation can be committed by BOTH paths, and each fails differently without
@@ -1814,27 +1885,32 @@ let private anUnbindRemovesANameThroughTheCli =
 /// changed-NAMES list, which a deprecation is never in: an agent then cannot commit one at all, and it
 /// ships in the seed as somebody's mystery op.
 let private aDeprecationCommitsByEitherPath =
-  cliTestOnMain "a deprecation-only draft commits, by --include= and by --json" (fun state ->
-    task {
-      let! _ = runCli state [ "discard"; "-y" ]
-      let! _ = runCli state [ "fn"; "Tests.DepCommit.a"; "() : Int64 = 41L" ]
-      let! _ = runCli state [ "fn"; "Tests.DepCommit.b"; "() : Int64 = 42L" ]
-      let! _ = runCli state [ "commit"; "two fns"; "-y" ]
+  cliTestOnMain
+    "a deprecation-only draft commits, by --include= and by --json"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "discard"; "-y" ]
+        let! _ = runCli state [ "fn"; "Tests.DepCommit.a"; "() : Int64 = 41L" ]
+        let! _ = runCli state [ "fn"; "Tests.DepCommit.b"; "() : Int64 = 42L" ]
+        let! _ = runCli state [ "commit"; "two fns"; "-y" ]
 
-      let! _ = runCli state [ "delete"; "fn"; "Tests.DepCommit.a"; "-y" ]
-      let! selected =
-        runCli state [ "commit"; "just a"; "--include=Tests.DepCommit.a"; "-y" ]
-      Expect.isFalse
-        (Option.isSome (looksLikeARuntimeFailure selected))
-        $"--include= over a draft holding a Deprecate does not crash: {selected}"
+        let! _ = runCli state [ "delete"; "fn"; "Tests.DepCommit.a"; "-y" ]
+        let! selected =
+          runCli state [ "commit"; "just a"; "--include=Tests.DepCommit.a"; "-y" ]
+        Expect.isFalse
+          (Option.isSome (looksLikeARuntimeFailure selected))
+          $"--include= over a draft holding a Deprecate does not crash: {selected}"
 
-      let! _ = runCli state [ "delete"; "fn"; "Tests.DepCommit.b"; "-y" ]
-      let! json = runCli state [ "commit"; "just b"; "--json"; "-y" ]
-      Expect.stringContains json "\"committed\":true" $"and --json commits it: {json}"
+        let! _ = runCli state [ "delete"; "fn"; "Tests.DepCommit.b"; "-y" ]
+        let! json = runCli state [ "commit"; "just b"; "--json"; "-y" ]
+        Expect.stringContains
+          json
+          "\"committed\":true"
+          $"and --json commits it: {json}"
 
-      let! after = runCli state [ "status" ]
-      Expect.stringContains after "clean" $"leaving nothing behind: {after}"
-    })
+        let! after = runCli state [ "status" ]
+        Expect.stringContains after "clean" $"leaving nothing behind: {after}"
+      })
 
 
 /// Archiving a branch commits the event it authors. A `BranchEvent` binds no name, so `status` counts
@@ -1842,32 +1918,40 @@ let private aDeprecationCommitsByEitherPath =
 /// sweep it up under a message about something else. It also fails the seed guard, which is where it
 /// surfaces: a release build refuses over an archive nobody knew was pending.
 let private archivingABranchCommitsItsEvent =
-  cliTestOnMain "archiving a branch commits the event, leaving a genuinely clean tree" (fun state ->
-    task {
-      let! _ = runCli state [ "discard"; "-y" ]
-      let! _ = runCli state [ "switch"; "archcommit" ]
-      let! _ = runCli state [ "switch"; "main" ]
-      let! archived = runCli state [ "branch"; "archive"; "archcommit"; "-y" ]
-      Expect.stringContains archived "archived branch" $"the archive went through: {archived}"
+  cliTestOnMain
+    "archiving a branch commits the event, leaving a genuinely clean tree"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "discard"; "-y" ]
+        let! _ = runCli state [ "switch"; "archcommit" ]
+        let! _ = runCli state [ "switch"; "main" ]
+        let! archived = runCli state [ "branch"; "archive"; "archcommit"; "-y" ]
+        Expect.stringContains
+          archived
+          "archived branch"
+          $"the archive went through: {archived}"
 
-      let! status = runCli state [ "status" ]
-      Expect.stringContains status "clean" $"and the tree is clean: {status}"
+        let! status = runCli state [ "status" ]
+        Expect.stringContains status "clean" $"and the tree is clean: {status}"
 
-      // The real assertion: `status` said clean before this fix too. Ask the draft.
-      let! pending =
-        Sql.query
-          "SELECT count(*) AS n FROM package_ops
+        // The real assertion: `status` said clean before this fix too. Ask the draft.
+        let! pending =
+          Sql.query
+            "SELECT count(*) AS n FROM package_ops
            WHERE commit_hash IS NULL AND effective = 1
              AND id NOT IN (SELECT op_id FROM op_branches)"
-        |> Sql.executeRowAsync (fun read -> read.int64 "n")
-      Expect.equal pending 0L "and the draft is empty, which is what 'clean' was claiming"
+          |> Sql.executeRowAsync (fun read -> read.int64 "n")
+        Expect.equal
+          pending
+          0L
+          "and the draft is empty, which is what 'clean' was claiming"
 
-      let! commits = runCli state [ "commits"; "3" ]
-      Expect.stringContains
-        commits
-        "archived branch \"archcommit\""
-        $"the archive is its own commit: {commits}"
-    })
+        let! commits = runCli state [ "commits"; "3" ]
+        Expect.stringContains
+          commits
+          "archived branch \"archcommit\""
+          $"the archive is its own commit: {commits}"
+      })
 
 
 /// A bundle carries the sender's COMMITS, not just their ops.
@@ -1876,39 +1960,52 @@ let private archivingABranchCommitsItsEvent =
 /// author's finished work under the puller's message -- the same op filed under a different commit on
 /// each machine.
 let private aBundleCarriesItsCommits =
-  cliTestOnMain "a branch bundle arrives with the author's commits, not as a draft" (fun state ->
-    task {
-      let! _ = runCli state [ "switch"; "committedbr" ]
-      let! shown = runCli state [ "eval"; "Builtin.scmCurrentBranch ()" ]
-      let sourceId = System.Text.RegularExpressions.Regex.Match(shown, @"[0-9a-f-]{36}").Value
-      let! _ = runCli state [ "fn"; "Tests.Carry.done"; "() : Int64 = 7007L" ]
-      let! _ = runCli state [ "commit"; "the author's own message"; "-y" ]
-      let! _ = runCli state [ "switch"; "main" ]
+  cliTestOnMain
+    "a branch bundle arrives with the author's commits, not as a draft"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "switch"; "committedbr" ]
+        let! shown = runCli state [ "eval"; "Builtin.scmCurrentBranch ()" ]
+        let sourceId =
+          System.Text.RegularExpressions.Regex.Match(shown, @"[0-9a-f-]{36}").Value
+        let! _ = runCli state [ "fn"; "Tests.Carry.done"; "() : Int64 = 7007L" ]
+        let! _ = runCli state [ "commit"; "the author's own message"; "-y" ]
+        let! _ = runCli state [ "switch"; "main" ]
 
-      let exported = $"{LibConfig.Config.runDir}/bundle-commits.json"
-      let! _ = runCli state [ "branch"; "export"; "committedbr"; exported ]
-      let json = System.IO.File.ReadAllText exported
-      Expect.stringContains json "the author's own message" "the bundle carries the commit"
-      let freshId = "1e51f3a2-9c4d-4b7a-8f61-2d3e4c5b6a71"
-      let retargeted = json.Replace(sourceId, freshId).Replace("committedbr", "arrivedbr")
-      let path = $"{LibConfig.Config.runDir}/bundle-commits-arrived.json"
-      System.IO.File.WriteAllText(path, retargeted)
+        let exported = $"{LibConfig.Config.runDir}/bundle-commits.json"
+        let! _ = runCli state [ "branch"; "export"; "committedbr"; exported ]
+        let json = System.IO.File.ReadAllText exported
+        Expect.stringContains
+          json
+          "the author's own message"
+          "the bundle carries the commit"
+        let freshId = "1e51f3a2-9c4d-4b7a-8f61-2d3e4c5b6a71"
+        let retargeted =
+          json.Replace(sourceId, freshId).Replace("committedbr", "arrivedbr")
+        let path = $"{LibConfig.Config.runDir}/bundle-commits-arrived.json"
+        System.IO.File.WriteAllText(path, retargeted)
 
-      let! imported = runCli state [ "branch"; "import"; path ]
-      Expect.stringContains imported "imported branch" $"it imports: {imported}"
-      // `switch`, not `--branch`: the harness runs the Dark entry only, and `--branch` moves the
-      // process in the F# entry, so a draft read here would be main's.
-      let! _ = runCli state [ "switch"; "arrivedbr" ]
-      let! status = runCli state [ "status" ]
-      Expect.stringContains status "clean" $"nothing on the arrived branch is a draft: {status}"
-      let! commits = runCli state [ "commits"; "3" ]
-      Expect.stringContains commits "the author's own message" $"and the author's commit is there: {commits}"
+        let! imported = runCli state [ "branch"; "import"; path ]
+        Expect.stringContains imported "imported branch" $"it imports: {imported}"
+        // `switch`, not `--branch`: the harness runs the Dark entry only, and `--branch` moves the
+        // process in the F# entry, so a draft read here would be main's.
+        let! _ = runCli state [ "switch"; "arrivedbr" ]
+        let! status = runCli state [ "status" ]
+        Expect.stringContains
+          status
+          "clean"
+          $"nothing on the arrived branch is a draft: {status}"
+        let! commits = runCli state [ "commits"; "3" ]
+        Expect.stringContains
+          commits
+          "the author's own message"
+          $"and the author's commit is there: {commits}"
 
-      let! _ = runCli state [ "switch"; "main" ]
-      let! _ = runCli state [ "branch"; "archive"; "arrivedbr"; "-y" ]
-      let! _ = runCli state [ "branch"; "archive"; "committedbr"; "-y" ]
-      ()
-    })
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "branch"; "archive"; "arrivedbr"; "-y" ]
+        let! _ = runCli state [ "branch"; "archive"; "committedbr"; "-y" ]
+        ()
+      })
 
 
 /// `discard` on a branch drops the BRANCH's work and leaves main's draft alone.
@@ -2061,38 +2158,40 @@ let private nonexistentTargets : List<string * List<string>> =
     "ack", [ "ack"; "zzznope" ] ]
 
 let private missingTargetsAreNamed =
-  cliTestOnMain "a command that can't find its target says which target" (fun state ->
-    task {
-      // On main, deliberately: `ack` refuses on a branch (an ack is a statement about
-      // the store), and the process is a shared global another test may have moved.
-      let! _ = runCli state [ "switch"; "main" ]
+  cliTestOnMain
+    "a command that can't find its target says which target"
+    (fun state ->
+      task {
+        // On main, deliberately: `ack` refuses on a branch (an ack is a statement about
+        // the store), and the process is a shared global another test may have moved.
+        let! _ = runCli state [ "switch"; "main" ]
 
-      let mutable failures : List<string * string> = []
+        let mutable failures : List<string * string> = []
 
-      for (label, args) in nonexistentTargets do
-        let! output = runCli state args
-        let target = args |> List.last |> Option.defaultValue ""
+        for (label, args) in nonexistentTargets do
+          let! output = runCli state args
+          let target = args |> List.last |> Option.defaultValue ""
 
-        // The first segment, not the whole target: a traversal stops at the first
-        // segment it cannot find, so `Zzz.Nope.nope` is answered with `Zzz`.
-        let firstSegment = target.Split('.')[0]
+          // The first segment, not the whole target: a traversal stops at the first
+          // segment it cannot find, so `Zzz.Nope.nope` is answered with `Zzz`.
+          let firstSegment = target.Split('.')[0]
 
-        if output.Trim() = "" then
-          failures <- (label, "said nothing") :: failures
-        elif not (output.Contains firstSegment) then
-          failures <- (label, output.Split('\n')[0]) :: failures
+          if output.Trim() = "" then
+            failures <- (label, "said nothing") :: failures
+          elif not (output.Contains firstSegment) then
+            failures <- (label, output.Split('\n')[0]) :: failures
 
-      if not (List.isEmpty failures) then
-        let detail =
-          failures
-          |> List.rev
-          |> List.map (fun (c, why) -> $"  dark {c} <missing> -> {why}")
-          |> String.concat "\n"
+        if not (List.isEmpty failures) then
+          let detail =
+            failures
+            |> List.rev
+            |> List.map (fun (c, why) -> $"  dark {c} <missing> -> {why}")
+            |> String.concat "\n"
 
-        Tests.failtestf
-          "commands that don't name the target they couldn't find:\n%s"
-          detail
-    })
+          Tests.failtestf
+            "commands that don't name the target they couldn't find:\n%s"
+            detail
+      })
 
 
 
@@ -2501,12 +2600,19 @@ let private partialCommitTakesOnlyWhatYouNamed =
         // refused this case; the model now commits both.)
         let! _ = runCli state [ "fn"; "Tests.Pc.twice"; "() : Int64 = 3001L" ]
         let! _ = runCli state [ "fn"; "Tests.Pc.twice"; "() : Int64 = 3002L" ]
-        let! both = runCli state [ "commit"; "twice"; "--include=Tests.Pc.twice"; "-y" ]
+        let! both =
+          runCli state [ "commit"; "twice"; "--include=Tests.Pc.twice"; "-y" ]
         Expect.stringContains both "commit" $"the twice-edited name commits: {both}"
         let! left = runCli state [ "status" ]
-        Expect.stringContains left "1 item" $"and only the unnamed item is still in the draft: {left}"
+        Expect.stringContains
+          left
+          "1 item"
+          $"and only the unnamed item is still in the draft: {left}"
         let! twice = runCli state [ "eval"; "Tests.Pc.twice ()" ]
-        Expect.stringContains twice "3002" "and the committed version is the later edit"
+        Expect.stringContains
+          twice
+          "3002"
+          "and the committed version is the later edit"
 
         let! _ = runCli state [ "discard"; "--yes" ]
         return ()
@@ -2568,7 +2674,10 @@ let private reviewQueueRoundTrips =
         // failure text passed, including a runtime error, and this is the only end-to-end cover of
         // `dark review`.
         let! staged = runCli state [ "review"; "import"; path; "rqueue" ]
-        Expect.stringContains staged "rqueue" $"the queue is created by name: {staged}"
+        Expect.stringContains
+          staged
+          "rqueue"
+          $"the queue is created by name: {staged}"
         Expect.isFalse
           (Option.isSome (looksLikeARuntimeFailure staged))
           $"and importing it did not fail: {staged}"
@@ -2586,36 +2695,38 @@ let private reviewQueueRoundTrips =
 
 
 let private otherBranchAnswersStayCurrent =
-  cliTestOnMain "asking about a branch you're not on gives a current answer" (fun state ->
-    task {
-      let! _ = runCli state [ "switch"; "cachebr" ]
-      let! _ =
-        runCli
-          state
-          [ "fn"; "Tests.Br.one"; "(x: Int64) : Int64 = Stdlib.Int64.add x 11L" ]
+  cliTestOnMain
+    "asking about a branch you're not on gives a current answer"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "switch"; "cachebr" ]
+        let! _ =
+          runCli
+            state
+            [ "fn"; "Tests.Br.one"; "(x: Int64) : Int64 = Stdlib.Int64.add x 11L" ]
 
-      let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "switch"; "main" ]
 
-      // Populates the memo of "ops for a branch I'm not on".
-      let! first = runCli state [ "diff"; "cachebr" ]
-      Expect.stringContains first "one" "the first item shows up"
+        // Populates the memo of "ops for a branch I'm not on".
+        let! first = runCli state [ "diff"; "cachebr" ]
+        Expect.stringContains first "one" "the first item shows up"
 
-      let! _ = runCli state [ "switch"; "cachebr" ]
-      let! _ =
-        runCli
-          state
-          [ "fn"; "Tests.Br.two"; "(x: Int64) : Int64 = Stdlib.Int64.add x 22L" ]
+        let! _ = runCli state [ "switch"; "cachebr" ]
+        let! _ =
+          runCli
+            state
+            [ "fn"; "Tests.Br.two"; "(x: Int64) : Int64 = Stdlib.Int64.add x 22L" ]
 
-      let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "switch"; "main" ]
 
-      // The branch moved while we weren't on it, and a memo loaded once and never
-      // dropped answers with the branch as it was -- right before you decide to merge.
-      let! second = runCli state [ "diff"; "cachebr" ]
-      Expect.stringContains second "two" "and so does what was added since"
+        // The branch moved while we weren't on it, and a memo loaded once and never
+        // dropped answers with the branch as it was -- right before you decide to merge.
+        let! second = runCli state [ "diff"; "cachebr" ]
+        Expect.stringContains second "two" "and so does what was added since"
 
-      let! _ = runCli state [ "branch"; "archive"; "cachebr"; "-y" ]
-      ()
-    })
+        let! _ = runCli state [ "branch"; "archive"; "cachebr"; "-y" ]
+        ()
+      })
 
 
 
@@ -2909,95 +3020,117 @@ let private branchChainSeesItsAncestry =
 /// off a branch omitted the intermediate branch; `undo` on a branch stepped onto a version main authored
 /// AFTER the fork; `deps` on a branch listed main's version of a caller the branch had re-authored.
 let private branchReadsAnswerAboutTheBranch =
-  cliTestOnMain "ops, undo and deps answer about the branch you stand on, chain included" (fun state ->
-    task {
-      // A name main has, at v1, then a branch forks it and edits it.
-      let! _ = runCli state [ "switch"; "main" ]
-      let! _ = runCli state [ "fn"; "Tests.BranchRead.base"; "() : Int64 = 1L" ]
-      // A caller main has too, so the branch's re-authoring of it below leaves main's version behind.
-      let! _ = runCli state [ "fn"; "Tests.BranchRead.caller"; "() : Int64 = Tests.BranchRead.base ()" ]
-      let! _ = runCli state [ "commit"; "branchread v1"; "-y" ]
-      let! _ = runCli state [ "switch"; "brOne" ]
-      let! _ = runCli state [ "fn"; "Tests.BranchRead.base"; "() : Int64 = 2L" ]
-      // The caller re-authored on the branch, and a branch off the branch with one op of its own.
-      let! _ =
-        runCli state [ "fn"; "Tests.BranchRead.caller"; "() : Int64 = Stdlib.Int64.add (Tests.BranchRead.base ()) 0L" ]
-      let! _ = runCli state [ "branch"; "new"; "brTwo" ]
-      let! _ = runCli state [ "fn"; "Tests.BranchRead.deep"; "() : Int64 = 3L" ]
+  cliTestOnMain
+    "ops, undo and deps answer about the branch you stand on, chain included"
+    (fun state ->
+      task {
+        // A name main has, at v1, then a branch forks it and edits it.
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "fn"; "Tests.BranchRead.base"; "() : Int64 = 1L" ]
+        // A caller main has too, so the branch's re-authoring of it below leaves main's version behind.
+        let! _ =
+          runCli
+            state
+            [ "fn"
+              "Tests.BranchRead.caller"
+              "() : Int64 = Tests.BranchRead.base ()" ]
+        let! _ = runCli state [ "commit"; "branchread v1"; "-y" ]
+        let! _ = runCli state [ "switch"; "brOne" ]
+        let! _ = runCli state [ "fn"; "Tests.BranchRead.base"; "() : Int64 = 2L" ]
+        // The caller re-authored on the branch, and a branch off the branch with one op of its own.
+        let! _ =
+          runCli
+            state
+            [ "fn"
+              "Tests.BranchRead.caller"
+              "() : Int64 = Stdlib.Int64.add (Tests.BranchRead.base ()) 0L" ]
+        let! _ = runCli state [ "branch"; "new"; "brTwo" ]
+        let! _ = runCli state [ "fn"; "Tests.BranchRead.deep"; "() : Int64 = 3L" ]
 
-      // ops from the deepest branch lists the intermediate branch's op, not only its own and main's.
-      let! ops = runCli state [ "ops" ]
-      Expect.stringContains ops "Tests.BranchRead.caller" "the intermediate branch's op is listed from its child"
-      Expect.stringContains ops "Tests.BranchRead.deep" "alongside the child's own"
+        // ops from the deepest branch lists the intermediate branch's op, not only its own and main's.
+        let! ops = runCli state [ "ops" ]
+        Expect.stringContains
+          ops
+          "Tests.BranchRead.caller"
+          "the intermediate branch's op is listed from its child"
+        Expect.stringContains
+          ops
+          "Tests.BranchRead.deep"
+          "alongside the child's own"
 
-      // Meanwhile main moves the same name on to v3, which the branch never had.
-      let! _ = runCli state [ "switch"; "main" ]
-      let! _ = runCli state [ "fn"; "Tests.BranchRead.base"; "() : Int64 = 3L" ]
-      let! _ = runCli state [ "commit"; "branchread v3"; "-y" ]
+        // Meanwhile main moves the same name on to v3, which the branch never had.
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "fn"; "Tests.BranchRead.base"; "() : Int64 = 3L" ]
+        let! _ = runCli state [ "commit"; "branchread v3"; "-y" ]
 
-      // undo on the branch steps back to the fork's version, v1, and not onto main's v3.
-      let! _ = runCli state [ "switch"; "brOne" ]
-      let! before = runCli state [ "eval"; "Tests.BranchRead.base ()" ]
-      Expect.stringContains before "2" "the branch is at its own edit"
-      let! _ = runCli state [ "undo"; "Tests.BranchRead.base" ]
-      let! after = runCli state [ "eval"; "Tests.BranchRead.base ()" ]
-      Expect.stringContains after "1" "undo steps to the version the branch forked from"
+        // undo on the branch steps back to the fork's version, v1, and not onto main's v3.
+        let! _ = runCli state [ "switch"; "brOne" ]
+        let! before = runCli state [ "eval"; "Tests.BranchRead.base ()" ]
+        Expect.stringContains before "2" "the branch is at its own edit"
+        let! _ = runCli state [ "undo"; "Tests.BranchRead.base" ]
+        let! after = runCli state [ "eval"; "Tests.BranchRead.base ()" ]
+        Expect.stringContains
+          after
+          "1"
+          "undo steps to the version the branch forked from"
 
-      // deps on the branch: the branch re-authored `caller`, so main has no version of it to list twice.
-      let! _ = runCli state [ "fn"; "Tests.BranchRead.base"; "() : Int64 = 2L" ]
-      let! deps = runCli state [ "deps"; "usedby"; "Tests.BranchRead.base" ]
-      Expect.stringContains
-        deps
-        "Found 1 dependents"
-        $"the caller is listed once, the branch's version, not main's as well: {deps}"
+        // deps on the branch: the branch re-authored `caller`, so main has no version of it to list twice.
+        let! _ = runCli state [ "fn"; "Tests.BranchRead.base"; "() : Int64 = 2L" ]
+        let! deps = runCli state [ "deps"; "usedby"; "Tests.BranchRead.base" ]
+        Expect.stringContains
+          deps
+          "Found 1 dependents"
+          $"the caller is listed once, the branch's version, not main's as well: {deps}"
 
-      let! _ = runCli state [ "switch"; "main" ]
-      let! _ = runCli state [ "branch"; "archive"; "brTwo"; "-y" ]
-      let! _ = runCli state [ "branch"; "archive"; "brOne"; "-y" ]
-      ()
-    })
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "branch"; "archive"; "brTwo"; "-y" ]
+        let! _ = runCli state [ "branch"; "archive"; "brOne"; "-y" ]
+        ()
+      })
 
 
 /// `dark merge` and `dark rebase` with no argument mean the branch you are standing on.
 let private bareMergeAndRebaseMeanThisBranch =
-  cliTestOnMain "merge and rebase with no argument mean the branch you're on" (fun state ->
-    task {
-      // On main there is nothing a bare form could mean, so it still refuses.
-      let! onMain = runCli state [ "rebase" ]
-      Expect.stringContains
-        onMain
-        "usage: dark rebase"
-        "on main a bare rebase refuses"
-      Expect.stringContains
-        onMain
-        "no branch to rebase"
-        "and says why, rather than only how"
+  cliTestOnMain
+    "merge and rebase with no argument mean the branch you're on"
+    (fun state ->
+      task {
+        // On main there is nothing a bare form could mean, so it still refuses.
+        let! onMain = runCli state [ "rebase" ]
+        Expect.stringContains
+          onMain
+          "usage: dark rebase"
+          "on main a bare rebase refuses"
+        Expect.stringContains
+          onMain
+          "no branch to rebase"
+          "and says why, rather than only how"
 
-      let! _ = runCli state [ "switch"; "barebr" ]
-      let! _ =
-        runCli
-          state
-          [ "fn"; "Tests.Bare.one"; "(x: Int64) : Int64 = Stdlib.Int64.add x 1L" ]
-      let! _ = runCli state [ "commit"; "bare branch work"; "-y" ]
+        let! _ = runCli state [ "switch"; "barebr" ]
+        let! _ =
+          runCli
+            state
+            [ "fn"; "Tests.Bare.one"; "(x: Int64) : Int64 = Stdlib.Int64.add x 1L" ]
+        let! _ = runCli state [ "commit"; "bare branch work"; "-y" ]
 
-      // The dry runs are the safe half to assert on: they name the branch without moving anything.
-      let! rebaseDry = runCli state [ "rebase"; "--dry-run" ]
-      Expect.stringContains
-        rebaseDry
-        "barebr"
-        "a bare rebase resolves to the branch you're on"
+        // The dry runs are the safe half to assert on: they name the branch without moving anything.
+        let! rebaseDry = runCli state [ "rebase"; "--dry-run" ]
+        Expect.stringContains
+          rebaseDry
+          "barebr"
+          "a bare rebase resolves to the branch you're on"
 
-      let! mergeDry = runCli state [ "merge"; "--dry-run" ]
-      Expect.stringContains mergeDry "barebr" "and so does a bare merge"
+        let! mergeDry = runCli state [ "merge"; "--dry-run" ]
+        Expect.stringContains mergeDry "barebr" "and so does a bare merge"
 
-      // A named branch that does not exist is still a different answer from the bare form.
-      let! named = runCli state [ "merge"; "nosuchbranch" ]
-      Expect.stringContains named "no branch" "a named branch is still looked up"
+        // A named branch that does not exist is still a different answer from the bare form.
+        let! named = runCli state [ "merge"; "nosuchbranch" ]
+        Expect.stringContains named "no branch" "a named branch is still looked up"
 
-      let! _ = runCli state [ "switch"; "main" ]
-      let! _ = runCli state [ "branch"; "archive"; "barebr"; "-y" ]
-      ()
-    })
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "branch"; "archive"; "barebr"; "-y" ]
+        ()
+      })
 
 
 /// "Who calls this" must answer about the BRANCH you are standing on.
@@ -3076,72 +3209,82 @@ let private recordConflictOn (branchIdExpr : string) (id : string) : string =
 /// ops short still beats. A bundle that is not even well-formed (a blob that is not hex) is a different
 /// thing and is still refused. Built from a REAL export plus one such record.
 let private branchBundleKeepsWhatItCannotRead =
-  cliTestOnMain "one undecodable op is stored inert and the rest of the bundle imports" (fun state ->
-    task {
-      let! _ = runCli state [ "switch"; "bundlebr" ]
-      let! shown = runCli state [ "eval"; "Builtin.scmCurrentBranch ()" ]
-      // `eval` prints `<Uuid: ...>`; the id is what the bundle carries.
-      let sourceId =
-        System.Text.RegularExpressions.Regex.Match(shown, @"[0-9a-f-]{36}").Value
-      Expect.equal sourceId.Length 36 $"the branch id was read off eval's output: {shown}"
-      let! _ =
-        runCli
-          state
-          [ "fn"
-            "Tests.Bundle.only"
-            "(x: Int64) : Int64 = Stdlib.Int64.add x 1L" ]
-      let! _ = runCli state [ "switch"; "main" ]
+  cliTestOnMain
+    "one undecodable op is stored inert and the rest of the bundle imports"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "switch"; "bundlebr" ]
+        let! shown = runCli state [ "eval"; "Builtin.scmCurrentBranch ()" ]
+        // `eval` prints `<Uuid: ...>`; the id is what the bundle carries.
+        let sourceId =
+          System.Text.RegularExpressions.Regex.Match(shown, @"[0-9a-f-]{36}").Value
+        Expect.equal
+          sourceId.Length
+          36
+          $"the branch id was read off eval's output: {shown}"
+        let! _ =
+          runCli
+            state
+            [ "fn"
+              "Tests.Bundle.only"
+              "(x: Int64) : Int64 = Stdlib.Int64.add x 1L" ]
+        let! _ = runCli state [ "switch"; "main" ]
 
-      let exported = $"{LibConfig.Config.runDir}/bundle-partial.json"
-      let! _ = runCli state [ "branch"; "export"; "bundlebr"; exported ]
-      let json = System.IO.File.ReadAllText exported
+        let exported = $"{LibConfig.Config.runDir}/bundle-partial.json"
+        let! _ = runCli state [ "branch"; "export"; "bundlebr"; exported ]
+        let json = System.IO.File.ReadAllText exported
 
-      // Retarget at a branch this store lacks, so "was it registered" is answerable.
-      let freshId = "0e51f3a2-9c4d-4b7a-8f61-2d3e4c5b6a70"
-      let retargeted =
-        json.Replace(sourceId, freshId).Replace("bundlebr", "importedbr")
+        // Retarget at a branch this store lacks, so "was it registered" is answerable.
+        let freshId = "0e51f3a2-9c4d-4b7a-8f61-2d3e4c5b6a70"
+        let retargeted =
+          json.Replace(sourceId, freshId).Replace("bundlebr", "importedbr")
 
-      // Valid hex, not a valid op: the deserializer rejects it. Appended rather than substituted, so
-      // every real op in the bundle stays valid: the partial case.
-      let bad =
-        """,{"blobHex":"ff3907","commit":"","id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","ts":"2026-01-01T00:00:00.000Z"}"""
-      // The serializer emits fields alphabetically, so `parent` follows `ops` and the
-      // ops array does not end the document. Splice at the array's own close.
-      let marker = """],"parent":"""
-      let cut = retargeted.IndexOf marker
-      Expect.isGreaterThan
-        cut
-        0
-        "the exported bundle has an ops array followed by parent"
-      let partial = retargeted.Substring(0, cut) + bad + retargeted.Substring(cut)
+        // Valid hex, not a valid op: the deserializer rejects it. Appended rather than substituted, so
+        // every real op in the bundle stays valid: the partial case.
+        let bad =
+          """,{"blobHex":"ff3907","commit":"","id":"7c9e6679-7425-40de-944b-e07fc1f90ae7","ts":"2026-01-01T00:00:00.000Z"}"""
+        // The serializer emits fields alphabetically, so `parent` follows `ops` and the
+        // ops array does not end the document. Splice at the array's own close.
+        let marker = """],"parent":"""
+        let cut = retargeted.IndexOf marker
+        Expect.isGreaterThan
+          cut
+          0
+          "the exported bundle has an ops array followed by parent"
+        let partial = retargeted.Substring(0, cut) + bad + retargeted.Substring(cut)
 
-      let partialPath = $"{LibConfig.Config.runDir}/bundle-partial-bad.json"
-      System.IO.File.WriteAllText(partialPath, partial)
+        let partialPath = $"{LibConfig.Config.runDir}/bundle-partial-bad.json"
+        System.IO.File.WriteAllText(partialPath, partial)
 
-      let! result = runCli state [ "branch"; "import"; partialPath ]
-      Expect.stringContains result "imported branch" $"the bundle imports: {result}"
+        let! result = runCli state [ "branch"; "import"; partialPath ]
+        Expect.stringContains
+          result
+          "imported branch"
+          $"the bundle imports: {result}"
 
-      let! listed = runCli state [ "branches" ]
-      Expect.isTrue (listed.Contains "importedbr") $"and the branch exists: {listed}"
-      // `switch`, not `--branch`: the flag is resolved and consumed in `Cli.fs` before Dark runs, so
-      // through this harness (which calls the Dark entry point directly) it moves nothing.
-      let! _ = runCli state [ "switch"; "importedbr" ]
-      let! onIt = runCli state [ "eval"; "Tests.Bundle.only 1L" ]
-      Expect.stringContains onIt "2" "and its readable work runs"
-      let! _ = runCli state [ "switch"; "main" ]
+        let! listed = runCli state [ "branches" ]
+        Expect.isTrue
+          (listed.Contains "importedbr")
+          $"and the branch exists: {listed}"
+        // `switch`, not `--branch`: the flag is resolved and consumed in `Cli.fs` before Dark runs, so
+        // through this harness (which calls the Dark entry point directly) it moves nothing.
+        let! _ = runCli state [ "switch"; "importedbr" ]
+        let! onIt = runCli state [ "eval"; "Tests.Bundle.only 1L" ]
+        Expect.stringContains onIt "2" "and its readable work runs"
+        let! _ = runCli state [ "switch"; "main" ]
 
-      // The unreadable op is here, inert, on the branch: kept for a build that can read it.
-      let! kept =
-        Sql.query
-          "SELECT count(*) AS n FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id
+        // The unreadable op is here, inert, on the branch: kept for a build that can read it.
+        let! kept =
+          Sql.query
+            "SELECT count(*) AS n FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id
            WHERE p.id = '7c9e6679-7425-40de-944b-e07fc1f90ae7' AND p.effective = 0"
-        |> Sql.executeRowAsync (fun read -> read.int64 "n")
-      Expect.equal kept 1L "the unreadable op is stored inert on the branch"
+          |> Sql.executeRowAsync (fun read -> read.int64 "n")
+        Expect.equal kept 1L "the unreadable op is stored inert on the branch"
 
-      let! _ = runCli state [ "branch"; "archive"; "importedbr"; "-y" ]
-      let! _ = runCli state [ "branch"; "archive"; "bundlebr"; "-y" ]
-      ()
-    })
+        let! _ = runCli state [ "branch"; "archive"; "importedbr"; "-y" ]
+        let! _ = runCli state [ "branch"; "archive"; "bundlebr"; "-y" ]
+        ()
+      })
 
 
 /// Whether a merge is ALLOWED is a decision, so it is decided in Dark; the builtin only does the work.
@@ -3195,41 +3338,51 @@ let private mergeGatesAreDecidedInDark =
 /// to add. The flag is filtered out before the branch reference is read, so it can go on either
 /// side: otherwise `dark diff --json foo` looks for a branch literally named "--json".
 let private diffAndLogAnswerInJson =
-  cliTestOnMain "diff and log answer in JSON, with the flag on either side" (fun state ->
-    task {
-      let! _ = runCli state [ "switch"; "jsonsurface" ]
-      let! _ =
-        runCli
-          state
-          [ "fn"; "Tests.JsonS.only"; "(x: Int64) : Int64 = Stdlib.Int64.add x 1L" ]
+  cliTestOnMain
+    "diff and log answer in JSON, with the flag on either side"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "switch"; "jsonsurface" ]
+        let! _ =
+          runCli
+            state
+            [ "fn"
+              "Tests.JsonS.only"
+              "(x: Int64) : Int64 = Stdlib.Int64.add x 1L" ]
 
-      // `log` on a branch is the op sequence, oldest first.
-      let! logJson = runCli state [ "log"; "--json" ]
-      Expect.stringContains
-        logJson
-        "\"seq\":0"
-        "the branch's ops are numbered from the start"
-      Expect.stringContains logJson "Tests.JsonS.only" "and name what they touched"
+        // `log` on a branch is the op sequence, oldest first.
+        let! logJson = runCli state [ "log"; "--json" ]
+        Expect.stringContains
+          logJson
+          "\"seq\":0"
+          "the branch's ops are numbered from the start"
+        Expect.stringContains
+          logJson
+          "Tests.JsonS.only"
+          "and name what they touched"
 
-      let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "switch"; "main" ]
 
-      // `log` on main is the commit history, so it answers with what `commits --json` answers.
-      let! mainLog = runCli state [ "log"; "--json" ]
-      Expect.stringContains mainLog "\"hash\"" "on main it is the commit history"
+        // `log` on main is the commit history, so it answers with what `commits --json` answers.
+        let! mainLog = runCli state [ "log"; "--json" ]
+        Expect.stringContains mainLog "\"hash\"" "on main it is the commit history"
 
-      let! diffJson = runCli state [ "diff"; "jsonsurface"; "--json" ]
-      Expect.stringContains
-        diffJson
-        "Tests.JsonS.only"
-        "diff reports the changed name"
-      Expect.stringContains diffJson "\"change\":\"new\"" "and classifies it"
+        let! diffJson = runCli state [ "diff"; "jsonsurface"; "--json" ]
+        Expect.stringContains
+          diffJson
+          "Tests.JsonS.only"
+          "diff reports the changed name"
+        Expect.stringContains diffJson "\"change\":\"new\"" "and classifies it"
 
-      let! flagFirst = runCli state [ "diff"; "--json"; "jsonsurface" ]
-      Expect.equal (flagFirst.Trim()) (diffJson.Trim()) "the flag is not positional"
+        let! flagFirst = runCli state [ "diff"; "--json"; "jsonsurface" ]
+        Expect.equal
+          (flagFirst.Trim())
+          (diffJson.Trim())
+          "the flag is not positional"
 
-      let! _ = runCli state [ "branch"; "archive"; "jsonsurface"; "-y" ]
-      ()
-    })
+        let! _ = runCli state [ "branch"; "archive"; "jsonsurface"; "-y" ]
+        ()
+      })
 
 
 /// A commit must not put a reference that cannot resolve into history: commits are what other
@@ -3263,7 +3416,10 @@ let private commitRefusesUnresolvedReferences =
         // `op(s)`, not `commit`: the refusal this flag exists to get past is
         // "cannot commit: these reference names that don't resolve", which contains "commit",
         // so the obvious assertion passed whether the flag worked or not.
-        Expect.stringContains allowed "op(s)" $"--allow-unresolved records it as-is: {allowed}"
+        Expect.stringContains
+          allowed
+          "op(s)"
+          $"--allow-unresolved records it as-is: {allowed}"
 
         // A forward reference inside one draft: the caller is authored first and cannot
         // resolve yet, and re-resolution fixes it before commit ever looks.
@@ -3470,35 +3626,37 @@ let private conflictsBelongToTheBranchTheyHappenedOn =
 
 
 let private branchItemsArePolicyTargets =
-  cliTestOnMain "a policy verb can name an item that only exists on a branch" (fun state ->
-    task {
-      let! _ = runCli state [ "switch"; "polbr" ]
-      let! _ =
-        runCli
-          state
-          [ "fn"; "Tests.Pol.only"; "(x: Int64) : Int64 = Stdlib.Int64.add x 5L" ]
+  cliTestOnMain
+    "a policy verb can name an item that only exists on a branch"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "switch"; "polbr" ]
+        let! _ =
+          runCli
+            state
+            [ "fn"; "Tests.Pol.only"; "(x: Int64) : Int64 = Stdlib.Int64.add x 5L" ]
 
-      // `locations` is main's projection and a branch's SetNames never fold into it, so
-      // a read that goes only to that table answers about MAIN while you're on a branch.
-      let! pinned =
-        runCli state [ "propagate"; "pin"; "Tests.Pol.only"; "on the branch" ]
-      Expect.stringContains pinned "pinned" "the branch item is a valid target"
+        // `locations` is main's projection and a branch's SetNames never fold into it, so
+        // a read that goes only to that table answers about MAIN while you're on a branch.
+        let! pinned =
+          runCli state [ "propagate"; "pin"; "Tests.Pol.only"; "on the branch" ]
+        Expect.stringContains pinned "pinned" "the branch item is a valid target"
 
-      let! onBranch = runCli state [ "propagate" ]
-      Expect.stringContains
-        onBranch
-        "Tests.Pol.only"
-        "and the choice is visible from the branch"
+        let! onBranch = runCli state [ "propagate" ]
+        Expect.stringContains
+          onBranch
+          "Tests.Pol.only"
+          "and the choice is visible from the branch"
 
-      let! _ = runCli state [ "switch"; "main" ]
-      let! onMain = runCli state [ "propagate" ]
-      Expect.isFalse
-        (onMain.Contains "Tests.Pol.only")
-        "and stays branch-local, like every other branch decision"
+        let! _ = runCli state [ "switch"; "main" ]
+        let! onMain = runCli state [ "propagate" ]
+        Expect.isFalse
+          (onMain.Contains "Tests.Pol.only")
+          "and stays branch-local, like every other branch decision"
 
-      let! _ = runCli state [ "branch"; "archive"; "polbr"; "-y" ]
-      ()
-    })
+        let! _ = runCli state [ "branch"; "archive"; "polbr"; "-y" ]
+        ()
+      })
 
 
 /// The four cases that dominate this file's time: about 34 of its 61 seconds.
@@ -3579,32 +3737,36 @@ let private aDashLedArgumentIsNeverAName =
 /// asked to see, and nothing in the scoring can know which name was typed, so the asked-for location is
 /// carried into the printer and wins outright when it is one of the candidates.
 let private viewHeadsWithTheNameYouAskedFor =
-  cliTestOnMain "view heads a shared body with the name that was asked for" (fun state ->
-    task {
-      let! _ = runCli state [ "switch"; "main" ]
-      let! _ = runCli state [ "fn"; "Tests.SharedBody.alpha"; "() : Int64 = 4242L" ]
-      let! _ = runCli state [ "fn"; "Tests.SharedBody.beta"; "() : Int64 = 4242L" ]
+  cliTestOnMain
+    "view heads a shared body with the name that was asked for"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ =
+          runCli state [ "fn"; "Tests.SharedBody.alpha"; "() : Int64 = 4242L" ]
+        let! _ =
+          runCli state [ "fn"; "Tests.SharedBody.beta"; "() : Int64 = 4242L" ]
 
-      // Colour codes sit BETWEEN `let` and the name, so the two-word header never matches raw output.
-      // Stripping is better than asserting on the bare name here, which appears in the location line too
-      // and so would pass whichever name the header carried.
-      let plain (text : string) =
-        System.Text.RegularExpressions.Regex.Replace(text, @"\x1b\[[0-9;]*m", "")
+        // Colour codes sit BETWEEN `let` and the name, so the two-word header never matches raw output.
+        // Stripping is better than asserting on the bare name here, which appears in the location line too
+        // and so would pass whichever name the header carried.
+        let plain (text : string) =
+          System.Text.RegularExpressions.Regex.Replace(text, @"\x1b\[[0-9;]*m", "")
 
-      let! alpha = runCli state [ "view"; "Tests.SharedBody.alpha" ]
-      let! beta = runCli state [ "view"; "Tests.SharedBody.beta" ]
+        let! alpha = runCli state [ "view"; "Tests.SharedBody.alpha" ]
+        let! beta = runCli state [ "view"; "Tests.SharedBody.beta" ]
 
-      Expect.stringContains (plain alpha) "let alpha" "view alpha is headed alpha"
-      Expect.stringContains (plain beta) "let beta" "view beta is headed beta"
+        Expect.stringContains (plain alpha) "let alpha" "view alpha is headed alpha"
+        Expect.stringContains (plain beta) "let beta" "view beta is headed beta"
 
-      // --raw is the half `dark edit` and `dark module` consume, so a wrong header there does not just
-      // mislead, it round-trips the definition onto the wrong name.
-      let! rawAlpha = runCli state [ "view"; "Tests.SharedBody.alpha"; "--raw" ]
-      Expect.stringContains
-        (plain rawAlpha)
-        "let alpha"
-        "view --raw alpha is headed alpha"
-    })
+        // --raw is the half `dark edit` and `dark module` consume, so a wrong header there does not just
+        // mislead, it round-trips the definition onto the wrong name.
+        let! rawAlpha = runCli state [ "view"; "Tests.SharedBody.alpha"; "--raw" ]
+        Expect.stringContains
+          (plain rawAlpha)
+          "let alpha"
+          "view --raw alpha is headed alpha"
+      })
 
 
 let tests =

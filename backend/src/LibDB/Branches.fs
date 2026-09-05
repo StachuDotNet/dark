@@ -425,7 +425,10 @@ let storeDeltaOpsFrom
   (branchId : PT.BranchId)
   (ops : List<PT.PackageOp>)
   : Task<int64> =
-  storeDeltaOpsStampedFrom source branchId (ops |> List.map (fun op -> (op, OriginTs.next ())))
+  storeDeltaOpsStampedFrom
+    source
+    branchId
+    (ops |> List.map (fun op -> (op, OriginTs.next ())))
 
 // Flipping a branch's frontier effective, and closing the branch afterwards, are in Dark
 // (`SCM.Branches.markMergedEffective` / `.finishMerge`): both are SQL, and the second is one

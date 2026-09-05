@@ -159,7 +159,8 @@ let createInMemoryOver
     | PT.PackageOp.BranchEvent _ -> ()
 
     // An override binds a name like a SetName does; the overlay only cares about the binding.
-    | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override target) -> bind loc target
+    | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override target) ->
+      bind loc target
 
   // Items are keyed by the hash the item CARRIES, which after stabilization is the hash its SetName
   // names. Pairing by ADJACENCY -- "the Add just before this SetName" -- is wrong for an overlay:
@@ -202,8 +203,8 @@ let createInMemoryOver
       (fun t -> t.hash)
       (fun t h -> { t with hash = h })
       (function
-      | PT.PackageOp.SetName(_, PT.PackageType h, _) -> Some h
-      | _ -> None)
+       | PT.PackageOp.SetName(_, PT.PackageType h, _) -> Some h
+       | _ -> None)
 
   let fnMap =
     pairItems
@@ -213,8 +214,8 @@ let createInMemoryOver
       (fun f -> f.hash)
       (fun f h -> { f with hash = h })
       (function
-      | PT.PackageOp.SetName(_, PT.PackageFn h, _) -> Some h
-      | _ -> None)
+       | PT.PackageOp.SetName(_, PT.PackageFn h, _) -> Some h
+       | _ -> None)
 
   let valueMap =
     pairItems
@@ -224,8 +225,8 @@ let createInMemoryOver
       (fun v -> v.hash)
       (fun v h -> { v with hash = h })
       (function
-      | PT.PackageOp.SetName(_, PT.PackageValue h, _) -> Some h
-      | _ -> None)
+       | PT.PackageOp.SetName(_, PT.PackageValue h, _) -> Some h
+       | _ -> None)
 
   let toMap (d : System.Collections.Generic.Dictionary<PT.PackageLocation, Hash>) =
     d |> Seq.map (fun (KeyValue(k, v)) -> (k, v)) |> Map.ofSeq
@@ -234,7 +235,9 @@ let createInMemoryOver
   let fnLocMap = toMap fnLocs
 
   // Reverse multi-maps (hash -> every location still bound to it).
-  let invert (m : Map<PT.PackageLocation, Hash>) : Map<Hash, List<PT.PackageLocation>> =
+  let invert
+    (m : Map<PT.PackageLocation, Hash>)
+    : Map<Hash, List<PT.PackageLocation>> =
     m
     |> Map.toSeq
     |> Seq.fold
@@ -324,7 +327,8 @@ let createInMemoryOver
                 | Some item -> Ply(Some item)
                 | None -> fetchBelow hash
               match item with
-              | Some item -> found.Add({ entity = item; location = loc } : PT.LocatedItem<_>)
+              | Some item ->
+                found.Add({ entity = item; location = loc } : PT.LocatedItem<_>)
               | None -> ()
             return List.ofSeq found
           }
@@ -344,35 +348,36 @@ let createInMemoryOver
           | None -> none
 
         uply {
-        let! typesWithLocs = liveAt typeLocMap typeMap getTypeBelow
-        let! valuesWithLocs = liveAt valueLocMap valueMap getValueBelow
-        let! fnsWithLocs = liveAt fnLocMap fnMap getFnBelow
+          let! typesWithLocs = liveAt typeLocMap typeMap getTypeBelow
+          let! valuesWithLocs = liveAt valueLocMap valueMap getValueBelow
+          let! fnsWithLocs = liveAt fnLocMap fnMap getFnBelow
 
-        // Submodules = the direct child module (cm ++ next segment) of any overlay item strictly
-        // below cm. Only surfaced when browsing (empty text): a text search returns items, not
-        // folders. Main's SQL search still contributes its own submodules via the fallback.
-        let allLocs =
-          (typesWithLocs |> List.map (fun i -> i.location))
-          @ (valuesWithLocs |> List.map (fun i -> i.location))
-          @ (fnsWithLocs |> List.map (fun i -> i.location))
-        let submodules =
-          if text <> "" then
-            []
-          else
-            allLocs
-            |> List.choose (fun loc ->
-              let fm = fullModule loc
-              if isPrefix cm fm && List.length fm > List.length cm then
-                Some(List.truncate (List.length cm + 1) fm)
-              else
-                None)
-            |> List.distinct
+          // Submodules = the direct child module (cm ++ next segment) of any overlay item strictly
+          // below cm. Only surfaced when browsing (empty text): a text search returns items, not
+          // folders. Main's SQL search still contributes its own submodules via the fallback.
+          let allLocs =
+            (typesWithLocs |> List.map (fun i -> i.location))
+            @ (valuesWithLocs |> List.map (fun i -> i.location))
+            @ (fnsWithLocs |> List.map (fun i -> i.location))
+          let submodules =
+            if text <> "" then
+              []
+            else
+              allLocs
+              |> List.choose (fun loc ->
+                let fm = fullModule loc
+                if isPrefix cm fm && List.length fm > List.length cm then
+                  Some(List.truncate (List.length cm + 1) fm)
+                else
+                  None)
+              |> List.distinct
 
-        return
-          { PT.Search.SearchResults.submodules = submodules
-            types = typesWithLocs |> List.filter (fun i -> itemMatches i.location)
-            values = valuesWithLocs |> List.filter (fun i -> itemMatches i.location)
-            fns = fnsWithLocs |> List.filter (fun i -> itemMatches i.location) }
+          return
+            { PT.Search.SearchResults.submodules = submodules
+              types = typesWithLocs |> List.filter (fun i -> itemMatches i.location)
+              values =
+                valuesWithLocs |> List.filter (fun i -> itemMatches i.location)
+              fns = fnsWithLocs |> List.filter (fun i -> itemMatches i.location) }
         }
 
     init = uply { return () } }
@@ -497,17 +502,24 @@ let unboundBy (ops : List<PT.PackageOp>) : Set<PT.PackageLocation> =
       match op with
       | PT.PackageOp.Unbind(loc, _) -> Set.add loc hidden
       | PT.PackageOp.SetName(loc, _, _)
-      | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override _) -> Set.remove loc hidden
+      | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override _) ->
+        Set.remove loc hidden
       | _ -> hidden)
     Set.empty
 
 /// <param pm> with <param hidden> masked: those names resolve to nothing, list nowhere, and are not
 /// among a hash's locations. What a branch's `Unbind` does to main's projection underneath it.
-let hide (hidden : Set<PT.PackageLocation>) (pm : PT.PackageManager) : PT.PackageManager =
+let hide
+  (hidden : Set<PT.PackageLocation>)
+  (pm : PT.PackageManager)
+  : PT.PackageManager =
   if Set.isEmpty hidden then
     pm
   else
-    let find (f : PT.PackageLocation -> Ply<Option<Hash>>) (loc : PT.PackageLocation) =
+    let find
+      (f : PT.PackageLocation -> Ply<Option<Hash>>)
+      (loc : PT.PackageLocation)
+      =
       if Set.contains loc hidden then Ply None else f loc
     let locs (f : Hash -> Ply<List<PT.PackageLocation>>) (h : Hash) =
       uply {

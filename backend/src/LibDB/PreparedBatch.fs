@@ -97,7 +97,11 @@ let bytesOption
 
 
 /// Read one integer scalar, through the same prepared-statement cache. `0L` for no row.
-let scalarInt (ctx : Ctx) (sql : string) (setParams : SqliteCommand -> unit) : Task<int64> =
+let scalarInt
+  (ctx : Ctx)
+  (sql : string)
+  (setParams : SqliteCommand -> unit)
+  : Task<int64> =
   task {
     let cmd = command ctx sql
     cmd.Parameters.Clear()

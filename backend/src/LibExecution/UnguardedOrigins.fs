@@ -74,7 +74,8 @@ let refusalMessage (url : string) : string =
 /// to push.
 let mutable private secretLookup : string -> string option = fun _ -> None
 
-let setSecretLookup (lookup : string -> string option) : unit = secretLookup <- lookup
+let setSecretLookup (lookup : string -> string option) : unit =
+  secretLookup <- lookup
 
 /// The `Authorization` header for <param url>, when a secret is stored for this
 /// instance's relay and the url is actually one of its origins. Empty otherwise, so an

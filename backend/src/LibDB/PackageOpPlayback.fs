@@ -698,7 +698,9 @@ let private applyBranchEvent
       // a guid needs no escaping.
       let ids =
         "["
-        + (mergedOps |> List.map (fun g -> "\"" + string g + "\"") |> String.concat ",")
+        + (mergedOps
+           |> List.map (fun g -> "\"" + string g + "\"")
+           |> String.concat ",")
         + "]"
       let b = string branchId
       let bindB (cmd : SqliteCommand) =
@@ -706,10 +708,8 @@ let private applyBranchEvent
         cmd.Parameters.AddWithValue("$ids", ids) |> ignore<SqliteParameter>
 
       let! parent =
-        textOption
-          ctx
-          "SELECT parent_id FROM branches WHERE id = $b"
-          (fun cmd -> cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>)
+        textOption ctx "SELECT parent_id FROM branches WHERE id = $b" (fun cmd ->
+          cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>)
       let parentIsMain =
         match parent with
         | None -> true
@@ -730,12 +730,11 @@ let private applyBranchEvent
         scalarInt
           ctx
           "SELECT count(*) FROM op_branches WHERE branch_id = $b"
-          (fun cmd -> cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>)
+          (fun cmd ->
+            cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>)
       let! branchKnownHere =
-        scalarInt
-          ctx
-          "SELECT count(*) FROM branches WHERE id = $b"
-          (fun cmd -> cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>)
+        scalarInt ctx "SELECT count(*) FROM branches WHERE id = $b" (fun cmd ->
+          cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>)
 
       if tagged = 0L && branchKnownHere > 0L then
         // `applied = 2`, DEFERRED: folded, did nothing, and waiting for ops it names. A third state
@@ -745,7 +744,8 @@ let private applyBranchEvent
         // when a bundle lands.
         do!
           exec ctx "UPDATE package_ops SET applied = 2 WHERE id = $e" (fun cmd ->
-            cmd.Parameters.AddWithValue("$e", string eventOpId) |> ignore<SqliteParameter>)
+            cmd.Parameters.AddWithValue("$e", string eventOpId)
+            |> ignore<SqliteParameter>)
       elif parentIsMain then
         do!
           exec
@@ -769,7 +769,8 @@ let private applyBranchEvent
                AND (SELECT commit_hash FROM package_ops WHERE id = $e) IS NOT NULL"
             (fun cmd ->
               bindB cmd
-              cmd.Parameters.AddWithValue("$e", string eventOpId) |> ignore<SqliteParameter>)
+              cmd.Parameters.AddWithValue("$e", string eventOpId)
+              |> ignore<SqliteParameter>)
       else
         let p = Option.defaultValue "" parent
         let bindP (cmd : SqliteCommand) =
@@ -841,9 +842,12 @@ let private applyUnbind
           "SELECT item_type, origin_ts FROM locations "
           + "WHERE owner = $owner AND modules = $modules AND name = $name "
           + "AND unlisted_at IS NULL LIMIT 1"
-        cmd.Parameters.AddWithValue("$owner", location.owner) |> ignore<SqliteParameter>
-        cmd.Parameters.AddWithValue("$modules", modulesStr) |> ignore<SqliteParameter>
-        cmd.Parameters.AddWithValue("$name", location.name) |> ignore<SqliteParameter>
+        cmd.Parameters.AddWithValue("$owner", location.owner)
+        |> ignore<SqliteParameter>
+        cmd.Parameters.AddWithValue("$modules", modulesStr)
+        |> ignore<SqliteParameter>
+        cmd.Parameters.AddWithValue("$name", location.name)
+        |> ignore<SqliteParameter>
         use! reader = cmd.ExecuteReaderAsync()
         let! hasRow = reader.ReadAsync()
         if hasRow then

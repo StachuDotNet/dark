@@ -245,7 +245,9 @@ let unbindHidesACoreNameOnTheBranchOnly =
     let! body = branch.getFn hash |> Ply.toTask
     Expect.isSome body "the fn's content is still there on the branch"
     let! locs = branch.getFnLocations hash |> Ply.toTask
-    Expect.isFalse (List.contains addLoc locs) "but the name is not among the hash's locations"
+    Expect.isFalse
+      (List.contains addLoc locs)
+      "but the name is not among the hash's locations"
 
     // A search from the branch does not list it either.
     let query : PT.Search.SearchQuery =
@@ -1139,7 +1141,10 @@ let takeTheirsAfterKeepMineDropsTheOverride =
     | Error e -> failtest $"keep-mine failed: {e}"
     | Ok() -> ()
     let! afterMine = countEffective b 0
-    Expect.isGreaterThan afterMine 0L "keep-mine left the branch binding the name (an override)"
+    Expect.isGreaterThan
+      afterMine
+      0L
+      "keep-mine left the branch binding the name (an override)"
 
     match! resolveTakeTheirs b fqn with
     | Error e -> failtest $"take-theirs failed: {e}"
@@ -1147,7 +1152,9 @@ let takeTheirsAfterKeepMineDropsTheOverride =
     let! binders =
       darkStringList
         $"Darklang.SCM.Branches.ownFrontierOps {darkBranch b} |> Stdlib.List.filterMap (fun entry -> let (_, op) = entry in Darklang.SCM.Branches.opBindsKey op (\"Darklang\", \"TheirsAfterMine\", \"foo\") |> Stdlib.Option.map (fun _ -> \"binds\"))"
-    Expect.isEmpty binders "nothing on the branch binds the name any more: the override went with the SetName"
+    Expect.isEmpty
+      binders
+      "nothing on the branch binds the name any more: the override went with the SetName"
 
     do! cleanupBranch b
   }
@@ -1643,7 +1650,9 @@ let branchResolutionOrder =
     let! before = LibDB.Config.get "current_branch"
     let! beforeName = LibDB.Config.get "current_branch_name"
 
-    let selected (r : Result<Sel.Selection, Sel.Refusal>) : Option<PT.BranchId> * Sel.Tier =
+    let selected
+      (r : Result<Sel.Selection, Sel.Refusal>)
+      : Option<PT.BranchId> * Sel.Tier =
       match r with
       | Ok s -> (s.branchId, s.tier)
       | Error e -> failtest $"refused: {e}"
@@ -1659,7 +1668,10 @@ let branchResolutionOrder =
       let! s = Sel.select None None
       Expect.equal (selected s) (Some storedB, Sel.Stored) "then the stored branch"
       let! s = Sel.select (Some "main") (Some "sel-env")
-      Expect.equal (selected s) (None, Sel.Flag) "the flag can name main, and that beats the env too"
+      Expect.equal
+        (selected s)
+        (None, Sel.Flag)
+        "the flag can name main, and that beats the env too"
 
       // A foreign uuid or an ambiguous prefix is refused, not started as a branch of that name.
       let! s = Sel.select (Some(string (System.Guid.NewGuid()))) None
@@ -1685,10 +1697,14 @@ let branchResolutionOrder =
 
       do! LibDB.Config.set "current_branch" ""
       let! s = Sel.select None None
-      Expect.equal (selected s) (None, Sel.Default) "and main is the absence of all three"
+      Expect.equal
+        (selected s)
+        (None, Sel.Default)
+        "and main is the absence of all three"
     finally
       (LibDB.Config.set "current_branch" (Option.defaultValue "" before)).Wait()
-      (LibDB.Config.set "current_branch_name" (Option.defaultValue "" beforeName)).Wait()
+      (LibDB.Config.set "current_branch_name" (Option.defaultValue "" beforeName))
+        .Wait()
       (cleanupBranch flagB).Wait()
       (cleanupBranch envB).Wait()
       (cleanupBranch storedB).Wait()
@@ -1731,7 +1747,8 @@ let branchEventMarksMerged =
 /// while the CLI reports that it authored -- `dark deprecate` saying "Deprecated" over a fn that keeps
 /// running.
 let mainRetakesABranchsOp =
-  testTask "authoring on main an op a branch already holds makes it effective, untagged, and live" {
+  testTask
+    "authoring on main an op a branch already holds makes it effective, untagged, and live" {
     let branchId = testBranch "test-branch-main-retake"
     do! cleanupBranch branchId
     do! Branches.createBranch branchId "retake-proof" PT.BranchId.Main
@@ -1743,7 +1760,10 @@ let mainRetakesABranchsOp =
     Expect.isNone onMainBefore "held by the branch only, main cannot see it"
 
     let! inserted = LibDB.Inserts.insertAndApplyOps ops
-    Expect.equal inserted (int64 (List.length ops)) "every op counted as taken, none as a duplicate"
+    Expect.equal
+      inserted
+      (int64 (List.length ops))
+      "every op counted as taken, none as a duplicate"
 
     let! effectiveTagged =
       Sql.query
@@ -1755,7 +1775,10 @@ let mainRetakesABranchsOp =
         [ "b", Sql.string (string branchId)
           "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
       |> Sql.executeRowAsync (fun read -> (read.int64 "eff", read.int64 "tagged"))
-    Expect.equal effectiveTagged (int64 (List.length ops), 0L) "all effective, and no tag left on any"
+    Expect.equal
+      effectiveTagged
+      (int64 (List.length ops), 0L)
+      "all effective, and no tag left on any"
 
     let! onMainAfter = pmPT.findFn (fooLocIn "MainRetake") |> Ply.toTask
     Expect.isSome onMainAfter "and main resolves it"
@@ -1764,11 +1787,14 @@ let mainRetakesABranchsOp =
     do!
       Sql.query
         "DELETE FROM locations WHERE op_id IN (SELECT value FROM json_each(@ids))"
-      |> Sql.parameters [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
+      |> Sql.parameters
+        [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
       |> Sql.executeStatementAsync
     do!
-      Sql.query "DELETE FROM package_ops WHERE id IN (SELECT value FROM json_each(@ids))"
-      |> Sql.parameters [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
+      Sql.query
+        "DELETE FROM package_ops WHERE id IN (SELECT value FROM json_each(@ids))"
+      |> Sql.parameters
+        [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
       |> Sql.executeStatementAsync
     LibDB.Caching.invalidateAll ()
     do! cleanupBranch branchId
@@ -1794,7 +1820,8 @@ let authoringOnAFinishedBranchRefuses =
       darkUnitResult $"Darklang.SCM.PackageOps.add {darkBranch branchId} []"
     match outcome with
     | Ok() -> failtest "the edit was accepted onto a merged branch"
-    | Error e -> Expect.stringContains e "merged or archived" "and the refusal says why"
+    | Error e ->
+      Expect.stringContains e "merged or archived" "and the refusal says why"
 
     let! still = isMerged branchId
     Expect.isTrue still "the branch stays merged"
@@ -1806,7 +1833,8 @@ let authoringOnAFinishedBranchRefuses =
 /// then main's projection. A direct read of `locations` answers about MAIN from a branch, plausibly and
 /// wrongly, which is the recurring bug class here.
 let liveBindingReadsTheBranchThenMain =
-  testTask "liveBindingFor answers the branch's binding, and main's where the branch is silent" {
+  testTask
+    "liveBindingFor answers the branch's binding, and main's where the branch is silent" {
     let branchId = testBranch "test-branch-live-binding"
     do! cleanupBranch branchId
     do! Branches.createBranch branchId "live-binding-proof" PT.BranchId.Main
@@ -1821,7 +1849,12 @@ let liveBindingReadsTheBranchThenMain =
         | _ -> None)
       |> Option.defaultValue ""
 
-    let hashOrNone (branch : string) (owner : string) (modules : string) (name : string) =
+    let hashOrNone
+      (branch : string)
+      (owner : string)
+      (modules : string)
+      (name : string)
+      =
       $"(match Darklang.SCM.PackageOps.liveBindingFor {branch} "
       + $"(Darklang.LanguageTools.ProgramTypes.PackageLocation {{ owner = \"{owner}\"; "
       + $"modules = [ \"{modules}\" ]; name = \"{name}\" }}) with "
@@ -1846,7 +1879,10 @@ let liveBindingReadsTheBranchThenMain =
       Expect.equal onBranch branchHash "on the branch, the branch's hash"
       Expect.equal onMain "none" "main does not have the branch's name"
       Expect.notEqual mainNameFromMain "none" "a name main has answers from main"
-      Expect.equal mainNameFromBranch mainNameFromMain "and answers the same from the branch"
+      Expect.equal
+        mainNameFromBranch
+        mainNameFromMain
+        "and answers the same from the branch"
     | other -> failtest $"expected four answers, got {other}"
 
     do! cleanupBranch branchId
@@ -1872,7 +1908,8 @@ let aBranchNeverTagsWhatMainRuns =
       |> Sql.executeRowAsync (fun read -> read.int64 "n")
     Expect.equal tagged 0L "nothing main runs was tagged"
     let! draft = Queries.getDraftOps ()
-    let draftIds = draft |> List.map (fun op -> string (LibDB.Inserts.computeOpHash op))
+    let draftIds =
+      draft |> List.map (fun op -> string (LibDB.Inserts.computeOpHash op))
     for id in ids do
       Expect.contains draftIds id "and main's draft still lists its own op"
 
@@ -1887,12 +1924,16 @@ let aBranchNeverTagsWhatMainRuns =
     Expect.equal taggedNow (int64 (List.length fresh)) "and tagged"
 
     do!
-      Sql.query "DELETE FROM locations WHERE op_id IN (SELECT value FROM json_each(@ids))"
-      |> Sql.parameters [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
+      Sql.query
+        "DELETE FROM locations WHERE op_id IN (SELECT value FROM json_each(@ids))"
+      |> Sql.parameters
+        [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
       |> Sql.executeStatementAsync
     do!
-      Sql.query "DELETE FROM package_ops WHERE id IN (SELECT value FROM json_each(@ids))"
-      |> Sql.parameters [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
+      Sql.query
+        "DELETE FROM package_ops WHERE id IN (SELECT value FROM json_each(@ids))"
+      |> Sql.parameters
+        [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
       |> Sql.executeStatementAsync
     LibDB.Caching.invalidateAll ()
     do! cleanupBranch branchId
@@ -1903,7 +1944,8 @@ let aBranchNeverTagsWhatMainRuns =
 /// too: a name without a base can never conflict again, so a grandparent that moves one of the child's
 /// names would be invisible at the parent's merge.
 let retagMovesTheBasesToo =
-  testTask "retagging a child's frontier onto its parent carries the child's name bases" {
+  testTask
+    "retagging a child's frontier onto its parent carries the child's name bases" {
     let parent = testBranch "test-branch-bases-parent"
     let child = testBranch "test-branch-bases-child"
     do! cleanupBranch child
@@ -1928,7 +1970,10 @@ let retagMovesTheBasesToo =
       |> Sql.executeAsync (fun read -> read.string "name")
     let! onParent = baseNames parent
     let! onChild = baseNames child
-    Expect.equal onParent [ "foo" ] "the parent now holds the child's base for the name"
+    Expect.equal
+      onParent
+      [ "foo" ]
+      "the parent now holds the child's base for the name"
     Expect.isEmpty onChild "and the child, finished, holds none"
 
     do! cleanupBranch child
@@ -1940,7 +1985,8 @@ let retagMovesTheBasesToo =
 /// stands for a foreign uuid, an ambiguous prefix and an unknown name alike, which turns
 /// `--branch <a peer's id>` into a new branch named after that id.
 let refLookupSaysWhyItMissed =
-  testTask "lookupRef distinguishes a foreign id, an ambiguous prefix and an unknown name" {
+  testTask
+    "lookupRef distinguishes a foreign id, an ambiguous prefix and an unknown name" {
     let one = PT.BranchId.Id(System.Guid "aaaaaaaa-0000-4000-8000-000000000001")
     let two = PT.BranchId.Id(System.Guid "aaaaaaaa-0000-4000-8000-000000000002")
     do! cleanupBranch one
@@ -1953,12 +1999,21 @@ let refLookupSaysWhyItMissed =
     let! byId = Branches.lookupRef (string one)
     Expect.equal byId (Branches.Found one) "a full id is found"
     let! byPrefix = Branches.lookupRef "aaaaaaaa"
-    Expect.equal byPrefix (Branches.Ambiguous "aaaaaaaa") "a prefix two branches share is ambiguous"
+    Expect.equal
+      byPrefix
+      (Branches.Ambiguous "aaaaaaaa")
+      "a prefix two branches share is ambiguous"
     let foreign = PT.BranchId.Id(System.Guid.NewGuid())
     let! unknown = Branches.lookupRef (string foreign)
-    Expect.equal unknown (Branches.UnknownId foreign) "a full id nobody has is a foreign id, not a name"
+    Expect.equal
+      unknown
+      (Branches.UnknownId foreign)
+      "a full id nobody has is a foreign id, not a name"
     let! noSuch = Branches.lookupRef "no-such-branch-here"
-    Expect.equal noSuch (Branches.NoSuchName "no-such-branch-here") "and only a name nobody has is a name"
+    Expect.equal
+      noSuch
+      (Branches.NoSuchName "no-such-branch-here")
+      "and only a name nobody has is a name"
 
     do! cleanupBranch one
     do! cleanupBranch two
@@ -1973,9 +2028,17 @@ let overlayPairsByHashNotAdjacency =
     let! opsA = parsePackageOps (namedSource "InterleaveA" 42)
     let! opsB = parsePackageOps (namedSource "InterleaveB" 99)
     let adds ops =
-      ops |> List.filter (fun op -> match op with PT.PackageOp.AddFn _ -> true | _ -> false)
+      ops
+      |> List.filter (fun op ->
+        match op with
+        | PT.PackageOp.AddFn _ -> true
+        | _ -> false)
     let sets ops =
-      ops |> List.filter (fun op -> match op with PT.PackageOp.SetName _ -> true | _ -> false)
+      ops
+      |> List.filter (fun op ->
+        match op with
+        | PT.PackageOp.SetName _ -> true
+        | _ -> false)
     // [addA; addB; setA; setB]: adjacency pairs setA with addB.
     let interleaved = adds opsA @ adds opsB @ sets opsA @ sets opsB
     let overlay = PM.withExtraOps pmPT interleaved
@@ -1998,16 +2061,22 @@ let overlayPairsByHashNotAdjacency =
 /// A bundle op this build cannot decode is stored raw and inert beside the ones it can, the way main
 /// sync stores such ops, rather than refusing the whole bundle. The next build that reads it applies it.
 let anUndecodableBundleOpIsKeptNotRefused =
-  testTask "a branch bundle with one unreadable op stores it inert and keeps the rest" {
+  testTask
+    "a branch bundle with one unreadable op stores it inert and keeps the rest" {
     let branchId = testBranch "test-branch-raw-op"
     do! cleanupBranch branchId
     do! Branches.createBranch branchId "raw-proof" PT.BranchId.Main
 
     let! ops = parsePackageOps (namedSource "RawOp" 42)
-    let! stored = Branches.storeDeltaOpsStamped branchId (ops |> List.map (fun op -> (op, "2026-01-01T00:00:00.000Z")))
+    let! stored =
+      Branches.storeDeltaOpsStamped
+        branchId
+        (ops |> List.map (fun op -> (op, "2026-01-01T00:00:00.000Z")))
     let alien = System.Guid.NewGuid()
     let! storedRaw =
-      Branches.storeDeltaBlobsStamped branchId [ (alien, [| 0xFFuy; 0x39uy; 0x07uy |], "2026-01-01T00:00:01.000Z") ]
+      Branches.storeDeltaBlobsStamped
+        branchId
+        [ (alien, [| 0xFFuy; 0x39uy; 0x07uy |], "2026-01-01T00:00:01.000Z") ]
     Expect.equal storedRaw 1L "the raw op is stored"
 
     let! (rows, tags) =
@@ -2015,12 +2084,16 @@ let anUndecodableBundleOpIsKeptNotRefused =
         "SELECT
            (SELECT count(*) FROM package_ops WHERE id = @a AND effective = 0) AS r,
            (SELECT count(*) FROM op_branches WHERE op_id = @a AND branch_id = @b) AS t"
-      |> Sql.parameters [ "a", Sql.string (string alien); "b", Sql.string (string branchId) ]
+      |> Sql.parameters
+        [ "a", Sql.string (string alien); "b", Sql.string (string branchId) ]
       |> Sql.executeRowAsync (fun read -> (read.int64 "r", read.int64 "t"))
     Expect.equal (rows, tags) (1L, 1L) "inert, and on the branch"
 
     let! loaded = Branches.loadDeltaOps branchId
-    Expect.equal (int64 (List.length loaded)) stored "the readable ops load; the raw one is skipped, not fatal"
+    Expect.equal
+      (int64 (List.length loaded))
+      stored
+      "the readable ops load; the raw one is skipped, not fatal"
 
     do! cleanupBranch branchId
   }
@@ -2033,7 +2106,8 @@ let branchEventForUnknownBranchIsIgnored =
     // A real id that no `branches` row carries. Since the op field became a `BranchId`, "not an id at
     // all" is no longer representable, so unknown-but-well-formed is the only case left to cover.
     let unknown = testBranch "test-branch-that-does-not-exist"
-    let op = PT.PackageOp.BranchEvent(unknown, PT.Merged [], "2026-01-01T00:00:00.000Z")
+    let op =
+      PT.PackageOp.BranchEvent(unknown, PT.Merged [], "2026-01-01T00:00:00.000Z")
 
     let! _ = LibDB.Inserts.insertAndApplyOps [ op ]
 
@@ -2070,7 +2144,11 @@ let foldDoesNotStrandOpsItMadeEffective =
     // The event names what the merge moved: with an empty list it would, correctly, fold nothing.
     let mergedIds = ops |> List.map LibDB.Inserts.computeOpHash
     let event =
-      PT.PackageOp.BranchEvent(branchId, PT.Merged mergedIds, "2026-01-01T00:00:00.000Z")
+      PT.PackageOp.BranchEvent(
+        branchId,
+        PT.Merged mergedIds,
+        "2026-01-01T00:00:00.000Z"
+      )
     let eventId = LibDB.Inserts.computeOpHash event
     let eventBlob = BS.PT.PackageOp.serialize eventId event
     do!
@@ -2112,18 +2190,21 @@ let foldDoesNotStrandOpsItMadeEffective =
 /// Checked by reading the source, because the failure is invisible at run time on a single-branch
 /// store. `matter.dark` is exempt: a relay holds no branches, so main's projection IS its answer.
 let noDirectLocationsReadsOutsideTheSilos =
-  testTask "only the SCM silos query `locations` from Dark, and each such read says it is main-scoped" {
+  testTask
+    "only the SCM silos query `locations` from Dark, and each such read says it is main-scoped" {
     let root = System.IO.Path.Combine("..", "packages", "darklang")
 
     // `matter.dark` is the relay: it serves the public package browser and its counts, which are main's
     // by definition -- the relay has no branch to be standing on, so a main-scoped read is the correct
     // answer there rather than a drifted one.
-    let isRelay (path : string) : bool = path.Replace("\\", "/").EndsWith "matter.dark"
+    let isRelay (path : string) : bool =
+      path.Replace("\\", "/").EndsWith "matter.dark"
     let isSilo (path : string) : bool = path.Replace("\\", "/").Contains "/scm/"
 
     let isRead (line : string) : bool =
       let t = line.Trim()
-      not (t.StartsWith "//") && (t.Contains "FROM locations" || t.Contains "JOIN locations")
+      not (t.StartsWith "//")
+      && (t.Contains "FROM locations" || t.Contains "JOIN locations")
 
     // Inside the silos the rule is per READ, not per file. Every read was classified: the ones that
     // are correctly main-scoped say so in a comment between the enclosing top-level `let` and the read,
@@ -2149,13 +2230,18 @@ let noDirectLocationsReadsOutsideTheSilos =
               yield $"{shown}:{i + 1}" ]
 
     let files =
-      System.IO.Directory.GetFiles(root, "*.dark", System.IO.SearchOption.AllDirectories)
+      System.IO.Directory.GetFiles(
+        root,
+        "*.dark",
+        System.IO.SearchOption.AllDirectories
+      )
       |> Array.filter (isRelay >> not)
 
     let outside =
       files
       |> Array.filter (isSilo >> not)
-      |> Array.filter (fun path -> System.IO.File.ReadAllLines path |> Array.exists isRead)
+      |> Array.filter (fun path ->
+        System.IO.File.ReadAllLines path |> Array.exists isRead)
       |> Array.map (fun p -> p.Replace("\\", "/"))
       |> List.ofArray
 
@@ -2165,7 +2251,8 @@ let noDirectLocationsReadsOutsideTheSilos =
        it is main-only, so it answers about main while you stand on a branch. \
        Use `SCM.PackageOps.liveBindingFor` or the overlay helpers."
 
-    let unmarked = files |> Array.filter isSilo |> Array.toList |> List.collect unmarkedInSilo
+    let unmarked =
+      files |> Array.filter isSilo |> Array.toList |> List.collect unmarkedInSilo
 
     Expect.isEmpty
       unmarked

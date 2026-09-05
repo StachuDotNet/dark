@@ -224,7 +224,9 @@ let opIdIsItsContentHash =
     let mismatched =
       rows
       |> List.choose (fun (id, blob) ->
-        match LibSerialization.Binary.Serialization.PT.PackageOp.tryDeserialize id blob with
+        match
+          LibSerialization.Binary.Serialization.PT.PackageOp.tryDeserialize id blob
+        with
         | None -> None
         | Some op ->
           let (LibExecution.ProgramTypes.Hash h) =

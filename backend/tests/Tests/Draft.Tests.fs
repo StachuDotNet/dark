@@ -496,7 +496,10 @@ let aFailedRewriteLeavesTheDraftIntact =
     Expect.isError outcome "the poisoned rewrite raised"
 
     let! after = liveHash m "a"
-    Expect.equal after before "the binding the delete would have dropped is still there"
+    Expect.equal
+      after
+      before
+      "the binding the delete would have dropped is still there"
     let! draftAfter = draftOpCount ()
     Expect.equal draftAfter draftBefore "and so is every draft op"
 

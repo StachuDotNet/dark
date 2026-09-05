@@ -781,9 +781,19 @@ module ProgramTypes =
       )
       Undeprecate(Reference.PackageValue hashPT)
 
-      Decision("d1", loc, "kept mine", DecisionKind.Override(Reference.PackageFn hashPT))
+      Decision(
+        "d1",
+        loc,
+        "kept mine",
+        DecisionKind.Override(Reference.PackageFn hashPT)
+      )
       Decision("d2", loc, "", DecisionKind.Ack "finding-7")
-      Decision("d3", otherLoc, "pinned", DecisionKind.Propagation PropagationPolicy.Pin)
+      Decision(
+        "d3",
+        otherLoc,
+        "pinned",
+        DecisionKind.Propagation PropagationPolicy.Pin
+      )
       Decision("d4", otherLoc, "", DecisionKind.Propagation PropagationPolicy.Follow)
       Decision("d5", otherLoc, "", DecisionKind.Propagation PropagationPolicy.Unset)
 

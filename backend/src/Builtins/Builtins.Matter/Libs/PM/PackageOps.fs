@@ -186,7 +186,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                   if not (List.isEmpty contentOps) then
                     do! LibDB.PackageOpPlayback.applyOps contentOps
                     let builtins : Builtins =
-                      { values = exeState.values.builtIn; fns = exeState.fns.builtIn }
+                      { values = exeState.values.builtIn
+                        fns = exeState.fns.builtIn }
                     let! _ =
                       LibDB.Seed.evaluateAllValues builtins LibDB.PackageManager.rt
                     ()
@@ -593,9 +594,12 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                     | _ -> Error s
                   | other -> Error(string other))
 
-              match parsed |> List.tryPick (function
-                                            | Error s -> Some s
-                                            | Ok _ -> None) with
+              match
+                parsed
+                |> List.tryPick (function
+                  | Error s -> Some s
+                  | Ok _ -> None)
+              with
               | Some bad ->
                 return
                   Dval.resultError
@@ -604,13 +608,15 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                     (DString $"not an op id: {bad}; nothing was changed")
               | None ->
 
-              let kept =
-                parsed |> List.choose (function
-                                       | Ok g -> Some g
-                                       | Error _ -> None) |> Set.ofList
+                let kept =
+                  parsed
+                  |> List.choose (function
+                    | Ok g -> Some g
+                    | Error _ -> None)
+                  |> Set.ofList
 
-              do! LibDB.Draft.rebuild kept
-              return Dval.resultOk KTUnit KTString DUnit
+                do! LibDB.Draft.rebuild kept
+                return Dval.resultOk KTUnit KTString DUnit
             with e ->
               return Dval.resultError KTUnit KTString (DString e.Message)
           }
@@ -725,7 +731,9 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             | "type" -> 1uy
             | "value" -> 2uy
             | other ->
-              Exception.raiseInternal "scmContentOpId: unknown kind" [ "kind", other ]
+              Exception.raiseInternal
+                "scmContentOpId: unknown kind"
+                [ "kind", other ]
           let (PT.Hash h) =
             LibSerialization.Hashing.Hashing.contentOpHash tag (PT.Hash hash)
           Ply(DUuid(System.Guid(System.Convert.FromHexString(h)[0..15])))
@@ -754,7 +762,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 match d with
                 | DUuid g -> Some g
                 | _ -> None)
-            let! eventId = recordBranchEvent (PT.BranchId.Id branchIdGuid) (PT.Merged ids)
+            let! eventId =
+              recordBranchEvent (PT.BranchId.Id branchIdGuid) (PT.Merged ids)
             return DUuid eventId
           }
         | _ -> incorrectArgs ())
@@ -887,7 +896,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               if List.length parsed <> List.length records then
                 return
                   resultError (
-                    Dval.string "(a record was not an (id, blobHex, originTs) triple). Nothing was imported."
+                    Dval.string
+                      "(a record was not an (id, blobHex, originTs) triple). Nothing was imported."
                   )
               else
 

@@ -115,7 +115,8 @@ let steps : List<Step> =
     // The branch twin of `locations.source`; see schema.sql. Without it a branch records no provenance.
     { name = "20260904_000001_op_branches_source"
       run =
-        fun () -> addColumnIfMissing "op_branches" "source" "TEXT NOT NULL DEFAULT 'op'" }
+        fun () ->
+          addColumnIfMissing "op_branches" "source" "TEXT NOT NULL DEFAULT 'op'" }
 
     // A store made under the previous SCM has `branch_ops`, its separate op log for branch structure.
     // Nothing reads it now, and the branches recorded there do not carry over: say so ONCE, at the

@@ -528,7 +528,8 @@ let localEditsBeatAFastPeer =
 /// nothing having folded it and nothing ever re-reading it. Marking by id leaves it for the next pass.
 /// Deterministic: the "concurrent" write is simply placed between the two halves.
 let aWriteBetweenReadAndMarkIsNotLost =
-  testTask "an op committed between the fold's read and its mark stays pending, then folds" {
+  testTask
+    "an op committed between the fold's read and its mark stays pending, then folds" {
     let a = instance "a"
 
     try
@@ -550,7 +551,10 @@ let aWriteBetweenReadAndMarkIsNotLost =
         Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
         |> Sql.parameters [ "id", Sql.string lateId ]
         |> Sql.executeRowAsync (fun read -> read.int64 "a")
-      Expect.equal lateApplied 0L "the late op is still pending, since nothing folded it"
+      Expect.equal
+        lateApplied
+        0L
+        "the late op is still pending, since nothing folded it"
       let! lateBound = boundHash "late"
       Expect.isNone lateBound "and it is not live yet"
 
@@ -567,7 +571,8 @@ let aWriteBetweenReadAndMarkIsNotLost =
 /// (its own unpushed edits); the event must not take those into main, and the branch must stay live here
 /// holding exactly them. Before the event carried ids, it flipped everything tagged to the branch.
 let aMergeEventLeavesUnpushedWorkOnTheBranch =
-  testTask "a peer's merge event folds only what the merger moved, and the branch keeps the rest" {
+  testTask
+    "a peer's merge event folds only what the merger moved, and the branch keeps the rest" {
     let b = instance "b"
     let x = PT.BranchId.Id(System.Guid.NewGuid())
 
@@ -579,7 +584,8 @@ let aMergeEventLeavesUnpushedWorkOnTheBranch =
       let! _ = Branches.storeDeltaOps x (shared @ [ extra ])
 
       let sharedIds = shared |> List.map Inserts.computeOpHash
-      let event = PT.PackageOp.BranchEvent(x, PT.Merged sharedIds, "2026-01-02T00:00:00.000Z")
+      let event =
+        PT.PackageOp.BranchEvent(x, PT.Merged sharedIds, "2026-01-02T00:00:00.000Z")
       let! _ = receive [ wireOp event "2026-01-02T00:00:00.000Z" ]
 
       let! s1 = boundHash "shared1"
@@ -595,7 +601,10 @@ let aMergeEventLeavesUnpushedWorkOnTheBranch =
            FROM package_ops p WHERE p.id = @id"
         |> Sql.parameters [ "id", Sql.string extraId; "b", Sql.string (string x) ]
         |> Sql.executeRowAsync (fun read -> (read.int64 "e", read.int64 "t"))
-      Expect.equal (effective, tagged) (0L, 1L) "it is still inert and still on the branch"
+      Expect.equal
+        (effective, tagged)
+        (0L, 1L)
+        "it is still inert and still on the branch"
 
       let! merged =
         Sql.query "SELECT merged_at IS NOT NULL AS m FROM branches WHERE id = @b"
@@ -611,7 +620,8 @@ let aMergeEventLeavesUnpushedWorkOnTheBranch =
 /// It used to flip into main regardless of the parent: a child branch's work merged on one machine landed
 /// in the other machine's main, which nobody had merged there.
 let aMergeEventHonoursTheParent =
-  testTask "a peer's merge of a branch off a branch retags onto the parent, not into main" {
+  testTask
+    "a peer's merge of a branch off a branch retags onto the parent, not into main" {
     let b = instance "b"
     let pA = PT.BranchId.Id(System.Guid.NewGuid())
     let pB = PT.BranchId.Id(System.Guid.NewGuid())
@@ -630,7 +640,11 @@ let aMergeEventHonoursTheParent =
         |> Sql.executeStatementAsync
 
       let event =
-        PT.PackageOp.BranchEvent(pB, PT.Merged [ Inserts.computeOpHash op ], "2026-01-02T00:00:00.000Z")
+        PT.PackageOp.BranchEvent(
+          pB,
+          PT.Merged [ Inserts.computeOpHash op ],
+          "2026-01-02T00:00:00.000Z"
+        )
       let! _ = receive [ wireOp event "2026-01-02T00:00:00.000Z" ]
 
       let! onMain = boundHash "chain-name"
@@ -670,13 +684,21 @@ let aMergeEventCommitsWhatItFlips =
       let op = setName "stamped-name" "s1"
       let! _ = Branches.storeDeltaOps x [ op ]
       let event =
-        PT.PackageOp.BranchEvent(x, PT.Merged [ Inserts.computeOpHash op ], "2026-01-02T00:00:00.000Z")
+        PT.PackageOp.BranchEvent(
+          x,
+          PT.Merged [ Inserts.computeOpHash op ],
+          "2026-01-02T00:00:00.000Z"
+        )
       // The way a pull delivers it: committed on arrival, then folded.
-      let! _ = Inserts.importOpsBulk "sync-commit-1" [ wireOp event "2026-01-02T00:00:00.000Z" ]
+      let! _ =
+        Inserts.importOpsBulk
+          "sync-commit-1"
+          [ wireOp event "2026-01-02T00:00:00.000Z" ]
       let! _ = Seed.applyUnappliedOps ()
 
       let! commit =
-        Sql.query "SELECT COALESCE(commit_hash, '') AS c FROM package_ops WHERE id = @id"
+        Sql.query
+          "SELECT COALESCE(commit_hash, '') AS c FROM package_ops WHERE id = @id"
         |> Sql.parameters [ "id", Sql.string (string (Inserts.computeOpHash op)) ]
         |> Sql.executeRowAsync (fun read -> read.string "c")
       Expect.equal commit "sync-commit-1" "the flipped op carries the event's commit"
@@ -689,7 +711,8 @@ let private unbind (name : string) (previous : string) : PT.PackageOp =
 
 /// An `Unbind` takes a name out and leaves its content alone, and a later binding brings the name back.
 let anUnbindRemovesTheNameAndNothingElse =
-  testTask "an unbind removes the name; the content stays, and a later bind revives the name" {
+  testTask
+    "an unbind removes the name; the content stays, and a later bind revives the name" {
     let a = instance "a"
 
     try
@@ -713,7 +736,10 @@ let anUnbindRemovesTheNameAndNothingElse =
       let! _ = receive [ wireOp (setName "gone" "g2") "2026-01-03T00:00:00.000Z" ]
       let! revived = boundHash "gone"
       let (PT.Hash g2) = hashOf "g2"
-      Expect.equal revived (Some g2) "a binding authored after the unbind takes the name again"
+      Expect.equal
+        revived
+        (Some g2)
+        "a binding authored after the unbind takes the name again"
     finally
       teardown [ a ]
   }
@@ -748,14 +774,18 @@ let unbindConvergesWhateverOrderOpsArrive =
       let! _ = receive [ removed ]
       let! onB2 = boundHash "order"
       let (PT.Hash o2) = hashOf "o2"
-      Expect.equal onB2 (Some o2) "the later bind holds against a re-received older unbind"
+      Expect.equal
+        onB2
+        (Some o2)
+        "the later bind holds against a re-received older unbind"
     finally
       teardown [ a; b ]
   }
 
 /// A branch's unbind is inert on main until the branch merges, and then it is main's.
 let aMergedUnbindTakesTheNameOffMain =
-  testTask "an unbind authored on a branch removes the name from main when the branch merges" {
+  testTask
+    "an unbind authored on a branch removes the name from main when the branch merges" {
     let b = instance "b"
     let x = PT.BranchId.Id(System.Guid.NewGuid())
 
@@ -766,11 +796,20 @@ let aMergedUnbindTakesTheNameOffMain =
       let op = unbind "landed" "l1"
       let! _ = Branches.storeDeltaOps x [ op ]
       let! still = boundHash "landed"
-      Expect.isSome still "the branch's unbind changes nothing on main while it is a branch op"
+      Expect.isSome
+        still
+        "the branch's unbind changes nothing on main while it is a branch op"
 
       let event =
-        PT.PackageOp.BranchEvent(x, PT.Merged [ Inserts.computeOpHash op ], "2026-01-02T00:00:00.000Z")
-      let! _ = Inserts.importOpsBulk "sync-commit-2" [ wireOp event "2026-01-02T00:00:00.000Z" ]
+        PT.PackageOp.BranchEvent(
+          x,
+          PT.Merged [ Inserts.computeOpHash op ],
+          "2026-01-02T00:00:00.000Z"
+        )
+      let! _ =
+        Inserts.importOpsBulk
+          "sync-commit-2"
+          [ wireOp event "2026-01-02T00:00:00.000Z" ]
       let! _ = Seed.applyUnappliedOps ()
       let! after = boundHash "landed"
       Expect.isNone after "merged, the name is gone from main"
@@ -784,7 +823,8 @@ let aMergedUnbindTakesTheNameOffMain =
 /// draft and a rewrite folded them into the code this store runs, which is exactly what storing them
 /// inert is for; and `discard` deleted them outright.
 let hostedOpsAreNotThisStoresDraft =
-  testTask "ops a client pushed here are not this store's draft, and a discard does not eat them" {
+  testTask
+    "ops a client pushed here are not this store's draft, and a discard does not eat them" {
     let a = instance "a"
 
     try
@@ -820,7 +860,10 @@ let hostedOpsAreNotThisStoresDraft =
         Sql.query "SELECT effective AS e FROM package_ops WHERE id = @id"
         |> Sql.parameters [ "id", Sql.string (string hostedId) ]
         |> Sql.executeRowAsync (fun read -> read.int64 "e")
-      Expect.equal effective 0L "still inert: a relay serves what it is handed, it does not run it"
+      Expect.equal
+        effective
+        0L
+        "still inert: a relay serves what it is handed, it does not run it"
     finally
       teardown [ a ]
   }
@@ -847,17 +890,20 @@ let private darkOn (code : string) : Task<string> =
 /// whatever a test had activated, plausibly and wrongly, so this asserts the swap itself before any
 /// test leans on it.
 let private theDarkDetectorSeesTheStoreItIsOn =
-  testTask "Dark reads the instance it was pointed at, not the store the process started on" {
+  testTask
+    "Dark reads the instance it was pointed at, not the store the process started on" {
     let a = instance "a"
     let b = instance "b"
 
     try
       // Two stores, one name, two different bodies, B's authored later.
       activate a
-      let! _ = receive [ wireOp (setName "seen" "from-a") "2026-01-01T00:00:00.000Z" ]
+      let! _ =
+        receive [ wireOp (setName "seen" "from-a") "2026-01-01T00:00:00.000Z" ]
 
       activate b
-      let! _ = receive [ wireOp (setName "seen" "from-b") "2026-01-02T00:00:00.000Z" ]
+      let! _ =
+        receive [ wireOp (setName "seen" "from-b") "2026-01-02T00:00:00.000Z" ]
 
       // A branch-aware read, in Dark, answers about the store it is on. Deliberately NOT asserted via
       // `identity ()`: a chosen identity survives being copied, by design, so two copies of a store
@@ -887,7 +933,8 @@ let private theDarkDetectorSeesTheStoreItIsOn =
 /// the merger's main would hold the work, this store would not, and `dark branches` would go on
 /// showing the branch as live with nothing saying otherwise on either side.
 let private aMergeEventWaitsForItsBranch =
-  testTask "a merge event that arrives before its branch applies when the branch lands" {
+  testTask
+    "a merge event that arrives before its branch applies when the branch lands" {
     let b = instance "b"
     let x = PT.BranchId.Id(System.Guid.NewGuid())
 
@@ -911,7 +958,10 @@ let private aMergeEventWaitsForItsBranch =
         |> Sql.executeRowAsync (fun read -> read.int64 "a")
       // 2 is DEFERRED: folded, did nothing, waiting. Not 0, which would make the fold loop chase it
       // forever and raise "did not settle".
-      Expect.equal stillPending 2L "and the event is deferred, waiting for its branch"
+      Expect.equal
+        stillPending
+        2L
+        "and the event is deferred, waiting for its branch"
 
       // Now the bundle. Storing it, re-arming and folding is what `scmImportBranchOps` does.
       let! _ = Branches.storeDeltaOps x [ op ]
@@ -953,7 +1003,10 @@ let private anEventForAnUnknownBranchDoesNotWait =
         Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
         |> Sql.parameters [ "id", Sql.string (string (Inserts.computeOpHash event)) ]
         |> Sql.executeRowAsync (fun read -> read.int64 "a")
-      Expect.equal applied 1L "a colleague's private branch is none of this store's business"
+      Expect.equal
+        applied
+        1L
+        "a colleague's private branch is none of this store's business"
     finally
       teardown [ b ]
   }

@@ -212,7 +212,8 @@ let unreadableMainOpIds () : Task<Set<System.Guid>> =
       |> Sql.executeAsync (fun read ->
         let opId = read.uuid "id"
         let readable =
-          (BS.PT.PackageOp.tryDeserialize opId (read.bytes "op_blob")) |> Option.isSome
+          (BS.PT.PackageOp.tryDeserialize opId (read.bytes "op_blob"))
+          |> Option.isSome
         (opId, readable))
     return rows |> List.filter (snd >> not) |> List.map fst |> Set.ofList
   }
@@ -254,25 +255,25 @@ let rewriteOpsAtomically
         let opId = computeOpHash op
         let blob = BS.PT.PackageOp.serialize opId op
         let! n =
-          PreparedBatch.execRows
-            ctx
-            "INSERT INTO package_ops (id, op_blob, applied, origin_ts, commit_hash)
+          PreparedBatch.execRows ctx "INSERT INTO package_ops (id, op_blob, applied, origin_ts, commit_hash)
              VALUES ($id, $blob, 1, $ts, $commit)
              ON CONFLICT(id) DO UPDATE
                SET effective = 1, applied = 1,
                    origin_ts = excluded.origin_ts, commit_hash = excluded.commit_hash
-               WHERE package_ops.effective = 0"
-            (fun cmd ->
-              PreparedBatch.pUuid cmd "$id" opId
-              PreparedBatch.p cmd "$blob" blob
-              PreparedBatch.p cmd "$ts" (tsFor opId)
-              PreparedBatch.pOpt cmd "$commit" (commitFor opId))
+               WHERE package_ops.effective = 0" (fun cmd ->
+            PreparedBatch.pUuid cmd "$id" opId
+            PreparedBatch.p cmd "$blob" blob
+            PreparedBatch.p cmd "$ts" (tsFor opId)
+            PreparedBatch.pOpt cmd "$commit" (commitFor opId))
         do!
-          PreparedBatch.exec ctx "DELETE FROM op_branches WHERE op_id = $id" (fun cmd ->
-            PreparedBatch.pUuid cmd "$id" opId)
+          PreparedBatch.exec
+            ctx
+            "DELETE FROM op_branches WHERE op_id = $id"
+            (fun cmd -> PreparedBatch.pUuid cmd "$id" opId)
         if n > 0 then inserted.Add op
 
-      do! PackageOpPlayback.applyOpsOnConnectionFrom conn source (List.ofSeq inserted)
+      do!
+        PackageOpPlayback.applyOpsOnConnectionFrom conn source (List.ofSeq inserted)
       tx.Commit()
       Caching.invalidateAll ()
       return int64 inserted.Count

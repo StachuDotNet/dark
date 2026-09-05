@@ -89,7 +89,8 @@ let private locationsByHashFn
               uply {
                 match! everNamedOnMain hash with
                 | [] ->
-                  return LibDB.PackageManager.branchLocationsEverNamed branch kind hash
+                  return
+                    LibDB.PackageManager.branchLocationsEverNamed branch kind hash
                 | everNamed -> return everNamed
               }
             else

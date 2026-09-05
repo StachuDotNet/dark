@@ -649,8 +649,7 @@ let private getPropagationPolicy
          read.string "modules",
          read.string "name"))
 
-    let rank =
-      chain |> List.mapi (fun i b -> (string b, i)) |> Map.ofList
+    let rank = chain |> List.mapi (fun i b -> (string b, i)) |> Map.ofList
 
     let nearestPerKey : List<(string * string * string) * string> =
       rows

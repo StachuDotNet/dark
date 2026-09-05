@@ -198,7 +198,8 @@ let seedExportStripsTheBuildersDraft =
   test "Seed.export strips uncommitted main ops" {
     let source = seedSource ()
     Expect.isTrue
-      (source.Contains "DELETE FROM package_ops
+      (source.Contains
+        "DELETE FROM package_ops
       WHERE commit_hash IS NULL")
       "`Seed.export` must strip main's uncommitted ops: a seed is committed history"
   }
