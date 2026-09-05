@@ -3,12 +3,11 @@ module Darklang.SCM.PackageOps
 // Authoring is live-on-write: `add` appends ops that take effect the moment they fold. `add` and
 // `getRecent` are the substrate everything else here is built on.
 //
-// This file is one of five that make up this module. It was a single 2,000-line file, which is
-// too big to review and too big to find anything in; the others are `packageOpsBranch.dark`,
-// `packageOpsSync.dark`, `packageOpsDraft.dark` and `packageOpsCommits.dark`. Dark lets several
-// files contribute to one module and see each other's definitions unqualified, so this is a
-// physical split with no call-site churn and no new silo: `package_ops` still has exactly one
-// owner, spread over five files.
+// This module spans five files: this one, `packageOpsBranch.dark`, `packageOpsSync.dark`,
+// `packageOpsDraft.dark` and `packageOpsCommits.dark`. Together they would be a 2,000-line file,
+// too big to review and too big to find anything in. Dark lets several files contribute to one
+// module and see each other's definitions unqualified, so the split is physical only: no new silo,
+// and `package_ops` still has exactly one owner.
 
 
 /// Add a list of package ops to the database (immediately live on the given branch).
@@ -154,7 +153,7 @@ let bindingFromOp
   (op: LanguageTools.ProgramTypes.PackageOp)
   (ts: String)
   : Stdlib.Option.Option<(String * Conflicts.Binding)> =
-  // Split because only a SetName carries a predecessor. A Resolve is a human overriding a binding, and
+  // Split because only a SetName carries a predecessor. An Override is a human overriding a binding, and
   // "what it replaced" is the version the fold picked, which is not lineage in the sense this asks about.
   let previous =
     match op with
@@ -397,30 +396,17 @@ type BranchRefResult =
 let stampDraftFor (branchId: Uuid) (commitHash: String) : Int64 =
   let n = draftOpCountFor branchId
 
-  // @p0 is the commit; the branch form's own @p0 shifts to @p1, so build its params in that order.
-  let where =
-    if SCM.Ids.isMain branchId then
-      "p.commit_hash IS NULL AND p.effective = 1
-       AND p.id NOT IN (SELECT op_id FROM op_branches)"
-    else
-      "p.commit_hash IS NULL
-       AND p.id IN (SELECT op_id FROM op_branches WHERE branch_id = @p1)"
-
-  // `Stdlib.Uuid.toString`, not the Uuid: this is a `List<String>` of SQL parameters, and a raw Uuid in it
-  // is a runtime type error rather than a bad query. Only the branch arm can get this wrong, since main's
-  // has no id to pass.
-  let params =
-    if SCM.Ids.isMain branchId then
-      [ commitHash ]
-    else
-      [ commitHash, Stdlib.Uuid.toString branchId ]
+  // `draftWhere` binds @p0 when there is a branch; the commit hash takes the next slot, as in
+  // `stampDraftOpsFor`, so the predicate is the one definition of "the draft" and not a copy of it.
+  let params = draftParams branchId
+  let hashSlot = $"@p{Stdlib.Int.toString (Stdlib.List.length params)}"
 
   let _ =
     Stdlib.Sqlite.mustExec
       (localDb ())
-      ("UPDATE package_ops SET commit_hash = @p0 WHERE id IN
-          (SELECT p.id FROM package_ops p WHERE " ++ where ++ ")")
-      params
+      ("UPDATE package_ops SET commit_hash = " ++ hashSlot ++ " WHERE id IN
+          (SELECT p.id FROM package_ops p WHERE " ++ draftWhere branchId ++ ")")
+      (Stdlib.List.append params [ commitHash ])
 
   n
 
@@ -570,9 +556,9 @@ let discardMainDraftName
 
 /// Drop one name's uncommitted bindings from the current scope's draft.
 ///
-/// The operation `discard` (all-or-nothing) and `undo` (step back a version) between them could not
-/// express: a newly-authored item has no previous version, so `undo` refuses, and one typo in a
-/// reference blocked `commit` until the entire draft went.
+/// What neither `discard` (all-or-nothing) nor `undo` (step back a version) can express: a newly-authored
+/// item has no previous version, so `undo` refuses it, and without this one typo in a reference blocks
+/// `commit` until the entire draft goes.
 ///
 /// Only the NAME's bindings go. That reverts the name to its last committed binding, or to not
 /// existing at all if it never had one.
@@ -881,10 +867,13 @@ let draftLeftBehind (changed: List<Conflicts.Binding>) : List<Repoint> =
       | None -> false))
 
 
-/// Authors a `Resolve` op, which is why that op exists. Ops are content-addressed, so re-authoring the
-/// losing SetName reproduces the op already in the log: it INSERT-OR-IGNOREs and folds nothing, and there
-/// is no way to say "the same binding, but now I mean it" as a plain op. Carrying the conflict id makes it
-/// distinct and makes re-resolving idempotent.
+/// Authors a `Decision` op with an `Override`, which is why that op exists. Ops are content-addressed, so
+/// re-authoring the losing SetName reproduces the op already in the log: it INSERT-OR-IGNOREs and folds
+/// nothing, and there is no way to say "the same binding, but now I mean it" as a plain op. Carrying the
+/// conflict id makes it distinct and makes re-resolving idempotent.
+///
+/// Authoring alone. `settleConflict` is the whole act (author, close the record, cascade); a caller that
+/// wants a settled conflict goes there.
 ///
 /// Being an op is what makes the choice TRAVEL: a peer folding it lands on the same binding rather than
 /// re-deriving its own auto-pick.
@@ -1037,6 +1026,35 @@ let discardDraftFor (branchId: Uuid) : Int =
     Stdlib.Int.fromInt64 (discardBranchDraft branchId)
 
 
+/// Commit, on main, whichever of <param opIds> are still in main's draft, under <param message>. Nothing
+/// happens when none are. For the ops a branch verb lands in main by itself -- a merge's frontier and
+/// its event, an archive's event -- which nobody typed and so nobody will think to commit.
+///
+/// Exactly these ids, never "whatever is uncommitted": that would sweep a half-written fn into a commit
+/// about a branch.
+let commitMainOps (message: String) (fallbackAuthor: String) (opIds: List<String>) : Unit =
+  let uncommitted = draftOpIdsFor SCM.Ids.mainBranchId
+  let toStamp = opIds |> Stdlib.List.filter (fun id -> Stdlib.List.``member`` uncommitted id)
+
+  if Stdlib.List.isEmpty toStamp then
+    ()
+  else
+    let author =
+      match identity () with
+      | "" -> fallbackAuthor
+      | id -> id
+
+    let hash =
+      Commits.create
+        message
+        author
+        (Stdlib.List.sort toStamp)
+        (parentCommitFor SCM.Ids.mainBranchId)
+
+    let _ = stampDraftOpsFor SCM.Ids.mainBranchId hash toStamp
+    ()
+
+
 /// What a merge did: how many ops moved, and what it auto-resolved on the way.
 type MergeOutcome =
   { merged: Int
@@ -1087,7 +1105,7 @@ let mergeBranch (branchId: Uuid) : Stdlib.Result.Result<MergeOutcome, String> =
     // A merge into main COMMITS what it landed: the branch's ops that were not committed here (a pulled
     // branch's ops arrive uncommitted, since a bundle carries no commits) and the event itself. Left in
     // main's draft, they read as "1 item changed" that nobody edited, and the next unrelated commit
-    // swept them up under its message. A merge into a branch retags; the parent's own merge commits.
+    // sweeps them up under its message. A merge into a branch retags; the parent's own merge commits.
     let _ =
       if SCM.Ids.isMain parent then
         let landed =
@@ -1095,27 +1113,13 @@ let mergeBranch (branchId: Uuid) : Stdlib.Result.Result<MergeOutcome, String> =
             (moved |> Stdlib.List.map (fun id -> Stdlib.Uuid.toString id))
             [ Stdlib.Uuid.toString eventId ]
 
-        let message = $"merged branch \"{branchName branchId}\""
-        let author =
-          match identity () with
-          | "" -> "merge"
-          | id -> id
-        let uncommitted = draftOpIdsFor SCM.Ids.mainBranchId
-        let toStamp = landed |> Stdlib.List.filter (fun id -> Stdlib.List.``member`` uncommitted id)
-
-        if Stdlib.List.isEmpty toStamp then
-          ()
-        else
-          let hash =
-            Commits.create message author (Stdlib.List.sort toStamp) (parentCommitFor SCM.Ids.mainBranchId)
-          let _ = stampDraftOpsFor SCM.Ids.mainBranchId hash toStamp
-          ()
+        commitMainOps $"merged branch \"{branchName branchId}\"" "merge" landed
       else
         ()
 
     // Filed against the PARENT, not against `branchId`: the merge folded into the parent's projection and
     // the branch it came from is finished. `parent_id` and a branch id spell main the same way, so the id
-    // goes through as-is; translating it here is what made main's conflict list never see them.
+    // goes through as-is; translated, main's conflict list would never see them.
     let _ = Conflicts.record parent conflicts
 
     (MergeOutcome { merged = n; conflicts = conflicts })
@@ -1258,31 +1262,13 @@ let archiveBranch (branchId: Uuid) : Stdlib.Result.Result<String, String> =
 
     // And COMMIT that event, for the same reason a merge commits what it lands. A `BranchEvent` binds
     // no name, so `status` (which counts bindings) reads clean while `commit` (which counts ops) finds
-    // one: the archive sat in main's draft until some unrelated commit swept it up under a message
-    // about something else, and it fails the seed guard, which is what kept catching it.
+    // one; left in main's draft it sits there until some unrelated commit sweeps it up under a message
+    // about something else.
     //
     // Exactly this event, by id. Committing "whatever is uncommitted" would sweep up a half-written fn
     // that has nothing to do with archiving a branch.
     let _ =
-      let id = Stdlib.Uuid.toString eventId
-
-      if Stdlib.List.``member`` (draftOpIdsFor SCM.Ids.mainBranchId) id then
-        let author =
-          match identity () with
-          | "" -> "archive"
-          | a -> a
-
-        let hash =
-          Commits.create
-            $"archived branch \"{handle}\""
-            author
-            [ id ]
-            (parentCommitFor SCM.Ids.mainBranchId)
-
-        let _ = stampDraftOpsFor SCM.Ids.mainBranchId hash [ id ]
-        ()
-      else
-        ()
+      commitMainOps $"archived branch \"{handle}\"" "archive" [ Stdlib.Uuid.toString eventId ]
 
     Stdlib.Result.Result.Ok $"archived branch \"{handle}\"."
 
@@ -1325,8 +1311,8 @@ type BranchBundleOp =
     blobHex: String
     ts: String
     /// The commit the op belongs to on the sender, or "" for an uncommitted one. Without it a pulled
-    /// branch arrived wholly uncommitted, and the puller's next `commit` swept the author's finished work
-    /// into its own commit: the same op under a different commit on each machine.
+    /// branch arrives wholly uncommitted and the puller's next `commit` sweeps the author's finished work
+    /// into its own: the same op under a different commit on each machine.
     commit: String }
 
 
@@ -1467,10 +1453,13 @@ let exportBranch (branchId: Uuid) : String =
     match
       Stdlib.Sqlite.queryP
         (localDb ())
-        "SELECT p.id, p.op_blob, p.origin_ts AS ts, COALESCE(p.commit_hash, '') AS author FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id WHERE ob.branch_id = @p0 ORDER BY p.rowid ASC"
+        // `author` is borrowed to carry the commit hash through `rowsToSyncOps`; it moves to `commit`
+        // below.
+        "SELECT p.id, p.op_blob, p.origin_ts AS ts, COALESCE(p.commit_hash, '') AS author
+         FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id
+         WHERE ob.branch_id = @p0 ORDER BY p.rowid ASC"
         [ Stdlib.Uuid.toString branchId ]
     with
-    // `author` is borrowed to carry the commit hash through `rowsToSyncOps`; it is moved to `commit` below.
     | Ok rows -> Wire.rowsToSyncOps rows
     | Error _ -> []
 
@@ -1551,10 +1540,10 @@ let importBranch (json: String) : Stdlib.Result.Result<String, String> =
   | Ok b ->
     let records = b.ops |> Stdlib.List.map (fun op -> (op.id, op.blobHex, op.ts))
 
-    // A name is an alias; the id is the identity. Two people can each start a `fix-auth` and both survive,
-    // but `branches` has a UNIQUE index on live names. A colliding import therefore keeps its own name plus
-    // a short id: unambiguous and switchable, which beats a constraint error or silently merging two
-    // different branches into one name.
+    // A name is an alias; the id is the identity. Two people can each start a `fix-auth` and both survive
+    // (`branches` deliberately has no unique index on names), but `switch <name>` has to land on ONE of
+    // them. A colliding import therefore keeps its own name plus a short id: unambiguous and switchable,
+    // rather than silently answering for the other branch of the same name.
     let taken =
       SCM.Branches.list ()
       |> Stdlib.List.any (fun r -> r.name == b.name && r.id != b.branchId)

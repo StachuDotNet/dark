@@ -211,6 +211,8 @@ cost overstates by more than 2x.
 ## 2026-08-27: both budgets re-baselined off multi-run minimums
 
 Moved here out of `scripts/perf/budget.json`, where it had grown into a paragraph inside a config file.
+The figures are the budgets of that day; later rounds lowered both (the current numbers are in
+`budget.json`, and its git log is the record). The method is what this entry is for.
 
 Debug 7,780,232 (min of 12 runs, 7780232..7861944). Published 7,722,608 (min of 9, 7722608..7755696).
 Taken as minimums rather than by `scripts/perf/gate --update`, which records whichever single reading you
@@ -346,9 +348,10 @@ does not reproduce; the controlled figure is 1.6x.
 ### What `status` costs beyond that
 
 Worth separating from the fixed cost above, because it scales with the store rather than being constant.
-`Status.summarise` calls `Constraints.pending ()`, which runs an unbounded three-way join over
-`locations x package_dependencies x locations` and then one to two more queries per finding through
-`shouldFollow -> allChoices`. It also calls `draftRepoints`, which runs a recursive CTE per changed binding.
+`SCM.Draft.counts` (the `dark status` path) calls `Constraints.pending ()`, which runs an unbounded
+three-way join over `locations x package_dependencies x locations` in `detectAll`; it reads
+`Propagation.allChoices` once rather than per finding, which is the cheap fix already taken. It also calls
+`PackageOps.draftRepoints`, which runs a recursive CTE per changed binding.
 
-If `status` is measurably slower than `help` on a large store, this is where to look first, and the cheap
-fix is hoisting `allChoices` out of the per-finding loop.
+If `status` is measurably slower than `help` on a large store, the join and the per-binding CTE are
+where to look first.

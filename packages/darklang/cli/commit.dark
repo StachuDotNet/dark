@@ -12,7 +12,7 @@ module Darklang.Cli.Commit
 
 let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.success msg)
 let printErr (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
-let printHintLine (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
+let printHint (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
 
 /// Parsed `dark commit` arguments: everything non-flag is the message.
 type Args =
@@ -62,7 +62,7 @@ let refuseUnknownFlags (args: List<String>) : Bool =
   | [] -> false
   | flags ->
     flags |> Stdlib.List.iter (fun f -> printErr $"unknown flag \"{f}\".")
-    printHintLine "  `dark commit --help` lists what it takes."
+    printHint "  `dark commit --help` lists what it takes."
     true
 
 let parseArgs (args: List<String>) : Args =
@@ -296,8 +296,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
   // They print their refusal; the JSON below then says `committed = false`.
   let (didCommit, hash, ops, moved) =
     // Ask the DRAFT, not the changed-bindings list, for the same reason `executePretty` does: a
-    // `Deprecate` binds no name, so `dark delete X` then `dark commit --json -y` reported
-    // "committed: false" and left the deprecation uncommitted forever.
+    // draft holding only a `Deprecate` binds no name and is still not empty.
     if SCM.PackageOps.draftOpCount () == 0L then
       (false, "", 0L, 0)
     else if parsed.autoConfirm && (refuseUnresolved parsed || refuseTypeErrors parsed) then
@@ -355,7 +354,7 @@ let refuseUnresolved (parsed: Args) : Bool =
         names
         |> Stdlib.List.iter (fun n -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"    - {n}")))
 
-      printHintLine
+      printHint
         "  author what's missing, or `dark commit --allow-unresolved` to record it as-is."
 
       true
@@ -383,15 +382,15 @@ let refuseTypeErrors (parsed: Args) : Bool =
     | Failed ->
       printErr "cannot commit: the at-rest type check found definite errors."
 
-      // Both lists: a `Failed` verdict can carry its reasons in either, and printing only `blockers`
-      // gave a refusal with no reason under it.
+      // Both lists: a `Failed` verdict can carry its reasons in either, and a refusal with no reason
+      // under it is worse than none.
       Stdlib.List.append report.diagnostics report.blockers
       |> Stdlib.List.iter (fun issue ->
         Stdlib.printLine
           (Stdlib.Cli.UI.Colors.error
             $"    - {LanguageTools.AtRestTypeChecker.issueToString issue}"))
 
-      printHintLine
+      printHint
         "  fix them, or `dark commit --allow-type-errors` to record them as-is."
 
       true
@@ -403,9 +402,8 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
   let changed = r.changed
 
   // Ask the DRAFT, not the changed-bindings list. A `Deprecate` op binds no name, so it never appears in
-  // `changed`; deciding emptiness from that list meant `dark delete X` followed by `dark commit` said
-  // "your draft is empty" and left the deprecation uncommitted forever, where it also shipped in the
-  // seed as somebody else's mystery op.
+  // `changed`, and a draft holding only `dark delete X` is not empty: judged by that list it would never
+  // commit, and would ship in the seed as somebody else's mystery op.
   if SCM.PackageOps.draftOpCount () == 0L then
     printOk "nothing to commit -- your draft is empty."
     state
@@ -500,19 +498,17 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
       | Error e -> printErr e
       | Ok((hash, committed, moved)) ->
         let movedNote =
-          if moved == 0 then
-            ""
-          else
-            $", {Stdlib.Int.toString moved} dependent(s) repointed"
+          if moved == 0 then "" else $", {Cli.Text.plural moved "dependent"} repointed"
 
         let heldNote =
           if Stdlib.List.isEmpty parsed.include then
             ""
           else
-            $" -- {Stdlib.Int64.toString (SCM.PackageOps.draftOpCount ())} op(s) still in the draft"
+            let held = Stdlib.Int.fromInt64 (SCM.PackageOps.draftOpCount ())
+            $" -- {Cli.Text.plural held "op"} still in the draft"
 
-        printOk
-          $"  commit {Stdlib.String.first hash 8} -- {Stdlib.Int64.toString committed} op(s){movedNote}.{heldNote}"
+        let stamped = Cli.Text.plural (Stdlib.Int.fromInt64 committed) "op"
+        printOk $"  commit {Stdlib.String.first hash 8} -- {stamped}{movedNote}.{heldNote}"
 
       state
 
@@ -535,18 +531,21 @@ let help (_state: AppState) : String =
     "you LOOK at them as one dep-closed change, let propagation run over"
     "the final versions, and bless the result."
     ""
-    "  CHANGED           the names you bound (five edits to one fn appear once)"
+    "  CHANGED           the names you bound (five edits to one fn appear once);"
+    "                    `>` marks one that followed your edit rather than being one"
+    "  REMOVED           names this commit takes away"
     "  PROPAGATES TO     what references an older version, and will be"
     "                    repointed"
+    "  STAYING BEHIND    pinned, so it keeps the version it has"
     "  CONFLICTS         what a merge, rebase or sync auto-resolved,"
     "                    waiting on your ok"
     ""
     "  --include=<names>   commit ONLY these (comma-separated). Anything"
     "                      they depend on comes along and is named;"
     "                      everything else stays a draft."
-    "  -y, --yes    commit without the prompt (what an agent or a script wants)"
-    "  --json       the same review, typed. Implies non-interactive:"
-    "               so a plain `dark commit --json` is a safe dry review."
+    "  -y, --yes           commit without the prompt (what an agent or a script wants)"
+    "  --json              the same review, typed. Implies non-interactive, so a"
+    "                      plain `dark commit --json` is a safe dry review."
     ""
     "Two things a commit refuses, because a commit is what other machines"
     "pull. Both have to be TYPED; `-y` does not wave either through:"

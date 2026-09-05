@@ -49,13 +49,7 @@ let fns () : List<BuiltInFn> =
         | _, _, _, [| DString url |] ->
           uply {
             let! v = LibDB.Config.get (LibDB.Config.secretPrefix + url)
-
-            return
-              DBool(
-                match v with
-                | Some s -> s <> ""
-                | None -> false
-              )
+            return DBool(v |> Option.exists (fun s -> s <> ""))
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -68,7 +62,7 @@ let fns () : List<BuiltInFn> =
     //
     // THE LAST GATE before a secret becomes public: an op carrying it becomes a page anyone can read,
     // and nothing else would notice, because the op is valid and folds and syncs like any other. The
-    // scan is native now for the same reason the secret is: Dark cannot be handed the needle.
+    // scan is native for the same reason the secret is: Dark cannot be handed the needle.
     { name = fn "relaySecretLeakingOps" 0
       typeParams = []
       parameters =
@@ -86,7 +80,7 @@ let fns () : List<BuiltInFn> =
             let! stored = LibDB.Config.get (LibDB.Config.secretPrefix + url)
 
             match stored with
-            | None -> return Dval.list KTString []
+            | None
             | Some "" -> return Dval.list KTString []
             | Some secret ->
               let needle =

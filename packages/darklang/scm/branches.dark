@@ -6,7 +6,8 @@ module Darklang.SCM.Branches
 // compiler, the binary codec, SCC hashing or the fold, which is where the F#/Dark line is drawn.
 //
 // What stays F#: `createBranch` and `recordNameBases`, called mid-transaction from `scmAddOps`, and
-// `storeDeltaOps` / `markMergedEffective`, which are the fold's business.
+// `storeDeltaOps`, which needs the binary codec. `markMergedEffective` and `finishMerge` are here: the
+// fold between them (`scmApplyMergedOps`) is F#, the SQL on either side of it is not.
 
 let localDb () : String = Stdlib.LocalStore.path ()
 

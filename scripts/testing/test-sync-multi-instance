@@ -7,9 +7,8 @@
 # (`test-sync-hostile-relay`). Neither says anything about what this substrate is FOR: several instances,
 # several branches, several agents working at once, and work moving between them.
 #
-# Every scenario here is isolated -- its own relay, its own port, its own stores -- because the first
-# version of this shared one store across scenarios and spent two rounds blaming the product for state
-# an earlier scenario had left behind. Isolation is the point, not an implementation detail.
+# Every scenario here is isolated -- its own relay, its own port, its own stores. State one scenario
+# leaves behind reads, in the next, as a product bug, and that is not a mistake you make once.
 #
 # What it covers, in order: a round trip; two instances authoring at once; idempotence; the write secret
 # never reaching an op; a divergent edit recorded as a conflict on both sides with the same resolution;
@@ -39,8 +38,8 @@ fi
 rm -rf "$ROOT"; mkdir -p "$ROOT"
 ok()   { pass=$((pass+1)); printf '  ok   %s\n' "$1"; }
 bad()  { fail=$((fail+1)); printf '  FAIL %s\n       got: %s\n' "$1" "$(head -c 150 <<<"$2" | tr '\n' ' ')"; }
-# Case-sensitive and anchored: `-i` let "Pushed" match "nothing new to push", "merged" match "not
-# merged", and "conflict" match "Conflict detection did not run", so a refusal read as a pass.
+# Case-sensitive and anchored, so a refusal cannot read as a pass: with `-i`, "Pushed" matches "nothing
+# new to push", "merged" matches "not merged", and "conflict" matches "Conflict detection did not run".
 want() { if grep -qE "$2" <<<"$3"; then ok "$1"; else bad "$1" "$3"; fi; }
 wantnot() { if grep -qE "$2" <<<"$3"; then bad "$1" "$3"; else ok "$1"; fi; }
 
@@ -58,7 +57,7 @@ trap 'kill $RPID 2>/dev/null' EXIT
 sleep 8
 kill -0 $RPID 2>/dev/null || { echo "the relay we started is not running"; exit 2; }
 want "the relay answers" "^200$" "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$PORT/ping")"
-for i in A B C D; do x $i connect "http://localhost:$PORT" --secret "$SECRET" > /dev/null; done
+for i in A B C D; do x "$i" connect "http://localhost:$PORT" --secret "$SECRET" > /dev/null; done
 x B pull > /dev/null; x C pull > /dev/null
 
 echo "== a round trip"
@@ -67,7 +66,7 @@ want "A pushes" "^Pushed [1-9][0-9]* ops" "$(x A push)"
 want "B pulls" "^Pulled [1-9][0-9]* new op" "$(x B pull)"
 want "B runs it" "^41$" "$(x B eval 'SM.T.one ()' | tail -1)"
 # The same work reads the same on both machines: A's commit id and message, not a "synced from A" of B's.
-# History that differs per machine was the first thing two people noticed about main sync.
+# History that differs per machine is the first thing two people sharing a relay notice.
 ACOMMIT=$(x A commits 3 | awk '/A.s work/ {print $1}')
 want "B files it under A's commit" "^$ACOMMIT +2 +[^ ]+ +A's work" "$(x B commits 3)"
 wantnot "and not under an import commit of its own" "synced from" "$(x B commits 3)"
@@ -109,8 +108,8 @@ if [[ -n "$bres" ]]; then ok "and recorded which version won"; else bad "recorde
 want "A means the later edit" "^200$" "$(x A eval 'SM.T.same ()' | tail -1)"
 want "and so does B" "^200$" "$(x B eval 'SM.T.same ()' | tail -1)"
 # Override to the side that CHANGES something: on B the local side (A in the listing) is the 200 the
-# fold kept, so B, the incoming side, is A's 100. Overriding to the kept side exercised the
-# nothing-to-do arm, and the old pattern matched "override failed:" too.
+# fold kept, so B, the incoming side, is A's 100. Overriding to the kept side would exercise only the
+# nothing-to-do arm.
 want "an override is non-interactive" "^overrode #[0-9a-f]{8}: SM\.T\.same now binds [0-9a-f]{8}" "$(x B conflicts override SM.T.same B)"
 want "and it took effect" "^100$" "$(x B eval 'SM.T.same ()' | tail -1)"
 
@@ -134,8 +133,8 @@ want "B merges it" "^Merged [1-9][0-9]* op\(s\) from branch \"feat\" into its pa
 x B push > /dev/null; x C pull > /dev/null
 want "C gets it on main" "^77$" "$(x C eval 'SM.T.onFeat ()' | tail -1)"
 # C never pulled the branch, so everything reached it by main sync: the branch's ops still read under
-# A's "feat work" and the merge under B's, whatever order they arrived in. Before, C filed all of it
-# under one "synced from" commit of its own.
+# A's "feat work" and the merge under B's, whatever order they arrived in, and never under a
+# "synced from" commit of C's own.
 want "C shows the branch work under A's commit" "feat work" "$(x C commits 5)"
 want "and the merge under B's" "merged branch \"feat\"" "$(x C commits 5)"
 wantnot "with no import commit of C's own" "synced from" "$(x C commits 5)"
@@ -191,16 +190,16 @@ want "and now main has it" "^55$" "$(x D eval 'SM.T.staged ()' | tail -1)"
 echo "== four agents at once, each on its own branch"
 AG=()
 for n in 1 2 3 4; do
-  ( x A branch create agent-$n > /dev/null 2>&1
-    x A --branch agent-$n fn "/SM.Agents.a$n" "() : Int64 = ${n}0L" > /dev/null 2>&1
-    x A --branch agent-$n commit "agent $n" -y > /dev/null 2>&1 ) &
+  ( x A branch create "agent-$n" > /dev/null 2>&1
+    x A --branch "agent-$n" fn "/SM.Agents.a$n" "() : Int64 = ${n}0L" > /dev/null 2>&1
+    x A --branch "agent-$n" commit "agent $n" -y > /dev/null 2>&1 ) &
   AG+=($!)
 done
 wait "${AG[@]}"
 allok=true
-for n in 1 2 3 4; do [[ "$(x A --branch agent-$n eval "SM.Agents.a$n ()" | tail -1)" == "${n}0" ]] || allok=false; done
+for n in 1 2 3 4; do [[ "$(x A --branch "agent-$n" eval "SM.Agents.a$n ()" | tail -1)" == "${n}0" ]] || allok=false; done
 if $allok; then ok "each agent's work is on its own branch"; else bad "each agent's work is on its own branch" "see above"; fi
-for n in 1 2 3 4; do x A --branch agent-$n merge agent-$n > /dev/null 2>&1; done
+for n in 1 2 3 4; do x A --branch "agent-$n" merge "agent-$n" > /dev/null 2>&1; done
 x A switch main > /dev/null
 allok=true
 for n in 1 2 3 4; do [[ "$(x A eval "SM.Agents.a$n ()" | tail -1)" == "${n}0" ]] || allok=false; done

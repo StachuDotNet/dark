@@ -18,8 +18,15 @@ let reportConflicts (conflicts: List<SCM.Conflicts.Conflict>) : Unit =
   | cs ->
     let n = Stdlib.Int.toString (Stdlib.List.length cs)
 
+    // "conflict(s)" is the shape `scripts/testing/test-sync-multi-instance` asserts on.
     printOk
       $"{n} conflict(s) auto-resolved by recency and recorded -- the losing version is kept, not dropped."
+
+/// Where a branch id is, in words: `main`, or `branch "<name>"`. Main is never quoted and a branch
+/// always is, so the two read differently in every message that names one.
+let whereLabel (id: Uuid) : String =
+  if SCM.Ids.isMain id then SCM.Ids.mainBranchName
+  else $"branch \"{SCM.PackageOps.branchName id}\""
 
 /// The id of the branch <param branchRef> refers to, WITHOUT creating anything, or None.
 ///
@@ -31,7 +38,7 @@ let reportConflicts (conflicts: List<SCM.Conflicts.Conflict>) : Unit =
 /// is an error to report or a name to start a branch under.
 let lookupRef (branchRef: String) : Stdlib.Option.Option<Uuid> =
   // The resolution itself is in `SCM.PackageOps.resolveBranchRef`, because the LSP needs the same
-  // answer and gave a different one while it had its own copy. What stays here is the WORDS.
+  // answer. What stays here is the WORDS.
   match SCM.PackageOps.resolveBranchRef branchRef with
   | Found id -> Stdlib.Option.Option.Some id
   | NotFound -> Stdlib.Option.Option.None
@@ -62,10 +69,7 @@ let resolveRef (branchRef: String) : Stdlib.Option.Option<Uuid> =
 /// touching the config, so reading the key would report the branch you'd be on if you hadn't asked for
 /// another one.
 let executeCurrent (state: AppState) : AppState =
-  match SCM.PackageOps.currentBranch () with
-  | id when SCM.Ids.isMain id -> printOk $"on {SCM.Ids.mainBranchName}."
-  | id -> printOk $"on branch \"{SCM.PackageOps.branchName id}\"."
-
+  printOk $"on {whereLabel (SCM.PackageOps.currentBranch ())}."
   state
 
 /// Every branch, as the machine-readable shape. Same data the list renders, so the two can't drift.
@@ -90,15 +94,7 @@ let branchRows (unit: Unit) : List<ScmJson.BranchJson> =
 
 /// List all active branches.
 let executeList (state: AppState) (includeMerged: Bool) : AppState =
-  let current = SCM.PackageOps.currentBranch ()
-
-  printOk (
-    if SCM.Ids.isMain current then
-      $"on {SCM.Ids.mainBranchName}. branches:"
-    else
-      $"on \"{SCM.PackageOps.branchName current}\". branches:"
-  )
-
+  printOk $"on {whereLabel (SCM.PackageOps.currentBranch ())}. branches:"
   Stdlib.printLine (SCM.PackageOps.branchList includeMerged)
   state
 
@@ -211,7 +207,7 @@ let executeRename (state: AppState) (branchRef: String) (newName: String) : AppS
   | None -> state
   | Some branchId ->
     if SCM.Ids.isMain branchId then
-      printErr $"main is the trunk; it has no name to change."
+      printErr "main is the trunk; it has no name to change."
       state
     else
       let was = SCM.PackageOps.branchName branchId
@@ -260,8 +256,7 @@ let executeMergePreview
       match SCM.PackageOps.branchDiffEntries branchId with
       | [] -> printHint "  it changes nothing vs its parent."
       | entries ->
-        let n = Stdlib.Int.toString (Stdlib.List.length entries)
-        printHint $"  {n} name(s) would land:"
+        printHint $"  {Cli.Text.plural (Stdlib.List.length entries) "name"} would land:"
 
         entries
         |> Stdlib.List.iter (fun e ->
@@ -273,8 +268,8 @@ let executeMergePreview
       match SCM.PackageOps.branchPreview branchId with
       | [] -> printHint "  no conflicts: neither side moved a name the other did."
       | cs ->
-        let n = Stdlib.Int.toString (Stdlib.List.length cs)
-        printHint $"  {n} conflict(s) would be auto-resolved by recency, and recorded for review."
+        printHint
+          $"  {Cli.Text.plural (Stdlib.List.length cs) "conflict"} would be auto-resolved by recency, and recorded for review."
 
       // Only when this IS the whole command. In the confirm flow the next line is the question, and
       // telling someone to run the thing they are being asked to approve reads as a non-sequitur.
@@ -302,6 +297,7 @@ let executeMerge (state: AppState) (branchRef: String) : AppState =
   | Some branchId ->
     match SCM.PackageOps.mergeBranch branchId with
     | Ok outcome ->
+      // "Merged N op(s)" is the shape `scripts/testing/test-sync-multi-instance` asserts on.
       printOk
         $"Merged {Stdlib.Int.toString outcome.merged} op(s) from branch \"{branchRef}\" into its parent."
 
@@ -319,14 +315,14 @@ let executeMerge (state: AppState) (branchRef: String) : AppState =
               "current_branch_name"
               (if SCM.Ids.isMain parentId then "" else parentName)
           let _ = SCM.PackageOps.selectBranch parentId
-          let _ = printOk $"now on \"{parentName}\" -- that's where the next edit lands."
+          let _ = printOk $"now on {whereLabel parentId} -- that's where the next edit lands."
           parentId
         else
           state.currentBranchId
 
       { state with currentBranchId = landedOn }
     | Error e ->
-      printErr $"Merge failed: {e}"
+      printErr $"couldn't merge: {e}"
       state
 
 /// What a rebase would reconcile, and nothing recorded.
@@ -352,10 +348,10 @@ let executeRebaseDryRun (state: AppState) (branchRef: String) : AppState =
       printOk
         $"rebasing \"{branchRef}\" onto \"{parentName}\" would reconcile nothing: no name has moved on both sides."
     | cs ->
-      let n = Stdlib.Int.toString (Stdlib.List.length cs)
+      let n = Cli.Text.plural (Stdlib.List.length cs) "name"
 
       printOk
-        $"rebasing \"{branchRef}\" onto \"{parentName}\" would reconcile {n} name(s) by recency, and record them for review:"
+        $"rebasing \"{branchRef}\" onto \"{parentName}\" would reconcile {n} by recency, and record them for review:"
 
       cs
       |> Stdlib.List.iter (fun c ->
@@ -393,8 +389,8 @@ let moduleOf (dotted: String) : String =
 /// `dark branch diff <name> [--source]`
 ///
 /// Grouped by module, because a branch that touched nine names in three modules is three things you did,
-/// not nine. `--source` prints each definition underneath, which is the part the deleted review TUI had
-/// and a list of hashes does not: seeing WHAT changed without opening another command per name.
+/// not nine. `--source` prints each definition underneath, which a list of hashes cannot give you: seeing
+/// WHAT changed without opening another command per name.
 let executeDiff (state: AppState) (branchRef: String) (withSource: Bool) : AppState =
   match resolveRef branchRef with
   | None -> state
@@ -402,17 +398,15 @@ let executeDiff (state: AppState) (branchRef: String) (withSource: Bool) : AppSt
     match SCM.PackageOps.branchDiffEntries branchId with
     | [] ->
       if SCM.PackageOps.branchIsMerged branchId then
-        let n =
-          Stdlib.Int.toString
-            (Stdlib.List.length (SCM.PackageOps.mergedOpsOf branchId))
-        printOk $"\"{branchRef}\" is merged: its {n} op(s) are its parent's now."
+        let n = Cli.Text.plural (Stdlib.List.length (SCM.PackageOps.mergedOpsOf branchId)) "op"
+        printOk $"\"{branchRef}\" is merged: its {n} are its parent's now."
         printHint $"  `dark log {branchRef}` lists them."
       else
         printOk $"\"{branchRef}\" changes nothing vs its parent."
       state
     | entries ->
-      let n = Stdlib.Int.toString (Stdlib.List.length entries)
-      printOk $"\"{branchRef}\" changes {n} name(s) vs its parent:"
+      let n = Cli.Text.plural (Stdlib.List.length entries) "name"
+      printOk $"\"{branchRef}\" changes {n} vs its parent:"
 
       entries
       |> Stdlib.List.groupByWithKey (fun e -> moduleOf e.name)
@@ -465,31 +459,31 @@ let executeLog (state: AppState) (branchRef: String) : AppState =
     // A merged branch's tags are gone; its merge events still say what it carried.
     let merged =
       if Stdlib.List.isEmpty ops then SCM.PackageOps.mergedOpsOf branchId else []
-    let n = Stdlib.Int.toString (Stdlib.List.length ops)
-    let m = Stdlib.Int.toString (Stdlib.List.length merged)
+    let n = Cli.Text.plural (Stdlib.List.length ops) "op"
+    let m = Cli.Text.plural (Stdlib.List.length merged) "op"
 
     if Stdlib.Bool.not (Stdlib.List.isEmpty ops) then
-      printOk $"{n} op(s) on branch \"{branchRef}\" (oldest first):"
+      printOk $"{n} on branch \"{branchRef}\" (oldest first):"
       ops
       |> Stdlib.List.iter (fun op ->
         Stdlib.printLine
           (PrettyPrinter.ProgramTypes.PackageOp.packageOp branchId op))
     else if Stdlib.Bool.not (Stdlib.List.isEmpty merged) then
-      printOk $"{m} op(s) merged from branch \"{branchRef}\" into its parent (oldest first):"
-      // Names resolve against the PARENT: the ops are its now, and the merged branch's own
-      // overlay is empty, which printed every hash bare.
+      printOk $"{m} merged from branch \"{branchRef}\" into its parent (oldest first):"
+      // Names resolve against the PARENT: the ops are its now, and the merged branch's own overlay is
+      // empty, so resolving against it would print every hash bare.
       let parent = SCM.PackageOps.branchParentOf branchId
       merged
       |> Stdlib.List.iter (fun op ->
         Stdlib.printLine
           (PrettyPrinter.ProgramTypes.PackageOp.packageOp parent op))
     else
-      printOk $"branch \"{branchRef}\" has no ops (empty or unknown)."
+      printOk $"branch \"{branchRef}\" has no ops yet."
 
     state
 
 /// Resolve one conflicted name on a branch: `mine` keeps the branch's version (wins on merge),
-/// `theirs` takes the parent's (drops the branch's binding). `hand-author` = just re-author on the branch.
+/// `theirs` takes the parent's (drops the branch's binding). Anything else is re-authoring on the branch.
 let executeResolve
   (state: AppState)
   (branchRef: String)
@@ -526,7 +520,7 @@ let executeArchive
         true
       else
         printOk
-          $"  ARCHIVING \"{branchRef}\" discards {Stdlib.Int.toString (Stdlib.List.length entries)} unmerged name(s):"
+          $"  ARCHIVING \"{branchRef}\" discards {Cli.Text.plural (Stdlib.List.length entries) "unmerged name"}:"
 
         entries
         |> Stdlib.List.iter (fun e ->
@@ -560,12 +554,12 @@ let executeArchive
             "current_branch_name"
             (if SCM.Ids.isMain parentId then "" else parentName)
         let _ = SCM.PackageOps.selectBranch parentId
-        printOk $"now on \"{parentName}\" -- that's where the next edit lands."
+        printOk $"now on {whereLabel parentId} -- that's where the next edit lands."
         { state with currentBranchId = parentId }
       else
         state
     | Error e ->
-      printErr $"Archive failed: {e}"
+      printErr $"couldn't archive: {e}"
       state
 
 /// Export a branch as a portable bundle file (registry + frontier ops) -- move it to another machine.
@@ -574,8 +568,8 @@ let executeExport (state: AppState) (branchRef: String) (path: String) : AppStat
   | None -> state
   | Some branchId ->
     match Stdlib.Cli.File.writeText path (SCM.PackageOps.exportBranch branchId) with
-    | Ok _ -> printOk $"Exported branch \"{branchRef}\" to {path}."
-    | Error _ -> printErr $"Couldn't write {path}"
+    | Ok _ -> printOk $"exported branch \"{branchRef}\" to {path}."
+    | Error _ -> printErr $"couldn't write {path}."
 
     state
 
@@ -585,8 +579,8 @@ let executeImport (state: AppState) (path: String) : AppState =
   | Ok json ->
     match SCM.PackageOps.importBranch json with
     | Ok msg -> printOk msg
-    | Error e -> printErr $"Import failed: {e}"
-  | Error _ -> printErr $"Couldn't read {path}"
+    | Error e -> printErr $"couldn't import: {e}"
+  | Error _ -> printErr $"couldn't read {path}."
 
   state
 
@@ -668,7 +662,7 @@ let executePullFrom (state: AppState) (url: String) (owner: String) : AppState =
       let _ =
         if ignored > 0 then
           printErr
-            $"{url} listed {Stdlib.Int.toString ignored} thing(s) that are not branch ids; ignoring them."
+            $"{url} listed {Cli.Text.plural ignored "line"} that are not branch ids; ignoring them."
         else
           ()
 
@@ -730,7 +724,7 @@ let mergeHelp (_state: AppState) : String =
 /// at the root" block below is where each of them is documented. `merge` gets its own page
 /// (`mergeHelp`) because it is the one that moves work into a parent and the questions are different.
 let help (_state: AppState) : String =
-  [ "dark branch - isolated lines of work; author and eval without\n  touching main."
+  [ "dark branch - isolated lines of work; author and eval without touching main."
     ""
     "  You name a branch; it gets a uuid underneath. Names are what you"
     "  type and can reuse; the uuid is what op tags, bundles and parent"
@@ -741,7 +735,7 @@ let help (_state: AppState) : String =
     "  dark branch list              name (id) <- parent [status]"
     "  dark branch list --all        include the ones already merged"
     "  dark branch rename <old> <new>   give a branch a different name"
-    "  dark branch archive <name>    discard a branch + its unmerged work"
+    "  dark branch archive <name> [-y]  discard a branch + its unmerged work"
     "  dark branch diff <name>       what it changes vs its parent"
     "  dark branch log <name>        its ops, oldest-first"
     "  dark branch export <name> <f> write it to a file"
@@ -757,7 +751,7 @@ let help (_state: AppState) : String =
     "  dark merge <name>             merge a branch into its parent"
     "  dark rebase <name> [--dry-run]  accept the parent's changes into a branch"
     "  dark diff <name>              same as `dark branch diff`"
-    "  dark log [name]               same, defaulting to the current one"
+    "  dark log [name]               its ops; on main, the commits"
     "  dark resolve <branch> <name> mine|theirs"
     "                                keep the branch's, or the parent's"
     ""
@@ -777,8 +771,8 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | [ "current" ] -> executeCurrent state
   | [ "switch", id ] -> executeSwitch state id
   | [ "new", id ] -> executeSwitch state id
-  // `create` is what the older CLI called this, and what scripts still type. Same thing: a branch is
-  // created by switching to a name nothing holds.
+  // `new` and `create` are the same thing as a bare switch: a branch is created by switching to a name
+  // nothing holds.
   | [ "create", id ] -> executeSwitch state id
   | [ "archive", id ] -> executeArchive state id false
   | [ "archive", id, "-y" ] | [ "archive", id, "--yes" ] ->
@@ -815,9 +809,9 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | [ id ] ->
     if Stdlib.List.member knownSubcommands id then
       // A subcommand with its arguments left off, which the typo check below deliberately does not catch
-      // (it excludes exact matches). Falling through to "switch to a branch called that" meant `dark
-      // branch rename` CREATED a branch named "rename" and moved you onto it: a mistake that leaves state
-      // behind, which is the one thing this arm must not do.
+      // (it excludes exact matches). Falling through to "switch to a branch called that" would CREATE a
+      // branch named "rename" and move you onto it: a mistake that leaves state behind, which is the one
+      // thing this arm must not do.
       printErr $"`dark branch {id}` is missing its arguments."
       printHint $"  to start or switch to a branch actually named \"{id}\": dark switch {id}"
       Stdlib.printLine (help state)

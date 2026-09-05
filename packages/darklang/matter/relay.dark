@@ -72,12 +72,9 @@ let headHandlerFn (_req: HttpRequest) : HttpResponse =
 /// trade for a relay shared between people who have met.
 let writeAllowed (req: HttpRequest) : Stdlib.Result.Result<Unit, String> =
   match Stdlib.Env.get "DARK_MATTER_WRITE_SECRET" with
-  | None ->
+  | None | Some "" ->
     Stdlib.Result.Result.Error
-      "this relay has no write secret configured, so it accepts no writes. Set DARK_MATTER_WRITE_SECRET where it runs."
-  | Some "" ->
-    Stdlib.Result.Result.Error
-      "this relay has an empty write secret, so it accepts no writes. Set DARK_MATTER_WRITE_SECRET where it runs."
+      "this relay has no write secret configured (DARK_MATTER_WRITE_SECRET is unset or empty), so it accepts no writes. Set it where the relay runs."
   | Some expected ->
     // Split the scheme off at the FIRST space and compare it case-INSENSITIVELY, as RFC 7235 says an auth
     // scheme is. Both halves matter: a secret is allowed to contain the word "Bearer", so stripping the
@@ -115,8 +112,8 @@ let writeAllowed (req: HttpRequest) : Stdlib.Result.Result<Unit, String> =
         "that write secret isn't the one this relay expects. Check it with whoever runs the relay, then `dark connect <url> --secret <secret>` again."
 
 
-/// Ingest pushed ops into the relay's store (pending; origin_ts preserved). Content-
-/// addressed dedup means a re-push is a no-op.
+/// Ingest pushed ops into the relay's store (pending; origin_ts preserved). Ops are content-addressed,
+/// so a re-push is a no-op.
 let pushHandlerFn (req: HttpRequest) : HttpResponse =
   match writeAllowed req with
   | Error why -> Stdlib.Http.responseWithText why 401

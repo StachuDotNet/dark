@@ -52,9 +52,8 @@ let handleInitializeRequest
   logAndSendToClient initializeResponse
 
 
-  // No login on the LSP side yet — start logged-out; commits via the
-  // dark/scm/commit notification will surface "no active account" until
-  // an authenticated client wires us up.
+  // There is no login on the LSP side: the account stays unset until an authenticated
+  // client wires one up. Nothing this server answers needs one.
   LspState
     { initialized = true
       shouldShutdown = false

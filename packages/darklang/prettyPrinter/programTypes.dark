@@ -1531,7 +1531,7 @@ module PackageOp =
       $"Undeprecate [{LanguageTools.ProgramTypes.hashToShort hash}]"
 
     | Decision(id, location, reason, kind) ->
-      let name = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation location
+      let name = PackageLocation.packageLocation location
       let why = if reason == "" then "" else $" ({reason})"
 
       match kind with

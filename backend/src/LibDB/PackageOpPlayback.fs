@@ -291,7 +291,7 @@ let private originTsOf (ctx : Ctx) (opId : System.Guid) : Task<Option<string>> =
   task {
     use cmd = ctx.conn.CreateCommand()
     cmd.CommandText <- "SELECT origin_ts FROM package_ops WHERE id = $id"
-    cmd.Parameters.AddWithValue("$id", string opId) |> ignore<SqliteParameter>
+    p cmd "$id" (string opId)
     use! reader = cmd.ExecuteReaderAsync()
     let! hasRow = reader.ReadAsync()
     if hasRow && not (reader.IsDBNull 0) then
@@ -316,10 +316,9 @@ let private latestUnbindTs
       + "WHERE owner = $owner AND modules = $modules AND name = $name "
       + "AND source = 'unbind' AND origin_ts IS NOT NULL "
       + "ORDER BY origin_ts DESC LIMIT 1"
-    cmd.Parameters.AddWithValue("$owner", location.owner) |> ignore<SqliteParameter>
-    cmd.Parameters.AddWithValue("$modules", String.concat "." location.modules)
-    |> ignore<SqliteParameter>
-    cmd.Parameters.AddWithValue("$name", location.name) |> ignore<SqliteParameter>
+    p cmd "$owner" location.owner
+    p cmd "$modules" (String.concat "." location.modules)
+    p cmd "$name" location.name
     use! reader = cmd.ExecuteReaderAsync()
     let! hasRow = reader.ReadAsync()
     if hasRow && not (reader.IsDBNull 0) then
@@ -346,8 +345,8 @@ let private applySetNameFrom
     let locationId = System.Guid.NewGuid()
     let (Hash itemHashStr) = itemHash
 
-    // Read off the OP, not inferred from what is currently live. A `Resolve` names no predecessor, and
-    // saying it replaced whatever happened to be there would put lineage on a row that has none.
+    // Read off the OP, not inferred from what is currently live. An `Override` names no predecessor,
+    // and saying it replaced whatever happened to be there would put lineage on a row that has none.
     let previousHash =
       match opForStamp with
       | PT.PackageOp.SetName(_, _, Some(Hash h)) -> Some h
@@ -379,12 +378,9 @@ let private applySetNameFrom
           "SELECT item_hash, origin_ts FROM locations "
           + "WHERE owner = $owner AND modules = $modules AND name = $name "
           + "AND unlisted_at IS NULL LIMIT 1"
-        cmd.Parameters.AddWithValue("$owner", location.owner)
-        |> ignore<SqliteParameter>
-        cmd.Parameters.AddWithValue("$modules", modulesStr)
-        |> ignore<SqliteParameter>
-        cmd.Parameters.AddWithValue("$name", location.name)
-        |> ignore<SqliteParameter>
+        p cmd "$owner" location.owner
+        p cmd "$modules" modulesStr
+        p cmd "$name" location.name
         use! reader = cmd.ExecuteReaderAsync()
         let! hasRow = reader.ReadAsync()
         if hasRow then
@@ -462,7 +458,6 @@ let private applySetNameFrom
           pOpt cmd "$origin_ts" thisTs
           p cmd "$source" source
           // The op that wrote this row, so a later reader can find it exactly rather than by its stamp.
-          // Already computed above, for the LWW stamp lookup.
           p cmd "$op_id" (string thisOpId)
           // What this binding replaced, taken from the op rather than inferred. Conflict detection
           // compares it against the incoming side's, so it has to mean the same thing on both.
@@ -600,14 +595,11 @@ let private applyDecision
         exec ctx "DELETE FROM propagation_policy
            WHERE branch_id = $branch AND owner = $owner AND modules = $modules AND name = $name
              AND COALESCE(origin_ts, '') < $ts" (fun cmd ->
-          cmd.Parameters.AddWithValue("$branch", string branchId)
-          |> ignore<SqliteParameter>
-          cmd.Parameters.AddWithValue("$owner", loc.owner)
-          |> ignore<SqliteParameter>
-          cmd.Parameters.AddWithValue("$modules", modules)
-          |> ignore<SqliteParameter>
-          cmd.Parameters.AddWithValue("$name", loc.name) |> ignore<SqliteParameter>
-          cmd.Parameters.AddWithValue("$ts", ts) |> ignore<SqliteParameter>)
+          p cmd "$branch" (string branchId)
+          p cmd "$owner" loc.owner
+          p cmd "$modules" modules
+          p cmd "$name" loc.name
+          p cmd "$ts" ts)
 
     | PT.DecisionKind.Propagation policy ->
       // Guarded by origin_ts so an older op arriving late can't undo a newer decision.
@@ -620,18 +612,13 @@ let private applyDecision
              policy = excluded.policy, note = excluded.note, origin_ts = excluded.origin_ts
            WHERE excluded.origin_ts > COALESCE(propagation_policy.origin_ts, '')"
           (fun cmd ->
-            cmd.Parameters.AddWithValue("$branch", string branchId)
-            |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$owner", loc.owner)
-            |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$modules", modules)
-            |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$name", loc.name)
-            |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$policy", policy.ToText)
-            |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$note", reason) |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$ts", ts) |> ignore<SqliteParameter>)
+            p cmd "$branch" (string branchId)
+            p cmd "$owner" loc.owner
+            p cmd "$modules" modules
+            p cmd "$name" loc.name
+            p cmd "$policy" policy.ToText
+            p cmd "$note" reason
+            p cmd "$ts" ts)
 
     | PT.DecisionKind.Ack findingId ->
       // A finding nobody has answered isn't stored at all -- only answers are rows, because detection
@@ -649,16 +636,12 @@ let private applyDecision
            ON CONFLICT(id) DO UPDATE SET
              status = 'acked', reason = excluded.reason, origin_ts = excluded.origin_ts"
           (fun cmd ->
-            cmd.Parameters.AddWithValue("$id", findingId) |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$owner", loc.owner)
-            |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$modules", modules)
-            |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$name", loc.name)
-            |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$reason", reason)
-            |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$ts", ts) |> ignore<SqliteParameter>)
+            p cmd "$id" findingId
+            p cmd "$owner" loc.owner
+            p cmd "$modules" modules
+            p cmd "$name" loc.name
+            p cmd "$reason" reason
+            p cmd "$ts" ts)
   }
 
 
@@ -704,16 +687,16 @@ let private applyBranchEvent
         + "]"
       let b = string branchId
       let bindB (cmd : SqliteCommand) =
-        cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>
-        cmd.Parameters.AddWithValue("$ids", ids) |> ignore<SqliteParameter>
+        p cmd "$b" b
+        p cmd "$ids" ids
 
       let! parent =
         textOption ctx "SELECT parent_id FROM branches WHERE id = $b" (fun cmd ->
-          cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>)
+          p cmd "$b" b)
       let parentIsMain =
         match parent with
         | None -> true
-        | Some p -> PT.BranchId.Parse p = Some PT.BranchId.Main || p = ""
+        | Some pid -> PT.BranchId.Parse pid = Some PT.BranchId.Main || pid = ""
 
       // Does this store hold the branch at all yet? `dark pull` and `dark branch pull` are separate
       // commands and pulling main first is the natural order, so a merge event routinely arrives
@@ -730,11 +713,10 @@ let private applyBranchEvent
         scalarInt
           ctx
           "SELECT count(*) FROM op_branches WHERE branch_id = $b"
-          (fun cmd ->
-            cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>)
+          (fun cmd -> p cmd "$b" b)
       let! branchKnownHere =
         scalarInt ctx "SELECT count(*) FROM branches WHERE id = $b" (fun cmd ->
-          cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>)
+          p cmd "$b" b)
 
       if tagged = 0L && branchKnownHere > 0L then
         // `applied = 2`, DEFERRED: folded, did nothing, and waiting for ops it names. A third state
@@ -744,8 +726,7 @@ let private applyBranchEvent
         // when a bundle lands.
         do!
           exec ctx "UPDATE package_ops SET applied = 2 WHERE id = $e" (fun cmd ->
-            cmd.Parameters.AddWithValue("$e", string eventOpId)
-            |> ignore<SqliteParameter>)
+            p cmd "$e" (string eventOpId))
       elif parentIsMain then
         do!
           exec
@@ -769,13 +750,12 @@ let private applyBranchEvent
                AND (SELECT commit_hash FROM package_ops WHERE id = $e) IS NOT NULL"
             (fun cmd ->
               bindB cmd
-              cmd.Parameters.AddWithValue("$e", string eventOpId)
-              |> ignore<SqliteParameter>)
+              p cmd "$e" (string eventOpId))
       else
-        let p = Option.defaultValue "" parent
+        let parentId = Option.defaultValue "" parent
         let bindP (cmd : SqliteCommand) =
           bindB cmd
-          cmd.Parameters.AddWithValue("$p", p) |> ignore<SqliteParameter>
+          p cmd "$p" parentId
         do!
           exec
             ctx
@@ -806,17 +786,16 @@ let private applyBranchEvent
            WHERE id = $b AND merged_at IS NULL
              AND NOT EXISTS (SELECT 1 FROM op_branches WHERE branch_id = $b)"
           (fun cmd ->
-            cmd.Parameters.AddWithValue("$b", b) |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$at", at) |> ignore<SqliteParameter>)
+            p cmd "$b" b
+            p cmd "$at" at)
     | PT.Archived ->
       do!
         exec
           ctx
           "UPDATE branches SET archived_at = $at WHERE id = $b AND archived_at IS NULL"
           (fun cmd ->
-            cmd.Parameters.AddWithValue("$b", string branchId)
-            |> ignore<SqliteParameter>
-            cmd.Parameters.AddWithValue("$at", at) |> ignore<SqliteParameter>)
+            p cmd "$b" (string branchId)
+            p cmd "$at" at)
   }
 
 
@@ -842,12 +821,9 @@ let private applyUnbind
           "SELECT item_type, origin_ts FROM locations "
           + "WHERE owner = $owner AND modules = $modules AND name = $name "
           + "AND unlisted_at IS NULL LIMIT 1"
-        cmd.Parameters.AddWithValue("$owner", location.owner)
-        |> ignore<SqliteParameter>
-        cmd.Parameters.AddWithValue("$modules", modulesStr)
-        |> ignore<SqliteParameter>
-        cmd.Parameters.AddWithValue("$name", location.name)
-        |> ignore<SqliteParameter>
+        p cmd "$owner" location.owner
+        p cmd "$modules" modulesStr
+        p cmd "$name" location.name
         use! reader = cmd.ExecuteReaderAsync()
         let! hasRow = reader.ReadAsync()
         if hasRow then
@@ -940,15 +916,11 @@ let private applyOp (ctx : Ctx) (source : string) (op : PT.PackageOp) : Task<uni
              WHERE owner = $owner AND modules = $modules AND name = $name
                AND item_type = $kind AND status = 'pending'"
             (fun cmd ->
-              cmd.Parameters.AddWithValue("$op", id) |> ignore<SqliteParameter>
-              cmd.Parameters.AddWithValue("$kind", target.kind.toString ())
-              |> ignore<SqliteParameter>
-              cmd.Parameters.AddWithValue("$owner", loc.owner)
-              |> ignore<SqliteParameter>
-              cmd.Parameters.AddWithValue("$modules", String.concat "." loc.modules)
-              |> ignore<SqliteParameter>
-              cmd.Parameters.AddWithValue("$name", loc.name)
-              |> ignore<SqliteParameter>)
+              p cmd "$op" id
+              p cmd "$kind" (target.kind.toString ())
+              p cmd "$owner" loc.owner
+              p cmd "$modules" (String.concat "." loc.modules)
+              p cmd "$name" loc.name)
       | _ ->
         // This fold is main's, so the row is main's. A branch's decision is folded by the branch path
         // with that branch's id; the two must spell main the same way or a policy set on main is written

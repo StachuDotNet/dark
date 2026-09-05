@@ -472,6 +472,8 @@ module Reference =
     | PackageValue _ -> ItemKind.Value
     | PackageFn _ -> ItemKind.Fn
 
+  /// The reference to <param h> as an item of kind <param k>.
+  ///
   /// Construction must NAME the type (`Reference.PackageFn`), not just the case: a bare `PackageFn h`
   /// only resolves in a match arm, where the matched value supplies the type. Unqualified in a
   /// constructor position it is "PackageFn is not a valid name", at runtime, for every caller.
@@ -491,7 +493,7 @@ type DeprecationKind =
   /// Don't use this anymore (catch-all).
   | Obsolete
 
-/// A single repoint: what propagation moved. Reported back to the caller; NOT an op
+/// A single repoint: what propagation moved. Reported back to the caller; NOT an op.
 type PropagateRepoint =
   { location: PackageLocation
     fromRef: Reference
@@ -532,7 +534,8 @@ type PackageOp =
   | AddType of PackageType.PackageType
   | AddValue of PackageValue.PackageValue
   | AddFn of PackageFn.PackageFn
-  // Bind a name (location) to a piece of content (target).
+  /// Bind a name (location) to a piece of content (target).
+  ///
   /// `previous` is the hash this binding REPLACED, or None when the location was empty (or when whoever
   /// authored it had no store to ask, which is true of the parsers). Two SetNames for one location that
   /// BOTH name no predecessor are two independent creations, which is a conflict; one that names the
@@ -545,13 +548,13 @@ type PackageOp =
   /// reachable by hash. `previous` is the hash it unbound. Not a Deprecate, which is about content and would
   /// mark every other name on the same body; a deprecated name still resolves, an unbound one does not.
   | Unbind of location: PackageLocation * previous: Stdlib.Option.Option<Hash>
-  // Author-initiated deprecation annotation on a specific hash.
+  /// Author-initiated deprecation annotation on a specific hash.
   | Deprecate of target: Reference * kind: DeprecationKind * message: String
-  // Clear any prior deprecation on a target.
+  /// Clear any prior deprecation on a target.
   | Undeprecate of target: Reference
-  /// A human's judgment about a NAME, recorded so that it travels. Overriding a binding and acking a
-  /// finding are one class of act -- someone decided something about a location, and it has to hold on
-  /// every machine -- so they are one op differing by `kind`. `id` is what makes each decision distinct,
+  /// A human's judgment about a NAME, recorded so that it travels. Overriding a binding, acking a
+  /// finding and choosing a propagation policy are one class of act -- someone decided something about
+  /// a location, and it has to hold on every machine -- so they are one op differing by `kind`. `id` is what makes each decision distinct,
   /// and idempotence is the caller's choice of what to put in it. `reason` is carried, never interpreted.
   | Decision of
       id: String *

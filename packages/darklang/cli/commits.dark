@@ -10,9 +10,6 @@ let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.succes
 let printErr (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
 let printHint (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
 
-let short (s: String) : String =
-  if Stdlib.String.length s <= 8 then s else Stdlib.String.slice s 0 8
-
 /// How to show who wrote a commit.
 ///
 /// "you" for this instance, which on a machine with one person is every row: an unnamed instance's
@@ -30,11 +27,11 @@ let authorLabel (author: String) : String =
 /// One display row: [short hash; ops committed; author; message].
 let commitRow (c: SCM.Commits.Commit) : List<String> =
   let ops = Stdlib.Int64.toString (SCM.PackageOps.opCountIn c.hash)
-  [ short c.hash, ops, authorLabel c.author, c.message ]
+  [ SCM.Conflicts.shortHash c.hash, ops, authorLabel c.author, c.message ]
 
 let executeList (state: AppState) (limit: Int64) : AppState =
-  // This branch's commits, not the store's. `dark commits` on a branch used to list main's too, which
-  // reads as "these are mine" and is not, and disagreed with what the workbench showed for the same branch.
+  // This branch's commits, not the store's: on a branch, main's commits are not "mine", and the workbench
+  // lists the same set for the same branch.
   let branchId = state.currentBranchId
   let total = Stdlib.List.length (SCM.PackageOps.commitsOnBranch branchId 100000L)
   let commits = SCM.PackageOps.commitsOnBranch branchId limit
@@ -46,7 +43,7 @@ let executeList (state: AppState) (limit: Int64) : AppState =
     let shown = Stdlib.List.length commits
 
     // "commit(s)" when the count is right there reads as a program that did not bother. It knows.
-    let counted = Cli.Status.plural total "commit"
+    let counted = Cli.Text.plural total "commit"
 
     let header =
       if shown >= total then
@@ -82,7 +79,7 @@ let executeDetailed (state: AppState) (limit: Int64) : AppState =
       printOk $"commit {SCM.Conflicts.shortHash c.hash}  {msg}"
 
       Stdlib.printLine
-        $"  by {c.author} at {c.originTs} -- {Stdlib.Int64.toString n} op(s)"
+        $"  by {c.author} at {c.originTs} -- {Cli.Text.plural (Stdlib.Int.fromInt64 n) "op"}"
 
       SCM.PackageOps.opsInCommitLimited c.hash 50L
       |> Stdlib.List.iter (fun op ->
@@ -91,7 +88,7 @@ let executeDetailed (state: AppState) (limit: Int64) : AppState =
 
       if n > 50L then
         printHint
-          $"    ... {Stdlib.Int64.toString (Stdlib.Int64.subtract n 50L)} more; `dark show {SCM.Conflicts.shortHash c.hash}` for one commit at a time.")
+          $"    ... {Stdlib.Int64.toString (Stdlib.Int64.subtract n 50L)} more -- `dark ops` walks the log in full.")
 
     state
 
@@ -131,11 +128,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
     | _ -> Stdlib.Option.Option.Some 20L
 
   // A branch name is the thing people put here, because `dark log <branch>` takes one. Answering with
-  // the help would let the command answer plausibly rather than refuse, which is the failure shape that
-  // made `dark branch rename` create a branch called "rename".
+  // the help, or defaulting the count, would be answering plausibly rather than refusing.
   match (args, limit) with
   | ([ n ], None) ->
-    printErr $"`dark commits` takes a count, not a branch name."
+    printErr "`dark commits` takes a count, not a branch name."
     printHint "  this branch's commits:  dark commits"
     printHint $"  that branch's history:  dark log {n}"
     state
@@ -167,7 +163,7 @@ let showCommit (state: AppState) (c: SCM.Commits.Commit) : Unit =
   printOk $"commit {c.hash}"
   Stdlib.printLine $"  {msg}"
   Stdlib.printLine $"  by {c.author} at {c.originTs}"
-  Stdlib.printLine $"  {Stdlib.Int64.toString n} op(s) in this commit"
+  Stdlib.printLine $"  {Cli.Text.plural (Stdlib.Int.fromInt64 n) "op"} in this commit"
 
   // The commit this one follows. Worth a line rather than a lookup: an id is derived from its parent as
   // well as its contents, so "which one came before" is part of what the id MEANS here. Silent for the

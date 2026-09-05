@@ -183,9 +183,9 @@ let readPending () : Task<List<System.Guid * byte[]>> =
         SELECT id, op_blob
         FROM package_ops
         WHERE applied = 0 AND effective = 1
-        -- effective = 1: only APPROVED ops fold into the live projections (step 4 sync/playback split).
-        -- A synced-but-unapproved op stays applied = 0, effective = 0 -- present in the log, never folded,
-        -- until approval flips it effective. Default effective = 1 keeps single-user playback unchanged.
+        -- effective = 1: only ops main RUNS fold into the live projections. A branch's op, or one a
+        -- client pushed to a relay, sits at applied = 0, effective = 0 -- present in the log, never
+        -- folded, until a merge flips it effective.
         -- rowid breaks ties: created_at is second-resolution so a batch's ops share it. The fold's final
         -- state is order-independent, but a deterministic replay order keeps re-folds byte-identical.
         ORDER BY created_at ASC, rowid ASC
@@ -312,7 +312,7 @@ let foldRead (rawOps : List<System.Guid * byte[]>) : Task<int64> =
           let summary =
             violations
             |> Seq.truncate 5
-            |> Seq.map (fun (t, r, p, f) -> $"  {t} rowid={r} → {p} (fk_id={f})")
+            |> Seq.map (fun (t, r, p, f) -> $"  {t} rowid={r} -> {p} (fk_id={f})")
             |> String.concat "\n"
           Exception.raiseInternal
             $"foreign_key_check reported {violations.Count} \
@@ -338,9 +338,11 @@ let private applyUnappliedOpsPass () : Task<int64> =
 /// leave them sitting there until the next command happened to run a fold, which is a store that is
 /// correct eventually and wrong in the meantime.
 ///
-/// Terminates because every pass marks what it read as applied (quarantined ops included), so the set
-/// strictly shrinks. The bound is a backstop against a future op kind that makes work faster than this
-/// drains it, not an expected case; it is deliberately loud rather than silent if it is ever hit.
+/// Terminates because every pass marks what it folded as applied, so the set strictly shrinks; an op
+/// this build cannot read stays pending but counts as nothing folded, so a pass that meets only those
+/// returns 0 and stops the loop. The bound is a backstop against a future op kind that makes work
+/// faster than this drains it, not an expected case; it is deliberately loud rather than silent if it
+/// is ever hit.
 let applyUnappliedOps () : Task<int64> =
   task {
     let mutable total = 0L
@@ -405,8 +407,8 @@ let rebuildProjections () : Task<int64> =
     let! folded = applyUnappliedOps ()
     // 4. branch-scoped propagation policy, which step 3 can't reach (effective = 0 by design)
     do! Branches.refoldBranchDecides ()
-    // Nothing extra to reapply for resolutions: `Resolve` is an op, so re-folding the log rebuilds the
-    // `source = 'resolution'` rows in `locations` along with everything else.
+    // Nothing extra to reapply for resolutions: an `Override` decision is an op, so re-folding the log
+    // rebuilds the `source = 'resolution'` rows in `locations` along with everything else.
     return folded
   }
 
@@ -498,7 +500,7 @@ let evaluateAllValues
                   LibExecution.Dval.nonPersistableReason dval
                   |> Option.defaultValue "value is not persistable"
                 errors.Add(
-                  $"Value {valueHash} ({fullName}): cannot store in val — {reason}"
+                  $"Value {valueHash} ({fullName}): cannot store in val: {reason}"
                 )
               else
                 let rtHash = PT2RT.Hash.toRT valueHash
@@ -549,9 +551,8 @@ let growIfNeeded
     // A store can have every op applied yet still hold unevaluated values (rt_dval NULL): after a
     // migration that re-marks ops applied without evaluating, or a store copied/built without a final grow
     // (the test seed does exactly this). Gating evaluation on `appliedCount > 0` alone leaves those values
-    // NULL forever, so the value is unusable ("value not found", or, before the null-safe read in
-    // RuntimeTypes.Value.get, an internal NULL crash). Evaluate whenever any value is unevaluated so the
-    // store self-heals on startup. Refs only need regenerating when we actually applied new ops.
+    // NULL forever, and a NULL `rt_dval` reads as "value not found". Evaluate whenever any value is
+    // unevaluated so the store self-heals on startup.
     let! hasUnevaluatedValues =
       Sql.query
         "SELECT EXISTS(SELECT 1 FROM package_values WHERE rt_dval IS NULL) AS has_null"
@@ -561,10 +562,10 @@ let growIfNeeded
       log $"Growing package DB from ops ({appliedCount} ops to apply)..."
       Telemetry.event "seed.applyOps.count" [ ("count", string appliedCount) ]
     // ABI type identities are PINNED: the committed package-ref-hashes.txt is authoritative, loaded by
-    // PackageRefs on first access. We deliberately do NOT regenerate refs from the store on boot -- that
-    // made the kernel's type identities float on whatever the local store happened to hash to, the brick
-    // risk the kernel-hash pinning removes. The generator stays a DEV tool (reload-packages / LocalExec
-    // fill), where regenerating produces a reviewable git diff = a deliberate re-pin.
+    // PackageRefs on first access, and nothing here regenerates it. Regenerating on boot would let the
+    // kernel's type identities float on whatever the local store happened to hash to. The generator is a
+    // DEV tool (reload-packages / LocalExec fill), where regenerating produces a reviewable git diff,
+    // which is what a re-pin should be.
     if appliedCount > 0L || hasUnevaluatedValues then
       let! _evalResult =
         Telemetry.timeTask "seed.evaluateValues" [] (fun () ->

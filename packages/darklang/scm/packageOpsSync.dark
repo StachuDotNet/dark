@@ -1,9 +1,9 @@
 module Darklang.SCM.PackageOps
 
-/// The INCOMING side of a sync: what an import will reconcile, and what to record once it has.
-///
-/// Same module as `packageOps.dark`; see the note there. Split out because planning an import is its
-/// own concern and the largest single thing that was crowding that file.
+// The INCOMING side of a sync: what an import will reconcile, and what to record once it has.
+//
+// Same module as `packageOps.dark`; see the note there. Its own file because planning an import is its
+// own concern, and the biggest one.
 
 
 /// The same fold over WIRE records (id, hex-encoded op_blob, origin_ts) -- the incoming side of a sync-import,
@@ -168,11 +168,11 @@ let finishSyncImport (sourceId: String) (plan: SyncPlan) : Unit =
 /// genuine divergence on it cannot be detected. The extra names are harmless: a base for a name the peer
 /// lacks says "we agree", and if they create it independently only one side has moved.
 ///
-/// Called ONCE per pull, not once per page. It is an upsert over every live name, so per page it was
-/// O(pages x names) for a result that only the last one decides -- the statement writes the CURRENT
-/// state, so running it twenty times and running it once leave the store identical. It also removes an
-/// oddity in a FIRST sync, where page 1 recorded bases and pages 2 onward then detected against bases
-/// laid down mid-pull, rather than all of them adopting wholesale as a first sync is meant to.
+/// Called ONCE per pull, after the last page, not once per page. It is an upsert over every live name
+/// that writes the CURRENT state, so running it twenty times and running it once leave the store
+/// identical, and per page it would cost O(pages x names) for a result only the last page decides. On a
+/// FIRST sync it also matters for correctness: bases laid down after page 1 would have pages 2 onward
+/// detecting against them, instead of the whole pull adopting wholesale as a first sync is meant to.
 let recordSyncBases (sourceId: String) : Unit =
   if sourceId == "" then
     ()

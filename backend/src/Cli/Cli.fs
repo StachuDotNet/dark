@@ -248,29 +248,29 @@ let main (args : string[]) =
     // The stored side is a lookup rather than a snapshot because `dark sync setup`
     // writes the relay and pushes to it inside one process, so a value read here
     // would be a command too late.
+    let storedRelay () : Option<string> =
+      try
+        match (LibDB.Config.get "sync.relay").Result with
+        | Some url when url <> "" -> Some url
+        | _ -> None
+      with _ ->
+        None
+
     LibExecution.UnguardedOrigins.setFromArgv args
     LibExecution.UnguardedOrigins.setStoredLookup (fun () ->
-      [ "sync.relay" ]
-      |> List.choose (fun key ->
-        try
-          (LibDB.Config.get key).Result
-        with _ ->
-          None)
-      |> List.filter (fun v -> v <> ""))
+      storedRelay () |> Option.toList)
 
     // The transport attaches the write secret itself. Keyed by ORIGIN so it matches
     // however the caller spelled the url, and read per request because
     // `dark sync setup` stores it and pushes in one process.
     LibExecution.UnguardedOrigins.setSecretLookup (fun origin ->
       try
-        [ "sync.relay" ]
-        |> List.tryPick (fun key ->
-          match (LibDB.Config.get key).Result with
-          | Some stored when
-            LibExecution.UnguardedOrigins.originOf stored = Some origin
-            ->
-            (LibDB.Config.get (LibDB.Config.secretPrefix + stored)).Result
-          | _ -> None)
+        match storedRelay () with
+        | Some stored when
+          LibExecution.UnguardedOrigins.originOf stored = Some origin
+          ->
+          (LibDB.Config.get (LibDB.Config.secretPrefix + stored)).Result
+        | _ -> None
       with _ ->
         None)
 
@@ -364,10 +364,10 @@ let main (args : string[]) =
 
     Telemetry.time "cli.pmInit" [] (fun () -> cliPackageManager.init.Result)
 
-    // `--branch <id>` / `--branch=<id>`: pick the branch for THIS process. Its delta ops (stored
-    // effective=0 in the shared log) overlay core for parse and execute, so nothing is switched
-    // persistently. Both spellings, because every other CLI takes either. A missing value is an
-    // ERROR, not a fall-through to `current_branch`.
+    // `--branch <branch>` / `--branch=<branch>`, a name, an id or an id prefix: pick the branch for
+    // THIS process. Its delta ops (stored effective=0 in the shared log) overlay core for parse and
+    // execute, so nothing is switched persistently. Both spellings, because every other CLI takes
+    // either. A missing value is an ERROR, not a fall-through to `current_branch`.
     let branchFlag =
       args
       |> Array.mapi (fun i a -> (i, a))
@@ -388,7 +388,7 @@ let main (args : string[]) =
     match branchFlag with
     | Some(Error(), _, _) ->
       System.Console.Error.WriteLine
-        "--branch needs a branch id: `dark --branch <id> <command>` (or `--branch=<id>`)"
+        "--branch needs a branch name or id: `dark --branch <branch> <command>` (or `--branch=<branch>`)"
       exit 1
     | _ -> ()
 

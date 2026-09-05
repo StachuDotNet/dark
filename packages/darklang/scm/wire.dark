@@ -146,7 +146,7 @@ let branchChannel (relay: String) : String = $"{relay}/branch"
 
 /// Live branches with ops <param relay>'s bundle channel is not known to hold, as (name, count).
 /// The main push never sends a branch's ops and `unpushedCount` never counts them, so without this
-/// `sync status` said "in sync" over a branch that existed on one machine only. A branch push and
+/// `sync status` would say "in sync" over a branch that exists on one machine only. A branch push and
 /// a branch pull both record what the channel holds.
 let unpushedBranches (relay: String) : List<(String * Int64)> =
   match
@@ -163,7 +163,11 @@ let unpushedBranches (relay: String) : List<(String * Int64)> =
   | Ok rows ->
     rows
     |> Stdlib.List.filterMap (fun row ->
-      match (Stdlib.Sqlite.textField row "name", Stdlib.Sqlite.textField row "id", Stdlib.Sqlite.intField row "n") with
+      match
+        (Stdlib.Sqlite.textField row "name",
+         Stdlib.Sqlite.textField row "id",
+         Stdlib.Sqlite.intField row "n")
+      with
       | (Some name, Some id, Some n) ->
         Stdlib.Option.Option.Some(((if name == "" then id else name), n))
       | _ -> Stdlib.Option.Option.None)
@@ -321,10 +325,10 @@ let lastSeenHead (sourceId: String) : String =
   Stdlib.LocalStore.configGet $"sync.head.{sourceId}"
 
 let rememberHead (sourceId: String) (head: SyncHead) : Unit =
-  let stamp = $"{Stdlib.Int64.toString head.count}@{head.maxTs}"
-  let _ = Stdlib.LocalStore.configSet $"sync.head.{sourceId}" stamp
+  let _ = Stdlib.LocalStore.configSet $"sync.head.{sourceId}" (headStamp head)
   ()
 
+/// The head as `lastSeenHead` stores and compares it.
 let headStamp (head: SyncHead) : String =
   $"{Stdlib.Int64.toString head.count}@{head.maxTs}"
 
@@ -463,16 +467,16 @@ let reviewImportTo
 
 /// The ABI fingerprint this build speaks, as every bundle declares it.
 ///
-/// One wrapper because two things write a bundle now: the native page renderer and `wireEncodeAt`.
+/// One wrapper because two things write a bundle: the native page renderer and `wireEncodeAt`.
 let kernelHash () : String = Builtin.getKernelHash ()
 
 
 /// One page of the wire format, rendered from the store without materialising any op as a Dark value.
 ///
-/// The relay answers `/sync/pull` with this. Building the page in Dark meant walking 2,000 rows, hex
-/// encoding each blob and serialising 2,000 records per request, which measured 2.8s per page under
-/// sustained paging against the hosted relay and dominated a real first sync. What to send is still
-/// decided here; only the encoding moved.
+/// The relay answers `/sync/pull` with this. Native because a Dark-built page walks 2,000 rows, hex
+/// encodes each blob and serialises 2,000 records per request, which costs about 2.8s per page under
+/// sustained paging against the hosted relay and dominates a real first sync. What to send is decided
+/// here; only the encoding is F#.
 ///
 /// Returns the JSON and the cursor to hand back.
 let exportPageJsonSince (sinceSeq: Int64) : (String * Int64) =

@@ -115,10 +115,10 @@ let pt : PT.PackageManager =
 ///
 /// <param below> is the manager this one is layered over, when it is a layer: a branch overlay's
 /// SetName can name content the branch never carried an Add for, because an op is identified by its
-/// content and main already held that body under another name. Resolving the name works (the combined
-/// manager falls through by hash); listing it in a search did not, since search built its rows from
-/// this layer's own items alone. With `below`, an item the layer names but does not hold is fetched
-/// from underneath, so `ls`, `view` and `search` agree with `eval`.
+/// content and main already held that body under another name. Resolving the name needs nothing extra
+/// (the combined manager falls through by hash), but search builds its rows from items, so an item the
+/// layer names but does not hold is fetched from `below`; that is what keeps `ls`, `view` and `search`
+/// agreeing with `eval`.
 let createInMemoryOver
   (below : Option<PT.PackageManager>)
   (ops : List<PT.PackageOp>)
@@ -579,8 +579,8 @@ let private otherBranchOps =
   System.Collections.Concurrent.ConcurrentDictionary<PT.BranchId, List<PT.PackageOp>>()
 
 // Dropped on every fold, like the rest: DB-derived state held for the life of the process with no
-// other way to expire. Defensive rather than load-bearing today, since the user-visible readers of
-// another branch (`diff`, `conflicts branch`) query SQLite directly.
+// other way to expire. The user-visible readers of another branch (`diff`, `conflicts branch`) query
+// SQLite directly, so this guards the in-process readers only.
 Caching.register (fun () -> otherBranchOps.Clear())
 
 /// Select the active branch's delta ops for this process (empty = main/core only). Prefer

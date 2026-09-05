@@ -11,7 +11,7 @@ module Darklang.Cli.Conflicts
 
 let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.success msg)
 let printErr (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
-let printHintLine (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
+let printHint (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
 
 /// Put the name back on a definition the pretty-printer couldn't name.
 ///
@@ -43,8 +43,8 @@ let renderItem
 
   // Each kind, tried in turn rather than only the one the conflict is filed under. A conflict CAN have
   // sides of different kinds -- a name that was a value on one machine and a fn on the other is exactly
-  // the sort of divergence worth looking at -- and dispatching on the filed kind alone rendered the odd
-  // side out as "isn't stored locally", which is the same words a genuinely absent version gets.
+  // the sort of divergence worth looking at -- and dispatching on the filed kind alone would render the
+  // odd side out as "isn't stored locally", the same words a genuinely absent version gets.
   let asFn () : Stdlib.Option.Option<String> =
     LanguageTools.PackageManager.Function.get h
     |> Stdlib.Option.map (fun f -> named (PrettyPrinter.ProgramTypes.packageFn ctx f))
@@ -255,7 +255,7 @@ let executeOverride
       | Some cand ->
         if cand.hash == c.autoResolvedTo then
           printOk
-            $"#{c.id}: that's already what the fold kept. Nothing to override -- `dark conflicts ack {c.id}` if it's right."
+            $"#{c.id}: that's already the auto-pick. Nothing to override -- `dark conflicts ack {c.id}` if it's right."
           state
         else
           match SCM.PackageOps.settleConflict state.currentBranchId c cand.hash with
@@ -280,8 +280,8 @@ let executeBranchPreview (state: AppState) (branchRef: String) : AppState =
       printOk $"\"{branchRef}\" would merge cleanly -- neither side moved a name the other did."
       state
     | cs ->
-      let n = Stdlib.Int.toString (Stdlib.List.length cs)
-      printOk $"{n} conflict(s) a merge of \"{branchRef}\" would auto-resolve (not recorded until it does):"
+      let n = Cli.Text.plural (Stdlib.List.length cs) "conflict"
+      printOk $"{n} a merge of \"{branchRef}\" would auto-resolve (not recorded until it does):"
 
       cs
       |> Stdlib.List.iter (fun c ->
@@ -298,6 +298,7 @@ let help (_state: AppState) : String =
     "and leaves the call to you."
     ""
     "  dark conflicts                step through them, deciding each"
+    "  dark conflicts walk           the same, even when stdin isn't a terminal"
     "  dark conflicts list           the pending ones, both sides inline"
     "  dark conflicts show <ref>     both versions as code, and which was kept"
     "  dark conflicts ack <ref>      the auto-pick stands; close it"
@@ -313,9 +314,7 @@ let help (_state: AppState) : String =
     "  Bare `dark conflicts` lists instead of stepping when there's no"
     "  terminal to answer, so scripts and pipes get the report."
     ""
-    "  --json    the same data, typed, on any of the above"
-    ""
-    "Conflict SQL is siloed in SCM.Conflicts; this command only formats." ]
+    "  --json    the same data, typed, on any of the above" ]
   |> Stdlib.String.join "\n"
 
 /// A structured "that didn't work" for the --json path.
@@ -477,17 +476,17 @@ let walkOne (state: AppState) (c: SCM.Conflicts.Conflict) (n: Int) (total: Int) 
   c.candidates
   |> Stdlib.List.indexedMap (fun i cand ->
     let label = if i == 0 then "A" else "B"
-    let mark = if cand.hash == c.autoResolvedTo then "kept by the fold" else "the other one"
+    let mark = if cand.hash == c.autoResolvedTo then "kept" else "lost"
     let who = whoseCandidate me cand
     let header = $"    {label} ({mark})  {who}  stamped {cand.originTs}"
     $"{header}\n{indentBlock (renderItem state.currentBranchId c.itemType cand.hash c.name)}")
   |> Stdlib.List.iter (fun block -> Stdlib.printLine block)
 
-  // A and B are SIDES, not verbs: the fold's pick is whichever of them won on recency, and it can be
-  // either. Labelling `a` as "keep" read as though yours always was the kept one.
+  // A and B are SIDES, not verbs: the auto-pick is whichever of them won on recency, and it can be
+  // either. Labelling `a` as "keep" would read as though yours always was the kept one.
   Stdlib.print (
     Stdlib.Cli.UI.Colors.hint
-      "    [a] take yours / [b] take theirs / [enter] keep the fold's pick / [s] skip / [q] quit: "
+      "    [a] take yours / [b] take theirs / [enter] keep the auto-pick / [s] skip / [q] quit: "
   )
 
   let answer =
@@ -500,7 +499,7 @@ let walkOne (state: AppState) (c: SCM.Conflicts.Conflict) (n: Int) (total: Int) 
       if cand.hash == c.autoResolvedTo then
         // Agreeing with the fold changes no binding, so it is an ack rather than a new op.
         SCM.Conflicts.setStatus c.id "acked" ""
-        printOk $"    {label} was already what the fold kept; closed without a new op."
+        printOk $"    {label} was already the auto-pick; closed without a new op."
       else
         match SCM.PackageOps.applyResolution state.currentBranchId c cand.hash with
         | Ok _ ->
@@ -508,7 +507,7 @@ let walkOne (state: AppState) (c: SCM.Conflicts.Conflict) (n: Int) (total: Int) 
           printOk $"    took {label}; {dotted} now binds {SCM.Conflicts.shortHash cand.hash}."
         | Error e -> printErr $"    couldn't apply that: {e}"
 
-  /// The side the fold picked, as the letter this prompt uses.
+  /// The side the auto-pick kept, as the letter this prompt uses.
   let foldPick () : String =
     match SCM.Conflicts.candidateFor c "local" with
     | Some local -> if local.hash == c.autoResolvedTo then "A" else "B"
@@ -520,9 +519,8 @@ let walkOne (state: AppState) (c: SCM.Conflicts.Conflict) (n: Int) (total: Int) 
     printOk "    skipped; still pending."
     true
   | "" ->
-    // Enter is the safe answer, and the safe answer is the one the fold already made. Name the SIDE it
-    // kept rather than calling it "the fold's pick": that phrasing lands in the sentence below as "the
-    // fold's pick was already what the fold kept", and it tells you nothing about which one you got.
+    // Enter is the safe answer, and the safe answer is the one already made. Name the SIDE it kept, so
+    // the line below says which one you got.
     let letter = foldPick ()
     apply letter (if letter == "A" then "yours" else "theirs")
     true
@@ -592,27 +590,27 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
   // fix it should not be buried in `help`.
   | [ "show" ] ->
     printErr "show needs a conflict id."
-    printHintLine "  `dark conflicts` lists them, ids first."
+    printHint "  `dark conflicts` lists them, ids first."
     state
   | [ "ack" ] ->
     printErr "ack needs a conflict id."
-    printHintLine "  `dark conflicts` lists them, ids first."
+    printHint "  `dark conflicts` lists them, ids first."
     state
   | [ "override", _id ] ->
     printErr "override needs a side: A, B, or a hash prefix."
-    printHintLine "  `dark conflicts show <id>` prints both versions with their hashes."
+    printHint "  `dark conflicts show <id>` prints both versions with their hashes."
     state
   | [ "override" ] ->
     printErr "override needs a conflict id and a side."
-    printHintLine "  `dark conflicts` lists them; `show <id>` prints both versions."
+    printHint "  `dark conflicts` lists them; `show <id>` prints both versions."
     state
   | [ "branch" ] ->
     printErr "branch needs a branch to preview."
-    printHintLine "  `dark branches` lists them."
+    printHint "  `dark branches` lists them."
     state
 
-  // Printing help alone reads as an answer: `conflicts zzznope` looked exactly like
-  // `conflicts --help`, so a typo passed for a command that ran and found nothing.
+  // Printing help alone reads as an answer: a typo would look exactly like `conflicts --help`, a
+  // command that ran and found nothing.
   | bad :: _ ->
     Stdlib.printLine
       (Stdlib.Cli.UI.Colors.error $"conflicts does not understand `{bad}`.")

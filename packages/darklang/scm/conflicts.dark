@@ -204,36 +204,24 @@ let detect
 
     // The incoming edit was made ON TOP of what this store holds: its `previous` is the local hash.
     // That is collaboration, not divergence, whatever the recorded base says. The base arm below
-    // sees both sides having moved since the last agreement and would otherwise call it a
-    // conflict, which it did: a colleague pulling my edit and then editing the same fn produced
-    // three "conflicts" on my side, all resolved to the version I was about to take anyway.
+    // sees both sides having moved since the last agreement and would otherwise call it a conflict:
+    // a colleague pulling my edit and then editing the same fn would read as a divergence on my
+    // side, resolved to the version I was about to take anyway.
     let descendsFromLocal (localBinding: Binding) : Bool =
       match inc.previous with
       | Some incPrev -> incPrev == localBinding.hash
       | None -> false
 
-    match (Stdlib.Dict.get localByKey k, Stdlib.Dict.get baseByKey k) with
-    | (Some loc, None) when
-      ((bothCreatedFromNothing
-        && (loc.previous == Stdlib.Option.Option.None)
-        && (inc.hash != loc.hash))
-       || bothMovedTheSameParent loc)
-      ->
-      let winner = if incomingWins inc loc then inc.hash else loc.hash
-
-      (Conflict
+    // The record, once a rule has fired. <param kind> names WHICH rule, honestly: two people editing
+    // one parent did not invent the name independently, even when no base was there to say so.
+    let conflictWith (loc: Binding) (kind: String) : Conflict =
+      Conflict
         { id = conflictId inc.owner inc.modules inc.name [ loc.hash, inc.hash ]
           owner = inc.owner
           modules = inc.modules
           name = inc.name
           itemType = inc.itemType
-          // Which rule fired, named honestly: two people editing one parent did not invent the name
-          // independently, even though both land in this arm.
-          kind =
-            if bothMovedTheSameParent loc then
-              "same-name-different-hash"
-            else
-              "independent-creation"
+          kind = kind
           candidates =
             [ Candidate
                 { side = "local"
@@ -244,12 +232,28 @@ let detect
                 { side = "incoming"
                   hash = inc.hash
                   originTs = inc.originTs
+                  // The op's own author when the sender told us, falling back to the source it arrived
+                  // through (a relay url, say) when it didn't.
                   author = if inc.author == "" then incomingLabel else inc.author } ]
-          autoResolvedTo = winner
+          autoResolvedTo = if incomingWins inc loc then inc.hash else loc.hash
           reason = resolutionReason inc loc
           status = "pending"
-          resolvedBy = "" })
-      |> Stdlib.Option.Option.Some
+          resolvedBy = "" }
+
+    match (Stdlib.Dict.get localByKey k, Stdlib.Dict.get baseByKey k) with
+    | (Some loc, None) when
+      ((bothCreatedFromNothing
+        && (loc.previous == Stdlib.Option.Option.None)
+        && (inc.hash != loc.hash))
+       || bothMovedTheSameParent loc)
+      ->
+      let kind =
+        if bothMovedTheSameParent loc then
+          "same-name-different-hash"
+        else
+          "independent-creation"
+
+      Stdlib.Option.Option.Some(conflictWith loc kind)
 
     | (Some loc, Some baseHash) ->
       // Lineage first: an edit on top of mine is never a conflict. Then the base test, then the
@@ -262,33 +266,7 @@ let detect
       then
         Stdlib.Option.Option.None
       else
-        let winner = if incomingWins inc loc then inc.hash else loc.hash
-
-        (Conflict
-          { id = conflictId inc.owner inc.modules inc.name [ loc.hash, inc.hash ]
-            owner = inc.owner
-            modules = inc.modules
-            name = inc.name
-            itemType = inc.itemType
-            kind = "same-name-different-hash"
-            candidates =
-              [ Candidate
-                  { side = "local"
-                    hash = loc.hash
-                    originTs = loc.originTs
-                    author = localLabel }
-                Candidate
-                  { side = "incoming"
-                    hash = inc.hash
-                    originTs = inc.originTs
-                    // The op's own author when the sender told us, falling back to the source it arrived
-                    // through (a relay url, say) when it didn't.
-                    author = if inc.author == "" then incomingLabel else inc.author } ]
-            autoResolvedTo = winner
-            reason = resolutionReason inc loc
-            status = "pending"
-            resolvedBy = "" })
-        |> Stdlib.Option.Option.Some
+        Stdlib.Option.Option.Some(conflictWith loc "same-name-different-hash")
     | _ -> Stdlib.Option.Option.None)
 
 

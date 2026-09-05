@@ -63,8 +63,7 @@ let line (f: SCM.Constraints.Finding) : String =
   | (DecisionSuperseded, Versions(using, current)) ->
     $"  #{f.id}  {u}\n         you overrode this to {shortHash using}; a later edit rebound it to {shortHash current}"
   | (DecisionSuperseded, PolicyReplaced(was, now, by)) ->
-    let whose =
-      if by == "" then "a later choice" else $"{by}"
+    let whose = if by == "" then "a later choice" else by
 
     $"  #{f.id}  {u}\n         you chose {policyName was} here; {whose} replaced it with {policyName now}"
   | (_, _) -> $"  #{f.id}  {u}"
@@ -122,7 +121,7 @@ let executeList (state: AppState) (args: List<String>) : AppState =
     printOk "no constraints: nothing has drifted off its current version."
     state
   | findings ->
-    printOk (Cli.Status.plural (Stdlib.List.length findings) "constraint")
+    printOk (Cli.Text.plural (Stdlib.List.length findings) "constraint")
     findings |> Stdlib.List.iter (fun f -> Stdlib.printLine (line f))
     Stdlib.printLine ""
 
@@ -161,9 +160,9 @@ let selectTargets
     let normalize (i: String) : String =
       if Stdlib.String.startsWith i "#" then Stdlib.String.dropFirst i 1 else i
 
-    // An EMPTY prefix must not match. `startsWith f.id ""` is true of every finding, so `dark constraints
-    // ack ""` matched the first one and acked it -- a mutation, chosen arbitrarily, from an argument that
-    // says nothing. It's treated as an unknown id now, which reports and skips.
+    // An EMPTY prefix must not match. `startsWith f.id ""` is true of every finding, so `dark ack ""`
+    // would ack the first one: a mutation, chosen arbitrarily, from an argument that says nothing. It is
+    // an unknown id, which reports and skips.
     let real =
       ids
       |> Stdlib.List.filter (fun i -> Stdlib.String.startsWith i "--" |> Stdlib.Bool.not)
@@ -195,9 +194,9 @@ let whyFrom (args: List<String>) : String =
 /// and their dependency edges, which a branch's overlay doesn't change. So there is nothing branch-scoped to
 /// ack, and acking from a branch would record an answer to a question that wasn't asked there.
 ///
-/// This is deliberate, not the limitation propagation choices had. Those genuinely differ per branch (a
-/// branch may want a different pin), so they're scoped by `branch_id`. An ack isn't like that -- if the
-/// finding is real it's real everywhere, and one answer is the right number of answers.
+/// Propagation choices are different: they genuinely differ per branch (a branch may want a different
+/// pin), so they're scoped by `branch_id`. An ack isn't like that -- if the finding is real it's real
+/// everywhere, and one answer is the right number of answers.
 let onBranch () : Bool =
   Stdlib.Bool.not (SCM.Ids.isMain (SCM.PackageOps.currentBranch ()))
 
@@ -318,7 +317,7 @@ let executeResolve (state: AppState) (args: List<String>) : AppState =
   match resolutionFor targets args with
   | Error e ->
     printErr e
-    printHint "  `dark constraints ack <id>...` leaves them for now, which needs no choice."
+    printHint "  `dark ack <id>...` leaves them for now, which needs no choice."
     state
   | Ok resolution ->
     targets
@@ -343,7 +342,7 @@ let executeResolve (state: AppState) (args: List<String>) : AppState =
 
 
 let help (_state: AppState) : String =
-  [ "dark constraints -- standing checks over the store"
+  [ "dark constraints - standing findings about the store, and what you've decided about them."
     ""
     "  Checks you RUN, not warnings at commit. Three kinds today:"
     ""
@@ -388,7 +387,7 @@ let executeAckCmd (state: AppState) (args: List<String>) : AppState =
   | _ -> executeAck state args
 
 /// The arguments the listing understands. Anything else is refused rather than listed past: `dark
-/// constraints zzznope` answered with the whole list as though nothing had been asked.
+/// constraints zzznope` would otherwise answer with the whole list as though nothing had been asked.
 let listingUnderstands (args: List<String>) : Bool =
   let understands (rest: List<String>) : Bool =
     match rest with

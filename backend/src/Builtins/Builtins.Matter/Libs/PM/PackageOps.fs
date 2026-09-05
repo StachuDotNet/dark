@@ -39,6 +39,16 @@ let private recordBranchEvent
   }
 
 
+/// The `(id, blobHex, originTs)` triples the sync builtins take, as strings. Anything not shaped
+/// like one is dropped; the caller decides whether that is an error.
+let private opRecords (records : List<Dval>) : List<string * string * string> =
+  records
+  |> List.choose (fun d ->
+    match d with
+    | DTuple(DString id, DString hex, [ DString ts ]) -> Some(id, hex, ts)
+    | _ -> None)
+
+
 // TODO: review/reconsider the accessibility of these fns
 let fns (pm : PT.PackageManager) : List<BuiltInFn> =
   [ { name = fn "pmStabilizeHashes" 0
@@ -202,17 +212,18 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                   return resultOk (Dval.int (bigint (int n)))
 
               else
-                // Stabilize before inserting. Insert raw ops and their SetName targets are provisional,
-                // so `WipRefresh.refresh` assigns real hashes by rewriting the ENTIRE log on every author.
+                // Stabilize before inserting. Raw ops carry provisional hashes, so their SetName
+                // targets would too, and the only thing that repairs those is `WipRefresh.refresh`
+                // rewriting the ENTIRE log.
                 let stabilizedOps = LibDB.HashStabilization.computeRealHashes ops
 
-                // All ops are added as WIP - use scmCommitWipOpsByIds to commit them
+                // Everything lands uncommitted; `commit` is a separate step.
                 let! insertedCount =
                   LibDB.Inserts.insertAndApplyOpsAsWip stabilizedOps
 
-                // Auto-refresh existing WIP items: re-resolve names and
-                // recompute SCC-aware hashes now that new items exist (still needed for the forward-ref case:
-                // an earlier WIP item that references THIS newly-authored one).
+                // Refresh the EXISTING draft: re-resolve names and recompute SCC-aware hashes now
+                // that new items exist. This is the forward-ref case: an earlier draft item that
+                // references THIS newly-authored one.
                 let! _refreshed = LibDB.WipRefresh.refresh pm
 
                 // Populate `rt_dval` for any package_values rows still
@@ -418,14 +429,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [| DString commitHash; DList(_, records) |] ->
           uply {
             try
-              let rows =
-                records
-                |> List.choose (fun d ->
-                  match d with
-                  | DTuple(DString id, DString hex, [ DString ts ]) ->
-                    Some(id, hex, ts)
-                  | _ -> None)
-              let! n = LibDB.Inserts.importOpsBulk commitHash rows
+              let! n = LibDB.Inserts.importOpsBulk commitHash (opRecords records)
               let! _ = LibDB.Seed.applyUnappliedOps () // fold the just-inserted (effective=1) ops
               return resultOk (Dval.int (bigint n))
             with ex ->
@@ -461,14 +465,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [| DString owner; DList(_, records) |] ->
           uply {
             try
-              let rows =
-                records
-                |> List.choose (fun d ->
-                  match d with
-                  | DTuple(DString id, DString hex, [ DString ts ]) ->
-                    Some(id, hex, ts)
-                  | _ -> None)
-              let! n = LibDB.Inserts.storeOpsWithOwner owner rows
+              let! n = LibDB.Inserts.storeOpsWithOwner owner (opRecords records)
               return resultOk (Dval.int (bigint n))
             with ex ->
               return resultError (Dval.string ex.Message)
@@ -582,8 +579,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
           uply {
             try
               // Every id must parse. This list is what SURVIVES a delete of main's whole draft, so
-              // dropping an unreadable one silently WIDENS the delete: the tolerant `List.choose` this
-              // replaces turned one malformed id into one op deleted for good. Refuse the call instead.
+              // dropping an unreadable one silently WIDENS the delete: one malformed id would be one
+              // op deleted for good. Refuse the call instead.
               let parsed =
                 ids
                 |> List.map (fun d ->
@@ -684,8 +681,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
 
     // Fold the ops a merge just made effective, and evaluate any values among them.
     //
-    // This is all that is left of merge in F#, and it is the part that has to be: replaying the op log
-    // into main's projections, and evaluating a merged value so it has an `rt_dval` to run. Everything
+    // The only part of merge in F#, and the part that has to be: replaying the op log into main's
+    // projections, and evaluating a merged value so it has an `rt_dval` to run. Everything
     // around it -- whether a merge is allowed, which arm it takes, flipping the frontier effective,
     // marking it merged -- is decided and done in Dark (`SCM.PackageOps.mergeBranch`).
     { name = fn "scmApplyMergedOps" 0
@@ -851,41 +848,28 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             try
               // An op this build cannot decode is stored RAW and inert rather than refusing the bundle,
               // the way main sync stores such ops: present, a later build reads it. A branch three ops
-              // short does resolve differently than on the sender, but that holds for main sync too and
-              // was decided the other way there; refusing left the branch absent altogether.
+              // short does resolve differently than on the sender, but that holds for main sync too,
+              // and refusing would leave the branch absent altogether.
               //
               // The record's `ts` is the op's ORIGIN stamp and must survive; re-stamping locally would make
               // this machine look like the author and resolve LWW by who imported last.
               let parsed =
-                records
-                |> List.choose (fun d ->
-                  match d with
-                  | DTuple(DString id, DString hex, [ DString ts ]) ->
-                    Some(System.Guid.Parse id, System.Convert.FromHexString hex, ts)
-                  | _ -> None)
+                opRecords records
+                |> List.map (fun (id, hex, ts) ->
+                  (System.Guid.Parse id, System.Convert.FromHexString hex, ts))
 
-              let decoded, raw =
+              let decoded =
                 parsed
                 |> List.map (fun (id, blob, ts) ->
-                  match BS.PT.PackageOp.tryDeserialize id blob with
-                  | Some op -> Choice1Of2(op, ts)
-                  | None -> Choice2Of2(id, blob, ts))
-                |> List.partition (fun c ->
-                  match c with
-                  | Choice1Of2 _ -> true
-                  | Choice2Of2 _ -> false)
+                  ((id, blob, ts), BS.PT.PackageOp.tryDeserialize id blob))
               let stamped =
                 decoded
-                |> List.choose (fun c ->
-                  match c with
-                  | Choice1Of2 x -> Some x
-                  | Choice2Of2 _ -> None)
+                |> List.choose (fun ((_, _, ts), op) ->
+                  op |> Option.map (fun op -> (op, ts)))
               let rawRecords =
-                raw
-                |> List.choose (fun c ->
-                  match c with
-                  | Choice2Of2 x -> Some x
-                  | Choice1Of2 _ -> None)
+                decoded
+                |> List.choose (fun (record, op) ->
+                  if Option.isNone op then Some record else None)
 
               if not (List.isEmpty rawRecords) then
                 System.Console.Error.WriteLine(
@@ -897,7 +881,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 return
                   resultError (
                     Dval.string
-                      "(a record was not an (id, blobHex, originTs) triple). Nothing was imported."
+                      "a record was not an (id, blobHex, originTs) triple; nothing was imported"
                   )
               else
 

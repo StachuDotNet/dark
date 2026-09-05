@@ -6,9 +6,9 @@
 reload. Reload without re-exporting the seed and the two disagree: every command dies with "Function
 <hash> couldn't be found", and only OUTSIDE the source tree, because inside it the working store answers.
 
-The existing guard compares mtimes, which is a proxy and a warning. This asks the question directly: for
-each ref hash, find the op the fold credited with that binding, and require the seed to carry it. A ref
-whose op is missing cannot be produced by that seed, whatever the timestamps say.
+The mtime check beside this one in `Cli.fsproj` is a proxy and a warning. This asks the question directly:
+for each ref hash, find the op the fold credited with that binding, and require the seed to carry it. A
+ref whose op is missing cannot be produced by that seed, whatever the timestamps say.
 
 Unrelated locally-authored ops are NOT a failure. A dev store accumulates them, and they say nothing
 about whether the refs resolve.
@@ -57,10 +57,9 @@ def main() -> int:
     """
     missing = [h for h in refs if db.execute(query, (h,)).fetchone()[0] > 0]
 
-    # The seed must carry NO instance state. A seed built on a machine that had a branch once shipped
-    # 351,299 `op_owners` rows and a branch bundle to every install, and had zero branches only because
-    # none existed on the build machine that day. `Seed.export` strips these; nothing checked that it
-    # kept doing so.
+    # The seed must carry NO instance state. A seed built on a machine that has a branch ships that
+    # branch, and its `op_owners` rows (hundreds of thousands of them), to every install. `Seed.export`
+    # strips these; this is what holds it to that.
     dirty = []
     for table in ("branches", "op_branches", "op_owners", "sync_bases", "config_v0"):
         try:
@@ -70,9 +69,9 @@ def main() -> int:
         if n:
             dirty.append((table, n))
 
-    # Uncommitted ops are your DRAFT. Whatever you happened to be part-way through when the release was
-    # cut would ship to every install and show up as "1 item changed" on someone else's first run. Caught
-    # exactly that way: a scratch function of mine reached `test-first-day`'s supposedly-empty home.
+    # Uncommitted ops are your DRAFT. Whatever you happen to be part-way through when the release is
+    # cut ships to every install and shows up as "1 item changed" on someone else's first run, which is
+    # how a scratch function reaches `test-first-day`'s supposedly-empty home.
     wip = db.execute(
         "SELECT count(*) FROM seed.package_ops WHERE commit_hash IS NULL"
     ).fetchone()[0]

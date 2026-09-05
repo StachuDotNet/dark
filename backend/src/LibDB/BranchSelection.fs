@@ -19,7 +19,7 @@ type Tier =
   | Default
 
 /// A ref that the flag or the env tier could not turn into a branch, with the reason: these are refused,
-/// not created, because a branch named after a peer's uuid read as success.
+/// not created, because a branch minted under a peer's uuid would read as success.
 type Refusal =
   | AmbiguousPrefix of string
   | UnknownId of PT.BranchId
@@ -38,6 +38,14 @@ type Selection =
 
 let private none =
   { branchId = None; tier = Default; created = None; goneStored = None }
+
+/// Point the stored tier back at main. Said once: left in place, every command from here on would
+/// repeat that the branch is gone.
+let private resetStoredToMain () : Task<unit> =
+  task {
+    do! Config.set "current_branch" (string PT.BranchId.Main)
+    do! Config.set "current_branch_name" PT.BranchId.MainName
+  }
 
 /// The flag and env tiers: a name, a full id, or an unambiguous id prefix. `main` is spelled as the
 /// absence of a branch. Only a name nobody has is created.
@@ -78,16 +86,13 @@ let private fromStored () : Task<Selection> =
               match label with
               | Some n when n <> "" -> n
               | _ -> stored
-            // Said once. Left in place, every command from here on would repeat it.
-            do! Config.set "current_branch" (string PT.BranchId.Main)
-            do! Config.set "current_branch_name" PT.BranchId.MainName
+            do! resetStoredToMain ()
             return { none with tier = Stored; goneStored = Some label }
       | None ->
         match! Branches.liveIdForName stored with
         | Some id -> return { none with branchId = Some id; tier = Stored }
         | None ->
-          do! Config.set "current_branch" (string PT.BranchId.Main)
-          do! Config.set "current_branch_name" PT.BranchId.MainName
+          do! resetStoredToMain ()
           return { none with tier = Stored; goneStored = Some stored }
     | _ -> return none
   }

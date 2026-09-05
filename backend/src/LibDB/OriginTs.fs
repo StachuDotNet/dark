@@ -36,11 +36,12 @@ let observe (stamp : string) : unit =
 
 
 /// A process-monotonic authoring stamp: millisecond wall clock, but returns `max(nowMs, last+1ms)` so it
-/// never repeats within a batch. Same-ms ops would otherwise tie, and the LWW in `applySetName` breaks a
-/// tie by content hash, silently reordering local sequential edits.
+/// never repeats within a batch. Same-ms ops would otherwise tie, and the LWW in
+/// `PackageOpPlayback.applySetNameFrom` breaks a tie by content hash, silently reordering local
+/// sequential edits.
 ///
 /// The format matches the schema default `strftime('%Y-%m-%dT%H:%M:%fZ')` so it stays lexically comparable
-/// against rows written before this existed, and against peers.
+/// against rows that default stamped, and against peers.
 let next () : string =
   lock originTsLock (fun () ->
     let nowMs =

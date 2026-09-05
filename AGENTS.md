@@ -228,9 +228,9 @@ caller anywhere in the repo. So give each builtin exactly one Dark wrapper -- a 
 or CLI fn that names it, types it and documents it -- and route callers through the
 wrapper. The wrapper is where the raw builtin's `List<'a>` becomes `List<TraceSummary>`.
 The allowlists in `backend/tests/Tests/Builtin.Tests.fs` are for cases that genuinely
-can't work that way, and `multiUseAllowlist` has grown a lot: read the reason beside a
-group before adding to it, and prefer a wrapper whenever the builtin returns a structured
-value, which is where the rule earns its keep.
+can't work that way. `multiUseAllowlist` is empty and `unusedAllowlist` has one entry;
+before adding to either, check whether a wrapper already exists that the new caller has
+simply not been pointed at, which is what a second `Builtin.x` reference usually means.
 
 ## Adding a CLI command (Darklang)
 
@@ -278,18 +278,17 @@ both, and both test tables. Inverting either tie-break turns those red, which is
 
 **A synced store's own log holds ops it cannot read.** A peer on a different build sends ops this
 binary's deserializer rejects. They are STORED and left unapplied deliberately, so a later build can
-apply them, which means they sit in the local log where every local reader meets them. So the rule
-"off the wire it may be garbage, but the LOCAL log is ours, raise if it will not parse" is false, and
-it was written in a comment as if it were true. Two bugs came from it: `dark propagate pin` died with
-a raw `BinaryFormatException` on a store holding seven such ops and stayed dead, and the draft rewrite
-(which deletes main's log and re-inserts what it read) would have destroyed them. The rule now is:
-ONE decoder, it returns an Option, every reader tolerates, and no writer deletes what it could not
-decode (`Inserts.wholeMainDeletes` excludes them by id).
+apply them, which means they sit in the local log where every local reader meets them. So "off the
+wire it may be garbage, but the LOCAL log is ours, raise if it will not parse" is false. A reader
+that raises dies on the first such op and stays dead (`dark propagate pin` with a raw
+`BinaryFormatException`); a writer that deletes main's log and re-inserts what it read destroys them.
+The rule: ONE decoder, it returns an Option, every reader tolerates, and no writer deletes what it
+could not decode (`Inserts.wholeMainDeletes` excludes them by id).
 
 **A pull cursor can point past ops you do not have.** The cursor is a position in the RELAY's log, and
 nothing ties it to what you actually applied. `dark pull` then answers "Pulled 0 new op(s)" forever
 while `dark sync status` correctly says you are thousands of ops behind. The client rewinds on its own
-now (relay-instance mismatch, or an empty bundle while the relay holds more ops than you), but the
+(relay-instance mismatch, or an empty bundle while the relay holds more ops than you), but the
 CAUSE is still there, and it is narrower than it looks. `LocalExec` calls `LibDB.Purge.purge ()` before
 a package reload: it wipes the store and re-authors every item from the `.dark` files on disk, and a
 colleague's ops are not in those files. Measured: 28,372 ops before a build, 12,692 after. `LocalExec`
@@ -302,13 +301,13 @@ re-insert reads from: `Queries.getWipOps` reads the DATABASE, and it carries the
 `WHERE effective = 1 AND id NOT IN (SELECT op_id FROM op_branches)` as `Inserts.draftDeletes` and
 `Inserts.wholeMainDeletes`. Delete and read cover the same set, so a peer's op goes out and comes back.
 That symmetry is the whole safety property. Break it in either direction and authoring silently eats ops
-that arrived over the wire, which is exactly how the undecodable-op bug worked before the id exclusion
-was added, and how authoring on a self-hosted relay ate its hosted ops before `effective = 1` was.
+that arrived over the wire: without the id exclusion the undecodable ops go, and without `effective = 1`
+a self-hosted relay's hosted ops go.
 
 **This is the trap.** `locations` has NO `branch_id`. A branch has no rows there at all, so any read that
 goes straight to `locations` answers about MAIN while you are standing on a branch -- and it answers
 plausibly, which is why it is hard to spot. Go through the overlay helpers in `SCM.PackageOps`, or read the
-op log directly. Three call sites had already drifted this way.
+op log directly.
 
 ## Gotchas
 
@@ -328,7 +327,7 @@ NOT re-export `rundir/seed.db`, and a binary built on that seed can't produce th
 only fails outside the source tree, since inside it the working store answers.
 `scripts/build/check-seed-carries-refs` names it in one run; fix with
 `scripts/run-local-exec export-seed rundir/seed.db` and rebuild. `test-first-day` and
-`scripts/perf/gate --published` now refuse an artifact older than the tree rather than
+`scripts/perf/gate --published` refuse an artifact older than the tree rather than
 reporting on it.
 
 **No `PACKAGE.` source prefix.** `PACKAGE.` is internal runtime/debug notation, not a
@@ -401,12 +400,11 @@ beside the db (instance id and name), and `$HOME/.darklang/capabilities.bin`.
 That third one is keyed on **HOME**, not `DARK_CONFIG_RUNDIR`, so an isolated store does NOT isolate it. A
 `dark caps grant ...` in a throwaway store writes the real grant for the whole container. Worse, the file's
 ABSENCE is what makes the host permissive (`hostCaps` returns allCaps only while there is no file), so
-creating one narrows every process under that HOME. Running `caps grant random` in a sweep turned ten suite
-tests red with "capability denied: `sqliteQuery` needs file (read)", and the fix is to delete the file
-rather than to grant more. Set `HOME` as well as `DARK_CONFIG_RUNDIR` when a test touches `caps`.
+creating one narrows every process under that HOME. One `caps grant` from a sweep turns ten suite tests
+red with "capability denied: `sqliteQuery` needs file (read)", and the fix is to delete the file rather
+than to grant more. Set `HOME` as well as `DARK_CONFIG_RUNDIR` when a test touches `caps`.
 
-Clearing only `current_branch%` is the trap: it looks like isolation and leaves the relay wired up. It has
-happened twice here from ad-hoc scripts, both reads, both avoidable.
+Clearing only `current_branch%` is the trap: it looks like isolation and leaves the relay wired up.
 
 One consequence worth knowing: an isolated store usually looks like a FIRST RUN, and Home shows its welcome
 PANEL instead of a row's detail, so a test waiting for anything a populated Home draws waits forever. Do not
@@ -419,17 +417,20 @@ Two traps, both of which read as product bugs and are not:
 
 **A stray relay answers on the port you expected.** One left over from an earlier run holds the port with
 a secret you have forgotten, your new relay never binds, and every push comes back `HTTP 401: that write
-secret isn't the one this relay expects`. It looks exactly like broken auth. Kill first, wait for the
-kill, pick a port of your own, and check the process you started is the one alive:
+secret isn't the one this relay expects`. It looks exactly like broken auth. Do not reach for
+`pkill -f Matter.router`: it takes out every relay in the container, including one somebody is running
+by hand in tmux. Pick a port of your own, refuse to start if it is taken, trap the pid you started, and
+check that pid is the one alive:
 
-    pkill -9 -f "Matter.router"; for _ in 1 2 3 4 5; do pgrep -f "[M]atter.router" >/dev/null || break; sleep 1; done
     PORT=$(( 9200 + RANDOM % 300 ))
-    ... start it ... ; kill -0 $RPID || { echo "not ours"; exit 2; }
+    ss -ltn | grep -q ":$PORT " && { echo "port $PORT in use; re-run"; exit 2; }
+    ... start it ... & RPID=$!; trap 'kill $RPID 2>/dev/null' EXIT
+    kill -0 $RPID || { echo "the relay we started is not running"; exit 2; }
 
 **A bare `wait` also waits on the relay.** The relay is a background job of the same shell, and it never
 exits, so `wait` after a couple of parallel pushes hangs forever with no output and no CPU. Name the pids:
-`wait $PA $PB`. This cost two debugging rounds in one session, twice, because a hung script with an empty
-log looks like a hung PRODUCT.
+`wait $PA $PB`. A hung script with an empty log looks like a hung PRODUCT, so this one is worth ruling
+out first.
 
 `scripts/testing/test-sync-multi-instance` does both correctly and is the place to copy from.
 
@@ -511,14 +512,12 @@ Three things make the next one findable, all in place:
 ## Testing code that moved from F# to Dark
 
 When a function moves into `packages/`, its F# test has to move with it, or it goes on asserting about a
-copy nobody runs. Drive the real one from the test instead: parse a Dark expression, build an execution
-state, execute it, and destructure the `Dval`.
+copy nobody runs. Drive the real one from the test instead: `TestUtils.evalDarkExpr` parses a Dark
+expression, builds an execution state and executes it; destructure the `Dval` it hands back.
 
-    let! ptExpr = parsePTExpr code
-    let! state = executionStateFor PM.pt false Map.empty
-    let rtExpr = PT2RT.Expr.toRT Map.empty 0 None ptExpr
-    match! Exe.executeExpr state rtExpr with
+    match! evalDarkExpr code with
     | Ok(RT.DEnum(_, _, _, "Ok", [ RT.DInt n ])) -> ...
+    | Error(rte, _) -> return failtest $"the Dark call raised: {rte}"
 
 `Draft.Tests.fs` and `BranchOverlay.Tests.fs` both have a small set of these, one per result shape
 (`Result<Int,_>`, `Result<Unit,_>`, `List<String>`), plus a helper that spells a `BranchId` as Dark
@@ -528,16 +527,15 @@ Three things that will cost you a build cycle each:
 
 - **Say what went wrong.** `Exception.raiseInternal "the Dark call raised" [ "rte", rte ]` prints the
   message and swallows the tag, so every failure looks identical. Put the error IN the message:
-  `failtest $"the Dark call raised: {rte}"`. Two rounds were spent guessing at what turned out to be a
-  name resolution error naming the exact missing module.
+  `failtest $"the Dark call raised: {rte}"`. The error is usually a name resolution failure that names
+  the exact missing module, and it is useless if it is swallowed.
 - **The test file is parsed with owner `Tests`**, so the Dark you embed needs `Darklang.` in full. A
   find-and-replace over the F# call sites will also rewrite the module path inside those strings, and
   the result is a `ParseTimeNameResolution` at run time rather than a compile error.
 - **A `let` needs the newline after it.** Building Dark source by string concatenation loses that
   silently and you get `VariableNotFound`. Write the expression without a `let`.
 
-The point of all this is that a green F# build says nothing about Dark, which resolves names lazily. Four
-suite tests and a CLI sweep caught things the compiler could not, all in one session.
+The point of all this is that a green F# build says nothing about Dark, which resolves names lazily.
 
 ## Debugging
 

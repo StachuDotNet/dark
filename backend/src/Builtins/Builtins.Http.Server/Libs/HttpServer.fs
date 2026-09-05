@@ -94,9 +94,9 @@ let private compressionFloor = 1024
 ///     brotli       280,064  10.3x   19ms
 ///
 /// Counting transfer at the ~10MB/s these pages actually move at, that is 64ms per page against 47ms.
-/// This is the same repetition a per-bundle hash dictionary was meant to remove, obtained without a
-/// format change and, more importantly, without the relay having to transcode every op on every page --
-/// which would have undone the native page renderer that took a page from 2.8s to 0.47s.
+/// It is the same repetition a per-bundle hash dictionary would remove, obtained without a format
+/// change and, more importantly, without the relay transcoding every op on every page, which is what
+/// keeps the native page renderer at its 0.47s per page.
 let private maybeCompress
   (req : HttpListenerRequest)
   (body : byte[])

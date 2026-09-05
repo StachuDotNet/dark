@@ -46,6 +46,13 @@ let private repointListKT =
 let private branchOfParam (branchIdGuid : System.Guid) : PT.BranchId =
   PT.BranchId.Id branchIdGuid
 
+/// The `branchId` parameter every branch-scoped builtin here takes.
+let private branchParam : Param =
+  Param.make
+    "branchId"
+    TUuid
+    "the branch to resolve against; main is `SCM.Ids.mainBranchId`. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
+
 
 /// `pmGetLocationsBy{Type,Value,Fn}`: every name a hash is bound to, seen from <param branchId>.
 ///
@@ -67,10 +74,7 @@ let private locationsByHashFn
   { name = fn builtinName 0
     typeParams = []
     parameters =
-      [ Param.make
-          "branchId"
-          TUuid
-          "the branch to resolve against. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
+      [ branchParam
         Param.make "hash" (TCustomType(NR.ok (PT2DT.Hash.typeName ()), [])) "" ]
     returnType = TList(TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
     description = $"Returns all locations of a package {itemWord} by its hash"
@@ -114,10 +118,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     { name = fn "pmFindType" 0
       typeParams = []
       parameters =
-        [ Param.make
-            "branchId"
-            TUuid
-            "the branch to resolve against. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
+        [ branchParam
           Param.make
             "location"
             (TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
@@ -131,11 +132,10 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [| DUuid branchIdGuid; location |] ->
           uply {
             let location = PT2DT.PackageLocation.fromDT location
-            // On a BRANCH, resolve against the overlay so a name authored earlier on the same branch
-            // resolves (intra-branch reference fix). With NO branch active, use the exact original
-            // main lookup (PMPT.Type.find) -- byte-identical, cache-free -- so non-branch resolution is
-            // unchanged (the branch overlay PM's cached base would otherwise go stale across a shared
-            // process, e.g. in the test harness).
+            // On a BRANCH, resolve against the overlay, so a name authored earlier on the same branch
+            // resolves. On main, read the store directly: the overlay PM memoizes its base, which goes
+            // stale across a long-lived process (the test harness shares one), and `PMPT.Type.find`
+            // has no cache to go stale.
             let! result =
               let branch = branchOfParam branchIdGuid
 
@@ -182,10 +182,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     { name = fn "pmFindValue" 0
       typeParams = []
       parameters =
-        [ Param.make
-            "branchId"
-            TUuid
-            "the branch to resolve against. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
+        [ branchParam
           Param.make
             "location"
             (TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
@@ -199,7 +196,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [| DUuid branchIdGuid; location |] ->
           uply {
             let location = PT2DT.PackageLocation.fromDT location
-            // Branch overlay when on a branch (intra-branch refs); exact original main lookup otherwise.
+            // Overlay on a branch, direct store read on main; see `pmFindType`.
             let! result =
               let branch = branchOfParam branchIdGuid
 
@@ -319,10 +316,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     { name = fn "pmFindFn" 0
       typeParams = []
       parameters =
-        [ Param.make
-            "branchId"
-            TUuid
-            "the branch to resolve against. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
+        [ branchParam
           Param.make
             "location"
             (TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
@@ -336,7 +330,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [| DUuid branchIdGuid; location |] ->
           uply {
             let location = PT2DT.PackageLocation.fromDT location
-            // Branch overlay when on a branch (intra-branch refs); exact original main lookup otherwise.
+            // Overlay on a branch, direct store read on main; see `pmFindType`.
             let! result =
               let branch = branchOfParam branchIdGuid
 
@@ -390,10 +384,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     { name = fn "applicableByName" 0
       typeParams = []
       parameters =
-        [ Param.make
-            "branchId"
-            TUuid
-            "the branch to resolve against. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
+        [ branchParam
           Param.make "name" TString "dotted package fn name, e.g. Stdlib.List.map" ]
       returnType =
         TypeReference.result
@@ -418,9 +409,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 let location : PT.PackageLocation =
                   { owner = owner; modules = modules; name = fnName }
                 // Through the branch overlay, like `pmSearch` and the `pmFind*` trio. The closure `pm` is
-                // MAIN's package manager, so serving a router authored on a branch answered "No function
-                // named ..." about a fn that was plainly there -- and the message went on to ask whether it
-                // was defined on this branch, which it was.
+                // MAIN's package manager; asked about a router authored on a branch it answers "No
+                // function named ..." about a fn that is plainly there.
                 let branchPM =
                   LibDB.PackageManager.ptForBranch (branchOfParam branchIdGuid)
                 match! branchPM.findFn location with
@@ -447,10 +437,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     { name = fn "pmSearch" 0
       typeParams = []
       parameters =
-        [ Param.make
-            "branchId"
-            TUuid
-            "the branch to resolve against. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
+        [ branchParam
           Param.make
             "query"
             (TCustomType(NR.ok (PT2DT.Search.SearchQuery.typeName ()), []))
@@ -462,8 +449,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [| DUuid branchIdGuid; query as DRecord(_, _, _, _fields) |] ->
           uply {
             let searchQuery = PT2DT.Search.SearchQuery.fromDT query
-            // Route through the active branch overlay (core when no branch is active) so a branch's
-            // items show up in ls/view/tree/search, not just eval. No-op for main.
+            // Through the branch overlay, so a branch's items show up in ls/view/tree/search, not just
+            // eval. Main's overlay is main itself.
             let pm = LibDB.PackageManager.ptForBranch (branchOfParam branchIdGuid)
             let! results = pm.search searchQuery
             return PT2DT.Search.SearchResults.toDT results
@@ -513,10 +500,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     { name = fn "pmSearchNames" 0
       typeParams = []
       parameters =
-        [ Param.make
-            "branchId"
-            TUuid
-            "the branch to search on; main is `SCM.Ids.mainBranchId`"
+        [ branchParam
           Param.make
             "query"
             (TCustomType(NR.ok (PT2DT.Search.SearchQuery.typeName ()), []))
@@ -580,10 +564,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     { name = fn "pmSearchNamesAndHashes" 0
       typeParams = []
       parameters =
-        [ Param.make
-            "branchId"
-            TUuid
-            "the branch to search on; main is `SCM.Ids.mainBranchId`"
+        [ branchParam
           Param.make
             "query"
             (TCustomType(NR.ok (PT2DT.Search.SearchQuery.typeName ()), []))
@@ -836,10 +817,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     { name = fn "pmPropagate" 0
       typeParams = []
       parameters =
-        [ Param.make
-            "branch"
-            TUuid
-            "the branch to resolve against. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
+        [ branchParam
           Param.make
             "sourceLocation"
             (TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
@@ -867,7 +845,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _,
           _,
           _,
-          [| DUuid branchGuid
+          [| DUuid branchIdGuid
              sourceLocation
              sourceItemKindDval
              DList(_, fromSourceHashDvals)
@@ -879,7 +857,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
 
             // The branch this propagation runs on, from the caller. Every Dark call site passes
             // `state.currentBranchId`, which is what keeps a branch's cascade off main.
-            let branch = branchOfParam branchGuid
+            let branch = branchOfParam branchIdGuid
 
             let! result =
               LibDB.Propagation.propagate

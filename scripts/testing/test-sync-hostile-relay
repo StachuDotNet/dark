@@ -8,14 +8,16 @@
 # after which the push was RECORDED as done. Point the client at a working relay afterwards and it says
 # "Already up to date" while your work is not there, and never asks again.
 #
-# What is asserted, in order of how much it would cost to get wrong:
+# Three kinds of thing are asserted, in order of how much it would cost to get wrong:
 #
-#   1. An unreadable reply must not be reported as a completed push, and must not record one. This is the
-#      data-loss case: everything else here is a message being wrong.
-#   2. Nothing crashes, hangs, or leaks an interpreter error, whatever the relay does.
-#   3. What the relay LISTS is not trusted: branch ids that are not uuids never reach a URL.
+#   - An unreadable reply must not be reported as a completed push, and must not record one. This is the
+#     data-loss case: everything else here is a message being wrong.
+#   - Nothing crashes, hangs, or leaks an interpreter error, whatever the relay does.
+#   - What the relay SAYS is not trusted: branch ids that are not uuids never reach a URL, a cursor past
+#     what the store holds rewinds, a page that never lands is not recorded as pulled.
 #
-# The relay is `fixtures/hostile-relay.py`, one failure mode per port.
+# The relay is `fixtures/hostile-relay.py`, one failure mode per port. The steps below are numbered in
+# the order they run.
 
 set -euo pipefail
 
@@ -46,10 +48,10 @@ start_relay() {  # start_relay <port>
 
 rm -rf "$WORK"; mkdir -p "$WORK"
 
+# The four modes that answer a push badly. The other modes are started at the step that uses them.
 MODES=(9081 9082 9084 9085)
-EXTRA_MODES=(9087)
 trap 'pkill -f "$FIXTURE" 2>/dev/null || true' EXIT
-for m in "${MODES[@]}" "${EXTRA_MODES[@]}"; do
+for m in "${MODES[@]}"; do
   start_relay "$m"
 done
 
@@ -65,6 +67,7 @@ client() {  # client <name> -> echoes its rundir
 
 clean_output() { sed 's/\x1b\[[0-9;]*m//g'; }
 
+# 1. A push answered badly, one mode at a time.
 for m in "${MODES[@]}"; do
   dir=$(client "c$m")
   DARK_CONFIG_RUNDIR="$dir" "$PWD/$CLI" fn "/Hostile.T.f$m" '() : Int64 = 1L' >/dev/null 2>&1
@@ -74,9 +77,9 @@ for m in "${MODES[@]}"; do
   grep -qE "Encountered a Runtime Error|No matching case found|but got [A-Za-z]+|Call stack" <<<"$out" \
     && fail "sync against relay mode $m crashed"
 
-  # 1. The data-loss case. A push may only be recorded when the relay confirmed it. What the client
-  #    records is the set of ops the relay holds (`sync_pushed`); a row here for a relay that never
-  #    confirmed anything means the next push skips work the relay does not have.
+  # The data-loss case. A push may only be recorded when the relay confirmed it. What the client
+  # records is the set of ops the relay holds (`sync_pushed`); a row here for a relay that never
+  # confirmed anything means the next push skips work the relay does not have.
   recorded=$(sqlite3 "$dir/data.db" "SELECT count(*) FROM sync_pushed WHERE relay = 'http://localhost:$m';" 2>/dev/null || echo 0)
   if [[ "$recorded" != "0" ]]; then
     fail "relay mode $m did not confirm the push, but the client recorded $recorded op(s) as held (work would be lost)"
@@ -84,20 +87,20 @@ for m in "${MODES[@]}"; do
   echo "  ok   mode $m: no crash, and no push recorded without a confirmation"
 done
 
-# 3. A relay that lists junk instead of branch ids: the junk must not reach a URL or the terminal.
+# 2. A relay that lists junk instead of branch ids: the junk must not reach a URL or the terminal.
 dir=$(client "cbranch")
 out=$(timeout 60 env DARK_CONFIG_RUNDIR="$dir" "$PWD/$CLI" branch pull "http://localhost:9081" 2>&1 | clean_output || true)
 grep -q "are not branch ids" <<<"$out" || fail "a junk branch list was not rejected"
 grep -q "count" <<<"$out" && fail "the relay's junk was echoed back into the output"
 echo "  ok   a junk branch list is rejected without echoing it"
 
-# 4. A cursor that points past ops the local log no longer has.
+# 3. A cursor that points past ops the local log no longer has.
 #
 #    The relay-instance check catches a relay REPLACED at an address. It cannot catch this: the relay is
 #    the same one, and the client's own log lost ops sitting BEHIND its cursor (a rebuild rewrites main's
-#    log; the cursor is not part of it). The client then asks for nothing past the cursor, gets nothing,
-#    and reports success forever while `sync status` says it is thousands of ops behind. Seen for real on
-#    a store holding 28k ops against a relay holding 201k, where the documented remedy changed nothing.
+#    log; the cursor is not part of it). Without the rewind the client asks for nothing past the cursor,
+#    gets nothing, and reports success forever while `sync status` says it is thousands of ops behind.
+start_relay 9087
 dir=$(client "cstale")
 sqlite3 "$dir/data.db" \
   "INSERT OR REPLACE INTO config_v0 (key, value) VALUES
@@ -110,7 +113,7 @@ grep -q "points past ops this store doesn't have" <<<"$out" \
 echo "  ok   a cursor past ops this store lost rewinds instead of pulling zero forever"
 
 
-# 5. A relay that restarts under a pull. Page 1 lands; page 2's connection drops. The client must not
+# 4. A relay that restarts under a pull. Page 1 lands; page 2's connection drops. The client must not
 #    record the relay's position off that pull (it would skip the un-pulled ops for good), and the next
 #    pull must pick up where the last page landed.
 start_relay 9088
@@ -125,7 +128,7 @@ grep -qE "^Pulled|^Nothing new" <<<"$out" \
   || fail "the pull after the relay came back did not finish; got: $out"
 echo "  ok   a relay that dies mid-pull: position not recorded, and the next pull finishes"
 
-# 6. A peer that upgraded before you did. The refusal has to name BOTH versions, the one the bundle
+# 5. A peer that upgraded before you did. The refusal has to name BOTH versions, the one the bundle
 #    claims and the one this build speaks, or the person cannot tell which side to upgrade.
 start_relay 9089
 dir=$(client "cfuture")
@@ -136,13 +139,12 @@ grep -qE "Encountered a Runtime Error|No matching case found|Call stack" <<<"$ou
   && fail "a bundle from a newer format crashed the client"
 echo "  ok   a peer on a newer wire format is refused, naming both versions"
 
-# 2. A relay that never answers: the client must give up rather than wedge.
+# 6. A relay that never answers: the client must give up rather than wedge.
 #
 #    `sync status` rather than `sync`, deliberately. A full sync makes four requests in sequence and the
-#    per-request timeout is 30s, so it reports correctly after about two minutes -- I measured 123s and
-#    briefly read that as a hang, which it is not. One request proves the timeout works and costs a
-#    quarter as much, and a gate that takes two minutes to say something it could say in thirty seconds
-#    is a gate people start skipping.
+#    per-request timeout is 30s, so it reports correctly after about two minutes, which reads as a hang
+#    and is not one. One request proves the timeout works and costs a quarter as much, and a gate that
+#    takes two minutes to say something it could say in thirty seconds is a gate people start skipping.
 start_relay 9086
 dir=$(client "chang")
 start=$(date +%s)

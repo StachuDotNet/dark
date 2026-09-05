@@ -727,10 +727,9 @@ let openStreamingRequest
   }
 
 
-/// Turn a completed exchange into a Result. A non-2xx is a FAILURE, not a body: these once returned
-/// Ok for anything that completed, so a relay answering 400 reached the caller as a successful fetch
-/// whose payload happened to be an error page, and `dark branch push` printed "pushed branch ..." for
-/// a 400 it never noticed.
+/// Turn a completed exchange into a Result. A non-2xx is a FAILURE, not a body: Ok for anything that
+/// completed would hand the caller a relay's 400 as a successful fetch whose payload happens to be an
+/// error page, and `dark branch push` would print "pushed branch ..." for a 400 it never saw.
 let private fetchResult (verb : string) (response : RequestResult) : Dval =
   match response with
   | Ok r when r.statusCode >= 200 && r.statusCode < 300 ->
@@ -961,10 +960,10 @@ let fns (config : Configuration) : List<BuiltInFn> =
 
     // Start a sync GET WITHOUT waiting for it, and collect it later.
     //
-    // A pull is a chain of pages, and it was strictly sequential: fetch a page, import it, fetch the
-    // next. Network and CPU are each about 40% of a pull and neither was ever overlapped, so the total
-    // was their sum. With these two the client starts the next page's fetch as soon as it knows the
-    // cursor, imports the page in hand while that flies, and pays `max` instead.
+    // A pull is a chain of pages: fetch one, import it, fetch the next. Network and CPU are each about
+    // 40% of a pull, so done strictly in turn the total is their sum. With these two the client starts
+    // the next page's fetch as soon as it knows the cursor, imports the page in hand while that flies,
+    // and pays `max` instead.
     //
     // The guard is checked HERE, at start, so a refusal is immediate and loud rather than surfacing
     // later out of an await that no longer names the caller.
@@ -990,8 +989,8 @@ let fns (config : Configuration) : List<BuiltInFn> =
               let request : Request =
                 { url = uri; method = HttpMethod "GET"; headers = []; body = [||] }
 
-              // Started, not awaited: `makeRequest` returns a Ply, and forcing it to a Task is what
-              // actually puts the request on the wire before this builtin returns.
+              // Started, not awaited: `makeRequest` returns a running Task, so the request is on
+              // the wire before this builtin returns.
               let started = makeRequest syncConfig prefetchClient request
 
               let handle = System.Guid.NewGuid()
@@ -1062,10 +1061,10 @@ let fns (config : Configuration) : List<BuiltInFn> =
           uply {
             let headers =
               headerList
-              |> List.collect (fun h ->
+              |> List.choose (fun h ->
                 match h with
-                | DTuple(DString k, DString v, []) -> [ (k, v) ]
-                | _ -> [])
+                | DTuple(DString k, DString v, []) -> Some(k, v)
+                | _ -> None)
 
             // Before the request is built, so a refused origin is never dialled.
             if not (LibExecution.UnguardedOrigins.isAllowed uri) then

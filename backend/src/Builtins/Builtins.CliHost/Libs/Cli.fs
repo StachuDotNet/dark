@@ -181,8 +181,8 @@ let private declarationsToModule
     //
     // `ptForBranch` = main's bindings plus that branch's delta ops overlaid (empty on main, so this is
     // exactly `pt` for the common case). The branch has to be applied HERE, by wrapping the pm, because
-    // a location lookup no longer takes a branch to resolve against: `locations` has no branch column,
-    // so a branch is an overlay of ops rather than an argument a query can carry.
+    // a location lookup takes no branch: `locations` has no branch column, so a branch is an overlay
+    // of ops rather than an argument a query can carry.
     let pm0 = LibDB.PackageManager.ptForBranch state.branchId
     let! fns1 =
       lowerFns pm0 |> Ply.map (fun fns -> List.map2 stampFn fns fnLocations)
@@ -516,6 +516,27 @@ let createBranchState (parentState : RT.ExecutionState) (allowHarmful : bool) =
   { state with allowHarmful = allowHarmful }
 
 
+/// Print the call stack of a failed run, when there is one. The error itself is the Dark
+/// caller's to print; the stack is not part of the error value, so it goes to stdout here.
+/// Only when non-empty: an expression that failed before any call has an empty stack, and a
+/// header over nothing reads like a crash in the tool.
+let private printCallStack
+  (exeState : RT.ExecutionState)
+  (what : string)
+  (callStack : RT.CallStack)
+  : Ply<unit> =
+  uply {
+    // Not a `let!` inside one arm of the `if`: that is FS3511 in Release.
+    let! csString =
+      if List.isEmpty callStack then
+        Ply ""
+      else
+        Exe.callStackString exeState callStack
+    if csString <> "" then
+      print $"Error when executing {what}. Call-stack:\n{csString}\n"
+  }
+
+
 let fns () : List<BuiltInFn> =
   [ { name = fn "cliParseAndExecuteScript" 0
       typeParams = []
@@ -625,17 +646,7 @@ let fns () : List<BuiltInFn> =
                   return
                     resultError (ExecutionError.toDT (ExecutionError.Runtime rte))
                 | Error(e, callStack) ->
-                  // The Dark caller prints the error itself. The stack is printed here because it is
-                  // not part of the error value, and only when there is one: an expression that
-                  // failed before any call has an empty stack, and a header over nothing reads
-                  // like a crash in the tool.
-                  let! csString =
-                    if List.isEmpty callStack then
-                      Ply ""
-                    else
-                      Exe.callStackString exeState callStack
-                  if csString <> "" then
-                    print $"Error when executing Script. Call-stack:\n{csString}\n"
+                  do! printCallStack exeState "Script" callStack
                   return resultError (ExecutionError.toDT (ExecutionError.Runtime e))
               | Error pe ->
                 return resultError (ExecutionError.toDT (ExecutionError.Parse pe))
@@ -768,15 +779,7 @@ let fns () : List<BuiltInFn> =
                         result
                     return okSome asString
                 | Error(e, callStack) ->
-                  // As for scripts above: the stack only when there is one.
-                  let! csString =
-                    if List.isEmpty callStack then
-                      Ply ""
-                    else
-                      Exe.callStackString exeState callStack
-                  if csString <> "" then
-                    print
-                      $"Error when executing expression. Call-stack:\n{csString}\n"
+                  do! printCallStack exeState "expression" callStack
                   return resultError (ExecutionError.toDT (ExecutionError.Runtime e))
               | Error pe ->
                 return resultError (ExecutionError.toDT (ExecutionError.Parse pe))

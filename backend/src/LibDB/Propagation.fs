@@ -212,9 +212,9 @@ let private resolveCurrentHash
     //
     // Read from the branch's delta ops rather than a branch package manager because
     // `PackageManager` compiles after this file. Last binding wins: the ops arrive
-    // oldest-first, same as the overlay's own rule, and `Resolve` counts as a
-    // binding for the same reason `SCM.PackageOps.bindingFromOp` says it does -- a
-    // rebind is a `Resolve`, and missing it would resolve to a superseded version.
+    // oldest-first, same as the overlay's own rule, and an `Override` decision counts
+    // as a binding for the same reason `SCM.PackageOps.bindingFromOp` says it does --
+    // it IS a rebind, and missing it would resolve to a superseded version.
     // `Some None` is a name the branch UNBOUND: it resolves to nothing on the branch, whatever main
     // holds, so the fallback is the placeholder rather than main's row.
     let! fromBranch =
@@ -539,8 +539,7 @@ let propagate
       match result with
       | Error err -> return Error err
       | Ok(repoints, ops, _finalToSourceHash) ->
-        // No marker op. The Add + SetName ops ARE the propagation; a PropagateUpdate
-        // op recorded that one happened, which the fold then ignored. Grouping now
-        // comes from the commit, and "this version lost" from a recorded conflict.
+        // No marker op: the Add + SetName ops ARE the propagation. Grouping comes from
+        // the commit, and "this version lost" from a recorded conflict.
         return Ok(Some({ repoints = repoints }, ops))
   }

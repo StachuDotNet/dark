@@ -48,7 +48,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
       match SCM.Propagation.kindAt loc with
       | None ->
         printErr $"nothing named {PropagateCmd.dotted loc}."
-        printHint "  `dark ls <module>` lists what's there; `dark log` shows what you've changed."
+        printHint "  `dark ls <module>` lists what's there; `dark status` shows what you've changed."
         state
       | Some kind ->
         // Captured BEFORE the rebind: what anything above is pointed at, and so what the cascade back
@@ -61,8 +61,8 @@ let execute (state: AppState) (args: List<String>) : AppState =
           match SCM.Propagation.previousAuthored loc with
           | None ->
             // `undo` steps back a VERSION, and a first version has none. Say what DOES remove it,
-            // rather than stopping at "can't": a new item with a typo in it used to leave `commit`
-            // blocked with no route out but discarding the whole draft.
+            // rather than stopping at "can't": a new item with a typo in it blocks `commit`, and the
+            // route out is `discard <name>`, not the whole draft.
             printOk
               $"{PropagateCmd.dotted loc} is at its first version -- nothing further to undo."
 
@@ -95,7 +95,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
 
 let help (_state: AppState) : String =
-  [ "dark undo <name> -- step one item back a version"
+  [ "dark undo <name> - step one item back a version."
     ""
     "  Rebinds the name to the version it had before your last change, and brings anything"
     "  that followed that change back down with it."

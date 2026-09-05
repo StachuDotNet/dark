@@ -87,6 +87,15 @@ let notifyBranchChanged (branchId: Uuid) (name: String) : Unit =
 let activeBranch () : Uuid = SCM.PackageOps.currentBranch ()
 
 
+/// Put this process on <param branchId>, and remember it for the next one. The overlay and the two
+/// config keys are three writes to one fact, so they only ever happen together.
+let moveTo (branchId: Uuid) (name: String) : Unit =
+  Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString branchId)
+  Stdlib.LocalStore.configSet "current_branch_name" name
+  let _ = SCM.PackageOps.selectBranch branchId
+  ()
+
+
 /// `dark/getBranches` -- every active branch, with the active one flagged.
 let handleGetBranchesRequest
   (state: LspState)
@@ -154,9 +163,7 @@ let handleCreateBranchRequest
     let parentId = activeBranch ()
 
     let (id, _created) = SCM.PackageOps.ensureBranch name parentId
-    let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString id)
-    let _ = Stdlib.LocalStore.configSet "current_branch_name" name
-    let _ = SCM.PackageOps.selectBranch id
+    moveTo id name
 
     respondOk
       requestID
@@ -176,43 +183,27 @@ let handleSwitchBranchRequest
   (requestID: JsonRPC.RequestID)
   (branchRef: String)
   : LspState =
-  if (branchRef == SCM.Ids.mainBranchName)
-     || (branchRef == Stdlib.Uuid.toString SCM.Ids.mainBranchId) then
-    let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
-    let _ = Stdlib.LocalStore.configSet "current_branch_name" SCM.Ids.mainBranchName
-    let _ = SCM.PackageOps.selectBranch SCM.Ids.mainBranchId
+  // `main` resolves like any other ref: the resolver knows it by name and by id, and `branchName`
+  // spells it without a `branches` row.
+  match resolveRef branchRef with
+  | None ->
+    respondError requestID $"no branch \"{branchRef}\""
+    state
+  | Some id ->
+    let name = SCM.PackageOps.branchName id
+    moveTo id name
 
     respondOk
       requestID
       (Json.Object
-        [ ("id", idJson SCM.Ids.mainBranchId)
-          ("name", Json.String SCM.Ids.mainBranchName)
+        [ ("id", idJson id)
+          ("name", Json.String name)
           ("success", Json.Bool true) ])
 
-    notifyBranchChanged SCM.Ids.mainBranchId SCM.Ids.mainBranchName
-    { state with currentBranchId = SCM.Ids.mainBranchId }
-  else
-    match resolveRef branchRef with
-    | None ->
-      respondError requestID $"no branch \"{branchRef}\""
-      state
-    | Some id ->
-      let name = SCM.PackageOps.branchName id
-      let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString id)
-      let _ = Stdlib.LocalStore.configSet "current_branch_name" name
-      let _ = SCM.PackageOps.selectBranch id
-
-      respondOk
-        requestID
-        (Json.Object
-          [ ("id", idJson id)
-            ("name", Json.String name)
-            ("success", Json.Bool true) ])
-
-      notifyBranchChanged id name
-      // The state carries the branch every later request resolves against, so a switch that moved only
-      // the process overlay would leave completions and hovers answering for the branch you just left.
-      { state with currentBranchId = id }
+    notifyBranchChanged id name
+    // The state carries the branch every later request resolves against, so a switch that moved only
+    // the process overlay would leave completions and hovers answering for the branch you just left.
+    { state with currentBranchId = id }
 
 
 /// `dark/deleteBranch` -- archive, which is what deleting a branch means here. Nothing is destroyed:
@@ -232,13 +223,11 @@ let handleDeleteBranchRequest
       // Archiving the branch you're standing on leaves you nowhere; go back to main.
       let landedOn =
         if activeBranch () == branchId then
-          let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
-          let _ = Stdlib.LocalStore.configSet "current_branch_name" SCM.Ids.mainBranchName
-          let _ = SCM.PackageOps.selectBranch SCM.Ids.mainBranchId
-          let _ = notifyBranchChanged SCM.Ids.mainBranchId SCM.Ids.mainBranchName
+          moveTo SCM.Ids.mainBranchId SCM.Ids.mainBranchName
+          notifyBranchChanged SCM.Ids.mainBranchId SCM.Ids.mainBranchName
           SCM.Ids.mainBranchId
         else
-          let _ = notifyBranchChanged (activeBranch ()) (SCM.PackageOps.branchName (activeBranch ()))
+          notifyBranchChanged (activeBranch ()) (SCM.PackageOps.branchName (activeBranch ()))
           state.currentBranchId
 
       respondOk
@@ -445,11 +434,8 @@ let handleRenameBranchRequest
       | Ok b ->
         // The config keeps the name beside the id for anyone reading the file, so it goes stale on a
         // rename of the branch you are standing on.
-        let _ =
-          if SCM.PackageOps.currentBranch () == branchId then
-            Stdlib.LocalStore.configSet "current_branch_name" b.name
-          else
-            ()
+        if SCM.PackageOps.currentBranch () == branchId then
+          Stdlib.LocalStore.configSet "current_branch_name" b.name
 
         respondOk
           requestID

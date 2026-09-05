@@ -42,8 +42,9 @@ module Registry =
       ("hash", "Show hash of a package item", [], Packages.Hash.execute, Packages.Hash.help, Packages.Hash.complete)
       // SCM commands
       ("status", "What's in your draft, in one line", [ "wip", "changes" ], Cli.Status.execute, Cli.Status.help, Cli.Status.complete)
-      // `commits` is the name, `log` an alias: it lists commits, and every other noun in this CLI says what
-      // it lists (`ops`, `branch`, `conflicts`, `instances`). `log` only reads as "commits" if you've used git.
+      // `commits`, not `log`: every noun in this CLI says what it lists (`ops`, `branches`, `conflicts`), and
+      // `log` only reads as "commits" if you've used git. `log` is its own command, meaning whichever
+      // history you're standing in.
       ("commits", "Your commits, newest first", [ "history" ], Cli.Commits.execute, Cli.Commits.help, Cli.Commits.complete)
       ("commit", "Review your draft, propagate, and commit it", [], Cli.Commit.execute, Cli.Commit.help, Cli.Commit.complete)
       ("discard", "Drop your draft: everything authored since the last commit", [ "reset" ], Cli.Discard.execute, Cli.Discard.help, Cli.Discard.complete)
@@ -57,7 +58,7 @@ module Registry =
       ("log", "History: commits on main, a branch's ops on a branch", [], Cli.Branch.executeLogCmd, Cli.Branch.help, Cli.Branch.complete)
       ("resolve", "Settle one conflicted name on a branch", [], Cli.Branch.executeResolveCmd, Cli.Branch.help, Cli.Branch.complete)
       ("propagate", "Choose what follows what when a dependency changes", [], Cli.PropagateCmd.execute, Cli.PropagateCmd.help, Cli.PropagateCmd.complete)
-      ("constraints", "Standing checks over the store (stale usages, and more to come)", [], Cli.ConstraintsCmd.execute, Cli.ConstraintsCmd.help, Cli.ConstraintsCmd.complete)
+      ("constraints", "Standing findings about the store: stale usages, kind changes, superseded overrides", [], Cli.ConstraintsCmd.execute, Cli.ConstraintsCmd.help, Cli.ConstraintsCmd.complete)
       ("ack", "Leave a constraint finding for now (`dark ack --all`)", [], Cli.ConstraintsCmd.executeAckCmd, Cli.ConstraintsCmd.help, Cli.ConstraintsCmd.complete)
       ("undeprecate", "Put a deprecated fn/type/value back on the shelf", [ "restore" ], Packages.Deprecate.executeUndeprecate, Packages.Deprecate.undeprecateHelp, Packages.Deprecate.complete)
       ("push", "Push your ops to the relay", [], Cli.Sync.executePushCmd, Cli.Sync.help, Cli.Sync.complete)

@@ -1,8 +1,8 @@
 module Darklang.SCM.PackageOps
 
-/// Reading the op log as HISTORY: recent ops, the ops in a commit, counts and summaries.
-///
-/// Same module as `packageOps.dark`; see the note there.
+// Reading the op log as HISTORY: recent ops, the ops in a commit, counts and summaries.
+//
+// Same module as `packageOps.dark`; see the note there.
 
 
 /// Get recent package ops (fully decoded), newest first.
@@ -203,9 +203,9 @@ let commitsOnBranch (branchId: Uuid) (limit: Int64) : List<Commits.Commit> =
 ///
 /// Ordered by rowid, which is INSERTION order, and not by `origin_ts`. The stamp is a portable authoring
 /// counter rather than a clock (see `Commits.nextStamp`), so an op authored just now can carry a stamp
-/// earlier than one already in the log -- a seeded store does exactly that, and ordering by it made every
-/// commit name the seed's baseline as its parent. "What had this store committed when this commit was
-/// made" is a local question, and insertion order is the local answer.
+/// earlier than one already in the log -- a seeded store does exactly that, and ordered by stamp every
+/// commit would name the seed's baseline as its parent. "What had this store committed when this commit
+/// was made" is a local question, and insertion order is the local answer.
 ///
 /// Empty means this store has committed nothing yet, which is the only honest answer for a first commit.
 let parentCommitFor (branchId: Uuid) : String =

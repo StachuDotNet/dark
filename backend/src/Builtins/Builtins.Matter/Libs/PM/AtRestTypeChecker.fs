@@ -646,7 +646,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       typeParams = []
       parameters =
         // NOT consulted: the search runs against the package manager this builtin set was
-        // constructed with, which is the process's own.
+        // constructed with, which is MAIN's (`LibDB.PackageManager.pt`).
         [ Param.make "branchId" TUuid "the branch a caller means" ]
       returnType = TCustomType(NR.ok (DarkTypes.reportName ()), [])
       description =

@@ -1,6 +1,7 @@
 module Darklang.Cli.ScmJson
 
-// The AI-facing shapes for `dark status` / `dark commit` / `dark conflicts`.
+// The AI-facing shapes behind `--json` on the SCM commands: status, commit, conflicts, deps, commits,
+// branches, diff and log.
 //
 // Same data as the pretty view, typed, so an agent consumes it without scraping. That's the requirement, and
 // the way to actually meet it is to compute ONCE here and have both renderers read the same record -- a JSON
@@ -59,7 +60,7 @@ type CommitJson =
 /// One conflict as JSON: the record, plus the name assembled.
 ///
 /// The stored shape keeps owner, modules and name apart, which is right for a record and wrong for a
-/// consumer: an agent reading `--json` had to know the convention to say which item was in trouble.
+/// consumer: an agent reading `--json` would have to know the convention to say which item was in trouble.
 /// `fqn` is derived here rather than stored, so there is one spelling of the name and no second copy to
 /// keep in step.
 type ConflictJson =

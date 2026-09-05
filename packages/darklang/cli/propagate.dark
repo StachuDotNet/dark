@@ -258,7 +258,7 @@ let executeList (state: AppState) : AppState =
     printHint "  dark propagate pin <name>   stop it following, and undo the repoint you just got"
     state
   | cs ->
-    printOk (Cli.Status.plural (Stdlib.List.length cs) "propagation choice")
+    printOk (Cli.Text.plural (Stdlib.List.length cs) "propagation choice")
 
     cs
     |> Stdlib.List.iter (fun c ->
