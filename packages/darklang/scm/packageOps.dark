@@ -1133,17 +1133,32 @@ type RebaseOutcome =
 ///
 /// Names the parent by NAME, never by id: a bare uuid where a branch name belongs is exactly what the
 /// boundary rule exists to prevent, and main's id renders as one.
-let rebaseMessage (parentId: Uuid) (changed: List<String>) : String =
+let rebaseMessage (parentId: Uuid) (rebased: Branches.Rebased) : String =
   let parentName = branchName parentId
 
-  match changed with
+  // Two different things happened, and the advice differs: a divergence is yours to settle, a repoint
+  // already agrees with the parent and needs nothing from you.
+  let divergedPart =
+    match rebased.diverged with
+    | [] -> []
+    | names ->
+      let n = Stdlib.Int.toString (Stdlib.List.length names)
+      let listed = Stdlib.String.join names "\n  "
+      [ $"it had changed {n} name(s) you also touched:\n  {listed}\nyour branch's versions win by recency on merge -- re-author any you want to take the parent's version of." ]
+
+  let repointedPart =
+    match rebased.repointed with
+    | [] -> []
+    | names ->
+      let n = Stdlib.Int.toString (Stdlib.List.length names)
+      let listed = Stdlib.String.join names "\n  "
+      [ $"it had moved names this branch calls; {n} caller(s) now point at the parent's version:\n  {listed}" ]
+
+  match Stdlib.List.append divergedPart repointedPart with
   | [] ->
     $"already current with \"{parentName}\" -- nothing to reconcile; merge is ready"
-  | names ->
-    let n = Stdlib.Int.toString (Stdlib.List.length names)
-    let listed = Stdlib.String.join names "\n  "
-
-    $"rebased onto \"{parentName}\". it had changed {n} name(s) you also touched:\n  {listed}\nyour branch's versions win by recency on merge -- re-author any you want to take the parent's version of."
+  | parts ->
+    $"rebased onto \"{parentName}\". " ++ (Stdlib.String.join parts "\n")
 
 
 /// Rebase a branch: accept the parent's current state as the new base; reports the names the parent changed
@@ -1158,9 +1173,9 @@ let rebaseBranch (branchId: Uuid) : Stdlib.Result.Result<RebaseOutcome, String> 
 
   let conflicts = branchPreview branchId
 
-  match Branches.rebase branchId with
-  | Ok changed ->
-    let msg = rebaseMessage (branchParentOf branchId) changed
+  match Branches.rebaseDetailed branchId with
+  | Ok rebased ->
+    let msg = rebaseMessage (branchParentOf branchId) rebased
     // The mirror of merge: a rebase folds the PARENT's work into the branch, so the conflict is the
     // branch's to answer and stays with it.
     let _ = Conflicts.record branchId conflicts

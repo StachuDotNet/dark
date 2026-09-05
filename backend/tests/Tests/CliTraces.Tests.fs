@@ -2043,6 +2043,15 @@ let private aBranchLearnsThatMainMovedItsDependency =
           rebased
           "Tests.Moved.caller"
           $"rebase names what it repointed: {rebased}"
+        // As a repoint, not as a divergence: nobody on the branch touched the caller, and "your
+        // branch's versions win by recency" is advice about a fight that is not happening.
+        Expect.stringContains
+          rebased
+          "now point at the parent's version"
+          $"and calls it a repoint: {rebased}"
+        Expect.isFalse
+          (rebased.Contains "you also touched")
+          $"not a divergence: {rebased}"
         let! after = runCli state [ "eval"; "Tests.Moved.caller ()" ]
         Expect.stringContains
           after

@@ -1146,6 +1146,52 @@ let anOverrideRepointsCallers =
       Expect.isFalse
         (callerNow.Contains "100")
         "which means it no longer calls the loser"
+
+      // The cascade also settles the conflicts it makes moot. On two machines the caller's own
+      // conflict (each side's cascade had made a different caller) stayed pending after the override
+      // rebound the caller to a third version, asking for a choice between two versions nobody ran.
+      // A conflict whose live binding is neither candidate is superseded; one whose live binding is a
+      // candidate is still a real question.
+      let conflictOn (id : string) (name : string) (h1 : string) (h2 : string) =
+        "Darklang.SCM.Conflicts.Conflict { id = \""
+        + id
+        + "\"; owner = \"TwoStore\"; "
+        + "modules = \"Cascade\"; name = \""
+        + name
+        + "\"; itemType = \"fn\"; kind = \"same-name-different-hash\"; "
+        + "candidates = [ Darklang.SCM.Conflicts.Candidate { side = \"local\"; hash = \""
+        + h1
+        + "\"; originTs = \"\"; author = \"\" }; "
+        + "Darklang.SCM.Conflicts.Candidate { side = \"incoming\"; hash = \""
+        + h2
+        + "\"; originTs = \"\"; author = \"\" } ]; "
+        + "autoResolvedTo = \""
+        + h2
+        + "\"; reason = \"\"; status = \"pending\"; resolvedBy = \"\" }"
+      let! _ =
+        darkOn (
+          "Darklang.SCM.Conflicts.record Darklang.SCM.Ids.mainBranchId [ "
+          + conflictOn "moot01" "caller" "aaaa" "bbbb"
+          + "; "
+          + conflictOn "live01" "base" mineHash theirsHash
+          + " ]"
+        )
+      let! (stillPending : string) =
+        darkOn "Darklang.SCM.Conflicts.pending () |> Stdlib.List.map (fun c -> c.id)"
+      Expect.isFalse
+        (stillPending.Contains "moot01")
+        $"the caller's conflict, rebound past both candidates, is settled: {stillPending}"
+      Expect.stringContains
+        stillPending
+        "live01"
+        $"the one whose live binding is a candidate stays: {stillPending}"
+      let! status =
+        Sql.query "SELECT status FROM conflicts WHERE id = 'moot01'"
+        |> Sql.executeRowAsync (fun read -> read.string "status")
+      Expect.equal
+        status
+        "superseded"
+        "and it is recorded as superseded, not deleted"
     finally
       teardown [ a ]
   }

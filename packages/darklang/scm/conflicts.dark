@@ -518,25 +518,47 @@ let record (branchId: Uuid) (conflicts: List<Conflict>) : Int =
 /// branch would write the answer into an overlay where it does nothing until merge, and settling a
 /// branch's from main would answer for a projection that hasn't happened yet. Each branch sees its own.
 let pending () : List<Conflict> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT id, owner, modules, name, item_type, kind, candidates, auto_resolved_to, reason, status,
-              COALESCE(resolved_by,'') AS resolved_by
-       FROM conflicts WHERE status = 'pending' AND branch_id = @p0 ORDER BY created_at"
-      [ Stdlib.Uuid.toString (onBranch ()) ]
-  with
-  | Ok rows -> rows |> Stdlib.List.filterMap conflictFromRow
-  | Error _ -> []
+  let recorded =
+    match
+      Stdlib.Sqlite.queryP
+        (localDb ())
+        "SELECT id, owner, modules, name, item_type, kind, candidates, auto_resolved_to, reason, status,
+                COALESCE(resolved_by,'') AS resolved_by
+         FROM conflicts WHERE status = 'pending' AND branch_id = @p0 ORDER BY created_at"
+        [ Stdlib.Uuid.toString (onBranch ()) ]
+    with
+    | Ok rows -> rows |> Stdlib.List.filterMap conflictFromRow
+    | Error _ -> []
 
-/// How many conflicts are waiting -- the number `dark status` and `dark commit` surface.
+  // A conflict whose name has since been bound to something that is NEITHER candidate was settled by
+  // events, not by a person: an override's cascade repointed the callers, or a later edit moved on. Left
+  // pending it asks for a choice between two versions nobody runs any more. Settled here, at the point
+  // it is noticed, and recorded under what superseded it.
+  let branchId = onBranch ()
+
+  recorded
+  |> Stdlib.List.filter (fun c ->
+    let loc =
+      LanguageTools.ProgramTypes.PackageLocation
+        { owner = c.owner
+          modules = (if c.modules == "" then [] else Stdlib.String.split c.modules ".")
+          name = c.name }
+
+    match PackageOps.liveBindingFor branchId loc with
+    | Some live ->
+      let stillACandidate = c.candidates |> Stdlib.List.any (fun cand -> cand.hash == live.hash)
+
+      if stillACandidate then
+        true
+      else
+        setStatus c.id "superseded" live.hash
+        false
+    | None -> true)
+
+/// How many conflicts are waiting -- the number `dark status` and `dark commit` surface. Runs the same
+/// sweep as `pending`, so the count and the list never disagree about a superseded one.
 let pendingCount () : Int64 =
-  Stdlib.Sqlite.scalarIntP
-    (localDb ())
-    "SELECT count(*) AS n FROM conflicts WHERE status = 'pending' AND branch_id = @p0"
-    [ Stdlib.Uuid.toString (onBranch ()) ]
-    "n"
-  |> Stdlib.Option.withDefault 0L
+  Stdlib.Int.toInt64 (Stdlib.List.length (pending ())) |> Stdlib.Option.withDefault 0L
 
 /// The conflict on THIS branch whose id starts with <param rawPrefix> (ids are short already; a prefix
 /// keeps them typeable).

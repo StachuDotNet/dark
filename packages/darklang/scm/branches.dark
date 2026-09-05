@@ -403,14 +403,32 @@ let nameConflicts (branchId: Uuid) : List<String> =
   divergedIn (nameBases branchId) (parentHashesForBases parent branchId)
 
 
+/// What a rebase did, in the two ways the parent's changes reach a branch.
+type Rebased =
+  { /// Names the parent changed that this branch had ALSO changed: a divergence, settled by recency
+    /// on merge unless the person re-authors.
+    diverged: List<String>
+    /// The branch's own callers of names the parent moved, repointed at the parent's version. Not a
+    /// divergence: nobody on the branch touched these, and after the repoint they agree with the
+    /// parent by construction.
+    repointed: List<String> }
+
+
 /// REBASE: accept the parent's current state as this branch's new base. Returns the names the parent had
 /// changed since the fork; after this the branch's own ops layer on top (LWW by origin_ts) and merge is
-/// unblocked.
+/// unblocked. The union of both halves of <fn rebaseDetailed>, for callers that want one list.
+let rebase (branchId: Uuid) : Stdlib.Result.Result<List<String>, String> =
+  match rebaseDetailed branchId with
+  | Ok r -> Stdlib.Result.Result.Ok(Stdlib.List.unique (Stdlib.List.append r.diverged r.repointed))
+  | Error e -> Stdlib.Result.Result.Error e
+
+
+/// The rebase itself, reporting divergences and repoints apart (see <type Rebased>).
 ///
 /// Every base moves in ONE transaction. A statement per name would let an interrupted rebase leave half
 /// the bases rewritten -- a branch neither at its old fork point nor at the new one, with nothing
 /// recording which.
-let rebase (branchId: Uuid) : Stdlib.Result.Result<List<String>, String> =
+let rebaseDetailed (branchId: Uuid) : Stdlib.Result.Result<Rebased, String> =
   let parent = SCM.PackageOps.branchParentOf branchId
   let bases = nameBases branchId
   let parentHashes = parentHashesForBases parent branchId
@@ -454,10 +472,10 @@ let rebase (branchId: Uuid) : Stdlib.Result.Result<List<String>, String> =
       | _ -> Stdlib.Option.Option.None)
     |> Stdlib.List.unique
 
-  let changedAll = Stdlib.List.unique (Stdlib.List.append changed repointed)
+  let outcome = Rebased { diverged = changed; repointed = repointed }
 
   match updates with
-  | [] -> Stdlib.Result.Result.Ok changedAll
+  | [] -> Stdlib.Result.Result.Ok outcome
   | rows ->
     match
       Stdlib.Sqlite.execBatch
@@ -466,7 +484,7 @@ let rebase (branchId: Uuid) : Stdlib.Result.Result<List<String>, String> =
             WHERE branch_id = @p1 AND owner = @p2 AND modules = @p3 AND name = @p4",
            rows) ]
     with
-    | Ok _ -> Stdlib.Result.Result.Ok changedAll
+    | Ok _ -> Stdlib.Result.Result.Ok outcome
     | Error e -> Stdlib.Result.Result.Error e
 
 
