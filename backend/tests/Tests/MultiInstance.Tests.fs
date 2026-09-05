@@ -879,7 +879,7 @@ let private darkOn (code : string) : Task<string> =
   task {
     match! evalDarkExpr code with
     | Ok dv -> return string dv
-    | Error(rte, _) -> return failtest $"the Dark call failed: {rte}"
+    | Error(rte, _) -> return failtest $"the Dark call failed: {rte}\n  code: {code}"
   }
 
 /// The Dark conflict detector, run on the receiving store, over two edits to one name made

@@ -229,6 +229,20 @@ let private fnHashTests =
         let h1 = Hashing.computeFnHash Hashing.Normal fn1
         let h2 = Hashing.computeFnHash Hashing.Normal fn2
         Expect.equal h1 h2 "AST node IDs should not affect hash"
+      }
+
+      // The store is content-addressed, so two drafts that collide here are ONE item: the
+      // second author's name is bound to the first author's body. Seen when a test that
+      // committed `bad x = Tests.UnresT.missing x` ran before one that authored
+      // `caller x = TwoStore.Cascade.base x`, and `caller` called `missing`.
+      test "unresolved references to different names hash differently" {
+        let callUnresolved (names : List<string>) : PT.Expr =
+          let nr : PT.NameResolution<PT.FQFnName.FQFnName> =
+            { originalName = names; resolved = Error PT.NameResolutionError.NotFound }
+          PT.EApply(gid (), PT.EFnName(gid (), nr), [], NEList.singleton (eVar "x"))
+        let h1 = h [ "x" ] (callUnresolved [ "Tests"; "UnresT"; "missing" ])
+        let h2 = h [ "x" ] (callUnresolved [ "TwoStore"; "Cascade"; "base" ])
+        Expect.notEqual h1 h2 "the name is all an unresolved reference has"
       } ]
 
 
